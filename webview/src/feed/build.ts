@@ -779,7 +779,6 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
     if (item.pending && !pending) {
       const started = state.startedAt[item.id]
       const duration = started ? formatDuration(now - started) : item.duration
-      delete startedAt[item.id]
       return { ...item, tools, pending, duration }
     }
 

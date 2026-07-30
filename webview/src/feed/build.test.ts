@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent } from '../protocol'
 import { contextUsage, initialPanelState, reducePanel, type PanelState } from './build'
-import type { TextItem, ToolGroupItem, ToolItem } from './types'
+import type { TextItem, ToolGroupItem } from './types'
 
 /**
  * Поток записан живым прогоном агента, а не придуман: только так видно и порядок
@@ -157,6 +157,52 @@ describe('сборка ленты из потока агента', () => {
       expect(groups[0]?.tools.at(-1)?.isError).toBe(true)
       expect(groups[0]?.tools.at(-1)?.meta).toBe('· interrupted')
       expect(state.crashed).toBe(true)
+    })
+
+    it('вычисляет полный span группы при re-append после resolve (regression)', () => {
+      const T0 = 1_700_000_000_000
+      // T0: tool1 called
+      let state = reducePanel(
+        initialPanelState,
+        { kind: 'agent', event: toolUseEvent('t1', 'Read', { file_path: 'a.ts' }) },
+        T0,
+      )
+      // T0 + 2s: tool1 resolves
+      state = reducePanel(
+        state,
+        { kind: 'agent', event: toolResultEvent('t1', 'ok') },
+        T0 + 2_000,
+      )
+
+      let groups = state.items.filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
+      expect(groups).toHaveLength(1)
+      expect(groups[0]?.pending).toBe(false)
+      expect(groups[0]?.duration).toMatch(/2\.0+s/)
+
+      // T0 + 2.5s: tool2 called (no text between, same group)
+      state = reducePanel(
+        state,
+        { kind: 'agent', event: toolUseEvent('t2', 'Bash', { command: 'ls' }) },
+        T0 + 2_500,
+      )
+
+      groups = state.items.filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
+      expect(groups).toHaveLength(1)
+      expect(groups[0]?.tools).toHaveLength(2)
+      expect(groups[0]?.pending).toBe(true)
+
+      // T0 + 5.5s: tool2 resolves (group should now show full 5.5s span, not just 2s)
+      state = reducePanel(
+        state,
+        { kind: 'agent', event: toolResultEvent('t2', 'ok') },
+        T0 + 5_500,
+      )
+
+      groups = state.items.filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
+      expect(groups).toHaveLength(1)
+      expect(groups[0]?.pending).toBe(false)
+      // Duration should reflect full span from T0 to T0+5.5s, not just the first 2s
+      expect(groups[0]?.duration).toMatch(/5\.5+s/)
     })
   })
 })
