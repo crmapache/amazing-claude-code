@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { parseParagraphs } from '../feed/markdown'
-import type { FeedItem } from '../feed/types'
+import type { FeedItem, TaskItem, ToolItem } from '../feed/types'
 import { picksFor, todoOverridesFor, type CardState } from '../hooks/useCardState'
 import s from './feed.module.css'
 import { AskCard } from './items/AskCard'
@@ -10,7 +10,7 @@ import { CheckpointRow, CompactRow, CrashRow, MetaRow } from './items/Rows'
 import { TaskCard } from './items/TaskCard'
 import { TextCard } from './items/TextCard'
 import { TodoCard } from './items/TodoCard'
-import { ToolCard } from './items/ToolCard'
+import { ToolGroupCard } from './items/ToolGroupCard'
 import { UserCard } from './items/UserCard'
 import { ScrollThumb } from './ScrollThumb'
 
@@ -54,7 +54,13 @@ export const Feed = ({
    */
   const awaitingPermission = items.some((item) => item.kind === 'perm' && item.decision === null)
   const lastPendingId = awaitingPermission
-    ? items.filter((item) => (item.kind === 'tool' || item.kind === 'task') && item.pending).at(-1)?.id
+    ? items
+        .flatMap<ToolItem | TaskItem>((item) => {
+          if (item.kind === 'toolGroup') return item.tools.filter((tool) => tool.pending)
+          if (item.kind === 'task' && item.pending) return [item]
+          return []
+        })
+        .at(-1)?.id
     : undefined
   /** Пока пользователь не отмотал вверх сам, лента липнет к низу. */
   const stick = useRef(true)
@@ -140,7 +146,7 @@ export const Feed = ({
             <ItemView
               item={item}
               cards={cards}
-              awaitingPermission={item.id === lastPendingId}
+              lastPendingId={lastPendingId}
               onSendAnswers={onSendAnswers}
               onApprovePlan={onApprovePlan}
               onKeepPlanning={onKeepPlanning}
@@ -202,8 +208,8 @@ export const Feed = ({
 interface ItemViewProps {
   item: FeedItem
   cards: CardState
-  /** Эта самая свежая «выполняется»-карточка на деле ждёт твоего решения, не работает. */
-  awaitingPermission: boolean
+  /** id вызова, который сейчас реально ждёт разрешения (или undefined, если ждать нечего). */
+  lastPendingId: string | undefined
   onSendAnswers: (answers: string[]) => void
   onApprovePlan: () => void
   onKeepPlanning: () => void
@@ -213,7 +219,7 @@ interface ItemViewProps {
 const ItemView = ({
   item,
   cards,
-  awaitingPermission,
+  lastPendingId,
   onSendAnswers,
   onApprovePlan,
   onKeepPlanning,
@@ -226,25 +232,15 @@ const ItemView = ({
     case 'text':
       return <TextCard item={item} />
 
-    case 'tool':
-      return (
-        <ToolCard
-          item={item}
-          open={cards.isOpen(item.id)}
-          appliedHunks={cards.appliedHunks}
-          awaitingPermission={awaitingPermission}
-          onToggle={() => cards.toggle(item.id)}
-          onAcceptHunk={cards.applyHunk}
-          onRejectHunk={cards.rejectHunk}
-        />
-      )
+    case 'toolGroup':
+      return <ToolGroupCard item={item} cards={cards} awaitingPermissionId={lastPendingId} />
 
     case 'task':
       return (
         <TaskCard
           item={item}
           open={cards.isOpen(item.id)}
-          awaitingPermission={awaitingPermission}
+          awaitingPermission={item.id === lastPendingId}
           onToggle={() => cards.toggle(item.id)}
         />
       )

@@ -1,7 +1,7 @@
 import type { DetailLine, Hunk, ToolChip, ToolItem } from '../../feed/types'
 import s from '../feed.module.css'
 
-const CHIP_CLASS: Record<ToolChip, string> = {
+export const CHIP_CLASS: Record<ToolChip, string> = {
   THINK: s.chipThink ?? '',
   READ: s.chipRead ?? '',
   GREP: s.chipGrep ?? '',

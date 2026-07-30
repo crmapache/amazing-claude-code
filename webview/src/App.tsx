@@ -1005,7 +1005,8 @@ const imageAttachments = (tokens: UserToken[]): { mediaType: string; data: strin
 const streamStatus = (panel: PanelState): string => {
   if (panel.compacting) return 'Compacting context…'
 
-  const tools = panel.items.filter((item) => item.kind === 'tool').length
+  const last = panel.items.at(-1)
+  const tools = last?.kind === 'toolGroup' && last.pending ? last.tools.length : 0
   return tools > 0 ? `Claude is working · ${tools} tools this turn` : 'Claude is thinking'
 }
 

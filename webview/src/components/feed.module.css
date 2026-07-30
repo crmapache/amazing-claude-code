@@ -442,6 +442,20 @@
   color: var(--acc-bad-light);
 }
 
+/* --- Группа вызовов инструментов -------------------------------------------- */
+
+.toolGroup {
+  composes: tool;
+}
+
+.toolGroupHead {
+  composes: toolHead;
+}
+
+.toolGroupBody {
+  composes: toolBody;
+}
+
 /* --- Дифф ------------------------------------------------------------------ */
 
 .hunks {
