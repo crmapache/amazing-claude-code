@@ -19,19 +19,19 @@ const waitForFreshBridge = async (previous: Window['__accReceive']): Promise<voi
 }
 
 export class ScenarioPlayer {
-  private cancelled = false
+  private runId = 0
 
   cancel(): void {
-    this.cancelled = true
+    this.runId += 1
   }
 
   async play(scenario: Scenario): Promise<void> {
+    const myRun = (this.runId += 1)
     const previousBridge = window.__accReceive
-    this.cancelled = false
     await waitForFreshBridge(previousBridge)
 
     for (const step of scenario.steps) {
-      if (this.cancelled) return
+      if (this.runId !== myRun) return
 
       if (step.kind === 'wait') {
         await sleep(step.ms)
