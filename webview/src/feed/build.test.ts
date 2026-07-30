@@ -204,5 +204,58 @@ describe('сборка ленты из потока агента', () => {
       // Duration should reflect full span from T0 to T0+5.5s, not just the first 2s
       expect(groups[0]?.duration).toMatch(/5\.5+s/)
     })
+
+    it('мысль модели после закрытой группы не переоткрывает её (regression)', () => {
+      const T0 = 1_700_000_000_000
+      // T0: tool1 called
+      let state = reducePanel(
+        initialPanelState,
+        { kind: 'agent', event: toolUseEvent('t1', 'Read', { file_path: 'a.ts' }) },
+        T0,
+      )
+      // T0 + 1s: tool1 resolves — группа закрывается, pending: false, duration зафиксирована.
+      state = reducePanel(state, { kind: 'agent', event: toolResultEvent('t1', 'ok') }, T0 + 1_000)
+
+      let groups = state.items.filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
+      expect(groups).toHaveLength(1)
+      expect(groups[0]?.pending).toBe(false)
+      const closedDuration = groups[0]?.duration
+      expect(closedDuration).toMatch(/1\.0+s/)
+
+      // T0 + 1.2s: мысль модели приходит сразу после — без текста между ними,
+      // ложится в ту же группу по правилу непрерывности, но не тянет за собой
+      // результата и не должна снова делать группу pending.
+      state = reducePanel(
+        state,
+        {
+          kind: 'agent',
+          event: {
+            type: 'assistant',
+            message: { content: [{ type: 'thinking', thinking: 'Готово, можно отвечать.' }] },
+          },
+        },
+        T0 + 1_200,
+      )
+
+      groups = state.items.filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
+      expect(groups).toHaveLength(1)
+      expect(groups[0]?.tools).toHaveLength(2)
+      expect(groups[0]?.pending).toBe(false)
+      expect(groups[0]?.duration).toBe(closedDuration)
+    })
+
+    it('startedAt пустеет, когда все вызовы хода разрешились', () => {
+      const T0 = 1_700_000_000_000
+      let state = reducePanel(
+        initialPanelState,
+        { kind: 'agent', event: toolUseEvent('t1', 'Read', { file_path: 'a.ts' }) },
+        T0,
+      )
+      expect(Object.keys(state.startedAt)).not.toHaveLength(0)
+
+      state = reducePanel(state, { kind: 'agent', event: toolResultEvent('t1', 'ok') }, T0 + 1_000)
+
+      expect(Object.keys(state.startedAt)).toHaveLength(0)
+    })
   })
 })

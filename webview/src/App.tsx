@@ -1007,7 +1007,7 @@ const streamStatus = (panel: PanelState): string => {
 
   const last = panel.items.at(-1)
   const tools = last?.kind === 'toolGroup' && last.pending ? last.tools.length : 0
-  return tools > 0 ? `Claude is working · ${tools} tools this turn` : 'Claude is thinking'
+  return tools > 0 ? `Claude is working · ${tools} ${tools === 1 ? 'tool' : 'tools'} this turn` : 'Claude is thinking'
 }
 
 const buildStreams = (panel: PanelState): Stream[] => {

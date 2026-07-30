@@ -272,11 +272,8 @@ const tickDurations = (state: PanelState, now: number): PanelState => {
       return { ...tool, duration: formatDuration(now - started) }
     })
 
-    const groupStarted = state.startedAt[item.id]
-    if (!groupStarted) return { ...item, tools }
-
     changed = true
-    return { ...item, tools, duration: formatDuration(now - groupStarted) }
+    return { ...item, tools, duration: formatDuration(now - item.startedAt) }
   })
 
   return changed ? { ...state, items } : state
@@ -329,11 +326,7 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
     if (item.kind !== 'toolGroup' || !item.pending) return item
 
     const tools = item.tools.map(closeTool)
-    const started = startedAt[item.id]
-    delete startedAt[item.id]
-    const duration = started ? formatDuration(now - started) : item.duration
-
-    return { ...item, tools, pending: false, duration }
+    return { ...item, tools, pending: false, duration: formatDuration(now - item.startedAt) }
   })
 
   return {
@@ -609,24 +602,35 @@ const applyAssistant = (state: PanelState, blocks: ContentBlock[], now: number):
  * разрешиться и тут же продолжиться следующим вызовом без единого текстового
  * блока между ними — это тот самый непрерывный «взрыв» вызовов, который и должен
  * остаться одной группой. Поэтому смотрим только на то, чем был последний
- * элемент ленты, а не на его pending.
+ * элемент ленты, а не на его pending. Сам pending группы при этом честно
+ * выводится из детей, а не проставляется вслепую: мысль модели (thinking),
+ * например, добавляется уже разрешённой — если бы группа снова становилась
+ * pending от одного факта добавления, её было бы уже некому разрешить обратно.
  */
 const appendToolCall = (state: PanelState, tool: ToolItem, now: number): PanelState => {
   const last = state.items.at(-1)
 
   if (last?.kind === 'toolGroup') {
-    const group: ToolGroupItem = { ...last, tools: [...last.tools, tool], pending: true }
+    const tools = [...last.tools, tool]
+    const group: ToolGroupItem = { ...last, tools, pending: tools.some((t) => t.pending) }
     return {
       ...state,
-      startedAt: { ...state.startedAt, [tool.id]: now },
+      startedAt: tool.pending ? { ...state.startedAt, [tool.id]: now } : state.startedAt,
       items: [...state.items.slice(0, -1), group],
     }
   }
 
-  const group: ToolGroupItem = { id: `g-${tool.id}`, kind: 'toolGroup', tools: [tool], pending: true, duration: '' }
+  const group: ToolGroupItem = {
+    id: `g-${tool.id}`,
+    kind: 'toolGroup',
+    tools: [tool],
+    pending: tool.pending,
+    duration: '',
+    startedAt: now,
+  }
   return {
     ...state,
-    startedAt: { ...state.startedAt, [tool.id]: now, [group.id]: now },
+    startedAt: tool.pending ? { ...state.startedAt, [tool.id]: now } : state.startedAt,
     items: [...state.items, group],
   }
 }
@@ -640,12 +644,10 @@ const pushTool = (state: PanelState, make: (id: string) => ToolItem, now: number
 const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): PanelState => {
   const input = (block.input ?? {}) as Record<string, unknown>
   const workingDirectory = state.project?.workingDirectory ?? ''
-  const started = { ...state.startedAt, [block.id]: now }
 
   if (block.name === 'TodoWrite') {
     return {
       ...state,
-      startedAt: started,
       items: [...state.items, { id: block.id, kind: 'todo', todos: readTodos(input) }],
     }
   }
@@ -654,7 +656,6 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
     const steps = readPlanSteps(input)
     return {
       ...state,
-      startedAt: started,
       items: [
         ...state.items,
         {
@@ -673,7 +674,6 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
     const questions = readQuestions(input)
     return {
       ...state,
-      startedAt: started,
       items: [
         ...state.items,
         {
@@ -691,7 +691,7 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
     const subagent = typeof input.subagent_type === 'string' ? input.subagent_type : 'general'
     return {
       ...state,
-      startedAt: started,
+      startedAt: { ...state.startedAt, [block.id]: now },
       items: [
         ...state.items,
         {
@@ -777,9 +777,7 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
     const pending = tools.some((tool) => tool.pending)
 
     if (item.pending && !pending) {
-      const started = state.startedAt[item.id]
-      const duration = started ? formatDuration(now - started) : item.duration
-      return { ...item, tools, pending, duration }
+      return { ...item, tools, pending, duration: formatDuration(now - item.startedAt) }
     }
 
     return { ...item, tools, pending }

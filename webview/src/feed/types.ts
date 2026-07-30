@@ -107,6 +107,8 @@ export interface ToolGroupItem {
   pending: boolean
   /** Точное время от создания группы до последнего результата; пока pending — тикает. */
   duration: string
+  /** Момент создания группы — неизменный, не зависит от того, что происходит с state.startedAt. */
+  startedAt: number
 }
 
 export interface TaskItem {
