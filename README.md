@@ -221,3 +221,7 @@ export ACC_PUBLISH_TOKEN=...   # plugins.jetbrains.com/author/me/tokens
 «IntelliJ» и названий продуктов JetBrains; описание на английском; у автора рабочие
 сайт и почта; логотип свой и не похож на логотипы JetBrains; чужие торговые марки
 не используются без разрешения владельца.
+
+## Лицензия
+
+MIT — см. [LICENSE](LICENSE).
