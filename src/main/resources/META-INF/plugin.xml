@@ -1,0 +1,40 @@
+<!-- id, name, version, vendor и description патчатся из build.gradle.kts,
+     чтобы у них была одна точка правды. Здесь только то, что Gradle не задаёт. -->
+<idea-plugin>
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.jcef</depends>
+    <!-- Вход в Claude Code открывает браузер и ждёт возврата кода, то есть это
+         разговор с процессом. Ведём его во встроенном терминале, а не выдумываем
+         свой экран входа. -->
+    <depends>org.jetbrains.plugins.terminal</depends>
+
+    <resource-bundle>messages.AccBundle</resource-bundle>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- anchor задаёт только положение по умолчанию: дальше пользователь сам
+             перетаскивает кнопку между краями, и платформа помнит его выбор. -->
+        <toolWindow
+                id="AmazingClaudeCode"
+                anchor="right"
+                icon="/icons/toolWindow.svg"
+                factoryClass="io.github.crmapache.amazingclaudecode.toolwindow.ClaudeToolWindowFactory"/>
+
+        <postStartupActivity
+                implementation="io.github.crmapache.amazingclaudecode.startup.AutoOpenPanelActivity"/>
+    </extensions>
+
+    <actions>
+        <action id="AmazingClaudeCode.SendSelection"
+                class="io.github.crmapache.amazingclaudecode.editor.SendSelectionAction"
+                text="Send to Amazing Claude Code"
+                description="Put a reference to the selected lines into the Claude panel input">
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+        </action>
+        <action id="AmazingClaudeCode.SendSelectionAbsolute"
+                class="io.github.crmapache.amazingclaudecode.editor.SendSelectionAbsoluteAction"
+                text="Send Absolute Path to Amazing Claude Code"
+                description="Put a reference to the selected lines into the Claude panel input, with the full path instead of a project-relative one">
+            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="AmazingClaudeCode.SendSelection"/>
+        </action>
+    </actions>
+</idea-plugin>

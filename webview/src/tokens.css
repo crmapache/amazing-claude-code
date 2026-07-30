@@ -1,0 +1,107 @@
+/*
+ * Токены из макета «Claude Code Panel». Значения перенесены как есть: панель
+ * повторяет тёмную схему JetBrains, а не выводит цвета из темы IDE.
+ */
+
+:root {
+  /* Поверхности, от самой глубокой к самой светлой */
+  --acc-bg-sunken: #16181a;
+  --acc-bg-deep: #1a1c1e;
+  --acc-bg: #1e1f22;
+  --acc-bg-raised: #212327;
+  --acc-bg-card: #26282c;
+  --acc-bg-panel: #2b2d30;
+  --acc-bg-control: #33353a;
+  --acc-bg-hover: #35373b;
+  --acc-bg-menu-hover: #3a3d42;
+  --acc-bg-control-hover: #4b4d52;
+
+  /* Границы */
+  --acc-line: #393b40;
+  --acc-line-strong: #4b4d52;
+  --acc-line-hover: #5f6266;
+
+  /* Текст, от основного к самому тихому */
+  --acc-fg: #dfe1e5;
+  --acc-fg-body: #c9ccd1;
+  --acc-fg-soft: #b9bcc2;
+  /*
+   * Нижние 5 ступеней пересчитаны на реальный контраст (WCAG) против всех фонов
+   * панели, а не подобраны на глаз: было от 1.5:1 до 4.4:1 (частично неразличимо
+   * на фоне модалок), стало 2.7-8+:1 с сохранением того же порядка яркости.
+   */
+  --acc-fg-mono: #a7abb2;
+  --acc-fg-dim: #989ca3;
+  --acc-fg-faint: #8b9099;
+  --acc-fg-fainter: #7e828c;
+  --acc-fg-ghost: #71757e;
+
+  /* Акценты. Каждый отвечает за свой род событий и не используется вне его. */
+  --acc-accent: #7b8cf7;
+  --acc-accent-hover: #98a5fb;
+  --acc-accent-light: #9aa6fa;
+  --acc-accent-soft: rgb(123 140 247 / 12%);
+  --acc-accent-line: rgb(123 140 247 / 32%);
+
+  /* Ветки и вопросы */
+  --acc-branch: #4fc3c7;
+  --acc-branch-light: #7fd6d9;
+  --acc-branch-soft: rgb(79 195 199 / 10%);
+  --acc-branch-line: rgb(79 195 199 / 34%);
+
+  /* Подагенты и параллельная работа */
+  --acc-agent: #b78cf0;
+  --acc-agent-light: #c9a9f5;
+  --acc-agent-dark: #8c6fb5;
+  --acc-agent-soft: rgb(183 140 240 / 12%);
+  --acc-agent-line: rgb(183 140 240 / 30%);
+
+  /* Разрешения и предупреждения */
+  --acc-warn: #e0a64b;
+  --acc-warn-light: #e6c88a;
+  --acc-warn-soft: rgb(224 166 75 / 12%);
+  --acc-warn-line: rgb(224 166 75 / 32%);
+
+  /* Между предупреждением и отказом — темп расхода выше графика, но ещё не в красной зоне */
+  --acc-orange: #e0793f;
+  --acc-orange-light: #f0a66f;
+
+  /* Индикаторы расхода (ctx/5h/wk): нужен однозначно зелёный, а не бирюзовый --acc-ok-light */
+  --acc-meter-green: #4cbf6a;
+
+  /* Успех и добавленные строки */
+  --acc-ok: #56c288;
+  --acc-ok-light: #7ed3a5;
+  --acc-ok-text: #c8ead8;
+  --acc-ok-soft: rgb(86 194 136 / 13%);
+  --acc-ok-line: rgb(86 194 136 / 30%);
+
+  /* Отказ и удалённые строки */
+  --acc-bad: #e05c5c;
+  --acc-bad-light: #f08a8a;
+  --acc-bad-text: #e8b4b4;
+  --acc-bad-soft: rgb(224 92 92 / 12%);
+
+  /* Шрифты */
+  --acc-font: 'Instrument Sans', system-ui, sans-serif;
+  --acc-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Высота шапки — переменная, а не число в каждом месте: вкладки при нехватке
+     места переносятся на вторую строку, и шапка растёт. Значение по умолчанию
+     на случай, если ResizeObserver в Header ещё не успел его выставить. */
+  --header-height: 34px;
+
+  /* Радиусы */
+  --acc-r-xs: 3px;
+  --acc-r-sm: 4px;
+  --acc-r-md: 5px;
+  --acc-r-lg: 6px;
+  --acc-r-xl: 7px;
+  --acc-r-2xl: 8px;
+
+  /* Тени всплывающих слоёв */
+  --acc-shadow-menu: 0 18px 44px rgb(0 0 0 / 60%);
+  --acc-shadow-card: 0 16px 42px rgb(0 0 0 / 55%), 0 0 0 1px rgb(0 0 0 / 40%);
+  --acc-shadow-drawer: -18px 0 48px rgb(0 0 0 / 50%);
+  --acc-shadow-popover: 0 10px 26px rgb(0 0 0 / 60%);
+}

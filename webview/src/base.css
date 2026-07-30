@@ -1,0 +1,81 @@
+@import './tokens.css';
+@import './fonts.css';
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--acc-bg);
+  color: var(--acc-fg);
+  font-family: var(--acc-font);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+a {
+  color: var(--acc-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--acc-accent-light);
+  text-decoration: underline;
+}
+
+textarea,
+input,
+button {
+  font-family: inherit;
+  color: inherit;
+}
+
+button {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: default;
+}
+
+::selection {
+  background: rgb(123 140 247 / 34%);
+}
+
+/* Пользователь явно попросил убрать рамку фокуса везде: раздражает больше,
+   чем помогает. Один общий сброс вместо outline:none по каждому классу. */
+*:focus,
+*:focus-visible {
+  outline: none;
+}
+
+/* Той же ширины, что нативный скроллбар самой IDE — иначе рядом с ним наш
+   выглядит игрушечным. */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--acc-line-strong);
+  border: 2px solid transparent;
+  border-radius: var(--acc-r-lg);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--acc-line-hover);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}

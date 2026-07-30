@@ -1,0 +1,1250 @@
+/* Обвязка панели: шапка, потоки, нижняя строка, меню, ящик агентов, тост. */
+
+/* Кадры анимаций живут здесь, а не в общем файле: CSS-модуль переименовывает
+   имена анимаций так же, как классы, и ссылка на глобальные кадры молча ни во что
+   не превращается — анимация просто не идёт. */
+
+@keyframes acc-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes acc-slide-in {
+  from {
+    transform: translateX(14px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  background: var(--acc-bg-panel);
+  position: relative;
+  overflow: hidden;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  position: relative;
+  background: var(--acc-bg);
+}
+
+.spacer {
+  flex: 1;
+  min-width: 6px;
+}
+
+/* --- Шапка с сессиями ------------------------------------------------------ */
+
+.header {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  min-height: 34px;
+  background: var(--acc-bg-panel);
+  border-bottom: 1px solid var(--acc-line);
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  min-width: 0;
+}
+
+/* Ужимаются, переносятся только когда некуда ужиматься дальше — не убегают за
+   край панели и не обрезаются молча. flex-grow:0 — важно: с ростом вкладка,
+   когда она одна, разрасталась бы до max-width и отжимала кнопку «+» на вторую
+   строку, хотя места рядом полно. Ширина — от заголовка, не от growth.
+   height — явная: без неё при переносе на несколько строк высота вкладки
+   считалась бы от содержимого (короче), а не от прежних 34px хедера. */
+.tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 9px 0 11px;
+  flex: 0 1 auto;
+  min-width: 70px;
+  max-width: 210px;
+  border-bottom: 2px solid transparent;
+  color: var(--acc-fg-dim);
+}
+
+/* Полоска сверху — цвет группы: у разговора и всех его форков он один, поэтому
+   принадлежность видно, не читая подписи. */
+.tabGroupBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  opacity: 0.55;
+}
+
+.tabActive .tabGroupBar {
+  opacity: 1;
+}
+
+/* Зазор отбивает одну группу от другой: цвета мало, если вкладки слиплись. */
+.tabGroupStart {
+  margin-left: 6px;
+}
+
+.tabGroupStart:first-child {
+  margin-left: 0;
+}
+
+.tabFork {
+  flex: none;
+  font: 11px/1 var(--acc-mono);
+  opacity: 0.85;
+}
+
+.tab:hover {
+  background: var(--acc-bg-card);
+}
+
+.tabActive {
+  background: var(--acc-bg);
+  color: var(--acc-fg);
+}
+
+/* Активная и так темнее панели — второй сигнал (нижняя полоска) был лишним,
+   только сбивал с толку рядом с полоской группы сверху. Ховер держим отдельным
+   для каждой: активная темнеет сильнее неактивной, чтобы разница читалась. */
+.tabActive:hover {
+  background: var(--acc-bg-sunken);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 9px;
+  background: var(--acc-fg-ghost);
+  transition: background 0.2s ease;
+}
+
+/* Дышит только работающая вкладка: остальные состояния статичны, иначе шапка
+   рябит и перестаёт что-либо сообщать. */
+.dotRunning {
+  background: var(--acc-warn);
+  box-shadow: 0 0 0 3px rgb(224 166 75 / 14%);
+  animation: acc-pulse 1.5s ease-in-out infinite;
+}
+
+.dotDone {
+  background: var(--acc-ok);
+}
+
+.dotAttention {
+  background: var(--acc-accent);
+  box-shadow: 0 0 0 3px rgb(123 140 247 / 16%);
+  animation: acc-pulse 1.5s ease-in-out infinite;
+}
+
+/* Не пульсирует: это не рабочий процесс, а факт — сессия оборвалась. */
+.dotCrashed {
+  background: var(--acc-bad-light);
+  box-shadow: 0 0 0 3px rgb(224 92 92 / 18%);
+}
+
+.tabTitle {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tabClose {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--acc-r-xs);
+  font-size: 12px;
+  color: var(--acc-fg-faint);
+}
+
+.tabClose:hover {
+  background: var(--acc-line-strong);
+  color: var(--acc-fg);
+}
+
+.tabAdd {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 34px;
+  flex: none;
+  font-size: 15px;
+  color: var(--acc-fg-dim);
+}
+
+.tabAdd:hover {
+  background: var(--acc-bg-hover);
+  color: var(--acc-fg);
+}
+
+.headerTools {
+  display: flex;
+  align-items: center;
+  padding-right: 6px;
+}
+
+/* Только значок: место в шапке дорогое, а подпись переносилась на вторую строку. */
+.historyButton {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: var(--acc-r-sm);
+  font: 16px/1 var(--acc-mono);
+  color: var(--acc-fg-dim);
+}
+
+.historyButton:hover {
+  background: var(--acc-line-strong);
+  color: var(--acc-fg);
+}
+
+/* Свой тултип вместо нативного title: у него нет своей задержки и вида чужой
+   ОС — выглядит так же, как подписи у родных иконок самой IDE. */
+.historyButton::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  padding: 4px 8px;
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-deep);
+  border: 1px solid var(--acc-line-strong);
+  box-shadow: var(--acc-shadow-menu);
+  color: var(--acc-fg);
+  font: 11px/1.3 var(--acc-font);
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-2px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  pointer-events: none;
+  z-index: 60;
+}
+
+.historyButton:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+/* --- Полоса потоков -------------------------------------------------------- */
+
+.streams {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--acc-bg-raised);
+  border-bottom: 1px solid var(--acc-line);
+  overflow: hidden;
+}
+
+.streamsLabel {
+  font: 600 9px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-fg-fainter);
+  flex: none;
+}
+
+.streamList {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.stream {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md);
+  color: var(--acc-fg-dim);
+}
+
+.stream:hover {
+  border-color: var(--acc-line-hover);
+}
+
+.streamActive {
+  background: var(--acc-bg-control);
+  border-color: var(--acc-line-hover);
+  color: var(--acc-fg);
+}
+
+.streamDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 9px;
+  flex: none;
+}
+
+.streamLabel {
+  font: 500 11px var(--acc-mono);
+  white-space: nowrap;
+}
+
+.streamMeta {
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.running {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--acc-agent-line);
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-agent-soft);
+  color: var(--acc-agent-light);
+}
+
+.running:hover {
+  background: rgb(183 140 240 / 20%);
+}
+
+.runningDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 9px;
+  background: var(--acc-agent);
+  animation: acc-pulse 1.4s infinite;
+}
+
+.runningLabel {
+  font: 500 11px var(--acc-mono);
+}
+
+/* --- Нижняя строка --------------------------------------------------------- */
+
+/* Нижняя строка: сводка текстом, как в строке состояния терминала. Метрики идут
+   отдельной строкой над кнопками — рядом с ними они рассыпаются по одной. */
+.status {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+  padding: 7px 2px 8px;
+}
+
+.statusLine {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+  font: 11px/1.4 var(--acc-mono);
+}
+
+/* Каждая метрика — единый кусок: ключ и значение не должны разъезжаться. */
+.statusItem {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.statusBranch {
+  color: var(--acc-ok-light);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statusPr {
+  color: var(--acc-fg-ghost);
+}
+
+.statusPrLink {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--acc-branch-light);
+  cursor: pointer;
+}
+
+.statusPrLink:hover {
+  text-decoration: underline;
+}
+
+.statusKey {
+  color: var(--acc-fg-fainter);
+}
+
+.statusValue {
+  color: var(--acc-fg);
+}
+
+.statusSlash {
+  color: var(--acc-fg-faint);
+}
+
+/* statusline.sh красит саму цифру за "tok" бирюзовым (FG_CYAN), а не тусклым —
+   тусклая там только подпись "tok" рядом с ней. */
+.statusTok {
+  color: var(--acc-branch-light);
+}
+
+.selectors {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  position: relative;
+  flex: none;
+  max-width: 100%;
+}
+
+/* Ширина у всех трёх одна и не зависит от выбранного значения: иначе ряд дёргался
+   бы при каждой смене модели или режима. Длинное значение обрезается. */
+.selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 120px;
+  min-width: 0;
+  height: 23px;
+  padding: 0 8px;
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-control);
+}
+
+.selector:hover {
+  border-color: var(--acc-line-hover);
+}
+
+.selectorPlan {
+  background: rgb(123 140 247 / 14%);
+  border-color: rgb(123 140 247 / 40%);
+}
+
+.selectorAccept {
+  background: rgb(86 194 136 / 13%);
+  border-color: rgb(86 194 136 / 36%);
+}
+
+.selectorDanger {
+  background: rgb(224 92 92 / 14%);
+  border-color: rgb(224 92 92 / 45%);
+}
+
+/* Метка и значение одного кегля и одного line-height: при разных размерах их
+   оптические центры не совпадают, и кнопка выглядит косой, как её ни центрируй. */
+.selectorLabel {
+  flex: none;
+  font: 500 10.5px/1 var(--acc-mono);
+  letter-spacing: 0.04em;
+  color: var(--acc-fg-fainter);
+}
+
+.selectorValue {
+  flex: 1;
+  min-width: 0;
+  font: 500 10.5px/1 var(--acc-mono);
+  color: var(--acc-fg);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.selectorCaret {
+  flex: none;
+  width: 8px;
+  height: 5px;
+  color: var(--acc-fg-fainter);
+  transition: color 0.12s ease;
+}
+
+.selector:hover .selectorCaret {
+  color: var(--acc-fg-dim);
+}
+
+/* --- Выпадающее меню ------------------------------------------------------- */
+
+.menuScrim {
+  position: absolute;
+  /* Не inset:0 — иначе перекрывает хедер, и кнопки истории/MCP/плагинов не
+     кликаются, пока открыта другая модалка: клик глотает сам скрим. Хедер
+     переменной высоты (вкладки переносятся на вторую строку) — поэтому var,
+     не число. */
+  top: var(--header-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+}
+
+.menu {
+  position: fixed;
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--acc-bg-panel);
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-2xl);
+  box-shadow: var(--acc-shadow-menu);
+  overflow: hidden;
+  overflow-y: auto;
+  padding: 4px;
+  max-height: min(640px, 86vh);
+}
+
+.menuHead {
+  padding: 6px 9px 5px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.menuTitle {
+  font: 600 9px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-fg-faint);
+}
+
+.menuHint {
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.menuItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 9px;
+  border-radius: var(--acc-r-md);
+  text-align: left;
+}
+
+.menuItem:hover {
+  background: var(--acc-bg-menu-hover);
+}
+
+.menuItemOn {
+  background: rgb(123 140 247 / 10%);
+}
+
+.menuTick {
+  flex: none;
+  width: 13px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--acc-accent);
+}
+
+.menuBody {
+  min-width: 0;
+  flex: 1;
+}
+
+.menuRow {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.menuLabel {
+  font: 500 12px var(--acc-font);
+  color: var(--acc-fg-soft);
+}
+
+.menuLabelOn {
+  color: var(--acc-fg);
+}
+
+.menuTag {
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.menuTagDanger {
+  color: var(--acc-bad-light);
+}
+
+.menuSub {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--acc-fg-faint);
+  margin-top: 1px;
+  text-wrap: pretty;
+}
+
+
+/* --- История разговоров ----------------------------------------------------- */
+
+.history {
+  position: absolute;
+  z-index: 41;
+  top: var(--header-height);
+  left: 8px;
+  right: 8px;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-panel);
+  box-shadow: var(--acc-shadow-menu);
+  overflow: hidden;
+}
+
+.historyHead {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 12px 7px;
+  border-bottom: 1px solid var(--acc-line);
+}
+
+.historyLabel {
+  font: 600 9px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-fg-faint);
+}
+
+.historyHint {
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.historyBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.historyItem {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: var(--acc-r-md);
+  text-align: left;
+}
+
+.historyItem:hover {
+  background: var(--acc-bg-menu-hover);
+}
+
+.historyTitle {
+  font-size: 12.5px;
+  color: var(--acc-fg-body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.historyMeta {
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-fainter);
+}
+
+.historyEmpty {
+  padding: 12px 10px;
+  font: 11.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+/* --- MCP-сервера ------------------------------------------------------------ */
+
+.mcp {
+  position: absolute;
+  z-index: 41;
+  top: var(--header-height);
+  left: 8px;
+  right: 8px;
+  max-height: 72vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-panel);
+  box-shadow: var(--acc-shadow-menu);
+  overflow: hidden;
+}
+
+.mcpRefresh {
+  flex: none;
+  padding: 4px 9px;
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-control);
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-dim);
+}
+
+.mcpRefresh:hover:not(:disabled) {
+  background: var(--acc-bg-control-hover);
+  color: var(--acc-fg);
+}
+
+.mcpRefresh:disabled {
+  opacity: 0.6;
+}
+
+.mcpMessageOk,
+.mcpMessageError {
+  flex: none;
+  padding: 7px 12px;
+  font: 11px var(--acc-mono);
+  border-bottom: 1px solid var(--acc-line);
+  /* Вывод claude mcp/plugin — многострочный (статус хода, потом итог), а не
+     одна фраза: без pre-wrap переносы строк схлопываются в один сплошной кусок. */
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mcpMessageOk {
+  color: var(--acc-ok-light);
+}
+
+.mcpMessageError {
+  color: var(--acc-bad-light);
+}
+
+.mcpBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.mcpItem {
+  padding: 8px 9px;
+  border-radius: var(--acc-r-md);
+}
+
+.mcpItem:hover {
+  background: var(--acc-bg-menu-hover);
+}
+
+.mcpItemHead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.mcpDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 9px;
+}
+
+.mcpDotOn {
+  background: var(--acc-meter-green);
+}
+
+.mcpDotOff {
+  background: var(--acc-fg-ghost);
+}
+
+.mcpName {
+  font: 500 12.5px var(--acc-mono);
+  color: var(--acc-fg-body);
+}
+
+.mcpStatusText {
+  margin-left: auto;
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50%;
+}
+
+.mcpCommand {
+  margin: 3px 0 6px 14px;
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mcpActions {
+  display: flex;
+  gap: 6px;
+  margin-left: 14px;
+}
+
+.mcpAction {
+  padding: 3px 8px;
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-control);
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-dim);
+}
+
+.mcpAction:hover {
+  background: var(--acc-bg-control-hover);
+  color: var(--acc-fg);
+}
+
+.mcpActionDanger:hover {
+  background: var(--acc-bad-soft);
+  color: var(--acc-bad-light);
+}
+
+.mcpAddForm {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 12px 11px;
+  border-top: 1px solid var(--acc-line);
+}
+
+.mcpAddRow {
+  display: flex;
+  gap: 6px;
+}
+
+.mcpInput {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-control);
+  font: 11.5px var(--acc-mono);
+  color: var(--acc-fg);
+}
+
+.mcpInput:focus {
+  border-color: var(--acc-accent);
+}
+
+/* Не нативный <select>: его выпадающий список в JCEF не открывался по клику
+   вообще — три варианта проще и надёжнее показать кнопками. */
+.transportToggle {
+  flex: none;
+  display: flex;
+  gap: 4px;
+}
+
+.transportOption {
+  padding: 5px 10px;
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-control);
+  font: 11px var(--acc-mono);
+  color: var(--acc-fg-dim);
+}
+
+.transportOption:hover {
+  background: var(--acc-bg-control-hover);
+  color: var(--acc-fg);
+}
+
+.transportOptionActive {
+  background: var(--acc-accent-soft);
+  color: var(--acc-accent-light);
+}
+
+/* Заглушка на месте текста/кнопки, пока список ещё грузится — тем же дыханием,
+   что и рабочая точка вкладки, чтобы не заводить свою анимацию ради одного. */
+.skeletonBar {
+  display: inline-block;
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-control);
+  animation: acc-pulse 1.5s ease-in-out infinite;
+}
+
+.mcpAddButton {
+  align-self: flex-start;
+  padding: 5px 12px;
+  border-radius: var(--acc-r-md);
+  background: var(--acc-accent);
+  font: 500 11.5px var(--acc-font);
+  color: #fff;
+}
+
+.mcpAddButton:hover {
+  background: var(--acc-accent-hover);
+}
+
+/* --- Плагины ----------------------------------------------------------------
+   Контейнер, refresh, сообщения, dot/name/status, actions, add-форма — те же
+   классы .mcp*, что и у MCP-серверов: разметка идентична, разница только в
+   наборе вкладок и карточке из каталога маркетплейса ниже. */
+
+.pluginTabs {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--acc-line);
+}
+
+.pluginTab {
+  padding: 7px 9px 6px;
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+  border-bottom: 2px solid transparent;
+}
+
+.pluginTab:hover {
+  color: var(--acc-fg-dim);
+}
+
+.pluginTabActive {
+  color: var(--acc-fg);
+  border-bottom-color: var(--acc-accent);
+}
+
+.pluginSearchRow {
+  flex: none;
+  padding: 8px 9px;
+  border-bottom: 1px solid var(--acc-line);
+}
+
+.pluginDescription {
+  margin: 3px 0 6px 0;
+  font: 11px/1.4 var(--acc-font);
+  color: var(--acc-fg-faint);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pluginMarketplaceBadge {
+  margin-right: auto;
+  padding: 2px 7px;
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-control);
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+/* --- Меню выделения -------------------------------------------------------- */
+
+/* Координаты экранные, поэтому и позиционирование от окна: внутри прокручиваемой
+   ленты меню уезжало вниз вместе с прокруткой. */
+.selection {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-xl);
+  background: var(--acc-bg-panel);
+  box-shadow: var(--acc-shadow-popover);
+}
+
+.selectionButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: var(--acc-r-md);
+  font: 500 11.5px var(--acc-font);
+  color: var(--acc-fg);
+}
+
+.selectionButton:hover {
+  background: var(--acc-line-strong);
+}
+
+.selectionBranch {
+  color: var(--acc-branch-light);
+}
+
+.selectionBranch:hover {
+  background: rgb(79 195 199 / 18%);
+}
+
+.selectionDivider {
+  width: 1px;
+  height: 15px;
+  background: var(--acc-line-strong);
+}
+
+/* --- Ящик параллельной работы ---------------------------------------------- */
+
+.drawerScrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(10 11 12 / 50%);
+  z-index: 50;
+}
+
+.drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(436px, 92%);
+  z-index: 51;
+  background: var(--acc-bg-panel);
+  border-left: 1px solid var(--acc-line-strong);
+  box-shadow: var(--acc-shadow-drawer);
+  display: flex;
+  flex-direction: column;
+  animation: acc-slide-in 0.18s ease-out;
+}
+
+.drawerHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--acc-line);
+}
+
+.drawerLabel {
+  font: 600 10px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-agent-light);
+}
+
+.drawerMeta {
+  font: 11px var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.drawerBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.agent {
+  border: 1px solid var(--acc-agent-line);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-raised);
+  overflow: hidden;
+}
+
+.agentDone {
+  border-color: var(--acc-line);
+}
+
+.agentHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.agentDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 9px;
+  flex: none;
+  background: var(--acc-agent);
+}
+
+.agentDotLive {
+  animation: acc-pulse 1.4s infinite;
+}
+
+.agentName {
+  font: 500 12.5px var(--acc-mono);
+  color: var(--acc-fg);
+}
+
+.agentKind {
+  padding: 1px 6px;
+  border-radius: var(--acc-r-xs);
+  background: rgb(183 140 240 / 14%);
+  font: 9.5px var(--acc-mono);
+  color: var(--acc-agent-light);
+  letter-spacing: 0.05em;
+}
+
+.agentElapsed {
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.agentBody {
+  padding: 0 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agentLine {
+  font: 11.5px/1.5 var(--acc-mono);
+  color: var(--acc-fg-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drawerEmpty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px dashed var(--acc-line-strong);
+  border-radius: var(--acc-r-2xl);
+  color: var(--acc-fg-dim);
+  font: 11.5px var(--acc-mono);
+}
+
+.drawerFoot {
+  flex: none;
+  padding: 9px 12px;
+  border-top: 1px solid var(--acc-line);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.drawerClose {
+  height: 23px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-control);
+  font: 500 11px var(--acc-font);
+  color: var(--acc-fg);
+}
+
+.drawerClose:hover {
+  background: var(--acc-line-strong);
+}
+
+/* --- Экран входа ------------------------------------------------------------ */
+
+.gate {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px 20px;
+  background: var(--acc-bg);
+}
+
+.gateTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--acc-fg);
+}
+
+.gateText {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--acc-fg-faint);
+  text-wrap: pretty;
+  max-width: 380px;
+}
+
+.gateButton {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  margin-top: 4px;
+  border-radius: var(--acc-r-lg);
+  background: var(--acc-accent);
+  color: var(--acc-bg-sunken);
+  font: 600 12px var(--acc-font);
+}
+
+.gateButton:hover {
+  background: var(--acc-accent-hover);
+}
+
+.gateGhost {
+  font: 11.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+  text-decoration: underline;
+}
+
+.gateGhost:hover {
+  color: var(--acc-fg);
+}
+
+.gateWaiting {
+  font: 11.5px/1.6 var(--acc-mono);
+  color: var(--acc-fg-fainter);
+  animation: acc-pulse 1.8s infinite;
+}
+
+/* Закрыли последнюю вкладку: в отличие от .gate (текст входа читается слева),
+   тут только заголовок и кнопка — их center'им, а не жмём в левый угол. */
+.emptyState {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: var(--acc-bg);
+}
+
+/* --- Запасной вид без встроенного браузера --------------------------------- */
+
+.unsupported {
+  padding: 16px;
+  font-size: 12px;
+  color: var(--acc-fg-dim);
+}

@@ -1,0 +1,23 @@
+/* Той же ширины, что нативный скроллбар редактора самой IDE (см. base.css) —
+   рядом с ним наш не должен выглядеть игрушечным или прятаться совсем. */
+.thumb {
+  position: absolute;
+  right: 0;
+  width: 12px;
+  border-radius: var(--acc-r-lg);
+  background: var(--acc-line-strong);
+  background-clip: content-box;
+  border: 2px solid transparent;
+  opacity: 0.7;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.thumb:hover {
+  background: var(--acc-line-hover);
+  opacity: 1;
+}
+
+.thumbDragging {
+  background: var(--acc-line-hover);
+  opacity: 1;
+}
