@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent } from '../protocol'
 import { contextUsage, initialPanelState, reducePanel, type PanelState } from './build'
-import type { TextItem, ToolItem } from './types'
+import type { TextItem, ToolGroupItem, ToolItem } from './types'
 
 /**
  * Поток записан живым прогоном агента, а не придуман: только так видно и порядок
@@ -17,6 +17,21 @@ const streamEvents = (): AgentEvent[] =>
 
 const play = (events: AgentEvent[], state = initialPanelState): PanelState =>
   events.reduce((acc, event) => reducePanel(acc, { kind: 'agent', event }, 1_700_000_000_000), state)
+
+const toolUseEvent = (id: string, name: string, input: unknown = {}): AgentEvent => ({
+  type: 'assistant',
+  message: { content: [{ type: 'tool_use', id, name, input }] },
+})
+
+const toolResultEvent = (id: string, content = 'ok'): AgentEvent => ({
+  type: 'user',
+  message: { content: [{ type: 'tool_result', tool_use_id: id, content }] },
+})
+
+const textEvent = (text: string): AgentEvent => ({
+  type: 'assistant',
+  message: { content: [{ type: 'text', text }] },
+})
 
 describe('сборка ленты из потока агента', () => {
   it('доводит разговор до покоя и запоминает сессию', () => {
@@ -32,7 +47,9 @@ describe('сборка ленты из потока агента', () => {
 
   it('превращает вызов инструмента в карточку с результатом', () => {
     const state = play(streamEvents())
-    const tools = state.items.filter((item): item is ToolItem => item.kind === 'tool')
+    const tools = state.items
+      .filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
+      .flatMap((group) => group.tools)
 
     expect(tools.length).toBeGreaterThan(0)
 
@@ -84,5 +101,62 @@ describe('сборка ленты из потока агента', () => {
     })
 
     expect(state).toEqual(initialPanelState)
+  })
+
+  describe('группировка вызовов инструментов', () => {
+    it('собирает подряд идущие вызовы в одну группу, даже через паузу между внутренними шагами хода', () => {
+      let state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })])
+      state = play([toolResultEvent('t1', 'line 1')], state)
+      // t1 уже разрешился — группа на мгновение стала pending:false, но следующий
+      // вызов идёт без единого текстового блока между ними и должен лечь в ту же группу.
+      state = play([toolUseEvent('t2', 'Bash', { command: 'ls' })], state)
+      state = play([toolResultEvent('t2', 'ok')], state)
+
+      const groups = state.items.filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
+      expect(groups).toHaveLength(1)
+      expect(groups[0]?.tools.map((tool) => tool.toolName)).toEqual(['Read', 'Bash'])
+      expect(groups[0]?.pending).toBe(false)
+      expect(groups[0]?.duration).toMatch(/s$/)
+    })
+
+    it('текст между вызовами открывает новую группу', () => {
+      let state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })])
+      state = play([toolResultEvent('t1', 'line 1')], state)
+      state = play([textEvent('Нашёл файл.')], state)
+      state = play([toolUseEvent('t2', 'Bash', { command: 'ls' })], state)
+      state = play([toolResultEvent('t2', 'ok')], state)
+
+      const groups = state.items.filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
+      expect(groups).toHaveLength(2)
+      expect(groups[0]?.tools).toHaveLength(1)
+      expect(groups[1]?.tools).toHaveLength(1)
+    })
+
+    it('включает мысль модели в ту же группу, что и вызов рядом', () => {
+      let state = play([
+        { type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'Надо посмотреть файл.' }] } },
+      ])
+      state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })], state)
+      state = play([toolResultEvent('t1', 'line 1')], state)
+
+      const groups = state.items.filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
+      expect(groups).toHaveLength(1)
+      expect(groups[0]?.tools.map((tool) => tool.chip)).toEqual(['THINK', 'READ'])
+    })
+
+    it('закрывает незавершённые вызовы внутри группы при обрыве сессии', () => {
+      let state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })])
+      state = play([toolResultEvent('t1', 'line 1')], state)
+      state = play([toolUseEvent('t2', 'Bash', { command: 'ls' })], state)
+
+      state = reducePanel(state, { kind: 'processExited', exitCode: 1 }, 1_700_000_005_000)
+
+      const groups = state.items.filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
+      expect(groups).toHaveLength(1)
+      expect(groups[0]?.pending).toBe(false)
+      expect(groups[0]?.tools.at(-1)?.isError).toBe(true)
+      expect(groups[0]?.tools.at(-1)?.meta).toBe('· interrupted')
+      expect(state.crashed).toBe(true)
+    })
   })
 })

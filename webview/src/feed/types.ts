@@ -98,6 +98,17 @@ export interface ToolItem {
   pending: boolean
 }
 
+export interface ToolGroupItem {
+  id: string
+  kind: 'toolGroup'
+  /** Подряд идущие вызовы обычных инструментов, без разрывов текстом или другой карточкой. */
+  tools: ToolItem[]
+  /** Есть ли внутри хотя бы один ещё не завершившийся вызов. */
+  pending: boolean
+  /** Точное время от создания группы до последнего результата; пока pending — тикает. */
+  duration: string
+}
+
 export interface TaskItem {
   id: string
   kind: 'task'
@@ -198,7 +209,7 @@ export interface CrashItem {
 export type FeedItem =
   | UserItem
   | TextItem
-  | ToolItem
+  | ToolGroupItem
   | TaskItem
   | TodoItem
   | PlanItem

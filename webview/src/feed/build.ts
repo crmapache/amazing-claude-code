@@ -14,6 +14,7 @@ import type {
   PlanStep,
   TaskItem,
   TodoEntry,
+  ToolGroupItem,
   ToolItem,
   UserToken,
 } from './types'
@@ -251,14 +252,31 @@ const tickDurations = (state: PanelState, now: number): PanelState => {
   if (Object.keys(state.startedAt).length === 0) return state
 
   let changed = false
-  const items = state.items.map((item) => {
-    if ((item.kind !== 'tool' && item.kind !== 'task') || !item.pending) return item
 
-    const started = state.startedAt[item.id]
-    if (!started) return item
+  const items = state.items.map((item) => {
+    if (item.kind === 'task') {
+      if (!item.pending) return item
+      const started = state.startedAt[item.id]
+      if (!started) return item
+      changed = true
+      return { ...item, duration: formatDuration(now - started) }
+    }
+
+    if (item.kind !== 'toolGroup' || !item.pending) return item
+
+    const tools = item.tools.map((tool) => {
+      if (!tool.pending) return tool
+      const started = state.startedAt[tool.id]
+      if (!started) return tool
+      changed = true
+      return { ...tool, duration: formatDuration(now - started) }
+    })
+
+    const groupStarted = state.startedAt[item.id]
+    if (!groupStarted) return { ...item, tools }
 
     changed = true
-    return { ...item, duration: formatDuration(now - started) }
+    return { ...item, tools, duration: formatDuration(now - groupStarted) }
   })
 
   return changed ? { ...state, items } : state
@@ -272,14 +290,34 @@ const tickDurations = (state: PanelState, now: number): PanelState => {
 const applyProcessExited = (state: PanelState, exitCode: number, now: number): PanelState => {
   const startedAt = { ...state.startedAt }
 
+  const closeTool = (tool: ToolItem): ToolItem => {
+    if (!tool.pending) return tool
+
+    const started = startedAt[tool.id]
+    delete startedAt[tool.id]
+    const duration = started ? formatDuration(now - started) : tool.duration
+
+    return {
+      ...tool,
+      pending: false,
+      isError: true,
+      duration,
+      meta: '· interrupted',
+      detail: [
+        ...tool.detail,
+        { text: 'Claude Code stopped responding before this finished.', tone: 'bad' as const },
+      ],
+    }
+  }
+
   const items = state.items.map((item) => {
-    if ((item.kind !== 'tool' && item.kind !== 'task') || !item.pending) return item
-
-    const started = startedAt[item.id]
-    delete startedAt[item.id]
-    const duration = started ? formatDuration(now - started) : item.duration
-
     if (item.kind === 'task') {
+      if (!item.pending) return item
+
+      const started = startedAt[item.id]
+      delete startedAt[item.id]
+      const duration = started ? formatDuration(now - started) : item.duration
+
       return {
         ...item,
         pending: false,
@@ -288,17 +326,14 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
       }
     }
 
-    return {
-      ...item,
-      pending: false,
-      isError: true,
-      duration,
-      meta: '· interrupted',
-      detail: [
-        ...item.detail,
-        { text: 'Claude Code stopped responding before this finished.', tone: 'bad' as const },
-      ],
-    }
+    if (item.kind !== 'toolGroup' || !item.pending) return item
+
+    const tools = item.tools.map(closeTool)
+    const started = startedAt[item.id]
+    delete startedAt[item.id]
+    const duration = started ? formatDuration(now - started) : item.duration
+
+    return { ...item, tools, pending: false, duration }
   })
 
   return {
@@ -542,7 +577,7 @@ const applyAssistant = (state: PanelState, blocks: ContentBlock[], now: number):
 
     if (block.type === 'thinking') {
       if (!block.thinking.trim()) continue
-      next = push(next, (id) => ({
+      next = pushTool(next, (id) => ({
         id,
         kind: 'tool',
         chip: 'THINK',
@@ -555,7 +590,7 @@ const applyAssistant = (state: PanelState, blocks: ContentBlock[], now: number):
         hunks: [],
         isError: false,
         pending: false,
-      }))
+      }), now)
       continue
     }
 
@@ -565,6 +600,41 @@ const applyAssistant = (state: PanelState, blocks: ContentBlock[], now: number):
   }
 
   return next
+}
+
+/**
+ * Подряд идущие вызовы обычных инструментов складываются в одну группу, пока их
+ * не прервёт что-то другое (текст, todo, план, вопрос, задача субагента). Между
+ * внутренними шагами одного агентского хода группа может на мгновение полностью
+ * разрешиться и тут же продолжиться следующим вызовом без единого текстового
+ * блока между ними — это тот самый непрерывный «взрыв» вызовов, который и должен
+ * остаться одной группой. Поэтому смотрим только на то, чем был последний
+ * элемент ленты, а не на его pending.
+ */
+const appendToolCall = (state: PanelState, tool: ToolItem, now: number): PanelState => {
+  const last = state.items.at(-1)
+
+  if (last?.kind === 'toolGroup') {
+    const group: ToolGroupItem = { ...last, tools: [...last.tools, tool], pending: true }
+    return {
+      ...state,
+      startedAt: { ...state.startedAt, [tool.id]: now },
+      items: [...state.items.slice(0, -1), group],
+    }
+  }
+
+  const group: ToolGroupItem = { id: `g-${tool.id}`, kind: 'toolGroup', tools: [tool], pending: true, duration: '' }
+  return {
+    ...state,
+    startedAt: { ...state.startedAt, [tool.id]: now, [group.id]: now },
+    items: [...state.items, group],
+  }
+}
+
+/** То же самое, что push, но для вызова инструмента — уходит в группу, а не прямо в items. */
+const pushTool = (state: PanelState, make: (id: string) => ToolItem, now: number): PanelState => {
+  const tool = make(`i-${state.seq}`)
+  return { ...appendToolCall(state, tool, now), seq: state.seq + 1 }
 }
 
 const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): PanelState => {
@@ -638,27 +708,22 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
     }
   }
 
-  return {
-    ...state,
-    startedAt: started,
-    items: [
-      ...state.items,
-      {
-        id: block.id,
-        kind: 'tool',
-        chip: chipFor(block.name),
-        toolName: block.name,
-        input,
-        target: targetFor(block.name, input, workingDirectory),
-        meta: '',
-        duration: '',
-        detail: [],
-        hunks: [],
-        isError: false,
-        pending: true,
-      },
-    ],
+  const tool: ToolItem = {
+    id: block.id,
+    kind: 'tool',
+    chip: chipFor(block.name),
+    toolName: block.name,
+    input,
+    target: targetFor(block.name, input, workingDirectory),
+    meta: '',
+    duration: '',
+    detail: [],
+    hunks: [],
+    isError: false,
+    pending: true,
   }
+
+  return appendToolCall(state, tool, now)
 }
 
 const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number): PanelState => {
@@ -667,7 +732,7 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
 
   const startedAt = { ...state.startedAt }
 
-  const items = state.items.map((item) => {
+  const resolveTool = (item: ToolItem): ToolItem => {
     const result = results.find((candidate) => candidate.tool_use_id === item.id)
     if (!result) return item
 
@@ -677,23 +742,9 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
 
     const text = resultToText(result.content)
     const isError = result.is_error === true
-
-    if (item.kind === 'task') {
-      const task: TaskItem = {
-        ...item,
-        pending: false,
-        percent: 100,
-        duration,
-        detail: detailFor(text),
-      }
-      return task
-    }
-
-    if (item.kind !== 'tool') return item
-
     const hunks = hunksFor(item.id, item.toolName, item.input, text)
 
-    const tool: ToolItem = {
+    return {
       ...item,
       pending: false,
       isError,
@@ -704,7 +755,35 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
       detail: hunks.length > 0 ? [] : detailFor(text),
       hunks,
     }
-    return tool
+  }
+
+  const items = state.items.map((item) => {
+    if (item.kind === 'task') {
+      const result = results.find((candidate) => candidate.tool_use_id === item.id)
+      if (!result) return item
+
+      const started = state.startedAt[item.id]
+      const duration = started ? formatDuration(now - started) : ''
+      delete startedAt[item.id]
+
+      const text = resultToText(result.content)
+      const task: TaskItem = { ...item, pending: false, percent: 100, duration, detail: detailFor(text) }
+      return task
+    }
+
+    if (item.kind !== 'toolGroup') return item
+
+    const tools = item.tools.map(resolveTool)
+    const pending = tools.some((tool) => tool.pending)
+
+    if (item.pending && !pending) {
+      const started = state.startedAt[item.id]
+      const duration = started ? formatDuration(now - started) : item.duration
+      delete startedAt[item.id]
+      return { ...item, tools, pending, duration }
+    }
+
+    return { ...item, tools, pending }
   })
 
   return { ...state, items, startedAt }
