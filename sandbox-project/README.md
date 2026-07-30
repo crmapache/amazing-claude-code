@@ -1,4 +1,4 @@
-# Песочница панели
+# Panel sandbox
 
-Проект открывается в тестовой IDE, чтобы панели было над чем работать.
-Файлы здесь ничего не значат: их можно и нужно ломать при проверках.
+This project opens in the test IDE so the panel has something to work on.
+Nothing here matters: feel free to break these files during testing.

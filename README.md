@@ -1,227 +1,248 @@
 # Amazing Claude Code
 
-Панель Claude Code для JetBrains IDE: настоящий чат с полем ввода и разбором вывода
-вместо сессии в терминале. Кнопка живёт на боковой полосе и переносится на любой
-край окна.
+A Claude Code panel for JetBrains IDEs: a real chat with an input field and parsed
+output, instead of a terminal session. The button lives on the side bar and can be
+moved to any edge of the window.
 
-Интерфейс собран по макету «Claude Code Panel» из Claude Design.
+The interface is built from the "Claude Code Panel" mockup in Claude Design.
 
-## Как это устроено
+## How it's built
 
-Три слоя, каждый со своей ответственностью:
+Three layers, each with its own responsibility:
 
-- **Оболочка на Kotlin** (`src/main/kotlin`) — регистрирует панель, держит встроенный
-  браузер, поднимает процессы `claude` (по одному на разговор) и разбирает их поток
-  событий построчно. Как этот поток выглядит на экране, она не знает.
-- **Интерфейс на React** (`webview/`) — всё, что видит пользователь. Получает события
-  агента нетронутыми и сам решает, во что их превратить.
-- **Мост** — `window.__accSend` из веба в оболочку, `window.__accReceive` обратно.
-  Формат сообщений описан в `webview/src/protocol.ts`, это единственная точка правды
-  про поток Claude Code.
+- **Kotlin shell** (`src/main/kotlin`) — registers the panel, hosts the embedded
+  browser, spawns `claude` processes (one per conversation), and parses their event
+  stream line by line. It has no idea what that stream looks like on screen.
+- **React interface** (`webview/`) — everything the user sees. Receives agent
+  events untouched and decides on its own what to turn them into.
+- **Bridge** — `window.__accSend` from the web to the shell, `window.__accReceive`
+  back. The message format is described in `webview/src/protocol.ts`, the single
+  source of truth for the Claude Code stream.
 
-Собранная статика попадает в архив плагина и отдаётся браузеру через свой обработчик
-схемы: адрес нужен настоящий, иначе не работают модульные скрипты. Шрифты макета лежат
-рядом — панель не ходит в сеть за типографикой.
+The built static assets are bundled into the plugin archive and served to the
+browser through a custom scheme handler: it needs a real address, otherwise module
+scripts don't work. The mockup's fonts ship alongside it — the panel never goes to
+the network for typography.
 
-## Что панель уже рисует из живого потока
+## What the panel already renders from the live stream
 
-Лента разбирает события агента в карточки макета: сообщения, ответ с разметкой,
-вызовы инструментов с длительностью и раскрытием, дифф правок с принятием кусков,
-списки задач, планы, вопросы с вариантами, подагентов, сжатие контекста и итоги хода
-с расходом.
+The feed turns agent events into the mockup's cards: messages, formatted replies,
+tool calls with duration and expansion, edit diffs with hunk acceptance, todo
+lists, plans, questions with options, subagents, context compaction, and turn
+summaries with cost.
 
-Нижняя строка — та же сводка, что в строке состояния терминала: ветка и её pull
-request, заполнение контекста, пятичасовое и недельное окна подписки (вторая доля —
-окно отдельной модели) и объём работы в токенах.
+The bottom line is the same summary as a terminal status line: the branch and its
+pull request, context usage, the five-hour and weekly subscription windows (the
+second figure is a separate model's window), and the amount of work in tokens.
 
-Под ней — модель, усилие и режим разрешений. Выбор делают один раз: он наследуется
-новыми вкладками и форками и переживает перезапуск IDE, потому что живёт в настройках
-редактора, а не в памяти панели. Новый разговор поднимается сразу с ним — флагами при
-запуске процесса, а живому уходит слэш-командой.
+Below it: model, effort, and permission mode. The choice is made once — it's
+inherited by new tabs and forks and survives an IDE restart, because it lives in
+the editor's settings rather than the panel's memory. A new conversation starts
+with it right away, as process flags; a live one gets it via a slash command.
 
-Композер умеет очередь с перетаскиванием, цитаты из выделенного текста и вложения
-через штатный диалог IDE — одной кнопкой на файлы, папки и картинки сразу. Слэш-команды
-подсказываются прямо в поле ввода, как в терминале: список сужается по мере набора,
-стрелки и ⏎ выбирают.
+The composer supports a drag-and-drop queue, quotes from selected text, and
+attachments through the IDE's own dialog — one button for files, folders, and
+images at once. Slash commands are suggested right in the input field, just like
+in the terminal: the list narrows as you type, and arrows plus ⏎ pick an item.
 
-В списке три источника. Команды проекта приходят от самого агента — своих панель не
-выдумывает. Встроенные (`/model`, `/effort`, `/context`, `/cost`, `/usage`) проверены
-на живом агенте: в потоковом режиме работают не все, `/clear`, `/compact` и `/export`
-там интерактивные и отвечают отказом, поэтому их в списке нет. Свои команды панель
-выполняет сама и агенту не отправляет: `/resume`, `/fork`, `/login` и `/logout`.
+The list has three sources. Project commands come from the agent itself — the
+panel doesn't invent its own. Built-in ones (`/model`, `/effort`, `/context`,
+`/cost`, `/usage`) were checked against a live agent: not all of them work in
+streaming mode, `/clear`, `/compact`, and `/export` are interactive there and
+refuse, so they're not in the list. The panel's own commands run locally and
+aren't sent to the agent: `/resume`, `/fork`, `/login`, and `/logout`.
 
-## Кусок кода из редактора
+## A piece of code from the editor
 
-«Send to Amazing Claude» в контекстном меню редактора кладёт в поле ввода ссылку на
-выделенное — `@src/useSocket.js (L12:5-L18:30)`, — а не сам текст. Разница
-существенная: по ссылке агент прочитает файл целиком и увидит то, что вокруг.
-Колонки появляются, только когда выделение режет строку; у целых строк остаются
-одни номера, а без выделения ссылка указывает на строку с кареткой.
+"Send to Amazing Claude" in the editor's context menu puts a reference to the
+selection into the input field — `@src/useSocket.js (L12:5-L18:30)` — not the text
+itself. That distinction matters: from the reference, the agent reads the whole
+file and sees what's around it. Columns only appear when the selection cuts across
+a line; whole lines keep just their numbers, and with no selection at all the
+reference points at the line under the caret.
 
-## Вход
+## Login
 
-Панель проверяет вход при запуске и, пока его нет, не показывает ни поля ввода, ни
-лишних кнопок — только кнопку входа. Причина простая: без входа агент отвечает на
-любой вопрос строкой про `/login`, а сама эта команда в потоковом режиме недоступна.
+The panel checks login status at startup and, until it's done, shows neither the
+input field nor the extra buttons — only a login button. The reason is simple:
+without login, the agent answers any question with a line about `/login`, and
+that command itself isn't available in streaming mode.
 
-Вход идёт во встроенном терминале IDE: `claude auth login` открывает браузер и ждёт
-возврата. Панель переспрашивает CLI сама и закрывает экран входа, как только он
-случился. Если вход отвалится позже, панель заметит это в ответе агента и вернётся
-к тому же экрану.
+Login happens in the IDE's built-in terminal: `claude auth login` opens a browser
+and waits for the redirect back. The panel asks the CLI itself and closes the
+login screen as soon as it succeeds. If login drops later, the panel notices it in
+the agent's response and returns to the same screen.
 
-## Форки
+## Forks
 
-Выделите кусок ответа — прямо над выделением появится «Fork from here» (или ⌥B).
-Панель ответвляет разговор: агент получает всю переписку до этой точки, но продолжает
-уже в новом, а исходный остаётся каким был, что бы вы в форке ни спрашивали.
+Select a piece of a reply — "Fork from here" (or ⌥B) appears right above the
+selection. The panel branches the conversation: the agent gets the whole
+transcript up to that point but continues in a new one, while the original stays
+exactly as it was, no matter what you ask in the fork.
 
-Форк открывается вкладкой с обычным полем ввода, а выделенное едет с ним цитатой над
-полем: её не надо редактировать и она не забивает само поле. Команда `/fork` делает то
-же самое без выделения — просто продолжает разговор с этого места в новой вкладке.
+The fork opens as a tab with a normal input field, and the selected text travels
+with it as a quote above the field — no need to edit it, and it doesn't clutter
+the field itself. The `/fork` command does the same thing without a selection —
+it just continues the conversation from that point in a new tab.
 
-Кружок на вкладке говорит, что там происходит: серый — тихо, жёлтый дышит — агент
-работает, зелёный — ход закончен, синий — ждут вас (вопрос или запрос разрешения).
+The dot on a tab tells you what's going on there: gray — idle, breathing yellow —
+the agent is working, green — the turn is done, blue — waiting on you (a question
+or a permission request).
 
-Форки живут группой: у разговора и всех его ответвлений одна цветная полоска, вкладки
-идут подряд, а вложенность видно по отступу и знаку ветвления. Форк форка остаётся в
-той же группе — тема одна, и разбегаться ей по шапке незачем.
+Forks live as a group: a conversation and all its branches share one colored bar,
+their tabs sit next to each other, and nesting is shown by indentation and a
+branch mark. A fork of a fork stays in the same group — it's one thread, no reason
+for it to scatter across the tab bar.
 
-## История разговоров
+## Conversation history
 
-Кнопка «History» в шапке (и команда `/resume`) открывает прошлые разговоры этого
-проекта. Список ведёт сам Claude Code — по файлу на разговор в своей папке, — поэтому
-там видно и то, что начиналось в терминале. Выбранный разговор открывается вкладкой:
-процесс поднимается с его переписью, а панель проигрывает сохранённые события в ленту,
-иначе вкладка выглядела бы пустой при полной памяти у агента.
+The "History" button in the header (and the `/resume` command) opens this
+project's past conversations. The list is kept by Claude Code itself — one file
+per conversation in its own folder — so it also shows conversations that started
+in the terminal. Picking one opens a tab: the process starts with its transcript,
+and the panel replays the saved events into the feed, otherwise the tab would look
+empty despite the agent remembering everything.
 
-Своей слэш-командой это не сделать: в потоковом режиме `/resume` открывает
-интерактивный список и отвечает отказом.
+This can't be done with its own slash command: in streaming mode, `/resume` opens
+an interactive list and refuses instead.
 
-## Запуск
+## Running it
 
-Нужны JDK 21, pnpm и установленный Claude Code (`claude` в PATH).
+You'll need JDK 21, pnpm, and Claude Code installed (`claude` on your PATH).
 
-Для проверок есть отдельное приложение `ACC Sandbox` (в `~/Applications`, обычно
-закреплено в доке). Оно собирает плагин и поднимает вторую копию WebStorm со своими
-настройками, открывая `sandbox-project` — рабочее окно при этом не трогается. Повторный
-запуск сначала гасит предыдущую копию, поэтому «поправил — перезапустил» это один клик.
-Приложение — тонкая обёртка над `scripts/sandbox.sh`, лог сборки лежит в
-`build/sandbox.log`.
+For manual testing there's a separate `ACC Sandbox` app (in `~/Applications`,
+usually pinned to the dock). It builds the plugin and launches a second copy of
+WebStorm with its own settings, opening `sandbox-project` — your main window is
+left untouched. Running it again kills the previous copy first, so "fix it, then
+relaunch" is a single click. The app is a thin wrapper around
+`scripts/sandbox.sh`; the build log lives in `build/sandbox.log`.
 
 ```bash
-# то же самое из терминала
+# the same thing from a terminal
 ./gradlew runIde
 
-# то же, но интерфейс грузится с dev-сервера: правки видны без пересборки плагина
-cd webview && pnpm dev          # в отдельном терминале
+# same, but the interface loads from the dev server: edits show up without rebuilding the plugin
+cd webview && pnpm dev          # in a separate terminal
 ./gradlew runIde -PwebviewDevUrl=http://localhost:5173
 ```
 
-Панель в тестовой IDE открывается сама. Инструменты разработчика браузера — по
-`⌘⇧D` внутри панели.
+The panel opens on its own in the test IDE. Browser dev tools are `⌘⇧D` inside the
+panel.
 
-## Проверка
-
-```bash
-./gradlew test            # разбор потока и склейка строк вывода
-cd webview && pnpm test   # сборка ленты на записанном живом потоке
-./gradlew buildPlugin     # архив в build/distributions
-```
-
-Тесты гоняются на `webview/src/__fixtures__/stream.ndjson` — это настоящий поток
-живого прогона агента, а не выдуманные события.
-
-## Разрешения
-
-Панель спрашивает по-настоящему. Агент, запущенный потоком, сам вопросов не задаёт:
-перед опасным инструментом он вызывает хук, а хук у нас — обращение к локальному
-серверу внутри плагина. Сервер держит запрос, пока человек не нажмёт кнопку в
-карточке, и возвращает решение. Пока карточка висит, агент стоит и ничего не делает.
-
-Спрашиваем не про всё: чтение и поиск мир не меняют. Под вопросом команды, запись,
-правки, сеть и инструменты MCP. Режимы без вопросов панель уважает — при обходе
-проверок и при автоприёме правок она молчит.
-
-«Разрешить всегда» дописывает правило в локальные настройки проекта, туда же, куда
-кладёт их сам Claude Code: правило переживает перезапуск и действует в терминале тоже.
-
-Сервер слушает только петлевой адрес и проверяет общий секрет — локальный порт виден
-другим процессам машины.
-
-## Управляющий канал
-
-Кроме обычных сообщений тем же потоком ходит служебная переписка с процессом. Через
-неё панель делает три вещи:
-
-- **Меняет режим разрешений на лету.** Слэш-команды для этого нет, а флаг читается
-  только при старте, но управляющее сообщение агент применяет к следующим же вызовам
-  инструментов. В панели это Shift+Tab по первым трём режимам, как в терминале.
-  Кнопка и меню показывают применённый режим, а не выбранный: если агент откажет,
-  панель вернётся к прежнему и покажет причину в ленте — например, режим «auto»
-  доступен не всякой модели, на Haiku его просто нет. Режим, выбранный до первого
-  вопроса, тоже не теряется: он уйдёт флагом при запуске процесса.
-- **Спрашивает расход.** Ответ приходит структурой: доли пятичасового и недельного
-  окна, время сброса и размер окна контекста текущей модели. Последнее важно: у
-  больших моделей окно миллион, и без него датчик занижал бы долю втрое.
-- **Прерывает ход.** Раньше кнопка остановки убивала процесс вместе с разговором,
-  теперь прерывается только текущий ответ.
-
-Долей расхода в самом потоке событий нет, а обычная строка состояния в неинтерактивном
-режиме не вызывается — проверено обе гипотезы, прежде чем брать этот путь.
-
-## Чего пока нет
-
-- **Светлая тема.** Макет описывает одну, тёмную схему; в светлой IDE панель
-  останется тёмной.
-- **Подтверждения через управляющий канал.** У агента есть и такой путь, но включить
-  его снаружи не удалось, поэтому разрешения идут через хук — он работает и проверен
-  на живом прогоне.
-
-## Логотип и иконки
-
-Мастер лежит в `assets/logo.png` — квадратный растр без полей. Из него обведён
-`src/main/resources/META-INF/pluginIcon.svg`: маркетплейс принимает логотип только
-вектором, холст 40×40, сам знак вписан в 36×36, чтобы по краю осталось поле.
-
-Кнопка на боковой полосе — `src/main/resources/icons/toolWindow.svg` и её тёмная
-пара. Это не логотип, а его упрощение до ромба с осями и контактами: на 20 и 16
-пикселях тонкие дорожки и искры исходного знака сливаются в шум. Цвета обводки
-(`#6C707E` и `#CED0D6`) задаёт платформа — на них она рассчитывает контраст,
-когда подсвечивает активную кнопку.
-
-## Публикация
-
-Первый раз архив загружается руками, дальше всё делает Gradle.
+## Testing
 
 ```bash
-./gradlew buildPlugin    # архив в build/distributions
-./gradlew verifyPlugin   # тот же верификатор, что гоняет модерация
+./gradlew test            # stream parsing and output line joining
+cd webview && pnpm test   # feed building against a recorded live stream
+./gradlew buildPlugin     # archive in build/distributions
 ```
 
-Дальше — форма «Upload plugin» на [маркетплейсе](https://plugins.jetbrains.com/plugin/add)
-под своим JetBrains-аккаунтом. Плагин проходит ручную модерацию, ответ обычно в
-течение трёх-четырёх рабочих дней.
+Tests run against `webview/src/__fixtures__/stream.ndjson` — a real stream from a
+live agent run, not made-up events.
 
-После одобрения обновления уезжают одной командой:
+## Permissions
+
+The panel asks for real. The agent, run in streaming mode, never asks questions on
+its own: before a dangerous tool call it triggers a hook, and our hook is a call
+to a local server inside the plugin. The server holds the request until a human
+clicks a button on the card, then returns the decision. While the card is up, the
+agent is stopped and does nothing.
+
+Not everything gets asked about: reads and searches don't change anything.
+Commands, writes, edits, network access, and MCP tools do. The panel respects
+modes that skip questions — it stays quiet in bypass mode and when edits are
+auto-accepted.
+
+"Always allow" writes a rule into the project's local settings, the same place
+Claude Code itself keeps them: the rule survives a restart and also applies in the
+terminal.
+
+The server only listens on loopback and checks a shared secret — the local port is
+visible to other processes on the machine.
+
+## Control channel
+
+Besides regular messages, the same stream carries control traffic with the
+process. The panel uses it for three things:
+
+- **Changing the permission mode on the fly.** There's no slash command for this,
+  and the flag is only read at startup, but a control message is applied by the
+  agent to the very next tool calls. In the panel that's Shift+Tab over the first
+  three modes, just like in the terminal. The button and menu show the mode that
+  was actually applied, not just picked: if the agent refuses, the panel falls
+  back to the previous one and shows the reason in the feed — for example, "auto"
+  isn't available to every model, Haiku simply doesn't have it. A mode picked
+  before the first turn isn't lost either: it goes out as a process flag at
+  startup.
+- **Asking for usage.** The response is a structure: the five-hour and weekly
+  window shares, their reset time, and the current model's context window size.
+  The last one matters: large models have a million-token window, and without it
+  the gauge would understate usage threefold.
+- **Interrupting a turn.** The stop button used to kill the whole process along
+  with the conversation; now it only interrupts the current reply.
+
+Usage shares aren't in the event stream itself, and the regular status line isn't
+invoked in non-interactive mode — both were checked before settling on this path.
+
+## What's missing so far
+
+- **A light theme.** The mockup describes one dark scheme only; in a light IDE the
+  panel stays dark.
+- **Confirmations over the control channel.** The agent has a path for this too,
+  but it couldn't be turned on from the outside, so permissions go through the
+  hook instead — it works and has been checked against a live run.
+
+## Logo and icons
+
+The master file lives at `assets/logo.png` — a square raster with no padding.
+`src/main/resources/META-INF/pluginIcon.svg` is traced from it: the marketplace
+only accepts a vector logo, on a 40×40 canvas with the mark itself fit into 36×36
+so a margin is left around the edge.
+
+The side bar button is `src/main/resources/icons/toolWindow.svg` and its dark
+counterpart. It's not the logo but a simplification of it down to a diamond with
+axes and contacts: at 20 and 16 pixels the original mark's thin traces and sparks
+blur into noise. The stroke colors (`#6C707E` and `#CED0D6`) are set by the
+platform — it relies on them for contrast when it highlights the active button.
+
+## Publishing
+
+The archive is uploaded by hand the first time; Gradle handles everything after
+that.
+
+```bash
+./gradlew buildPlugin    # archive in build/distributions
+./gradlew verifyPlugin   # the same verifier moderation runs
+```
+
+Next is the "Upload plugin" form on the
+[marketplace](https://plugins.jetbrains.com/plugin/add), under your own JetBrains
+account. The plugin goes through manual moderation, usually answered within three
+to four business days.
+
+Once approved, updates ship with a single command:
 
 ```bash
 export ACC_PUBLISH_TOKEN=...   # plugins.jetbrains.com/author/me/tokens
 ./gradlew publishPlugin
 ```
 
-Подпись архива необязательна, но с ней IDE показывает пользователю, что архив не
-подменяли по дороге. Ключ и цепочку сертификатов сборка берёт из окружения —
-`ACC_PRIVATE_KEY`, `ACC_CERTIFICATE_CHAIN`, `ACC_PRIVATE_KEY_PASSWORD`. Без них
-задача подписи просто пропускается.
+Signing the archive is optional, but with it the IDE can show the user that the
+archive wasn't tampered with along the way. The build takes the key and
+certificate chain from the environment — `ACC_PRIVATE_KEY`,
+`ACC_CERTIFICATE_CHAIN`, `ACC_PRIVATE_KEY_PASSWORD`. Without them, the signing
+task is simply skipped.
 
-Канал выводится из версии: `0.2.0` уезжает всем, `0.2.0-beta.1` — в канал `beta`,
-на который пользователь подписывается вручную в настройках репозиториев плагинов.
+The release channel comes from the version: `0.2.0` ships to everyone, `0.2.0-beta.1`
+goes to the `beta` channel, which a user subscribes to manually in their plugin
+repository settings.
 
-Что проверяет модерация помимо кода: имя короче 30 символов и без слов «Plugin»,
-«IntelliJ» и названий продуктов JetBrains; описание на английском; у автора рабочие
-сайт и почта; логотип свой и не похож на логотипы JetBrains; чужие торговые марки
-не используются без разрешения владельца.
+What moderation checks besides the code: the name is under 30 characters and
+doesn't contain "Plugin", "IntelliJ", or JetBrains product names; the description
+is in English; the author has a working website and email; the logo is original
+and doesn't resemble JetBrains' own logos; no third-party trademarks are used
+without the owner's permission.
 
-## Лицензия
+## License
 
-MIT — см. [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
