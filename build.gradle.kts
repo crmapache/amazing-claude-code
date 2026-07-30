@@ -50,8 +50,19 @@ intellijPlatform {
         version = providers.gradleProperty("version")
         description =
             """
-            <p>A native panel for Claude Code inside JetBrains IDEs: a real chat surface with an
-            input field and a rich output area instead of a terminal session.</p>
+            <p>A native chat panel for Claude Code inside JetBrains IDEs — a real input field and a
+            readable output area, instead of a terminal session.</p>
+            <p>It has everything the Claude Code CLI does: the same models, subscription, slash
+            commands, and permission modes. On top of that, it adds things a terminal can't do:</p>
+            <ul>
+              <li>Branch any conversation into a new tab at any point, without touching the original</li>
+              <li>Quote Claude's own output straight into your next message, as a compact reference</li>
+              <li>Send a precise file-and-line reference from the editor, so Claude reads the real
+              surrounding code instead of a pasted snippet</li>
+              <li>Attach files, folders, and images through the IDE's own picker, or reference project
+              files right as you type</li>
+            </ul>
+            <p>Same Claude Code, properly integrated into your editor.</p>
             """.trimIndent()
 
         // Маркетплейс требует у автора рабочие адрес и почту: по ним модерация
