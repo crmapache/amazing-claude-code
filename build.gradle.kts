@@ -57,7 +57,7 @@ intellijPlatform {
         // Маркетплейс требует у автора рабочие адрес и почту: по ним модерация
         // связывается с автором и по ним же пользователь ищет поддержку.
         vendor {
-            name = "Max Zolotoi"
+            name = "Maksim Zolotoi"
             email = "mzpizote@gmail.com"
             url = "https://github.com/crmapache"
         }
