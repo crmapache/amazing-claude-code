@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && ! grep -rqil harness dist",
     "test": "vitest run",
     "preview": "vite preview"
   },

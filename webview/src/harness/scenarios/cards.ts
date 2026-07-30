@@ -19,25 +19,17 @@ export const scenariosCards: Scenario[] = [
     ...bootstrap,
     user('Разбей работу над фичей логина на шаги и начни'),
     wait(400),
-    agent({
-      type: 'assistant',
-      message: {
-        content: [
-          {
-            type: 'tool_use',
-            id: 'c6-todo',
-            name: 'TodoWrite',
-            input: {
-              todos: [
-                { content: 'Добавить форму логина', status: 'completed' },
-                { content: 'Подключить валидацию', status: 'in_progress' },
-                { content: 'Написать e2e-тест', status: 'pending' },
-              ],
-            },
-          },
+    toolUse(
+      'TodoWrite',
+      {
+        todos: [
+          { content: 'Добавить форму логина', status: 'completed' },
+          { content: 'Подключить валидацию', status: 'in_progress' },
+          { content: 'Написать e2e-тест', status: 'pending' },
         ],
       },
-    }),
+      'c6-todo',
+    ),
     wait(500),
     toolResult('c6-todo', 'Todos have been modified successfully.'),
     wait(500),
@@ -45,28 +37,23 @@ export const scenariosCards: Scenario[] = [
     turnResult(1900),
   ]),
 
+  // Заканчивается здесь намеренно: плеер доигрывает до конца, но дальше ничего
+  // не запланировано - кнопка «одобрить» на карточке плана настоящая, клик по
+  // ней не продолжает сценарий.
   scenario('plan-approval', 'План на согласование', 'cards', [
     ...bootstrap,
     user('Спланируй, как перенести конфиг в отдельный модуль'),
     wait(500),
-    agent({
-      type: 'assistant',
-      message: {
-        content: [
-          {
-            type: 'tool_use',
-            id: 'c7-plan',
-            name: 'ExitPlanMode',
-            input: {
-              plan:
-                '1. Вынести переменные окружения в `config/env.ts`\n' +
-                '2. Заменить прямые обращения к process.env на импорт из config\n' +
-                '3. Добавить валидацию обязательных переменных при старте',
-            },
-          },
-        ],
+    toolUse(
+      'ExitPlanMode',
+      {
+        plan:
+          '1. Вынести переменные окружения в `config/env.ts`\n' +
+          '2. Заменить прямые обращения к process.env на импорт из config\n' +
+          '3. Добавить валидацию обязательных переменных при старте',
       },
-    }),
+      'c7-plan',
+    ),
     wait(500),
     turnResult(2200),
   ]),
@@ -75,31 +62,23 @@ export const scenariosCards: Scenario[] = [
     ...bootstrap,
     user('Хочу добавить тёмную тему'),
     wait(500),
-    agent({
-      type: 'assistant',
-      message: {
-        content: [
+    toolUse(
+      'AskUserQuestion',
+      {
+        questions: [
           {
-            type: 'tool_use',
-            id: 'c8-ask',
-            name: 'AskUserQuestion',
-            input: {
-              questions: [
-                {
-                  question: 'Как выбираем тему по умолчанию?',
-                  header: 'Тема',
-                  multiSelect: false,
-                  options: [
-                    { label: 'По системной настройке', description: 'Смотрим prefers-color-scheme' },
-                    { label: 'Всегда светлая', description: 'Игнорируем системную настройку' },
-                  ],
-                },
-              ],
-            },
+            question: 'Как выбираем тему по умолчанию?',
+            header: 'Тема',
+            multiSelect: false,
+            options: [
+              { label: 'По системной настройке', description: 'Смотрим prefers-color-scheme' },
+              { label: 'Всегда светлая', description: 'Игнорируем системную настройку' },
+            ],
           },
         ],
       },
-    }),
+      'c8-ask',
+    ),
     wait(500),
     toolResult('c8-ask', 'Answered: По системной настройке'),
     wait(400),
@@ -107,6 +86,9 @@ export const scenariosCards: Scenario[] = [
     turnResult(1600),
   ]),
 
+  // Заканчивается здесь намеренно: дальше сценарий не продолжается, панель не
+  // поедет дальше после твоего клика на карточке разрешения - это настоящая
+  // кнопка настоящего интерфейса, а не часть скрипта.
   scenario('permission-waiting', 'Ожидание разрешения', 'cards', [
     ...bootstrap,
     user('Удали неиспользуемый файл src/legacy/old-auth.ts'),
@@ -128,19 +110,7 @@ export const scenariosCards: Scenario[] = [
     ...bootstrap,
     user('Найди все места, где мы читаем переменные окружения'),
     wait(500),
-    agent({
-      type: 'assistant',
-      message: {
-        content: [
-          {
-            type: 'tool_use',
-            id: 'c10-task',
-            name: 'Task',
-            input: { subagent_type: 'Explore', description: 'Найти чтение переменных окружения' },
-          },
-        ],
-      },
-    }),
+    toolUse('Task', { subagent_type: 'Explore', description: 'Найти чтение переменных окружения' }, 'c10-task'),
     wait(1200),
     subagentText('c10-task', 'Смотрю src/config и src/server…'),
     wait(1500),
@@ -168,7 +138,7 @@ export const scenariosCards: Scenario[] = [
     }),
     wait(500),
     ...textReply('Ревью фонового субагента готово — два небольших замечания, посмотри карточку выше.'),
-    turnResult(4400),
+    turnResult(6500),
   ]),
 
   scenario('multiple-agents', 'Несколько агентов параллельно', 'cards', [
@@ -194,6 +164,6 @@ export const scenariosCards: Scenario[] = [
     toolResult('c12-b', 'Бэк тоже чист, замечаний нет.'),
     wait(500),
     ...textReply('Оба ревью закончились — по фронту пара мелочей, бэк чист.'),
-    turnResult(6200),
+    turnResult(8500),
   ]),
 ]

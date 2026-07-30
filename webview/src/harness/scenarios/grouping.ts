@@ -45,7 +45,7 @@ export const scenariosGrouping: Scenario[] = [
     ...textReply(
       'Аутентификация построена вокруг authenticate() в login.ts, который создаёт Session и проверяется в middleware guard.ts.',
     ),
-    turnResult(6200),
+    turnResult(8000),
   ]),
 
   scenario('no-break-across-gap', 'Не рвётся между внутренними шагами', 'grouping', [
@@ -75,7 +75,7 @@ export const scenariosGrouping: Scenario[] = [
     toolResult('g3-4', ' PASS  src/utils/date.test.ts'),
     wait(300),
     ...textReply('Тест падал из-за toString() вместо ISO-формата — поправил, тесты снова зелёные.'),
-    turnResult(5400),
+    turnResult(9000),
   ]),
 
   scenario('thinking-mixed-in', 'Мысль внутри и после группы', 'grouping', [

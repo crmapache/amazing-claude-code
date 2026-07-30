@@ -16,6 +16,8 @@ const waitForFreshBridge = async (previous: Window['__accReceive']): Promise<voi
     if (window.__accReceive && window.__accReceive !== previous) return
     await sleep(10)
   }
+
+  console.warn('[harness] bridge never refreshed after remount; scenario events may be lost')
 }
 
 export class ScenarioPlayer {

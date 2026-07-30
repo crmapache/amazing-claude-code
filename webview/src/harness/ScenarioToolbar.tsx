@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import type { Scenario } from './types'
 import s from './harness.module.css'
 
@@ -6,6 +5,8 @@ interface ScenarioToolbarProps {
   scenarios: Scenario[]
   activeId: string | null
   onRun: (scenario: Scenario) => void
+  collapsed: boolean
+  onToggleCollapsed: () => void
 }
 
 const CATEGORY_LABEL: Record<Scenario['category'], string> = {
@@ -17,14 +18,12 @@ const CATEGORY_LABEL: Record<Scenario['category'], string> = {
 
 const CATEGORY_ORDER: Scenario['category'][] = ['grouping', 'cards', 'system', 'combined']
 
-export const ScenarioToolbar = ({ scenarios, activeId, onRun }: ScenarioToolbarProps) => {
-  const [collapsed, setCollapsed] = useState(false)
-
+export const ScenarioToolbar = ({ scenarios, activeId, onRun, collapsed, onToggleCollapsed }: ScenarioToolbarProps) => {
   return (
     <div className={`${s.toolbar} ${collapsed ? s.toolbarCollapsed : ''}`}>
       <div className={s.toolbarHead}>
         {!collapsed ? <span className={s.toolbarTitle}>Сценарии</span> : null}
-        <button type="button" className={s.toolbarToggle} onClick={() => setCollapsed((value) => !value)}>
+        <button type="button" className={s.toolbarToggle} onClick={onToggleCollapsed}>
           {collapsed ? '«' : '»'}
         </button>
       </div>

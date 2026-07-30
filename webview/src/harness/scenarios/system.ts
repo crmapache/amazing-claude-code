@@ -22,7 +22,7 @@ export const scenariosSystem: Scenario[] = [
     agent({ type: 'system', subtype: 'compact_boundary', compact_metadata: { trigger: 'automatic', pre_tokens: 168000 } }),
     wait(800),
     ...textReply('Контекст сжался, но я помню суть рефакторинга — продолжаем.'),
-    turnResult(1200),
+    turnResult(2200),
   ]),
 
   scenario('error-turn', 'Ошибка хода', 'system', [
@@ -52,6 +52,12 @@ export const scenariosSystem: Scenario[] = [
     user('/clear'),
     wait(400),
     agent({ type: 'conversation_reset', new_conversation_id: 'demo-cleared' }),
+    // /clear закрывает ход тем же способом, что и настоящий CLI: без вызова модели,
+    // плейсхолдером «(no content)» + result — иначе status/Stop-кнопка зависают
+    // навсегда, и не проверяется suppressNextMeta, ради которого этот сценарий и нужен.
+    wait(300),
+    agent({ type: 'assistant', message: { content: [{ type: 'text', text: '(no content)' }] } }),
+    turnResult(300),
   ]),
 
   scenario('rich-markdown', 'Ответ с markdown', 'system', [

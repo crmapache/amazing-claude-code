@@ -1,4 +1,4 @@
-import { agent, bootstrap, scenario, textReply, think, toolResult, toolUse, turnResult, user, wait } from '../events'
+import { bootstrap, scenario, textReply, think, toolResult, toolUse, turnResult, user, wait } from '../events'
 import type { Scenario } from '../types'
 
 export const scenariosCombined: Scenario[] = [
@@ -42,25 +42,17 @@ export const scenariosCombined: Scenario[] = [
     wait(400),
     think('Тест починен, осталось завести план для остального.'),
     wait(300),
-    agent({
-      type: 'assistant',
-      message: {
-        content: [
-          {
-            type: 'tool_use',
-            id: 'e18-todo',
-            name: 'TodoWrite',
-            input: {
-              todos: [
-                { content: 'Обзор модуля аналитики', status: 'completed' },
-                { content: 'Починить упавший тест stability.ts', status: 'completed' },
-                { content: 'Разобрать оставшиеся TODO', status: 'pending' },
-              ],
-            },
-          },
+    toolUse(
+      'TodoWrite',
+      {
+        todos: [
+          { content: 'Обзор модуля аналитики', status: 'completed' },
+          { content: 'Починить упавший тест stability.ts', status: 'completed' },
+          { content: 'Разобрать оставшиеся TODO', status: 'pending' },
         ],
       },
-    }),
+      'e18-todo',
+    ),
     wait(500),
     toolResult('e18-todo', 'Todos have been modified successfully.'),
     wait(500),
