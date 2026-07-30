@@ -517,23 +517,31 @@ export const App = () => {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [selection, fork, clearSelection])
 
-  const submit = useCallback(() => {
+  const submit = useCallback((overrideText?: string) => {
     // Команды панели агенту не уходят: вход и выход в потоковом режиме ему
     // недоступны, а ветвление вообще про устройство панели.
     // Цитаты и вложения команде не мешают: они останутся в поле и уедут со
     // следующим сообщением — терять их из-за одной команды было бы обидно.
-    const local = localCommand(plainText(draft.tokens))
+    // Строгая проверка типом, а не просто "overrideText !== undefined": эта
+    // функция передаётся напрямую в onClick кнопки отправки, а React зовёт
+    // обработчик клика с объектом события первым аргументом — сравнение с
+    // undefined приняло бы событие за подменённый текст.
+    const isOverride = typeof overrideText === 'string'
+    const tokens = isOverride ? [{ kind: 'text' as const, value: overrideText }] : draft.tokens
+    const quotes = isOverride ? [] : draft.quotes
+
+    const local = localCommand(plainText(tokens))
     if (local) {
       runLocal(local)
-      editDraft(active, { tokens: [] })
+      if (!isOverride) editDraft(active, { tokens: [] })
       return
     }
 
-    const text = composePrompt(draft)
+    const text = isOverride ? overrideText : composePrompt(draft)
     if (!text) return
 
-    const images = imageAttachments(draft.tokens)
-    const attachCount = draft.tokens.filter((token) => token.kind === 'chip').length
+    const images = isOverride ? [] : imageAttachments(draft.tokens)
+    const attachCount = isOverride ? 0 : draft.tokens.filter((token) => token.kind === 'chip').length
 
     if (running) {
       setQueue((current) => [
@@ -545,18 +553,31 @@ export const App = () => {
           images,
         },
       ])
-      setDrafts((current) => ({ ...current, [active]: EMPTY_DRAFT }))
+      if (!isOverride) setDrafts((current) => ({ ...current, [active]: EMPTY_DRAFT }))
       return
     }
 
     dispatchPanel({
       session: active,
-      action: { kind: 'prompt', tokens: draft.tokens, quotes: draft.quotes.map((quote) => quote.text) },
+      action: { kind: 'prompt', tokens, quotes: quotes.map((quote) => quote.text) },
     })
 
     send({ type: 'prompt', sessionId: active, text, images })
-    setDrafts((current) => ({ ...current, [active]: EMPTY_DRAFT }))
+    if (!isOverride) setDrafts((current) => ({ ...current, [active]: EMPTY_DRAFT }))
   }, [draft, running, active, runLocal, editDraft])
+
+  // Только для локальной страницы-харнесса (webview/src/harness) — имитирует
+  // настоящую отправку сообщения из поля ввода. Vite статически подставляет
+  // import.meta.env.DEV в false при vite build, поэтому в собранном плагине
+  // этого кода физически не будет.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+
+    window.__accHarnessSend = submit
+    return () => {
+      window.__accHarnessSend = undefined
+    }
+  }, [submit])
 
   /**
    * Reconnect/enable/disable одного MCP-сервера — своей управляющей команды для
