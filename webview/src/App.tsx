@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { send, subscribe } from './bridge'
 import { EFFORT_OPTIONS, MODEL_OPTIONS, MODE_OPTIONS } from './catalog'
-import { AgentsDrawer, type AgentCard } from './components/AgentsDrawer'
+import { AgentStreamView } from './components/AgentStreamView'
 import { AskPanel } from './components/AskPanel'
 import { Composer } from './components/Composer'
 import { Feed } from './components/Feed'
@@ -16,7 +16,7 @@ import { Queue, type QueuedPrompt } from './components/Queue'
 import { Quotes, type Quote } from './components/Quotes'
 import { SelectionMenu } from './components/SelectionMenu'
 import { StatusBar, type Anchor, type SelectorKind } from './components/StatusBar'
-import { StreamsBar, type Stream } from './components/StreamsBar'
+import { StreamSwitcher, type AgentStatus, type AgentTab } from './components/StreamSwitcher'
 import { TaskListPanel } from './components/TaskListPanel'
 import composer from './components/composer.module.css'
 import s from './components/shell.module.css'
@@ -89,7 +89,13 @@ export const App = () => {
    */
   const [openPanel, setOpenPanel] = useState<'history' | 'mcp' | 'plugins' | null>(null)
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  /**
+   * Завершённая пачка агентов пропадает из дропдауна не мгновенно (мигнуло бы
+   * до того, как успел посмотреть), а перед следующим сообщением в main — см.
+   * clearFinishedAgents. Живёт здесь, а не в PanelState: durable-лог событий
+   * ничего не теряет, скрытие — чисто отображение.
+   */
+  const [hiddenTaskIds, setHiddenTaskIds] = useState<Set<string>>(new Set())
   const [activeStream, setActiveStream] = useState('main')
   const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([])
   const [mcpLoading, setMcpLoading] = useState(false)
@@ -149,6 +155,27 @@ export const App = () => {
    */
   const panelsRef = useRef(panels)
   panelsRef.current = panels
+
+  /**
+   * Перед тем как реально уйдёт новое сообщение в main, прячем из дропдауна всех
+   * агентов, которые к этому моменту уже закончили работу — иначе за длинную
+   * сессию там накопился бы длинный хвост ненужного. Ещё не завершённого агента
+   * не трогаем: он не должен пропадать сам по себе, только когда закончит.
+   */
+  const clearFinishedAgents = (session: string) => {
+    const items = panelsRef.current[session]?.items ?? []
+    const finishedIds = items
+      .filter((item): item is TaskItem => item.kind === 'task' && !item.pending)
+      .map((item) => item.id)
+    if (finishedIds.length === 0) return
+
+    setHiddenTaskIds((current) => {
+      const next = new Set(current)
+      for (const id of finishedIds) next.add(id)
+      return next
+    })
+    setActiveStream((current) => (finishedIds.includes(current) ? 'main' : current))
+  }
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -302,6 +329,7 @@ export const App = () => {
                 target: message.target,
                 command: message.command,
                 mode: message.mode,
+                taskId: message.agentId,
               },
             })
             break
@@ -365,6 +393,7 @@ export const App = () => {
     const [next, ...rest] = queue
     if (!next) return
 
+    clearFinishedAgents(active)
     setQueue(rest)
     dispatchPanel({
       session: active,
@@ -597,6 +626,8 @@ export const App = () => {
       return
     }
 
+    clearFinishedAgents(active)
+
     dispatchPanel({
       session: active,
       action: { kind: 'prompt', tokens, quotes: quotes.map((quote) => quote.text) },
@@ -643,6 +674,7 @@ export const App = () => {
       if (running) {
         setQueue((current) => [...current, { id: `q-${Date.now()}`, text, attach: '', images: [] }])
       } else {
+        clearFinishedAgents(active)
         dispatchPanel({
           session: active,
           action: { kind: 'prompt', tokens: [{ kind: 'text', value: text }], quotes: [] },
@@ -655,8 +687,11 @@ export const App = () => {
     [running, active],
   )
 
-  const streams = useMemo(() => buildStreams(panel), [panel])
-  const agents = useMemo(() => buildAgents(panel), [panel])
+  const agentTabs = useMemo(
+    () => buildAgentTabs(panel, cards.answeredAsks, hiddenTaskIds),
+    [panel, cards.answeredAsks, hiddenTaskIds],
+  )
+  const mainStatus = useMemo(() => mainStatusOf(panel, cards.answeredAsks), [panel, cards.answeredAsks])
   const commands = useMemo(
     () => buildCommands(panel.slashCommands, commandHints),
     [panel.slashCommands, commandHints],
@@ -807,31 +842,31 @@ export const App = () => {
         </div>
       ) : (
         <>
-        <StreamsBar
-          streams={streams}
-          activeStream={activeStream}
-          runningAgents={agents.filter((agent) => agent.live).length}
-          onPick={setActiveStream}
-          onOpenDrawer={() => setDrawerOpen(true)}
-        />
+        <StreamSwitcher tabs={agentTabs} mainStatus={mainStatus} active={activeStream} onPick={setActiveStream} />
 
         <div className={s.body}>
-          <Feed
-            items={panel.items}
-            streamingText={panel.streamingText}
-            streaming={running}
-            streamStatus={streamStatus(panel, cards)}
-            errors={panel.errors}
-            cards={cards}
-            scrollRef={(element) => {
-              feedRef.current = element
-            }}
-            onScroll={clearSelection}
-            onPlanDecision={decidePlan}
-            onDismissError={(index) => dispatchPanel({ session: active, action: { kind: 'dismissError', index } })}
-          />
+          {activeStream === 'main' ? (
+            <Feed
+              items={panel.items}
+              streamingText={panel.streamingText}
+              streaming={running}
+              streamStatus={streamStatus(panel, cards)}
+              errors={panel.errors}
+              cards={cards}
+              scrollRef={(element) => {
+                feedRef.current = element
+              }}
+              onScroll={clearSelection}
+              onPlanDecision={decidePlan}
+              onDismissError={(index) => dispatchPanel({ session: active, action: { kind: 'dismissError', index } })}
+            />
+          ) : (
+            <AgentStreamView
+              item={panel.items.find((item): item is TaskItem => item.kind === 'task' && item.id === activeStream)}
+            />
+          )}
 
-          {selection ? (
+          {selection && activeStream === 'main' ? (
             <SelectionMenu
               selection={selection}
               onFork={() => {
@@ -857,11 +892,11 @@ export const App = () => {
         </div>
 
         <div className={composer.dock}>
-          <PermissionPanel item={pendingPermission(panel.items)} onDecide={decidePermission} />
+          <PermissionPanel item={pendingPermission(panel.items, activeStream)} onDecide={decidePermission} />
 
           <AskPanel
-            key={pendingAsk(panel.items, cards.answeredAsks)?.id ?? 'none'}
-            item={pendingAsk(panel.items, cards.answeredAsks)}
+            key={pendingAsk(panel.items, cards.answeredAsks, activeStream)?.id ?? 'none'}
+            item={pendingAsk(panel.items, cards.answeredAsks, activeStream)}
             onSubmit={sendAnswers}
           />
 
@@ -962,17 +997,6 @@ export const App = () => {
             }
             if (menu.kind === 'mode') setMode(id)
           }}
-        />
-      ) : null}
-
-      {drawerOpen ? (
-        <AgentsDrawer
-          agents={agents}
-          onFocus={(id) => {
-            setActiveStream(id)
-            setDrawerOpen(false)
-          }}
-          onClose={() => setDrawerOpen(false)}
         />
       ) : null}
     </div>
@@ -1091,43 +1115,58 @@ const streamStatus = (panel: PanelState, cards: CardState): string => {
 const latestTodo = (items: FeedItem[]): TodoItem | undefined =>
   [...items].reverse().find((item): item is TodoItem => item.kind === 'todo')
 
-/** Последний заданный агентом вопрос, на который ещё не отвечено. */
-const pendingAsk = (items: FeedItem[], answered: string[]): AskItem | undefined =>
-  [...items].reverse().find((item): item is AskItem => item.kind === 'ask' && !answered.includes(item.id))
+/** Последний заданный агентом вопрос в текущем стриме, на который ещё не отвечено. */
+const pendingAsk = (items: FeedItem[], answered: string[], stream: string): AskItem | undefined =>
+  [...items]
+    .reverse()
+    .find(
+      (item): item is AskItem =>
+        item.kind === 'ask' &&
+        !answered.includes(item.id) &&
+        (stream === 'main' ? item.taskId === undefined : item.taskId === stream),
+    )
 
-/** Последний вызов, который всё ещё ждёт решения по разрешению. */
-const pendingPermission = (items: FeedItem[]): PermItem | undefined =>
-  [...items].reverse().find((item): item is PermItem => item.kind === 'perm' && item.decision === null)
+/** Последний вызов текущего стрима, который всё ещё ждёт решения по разрешению. */
+const pendingPermission = (items: FeedItem[], stream: string): PermItem | undefined =>
+  [...items]
+    .reverse()
+    .find(
+      (item): item is PermItem =>
+        item.kind === 'perm' &&
+        item.decision === null &&
+        (stream === 'main' ? item.taskId === undefined : item.taskId === stream),
+    )
 
-const buildStreams = (panel: PanelState): Stream[] => {
-  // Законченных агентов в строке не держим: за долгий разговор их бы накопились
-  // десятки, а сам факт запуска и результат никуда не пропадают — они остаются
-  // обычными карточками в ленте. Строка показывает только то, что бежит сейчас.
-  const tasks = panel.items.filter((item): item is TaskItem => item.kind === 'task' && item.pending)
+const statusOf = (task: TaskItem, items: FeedItem[], answeredAsks: string[]): AgentStatus => {
+  if (!task.pending) return 'done'
 
-  return [
-    { id: 'main', label: 'main', meta: '', live: panel.status === 'running', color: '#7b8cf7' },
-    ...tasks.map((task) => ({
-      id: task.id,
-      label: `agent:${task.target}`,
-      meta: '',
-      live: true,
-      color: '#b78cf0',
-    })),
-  ]
+  const blocked = items.some(
+    (item) =>
+      (item.kind === 'perm' && item.taskId === task.id && item.decision === null) ||
+      (item.kind === 'ask' && item.taskId === task.id && !answeredAsks.includes(item.id)),
+  )
+  return blocked ? 'needs-input' : 'running'
 }
 
-const buildAgents = (panel: PanelState): AgentCard[] =>
+const mainStatusOf = (panel: PanelState, answeredAsks: string[]): AgentStatus => {
+  const blocked = panel.items.some(
+    (item) =>
+      (item.kind === 'perm' && item.taskId === undefined && item.decision === null) ||
+      (item.kind === 'ask' && item.taskId === undefined && !answeredAsks.includes(item.id)),
+  )
+  if (blocked) return 'needs-input'
+  return panel.status === 'running' ? 'running' : 'idle'
+}
+
+/** Пачка, скрытая clearFinishedAgents, из дропдауна пропадает — сама история никуда не делась. */
+const buildAgentTabs = (panel: PanelState, answeredAsks: string[], hiddenTaskIds: Set<string>): AgentTab[] =>
   panel.items
-    .filter((item): item is TaskItem => item.kind === 'task')
+    .filter((item): item is TaskItem => item.kind === 'task' && !hiddenTaskIds.has(item.id))
     .map((task) => ({
       id: task.id,
-      name: `agent:${task.target}`,
-      kind: task.pending ? 'RUNNING' : 'DONE',
-      live: task.pending,
-      elapsed: task.duration,
-      percent: task.percent,
-      line: task.detail.at(-1)?.text ?? task.meta,
+      label: `agent:${task.target}`,
+      meta: task.meta,
+      status: statusOf(task, panel.items, answeredAsks),
     }))
 
 const menuProps = (
