@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { send, subscribe } from './bridge'
 import { EFFORT_OPTIONS, MODEL_OPTIONS, MODE_OPTIONS } from './catalog'
 import { AgentsDrawer, type AgentCard } from './components/AgentsDrawer'
+import { AskPanel } from './components/AskPanel'
 import { Composer } from './components/Composer'
 import { Feed } from './components/Feed'
 import { Header, type Session, type SessionState } from './components/Header'
@@ -9,18 +10,20 @@ import { History } from './components/History'
 import { LoginGate, type AuthState } from './components/LoginGate'
 import { Mcp } from './components/Mcp'
 import { Menu, type MenuOption } from './components/Menu'
+import { PermissionPanel } from './components/PermissionPanel'
 import { Plugins } from './components/Plugins'
 import { Queue, type QueuedPrompt } from './components/Queue'
 import { Quotes, type Quote } from './components/Quotes'
 import { SelectionMenu } from './components/SelectionMenu'
 import { StatusBar, type Anchor, type SelectorKind } from './components/StatusBar'
 import { StreamsBar, type Stream } from './components/StreamsBar'
+import { TaskListPanel } from './components/TaskListPanel'
 import composer from './components/composer.module.css'
 import s from './components/shell.module.css'
 import { contextUsage, formatTokens, initialPanelState, reducePanel, type PanelState } from './feed/build'
 import { referenceChip, referenceText } from './feed/reference'
 import { appendChip, appendText, buildCommands, localCommand, plainText } from './feed/slash'
-import type { TaskItem, UserToken } from './feed/types'
+import type { AskItem, FeedItem, PermItem, TaskItem, TodoItem, UserToken } from './feed/types'
 import type {
   AvailablePluginInfo,
   HistoryEntry,
@@ -29,7 +32,7 @@ import type {
   PluginMarketplaceInfo,
   UsageWindow,
 } from './protocol'
-import { useCardState } from './hooks/useCardState'
+import { useCardState, type CardState } from './hooks/useCardState'
 import { useSelection } from './hooks/useSelection'
 
 const MAIN_SESSION = 'main'
@@ -383,6 +386,43 @@ export const App = () => {
     [active],
   )
 
+  /**
+   * Решение по карточке плана — единая точка для обеих кнопок: помечает план
+   * решённым (карточка после этого не рисуется, см. Feed) и меняет режим тем же
+   * управляющим сообщением, что и обычный переключатель режима.
+   */
+  const decidePlan = useCallback(
+    (itemId: string, decision: 'approve' | 'keepPlanning') => {
+      cards.decidePlan(itemId, decision)
+      setMode(decision === 'approve' ? 'acceptEdits' : 'plan')
+    },
+    [cards, setMode],
+  )
+
+  /** Ответ на вопрос агента уходит как обычное следующее сообщение — как и говорит подсказка на карточке. */
+  const sendAnswers = useCallback(
+    (itemId: string, answers: string[]) => {
+      const text = answers.filter(Boolean).join('\n')
+      if (!text) return
+
+      cards.answerAsk(itemId)
+      send({ type: 'prompt', sessionId: active, text })
+      dispatchPanel({
+        session: active,
+        action: { kind: 'prompt', tokens: [{ kind: 'text', value: text }], quotes: [] },
+      })
+    },
+    [cards, active],
+  )
+
+  const decidePermission = useCallback(
+    (id: string, decision: 'once' | 'always' | 'deny') => {
+      send({ type: 'permissionDecision', id, decision })
+      dispatchPanel({ session: active, action: { kind: 'permissionResolved', id, decision } })
+    },
+    [active],
+  )
+
   // Shift+Tab гоняет по первым трём режимам — та же привычка, что в терминале.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -579,6 +619,18 @@ export const App = () => {
     }
   }, [submit])
 
+  // Тот же приём, что и выше: харнесс имитирует настоящий клик по кнопке
+  // карточки плана (не только реакцию бэкенда на него), чтобы пошаговая
+  // прокрутка чекпоинтов сама показывала исчезновение карточки.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+
+    window.__accHarnessResolvePlan = decidePlan
+    return () => {
+      window.__accHarnessResolvePlan = undefined
+    }
+  }, [decidePlan])
+
   /**
    * Reconnect/enable/disable одного MCP-сервера — своей управляющей команды для
    * них в CLI нет, только слэш-команда внутри разговора, поэтому шлём её обычным
@@ -768,28 +820,14 @@ export const App = () => {
             items={panel.items}
             streamingText={panel.streamingText}
             streaming={running}
-            streamStatus={streamStatus(panel)}
+            streamStatus={streamStatus(panel, cards)}
             errors={panel.errors}
             cards={cards}
             scrollRef={(element) => {
               feedRef.current = element
             }}
             onScroll={clearSelection}
-            onSendAnswers={(answers) => {
-              const text = answers.filter(Boolean).join('\n')
-              if (!text) return
-              send({ type: 'prompt', sessionId: active, text })
-              dispatchPanel({
-                session: active,
-                action: { kind: 'prompt', tokens: [{ kind: 'text', value: text }], quotes: [] },
-              })
-            }}
-            onApprovePlan={() => setMode('acceptEdits')}
-            onKeepPlanning={() => setMode('plan')}
-            onPermissionDecision={(id, decision) => {
-              send({ type: 'permissionDecision', id, decision })
-              dispatchPanel({ session: active, action: { kind: 'permissionResolved', id, decision } })
-            }}
+            onPlanDecision={decidePlan}
             onDismissError={(index) => dispatchPanel({ session: active, action: { kind: 'dismissError', index } })}
           />
 
@@ -819,6 +857,16 @@ export const App = () => {
         </div>
 
         <div className={composer.dock}>
+          <PermissionPanel item={pendingPermission(panel.items)} onDecide={decidePermission} />
+
+          <AskPanel
+            key={pendingAsk(panel.items, cards.answeredAsks)?.id ?? 'none'}
+            item={pendingAsk(panel.items, cards.answeredAsks)}
+            onSubmit={sendAnswers}
+          />
+
+          <TaskListPanel item={latestTodo(panel.items)} />
+
           <Queue
             items={queue}
             onReorder={(from, to) =>
@@ -957,11 +1005,7 @@ const sessionState = (panel?: PanelState): SessionState => {
 
   // Непрочитанная ошибка в фоновой вкладке иначе не видна вообще — точка на
   // вкладке молчала бы, пока туда не зайдёшь сам.
-  const waiting =
-    panel.errors.length > 0 ||
-    panel.items.some(
-      (item) => (item.kind === 'perm' && item.decision === null) || (item.kind === 'ask' && !item.sent),
-    )
+  const waiting = panel.errors.length > 0 || panel.items.some((item) => item.kind === 'perm' && item.decision === null)
 
   if (waiting) return 'attention'
   if (panel.status === 'running') return 'running'
@@ -1023,13 +1067,37 @@ const imageAttachments = (tokens: UserToken[]): { mediaType: string; data: strin
     return match ? [{ mediaType: match[1], data: match[2] }] : []
   })
 
-const streamStatus = (panel: PanelState): string => {
+/**
+ * Пока висит неотвеченный запрос разрешения или вопрос агента, ход на деле не
+ * думает — он стоит и ждёт решения человека. «Claude is thinking» в этот
+ * момент было бы неправдой.
+ */
+const streamStatus = (panel: PanelState, cards: CardState): string => {
   if (panel.compacting) return 'Compacting context…'
 
+  const awaitingDecision = panel.items.some(
+    (item) =>
+      (item.kind === 'perm' && item.decision === null) ||
+      (item.kind === 'ask' && !cards.answeredAsks.includes(item.id)),
+  )
+  if (awaitingDecision) return 'Waiting for you'
+
   const last = panel.items.at(-1)
-  const tools = last?.kind === 'toolGroup' && last.pending ? last.tools.length : 0
-  return tools > 0 ? `Claude is working · ${tools} ${tools === 1 ? 'tool' : 'tools'} this turn` : 'Claude is thinking'
+  const working = last?.kind === 'toolGroup' && last.pending && last.tools.length > 0
+  return working ? 'Claude is working' : 'Claude is thinking'
 }
+
+/** Последний присланный агентом список задач — панель над полем ввода зеркалит только его. */
+const latestTodo = (items: FeedItem[]): TodoItem | undefined =>
+  [...items].reverse().find((item): item is TodoItem => item.kind === 'todo')
+
+/** Последний заданный агентом вопрос, на который ещё не отвечено. */
+const pendingAsk = (items: FeedItem[], answered: string[]): AskItem | undefined =>
+  [...items].reverse().find((item): item is AskItem => item.kind === 'ask' && !answered.includes(item.id))
+
+/** Последний вызов, который всё ещё ждёт решения по разрешению. */
+const pendingPermission = (items: FeedItem[]): PermItem | undefined =>
+  [...items].reverse().find((item): item is PermItem => item.kind === 'perm' && item.decision === null)
 
 const buildStreams = (panel: PanelState): Stream[] => {
   // Законченных агентов в строке не держим: за долгий разговор их бы накопились

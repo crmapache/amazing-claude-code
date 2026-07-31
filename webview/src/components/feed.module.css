@@ -132,7 +132,7 @@
 }
 
 .label {
-  font: 600 9px/1 var(--acc-mono);
+  font: 600 10px/1 var(--acc-mono);
   letter-spacing: 0.09em;
   color: var(--acc-fg-faint);
 }
@@ -313,6 +313,12 @@
   overflow-x: auto;
 }
 
+/* Отступ снизу у последнего абзаца/блока кода в ответе не нужен — под ним нет
+   больше ничего, а .text уже даёт свой padding-bottom. */
+.text > *:last-child {
+  margin-bottom: 0;
+}
+
 /* --- Вызов инструмента ----------------------------------------------------- */
 
 .tool {
@@ -332,7 +338,7 @@
   text-align: left;
 }
 
-.toolHead:hover {
+.toolHead:not(:disabled):hover {
   background: var(--acc-bg-card);
 }
 
@@ -350,10 +356,11 @@
 
 .toolChip {
   flex: none;
-  padding: 1px 6px 2px;
+  padding: 2px 6px;
   border-radius: var(--acc-r-xs);
   font: 600 9.5px/1.35 var(--acc-mono);
   letter-spacing: 0.05em;
+  line-height: 13px;
 }
 
 .chipThink {
@@ -422,7 +429,7 @@
 }
 
 .toolBody {
-  margin: 3px 0 8px 24px;
+  margin: 3px 0 8px 11px;
   border-left: 2px solid var(--acc-line);
   padding-left: 10px;
 }
@@ -610,6 +617,7 @@
   border-radius: var(--acc-r-xs);
   font: 600 9.5px/1.35 var(--acc-mono);
   letter-spacing: 0.05em;
+  line-height: 13px;
   background: rgb(183 140 240 / 16%);
   color: var(--acc-agent-light);
 }
@@ -674,90 +682,6 @@
 .barLabel {
   font: 10px var(--acc-mono);
   color: var(--acc-fg-dim);
-}
-
-/* --- Список задач ---------------------------------------------------------- */
-
-.todo {
-  margin: 8px 0;
-  border: 1px solid var(--acc-line);
-  border-radius: var(--acc-r-xl);
-  background: var(--acc-bg-raised);
-  overflow: hidden;
-}
-
-.todoHead {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 7px 10px;
-  border-bottom: 1px solid var(--acc-line);
-}
-
-.todoProgress {
-  font: 10.5px var(--acc-mono);
-  color: var(--acc-fg-dim);
-}
-
-.todoList {
-  display: flex;
-  flex-direction: column;
-  padding: 4px 0;
-}
-
-.todoRow {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 3px 10px;
-  width: 100%;
-  text-align: left;
-}
-
-.todoRow:hover {
-  background: var(--acc-bg-card);
-}
-
-.todoBox {
-  flex: none;
-  width: 13px;
-  height: 13px;
-  border: 1px solid var(--acc-line-strong);
-  border-radius: var(--acc-r-xs);
-  display: grid;
-  place-items: center;
-  font-size: 9px;
-  color: var(--acc-bg-sunken);
-}
-
-.todoBoxDone {
-  border-color: var(--acc-ok);
-  background: var(--acc-ok);
-}
-
-.todoBoxActive {
-  border-color: var(--acc-accent);
-}
-
-.todoText {
-  font-size: 12px;
-  color: var(--acc-fg-soft);
-}
-
-.todoTextDone {
-  color: var(--acc-fg-faint);
-  text-decoration: line-through;
-}
-
-.todoTextActive {
-  color: var(--acc-fg);
-}
-
-.todoRunning {
-  font: 9.5px var(--acc-mono);
-  letter-spacing: 0.06em;
-  color: var(--acc-accent);
-  animation: acc-pulse 1.6s infinite;
 }
 
 /* --- План ------------------------------------------------------------------ */
@@ -835,217 +759,6 @@
   border-top: 1px solid rgb(123 140 247 / 18%);
 }
 
-/* --- Разрешение ------------------------------------------------------------ */
-
-.perm {
-  margin: 10px 0;
-  border: 1px solid rgb(224 166 75 / 42%);
-  border-radius: var(--acc-r-2xl);
-  background: rgb(224 166 75 / 6%);
-  overflow: hidden;
-}
-
-.permHead {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 11px;
-}
-
-.permLabel {
-  font: 600 9.5px/1 var(--acc-mono);
-  letter-spacing: 0.09em;
-  color: var(--acc-warn);
-}
-
-.permTarget {
-  font-size: 12px;
-  color: var(--acc-fg-body);
-}
-
-.permCmd {
-  margin: 0 11px;
-  padding: 7px 9px;
-  border: 1px solid var(--acc-line);
-  border-radius: var(--acc-r-md);
-  background: var(--acc-bg-sunken);
-  font: 11.5px/17px var(--acc-mono);
-  color: var(--acc-warn-light);
-  white-space: pre-wrap;
-}
-
-.permActions {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 9px 11px;
-}
-
-.permDecision {
-  font: 600 10px var(--acc-mono);
-  letter-spacing: 0.06em;
-}
-
-.permDecisionOk {
-  color: var(--acc-ok-light);
-}
-
-.permDecisionBad {
-  color: var(--acc-bad-light);
-}
-
-/* --- Вопросы --------------------------------------------------------------- */
-
-.ask {
-  margin: 10px 0;
-  border: 1px solid rgb(79 195 199 / 40%);
-  border-radius: var(--acc-r-2xl);
-  background: rgb(79 195 199 / 5%);
-  overflow: hidden;
-}
-
-.askHead {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 11px;
-  border-bottom: 1px solid rgb(79 195 199 / 20%);
-}
-
-.askLabel {
-  font: 600 9.5px/1 var(--acc-mono);
-  letter-spacing: 0.09em;
-  color: var(--acc-branch);
-}
-
-.askBody {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 11px;
-}
-
-.question {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.questionHead {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.questionTitle {
-  font: 600 12.5px var(--acc-font);
-  color: var(--acc-fg);
-}
-
-.questionHint {
-  font: 10.5px var(--acc-mono);
-  color: var(--acc-fg-faint);
-}
-
-.options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.option {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 7px 9px;
-  border: 1px solid var(--acc-line);
-  border-radius: var(--acc-r-lg);
-  background: var(--acc-bg);
-  text-align: left;
-}
-
-.option:hover {
-  border-color: var(--acc-branch);
-}
-
-.optionOn {
-  background: rgb(79 195 199 / 13%);
-  border-color: rgb(79 195 199 / 60%);
-}
-
-.optionKey {
-  flex: none;
-  width: 15px;
-  height: 15px;
-  border: 1px solid var(--acc-line-strong);
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  font: 600 9px var(--acc-mono);
-  color: var(--acc-fg-faint);
-}
-
-.optionKeyOn {
-  border-color: var(--acc-branch);
-  background: var(--acc-branch);
-  color: var(--acc-bg-sunken);
-}
-
-.optionLabel {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--acc-fg-soft);
-}
-
-.optionLabelOn {
-  color: var(--acc-fg);
-}
-
-.optionSub {
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--acc-fg-faint);
-  margin-top: 1px;
-}
-
-.other {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 9px;
-  border: 1px dashed var(--acc-line-strong);
-  border-radius: var(--acc-r-lg);
-}
-
-.otherLabel {
-  font: 10px var(--acc-mono);
-  color: var(--acc-fg-faint);
-}
-
-.otherInput {
-  flex: 1;
-  min-width: 0;
-  background: transparent;
-  border: none;
-  outline: none;
-  font-size: 12px;
-  color: var(--acc-fg);
-}
-
-.askFoot {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 9px 11px;
-  background: rgb(0 0 0 / 18%);
-  border-top: 1px solid rgb(79 195 199 / 18%);
-}
-
-.askNote {
-  font-size: 11px;
-  color: var(--acc-fg-faint);
-}
-
 /* --- Кнопки карточек ------------------------------------------------------- */
 
 .primary {
@@ -1064,23 +777,6 @@
   background: var(--acc-accent-hover);
 }
 
-.primaryWarn {
-  background: var(--acc-warn);
-}
-
-.primaryWarn:hover {
-  background: #eebb6c;
-}
-
-.primaryBranch {
-  background: var(--acc-branch);
-}
-
-.primaryOff {
-  background: var(--acc-bg-control);
-  color: var(--acc-fg-faint);
-}
-
 .secondary {
   height: 25px;
   display: flex;
@@ -1096,11 +792,6 @@
 .secondary:hover {
   border-color: var(--acc-accent);
   color: var(--acc-fg);
-}
-
-.secondaryDanger:hover {
-  border-color: var(--acc-bad);
-  color: var(--acc-bad-light);
 }
 
 .linkish {
@@ -1205,24 +896,25 @@
 }
 
 /* Перелив идёт по самим буквам: градиент шире строки и медленно едет вдоль неё.
-   Цвета держим в тон панели — на тёмном фоне белая волна выглядит грязно. */
+   direction: alternate — волна едет туда-обратно, а не дёргается назад скачком
+   на каждом повторе. */
 .streamingText {
   font: 11.5px var(--acc-mono);
   background: linear-gradient(
     100deg,
-    var(--acc-fg-fainter) 0%,
-    var(--acc-fg-fainter) 30%,
-    var(--acc-accent-light) 45%,
-    var(--acc-fg-soft) 55%,
-    var(--acc-fg-fainter) 70%,
-    var(--acc-fg-fainter) 100%
+    #ff9800 0%,
+    #f4511e 30%,
+    #d84315 45%,
+    #f4511e 55%,
+    #ff9800 70%,
+    #ff9800 100%
   );
   background-size: 260% 100%;
   background-clip: text;
   -webkit-background-clip: text;
   color: transparent;
   white-space: nowrap;
-  animation: acc-shimmer 2.6s linear infinite;
+  animation: acc-shimmer 2.6s linear infinite alternate;
 }
 
 .error {

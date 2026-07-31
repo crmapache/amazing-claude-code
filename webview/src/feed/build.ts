@@ -664,7 +664,6 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
           meta: `· ${steps.length} ${steps.length === 1 ? 'step' : 'steps'}`,
           duration: '',
           steps,
-          approved: false,
         },
       ],
     }
@@ -681,7 +680,6 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
           kind: 'ask',
           meta: `${questions.length} ${questions.length === 1 ? 'question' : 'questions'} · blocks the run`,
           questions,
-          sent: false,
         },
       ],
     }
@@ -901,7 +899,7 @@ const mergeUsage = (current: Required<AgentUsage>, incoming?: AgentUsage): Requi
 
 /** Токены, цена и модель — шум под каждым ходом; из всего этого нужна только длительность. */
 const resultStats = (event: Extract<AgentEvent, { type: 'result' }>): string[] =>
-  typeof event.duration_ms === 'number' ? [formatDuration(event.duration_ms)] : []
+  typeof event.duration_ms === 'number' ? [`Worked ${formatDuration(event.duration_ms)}`] : []
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 

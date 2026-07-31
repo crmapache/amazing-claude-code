@@ -38,7 +38,7 @@
 
   /* Акценты. Каждый отвечает за свой род событий и не используется вне его. */
   --acc-accent: #7b8cf7;
-  --acc-accent-hover: #98a5fb;
+  --acc-accent-hover: #4657c9;
   --acc-accent-light: #9aa6fa;
   --acc-accent-soft: rgb(123 140 247 / 12%);
   --acc-accent-line: rgb(123 140 247 / 32%);

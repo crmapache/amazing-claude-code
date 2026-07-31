@@ -1,10 +1,430 @@
-/* Нижняя часть панели: очередь, цитаты, поле ввода. */
+/* Нижняя часть панели: список задач, очередь, цитаты, поле ввода. */
+
+/* Кадр анимации живёт здесь же, а не в feed.module.css: CSS-модуль переименовывает
+   имена анимаций так же, как классы, и ссылка на кадры из другого модуля молча ни
+   во что не превращается — анимация просто не идёт. */
+@keyframes acc-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
 
 .dock {
   flex: none;
   background: var(--acc-bg-panel);
   border-top: 1px solid var(--acc-line);
   padding: 8px 10px 0;
+}
+
+/* --- Кнопки блокирующих панелей ---------------------------------------------- */
+
+.primary {
+  height: 25px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  border-radius: var(--acc-r-md);
+  background: var(--acc-accent);
+  color: var(--acc-bg-sunken);
+  font: 600 11.5px var(--acc-font);
+}
+
+.primary:hover {
+  background: var(--acc-accent-hover);
+}
+
+.primaryWarn {
+  background: var(--acc-warn);
+}
+
+.primaryWarn:hover {
+  background: #eebb6c;
+}
+
+.primaryBranch {
+  background: var(--acc-branch);
+}
+
+.primaryBranch:hover {
+  background: #358f93;
+}
+
+.primaryOff {
+  background: var(--acc-bg-control);
+  color: var(--acc-fg-faint);
+}
+
+.primaryOff:hover {
+  background: var(--acc-branch-soft);
+  color: var(--acc-branch-light);
+}
+
+.secondary {
+  height: 25px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 11px;
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-md);
+  font: 500 11.5px var(--acc-font);
+  color: var(--acc-fg-soft);
+}
+
+.secondary:hover {
+  border-color: var(--acc-accent);
+  color: var(--acc-fg);
+}
+
+.secondaryDanger:hover {
+  border-color: var(--acc-bad);
+  color: var(--acc-bad-light);
+}
+
+/* --- Разрешение --------------------------------------------------------------- */
+
+.perm {
+  margin-bottom: 8px;
+  border: 1px solid rgb(224 166 75 / 42%);
+  border-radius: var(--acc-r-2xl);
+  background: rgb(224 166 75 / 6%);
+  overflow: hidden;
+}
+
+.permHead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+}
+
+.permLabel {
+  font: 600 9.5px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-warn);
+}
+
+.permTarget {
+  font-size: 12px;
+  color: var(--acc-fg-body);
+}
+
+.permCmd {
+  margin: 0 11px;
+  padding: 7px 9px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-sunken);
+  font: 11.5px/17px var(--acc-mono);
+  color: var(--acc-warn-light);
+  white-space: pre-wrap;
+}
+
+.permActions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 11px;
+}
+
+/* --- Вопросы -------------------------------------------------------------- */
+
+.ask {
+  margin-bottom: 8px;
+  border: 1px solid rgb(79 195 199 / 40%);
+  border-radius: var(--acc-r-2xl);
+  background: rgb(79 195 199 / 5%);
+  overflow: hidden;
+}
+
+.askHead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border-bottom: 1px solid rgb(79 195 199 / 20%);
+}
+
+.askLabel {
+  font: 600 9.5px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-branch);
+}
+
+.askMeta {
+  font-size: 11.5px;
+  color: var(--acc-fg-dim);
+}
+
+/* Шапка и кнопка отправки остаются на месте — крутится только сам список
+   вопросов. Без этого шесть вопросов в одном вызове (обычное дело) вытолкнули
+   бы поле ввода за экран: панель здесь закреплённая, а не в бесконечной ленте. */
+.askBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 11px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.question {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.questionHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.questionTitle {
+  font: 600 12.5px var(--acc-font);
+  color: var(--acc-fg);
+}
+
+.questionHint {
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.questionMulti {
+  font: 600 9.5px/1 var(--acc-mono);
+  letter-spacing: 0.06em;
+  color: var(--acc-branch-light);
+}
+
+.options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-lg);
+  background: var(--acc-bg);
+  text-align: left;
+}
+
+.option:hover {
+  border-color: var(--acc-branch);
+}
+
+.optionOn {
+  background: rgb(79 195 199 / 13%);
+  border-color: rgb(79 195 199 / 60%);
+}
+
+.optionKey {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border: 1px solid var(--acc-line-strong);
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  font: 600 9px var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.optionKeyOn {
+  border-color: var(--acc-branch);
+  background: var(--acc-branch);
+  color: var(--acc-bg-sunken);
+}
+
+.optionCheck {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-xs);
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  color: var(--acc-bg-sunken);
+}
+
+.optionCheckOn {
+  border-color: var(--acc-branch);
+  background: var(--acc-branch);
+}
+
+.optionLabel {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--acc-fg-soft);
+}
+
+.optionLabelOn {
+  color: var(--acc-fg);
+}
+
+.optionSub {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--acc-fg-faint);
+  margin-top: 1px;
+}
+
+.other {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 9px;
+  border: 1px dashed var(--acc-line-strong);
+  border-radius: var(--acc-r-lg);
+}
+
+.otherLabel {
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.otherInput {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 12px;
+  color: var(--acc-fg);
+}
+
+.askFoot {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 11px;
+  background: rgb(0 0 0 / 18%);
+  border-top: 1px solid rgb(79 195 199 / 18%);
+}
+
+.askNote {
+  font-size: 11px;
+  color: var(--acc-fg-faint);
+}
+
+/* --- Список задач ------------------------------------------------------------ */
+
+.taskPanel {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 8px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-xl);
+  background: var(--acc-bg-raised);
+  overflow: hidden;
+}
+
+.taskPanelHead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--acc-line);
+}
+
+.taskPanelLabel {
+  font: 600 9px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-fg-faint);
+}
+
+.taskPanelProgress {
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-dim);
+}
+
+.taskPanelList {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+}
+
+/* Только пока развёрнут длинный список — не выталкивать поле ввода за экран. */
+.taskPanelListScroll {
+  overflow-y: auto;
+  max-height: 220px;
+}
+
+.taskPanelRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 3px 10px;
+}
+
+.taskPanelBox {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-xs);
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  color: var(--acc-bg-sunken);
+}
+
+.taskPanelBoxDone {
+  border-color: var(--acc-ok);
+  background: var(--acc-ok);
+}
+
+.taskPanelBoxActive {
+  border-color: var(--acc-accent);
+}
+
+.taskPanelText {
+  font-size: 12px;
+  color: var(--acc-fg-soft);
+}
+
+.taskPanelTextDone {
+  color: var(--acc-fg-faint);
+  text-decoration: line-through;
+}
+
+.taskPanelTextActive {
+  color: var(--acc-fg);
+}
+
+.taskPanelRunning {
+  font: 9.5px var(--acc-mono);
+  letter-spacing: 0.06em;
+  color: var(--acc-accent);
+  animation: acc-pulse 1.6s infinite;
+}
+
+.taskPanelMore {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 10px;
+  border-top: 1px solid var(--acc-line);
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+  text-align: left;
+}
+
+.taskPanelMore:hover {
+  color: var(--acc-fg);
+  background: var(--acc-bg-card);
 }
 
 /* --- Очередь --------------------------------------------------------------- */

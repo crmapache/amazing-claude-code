@@ -5,6 +5,7 @@ export type ScenarioStep =
   | { kind: 'agent'; event: AgentEvent }
   | { kind: 'user'; text: string }
   | { kind: 'wait'; ms: number }
+  | { kind: 'resolvePlan'; itemId: string; decision: 'approve' | 'keepPlanning' }
 
 /**
  * Один осмысленный момент сценария с подписью для карточки чекпоинтов.
@@ -35,5 +36,10 @@ declare global {
      * отправку сообщения из поля ввода, не трогая само поле ввода.
      */
     __accHarnessSend?: (text: string) => void
+    /**
+     * Тот же приём: имитирует настоящий клик по кнопке карточки плана
+     * («Approve & run» / «Keep planning»), не трогая саму кнопку.
+     */
+    __accHarnessResolvePlan?: (itemId: string, decision: 'approve' | 'keepPlanning') => void
   }
 }

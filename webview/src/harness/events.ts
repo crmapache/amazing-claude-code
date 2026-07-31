@@ -24,6 +24,13 @@ export const agent = (event: AgentEvent): ScenarioStep => ({ kind: 'agent', even
 export const user = (text: string): ScenarioStep => ({ kind: 'user', text })
 export const wait = (ms: number): ScenarioStep => ({ kind: 'wait', ms })
 
+/** Имитирует настоящий клик по кнопке карточки плана — см. __accHarnessResolvePlan. */
+export const resolvePlan = (itemId: string, decision: 'approve' | 'keepPlanning'): ScenarioStep => ({
+  kind: 'resolvePlan',
+  itemId,
+  decision,
+})
+
 /** Вход и открытие проекта — общий старт для всех сценариев. */
 export const bootstrap: ScenarioStep[] = [
   shell({ type: 'auth', installed: true, loggedIn: true, email: 'you@example.com', plan: 'Max' }),

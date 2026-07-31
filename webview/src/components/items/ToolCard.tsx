@@ -32,44 +32,48 @@ export const ToolCard = ({
   onToggle,
   onAcceptHunk,
   onRejectHunk,
-}: ToolCardProps) => (
-  <div className={s.tool}>
-    <button type="button" className={s.toolHead} onClick={onToggle}>
-      <span className={`${s.caret} ${open ? s.caretOpen : ''}`}>▶</span>
-      <span className={`${s.toolChip} ${CHIP_CLASS[item.chip]}`}>{item.chip}</span>
-      <span className={`${s.toolTarget} ${item.isError ? s.toolError : ''}`}>{item.target}</span>
-      <span
-        className={`${s.toolMeta} ${item.pending ? (awaitingPermission ? s.waiting : s.running) : ''}`}
-      >
-        {item.pending ? (awaitingPermission ? '· waiting for you' : '· running') : item.meta}
-      </span>
-      <div className={s.spacer} />
-      <span className={s.toolDur}>{item.duration}</span>
-    </button>
+}: ToolCardProps) => {
+  const hasBody = item.detail.length > 0 || item.hunks.length > 0
 
-    {open && (item.detail.length > 0 || item.hunks.length > 0) ? (
-      <div className={s.toolBody}>
-        {item.detail.map((line, index) => (
-          <DetailRow key={index} line={line} />
-        ))}
+  return (
+    <div className={s.tool}>
+      <button type="button" className={s.toolHead} onClick={onToggle} disabled={!hasBody}>
+        {hasBody ? <span className={`${s.caret} ${open ? s.caretOpen : ''}`}>▶</span> : null}
+        <span className={`${s.toolChip} ${CHIP_CLASS[item.chip]}`}>{item.chip}</span>
+        <span className={`${s.toolTarget} ${item.isError ? s.toolError : ''}`}>{item.target}</span>
+        <span
+          className={`${s.toolMeta} ${item.pending ? (awaitingPermission ? s.waiting : s.running) : ''}`}
+        >
+          {item.pending ? (awaitingPermission ? '· waiting for you' : '· running') : item.meta}
+        </span>
+        <div className={s.spacer} />
+        <span className={s.toolDur}>{item.duration}</span>
+      </button>
 
-        {item.hunks.length > 0 ? (
-          <div className={s.hunks}>
-            {item.hunks.map((hunk) => (
-              <HunkView
-                key={hunk.id}
-                hunk={hunk}
-                applied={appliedHunks.includes(hunk.id)}
-                onAccept={() => onAcceptHunk(hunk.id)}
-                onReject={() => onRejectHunk(hunk.id)}
-              />
-            ))}
-          </div>
-        ) : null}
-      </div>
-    ) : null}
-  </div>
-)
+      {open && hasBody ? (
+        <div className={s.toolBody}>
+          {item.detail.map((line, index) => (
+            <DetailRow key={index} line={line} />
+          ))}
+
+          {item.hunks.length > 0 ? (
+            <div className={s.hunks}>
+              {item.hunks.map((hunk) => (
+                <HunkView
+                  key={hunk.id}
+                  hunk={hunk}
+                  applied={appliedHunks.includes(hunk.id)}
+                  onAccept={() => onAcceptHunk(hunk.id)}
+                  onReject={() => onRejectHunk(hunk.id)}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
 const DetailRow = ({ line }: { line: DetailLine }) => (
   <div

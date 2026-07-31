@@ -3,12 +3,11 @@ import s from '../feed.module.css'
 
 interface PlanCardProps {
   item: PlanItem
-  approved: boolean
   onApprove: () => void
   onKeepPlanning: () => void
 }
 
-export const PlanCard = ({ item, approved, onApprove, onKeepPlanning }: PlanCardProps) => (
+export const PlanCard = ({ item, onApprove, onKeepPlanning }: PlanCardProps) => (
   <div className={s.plan}>
     <div className={s.planHead}>
       <span className={s.planLabel}>PLAN READY</span>
@@ -29,8 +28,8 @@ export const PlanCard = ({ item, approved, onApprove, onKeepPlanning }: PlanCard
     </div>
 
     <div className={s.cardFoot}>
-      <button type="button" className={s.primary} onClick={onApprove} disabled={approved}>
-        {approved ? '✓ Running plan' : 'Approve & run'}
+      <button type="button" className={s.primary} onClick={onApprove}>
+        Approve & run
       </button>
       <button type="button" className={s.secondary} onClick={onKeepPlanning}>
         Keep planning

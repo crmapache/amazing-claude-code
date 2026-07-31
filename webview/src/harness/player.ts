@@ -98,6 +98,11 @@ export class ScenarioPlayer {
       return
     }
 
+    if (step.kind === 'resolvePlan') {
+      window.__accHarnessResolvePlan?.(step.itemId, step.decision)
+      return
+    }
+
     const message: ShellMessage =
       step.kind === 'shell' ? step.message : { type: 'agent', sessionId: SESSION, event: step.event }
 

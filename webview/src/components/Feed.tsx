@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { parseParagraphs } from '../feed/markdown'
-import type { FeedItem, TaskItem, ToolItem } from '../feed/types'
-import { picksFor, todoOverridesFor, type CardState } from '../hooks/useCardState'
+import type { AskItem, FeedItem, PermItem, TaskItem, TodoItem, ToolItem } from '../feed/types'
+import type { CardState } from '../hooks/useCardState'
 import s from './feed.module.css'
-import { AskCard } from './items/AskCard'
-import { PermissionCard } from './items/PermissionCard'
 import { PlanCard } from './items/PlanCard'
 import { CheckpointRow, CompactRow, CrashRow, MetaRow } from './items/Rows'
 import { TaskCard } from './items/TaskCard'
 import { TextCard } from './items/TextCard'
-import { TodoCard } from './items/TodoCard'
 import { ToolGroupCard } from './items/ToolGroupCard'
 import { UserCard } from './items/UserCard'
 import { ScrollThumb } from './ScrollThumb'
+
+/**
+ * Список задач, вопрос агента и запрос разрешения в ленте не рисуются — за них
+ * отвечают закреплённые панели над полем ввода (TaskListPanel/AskPanel/PermissionPanel).
+ */
+type FeedRowItem = Exclude<FeedItem, TodoItem | AskItem | PermItem>
 
 interface FeedProps {
   items: FeedItem[]
@@ -21,10 +24,7 @@ interface FeedProps {
   streamStatus: string
   errors: string[]
   cards: CardState
-  onSendAnswers: (answers: string[]) => void
-  onApprovePlan: () => void
-  onKeepPlanning: () => void
-  onPermissionDecision: (id: string, decision: 'once' | 'always' | 'deny') => void
+  onPlanDecision: (itemId: string, decision: 'approve' | 'keepPlanning') => void
   onDismissError: (index: number) => void
   scrollRef?: (element: HTMLElement | null) => void
   onScroll?: () => void
@@ -37,15 +37,26 @@ export const Feed = ({
   streamStatus,
   errors,
   cards,
-  onSendAnswers,
-  onApprovePlan,
-  onKeepPlanning,
-  onPermissionDecision,
+  onPlanDecision,
   onDismissError,
   scrollRef,
   onScroll,
 }: FeedProps) => {
   const view = useRef<HTMLElement | null>(null)
+
+  /**
+   * Список задач, вопрос агента и запрос разрешения в ленте не рисуются — за
+   * них отвечают закреплённые панели над полем ввода. Карточка плана уходит
+   * из ленты, как только по ней принято решение (в любую сторону) — она своё
+   * дело сделала, а не остаётся висеть неактивной.
+   */
+  const rows = items.filter(
+    (item): item is FeedRowItem =>
+      item.kind !== 'todo' &&
+      item.kind !== 'ask' &&
+      item.kind !== 'perm' &&
+      !(item.kind === 'plan' && cards.planDecisions[item.id] !== undefined),
+  )
 
   /**
    * Пока где-то в ленте открыт неотвеченный запрос разрешения, самая свежая
@@ -83,7 +94,7 @@ export const Feed = ({
    * пользователь и так видит всё по мере поступления.
    */
   const seenCount = useRef(0)
-  const unreadCount = items.filter((item) => item.kind !== 'user').length
+  const unreadCount = rows.filter((item) => item.kind !== 'user').length
 
   useEffect(() => {
     if (stuck) seenCount.current = unreadCount
@@ -113,9 +124,9 @@ export const Feed = ({
     observer.observe(element)
 
     return () => observer.disconnect()
-  }, [items.length, toBottom])
+  }, [rows.length, toBottom])
 
-  const isEmpty = items.length === 0 && !streamingText && errors.length === 0
+  const isEmpty = rows.length === 0 && !streamingText && errors.length === 0
 
   return (
     <div className={s.feedWrap}>
@@ -141,17 +152,9 @@ export const Feed = ({
           </div>
         ) : null}
 
-        {items.map((item) => (
+        {rows.map((item) => (
           <div key={item.id} className={s.row}>
-            <ItemView
-              item={item}
-              cards={cards}
-              lastPendingId={lastPendingId}
-              onSendAnswers={onSendAnswers}
-              onApprovePlan={onApprovePlan}
-              onKeepPlanning={onKeepPlanning}
-              onPermissionDecision={onPermissionDecision}
-            />
+            <ItemView item={item} cards={cards} lastPendingId={lastPendingId} onPlanDecision={onPlanDecision} />
           </div>
         ))}
 
@@ -206,25 +209,14 @@ export const Feed = ({
 }
 
 interface ItemViewProps {
-  item: FeedItem
+  item: FeedRowItem
   cards: CardState
   /** id вызова, который сейчас реально ждёт разрешения (или undefined, если ждать нечего). */
   lastPendingId: string | undefined
-  onSendAnswers: (answers: string[]) => void
-  onApprovePlan: () => void
-  onKeepPlanning: () => void
-  onPermissionDecision: (id: string, decision: 'once' | 'always' | 'deny') => void
+  onPlanDecision: (itemId: string, decision: 'approve' | 'keepPlanning') => void
 }
 
-const ItemView = ({
-  item,
-  cards,
-  lastPendingId,
-  onSendAnswers,
-  onApprovePlan,
-  onKeepPlanning,
-  onPermissionDecision,
-}: ItemViewProps) => {
+const ItemView = ({ item, cards, lastPendingId, onPlanDecision }: ItemViewProps) => {
   switch (item.kind) {
     case 'user':
       return <UserCard item={item} />
@@ -245,46 +237,12 @@ const ItemView = ({
         />
       )
 
-    case 'todo':
-      return (
-        <TodoCard
-          item={item}
-          overrides={todoOverridesFor(cards.todoOverrides, item.id)}
-          onToggle={(todoId, next) => cards.setTodo(item.id, todoId, next)}
-        />
-      )
-
     case 'plan':
       return (
         <PlanCard
           item={item}
-          approved={cards.approvedPlans.includes(item.id)}
-          onApprove={() => {
-            cards.approvePlan(item.id)
-            onApprovePlan()
-          }}
-          onKeepPlanning={onKeepPlanning}
-        />
-      )
-
-    case 'perm':
-      return (
-        <PermissionCard
-          item={item}
-          // Решение хранится в самом элементе: агент стоит и ждёт именно его,
-          // а не состояния карточки в интерфейсе.
-          decision={item.decision}
-          onDecide={(decision) => onPermissionDecision(item.id, decision)}
-        />
-      )
-
-    case 'ask':
-      return (
-        <AskCard
-          item={item}
-          picks={picksFor(cards.picks, item.id)}
-          onPick={(questionId, optionId) => cards.pick(item.id, questionId, optionId)}
-          onSubmit={onSendAnswers}
+          onApprove={() => onPlanDecision(item.id, 'approve')}
+          onKeepPlanning={() => onPlanDecision(item.id, 'keepPlanning')}
         />
       )
 

@@ -148,7 +148,6 @@ export interface PlanItem {
   meta: string
   duration: string
   steps: PlanStep[]
-  approved: boolean
 }
 
 export interface PermItem {
@@ -179,7 +178,6 @@ export interface AskItem {
   kind: 'ask'
   meta: string
   questions: AskQuestion[]
-  sent: boolean
 }
 
 export interface CheckpointItem {
