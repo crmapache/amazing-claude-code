@@ -341,6 +341,7 @@ internal class ClaudePanel(private val project: Project, private val parentDispo
                 put("target", request.target)
                 put("command", request.command)
                 put("mode", request.mode)
+                request.agentId?.let { put("agentId", it) }
             }.toString(),
         )
     }

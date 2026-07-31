@@ -39,6 +39,8 @@ internal class PermissionServer(
         val target: String,
         val command: String,
         val mode: String,
+        /** Заполнено, только если разрешения запросил инструмент внутри субагента. */
+        val agentId: String?,
     )
 
     enum class Decision { ALLOW, DENY }
@@ -123,6 +125,7 @@ internal class PermissionServer(
             target = target(toolName, input),
             command = command(toolName, input),
             mode = mode,
+            agentId = payload.stringOrNull("agent_id"),
         )
 
         val answer = CompletableFuture<Decision>()
@@ -184,6 +187,10 @@ internal class PermissionServer(
 
     private fun JsonObject.string(key: String): String =
         this[key]?.jsonPrimitive?.contentOrNull.orEmpty()
+
+    /** В отличие от string() — null, если поля нет вовсе или оно пустое, а не "". */
+    private fun JsonObject.stringOrNull(key: String): String? =
+        this[key]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() }
 
     companion object {
         const val PATH = "/permission"
