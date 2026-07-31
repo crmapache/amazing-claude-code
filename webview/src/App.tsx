@@ -386,6 +386,14 @@ export const App = () => {
     activeRef.current = active
   }, [active])
 
+  // Открытый стрим принадлежит той вкладке, где его открыли: у другой сессии
+  // агента с таким id почти наверняка нет. Без сброса переключение вкладки
+  // могло бы унести orphaned activeStream в чужую панель и упереться в пустой
+  // экран без дропдауна и без пути назад на main.
+  useEffect(() => {
+    setActiveStream('main')
+  }, [active])
+
   // Очередь разбирается сама, как только агент освободился: ровно это обещает подпись.
   useEffect(() => {
     if (running || queue.length === 0) return
@@ -692,6 +700,13 @@ export const App = () => {
     [panel, cards.answeredAsks, hiddenTaskIds],
   )
   const mainStatus = useMemo(() => mainStatusOf(panel, cards.answeredAsks), [panel, cards.answeredAsks])
+
+  // activeStream переживает переключение сессии/`/clear` на один кадр раньше,
+  // чем эффект успевает сбросить его на 'main' (а после /clear эффект вообще
+  // не сработает — active не поменялся). Раз задача, на которую он указывает,
+  // в этой панели не найдена — считаем это main, а не рисуем пустой экран.
+  const activeTask = panel.items.find((item): item is TaskItem => item.kind === 'task' && item.id === activeStream)
+  const resolvedStream = activeStream === 'main' || activeTask ? activeStream : 'main'
   const commands = useMemo(
     () => buildCommands(panel.slashCommands, commandHints),
     [panel.slashCommands, commandHints],
@@ -845,7 +860,7 @@ export const App = () => {
         <StreamSwitcher tabs={agentTabs} mainStatus={mainStatus} active={activeStream} onPick={setActiveStream} />
 
         <div className={s.body}>
-          {activeStream === 'main' ? (
+          {resolvedStream === 'main' ? (
             <Feed
               items={panel.items}
               streamingText={panel.streamingText}
@@ -861,12 +876,10 @@ export const App = () => {
               onDismissError={(index) => dispatchPanel({ session: active, action: { kind: 'dismissError', index } })}
             />
           ) : (
-            <AgentStreamView
-              item={panel.items.find((item): item is TaskItem => item.kind === 'task' && item.id === activeStream)}
-            />
+            <AgentStreamView item={activeTask} />
           )}
 
-          {selection && activeStream === 'main' ? (
+          {selection && resolvedStream === 'main' ? (
             <SelectionMenu
               selection={selection}
               onFork={() => {
@@ -892,11 +905,11 @@ export const App = () => {
         </div>
 
         <div className={composer.dock}>
-          <PermissionPanel item={pendingPermission(panel.items, activeStream)} onDecide={decidePermission} />
+          <PermissionPanel item={pendingPermission(panel.items, resolvedStream)} onDecide={decidePermission} />
 
           <AskPanel
-            key={pendingAsk(panel.items, cards.answeredAsks, activeStream)?.id ?? 'none'}
-            item={pendingAsk(panel.items, cards.answeredAsks, activeStream)}
+            key={pendingAsk(panel.items, cards.answeredAsks, resolvedStream)?.id ?? 'none'}
+            item={pendingAsk(panel.items, cards.answeredAsks, resolvedStream)}
             onSubmit={sendAnswers}
           />
 
