@@ -23,13 +23,8 @@ const Harness = () => {
   }, [])
 
   return (
-    <>
-      {/* Стейдж резервирует место под сайдбар и сам ограничен по ширине, чтобы
-          похоже было на настоящую боковую панель IDE, а не на окно браузера
-          целиком - иначе оба сценария (plan-approval, permission-waiting),
-          которые заканчиваются на клике по настоящей кнопке, эту кнопку
-          вообще не давали бы нажать: тулбар лежал бы прямо поверх неё. */}
-      <div className={`${styles.stage} ${collapsed ? styles.stageToolbarCollapsed : ''}`}>
+    <div className={styles.harnessRoot}>
+      <div className={styles.stageCard}>
         <App key={runId} />
       </div>
       <ScenarioToolbar
@@ -39,7 +34,7 @@ const Harness = () => {
         collapsed={collapsed}
         onToggleCollapsed={() => setCollapsed((value) => !value)}
       />
-    </>
+    </div>
   )
 }
 

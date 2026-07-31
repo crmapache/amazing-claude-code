@@ -1,41 +1,40 @@
 /*
- * <App/> сам заполняет всю ширину своего контейнера (.panel в shell.module.css
- * растягивается на 100%), а реальная JetBrains-панель — узкая (~300-450px).
- * Стейдж резервирует справа место под тулбар (ширина держится в шаге с
- * .toolbar/.toolbarCollapsed ниже) и сам ограничен по ширине, чтобы разметка
- * в харнессе была похожа на настоящий боковой инструмент, а не на окно
- * браузера целиком, и чтобы тулбар никогда не лежал поверх настоящих кнопок
- * панели (Send, кнопки в шапке).
+ * Обёртка на весь экран: тёмный «стол» с отступами от краёв, на котором лежат
+ * две карточки со скруглениями — сама панель и тулбар сценариев — с зазором
+ * между ними, а не впритык друг к другу и к краям окна. Панель растягивается
+ * на всё оставшееся место (flex: 1), тулбар держит фиксированную ширину —
+ * поэтому тулбар никогда не лежит поверх настоящих кнопок панели (Send,
+ * кнопки в шапке).
  */
-.stage {
-  position: fixed;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: min(420px, calc(100vw - 260px));
+.harnessRoot {
+  display: flex;
+  height: 100%;
+  padding: 16px;
+  gap: 16px;
+  background: var(--acc-bg-sunken);
 }
 
-.stageToolbarCollapsed {
-  width: min(420px, calc(100vw - 34px));
+.stageCard {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--acc-line);
 }
 
 .toolbar {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 260px;
+  flex: 0 0 260px;
   overflow-y: auto;
   padding: 12px;
   background: #16171c;
-  border-left: 1px solid #2a2b32;
+  border-radius: 14px;
+  box-shadow: 0 0 0 1px var(--acc-line);
   font: 12px/1.4 -apple-system, BlinkMacSystemFont, sans-serif;
   color: #d8d9df;
-  z-index: 9999;
 }
 
 .toolbarCollapsed {
-  width: 34px;
+  flex: 0 0 34px;
   padding: 12px 6px;
   overflow: hidden;
 }
