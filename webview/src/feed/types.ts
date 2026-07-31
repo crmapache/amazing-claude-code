@@ -195,6 +195,8 @@ export interface CompactItem {
   id: string
   kind: 'compact'
   target: string
+  /** Сжатие ещё идёт — карточка появляется сразу, до того как известен итог. */
+  pending: boolean
 }
 
 export interface MetaItem {

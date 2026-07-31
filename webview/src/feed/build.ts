@@ -1,6 +1,7 @@
 import type {
   AgentEvent,
   AgentStatus,
+  AgentSystemEvent,
   AgentUsage,
   ContentBlock,
   ToolResultBlock,
@@ -453,13 +454,31 @@ const applySystem = (
     compacting: event.status === 'compacting' ? true : state.compacting,
   }
 
+  // Сама карточка CONTEXT должна быть видна ещё до готового результата — иначе
+  // единственный след того, что что-то происходит, это переливающаяся строка
+  // статуса, которая не остаётся в истории (см. жалобу, из-за которой это
+  // вообще завели).
+  if (event.status === 'compacting' && !state.compacting) {
+    return {
+      ...base,
+      seq: base.seq + 1,
+      items: [
+        ...base.items,
+        { id: `compact-${base.seq}`, kind: 'compact', target: 'Compacting conversation…', pending: true },
+      ],
+    }
+  }
+
   // Итог попытки сжатия приходит отдельной строкой статуса, а не compact_boundary,
-  // если сжимать оказалось нечего — тогда пометки об успехе вообще не будет,
-  // а «работает» так и останется висеть немым, если не снять флаг здесь же.
+  // если сжимать оказалось нечего — тогда pending-карточка так и останется
+  // недорисованной, если её не убрать здесь же явно.
   if (event.compact_result !== undefined) {
     return {
       ...base,
       compacting: false,
+      items: base.items.some((item) => item.kind === 'compact' && item.pending)
+        ? base.items.filter((item) => !(item.kind === 'compact' && item.pending))
+        : base.items,
       errors:
         event.compact_result === 'failed' && event.compact_error
           ? [...base.errors, event.compact_error]
@@ -468,22 +487,19 @@ const applySystem = (
   }
 
   if (event.subtype === 'compact_boundary') {
-    const before = event.compact_metadata?.pre_tokens
-    const trigger = event.compact_metadata?.trigger === 'manual' ? 'manually' : 'automatically'
+    const target = compactBoundaryText(event.compact_metadata)
+    // Пока сжатие идёт, в ленту больше ничего не приходит (контекст в этот момент
+    // как раз переписывается) — pending-карточка, если она есть, всегда последняя.
+    const last = base.items.at(-1)
+
+    if (last?.kind === 'compact' && last.pending) {
+      return { ...base, items: [...base.items.slice(0, -1), { ...last, target, pending: false }] }
+    }
 
     return {
       ...base,
       seq: base.seq + 1,
-      items: [
-        ...base.items,
-        {
-          id: `compact-${base.seq}`,
-          kind: 'compact',
-          target: before
-            ? `${trigger} compacted ${formatTokens(before)} of context into a summary`
-            : `context ${trigger} compacted`,
-        },
-      ],
+      items: [...base.items, { id: `compact-${base.seq}`, kind: 'compact', target, pending: false }],
     }
   }
 
@@ -841,10 +857,17 @@ const resolveTaskId = (state: PanelState, parentToolUseId: string): string =>
 
 /**
  * Сообщения субагента идут в лог его же карточки, а не в общую ленту — у него
- * своя вкладка (см. AgentStreamView). Вопрос AskUserQuestion, заданный самим
- * субагентом, отдельно превращается в настоящую карточку с вариантами ответа,
- * привязанную к нему через taskId — раньше терялся здесь же, одной строкой без
- * возможности ответить.
+ * своя вкладка (см. AgentStreamView).
+ *
+ * Ветка AskUserQuestion ниже — на будущее, а не для сегодняшнего Claude Code:
+ * по официальной документации Agent SDK (user-input.md, раздел Limitations;
+ * sub-agents.md, "Control subagent capabilities") AskUserQuestion сейчас
+ * вообще недоступен субагентам, запущенным через Task/Agent — SDK вырезает
+ * его из набора инструментов до того, как субагент успеет его вызвать. Раз
+ * инструмент недостижим, до этой ветки в реальности дело не доходит: она не
+ * лечит какую-то поломку доставки ответа, а просто готова к моменту, если
+ * Anthropic такое ограничение снимет — тогда вопрос от субагента не потеряется
+ * одной строкой без вариантов ответа, как было раньше.
  */
 const noteSubagent = (state: PanelState, parentToolUseId: string, blocks: ContentBlock[]): PanelState => {
   const taskId = resolveTaskId(state, parentToolUseId)
@@ -989,6 +1012,17 @@ export const formatTokens = (value: number): string => {
   // «1000.0k» в датчике читается хуже, чем «1.0M».
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
   return value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value)
+}
+
+/** Текст готовой карточки CONTEXT — с реальными до/после и временем, если IDE их прислала. */
+const compactBoundaryText = (meta: AgentSystemEvent['compact_metadata']): string => {
+  const before = meta?.pre_tokens
+  const trigger = meta?.trigger === 'manual' ? 'manually' : 'automatically'
+  if (before === undefined) return `context ${trigger} compacted`
+
+  const into = meta?.post_tokens !== undefined ? `a ${formatTokens(meta.post_tokens)} summary` : 'a summary'
+  const duration = meta?.duration_ms !== undefined ? ` in ${formatDuration(meta.duration_ms)}` : ''
+  return `${trigger} compacted ${formatTokens(before)} of context into ${into}${duration}`
 }
 
 const formatClock = (ms: number): string => {

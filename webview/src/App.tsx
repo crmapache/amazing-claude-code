@@ -174,7 +174,6 @@ export const App = () => {
       for (const id of finishedIds) next.add(id)
       return next
     })
-    setActiveStream((current) => (finishedIds.includes(current) ? 'main' : current))
   }
 
   useEffect(() => {
@@ -402,6 +401,7 @@ export const App = () => {
     if (!next) return
 
     clearFinishedAgents(active)
+    setActiveStream('main')
     setQueue(rest)
     dispatchPanel({
       session: active,
@@ -635,6 +635,7 @@ export const App = () => {
     }
 
     clearFinishedAgents(active)
+    setActiveStream('main')
 
     dispatchPanel({
       session: active,
@@ -683,6 +684,7 @@ export const App = () => {
         setQueue((current) => [...current, { id: `q-${Date.now()}`, text, attach: '', images: [] }])
       } else {
         clearFinishedAgents(active)
+        setActiveStream('main')
         dispatchPanel({
           session: active,
           action: { kind: 'prompt', tokens: [{ kind: 'text', value: text }], quotes: [] },
@@ -857,7 +859,7 @@ export const App = () => {
         </div>
       ) : (
         <>
-        <StreamSwitcher tabs={agentTabs} mainStatus={mainStatus} active={activeStream} onPick={setActiveStream} />
+        <StreamSwitcher tabs={agentTabs} mainStatus={mainStatus} active={resolvedStream} onPick={setActiveStream} />
 
         <div className={s.body}>
           {resolvedStream === 'main' ? (
@@ -1105,17 +1107,20 @@ const imageAttachments = (tokens: UserToken[]): { mediaType: string; data: strin
   })
 
 /**
- * Пока висит неотвеченный запрос разрешения или вопрос агента, ход на деле не
- * думает — он стоит и ждёт решения человека. «Claude is thinking» в этот
- * момент было бы неправдой.
+ * Пока висит неотвеченный запрос разрешения или вопрос ГЛАВНОГО потока, ход
+ * на деле не думает — он стоит и ждёт решения человека. «Claude is thinking»
+ * в этот момент было бы неправдой. Решение конкретного агента сюда не
+ * считается: за него отвечает статус в дропдауне и его собственная вкладка —
+ * если бы главная строка статуса реагировала и на них, она бы сама стала той
+ * самой нечестной подписью, ради ухода от которой затевался весь редизайн.
  */
 const streamStatus = (panel: PanelState, cards: CardState): string => {
   if (panel.compacting) return 'Compacting context…'
 
   const awaitingDecision = panel.items.some(
     (item) =>
-      (item.kind === 'perm' && item.decision === null) ||
-      (item.kind === 'ask' && !cards.answeredAsks.includes(item.id)),
+      (item.kind === 'perm' && item.decision === null && item.taskId === undefined) ||
+      (item.kind === 'ask' && item.taskId === undefined && !cards.answeredAsks.includes(item.id)),
   )
   if (awaitingDecision) return 'Waiting for you'
 
@@ -1128,15 +1133,26 @@ const streamStatus = (panel: PanelState, cards: CardState): string => {
 const latestTodo = (items: FeedItem[]): TodoItem | undefined =>
   [...items].reverse().find((item): item is TodoItem => item.kind === 'todo')
 
+/**
+ * Чей это, собственно, стрим. taskId без задачи, на которую он ссылается
+ * (например если совпадение agent_id/task_id однажды перестанет быть верным
+ * на новой версии CLI), — не повод спрятать решение насовсем: без этого оно
+ * не показалось бы нигде и тихо истекло по таймауту. Считаем такое главным
+ * потоком, а не отдельным несуществующим стримом.
+ */
+const ownerStream = (taskId: string | undefined, items: FeedItem[]): string => {
+  if (taskId === undefined) return 'main'
+  const known = items.some((item) => item.kind === 'task' && item.id === taskId)
+  return known ? taskId : 'main'
+}
+
 /** Последний заданный агентом вопрос в текущем стриме, на который ещё не отвечено. */
 const pendingAsk = (items: FeedItem[], answered: string[], stream: string): AskItem | undefined =>
   [...items]
     .reverse()
     .find(
       (item): item is AskItem =>
-        item.kind === 'ask' &&
-        !answered.includes(item.id) &&
-        (stream === 'main' ? item.taskId === undefined : item.taskId === stream),
+        item.kind === 'ask' && !answered.includes(item.id) && ownerStream(item.taskId, items) === stream,
     )
 
 /** Последний вызов текущего стрима, который всё ещё ждёт решения по разрешению. */
@@ -1145,9 +1161,7 @@ const pendingPermission = (items: FeedItem[], stream: string): PermItem | undefi
     .reverse()
     .find(
       (item): item is PermItem =>
-        item.kind === 'perm' &&
-        item.decision === null &&
-        (stream === 'main' ? item.taskId === undefined : item.taskId === stream),
+        item.kind === 'perm' && item.decision === null && ownerStream(item.taskId, items) === stream,
     )
 
 const statusOf = (task: TaskItem, items: FeedItem[], answeredAsks: string[]): AgentStatus => {
@@ -1180,6 +1194,8 @@ const buildAgentTabs = (panel: PanelState, answeredAsks: string[], hiddenTaskIds
       label: `agent:${task.target}`,
       meta: task.meta,
       status: statusOf(task, panel.items, answeredAsks),
+      percent: task.percent,
+      duration: task.duration,
     }))
 
 const menuProps = (

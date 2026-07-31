@@ -11,7 +11,7 @@ export const CheckpointRow = ({ item }: { item: CheckpointItem }) => (
 
 export const CompactRow = ({ item }: { item: CompactItem }) => (
   <div className={s.compact}>
-    <span className={s.compactLabel}>CONTEXT</span>
+    <span className={`${s.compactLabel} ${item.pending ? s.pending : ''}`}>CONTEXT</span>
     <span className={s.compactText}>{item.target}</span>
     <div className={s.spacer} />
   </div>

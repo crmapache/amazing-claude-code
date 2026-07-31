@@ -1,6 +1,4 @@
-import { useState } from 'react'
-import { Menu, type MenuOption } from './Menu'
-import type { Anchor } from './StatusBar'
+import { useEffect, useRef } from 'react'
 import s from './shell.module.css'
 
 export type AgentStatus = 'idle' | 'running' | 'done' | 'needs-input'
@@ -10,6 +8,9 @@ export interface AgentTab {
   label: string
   meta: string
   status: AgentStatus
+  /** Сколько агент уже прошёл — на чип идёт как заполнение кружка, не текстом. */
+  percent: number
+  duration: string
 }
 
 interface StreamSwitcherProps {
@@ -25,86 +26,75 @@ const STATUS_DOT: Partial<Record<AgentStatus, string>> = {
   'needs-input': 'var(--acc-warn)',
 }
 
-const STATUS_TAG: Partial<Record<AgentStatus, string>> = {
-  running: 'RUNNING',
-  done: 'DONE',
-  'needs-input': 'NEEDS INPUT',
-}
+/**
+ * Кружок прогресса вместо плоской точки — залит по часовой стрелке ровно на
+ * percent, пустой контур при 0%, сплошной кружок при 100%. Цвет тот же, что
+ * был бы у точки: заполнение отвечает за «сколько», цвет — за «что сейчас».
+ */
+const ProgressDot = ({ percent, color }: { percent: number; color: string }) => (
+  <span
+    className={s.streamProgress}
+    style={{ borderColor: color, background: `conic-gradient(${color} ${percent}%, transparent ${percent}%)` }}
+  />
+)
 
 /**
- * Дропдаун вместо чипов StreamsBar: переключает, что видно в области вывода —
- * main или конкретный агент. Появляется только когда за сессию был хотя бы
- * один агент — до этого переключать нечего, а до первого запуска место в
- * шапке лучше не занимать.
+ * Чипы вместо дропдауна: main всегда первым, дальше агенты в порядке запуска.
+ * Клик переключает, что видно в области вывода — как вкладки. Появляется
+ * только когда за сессию был хотя бы один агент — до этого переключать
+ * нечего, а до первого запуска место в шапке лучше не занимать.
  */
 export const StreamSwitcher = ({ tabs, mainStatus, active, onPick }: StreamSwitcherProps) => {
-  const [anchor, setAnchor] = useState<Anchor | null>(null)
+  const listRef = useRef<HTMLDivElement | null>(null)
+
+  // Колесо мыши крутит только по вертикали — переводим deltaY в горизонтальную
+  // прокрутку сами, иначе при переполнении чипы были бы недостижимы без
+  // трекпада. preventDefault нужен настоящий, не пассивный слушатель: иначе
+  // событие ещё и укатило бы страницу вниз при каждой прокрутке чипов.
+  useEffect(() => {
+    const element = listRef.current
+    if (!element) return
+
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY === 0) return
+      element.scrollLeft += event.deltaY
+      event.preventDefault()
+    }
+
+    element.addEventListener('wheel', onWheel, { passive: false })
+    return () => element.removeEventListener('wheel', onWheel)
+  }, [])
+
   if (tabs.length === 0) return null
 
-  const options: MenuOption[] = [
-    {
-      id: 'main',
-      label: 'main',
-      dot: STATUS_DOT[mainStatus],
-      tag: STATUS_TAG[mainStatus],
-      danger: mainStatus === 'needs-input',
-    },
-    ...tabs.map((tab) => ({
-      id: tab.id,
-      label: tab.label,
-      sub: tab.meta,
-      dot: STATUS_DOT[tab.status],
-      tag: STATUS_TAG[tab.status],
-      danger: tab.status === 'needs-input',
-    })),
-  ]
-
-  const currentLabel = active === 'main' ? 'main' : (tabs.find((tab) => tab.id === active)?.label ?? 'main')
-
   return (
-    <div className={s.streamBar}>
-      <button
-        type="button"
-        className={s.selector}
-        onClick={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect()
-          setAnchor({ right: window.innerWidth - rect.right, top: rect.top, bottom: rect.bottom })
-        }}
-      >
-        <span className={s.selectorLabel}>STREAM</span>
-        <span className={s.selectorValue}>{currentLabel}</span>
-        <Chevron />
-      </button>
+    <div className={s.streams}>
+      <div className={s.streamList} ref={listRef}>
+        <button
+          type="button"
+          className={`${s.stream} ${active === 'main' ? s.streamActive : ''}`}
+          onClick={() => onPick('main')}
+        >
+          {STATUS_DOT[mainStatus] ? (
+            <span className={s.streamDot} style={{ background: STATUS_DOT[mainStatus] }} />
+          ) : null}
+          <span className={s.streamLabel}>main</span>
+        </button>
 
-      {anchor ? (
-        <Menu
-          title="STREAMS"
-          hint="what the output area shows"
-          width={280}
-          anchor={anchor}
-          placement="down"
-          options={options}
-          selected={active}
-          onPick={(id) => {
-            onPick(id)
-            setAnchor(null)
-          }}
-          onClose={() => setAnchor(null)}
-        />
-      ) : null}
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={`${s.stream} ${tab.id === active ? s.streamActive : ''}`}
+            onClick={() => onPick(tab.id)}
+          >
+            <ProgressDot percent={tab.percent} color={STATUS_DOT[tab.status] ?? 'var(--acc-fg-fainter)'} />
+            <span className={s.streamLabel}>{tab.label}</span>
+            {tab.duration ? <span className={s.streamDuration}>{tab.duration}</span> : null}
+            {tab.meta ? <span className={s.streamMeta}>{tab.meta}</span> : null}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
-
-const Chevron = () => (
-  <svg className={s.selectorCaret} viewBox="0 0 10 6" aria-hidden="true">
-    <path
-      d="M1 1.4 5 5 9 1.4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-)

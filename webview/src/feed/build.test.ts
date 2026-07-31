@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent } from '../protocol'
 import { contextUsage, initialPanelState, reducePanel, type PanelState } from './build'
-import type { TaskItem, TextItem, ToolGroupItem } from './types'
+import type { CompactItem, TaskItem, TextItem, ToolGroupItem } from './types'
 
 /**
  * Поток записан живым прогоном агента, а не придуман: только так видно и порядок
@@ -46,6 +46,22 @@ const subagentMessageEvent = (parentToolUseId: string, text: string): AgentEvent
   type: 'assistant',
   message: { content: [{ type: 'text', text }] },
   parent_tool_use_id: parentToolUseId,
+})
+
+const compactingStatusEvent = (): AgentEvent => ({ type: 'system', subtype: 'status', status: 'compacting' })
+
+const compactBoundaryEvent = (metadata: {
+  trigger?: string
+  pre_tokens?: number
+  post_tokens?: number
+  duration_ms?: number
+}): AgentEvent => ({ type: 'system', subtype: 'compact_boundary', compact_metadata: metadata })
+
+const compactResultEvent = (result: string, error?: string): AgentEvent => ({
+  type: 'system',
+  subtype: 'status',
+  compact_result: result,
+  ...(error ? { compact_error: error } : {}),
 })
 
 const subagentAskEvent = (parentToolUseId: string): AgentEvent => ({
@@ -335,5 +351,82 @@ describe('лог фонового субагента', () => {
 
     const perm = state.items.find((item) => item.kind === 'perm')
     expect(perm?.kind === 'perm' && perm.taskId).toBe('task-1')
+  })
+
+  it('игнорирует сообщение субагента без задачи в ленте, а не падает и не создаёт мусор', () => {
+    const before = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
+    const after = play([subagentMessageEvent('toolu-unknown', 'Привет из ниоткуда')], before)
+
+    expect(after).toEqual(before)
+  })
+})
+
+describe('сжатие контекста', () => {
+  it('статус "compacting" сразу заводит pending-карточку CONTEXT, не дожидаясь итога', () => {
+    const state = play([compactingStatusEvent()])
+    const compact = state.items.find((item): item is CompactItem => item.kind === 'compact')
+
+    expect(state.compacting).toBe(true)
+    expect(compact?.pending).toBe(true)
+    expect(compact?.target).toBe('Compacting conversation…')
+  })
+
+  it('compact_boundary обновляет ту же карточку реальными цифрами, а не создаёт вторую', () => {
+    let state = play([compactingStatusEvent()])
+    state = play(
+      [compactBoundaryEvent({ trigger: 'automatic', pre_tokens: 168000, post_tokens: 41000, duration_ms: 3200 })],
+      state,
+    )
+
+    const compactItems = state.items.filter((item) => item.kind === 'compact')
+    expect(compactItems).toHaveLength(1)
+    expect(compactItems[0]?.kind === 'compact' && compactItems[0].pending).toBe(false)
+    expect(compactItems[0]?.kind === 'compact' && compactItems[0].target).toBe(
+      'automatically compacted 168.0k of context into a 41.0k summary in 3.2s',
+    )
+  })
+
+  it('без post_tokens/duration_ms откатывается на прежнюю формулировку', () => {
+    const state = play([compactBoundaryEvent({ trigger: 'manual', pre_tokens: 5000 })])
+    const compact = state.items.find((item): item is CompactItem => item.kind === 'compact')
+
+    expect(compact?.pending).toBe(false)
+    expect(compact?.target).toBe('manually compacted 5.0k of context into a summary')
+  })
+
+  it('compact_boundary без предварительного пинга всё равно создаёт готовую карточку', () => {
+    const state = play([compactBoundaryEvent({ trigger: 'automatic', pre_tokens: 90000, post_tokens: 30000 })])
+    const compact = state.items.find((item): item is CompactItem => item.kind === 'compact')
+
+    expect(compact?.pending).toBe(false)
+    expect(compact?.target).toBe('automatically compacted 90.0k of context into a 30.0k summary')
+  })
+
+  it('закрывающий статус гасит флаг compacting, не трогая уже готовую карточку', () => {
+    let state = play([compactingStatusEvent()])
+    state = play([compactBoundaryEvent({ trigger: 'automatic', pre_tokens: 168000 })], state)
+    const before = state.items.find((item) => item.kind === 'compact')
+
+    state = play([compactResultEvent('completed')], state)
+
+    expect(state.compacting).toBe(false)
+    expect(state.items.find((item) => item.kind === 'compact')).toEqual(before)
+  })
+
+  it('нечего сжимать: pending-карточка без compact_boundary тихо убирается, а не висит вечно', () => {
+    let state = play([compactingStatusEvent()])
+    expect(state.items.some((item) => item.kind === 'compact')).toBe(true)
+
+    state = play([compactResultEvent('completed')], state)
+
+    expect(state.items.some((item) => item.kind === 'compact')).toBe(false)
+    expect(state.compacting).toBe(false)
+  })
+
+  it('проваленная попытка сжатия добавляет ошибку в общий баннер', () => {
+    let state = play([compactingStatusEvent()])
+    state = play([compactResultEvent('failed', 'Compaction failed · conversation could not be reduced')], state)
+
+    expect(state.errors).toContain('Compaction failed · conversation could not be reduced')
   })
 })

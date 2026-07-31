@@ -1,4 +1,4 @@
-/* Обвязка панели: шапка, потоки, нижняя строка, меню, ящик агентов, тост. */
+/* Обвязка панели: шапка, переключатель стрима, нижняя строка, меню, тост. */
 
 /* Кадры анимаций живут здесь, а не в общем файле: CSS-модуль переименовывает
    имена анимаций так же, как классы, и ссылка на глобальные кадры молча ни во что
@@ -249,13 +249,91 @@
 
 /* --- Переключатель стрима --------------------------------------------------- */
 
-.streamBar {
+.streams {
   flex: none;
   display: flex;
   align-items: center;
   padding: 6px 8px;
   background: var(--acc-bg-raised);
   border-bottom: 1px solid var(--acc-line);
+  overflow: hidden;
+}
+
+/* Прокрутка по колесу мыши включается в компоненте (deltaY → scrollLeft) —
+   overflow-x тут только даёт браузеру куда деть содержимое, которое не
+   поместилось. Полоса скрыта тем же приёмом, что и у .feed — нативная
+   резервировала бы высоту и двигала бы чипы при появлении. */
+.streamList {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.streamList::-webkit-scrollbar {
+  display: none;
+}
+
+.stream {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md);
+  color: var(--acc-fg-dim);
+  white-space: nowrap;
+}
+
+.stream:hover {
+  border-color: var(--acc-line-hover);
+}
+
+.streamActive {
+  background: var(--acc-bg-control);
+  border-color: var(--acc-line-hover);
+  color: var(--acc-fg);
+}
+
+.streamDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 9px;
+  flex: none;
+}
+
+.streamProgress {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1px solid;
+  box-sizing: border-box;
+}
+
+.streamLabel {
+  font: 500 11px var(--acc-mono);
+  white-space: nowrap;
+}
+
+.streamMeta {
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.streamDuration {
+  flex: none;
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-fainter);
 }
 
 /* --- Нижняя строка --------------------------------------------------------- */
@@ -510,14 +588,6 @@
 
 .menuTagDanger {
   color: var(--acc-bad-light);
-}
-
-.menuDot {
-  flex: none;
-  align-self: center;
-  width: 5px;
-  height: 5px;
-  border-radius: 9px;
 }
 
 .menuSub {

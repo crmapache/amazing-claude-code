@@ -4,12 +4,10 @@ import s from './shell.module.css'
 
 export type SelectorKind = 'model' | 'effort' | 'mode'
 
-/** Где стоит кнопка селектора: меню открывается рядом с ней. */
+/** Где стоит кнопка селектора: меню открывается ровно над ней. */
 export interface Anchor {
   right: number
   top: number
-  /** Нижний край кнопки-триггера — нужен только меню, открывающемуся вниз. */
-  bottom?: number
 }
 
 interface StatusBarProps {

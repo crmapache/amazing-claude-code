@@ -266,18 +266,22 @@ export interface AgentSystemEvent {
   permissionMode?: string
   slash_commands?: string[]
   /** Приходит при автоматическом сжатии контекста. */
-  compact_metadata?: { trigger?: string; pre_tokens?: number }
+  compact_metadata?: { trigger?: string; pre_tokens?: number; post_tokens?: number; duration_ms?: number }
   /** Отдельное событие статуса — например "compacting", пока идёт сжатие. */
   status?: string
   /** Итог сжатия — приходит вместе с status:null, когда попытка закончилась. */
   compact_result?: string
   compact_error?: string
   /**
-   * Фоновый подагент, запущенный скиллом/воркфлоу (например /code-review) —
-   * отдельно от обычного вызова инструмента Task в потоке ассистента: этих
-   * событий вообще не бывает у tool_use-блока, только у самих system-событий
-   * (проверено напрямую: task_started/task_progress/task_notification
-   * приходят даже раньше system:init самого хода). task_id — их общий ключ.
+   * Изначально заводился только под фоновый подагент, запущенный скиллом/
+   * воркфлоу (например /code-review) — в отличие от обычного вызова
+   * инструмента Task, который, как тогда казалось, всегда приходит отдельным
+   * tool_use-блоком в потоке ассистента. На практике (проверено напрямую на
+   * CLI 2.1.220) это оказалось не так: и обычный Task тоже идёт исключительно
+   * этим же каналом — tool_use-блока для него не бывает вовсе, только эти
+   * system-события (task_started/task_progress/task_notification приходят
+   * даже раньше system:init самого хода). task_id — общий ключ для обоих
+   * случаев, что и позволяет build.ts обрабатывать их одинаково.
    */
   task_id?: string
   tool_use_id?: string

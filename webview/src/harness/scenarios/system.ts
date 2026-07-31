@@ -15,8 +15,20 @@ export const scenariosSystem: Scenario[] = [
 
   scenario('context-compaction', 'Сжатие контекста', 'system', [
     checkpoint('Пользователь продолжает рефакторинг', [user('Продолжаем большой рефакторинг'), wait(500)]),
-    checkpoint('Контекст сжимается', [
-      agent({ type: 'system', subtype: 'compact_boundary', compact_metadata: { trigger: 'automatic', pre_tokens: 168000 } }),
+    // Реальный CLI сперва шлёт отдельный статус "compacting" — задолго до итога с
+    // цифрами. Без этого шага в ленте нет никакого следа того, что сжатие вообще
+    // происходит: карточка CONTEXT появляется здесь же, в pending-состоянии.
+    checkpoint('Идёт сжатие контекста', [
+      agent({ type: 'system', subtype: 'status', status: 'compacting' }),
+      wait(1200),
+    ]),
+    checkpoint('Контекст сжат', [
+      agent({
+        type: 'system',
+        subtype: 'compact_boundary',
+        compact_metadata: { trigger: 'automatic', pre_tokens: 168000, post_tokens: 41000, duration_ms: 3200 },
+      }),
+      agent({ type: 'system', subtype: 'status', compact_result: 'completed' }),
       wait(800),
     ]),
     checkpoint('Готовый ответ', [
