@@ -674,5 +674,53 @@ export const scenariosCards: Scenario[] = [
       ...textReply('Оба ревью закончились — по фронту пара мелочей, бэк чист.'),
       turnResult(8500),
     ]),
+    checkpoint('Следующее сообщение — завершённая пачка пропадает из дропдауна', [
+      user('Отлично, теперь обнови README с находками'),
+      wait(400),
+    ]),
+  ]),
+
+  // Заканчивается на пермишене намеренно, как и permission-waiting: решение
+  // принимает настоящая кнопка настоящего интерфейса, а не сценарий.
+  scenario('multiple-agents-permission', 'Несколько агентов: один ждёт разрешения', 'cards', [
+    checkpoint('Пользователь просит параллельное ревью', [
+      user('Запусти ревью фронта и бэка параллельно'),
+      wait(500),
+    ]),
+    checkpoint('Task ×2: фронт и бэк одновременно', [
+      agent({
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'c13-a',
+              name: 'Task',
+              input: { subagent_type: 'react-architecture', description: 'Ревью фронта' },
+            },
+            {
+              type: 'tool_use',
+              id: 'c13-b',
+              name: 'Task',
+              input: { subagent_type: 'nest-architecture', description: 'Ревью бэка' },
+            },
+          ],
+        },
+      }),
+      wait(1500),
+    ]),
+    checkpoint('Агент фронта: смотрит компоненты', [subagentText('c13-a', 'Смотрю компоненты…'), wait(1200)]),
+    checkpoint('Агент бэка: хочет прогнать тесты — ждёт разрешения', [
+      shell({
+        type: 'permission',
+        id: 'c13-perm',
+        sessionId: SESSION,
+        agentId: 'c13-b',
+        toolName: 'Bash',
+        target: 'wants to run a command',
+        command: 'npm test',
+        mode: 'default',
+      }),
+    ]),
   ]),
 ]
