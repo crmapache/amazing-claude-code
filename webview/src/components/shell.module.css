@@ -259,100 +259,15 @@
   transform: translateY(0);
 }
 
-/* --- Полоса потоков -------------------------------------------------------- */
+/* --- Переключатель стрима --------------------------------------------------- */
 
-.streams {
+.streamBar {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 6px;
   padding: 6px 8px;
   background: var(--acc-bg-raised);
   border-bottom: 1px solid var(--acc-line);
-  overflow: hidden;
-}
-
-.streamsLabel {
-  font: 600 9px/1 var(--acc-mono);
-  letter-spacing: 0.09em;
-  color: var(--acc-fg-fainter);
-  flex: none;
-}
-
-.streamList {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.stream {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  height: 22px;
-  padding: 0 9px;
-  border: 1px solid var(--acc-line);
-  border-radius: var(--acc-r-md);
-  color: var(--acc-fg-dim);
-}
-
-.stream:hover {
-  border-color: var(--acc-line-hover);
-}
-
-.streamActive {
-  background: var(--acc-bg-control);
-  border-color: var(--acc-line-hover);
-  color: var(--acc-fg);
-}
-
-.streamDot {
-  width: 5px;
-  height: 5px;
-  border-radius: 9px;
-  flex: none;
-}
-
-.streamLabel {
-  font: 500 11px var(--acc-mono);
-  white-space: nowrap;
-}
-
-.streamMeta {
-  font: 10px var(--acc-mono);
-  color: var(--acc-fg-faint);
-}
-
-.running {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  height: 22px;
-  padding: 0 9px;
-  border: 1px solid var(--acc-agent-line);
-  border-radius: var(--acc-r-sm);
-  background: var(--acc-agent-soft);
-  color: var(--acc-agent-light);
-}
-
-.running:hover {
-  background: rgb(183 140 240 / 20%);
-}
-
-.runningDot {
-  width: 5px;
-  height: 5px;
-  border-radius: 9px;
-  background: var(--acc-agent);
-  animation: acc-pulse 1.4s infinite;
-}
-
-.runningLabel {
-  font: 500 11px var(--acc-mono);
 }
 
 /* --- Нижняя строка --------------------------------------------------------- */
@@ -607,6 +522,14 @@
 
 .menuTagDanger {
   color: var(--acc-bad-light);
+}
+
+.menuDot {
+  flex: none;
+  align-self: center;
+  width: 5px;
+  height: 5px;
+  border-radius: 9px;
 }
 
 .menuSub {
