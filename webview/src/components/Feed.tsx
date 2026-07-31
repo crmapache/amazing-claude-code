@@ -5,7 +5,6 @@ import type { CardState } from '../hooks/useCardState'
 import s from './feed.module.css'
 import { PlanCard } from './items/PlanCard'
 import { CheckpointRow, CompactRow, CrashRow, MetaRow } from './items/Rows'
-import { TaskCard } from './items/TaskCard'
 import { TextCard } from './items/TextCard'
 import { ToolGroupCard } from './items/ToolGroupCard'
 import { UserCard } from './items/UserCard'
@@ -15,7 +14,7 @@ import { ScrollThumb } from './ScrollThumb'
  * Список задач, вопрос агента и запрос разрешения в ленте не рисуются — за них
  * отвечают закреплённые панели над полем ввода (TaskListPanel/AskPanel/PermissionPanel).
  */
-type FeedRowItem = Exclude<FeedItem, TodoItem | AskItem | PermItem>
+type FeedRowItem = Exclude<FeedItem, TodoItem | AskItem | PermItem | TaskItem>
 
 interface FeedProps {
   items: FeedItem[]
@@ -59,18 +58,17 @@ export const Feed = ({
   )
 
   /**
-   * Пока где-то в ленте открыт неотвеченный запрос разрешения, самая свежая
-   * «выполняется»-карточка на деле просто ждёт человека — агент вообще ещё не
-   * начал команду. Без этой пометки обе ситуации выглядят одинаковым спиннером.
+   * Пока где-то в ленте открыт неотвеченный запрос разрешения ГЛАВНОГО потока
+   * (не субагента — у его решений своя вкладка, см. AgentStreamView), самая
+   * свежая «выполняется»-карточка на деле просто ждёт человека. Без этой
+   * пометки обе ситуации выглядят одинаковым спиннером.
    */
-  const awaitingPermission = items.some((item) => item.kind === 'perm' && item.decision === null)
+  const awaitingPermission = items.some(
+    (item) => item.kind === 'perm' && item.decision === null && item.taskId === undefined,
+  )
   const lastPendingId = awaitingPermission
     ? items
-        .flatMap<ToolItem | TaskItem>((item) => {
-          if (item.kind === 'toolGroup') return item.tools.filter((tool) => tool.pending)
-          if (item.kind === 'task' && item.pending) return [item]
-          return []
-        })
+        .flatMap<ToolItem>((item) => (item.kind === 'toolGroup' ? item.tools.filter((tool) => tool.pending) : []))
         .at(-1)?.id
     : undefined
   /** Пока пользователь не отмотал вверх сам, лента липнет к низу. */
@@ -226,16 +224,6 @@ const ItemView = ({ item, cards, lastPendingId, onPlanDecision }: ItemViewProps)
 
     case 'toolGroup':
       return <ToolGroupCard item={item} cards={cards} awaitingPermissionId={lastPendingId} />
-
-    case 'task':
-      return (
-        <TaskCard
-          item={item}
-          open={cards.isOpen(item.id)}
-          awaitingPermission={item.id === lastPendingId}
-          onToggle={() => cards.toggle(item.id)}
-        />
-      )
 
     case 'plan':
       return (
