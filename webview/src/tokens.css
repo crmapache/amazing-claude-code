@@ -102,6 +102,5 @@
   /* Тени всплывающих слоёв */
   --acc-shadow-menu: 0 18px 44px rgb(0 0 0 / 60%);
   --acc-shadow-card: 0 16px 42px rgb(0 0 0 / 55%), 0 0 0 1px rgb(0 0 0 / 40%);
-  --acc-shadow-drawer: -18px 0 48px rgb(0 0 0 / 50%);
   --acc-shadow-popover: 0 10px 26px rgb(0 0 0 / 60%);
 }
