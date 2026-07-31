@@ -86,3 +86,163 @@
   background: #2d3350;
   color: #b9c2ff;
 }
+
+.modeSwitch {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 3px;
+  border-radius: 8px;
+  background: #1c1d22;
+}
+
+.modeButton {
+  flex: 1;
+  padding: 5px 0;
+  border-radius: 6px;
+  text-align: center;
+  color: #9a9bab;
+}
+
+.modeButton:hover {
+  color: #d8d9df;
+}
+
+.modeActive {
+  background: #2d3350;
+  color: #b9c2ff;
+}
+
+/* --- Карточка чекпоинтов ----------------------------------------------------- */
+
+.checkpoints {
+  flex: 0 0 260px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 12px;
+  background: #16171c;
+  border-radius: 14px;
+  box-shadow: 0 0 0 1px var(--acc-line);
+  font: 12px/1.4 -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #d8d9df;
+}
+
+.checkpointsHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.copyButton {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #9a9bab;
+  background: #1c1d22;
+}
+
+.copyButton:hover:not(:disabled) {
+  color: #d8d9df;
+  background: #23242c;
+}
+
+.copyButton:disabled {
+  opacity: 0.4;
+}
+
+.checkpointsEmpty {
+  color: #71757e;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.checkpointsList {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.checkpointRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  width: 100%;
+  text-align: left;
+  padding: 5px 6px;
+  margin-bottom: 1px;
+  border-radius: 6px;
+  color: #71757e;
+}
+
+.checkpointRow:hover {
+  background: #23242c;
+}
+
+.checkpointDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: currentcolor;
+  opacity: 0.5;
+}
+
+.checkpointVisited {
+  color: #b9bcc2;
+}
+
+.checkpointVisited .checkpointDot {
+  opacity: 1;
+}
+
+.checkpointCurrent {
+  color: #b9c2ff;
+  background: #1e2242;
+}
+
+.checkpointCurrent .checkpointDot {
+  background: #7b8cf7;
+  opacity: 1;
+}
+
+.checkpointLabel {
+  min-width: 0;
+  word-break: break-word;
+}
+
+.checkpointsNav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #2a2b32;
+}
+
+.checkpointsNav button {
+  padding: 3px 10px;
+  border-radius: 6px;
+  color: #d8d9df;
+  background: #1c1d22;
+}
+
+.checkpointsNav button:hover:not(:disabled) {
+  background: #23242c;
+}
+
+.checkpointsNav button:disabled {
+  opacity: 0.3;
+}
+
+.checkpointsCounter {
+  color: #9a9bab;
+  font-size: 11px;
+  min-width: 40px;
+  text-align: center;
+}

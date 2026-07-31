@@ -1,5 +1,5 @@
 import type { AgentEvent, ShellMessage } from '../protocol'
-import type { Scenario, ScenarioStep } from './types'
+import type { Checkpoint, Scenario, ScenarioStep } from './types'
 
 export const SESSION = 'main'
 
@@ -7,8 +7,17 @@ export const scenario = (
   id: string,
   title: string,
   category: Scenario['category'],
-  steps: ScenarioStep[],
-): Scenario => ({ id, title, category, steps })
+  checkpoints: Checkpoint[],
+): Scenario => ({ id, title, category, checkpoints })
+
+let checkpointCounter = 0
+
+/** Один пункт в карточке чекпоинтов: подпись + что реально произойдёт при переходе на него. */
+export const checkpoint = (label: string, steps: ScenarioStep[]): Checkpoint => ({
+  id: `cp-${(checkpointCounter += 1)}`,
+  label,
+  steps,
+})
 
 export const shell = (message: ShellMessage): ScenarioStep => ({ kind: 'shell', message })
 export const agent = (event: AgentEvent): ScenarioStep => ({ kind: 'agent', event })
