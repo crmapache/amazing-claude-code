@@ -1,97 +1,264 @@
 /*
- * Токены из макета «Claude Code Panel». Значения перенесены как есть: панель
- * повторяет тёмную схему JetBrains, а не выводит цвета из темы IDE.
+ * Тема «Moonlight» — тёмная схема панели «Amazing Claude Code» под JetBrains Dark.
+ *
+ * Размеры, радиусы, шрифты и структура прежние — поменялись только значения
+ * цветов и появился второй слой.
+ *
+ * Два слоя нарочно:
+ *   1. ПАЛИТРА (--acc-c-*, --acc-ch-*) — сырые цвета, ни к чему не привязанные.
+ *      --acc-ch-* хранит каналы без alpha: только так одна и та же краска даёт
+ *      и сплошной цвет, и лестницу прозрачностей, не расползаясь по файлам
+ *      литералами rgb(...).
+ *   2. РОЛИ (--acc-bg, --acc-fg, --acc-accent, …) — то, чем красят компоненты.
+ *      Компоненты знают ТОЛЬКО про этот слой.
+ *
+ * Светлая тема, когда до неё дойдёт дело, переопределяет второй слой целиком и
+ * не трогает ни первый, ни один CSS-модуль — см. заготовку в конце файла.
  */
 
 :root {
+  /* ======================================================================
+     1. ПАЛИТРА
+     ====================================================================== */
+
+  /* Нейтрали с синим подтоном. Лестница яркости — та же, что у JetBrains Dark:
+     панель обязана сидеть в IDE как своя, а не как чужая вставка. */
+  --acc-c-ink-01: #14171d;
+  --acc-c-ink-02: #181b22;
+  --acc-c-ink-03: #1c1f26;
+  --acc-c-ink-04: #1f232b;
+  --acc-c-ink-05: #242833;
+  --acc-c-ink-06: #292e38;
+  --acc-c-ink-07: #333947;
+  --acc-c-ink-08: #373d4c;
+  --acc-c-ink-09: #3a4050;
+  --acc-c-ink-10: #3c4353;
+  --acc-c-ink-11: #4a5364;
+  --acc-c-ink-12: #4c5566;
+  --acc-c-ink-13: #636d80;
+  --acc-c-ink-14: #6e788e;
+  --acc-c-ink-15: #7b849a;
+  --acc-c-ink-16: #8891a6;
+  --acc-c-ink-17: #969fb2;
+  --acc-c-ink-18: #a5adc0;
+  --acc-c-ink-19: #b7bfd0;
+  --acc-c-ink-20: #c8cede;
+  --acc-c-ink-21: #dfe4ef;
+
+  /* Лунно-голубой — primary */
+  --acc-c-moon-1: #559dd8;
+  --acc-c-moon-2: #6fb4ef;
+  --acc-c-moon-3: #8ac6f7;
+  --acc-c-moon-4: #a5d4fb;
+
+  /* Аквамарин — secondary */
+  --acc-c-aqua-1: #3aa89e;
+  --acc-c-aqua-2: #4fc9bd;
+  --acc-c-aqua-3: #6ed6cb;
+  --acc-c-aqua-4: #86dbd2;
+
+  /* Ирис — tertiary, подагенты */
+  --acc-c-iris-1: #8172c0;
+  --acc-c-iris-2: #a894f2;
+  --acc-c-iris-3: #c4b5f8;
+
+  /* Мята — успех */
+  --acc-c-mint-1: #3aa87b;
+  --acc-c-mint-2: #4fc494;
+  --acc-c-mint-3: #6fd2a8;
+  --acc-c-mint-4: #7fd8b4;
+  --acc-c-mint-5: #c4ebda;
+
+  /* Песок — предупреждения и разрешения */
+  --acc-c-sand-1: #c1954f;
+  --acc-c-sand-2: #d9ad68;
+  --acc-c-sand-3: #e6c089;
+  --acc-c-sand-4: #ecd3a5;
+
+  /* Медь — между предупреждением и отказом */
+  --acc-c-copper-1: #dd8a63;
+  --acc-c-copper-2: #eeae8c;
+
+  /* Роза — отказ и ошибки */
+  --acc-c-rose-1: #bd555d;
+  --acc-c-rose-2: #d96b73;
+  --acc-c-rose-3: #e5878e;
+  --acc-c-rose-4: #ea9098;
+  --acc-c-rose-5: #eec3c6;
+
+  /* Орхидея — цитата из вывода агента. Единственная роль, свой цвет. */
+  --acc-c-orchid: #d691c4;
+
+  /* Однозначно зелёный для индикаторов расхода: мята рядом с аквамарином
+     на глаз читается как один и тот же цвет, а «сколько осталось» должно
+     отличаться от «ветки» без раздумий. */
+  --acc-c-green: #4dc286;
+
+  /* Каналы без alpha — основа лестницы прозрачностей */
+  --acc-ch-moon: 111 180 239;
+  --acc-ch-aqua: 79 201 189;
+  --acc-ch-iris: 168 148 242;
+  --acc-ch-mint: 79 196 148;
+  --acc-ch-sand: 217 173 104;
+  --acc-ch-rose: 217 107 115;
+  --acc-ch-orchid: 214 145 196;
+  --acc-ch-mist: 148 158 178;
+  --acc-ch-shade: 8 10 16;
+
+  /* ======================================================================
+     2. РОЛИ — тёмная тема
+     ====================================================================== */
+
   /* Поверхности, от самой глубокой к самой светлой */
-  --acc-bg-sunken: #16181a;
-  --acc-bg-deep: #1a1c1e;
-  --acc-bg: #1e1f22;
-  --acc-bg-raised: #212327;
-  --acc-bg-card: #26282c;
-  --acc-bg-panel: #2b2d30;
-  --acc-bg-control: #33353a;
-  --acc-bg-hover: #35373b;
-  --acc-bg-menu-hover: #3a3d42;
-  --acc-bg-control-hover: #4b4d52;
+  --acc-bg-sunken: var(--acc-c-ink-01);
+  --acc-bg-deep: var(--acc-c-ink-02);
+  --acc-bg: var(--acc-c-ink-03);
+  --acc-bg-raised: var(--acc-c-ink-04);
+  --acc-bg-card: var(--acc-c-ink-05);
+  --acc-bg-panel: var(--acc-c-ink-06);
+  --acc-bg-control: var(--acc-c-ink-07);
+  --acc-bg-hover: var(--acc-c-ink-08);
+  --acc-bg-menu-hover: var(--acc-c-ink-10);
+  --acc-bg-control-hover: var(--acc-c-ink-11);
 
   /* Границы */
-  --acc-line: #393b40;
-  --acc-line-strong: #4b4d52;
-  --acc-line-hover: #5f6266;
+  --acc-line: var(--acc-c-ink-09);
+  --acc-line-strong: var(--acc-c-ink-12);
+  --acc-line-hover: var(--acc-c-ink-13);
 
-  /* Текст, от основного к самому тихому */
-  --acc-fg: #dfe1e5;
-  --acc-fg-body: #c9ccd1;
-  --acc-fg-soft: #b9bcc2;
-  /*
-   * Нижние 5 ступеней пересчитаны на реальный контраст (WCAG) против всех фонов
-   * панели, а не подобраны на глаз: было от 1.5:1 до 4.4:1 (частично неразличимо
-   * на фоне модалок), стало 2.7-8+:1 с сохранением того же порядка яркости.
-   */
-  --acc-fg-mono: #a7abb2;
-  --acc-fg-dim: #989ca3;
-  --acc-fg-faint: #8b9099;
-  --acc-fg-fainter: #7e828c;
-  --acc-fg-ghost: #71757e;
+  /* Текст, от основного к самому тихому. Порядок яркости и контраст против всех
+     фонов панели те же, что были: ступени пересчитаны, а не переставлены. */
+  --acc-fg: var(--acc-c-ink-21);
+  --acc-fg-body: var(--acc-c-ink-20);
+  --acc-fg-soft: var(--acc-c-ink-19);
+  --acc-fg-mono: var(--acc-c-ink-18);
+  --acc-fg-dim: var(--acc-c-ink-17);
+  --acc-fg-faint: var(--acc-c-ink-16);
+  --acc-fg-fainter: var(--acc-c-ink-15);
+  --acc-fg-ghost: var(--acc-c-ink-14);
 
-  /* Акценты. Каждый отвечает за свой род событий и не используется вне его. */
-  --acc-accent: #7b8cf7;
-  --acc-accent-hover: #4657c9;
-  --acc-accent-light: #9aa6fa;
-  --acc-accent-soft: rgb(123 140 247 / 12%);
-  --acc-accent-line: rgb(123 140 247 / 32%);
+  /* Текст и значки на залитой кнопке любого цвета. Раньше здесь стоял
+     --acc-bg-sunken: работало, но врало — это роль переднего плана, а не фона,
+     и в светлой теме она не станет самой тёмной поверхностью. */
+  --acc-on-accent: #101620;
 
-  /* Ветки и вопросы */
-  --acc-branch: #4fc3c7;
-  --acc-branch-light: #7fd6d9;
-  --acc-branch-soft: rgb(79 195 199 / 10%);
-  --acc-branch-line: rgb(79 195 199 / 34%);
+  /* --- Primary: главное действие, правки файлов, план, фокус ввода --------- */
+  --acc-accent: var(--acc-c-moon-2);
+  --acc-accent-hover: var(--acc-c-moon-3);
+  --acc-accent-active: var(--acc-c-moon-1);
+  --acc-accent-light: var(--acc-c-moon-4);
+  --acc-accent-08: rgb(var(--acc-ch-moon) / 8%);
+  --acc-accent-12: rgb(var(--acc-ch-moon) / 12%);
+  --acc-accent-16: rgb(var(--acc-ch-moon) / 16%);
+  --acc-accent-20: rgb(var(--acc-ch-moon) / 20%);
+  --acc-accent-32: rgb(var(--acc-ch-moon) / 32%);
+  --acc-accent-40: rgb(var(--acc-ch-moon) / 40%);
+  /* Прежние имена оставлены псевдонимами: так тема ставится без правки модулей,
+     а перевод на лестницу можно делать по одному файлу. */
+  --acc-accent-soft: var(--acc-accent-12);
+  --acc-accent-line: var(--acc-accent-32);
 
-  /* Подагенты и параллельная работа */
-  --acc-agent: #b78cf0;
-  --acc-agent-light: #c9a9f5;
-  --acc-agent-dark: #8c6fb5;
-  --acc-agent-soft: rgb(183 140 240 / 12%);
-  --acc-agent-line: rgb(183 140 240 / 30%);
+  /* --- Secondary: ветки и форки, вопросы агента, ссылка на кусок файла ----- */
+  --acc-branch: var(--acc-c-aqua-2);
+  --acc-branch-hover: var(--acc-c-aqua-3);
+  --acc-branch-active: var(--acc-c-aqua-1);
+  --acc-branch-light: var(--acc-c-aqua-4);
+  --acc-branch-06: rgb(var(--acc-ch-aqua) / 6%);
+  --acc-branch-10: rgb(var(--acc-ch-aqua) / 10%);
+  --acc-branch-12: rgb(var(--acc-ch-aqua) / 12%);
+  --acc-branch-16: rgb(var(--acc-ch-aqua) / 16%);
+  --acc-branch-20: rgb(var(--acc-ch-aqua) / 20%);
+  --acc-branch-32: rgb(var(--acc-ch-aqua) / 32%);
+  --acc-branch-40: rgb(var(--acc-ch-aqua) / 40%);
+  --acc-branch-60: rgb(var(--acc-ch-aqua) / 60%);
+  --acc-branch-soft: var(--acc-branch-10);
+  --acc-branch-line: var(--acc-branch-32);
 
-  /* Разрешения и предупреждения */
-  --acc-warn: #e0a64b;
-  --acc-warn-light: #e6c88a;
-  --acc-warn-soft: rgb(224 166 75 / 12%);
-  --acc-warn-line: rgb(224 166 75 / 32%);
+  /* --- Tertiary: подагенты, параллельная работа, инлайновый код ------------ */
+  --acc-agent: var(--acc-c-iris-2);
+  --acc-agent-light: var(--acc-c-iris-3);
+  --acc-agent-dark: var(--acc-c-iris-1);
+  --acc-agent-12: rgb(var(--acc-ch-iris) / 12%);
+  --acc-agent-32: rgb(var(--acc-ch-iris) / 32%);
+  --acc-agent-soft: var(--acc-agent-12);
+  --acc-agent-line: var(--acc-agent-32);
 
-  /* Между предупреждением и отказом — темп расхода выше графика, но ещё не в красной зоне */
-  --acc-orange: #e0793f;
-  --acc-orange-light: #f0a66f;
+  /* --- Разрешения и предупреждения ---------------------------------------- */
+  --acc-warn: var(--acc-c-sand-2);
+  --acc-warn-hover: var(--acc-c-sand-3);
+  --acc-warn-active: var(--acc-c-sand-1);
+  --acc-warn-light: var(--acc-c-sand-4);
+  --acc-warn-06: rgb(var(--acc-ch-sand) / 6%);
+  --acc-warn-12: rgb(var(--acc-ch-sand) / 12%);
+  --acc-warn-16: rgb(var(--acc-ch-sand) / 16%);
+  --acc-warn-32: rgb(var(--acc-ch-sand) / 32%);
+  --acc-warn-40: rgb(var(--acc-ch-sand) / 40%);
+  --acc-warn-soft: var(--acc-warn-12);
+  --acc-warn-line: var(--acc-warn-32);
 
-  /* Индикаторы расхода (ctx/5h/wk): нужен однозначно зелёный, а не бирюзовый --acc-ok-light */
-  --acc-meter-green: #4cbf6a;
+  /* Темп расхода выше графика, но ещё не в красной зоне */
+  --acc-orange: var(--acc-c-copper-1);
+  --acc-orange-light: var(--acc-c-copper-2);
 
-  /* Успех и добавленные строки */
-  --acc-ok: #56c288;
-  --acc-ok-light: #7ed3a5;
-  --acc-ok-text: #c8ead8;
-  --acc-ok-soft: rgb(86 194 136 / 13%);
-  --acc-ok-line: rgb(86 194 136 / 30%);
+  /* Индикаторы расхода ctx / 5h / wk */
+  --acc-meter-green: var(--acc-c-green);
 
-  /* Отказ и удалённые строки */
-  --acc-bad: #e05c5c;
-  --acc-bad-light: #f08a8a;
-  --acc-bad-text: #e8b4b4;
-  --acc-bad-soft: rgb(224 92 92 / 12%);
+  /* --- Успех и добавленные строки ----------------------------------------- */
+  --acc-ok: var(--acc-c-mint-2);
+  --acc-ok-hover: var(--acc-c-mint-3);
+  --acc-ok-active: var(--acc-c-mint-1);
+  --acc-ok-light: var(--acc-c-mint-4);
+  --acc-ok-text: var(--acc-c-mint-5);
+  --acc-ok-10: rgb(var(--acc-ch-mint) / 10%);
+  --acc-ok-12: rgb(var(--acc-ch-mint) / 12%);
+  --acc-ok-24: rgb(var(--acc-ch-mint) / 24%);
+  --acc-ok-32: rgb(var(--acc-ch-mint) / 32%);
+  --acc-ok-soft: var(--acc-ok-12);
+  --acc-ok-line: var(--acc-ok-32);
 
-  /* Шрифты */
+  /* --- Отказ и удалённые строки ------------------------------------------- */
+  --acc-bad: var(--acc-c-rose-2);
+  --acc-bad-hover: var(--acc-c-rose-3);
+  --acc-bad-active: var(--acc-c-rose-1);
+  --acc-bad-light: var(--acc-c-rose-4);
+  --acc-bad-text: var(--acc-c-rose-5);
+  --acc-bad-10: rgb(var(--acc-ch-rose) / 10%);
+  --acc-bad-12: rgb(var(--acc-ch-rose) / 12%);
+  --acc-bad-16: rgb(var(--acc-ch-rose) / 16%);
+  --acc-bad-24: rgb(var(--acc-ch-rose) / 24%);
+  --acc-bad-32: rgb(var(--acc-ch-rose) / 32%);
+  --acc-bad-40: rgb(var(--acc-ch-rose) / 40%);
+  --acc-bad-soft: var(--acc-bad-12);
+
+  /* --- Цитата из вывода агента -------------------------------------------- */
+  --acc-quote: var(--acc-c-orchid);
+  --acc-quote-12: rgb(var(--acc-ch-orchid) / 12%);
+  --acc-quote-32: rgb(var(--acc-ch-orchid) / 32%);
+
+  /* --- Нейтральная подложка: read / grep / think / инлайновый код ---------- */
+  --acc-neutral-12: rgb(var(--acc-ch-mist) / 12%);
+  --acc-neutral-16: rgb(var(--acc-ch-mist) / 16%);
+
+  /* Подложка футеров карточек — раньше литерал rgb(0 0 0 / 18%). Чёрный на
+     синеватых поверхностях грязнит; тень темы тоже синеватая. */
+  --acc-shade: rgb(var(--acc-ch-shade) / 22%);
+
+  /* Перелив строки состояния. Тёплый оранжевый был единственным тёплым пятном
+     во всей панели и выбивался; теперь волна идёт по primary. */
+  --acc-stream-1: var(--acc-c-moon-4);
+  --acc-stream-2: var(--acc-c-moon-2);
+  --acc-stream-3: #4f8fd8;
+
+  /* --- Шрифты ------------------------------------------------------------- */
   --acc-font: 'Instrument Sans', system-ui, sans-serif;
   --acc-mono: 'JetBrains Mono', ui-monospace, monospace;
 
-  /* Высота шапки — переменная, а не число в каждом месте: вкладки при нехватке
-     места переносятся на вторую строку, и шапка растёт. Значение по умолчанию
-     на случай, если ResizeObserver в Header ещё не успел его выставить. */
+  /* Высота шапки: вкладки при нехватке места переносятся на вторую строку, и
+     шапка растёт. Значение по умолчанию — на случай, если ResizeObserver в
+     Header ещё не успел его выставить. */
   --header-height: 34px;
 
-  /* Радиусы */
+  /* --- Радиусы ------------------------------------------------------------ */
   --acc-r-xs: 3px;
   --acc-r-sm: 4px;
   --acc-r-md: 5px;
@@ -99,8 +266,28 @@
   --acc-r-xl: 7px;
   --acc-r-2xl: 8px;
 
-  /* Тени всплывающих слоёв */
-  --acc-shadow-menu: 0 18px 44px rgb(0 0 0 / 60%);
-  --acc-shadow-card: 0 16px 42px rgb(0 0 0 / 55%), 0 0 0 1px rgb(0 0 0 / 40%);
-  --acc-shadow-popover: 0 10px 26px rgb(0 0 0 / 60%);
+  /* --- Тени всплывающих слоёв -------------------------------------------- */
+  --acc-shadow-menu: 0 18px 44px rgb(var(--acc-ch-shade) / 62%);
+  --acc-shadow-card: 0 16px 42px rgb(var(--acc-ch-shade) / 55%), 0 0 0 1px rgb(var(--acc-ch-shade) / 40%);
+  --acc-shadow-popover: 0 10px 26px rgb(var(--acc-ch-shade) / 60%);
 }
+
+/*
+ * Заготовка светлой темы. Переопределяется ТОЛЬКО слой ролей: поверхности,
+ * границы, текст, --acc-on-accent и по одной ступени у каждого акцента (на
+ * светлом фоне светящийся вариант становится нечитаемым, а тёмный — основным).
+ * Лестницы прозрачностей и каналы не трогаются вообще: 12% лунно-голубого
+ * работает на любом фоне.
+ *
+ * [data-acc-theme='light'] {
+ *   --acc-bg-sunken: #eceef3;
+ *   --acc-bg-deep: #f1f3f7;
+ *   --acc-bg: #f7f8fb;
+ *   ...
+ *   --acc-fg: #1b1f28;
+ *   --acc-on-accent: #ffffff;
+ *   --acc-accent: var(--acc-c-moon-1);
+ *   --acc-accent-hover: #3f86c4;
+ *   --acc-accent-light: var(--acc-c-moon-1);
+ * }
+ */

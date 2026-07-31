@@ -111,7 +111,8 @@ export const AskPanel = ({ item, onSubmit }: AskPanelProps) => {
         <button
           type="button"
           className={`${s.primary} ${answered ? s.primaryBranch : s.primaryOff}`}
-          onClick={() => (answered ? onSubmit(item.id, answers) : undefined)}
+          disabled={!answered}
+          onClick={() => onSubmit(item.id, answers)}
         >
           {answered ? 'Send answers' : 'Pick to continue'}
         </button>

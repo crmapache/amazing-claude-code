@@ -101,9 +101,11 @@
   margin-left: 0;
 }
 
+/* line-height общий с .tabTitle: знак ветвления — mono 11px, заголовок —
+   sans 12px, и при разных line-height значок висит выше подписи. */
 .tabFork {
   flex: none;
-  font: 11px/1 var(--acc-mono);
+  font: 11px/15px var(--acc-mono);
   opacity: 0.85;
 }
 
@@ -136,7 +138,7 @@
    рябит и перестаёт что-либо сообщать. */
 .dotRunning {
   background: var(--acc-warn);
-  box-shadow: 0 0 0 3px rgb(224 166 75 / 14%);
+  box-shadow: 0 0 0 3px var(--acc-warn-16);
   animation: acc-pulse 1.5s ease-in-out infinite;
 }
 
@@ -146,18 +148,18 @@
 
 .dotAttention {
   background: var(--acc-accent);
-  box-shadow: 0 0 0 3px rgb(123 140 247 / 16%);
+  box-shadow: 0 0 0 3px var(--acc-accent-16);
   animation: acc-pulse 1.5s ease-in-out infinite;
 }
 
 /* Не пульсирует: это не рабочий процесс, а факт — сессия оборвалась. */
 .dotCrashed {
   background: var(--acc-bad-light);
-  box-shadow: 0 0 0 3px rgb(224 92 92 / 18%);
+  box-shadow: 0 0 0 3px var(--acc-bad-16);
 }
 
 .tabTitle {
-  font-size: 12px;
+  font: 12px/15px var(--acc-font);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -216,6 +218,17 @@
 .historyButton:hover {
   background: var(--acc-line-strong);
   color: var(--acc-fg);
+}
+
+.historyButton:active {
+  background: var(--acc-bg-control-hover);
+  color: var(--acc-fg);
+}
+
+.historyButton:disabled {
+  background: none;
+  color: var(--acc-fg-ghost);
+  opacity: 0.5;
 }
 
 /* Свой тултип вместо нативного title: у него нет своей задержки и вида чужой
@@ -439,18 +452,18 @@
 }
 
 .selectorPlan {
-  background: rgb(123 140 247 / 14%);
-  border-color: rgb(123 140 247 / 40%);
+  background: var(--acc-accent-16);
+  border-color: var(--acc-accent-40);
 }
 
 .selectorAccept {
-  background: rgb(86 194 136 / 13%);
-  border-color: rgb(86 194 136 / 36%);
+  background: var(--acc-ok-12);
+  border-color: var(--acc-ok-32);
 }
 
 .selectorDanger {
-  background: rgb(224 92 92 / 14%);
-  border-color: rgb(224 92 92 / 45%);
+  background: var(--acc-bad-12);
+  border-color: var(--acc-bad-40);
 }
 
 /* Метка и значение одного кегля и одного line-height: при разных размерах их
@@ -549,7 +562,7 @@
 }
 
 .menuItemOn {
-  background: rgb(123 140 247 / 10%);
+  background: var(--acc-accent-12);
 }
 
 .menuTick {
@@ -710,8 +723,14 @@
   color: var(--acc-fg);
 }
 
+.mcpRefresh:active:not(:disabled) {
+  background: var(--acc-bg-menu-hover);
+  color: var(--acc-fg);
+}
+
 .mcpRefresh:disabled {
-  opacity: 0.6;
+  background: var(--acc-bg-raised);
+  color: var(--acc-fg-ghost);
 }
 
 .mcpMessageOk,
@@ -809,14 +828,30 @@
   color: var(--acc-fg-dim);
 }
 
-.mcpAction:hover {
+.mcpAction:hover:not(:disabled) {
   background: var(--acc-bg-control-hover);
   color: var(--acc-fg);
 }
 
-.mcpActionDanger:hover {
-  background: var(--acc-bad-soft);
+.mcpAction:active:not(:disabled) {
+  background: var(--acc-bg-menu-hover);
+  color: var(--acc-fg);
+}
+
+.mcpActionDanger:hover:not(:disabled) {
+  background: var(--acc-bad-12);
   color: var(--acc-bad-light);
+}
+
+.mcpActionDanger:active:not(:disabled) {
+  background: var(--acc-bad-24);
+  color: var(--acc-bad-text);
+}
+
+/* После вариантов: пока идёт запрос, кнопка гаснет и перестаёт откликаться. */
+.mcpAction:disabled {
+  background: var(--acc-bg-raised);
+  color: var(--acc-fg-ghost);
 }
 
 .mcpAddForm {
@@ -889,11 +924,20 @@
   border-radius: var(--acc-r-md);
   background: var(--acc-accent);
   font: 500 11.5px var(--acc-font);
-  color: #fff;
+  color: var(--acc-on-accent);
 }
 
-.mcpAddButton:hover {
+.mcpAddButton:hover:not(:disabled) {
   background: var(--acc-accent-hover);
+}
+
+.mcpAddButton:active:not(:disabled) {
+  background: var(--acc-accent-active);
+}
+
+.mcpAddButton:disabled {
+  background: var(--acc-bg-control);
+  color: var(--acc-fg-ghost);
 }
 
 /* --- Плагины ----------------------------------------------------------------
@@ -987,7 +1031,7 @@
 }
 
 .selectionBranch:hover {
-  background: rgb(79 195 199 / 18%);
+  background: var(--acc-branch-16);
 }
 
 .selectionDivider {
@@ -1032,12 +1076,21 @@
   margin-top: 4px;
   border-radius: var(--acc-r-lg);
   background: var(--acc-accent);
-  color: var(--acc-bg-sunken);
+  color: var(--acc-on-accent);
   font: 600 12px var(--acc-font);
 }
 
 .gateButton:hover {
   background: var(--acc-accent-hover);
+}
+
+.gateButton:active {
+  background: var(--acc-accent-active);
+}
+
+.gateButton:disabled {
+  background: var(--acc-bg-control);
+  color: var(--acc-fg-ghost);
 }
 
 .gateGhost {

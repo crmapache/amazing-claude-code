@@ -47,14 +47,18 @@ export const TaskListPanel = ({ item }: TaskListPanelProps) => {
             >
               {todo.state === 'done' ? '✓' : ''}
             </span>
-            <span
-              className={`${s.taskPanelText} ${todo.state === 'done' ? s.taskPanelTextDone : ''} ${
-                todo.state === 'active' ? s.taskPanelTextActive : ''
-              }`}
-            >
-              {todo.text}
+            {/* Текст и подпись RUNNING — своей группой: чекбокс остаётся по центру
+                строки, а разнокегельный текст выравнивается по базовой линии. */}
+            <span className={s.taskPanelTextGroup}>
+              <span
+                className={`${s.taskPanelText} ${todo.state === 'done' ? s.taskPanelTextDone : ''} ${
+                  todo.state === 'active' ? s.taskPanelTextActive : ''
+                }`}
+              >
+                {todo.text}
+              </span>
+              {todo.state === 'active' ? <span className={s.taskPanelRunning}>RUNNING</span> : null}
             </span>
-            {todo.state === 'active' ? <span className={s.taskPanelRunning}>RUNNING</span> : null}
           </div>
         ))}
       </div>

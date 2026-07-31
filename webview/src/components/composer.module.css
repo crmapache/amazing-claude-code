@@ -31,7 +31,7 @@
   padding: 0 11px;
   border-radius: var(--acc-r-md);
   background: var(--acc-accent);
-  color: var(--acc-bg-sunken);
+  color: var(--acc-on-accent);
   font: 600 11.5px var(--acc-font);
 }
 
@@ -39,12 +39,20 @@
   background: var(--acc-accent-hover);
 }
 
+.primary:active {
+  background: var(--acc-accent-active);
+}
+
 .primaryWarn {
   background: var(--acc-warn);
 }
 
 .primaryWarn:hover {
-  background: #eebb6c;
+  background: var(--acc-warn-hover);
+}
+
+.primaryWarn:active {
+  background: var(--acc-warn-active);
 }
 
 .primaryBranch {
@@ -52,17 +60,28 @@
 }
 
 .primaryBranch:hover {
-  background: #358f93;
+  background: var(--acc-branch-hover);
 }
 
-.primaryOff {
+.primaryBranch:active {
+  background: var(--acc-branch-active);
+}
+
+/* Одно правило на все залитые варианты: ниже вариантных :hover, поэтому
+   выигрывает у них при равной специфичности и держит вид даже под курсором. */
+.primary:disabled {
+  background: var(--acc-bg-control);
+  color: var(--acc-fg-ghost);
+}
+
+/* Вариант «ещё нечего отправлять»: по макету это ячейка disabled у ответа на
+   вопрос — приглушённая и не отзывается на курсор, поэтому своего :hover нет.
+   Свой оттенок текста светлее общего disabled: подпись здесь ещё и подсказка,
+   что делать дальше. Второй селектор — чтобы перебить общее .primary:disabled. */
+.primaryOff,
+.primaryOff:disabled {
   background: var(--acc-bg-control);
   color: var(--acc-fg-faint);
-}
-
-.primaryOff:hover {
-  background: var(--acc-branch-soft);
-  color: var(--acc-branch-light);
 }
 
 .secondary {
@@ -82,24 +101,44 @@
   color: var(--acc-fg);
 }
 
+.secondary:active {
+  border-color: var(--acc-accent-active);
+  background: var(--acc-accent-12);
+  color: var(--acc-fg);
+}
+
 .secondaryDanger:hover {
   border-color: var(--acc-bad);
   color: var(--acc-bad-light);
+}
+
+.secondaryDanger:active {
+  border-color: var(--acc-bad-active);
+  background: var(--acc-bad-16);
+  color: var(--acc-bad-light);
+}
+
+.secondary:disabled {
+  border-color: var(--acc-line);
+  background: none;
+  color: var(--acc-fg-ghost);
 }
 
 /* --- Разрешение --------------------------------------------------------------- */
 
 .perm {
   margin-bottom: 8px;
-  border: 1px solid rgb(224 166 75 / 42%);
+  border: 1px solid var(--acc-warn-40);
   border-radius: var(--acc-r-2xl);
-  background: rgb(224 166 75 / 6%);
+  background: var(--acc-warn-06);
   overflow: hidden;
 }
 
+/* По базовой линии, а не по центру: метка PERMISSION — мелкий mono, а цель —
+   обычный текст, и по центру своих коробок они встают на разной высоте. */
 .permHead {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 9px;
   padding: 8px 11px;
 }
@@ -137,18 +176,19 @@
 
 .ask {
   margin-bottom: 8px;
-  border: 1px solid rgb(79 195 199 / 40%);
+  border: 1px solid var(--acc-branch-40);
   border-radius: var(--acc-r-2xl);
-  background: rgb(79 195 199 / 5%);
+  background: var(--acc-branch-06);
   overflow: hidden;
 }
 
+/* По базовой линии, а не по центру: у метки и заголовка разный кегль. */
 .askHead {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 9px;
   padding: 8px 11px;
-  border-bottom: 1px solid rgb(79 195 199 / 20%);
+  border-bottom: 1px solid var(--acc-branch-20);
 }
 
 .askLabel {
@@ -224,8 +264,8 @@
 }
 
 .optionOn {
-  background: rgb(79 195 199 / 13%);
-  border-color: rgb(79 195 199 / 60%);
+  background: var(--acc-branch-12);
+  border-color: var(--acc-branch-60);
 }
 
 .optionKey {
@@ -243,7 +283,7 @@
 .optionKeyOn {
   border-color: var(--acc-branch);
   background: var(--acc-branch);
-  color: var(--acc-bg-sunken);
+  color: var(--acc-on-accent);
 }
 
 .optionCheck {
@@ -255,7 +295,7 @@
   display: grid;
   place-items: center;
   font-size: 9px;
-  color: var(--acc-bg-sunken);
+  color: var(--acc-on-accent);
 }
 
 .optionCheckOn {
@@ -309,8 +349,8 @@
   align-items: center;
   gap: 7px;
   padding: 9px 11px;
-  background: rgb(0 0 0 / 18%);
-  border-top: 1px solid rgb(79 195 199 / 18%);
+  background: var(--acc-shade);
+  border-top: 1px solid var(--acc-branch-20);
 }
 
 .askNote {
@@ -330,9 +370,10 @@
   overflow: hidden;
 }
 
+/* По базовой линии, а не по центру: у метки и счётчика разный кегль. */
 .taskPanelHead {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 9px;
   padding: 7px 10px;
   border-bottom: 1px solid var(--acc-line);
@@ -377,7 +418,7 @@
   display: grid;
   place-items: center;
   font-size: 9px;
-  color: var(--acc-bg-sunken);
+  color: var(--acc-on-accent);
 }
 
 .taskPanelBoxDone {
@@ -387,6 +428,15 @@
 
 .taskPanelBoxActive {
   border-color: var(--acc-accent);
+}
+
+/* Коробка чекбокса остаётся по центру строки, а текст с подписью выравнивается
+   по базовой линии: иначе мелкий mono RUNNING висит выше строки задачи. */
+.taskPanelTextGroup {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-width: 0;
 }
 
 .taskPanelText {
@@ -436,9 +486,10 @@
   margin-bottom: 8px;
 }
 
+/* По базовой линии, а не по центру: у метки и счётчика разный кегль. */
 .queueHead {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 8px;
   padding: 0 2px;
 }
@@ -464,6 +515,15 @@
   color: var(--acc-bad-light);
 }
 
+.queueClear:active {
+  color: var(--acc-bad);
+}
+
+.queueClear:disabled {
+  color: var(--acc-fg-ghost);
+  opacity: 0.6;
+}
+
 .queueRow {
   display: flex;
   align-items: center;
@@ -480,7 +540,7 @@
 }
 
 .queueRowOver {
-  background: rgb(123 140 247 / 12%);
+  background: var(--acc-accent-12);
   border-color: var(--acc-accent);
 }
 
@@ -538,6 +598,15 @@
   color: var(--acc-accent-light);
 }
 
+.queueSend:active {
+  color: var(--acc-accent);
+}
+
+.queueSend:disabled {
+  color: var(--acc-fg-ghost);
+  opacity: 0.6;
+}
+
 .iconButton {
   flex: none;
   width: 17px;
@@ -552,6 +621,17 @@
 .iconButton:hover {
   background: var(--acc-line-strong);
   color: var(--acc-bad-light);
+}
+
+.iconButton:active {
+  background: var(--acc-bad-16);
+  color: var(--acc-bad-light);
+}
+
+.iconButton:disabled {
+  background: none;
+  color: var(--acc-fg-ghost);
+  opacity: 0.5;
 }
 
 /* --- Цитаты ---------------------------------------------------------------- */
@@ -569,7 +649,7 @@
   gap: 8px;
   padding: 5px 8px;
   border-radius: var(--acc-r-lg);
-  background: rgb(123 140 247 / 8%);
+  background: var(--acc-accent-08);
   border-left: 2px solid var(--acc-accent);
 }
 
@@ -629,7 +709,7 @@
 }
 
 .suggestItemOn {
-  background: rgb(123 140 247 / 12%);
+  background: var(--acc-accent-12);
 }
 
 .suggestName {
@@ -759,6 +839,17 @@
   color: var(--acc-fg);
 }
 
+.attach:active {
+  background: var(--acc-bg-control-hover);
+  color: var(--acc-fg);
+}
+
+.attach:disabled {
+  background: none;
+  color: var(--acc-fg-ghost);
+  opacity: 0.6;
+}
+
 .attachGlyph {
   font: 13px/1 var(--acc-mono);
 }
@@ -802,8 +893,14 @@
 }
 
 .stop:hover {
-  background: rgb(224 92 92 / 14%);
+  background: var(--acc-bad-16);
   border-color: var(--acc-bad);
+}
+
+.stop:active {
+  background: var(--acc-bad-24);
+  border-color: var(--acc-bad-active);
+  color: var(--acc-bad-text);
 }
 
 /* Обычный Stop не подтвердился — эта кнопка заметнее нарочно: залитый фон,
@@ -816,13 +913,19 @@
   padding: 0 10px;
   border: 1px solid var(--acc-bad);
   border-radius: var(--acc-r-lg);
-  background: rgb(224 92 92 / 16%);
+  background: var(--acc-bad-16);
   font: 600 11.5px var(--acc-font);
   color: var(--acc-bad-light);
 }
 
 .forceStop:hover {
-  background: rgb(224 92 92 / 26%);
+  background: var(--acc-bad-24);
+}
+
+.forceStop:active {
+  background: var(--acc-bad-32);
+  border-color: var(--acc-bad-active);
+  color: var(--acc-bad-text);
 }
 
 .send {
@@ -833,7 +936,7 @@
   padding: 0 11px;
   border-radius: var(--acc-r-lg);
   background: var(--acc-accent);
-  color: var(--acc-bg-sunken);
+  color: var(--acc-on-accent);
   font: 600 11.5px var(--acc-font);
 }
 
@@ -841,8 +944,30 @@
   background: var(--acc-accent-hover);
 }
 
+.send:active {
+  background: var(--acc-accent-active);
+}
+
+/* Во время работы агента кнопка не отправляет, а ставит в очередь — она уже не
+   главное действие, поэтому нейтральная, а не залитая акцентом. */
 .sendQueued {
   background: var(--acc-bg-control);
   color: var(--acc-fg);
+}
+
+/* Свой ховер обязателен: без него срабатывал бы .send:hover и клал под светлый
+   текст светлую акцентную заливку. Нейтральная кнопка светлеет по нейтрали. */
+.sendQueued:hover {
+  background: var(--acc-bg-control-hover);
+}
+
+.sendQueued:active {
+  background: var(--acc-bg-menu-hover);
+}
+
+/* Ниже вариантных :hover — иначе они перебивали бы его при равной специфичности. */
+.send:disabled {
+  background: var(--acc-bg-control);
+  color: var(--acc-fg-ghost);
 }
 

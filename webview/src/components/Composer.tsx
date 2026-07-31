@@ -18,12 +18,12 @@ import s from './composer.module.css'
 const CHIP_GLYPH: Record<ChipKind, string> = { file: '▤', img: '▣', dir: '▸', cmd: '/', ref: '⟨⟩', quote: '"' }
 
 const CHIP_STYLE: Record<ChipKind, { background: string; borderColor: string; color: string }> = {
-  file: { background: 'rgb(123 140 247 / 12%)', borderColor: 'rgb(123 140 247 / 32%)', color: '#9aa6fa' },
-  img: { background: 'rgb(183 140 240 / 12%)', borderColor: 'rgb(183 140 240 / 32%)', color: '#c9a9f5' },
-  dir: { background: 'rgb(86 194 136 / 11%)', borderColor: 'rgb(86 194 136 / 30%)', color: '#7ed3a5' },
-  cmd: { background: 'rgb(224 166 75 / 12%)', borderColor: 'rgb(224 166 75 / 32%)', color: '#e6c88a' },
-  ref: { background: 'rgb(79 195 199 / 12%)', borderColor: 'rgb(79 195 199 / 34%)', color: '#7fd6d9' },
-  quote: { background: 'rgb(224 120 160 / 12%)', borderColor: 'rgb(224 120 160 / 32%)', color: '#e8a0bd' },
+  file: { background: 'var(--acc-accent-12)', borderColor: 'var(--acc-accent-32)', color: 'var(--acc-accent-light)' },
+  img: { background: 'var(--acc-agent-12)', borderColor: 'var(--acc-agent-32)', color: 'var(--acc-agent-light)' },
+  dir: { background: 'var(--acc-ok-12)', borderColor: 'var(--acc-ok-32)', color: 'var(--acc-ok-light)' },
+  cmd: { background: 'var(--acc-warn-12)', borderColor: 'var(--acc-warn-32)', color: 'var(--acc-warn-light)' },
+  ref: { background: 'var(--acc-branch-12)', borderColor: 'var(--acc-branch-32)', color: 'var(--acc-branch-light)' },
+  quote: { background: 'var(--acc-quote-12)', borderColor: 'var(--acc-quote-32)', color: 'var(--acc-quote)' },
 }
 
 /** Чей это узел: чтобы забрать байты картинки обратно, строку с DOM не парсим. */

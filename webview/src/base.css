@@ -46,7 +46,7 @@ button {
 }
 
 ::selection {
-  background: rgb(123 140 247 / 34%);
+  background: var(--acc-accent-32);
 }
 
 /* Пользователь явно попросил убрать рамку фокуса везде: раздражает больше,

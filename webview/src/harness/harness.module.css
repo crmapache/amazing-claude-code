@@ -26,11 +26,11 @@
   flex: 0 0 260px;
   overflow-y: auto;
   padding: 12px;
-  background: #16171c;
+  background: var(--acc-bg-deep);
   border-radius: 14px;
   box-shadow: 0 0 0 1px var(--acc-line);
   font: 12px/1.4 -apple-system, BlinkMacSystemFont, sans-serif;
-  color: #d8d9df;
+  color: var(--acc-fg-body);
 }
 
 .toolbarCollapsed {
@@ -51,7 +51,7 @@
 }
 
 .toolbarToggle {
-  color: #9a9bab;
+  color: var(--acc-fg-dim);
   padding: 2px 6px;
 }
 
@@ -63,7 +63,7 @@
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #74758a;
+  color: var(--acc-fg-ghost);
   margin-bottom: 6px;
 }
 
@@ -74,17 +74,17 @@
   padding: 6px 8px;
   margin-bottom: 3px;
   border-radius: 6px;
-  color: #d8d9df;
+  color: var(--acc-fg-body);
   background: transparent;
 }
 
 .scenarioButton:hover {
-  background: #23242c;
+  background: var(--acc-bg-card);
 }
 
 .scenarioActive {
-  background: #2d3350;
-  color: #b9c2ff;
+  background: var(--acc-accent-16);
+  color: var(--acc-accent-light);
 }
 
 .modeSwitch {
@@ -93,7 +93,7 @@
   margin-bottom: 12px;
   padding: 3px;
   border-radius: 8px;
-  background: #1c1d22;
+  background: var(--acc-bg-raised);
 }
 
 .modeButton {
@@ -101,16 +101,16 @@
   padding: 5px 0;
   border-radius: 6px;
   text-align: center;
-  color: #9a9bab;
+  color: var(--acc-fg-dim);
 }
 
 .modeButton:hover {
-  color: #d8d9df;
+  color: var(--acc-fg-body);
 }
 
 .modeActive {
-  background: #2d3350;
-  color: #b9c2ff;
+  background: var(--acc-accent-16);
+  color: var(--acc-accent-light);
 }
 
 /* --- Карточка чекпоинтов ----------------------------------------------------- */
@@ -121,11 +121,11 @@
   flex-direction: column;
   overflow: hidden;
   padding: 12px;
-  background: #16171c;
+  background: var(--acc-bg-deep);
   border-radius: 14px;
   box-shadow: 0 0 0 1px var(--acc-line);
   font: 12px/1.4 -apple-system, BlinkMacSystemFont, sans-serif;
-  color: #d8d9df;
+  color: var(--acc-fg-body);
 }
 
 .checkpointsHead {
@@ -141,13 +141,13 @@
   padding: 3px 8px;
   border-radius: 6px;
   font-size: 11px;
-  color: #9a9bab;
-  background: #1c1d22;
+  color: var(--acc-fg-dim);
+  background: var(--acc-bg-raised);
 }
 
 .copyButton:hover:not(:disabled) {
-  color: #d8d9df;
-  background: #23242c;
+  color: var(--acc-fg-body);
+  background: var(--acc-bg-card);
 }
 
 .copyButton:disabled {
@@ -155,7 +155,7 @@
 }
 
 .checkpointsEmpty {
-  color: #71757e;
+  color: var(--acc-fg-ghost);
   font-size: 11px;
   line-height: 1.5;
 }
@@ -175,11 +175,11 @@
   padding: 5px 6px;
   margin-bottom: 1px;
   border-radius: 6px;
-  color: #71757e;
+  color: var(--acc-fg-ghost);
 }
 
 .checkpointRow:hover {
-  background: #23242c;
+  background: var(--acc-bg-card);
 }
 
 .checkpointDot {
@@ -193,7 +193,7 @@
 }
 
 .checkpointVisited {
-  color: #b9bcc2;
+  color: var(--acc-fg-soft);
 }
 
 .checkpointVisited .checkpointDot {
@@ -201,12 +201,12 @@
 }
 
 .checkpointCurrent {
-  color: #b9c2ff;
-  background: #1e2242;
+  color: var(--acc-accent-light);
+  background: var(--acc-accent-12);
 }
 
 .checkpointCurrent .checkpointDot {
-  background: #7b8cf7;
+  background: var(--acc-accent);
   opacity: 1;
 }
 
@@ -222,18 +222,18 @@
   gap: 10px;
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid #2a2b32;
+  border-top: 1px solid var(--acc-line);
 }
 
 .checkpointsNav button {
   padding: 3px 10px;
   border-radius: 6px;
-  color: #d8d9df;
-  background: #1c1d22;
+  color: var(--acc-fg-body);
+  background: var(--acc-bg-raised);
 }
 
 .checkpointsNav button:hover:not(:disabled) {
-  background: #23242c;
+  background: var(--acc-bg-card);
 }
 
 .checkpointsNav button:disabled {
@@ -241,7 +241,7 @@
 }
 
 .checkpointsCounter {
-  color: #9a9bab;
+  color: var(--acc-fg-dim);
   font-size: 11px;
   min-width: 40px;
   text-align: center;
