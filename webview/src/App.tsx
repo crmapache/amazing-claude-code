@@ -753,16 +753,29 @@ export const App = () => {
         }}
         onNewSession={() => startSession(`session-${Date.now()}`)}
         onOpenHistory={() => {
+          if (openPanel === 'history') {
+            setOpenPanel(null)
+            setHistory(null)
+            return
+          }
           setOpenPanel('history')
           send({ type: 'history' })
         }}
         onOpenMcp={() => {
+          if (openPanel === 'mcp') {
+            setOpenPanel(null)
+            return
+          }
           setOpenPanel('mcp')
           setMcpLoading(true)
           setMcpMessage(null)
           send({ type: 'mcpList' })
         }}
         onOpenPlugins={() => {
+          if (openPanel === 'plugins') {
+            setOpenPanel(null)
+            return
+          }
           setOpenPanel('plugins')
           setPluginsLoading(true)
           setPluginMessage(null)
