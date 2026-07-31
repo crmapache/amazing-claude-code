@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent } from '../protocol'
 import { contextUsage, initialPanelState, reducePanel, type PanelState } from './build'
-import type { TextItem, ToolGroupItem } from './types'
+import type { TaskItem, TextItem, ToolGroupItem } from './types'
 
 /**
  * Поток записан живым прогоном агента, а не придуман: только так видно и порядок
@@ -31,6 +31,36 @@ const toolResultEvent = (id: string, content = 'ok'): AgentEvent => ({
 const textEvent = (text: string): AgentEvent => ({
   type: 'assistant',
   message: { content: [{ type: 'text', text }] },
+})
+
+const taskStartedEvent = (taskId: string, toolUseId: string, subagentType: string): AgentEvent => ({
+  type: 'system',
+  subtype: 'task_started',
+  task_id: taskId,
+  tool_use_id: toolUseId,
+  subagent_type: subagentType,
+  description: 'Демо-задача',
+})
+
+const subagentMessageEvent = (parentToolUseId: string, text: string): AgentEvent => ({
+  type: 'assistant',
+  message: { content: [{ type: 'text', text }] },
+  parent_tool_use_id: parentToolUseId,
+})
+
+const subagentAskEvent = (parentToolUseId: string): AgentEvent => ({
+  type: 'assistant',
+  message: {
+    content: [
+      {
+        type: 'tool_use',
+        id: 'ask-1',
+        name: 'AskUserQuestion',
+        input: { questions: [{ question: 'Продолжать?', header: 'Ветка', options: [{ label: 'Да' }, { label: 'Нет' }] }] },
+      },
+    ],
+  },
+  parent_tool_use_id: parentToolUseId,
 })
 
 describe('сборка ленты из потока агента', () => {
@@ -257,5 +287,53 @@ describe('сборка ленты из потока агента', () => {
 
       expect(Object.keys(state.startedAt)).toHaveLength(0)
     })
+  })
+})
+
+describe('лог фонового субагента', () => {
+  it('копит шаги в TaskItem.log через карту task_id↔tool_use_id, а не теряет их', () => {
+    let state = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
+    state = play([subagentMessageEvent('toolu-parent', 'Смотрю конфиги')], state)
+    state = play([subagentMessageEvent('toolu-parent', 'Смотрю сервер')], state)
+
+    const task = state.items.find((item): item is TaskItem => item.kind === 'task')
+    expect(task).toBeDefined()
+    expect(task?.log.map((line) => line.text)).toEqual(['Смотрю конфиги', 'Смотрю сервер'])
+  })
+
+  it('AskUserQuestion от субагента создаёт AskItem с taskId, а не теряется в логе', () => {
+    let state = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
+    state = play([subagentAskEvent('toolu-parent')], state)
+
+    const ask = state.items.find((item) => item.kind === 'ask')
+    expect(ask).toBeDefined()
+    expect(ask?.kind === 'ask' && ask.taskId).toBe('task-1')
+    expect(ask?.kind === 'ask' && ask.questions[0]?.title).toBe('Продолжать?')
+  })
+
+  it('обрезает лог агента после AGENT_LOG_LIMIT строк, а не растит его бесконечно', () => {
+    let state = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
+    for (let i = 0; i < 310; i += 1) {
+      state = play([subagentMessageEvent('toolu-parent', `шаг ${i}`)], state)
+    }
+
+    const task = state.items.find((item) => item.kind === 'task')
+    expect(task?.kind === 'task' && task.log.length).toBe(300)
+    expect(task?.kind === 'task' && task.log[0]?.text).toMatch(/^…\d+ earlier steps trimmed$/)
+    expect(task?.kind === 'task' && task.log.at(-1)?.text).toBe('шаг 309')
+  })
+
+  it('permission-действие с taskId создаёт PermItem, привязанный к агенту', () => {
+    const state = reducePanel(initialPanelState, {
+      kind: 'permission',
+      id: 'perm-1',
+      target: 'wants to run a command',
+      command: 'npm test',
+      mode: 'default',
+      taskId: 'task-1',
+    })
+
+    const perm = state.items.find((item) => item.kind === 'perm')
+    expect(perm?.kind === 'perm' && perm.taskId).toBe('task-1')
   })
 })

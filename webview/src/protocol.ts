@@ -92,6 +92,8 @@ export type ShellMessage =
       target: string
       command: string
       mode: string
+      /** Заполнено, только если запрос породил вызов инструмента внутри субагента. */
+      agentId?: string
     }
   | { type: 'sessions'; sessions: SessionInfo[]; active: string }
   | { type: 'status'; sessionId: string; state: AgentStatus }

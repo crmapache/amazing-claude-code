@@ -10,6 +10,7 @@ import { parseParagraphs } from './markdown'
 import { chipFor, detailFor, formatDuration, hunksFor, metaFor, resultToText, targetFor } from './tools'
 import type {
   AskQuestion,
+  DetailLine,
   FeedItem,
   PlanStep,
   TaskItem,
@@ -57,6 +58,13 @@ export interface PanelState {
   slashCommands: string[]
   /** Время начала каждого незавершённого вызова — из него считается длительность. */
   startedAt: Record<string, number>
+  /**
+   * task_id субагента по tool_use_id вызова Task, который его породил — из
+   * системного события task_started. Сообщения самого субагента несут только
+   * tool_use_id в parent_tool_use_id, а карточка живёт под task_id: без этой
+   * карты их нечем связать.
+   */
+  taskByToolUseId: Record<string, string>
   seq: number
   /**
    * Когда нажали Stop — до этого момента статус меняем только по-настоящему
@@ -85,7 +93,7 @@ export type PanelAction =
   | { kind: 'init'; project: PanelProject }
   /** Ветка и её pull request приходят позже: за номером ходят в GitHub. */
   | { kind: 'project'; gitBranch?: string; pullRequest?: string; pullRequestUrl?: string }
-  | { kind: 'permission'; id: string; target: string; command: string; mode: string }
+  | { kind: 'permission'; id: string; target: string; command: string; mode: string; taskId?: string }
   | { kind: 'permissionResolved'; id: string; decision: 'once' | 'always' | 'deny' }
   | { kind: 'modeRequested'; mode: string }
   | { kind: 'modeApplied'; mode: string; applied: boolean; error?: string }
@@ -117,6 +125,7 @@ export const initialPanelState: PanelState = {
   },
   cost: 0,
   startedAt: {},
+  taskByToolUseId: {},
   slashCommands: [],
   seq: 1,
   crashed: false,
@@ -199,6 +208,7 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
             meta: `${action.mode} mode`,
             command: action.command,
             decision: null,
+            taskId: action.taskId,
           },
         ],
       }
@@ -319,7 +329,7 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
         ...item,
         pending: false,
         duration,
-        detail: [...item.detail, { text: 'Session ended before this returned.', tone: 'bad' as const }].slice(-6),
+        log: appendAgentLog(item.log, [{ text: 'Session ended before this returned.', tone: 'bad' as const }]),
       }
     }
 
@@ -481,13 +491,16 @@ const applySystem = (
    * Фоновый подагент скилла/воркфлоу (/code-review и подобные) — своей карточки
    * не было вовсе, потому что у него нет вызова инструмента Task в потоке
    * ассистента: скилл поднимает его напрямую, в обход обычного цикла хода.
-   * Карточка та же самая, что и у обычного Task — агентам-потребителям ниже
-   * (StreamsBar, AgentsDrawer) всё равно, откуда взялся kind:'task'.
+   * Карточка та же самая, что и у обычного Task — потребителям ниже (дропдаун
+   * стримов, экран агента) всё равно, откуда взялся kind:'task'.
    */
   if (event.subtype === 'task_started' && event.task_id) {
     return {
       ...base,
       startedAt: { ...base.startedAt, [event.task_id]: now },
+      taskByToolUseId: event.tool_use_id
+        ? { ...base.taskByToolUseId, [event.tool_use_id]: event.task_id }
+        : base.taskByToolUseId,
       items: [
         ...base.items,
         {
@@ -497,7 +510,7 @@ const applySystem = (
           meta: event.description ?? '',
           duration: '',
           percent: 0,
-          detail: [],
+          log: [],
           pending: true,
         },
       ],
@@ -512,7 +525,7 @@ const applySystem = (
           ? {
               ...item,
               meta: event.description ?? item.meta,
-              detail: event.last_tool_name ? [{ text: `→ ${event.last_tool_name}` }] : item.detail,
+              log: event.last_tool_name ? appendAgentLog(item.log, [{ text: `→ ${event.last_tool_name}` }]) : item.log,
             }
           : item,
       ),
@@ -535,7 +548,7 @@ const applySystem = (
               pending: false,
               percent: 100,
               duration,
-              detail: event.summary ? detailFor(event.summary) : item.detail,
+              log: event.summary ? appendAgentLog(item.log, detailFor(event.summary)) : item.log,
             }
           : item,
       ),
@@ -699,7 +712,7 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
           meta: targetFor(block.name, input, workingDirectory),
           duration: '',
           percent: 0,
-          detail: [],
+          log: [],
           pending: true,
         },
       ],
@@ -765,7 +778,15 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
       delete startedAt[item.id]
 
       const text = resultToText(result.content)
-      const task: TaskItem = { ...item, pending: false, percent: 100, duration, detail: detailFor(text) }
+      const isError = result.is_error === true
+      const tone = isError ? ('bad' as const) : ('ok' as const)
+      const task: TaskItem = {
+        ...item,
+        pending: false,
+        percent: 100,
+        duration,
+        log: appendAgentLog(item.log, detailFor(text).map((line) => ({ ...line, tone }))),
+      }
       return task
     }
 
@@ -784,26 +805,86 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
   return { ...state, items, startedAt }
 }
 
-/** Сообщения подагента показываем последней строкой его карточки, а не в общей ленте. */
-const noteSubagent = (state: PanelState, parentId: string, blocks: ContentBlock[]): PanelState => {
-  const line = blocks
-    .map((block) => {
-      if (block.type === 'text') return block.text.trim().split('\n')[0] ?? ''
-      if (block.type === 'tool_use') return `${block.name}…`
-      return ''
-    })
-    .filter(Boolean)
-    .join(' · ')
+/**
+ * Кап на лог агента — иначе очень длинный субагент рос бы в памяти неограниченно.
+ * 300 строк — с большим запасом на реальный ход субагента; при переполнении
+ * старейшие строки уходят под одну сводную пометку вместо того, чтобы пропадать
+ * молча.
+ */
+const AGENT_LOG_LIMIT = 300
+const TRIM_MARK = /^…(\d+) earlier steps trimmed$/
 
-  if (!line) return state
+const appendAgentLog = (log: DetailLine[], lines: DetailLine[]): DetailLine[] => {
+  if (lines.length === 0) return log
+
+  const merged = [...log, ...lines]
+  if (merged.length <= AGENT_LOG_LIMIT) return merged
+
+  const already = TRIM_MARK.exec(merged[0]?.text ?? '')
+  const priorTrimmed = already ? Number(already[1]) : 0
+  const withoutMark = already ? merged.slice(1) : merged
+  const keep = withoutMark.slice(withoutMark.length - (AGENT_LOG_LIMIT - 1))
+  const trimmedNow = withoutMark.length - keep.length
+
+  return [{ text: `…${priorTrimmed + trimmedNow} earlier steps trimmed`, tone: 'dim' as const }, ...keep]
+}
+
+/**
+ * Резолвит id вызова, который породил субагента, в реальный task_id его
+ * карточки. У фонового канала (task_started/...) это два разных значения —
+ * карта строится в applySystem. У прямого вызова Task/Agent tool_use они
+ * совпадают напрямую (сама карточка создана с id, равным этому же вызову),
+ * поэтому карта для него не нужна — резолвится в самого себя через ?? .
+ */
+const resolveTaskId = (state: PanelState, parentToolUseId: string): string =>
+  state.taskByToolUseId[parentToolUseId] ?? parentToolUseId
+
+/**
+ * Сообщения субагента идут в лог его же карточки, а не в общую ленту — у него
+ * своя вкладка (см. AgentStreamView). Вопрос AskUserQuestion, заданный самим
+ * субагентом, отдельно превращается в настоящую карточку с вариантами ответа,
+ * привязанную к нему через taskId — раньше терялся здесь же, одной строкой без
+ * возможности ответить.
+ */
+const noteSubagent = (state: PanelState, parentToolUseId: string, blocks: ContentBlock[]): PanelState => {
+  const taskId = resolveTaskId(state, parentToolUseId)
+  if (!state.items.some((item) => item.kind === 'task' && item.id === taskId)) return state
+
+  const askBlock = blocks.find(
+    (block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'AskUserQuestion',
+  )
+
+  let next = state
+  if (askBlock) {
+    const questions = readQuestions((askBlock.input ?? {}) as Record<string, unknown>)
+    next = {
+      ...next,
+      items: [
+        ...next.items,
+        {
+          id: askBlock.id,
+          kind: 'ask',
+          meta: `${questions.length} ${questions.length === 1 ? 'question' : 'questions'} · blocks the run`,
+          questions,
+          taskId,
+        },
+      ],
+    }
+  }
+
+  const lines = blocks.flatMap((block): DetailLine[] => {
+    if (block.type === 'text' && block.text.trim()) return [{ text: block.text.trim().split('\n')[0] ?? '' }]
+    if (block.type === 'tool_use') return [{ text: `${block.name}…`, tone: 'dim' as const }]
+    return []
+  })
 
   return {
-    ...state,
-    items: state.items.map((item) => {
-      if (item.id !== parentId || item.kind !== 'task') return item
-      const detail = [...item.detail, { text: line, tone: 'dim' as const }].slice(-6)
-      return { ...item, detail, percent: Math.min(item.percent + 12, 92) }
-    }),
+    ...next,
+    items: next.items.map((item) =>
+      item.id === taskId && item.kind === 'task'
+        ? { ...item, log: appendAgentLog(item.log, lines), percent: Math.min(item.percent + 12, 92) }
+        : item,
+    ),
   }
 }
 

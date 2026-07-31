@@ -118,7 +118,7 @@ export interface TaskItem {
   meta: string
   duration: string
   percent: number
-  detail: DetailLine[]
+  log: DetailLine[]
   pending: boolean
 }
 
@@ -157,6 +157,8 @@ export interface PermItem {
   meta: string
   command: string
   decision: 'once' | 'always' | 'deny' | null
+  /** Не задано — решение главного потока. Задано — принадлежит конкретному агенту. */
+  taskId?: string
 }
 
 export interface AskOption {
@@ -178,6 +180,8 @@ export interface AskItem {
   kind: 'ask'
   meta: string
   questions: AskQuestion[]
+  /** Не задано — вопрос главного потока. Задано — вопрос конкретного агента. */
+  taskId?: string
 }
 
 export interface CheckpointItem {
