@@ -29,6 +29,7 @@ import io.github.crmapache.amazingclaudecode.claude.ClaudeTokenUsage
 import io.github.crmapache.amazingclaudecode.claude.ClaudeUsagePing
 import io.github.crmapache.amazingclaudecode.claude.ImageAttachment
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSettings
+import io.github.crmapache.amazingclaudecode.claude.PermissionModes
 import io.github.crmapache.amazingclaudecode.claude.PermissionRules
 import io.github.crmapache.amazingclaudecode.claude.PermissionServer
 import io.github.crmapache.amazingclaudecode.editor.SelectionReference
@@ -112,7 +113,9 @@ internal class ClaudePanel(private val project: Project, private val parentDispo
 
         sessions = ClaudeSessions(
             workingDirectory = project.basePath,
-            settingsJson = server?.let { ClaudeSettings.withPermissionHook(it.port, it.token) },
+            settingsJson = { sessionId ->
+                server?.let { ClaudeSettings.withPermissionHook(it.port, it.token, sessionId) }
+            },
             parentDisposable = parentDisposable,
             onEvent = { sessionId, line -> forwardAgentEvent(sessionId, line) },
             onError = { sessionId, text -> sendError(sessionId, text) },
@@ -848,7 +851,9 @@ internal class ClaudePanel(private val project: Project, private val parentDispo
                 putJsonObject("preferences") {
                     put("model", preferences.model)
                     put("effort", preferences.effort)
-                    put("mode", preferences.mode)
+                    // Тем же значением, с которым реально поднимется процесс:
+                    // селектор в панели обязан показывать правду с первой секунды.
+                    put("mode", PermissionModes.resolve(preferences.mode))
                 }
             }.toString(),
         )

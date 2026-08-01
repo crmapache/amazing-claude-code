@@ -128,7 +128,11 @@ internal class ClaudeSession(
      * инструментов, перезапускать процесс не нужно. Об исходе сообщаем наверх —
      * панель показывает режим, и показывать она должна применённый, а не желаемый.
      */
-    fun setPermissionMode(mode: String, onApplied: (ModeChange) -> Unit) {
+    fun setPermissionMode(requested: String, onApplied: (ModeChange) -> Unit) {
+        // Наружу отвечаем тем же именем, что понимает CLI: панель показывает
+        // применённый режим, а не тот, которым его звали в старой переписке.
+        val mode = PermissionModes.normalize(requested)
+
         // Прежний режим держим под рукой: при отказе к нему и возвращаемся, иначе
         // перезапуск процесса поднял бы разговор с обычными разрешениями.
         val previous = permissionMode
@@ -303,10 +307,11 @@ internal class ClaudeSession(
         if (model.isNotEmpty()) commandLine.addParameters("--model", model)
         if (effort.isNotEmpty()) commandLine.addParameters("--effort", effort)
 
-        // Обычный режим флагом не передаём: он и так по умолчанию, а у флага для
-        // него другое имя, и агент отказался бы стартовать.
+        // Режим передаём всегда — даже «спрашивать всегда». Умолчание у CLI своё
+        // (permissions.defaultMode из личного конфига), и промолчав здесь, мы
+        // отдавали бы выбор ему: см. PermissionModes.
         permissionMode
-            ?.takeIf { it != DEFAULT_MODE }
+            ?.let(PermissionModes::normalize)
             ?.let { commandLine.addParameters("--permission-mode", it) }
 
         when {
@@ -389,7 +394,6 @@ internal class ClaudeSession(
     }.toString()
 
     private companion object {
-        const val DEFAULT_MODE = "default"
         val SESSION_ID = Regex("\"session_id\"\\s*:\\s*\"([^\"]+)\"")
 
         /** Сколько ждём ответа на любой управляющий запрос, прежде чем сдаться сами. */

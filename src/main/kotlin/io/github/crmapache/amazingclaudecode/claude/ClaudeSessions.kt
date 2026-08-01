@@ -13,7 +13,11 @@ import java.util.concurrent.ConcurrentHashMap
  */
 internal class ClaudeSessions(
     private val workingDirectory: String?,
-    private val settingsJson: String?,
+    /**
+     * Настройки запуска строятся под каждый разговор: в хук разрешений зашит
+     * идентификатор его вкладки, иначе ответ на вопрос некуда возвращать.
+     */
+    private val settingsJson: (sessionId: String) -> String?,
     private val parentDisposable: Disposable,
     private val onEvent: (sessionId: String, line: String) -> Unit,
     private val onError: (sessionId: String, message: String) -> Unit,
@@ -74,7 +78,10 @@ internal class ClaudeSessions(
      * до первого вопроса, иначе процесс поднимется с обычным.
      */
     fun setPermissionMode(sessionId: String, mode: String, onApplied: (ClaudeSession.ModeChange) -> Unit) {
-        ClaudePreferences.mode = mode
+        // Запоминаем уже приведённым к имени, которое понимает CLI: сохранённый
+        // выбор достаётся новым вкладкам и переживает перезапуск IDE, и старое имя
+        // жило бы там вечно.
+        ClaudePreferences.mode = PermissionModes.normalize(mode)
         session(sessionId).setPermissionMode(mode, onApplied)
     }
 
@@ -129,14 +136,14 @@ internal class ClaudeSessions(
         resumeFrom: String? = null,
     ): ClaudeSession = ClaudeSession(
         workingDirectory = workingDirectory,
-        settingsJson = settingsJson,
+        settingsJson = settingsJson(sessionId),
         forkFrom = forkFrom,
         resumeFrom = resumeFrom,
         // Новый разговор начинается с того же, что выбрано сейчас: перевыбирать
         // модель в каждой вкладке — работа на ровном месте.
         model = ClaudePreferences.model,
         effort = ClaudePreferences.effort,
-        permissionMode = ClaudePreferences.mode,
+        permissionMode = PermissionModes.resolve(ClaudePreferences.mode),
         onEvent = { line -> onEvent(sessionId, line) },
         onError = { message -> onError(sessionId, message) },
         onFinished = { onFinished(sessionId) },

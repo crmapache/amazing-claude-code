@@ -30,7 +30,10 @@ export const EFFORT_OPTIONS: MenuOption[] = [
 
 export const MODE_OPTIONS: MenuOption[] = [
   {
-    id: 'default',
+    // Имя из флага самого CLI. Панель звала этот режим `default`, пока у флага
+    // не появилось отдельное имя; старое значение приезжает из сохранённых
+    // настроек и из событий агента — его приводит к нынешнему normalizeMode.
+    id: 'manual',
     label: 'Ask permissions',
     tag: 'default',
     key: '⇧⇥',
@@ -119,8 +122,15 @@ export const BUILTIN_COMMANDS: CommandOption[] = [
   },
 ]
 
+/**
+ * Приводит название режима к тому, которым пользуемся мы. `default` — как этот
+ * режим звался раньше: он лежит в сохранённых настройках и может прийти от
+ * агента, а показывать из-за этого незнакомый режим панель не должна.
+ */
+export const normalizeMode = (mode: string): string => (mode === 'default' ? 'manual' : mode)
+
 export const modeLabel = (mode: string): string =>
-  MODE_OPTIONS.find((option) => option.id === mode)?.label ?? mode
+  MODE_OPTIONS.find((option) => option.id === normalizeMode(mode))?.label ?? mode
 
 /**
  * Подпись режима для кнопки в нижней строке. Она фиксированной ширины, а полное
@@ -128,7 +138,7 @@ export const modeLabel = (mode: string): string =>
  * прыгать в ширине не может, это дёргает весь ряд.
  */
 const MODE_SHORT: Record<string, string> = {
-  default: 'Ask',
+  manual: 'Ask',
   acceptEdits: 'Accept',
   plan: 'Plan',
   auto: 'Auto',
@@ -136,7 +146,7 @@ const MODE_SHORT: Record<string, string> = {
   bypassPermissions: 'Bypass',
 }
 
-export const modeShortLabel = (mode: string): string => MODE_SHORT[mode] ?? modeLabel(mode)
+export const modeShortLabel = (mode: string): string => MODE_SHORT[normalizeMode(mode)] ?? modeLabel(mode)
 
 /** Модель приходит полным идентификатором — в строке показываем понятное имя. */
 export const modelLabel = (model?: string): string => {

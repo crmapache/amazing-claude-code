@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { send, subscribe } from './bridge'
-import { EFFORT_OPTIONS, MODEL_OPTIONS, MODE_OPTIONS } from './catalog'
+import { EFFORT_OPTIONS, MODEL_OPTIONS, MODE_OPTIONS, normalizeMode } from './catalog'
 import { AgentStreamView } from './components/AgentStreamView'
 import { AskPanel } from './components/AskPanel'
 import { Composer } from './components/Composer'
@@ -71,7 +71,7 @@ export const App = () => {
    * Выбор модели, усилия и режима. Приходит от оболочки при запуске и там же
    * сохраняется: новая вкладка, форк и следующий запуск IDE начинаются с него.
    */
-  const [prefs, setPrefs] = useState({ model: '', effort: 'high', mode: 'default' })
+  const [prefs, setPrefs] = useState({ model: '', effort: 'high', mode: 'manual' })
   const [auth, setAuth] = useState<AuthState | null>(null)
   const [loginWaiting, setLoginWaiting] = useState(false)
   /** Растёт, когда полю ввода нужно вернуть фокус: например после ссылки из редактора. */
@@ -200,7 +200,7 @@ export const App = () => {
               setPrefs((current) => ({
                 model: message.preferences?.model || current.model,
                 effort: message.preferences?.effort || current.effort,
-                mode: message.preferences?.mode || current.mode,
+                mode: normalizeMode(message.preferences?.mode || current.mode),
               }))
             }
             dispatchPanel({
@@ -348,7 +348,7 @@ export const App = () => {
               session: message.sessionId,
               action: {
                 kind: 'modeApplied',
-                mode: message.mode,
+                mode: normalizeMode(message.mode),
                 applied: message.applied,
                 error: message.error,
               },

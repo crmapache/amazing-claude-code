@@ -92,7 +92,7 @@ internal class PermissionServer(
                 return
             }
 
-            val decision = decide(payload)
+            val decision = decide(payload, exchange.requestHeaders.getFirst(SESSION_HEADER).orEmpty())
             respond(exchange, decisionJson(decision.first, decision.second))
         } catch (error: Exception) {
             thisLogger().warn("Permission request failed", error)
@@ -102,7 +102,7 @@ internal class PermissionServer(
         }
     }
 
-    private fun decide(payload: JsonObject): Pair<Decision, String> {
+    private fun decide(payload: JsonObject, sessionId: String): Pair<Decision, String> {
         val mode = payload.string("permission_mode")
         val toolName = payload.string("tool_name")
         val input = payload["tool_input"]?.jsonObject
@@ -120,7 +120,10 @@ internal class PermissionServer(
 
         val request = Request(
             id = UUID.randomUUID().toString(),
-            sessionId = payload.string("session_id"),
+            // Идентификатор вкладки — из заголовка, который проставил хук. Номер
+            // разговора из тела запроса тут не годится: панель знает вкладки под
+            // своими именами и по чужому номеру карточку никому не покажет.
+            sessionId = sessionId,
             toolName = toolName,
             target = target(toolName, input),
             command = command(toolName, input),
@@ -195,6 +198,13 @@ internal class PermissionServer(
     companion object {
         const val PATH = "/permission"
         const val TOKEN_HEADER = "x-acc-token"
+
+        /**
+         * Вкладка, из которой пришёл запрос. Заголовок, а не поле в теле: тело
+         * пишет агент, и своего идентификатора вкладки у него нет — только номер
+         * разговора, по которому панель вкладку не найдёт.
+         */
+        const val SESSION_HEADER = "x-acc-session"
 
         /** Сколько ждём человека, прежде чем сами откажем инструменту. */
         const val WAIT_MINUTES = 10L

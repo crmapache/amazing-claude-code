@@ -7,6 +7,7 @@ import type {
   ToolResultBlock,
   ToolUseBlock,
 } from '../protocol'
+import { normalizeMode } from '../catalog'
 import { parseParagraphs } from './markdown'
 import { chipFor, detailFor, formatDuration, hunksFor, metaFor, resultToText, targetFor } from './tools'
 import type {
@@ -444,7 +445,7 @@ const applySystem = (
     sessionId: event.session_id ?? state.sessionId,
     model: event.model ?? state.model,
     pendingModel: modelConfirmed ? undefined : state.pendingModel,
-    permissionMode: event.permissionMode ?? state.permissionMode,
+    permissionMode: event.permissionMode ? normalizeMode(event.permissionMode) : state.permissionMode,
     slashCommands: event.slash_commands ?? state.slashCommands,
     // Рабочий каталог агент сообщает сам; без него пути в карточках остаются
     // полными и не помещаются в панель.
