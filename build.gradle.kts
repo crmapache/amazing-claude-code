@@ -77,7 +77,18 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
-              <li>First public release.</li>
+              <li>Subagents now get their own view: a switcher next to the input moves between the
+              main conversation and each running agent, with its full log, and the questions and
+              permission requests an agent raises stay attached to it.</li>
+              <li>Task list, plan, question, and permission panels are pinned above the input
+              instead of scrolling away with the feed.</li>
+              <li>New colour scheme — a cooler, quieter palette that sits closer to the IDE.</li>
+              <li>Fixed: permission requests never reached the panel, so a tool call waiting for
+              approval hung silently until it timed out.</li>
+              <li>Fixed: choosing "Ask permissions" had no effect — the session fell back to
+              whatever permission mode the local Claude Code config specified.</li>
+              <li>Fixed: slash commands whose description spans several lines showed a stray
+              character instead of the description.</li>
             </ul>
             """.trimIndent()
 
