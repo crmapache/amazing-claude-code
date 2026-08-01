@@ -77,6 +77,22 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
+              <li>The panel now takes its fonts from the IDE: the feed is drawn with the console
+              font, at its size and line spacing, so it reads like the terminal next to it, and
+              the whole panel follows when you change them. The manual font-size control is gone.</li>
+              <li>Streamed answers arrive at an even pace instead of in bursts, and new words fade
+              in as a left-to-right wave.</li>
+              <li>Fixed: multi-line messages collapsed onto a single line once sent, even though
+              the line breaks were kept everywhere else.</li>
+              <li>Approving a plan now switches permissions to Bypass, so the agent can carry out
+              the plan without asking for anything until you change the mode yourself.</li>
+              <li>Fixed: a fast burst of tool calls made the group header flicker between the
+              current tool's name and a bare count.</li>
+              <li>Image references (<code>[Image #N]</code>) are now numbered across the whole
+              conversation instead of restarting at 1 on every message.</li>
+              <li>Fixed: dragging a queued message to reorder it silently did nothing.</li>
+              <li>Fixed: selecting a past conversation from history that contained a plain-text
+              message (no attachments) froze the entire panel instead of loading it.</li>
               <li>Subagents now get their own view: a switcher next to the input moves between the
               main conversation and each running agent, with its full log, and the questions and
               permission requests an agent raises stay attached to it.</li>
