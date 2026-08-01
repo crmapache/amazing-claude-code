@@ -171,4 +171,12 @@ tasks.withType<RunIdeTask>().configureEach {
 
     // В тестовой IDE панель открывается сама: искать кнопку каждый прогон незачем.
     systemProperty("acc.autoOpen", "true")
+
+    // -PjcefDebugPort=9222 открывает панель для внешнего отладчика по протоколу
+    // Chrome DevTools: к ней можно подключиться браузером или скриптом и смотреть
+    // настоящую панель в настоящей IDE, а не её копию в браузере. По умолчанию
+    // выключено — порт наружу просто так держать незачем.
+    providers.gradleProperty("jcefDebugPort").orNull?.let { port ->
+        systemProperty("ide.browser.jcef.debug.port", port)
+    }
 }
