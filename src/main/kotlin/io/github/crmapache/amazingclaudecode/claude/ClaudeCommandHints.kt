@@ -59,19 +59,59 @@ internal object ClaudeCommandHints {
     }
 
     private val FRONTMATTER = Regex("""(?s)\A---\s*\n(.*?)\n---""")
-    private val DESCRIPTION_LINE = Regex("""(?m)^description:\s*(.+)$""")
-    private val ARGUMENT_HINT_LINE = Regex("""(?m)^argument-hint:\s*(.+)$""")
+    private val FIELD = Regex("""^([A-Za-z0-9_-]+):(.*)$""")
 
     /** Простое построчное чтение полей — без полноценного YAML, как и остальной парсинг в этом плагине. */
     private fun parseFrontmatter(file: File): CommandHint? {
         if (!file.isFile) return null
         val text = runCatching { file.readText() }.getOrNull() ?: return null
         val frontmatter = FRONTMATTER.find(text)?.groupValues?.get(1) ?: return null
+        val fields = readFields(frontmatter)
 
-        val description = DESCRIPTION_LINE.find(frontmatter)?.groupValues?.get(1)?.let(::unquote).orEmpty()
-        val argumentHint = ARGUMENT_HINT_LINE.find(frontmatter)?.groupValues?.get(1)?.let(::unquote).orEmpty()
+        val description = fields["description"].orEmpty()
+        val argumentHint = fields["argument-hint"].orEmpty()
 
         return if (description.isEmpty() && argumentHint.isEmpty()) null else CommandHint(description, argumentHint)
+    }
+
+    /**
+     * Значения полей фронтматтера, включая многострочные.
+     *
+     * Длинные описания принято выносить блоком — `description: >` или `|`, а сам
+     * текст с отступом на следующих строках. Раньше бралось всё, что стоит после
+     * двоеточия, и в подсказке команд оказывался один символ `>` вместо описания.
+     * Свёрнутый блок (`>`) склеиваем пробелами, буквальный (`|`) — переводами
+     * строк, как и полагается YAML.
+     */
+    private fun readFields(frontmatter: String): Map<String, String> {
+        val fields = mutableMapOf<String, String>()
+        val lines = frontmatter.lines()
+        var index = 0
+
+        while (index < lines.size) {
+            val match = FIELD.find(lines[index])
+            index += 1
+            if (match == null) continue
+
+            val name = match.groupValues[1]
+            val inline = match.groupValues[2].trim()
+            if (inline.isNotEmpty() && !inline.startsWith(">") && !inline.startsWith("|")) {
+                fields[name] = unquote(inline)
+                continue
+            }
+
+            // Пустое значение тоже может быть началом блока — просто без указателя.
+            val separator = if (inline.startsWith("|")) "\n" else " "
+            val block = mutableListOf<String>()
+            while (index < lines.size && (lines[index].isBlank() || lines[index].startsWith(" ") || lines[index].startsWith("\t"))) {
+                block += lines[index].trim()
+                index += 1
+            }
+
+            fields[name] = block.filter { it.isNotEmpty() }.joinToString(separator)
+        }
+
+        return fields
     }
 
     private fun unquote(value: String): String =
