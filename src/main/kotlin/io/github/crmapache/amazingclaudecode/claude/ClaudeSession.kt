@@ -291,35 +291,22 @@ internal class ClaudeSession(
 
         val commandLine = GeneralCommandLine(executable.absolutePath)
             .withParameters(
-                "--print",
-                // Без --verbose поток событий не отдаётся, это требование самого CLI.
-                "--verbose",
-                "--output-format", "stream-json",
-                "--input-format", "stream-json",
-                "--include-partial-messages",
+                ClaudeLaunch.arguments(
+                    settingsJson = settingsJson,
+                    model = model,
+                    effort = effort,
+                    permissionMode = permissionMode,
+                    conversationId = conversationId,
+                    forkFrom = forkFrom,
+                    allowBypassSwitch = ClaudeExecutable.supportsFlag(
+                        executable,
+                        ClaudeLaunch.ALLOW_BYPASS_FLAG,
+                    ),
+                ),
             )
             .withWorkingDirectory(workingDirectory?.let { java.nio.file.Path.of(it) })
             .withEnvironment(ClaudeExecutable.environment())
             .withCharset(Charsets.UTF_8)
-
-        settingsJson?.let { commandLine.addParameters("--settings", it) }
-
-        if (model.isNotEmpty()) commandLine.addParameters("--model", model)
-        if (effort.isNotEmpty()) commandLine.addParameters("--effort", effort)
-
-        // Режим передаём всегда — даже «спрашивать всегда». Умолчание у CLI своё
-        // (permissions.defaultMode из личного конфига), и промолчав здесь, мы
-        // отдавали бы выбор ему: см. PermissionModes.
-        permissionMode
-            ?.let(PermissionModes::normalize)
-            ?.let { commandLine.addParameters("--permission-mode", it) }
-
-        when {
-            // Продолжаем свой разговор после перезапуска процесса.
-            conversationId != null -> commandLine.addParameters("--resume", conversationId!!)
-            // Первый запуск ветки: копируем переписку родителя, но с новым номером.
-            forkFrom != null -> commandLine.addParameters("--resume", forkFrom, "--fork-session")
-        }
 
         val process = runCatching { OSProcessHandler(commandLine) }
             .onFailure {

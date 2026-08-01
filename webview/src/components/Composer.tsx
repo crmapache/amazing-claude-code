@@ -11,6 +11,7 @@ import {
   slashQuery as slashQueryFromText,
   type CommandEntry,
 } from '../feed/slash'
+import { clipboardHtml, clipboardTokens, tokensText } from '../feed/tokens'
 import type { Chip, ChipKind, UserToken } from '../feed/types'
 import { SlashSuggest } from './SlashSuggest'
 import s from './composer.module.css'
@@ -40,6 +41,8 @@ interface ComposerProps {
   commands: CommandEntry[]
   /** Файлы проекта для подсказки "@" — от корня рабочей директории. */
   files: string[]
+  /** Сколько картинок уже ушло раньше в этой сессии — нумерация новых продолжает отсюда. */
+  imageBaseCount: number
   /** Панель просит сфокусировать поле, например после ссылки из редактора. */
   focusToken: number
   onTokensChange: (tokens: UserToken[]) => void
@@ -58,6 +61,7 @@ export const Composer = ({
   planMode,
   commands,
   files,
+  imageBaseCount,
   focusToken,
   onTokensChange,
   onAttach,
@@ -88,6 +92,9 @@ export const Composer = ({
     if (!root || tokens === lastReported.current) return
 
     rebuildDom(root, tokens)
+    // Черновик мог быть отложен с подписями, которые с тех пор устарели, —
+    // показываем номера по факту, а состояние догонит первой же правкой.
+    relabelImages(root, imageBaseCount)
     lastReported.current = tokens
   }, [tokens])
 
@@ -234,11 +241,42 @@ export const Composer = ({
     onTokensChange(next)
   }
 
+  /**
+   * Читает поле и заодно приводит подписи картинок в соответствие их порядку:
+   * номер в плашке обязан совпадать с [Image #N], который увидит агент.
+   */
+  const readTokens = (root: HTMLElement): UserToken[] => {
+    relabelImages(root, imageBaseCount)
+    return extractTokens(root)
+  }
+
+  /**
+   * Картинки этой сессии пересчитали (ушло сообщение, разобралась очередь) —
+   * значит и подписи в поле сдвинулись. Историю отмены таким обновлением не
+   * трогаем: человек ничего не редактировал, поменялся лишь номер.
+   */
+  useEffect(() => {
+    const root = input.current
+    if (!root || !relabelImages(root, imageBaseCount)) return
+
+    const next = extractTokens(root)
+    lastReported.current = next
+    onTokensChange(next)
+  }, [imageBaseCount])
+
   /** Программная правка всего содержимого: DOM меняем сами, а не ждём эффекта. */
   const applyTokens = (next: UserToken[]) => {
     const root = input.current
-    if (root) rebuildDom(root, next)
-    report(next, true)
+    if (!root) {
+      report(next, true)
+      return
+    }
+
+    rebuildDom(root, next)
+    // Читаем поле обратно, а не докладываем next как есть: картинок могло стать
+    // меньше (вырезали кусок вместе с одной из них), и подписи оставшихся должны
+    // сдвинуться — иначе в поле останется «Image #2», который уйдёт агенту первым.
+    report(readTokens(root), true)
   }
 
   /** Восстановление шагом истории — само по себе новой границей истории не является. */
@@ -267,7 +305,7 @@ export const Composer = ({
     const root = input.current
     if (!root) return
 
-    const next = extractTokens(root)
+    const next = readTokens(root)
 
     // Стерев весь текст выделением или подряд идущими backspace, Chromium
     // оставляет одинокий <br> вместо по-настоящему пустого узла — из-за него
@@ -325,7 +363,7 @@ export const Composer = ({
     selection?.removeAllRanges()
     selection?.addRange(range)
 
-    report(extractTokens(root), true)
+    report(readTokens(root), true)
   }
 
   /** Курсор в поле — или его конец, если фокус потерян и его по-честному нет. */
@@ -353,7 +391,7 @@ export const Composer = ({
     selection?.removeAllRanges()
     selection?.addRange(range)
 
-    report(extractTokens(root), true)
+    report(readTokens(root), true)
   }
 
   /**
@@ -395,7 +433,77 @@ export const Composer = ({
     selection?.removeAllRanges()
     selection?.addRange(range)
 
-    report(extractTokens(root), true)
+    report(readTokens(root), true)
+  }
+
+  /**
+   * Возвращает в поле последовательность, скопированную из него же.
+   *
+   * Плашки пересобираем настоящими узлами, а не разметкой из буфера: связь
+   * «узел — вложение» живёт по идентичности узла, и у клона из буфера её нет —
+   * вставленная как разметка плашка выглядела бы как надо, но для отправки не
+   * значила бы ничего.
+   */
+  const insertTokensAtCursor = (next: UserToken[]) => {
+    const root = input.current
+    if (!root) return
+
+    const range = currentRange(root)
+    range.deleteContents()
+
+    for (const token of next) {
+      if (token.kind === 'text') {
+        const text = document.createTextNode(token.value)
+        range.insertNode(text)
+        range.setStartAfter(text)
+      } else {
+        const node: HTMLElement = renderChipNode(token.chip, () => onChipRemoved(root, node))
+        range.insertNode(node)
+        range.setStartAfter(node)
+      }
+      range.collapse(true)
+    }
+
+    const selection = window.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+
+    report(readTokens(root), true)
+  }
+
+  /**
+   * Копирование и вырезание из поля.
+   *
+   * Отдать это браузеру нельзя: вложения тут не текст, а плашки, и он положил бы
+   * в буфер их видимую надпись вместе со значком и крестиком кнопки удаления —
+   * ровно ту бессмысленную строку, которая потом и вставлялась обратно вместо
+   * картинки. Кладём сами: читаемый текст — как его увидит агент, и рядом полное
+   * описание вложений с байтами, по которому плашка восстанавливается живой
+   * (см. feed/tokens).
+   */
+  const copySelection = (event: ClipboardEvent<HTMLDivElement>, cut: boolean) => {
+    const root = input.current
+    const selection = window.getSelection()
+    if (!root || !selection || selection.rangeCount === 0) return
+
+    const range = selection.getRangeAt(0)
+    if (range.collapsed || !root.contains(range.commonAncestorContainer)) return
+
+    const { picked, rest, caret } = splitTokens(root, range)
+    if (picked.length === 0) return
+
+    event.preventDefault()
+    event.clipboardData.setData('text/plain', tokensText(picked))
+    event.clipboardData.setData('text/html', clipboardHtml(picked))
+
+    // Вырезаем не через deleteContents: выделение могло начаться или кончиться
+    // внутри плашки, и браузер выпотрошил бы её, оставив половину узлов. Что
+    // остаётся — уже посчитано, поэтому просто пересобираем поле из остатка и
+    // возвращаем курсор туда, где резали.
+    if (cut) {
+      applyTokens(rest)
+      placeCaretBefore(root, caret)
+    }
   }
 
   /**
@@ -418,6 +526,15 @@ export const Composer = ({
 
     event.preventDefault()
 
+    // Своё же содержимое, скопированное из поля, возвращаем живыми плашками — с
+    // байтами картинок, а не надписью с них. Проверяем первым: скопированная
+    // плашка картинкой в буфере не лежит, и обычные ветки её не узнают.
+    const restored = clipboardTokens(event.clipboardData?.getData('text/html') ?? '')
+    if (restored) {
+      insertTokensAtCursor(restored)
+      return
+    }
+
     if (images.length === 0) {
       const text = event.clipboardData?.getData('text/plain') ?? ''
       if (text) insertTextAtCursor(text)
@@ -439,7 +556,7 @@ export const Composer = ({
           (token) => token.kind === 'chip' && token.chip.kind === 'img' && Boolean(token.chip.data),
         ).length
 
-        insertChipAtCursor({ kind: 'img', value: `Image #${count + 1}`, data: reader.result })
+        insertChipAtCursor({ kind: 'img', value: `Image #${imageBaseCount + count + 1}`, data: reader.result })
       }
       reader.readAsDataURL(file)
     }
@@ -448,7 +565,7 @@ export const Composer = ({
   const placeholder = tokens.length
     ? ''
     : planMode
-      ? 'Describe what to plan… @ for files, / for commands'
+      ? 'Describe what to plan…'
       : 'Ask, or describe a change… @ for files, / for commands'
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -524,6 +641,9 @@ export const Composer = ({
 
       if (event.key === 'Escape') {
         event.preventDefault()
+        // Подсказку закрыли — этого достаточно: не даём Escape провалиться
+        // выше и заодно ещё и остановить агента (см. глобальный обработчик в App).
+        event.stopPropagation()
         setDismissed(true)
         return
       }
@@ -573,9 +693,13 @@ export const Composer = ({
 
     if (event.key === 'Enter' && event.shiftKey) {
       event.preventDefault()
-      // Явный символ строки, а не <br>: извлечение токенов читает текстовые
-      // узлы как строки, а закладывать в него ещё и разбор тегов незачем.
-      document.execCommand('insertText', false, '\n')
+      // Не execCommand('insertText', ..., '\n') — здесь он не кладёт литеральный
+      // символ строки в текстовый узел, а расщепляет поле на отдельный <div> под
+      // вторую строку (проверено живьём). Такой <div> излечение токенов не
+      // понимает и молча теряет целиком — вторая строка не доходила до отправки.
+      // insertTextAtCursor вставляет тем же самым текстовым узлом напрямую через
+      // Range API, без риска, что браузер сам решит расщепить его на блоки.
+      insertTextAtCursor('\n')
     }
   }
 
@@ -612,6 +736,8 @@ export const Composer = ({
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onPaste={handlePaste}
+          onCopy={(event) => copySelection(event, false)}
+          onCut={(event) => copySelection(event, true)}
           onKeyDown={handleKeyDown}
         />
 
@@ -706,6 +832,27 @@ const placeCaretAtEnd = (root: HTMLElement | null) => {
   const selection = window.getSelection()
   selection?.removeAllRanges()
   selection?.addRange(endRange(root))
+}
+
+/**
+ * Курсор перед ребёнком с таким номером — место, где только что вырезали.
+ * Оставлять его в конце поля после Cmd+X нельзя: вырезают обычно из середины и
+ * продолжают печатать там же.
+ */
+const placeCaretBefore = (root: HTMLElement, index: number) => {
+  const node = root.childNodes[index]
+  if (!node) {
+    placeCaretAtEnd(root)
+    return
+  }
+
+  const range = document.createRange()
+  range.setStartBefore(node)
+  range.collapse(true)
+
+  const selection = window.getSelection()
+  selection?.removeAllRanges()
+  selection?.addRange(range)
 }
 
 interface AtQuery {
@@ -803,11 +950,162 @@ const extractTokens = (root: HTMLElement): UserToken[] => {
 
     if (node instanceof HTMLElement) {
       const chip = chipByNode.get(node)
-      if (chip) tokens.push({ kind: 'chip', chip })
+      if (chip) {
+        tokens.push({ kind: 'chip', chip })
+        continue
+      }
+
+      // Молча терять целый узел нельзя — так раньше пропадала вторая строка,
+      // если браузер вопреки нашим намерениям расщеплял поле на блоки (см.
+      // handleKeyDown про Shift+Enter). Такой блок — подразумеваемый перенос
+      // строки, поэтому читаем его текст как есть, с переводом строки перед ним.
+      const value = node.textContent ?? ''
+      if (value) tokens.push({ kind: 'text', value: tokens.length > 0 ? `\n${value}` : value })
     }
   }
 
   return tokens
+}
+
+/** Место границы выделения в поле: какой ребёнок и сколько символов от его начала. */
+interface Point {
+  index: number
+  offset: number
+}
+
+/**
+ * Приводит границу выделения к плоским координатам поля.
+ *
+ * Дети поля плоские — текстовые узлы и плашки верхнего уровня, — а браузер
+ * ставит границу где угодно: и в самом поле между детьми, и внутри текста, и
+ * внутри плашки, попав в её значок или крестик. Плашка неделима, поэтому
+ * границу внутри неё прижимаем к ближайшему краю: начало выделения — к левому,
+ * конец — к правому. Иначе выделив плашку мышью, человек скопировал бы половину
+ * её внутренностей.
+ */
+const pointIn = (root: HTMLElement, container: Node, offset: number, side: 'start' | 'end'): Point => {
+  const children = Array.from(root.childNodes)
+
+  // Граница прямо в поле: смещение — это номер ребёнка, а не символа.
+  if (container === root) return { index: Math.min(offset, children.length), offset: 0 }
+
+  let node: Node | null = container
+  while (node && node.parentNode !== root) node = node.parentNode
+
+  const index = node ? children.indexOf(node as ChildNode) : -1
+  // Граница вообще не из этого поля — считаем, что она за его концом.
+  if (index < 0) return { index: children.length, offset: 0 }
+
+  if (node === container && container.nodeType === Node.TEXT_NODE) return { index, offset }
+
+  return side === 'start' ? { index, offset: 0 } : { index: index + 1, offset: 0 }
+}
+
+/**
+ * Делит содержимое поля по выделению: что попало в него и что осталось.
+ *
+ * Данные плашек берём из той же таблицы по живому узлу, что и extractTokens, —
+ * поэтому байты картинок переживают копирование, хотя в самом DOM их нет.
+ */
+const splitTokens = (
+  root: HTMLElement,
+  range: Range,
+): { picked: UserToken[]; rest: UserToken[]; caret: number } => {
+  const start = pointIn(root, range.startContainer, range.startOffset, 'start')
+  const end = pointIn(root, range.endContainer, range.endOffset, 'end')
+
+  const picked: UserToken[] = []
+  const rest: UserToken[] = []
+  /** Сколько в остатке того, что стояло ДО выделения — туда же вернётся курсор. */
+  let caret = 0
+
+  const keep = (token: UserToken | null, before: boolean) => {
+    if (token) rest.push(token)
+    if (before) caret = rest.length
+  }
+  const asText = (value: string): UserToken | null => (value ? { kind: 'text', value } : null)
+
+  /**
+   * Не наш узел — тот самый подразумеваемый перенос строки, что и в
+   * extractTokens: читаем текстом, с переводом строки перед ним, но только если
+   * ему есть от чего отделяться.
+   */
+  const asBlock = (value: string, into: UserToken[]): UserToken | null =>
+    asText(value && into.length > 0 ? `\n${value}` : value)
+
+  Array.from(root.childNodes).forEach((node, index) => {
+    if (node instanceof HTMLElement) {
+      const chip = chipByNode.get(node)
+      const raw = node.textContent ?? ''
+
+      // Плашка занимает своё место целиком: она внутри выделения, только если
+      // выделение началось не позже её и закончилось строго после неё.
+      if (index >= start.index && index < end.index) {
+        const token = chip ? ({ kind: 'chip', chip } as UserToken) : asBlock(raw, picked)
+        if (token) picked.push(token)
+        return
+      }
+
+      keep(chip ? { kind: 'chip', chip } : asBlock(raw, rest), index < start.index)
+      return
+    }
+
+    const value = node.textContent ?? ''
+
+    if (index < start.index) {
+      keep(asText(value), true)
+      return
+    }
+    if (index > end.index) {
+      keep(asText(value), false)
+      return
+    }
+
+    const from = index === start.index ? Math.min(start.offset, value.length) : 0
+    const to = index === end.index ? Math.min(end.offset, value.length) : value.length
+
+    const inside = asText(value.slice(from, to))
+    if (inside) picked.push(inside)
+    keep(asText(value.slice(0, from)), true)
+    keep(asText(value.slice(to)), false)
+  })
+
+  return { picked, rest, caret }
+}
+
+/**
+ * Приводит подписи картинок в соответствие их месту в поле.
+ *
+ * Номер в плашке раньше запоминался в момент вставки и потом врал: удалили
+ * первую из двух картинок — вторая так и осталась «#2», хотя агенту она уйдёт
+ * первой. Считаем номер по факту, как и текст сообщения, чтобы видимое и
+ * отправленное сходились. Плашку пересобираем новым объектом, а не правим на
+ * месте: тот же объект лежит в состоянии панели, и менять его исподтишка нельзя.
+ */
+const relabelImages = (root: HTMLElement, base: number): boolean => {
+  let ordinal = base
+  let changed = false
+
+  for (const node of Array.from(root.childNodes)) {
+    if (!(node instanceof HTMLElement)) continue
+
+    const chip = chipByNode.get(node)
+    if (!chip || chip.kind !== 'img' || !chip.data) continue
+
+    ordinal += 1
+    const value = `Image #${ordinal}`
+    if (chip.value === value) continue
+
+    const next: Chip = { ...chip, value }
+    chipByNode.set(node, next)
+    node.title = value
+
+    const label = Array.from(node.childNodes).find((child) => child.nodeType === Node.TEXT_NODE)
+    if (label) label.textContent = chipLabel(next)
+    changed = true
+  }
+
+  return changed
 }
 
 /**

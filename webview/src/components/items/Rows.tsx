@@ -1,5 +1,18 @@
-import type { CheckpointItem, CompactItem, CrashItem, MetaItem } from '../../feed/types'
+import type { CheckpointItem, CompactItem, CrashItem, MetaItem, ThinkItem } from '../../feed/types'
 import s from '../feed.module.css'
+
+/**
+ * Всегда в одну строку — обрезаем многоточием через CSS (text-overflow), а не
+ * разворачиваем на полэкрана: это ход мысли между делом, не то, ради чего
+ * приходят в панель. Пока мысль ещё стримится, plашка дышит тем же пульсом,
+ * что и CONTEXT во время сжатия — тот же язык «идёт, не готово».
+ */
+export const ThinkRow = ({ item }: { item: ThinkItem }) => (
+  <div className={s.think}>
+    <span className={`${s.toolChip} ${s.chipThink} ${item.pending ? s.thinkPending : ''}`}>THINK</span>
+    <span className={s.thinkText}>{item.text}</span>
+  </div>
+)
 
 export const CheckpointRow = ({ item }: { item: CheckpointItem }) => (
   <div className={s.checkpoint}>

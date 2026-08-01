@@ -1,7 +1,10 @@
 package io.github.crmapache.amazingclaudecode.claude
 
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.util.EnvironmentUtil
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 /**
  * Поиск исполняемого файла Claude Code.
@@ -23,6 +26,37 @@ internal object ClaudeExecutable {
     fun find(): File? = fromPath() ?: fromFallbacks()
 
     fun environment(): Map<String, String> = EnvironmentUtil.getEnvironmentMap()
+
+    /**
+     * Знает ли найденный CLI такой ключ запуска.
+     *
+     * Спрашиваем у самого файла, а не сверяемся с номером версии: у людей стоят
+     * разные сборки, а неизвестный ключ CLI не игнорирует — он падает на разборе
+     * аргументов, и вместо панели человек получил бы мёртвую вкладку.
+     *
+     * Ответ держим в памяти: `--help` стоит десятые доли секунды, но спрашивать
+     * его на каждый запуск разговора незачем. Ключ кеша учитывает и время правки
+     * файла — обновление CLI на месте не должно оставлять нас со старым ответом.
+     */
+    fun supportsFlag(executable: File, flag: String): Boolean =
+        supportedFlags.getOrPut("${executable.absolutePath}|${executable.lastModified()}|$flag") {
+            runCatching {
+                val process = ProcessBuilder(executable.absolutePath, "--help")
+                    .redirectErrorStream(true)
+                    .start()
+
+                val help = process.inputStream.bufferedReader().use { it.readText() }
+                process.waitFor(HELP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                help.contains(flag)
+            }.getOrElse {
+                thisLogger().warn("Failed to ask claude about $flag", it)
+                false
+            }
+        }
+
+    private val supportedFlags = ConcurrentHashMap<String, Boolean>()
+
+    private const val HELP_TIMEOUT_SECONDS = 10L
 
     private fun fromPath(): File? {
         val path = EnvironmentUtil.getValue("PATH") ?: return null

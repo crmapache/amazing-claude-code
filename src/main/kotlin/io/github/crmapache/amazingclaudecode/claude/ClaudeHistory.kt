@@ -3,10 +3,15 @@ package io.github.crmapache.amazingclaudecode.claude
 import com.intellij.openapi.diagnostic.thisLogger
 import java.io.File
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 
 /**
  * Прошлые разговоры этого проекта.
@@ -42,10 +47,32 @@ internal object ClaudeHistory {
         if (!file.isFile) return emptyList()
 
         return runCatching {
-            file.readLines().filter { line ->
-                line.startsWith("{") && (line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\""))
-            }
+            file.readLines()
+                .filter { line ->
+                    line.startsWith("{") && (line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\""))
+                }
+                .map(::normalizeContent)
         }.onFailure { thisLogger().warn("Failed to read conversation $id", it) }.getOrDefault(emptyList())
+    }
+
+    /**
+     * На диске голая текстовая реплика человека — это строка в message.content, а
+     * не массив блоков: так её пишет сам Claude Code, когда во вводе не было ни
+     * вложений, ни tool_result. Живой поток отдаёт панели только массивы блоков —
+     * лента разбирает исключительно их и падает на строке. Раз это единственное
+     * место, где старый формат превращается в живое событие, приводим форму здесь,
+     * а не защитными проверками по всей ленте.
+     */
+    internal fun normalizeContent(line: String): String {
+        val payload = runCatching { Json.parseToJsonElement(line).jsonObject }.getOrNull() ?: return line
+        val message = payload["message"]?.jsonObject ?: return line
+        val content = message["content"] as? JsonPrimitive ?: return line
+        if (!content.isString) return line
+
+        val textBlock = buildJsonArray { addJsonObject { put("type", "text"); put("text", content.content) } }
+        val normalizedMessage = JsonObject(message + ("content" to textBlock))
+        val normalizedPayload = JsonObject(payload + ("message" to normalizedMessage))
+        return normalizedPayload.toString()
     }
 
     /**

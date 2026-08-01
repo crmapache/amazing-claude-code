@@ -78,11 +78,16 @@ internal class ClaudeSessions(
      * до первого вопроса, иначе процесс поднимется с обычным.
      */
     fun setPermissionMode(sessionId: String, mode: String, onApplied: (ClaudeSession.ModeChange) -> Unit) {
-        // Запоминаем уже приведённым к имени, которое понимает CLI: сохранённый
-        // выбор достаётся новым вкладкам и переживает перезапуск IDE, и старое имя
-        // жило бы там вечно.
-        ClaudePreferences.mode = PermissionModes.normalize(mode)
-        session(sessionId).setPermissionMode(mode, onApplied)
+        session(sessionId).setPermissionMode(mode) { change ->
+            // Запоминаем только то, что агент правда применил, и уже приведённым к
+            // имени, которое понимает CLI: сохранённый выбор достаётся новым
+            // вкладкам и переживает перезапуск IDE. Записав желаемое сразу, мы
+            // оставляли бы отвергнутый режим там навсегда — панель откатывалась
+            // к прежнему, а каждая следующая вкладка поднималась с тем, что уже
+            // один раз не сработало.
+            if (change.applied) ClaudePreferences.mode = PermissionModes.normalize(change.mode)
+            onApplied(change)
+        }
     }
 
     /**

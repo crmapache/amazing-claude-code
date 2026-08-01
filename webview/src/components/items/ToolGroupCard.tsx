@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type { ToolGroupItem } from '../../feed/types'
 import type { CardState } from '../../hooks/useCardState'
 import s from '../feed.module.css'
@@ -10,7 +11,28 @@ interface ToolGroupCardProps {
   awaitingPermissionId: string | undefined
 }
 
+/**
+ * Между вызовами внутри одного «взрыва» группа на мгновение честно становится
+ * не pending — предыдущий вызов уже разрешился, следующий ещё не начался (см.
+ * appendToolCall в build.ts). Без задержки это дёргает заголовок между именем
+ * инструмента и счётчиком «N tools» на каждом таком зазоре. Задержка даёт
+ * следующему вызову шанс прилететь и отменить схлопывание, не показывая
+ * счётчик зазря.
+ */
+const COLLAPSE_DELAY_MS = 300
+
 export const ToolGroupCard = ({ item, cards, awaitingPermissionId }: ToolGroupCardProps) => {
+  const [collapsed, setCollapsed] = useState(!item.pending)
+
+  useEffect(() => {
+    if (item.pending) {
+      setCollapsed(false)
+      return
+    }
+    const timer = window.setTimeout(() => setCollapsed(true), COLLAPSE_DELAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [item.pending])
+
   // Один вызов подряд — рисуем его как обычную одиночную карточку, без рамки
   // группы: сворачивать нечего, а лишняя стрелочка только мешала бы.
   if (item.tools.length === 1) {
@@ -37,20 +59,22 @@ export const ToolGroupCard = ({ item, cards, awaitingPermissionId }: ToolGroupCa
       <button type="button" className={s.toolGroupHead} onClick={() => cards.toggle(item.id)}>
         <span className={`${s.caret} ${open ? s.caretOpen : ''}`}>▶</span>
 
-        {item.pending ? (
+        {!collapsed ? (
           <>
             <span className={`${s.toolChip} ${CHIP_CLASS[current.chip]}`}>{current.chip}</span>
             <span className={s.toolTarget}>{current.target}</span>
-            <span className={`${s.toolMeta} ${currentAwaited ? s.waiting : s.running}`}>
-              {currentAwaited ? '· waiting for you' : '· running'}
-            </span>
+            {item.pending ? (
+              <span className={`${s.toolMeta} ${currentAwaited ? s.waiting : s.running}`}>
+                {currentAwaited ? '· waiting for you' : '· running'}
+              </span>
+            ) : null}
           </>
         ) : (
           <span className={s.toolTarget}>{item.tools.length} tools</span>
         )}
 
         <div className={s.spacer} />
-        {item.pending ? <span className={s.toolMeta}>{item.tools.length} tools</span> : null}
+        {!collapsed ? <span className={s.toolMeta}>{item.tools.length} tools</span> : null}
         <span className={s.toolDur}>{item.duration}</span>
       </button>
 

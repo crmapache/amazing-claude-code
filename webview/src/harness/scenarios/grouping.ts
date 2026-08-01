@@ -1,4 +1,4 @@
-import { checkpoint, scenario, think, toolResult, toolUse, textReply, turnResult, user, wait } from '../events'
+import { checkpoint, scenario, think, thinkReply, toolResult, toolUse, textReply, turnResult, user, wait } from '../events'
 import type { Scenario } from '../types'
 
 export const scenariosGrouping: Scenario[] = [
@@ -117,12 +117,17 @@ export const scenariosGrouping: Scenario[] = [
     ]),
   ]),
 
-  scenario('thinking-mixed-in', 'Мысль внутри и после группы', 'grouping', [
+  scenario('thinking-mixed-in', 'Мысль между вызовами — своя карточка', 'grouping', [
     checkpoint('Пользователь спросил про index.ts', [
       user('Кратко объясни, что делает src/index.ts'),
       wait(400),
     ]),
-    checkpoint('Мысль: посмотреть файл', [think('Нужно сначала посмотреть на сам файл.'), wait(300)]),
+    // Стримится по кусочкам, как настоящая мысль — видно, как строка растёт и
+    // обрезается многоточием, пока не придёт готовый блок thinking.
+    checkpoint('Мысль: посмотреть файл (живой стрим)', [
+      ...thinkReply('Нужно сначала посмотреть на сам файл, чтобы понять, с чего вообще начинается точка входа приложения.'),
+      wait(300),
+    ]),
     checkpoint('Read: index.ts', [
       toolUse('Read', { file_path: '/Users/you/demo-project/src/index.ts' }, 'g4-1'),
       wait(700),
@@ -132,8 +137,9 @@ export const scenariosGrouping: Scenario[] = [
       wait(500),
     ]),
     // Мысль ПОСЛЕ того, как единственный вызов уже разрешился, без текста между
-    // ними — именно этот случай чинили в фиче группировки (баг с зависшим таймером).
-    checkpoint('Мысль после результата — группа не должна зависнуть', [
+    // ними — своя карточка, соседнюю группу инструментов не трогает и не
+    // переоткрывает (в группировку мысль вообще не заходит).
+    checkpoint('Мысль после результата — не трогает соседнюю группу', [
       think('Файл совсем короткий, этого достаточно для ответа.'),
       wait(400),
     ]),

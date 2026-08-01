@@ -36,6 +36,16 @@ export interface PanelState {
   items: FeedItem[]
   /** Текст ответа, который печатается прямо сейчас. Живёт до готового сообщения. */
   streamingText: string
+  /**
+   * Номер, под которым печатающийся ответ ляжет в ленту, когда придёт готовым
+   * блоком. Выдаётся заранее, на первой же дельте, чтобы печатающаяся карточка и
+   * готовая оказались для React одним и тем же узлом: иначе на стыке он выкинул
+   * бы одну карточку и создал вторую, а вместе с ней оборвалась бы и волна
+   * проявления — ровно на последних словах ответа.
+   */
+  streamingId?: string
+  /** То же самое, но для мысли — пока не пришёл готовый блок thinking. */
+  streamingThinking: string
   status: AgentStatus
   errors: string[]
   sessionId?: string
@@ -117,6 +127,7 @@ export type PanelAction =
 export const initialPanelState: PanelState = {
   items: [],
   streamingText: '',
+  streamingThinking: '',
   status: 'idle',
   errors: [],
   usage: {
@@ -134,6 +145,15 @@ export const initialPanelState: PanelState = {
   compacting: false,
   suppressNextMeta: false,
 }
+
+/**
+ * Один и тот же отказ приходит в ленту двумя дорогами: текстом в поток ошибок
+ * процесса и разобранным ответом на управляющий запрос. Показывать его двумя
+ * одинаковыми красными плашками подряд — выглядит как две разные поломки, хотя
+ * случилась одна.
+ */
+const addError = (errors: string[], message: string): string[] =>
+  errors.includes(message) ? errors : [...errors, message]
 
 export const reducePanel = (state: PanelState, action: PanelAction, now = Date.now()): PanelState => {
   switch (action.kind) {
@@ -167,7 +187,7 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
       return tickDurations(state, now)
 
     case 'error':
-      return { ...state, errors: [...state.errors, action.message] }
+      return { ...state, errors: addError(state.errors, action.message) }
 
     case 'dismissError':
       return { ...state, errors: state.errors.filter((_, index) => index !== action.index) }
@@ -183,6 +203,8 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         ...state,
         status: 'running',
         streamingText: '',
+        streamingId: undefined,
+        streamingThinking: '',
         stopRequestedAt: undefined,
         crashed: false,
         seq: state.seq + 1,
@@ -247,7 +269,7 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         ...state,
         pendingMode: undefined,
         permissionMode: action.applied ? action.mode : state.permissionMode,
-        errors: action.error ? [...state.errors, action.error] : state.errors,
+        errors: action.error ? addError(state.errors, action.error) : state.errors,
       }
 
     case 'agent':
@@ -345,6 +367,8 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
     ...state,
     status: 'idle',
     streamingText: '',
+    streamingId: undefined,
+    streamingThinking: '',
     crashed: true,
     stopRequestedAt: undefined,
     startedAt,
@@ -383,10 +407,15 @@ const applyAgentEvent = (state: PanelState, event: AgentEvent, now: number): Pan
 
     case 'stream_event': {
       const delta = event.event.delta
-      if (event.event.type !== 'content_block_delta' || delta?.type !== 'text_delta') return state
-      // Текст подагента в основную ленту не течёт: у него своя карточка.
+      if (event.event.type !== 'content_block_delta') return state
+      // Текст и мысль подагента в основную ленту не текут: у него своя карточка.
       if (event.parent_tool_use_id) return state
-      return { ...state, streamingText: state.streamingText + (delta.text ?? '') }
+
+      if (delta?.type === 'text_delta') return appendStreamingText(state, delta.text ?? '')
+      if (delta?.type === 'thinking_delta') {
+        return { ...state, streamingThinking: state.streamingThinking + (delta.thinking ?? '') }
+      }
+      return state
     }
 
     case 'assistant':
@@ -403,13 +432,21 @@ const applyAgentEvent = (state: PanelState, event: AgentEvent, now: number): Pan
       // счётчика общего расхода снизу, но как «сколько сейчас занято окно контекста»
       // даёт кратно завышенное число. Настоящий снимок текущего состояния — у
       // последнего шага в iterations; при одном шаге он и так совпадает с usage.
-      const usage = mergeUsage(state.usage, event.usage?.iterations?.at(-1) ?? event.usage)
-      const stats = resultStats(event)
+      const usage = mergeUsage(state.usage, contextSnapshot(event))
+      // Прерывание не рвёт поток отдельным событием — агент просто закрывает ход
+      // обычным result чуть раньше срока (см. ClaudeSession.interrupt). Единственный
+      // след, что это не естественный конец хода, а Stop/Escape — то, что запрос на
+      // остановку всё ещё висит непогашенным к этому моменту.
+      const cancelled = state.stopRequestedAt !== undefined
+      const stats = resultStats(event, cancelled)
 
       return {
         ...state,
         status: 'idle',
         streamingText: '',
+        streamingId: undefined,
+        streamingThinking: '',
+        stopRequestedAt: undefined,
         usage,
         cost: event.total_cost_usd ?? state.cost,
         sessionId: event.session_id ?? state.sessionId,
@@ -537,15 +574,25 @@ const applySystem = (
   if (event.subtype === 'task_progress' && event.task_id) {
     return {
       ...base,
-      items: base.items.map((item) =>
-        item.kind === 'task' && item.id === event.task_id
-          ? {
-              ...item,
-              meta: event.description ?? item.meta,
-              log: event.last_tool_name ? appendAgentLog(item.log, [{ text: `→ ${event.last_tool_name}` }]) : item.log,
-            }
-          : item,
-      ),
+      items: base.items.map((item) => {
+        if (item.kind !== 'task' || item.id !== event.task_id) return item
+
+        // Тот же самый вызов уже мог прийти через основной поток субагента
+        // (noteSubagent, строка вида "Bash…"/"Bash: команда") — этот канал
+        // сообщает то же самое имя следом, без него лог превращался в пары
+        // повторяющихся строк на каждый вызов.
+        const lastLine = item.log.at(-1)?.text
+        const isDuplicate = Boolean(event.last_tool_name && lastLine?.startsWith(event.last_tool_name))
+
+        return {
+          ...item,
+          meta: event.description ?? item.meta,
+          log:
+            event.last_tool_name && !isDuplicate
+              ? appendAgentLog(item.log, [{ text: `→ ${event.last_tool_name}` }])
+              : item.log,
+        }
+      }),
     }
   }
 
@@ -587,33 +634,37 @@ const isNoContentPlaceholder = (blocks: ContentBlock[]): boolean => {
 }
 
 const applyAssistant = (state: PanelState, blocks: ContentBlock[], now: number): PanelState => {
-  if (isNoContentPlaceholder(blocks)) return { ...state, streamingText: '', suppressNextMeta: true }
+  if (isNoContentPlaceholder(blocks)) {
+    return { ...state, streamingText: '', streamingId: undefined, suppressNextMeta: true }
+  }
 
-  let next: PanelState = { ...state, streamingText: '' }
+  let next: PanelState = { ...state, streamingText: '', streamingThinking: '' }
+  // Номер, занятый печатающейся карточкой, достаётся первому текстовому блоку —
+  // это тот же самый ответ, только целиком. Остальные блоки берут номера как
+  // обычно, а если текста в сообщении не оказалось вовсе, занятый номер просто
+  // пропадает: дырка в нумерации никого не беспокоит, а вот повтор — сломал бы
+  // ключи в ленте.
+  let reserved = state.streamingId
+  next = { ...next, streamingId: undefined }
 
   for (const block of blocks) {
     if (block.type === 'text') {
       if (!block.text.trim()) continue
-      next = push(next, (id) => ({ id, kind: 'text', paragraphs: parseParagraphs(block.text) }))
+      const paragraphs = parseParagraphs(block.text)
+      const id = reserved
+      reserved = undefined
+
+      next = id
+        ? { ...next, items: [...next.items, { id, kind: 'text', paragraphs }] }
+        : push(next, (itemId) => ({ id: itemId, kind: 'text', paragraphs }))
       continue
     }
 
+    // Своей карточкой, а не строкой в группе вызовов рядом: там она тонет в
+    // первой же свёрнутой «N tools», и её не видно, пока группу не раскрыть.
     if (block.type === 'thinking') {
       if (!block.thinking.trim()) continue
-      next = pushTool(next, (id) => ({
-        id,
-        kind: 'tool',
-        chip: 'THINK',
-        toolName: 'Thinking',
-        input: undefined,
-        target: 'Thought',
-        meta: '',
-        duration: '',
-        detail: block.thinking.split('\n').map((text) => ({ text, tone: 'dim' as const })),
-        hunks: [],
-        isError: false,
-        pending: false,
-      }), now)
+      next = push(next, (id) => ({ id, kind: 'think', text: block.thinking.trim(), pending: false }))
       continue
     }
 
@@ -665,12 +716,6 @@ const appendToolCall = (state: PanelState, tool: ToolItem, now: number): PanelSt
   }
 }
 
-/** То же самое, что push, но для вызова инструмента — уходит в группу, а не прямо в items. */
-const pushTool = (state: PanelState, make: (id: string) => ToolItem, now: number): PanelState => {
-  const tool = make(`i-${state.seq}`)
-  return { ...appendToolCall(state, tool, now), seq: state.seq + 1 }
-}
-
 const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): PanelState => {
   const input = (block.input ?? {}) as Record<string, unknown>
   const workingDirectory = state.project?.workingDirectory ?? ''
@@ -701,6 +746,10 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
 
   if (block.name === 'AskUserQuestion') {
     const questions = readQuestions(input)
+    // Без единого вопроса блокировать нечем и нечего показывать — а карточку
+    // без вопросов и закрыть-то нечем (отвечать не на что), она бы зависла.
+    if (questions.length === 0) return state
+
     return {
       ...state,
       items: [
@@ -879,8 +928,9 @@ const noteSubagent = (state: PanelState, parentToolUseId: string, blocks: Conten
   )
 
   let next = state
-  if (askBlock) {
-    const questions = readQuestions((askBlock.input ?? {}) as Record<string, unknown>)
+  const questions = askBlock ? readQuestions((askBlock.input ?? {}) as Record<string, unknown>) : []
+  // См. applyToolUse: без вопросов карточку нечем закрыть, она бы зависла.
+  if (askBlock && questions.length > 0) {
     next = {
       ...next,
       items: [
@@ -896,9 +946,18 @@ const noteSubagent = (state: PanelState, parentToolUseId: string, blocks: Conten
     }
   }
 
+  const workingDirectory = state.project?.workingDirectory ?? ''
+
   const lines = blocks.flatMap((block): DetailLine[] => {
     if (block.type === 'text' && block.text.trim()) return [{ text: block.text.trim().split('\n')[0] ?? '' }]
-    if (block.type === 'tool_use') return [{ text: `${block.name}…`, tone: 'dim' as const }]
+
+    if (block.type === 'tool_use') {
+      // targetFor всегда что-то отдаёт — при отсутствии более точной цели
+      // просто возвращает само имя инструмента; такой случай не дублируем.
+      const target = targetFor(block.name, block.input, workingDirectory)
+      return [{ text: target === block.name ? `${block.name}…` : `${block.name}: ${target}`, tone: 'dim' as const }]
+    }
+
     return []
   })
 
@@ -994,6 +1053,17 @@ const push = (state: PanelState, make: (id: string) => FeedItem): PanelState => 
   items: [...state.items, make(`i-${state.seq}`)],
 })
 
+/**
+ * Кусочек печатающегося ответа. Вместе с первым кусочком занимаем и номер в
+ * ленте — под ним же ответ потом ляжет готовым блоком (см. streamingId).
+ */
+const appendStreamingText = (state: PanelState, text: string): PanelState => {
+  if (!text) return state
+  if (state.streamingId) return { ...state, streamingText: state.streamingText + text }
+
+  return { ...state, streamingText: state.streamingText + text, streamingId: `i-${state.seq}`, seq: state.seq + 1 }
+}
+
 const mergeUsage = (current: Required<AgentUsage>, incoming?: AgentUsage): Required<AgentUsage> => ({
   input_tokens: incoming?.input_tokens ?? current.input_tokens,
   output_tokens: incoming?.output_tokens ?? current.output_tokens,
@@ -1002,9 +1072,28 @@ const mergeUsage = (current: Required<AgentUsage>, incoming?: AgentUsage): Requi
     incoming?.cache_creation_input_tokens ?? current.cache_creation_input_tokens,
 })
 
+/**
+ * «Сейчас занято окна контекста» — снимок ПОСЛЕДНЕГО внутреннего шага, а не
+ * сумма по всем (см. комментарий у места вызова). При однoшаговом ходе
+ * верхнеуровневые поля usage и так совпадают со снимком, можно смело взять их.
+ * А вот при многошаговом (num_turns > 1) без единого снимка в iterations —
+ * верхнеуровневые поля это точно сумма, а не снимок; доверять ей молча
+ * нельзя, поэтому оставляем state.usage нетронутым, а не завышенным.
+ */
+const contextSnapshot = (event: Extract<AgentEvent, { type: 'result' }>): AgentUsage | undefined => {
+  const last = event.usage?.iterations?.at(-1)
+  if (last) return last
+  if ((event.num_turns ?? 1) > 1) return undefined
+  return event.usage
+}
+
 /** Токены, цена и модель — шум под каждым ходом; из всего этого нужна только длительность. */
-const resultStats = (event: Extract<AgentEvent, { type: 'result' }>): string[] =>
-  typeof event.duration_ms === 'number' ? [`Worked ${formatDuration(event.duration_ms)}`] : []
+const resultStats = (event: Extract<AgentEvent, { type: 'result' }>, cancelled: boolean): string[] => {
+  const worked = typeof event.duration_ms === 'number' ? `Worked ${formatDuration(event.duration_ms)}` : ''
+
+  if (!cancelled) return worked ? [worked] : []
+  return [worked ? `Cancelled · ${worked}` : 'Cancelled']
+}
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -1037,5 +1126,9 @@ const formatClock = (ms: number): string => {
  */
 export const contextUsage = (usage: Required<AgentUsage>, limit = 200_000): number => {
   const used = usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens
-  return Math.min(Math.round((used / limit) * 100), 100)
+  // Дефолт параметра срабатывает только на literally undefined — явный 0 (или
+  // отрицательное значение) прошёл бы мимо него прямиком в used / 0 = Infinity,
+  // а дальше Math.min(Infinity, 100) даёт ровно 100 — ложное «контекст полон».
+  const safeLimit = limit > 0 ? limit : 200_000
+  return Math.min(Math.round((used / safeLimit) * 100), 100)
 }

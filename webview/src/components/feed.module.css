@@ -45,6 +45,10 @@
   /* Свой плавающий палец рисует ScrollThumb — нативный скроллбар здесь не нужен
      даже видимым, он бы резервировал ширину и двигал контент при появлении. */
   scrollbar-width: none;
+  /* Содержимое ленты — то же, что показывает терминал, поэтому и шрифт тот же:
+     консольный из настроек IDE (см. IdeTypography.kt). Интерфейсным шрифтом
+     остаётся только обвязка вокруг — кнопки, поле ввода, шапка. */
+  font-family: var(--acc-mono);
 }
 
 .feed::-webkit-scrollbar {
@@ -152,8 +156,9 @@
   align-items: baseline;
   gap: 4px 6px;
   font-size: 13px;
-  line-height: 1.55;
+  line-height: var(--acc-leading, 1.55);
   color: var(--acc-fg);
+  white-space: pre-wrap;
 }
 
 .chip {
@@ -240,7 +245,7 @@
   border: 1px solid var(--acc-line);
   border-radius: var(--acc-r-xl);
   font-size: 13px;
-  line-height: 1.62;
+  line-height: var(--acc-leading, 1.62);
   color: var(--acc-fg-body);
 }
 
@@ -272,7 +277,7 @@
 
 .bullet {
   flex: none;
-  font: 12px/1.62 var(--acc-mono);
+  font: 12px/var(--acc-leading, 1.62) var(--acc-mono);
   color: var(--acc-fg-fainter);
 }
 
@@ -616,7 +621,7 @@
 
 .agentViewLine {
   font-size: 13px;
-  line-height: 1.62;
+  line-height: var(--acc-leading, 1.62);
   color: var(--acc-fg-body);
 }
 
@@ -690,7 +695,7 @@
 .planText {
   min-width: 0;
   font-size: 12.5px;
-  line-height: 1.55;
+  line-height: var(--acc-leading, 1.55);
   color: var(--acc-fg-body);
 }
 
@@ -809,6 +814,33 @@
   flex: 1;
   height: 1px;
   background: repeating-linear-gradient(90deg, var(--acc-line) 0 4px, transparent 4px 8px);
+}
+
+.think {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin: 12px 0;
+  padding: 6px 9px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-raised);
+}
+
+/* min-width: 0 — иначе flex-элемент не сжимается под текст своей ширины, и
+   text-overflow: ellipsis никогда не срабатывает, сколько бы ни было текста. */
+.thinkText {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
+  color: var(--acc-fg-dim);
+}
+
+.thinkPending {
+  animation: acc-pulse 1.6s infinite;
 }
 
 .compact {

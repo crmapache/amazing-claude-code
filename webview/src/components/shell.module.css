@@ -25,6 +25,26 @@
   overflow: hidden;
 }
 
+/* Со стороны редактора — как у нативных тулвиндоу (терминал, проект и т.д.):
+   там, где панель граничит с редактором, у них всегда есть тонкая рамка.
+   Панель цепляется к любой стороне экрана, поэтому и рамка едет вместе с ней,
+   а не прибита раз и навсегда к одному краю. */
+.panel[data-anchor='right'] {
+  border-left: 1px solid var(--acc-line-strong);
+}
+
+.panel[data-anchor='left'] {
+  border-right: 1px solid var(--acc-line-strong);
+}
+
+.panel[data-anchor='bottom'] {
+  border-top: 1px solid var(--acc-line-strong);
+}
+
+.panel[data-anchor='top'] {
+  border-bottom: 1px solid var(--acc-line-strong);
+}
+
 .body {
   flex: 1;
   min-height: 0;
@@ -498,6 +518,8 @@
   color: var(--acc-fg-dim);
 }
 
+/* margin-left: auto прибивает капсулу к правому краю строки независимо от
+   того, поместились ли три селектора слева при любой ширине панели. */
 /* --- Выпадающее меню ------------------------------------------------------- */
 
 .menuScrim {

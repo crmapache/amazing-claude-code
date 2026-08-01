@@ -44,7 +44,7 @@ export interface Paragraph {
 }
 
 /** Категория плашки у вызова инструмента. Задаёт и подпись, и цвет. */
-export type ToolChip = 'THINK' | 'READ' | 'GREP' | 'EDIT' | 'WRITE' | 'BASH' | 'WEB' | 'MCP' | 'TOOL'
+export type ToolChip = 'READ' | 'GREP' | 'EDIT' | 'WRITE' | 'BASH' | 'WEB' | 'MCP' | 'TOOL'
 
 export interface DiffLine {
   n: number | null
@@ -78,6 +78,20 @@ export interface TextItem {
   id: string
   kind: 'text'
   paragraphs: Paragraph[]
+}
+
+/**
+ * Мысль модели — своя карточка, а не строка внутри группы вызовов: иначе она
+ * терялась среди тулзов первой же сворачиваемой группой. Всегда в одну строку
+ * (обрезается многоточием, если не влезает) — это ход мысли между делом, а не
+ * повод разворачивать блок на полэкрана.
+ */
+export interface ThinkItem {
+  id: string
+  kind: 'think'
+  text: string
+  /** Ещё стримится — карточка обновляется по мере поступления текста. */
+  pending: boolean
 }
 
 export interface ToolItem {
@@ -215,6 +229,7 @@ export interface CrashItem {
 export type FeedItem =
   | UserItem
   | TextItem
+  | ThinkItem
   | ToolGroupItem
   | TaskItem
   | TodoItem

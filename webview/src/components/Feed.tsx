@@ -1,10 +1,11 @@
+import { useSmoothStream } from 'smooth-stream-text/react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { parseParagraphs } from '../feed/markdown'
 import type { AskItem, FeedItem, PermItem, TaskItem, TodoItem, ToolItem } from '../feed/types'
 import type { CardState } from '../hooks/useCardState'
 import s from './feed.module.css'
 import { PlanCard } from './items/PlanCard'
-import { CheckpointRow, CompactRow, CrashRow, MetaRow } from './items/Rows'
+import { CheckpointRow, CompactRow, CrashRow, MetaRow, ThinkRow } from './items/Rows'
 import { TextCard } from './items/TextCard'
 import { ToolGroupCard } from './items/ToolGroupCard'
 import { UserCard } from './items/UserCard'
@@ -16,9 +17,19 @@ import { ScrollThumb } from './ScrollThumb'
  */
 type FeedRowItem = Exclude<FeedItem, TodoItem | AskItem | PermItem | TaskItem>
 
+/** Полтора десятка пикселей запаса: в самый низ прокрутка попадает редко. */
+const BOTTOM_THRESHOLD_PX = 16
+
+const isAtBottom = (element: HTMLElement): boolean =>
+  element.scrollHeight - element.scrollTop - element.clientHeight < BOTTOM_THRESHOLD_PX
+
 interface FeedProps {
   items: FeedItem[]
   streamingText: string
+  /** Номер, под которым печатающийся ответ ляжет в ленту готовым блоком — см. PanelState. */
+  streamingId?: string
+  /** Кусочки мысли, которые уже пришли, но ещё не собрались в готовый блок thinking. */
+  streamingThinking: string
   streaming: boolean
   streamStatus: string
   errors: string[]
@@ -32,6 +43,8 @@ interface FeedProps {
 export const Feed = ({
   items,
   streamingText,
+  streamingId,
+  streamingThinking,
   streaming,
   streamStatus,
   errors,
@@ -50,7 +63,7 @@ export const Feed = ({
    * плана уходит из ленты, как только по ней принято решение (в любую
    * сторону) — она своё дело сделала, а не остаётся висеть неактивной.
    */
-  const rows = items.filter(
+  const settled = items.filter(
     (item): item is FeedRowItem =>
       item.kind !== 'todo' &&
       item.kind !== 'ask' &&
@@ -58,6 +71,30 @@ export const Feed = ({
       item.kind !== 'task' &&
       !(item.kind === 'plan' && cards.planDecisions[item.id] !== undefined),
   )
+
+  /**
+   * Ответ печатается не с той рваной скоростью, с какой приходит: куски копятся и
+   * выдаются ровным потоком, а темп сам подстраивается под подачу — оттого текст
+   * льётся, а не выпрыгивает пачками по двадцать слов. Волну проявления поверх
+   * этого потока рисует уже сама карточка (см. TextCard).
+   */
+  const { text: pacedText } = useSmoothStream(streamingText, { done: !streaming })
+
+  /**
+   * Печатающиеся мысль и ответ живут в том же списке, что и всё остальное, а не
+   * отдельными блоками под ним: карточка ответа обязана остаться для React тем же
+   * узлом, когда тот же ответ придёт готовым блоком, иначе на стыке рвётся волна
+   * проявления, а лента моргает.
+   */
+  const rows: FeedRowItem[] = [
+    ...settled,
+    ...(streamingThinking
+      ? [{ id: 'streaming-think', kind: 'think' as const, text: streamingThinking, pending: true }]
+      : []),
+    ...(pacedText
+      ? [{ id: streamingId ?? 'streaming', kind: 'text' as const, paragraphs: parseParagraphs(pacedText) }]
+      : []),
+  ]
 
   /**
    * Пока где-то в ленте открыт неотвеченный запрос разрешения ГЛАВНОГО потока
@@ -80,12 +117,26 @@ export const Feed = ({
 
   const toBottom = useCallback(() => {
     const element = view.current
-    if (!element || !stick.current) return
+    if (!element) return
 
-    element.scrollTop = element.scrollHeight
+    if (stick.current) {
+      element.scrollTop = element.scrollHeight
+      return
+    }
+
+    // «Не липнет» мог выставить не человек, а гонка: пока карточка дорастала
+    // (см. ResizeObserver ниже), где-то между кадрами проскочило браузерное
+    // scroll-событие с ещё не осевшими размерами и сбросило флаг. Раз лента и
+    // без явной прокрутки уже стоит внизу — верим фактическому положению, а не
+    // застрявшему флагу: иначе кнопка «вниз» с счётчиком висит вечно, хотя
+    // прыгать уже некуда.
+    if (isAtBottom(element)) {
+      stick.current = true
+      setStuck(true)
+    }
   }, [])
 
-  useLayoutEffect(toBottom, [items, streamingText, errors.length, toBottom])
+  useLayoutEffect(toBottom, [items, pacedText, streamingThinking, errors.length, toBottom])
 
   /**
    * Число непрочитанных — то, что накопилось от агента, пока лента не липнет к
@@ -126,7 +177,7 @@ export const Feed = ({
     return () => observer.disconnect()
   }, [rows.length, toBottom])
 
-  const isEmpty = rows.length === 0 && !streamingText && errors.length === 0
+  const isEmpty = rows.length === 0 && errors.length === 0
 
   return (
     <div className={s.feedWrap}>
@@ -137,9 +188,7 @@ export const Feed = ({
           scrollRef?.(element)
         }}
         onScroll={(event) => {
-          const element = event.currentTarget
-          // Полтора десятка пикселей запаса: в самый низ прокрутка попадает редко.
-          const atBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 16
+          const atBottom = isAtBottom(event.currentTarget)
           stick.current = atBottom
           setStuck(atBottom)
           onScroll?.()
@@ -157,14 +206,6 @@ export const Feed = ({
             <ItemView item={item} cards={cards} lastPendingId={lastPendingId} onPlanDecision={onPlanDecision} />
           </div>
         ))}
-
-        {streamingText ? (
-          <div className={s.row}>
-            {/* Печатающийся ответ разбираем тем же разбором, что и готовый: иначе он
-                валится сплошной простынёй и на глазах перестраивается в конце. */}
-            <TextCard item={{ id: 'streaming', kind: 'text', paragraphs: parseParagraphs(streamingText) }} />
-          </div>
-        ) : null}
 
         {streaming ? (
           <div className={s.streaming}>
@@ -223,6 +264,9 @@ const ItemView = ({ item, cards, lastPendingId, onPlanDecision }: ItemViewProps)
 
     case 'text':
       return <TextCard item={item} />
+
+    case 'think':
+      return <ThinkRow item={item} />
 
     case 'toolGroup':
       return <ToolGroupCard item={item} cards={cards} awaitingPermissionId={lastPendingId} />

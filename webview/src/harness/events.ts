@@ -63,27 +63,63 @@ export const subagentText = (parentId: string, text: string): ScenarioStep =>
     parent_tool_use_id: parentId,
   })
 
+/** Мысль, которая приходит сразу готовым блоком — как из проигранной истории, без стрима. */
 export const think = (thought: string): ScenarioStep =>
   agent({
     type: 'assistant',
     message: { content: [{ type: 'thinking', thinking: thought }] },
   })
 
+/**
+ * Живой поток приходит рвано: то одно слово, то полстроки разом, то пауза, пока
+ * модель думает. Ровная нарезка одинаковыми кусками через равные промежутки
+ * выглядит приятнее реальности и прячет ровно ту рваность, ради которой поток и
+ * сглаживается. Поэтому и размер куска, и пауза гуляют — но по заранее
+ * записанным кругам, а не случайно: прогон сценария обязан быть повторимым.
+ */
+const CHUNK_SIZES = [7, 34, 13, 58, 4, 21, 42, 9, 26, 3]
+const CHUNK_PAUSES = [40, 180, 30, 55, 300, 45, 25, 120, 35, 70]
+
 /** Печатающийся ответ: несколько дельт кусками с паузами, затем готовый текстовый блок — как настоящий поток. */
-export const textReply = (text: string, chunkSize = 28): ScenarioStep[] => {
+export const textReply = (text: string): ScenarioStep[] => {
   const steps: ScenarioStep[] = []
 
-  for (let i = 0; i < text.length; i += chunkSize) {
+  for (let i = 0, chunk = 0; i < text.length; chunk += 1) {
+    const size = CHUNK_SIZES[chunk % CHUNK_SIZES.length]!
     steps.push(
       agent({
         type: 'stream_event',
-        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: text.slice(i, i + chunkSize) } },
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: text.slice(i, i + size) } },
       }),
     )
-    steps.push(wait(60))
+    steps.push(wait(CHUNK_PAUSES[chunk % CHUNK_PAUSES.length]!))
+    i += size
   }
 
   steps.push(agent({ type: 'assistant', message: { content: [{ type: 'text', text }] } }))
+  return steps
+}
+
+/** То же самое, что textReply, но для мысли — живой стрим кусочками, потом готовый блок thinking. */
+export const thinkReply = (thought: string): ScenarioStep[] => {
+  const steps: ScenarioStep[] = []
+
+  for (let i = 0, chunk = 0; i < thought.length; chunk += 1) {
+    const size = CHUNK_SIZES[chunk % CHUNK_SIZES.length]!
+    steps.push(
+      agent({
+        type: 'stream_event',
+        event: {
+          type: 'content_block_delta',
+          delta: { type: 'thinking_delta', thinking: thought.slice(i, i + size) },
+        },
+      }),
+    )
+    steps.push(wait(CHUNK_PAUSES[chunk % CHUNK_PAUSES.length]!))
+    i += size
+  }
+
+  steps.push(agent({ type: 'assistant', message: { content: [{ type: 'thinking', thinking: thought }] } }))
   return steps
 }
 

@@ -118,6 +118,11 @@ internal class PermissionServer(
             return Decision.ALLOW to ""
         }
 
+        // См. PermissionPlanMode — plan только читает, не трогает диск.
+        if (mode == "plan" && PermissionPlanMode.isSafe(toolName, input?.string("command"))) {
+            return Decision.ALLOW to ""
+        }
+
         val request = Request(
             id = UUID.randomUUID().toString(),
             // Идентификатор вкладки — из заголовка, который проставил хук. Номер

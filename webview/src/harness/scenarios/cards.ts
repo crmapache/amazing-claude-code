@@ -262,13 +262,14 @@ export const scenariosCards: Scenario[] = [
       turnResult(2200),
     ]),
     // «Approve & run»: реальная кнопка на карточке плана шлёт ровно это —
-    // setMode('acceptEdits') — и агент продолжает тот же план без нового
-    // сообщения от пользователя, это подтверждает бэкенд через статус и mode.
-    // resolvePlan имитирует сам клик — карточка плана пропадает из ленты.
-    checkpoint('Клик «Approve & run» — режим меняется на acceptEdits', [
+    // setMode('bypassPermissions') — и агент продолжает тот же план без
+    // нового сообщения от пользователя и без единого вопроса, это
+    // подтверждает бэкенд через статус и mode. resolvePlan имитирует сам
+    // клик — карточка плана пропадает из ленты.
+    checkpoint('Клик «Approve & run» — режим меняется на bypassPermissions', [
       resolvePlan('c7-plan', 'approve'),
       shell({ type: 'status', sessionId: SESSION, state: 'running' }),
-      shell({ type: 'mode', sessionId: SESSION, mode: 'acceptEdits', applied: true }),
+      shell({ type: 'mode', sessionId: SESSION, mode: 'bypassPermissions', applied: true }),
       wait(400),
     ]),
     // Одобренный план превращается в список задач — та же панель над полем

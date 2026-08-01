@@ -3,9 +3,16 @@ package io.github.crmapache.amazingclaudecode.toolwindow
 import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.ide.ui.LafManagerListener
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.editor.colors.EditorColorsListener
+import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.wm.ToolWindow
+import com.intellij.openapi.wm.ToolWindowAnchor
+import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.jcef.JBCefApp
@@ -29,12 +36,14 @@ import io.github.crmapache.amazingclaudecode.claude.ClaudeTokenUsage
 import io.github.crmapache.amazingclaudecode.claude.ClaudeUsagePing
 import io.github.crmapache.amazingclaudecode.claude.ImageAttachment
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSettings
+import io.github.crmapache.amazingclaudecode.claude.PermissionBypass
 import io.github.crmapache.amazingclaudecode.claude.PermissionModes
 import io.github.crmapache.amazingclaudecode.claude.PermissionRules
 import io.github.crmapache.amazingclaudecode.claude.PermissionServer
 import io.github.crmapache.amazingclaudecode.editor.SelectionReference
 import io.github.crmapache.amazingclaudecode.project.ProjectFacts
 import io.github.crmapache.amazingclaudecode.webview.FilePicker
+import io.github.crmapache.amazingclaudecode.webview.IdeTypography
 import io.github.crmapache.amazingclaudecode.webview.WebviewHost
 import java.awt.BorderLayout
 import java.util.concurrent.ConcurrentHashMap
@@ -61,7 +70,11 @@ import kotlinx.serialization.json.putJsonObject
  * нетронутыми: разбирать их удобнее на стороне интерфейса, где и рисуются, а
  * дублировать модели в двух языках смысла нет.
  */
-internal class ClaudePanel(private val project: Project, private val parentDisposable: Disposable) {
+internal class ClaudePanel(
+    private val project: Project,
+    private val toolWindow: ToolWindow,
+    private val parentDisposable: Disposable,
+) {
 
     val component: JComponent
 
@@ -95,6 +108,8 @@ internal class ClaudePanel(private val project: Project, private val parentDispo
 
         ClaudePanels.getInstance(project).register(this, parentDisposable)
         Disposer.register(parentDisposable) { loginPolling?.cancel(false) }
+        watchDockAnchor()
+        watchTypography()
     }
 
     private fun buildWebview(parentDisposable: Disposable): JComponent {
@@ -148,8 +163,11 @@ internal class ClaudePanel(private val project: Project, private val parentDispo
             "ready" -> {
                 thisLogger().info("Webview reported ready")
                 sendInit()
+                sendDockAnchor()
+                sendTypography()
                 refreshProject()
                 checkAuth()
+                checkModeAvailability()
                 refreshFiles()
                 refreshCommandHints()
             }
@@ -419,6 +437,24 @@ internal class ClaudePanel(private val project: Project, private val parentDispo
         )
     }
 
+    /**
+     * Разрешён ли режим «без вопросов» — от этого зависит круг Shift+Tab в панели.
+     * Ответ требует расспросить сам CLI, поэтому уходит в фон и приезжает отдельным
+     * сообщением: держать из-за него первую отрисовку панели незачем.
+     */
+    private fun checkModeAvailability() {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val bypass = PermissionBypass.isAvailable(project.basePath)
+
+            webview?.send(
+                buildJsonObject {
+                    put("type", "modeAvailability")
+                    put("bypassPermissions", bypass)
+                }.toString(),
+            )
+        }
+    }
+
     private fun sendAuth(status: ClaudeAuth.Status) {
         webview?.send(
             buildJsonObject {
@@ -651,6 +687,10 @@ internal class ClaudePanel(private val project: Project, private val parentDispo
 
         return models.values
             .mapNotNull { it.jsonObject["contextWindow"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() }
+            // 0 отсекаем наравне с null: на стороне вебвью его девать некуда —
+            // `?? current` не срабатывает на 0 (это не nullish), он застревает
+            // в state панели навсегда, и датчик контекста делится на ноль.
+            .filter { it > 0 }
             .maxOrNull()
     }
 
@@ -857,6 +897,78 @@ internal class ClaudePanel(private val project: Project, private val parentDispo
                 }
             }.toString(),
         )
+    }
+
+    /**
+     * Панель может быть прижата к любому краю экрана, и только сторона, что
+     * граничит с редактором, должна получить разделительную рамку — как у
+     * нативных тулвиндоу (терминал, проект и т.д.). Анкор меняется на лету,
+     * когда пользователь перетаскивает панель на другую сторону, поэтому
+     * подписываемся на смену, а не спрашиваем один раз при старте.
+     */
+    private fun watchDockAnchor() {
+        project.messageBus.connect(parentDisposable).subscribe(
+            ToolWindowManagerListener.TOPIC,
+            object : ToolWindowManagerListener {
+                override fun stateChanged(
+                    toolWindowManager: ToolWindowManager,
+                    changedToolWindow: ToolWindow,
+                    changeType: ToolWindowManagerListener.ToolWindowManagerEventType,
+                ) {
+                    if (changedToolWindow.id != toolWindow.id) return
+                    if (changeType != ToolWindowManagerListener.ToolWindowManagerEventType.SetToolWindowAnchor &&
+                        changeType != ToolWindowManagerListener.ToolWindowManagerEventType.SetSideToolAndAnchor
+                    ) {
+                        return
+                    }
+                    sendDockAnchor()
+                }
+            },
+        )
+    }
+
+    private fun sendDockAnchor() {
+        webview?.send(
+            buildJsonObject {
+                put("type", "dockAnchor")
+                put("anchor", dockSide(toolWindow.anchor))
+            }.toString(),
+        )
+    }
+
+    /**
+     * Шрифты панель не выбирает сама — их задаёт IDE, и меняются они прямо во
+     * время работы: человек правит размер консольного шрифта или переключает
+     * тему и ждёт, что панель поедет следом, как терминал рядом. Схема цветов
+     * несёт консольный шрифт, смена оформления — интерфейсный, поэтому слушаем
+     * оба события.
+     */
+    private fun watchTypography() {
+        val connection = ApplicationManager.getApplication().messageBus.connect(parentDisposable)
+        connection.subscribe(EditorColorsManager.TOPIC, EditorColorsListener { sendTypography() })
+        connection.subscribe(LafManagerListener.TOPIC, LafManagerListener { sendTypography() })
+    }
+
+    private fun sendTypography() {
+        val typography = IdeTypography.read()
+        val host = webview ?: return
+
+        host.setZoom(typography.scale)
+        host.send(
+            buildJsonObject {
+                put("type", "typography")
+                put("monoFamily", typography.monoFamily)
+                put("uiFamily", typography.uiFamily)
+                put("lineHeight", typography.lineHeight)
+            }.toString(),
+        )
+    }
+
+    private fun dockSide(anchor: ToolWindowAnchor): String = when (anchor) {
+        ToolWindowAnchor.LEFT -> "left"
+        ToolWindowAnchor.TOP -> "top"
+        ToolWindowAnchor.BOTTOM -> "bottom"
+        else -> "right"
     }
 
     private companion object {

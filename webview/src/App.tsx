@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { send, subscribe } from './bridge'
-import { EFFORT_OPTIONS, MODEL_OPTIONS, MODE_OPTIONS, normalizeMode } from './catalog'
+import { EFFORT_OPTIONS, MODEL_OPTIONS, MODE_OPTIONS, nextMode, normalizeMode, withRefusedMode } from './catalog'
 import { AgentStreamView } from './components/AgentStreamView'
 import { AskPanel } from './components/AskPanel'
 import { Composer } from './components/Composer'
@@ -21,8 +21,9 @@ import { TaskListPanel } from './components/TaskListPanel'
 import composer from './components/composer.module.css'
 import s from './components/shell.module.css'
 import { contextUsage, formatTokens, initialPanelState, reducePanel, type PanelState } from './feed/build'
-import { referenceChip, referenceText } from './feed/reference'
+import { referenceChip } from './feed/reference'
 import { appendChip, appendText, buildCommands, localCommand, plainText } from './feed/slash'
+import { composePrompt, imageAttachments } from './feed/tokens'
 import type { AskItem, FeedItem, PermItem, TaskItem, TodoItem, UserToken } from './feed/types'
 import type {
   AvailablePluginInfo,
@@ -37,8 +38,20 @@ import { useSelection } from './hooks/useSelection'
 
 const MAIN_SESSION = 'main'
 
-/** По этим трём режимам ходит Shift+Tab; остальные выбираются только из меню. */
-const MODE_CYCLE = ['default', 'acceptEdits', 'plan']
+/**
+ * Шрифты IDE — прямо в корень документа, а не в состояние React: их читают
+ * десятки правил в стилях всех модулей, и гонять такое через пропсы значило бы
+ * протащить размер шрифта через половину дерева ради того, что и так решается
+ * каскадом. Значения по умолчанию остаются в tokens.css — по ним панель живёт
+ * в браузере и в харнессе, где IDE рядом нет.
+ */
+const applyTypography = (monoFamily: string, uiFamily: string, lineHeight: number): void => {
+  const root = document.documentElement.style
+
+  if (monoFamily) root.setProperty('--acc-mono', `'${monoFamily}', ui-monospace, monospace`)
+  if (uiFamily) root.setProperty('--acc-font', `'${uiFamily}', system-ui, sans-serif`)
+  if (lineHeight > 0) root.setProperty('--acc-leading', String(lineHeight))
+}
 
 /** Сколько ждём подтверждения Stop, прежде чем предложить убить процесс насильно. */
 const STOP_GRACE_MS = 8000
@@ -73,6 +86,22 @@ export const App = () => {
    */
   const [prefs, setPrefs] = useState({ model: '', effort: 'high', mode: 'manual' })
   const [auth, setAuth] = useState<AuthState | null>(null)
+  /**
+   * Разрешён ли на этом компьютере режим «без вопросов». Оболочка выясняет это у
+   * самого CLI и отвечает отдельным сообщением, поэтому до ответа считаем, что
+   * нет: завести человека одной клавишей в режим, который тут же откажет, хуже,
+   * чем на секунду не пустить его туда вовсе.
+   */
+  const [bypassAvailable, setBypassAvailable] = useState(false)
+  /**
+   * Режимы, в которых агент уже отказал. Про auto заранее не знает никто — ни
+   * панель, ни оболочка: доступен он или нет, отвечает сам агент, и отвечает
+   * единственным способом — отказом на просьбу переключиться. Услышанный отказ
+   * помним на всю панель: дело не во вкладке, а в машине и учётной записи.
+   */
+  const [refusedModes, setRefusedModes] = useState<string[]>([])
+  /** Сторона экрана, к которой прижата панель — определяет, где рисовать рамку к редактору. */
+  const [dockAnchor, setDockAnchor] = useState<'left' | 'right' | 'top' | 'bottom'>('right')
   const [loginWaiting, setLoginWaiting] = useState(false)
   /** Растёт, когда полю ввода нужно вернуть фокус: например после ссылки из редактора. */
   const [focusToken, setFocusToken] = useState(0)
@@ -90,9 +119,11 @@ export const App = () => {
   const [openPanel, setOpenPanel] = useState<'history' | 'mcp' | 'plugins' | null>(null)
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
   /**
-   * Завершённая пачка агентов пропадает из дропдауна не мгновенно (мигнуло бы
-   * до того, как успел посмотреть), а перед следующим сообщением в main — см.
-   * clearFinishedAgents. Живёт здесь, а не в PanelState: durable-лог событий
+   * Завершённый агент пропадает из вкладок сам, как только на него никто не
+   * смотрит (см. эффект ниже) — а не мгновенно на глазах у того, кто как раз
+   * его и просматривает: тогда он держится до переключения на что-то другое.
+   * clearFinishedAgents ниже дополнительно прячет всех разом перед новым
+   * сообщением в main. Живёт здесь, а не в PanelState: durable-лог событий
    * ничего не теряет, скрытие — чисто отображение.
    */
   const [hiddenTaskIds, setHiddenTaskIds] = useState<Set<string>>(new Set())
@@ -117,6 +148,7 @@ export const App = () => {
   const panel = panels[active] ?? initialPanelState
   const draft = drafts[active] ?? EMPTY_DRAFT
   const running = panel.status === 'running'
+  const imageBaseCount = useMemo(() => countSessionImages(panel, queue), [panel, queue])
 
   // Stop честно ждёт подтверждения; если оно не пришло дольше разумного,
   // предлагаем убить процесс насильно, а не стоять с крутящейся кнопкой вечно.
@@ -127,6 +159,16 @@ export const App = () => {
   // Один источник правды на кнопку и на меню: пока агент не подтвердил смену,
   // показываем выбранное, дальше — то, что он реально применил.
   const mode = panel.pendingMode ?? panel.permissionMode ?? prefs.mode
+
+  // Что из необязательного доступно кругу Shift+Tab: разрешение на bypass приходит
+  // от оболочки, а остальное вычёркивают отказы самого агента.
+  const availableModes = useMemo(
+    () => ({
+      bypass: bypassAvailable && !refusedModes.includes('bypassPermissions'),
+      auto: !refusedModes.includes('auto'),
+    }),
+    [bypassAvailable, refusedModes],
+  )
 
   // То же самое для модели, но с поправкой на то, что её подтверждение всегда
   // отстаёт на один ход (см. комментарий у pendingModel) — без pendingModel
@@ -175,6 +217,32 @@ export const App = () => {
       return next
     })
   }
+
+  /**
+   * Фоновый агент, за которым сейчас никто не следит, прячется сразу же, как
+   * закончил — незачем ждать следующего сообщения в main, чтобы не занимал
+   * место вкладкой. Тот, что просматривается прямо сейчас (activeStream), не
+   * трогаем: работу нельзя выдёргивать из-под курсора — спрячется сам, как
+   * только просмотр переключится на что-то другое (эффект перезапустится по
+   * activeStream и подберёт его).
+   */
+  useEffect(() => {
+    const finishedIds = panel.items
+      .filter((item): item is TaskItem => item.kind === 'task' && !item.pending && item.id !== activeStream)
+      .map((item) => item.id)
+    if (finishedIds.length === 0) return
+
+    setHiddenTaskIds((current) => {
+      let changed = false
+      const next = new Set(current)
+      for (const id of finishedIds) {
+        if (next.has(id)) continue
+        next.add(id)
+        changed = true
+      }
+      return changed ? next : current
+    })
+  }, [panel.items, activeStream])
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -307,6 +375,14 @@ export const App = () => {
             setCommandHints(message.hints)
             break
 
+          case 'dockAnchor':
+            setDockAnchor(message.anchor)
+            break
+
+          case 'typography':
+            applyTypography(message.monoFamily, message.uiFamily, message.lineHeight)
+            break
+
           case 'usage':
             // Приходит двумя независимыми путями (расход разговора и отдельно
             // скан транскриптов на todayTokens) — сливаем, а не заменяем целиком,
@@ -314,7 +390,10 @@ export const App = () => {
             setUsage((current) => ({
               session: message.session ?? current.session,
               week: message.week ?? current.week,
-              contextWindow: message.contextWindow ?? current.contextWindow,
+              // ?? тут не годится — 0 не nullish, застрял бы в state навсегда
+              // и датчик контекста ниже намертво делился бы на ноль.
+              contextWindow:
+                message.contextWindow && message.contextWindow > 0 ? message.contextWindow : current.contextWindow,
               todayTokens: message.todayTokens ?? current.todayTokens,
             }))
             break
@@ -343,7 +422,12 @@ export const App = () => {
             if (message.loggedIn) setLoginWaiting(false)
             break
 
+          case 'modeAvailability':
+            setBypassAvailable(message.bypassPermissions)
+            break
+
           case 'mode':
+            if (!message.applied) setRefusedModes((current) => withRefusedMode(current, message.mode))
             dispatchPanel({
               session: message.sessionId,
               action: {
@@ -405,7 +489,11 @@ export const App = () => {
     setQueue(rest)
     dispatchPanel({
       session: active,
-      action: { kind: 'prompt', tokens: [{ kind: 'text', value: next.text }], quotes: [] },
+      // Кладём в ленту то же, что набирали, а не готовую строку: иначе вложения
+      // отправленного из очереди сообщения исчезают из истории сессии, и
+      // countSessionImages перестаёт их видеть — следующая картинка снова
+      // становится первой.
+      action: { kind: 'prompt', tokens: next.tokens, quotes: [] },
     })
     send({ type: 'prompt', sessionId: active, text: next.text, images: next.images })
   }, [running, queue, active])
@@ -431,7 +519,7 @@ export const App = () => {
   const decidePlan = useCallback(
     (itemId: string, decision: 'approve' | 'keepPlanning') => {
       cards.decidePlan(itemId, decision)
-      setMode(decision === 'approve' ? 'acceptEdits' : 'plan')
+      setMode(decision === 'approve' ? 'bypassPermissions' : 'plan')
     },
     [cards, setMode],
   )
@@ -439,10 +527,15 @@ export const App = () => {
   /** Ответ на вопрос агента уходит как обычное следующее сообщение — как и говорит подсказка на карточке. */
   const sendAnswers = useCallback(
     (itemId: string, answers: string[]) => {
+      // Помечаем отвеченной в любом случае — иначе карточка без единого
+      // вопроса (например от пустого/сбойного вызова инструмента) не может
+      // закрыться в принципе: слать action-то нечего, а кнопка тогда
+      // навсегда ничего не делает.
+      cards.answerAsk(itemId)
+
       const text = answers.filter(Boolean).join('\n')
       if (!text) return
 
-      cards.answerAsk(itemId)
       send({ type: 'prompt', sessionId: active, text })
       dispatchPanel({
         session: active,
@@ -460,7 +553,7 @@ export const App = () => {
     [active],
   )
 
-  // Shift+Tab гоняет по первым трём режимам — та же привычка, что в терминале.
+  // Shift+Tab гоняет по кругу режимов — та же привычка и тот же круг, что в терминале.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       // Инструменты разработчика живут на клавише, а не на кнопке: место в шапке
@@ -471,16 +564,29 @@ export const App = () => {
         return
       }
 
+      // Escape = Stop, пока агент реально работает — тот же жест, что в терминале
+      // (Ctrl+C) и та же честность про статус, что и у самой кнопки: не идле не
+      // подставляем «свободен» сами, а ждём настоящего события. Composer сам
+      // гасит это событие (stopPropagation), пока Escape занят своим — закрывает
+      // подсказку команд/файлов, — сюда оно долетает только когда сверху уже
+      // нечего закрывать.
+      if (event.key === 'Escape') {
+        if (!running) return
+        event.preventDefault()
+        send({ type: 'stop', sessionId: active })
+        dispatchPanel({ session: active, action: { kind: 'stopRequested' } })
+        return
+      }
+
       if (event.key !== 'Tab' || !event.shiftKey) return
 
       event.preventDefault()
-      const index = MODE_CYCLE.indexOf(mode)
-      setMode(MODE_CYCLE[(index + 1) % MODE_CYCLE.length] ?? 'default')
+      setMode(nextMode(mode, availableModes))
     }
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [mode, setMode])
+  }, [mode, availableModes, setMode, running, active])
 
   /**
    * Форк от выделенного куска: агент получает всю переписку до этой точки, но
@@ -614,7 +720,7 @@ export const App = () => {
       return
     }
 
-    const text = isOverride ? overrideText : composePrompt(draft)
+    const text = isOverride ? overrideText : composePrompt(draft, imageBaseCount)
     if (!text) return
 
     const images = isOverride ? [] : imageAttachments(draft.tokens)
@@ -627,6 +733,7 @@ export const App = () => {
           id: `q-${Date.now()}`,
           text,
           attach: attachCount ? `${attachCount} refs` : '',
+          tokens,
           images,
         },
       ])
@@ -644,7 +751,7 @@ export const App = () => {
 
     send({ type: 'prompt', sessionId: active, text, images })
     if (!isOverride) setDrafts((current) => ({ ...current, [active]: EMPTY_DRAFT }))
-  }, [draft, running, active, runLocal, editDraft])
+  }, [draft, running, active, runLocal, editDraft, imageBaseCount])
 
   // Только для локальной страницы-харнесса (webview/src/harness) — имитирует
   // настоящую отправку сообщения из поля ввода. Vite статически подставляет
@@ -681,7 +788,10 @@ export const App = () => {
       const text = `/mcp ${args}`
 
       if (running) {
-        setQueue((current) => [...current, { id: `q-${Date.now()}`, text, attach: '', images: [] }])
+        setQueue((current) => [
+          ...current,
+          { id: `q-${Date.now()}`, text, attach: '', tokens: [{ kind: 'text', value: text }], images: [] },
+        ])
       } else {
         clearFinishedAgents(active)
         setActiveStream('main')
@@ -722,7 +832,7 @@ export const App = () => {
   // /login, а сама эта команда в потоковом режиме недоступна.
   if (!auth || !auth.loggedIn) {
     return (
-      <div className={s.panel}>
+      <div className={s.panel} data-anchor={dockAnchor}>
         <LoginGate
           auth={auth}
           waiting={loginWaiting}
@@ -737,7 +847,7 @@ export const App = () => {
   }
 
   return (
-    <div className={s.panel}>
+    <div className={s.panel} data-anchor={dockAnchor}>
       <Header
         sessions={tabs}
         activeSession={active}
@@ -879,6 +989,8 @@ export const App = () => {
             <Feed
               items={panel.items}
               streamingText={panel.streamingText}
+              streamingId={panel.streamingId}
+              streamingThinking={panel.streamingThinking}
               streaming={running}
               streamStatus={streamStatus(panel, cards)}
               errors={panel.errors}
@@ -940,14 +1052,7 @@ export const App = () => {
                 return next
               })
             }
-            onSendNow={(id) =>
-              setQueue((current) => {
-                const item = current.find((candidate) => candidate.id === id)
-                return item ? [item, ...current.filter((candidate) => candidate.id !== id)] : current
-              })
-            }
             onRemove={(id) => setQueue((current) => current.filter((item) => item.id !== id))}
-            onClear={() => setQueue([])}
           />
 
           <Quotes
@@ -964,6 +1069,7 @@ export const App = () => {
             planMode={mode === 'plan'}
             commands={commands}
             files={files}
+            imageBaseCount={imageBaseCount}
             focusToken={focusToken}
             onTokensChange={(tokens) => editDraft(active, { tokens })}
             onAttach={() => send({ type: 'pick' })}
@@ -1069,55 +1175,24 @@ const sessionState = (panel?: PanelState): SessionState => {
 
 // --- Производные данные -----------------------------------------------------
 
-const composePrompt = ({ tokens, quotes }: Draft): string => {
-  const parts: string[] = []
-
-  for (const quote of quotes) parts.push(`> ${quote.text}`)
-
-  // Номер картинки в тексте пересчитываем заново по месту в последовательности,
-  // а не берём сохранённый в чипе: он мог устареть, если картинку вставили не в
-  // конец, а раньше уже вставленной — иначе агенту достанутся байты в одном
-  // порядке, а подписи [Image #N] в тексте — в другом, и он свяжет их неверно.
-  // Байты в imageAttachments идут в том же порядке токенов, так что нумерация
-  // здесь и там совпадает всегда, независимо от того, в каком порядке вставляли.
-  let imageOrdinal = 0
-  const body = tokens
-    .map((token) => {
-      if (token.kind === 'chip' && token.chip.kind === 'img' && token.chip.data) {
-        imageOrdinal += 1
-        return `[Image #${imageOrdinal}]`
-      }
-      return tokenText(token)
-    })
-    .join('')
-    .trim()
-  if (body) parts.push(body)
-
-  return parts.join('\n')
+/**
+ * Сколько картинок уже ушло агенту раньше в этой же сессии — отправленными
+ * сообщениями и тем, что уже стоит в очереди. Продолжаем нумерацию от этого
+ * числа, а не с нуля на каждом сообщении: иначе «Image #1» повторяется в
+ * каждой реплике подряд, и по номеру уже не понять, о какой картинке речь,
+ * если их несколько за разговор.
+ */
+const countSessionImages = (panel: PanelState, queue: QueuedPrompt[]): number => {
+  const sent = panel.items.reduce(
+    (sum, item) =>
+      item.kind === 'user'
+        ? sum + item.tokens.filter((token) => token.kind === 'chip' && token.chip.kind === 'img' && Boolean(token.chip.data)).length
+        : sum,
+    0,
+  )
+  const queued = queue.reduce((sum, item) => sum + item.images.length, 0)
+  return sent + queued
 }
-
-/** Текст вложения внутри строки — ровно то, что видит агент на его месте. */
-const tokenText = (token: UserToken): string => {
-  if (token.kind === 'text') return token.value
-
-  const { chip } = token
-  if (chip.kind === 'cmd') return `/${chip.value}`
-  if (chip.kind === 'ref') return referenceText(chip)
-  // Цитата не путь на диске, а сам текст: агенту уходит целиком, а не то, что видно в плашке.
-  if (chip.kind === 'quote') return `"${chip.text ?? ''}"`
-  // Картинка из буфера обмена — см. imageOrdinal в composePrompt, сюда попадает
-  // только защитный случай без байт (быть в теории не должно).
-  if (chip.kind === 'img') return `[${chip.value}]`
-  return `@${chip.value}`
-}
-
-/** Байты вставленных из буфера картинок — то, что реально уходит агенту как вложение. */
-const imageAttachments = (tokens: UserToken[]): { mediaType: string; data: string }[] =>
-  tokens.flatMap((token) => {
-    if (token.kind !== 'chip' || token.chip.kind !== 'img' || !token.chip.data) return []
-    const match = token.chip.data.match(/^data:([^;]+);base64,(.+)$/)
-    return match ? [{ mediaType: match[1], data: match[2] }] : []
-  })
 
 /**
  * Пока висит неотвеченный запрос разрешения или вопрос ГЛАВНОГО потока, ход

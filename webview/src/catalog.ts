@@ -133,6 +133,49 @@ export const modeLabel = (mode: string): string =>
   MODE_OPTIONS.find((option) => option.id === normalizeMode(mode))?.label ?? mode
 
 /**
+ * Что из необязательного доступно этому разговору. Оба режима включает не панель:
+ * bypass разрешает запуск сессии (и запрещает политика организации), auto —
+ * доступность у самого агента, поэтому спрашивать надо каждый раз заново.
+ */
+export interface ModeAvailability {
+  bypass: boolean
+  auto: boolean
+}
+
+/**
+ * Помнит режим, в котором агент отказал. Доступность режима — свойство машины и
+ * учётной записи, а не отдельной вкладки, поэтому список общий на всю панель:
+ * услышав отказ один раз, водить в этот режим не должна ни одна вкладка.
+ */
+export const withRefusedMode = (refused: string[], mode: string): string[] => {
+  const known = normalizeMode(mode)
+  return refused.includes(known) ? refused : [...refused, known]
+}
+
+/**
+ * Следующий режим по Shift+Tab. Порядок и все развилки повторяют терминальный
+ * Claude Code один в один: Ask → Accept edits → Plan → Bypass → Auto → Ask, причём
+ * недоступный режим круг просто перешагивает. Всё, что в круг не входит (Don't ask
+ * и незнакомое имя из старой переписки), возвращает к началу — там же он это и делает.
+ */
+export const nextMode = (mode: string, available: ModeAvailability): string => {
+  switch (normalizeMode(mode)) {
+    case 'manual':
+      return 'acceptEdits'
+    case 'acceptEdits':
+      return 'plan'
+    case 'plan':
+      if (available.bypass) return 'bypassPermissions'
+      if (available.auto) return 'auto'
+      return 'manual'
+    case 'bypassPermissions':
+      return available.auto ? 'auto' : 'manual'
+    default:
+      return 'manual'
+  }
+}
+
+/**
  * Подпись режима для кнопки в нижней строке. Она фиксированной ширины, а полное
  * «Bypass permissions» туда не влезает — и не должно: кнопка от смены режима
  * прыгать в ширине не может, это дёргает весь ряд.

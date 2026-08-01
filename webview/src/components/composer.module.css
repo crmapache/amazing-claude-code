@@ -505,25 +505,6 @@
   color: var(--acc-fg-fainter);
 }
 
-.queueClear {
-  font-size: 11px;
-  color: var(--acc-fg-faint);
-  text-decoration: underline;
-}
-
-.queueClear:hover {
-  color: var(--acc-bad-light);
-}
-
-.queueClear:active {
-  color: var(--acc-bad);
-}
-
-.queueClear:disabled {
-  color: var(--acc-fg-ghost);
-  opacity: 0.6;
-}
-
 .queueRow {
   display: flex;
   align-items: center;
@@ -532,7 +513,6 @@
   border: 1px solid var(--acc-line);
   border-radius: var(--acc-r-lg);
   background: var(--acc-bg-card);
-  cursor: grab;
 }
 
 .queueRow:hover {
@@ -554,6 +534,11 @@
   color: var(--acc-fg-ghost);
   letter-spacing: 1px;
   line-height: 1;
+  cursor: grab;
+  /* Без этого сам жест перетаскивания в некоторых браузерах (в т.ч. JCEF)
+     перехватывается под скролл/выделение текста раньше, чем доходит до нас. */
+  touch-action: none;
+  user-select: none;
 }
 
 .queueNum {
@@ -585,26 +570,6 @@
   background: var(--acc-bg-control);
   font: 10px var(--acc-mono);
   color: var(--acc-fg-dim);
-}
-
-.queueSend {
-  flex: none;
-  font: 10.5px var(--acc-mono);
-  color: var(--acc-fg-faint);
-  text-decoration: underline;
-}
-
-.queueSend:hover {
-  color: var(--acc-accent-light);
-}
-
-.queueSend:active {
-  color: var(--acc-accent);
-}
-
-.queueSend:disabled {
-  color: var(--acc-fg-ghost);
-  opacity: 0.6;
 }
 
 .iconButton {

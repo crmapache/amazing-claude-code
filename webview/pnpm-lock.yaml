@@ -14,6 +14,9 @@ importers:
       react-dom:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
+      smooth-stream-text:
+        specifier: 0.1.2
+        version: 0.1.2(react@19.2.8)
     devDependencies:
       '@types/node':
         specifier: 26.1.2
@@ -508,6 +511,18 @@ packages:
   siginfo@2.0.0:
     resolution: {integrity: sha512-ybx0WO1/8bSBLEWXZvEd7gMW3Sn3JFlW3TvX1nREbDLRNQNaeNN8WK0meBwPdAaOI7TtRRRJn/Es1zhrrCHu7g==}
 
+  smooth-stream-text@0.1.2:
+    resolution: {integrity: sha512-My1Rrtl2w0o99YjgSU7Tq4KawdYCU1O1XOYneOVzA2zsJsUfCORUPI6ul+S0Av0V6rLylFENnk7gXHM6sBjGXg==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      react: '>=18'
+      vue: '>=3'
+    peerDependenciesMeta:
+      react:
+        optional: true
+      vue:
+        optional: true
+
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
@@ -972,6 +987,10 @@ snapshots:
   scheduler@0.27.0: {}
 
   siginfo@2.0.0: {}
+
+  smooth-stream-text@0.1.2(react@19.2.8):
+    optionalDependencies:
+      react: 19.2.8
 
   source-map-js@1.2.1: {}
 
