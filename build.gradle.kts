@@ -77,6 +77,30 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
+              <li>Fixed: a tight console line spacing setting made selected text overlap between
+              wrapped lines. The panel now enforces a minimum line height regardless of the
+              console font setting.</li>
+              <li>Fixed: attachment and quote chips (in the input and once sent) sat slightly below
+              the surrounding text instead of centered on it, and their icons didn't line up with
+              each other from one chip to the next.</li>
+              <li>The selection popover over the agent's reply now offers Quote and Fork from here
+              — Copy was dropped, the browser's own copy shortcut already covers a selection.</li>
+              <li>The input's placeholder text is shorter — just "Ask, or describe a change…".</li>
+              <li>The attach and slash-command buttons are icon-only now, no more "attach" / "command"
+              labels next to them.</li>
+              <li>A message sent while the agent is working now reaches it right away, the way it
+              does in the terminal: the agent picks it up at its next step instead of only after
+              the run ends. Queue and Send are separate buttons now — Queue holds the message
+              until the current run finishes, Send (and Enter) delivers it now. Both are disabled
+              while the input is empty, and Queue is also disabled when nothing is running.</li>
+              <li>Fixed: the first Shift+Enter in the input looked like it did nothing — only the
+              next press broke the line, and whatever you typed in between landed before the break
+              instead of on the new line. Pasted text ending in a line break did the same.</li>
+              <li>The input now uses the same console font, size and line spacing as the feed, so a
+              message looks exactly the same while you type it and after you send it.</li>
+              <li>Fixed: the panel was drawn at a quarter of its size, and changing the console
+              font size moved it the wrong way. The zoom that scales the panel to the IDE font
+              was being converted twice.</li>
               <li>The panel now takes its fonts from the IDE: the feed is drawn with the console
               font, at its size and line spacing, so it reads like the terminal next to it, and
               the whole panel follows when you change them. The manual font-size control is gone.</li>
