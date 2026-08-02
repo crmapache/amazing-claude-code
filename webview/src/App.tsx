@@ -23,7 +23,7 @@ import s from './components/shell.module.css'
 import { contextUsage, formatTokens, initialPanelState, reducePanel, type PanelState } from './feed/build'
 import { referenceChip } from './feed/reference'
 import { appendChip, appendText, buildCommands, localCommand, plainText } from './feed/slash'
-import { composePrompt, imageAttachments } from './feed/tokens'
+import { composePrompt, imageAttachments, trimTrailingSpace } from './feed/tokens'
 import type { AskItem, FeedItem, PermItem, TaskItem, TodoItem, UserToken } from './feed/types'
 import type {
   AvailablePluginInfo,
@@ -700,17 +700,29 @@ export const App = () => {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [selection, fork, clearSelection])
 
-  const submit = useCallback((overrideText?: string) => {
+  /**
+   * Отправка сообщения: сразу в работу или в очередь.
+   *
+   * «Сразу» работает и во время хода: агент запущен с потоковым вводом, и
+   * дописанное в него сообщение он подхватывает на ближайшем шаге, не начиная
+   * ход заново — то же самое делает Enter в терминале. Очередь — обратное:
+   * явная просьба сначала доделать текущее, а это взять следующим.
+   */
+  const submit = useCallback((queued: boolean, overrideText?: string) => {
     // Команды панели агенту не уходят: вход и выход в потоковом режиме ему
     // недоступны, а ветвление вообще про устройство панели.
     // Цитаты и вложения команде не мешают: они останутся в поле и уедут со
     // следующим сообщением — терять их из-за одной команды было бы обидно.
     // Строгая проверка типом, а не просто "overrideText !== undefined": эта
-    // функция передаётся напрямую в onClick кнопки отправки, а React зовёт
-    // обработчик клика с объектом события первым аргументом — сравнение с
-    // undefined приняло бы событие за подменённый текст.
+    // функция вызывается и из обработчиков клика, куда React передаёт объект
+    // события — сравнение с undefined приняло бы его за подменённый текст.
     const isOverride = typeof overrideText === 'string'
-    const tokens = isOverride ? [{ kind: 'text' as const, value: overrideText }] : draft.tokens
+    // Пустой хвост снимаем сразу: он невидим в поле (последняя строка там не
+    // занимает места, на ней стоит разве что курсор), а в ленте показался бы
+    // лишней пустой строкой. Агенту его и так не отправляет composePrompt.
+    const tokens = isOverride
+      ? [{ kind: 'text' as const, value: overrideText }]
+      : trimTrailingSpace(draft.tokens)
     const quotes = isOverride ? [] : draft.quotes
 
     const local = localCommand(plainText(tokens))
@@ -726,7 +738,9 @@ export const App = () => {
     const images = isOverride ? [] : imageAttachments(draft.tokens)
     const attachCount = isOverride ? 0 : draft.tokens.filter((token) => token.kind === 'chip').length
 
-    if (running) {
+    // В очередь — только пока агент занят: свободному отправляем сразу, ждать
+    // ему нечего.
+    if (queued && running) {
       setQueue((current) => [
         ...current,
         {
@@ -741,17 +755,34 @@ export const App = () => {
       return
     }
 
-    clearFinishedAgents(active)
-    setActiveStream('main')
+    // Досылка продолжает начатое, поэтому лента остаётся как есть: карточки
+    // субагентов этого же хода прятать не за что, они ещё в деле.
+    if (!running) {
+      clearFinishedAgents(active)
+      setActiveStream('main')
+    }
 
     dispatchPanel({
       session: active,
-      action: { kind: 'prompt', tokens, quotes: quotes.map((quote) => quote.text) },
+      action: { kind: 'prompt', tokens, quotes: quotes.map((quote) => quote.text), steering: running },
     })
 
     send({ type: 'prompt', sessionId: active, text, images })
     if (!isOverride) setDrafts((current) => ({ ...current, [active]: EMPTY_DRAFT }))
   }, [draft, running, active, runLocal, editDraft, imageBaseCount])
+
+  const sendNow = useCallback(() => submit(false), [submit])
+  const queueNext = useCallback(() => submit(true), [submit])
+
+  /**
+   * Есть ли что отправлять: текст, вложение или цитата. Пустое поле — обе
+   * кнопки погашены, и Enter тоже ничего не делает.
+   */
+  const draftReady = useMemo(() => {
+    if (draft.quotes.length > 0) return true
+    if (draft.tokens.some((token) => token.kind === 'chip')) return true
+    return plainText(draft.tokens).trim().length > 0
+  }, [draft])
 
   // Только для локальной страницы-харнесса (webview/src/harness) — имитирует
   // настоящую отправку сообщения из поля ввода. Vite статически подставляет
@@ -760,7 +791,7 @@ export const App = () => {
   useEffect(() => {
     if (!import.meta.env.DEV) return
 
-    window.__accHarnessSend = submit
+    window.__accHarnessSend = (text: string) => submit(false, text)
     return () => {
       window.__accHarnessSend = undefined
     }
@@ -1023,10 +1054,6 @@ export const App = () => {
                 clearSelection()
                 setFocusToken((current) => current + 1)
               }}
-              onCopy={() => {
-                void navigator.clipboard?.writeText(selection.text)
-                clearSelection()
-              }}
             />
           ) : null}
         </div>
@@ -1073,7 +1100,9 @@ export const App = () => {
             focusToken={focusToken}
             onTokensChange={(tokens) => editDraft(active, { tokens })}
             onAttach={() => send({ type: 'pick' })}
-            onSubmit={submit}
+            onSubmit={sendNow}
+            onQueue={queueNext}
+            canSubmit={draftReady}
             stopStalled={stopStalled}
             onStop={() => {
               // В idle не спешим: статус honestly ждём от настоящего события, а не

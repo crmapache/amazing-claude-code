@@ -47,7 +47,12 @@ interface ComposerProps {
   focusToken: number
   onTokensChange: (tokens: UserToken[]) => void
   onAttach: () => void
+  /** Отправить сейчас: занятому агенту сообщение дойдёт на ближайшем его шаге. */
   onSubmit: () => void
+  /** Отложить: агент возьмёт это следующим, когда закончит начатое. */
+  onQueue: () => void
+  /** Есть ли что отправлять — текст, вложение или цитата. */
+  canSubmit: boolean
   onStop: () => void
   /** Stop не подтвердился дольше разумного — предлагаем убить процесс насильно. */
   stopStalled: boolean
@@ -66,6 +71,8 @@ export const Composer = ({
   onTokensChange,
   onAttach,
   onSubmit,
+  onQueue,
+  canSubmit,
   onStop,
   stopStalled,
   onForceStop,
@@ -387,9 +394,13 @@ export const Composer = ({
     range.setStartAfter(node)
     range.collapse(true)
 
+    // Вставленное могло кончаться переводом строки — скопированная из терминала
+    // строка обычно им и кончается. Курсору на этой строке нужно место.
+    const padded = node === root.lastChild ? padTrailingBreak(root) : null
+
     const selection = window.getSelection()
     selection?.removeAllRanges()
-    selection?.addRange(range)
+    selection?.addRange(padded ?? range)
 
     report(readTokens(root), true)
   }
@@ -451,22 +462,30 @@ export const Composer = ({
     const range = currentRange(root)
     range.deleteContents()
 
+    let tail: Node | null = null
+
     for (const token of next) {
       if (token.kind === 'text') {
         const text = document.createTextNode(token.value)
         range.insertNode(text)
         range.setStartAfter(text)
+        tail = text
       } else {
         const node: HTMLElement = renderChipNode(token.chip, () => onChipRemoved(root, node))
         range.insertNode(node)
         range.setStartAfter(node)
+        tail = node
       }
       range.collapse(true)
     }
 
+    // Вернулось в конец поля и кончается переносом — курсору нужна строка, на
+    // которой он встанет (см. padTrailingBreak).
+    const padded = tail && tail === root.lastChild ? padTrailingBreak(root) : null
+
     const selection = window.getSelection()
     selection?.removeAllRanges()
-    selection?.addRange(range)
+    selection?.addRange(padded ?? range)
 
     report(readTokens(root), true)
   }
@@ -566,7 +585,7 @@ export const Composer = ({
     ? ''
     : planMode
       ? 'Describe what to plan…'
-      : 'Ask, or describe a change… @ for files, / for commands'
+      : 'Ask, or describe a change…'
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     // JCEF не пробрасывает нативные для macOS сочетания «по строке» —
@@ -684,6 +703,9 @@ export const Composer = ({
     // не отправка, а часть набора текста.
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault()
+      // Enter — это кнопка Send, поэтому и молчит он ровно тогда же, когда она
+      // погашена: отправлять нечего.
+      if (!canSubmit) return
       if (tokens.length > 0) sentHistory.current.push(tokens)
       historyIndex.current = null
       historyDraft.current = null
@@ -693,13 +715,22 @@ export const Composer = ({
 
     if (event.key === 'Enter' && event.shiftKey) {
       event.preventDefault()
-      // Не execCommand('insertText', ..., '\n') — здесь он не кладёт литеральный
-      // символ строки в текстовый узел, а расщепляет поле на отдельный <div> под
-      // вторую строку (проверено живьём). Такой <div> излечение токенов не
-      // понимает и молча теряет целиком — вторая строка не доходила до отправки.
-      // insertTextAtCursor вставляет тем же самым текстовым узлом напрямую через
-      // Range API, без риска, что браузер сам решит расщепить его на блоки.
-      insertTextAtCursor('\n')
+      // Перенос строки — insertLineBreak, родная команда браузера ровно для
+      // этого. Соседние варианты не годятся: insertText с '\n' расщепляет поле
+      // на отдельный <div> под вторую строку (проверено живьём), а свой
+      // текстовый узел через Range теряет курсор.
+      //
+      // Курсор терялся так: перевод строки в самом конце содержимого браузер не
+      // рисует — по правилам переноса пустая последняя строка не занимает места,
+      // — и курсору на ней встать негде. Он схлопывался в конец предыдущей
+      // строки, и следующая буква печаталась ПЕРЕД переносом: первое нажатие
+      // выглядело как несработавшее, второе будто бы «наконец переносило».
+      //
+      // insertLineBreak знает про этот случай и держит в конце поля запасной
+      // перевод строки, пока на пустой последней строке стоит курсор; первая же
+      // напечатанная буква его забирает. Дальше поле остаётся плоским текстом,
+      // каким его и читает разбор токенов.
+      document.execCommand('insertLineBreak')
     }
   }
 
@@ -746,7 +777,6 @@ export const Composer = ({
               и тем же диалогом, а разницу видно по самому пути. */}
           <button type="button" className={s.attach} title="Attach files or folders" onClick={onAttach}>
             <span className={s.attachGlyph}>@</span>
-            <span className={s.attachLabel}>attach</span>
           </button>
           {/* Кнопка не открывает каталог, а ставит слэш в поле: дальше команду
               набирают, и список сужается сам. Пока в поле уже что-то есть, слэш
@@ -763,7 +793,6 @@ export const Composer = ({
               }}
             >
               <span className={s.attachSlash}>/</span>
-              <span className={s.attachLabel}>command</span>
             </button>
           ) : null}
 
@@ -783,12 +812,22 @@ export const Composer = ({
             </button>
           ) : null}
 
+          {/* Две отдельные кнопки, а не одна с двумя лицами: пока агент занят,
+              у сообщения есть выбор — дойти до него сейчас, посреди работы, или
+              дождаться своей очереди. Send работает всегда, Queue осмысленна
+              только при занятом агенте: свободному ждать нечего. */}
           <button
             type="button"
-            className={`${s.send} ${streaming ? s.sendQueued : ''}`}
-            onClick={onSubmit}
+            className={`${s.send} ${s.sendQueued}`}
+            onClick={onQueue}
+            disabled={!canSubmit || !streaming}
+            title="Send after the current run finishes"
           >
-            {streaming ? 'Queue' : 'Send'}
+            Queue
+          </button>
+
+          <button type="button" className={s.send} onClick={onSubmit} disabled={!canSubmit}>
+            Send
           </button>
         </div>
       </div>
@@ -827,11 +866,41 @@ const endRange = (root: HTMLElement): Range => {
   return range
 }
 
+/**
+ * Даёт курсору место на пустой последней строке — и возвращает его туда.
+ *
+ * Перевод строки в самом конце поля браузер не рисует: пустая последняя строка
+ * не занимает места, и встать на неё курсору негде — он схлопывается в конец
+ * предыдущей, а следующий символ печатается ПЕРЕД переносом. Поэтому за таким
+ * переносом держим ещё один, запасной: он и даёт ту самую строку. Ровно так же
+ * поступает сам браузер, когда перенос делает insertLineBreak (Shift+Enter).
+ *
+ * Запасной перенос — часть разметки поля, а не сообщения: в отправленном тексте
+ * его нет, пустой хвост снимает trimTrailingSpace.
+ *
+ * Возвращает курсор перед запасным переносом — или ничего, если поле кончается
+ * не переносом и подстраховывать нечего.
+ */
+const padTrailingBreak = (root: HTMLElement): Range | null => {
+  const last = root.lastChild
+  if (!last || last.nodeType !== Node.TEXT_NODE) return null
+
+  const value = last.textContent ?? ''
+  if (!value.endsWith('\n')) return null
+
+  last.textContent = `${value}\n`
+
+  const range = document.createRange()
+  range.setStart(last, value.length)
+  range.collapse(true)
+  return range
+}
+
 const placeCaretAtEnd = (root: HTMLElement | null) => {
   if (!root) return
   const selection = window.getSelection()
   selection?.removeAllRanges()
-  selection?.addRange(endRange(root))
+  selection?.addRange(padTrailingBreak(root) ?? endRange(root))
 }
 
 /**
@@ -964,7 +1033,23 @@ const extractTokens = (root: HTMLElement): UserToken[] => {
     }
   }
 
-  return tokens
+  return withoutCaretLine(tokens)
+}
+
+/**
+ * Убирает запасной перевод строки, на котором стоит курсор (см.
+ * padTrailingBreak): он часть разметки поля, а не набранного сообщения.
+ *
+ * Без этого он попадал бы в состояние панели и возвращался в поле при каждом
+ * восстановлении — отмена, история сообщений, переключение вкладки, — а поле
+ * дописывало бы к нему запасной заново, и хвост рос бы с каждым разом.
+ */
+const withoutCaretLine = (tokens: UserToken[]): UserToken[] => {
+  const last = tokens[tokens.length - 1]
+  if (!last || last.kind !== 'text' || !last.value.endsWith('\n')) return tokens
+
+  const value = last.value.slice(0, -1)
+  return value ? [...tokens.slice(0, -1), { kind: 'text', value }] : tokens.slice(0, -1)
 }
 
 /** Место границы выделения в поле: какой ребёнок и сколько символов от его начала. */

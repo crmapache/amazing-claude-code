@@ -41,6 +41,14 @@ internal data class IdeTypography(
         private const val MIN_SCALE = 0.6
         private const val MAX_SCALE = 2.5
 
+        /**
+         * Ниже этого межстрочный интервал консоли (обычно 1.0–1.2 — код в редакторе
+         * ужимают ради вертикальной плотности) сжимает обёрнутые строки прозы так,
+         * что подсветка выделения между ними слипается в один сплошной блок. Панель —
+         * не редактор кода, ей нужен интервал прозы, а не консоли.
+         */
+        private const val MIN_LINE_HEIGHT = 1.4f
+
         fun read(): IdeTypography {
             val scheme = EditorColorsManager.getInstance().globalScheme
             val consoleSize = scheme.consoleFontSize2D.toDouble()
@@ -48,7 +56,7 @@ internal data class IdeTypography(
             return IdeTypography(
                 monoFamily = scheme.consoleFontName,
                 uiFamily = JBFont.label().family,
-                lineHeight = scheme.consoleLineSpacing,
+                lineHeight = scheme.consoleLineSpacing.coerceAtLeast(MIN_LINE_HEIGHT),
                 scale = (consoleSize / DESIGN_BASE_PX).coerceIn(MIN_SCALE, MAX_SCALE),
             )
         }

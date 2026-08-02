@@ -6,6 +6,7 @@ import {
   composePrompt,
   imageAttachments,
   tokensText,
+  trimTrailingSpace,
 } from './tokens'
 import type { UserToken } from './types'
 
@@ -41,6 +42,29 @@ describe('tokensText', () => {
       { kind: 'chip', chip: { kind: 'quote', value: 'ref1', text: 'кусок кода' } },
     ]
     expect(tokensText(tokens)).toBe('/model @src/App.tsx (L1-L4) @src/feed/ "кусок кода"')
+  })
+})
+
+describe('trimTrailingSpace', () => {
+  it('убирает перевод строки, на котором стоял курсор: в поле его было не видно', () => {
+    expect(trimTrailingSpace([text('раз'), text('\n')])).toEqual([text('раз')])
+  })
+
+  it('снимает пустой хвост целиком, сколько бы токенов он ни занимал', () => {
+    expect(trimTrailingSpace([text('раз'), text('\n'), text('\n  ')])).toEqual([text('раз')])
+  })
+
+  it('режет хвост внутри самого токена, не трогая переносы в середине', () => {
+    expect(trimTrailingSpace([text('раз\nдва\n\n')])).toEqual([text('раз\nдва')])
+  })
+
+  it('вложение в конце оставляет как есть — оно видимое', () => {
+    const tokens = [text('смотри '), image('Image #1')]
+    expect(trimTrailingSpace(tokens)).toEqual(tokens)
+  })
+
+  it('сообщение из одних пробелов сходит на нет', () => {
+    expect(trimTrailingSpace([text('  \n')])).toEqual([])
   })
 })
 

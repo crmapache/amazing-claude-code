@@ -203,6 +203,43 @@ describe('сборка ленты из потока агента', () => {
     expect(state.items[0]?.kind).toBe('user')
   })
 
+  it('досылка в идущий ход не стирает недописанный ответ агента', () => {
+    let state = reducePanel(initialPanelState, {
+      kind: 'agent',
+      event: {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Смотрю файл' } },
+      },
+    })
+
+    state = reducePanel(
+      state,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'стой, не этот' }], quotes: [], steering: true },
+      1_700_000_000_000,
+    )
+
+    expect(state.streamingText).toBe('Смотрю файл')
+    expect(state.items.at(-1)?.kind).toBe('user')
+  })
+
+  it('обычный ход начинает с чистого листа, а не продолжает прошлый поток', () => {
+    let state = reducePanel(initialPanelState, {
+      kind: 'agent',
+      event: {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'обрывок' } },
+      },
+    })
+
+    state = reducePanel(
+      state,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'новая задача' }], quotes: [] },
+      1_700_000_000_000,
+    )
+
+    expect(state.streamingText).toBe('')
+  })
+
   it('собирает мысль по кусочкам вживую и гасит буфер готовым блоком', () => {
     let state = reducePanel(initialPanelState, {
       kind: 'agent',

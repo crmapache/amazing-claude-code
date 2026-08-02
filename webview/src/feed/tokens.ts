@@ -53,6 +53,35 @@ export const tokensText = (tokens: UserToken[], offset = 0): string => {
     .join('')
 }
 
+/**
+ * Снимает с конца последовательности пустой хвост — пробелы и переводы строк.
+ *
+ * Нужно потому, что последнюю строку поле ввода не показывает: перевод строки в
+ * самом конце не занимает места, и стоит там разве что курсор — человек его
+ * содержимым не видит. Нажал Shift+Enter, передумал, отправил — в ленте не
+ * должно остаться пустой строки, которой в поле не было.
+ *
+ * Агенту такой хвост и так не уходит (composePrompt обрезает текст с обеих
+ * сторон), поэтому обрезаем и здесь: лента показывает ровно то, что ушло.
+ */
+export const trimTrailingSpace = (tokens: UserToken[]): UserToken[] => {
+  const trimmed = [...tokens]
+
+  while (trimmed.length > 0) {
+    const last = trimmed[trimmed.length - 1]
+    if (!last || last.kind !== 'text') break
+
+    const value = last.value.trimEnd()
+    trimmed.pop()
+    if (value) {
+      trimmed.push({ kind: 'text', value })
+      break
+    }
+  }
+
+  return trimmed
+}
+
 /** Сообщение целиком: цитаты отдельными строками сверху, дальше само поле. */
 export const composePrompt = (
   { tokens, quotes }: { tokens: UserToken[]; quotes: { text: string }[] },

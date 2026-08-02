@@ -19,6 +19,7 @@ import type {
   TodoEntry,
   ToolGroupItem,
   ToolItem,
+  UserItem,
   UserToken,
 } from './types'
 
@@ -98,7 +99,12 @@ export interface PanelState {
 }
 
 export type PanelAction =
-  | { kind: 'prompt'; tokens: UserToken[]; quotes: string[] }
+  /**
+   * steering — сообщение, досланное в уже идущий ход: агент подхватит его между
+   * шагами, а не начнёт с него новый. Такое сообщение только добавляется в
+   * ленту и ничего в ней не обрывает.
+   */
+  | { kind: 'prompt'; tokens: UserToken[]; quotes: string[]; steering?: boolean }
   | { kind: 'agent'; event: AgentEvent }
   | { kind: 'status'; status: AgentStatus }
   | { kind: 'error'; message: string }
@@ -198,7 +204,22 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
     case 'processExited':
       return applyProcessExited(state, action.exitCode, now)
 
-    case 'prompt':
+    case 'prompt': {
+      const message: UserItem = {
+        id: `user-${state.seq}`,
+        kind: 'user',
+        time: formatClock(now),
+        tokens: action.tokens,
+        quotes: action.quotes,
+      }
+
+      // Досылка в идущий ход ничего не начинает заново: агент продолжает своё,
+      // и недописанный ответ, который он печатает прямо сейчас, обрывать нельзя —
+      // сброс потоковых полей стёр бы его с экрана на полуслове.
+      if (action.steering) {
+        return { ...state, seq: state.seq + 1, items: [...state.items, message] }
+      }
+
       return {
         ...state,
         status: 'running',
@@ -208,17 +229,9 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         stopRequestedAt: undefined,
         crashed: false,
         seq: state.seq + 1,
-        items: [
-          ...state.items,
-          {
-            id: `user-${state.seq}`,
-            kind: 'user',
-            time: formatClock(now),
-            tokens: action.tokens,
-            quotes: action.quotes,
-          },
-        ],
+        items: [...state.items, message],
       }
+    }
 
     case 'permission':
       return {

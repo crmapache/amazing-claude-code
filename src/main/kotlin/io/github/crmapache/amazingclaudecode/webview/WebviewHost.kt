@@ -7,7 +7,6 @@ import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
 import javax.swing.JComponent
-import kotlin.math.ln
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import org.cef.browser.CefBrowser
@@ -84,12 +83,14 @@ internal class WebviewHost(
      * Увеличить страницу целиком — так панель следует за размером шрифта в
      * настройках IDE, не переписывая размеры в стилях (см. IdeTypography).
      *
-     * Уровень зума в браузере считается не в разах, а в шагах по 1.2 — тех
-     * самых, что даёт Ctrl+«плюс», — поэтому множитель переводим логарифмом.
+     * Здесь именно множитель, а не уровень зума: сам браузер считает зум шагами
+     * по 1.2, но платформа принимает разы (1.0 — сто процентов) и переводит их в
+     * шаги за нас. Своего логарифма тут быть не должно — он применился бы вторым
+     * и сплющил страницу до минимально возможного масштаба.
      */
     fun setZoom(scale: Double) {
         if (scale <= 0) return
-        browser.zoomLevel = ln(scale) / ln(ZOOM_STEP)
+        browser.zoomLevel = scale
     }
 
     override fun dispose() = Unit
@@ -129,10 +130,5 @@ internal class WebviewHost(
             return devUrl
         }
         return "${WebviewResources.ORIGIN}/index.html"
-    }
-
-    private companion object {
-        /** Шаг зума встроенного браузера — тот же, что у Ctrl+«плюс». */
-        const val ZOOM_STEP = 1.2
     }
 }
