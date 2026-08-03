@@ -167,6 +167,10 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
       return { ...state, project: action.project }
 
     case 'project':
+      // Ветка и PR теперь приходят раздельными сообщениями со своей частотой
+      // (см. ClaudePanel.refreshBranch/refreshPullRequest) — каждое поле падает
+      // назад к прежнему значению, если в этот раз пришло не про него, а не
+      // затирается пустотой.
       return {
         ...state,
         project: {
@@ -174,8 +178,8 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
           workingDirectory: state.project?.workingDirectory ?? '',
           ...state.project,
           gitBranch: action.gitBranch ?? state.project?.gitBranch,
-          pullRequest: action.pullRequest,
-          pullRequestUrl: action.pullRequestUrl,
+          pullRequest: action.pullRequest ?? state.project?.pullRequest,
+          pullRequestUrl: action.pullRequestUrl ?? state.project?.pullRequestUrl,
         },
       }
 

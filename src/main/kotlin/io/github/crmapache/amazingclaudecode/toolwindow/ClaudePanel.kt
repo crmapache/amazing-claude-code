@@ -139,6 +139,7 @@ internal class ClaudePanel(
         )
 
         scheduleUsageUpdates(parentDisposable)
+        scheduleBranchUpdates(parentDisposable)
         return host.component
     }
 
@@ -165,7 +166,8 @@ internal class ClaudePanel(
                 sendInit()
                 sendDockAnchor()
                 sendTypography()
-                refreshProject()
+                refreshBranch()
+                refreshPullRequest()
                 checkAuth()
                 checkModeAvailability()
                 refreshFiles()
@@ -568,7 +570,10 @@ internal class ClaudePanel(
         val task = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
             {
                 refreshUsage()
-                refreshProject()
+                // PR спрашивает GitHub отдельным процессом — та же редкая
+                // периодичность, что у расхода. Ветку сюда не тащим: она обновляется
+                // своим отдельным, куда более частым кругом (см. scheduleBranchUpdates).
+                refreshPullRequest()
                 // Список файлов для подсказки "@" тоже стареет — агент мог создать
                 // новые за это время, ту же редкую периодичность, что у остального.
                 refreshFiles()
@@ -579,6 +584,23 @@ internal class ClaudePanel(
             USAGE_PERIOD_MINUTES,
             USAGE_PERIOD_MINUTES,
             TimeUnit.MINUTES,
+        )
+
+        Disposer.register(parentDisposable) { task.cancel(false) }
+    }
+
+    /**
+     * Ветка — это просто чтение маленького файла на диске, не поход к GitHub, как
+     * у PR (см. scheduleUsageUpdates). Гонять её тем же редким кругом было ошибкой:
+     * после `git checkout` в терминале панель показывала старую ветку заметное
+     * время. Здесь круг короткий — тот же расход почти нулевой.
+     */
+    private fun scheduleBranchUpdates(parentDisposable: Disposable) {
+        val task = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
+            { refreshBranch() },
+            BRANCH_PERIOD_SECONDS,
+            BRANCH_PERIOD_SECONDS,
+            TimeUnit.SECONDS,
         )
 
         Disposer.register(parentDisposable) { task.cancel(false) }
@@ -721,23 +743,34 @@ internal class ClaudePanel(
         }
     }
 
-    /**
-     * Ветка и её pull request для нижней строки. Спрашивать GitHub на каждый чих
-     * нельзя, поэтому обновляем тем же редким кругом, что и расход.
-     */
-    private fun refreshProject() {
+    /** Ветка для нижней строки. Дешёвое чтение файла — можно спрашивать часто. */
+    private fun refreshBranch() {
         ApplicationManager.getApplication().executeOnPooledThread {
-            val branch = ProjectFacts.gitBranch(project)
+            val branch = ProjectFacts.gitBranch(project) ?: return@executeOnPooledThread
+
+            webview?.send(
+                buildJsonObject {
+                    put("type", "project")
+                    put("gitBranch", branch)
+                }.toString(),
+            )
+        }
+    }
+
+    /**
+     * Pull request текущей ветки для нижней строки. Шлём поле даже когда PR нет
+     * (пустой строкой), а не молчим — иначе сторона вебвью не отличит «сейчас
+     * закрыли/смержили PR» от «это сообщение вообще не про PR», см. reducePanel.
+     */
+    private fun refreshPullRequest() {
+        ApplicationManager.getApplication().executeOnPooledThread {
             val pullRequest = ProjectFacts.pullRequest(project)
 
             webview?.send(
                 buildJsonObject {
                     put("type", "project")
-                    branch?.let { put("gitBranch", it) }
-                    pullRequest?.let {
-                        put("pullRequest", it.number)
-                        put("pullRequestUrl", it.url)
-                    }
+                    put("pullRequest", pullRequest?.number.orEmpty())
+                    put("pullRequestUrl", pullRequest?.url.orEmpty())
                 }.toString(),
             )
         }
@@ -973,7 +1006,8 @@ internal class ClaudePanel(
 
     private companion object {
         const val MAIN_SESSION = "main"
-        const val USAGE_PERIOD_MINUTES = 5L
+        const val USAGE_PERIOD_MINUTES = 1L
+        const val BRANCH_PERIOD_SECONDS = 5L
         const val LOGIN_POLL_SECONDS = 3L
         const val LOGIN_POLL_LIMIT_MINUTES = 10L
         const val NOT_LOGGED_IN = "Not logged in"

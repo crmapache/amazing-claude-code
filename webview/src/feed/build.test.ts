@@ -652,6 +652,41 @@ describe('сжатие контекста', () => {
   })
 })
 
+describe('ветка и PR из фонового опроса', () => {
+  it('ветка приходит своим сообщением, отдельно от PR — и не стирает уже известный PR', () => {
+    let state = reducePanel(initialPanelState, {
+      kind: 'project',
+      pullRequest: '42',
+      pullRequestUrl: 'https://github.com/x/y/pull/42',
+    })
+    state = reducePanel(state, { kind: 'project', gitBranch: 'feature/foo' })
+
+    expect(state.project?.gitBranch).toBe('feature/foo')
+    expect(state.project?.pullRequest).toBe('42')
+    expect(state.project?.pullRequestUrl).toBe('https://github.com/x/y/pull/42')
+  })
+
+  it('PR приходит своим сообщением, отдельно от ветки — и не стирает уже известную ветку', () => {
+    let state = reducePanel(initialPanelState, { kind: 'project', gitBranch: 'main' })
+    state = reducePanel(state, { kind: 'project', pullRequest: '7', pullRequestUrl: 'https://github.com/x/y/pull/7' })
+
+    expect(state.project?.gitBranch).toBe('main')
+    expect(state.project?.pullRequest).toBe('7')
+  })
+
+  it('пустая строка от свежей проверки PR явно гасит старый номер, а не сохраняет его', () => {
+    let state = reducePanel(initialPanelState, {
+      kind: 'project',
+      pullRequest: '42',
+      pullRequestUrl: 'https://github.com/x/y/pull/42',
+    })
+    state = reducePanel(state, { kind: 'project', pullRequest: '', pullRequestUrl: '' })
+
+    expect(state.project?.pullRequest).toBe('')
+    expect(state.project?.pullRequestUrl).toBe('')
+  })
+})
+
 describe('индикатор контекста', () => {
   it('contextUsage не делится на ноль при нулевом или отрицательном лимите', () => {
     const usage = { input_tokens: 100, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
