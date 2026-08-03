@@ -33,6 +33,8 @@ export interface TextPart {
   code?: boolean
   mark?: boolean
   strong?: boolean
+  /** URL, если кусок — ссылка (markdown-ссылка или голый http/https-адрес в тексте). */
+  href?: string
 }
 
 export interface Paragraph {

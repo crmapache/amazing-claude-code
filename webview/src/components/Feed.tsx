@@ -36,6 +36,8 @@ interface FeedProps {
   cards: CardState
   onPlanDecision: (itemId: string, decision: 'approve' | 'keepPlanning') => void
   onDismissError: (index: number) => void
+  /** Открыть ссылку из ответа агента в системном браузере. */
+  onOpenLink: (url: string) => void
   scrollRef?: (element: HTMLElement | null) => void
   onScroll?: () => void
 }
@@ -51,6 +53,7 @@ export const Feed = ({
   cards,
   onPlanDecision,
   onDismissError,
+  onOpenLink,
   scrollRef,
   onScroll,
 }: FeedProps) => {
@@ -203,7 +206,7 @@ export const Feed = ({
 
         {rows.map((item) => (
           <div key={item.id} className={s.row}>
-            <ItemView item={item} cards={cards} lastPendingId={lastPendingId} onPlanDecision={onPlanDecision} />
+            <ItemView item={item} cards={cards} lastPendingId={lastPendingId} onPlanDecision={onPlanDecision} onOpenLink={onOpenLink} />
           </div>
         ))}
 
@@ -255,15 +258,16 @@ interface ItemViewProps {
   /** id вызова, который сейчас реально ждёт разрешения (или undefined, если ждать нечего). */
   lastPendingId: string | undefined
   onPlanDecision: (itemId: string, decision: 'approve' | 'keepPlanning') => void
+  onOpenLink: (url: string) => void
 }
 
-const ItemView = ({ item, cards, lastPendingId, onPlanDecision }: ItemViewProps) => {
+const ItemView = ({ item, cards, lastPendingId, onPlanDecision, onOpenLink }: ItemViewProps) => {
   switch (item.kind) {
     case 'user':
       return <UserCard item={item} />
 
     case 'text':
-      return <TextCard item={item} />
+      return <TextCard item={item} onOpenLink={onOpenLink} />
 
     case 'think':
       return <ThinkRow item={item} />

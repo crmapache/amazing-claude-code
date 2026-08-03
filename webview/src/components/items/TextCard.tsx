@@ -5,6 +5,8 @@ import s from '../feed.module.css'
 
 interface TextCardProps {
   item: TextItem
+  /** Открыть ссылку из ответа агента в системном браузере, а не внутри вебвью. */
+  onOpenLink: (url: string) => void
 }
 
 /** Сколько подряд держим галочку после копирования, прежде чем вернуть иконку. */
@@ -38,7 +40,7 @@ const REVEAL = {
  * кончились технические логи (мысли, вызовы инструментов) и начался настоящий
  * ответ — тот же приём, что и у сообщения пользователя, только с другой стороны.
  */
-export const TextCard = ({ item }: TextCardProps) => {
+export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
@@ -65,7 +67,7 @@ export const TextCard = ({ item }: TextCardProps) => {
           заново и текст загорался бы ступеньками, а не единым ходом. */}
       <RevealProvider resetKey={item.id} {...REVEAL}>
         {item.paragraphs.map((paragraph, index) => (
-          <ParagraphView key={index} paragraph={paragraph} />
+          <ParagraphView key={index} paragraph={paragraph} onOpenLink={onOpenLink} />
         ))}
       </RevealProvider>
     </div>
@@ -81,7 +83,7 @@ const plainText = (item: TextItem): string =>
     })
     .join('\n')
 
-const ParagraphView = ({ paragraph }: { paragraph: Paragraph }) => {
+const ParagraphView = ({ paragraph, onOpenLink }: { paragraph: Paragraph; onOpenLink: (url: string) => void }) => {
   if (paragraph.codeBlock) {
     return (
       <Reveal as="pre" className={s.codeBlock}>
@@ -95,7 +97,7 @@ const ParagraphView = ({ paragraph }: { paragraph: Paragraph }) => {
       {paragraph.bullet ? <span className={s.bullet}>—</span> : null}
       <div className={s.paraBody}>
         {paragraph.parts.map((part, index) => (
-          <PartView key={index} part={part} />
+          <PartView key={index} part={part} onOpenLink={onOpenLink} />
         ))}
       </div>
     </div>
@@ -108,7 +110,24 @@ const ParagraphView = ({ paragraph }: { paragraph: Paragraph }) => {
  * заново собранный разбор (жирный кусок дописался, абзац перестроился) карточка
  * досеивает молча.
  */
-const PartView = ({ part }: { part: TextPart }) => {
+const PartView = ({ part, onOpenLink }: { part: TextPart; onOpenLink: (url: string) => void }) => {
+  if (part.href) {
+    const href = part.href
+    return (
+      <a
+        href={href}
+        className={s.link}
+        // Открываем в системном браузере через хост-IDE: обычная навигация увела бы
+        // сам вебвью панели на этот адрес вместо показа его снаружи.
+        onClick={(event) => {
+          event.preventDefault()
+          onOpenLink(href)
+        }}
+      >
+        <Reveal>{part.text}</Reveal>
+      </a>
+    )
+  }
   if (part.code) return <Reveal className={s.code}>{part.text}</Reveal>
   if (part.mark) return <Reveal className={s.mark}>{part.text}</Reveal>
   if (part.strong) return <Reveal className={s.strong}>{part.text}</Reveal>

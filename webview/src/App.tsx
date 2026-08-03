@@ -1032,6 +1032,7 @@ export const App = () => {
               onScroll={clearSelection}
               onPlanDecision={decidePlan}
               onDismissError={(index) => dispatchPanel({ session: active, action: { kind: 'dismissError', index } })}
+              onOpenLink={(url) => send({ type: 'openExternal', url })}
             />
           ) : (
             <AgentStreamView item={activeTask} />

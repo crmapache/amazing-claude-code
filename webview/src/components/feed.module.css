@@ -334,6 +334,16 @@
   color: var(--acc-fg);
 }
 
+.link {
+  color: var(--acc-branch-light);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
 .codeBlock {
   margin: 2px 0 8px;
   padding: 8px 10px;

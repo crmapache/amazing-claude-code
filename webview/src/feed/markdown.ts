@@ -76,10 +76,31 @@ export const parseParagraphs = (source: string): Paragraph[] => {
   return paragraphs
 }
 
-/** Кодовые вставки, жирный текст и подсветка ссылок на ветку внутри строки. */
+/**
+ * Хвостовая пунктуация из окружающего текста, а не часть адреса: "смотри
+ * https://example.com." не должна утаскивать точку в ссылку. Закрывающую
+ * скобку срезаем только когда она не балансирует открывающую внутри самого
+ * адреса — иначе ссылки вида "(https://example.com/foo(bar))" ломались бы.
+ */
+const trimUrlPunctuation = (url: string): string => {
+  let end = url.length
+  while (end > 0 && ".,!?;:'\"".includes(url[end - 1]!)) end -= 1
+
+  while (end > 0 && url[end - 1] === ')') {
+    const head = url.slice(0, end)
+    const opens = (head.match(/\(/g) ?? []).length
+    const closes = (head.match(/\)/g) ?? []).length
+    if (opens >= closes) break
+    end -= 1
+  }
+
+  return url.slice(0, end)
+}
+
+/** Кодовые вставки, жирный текст, ссылки (markdown и голые URL) и подсветка веток внутри строки. */
 export const parseInline = (line: string): TextPart[] => {
   const parts: TextPart[] = []
-  const pattern = /\[\[(.+?)\]\]|`([^`]+)`|\*\*([^*]+)\*\*/g
+  const pattern = /\[\[(.+?)\]\]|`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/\S+)/g
 
   let last = 0
   let match: RegExpExecArray | null
@@ -87,11 +108,23 @@ export const parseInline = (line: string): TextPart[] => {
   while ((match = pattern.exec(line)) !== null) {
     if (match.index > last) parts.push({ text: line.slice(last, match.index) })
 
-    if (match[1] !== undefined) parts.push({ text: match[1], mark: true })
-    else if (match[2] !== undefined) parts.push({ text: match[2], code: true })
-    else if (match[3] !== undefined) parts.push({ text: match[3], strong: true })
-
-    last = match.index + match[0].length
+    if (match[1] !== undefined) {
+      parts.push({ text: match[1], mark: true })
+      last = match.index + match[0].length
+    } else if (match[2] !== undefined) {
+      parts.push({ text: match[2], code: true })
+      last = match.index + match[0].length
+    } else if (match[3] !== undefined) {
+      parts.push({ text: match[3], strong: true })
+      last = match.index + match[0].length
+    } else if (match[5] !== undefined) {
+      parts.push({ text: match[4] ?? match[5], href: match[5] })
+      last = match.index + match[0].length
+    } else if (match[6] !== undefined) {
+      const href = trimUrlPunctuation(match[6])
+      parts.push({ text: href, href })
+      last = match.index + href.length
+    }
   }
 
   if (last < line.length) parts.push({ text: line.slice(last) })
