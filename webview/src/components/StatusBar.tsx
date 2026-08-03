@@ -48,7 +48,7 @@ export const StatusBar = ({
   <div className={s.status}>
     <div className={s.statusLine}>
       {gitBranch ? (
-        <span className={s.statusItem}>
+        <span className={`${s.statusItem} ${s.statusBranchItem}`}>
           <span className={s.statusBranch}>{gitBranch}</span>
           {pullRequest ? (
             <button type="button" className={s.statusPrLink} onClick={onOpenPullRequest} title="Open pull request in browser">

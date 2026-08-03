@@ -73,11 +73,20 @@ internal object ProjectFacts {
 
         val content = runCatching { head.readText().trim() }.getOrNull() ?: return null
 
-        return when {
-            content.startsWith("ref:") -> content.substringAfterLast('/')
-            // Отсоединённая голова: показываем короткий хеш, как это делает IDE.
-            content.length >= 7 -> content.take(7)
-            else -> null
-        }
+        return parseHeadBranch(content)
+    }
+
+    /**
+     * Разбор содержимого `.git/HEAD`. Вынесено из [gitBranch] отдельной чистой
+     * функцией, чтобы разбор формата тестировался без файлов и IntelliJ-проекта.
+     */
+    internal fun parseHeadBranch(content: String): String? = when {
+        // substringAfterLast('/') резал бы префикс веток вида "feature/foo" до
+        // одного "foo" — снимаем только служебный "refs/heads/", а не всё до
+        // последнего слэша.
+        content.startsWith("ref:") -> content.removePrefix("ref:").trim().removePrefix("refs/heads/")
+        // Отсоединённая голова: показываем короткий хеш, как это делает IDE.
+        content.length >= 7 -> content.take(7)
+        else -> null
     }
 }

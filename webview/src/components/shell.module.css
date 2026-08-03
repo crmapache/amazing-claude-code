@@ -398,9 +398,19 @@
   white-space: nowrap;
 }
 
+/* min-width: 0 — ветка с PR-беджем должна сама уступать место остальным
+   метрикам ряда, а не держать фиксированный минимум шире, чем весь ряд. */
+.statusBranchItem {
+  min-width: 0;
+}
+
+/* Обрезаем ветку ровно до реально доступного места (min-width: 0 + flex:
+   1 1 auto), а не до произвольной константы в пикселях — короткие ветки
+   показываются целиком, длинные ужимаются только когда места правда нет. */
 .statusBranch {
   color: var(--acc-ok-light);
-  max-width: 180px;
+  min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
 }
