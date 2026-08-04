@@ -118,8 +118,11 @@ internal class PermissionServer(
             return Decision.ALLOW to ""
         }
 
-        // См. PermissionPlanMode — plan только читает, не трогает диск.
-        if (mode == "plan" && PermissionPlanMode.isSafe(toolName, input?.string("command"))) {
+        // См. PermissionPlanMode — plan только читает, не трогает диск, кроме
+        // одного исключения: собственного черновика плана самого CLI.
+        if (mode == "plan" &&
+            PermissionPlanMode.isSafe(toolName, input?.string("command"), input?.string("file_path"))
+        ) {
             return Decision.ALLOW to ""
         }
 

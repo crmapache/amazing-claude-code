@@ -48,6 +48,50 @@ class PermissionServerTest {
         }
     }
 
+    // Без этого CLI денаит собственный черновик плана как правку постороннего
+    // файла, теряет ExitPlanMode и пересказывает план обычным текстом в чат
+    // вместо карточки — тот самый баг, ради которого исключение и заведено.
+    @Test
+    fun `запись черновика плана в режиме plan проходит мимо панели`() {
+        val asked = CopyOnWriteArrayList<PermissionServer.Request>()
+        val server = PermissionServer { asked.add(it) }
+
+        try {
+            val home = System.getProperty("user.home")
+            val decision = post(
+                server,
+                writeHookBody(mode = "plan", filePath = "$home/.claude/plans/plan-snazzy-bubble.md"),
+            )
+
+            assertEquals("allow", decision)
+            assertTrue(asked.isEmpty(), "панель не должна была ничего спрашивать")
+        } finally {
+            server.dispose()
+        }
+    }
+
+    @Test
+    fun `запись обычного файла в режиме plan по-прежнему спрашивает`() {
+        val asked = CopyOnWriteArrayList<PermissionServer.Request>()
+        val server = PermissionServer { asked.add(it) }
+
+        try {
+            val answering = Thread {
+                while (asked.isEmpty()) Thread.sleep(10)
+                server.resolve(asked.first().id, PermissionServer.Decision.DENY)
+            }
+            answering.start()
+
+            val decision = post(server, writeHookBody(mode = "plan", filePath = "/Users/max/project/src/App.tsx"))
+            answering.join()
+
+            assertEquals("deny", decision)
+            assertEquals(1, asked.size)
+        } finally {
+            server.dispose()
+        }
+    }
+
     // Ради этого режима и затевалось одобрение плана: дальше агент работает сам.
     @Test
     fun `в режиме без вопросов панель не спрашивает даже про запись`() {
@@ -179,5 +223,17 @@ class PermissionServerTest {
             put("description", "проверка")
         }
         if (agentId != null) put("agent_id", agentId)
+    }.toString()
+
+    /** То же самое тело хука, но для Write — тут вместо command важен file_path. */
+    private fun writeHookBody(mode: String, filePath: String): String = buildJsonObject {
+        put("hook_event_name", "PreToolUse")
+        put("session_id", "разговор-агента-который-панели-неизвестен")
+        put("permission_mode", mode)
+        put("tool_name", "Write")
+        putJsonObject("tool_input") {
+            put("file_path", filePath)
+            put("content", "# черновик")
+        }
     }.toString()
 }

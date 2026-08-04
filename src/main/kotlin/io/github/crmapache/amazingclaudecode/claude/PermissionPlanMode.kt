@@ -1,5 +1,7 @@
 package io.github.crmapache.amazingclaudecode.claude
 
+import java.nio.file.Path
+
 /**
  * Что в режиме plan можно пропустить без вопроса.
  *
@@ -10,8 +12,8 @@ package io.github.crmapache.amazingclaudecode.claude
  * Claude Code в этом режиме, не более того.
  *
  * Read/Grep/Glob сюда вообще не доходят — хук на них не настроен (см.
- * WATCHED_TOOLS в ClaudeSettings), поэтому решать приходится только про сеть
- * и про Bash.
+ * WATCHED_TOOLS в ClaudeSettings), поэтому решать приходится только про сеть,
+ * про Bash и про один особый случай записи — см. [isPlanFile].
  *
  * Ключевое про Bash: команду разбираем, а не сравниваем с началом строки.
  * Разведка почти всегда идёт конвейером («ищи то-то | выкинь node_modules |
@@ -23,12 +25,33 @@ package io.github.crmapache.amazingclaudecode.claude
  */
 internal object PermissionPlanMode {
 
-    fun isSafe(toolName: String, command: String?): Boolean {
+    fun isSafe(toolName: String, command: String?, filePath: String? = null): Boolean {
         if (toolName == "WebFetch" || toolName == "WebSearch") return true
+        if (toolName == "Write") return isPlanFile(filePath)
         if (toolName != "Bash") return false
 
         return isSafeScript(command.orEmpty(), depth = 0)
     }
+
+    /**
+     * Сам CLI перед ExitPlanMode пишет черновик плана файлом в `~/.claude/plans`
+     * — это не правка проекта, а собственная бухгалтерия агента для его же
+     * экрана готового плана, никакого отношения к рабочей директории не имеет.
+     *
+     * Без этого исключения такая запись денаится точно так же, как правка
+     * любого чужого файла — а без сохранённого черновика агент на практике
+     * теряет и сам инструмент ExitPlanMode и вместо карточки плана просто
+     * пересказывает план обычным текстом в чате. Так что здесь речь не о
+     * снятии защиты, а о том, чтобы plan mode не ломал сам себя на
+     * собственной внутренней механике.
+     */
+    private fun isPlanFile(filePath: String?): Boolean {
+        if (filePath.isNullOrEmpty()) return false
+        val resolved = runCatching { Path.of(filePath).normalize() }.getOrNull() ?: return false
+        return resolved.startsWith(PLAN_FILES_DIR)
+    }
+
+    private val PLAN_FILES_DIR: Path = Path.of(System.getProperty("user.home"), ".claude", "plans")
 
     private fun isSafeScript(script: String, depth: Int): Boolean {
         // Подстановка внутри подстановки внутри подстановки — уже не разведка,
@@ -328,6 +351,18 @@ internal object PermissionPlanMode {
         "cd" to emptySet(),
         "column" to emptySet(),
         "comm" to emptySet(),
+        // То же чтение по сети, что уже само по себе разрешают WebFetch/WebSearch -
+        // запрещаем только то, что превращает curl из чтения в запись или отправку
+        // данных (сохранение ответа на диск, POST/PUT/DELETE, отправку форм) либо
+        // подмену остальных ключей через конфиг-файл, как -c у git.
+        "curl" to setOf(
+            "-o", "--output", "-O", "--remote-name", "--remote-name-all",
+            "-d", "--data", "--data-raw", "--data-binary", "--data-urlencode",
+            "-F", "--form", "--form-string",
+            "-T", "--upload-file",
+            "-X", "--request",
+            "-K", "--config",
+        ),
         "cut" to emptySet(),
         "date" to emptySet(),
         "df" to emptySet(),
