@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCommands, localCommand, matchCommands, slashQuery, type CommandEntry } from './slash'
+import { buildCommands, commandNameBeforeArgument, localCommand, matchCommands, slashQuery, type CommandEntry } from './slash'
 
 const project = (...ids: string[]): CommandEntry[] =>
   ids.map((id) => ({ id, hint: '', group: 'project' }))
@@ -19,6 +19,24 @@ describe('slashQuery', () => {
 
   it('закрывается, как только пошли аргументы команды', () => {
     expect(slashQuery('/review ')).toBeNull()
+  })
+})
+
+describe('commandNameBeforeArgument', () => {
+  it('отдаёт имя команды, пока слот аргумента ещё пуст', () => {
+    expect(commandNameBeforeArgument('/review ')).toBe('review')
+  })
+
+  it('гаснет, как только в аргумент напечатан первый символ — а не держится до конца сообщения', () => {
+    expect(commandNameBeforeArgument('/review 123')).toBeNull()
+  })
+
+  it('гаснет и после того, как аргумент перерос в обычный текст с пробелами', () => {
+    expect(commandNameBeforeArgument('/plan-nest-feature новая фича логина, давай обсудим')).toBeNull()
+  })
+
+  it('молчит без названной целиком команды', () => {
+    expect(commandNameBeforeArgument('/rev')).toBeNull()
   })
 })
 
