@@ -39,6 +39,8 @@ export interface TextPart {
 
 export interface Paragraph {
   bullet?: boolean
+  /** Заголовок (`#`..`######`) — рисуется жирным, как и раньше, но с зазором перед собой, чтобы читаться началом раздела, а не сливаться с абзацем над ним. */
+  heading?: boolean
   /** Блок кода рисуется моноширинной плашкой целиком, без разбора на части. */
   codeBlock?: boolean
   language?: string

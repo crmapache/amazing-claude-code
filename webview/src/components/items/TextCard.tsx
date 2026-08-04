@@ -56,8 +56,9 @@ export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
         className={s.textCopy}
         title="Copy"
         onClick={() => {
-          void navigator.clipboard?.writeText(plainText(item))
-          setCopied(true)
+          void copyToClipboard(plainText(item)).then((ok) => {
+            if (ok) setCopied(true)
+          })
         }}
       >
         {copied ? '✓' : '⧉'}
@@ -72,6 +73,44 @@ export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
       </RevealProvider>
     </div>
   )
+}
+
+/** Сколько ждём современный Clipboard API, прежде чем считать его недоступным. */
+const CLIPBOARD_API_TIMEOUT_MS = 300
+
+/**
+ * navigator.clipboard в здешнем встроенном в IDE браузере (JCEF) есть не
+ * всегда — и, что хуже обычного отказа, может не отклониться с ошибкой, а
+ * зависнуть без ответа насовсем (проверено живьём: обычный await так и не
+ * дожидается ни успеха, ни отказа). Кнопка при этом рапортовала об успехе
+ * (галочка) сразу, не дожидаясь вообще ничего. document.execCommand уже
+ * используется в этом файле панели для других операций и там работает
+ * стабильно, поэтому он — честный запасной путь, если современный API
+ * недоступен, упал или молчит дольше разумного. "Успех" теперь значит именно
+ * успех, а не просто вызов.
+ */
+const copyToClipboard = async (text: string): Promise<boolean> => {
+  if (navigator.clipboard?.writeText) {
+    // .catch сразу на самом промисе — иначе он, отказавшись позже, чем таймаут
+    // уже выиграл гонку, всплывёт как uncaught (in promise) в консоли.
+    const write = navigator.clipboard
+      .writeText(text)
+      .then(() => 'done' as const)
+      .catch(() => 'failed' as const)
+    const timeout = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), CLIPBOARD_API_TIMEOUT_MS))
+
+    if ((await Promise.race([write, timeout])) === 'done') return true
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  const ok = document.execCommand('copy')
+  document.body.removeChild(textarea)
+  return ok
 }
 
 /** То, что реально уходит в буфер обмена — без markdown-разметки, простым текстом. */
@@ -92,14 +131,16 @@ const ParagraphView = ({ paragraph, onOpenLink }: { paragraph: Paragraph; onOpen
     )
   }
 
+  const paraClass = [s.para, paragraph.bullet && s.paraBullet, paragraph.heading && s.paraHeading]
+    .filter(Boolean)
+    .join(' ')
+
   return (
-    <div className={s.para}>
-      {paragraph.bullet ? <span className={s.bullet}>—</span> : null}
-      <div className={s.paraBody}>
-        {paragraph.parts.map((part, index) => (
-          <PartView key={index} part={part} onOpenLink={onOpenLink} />
-        ))}
-      </div>
+    <div className={paraClass}>
+      {paragraph.bullet ? <span className={s.bullet}>{'— '}</span> : null}
+      {paragraph.parts.map((part, index) => (
+        <PartView key={index} part={part} onOpenLink={onOpenLink} />
+      ))}
     </div>
   )
 }

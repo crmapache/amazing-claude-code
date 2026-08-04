@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseInline } from './markdown'
+import { parseInline, parseParagraphs } from './markdown'
 
 describe('parseInline', () => {
   it('превращает голый URL в ссылку', () => {
@@ -46,5 +46,25 @@ describe('parseInline', () => {
       { text: 'main', mark: true },
       { text: ' готова' },
     ])
+  })
+})
+
+describe('parseParagraphs', () => {
+  it('помечает заголовок heading — макет добавляет зазор перед ним отдельно от обычного жирного текста', () => {
+    const [heading] = parseParagraphs('## Текущее состояние')
+    expect(heading?.heading).toBe(true)
+    expect(heading?.parts).toEqual([{ text: 'Текущее состояние', strong: true }])
+  })
+
+  it('без пустой строки заголовок и следующий абзац не сливаются в один', () => {
+    const paragraphs = parseParagraphs(['## Раздел', 'Текст сразу под заголовком.'].join('\n'))
+    expect(paragraphs).toHaveLength(2)
+    expect(paragraphs[0]?.heading).toBe(true)
+    expect(paragraphs[1]?.heading).toBeUndefined()
+  })
+
+  it('обычный абзац без пустой строки между строками остаётся одним целым — это ожидаемый markdown-рефлоу, не баг', () => {
+    const paragraphs = parseParagraphs(['Первая строка.', 'Вторая строка без пустой строки между ними.'].join('\n'))
+    expect(paragraphs).toHaveLength(1)
   })
 })

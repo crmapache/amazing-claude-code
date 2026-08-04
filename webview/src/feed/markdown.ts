@@ -51,12 +51,14 @@ export const parseParagraphs = (source: string): Paragraph[] => {
       continue
     }
 
-    // Заголовки макет отдельно не рисует, поэтому оставляем их жирной строкой.
+    // Отдельного шрифта/кегля заголовки не получают — остаются жирной строкой,
+    // но с пометкой heading: макет добавляет зазор перед ней, чтобы раздел не
+    // сливался с абзацем над собой при отрисовке.
     const heading = /^\s*#{1,6}\s+(.*)$/.exec(line)
 
     if (heading) {
       flushPlain()
-      paragraphs.push({ parts: [{ text: heading[1] ?? '', strong: true }] })
+      paragraphs.push({ heading: true, parts: [{ text: heading[1] ?? '', strong: true }] })
       continue
     }
 
