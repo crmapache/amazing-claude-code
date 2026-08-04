@@ -200,13 +200,39 @@ const SEVERITY_COLOR = ['var(--acc-meter-green)', 'var(--acc-warn)', 'var(--acc-
 const paceColor = (usedPercent: number, resets: string, windowMs: number): string =>
   SEVERITY_COLOR[paceSeverity(usedPercent, resets, windowMs)] ?? SEVERITY_COLOR[0]!
 
-/** У контекста нет своего окна со сбросом — только голый процент, шкала своя. */
-const contextColor = (percent: number): string => {
-  if (percent < 50) return 'var(--acc-meter-green)'
-  if (percent < 70) return 'var(--acc-warn)'
-  if (percent < 85) return 'var(--acc-orange)'
-  return 'var(--acc-bad-light)'
+/**
+ * У контекста нет своего окна со сбросом — только голый процент, шкала своя.
+ * Общая точка правды для порогов: полоска контекста в композере (см.
+ * Composer.tsx) красится и светится теми же уровнями, что и эта цифра, —
+ * дублировать 50/70/85 во втором месте означало бы рано или поздно их развести.
+ */
+type ContextLevel = 'green' | 'warn' | 'orange' | 'bad'
+
+const contextLevel = (percent: number): ContextLevel => {
+  if (percent < 50) return 'green'
+  if (percent < 70) return 'warn'
+  if (percent < 85) return 'orange'
+  return 'bad'
 }
+
+const CONTEXT_LEVEL_COLOR: Record<ContextLevel, string> = {
+  green: 'var(--acc-meter-green)',
+  warn: 'var(--acc-warn)',
+  orange: 'var(--acc-orange)',
+  bad: 'var(--acc-bad-light)',
+}
+
+export const contextColor = (percent: number): string => CONTEXT_LEVEL_COLOR[contextLevel(percent)]
+
+/** Та же пара интенсивностей свечения (80% + 35%), что и в самой полоске контекста. */
+const CONTEXT_LEVEL_GLOW: Record<ContextLevel, { strong: string; soft: string }> = {
+  green: { strong: 'var(--acc-meter-green-80)', soft: 'var(--acc-meter-green-35)' },
+  warn: { strong: 'var(--acc-warn-80)', soft: 'var(--acc-warn-35)' },
+  orange: { strong: 'var(--acc-orange-80)', soft: 'var(--acc-orange-35)' },
+  bad: { strong: 'var(--acc-bad-light-80)', soft: 'var(--acc-bad-light-35)' },
+}
+
+export const contextGlow = (percent: number): { strong: string; soft: string } => CONTEXT_LEVEL_GLOW[contextLevel(percent)]
 
 const resetAt = (resets: string): string => {
   if (!resets) return 'soon'

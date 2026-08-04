@@ -1095,6 +1095,7 @@ export const App = () => {
             tokens={draft.tokens}
             streaming={running}
             planMode={mode === 'plan'}
+            contextPercent={contextUsage(panel.usage, usage.contextWindow)}
             commands={commands}
             files={files}
             imageBaseCount={imageBaseCount}

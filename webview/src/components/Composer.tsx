@@ -14,7 +14,33 @@ import {
 import { clipboardHtml, clipboardTokens, tokensText } from '../feed/tokens'
 import type { Chip, ChipKind, UserToken } from '../feed/types'
 import { SlashSuggest } from './SlashSuggest'
+import { contextColor, contextGlow } from './StatusBar'
 import s from './composer.module.css'
+
+/** Засечки на пятых долях — не связаны с порогами цвета, чисто масштаб шкалы. */
+const CONTEXT_METER_TICKS = [20, 40, 60, 80]
+
+/**
+ * Полоска контекста в самом верху поля — то же число, что и "ctx NN%" в строке
+ * статуса под композером (см. App.tsx), просто заметнее на глаз без чтения
+ * цифры. Строку статуса эта полоска не заменяет и не трогает.
+ */
+const ContextMeter = ({ percent }: { percent: number }) => {
+  const color = contextColor(percent)
+  const glow = contextGlow(percent)
+
+  return (
+    <div className={s.contextMeter} aria-hidden="true">
+      <div
+        className={s.contextMeterFill}
+        style={{ width: `${percent}%`, background: color, boxShadow: `0 0 8px ${glow.strong}, 0 0 16px ${glow.soft}` }}
+      />
+      {CONTEXT_METER_TICKS.map((tick) => (
+        <span key={tick} className={s.contextMeterTick} style={{ left: `${tick}%` }} />
+      ))}
+    </div>
+  )
+}
 
 const CHIP_GLYPH: Record<ChipKind, string> = { file: '▤', img: '▣', dir: '▸', cmd: '/', ref: '⟨⟩', quote: '"' }
 
@@ -37,6 +63,8 @@ interface ComposerProps {
   tokens: UserToken[]
   streaming: boolean
   planMode: boolean
+  /** То же число, что "ctx" в строке статуса — красит полоску контекста в поле. */
+  contextPercent: number
   /** Команды панели и агента одним списком. */
   commands: CommandEntry[]
   /** Файлы проекта для подсказки "@" — от корня рабочей директории. */
@@ -64,6 +92,7 @@ export const Composer = ({
   tokens,
   streaming,
   planMode,
+  contextPercent,
   commands,
   files,
   imageBaseCount,
@@ -747,6 +776,8 @@ export const Composer = ({
       ) : null}
 
       <div className={`${s.box} ${focused ? s.boxFocused : ''}`} ref={box}>
+        <ContextMeter percent={contextPercent} />
+
         {ghostHint && ghostRect ? (
           <span
             className={s.ghostHint}
