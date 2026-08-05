@@ -32,7 +32,3 @@ src/main/resources/webview/
 .env
 secrets/
 t
-
-# Рабочие файлы subagent-driven-development (лежер, брифы, отчёты, дифф-пакеты
-# для ревью) — служебный черновик на время выполнения плана, не исходники.
-.superpowers/
