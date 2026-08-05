@@ -2,9 +2,8 @@ import type { HistoryEntry } from '../protocol'
 import s from './shell.module.css'
 
 interface HistoryProps {
-  conversations: HistoryEntry[]
-  /** Список читается с диска — модалка открывается сразу, эти данные чуть позже. */
-  loading: boolean
+  /** null — список ещё не приходил: он читается с диска сам, до открытия модалки. */
+  conversations: HistoryEntry[] | null
   onOpen: (entry: HistoryEntry) => void
   onClose: () => void
 }
@@ -13,7 +12,7 @@ interface HistoryProps {
  * Прошлые разговоры проекта. Список ведёт сам Claude Code, поэтому здесь видно и
  * то, что начиналось в терминале, — панель ничего своего не хранит.
  */
-export const History = ({ conversations, loading, onOpen, onClose }: HistoryProps) => (
+export const History = ({ conversations, onOpen, onClose }: HistoryProps) => (
   <>
     <div className={s.menuScrim} onClick={onClose} />
     <div className={s.history}>
@@ -23,13 +22,13 @@ export const History = ({ conversations, loading, onOpen, onClose }: HistoryProp
       </div>
 
       <div className={s.historyBody}>
-        {loading ? <div className={s.historyEmpty}>Loading…</div> : null}
+        {conversations === null ? <div className={s.historyEmpty}>Loading…</div> : null}
 
-        {!loading && conversations.length === 0 ? (
+        {conversations?.length === 0 ? (
           <div className={s.historyEmpty}>No past conversations here yet.</div>
         ) : null}
 
-        {conversations.map((entry) => (
+        {conversations?.map((entry) => (
           <button key={entry.id} type="button" className={s.historyItem} onClick={() => onOpen(entry)}>
             <span className={s.historyTitle}>{entry.title}</span>
             <span className={s.historyMeta}>

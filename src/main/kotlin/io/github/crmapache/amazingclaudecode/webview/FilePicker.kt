@@ -3,6 +3,7 @@ package io.github.crmapache.amazingclaudecode.webview
 import com.intellij.openapi.fileChooser.FileChooser
 import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 
 /**
@@ -28,15 +29,36 @@ internal object FilePicker {
         }
     }
 
+    /**
+     * То же описание вложения, но для пути, который пришёл со стороны: файл
+     * бросили в поле ввода мышью. Панель знает о нём только строку — папка это
+     * или файл и как путь выглядит от корня проекта, видно лишь здесь.
+     *
+     * Несуществующий путь пропускаем молча: перетащить могли что угодно, вплоть
+     * до ссылки из браузера.
+     */
+    fun describe(project: Project, path: String): Pair<String, String>? {
+        val file = LocalFileSystem.getInstance().refreshAndFindFileByPath(path) ?: return null
+        return kindOf(file) to relativePath(project, file)
+    }
+
     private fun kindOf(file: VirtualFile): String = when {
         file.isDirectory -> "dir"
         file.extension?.lowercase() in IMAGE_EXTENSIONS -> "img"
         else -> "file"
     }
 
+    /**
+     * Внутри проекта путь короткий, от его корня — такой же, как у ссылки из
+     * редактора, и агент читает его от своей рабочей директории. Файл снаружи
+     * остаётся с полным путём: срезать у него ведущий слэш означало бы отдать
+     * агенту путь, которого не существует.
+     */
     private fun relativePath(project: Project, file: VirtualFile): String {
         val base = project.basePath ?: return file.path
-        return file.path.removePrefix(base).removePrefix("/")
+        val prefix = "$base/"
+
+        return if (file.path.startsWith(prefix)) file.path.removePrefix(prefix) else file.path
     }
 
     private val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "webp", "svg")

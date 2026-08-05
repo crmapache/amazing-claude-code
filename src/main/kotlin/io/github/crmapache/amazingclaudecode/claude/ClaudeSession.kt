@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -59,6 +60,11 @@ internal class ClaudeSession(
     private val onError: (String) -> Unit,
     private val onFinished: () -> Unit,
     /**
+     * Агент спрашивает разрешение у самой панели — по тому же потоку, которым идёт
+     * разговор (см. [PermissionChannel]). Пока никто не ответил, ход стоит.
+     */
+    private val onToolPermission: (PermissionChannel.ToolPermission) -> Unit = {},
+    /**
      * Процесс умер сам — не потому что мы его остановили. Разговор в этот момент
      * мог стоять посреди инструмента: карточки, которые остались «выполняется»,
      * так и останутся висеть навсегда, если никого не предупредить.
@@ -95,6 +101,9 @@ internal class ClaudeSession(
     private var suppressingPreferenceReply = false
 
     private class Control(val onResult: (JsonObject) -> Unit, val onFailure: (String) -> Unit)
+
+    /** Чем ответить агенту, пока человек думает: аргументы вызова ждут своего часа. */
+    private val awaitingPermission = ConcurrentHashMap<String, JsonObject>()
 
     private val lines = StreamLines(onLine = ::consume)
 
@@ -184,6 +193,26 @@ internal class ClaudeSession(
         control("interrupt", onFailure = { onTimeout() })
     }
 
+    /**
+     * Перезапуск процесса разговора с сохранением переписки.
+     *
+     * Ради MCP: заново подключить сервер иначе нечем — отдельной подкоманды у CLI
+     * нет (`claude mcp` умеет только list/add/remove), а слэш-команда `/mcp` в
+     * потоковом режиме не выполняется вовсе, она есть лишь у интерактивного
+     * терминала. Зато при старте процесс подключается ко всем серверам сам, а
+     * разговор поднимается тем же conversationId (см. ClaudeLaunch) — для
+     * человека это и выглядит переподключением, а не потерей контекста.
+     *
+     * Возвращает ложь, если поднимать было нечего: разговор ещё не начинался, и
+     * серверы подключатся сами при первом же сообщении.
+     */
+    fun restart(): Boolean {
+        if (handler == null) return false
+
+        stop()
+        return start() != null
+    }
+
     /** Остановка разговора целиком: процесс снимаем, контекст теряем. */
     fun stop() {
         val process = handler ?: return
@@ -191,6 +220,9 @@ internal class ClaudeSession(
         handler = null
         lines.reset()
         awaitingControl.clear()
+        // Отвечать на висящие вопросы уже некому и нечем: процесса, который их
+        // задал, сейчас не станет.
+        awaitingPermission.clear()
         process.destroyProcess()
     }
 
@@ -240,6 +272,18 @@ internal class ClaudeSession(
      * служебная переписка с процессом.
      */
     private fun consume(line: String) {
+        // Встречный запрос: не ответ на нашу просьбу, а вопрос агента к панели.
+        if (line.contains("\"control_request\"")) {
+            val payload = runCatching {
+                kotlinx.serialization.json.Json.parseToJsonElement(line).jsonObject
+            }.getOrNull()
+
+            if (payload?.get("type")?.jsonPrimitive?.contentOrNull == "control_request") {
+                askPermission(payload)
+                return
+            }
+        }
+
         if (line.contains("\"control_response\"")) {
             val response = runCatching {
                 kotlinx.serialization.json.Json.parseToJsonElement(line).jsonObject["response"]?.jsonObject
@@ -266,6 +310,47 @@ internal class ClaudeSession(
 
         rememberConversation(line)
         onEvent(line)
+    }
+
+    /**
+     * Агент просит разрешения на вызов инструмента. Отдаём вопрос наверх и ждём
+     * человека: ответить обязаны мы, иначе ход стоит до самого конца разговора.
+     */
+    private fun askPermission(payload: JsonObject) {
+        when (val incoming = PermissionChannel.parse(payload)) {
+            is PermissionChannel.Incoming.Permission -> {
+                awaitingPermission[incoming.request.requestId] = incoming.request.input
+                onToolPermission(incoming.request)
+            }
+
+            is PermissionChannel.Incoming.Unsupported -> {
+                // Чего не понимаем — отклоняем сразу и вслух: молчание здесь не
+                // «пропустил мимо ушей», а остановка хода навсегда.
+                thisLogger().info("Unsupported control request from claude: ${incoming.subtype}")
+                answerPermission(
+                    incoming.requestId,
+                    allow = false,
+                    message = "The panel does not handle '${incoming.subtype}' requests.",
+                )
+            }
+
+            null -> Unit
+        }
+    }
+
+    /** Ответ человека агенту: разговор стоит на этом месте, пока он не придёт. */
+    fun answerPermission(requestId: String, allow: Boolean, message: String = "") {
+        val process = handler ?: return
+        val input = awaitingPermission.remove(requestId) ?: JsonObject(emptyMap())
+
+        write(
+            process,
+            if (allow) {
+                PermissionChannel.allow(requestId, input)
+            } else {
+                PermissionChannel.deny(requestId, message)
+            },
+        )
     }
 
     private fun write(process: OSProcessHandler, payload: String) {

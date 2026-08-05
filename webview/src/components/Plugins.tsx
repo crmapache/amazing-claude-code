@@ -6,9 +6,11 @@ import s from './shell.module.css'
 type View = 'installed' | 'browse' | 'marketplaces'
 
 interface PluginsProps {
-  installed: InstalledPluginInfo[]
-  available: AvailablePluginInfo[]
-  marketplaces: PluginMarketplaceInfo[]
+  /** null — список ещё не приходил: он загружается сам, задолго до открытия вкладки. */
+  installed: InstalledPluginInfo[] | null
+  available: AvailablePluginInfo[] | null
+  marketplaces: PluginMarketplaceInfo[] | null
+  /** Идёт запрос, о котором стоит сказать вслух: обновление по кнопке. */
   loading: boolean
   message: { ok: boolean; text: string } | null
   onRefresh: () => void
@@ -24,6 +26,9 @@ interface PluginsProps {
 
 /** 1 636 → "1.6k": счётчик установок бывает четырёхзначным, а карточка узкая. */
 const formatCount = (count: number) => (count >= 1000 ? `${(count / 1000).toFixed(1)}k` : String(count))
+
+/** " (3)" у названия вкладки — но только когда список правда приехал: нуля до загрузки быть не должно. */
+const tabCount = (items: unknown[] | null) => (items ? ` (${items.length})` : '')
 
 const BROWSE_LIMIT = 30
 const ADD_MARKETPLACE_KEY = 'add-marketplace'
@@ -73,10 +78,10 @@ export const Plugins = ({
     onDismissMessage()
   }
 
-  const installedIds = useMemo(() => new Set(installed.map((plugin) => plugin.id)), [installed])
+  const installedIds = useMemo(() => new Set((installed ?? []).map((plugin) => plugin.id)), [installed])
 
   const browseResults = useMemo(() => {
-    const notInstalled = available.filter((plugin) => !installedIds.has(plugin.id))
+    const notInstalled = (available ?? []).filter((plugin) => !installedIds.has(plugin.id))
     const trimmed = query.trim().toLowerCase()
 
     const matches = trimmed
@@ -108,21 +113,21 @@ export const Plugins = ({
             className={`${s.pluginTab} ${view === 'installed' ? s.pluginTabActive : ''}`}
             onClick={() => switchView('installed')}
           >
-            Installed ({installed.length})
+            Installed{tabCount(installed)}
           </button>
           <button
             type="button"
             className={`${s.pluginTab} ${view === 'browse' ? s.pluginTabActive : ''}`}
             onClick={() => switchView('browse')}
           >
-            Browse ({available.length})
+            Browse{tabCount(available)}
           </button>
           <button
             type="button"
             className={`${s.pluginTab} ${view === 'marketplaces' ? s.pluginTabActive : ''}`}
             onClick={() => switchView('marketplaces')}
           >
-            Marketplaces ({marketplaces.length})
+            Marketplaces{tabCount(marketplaces)}
           </button>
         </div>
 
@@ -132,7 +137,7 @@ export const Plugins = ({
 
         {view === 'installed' ? (
           <div className={s.mcpBody}>
-            {loading && installed.length === 0
+            {installed === null
               ? [0, 1, 2].map((row) => (
                   <div key={row} className={s.mcpItem}>
                     <div className={s.mcpItemHead}>
@@ -149,11 +154,11 @@ export const Plugins = ({
                 ))
               : null}
 
-            {installed.length === 0 && !loading ? (
+            {installed?.length === 0 ? (
               <div className={s.historyEmpty}>No plugins installed.</div>
             ) : null}
 
-            {installed.map((plugin) => {
+            {installed?.map((plugin) => {
               const enableKey = `enable:${plugin.id}`
               const disableKey = `disable:${plugin.id}`
               const uninstallKey = `uninstall:${plugin.id}`
@@ -224,7 +229,7 @@ export const Plugins = ({
               />
             </div>
             <div className={s.mcpBody}>
-              {loading && available.length === 0
+              {available === null
                 ? [0, 1, 2].map((row) => (
                     <div key={row} className={s.mcpItem}>
                       <div className={s.mcpItemHead}>
@@ -241,7 +246,7 @@ export const Plugins = ({
                   ))
                 : null}
 
-              {!loading && browseResults.length === 0 ? (
+              {available !== null && browseResults.length === 0 ? (
                 <div className={s.historyEmpty}>
                   {available.length === 0 ? 'No marketplaces connected.' : 'No matches.'}
                 </div>
@@ -286,11 +291,27 @@ export const Plugins = ({
         {view === 'marketplaces' ? (
           <>
             <div className={s.mcpBody}>
-              {marketplaces.length === 0 && !loading ? (
+              {marketplaces === null
+                ? [0, 1].map((row) => (
+                    <div key={row} className={s.mcpItem}>
+                      <div className={s.mcpItemHead}>
+                        <SkeletonBar width="38%" />
+                      </div>
+                      <div className={s.mcpCommand}>
+                        <SkeletonBar width="62%" height={9} />
+                      </div>
+                      <div className={s.mcpActions}>
+                        <SkeletonBar width={64} height={20} />
+                      </div>
+                    </div>
+                  ))
+                : null}
+
+              {marketplaces?.length === 0 ? (
                 <div className={s.historyEmpty}>No marketplaces configured.</div>
               ) : null}
 
-              {marketplaces.map((marketplace) => {
+              {marketplaces?.map((marketplace) => {
                 const removeKey = `remove-marketplace:${marketplace.name}`
                 const busy = pendingAction === removeKey
 

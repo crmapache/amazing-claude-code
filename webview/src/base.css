@@ -38,10 +38,17 @@ button {
   color: inherit;
 }
 
+/* Указатель на всём, что нажимается: панель живёт внутри IDE, но ведёт себя как
+   обычный интерфейс, и курсор — первое, по чему это видно. Погашенной кнопке он
+   не положен: нажимать её нечем. */
 button {
   border: none;
   background: none;
   padding: 0;
+  cursor: pointer;
+}
+
+button:disabled {
   cursor: default;
 }
 

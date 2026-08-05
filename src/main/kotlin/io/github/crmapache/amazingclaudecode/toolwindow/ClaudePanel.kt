@@ -37,13 +37,16 @@ import io.github.crmapache.amazingclaudecode.claude.ClaudeUsagePing
 import io.github.crmapache.amazingclaudecode.claude.ImageAttachment
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSettings
 import io.github.crmapache.amazingclaudecode.claude.PermissionBypass
+import io.github.crmapache.amazingclaudecode.claude.PermissionChannel
 import io.github.crmapache.amazingclaudecode.claude.PermissionModes
+import io.github.crmapache.amazingclaudecode.claude.PermissionPrompt
 import io.github.crmapache.amazingclaudecode.claude.PermissionRules
 import io.github.crmapache.amazingclaudecode.claude.PermissionServer
 import io.github.crmapache.amazingclaudecode.editor.SelectionReference
 import io.github.crmapache.amazingclaudecode.project.ProjectFacts
 import io.github.crmapache.amazingclaudecode.webview.FilePicker
 import io.github.crmapache.amazingclaudecode.webview.IdeTypography
+import io.github.crmapache.amazingclaudecode.webview.WebviewFileDrop
 import io.github.crmapache.amazingclaudecode.webview.WebviewHost
 import java.awt.BorderLayout
 import java.util.concurrent.ConcurrentHashMap
@@ -99,6 +102,31 @@ internal class ClaudePanel(
     /** Запросы, на которые ждём ответа: по ним же вспоминаем правило для «всегда». */
     private val awaiting = ConcurrentHashMap<String, PermissionServer.Request>()
 
+    /**
+     * То же, но спрошенное самим агентом по управляющему каналу, а не хуком:
+     * отвечать на такой вопрос надо тому разговору, который его задал.
+     */
+    private val channelPermissions = ConcurrentHashMap<String, ChannelPermission>()
+
+    /**
+     * Планы, ждущие решения человека, по идентификатору вызова ExitPlanMode — то
+     * есть по идентификатору карточки плана в ленте. Отдельно от остальных
+     * разрешений: спрашивает про план не карточка разрешения, а сама карточка
+     * плана с её кнопками, которую панель уже нарисовала по вызову инструмента.
+     */
+    private val plans = ConcurrentHashMap<String, ChannelPermission>()
+
+    private data class ChannelPermission(
+        val sessionId: String,
+        val requestId: String,
+        val toolName: String,
+        val command: String,
+    )
+
+    /** Когда в панель последний раз что-то бросили мышью — см. attachDropped. */
+    @Volatile
+    private var lastDropAt = 0L
+
     init {
         component = if (JBCefApp.isSupported()) {
             buildWebview(parentDisposable)
@@ -136,7 +164,14 @@ internal class ClaudePanel(
             onError = { sessionId, text -> sendError(sessionId, text) },
             onFinished = { sessionId -> sendStatus(sessionId, "idle") },
             onCrashed = { sessionId, exitCode -> sendProcessExited(sessionId, exitCode) },
+            onToolPermission = { sessionId, request -> askToolPermission(sessionId, request) },
         )
+
+        // Перетаскивание файлов в панель: внутри IDE оно идёт мимо встроенного
+        // браузера, поэтому принимаем его здесь — см. WebviewFileDrop.
+        WebviewFileDrop.install(host.component, parentDisposable) { files ->
+            attachDropped(files.map { it.path })
+        }
 
         scheduleUsageUpdates(parentDisposable)
         scheduleBranchUpdates(parentDisposable)
@@ -217,7 +252,13 @@ internal class ClaudePanel(
 
             "pick" -> pickAttachment()
 
+            "dropped" -> attachDropped(
+                payload["paths"]?.jsonArray.orEmpty().mapNotNull { it.jsonPrimitive.contentOrNull },
+            )
+
             "permissionDecision" -> decidePermission(field("id"), field("decision"))
+
+            "planDecision" -> decidePlan(field("id"), field("decision"))
 
             "setMode" -> changeMode(sessionId, field("mode"))
 
@@ -242,6 +283,9 @@ internal class ClaudePanel(
 
             "openDevTools" -> webview?.openDevTools()
 
+            // Курсор ставит оболочка: офскрин-браузер свой до окна IDE не доносит.
+            "cursor" -> webview?.setCursor(field("cursor"))
+
             // Номер PR в статус-баре — ссылка: открываем её в системном браузере,
             // а не внутри JCEF, чтобы не заводить внутри панели полноценный веб-вьюпорт.
             "openExternal" -> field("url").takeIf { it.isNotBlank() }?.let { BrowserUtil.browse(it) }
@@ -263,6 +307,8 @@ internal class ClaudePanel(
                 },
                 onError = { error -> sendMcpActionResult(false, error) },
             )
+
+            "mcpReconnect" -> reconnectMcp(sessionId)
 
             "mcpRemove" -> ClaudeMcp.remove(
                 project.basePath,
@@ -369,13 +415,67 @@ internal class ClaudePanel(
         )
     }
 
-    private fun decidePermission(id: String, decision: String) {
-        val request = awaiting.remove(id)
+    /**
+     * Разрешения спрашивает и сам агент — встречным управляющим запросом по потоку
+     * разговора (см. ClaudeLaunch.PERMISSION_CHANNEL_FLAG). До хука такие вызовы не
+     * доходят: либо инструмент не из тех, что хук стережёт, либо человек нужен
+     * инструменту по самой его природе.
+     *
+     * План — как раз второй случай, и карточка для него в ленте уже есть: её
+     * нарисовал сам вызов ExitPlanMode. Спрашивать поверх неё второй раз нечего,
+     * нужно лишь запомнить, куда отправить ответ её кнопок.
+     */
+    private fun askToolPermission(sessionId: String, request: PermissionChannel.ToolPermission) {
+        val pending = ChannelPermission(
+            sessionId = sessionId,
+            requestId = request.requestId,
+            toolName = request.toolName,
+            command = PermissionPrompt.command(request.toolName, request.input),
+        )
 
-        if (decision == "always" && request != null) {
-            project.basePath?.let { path ->
-                PermissionRules.allowAlways(path, request.toolName, request.command)
+        if (request.toolName == PLAN_TOOL) {
+            val itemId = request.toolUseId
+            if (itemId == null) {
+                // Без идентификатора вызова карточку в ленте не найти, а значит и
+                // кнопкам её не ответить — честнее отказать сразу, чем молча
+                // остановить ход навсегда.
+                thisLogger().warn("Plan permission without a tool_use_id: nothing to attach it to")
+                sessions?.answerPermission(sessionId, request.requestId, allow = false, message = PLAN_LOST)
+                return
             }
+
+            plans[itemId] = pending
+            return
+        }
+
+        channelPermissions[request.requestId] = pending
+
+        webview?.send(
+            buildJsonObject {
+                put("type", "permission")
+                put("id", request.requestId)
+                put("sessionId", sessionId.ifEmpty { MAIN_SESSION })
+                put("toolName", request.toolName)
+                put("target", PermissionPrompt.target(request.toolName, request.input))
+                put("command", pending.command)
+                put("mode", PermissionModes.resolve(ClaudePreferences.mode))
+            }.toString(),
+        )
+    }
+
+    private fun decidePermission(id: String, decision: String) {
+        val channel = channelPermissions.remove(id)
+        val request = awaiting.remove(id)
+        val toolName = request?.toolName ?: channel?.toolName
+        val command = request?.command ?: channel?.command
+
+        if (decision == "always" && toolName != null && command != null) {
+            project.basePath?.let { path -> PermissionRules.allowAlways(path, toolName, command) }
+        }
+
+        if (channel != null) {
+            sessions?.answerPermission(channel.sessionId, id, allow = decision != "deny")
+            return
         }
 
         permissions?.resolve(
@@ -385,6 +485,36 @@ internal class ClaudePanel(
                 else -> PermissionServer.Decision.ALLOW
             },
         )
+    }
+
+    /**
+     * Кнопки под планом. «Approve & run» — это разрешение на выход из режима плана:
+     * агент получает «план одобрен» и тут же продолжает работу тем же ходом. «Keep
+     * planning» — отказ с объяснением: для агента это сигнал доработать план и
+     * показать его снова.
+     *
+     * Сам по себе выход из plan возвращает CLI не во вседозволенность, а в обычное
+     * «спрашивать всегда» — тогда каждый следующий шаг одобренного плана снова
+     * упирался бы в разрешение, вопрос за вопросом, хотя человек уже согласился на
+     * план целиком. Поэтому одобрение переключает режим в bypass следом: карточка
+     * плана и была тем единственным вопросом, который стоило задать.
+     */
+    private fun decidePlan(itemId: String, decision: String) {
+        val pending = plans.remove(itemId) ?: run {
+            // Карточка старше нынешнего процесса: разговор с тех пор перезапускали
+            // (или это чужая вкладка), и отвечать давно некому.
+            thisLogger().info("No plan waiting for a decision: $itemId")
+            return
+        }
+
+        sessions?.answerPermission(
+            pending.sessionId,
+            pending.requestId,
+            allow = decision == "approve",
+            message = KEEP_PLANNING,
+        )
+
+        if (decision == "approve") changeMode(pending.sessionId, "bypassPermissions")
     }
 
     // --- Вход ---------------------------------------------------------------
@@ -743,6 +873,81 @@ internal class ClaudePanel(
         }
     }
 
+    /**
+     * Переподключение MCP-серверов — перезапуском процесса разговора.
+     *
+     * Другого способа нет: подкоманды у `claude mcp` для этого не существует, а
+     * слэш-команда `/mcp` доступна только интерактивному терминалу — в потоковом
+     * режиме CLI на неё честно отвечает отказом (именно это и видел пользователь
+     * вместо переподключения). Переписка при перезапуске сохраняется: процесс
+     * поднимается тем же разговором.
+     */
+    private fun reconnectMcp(sessionId: String) {
+        val restarted = sessions?.restart(sessionId) == true
+
+        sendMcpActionResult(
+            true,
+            if (restarted) {
+                "Restarted the conversation to reconnect MCP servers — your chat continues where it left off."
+            } else {
+                "Nothing to reconnect yet: servers connect when this chat starts."
+            },
+        )
+
+        // Список спрашиваем заново, но не сразу: свежеподнятому процессу нужно
+        // время на рукопожатие с серверами, иначе увидим прежние статусы.
+        AppExecutorUtil.getAppScheduledExecutorService().schedule(
+            {
+                ClaudeMcp.list(
+                    project.basePath,
+                    onResult = { servers -> sendMcpServers(servers) },
+                    onError = { error -> sendMcpActionResult(false, error) },
+                )
+            },
+            MCP_RECONNECT_REFRESH_SECONDS,
+            TimeUnit.SECONDS,
+        )
+    }
+
+    /**
+     * Файлы и папки, брошенные в поле ввода. Отвечаем тем же picked, что и на
+     * диалог выбора: для панели это одно и то же вложение, разница лишь в том,
+     * каким жестом его позвали.
+     */
+    private fun attachDropped(paths: List<String>) {
+        if (paths.isEmpty()) return
+
+        // Один и тот же бросок теоретически может дойти обоими путями сразу —
+        // и от IDE, и от самой страницы. Плашки тогда задвоились бы, поэтому
+        // второй за тот же жест отбрасываем.
+        val now = System.currentTimeMillis()
+        if (now - lastDropAt < DROP_ECHO_MS) return
+        lastDropAt = now
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            // Виртуальную файловую систему трогаем не из потока интерфейса: путь
+            // может указывать куда угодно, вплоть до неподмонтированного диска.
+            val attachments = paths.mapNotNull { path -> FilePicker.describe(project, path) }
+
+            for ((kind, value) in attachments) {
+                webview?.send(
+                    buildJsonObject {
+                        put("type", "picked")
+                        put("kind", kind)
+                        put("value", value)
+                    }.toString(),
+                )
+            }
+
+            // Файл тащат из дерева проекта — там фокус и остаётся, и печатать в
+            // поле ввода пришлось бы после отдельного клика мышью. Возвращаем
+            // его панели сами; курсор внутри неё встаёт за плашкой (см. Composer).
+            if (attachments.isNotEmpty()) {
+                ApplicationManager.getApplication().invokeLater { webview?.focus() }
+            }
+        }
+    }
+
     /** Ветка для нижней строки. Дешёвое чтение файла — можно спрашивать часто. */
     private fun refreshBranch() {
         ApplicationManager.getApplication().executeOnPooledThread {
@@ -1010,6 +1215,20 @@ internal class ClaudePanel(
         const val BRANCH_PERIOD_SECONDS = 5L
         const val LOGIN_POLL_SECONDS = 3L
         const val LOGIN_POLL_LIMIT_MINUTES = 10L
+
+        /** Сколько ждём после перезапуска, прежде чем спросить статусы MCP заново. */
+        const val MCP_RECONNECT_REFRESH_SECONDS = 3L
+
+        /** В пределах этого окна повторный бросок считаем эхом первого, а не вторым файлом. */
+        const val DROP_ECHO_MS = 700L
         const val NOT_LOGGED_IN = "Not logged in"
+
+        /** Выход из режима плана: тот самый вызов, под которым в ленте кнопки. */
+        const val PLAN_TOOL = "ExitPlanMode"
+
+        /** Что агент услышит в ответ на «Keep planning». */
+        const val KEEP_PLANNING = "The user wants to keep planning: refine the plan and show it again."
+
+        const val PLAN_LOST = "The panel could not attach this plan to its card."
     }
 }

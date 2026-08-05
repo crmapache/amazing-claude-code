@@ -133,8 +133,8 @@ internal class PermissionServer(
             // своими именами и по чужому номеру карточку никому не покажет.
             sessionId = sessionId,
             toolName = toolName,
-            target = target(toolName, input),
-            command = command(toolName, input),
+            target = PermissionPrompt.target(toolName, input),
+            command = PermissionPrompt.command(toolName, input),
             mode = mode,
             agentId = payload.stringOrNull("agent_id"),
         )
@@ -174,27 +174,6 @@ internal class PermissionServer(
 
     private fun isFileTool(toolName: String): Boolean =
         toolName in setOf("Write", "Edit", "MultiEdit", "NotebookEdit")
-
-    private fun target(toolName: String, input: JsonObject?): String {
-        val path = input?.string("file_path").orEmpty().ifEmpty { input?.string("notebook_path").orEmpty() }
-        if (path.isNotEmpty()) return "wants to edit ${path.substringAfterLast('/')}"
-
-        return when (toolName) {
-            "Bash" -> "wants to run a command"
-            "WebFetch", "WebSearch" -> "wants to reach the network"
-            else -> "wants to use $toolName"
-        }
-    }
-
-    private fun command(toolName: String, input: JsonObject?): String {
-        if (input == null) return toolName
-
-        return input.string("command").ifEmpty {
-            input.string("url").ifEmpty {
-                input.string("file_path").ifEmpty { toolName }
-            }
-        }
-    }
 
     private fun JsonObject.string(key: String): String =
         this[key]?.jsonPrimitive?.contentOrNull.orEmpty()

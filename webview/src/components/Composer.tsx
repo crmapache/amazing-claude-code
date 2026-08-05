@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
 import { matchFiles } from '../feed/files'
 import { chipLabel } from '../feed/reference'
 import {
+  argumentOptions,
   argumentQuery,
+  captureCommand,
+  commandChip,
   commandNameBeforeArgument,
   matchArguments,
   matchCommands,
@@ -42,8 +45,6 @@ const ContextMeter = ({ percent }: { percent: number }) => {
   )
 }
 
-const CHIP_GLYPH: Record<ChipKind, string> = { file: '▤', img: '▣', dir: '▸', cmd: '/', ref: '⟨⟩', quote: '"' }
-
 const CHIP_STYLE: Record<ChipKind, { background: string; borderColor: string; color: string }> = {
   file: { background: 'var(--acc-accent-12)', borderColor: 'var(--acc-accent-32)', color: 'var(--acc-accent-light)' },
   img: { background: 'var(--acc-agent-12)', borderColor: 'var(--acc-agent-32)', color: 'var(--acc-agent-light)' },
@@ -75,6 +76,15 @@ interface ComposerProps {
   focusToken: number
   onTokensChange: (tokens: UserToken[]) => void
   onAttach: () => void
+  /** Файлы и папки, брошенные в поле: плашки из них соберёт оболочка (см. protocol). */
+  onDropFiles: (paths: string[]) => void
+  /**
+   * Отдаёт наружу вставку в место курсора — ею панель кладёт в поле то, что
+   * пришло из IDE: ссылку из редактора, выбранный диалогом файл, брошенную
+   * мышью папку. Дописывать такое в конец состояния нельзя: место курсора живёт
+   * в самом поле, и снаружи его попросту не видно.
+   */
+  registerInsert: (insert: ((token: UserToken) => void) | null) => void
   /** Отправить сейчас: занятому агенту сообщение дойдёт на ближайшем его шаге. */
   onSubmit: () => void
   /** Отложить: агент возьмёт это следующим, когда закончит начатое. */
@@ -99,6 +109,8 @@ export const Composer = ({
   focusToken,
   onTokensChange,
   onAttach,
+  onDropFiles,
+  registerInsert,
   onSubmit,
   onQueue,
   canSubmit,
@@ -107,6 +119,8 @@ export const Composer = ({
   onForceStop,
 }: ComposerProps) => {
   const [focused, setFocused] = useState(false)
+  /** Над полем висит перетаскиваемый файл — подсвечиваем, куда его бросят. */
+  const [dropping, setDropping] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const [highlight, setHighlight] = useState(0)
   const input = useRef<HTMLDivElement>(null)
@@ -181,6 +195,14 @@ export const Composer = ({
     setHighlight(0)
   }, [tokens])
 
+  /**
+   * Команда, уже ставшая плашкой. Дальше в поле идёт только её аргумент, поэтому
+   * обе подсказки — и по значению, и по синтаксису — берут имя отсюда, а не
+   * вычитывают его из текста заново.
+   */
+  const command = commandChip(tokens)
+  const argumentText = command === null ? '' : plainText(tokens.slice(1))
+
   // Слэш-команда осмысленна, только пока в поле вообще нет вложений — команда
   // с приложенным файлом попросту не имеет смысла.
   const plain = useMemo(
@@ -197,10 +219,19 @@ export const Composer = ({
 
   // Название команды уже набрано и дальше идёт её аргумент — второй шаг
   // подсказки, ровно как в терминале: сперва команда, потом её значение.
-  const argument = useMemo(
-    () => (plain === null || dismissed || commandMatches.length > 0 ? null : argumentQuery(plain)),
-    [plain, dismissed, commandMatches],
-  )
+  const argument = useMemo(() => {
+    if (dismissed || commandMatches.length > 0) return null
+
+    if (command !== null) {
+      const options = argumentOptions(command)
+      const value = argumentText.trim()
+      // Пробел внутри значения означает, что аргумент уже не одно слово из
+      // списка, а свободный текст — выбирать там нечего.
+      return options && !/\s/.test(value) ? { command, query: value, options } : null
+    }
+
+    return plain === null ? null : argumentQuery(plain)
+  }, [plain, dismissed, commandMatches, command, argumentText])
 
   const argumentMatches = useMemo(
     () => (argument ? matchArguments(argument.options, argument.query) : []),
@@ -219,10 +250,19 @@ export const Composer = ({
    * формата, как в терминале, а не список для выбора.
    */
   const ghostCommand = useMemo(() => {
-    if (plain === null || dismissed || commandMatches.length > 0 || argument) return null
-    const name = commandNameBeforeArgument(plain)
-    return name ? (commands.find((command) => command.id === name) ?? null) : null
-  }, [plain, dismissed, commandMatches, argument, commands])
+    if (dismissed || commandMatches.length > 0 || argument) return null
+
+    // Слот аргумента ещё пуст — у плашки это пустой хвост за ней, у набранного
+    // руками текста то же самое место сразу за именем команды.
+    const name =
+      command !== null
+        ? (argumentText.trim() === '' ? command : null)
+        : plain === null
+          ? null
+          : commandNameBeforeArgument(plain)
+
+    return name ? (commands.find((entry) => entry.id === name) ?? null) : null
+  }, [plain, dismissed, commandMatches, argument, commands, command, argumentText])
 
   const ghostHint = ghostCommand?.argumentHint || null
 
@@ -349,20 +389,32 @@ export const Composer = ({
     // не пуст буквально — подчищаем сами.
     if (next.length === 0 && root.childNodes.length > 0) root.innerHTML = ''
 
+    // Дописали имя команды и поставили пробел — она становится плашкой прямо на
+    // ходу, не дожидаясь выбора из подсказки.
+    const captured = captureCommand(next, commands)
+    if (captured) {
+      applyTokens(captured)
+      placeCaretAtEnd(root)
+      return
+    }
+
     report(next)
   }
 
-  // Команды панели вставляем без хвостового пробела: у них нет аргументов, и
-  // отправлять их можно сразу. У команды с аргументом (/model, /effort) после
-  // выбора имени сразу же откроется вторая подсказка — уже по значению.
-  const insert = (command: CommandEntry) => {
-    const text = argument
-      ? `/${argument.command} ${command.id}`
-      : command.local
-        ? `/${command.id}`
-        : `/${command.id} `
+  /**
+   * Выбор из подсказки. Сама команда становится плашкой — как файл или картинка,
+   * и по той же причине: это не набранный текст, а выбранная сущность, и
+   * случайно испортить её половинной правкой быть не должно. Аргумент за ней
+   * остаётся обычным текстом: он у каждой команды свой.
+   */
+  const insert = (picked: CommandEntry) => {
+    const chip: UserToken = { kind: 'chip', chip: { kind: 'cmd', value: argument ? argument.command : picked.id } }
 
-    applyTokens([{ kind: 'text', value: text }])
+    // Выбрали значение аргумента — плашка команды уже стоит, дописываем значение;
+    // выбрали саму команду — за плашкой остаётся место под её аргумент.
+    const tail = argument ? ` ${picked.id}` : ' '
+
+    applyTokens([chip, { kind: 'text', value: tail }])
     setDismissed(true)
     placeCaretAtEnd(input.current)
     input.current?.focus()
@@ -402,12 +454,21 @@ export const Composer = ({
     report(readTokens(root), true)
   }
 
-  /** Курсор в поле — или его конец, если фокус потерян и его по-честному нет. */
+  /**
+   * Курсор в поле — или конец набранного, если фокус потерян и курсора
+   * по-честному нет.
+   *
+   * Конец именно набранного, а не содержимого: последним в поле может стоять
+   * перевод строки, за которым человек как раз и собирался писать дальше.
+   * endRange поставил бы вложение ЗА него, добавив пустую строку, которой в
+   * поле не было; padTrailingBreak возвращает то самое место на пустой
+   * последней строке, где стоял бы курсор.
+   */
   const currentRange = (root: HTMLElement): Range => {
     const selection = window.getSelection()
     return selection && selection.rangeCount > 0 && root.contains(selection.getRangeAt(0).startContainer)
       ? selection.getRangeAt(0)
-      : endRange(root)
+      : (padTrailingBreak(root) ?? endRange(root))
   }
 
   /** "/" от кнопки — туда же, где курсор, не стирая уже напечатанное. */
@@ -610,6 +671,43 @@ export const Composer = ({
     }
   }
 
+  /**
+   * Вставка от панели — ссылка из редактора, файл из диалога, брошенная папка.
+   * Живёт в ссылке, а не в пропе: подписка на сообщения оболочки ставится один
+   * раз на всю жизнь панели и свежую функцию каждого рендера всё равно бы не
+   * увидела.
+   */
+  const insertFromShell = useRef<(token: UserToken) => void>(() => {})
+  insertFromShell.current = (token: UserToken) => {
+    if (token.kind === 'chip') insertChipAtCursor(token.chip)
+    else insertTextAtCursor(token.value)
+
+    // Фокус — сразу после вставки, а не до: курсор уже стоит за плашкой, и
+    // печатать можно не целясь мышью в поле. Раньше — сбило бы место вставки:
+    // фокус на пустом поле ставит курсор в его начало.
+    input.current?.focus()
+  }
+
+  useEffect(() => {
+    registerInsert((token) => insertFromShell.current(token))
+    return () => registerInsert(null)
+  }, [registerInsert])
+
+  /**
+   * Файл или папку, брошенные в поле, забираем себе: без этого встроенный
+   * браузер попросту открыл бы файл вместо страницы панели. Само содержимое
+   * нам не нужно — только путь, по нему оболочка и соберёт плашку.
+   */
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!hasFiles(event.dataTransfer)) return
+
+    event.preventDefault()
+    setDropping(false)
+
+    const paths = droppedPaths(event.dataTransfer)
+    if (paths.length > 0) onDropFiles(paths)
+  }
+
   const placeholder = tokens.length
     ? ''
     : planMode
@@ -775,7 +873,25 @@ export const Composer = ({
         />
       ) : null}
 
-      <div className={`${s.box} ${focused ? s.boxFocused : ''}`} ref={box}>
+      <div
+        className={`${s.box} ${focused ? s.boxFocused : ''} ${dropping ? s.boxDropping : ''}`}
+        ref={box}
+        onDragOver={(event) => {
+          if (!hasFiles(event.dataTransfer)) return
+          // Без preventDefault браузер считает, что бросать сюда нельзя, и до
+          // onDrop дело не доходит вовсе.
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'copy'
+          setDropping(true)
+        }}
+        // Переход между детьми поля браузер тоже считает уходом — гасим подсветку
+        // только когда курсор действительно покинул рамку.
+        onDragLeave={(event) => {
+          if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+          setDropping(false)
+        }}
+        onDrop={handleDrop}
+      >
         <ContextMeter percent={contextPercent} />
 
         {ghostHint && ghostRect ? (
@@ -866,6 +982,47 @@ export const Composer = ({
   )
 }
 
+// --- Перетаскивание файлов --------------------------------------------------
+
+/**
+ * Тащат файл, а не кусок текста. Проверяем по типам переноса, а не по списку
+ * файлов: во время перетаскивания браузер прячет сами файлы (их видно только в
+ * момент броска), и списка тут ещё нет ни при каком раскладе.
+ */
+const hasFiles = (transfer: DataTransfer | null): boolean =>
+  Array.from(transfer?.types ?? []).some((type) => type === 'Files' || type === 'text/uri-list')
+
+/** file:///путь → обычный путь; всё, что не путь на диске, отбрасываем. */
+const filePath = (value: string): string | null => {
+  if (value.startsWith('file://')) {
+    try {
+      return decodeURIComponent(new URL(value).pathname) || null
+    } catch {
+      return null
+    }
+  }
+
+  return value.startsWith('/') ? value : null
+}
+
+/**
+ * Пути брошенного: их кладёт и системный проводник, и дерево проекта IDE —
+ * списком URI, по одному на строку. Строки с решёткой в этом формате
+ * комментарии, а не адреса.
+ */
+const droppedPaths = (transfer: DataTransfer | null): string[] => {
+  if (!transfer) return []
+
+  const list = transfer.getData('text/uri-list') || transfer.getData('text/plain')
+
+  return list
+    .split(/[\r\n]+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith('#'))
+    .map(filePath)
+    .filter((path): path is string => path !== null)
+}
+
 // --- DOM поля ввода: текст и вложения вперемешку, как одна лента символов ---
 
 /**
@@ -912,6 +1069,10 @@ const endRange = (root: HTMLElement): Range => {
  * Возвращает курсор перед запасным переносом — или ничего, если поле кончается
  * не переносом и подстраховывать нечего.
  */
+/** Кончается ли узел переводом строки — текстовый; у плашки такого хвоста быть не может. */
+const endsWithBreak = (node: ChildNode | null): boolean =>
+  node?.nodeType === Node.TEXT_NODE && (node.textContent ?? '').endsWith('\n')
+
 const padTrailingBreak = (root: HTMLElement): Range | null => {
   const last = root.lastChild
   if (!last || last.nodeType !== Node.TEXT_NODE) return null
@@ -919,10 +1080,16 @@ const padTrailingBreak = (root: HTMLElement): Range | null => {
   const value = last.textContent ?? ''
   if (!value.endsWith('\n')) return null
 
-  last.textContent = `${value}\n`
+  // Запасной перевод строки может уже стоять — например, его только что поставил
+  // сам браузер по Shift+Enter. Второй раз добавлять его нельзя: каждый вызов
+  // отодвигал бы курсор ещё на строку вниз, и вложение вставало бы не на пустую
+  // строку под текстом, а через одну от неё. Пара переводов может лежать и в
+  // двух соседних узлах: браузер дробит текст поля как ему удобно.
+  const padded = value.endsWith('\n\n') || (value === '\n' && endsWithBreak(last.previousSibling))
+  if (!padded) last.textContent = `${value}\n`
 
   const range = document.createRange()
-  range.setStart(last, value.length)
+  range.setStart(last, padded ? value.length - 1 : value.length)
   range.collapse(true)
   return range
 }
@@ -1236,11 +1403,8 @@ const renderChipNode = (chip: Chip, onRemove: () => void): HTMLElement => {
   node.title = chip.kind === 'quote' ? (chip.text ?? '') : chip.range ? `${chip.value} ${chip.range}` : chip.value
   Object.assign(node.style, CHIP_STYLE[chip.kind])
 
-  const glyph = document.createElement('span')
-  glyph.className = s.tokenGlyph ?? ''
-  glyph.textContent = CHIP_GLYPH[chip.kind]
-  node.appendChild(glyph)
-
+  // Значка типа вложения тут нет намеренно: он ничего не добавлял к подписи, а
+  // место в начале плашки занимал. Тип и так виден по цвету и по самой подписи.
   node.appendChild(document.createTextNode(chipLabel(chip)))
 
   const remove = document.createElement('button')

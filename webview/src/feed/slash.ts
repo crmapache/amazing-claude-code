@@ -158,15 +158,38 @@ export const matchCommands = (
   return [...starts, ...contains].slice(0, limit)
 }
 
-/**
- * Команда, которую выполняет сама панель. Вход, выход и ветвление агенту слать
- * бессмысленно: первые две в потоковом режиме недоступны ему в принципе, а третья
- * вообще про устройство панели.
- */
-export const localCommand = (text: string): string | null => {
-  const name = text.trim().replace(/^\//, '')
+/** Команда панели вместе со значением, если оно у неё есть. */
+export interface LocalCommand {
+  name: string
+  /** Что набрано за именем: выбор модели или усилия. У остальных пусто. */
+  argument: string
+}
 
-  return PANEL_COMMANDS.some((command) => command.id === name) ? name : null
+/**
+ * Команда, которую выполняет сама панель.
+ *
+ * Вход, выход и ветвление агенту слать бессмысленно: первые две в потоковом
+ * режиме недоступны ему в принципе, а третья вообще про устройство панели.
+ *
+ * `/model` и `/effort` со знакомым значением — тоже наши: выбор живёт в панели,
+ * достаётся новым вкладкам и переживает перезапуск IDE. Отправленные ходом, они
+ * стоили бы отдельного обмена с агентом, ответ которого («только для этой
+ * сессии») вдобавок неправда. Незнакомое значение остаётся агенту: вдруг он
+ * знает модель, о которой не знаем мы.
+ */
+export const localCommand = (text: string): LocalCommand | null => {
+  const trimmed = text.trim()
+  if (!trimmed.startsWith('/')) return null
+
+  const [name = '', ...rest] = trimmed.slice(1).split(/\s+/)
+  const argument = rest.join(' ')
+
+  if (PANEL_COMMANDS.some((command) => command.id === name)) return { name, argument }
+
+  // Значения берём из того же списка, что и подсказка с меню в нижней строке —
+  // расходиться этим трём было бы не на чем.
+  const known = ARGUMENT_OPTIONS[name]?.some((option) => option.id === argument)
+  return known ? { name, argument } : null
 }
 
 /**
@@ -182,6 +205,37 @@ const ARGUMENT_OPTIONS: Record<string, CommandOption[]> = {
 
 /** Команда без аргумента бессмысленна — отправлять её как есть незачем и Enter'ом. */
 export const requiresArgument = (id: string): boolean => id in ARGUMENT_OPTIONS
+
+/** Перечислимые значения команды, если они у неё есть — для подсказки по аргументу. */
+export const argumentOptions = (command: string): CommandOption[] | undefined => ARGUMENT_OPTIONS[command]
+
+/** Имя команды, набранной целиком, и ровно один пробел за ней — больше в поле ничего нет. */
+const COMPLETED_COMMAND = /^\/(\S+) $/
+
+/**
+ * Момент, когда набранная руками команда становится плашкой: имя дописано и за
+ * ним поставили пробел. Дальше идёт её аргумент — обычным текстом, как в
+ * терминале, поэтому плашкой становится только само имя.
+ *
+ * Незнакомое имя не трогаем: плашка обещает, что команда существует, и обещание
+ * это должно быть правдой. Возвращаем null, если превращать нечего.
+ */
+export const captureCommand = (tokens: UserToken[], commands: CommandEntry[]): UserToken[] | null => {
+  if (tokens.some((token) => token.kind === 'chip')) return null
+
+  const name = COMPLETED_COMMAND.exec(plainText(tokens))?.[1]
+  if (!name || !commands.some((command) => command.id === name)) return null
+
+  // Пробел за плашкой остаётся: курсору нужно, где встать, а аргументу — от чего
+  // отделиться в тексте, который уйдёт агенту.
+  return [{ kind: 'chip', chip: { kind: 'cmd', value: name } }, { kind: 'text', value: ' ' }]
+}
+
+/** Команда, уже ставшая плашкой: она всегда первая — команда с чем-то перед ней не команда. */
+export const commandChip = (tokens: UserToken[]): string | null => {
+  const first = tokens[0]
+  return first?.kind === 'chip' && first.chip.kind === 'cmd' ? first.chip.value : null
+}
 
 export interface ArgumentQuery {
   command: string

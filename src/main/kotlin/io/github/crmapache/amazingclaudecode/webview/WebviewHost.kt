@@ -1,8 +1,10 @@
 package io.github.crmapache.amazingclaudecode.webview
 
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Disposer
+import java.awt.Cursor
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
@@ -61,6 +63,8 @@ internal class WebviewHost(
             browser.cefBrowser,
         )
 
+        thisLogger().info("Webview renders offscreen: ${browser.isOffScreenRendering}")
+
         WebviewResources.register()
         browser.loadURL(startUrl())
     }
@@ -78,6 +82,46 @@ internal class WebviewHost(
 
     /** Открыть инструменты разработчика браузера — иначе интерфейс не отладить. */
     fun openDevTools() = browser.openDevtools()
+
+    /**
+     * Поставить курсор, который просит страница.
+     *
+     * Обычно это забота самого браузера, но здесь он рисуется офскрин, в
+     * отдельном процессе (платформа включает такой режим сама, игнорируя просьбу
+     * об окне — см. предупреждение в логе), и курсор оттуда до окна IDE не
+     * доходит: над кнопками панели оставалась бы обычная стрелка. Имена приходят
+     * такие же, как в CSS.
+     */
+    fun setCursor(cursor: String) {
+        val type = when (cursor) {
+            "pointer" -> Cursor.HAND_CURSOR
+            "text" -> Cursor.TEXT_CURSOR
+            // Перетаскивание: своей руки-с-хваткой в AWT нет, ближайшее по смыслу —
+            // курсор перемещения.
+            "grab", "grabbing", "move" -> Cursor.MOVE_CURSOR
+            "col-resize", "ew-resize" -> Cursor.E_RESIZE_CURSOR
+            "row-resize", "ns-resize" -> Cursor.N_RESIZE_CURSOR
+            "wait", "progress" -> Cursor.WAIT_CURSOR
+            "crosshair" -> Cursor.CROSSHAIR_CURSOR
+            else -> Cursor.DEFAULT_CURSOR
+        }
+
+        val component = browser.component
+        ApplicationManager.getApplication().invokeLater { component.cursor = Cursor.getPredefinedCursor(type) }
+    }
+
+    /**
+     * Отдать панели фокус клавиатуры.
+     *
+     * Нужно после перетаскивания файла: тащат его из дерева проекта, там фокус и
+     * остаётся, и печатать в поле ввода без клика мышью было бы некуда. Двумя
+     * шагами, потому что фокус тут двойной: сперва его получает компонент IDE, а
+     * уже внутри него — сама страница, о которой Swing ничего не знает.
+     */
+    fun focus() {
+        browser.component.requestFocusInWindow()
+        browser.cefBrowser.setFocus(true)
+    }
 
     /**
      * Увеличить страницу целиком — так панель следует за размером шрифта в

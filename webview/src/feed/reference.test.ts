@@ -37,4 +37,8 @@ describe('reference', () => {
   it('в плашке остаётся имя файла: полный путь в панель не влезает', () => {
     expect(chipLabel(referenceChip(span({ wholeLines: true })))).toBe('useSocket.js L12-L18')
   })
+
+  it('у папки берёт её имя, а не пустоту за последним слэшем', () => {
+    expect(chipLabel({ kind: 'dir', value: 'src/components/' })).toBe('components')
+  })
 })

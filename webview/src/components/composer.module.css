@@ -790,6 +790,13 @@
   box-shadow: 0 0 0 1px var(--acc-accent);
 }
 
+/* Над полем висит перетаскиваемый файл — та же рамка, что и у фокуса, но с
+   заливкой: видно, что бросят именно сюда, а не в ленту над полем. */
+.boxDropping {
+  box-shadow: 0 0 0 1px var(--acc-accent);
+  background: var(--acc-accent-08);
+}
+
 /*
  * Обычный блочный поток, не flex: чипы — inline-flex внутри него, поэтому
  * текст и вложения переносятся вместе, ровно там, где стоят по порядку, как
@@ -837,20 +844,6 @@
   border-radius: var(--acc-r-sm);
   font: 11px var(--acc-mono);
   vertical-align: middle;
-}
-
-/* Тот же приём, что и у плашки в ленте (см. .chipGlyph в feed.module.css):
-   глиф центрируем в своём квадрате фиксированного размера, а не полагаемся на
-   общий флекс-центр — у разных символов разный рисунок внутри рамки. */
-.tokenGlyph {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 11px;
-  height: 11px;
-  font-size: 9px;
-  line-height: 1;
-  opacity: 0.85;
 }
 
 .tokenRemove {
@@ -1006,10 +999,10 @@
   background: var(--acc-bg-menu-hover);
 }
 
-/* Ниже вариантных :hover — иначе они перебивали бы его при равной специфичности. */
+/* Ниже вариантных :hover — иначе они перебивали бы его при равной специфичности.
+   Курсор погашенной кнопки задан один раз для всех — см. base.css. */
 .send:disabled {
   background: var(--acc-bg-control);
   color: var(--acc-fg-ghost);
-  cursor: default;
 }
 

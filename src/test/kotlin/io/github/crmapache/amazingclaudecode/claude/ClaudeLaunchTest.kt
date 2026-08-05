@@ -50,6 +50,25 @@ class ClaudeLaunchTest {
         assertEquals(PermissionModes.ASK, ask[ask.indexOf("--permission-mode") + 1])
     }
 
+    // Без этого канала CLI считает потоковый режим безлюдным и выключает
+    // ExitPlanMode: агент вызывает его вслепую, получает «нет такого инструмента»
+    // и пересказывает план текстом — а кнопки под карточкой плана оказываются
+    // пустышкой, потому что отвечать уже нечему.
+    @Test
+    fun `канал разрешений включён — иначе выход из режима плана недоступен`() {
+        val args = arguments(permissionMode = "plan")
+        assertEquals("stdio", args[args.indexOf(ClaudeLaunch.PERMISSION_CHANNEL_FLAG) + 1])
+    }
+
+    // Тот же канал включает и вопрос с вариантами ответа, а ответить на него панели
+    // пока нечем: разрешение — это только «да» или «нет». Разрешённый и
+    // неотвеченный, он молча возвращает агенту «человек не ответил».
+    @Test
+    fun `вопрос с вариантами пока выключен`() {
+        val args = arguments()
+        assertEquals(ClaudeLaunch.ASK_TOOL, args[args.indexOf("--disallowed-tools") + 1])
+    }
+
     @Test
     fun `поток событий запрашивается так, как того требует CLI`() {
         val args = arguments()

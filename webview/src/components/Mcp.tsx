@@ -4,13 +4,13 @@ import { SkeletonBar } from './Skeleton'
 import s from './shell.module.css'
 
 interface McpProps {
-  servers: McpServerInfo[]
+  /** null — список ещё не приходил: он загружается сам, задолго до открытия вкладки. */
+  servers: McpServerInfo[] | null
+  /** Идёт запрос, о котором стоит сказать вслух: обновление по кнопке. */
   loading: boolean
   message: { ok: boolean; text: string } | null
   onRefresh: () => void
-  onReconnect: (name: string) => void
-  onEnable: (name: string) => void
-  onDisable: (name: string) => void
+  onReconnect: () => void
   onRemove: (name: string) => void
   onAdd: (name: string, command: string, transport: string) => void
   onClose: () => void
@@ -21,10 +21,12 @@ const TRANSPORTS = ['stdio', 'sse', 'http'] as const
 
 /**
  * Список MCP-серверов и управление ими — тот же набор, что `claude mcp` в
- * терминале, но кнопками. Reconnect/enable/disable — не отсюда напрямую: своей
- * управляющей команды для них в CLI нет, только слэш-команда внутри разговора,
- * поэтому эти три идут обычным промптом в активную вкладку (см. App.tsx), а
- * список и add/remove — отдельными разовыми вызовами `claude mcp ...`.
+ * терминале, но кнопками: список, добавление и удаление идут разовыми вызовами
+ * `claude mcp ...`, а переподключение — перезапуском разговора (см. App.tsx).
+ *
+ * Включения и выключения сервера здесь нет намеренно: у CLI нет таких команд
+ * вовсе — ни подкомандой, ни управляющим запросом, — и кнопки для них могли бы
+ * только соврать.
  */
 export const Mcp = ({
   servers,
@@ -32,8 +34,6 @@ export const Mcp = ({
   message,
   onRefresh,
   onReconnect,
-  onEnable,
-  onDisable,
   onRemove,
   onAdd,
   onClose,
@@ -71,7 +71,7 @@ export const Mcp = ({
         ) : null}
 
         <div className={s.mcpBody}>
-          {loading && servers.length === 0
+          {servers === null
             ? [0, 1, 2].map((row) => (
                 <div key={row} className={s.mcpItem}>
                   <div className={s.mcpItemHead}>
@@ -92,21 +92,14 @@ export const Mcp = ({
               ))
             : null}
 
-          {servers.length === 0 && !loading ? (
+          {servers?.length === 0 ? (
             <div className={s.historyEmpty}>No MCP servers configured.</div>
           ) : null}
 
-          {servers.map((server) => {
-            const disabledServer = server.status.toLowerCase().includes('disabled')
+          {servers?.map((server) => {
             const reconnectKey = `reconnect:${server.name}`
-            const enableKey = `enable:${server.name}`
-            const disableKey = `disable:${server.name}`
             const removeKey = `remove:${server.name}`
-            const busy =
-              pendingAction === reconnectKey ||
-              pendingAction === enableKey ||
-              pendingAction === disableKey ||
-              pendingAction === removeKey
+            const busy = pendingAction === reconnectKey || pendingAction === removeKey
 
             return (
               <div key={server.name} className={s.mcpItem}>
@@ -125,36 +118,11 @@ export const Mcp = ({
                     disabled={busy}
                     onClick={() => {
                       setPendingAction(reconnectKey)
-                      onReconnect(server.name)
+                      onReconnect()
                     }}
                   >
                     {pendingAction === reconnectKey ? 'Reconnecting…' : 'Reconnect'}
                   </button>
-                  {disabledServer ? (
-                    <button
-                      type="button"
-                      className={s.mcpAction}
-                      disabled={busy}
-                      onClick={() => {
-                        setPendingAction(enableKey)
-                        onEnable(server.name)
-                      }}
-                    >
-                      {pendingAction === enableKey ? 'Enabling…' : 'Enable'}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className={s.mcpAction}
-                      disabled={busy}
-                      onClick={() => {
-                        setPendingAction(disableKey)
-                        onDisable(server.name)
-                      }}
-                    >
-                      {pendingAction === disableKey ? 'Disabling…' : 'Disable'}
-                    </button>
-                  )}
                   <button
                     type="button"
                     className={`${s.mcpAction} ${s.mcpActionDanger}`}

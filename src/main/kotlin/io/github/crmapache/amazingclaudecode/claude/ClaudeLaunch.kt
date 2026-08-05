@@ -24,6 +24,37 @@ internal object ClaudeLaunch {
      */
     const val ALLOW_BYPASS_FLAG = "--allow-dangerously-skip-permissions"
 
+    /**
+     * Канал, по которому CLI спрашивает разрешение у самой панели, а не у хука.
+     *
+     * Без него потоковый режим считается «безлюдным» и выключает все инструменты,
+     * которым нужен живой человек, — в первую очередь ExitPlanMode. Агент про него
+     * знает и всё равно вызывает, но получает «No such tool available: ExitPlanMode
+     * … is not enabled in this context», после чего пересказывает план текстом и
+     * заканчивает ход. В панели это выглядело так: карточка плана с кнопками
+     * появлялась (её рисует сам вызов инструмента), а «Approve & run» оказывалось
+     * пустышкой — отвечать было уже некому и нечему.
+     *
+     * Со включённым каналом CLI шлёт control_request `can_use_tool` и ждёт ответа
+     * (см. ClaudeSession): «разрешаю» возвращает агенту «User has approved your
+     * plan», он тут же продолжает работу в том же ходе, а режим CLI переключает
+     * сам и сообщает об этом обычным системным событием.
+     *
+     * Значение "stdio" — то же, что подставляет себе Agent SDK: спрашивать по
+     * тому же потоку, которым идёт разговор.
+     */
+    const val PERMISSION_CHANNEL_FLAG = "--permission-prompt-tool"
+
+    /**
+     * Инструмент вопроса с вариантами ответа. Тот же канал включает и его, но
+     * ответить на него панели пока нечем: разрешение — это только «да» или «нет»,
+     * а выбранный вариант возвращается отдельным каналом диалогов, которого у нас
+     * ещё нет. Разрешённый и неотвеченный, он молча возвращает агенту «пользователь
+     * не ответил» — хуже, чем его отсутствие: без него агент просто задаёт свой
+     * вопрос обычным текстом, и человек на него отвечает.
+     */
+    const val ASK_TOOL = "AskUserQuestion"
+
     fun arguments(
         settingsJson: String?,
         model: String,
@@ -39,6 +70,9 @@ internal object ClaudeLaunch {
         addAll(listOf("--output-format", "stream-json"))
         addAll(listOf("--input-format", "stream-json"))
         add("--include-partial-messages")
+
+        addAll(listOf(PERMISSION_CHANNEL_FLAG, "stdio"))
+        addAll(listOf("--disallowed-tools", ASK_TOOL))
 
         settingsJson?.let { addAll(listOf("--settings", it)) }
 

@@ -68,7 +68,12 @@ const quotePreview = (text: string): string => {
  */
 export const chipLabel = (chip: Chip): string => {
   if (chip.kind === 'quote') return `${chip.value}: ${quotePreview(chip.text ?? '')}`
+  // Со слэшем, как её и набирали: без него плашка команды читается просто словом.
+  if (chip.kind === 'cmd') return `/${chip.value}`
 
-  const name = truncateMiddle(chip.value.split('/').at(-1) ?? chip.value)
+  // Пустые куски отбрасываем: у папки путь кончается слэшем, и последним куском
+  // там идёт пустая строка — плашка оставалась бы вовсе без подписи.
+  const parts = chip.value.split('/').filter(Boolean)
+  const name = truncateMiddle(parts.at(-1) ?? chip.value)
   return chip.range ? `${name} ${chip.range}` : name
 }

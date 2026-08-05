@@ -2,7 +2,6 @@ import { chipLabel } from '../../feed/reference'
 import type { ChipKind, UserItem } from '../../feed/types'
 import s from '../feed.module.css'
 
-const CHIP_GLYPH: Record<ChipKind, string> = { file: '▤', img: '▣', dir: '▸', cmd: '/', ref: '⟨⟩', quote: '"' }
 const CHIP_CLASS: Record<ChipKind, string> = {
   file: s.chipFile ?? '',
   img: s.chipImg ?? '',
@@ -48,7 +47,8 @@ export const UserCard = ({ item }: UserCardProps) => (
                   : token.chip.value
             }
           >
-            <span className={s.chipGlyph}>{CHIP_GLYPH[token.chip.kind]}</span>
+            {/* Значка типа вложения нет намеренно — см. renderChipNode в Composer:
+                плашка здесь та же, что и в поле ввода, и выглядеть должна так же. */}
             {chipLabel(token.chip)}
           </span>
         ),

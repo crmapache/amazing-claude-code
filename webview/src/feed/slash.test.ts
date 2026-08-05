@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { buildCommands, commandNameBeforeArgument, localCommand, matchCommands, slashQuery, type CommandEntry } from './slash'
+import {
+  buildCommands,
+  captureCommand,
+  commandChip,
+  commandNameBeforeArgument,
+  localCommand,
+  matchCommands,
+  slashQuery,
+  type CommandEntry,
+} from './slash'
+import { tokensText } from './tokens'
+import type { UserToken } from './types'
 
 const project = (...ids: string[]): CommandEntry[] =>
   ids.map((id) => ({ id, hint: '', group: 'project' }))
@@ -70,12 +81,72 @@ describe('buildCommands', () => {
 
 describe('localCommand', () => {
   it('узнаёт команды, которые выполняет сама панель', () => {
-    expect(localCommand('/login')).toBe('login')
-    expect(localCommand('  /fork  ')).toBe('fork')
+    expect(localCommand('/login')).toEqual({ name: 'login', argument: '' })
+    expect(localCommand('  /fork  ')).toEqual({ name: 'fork', argument: '' })
   })
 
   it('не трогает команды агента', () => {
     expect(localCommand('/pr-review')).toBeNull()
-    expect(localCommand('/model haiku')).toBeNull()
+  })
+
+  it('узнаёт свою команду и когда она стала плашкой', () => {
+    const tokens: UserToken[] = [{ kind: 'chip', chip: { kind: 'cmd', value: 'fork' } }, { kind: 'text', value: ' ' }]
+    expect(localCommand(tokensText(tokens))).toEqual({ name: 'fork', argument: '' })
+  })
+
+  it('выбор модели и усилия выполняет сама панель — это её настройка, а не ход агента', () => {
+    expect(localCommand('/model haiku')).toEqual({ name: 'model', argument: 'haiku' })
+    expect(localCommand('/effort low')).toEqual({ name: 'effort', argument: 'low' })
+  })
+
+  it('незнакомое значение оставляет агенту: вдруг он знает модель, о которой не знаем мы', () => {
+    expect(localCommand('/model whatever-3')).toBeNull()
+    expect(localCommand('/model')).toBeNull()
+  })
+})
+
+describe('captureCommand', () => {
+  const commands = project('review', 'pr-create')
+  const text = (value: string): UserToken[] => [{ kind: 'text', value }]
+
+  it('превращает набранное имя в плашку, как только за ним поставили пробел', () => {
+    expect(captureCommand(text('/review '), commands)).toEqual([
+      { kind: 'chip', chip: { kind: 'cmd', value: 'review' } },
+      { kind: 'text', value: ' ' },
+    ])
+  })
+
+  it('ждёт пробела: пока имя набирается, подсказка сама сужает список', () => {
+    expect(captureCommand(text('/rev'), commands)).toBeNull()
+  })
+
+  it('не обещает плашкой команду, которой нет', () => {
+    expect(captureCommand(text('/nothing-like-this '), commands)).toBeNull()
+  })
+
+  it('не трогает уже набранный аргумент — плашка ставится один раз', () => {
+    expect(captureCommand(text('/review src/App.tsx'), commands)).toBeNull()
+  })
+
+  it('оставляет в покое поле с вложением: команда с приложенным файлом бессмысленна', () => {
+    const withChip: UserToken[] = [{ kind: 'chip', chip: { kind: 'file', value: 'a.ts' } }, { kind: 'text', value: '/review ' }]
+    expect(captureCommand(withChip, commands)).toBeNull()
+  })
+
+  it('уходит агенту тем же текстом, каким его набирали', () => {
+    const captured = captureCommand(text('/review '), commands) ?? []
+    expect(tokensText([...captured, { kind: 'text', value: 'src/App.tsx' }])).toBe('/review src/App.tsx')
+  })
+})
+
+describe('commandChip', () => {
+  it('находит команду-плашку в начале поля', () => {
+    expect(commandChip([{ kind: 'chip', chip: { kind: 'cmd', value: 'model' } }])).toBe('model')
+  })
+
+  it('команда не в начале командой уже не является', () => {
+    expect(
+      commandChip([{ kind: 'text', value: 'смотри ' }, { kind: 'chip', chip: { kind: 'cmd', value: 'model' } }]),
+    ).toBeNull()
   })
 })

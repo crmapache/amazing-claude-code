@@ -24,6 +24,8 @@ internal class ClaudeSessions(
     private val onFinished: (sessionId: String) -> Unit,
     /** Процесс разговора умер сам — панели есть что закрыть и объяснить. */
     private val onCrashed: (sessionId: String, exitCode: Int) -> Unit = { _, _ -> },
+    /** Агент спрашивает разрешение у панели: пока никто не ответил, ход стоит. */
+    private val onToolPermission: (sessionId: String, request: PermissionChannel.ToolPermission) -> Unit = { _, _ -> },
 ) : Disposable {
 
     private val sessions = ConcurrentHashMap<String, ClaudeSession>()
@@ -59,6 +61,14 @@ internal class ClaudeSessions(
         }
     }
 
+    /**
+     * Ответ человека на вопрос агента о разрешении. Разговора может уже не быть —
+     * тогда отвечать некому, и вопрос умер вместе с процессом.
+     */
+    fun answerPermission(sessionId: String, requestId: String, allow: Boolean, message: String = "") {
+        sessions[sessionId]?.answerPermission(requestId, allow, message)
+    }
+
     /** Прерывание хода: разговор остаётся живым, в отличие от закрытия сессии. */
     fun interrupt(sessionId: String, onTimeout: () -> Unit = {}) {
         // Разговора уже нет — панель и так покажет его свободным, объяснять нечего.
@@ -68,6 +78,13 @@ internal class ClaudeSessions(
     fun stop(sessionId: String) {
         sessions[sessionId]?.stop()
     }
+
+    /**
+     * Перезапуск процесса разговора без потери переписки — им и переподключаются
+     * MCP-серверы (см. ClaudeSession.restart). Ложь означает, что процесса не
+     * было: подключаться пока нечему.
+     */
+    fun restart(sessionId: String): Boolean = sessions[sessionId]?.restart() ?: false
 
     /** Живой ли сейчас процесс — не создавая его, в отличие от [session]. */
     fun isRunning(sessionId: String): Boolean = sessions[sessionId]?.isRunning == true
@@ -153,5 +170,6 @@ internal class ClaudeSessions(
         onError = { message -> onError(sessionId, message) },
         onFinished = { onFinished(sessionId) },
         onCrashed = { exitCode -> onCrashed(sessionId, exitCode) },
+        onToolPermission = { request -> onToolPermission(sessionId, request) },
     )
 }

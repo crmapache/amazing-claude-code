@@ -22,8 +22,8 @@ import composer from './components/composer.module.css'
 import s from './components/shell.module.css'
 import { contextUsage, formatTokens, initialPanelState, reducePanel, type PanelState } from './feed/build'
 import { referenceChip } from './feed/reference'
-import { appendChip, appendText, buildCommands, localCommand, plainText } from './feed/slash'
-import { composePrompt, imageAttachments, trimTrailingSpace } from './feed/tokens'
+import { appendChip, appendText, buildCommands, localCommand, plainText, type LocalCommand } from './feed/slash'
+import { composePrompt, imageAttachments, tokensText, trimTrailingSpace } from './feed/tokens'
 import type { AskItem, FeedItem, PermItem, TaskItem, TodoItem, UserToken } from './feed/types'
 import type {
   AvailablePluginInfo,
@@ -55,6 +55,17 @@ const applyTypography = (monoFamily: string, uiFamily: string, lineHeight: numbe
 
 /** Сколько ждём подтверждения Stop, прежде чем предложить убить процесс насильно. */
 const STOP_GRACE_MS = 8000
+
+/**
+ * Через сколько загруженный список MCP-серверов или плагинов пора освежить.
+ *
+ * Открыли вкладку, закрыли, открыли снова — спрашивать заново незачем: меняется
+ * этот список редко (и правки из самой вкладки обновляют его сами), а стоит
+ * запрос дорого — `claude mcp list` честно поднимает каждый сервер, каталог
+ * плагинов обходит маркетплейсы, это секунды. Зато вернувшись к вкладке позже,
+ * человек увидит настоящее положение дел, даже если конфиг правили из терминала.
+ */
+const LIST_STALE_MS = 60_000
 
 /**
  * Черновик, вложения и цитаты принадлежат разговору, а не панели целиком.
@@ -117,6 +128,7 @@ export const App = () => {
    * закрывает историю, а не оставляет её тихо висеть под новой поверх неё.
    */
   const [openPanel, setOpenPanel] = useState<'history' | 'mcp' | 'plugins' | null>(null)
+  /** Прошлые разговоры проекта: null — список ещё не приходил (см. стартовые запросы). */
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
   /**
    * Завершённый агент пропадает из вкладок сам, как только на него никто не
@@ -128,13 +140,24 @@ export const App = () => {
    */
   const [hiddenTaskIds, setHiddenTaskIds] = useState<Set<string>>(new Set())
   const [activeStream, setActiveStream] = useState('main')
-  const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([])
-  const [mcpLoading, setMcpLoading] = useState(false)
+  /**
+   * Списки MCP-серверов и плагинов: null — ещё ни разу не приходили, пустой
+   * массив — пришли и правда пусты. Разница видна на глаз: в первом случае
+   * вкладка показывает скелет, во втором — честное «ничего не настроено».
+   *
+   * Оба списка спрашиваем сразу при запуске, не дожидаясь, пока их вкладку
+   * откроют (см. эффект со стартовыми запросами): каждый такой запрос — это
+   * отдельный запуск claude на несколько секунд, и ждать их по клику незачем.
+   */
+  const [mcpServers, setMcpServers] = useState<McpServerInfo[] | null>(null)
+  const [mcpLoading, setMcpLoading] = useState(true)
+  const [mcpFetchedAt, setMcpFetchedAt] = useState(0)
   const [mcpMessage, setMcpMessage] = useState<{ ok: boolean; text: string } | null>(null)
-  const [pluginsInstalled, setPluginsInstalled] = useState<InstalledPluginInfo[]>([])
-  const [pluginsAvailable, setPluginsAvailable] = useState<AvailablePluginInfo[]>([])
-  const [marketplaces, setMarketplaces] = useState<PluginMarketplaceInfo[]>([])
-  const [pluginsLoading, setPluginsLoading] = useState(false)
+  const [pluginsInstalled, setPluginsInstalled] = useState<InstalledPluginInfo[] | null>(null)
+  const [pluginsAvailable, setPluginsAvailable] = useState<AvailablePluginInfo[] | null>(null)
+  const [marketplaces, setMarketplaces] = useState<PluginMarketplaceInfo[] | null>(null)
+  const [pluginsLoading, setPluginsLoading] = useState(true)
+  const [pluginsFetchedAt, setPluginsFetchedAt] = useState(0)
   const [pluginMessage, setPluginMessage] = useState<{ ok: boolean; text: string } | null>(null)
   /** Файлы проекта для подсказки "@" — приходят сами, панель ничего не просит. */
   const [files, setFiles] = useState<string[]>([])
@@ -185,9 +208,104 @@ export const App = () => {
     [],
   )
 
+  /**
+   * Спросить списки заново. Тихо — когда на экране уже есть что показать: тогда
+   * вкладка открывается мгновенно на готовом, а свежее подъезжает само, без
+   * скелета и без «Refreshing…» на кнопке.
+   */
+  const loadMcp = useCallback((quiet = false) => {
+    if (!quiet) setMcpLoading(true)
+    send({ type: 'mcpList' })
+  }, [])
+
+  const loadPlugins = useCallback((quiet = false) => {
+    if (!quiet) setPluginsLoading(true)
+    send({ type: 'pluginList' })
+    send({ type: 'marketplaceList' })
+  }, [])
+
+  // Прошлые разговоры, MCP-серверы и плагины — сразу на старте, вместе с
+  // готовностью панели: к тому времени, как их вкладку откроют, они уже
+  // загружены.
   useEffect(() => {
     send({ type: 'ready' })
+    send({ type: 'history' })
+    loadMcp()
+    loadPlugins()
+  }, [loadMcp, loadPlugins])
+
+  /**
+   * Курсор под мышью — оболочке, чтобы она поставила его окну IDE.
+   *
+   * Своими силами страница этого не может: встроенный браузер рисуется офскрин,
+   * в отдельном процессе (см. protocol, сообщение cursor), и указатель, который
+   * просит CSS, до окна не доходит — над кнопками оставалась бы обычная стрелка.
+   *
+   * По mouseover, а не по каждому движению: курсор меняется на границе
+   * элементов, а не внутри одного. Значение наследуемое, поэтому спрашиваем его
+   * у самого узла под мышью — у подписи внутри кнопки он тот же, что у кнопки.
+   */
+  useEffect(() => {
+    let last = ''
+
+    const report = (cursor: string) => {
+      if (cursor === last) return
+      last = cursor
+      send({ type: 'cursor', cursor })
+    }
+
+    const onOver = (event: MouseEvent) => {
+      const target = event.target instanceof Element ? event.target : null
+      report(target ? getComputedStyle(target).cursor : 'default')
+    }
+    // Мышь ушла из панели совсем — курсор дальше не наш.
+    const onLeave = () => report('default')
+
+    document.addEventListener('mouseover', onOver)
+    document.addEventListener('mouseleave', onLeave)
+
+    return () => {
+      document.removeEventListener('mouseover', onOver)
+      document.removeEventListener('mouseleave', onLeave)
+    }
   }, [])
+
+  /**
+   * Вставка в поле ввода тем, что пришло из IDE: ссылкой из редактора, файлом
+   * из диалога, брошенной мышью папкой.
+   *
+   * Кладём в место курсора, а не в конец черновика: человек мог отбить новую
+   * строку и уйти в редактор за ссылкой — она обязана встать туда, где он её
+   * ждёт. Само место живёт в поле ввода, поэтому вставляет оно (см. Composer),
+   * а панель только передаёт ему вложение. Пока поля нет вовсе — открыт ни один
+   * чат, — дописываем в конец черновика: он дождётся первой же вкладки.
+   */
+  const insertIntoComposer = useRef<((token: UserToken) => void) | null>(null)
+  const registerInsert = useCallback((insert: ((token: UserToken) => void) | null) => {
+    insertIntoComposer.current = insert
+  }, [])
+
+  const addToDraft = (token: UserToken) => {
+    const insert = insertIntoComposer.current
+    if (insert) {
+      insert(token)
+      return
+    }
+
+    setDrafts((current) => {
+      const session = current[activeRef.current] ?? EMPTY_DRAFT
+      return {
+        ...current,
+        [activeRef.current]: {
+          ...session,
+          tokens:
+            token.kind === 'chip'
+              ? appendChip(session.tokens, token.chip)
+              : appendText(session.tokens, token.value),
+        },
+      }
+    })
+  }
 
   /**
    * Длительность бегущих инструментов иначе стоит на месте до самого результата —
@@ -328,16 +446,7 @@ export const App = () => {
             break
 
           case 'picked':
-            setDrafts((current) => {
-              const session = current[activeRef.current] ?? EMPTY_DRAFT
-              return {
-                ...current,
-                [activeRef.current]: {
-                  ...session,
-                  tokens: appendChip(session.tokens, { kind: message.kind, value: message.value }),
-                },
-              }
-            })
+            addToDraft({ kind: 'chip', chip: { kind: message.kind, value: message.value } })
             break
 
           case 'history':
@@ -347,20 +456,26 @@ export const App = () => {
           case 'mcpServers':
             setMcpServers(message.servers)
             setMcpLoading(false)
+            setMcpFetchedAt(Date.now())
             break
 
           case 'mcpActionResult':
             setMcpMessage({ ok: message.ok, text: message.message })
+            // Неудача — тоже итог: без этого не сумевший загрузиться список
+            // остался бы со скелетом и погашенной кнопкой навсегда.
+            if (!message.ok) setMcpLoading(false)
             break
 
           case 'plugins':
             setPluginsInstalled(message.installed)
             setPluginsAvailable(message.available)
             setPluginsLoading(false)
+            setPluginsFetchedAt(Date.now())
             break
 
           case 'pluginActionResult':
             setPluginMessage({ ok: message.ok, text: message.message })
+            if (!message.ok) setPluginsLoading(false)
             break
 
           case 'marketplaces':
@@ -444,18 +559,11 @@ export const App = () => {
             // файл сам и увидит его целиком. Абсолютный путь — исключение: его
             // просят затем, чтобы видеть и скопировать буквально, поэтому он идёт
             // обычным текстом, а не чипом с укороченной подписью.
-            setDrafts((current) => {
-              const session = current[activeRef.current] ?? EMPTY_DRAFT
-              return {
-                ...current,
-                [activeRef.current]: {
-                  ...session,
-                  tokens: message.asPlainText
-                    ? appendText(session.tokens, `@${message.path}`)
-                    : appendChip(session.tokens, referenceChip(message)),
-                },
-              }
-            })
+            addToDraft(
+              message.asPlainText
+                ? { kind: 'text', value: `@${message.path}` }
+                : { kind: 'chip', chip: referenceChip(message) },
+            )
             setFocusToken((current) => current + 1)
             break
         }
@@ -513,15 +621,20 @@ export const App = () => {
 
   /**
    * Решение по карточке плана — единая точка для обеих кнопок: помечает план
-   * решённым (карточка после этого не рисуется, см. Feed) и меняет режим тем же
-   * управляющим сообщением, что и обычный переключатель режима.
+   * решённым (карточка после этого не рисуется, см. Feed) и отвечает агенту,
+   * который на этом самом месте и стоит.
+   *
+   * Режим панель здесь не выбирает сама — этим занимается оболочка (см.
+   * ClaudePanel.decidePlan): одобрение переключает разговор в bypass, чтобы
+   * дальнейшие шаги того же плана не спрашивали разрешения по одному; новый
+   * режим приезжает обычным системным событием, как и при ручном выборе.
    */
   const decidePlan = useCallback(
     (itemId: string, decision: 'approve' | 'keepPlanning') => {
       cards.decidePlan(itemId, decision)
-      setMode(decision === 'approve' ? 'bypassPermissions' : 'plan')
+      send({ type: 'planDecision', sessionId: active, id: itemId, decision })
     },
-    [cards, setMode],
+    [cards, active],
   )
 
   /** Ответ на вопрос агента уходит как обычное следующее сообщение — как и говорит подсказка на карточке. */
@@ -650,7 +763,6 @@ export const App = () => {
     const title = entry.title.length > 40 ? `${entry.title.slice(0, 40)}…` : entry.title
 
     setOpenPanel(null)
-    setHistory(null)
     setSessions((current) =>
       current.some((session) => session.id === id)
         ? current
@@ -660,8 +772,40 @@ export const App = () => {
     send({ type: 'resumeSession', sessionId: id, conversationId: entry.id })
   }, [])
 
+  /**
+   * Выбор модели: и из меню в нижней строке, и командой в поле — одно и то же
+   * действие, поэтому и путь у него один. Через оболочку, а не ходом агенту:
+   * выбор достаётся новым вкладкам и переживает перезапуск IDE.
+   */
+  const pickModel = useCallback(
+    (model: string) => {
+      setPrefs((current) => ({ ...current, model }))
+      dispatchPanel({ session: active, action: { kind: 'modelRequested', model } })
+      send({ type: 'setModel', sessionId: active, model })
+    },
+    [active],
+  )
+
+  const pickEffort = useCallback(
+    (effort: string) => {
+      setPrefs((current) => ({ ...current, effort }))
+      send({ type: 'setEffort', sessionId: active, effort })
+    },
+    [active],
+  )
+
   const runLocal = useCallback(
-    (name: string) => {
+    ({ name, argument }: LocalCommand) => {
+      if (name === 'model') {
+        pickModel(argument)
+        return
+      }
+
+      if (name === 'effort') {
+        pickEffort(argument)
+        return
+      }
+
       if (name === 'login') {
         send({ type: 'login' })
         setLoginWaiting(true)
@@ -681,7 +825,7 @@ export const App = () => {
 
       if (name === 'fork') fork()
     },
-    [fork],
+    [fork, pickModel, pickEffort],
   )
 
   /** ⌥B из меню выделения. Клавиша нарисована в меню, значит обязана работать. */
@@ -725,7 +869,10 @@ export const App = () => {
       : trimTrailingSpace(draft.tokens)
     const quotes = isOverride ? [] : draft.quotes
 
-    const local = localCommand(plainText(tokens))
+    // Через tokensText, а не plainText: команда в поле — плашка, и голый текст
+    // её не видит вовсе (см. captureCommand). Для агента она и так значит ровно
+    // "/имя", им же её и узнаём.
+    const local = localCommand(tokensText(tokens))
     if (local) {
       runLocal(local)
       if (!isOverride) editDraft(active, { tokens: [] })
@@ -809,35 +956,6 @@ export const App = () => {
     }
   }, [decidePlan])
 
-  /**
-   * Reconnect/enable/disable одного MCP-сервера — своей управляющей команды для
-   * них в CLI нет, только слэш-команда внутри разговора, поэтому шлём её обычным
-   * промптом в активную вкладку — тем же путём, что и любое сообщение.
-   */
-  const runMcpCommand = useCallback(
-    (args: string) => {
-      const text = `/mcp ${args}`
-
-      if (running) {
-        setQueue((current) => [
-          ...current,
-          { id: `q-${Date.now()}`, text, attach: '', tokens: [{ kind: 'text', value: text }], images: [] },
-        ])
-      } else {
-        clearFinishedAgents(active)
-        setActiveStream('main')
-        dispatchPanel({
-          session: active,
-          action: { kind: 'prompt', tokens: [{ kind: 'text', value: text }], quotes: [] },
-        })
-        send({ type: 'prompt', sessionId: active, text })
-      }
-
-      setMcpMessage({ ok: true, text: `Sent "${text}" — see the chat for the result.` })
-    },
-    [running, active],
-  )
-
   const agentTabs = useMemo(
     () => buildAgentTabs(panel, cards.answeredAsks, hiddenTaskIds),
     [panel, cards.answeredAsks, hiddenTaskIds],
@@ -893,24 +1011,27 @@ export const App = () => {
           if (active === id) setActive(next[0]?.id ?? MAIN_SESSION)
         }}
         onNewSession={() => startSession(`session-${Date.now()}`)}
+        // Открывается на том, что загружено заранее, а свежий список подъезжает
+        // следом: он дешёвый (чтение файлов на диске), зато прибавляется прямо
+        // во время работы — каждый новый разговор.
         onOpenHistory={() => {
           if (openPanel === 'history') {
             setOpenPanel(null)
-            setHistory(null)
             return
           }
           setOpenPanel('history')
           send({ type: 'history' })
         }}
+        // Вкладка открывается на том, что загружено заранее. Спрашиваем заново,
+        // только если прошлый запрос уже вернулся, а показанное успело устареть.
         onOpenMcp={() => {
           if (openPanel === 'mcp') {
             setOpenPanel(null)
             return
           }
           setOpenPanel('mcp')
-          setMcpLoading(true)
           setMcpMessage(null)
-          send({ type: 'mcpList' })
+          if (!mcpLoading && Date.now() - mcpFetchedAt > LIST_STALE_MS) loadMcp(mcpServers !== null)
         }}
         onOpenPlugins={() => {
           if (openPanel === 'plugins') {
@@ -918,23 +1039,15 @@ export const App = () => {
             return
           }
           setOpenPanel('plugins')
-          setPluginsLoading(true)
           setPluginMessage(null)
-          send({ type: 'pluginList' })
-          send({ type: 'marketplaceList' })
+          if (!pluginsLoading && Date.now() - pluginsFetchedAt > LIST_STALE_MS) {
+            loadPlugins(pluginsInstalled !== null)
+          }
         }}
       />
 
       {openPanel === 'history' ? (
-        <History
-          conversations={history ?? []}
-          loading={history === null}
-          onOpen={resume}
-          onClose={() => {
-            setOpenPanel(null)
-            setHistory(null)
-          }}
-        />
+        <History conversations={history} onOpen={resume} onClose={() => setOpenPanel(null)} />
       ) : null}
 
       {openPanel === 'mcp' ? (
@@ -943,13 +1056,17 @@ export const App = () => {
           loading={mcpLoading}
           message={mcpMessage}
           onRefresh={() => {
-            setMcpLoading(true)
             setMcpMessage(null)
-            send({ type: 'mcpList' })
+            loadMcp()
           }}
-          onReconnect={(name) => runMcpCommand(`reconnect ${name}`)}
-          onEnable={(name) => runMcpCommand(`enable ${name}`)}
-          onDisable={(name) => runMcpCommand(`disable ${name}`)}
+          // Не промптом в разговор, в отличие от enable/disable: слэш-команду
+          // /mcp потоковый режим не выполняет вовсе, и на месте переподключения
+          // получался отказ агента. Перезапуск процесса — единственное, что
+          // серверы правда переподключает.
+          onReconnect={() => {
+            setMcpMessage(null)
+            send({ type: 'mcpReconnect', sessionId: active })
+          }}
           onRemove={(name) => {
             setMcpMessage(null)
             send({ type: 'mcpRemove', name })
@@ -970,10 +1087,8 @@ export const App = () => {
           loading={pluginsLoading}
           message={pluginMessage}
           onRefresh={() => {
-            setPluginsLoading(true)
             setPluginMessage(null)
-            send({ type: 'pluginList' })
-            send({ type: 'marketplaceList' })
+            loadPlugins()
           }}
           onInstall={(plugin) => {
             setPluginMessage(null)
@@ -1102,6 +1217,10 @@ export const App = () => {
             focusToken={focusToken}
             onTokensChange={(tokens) => editDraft(active, { tokens })}
             onAttach={() => send({ type: 'pick' })}
+            // Плашки соберёт оболочка и вернёт их обычным picked — тем же путём,
+            // что и выбор через диалог: файл это или папка, знает только она.
+            onDropFiles={(paths) => send({ type: 'dropped', paths })}
+            registerInsert={registerInsert}
             onSubmit={sendNow}
             onQueue={queueNext}
             canSubmit={draftReady}
@@ -1151,15 +1270,8 @@ export const App = () => {
           onPick={(id) => {
             setMenu(null)
 
-            if (menu.kind === 'model') {
-              setPrefs((current) => ({ ...current, model: id }))
-              dispatchPanel({ session: active, action: { kind: 'modelRequested', model: id } })
-              send({ type: 'setModel', sessionId: active, model: id })
-            }
-            if (menu.kind === 'effort') {
-              setPrefs((current) => ({ ...current, effort: id }))
-              send({ type: 'setEffort', sessionId: active, effort: id })
-            }
+            if (menu.kind === 'model') pickModel(id)
+            if (menu.kind === 'effort') pickEffort(id)
             if (menu.kind === 'mode') setMode(id)
           }}
         />

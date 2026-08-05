@@ -96,6 +96,29 @@ export interface PanelState {
    * пустым шумом. Ставим при этой заглушке, снимаем на ближайшем result.
    */
   suppressNextMeta: boolean
+  /**
+   * Список задач нового трекера (TaskCreate/TaskUpdate), по его номеру — тому
+   * же, которым его называет и TaskUpdate. В отличие от прежнего TodoWrite,
+   * здесь нет одного вызова с целым списком: список приходится собирать самим
+   * из отдельных вызовов создания и правки (см. applyToolUse/applyTaskCreated).
+   *
+   * Сам инструмент не разделяет разные просьбы одного разговора — с его точки
+   * зрения это один список на весь сеанс. Панели это не подходит: список над
+   * полем ввода должен отвечать на «как дела с тем, что я только что попросил»,
+   * а не расти вечно пунктами позапрошлой просьбы. Поэтому список сбрасывается
+   * не по состоянию задач (обманчивый сигнал — тот же список мог на миг
+   * оказаться полностью закрытым и посреди одной работы, если агент ведёт
+   * задачи по одной, а не пачкой), а по новому сообщению человека — см. case
+   * 'prompt' — оно и есть настоящая граница между «прежней» и «новой» просьбой.
+   */
+  tasks: Record<string, TodoEntry>
+  /**
+   * Название задачи по id её вызова TaskCreate — до тех пор, пока не станет
+   * известен присвоенный ей номер. Номера в структурированном виде инструмент
+   * не отдаёт вовсе, только словами в тексте ответа («Task #3 created…»), и
+   * узнать его получится не раньше, чем придёт этот ответ.
+   */
+  pendingTasks: Record<string, string>
 }
 
 export type PanelAction =
@@ -150,6 +173,8 @@ export const initialPanelState: PanelState = {
   crashed: false,
   compacting: false,
   suppressNextMeta: false,
+  tasks: {},
+  pendingTasks: {},
 }
 
 /**
@@ -183,7 +208,14 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         },
       }
 
-    case 'status':
+    case 'status': {
+      // Обычно прерванный ход закрывает себя сам — обычным result чуть раньше
+      // срока, и подпись о прерывании ставится там (см. ниже). Но ход может
+      // оборваться и молча: агент успевает освободиться, не прислав итога вовсе.
+      // Тогда единственный след остановки — этот статус, и без своей строки
+      // лента не сказала бы о ней ничего: работа просто замирала на полуслове.
+      const stoppedSilently = action.status === 'idle' && state.stopRequestedAt !== undefined
+
       return {
         ...state,
         status: action.status,
@@ -191,7 +223,12 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         // и старая пометка о крахе (если процесс снова заработал) теряют смысл.
         stopRequestedAt: undefined,
         crashed: action.status === 'running' ? false : state.crashed,
+        seq: stoppedSilently ? state.seq + 1 : state.seq,
+        items: stoppedSilently
+          ? [...state.items, { id: `meta-${state.seq}`, kind: 'meta', stats: [STOPPED_BY_YOU] }]
+          : state.items,
       }
+    }
 
     case 'tick':
       return tickDurations(state, now)
@@ -234,6 +271,13 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         crashed: false,
         seq: state.seq + 1,
         items: [...state.items, message],
+        // Новая просьба — граница списка задач нового трекера: см. комментарий
+        // у tasks в PanelState. Начатую задачу без ответа TaskCreate обрывать
+        // здесь нечем страшным — pendingTasks просто больше никогда не
+        // разрешится, что и правильно: её TaskUpdate относился бы к прежней
+        // просьбе, а искать её было уже негде.
+        tasks: {},
+        pendingTasks: {},
       }
     }
 
@@ -744,6 +788,40 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
     }
   }
 
+  // Эта версия CLI ведёт список задач уже не через TodoWrite (одним вызовом со
+  // всем списком целиком), а через отдельные TaskCreate/TaskUpdate — см. тип
+  // pendingTasks. Само появление задачи в панели откладывается до ответа
+  // TaskCreate (см. applyTaskCreated): раньше просто нечего показывать —
+  // номер, под которым TaskUpdate будет её узнавать, известен только оттуда.
+  if (block.name === 'TaskCreate') {
+    const subject = typeof input.subject === 'string' ? input.subject : ''
+    if (!subject) return state
+    return { ...state, pendingTasks: { ...state.pendingTasks, [block.id]: subject } }
+  }
+
+  if (block.name === 'TaskUpdate') {
+    const taskId = typeof input.taskId === 'string' ? input.taskId : ''
+    const existing = state.tasks[taskId]
+    // Задача не из нашего списка (например, принадлежит фоновому агенту) —
+    // и трогать нечего.
+    if (!existing) return state
+
+    if (input.status === 'deleted') {
+      const { [taskId]: _removed, ...tasks } = state.tasks
+      return push(
+        { ...state, tasks },
+        (id) => ({ id, kind: 'todo', todos: orderedTasks(tasks) }),
+      )
+    }
+
+    const subject = typeof input.subject === 'string' ? input.subject : existing.text
+    const tasks = {
+      ...state.tasks,
+      [taskId]: { ...existing, text: subject, state: taskState(input.status, existing.state) },
+    }
+    return push({ ...state, tasks }, (id) => ({ id, kind: 'todo', todos: orderedTasks(tasks) }))
+  }
+
   if (block.name === 'ExitPlanMode') {
     const steps = readPlanSteps(input)
     return {
@@ -885,8 +963,53 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
     return { ...item, tools, pending }
   })
 
-  return { ...state, items, startedAt }
+  return applyTaskCreated({ ...state, items, startedAt }, results)
 }
+
+/** "Task #3 created successfully: …" — единственное место, где TaskCreate называет присвоенный номер. */
+const TASK_CREATED = /^Task #(\d+) created successfully/
+
+/**
+ * Довешивает задачи, чей TaskCreate только что подтвердился, к списку — с тем
+ * самым номером, каким их будет называть TaskUpdate. Не сумели распознать номер
+ * (текст ответа однажды изменится — мы не властны над словами инструмента) —
+ * оставляем как есть, не показывая и не ломая остальной список: лучше
+ * недостающая строка, чем весь список с перепутанными номерами.
+ */
+const applyTaskCreated = (state: PanelState, results: ToolResultBlock[]): PanelState => {
+  const pendingIds = Object.keys(state.pendingTasks).filter((id) => results.some((r) => r.tool_use_id === id))
+  if (pendingIds.length === 0) return state
+
+  const pendingTasks = { ...state.pendingTasks }
+  const tasks = { ...state.tasks }
+
+  for (const toolUseId of pendingIds) {
+    const subject = pendingTasks[toolUseId] ?? ''
+    delete pendingTasks[toolUseId]
+
+    const result = results.find((r) => r.tool_use_id === toolUseId)
+    const match = TASK_CREATED.exec(resultToText(result?.content).trim())
+    if (!match) continue
+
+    tasks[match[1]] = { id: `task-${match[1]}`, text: subject, state: 'todo' }
+  }
+
+  return push({ ...state, tasks, pendingTasks }, (id) => ({ id, kind: 'todo', todos: orderedTasks(tasks) }))
+}
+
+/** pending/in_progress/completed — тот же словарь состояний, что и у TodoWrite. */
+const taskState = (status: unknown, fallback: TodoEntry['state']): TodoEntry['state'] => {
+  if (status === 'completed') return 'done'
+  if (status === 'in_progress') return 'active'
+  if (status === 'pending') return 'todo'
+  return fallback
+}
+
+/** По номеру задачи, как их присваивает TaskCreate — не по порядку последней правки. */
+const orderedTasks = (tasks: Record<string, TodoEntry>): TodoEntry[] =>
+  Object.keys(tasks)
+    .sort((a, b) => Number(a) - Number(b))
+    .map((id) => tasks[id])
 
 /**
  * Кап на лог агента — иначе очень длинный субагент рос бы в памяти неограниченно.
@@ -1099,17 +1222,41 @@ const mergeUsage = (current: Required<AgentUsage>, incoming?: AgentUsage): Requi
  */
 const contextSnapshot = (event: Extract<AgentEvent, { type: 'result' }>): AgentUsage | undefined => {
   const last = event.usage?.iterations?.at(-1)
-  if (last) return last
+  if (last) return withoutEmpty(last)
   if ((event.num_turns ?? 1) > 1) return undefined
-  return event.usage
+  return withoutEmpty(event.usage)
 }
+
+/**
+ * Пустой снимок — не «контекст обнулился», а «этот ход к модели не ходил вовсе».
+ *
+ * Так закрывается ход служебной команды: `/model`, например, CLI выполняет сам,
+ * без единого запроса к модели, и в result присылает нули. Приняв их за снимок
+ * окна, датчик контекста падал до нуля прямо посреди разговора, хотя вся
+ * переписка никуда не делась.
+ */
+const withoutEmpty = (usage?: AgentUsage): AgentUsage | undefined => {
+  if (!usage) return undefined
+
+  const total =
+    (usage.input_tokens ?? 0) +
+    (usage.cache_read_input_tokens ?? 0) +
+    (usage.cache_creation_input_tokens ?? 0)
+
+  return total > 0 ? usage : undefined
+}
+
+/** Подпись прерванного хода — одна на все пути, которыми он мог оборваться. */
+export const STOPPED_BY_YOU = 'Stopped by you'
 
 /** Токены, цена и модель — шум под каждым ходом; из всего этого нужна только длительность. */
 const resultStats = (event: Extract<AgentEvent, { type: 'result' }>, cancelled: boolean): string[] => {
-  const worked = typeof event.duration_ms === 'number' ? `Worked ${formatDuration(event.duration_ms)}` : ''
+  const duration = typeof event.duration_ms === 'number' ? formatDuration(event.duration_ms) : ''
 
-  if (!cancelled) return worked ? [worked] : []
-  return [worked ? `Cancelled · ${worked}` : 'Cancelled']
+  if (!cancelled) return duration ? [`Worked ${duration}`] : []
+  // Не «Worked»: ход не отработал, а был оборван на полпути, и подпись обязана
+  // говорить именно это — иначе прерванный ход не отличить от законченного.
+  return [duration ? `${STOPPED_BY_YOU} · ${duration}` : STOPPED_BY_YOU]
 }
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

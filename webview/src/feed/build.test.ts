@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent } from '../protocol'
 import { contextUsage, initialPanelState, reducePanel, type PanelState } from './build'
-import type { CompactItem, TaskItem, TextItem, ThinkItem, ToolGroupItem } from './types'
+import type { CompactItem, TaskItem, TextItem, ThinkItem, TodoItem, ToolGroupItem } from './types'
 
 /**
  * Поток записан живым прогоном агента, а не придуман: только так видно и порядок
@@ -172,16 +172,59 @@ describe('сборка ленты из потока агента', () => {
     expect(contextUsage(state.usage)).toBeGreaterThan(0)
   })
 
-  it('помечает Cancelled, если ход закрылся result-событием после Stop/Escape', () => {
+  it('подписывает прерывание, если ход закрылся result-событием после Stop/Escape', () => {
     let state = reducePanel(initialPanelState, { kind: 'stopRequested' }, 1_700_000_000_000)
     state = reducePanel(state, { kind: 'agent', event: resultEvent(400) }, 1_700_000_000_400)
 
     const meta = state.items.filter((item) => item.kind === 'meta')
     expect(meta).toHaveLength(1)
-    expect(meta[0]?.stats).toEqual(['Cancelled · Worked 0.4s'])
+    expect(meta[0]?.stats).toEqual(['Stopped by you · 0.4s'])
     // Запрос на остановку погашен — иначе следующий, уже обычный ход тоже
-    // ошибочно окрасился бы в Cancelled.
+    // ошибочно назвался бы прерванным.
     expect(state.stopRequestedAt).toBeUndefined()
+  })
+
+  it('подписывает прерывание и когда ход оборвался молча, без result-события', () => {
+    let state = reducePanel(initialPanelState, { kind: 'stopRequested' }, 1_700_000_000_000)
+    state = reducePanel(state, { kind: 'status', status: 'idle' }, 1_700_000_000_400)
+
+    const meta = state.items.filter((item) => item.kind === 'meta')
+    expect(meta).toHaveLength(1)
+    expect(meta[0]?.stats).toEqual(['Stopped by you'])
+    expect(state.stopRequestedAt).toBeUndefined()
+  })
+
+  it('служебный ход не обнуляет датчик контекста: он к модели не ходил вовсе', () => {
+    // Так закрывается, например, /model: CLI выполняет команду сам, без запроса
+    // к модели, и в result присылает нули — приняв их за снимок окна, датчик
+    // падал до нуля прямо посреди разговора.
+    const filled = play(streamEvents())
+    const before = contextUsage(filled.usage)
+
+    const empty: AgentEvent = {
+      type: 'result',
+      subtype: 'success',
+      duration_ms: 40,
+      usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+    }
+    const after = reducePanel(filled, { kind: 'agent', event: empty }, 1_700_000_000_500)
+
+    expect(before).toBeGreaterThan(0)
+    expect(contextUsage(after.usage)).toBe(before)
+  })
+
+  it('обычное освобождение агента ленту не трогает: останавливать было нечего', () => {
+    const state = reducePanel(initialPanelState, { kind: 'status', status: 'idle' }, 1_700_000_000_400)
+
+    expect(state.items.filter((item) => item.kind === 'meta')).toHaveLength(0)
+  })
+
+  it('не подписывает прерывание дважды: после result статус уже ничего не добавляет', () => {
+    let state = reducePanel(initialPanelState, { kind: 'stopRequested' }, 1_700_000_000_000)
+    state = reducePanel(state, { kind: 'agent', event: resultEvent(400) }, 1_700_000_000_400)
+    state = reducePanel(state, { kind: 'status', status: 'idle' }, 1_700_000_000_500)
+
+    expect(state.items.filter((item) => item.kind === 'meta')).toHaveLength(1)
   })
 
   it('обычный конец хода остаётся просто Worked, без Stop/Escape', () => {
@@ -579,6 +622,129 @@ describe('лог фонового субагента', () => {
     const after = play([subagentMessageEvent('toolu-unknown', 'Привет из ниоткуда')], before)
 
     expect(after).toEqual(before)
+  })
+})
+
+describe('список задач через TaskCreate/TaskUpdate', () => {
+  const taskCreatedResult = (id: string, n: number, subject: string): AgentEvent =>
+    toolResultEvent(id, `Task #${n} created successfully: ${subject}`)
+
+  const latestTodo = (state: PanelState) =>
+    [...state.items].reverse().find((item): item is TodoItem => item.kind === 'todo')
+
+  it('задача появляется в списке только после ответа с присвоенным номером', () => {
+    const mid = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Собрать проект', description: '…' })])
+    expect(latestTodo(mid)).toBeUndefined()
+
+    const after = play([taskCreatedResult('t1', 1, 'Собрать проект')], mid)
+    expect(latestTodo(after)?.todos).toEqual([{ id: 'task-1', text: 'Собрать проект', state: 'todo' }])
+  })
+
+  it('TaskUpdate двигает статус той же задачи по её номеру', () => {
+    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Собрать проект' })])
+    state = play([taskCreatedResult('t1', 1, 'Собрать проект')], state)
+
+    state = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'in_progress' })], state)
+    expect(latestTodo(state)?.todos).toEqual([{ id: 'task-1', text: 'Собрать проект', state: 'active' }])
+
+    state = play([toolUseEvent('t3', 'TaskUpdate', { taskId: '1', status: 'completed' })], state)
+    expect(latestTodo(state)?.todos).toEqual([{ id: 'task-1', text: 'Собрать проект', state: 'done' }])
+  })
+
+  it('несколько задач держат свой номер и порядок независимо от порядка правок', () => {
+    let state = play([
+      toolUseEvent('t1', 'TaskCreate', { subject: 'Первая' }),
+      toolUseEvent('t2', 'TaskCreate', { subject: 'Вторая' }),
+    ])
+    state = play([taskCreatedResult('t1', 1, 'Первая'), taskCreatedResult('t2', 2, 'Вторая')], state)
+
+    // Вторую отмечают раньше первой — порядок в панели остаётся по номеру задачи.
+    state = play([toolUseEvent('t3', 'TaskUpdate', { taskId: '2', status: 'completed' })], state)
+
+    expect(latestTodo(state)?.todos).toEqual([
+      { id: 'task-1', text: 'Первая', state: 'todo' },
+      { id: 'task-2', text: 'Вторая', state: 'done' },
+    ])
+  })
+
+  it('status: deleted убирает задачу из списка совсем', () => {
+    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Ненужная' })])
+    state = play([taskCreatedResult('t1', 1, 'Ненужная')], state)
+
+    state = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'deleted' })], state)
+    expect(latestTodo(state)?.todos).toEqual([])
+  })
+
+  // TaskUpdate по номеру, который панель ещё не видела (например, задача
+  // фонового агента, не связанного со списком в этой панели) — не должен
+  // ронять ленту и не должен создавать задачу из ниоткуда.
+  it('TaskUpdate на неизвестный номер задачи ничего не делает', () => {
+    const before = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Задача' })])
+    const after = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '99', status: 'completed' })], before)
+    expect(after).toEqual(before)
+  })
+
+  // Ответ инструмента — единственное место, где узнаётся номер задачи; если
+  // однажды формат слов изменится, задача просто не должна появиться в
+  // списке — не с перепутанным номером и не ломая остальные задачи в нём.
+  // Панель на пустой список и так ничего не рисует (см. TaskListPanel).
+  it('нераспознанный текст ответа TaskCreate тихо пропускает задачу', () => {
+    const state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Задача' })])
+    const after = play([toolResultEvent('t1', 'Готово, задача добавлена')], state)
+    expect(latestTodo(after)?.todos).toEqual([])
+  })
+
+  const newPrompt = (state: PanelState, text: string): PanelState =>
+    reducePanel(state, { kind: 'prompt', tokens: [{ kind: 'text', value: text }], quotes: [] }, 1_700_000_000_000)
+
+  // Список задач нового трекера сам не различает разные просьбы одного
+  // разговора — с его точки зрения это один список на весь сеанс. Границу
+  // проводит панель по новому сообщению человека, а не по тому, закрыт ли
+  // список в моменте: если бы граница была «список сейчас пуст», задачи,
+  // которые агент ведёт по одной (создал — сделал — закрыл — создал
+  // следующую), стирали бы друг друга на каждом шаге, ровно как пожаловался
+  // пользователь на живом прогоне.
+  it('новое сообщение пользователя начинает список задач заново', () => {
+    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Старая задача' })])
+    state = play([taskCreatedResult('t1', 1, 'Старая задача')], state)
+    state = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'completed' })], state)
+
+    state = newPrompt(state, 'другая, не связанная просьба')
+    state = play([toolUseEvent('t3', 'TaskCreate', { subject: 'Новая задача' })], state)
+    state = play([taskCreatedResult('t3', 2, 'Новая задача')], state)
+
+    expect(latestTodo(state)?.todos).toEqual([{ id: 'task-2', text: 'Новая задача', state: 'todo' }])
+  })
+
+  it('задачи одной и той же просьбы копятся вместе, даже если ведутся по одной', () => {
+    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Первая' })])
+    state = play([taskCreatedResult('t1', 1, 'Первая')], state)
+    state = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'completed' })], state)
+
+    // Первая уже закрыта, но нового сообщения не было — это тот же список,
+    // agент просто перешёл к следующему пункту той же просьбы.
+    state = play([toolUseEvent('t3', 'TaskCreate', { subject: 'Вторая' })], state)
+    state = play([taskCreatedResult('t3', 2, 'Вторая')], state)
+
+    expect(latestTodo(state)?.todos).toEqual([
+      { id: 'task-1', text: 'Первая', state: 'done' },
+      { id: 'task-2', text: 'Вторая', state: 'todo' },
+    ])
+  })
+
+  // Досылка в идущий ход — не новая просьба, а добавка к той же (см.
+  // комментарий у case 'prompt'): список задач она не трогает.
+  it('досылка в идущий ход список задач не сбрасывает', () => {
+    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Первая' })])
+    state = play([taskCreatedResult('t1', 1, 'Первая')], state)
+
+    state = reducePanel(
+      state,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'да, и ещё вот это' }], quotes: [], steering: true },
+      1_700_000_000_000,
+    )
+
+    expect(latestTodo(state)?.todos).toEqual([{ id: 'task-1', text: 'Первая', state: 'todo' }])
   })
 })
 

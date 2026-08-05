@@ -30,6 +30,7 @@ export const CompactRow = ({ item }: { item: CompactItem }) => (
   </div>
 )
 
+/** Итог хода — включая прерванный: он отличается подписью, а не видом строки. */
 export const MetaRow = ({ item }: { item: MetaItem }) => (
   <div className={s.meta}>
     {item.stats.map((stat, index) => (
