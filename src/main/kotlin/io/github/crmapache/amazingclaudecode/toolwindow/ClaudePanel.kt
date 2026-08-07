@@ -1145,20 +1145,17 @@ internal class ClaudePanel(
      * подписываемся на смену, а не спрашиваем один раз при старте.
      */
     private fun watchDockAnchor() {
+        // Перегрузка stateChanged с ToolWindowManagerEventType помечена
+        // @ApiStatus.Internal (не пропускает Plugin Verifier) - используем
+        // публичную перегрузку без типа события и сравниваем анкор сами.
+        var lastAnchor = toolWindow.anchor
         project.messageBus.connect(parentDisposable).subscribe(
             ToolWindowManagerListener.TOPIC,
             object : ToolWindowManagerListener {
-                override fun stateChanged(
-                    toolWindowManager: ToolWindowManager,
-                    changedToolWindow: ToolWindow,
-                    changeType: ToolWindowManagerListener.ToolWindowManagerEventType,
-                ) {
-                    if (changedToolWindow.id != toolWindow.id) return
-                    if (changeType != ToolWindowManagerListener.ToolWindowManagerEventType.SetToolWindowAnchor &&
-                        changeType != ToolWindowManagerListener.ToolWindowManagerEventType.SetSideToolAndAnchor
-                    ) {
-                        return
-                    }
+                override fun stateChanged(toolWindowManager: ToolWindowManager) {
+                    val currentAnchor = toolWindow.anchor
+                    if (currentAnchor == lastAnchor) return
+                    lastAnchor = currentAnchor
                     sendDockAnchor()
                 }
             },
