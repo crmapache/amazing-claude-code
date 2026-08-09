@@ -266,10 +266,38 @@ internal object PermissionPlanMode {
 
         if (name == "git") return isSafeGit(args)
         if (name == "xargs") return isSafeXargs(args)
+        if (name in VERSION_ONLY) return isVersionProbe(args)
 
         val forbidden = READ_ONLY[name] ?: return false
         return args.none { violates(it, forbidden) }
     }
+
+    /**
+     * «Скажи, какая ты версия» — и ничего сверх того.
+     *
+     * Разведка почти всегда начинается с того, что стоит на машине и какое:
+     * питон, нода, пакетный менеджер. Само по себе это чистое чтение, но в общий
+     * список читающих команд интерпретатору хода нет — он умеет выполнить что
+     * угодно, стоит дать ему хоть один другой аргумент. Поэтому пропускаем ровно
+     * один их вызов: единственный аргумент и тот про версию. Любой второй
+     * аргумент (`python3 -c …`, `npm install`) снова спрашивает.
+     */
+    private fun isVersionProbe(args: List<String>): Boolean = args.size == 1 && args.first() in VERSION_FLAGS
+
+    /**
+     * Формы, которыми спрашивают версию. Одиночное `-v` сюда не входит нарочно: у
+     * половины этих команд это «подробнее», а у питона без скрипта — ещё и
+     * интерактивная оболочка, которая просто ждала бы ввода.
+     */
+    private val VERSION_FLAGS = setOf("--version", "-version", "-V", "version")
+
+    /** Интерпретаторы и пакетные менеджеры: безопасны только вопросом о версии. */
+    private val VERSION_ONLY = setOf(
+        "python", "python2", "python3", "node", "deno", "bun", "ruby", "perl", "php",
+        "java", "go", "cargo", "rustc", "dotnet", "tsc",
+        "pip", "pip2", "pip3", "npm", "npx", "pnpm", "yarn", "uv", "uvx", "poetry", "pipenv",
+        "gem", "bundle", "composer", "mvn", "gradle",
+    )
 
     /**
      * xargs сам по себе безобиден — опасно ровно то, что он запускает. Поэтому

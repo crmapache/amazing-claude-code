@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type DragEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react'
 import { matchFiles } from '../feed/files'
 import { chipLabel } from '../feed/reference'
 import {
@@ -16,6 +25,7 @@ import {
 } from '../feed/slash'
 import { clipboardHtml, clipboardTokens, tokensText } from '../feed/tokens'
 import type { Chip, ChipKind, UserToken } from '../feed/types'
+import type { ModelInfo } from '../protocol'
 import { SlashSuggest } from './SlashSuggest'
 import { contextColor, contextGlow } from './StatusBar'
 import s from './composer.module.css'
@@ -24,26 +34,56 @@ import s from './composer.module.css'
 const CONTEXT_METER_TICKS = [20, 40, 60, 80]
 
 /**
- * Полоска контекста в самом верху поля — то же число, что и "ctx NN%" в строке
- * статуса под композером (см. App.tsx), просто заметнее на глаз без чтения
- * цифры. Строку статуса эта полоска не заменяет и не трогает.
+ * Полоска контекста в самом верху поля — единственное место, где видно, сколько
+ * его занято: цифрой то же самое нигде не повторяется. Заполнение и цвет
+ * читаются мельком, а точное число в этом решении («не пора ли сжать») ничего
+ * не добавляет.
  */
 const ContextMeter = ({ percent }: { percent: number }) => {
   const color = contextColor(percent)
   const glow = contextGlow(percent)
 
   return (
-    <div className={s.contextMeter} aria-hidden="true">
-      <div
-        className={s.contextMeterFill}
-        style={{ width: `${percent}%`, background: color, boxShadow: `0 0 8px ${glow.strong}, 0 0 16px ${glow.soft}` }}
-      />
-      {CONTEXT_METER_TICKS.map((tick) => (
-        <span key={tick} className={s.contextMeterTick} style={{ left: `${tick}%` }} />
-      ))}
+    // Своя строка над полем, а не слой поверх его верхнего отступа: отступ
+    // прокручивается вместе с текстом, и в длинном сообщении строки заезжали
+    // под шкалу — она читалась как зачёркивание. Отдельная строка физически вне
+    // прокрутки, заехать под неё нечему.
+    <div className={s.contextMeterRow} aria-hidden="true">
+      <div className={s.contextMeter}>
+        <div
+          className={s.contextMeterFill}
+          style={{ width: `${percent}%`, background: color, boxShadow: `0 0 8px ${glow.strong}, 0 0 16px ${glow.soft}` }}
+        />
+        {CONTEXT_METER_TICKS.map((tick) => (
+          <span key={tick} className={s.contextMeterTick} style={{ left: `${tick}%` }} />
+        ))}
+      </div>
     </div>
   )
 }
+
+/**
+ * Скрепка на кнопке вложений: она открывает обычный системный выбор файлов, а
+ * «собака» обещала совсем другое — упоминание файла прямо в тексте, как в самом
+ * Claude Code. Рисунком, а не символом из шрифта: типографская скрепка есть не
+ * во всех начертаниях и в моноширинном ряду выглядит то крупнее, то мельче
+ * соседей.
+ *
+ * Нарисована наискосок, а стоит вертикально: до вертикали её доворачивает стиль
+ * (см. attachIcon в composer.module.css).
+ */
+const Paperclip = () => (
+  <svg className={s.attachIcon} viewBox="0 0 24 24" aria-hidden="true">
+    <path
+      d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+)
 
 const CHIP_STYLE: Record<ChipKind, { background: string; borderColor: string; color: string }> = {
   file: { background: 'var(--acc-accent-12)', borderColor: 'var(--acc-accent-32)', color: 'var(--acc-accent-light)' },
@@ -68,6 +108,10 @@ interface ComposerProps {
   contextPercent: number
   /** Команды панели и агента одним списком. */
   commands: CommandEntry[]
+  /** Каталог моделей от CLI — из него подсказка значений для `/model`. */
+  models: ModelInfo[] | null
+  /** Строка расхода (ctx/5h/wk/tok) — стоит в нижнем ряду поля, см. UsageMeters. */
+  meters: ReactNode
   /** Файлы проекта для подсказки "@" — от корня рабочей директории. */
   files: string[]
   /** Сколько картинок уже ушло раньше в этой сессии — нумерация новых продолжает отсюда. */
@@ -104,6 +148,8 @@ export const Composer = ({
   planMode,
   contextPercent,
   commands,
+  models,
+  meters,
   files,
   imageBaseCount,
   focusToken,
@@ -223,15 +269,15 @@ export const Composer = ({
     if (dismissed || commandMatches.length > 0) return null
 
     if (command !== null) {
-      const options = argumentOptions(command)
+      const options = argumentOptions(command, models)
       const value = argumentText.trim()
       // Пробел внутри значения означает, что аргумент уже не одно слово из
       // списка, а свободный текст — выбирать там нечего.
       return options && !/\s/.test(value) ? { command, query: value, options } : null
     }
 
-    return plain === null ? null : argumentQuery(plain)
-  }, [plain, dismissed, commandMatches, command, argumentText])
+    return plain === null ? null : argumentQuery(plain, models)
+  }, [plain, dismissed, commandMatches, command, argumentText, models])
 
   const argumentMatches = useMemo(
     () => (argument ? matchArguments(argument.options, argument.query) : []),
@@ -315,6 +361,9 @@ export const Composer = ({
     commitHistory(tokens, boundary)
     lastReported.current = next
     onTokensChange(next)
+    // Любая правка может увести курсор за край поля — оно ограничено по высоте
+    // и дальше прокручивается (см. scrollCaretIntoView).
+    if (input.current) scrollCaretIntoView(input.current)
   }
 
   /**
@@ -358,7 +407,10 @@ export const Composer = ({
   /** Восстановление шагом истории — само по себе новой границей истории не является. */
   const restoreTokens = (next: UserToken[]) => {
     const root = input.current
-    if (root) rebuildDom(root, next)
+    if (root) {
+      rebuildDom(root, next)
+      scrollCaretIntoView(root)
+    }
     lastReported.current = next
     onTokensChange(next)
   }
@@ -920,10 +972,23 @@ export const Composer = ({
         />
 
         <div className={s.tools}>
+          {/* Расход — слева, на месте, где раньше стояли кнопки вложения и
+              команд: сюда смотрят, решая, что писать дальше, и цифры должны быть
+              под рукой, а не строкой ниже. Сами кнопки уехали вправо, к Send. */}
+          {meters}
+
+          <div className={s.spacer} />
+
           {/* Одна кнопка на все вложения: файл, картинка и папка выбираются одним
               и тем же диалогом, а разницу видно по самому пути. */}
-          <button type="button" className={s.attach} title="Attach files or folders" onClick={onAttach}>
-            <span className={s.attachGlyph}>@</span>
+          <button
+            type="button"
+            className={s.attach}
+            title="Attach files or folders"
+            aria-label="Attach files or folders"
+            onClick={onAttach}
+          >
+            <Paperclip />
           </button>
           {/* Кнопка не открывает каталог, а ставит слэш в поле: дальше команду
               набирают, и список сужается сам. Пока в поле уже что-то есть, слэш
@@ -942,8 +1007,6 @@ export const Composer = ({
               <span className={s.attachSlash}>/</span>
             </button>
           ) : null}
-
-          <div className={s.spacer} />
 
           {streaming ? (
             <button type="button" className={s.stop} onClick={onStop}>
@@ -1044,6 +1107,52 @@ const caretRect = (root: HTMLElement, origin: HTMLElement): { left: number; top:
 
   const originRect = origin.getBoundingClientRect()
   return { left: rect.left - originRect.left, top: rect.top - originRect.top, height: rect.height || 18 }
+}
+
+/**
+ * Высота непрозрачной подложки под полоской контекста (см. .box::before в
+ * стилях): верхние пиксели поля закрыты ею, и курсор, уехавший туда, человек
+ * всё равно не увидит.
+ */
+const FIELD_TOP_INSET_PX = 20
+
+/** Небольшой запас, чтобы строка с курсором не липла вплотную к краю поля. */
+const CARET_MARGIN_PX = 4
+
+/**
+ * Держит курсор в поле зрения.
+ *
+ * Поле ограничено по высоте и дальше прокручивается внутри себя, а сам браузер
+ * доводит до курсора не всегда: перенос строки в конце длинного сообщения
+ * (Shift+Enter) оставлял новую пустую строку за нижним краем — печатать
+ * приходилось вслепую, пока не прокрутишь поле рукой.
+ */
+const scrollCaretIntoView = (root: HTMLElement) => {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) return
+
+  const range = selection.getRangeAt(0)
+  if (!root.contains(range.startContainer)) return
+
+  const caret = range.getBoundingClientRect()
+  const field = root.getBoundingClientRect()
+
+  // Пустой прямоугольник — диапазон не сумел себя измерить (так бывает ровно на
+  // той самой пустой последней строке). В этот момент курсор всегда в конце
+  // содержимого, поэтому просто доводим поле до низа.
+  if (caret.height === 0 && caret.top === 0) {
+    root.scrollTop = root.scrollHeight
+    return
+  }
+
+  const below = caret.bottom - field.bottom
+  if (below > 0) {
+    root.scrollTop += below + CARET_MARGIN_PX
+    return
+  }
+
+  const above = field.top + FIELD_TOP_INSET_PX - caret.top
+  if (above > 0) root.scrollTop -= above + CARET_MARGIN_PX
 }
 
 /** Пустой диапазон в самом конце содержимого — запасной вариант, если курсора нет. */

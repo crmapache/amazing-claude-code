@@ -98,6 +98,18 @@
   /* Вкладка не кнопка (внутри неё своя — крестик), но нажимается целиком,
      поэтому указатель ей нужен наравне с кнопками. */
   cursor: pointer;
+  /* Подпись вкладки — не текст для чтения и копирования, а ярлык: выделять её
+     незачем, а при перетаскивании выделение и вовсе лезло поверх жеста. */
+  user-select: none;
+  /* Соседи отходят, освобождая место перетаскиваемой вкладке, — плавно, иначе
+     ряд дёргается рывками и уследить за перестановкой невозможно. Тем же
+     переходом брошенная вкладка доезжает из-под руки в свой слот, а поднятый
+     вид (фон и тень) гаснет ровно за тот же путь, а не срывается разом. */
+  transition:
+    transform 0.16s ease,
+    background-color 0.16s ease,
+    box-shadow 0.16s ease,
+    opacity 0.16s ease;
 }
 
 /* Полоска сверху — цвет группы: у разговора и всех его форков он один, поэтому
@@ -146,6 +158,25 @@
    для каждой: активная темнеет сильнее неактивной, чтобы разница читалась. */
 .tabActive:hover {
   background: var(--acc-bg-sunken);
+}
+
+/* Пока группу тащат, её вкладки едут за курсором (сдвиг ставит сам Header) и
+   поднимаются над соседними — видно, что именно едет и что едет вся группа
+   целиком, а не одна вкладка из неё. Курсор при этом «схватил» — оболочка
+   ставит его окну IDE сама (см. сообщение cursor в protocol).
+
+   Без тени вкладка на новом месте читалась бы как приклеенная к ряду; лёгкая
+   прозрачность оставляет видимым то, поверх чего она сейчас проезжает. */
+.tabDragging {
+  /* Едет за рукой, поэтому без задержки: плавность здесь читалась бы как
+     запаздывание вкладки за курсором. */
+  transition: none;
+  opacity: 0.9;
+  cursor: grabbing;
+  z-index: 2;
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-card);
+  box-shadow: var(--acc-shadow-menu);
 }
 
 .dot {
@@ -376,6 +407,8 @@
 
 /* Нижняя строка: сводка текстом, как в строке состояния терминала. Метрики идут
    отдельной строкой над кнопками — рядом с ними они рассыпаются по одной. */
+/* В строке состояния остались ветка с её PR и селекторы: расход отсюда переехал
+   в нижний ряд самого поля ввода (см. UsageMeters). */
 .status {
   display: flex;
   flex-direction: column;
@@ -384,13 +417,15 @@
   padding: 7px 2px 8px;
 }
 
+/* Кегль крупнее прежнего: строку читают мельком, между делом, а на 11px цифры
+   в панели попросту не разбирались. */
 .statusLine {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
   gap: 4px 8px;
   min-width: 0;
-  font: 11px/1.4 var(--acc-mono);
+  font: 12.5px/1.4 var(--acc-mono);
 }
 
 /* Каждая метрика — единый кусок: ключ и значение не должны разъезжаться. */
@@ -437,22 +472,116 @@
   text-decoration: underline;
 }
 
-.statusKey {
-  color: var(--acc-fg-fainter);
+/* --- Кольца расхода в нижнем ряду поля ввода -------------------------------- */
+
+/* Разрывы разные: между кольцом и его цифрой тесно (это одна метрика), между
+   метриками просторно — иначе ряд читается как одна каша из процентов. */
+.meters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  min-width: 0;
+  font: 12.5px/1.4 var(--acc-mono);
 }
 
-.statusValue {
-  color: var(--acc-fg);
+.meter {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
-.statusSlash {
-  color: var(--acc-fg-faint);
+/* overflow видимый: круглый конец дуги выступает за границу вьюбокса, и без
+   этого он срезается ровно на двенадцати часах — там, где дуга замыкается. */
+.meterRing {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  overflow: visible;
 }
 
-/* statusline.sh красит саму цифру за "tok" бирюзовым (FG_CYAN), а не тусклым —
-   тусклая там только подпись "tok" рядом с ней. */
-.statusTok {
+.meterTrack {
+  fill: none;
+  stroke: var(--acc-meter-track);
+  stroke-width: 3.8;
+}
+
+/*
+ * Дуга рисуется штрихом длиной во всю окружность, а видимую часть задаёт
+ * смещение (stroke-dashoffset) — его и анимируем. Поворот на четверть против
+ * часовой стрелки: без него дуга начиналась бы справа, а не сверху.
+ */
+.meterPace,
+.meterArc {
+  fill: none;
+  stroke-width: 3.8;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 11px 11px;
+  transition: stroke-dashoffset 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Темп — фоном под расходом: он не событие, а линия, с которой сверяются. */
+.meterPace {
+  stroke: var(--acc-meter-pace);
+}
+
+.meterArc {
+  transition:
+    stroke-dashoffset 0.7s cubic-bezier(0.4, 0, 0.2, 1),
+    stroke 0.3s ease;
+}
+
+.meterValue {
+  /* Цифры одной ширины: иначе процент дёргает ряд при каждом обновлении. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* statusline.sh красит объём за день бирюзовым (FG_CYAN) — берём тот же цвет.
+   Кольца у него нет: у токенов за день нет ни лимита, ни доли от целого. */
+.meterTokens {
+  position: relative;
   color: var(--acc-branch-light);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Подсказка над метрикой, а не под ней: ряд стоит у самого низа панели, и
+   снизу ей просто некуда развернуться. Перенос строки в data-tooltip остаётся
+   переносом (pre-line) — во второй строке живёт пояснение к первой. */
+.meter::after,
+.meterTokens::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 0;
+  width: max-content;
+  max-width: 190px;
+  padding: 5px 9px;
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-deep);
+  border: 1px solid var(--acc-line-strong);
+  box-shadow: var(--acc-shadow-menu);
+  color: var(--acc-fg);
+  font: 11px/1.45 var(--acc-font);
+  white-space: pre-line;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(2px);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+  pointer-events: none;
+  z-index: 60;
+}
+
+.meter:hover::after,
+.meterTokens:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
 
 .selectors {
@@ -1146,6 +1275,53 @@
   font: 11.5px/1.6 var(--acc-mono);
   color: var(--acc-fg-fainter);
   animation: acc-pulse 1.8s infinite;
+}
+
+/* Ручной путь к CLI: поле и кнопка одной строкой — ввод и подтверждение рядом. */
+.gateRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 380px;
+}
+
+.gateInput {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-lg);
+  background: var(--acc-bg-control);
+  font: 11.5px var(--acc-mono);
+  color: var(--acc-fg);
+}
+
+.gateInput:focus {
+  outline: none;
+  border-color: var(--acc-accent);
+}
+
+/* Список проверенных мест — свёрнут: он длинный и нужен, только когда что-то
+   пошло не так. */
+.gateDetails {
+  max-width: 380px;
+  text-align: left;
+}
+
+.gateSummary {
+  font: 11.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+  cursor: pointer;
+}
+
+.gateList {
+  margin: 6px 0 0;
+  padding-left: 14px;
+  font: 10.5px/1.7 var(--acc-mono);
+  color: var(--acc-fg-fainter);
+  word-break: break-all;
 }
 
 /* Закрыли последнюю вкладку — заголовок и кнопка по центру панели, как и на

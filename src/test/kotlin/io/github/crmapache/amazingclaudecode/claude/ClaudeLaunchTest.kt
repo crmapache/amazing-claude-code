@@ -60,13 +60,12 @@ class ClaudeLaunchTest {
         assertEquals("stdio", args[args.indexOf(ClaudeLaunch.PERMISSION_CHANNEL_FLAG) + 1])
     }
 
-    // Тот же канал включает и вопрос с вариантами ответа, а ответить на него панели
-    // пока нечем: разрешение — это только «да» или «нет». Разрешённый и
-    // неотвеченный, он молча возвращает агенту «человек не ответил».
+    // Тот же канал включает и вопрос с вариантами ответа. Раньше инструмент
+    // выключался, потому что ответ было нечем вернуть; теперь выбранные варианты
+    // уходят обратно в updatedInput — запрещать его больше незачем.
     @Test
-    fun `вопрос с вариантами пока выключен`() {
-        val args = arguments()
-        assertEquals(ClaudeLaunch.ASK_TOOL, args[args.indexOf("--disallowed-tools") + 1])
+    fun `вопрос с вариантами не выключается`() {
+        assertFalse("--disallowed-tools" in arguments())
     }
 
     @Test

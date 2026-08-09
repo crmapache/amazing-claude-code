@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { send, subscribe } from './bridge'
-import { EFFORT_OPTIONS, MODEL_OPTIONS, MODE_OPTIONS, nextMode, normalizeMode, withRefusedMode } from './catalog'
+import {
+  DEFAULT_MODEL,
+  EFFORT_OPTIONS,
+  MODE_OPTIONS,
+  modelOptions,
+  nextMode,
+  normalizeMode,
+  withRefusedMode,
+} from './catalog'
 import { AgentStreamView } from './components/AgentStreamView'
 import { AskPanel } from './components/AskPanel'
 import { Composer } from './components/Composer'
@@ -15,25 +23,27 @@ import { Plugins } from './components/Plugins'
 import { Queue, type QueuedPrompt } from './components/Queue'
 import { Quotes, type Quote } from './components/Quotes'
 import { SelectionMenu } from './components/SelectionMenu'
-import { StatusBar, type Anchor, type SelectorKind } from './components/StatusBar'
+import { StatusBar, UsageMeters, type Anchor, type SelectorKind } from './components/StatusBar'
 import { StreamSwitcher, type AgentStatus, type AgentTab } from './components/StreamSwitcher'
 import { TaskListPanel } from './components/TaskListPanel'
 import composer from './components/composer.module.css'
 import s from './components/shell.module.css'
-import { contextUsage, formatTokens, initialPanelState, reducePanel, type PanelState } from './feed/build'
+import { contextOf, initialPanelState, reducePanel, type PanelState } from './feed/build'
 import { referenceChip } from './feed/reference'
 import { appendChip, appendText, buildCommands, localCommand, plainText, type LocalCommand } from './feed/slash'
 import { composePrompt, imageAttachments, tokensText, trimTrailingSpace } from './feed/tokens'
-import type { AskItem, FeedItem, PermItem, TaskItem, TodoItem, UserToken } from './feed/types'
+import type { AskItem, FeedItem, PermItem, PlanItem, TaskItem, TodoItem, UserToken } from './feed/types'
 import type {
   AvailablePluginInfo,
   HistoryEntry,
   InstalledPluginInfo,
   McpServerInfo,
+  ModelInfo,
   PluginMarketplaceInfo,
   UsageWindow,
 } from './protocol'
 import { useCardState, type CardState } from './hooks/useCardState'
+import { moveGroup } from './tabs'
 import { useSelection } from './hooks/useSelection'
 
 const MAIN_SESSION = 'main'
@@ -159,6 +169,12 @@ export const App = () => {
   const [pluginsLoading, setPluginsLoading] = useState(true)
   const [pluginsFetchedAt, setPluginsFetchedAt] = useState(0)
   const [pluginMessage, setPluginMessage] = useState<{ ok: boolean; text: string } | null>(null)
+  /**
+   * Каталог моделей от самого CLI: null — ещё не приехал, тогда меню показывает
+   * встроенный список (см. modelOptions). Свой список держать нельзя — доступные
+   * модели зависят от учётной записи и политики организации.
+   */
+  const [models, setModels] = useState<ModelInfo[] | null>(null)
   /** Файлы проекта для подсказки "@" — приходят сами, панель ничего не просит. */
   const [files, setFiles] = useState<string[]>([])
   /** Описание и синтаксис аргумента слэш-команд — той же природы, что и files. */
@@ -171,6 +187,11 @@ export const App = () => {
   const panel = panels[active] ?? initialPanelState
   const draft = drafts[active] ?? EMPTY_DRAFT
   const running = panel.status === 'running'
+  /**
+   * Датчик контекста: цифра приходит от самого CLI, а расчёт по usage остаётся
+   * запасным на случай, когда её ещё нет (см. contextOf).
+   */
+  const context = contextOf(panel, usage.contextWindow)
   const imageBaseCount = useMemo(() => countSessionImages(panel, queue), [panel, queue])
 
   // Stop честно ждёт подтверждения; если оно не пришло дольше разумного,
@@ -193,10 +214,20 @@ export const App = () => {
     [bypassAvailable, refusedModes],
   )
 
-  // То же самое для модели, но с поправкой на то, что её подтверждение всегда
-  // отстаёт на один ход (см. комментарий у pendingModel) — без pendingModel
-  // выбор снаружи выглядел бы применившимся через раз.
-  const model = panel.pendingModel ?? panel.model ?? prefs.model
+  /**
+   * Какая модель работает на самом деле. Пока агент не ответил на смену,
+   * показываем выбранное — иначе выбор выглядит потерянным. Дальше идёт
+   * действующее значение: оно бывает иносказательным («default»), поэтому
+   * разворачиваем его каталогом до настоящего идентификатора — по нему нижняя
+   * строка и называет модель. Каталога может не быть вовсе (старая сборка CLI,
+   * не дошедший запрос), тогда верим самому значению и тому, что назвал агент в
+   * системном событии.
+   */
+  const model =
+    panel.pendingModel ??
+    (models?.find((option) => option.value === (prefs.model || DEFAULT_MODEL))?.resolved ||
+      panel.model ||
+      prefs.model)
 
   const editDraft = useCallback(
     (session: string, change: Partial<Draft>) => {
@@ -482,6 +513,17 @@ export const App = () => {
             setMarketplaces(message.marketplaces)
             break
 
+          case 'models':
+            setModels(message.models)
+            break
+
+          case 'context':
+            dispatchPanel({
+              session: message.sessionId,
+              action: { kind: 'context', used: message.used, max: message.max },
+            })
+            break
+
           case 'files':
             setFiles(message.files)
             break
@@ -533,12 +575,25 @@ export const App = () => {
               loggedIn: message.loggedIn,
               email: message.email,
               plan: message.plan,
+              executablePath: message.executablePath,
+              searched: message.searched,
             })
             if (message.loggedIn) setLoginWaiting(false)
             break
 
           case 'modeAvailability':
             setBypassAvailable(message.bypassPermissions)
+            break
+
+          case 'model':
+            // Настройка идёт следом за действующей моделью, а не за выбранной:
+            // отвергнутая не должна ни стоять галочкой в меню, ни уехать флагом
+            // в следующую вкладку — с ней процесс не поднимется вовсе.
+            setPrefs((current) => ({ ...current, model: message.model }))
+            dispatchPanel({
+              session: message.sessionId,
+              action: { kind: 'modelApplied', model: message.model, error: message.error },
+            })
             break
 
           case 'mode':
@@ -630,29 +685,44 @@ export const App = () => {
    * режим приезжает обычным системным событием, как и при ручном выборе.
    */
   const decidePlan = useCallback(
-    (itemId: string, decision: 'approve' | 'keepPlanning') => {
+    (itemId: string, decision: 'approve' | 'keepPlanning', message?: string) => {
       cards.decidePlan(itemId, decision)
-      send({ type: 'planDecision', sessionId: active, id: itemId, decision })
+      send({ type: 'planDecision', sessionId: active, id: itemId, decision, message })
     },
     [cards, active],
   )
 
-  /** Ответ на вопрос агента уходит как обычное следующее сообщение — как и говорит подсказка на карточке. */
+  /**
+   * Ответ на вопрос агента возвращается тем же вызовом инструмента, который его
+   * и задал: ход стоит ровно на нём и продолжается с того же места, а не
+   * начинается заново со следующего сообщения.
+   *
+   * В ленту ответ всё равно кладём репликой человека: иначе в переписке остался
+   * бы вопрос без единого следа ответа на него.
+   */
   const sendAnswers = useCallback(
-    (itemId: string, answers: string[]) => {
+    (itemId: string, answers: { question: string; answer: string }[]) => {
       // Помечаем отвеченной в любом случае — иначе карточка без единого
       // вопроса (например от пустого/сбойного вызова инструмента) не может
       // закрыться в принципе: слать action-то нечего, а кнопка тогда
       // навсегда ничего не делает.
       cards.answerAsk(itemId)
 
-      const text = answers.filter(Boolean).join('\n')
-      if (!text) return
+      const answered = answers.filter((entry) => entry.answer.trim().length > 0)
+      if (answered.length === 0) return
 
-      send({ type: 'prompt', sessionId: active, text })
+      const text = answered.map((entry) => entry.answer).join('\n')
+
+      send({
+        type: 'askAnswer',
+        sessionId: active,
+        id: itemId,
+        answers: Object.fromEntries(answered.map((entry) => [entry.question, entry.answer])),
+        text,
+      })
       dispatchPanel({
         session: active,
-        action: { kind: 'prompt', tokens: [{ kind: 'text', value: text }], quotes: [] },
+        action: { kind: 'prompt', tokens: [{ kind: 'text', value: text }], quotes: [], steering: true },
       })
     },
     [cards, active],
@@ -757,6 +827,11 @@ export const App = () => {
     send({ type: 'newSession', kind: 'main', sessionId: id, title: 'new session' })
   }, [])
 
+  /** Новый порядок вкладок после перетаскивания — см. moveGroup. */
+  const reorderGroups = useCallback((groupId: string, beforeGroupId: string | null) => {
+    setSessions((current) => moveGroup(current, groupId, beforeGroupId))
+  }, [])
+
   /** Прошлый разговор продолжается в своей вкладке: панель проиграет его переписку. */
   const resume = useCallback((entry: HistoryEntry) => {
     const id = `resumed-${entry.id.slice(0, 8)}`
@@ -780,8 +855,10 @@ export const App = () => {
   const pickModel = useCallback(
     (model: string) => {
       setPrefs((current) => ({ ...current, model }))
-      dispatchPanel({ session: active, action: { kind: 'modelRequested', model } })
       send({ type: 'setModel', sessionId: active, model })
+      // Пока агент не ответил, показываем выбранное — иначе выбор выглядит
+      // потерянным; ответ либо подтвердит его, либо вернёт прежнюю модель.
+      dispatchPanel({ session: active, action: { kind: 'modelRequested', model } })
     },
     [active],
   )
@@ -872,7 +949,7 @@ export const App = () => {
     // Через tokensText, а не plainText: команда в поле — плашка, и голый текст
     // её не видит вовсе (см. captureCommand). Для агента она и так значит ровно
     // "/имя", им же её и узнаём.
-    const local = localCommand(tokensText(tokens))
+    const local = localCommand(tokensText(tokens), models)
     if (local) {
       runLocal(local)
       if (!isOverride) editDraft(active, { tokens: [] })
@@ -902,6 +979,39 @@ export const App = () => {
       return
     }
 
+    /**
+     * Пока карточка плана ждёт решения, ход стоит ровно на ней: агент вызвал
+     * ExitPlanMode и не двинется, что ему ни пиши. Обычным сообщением такой
+     * текст просто пропадал — оно уходило в стоящий процесс, и панель выглядела
+     * зависшей: сообщение в ленте есть, «Claude is thinking» переливается, а не
+     * происходит ничего.
+     *
+     * Поэтому написанное при живом плане — это и есть ответ по плану: то же
+     * самое «Keep planning», только с замечанием, из-за которого план и не
+     * приняли. Ровно так это работает и в терминале.
+     */
+    const plan = pendingPlan(panel, cards.planDecisions)
+    if (plan) {
+      dispatchPanel({
+        session: active,
+        action: { kind: 'prompt', tokens, quotes: quotes.map((quote) => quote.text), steering: true },
+      })
+      // Картинку ответом на разрешение не передать: туда уходит ровно одна
+      // строка (см. ClaudePanel.decidePlan). Поэтому замечание со вложениями
+      // идёт обычным сообщением следом — ход к этому моменту уже отпущен и
+      // примет его, — а плану достаётся общее «дорабатываем». Так и текст, и
+      // картинка доезжают до агента, причём каждый ровно по разу.
+      if (images.length > 0) {
+        decidePlan(plan.id, 'keepPlanning')
+        send({ type: 'prompt', sessionId: active, text, images })
+      } else {
+        decidePlan(plan.id, 'keepPlanning', text)
+      }
+
+      if (!isOverride) setDrafts((current) => ({ ...current, [active]: EMPTY_DRAFT }))
+      return
+    }
+
     // Досылка продолжает начатое, поэтому лента остаётся как есть: карточки
     // субагентов этого же хода прятать не за что, они ещё в деле.
     if (!running) {
@@ -916,7 +1026,7 @@ export const App = () => {
 
     send({ type: 'prompt', sessionId: active, text, images })
     if (!isOverride) setDrafts((current) => ({ ...current, [active]: EMPTY_DRAFT }))
-  }, [draft, running, active, runLocal, editDraft, imageBaseCount])
+  }, [draft, running, active, runLocal, editDraft, imageBaseCount, models, panel, cards.planDecisions, decidePlan])
 
   const sendNow = useCallback(() => submit(false), [submit])
   const queueNext = useCallback(() => submit(true), [submit])
@@ -973,8 +1083,12 @@ export const App = () => {
     [panel.slashCommands, commandHints],
   )
   const tabs = useMemo(
-    () => sessions.map((session) => ({ ...session, state: sessionState(panels[session.id]) })),
-    [sessions, panels],
+    () =>
+      sessions.map((session) => ({
+        ...session,
+        state: sessionState(panels[session.id], session.id === active, cards),
+      })),
+    [sessions, panels, active, cards.planDecisions, cards.answeredAsks],
   )
 
   // Без входа поле ввода бессмысленно: агент ответит на любой вопрос строкой про
@@ -990,6 +1104,7 @@ export const App = () => {
             setLoginWaiting(true)
           }}
           onRecheck={() => send({ type: 'checkAuth' })}
+          onSetExecutablePath={(path) => send({ type: 'setExecutablePath', path })}
         />
       </div>
     )
@@ -1011,6 +1126,7 @@ export const App = () => {
           if (active === id) setActive(next[0]?.id ?? MAIN_SESSION)
         }}
         onNewSession={() => startSession(`session-${Date.now()}`)}
+        onReorderGroups={reorderGroups}
         // Открывается на том, что загружено заранее, а свежий список подъезжает
         // следом: он дешёвый (чтение файлов на диске), зато прибавляется прямо
         // во время работы — каждый новый разговор.
@@ -1139,14 +1255,13 @@ export const App = () => {
               streamingThinking={panel.streamingThinking}
               streaming={running}
               streamStatus={streamStatus(panel, cards)}
-              errors={panel.errors}
               cards={cards}
               scrollRef={(element) => {
                 feedRef.current = element
               }}
               onScroll={clearSelection}
               onPlanDecision={decidePlan}
-              onDismissError={(index) => dispatchPanel({ session: active, action: { kind: 'dismissError', index } })}
+              onDismissError={(id) => dispatchPanel({ session: active, action: { kind: 'dismissError', id } })}
               onOpenLink={(url) => send({ type: 'openExternal', url })}
             />
           ) : (
@@ -1210,8 +1325,12 @@ export const App = () => {
             tokens={draft.tokens}
             streaming={running}
             planMode={mode === 'plan'}
-            contextPercent={contextUsage(panel.usage, usage.contextWindow)}
+            contextPercent={context.percent}
             commands={commands}
+            models={models}
+            meters={
+              <UsageMeters todayTokens={usage.todayTokens ?? '…'} usage={usage} />
+            }
             files={files}
             imageBaseCount={imageBaseCount}
             focusToken={focusToken}
@@ -1245,14 +1364,6 @@ export const App = () => {
               const url = panels[MAIN_SESSION]?.project?.pullRequestUrl
               if (url) send({ type: 'openExternal', url })
             }}
-            contextPercent={contextUsage(panel.usage, usage.contextWindow)}
-            contextTokens={`${formatTokens(
-              panel.usage.input_tokens +
-                panel.usage.cache_read_input_tokens +
-                panel.usage.cache_creation_input_tokens,
-            )} of ${formatTokens(usage.contextWindow ?? 200_000)}`}
-            todayTokens={usage.todayTokens ?? '…'}
-            usage={usage}
             model={model}
             effort={prefs.effort}
             mode={mode}
@@ -1264,7 +1375,7 @@ export const App = () => {
 
       {menu ? (
         <Menu
-          {...menuProps(menu.kind, model, prefs.effort, mode)}
+          {...menuProps(menu.kind, models, prefs.model, prefs.effort, mode)}
           anchor={menu.anchor}
           onClose={() => setMenu(null)}
           onPick={(id) => {
@@ -1299,16 +1410,30 @@ const panelsReducer = (state: PanelsState, { session, action }: PanelsAction): P
  * своей воле, и об этом обязана сказать даже вкладка, на которую сейчас не
  * смотрят. Дальше — ожидание человека, и лишь потом обычная работа.
  */
-const sessionState = (panel?: PanelState): SessionState => {
+const sessionState = (panel: PanelState | undefined, active: boolean, cards: CardState): SessionState => {
   if (!panel) return 'idle'
 
   if (panel.crashed) return 'crashed'
 
-  // Непрочитанная ошибка в фоновой вкладке иначе не видна вообще — точка на
-  // вкладке молчала бы, пока туда не зайдёшь сам.
-  const waiting = panel.errors.length > 0 || panel.items.some((item) => item.kind === 'perm' && item.decision === null)
+  // Неотвеченный запрос разрешения зовёт всегда: без человека ход не сдвинется.
+  if (panel.items.some((item) => item.kind === 'perm' && item.decision === null)) return 'attention'
 
-  if (waiting) return 'attention'
+  // Вопрос агента и показанный план держат ход ровно так же намертво, а сказать
+  // об этом умела до сих пор только строка статуса открытой вкладки: фоновая
+  // бесконечно крутила «работает». Смотрим лишь у идущего хода — те же карточки
+  // приезжают и с перепиской, поднятой из истории, но там решать давно нечего.
+  if (panel.status === 'running' && panel.items.some((item) => awaitsYou(item, cards))) return 'attention'
+
+  /**
+   * Ошибка зовёт только фоновую вкладку и только пока она последнее, что
+   * случилось: на открытой вкладке человек и так видит её в ленте, а точка,
+   * которая после этого пульсирует до конца разговора, — просто шум. Итог хода
+   * (meta) не в счёт: он приходит следом за отказом и рассказывает про тот же
+   * оборванный ход.
+   */
+  const last = [...panel.items].reverse().find((item) => item.kind !== 'meta')
+  if (!active && last?.kind === 'error') return 'attention'
+
   if (panel.status === 'running') return 'running'
 
   // Законченным считаем разговор, в котором агент хотя бы раз довёл ход до конца:
@@ -1338,6 +1463,20 @@ const countSessionImages = (panel: PanelState, queue: QueuedPrompt[]): number =>
 }
 
 /**
+ * Стоит ли ход на этом элементе ленты, ожидая человека. Запрос разрешения,
+ * вопрос с вариантами и показанный план держат его одинаково намертво, поэтому и
+ * правило у них одно: разъехавшись, оно врало бы то строкой статуса, то точкой
+ * на вкладке — смотря где про какой случай забыли.
+ */
+const awaitsYou = (item: FeedItem, cards: CardState): boolean =>
+  (item.kind === 'perm' && item.decision === null) ||
+  (item.kind === 'ask' && !cards.answeredAsks.includes(item.id)) ||
+  (item.kind === 'plan' && cards.planDecisions[item.id] === undefined)
+
+/** Главный поток, а не отдельный субагент: у того своя вкладка и свой статус. */
+const ownStream = (item: FeedItem): boolean => !('taskId' in item) || item.taskId === undefined
+
+/**
  * Пока висит неотвеченный запрос разрешения или вопрос ГЛАВНОГО потока, ход
  * на деле не думает — он стоит и ждёт решения человека. «Claude is thinking»
  * в этот момент было бы неправдой. Решение конкретного агента сюда не
@@ -1346,19 +1485,33 @@ const countSessionImages = (panel: PanelState, queue: QueuedPrompt[]): number =>
  * самой нечестной подписью, ради ухода от которой затевался весь редизайн.
  */
 const streamStatus = (panel: PanelState, cards: CardState): string => {
-  if (panel.compacting) return 'Compacting context…'
+  // Про сжатие говорит его собственная карточка в ленте (CONTEXT с бегущей
+  // полосой) — второй подписи о том же прямо под ней быть не должно.
+  if (panel.compacting) return ''
 
-  const awaitingDecision = panel.items.some(
-    (item) =>
-      (item.kind === 'perm' && item.decision === null && item.taskId === undefined) ||
-      (item.kind === 'ask' && item.taskId === undefined && !cards.answeredAsks.includes(item.id)),
-  )
+  const awaitingDecision = panel.items.some((item) => ownStream(item) && awaitsYou(item, cards))
   if (awaitingDecision) return 'Waiting for you'
 
   const last = panel.items.at(-1)
   const working = last?.kind === 'toolGroup' && last.pending && last.tools.length > 0
   return working ? 'Claude is working' : 'Claude is thinking'
 }
+
+/**
+ * Показанный план, по которому ещё нет решения: пока он есть, ход стоит на нём.
+ *
+ * Только у идущего хода: карточка плана остаётся в ленте навсегда, в том числе у
+ * разговора, поднятого из истории, — а там решать давно нечего, ход кончился
+ * когда-то в прошлом. Без этой проверки первое же сообщение в восстановленной
+ * вкладке уходило бы не промптом, а замечанием к древнему плану.
+ */
+const pendingPlan = (
+  panel: PanelState,
+  decisions: Record<string, 'approve' | 'keepPlanning'>,
+): PlanItem | undefined =>
+  panel.status === 'running'
+    ? [...panel.items].reverse().find((item): item is PlanItem => item.kind === 'plan' && decisions[item.id] === undefined)
+    : undefined
 
 /** Последний присланный агентом список задач — панель над полем ввода зеркалит только его. */
 const latestTodo = (items: FeedItem[]): TodoItem | undefined =>
@@ -1431,7 +1584,9 @@ const buildAgentTabs = (panel: PanelState, answeredAsks: string[], hiddenTaskIds
 
 const menuProps = (
   kind: SelectorKind,
-  model: string,
+  models: ModelInfo[] | null,
+  /** Выбранное значение, а не то, во что его развернул агент: галочка обязана стоять на выбранном. */
+  selectedModel: string,
   effort: string,
   mode: string,
 ): { title: string; hint: string; width: number; options: MenuOption[]; selected: string } => {
@@ -1440,8 +1595,9 @@ const menuProps = (
       title: 'MODEL',
       hint: '/model',
       width: 344,
-      options: MODEL_OPTIONS,
-      selected: MODEL_OPTIONS.find((option) => model.includes(option.id))?.id ?? '',
+      options: modelOptions(models),
+      // Пустой выбор — это и есть «модель по умолчанию»: так её зовёт сам CLI.
+      selected: selectedModel || DEFAULT_MODEL,
     }
   }
 

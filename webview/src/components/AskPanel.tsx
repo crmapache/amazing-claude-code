@@ -5,7 +5,11 @@ import s from './composer.module.css'
 interface AskPanelProps {
   /** Последний заданный агентом вопрос, на который ещё не отвечено — или ничего. */
   item: AskItem | undefined
-  onSubmit: (itemId: string, answers: string[]) => void
+  /**
+   * Ответы вместе с самими вопросами: агент узнаёт свой вопрос по тексту, а не
+   * по порядку (см. protocol, сообщение askAnswer).
+   */
+  onSubmit: (itemId: string, answers: { question: string; answer: string }[]) => void
 }
 
 /**
@@ -44,8 +48,8 @@ export const AskPanel = ({ item, onSubmit }: AskPanelProps) => {
     return labels.join(', ')
   }
 
-  const answers = item.questions.map((question) => answerFor(question))
-  const answered = answers.every((answer) => answer.length > 0)
+  const answers = item.questions.map((question) => ({ question: question.title, answer: answerFor(question) }))
+  const answered = answers.every((entry) => entry.answer.length > 0)
 
   return (
     <div className={s.ask}>
@@ -117,7 +121,7 @@ export const AskPanel = ({ item, onSubmit }: AskPanelProps) => {
           {answered ? 'Send answers' : 'Pick to continue'}
         </button>
         <div className={s.spacer} />
-        <span className={s.askNote}>answers are sent as your next message</span>
+        <span className={s.askNote}>the run continues right where it asked</span>
       </div>
     </div>
   )

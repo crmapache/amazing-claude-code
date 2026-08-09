@@ -31,6 +31,10 @@ export const resolvePlan = (itemId: string, decision: 'approve' | 'keepPlanning'
   decision,
 })
 
+/** Момент в будущем — время сброса окна расхода. Считается от «сейчас»: с
+    прибитой датой окна выглядели бы давно просроченными. */
+const inHours = (count: number): string => new Date(Date.now() + count * 60 * 60 * 1000).toISOString()
+
 /** Вход и открытие проекта — общий старт для всех сценариев. */
 export const bootstrap: ScenarioStep[] = [
   shell({ type: 'auth', installed: true, loggedIn: true, email: 'you@example.com', plan: 'Max' }),
@@ -40,6 +44,15 @@ export const bootstrap: ScenarioStep[] = [
     workingDirectory: '/Users/you/demo-project',
     gitBranch: 'main',
     canAskPermissions: true,
+  }),
+  // Без расхода нижний ряд поля ввода пустой, и кольца в нём не посмотреть.
+  // Неделя стоит на третьем дне окна: блёклая дуга темпа тогда обгоняет яркую,
+  // то есть видно ровно тот случай, ради которого она и рисуется.
+  shell({
+    type: 'usage',
+    session: { percent: 22, resets: inHours(2 + 41 / 60) },
+    week: { percent: 31, resets: inHours(4.5 * 24) },
+    todayTokens: '445.5M',
   }),
 ]
 

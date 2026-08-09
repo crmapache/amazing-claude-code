@@ -720,41 +720,13 @@
   color: var(--acc-fg-faint);
 }
 
-.planSteps {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
+/* Тело плана — тот же markdown, что и в ответе агента (см. Markdown.tsx), с
+   собственной прокруткой: длинный план не должен выдавливать кнопки под ним за
+   край панели. */
+.planBody {
+  max-height: 320px;
+  overflow-y: auto;
   padding: 10px 12px;
-}
-
-.planStep {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-}
-
-.planNum {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  border-radius: var(--acc-r-sm);
-  display: grid;
-  place-items: center;
-  background: var(--acc-accent-16);
-  font: 600 9.5px var(--acc-mono);
-  color: var(--acc-accent-light);
-}
-
-.planText {
-  min-width: 0;
-  font-size: 12.5px;
-  line-height: var(--acc-leading, 1.55);
-  color: var(--acc-fg-body);
-}
-
-.planFiles {
-  font: 11px var(--acc-mono);
-  color: var(--acc-fg-faint);
 }
 
 .cardFoot {
@@ -896,9 +868,12 @@
   animation: acc-pulse 1.6s infinite;
 }
 
+/* По центру, а не по базовой линии: в строке есть не только текст, но и полоса
+   прогресса, а у неё базовой линии нет. При выравнивании по тексту она вставала
+   на пару пикселей выше подписи и процента и заметно выбивалась из ряда. */
 .compact {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 9px;
   margin: 12px 0;
   padding: 6px 9px;
@@ -922,6 +897,45 @@
 .compactText {
   font-size: 11.5px;
   color: var(--acc-fg-dim);
+  flex: none;
+}
+
+/*
+ * Полоса штрихов от подписи и до процента: пройденная часть горит цветом метки,
+ * остальная едва видна — по ней сразу понятно, сколько сжатие уже тянется.
+ *
+ * Штрихи — повторяющийся градиент, а не полсотни узлов: их число зависит от
+ * ширины панели, и рисовать их поштучно значило бы считать её в пикселях.
+ * Заполненная часть — тот же градиент с той же начальной точкой, поэтому её
+ * штрихи ложатся ровно поверх фоновых, а не вразнобой.
+ */
+.compactTicks {
+  position: relative;
+  flex: 1;
+  min-width: 24px;
+  height: 7px;
+  overflow: hidden;
+  background-image: repeating-linear-gradient(90deg, var(--acc-line) 0 2px, transparent 2px 7px);
+}
+
+.compactTicksFill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background-image: repeating-linear-gradient(90deg, var(--acc-warn) 0 2px, transparent 2px 7px);
+  opacity: 0.8;
+  /* Полоса подрастает раз в полсекунды — без перехода она бы дёргалась
+     ступеньками, а так ползёт ровно. */
+  transition: width 0.5s linear;
+}
+
+.compactPercent {
+  flex: none;
+  font: 9.5px/1 var(--acc-mono);
+  color: var(--acc-fg-dim);
+  /* Цифры одной ширины: иначе процент дёргает всю строку при каждом шаге. */
+  font-variant-numeric: tabular-nums;
 }
 
 .meta {
@@ -987,11 +1001,14 @@
   animation: acc-shimmer 2.6s linear infinite alternate;
 }
 
+/* Ширина как у остальных карточек ленты: боковые отступы даёт сама строка
+   (.row), и своих у ошибки быть не должно — иначе она уже соседей и читается
+   как что-то вставное, а не как часть разговора. */
 .error {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  margin: 8px 16px;
+  margin: 8px 0 10px;
   padding: 8px 10px;
   border-radius: var(--acc-r-md);
   background: var(--acc-bad-soft);

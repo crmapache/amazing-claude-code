@@ -1,6 +1,12 @@
 import type { Paragraph, TextPart } from './types'
 
 /**
+ * Глубже панель не отступает: она бывает узкой, и четвёртый уровень вложенности
+ * съедал бы больше места, чем сам текст пункта.
+ */
+const MAX_LIST_DEPTH = 3
+
+/**
  * Разбор ответа агента в абзацы макета.
  *
  * Полноценный markdown здесь не нужен и вреден: панель рисует пять вещей —
@@ -43,11 +49,20 @@ export const parseParagraphs = (source: string): Paragraph[] => {
       continue
     }
 
-    const bullet = /^\s*(?:[-*•]|\d+\.)\s+(.*)$/.exec(line)
+    // Номер и отступ пункта сохраняем: и то, и другое несёт смысл — по номеру
+    // на шаг ссылаются словами, а по отступу видно, что это уточнение к пункту
+    // выше, а не ещё один равноправный шаг.
+    const bullet = /^([ \t]*)(?:[-*•]|(\d+)[.)])\s+(.*)$/.exec(line)
 
     if (bullet) {
       flushPlain()
-      paragraphs.push({ bullet: true, parts: parseInline(bullet[1] ?? '') })
+      const indent = (bullet[1] ?? '').replace(/\t/g, '  ').length
+      paragraphs.push({
+        bullet: true,
+        depth: Math.min(Math.floor(indent / 2), MAX_LIST_DEPTH),
+        ...(bullet[2] ? { marker: `${bullet[2]}.` } : {}),
+        parts: parseInline(bullet[3] ?? ''),
+      })
       continue
     }
 
@@ -97,6 +112,34 @@ const trimUrlPunctuation = (url: string): string => {
   }
 
   return url.slice(0, end)
+}
+
+/**
+ * Голые адреса в обычном тексте — и только они.
+ *
+ * Для сообщения пользователя: набранное человеком показывается ровно так, как
+ * он его набрал (никакой разметки — звёздочки и решётки в вопросе он имел в
+ * виду буквально), но адрес обязан оставаться адресом: по нему кликают, чтобы
+ * открыть страницу, а не переписывают руками в браузер.
+ */
+export const linkify = (text: string): TextPart[] => {
+  const parts: TextPart[] = []
+  const pattern = /https?:\/\/\S+/g
+
+  let last = 0
+  let match: RegExpExecArray | null
+
+  while ((match = pattern.exec(text)) !== null) {
+    const href = trimUrlPunctuation(match[0])
+    if (!href) continue
+
+    if (match.index > last) parts.push({ text: text.slice(last, match.index) })
+    parts.push({ text: href, href })
+    last = match.index + href.length
+  }
+
+  if (last < text.length) parts.push({ text: text.slice(last) })
+  return parts
 }
 
 /** Кодовые вставки, жирный текст, ссылки (markdown и голые URL) и подсветка веток внутри строки. */

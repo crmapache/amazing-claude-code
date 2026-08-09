@@ -52,9 +52,13 @@ internal class ClaudeSession(
     /**
      * Модель и усилие достаются разговору при запуске. Их выбирают один раз, и
      * каждая новая вкладка должна начинаться с того же, а не с умолчаний.
+     *
+     * var, а не val: выбор меняют и до первого сообщения — тогда процесса ещё
+     * нет, и запоминать новое значение обязан сам разговор, иначе он поднимется
+     * с тем, что было выбрано в момент, когда вкладку только открыли.
      */
-    private val model: String = "",
-    private val effort: String = "",
+    private var model: String = "",
+    private var effort: String = "",
     permissionMode: String = "",
     private val onEvent: (String) -> Unit,
     private val onError: (String) -> Unit,
@@ -115,14 +119,87 @@ internal class ClaudeSession(
     }
 
     /**
-     * /model и /effort панель шлёт сама, не человек: показывать в ленте ответ
-     * агента на них незачем, и он к тому же вводит в заблуждение (см. комментарий
-     * у [suppressingPreferenceReply]).
+     * /effort панель шлёт сама, не человек: показывать в ленте ответ агента на
+     * него незачем, и он к тому же вводит в заблуждение (см. комментарий у
+     * [suppressingPreferenceReply]).
      */
     fun applyPreference(command: String) {
         val process = handler ?: start() ?: return
         suppressingPreferenceReply = true
         write(process, userMessage(command, emptyList()))
+    }
+
+    /**
+     * Чем закончилась смена модели. Ответить «нет» агент может по-настоящему:
+     * модель бывает запрещена организацией или недоступна тарифу, и такую он не
+     * возьмёт. [model] — та, что в итоге работает: новая при согласии и прежняя
+     * при отказе, чтобы панели было что показывать, не гадая.
+     */
+    data class ModelChange(val applied: Boolean, val model: String, val error: String = "")
+
+    /**
+     * Смена модели. У живого разговора — управляющим запросом (`set_model`), а не
+     * слэш-командой: команда стоит целого хода в ленте и отвечает на него текстом
+     * про «только для этой сессии», хотя выбор мы храним и на будущее.
+     *
+     * Спящему разговору менять нечего: модель уедет флагом при запуске — важно
+     * лишь запомнить её здесь, иначе процесс поднимется с той, что была выбрана в
+     * момент открытия вкладки.
+     *
+     * Об исходе сообщаем наверх, как и о смене режима: отвергнутая модель не
+     * должна ни остаться в подписи под панелью, ни уехать флагом в следующую
+     * вкладку — с ней процесс не поднимется вовсе.
+     */
+    fun setModel(model: String, onApplied: (ModelChange) -> Unit = {}) {
+        // Прежнюю держим под рукой: при отказе к ней и возвращаемся, иначе
+        // перезапуск процесса поднял бы разговор с той, что уже не сработала.
+        val previous = this.model
+        this.model = model
+
+        if (handler == null) {
+            // Процесса ещё нет: модель уедет флагом при запуске, менять нечего.
+            onApplied(ModelChange(applied = true, model = model))
+            return
+        }
+
+        // "default" — то же имя, которым его зовёт сам CLI: сброс к модели по умолчанию.
+        control(
+            "set_model",
+            onResult = { onApplied(ModelChange(applied = true, model = model)) },
+            onFailure = { message ->
+                thisLogger().warn("Agent refused model $model: $message")
+                this.model = previous
+                onApplied(ModelChange(applied = false, model = previous, error = message))
+            },
+        ) {
+            put("model", model.ifEmpty { "default" })
+        }
+    }
+
+    /** Усилие меняется слэш-командой: своего управляющего запроса у CLI для него нет. */
+    fun setEffort(effort: String) {
+        this.effort = effort
+        if (handler == null) return
+        applyPreference("/effort $effort")
+    }
+
+    /**
+     * Каталог моделей — тот же, что показывает `/model` в терминале: его собирает
+     * сам CLI по учётной записи, провайдеру и политике организации, поэтому
+     * выдумывать список на своей стороне нельзя (см. ClaudeModels).
+     */
+    fun requestModels(onResult: (JsonObject) -> Unit, onFailure: (String) -> Unit = {}) {
+        control("list_models", onResult = onResult, onFailure = onFailure)
+    }
+
+    /**
+     * Сколько занято окна контекста прямо сейчас — цифра от самого CLI, та же,
+     * что печатает `/context`. Считать её самим по usage нельзя: размер окна
+     * зависит от модели (у «1M»-моделей он впятеро больше обычного), а в занятое
+     * входит и то, чего в usage хода не видно вовсе.
+     */
+    fun requestContextUsage(onResult: (JsonObject) -> Unit, onFailure: (String) -> Unit = {}) {
+        control("get_context_usage", onResult = onResult, onFailure = onFailure)
     }
 
     /**
@@ -338,20 +415,35 @@ internal class ClaudeSession(
         }
     }
 
-    /** Ответ человека агенту: разговор стоит на этом месте, пока он не придёт. */
-    fun answerPermission(requestId: String, allow: Boolean, message: String = "") {
+    /**
+     * Ответ человека агенту: разговор стоит на этом месте, пока он не придёт.
+     *
+     * [extraInput] дописывается к аргументам вызова — так возвращаются ответы на
+     * вопрос с вариантами: CLI ждёт их в том же `updatedInput`, поле `answers`
+     * (см. ClaudeLaunch.ASK_TOOL).
+     */
+    fun answerPermission(
+        requestId: String,
+        allow: Boolean,
+        message: String = "",
+        extraInput: JsonObject? = null,
+    ) {
         val process = handler ?: return
         val input = awaitingPermission.remove(requestId) ?: JsonObject(emptyMap())
+        val updated = if (extraInput == null) input else JsonObject(input + extraInput)
 
         write(
             process,
             if (allow) {
-                PermissionChannel.allow(requestId, input)
+                PermissionChannel.allow(requestId, updated)
             } else {
                 PermissionChannel.deny(requestId, message)
             },
         )
     }
+
+    /** Ждёт ли этот разговор ответа на такой запрос — иначе отвечать некому. */
+    fun isAwaitingPermission(requestId: String): Boolean = awaitingPermission.containsKey(requestId)
 
     private fun write(process: OSProcessHandler, payload: String) {
         runCatching {

@@ -1,6 +1,7 @@
-import { Reveal, RevealProvider } from 'smooth-stream-text/react'
+import { RevealProvider } from 'smooth-stream-text/react'
 import { useEffect, useState } from 'react'
-import type { Paragraph, TextItem, TextPart } from '../../feed/types'
+import type { TextItem } from '../../feed/types'
+import { Markdown } from './Markdown'
 import s from '../feed.module.css'
 
 interface TextCardProps {
@@ -11,6 +12,14 @@ interface TextCardProps {
 
 /** Сколько подряд держим галочку после копирования, прежде чем вернуть иконку. */
 const COPIED_FLASH_MS = 1500
+
+/**
+ * Дальше этого объёма текст показывается без волны проявления. Порог с запасом
+ * выше любого живого ответа: столько букв набирается только у полотна, которое
+ * пришло готовым куском, — сводки после сжатия контекста, длинного файла в
+ * ответе.
+ */
+const REVEAL_LIMIT = 12_000
 
 /**
  * Появление нового текста: слова проступают волной слева направо, а не
@@ -49,6 +58,20 @@ export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
     return () => clearTimeout(timeout)
   }, [copied])
 
+  /**
+   * Волна проявления рисует каждое слово отдельным узлом со своей анимацией —
+   * на обычном ответе это красиво и незаметно по цене, а на полотне в десятки
+   * тысяч слов (сводка после сжатия контекста — как раз такое) превращается в
+   * десятки тысяч анимаций разом: панель замирала, а потом гасла совсем.
+   * Длинный текст показываем сразу целиком — проявляться там всё равно нечему,
+   * он приходит одним куском, а не печатается на глазах.
+   */
+  const length = item.paragraphs.reduce(
+    (sum, paragraph) => sum + paragraph.parts.reduce((inner, part) => inner + part.text.length, 0),
+    0,
+  )
+  const reveal = length <= REVEAL_LIMIT
+
   return (
     <div className={s.text} data-copyable>
       <button
@@ -66,11 +89,13 @@ export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
 
       {/* Одна волна на всю карточку: иначе каждый абзац начинал бы проявление
           заново и текст загорался бы ступеньками, а не единым ходом. */}
-      <RevealProvider resetKey={item.id} {...REVEAL}>
-        {item.paragraphs.map((paragraph, index) => (
-          <ParagraphView key={index} paragraph={paragraph} onOpenLink={onOpenLink} />
-        ))}
-      </RevealProvider>
+      {reveal ? (
+        <RevealProvider resetKey={item.id} {...REVEAL}>
+          <Markdown paragraphs={item.paragraphs} reveal onOpenLink={onOpenLink} />
+        </RevealProvider>
+      ) : (
+        <Markdown paragraphs={item.paragraphs} onOpenLink={onOpenLink} />
+      )}
     </div>
   )
 }
@@ -122,55 +147,3 @@ const plainText = (item: TextItem): string =>
     })
     .join('\n')
 
-const ParagraphView = ({ paragraph, onOpenLink }: { paragraph: Paragraph; onOpenLink: (url: string) => void }) => {
-  if (paragraph.codeBlock) {
-    return (
-      <Reveal as="pre" className={s.codeBlock}>
-        {paragraph.parts.map((part) => part.text).join('')}
-      </Reveal>
-    )
-  }
-
-  const paraClass = [s.para, paragraph.bullet && s.paraBullet, paragraph.heading && s.paraHeading]
-    .filter(Boolean)
-    .join(' ')
-
-  return (
-    <div className={paraClass}>
-      {paragraph.bullet ? <span className={s.bullet}>{'— '}</span> : null}
-      {paragraph.parts.map((part, index) => (
-        <PartView key={index} part={part} onOpenLink={onOpenLink} />
-      ))}
-    </div>
-  )
-}
-
-/**
- * Каждый кусок абзаца проявляется сам, но волна у них общая — её держит
- * RevealProvider выше по дереву. Уже показанный текст при этом не переигрывается:
- * заново собранный разбор (жирный кусок дописался, абзац перестроился) карточка
- * досеивает молча.
- */
-const PartView = ({ part, onOpenLink }: { part: TextPart; onOpenLink: (url: string) => void }) => {
-  if (part.href) {
-    const href = part.href
-    return (
-      <a
-        href={href}
-        className={s.link}
-        // Открываем в системном браузере через хост-IDE: обычная навигация увела бы
-        // сам вебвью панели на этот адрес вместо показа его снаружи.
-        onClick={(event) => {
-          event.preventDefault()
-          onOpenLink(href)
-        }}
-      >
-        <Reveal>{part.text}</Reveal>
-      </a>
-    )
-  }
-  if (part.code) return <Reveal className={s.code}>{part.text}</Reveal>
-  if (part.mark) return <Reveal className={s.mark}>{part.text}</Reveal>
-  if (part.strong) return <Reveal className={s.strong}>{part.text}</Reveal>
-  return <Reveal>{part.text}</Reveal>
-}

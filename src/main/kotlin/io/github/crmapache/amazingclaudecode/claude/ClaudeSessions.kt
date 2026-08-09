@@ -65,9 +65,26 @@ internal class ClaudeSessions(
      * Ответ человека на вопрос агента о разрешении. Разговора может уже не быть —
      * тогда отвечать некому, и вопрос умер вместе с процессом.
      */
-    fun answerPermission(sessionId: String, requestId: String, allow: Boolean, message: String = "") {
-        sessions[sessionId]?.answerPermission(requestId, allow, message)
+    fun answerPermission(
+        sessionId: String,
+        requestId: String,
+        allow: Boolean,
+        message: String = "",
+        extraInput: kotlinx.serialization.json.JsonObject? = null,
+    ) {
+        sessions[sessionId]?.answerPermission(requestId, allow, message, extraInput)
     }
+
+    /**
+     * Ждёт ли разговор ответа именно на этот запрос.
+     *
+     * Карточка в ленте живёт дольше процесса: разговор могли перезапустить
+     * (переподключение MCP, смена режима), и тогда старый вопрос умер вместе с
+     * прежним процессом — ответ на него новый уже не узнает и молча выбросит.
+     * Спрашиваем заранее, чтобы вместо тихой потери уйти запасным путём.
+     */
+    fun isAwaitingPermission(sessionId: String, requestId: String): Boolean =
+        sessions[sessionId]?.isAwaitingPermission(requestId) == true
 
     /** Прерывание хода: разговор остаётся живым, в отличие от закрытия сессии. */
     fun interrupt(sessionId: String, onTimeout: () -> Unit = {}) {
@@ -108,24 +125,56 @@ internal class ClaudeSessions(
     }
 
     /**
-     * Модель и усилие живой сессии меняются слэш-командой — своего управляющего
-     * запроса для них нет. Выбор запоминаем: новые разговоры начнутся с него.
-     * Ответ агента на саму команду в ленту не пускаем: он говорит «только для
-     * этой сессии», что здесь неправда — выбор мы только что сохранили и на
-     * будущее.
+     * Модель и усилие. Выбор запоминаем: новые разговоры начнутся с него.
      *
      * Разговор при этом заводим, даже если его ещё нет — как и у режима разрешений:
      * выбор на пустой панели, до первого сообщения, обязан пережить момент запуска,
-     * а не потеряться молча только потому, что процесс ещё не поднят.
+     * а не потеряться молча только потому, что процесс ещё не поднят. Поднимать
+     * ради этого процесс не нужно: спящий разговор просто запоминает выбор и
+     * стартует уже с ним (см. ClaudeSession.setModel).
      */
-    fun setModel(sessionId: String, model: String) {
-        ClaudePreferences.model = model
-        session(sessionId).applyPreference("/model $model")
+    fun setModel(sessionId: String, model: String, onApplied: (ClaudeSession.ModelChange) -> Unit = {}) {
+        session(sessionId).setModel(model) { change ->
+            // Запоминаем только то, что агент правда взял — как и с режимом
+            // разрешений. Записав желаемое сразу, мы оставляли бы отвергнутую
+            // модель в настройках навсегда: каждая следующая вкладка уходила бы
+            // в запуск с флагом, на котором CLI отказывает ещё до первого хода.
+            if (change.applied) ClaudePreferences.model = change.model
+            onApplied(change)
+        }
     }
 
     fun setEffort(sessionId: String, effort: String) {
         ClaudePreferences.effort = effort
-        session(sessionId).applyPreference("/effort $effort")
+        session(sessionId).setEffort(effort)
+    }
+
+    /**
+     * Каталог моделей у живого разговора. Спящий спрашивать бессмысленно: ответ
+     * даёт сам процесс, и поднимать его ради списка незачем — на этот случай есть
+     * разовый лёгкий пинг (см. ClaudeControlPing).
+     */
+    fun requestModels(sessionId: String, onResult: (kotlinx.serialization.json.JsonObject) -> Unit, onFailure: (String) -> Unit = {}) {
+        val session = sessions[sessionId]
+        if (session == null || !session.isRunning) {
+            onFailure("no live session")
+            return
+        }
+        session.requestModels(onResult, onFailure)
+    }
+
+    /** Занятое окно контекста живого разговора — у спящего оно пусто по определению. */
+    fun requestContextUsage(
+        sessionId: String,
+        onResult: (kotlinx.serialization.json.JsonObject) -> Unit,
+        onFailure: (String) -> Unit = {},
+    ) {
+        val session = sessions[sessionId]
+        if (session == null || !session.isRunning) {
+            onFailure("no live session")
+            return
+        }
+        session.requestContextUsage(onResult, onFailure)
     }
 
     /**

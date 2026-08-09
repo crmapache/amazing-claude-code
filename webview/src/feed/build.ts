@@ -14,7 +14,7 @@ import type {
   AskQuestion,
   DetailLine,
   FeedItem,
-  PlanStep,
+  Paragraph,
   TaskItem,
   TodoEntry,
   ToolGroupItem,
@@ -48,7 +48,6 @@ export interface PanelState {
   /** То же самое, но для мысли — пока не пришёл готовый блок thinking. */
   streamingThinking: string
   status: AgentStatus
-  errors: string[]
   sessionId?: string
   model?: string
   permissionMode?: string
@@ -58,14 +57,20 @@ export interface PanelState {
    */
   pendingMode?: string
   /**
-   * Выбранная модель, пока system-событие её не подтвердит. У модели, в отличие
-   * от режима, подтверждение всегда отстаёт на один ход: событие текущего хода
-   * называет модель, с которой ход НАЧАЛСЯ, то есть результат предыдущей команды,
-   * а не этой. Поэтому здесь держим выбор сами, пока не увидим его в событии.
+   * Выбранная, но ещё не подтверждённая модель — по той же причине, что и режим:
+   * ответ от агента приходит не мгновенно, а отказать он может по-настоящему.
    */
   pendingModel?: string
   project?: PanelProject
   usage: Required<AgentUsage>
+  /**
+   * Занятое окно контекста — цифрой от самого CLI (см. protocol, сообщение
+   * context). Своя арифметика по usage остаётся запасным вариантом: она не знает
+   * ни настоящего размера окна (у «1M»-моделей он впятеро больше обычного), ни
+   * того, что лежит в контексте помимо переписки — системного промпта, описаний
+   * инструментов, памяти проекта.
+   */
+  context?: { used: number; max: number }
   cost: number
   /** Список слэш-команд приходит от самого агента при старте сессии. */
   slashCommands: string[]
@@ -134,11 +139,15 @@ export type PanelAction =
   | { kind: 'init'; project: PanelProject }
   /** Ветка и её pull request приходят позже: за номером ходят в GitHub. */
   | { kind: 'project'; gitBranch?: string; pullRequest?: string; pullRequestUrl?: string }
+  /** Занятое окно контекста этого разговора — цифра от самого CLI. */
+  | { kind: 'context'; used: number; max: number }
   | { kind: 'permission'; id: string; target: string; command: string; mode: string; taskId?: string }
   | { kind: 'permissionResolved'; id: string; decision: 'once' | 'always' | 'deny' }
   | { kind: 'modeRequested'; mode: string }
   | { kind: 'modeApplied'; mode: string; applied: boolean; error?: string }
   | { kind: 'modelRequested'; model: string }
+  /** Модель, которая теперь в силе: при отказе агента — прежняя, а не выбранная. */
+  | { kind: 'modelApplied'; model: string; error?: string }
   /** Отметка панели в ленте: например, что этот разговор ответвлён от другого. */
   | { kind: 'checkpoint'; chip: string; target: string }
   /** Раз в секунду подтягивает длительность ещё не завершённых вызовов. */
@@ -150,15 +159,14 @@ export type PanelAction =
    * если не закрыть явно и не сказать пользователю, что случилось.
    */
   | { kind: 'processExited'; exitCode: number }
-  /** Ошибка прочитана — незачем ей висеть в ленте до конца разговора. */
-  | { kind: 'dismissError'; index: number }
+  /** Ошибку убрали из ленты вручную — она прочитана, и держать её незачем. */
+  | { kind: 'dismissError'; id: string }
 
 export const initialPanelState: PanelState = {
   items: [],
   streamingText: '',
   streamingThinking: '',
   status: 'idle',
-  errors: [],
   usage: {
     input_tokens: 0,
     output_tokens: 0,
@@ -178,13 +186,25 @@ export const initialPanelState: PanelState = {
 }
 
 /**
- * Один и тот же отказ приходит в ленту двумя дорогами: текстом в поток ошибок
- * процесса и разобранным ответом на управляющий запрос. Показывать его двумя
- * одинаковыми красными плашками подряд — выглядит как две разные поломки, хотя
- * случилась одна.
+ * Ошибка встаёт в ленту на своё место — там же, где случилась (см. ErrorItem).
+ *
+ * Один и тот же отказ приходит двумя дорогами: текстом в поток ошибок процесса
+ * и разобранным ответом на управляющий запрос. Две одинаковые красные плашки
+ * подряд читаются как две разные поломки, хотя случилась одна, — поэтому в
+ * пределах текущего хода один и тот же текст показываем однажды. Границей хода
+ * служит последнее сообщение человека: тот же отказ час спустя — это уже новая
+ * неприятность, и промолчать о ней было бы хуже, чем повториться.
  */
-const addError = (errors: string[], message: string): string[] =>
-  errors.includes(message) ? errors : [...errors, message]
+const addError = (state: PanelState, message: string): PanelState => {
+  const turnStart = state.items.map((item) => item.kind).lastIndexOf('user') + 1
+  const alreadyShown = state.items
+    .slice(turnStart)
+    .some((item) => item.kind === 'error' && item.message === message)
+
+  if (alreadyShown) return state
+
+  return push(state, (id) => ({ id, kind: 'error', message }))
+}
 
 export const reducePanel = (state: PanelState, action: PanelAction, now = Date.now()): PanelState => {
   switch (action.kind) {
@@ -216,7 +236,7 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
       // лента не сказала бы о ней ничего: работа просто замирала на полуслове.
       const stoppedSilently = action.status === 'idle' && state.stopRequestedAt !== undefined
 
-      return {
+      const next: PanelState = {
         ...state,
         status: action.status,
         // Раз статус реально пришёл, ждать больше нечего — оптимистичный Stop
@@ -228,22 +248,27 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
           ? [...state.items, { id: `meta-${state.seq}`, kind: 'meta', stats: [STOPPED_BY_YOU] }]
           : state.items,
       }
+
+      return action.status === 'idle' ? finishCompacting(next) : next
     }
+
+    case 'context':
+      return action.max > 0 ? { ...state, context: { used: action.used, max: action.max } } : state
 
     case 'tick':
       return tickDurations(state, now)
 
     case 'error':
-      return { ...state, errors: addError(state.errors, action.message) }
+      return addError(state, action.message)
 
     case 'dismissError':
-      return { ...state, errors: state.errors.filter((_, index) => index !== action.index) }
+      return { ...state, items: state.items.filter((item) => item.id !== action.id) }
 
     case 'stopRequested':
       return { ...state, stopRequestedAt: now }
 
     case 'processExited':
-      return applyProcessExited(state, action.exitCode, now)
+      return applyProcessExited(finishCompacting(state), action.exitCode, now)
 
     case 'prompt': {
       const message: UserItem = {
@@ -309,9 +334,6 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
     case 'modeRequested':
       return { ...state, pendingMode: action.mode }
 
-    case 'modelRequested':
-      return { ...state, pendingModel: action.model }
-
     case 'checkpoint':
       return {
         ...state,
@@ -325,13 +347,27 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
     // Отказ агента возвращает панель к прежнему режиму: показывать применённым то,
     // что не применилось, — худшее из возможного. Причину отказа показываем прямо
     // в ленте, иначе кнопка просто «не нажимается» без объяснений.
-    case 'modeApplied':
-      return {
+    case 'modeApplied': {
+      const applied: PanelState = {
         ...state,
         pendingMode: undefined,
         permissionMode: action.applied ? action.mode : state.permissionMode,
-        errors: action.error ? addError(state.errors, action.error) : state.errors,
       }
+      return action.error ? addError(applied, action.error) : applied
+    }
+
+    case 'modelRequested':
+      return { ...state, pendingModel: action.model }
+
+    // То же самое для модели: оболочка присылает действующую, и она же
+    // становится моделью разговора — отвергнутая не оставляет следа. Запоминаем
+    // именно здесь, а не полагаемся на каталог: на сборке CLI без списка моделей
+    // (или если запрос за ним не дошёл) разворачивать выбранное было бы нечем, и
+    // подпись под панелью так и осталась бы называть прежнюю модель.
+    case 'modelApplied': {
+      const applied: PanelState = { ...state, pendingModel: undefined, model: action.model }
+      return action.error ? addError(applied, action.error) : applied
+    }
 
     case 'agent':
       return applyAgentEvent(state, action.event, now)
@@ -372,6 +408,28 @@ const tickDurations = (state: PanelState, now: number): PanelState => {
   })
 
   return changed ? { ...state, items } : state
+}
+
+/**
+ * Сжатие кончилось — удачно или нет.
+ *
+ * Об удачном конце говорит своё событие с итогом, но ход может оборваться и
+ * раньше: процесс упал, человек нажал Stop, разговор прибили. Закрывающего
+ * события тогда не будет вовсе, а поднятый флаг стоит дорого: пока он поднят,
+ * строка статуса не показывается вообще (см. streamStatus), то есть и этот ход,
+ * и все следующие в этой вкладке идут без единой подписи о том, что происходит.
+ * Заодно убираем недорисованную карточку CONTEXT — её бегущая полоса иначе
+ * упрётся в потолок и останется так стоять.
+ */
+const finishCompacting = (state: PanelState): PanelState => {
+  const unfinished = state.items.some((item) => item.kind === 'compact' && item.pending)
+  if (!state.compacting && !unfinished) return state
+
+  return {
+    ...state,
+    compacting: false,
+    items: unfinished ? state.items.filter((item) => !(item.kind === 'compact' && item.pending)) : state.items,
+  }
 }
 
 /**
@@ -456,11 +514,24 @@ const applyAgentEvent = (state: PanelState, event: AgentEvent, now: number): Pan
     // /clear стирает историю по-настоящему — лента остаётся показывать её, если
     // не очистить: агент выше уже ничего не помнит, а карточки выглядят так,
     // будто помнит.
+    //
+    // Вместе с лентой обнуляется и всё, что описывало ушедший разговор: занятое
+    // окно контекста, расход, недочитанные ошибки, список задач. Иначе датчик
+    // контекста показывал прежние проценты на пустом чате — то есть врал ровно
+    // про то единственное, ради чего /clear обычно и зовут.
     case 'conversation_reset':
       return {
         ...state,
         seq: state.seq + 1,
         sessionId: event.new_conversation_id ?? state.sessionId,
+        usage: initialPanelState.usage,
+        context: undefined,
+        cost: 0,
+        tasks: {},
+        pendingTasks: {},
+        streamingText: '',
+        streamingId: undefined,
+        streamingThinking: '',
         items: [
           { id: `cleared-${state.seq}`, kind: 'checkpoint', chip: 'CLEAR', target: 'conversation cleared — nothing above this is remembered anymore' },
         ],
@@ -501,8 +572,14 @@ const applyAgentEvent = (state: PanelState, event: AgentEvent, now: number): Pan
       const cancelled = state.stopRequestedAt !== undefined
       const stats = resultStats(event, cancelled)
 
+      // Отказ ставим в ленту ПЕРЕД итогом хода: он и случился раньше, а
+      // «Worked 3s» под ним читается концом этого же хода, а не следующего.
+      const withError = finishCompacting(
+        event.is_error && event.result ? addError(state, event.result) : state,
+      )
+
       return {
-        ...state,
+        ...withError,
         status: 'idle',
         streamingText: '',
         streamingId: undefined,
@@ -511,12 +588,11 @@ const applyAgentEvent = (state: PanelState, event: AgentEvent, now: number): Pan
         usage,
         cost: event.total_cost_usd ?? state.cost,
         sessionId: event.session_id ?? state.sessionId,
-        seq: state.seq + 1,
-        errors: event.is_error && event.result ? [...state.errors, event.result] : state.errors,
+        seq: withError.seq + 1,
         suppressNextMeta: false,
         items: state.suppressNextMeta
-          ? state.items
-          : [...state.items, { id: `meta-${state.seq}`, kind: 'meta', stats }],
+          ? withError.items
+          : [...withError.items, { id: `meta-${withError.seq}`, kind: 'meta', stats }],
       }
     }
 
@@ -530,19 +606,10 @@ const applySystem = (
   event: Extract<AgentEvent, { type: 'system' }>,
   now: number,
 ): PanelState => {
-  // Событие текущего хода называет модель, с которой ход начался — это результат
-  // предыдущей команды, а не той, что только что попросили применить. Пока
-  // названная модель не совпадёт с тем, что мы сами просили, продолжаем
-  // показывать именно наш выбор, а не то, что пришло с отставанием на ход.
-  const modelConfirmed =
-    state.pendingModel !== undefined &&
-    Boolean(event.model?.toLowerCase().includes(state.pendingModel.toLowerCase()))
-
   const base: PanelState = {
     ...state,
     sessionId: event.session_id ?? state.sessionId,
     model: event.model ?? state.model,
-    pendingModel: modelConfirmed ? undefined : state.pendingModel,
     permissionMode: event.permissionMode ? normalizeMode(event.permissionMode) : state.permissionMode,
     slashCommands: event.slash_commands ?? state.slashCommands,
     // Рабочий каталог агент сообщает сам; без него пути в карточках остаются
@@ -572,33 +639,30 @@ const applySystem = (
   // если сжимать оказалось нечего — тогда pending-карточка так и останется
   // недорисованной, если её не убрать здесь же явно.
   if (event.compact_result !== undefined) {
-    return {
-      ...base,
-      compacting: false,
-      items: base.items.some((item) => item.kind === 'compact' && item.pending)
-        ? base.items.filter((item) => !(item.kind === 'compact' && item.pending))
-        : base.items,
-      errors:
-        event.compact_result === 'failed' && event.compact_error
-          ? [...base.errors, event.compact_error]
-          : base.errors,
-    }
+    const finished = finishCompacting(base)
+
+    return event.compact_result === 'failed' && event.compact_error
+      ? addError(finished, event.compact_error)
+      : finished
   }
 
   if (event.subtype === 'compact_boundary') {
     const target = compactBoundaryText(event.compact_metadata)
+    // Граница и есть конец сжатия: дальше карточка стоит в ленте с цифрами, а
+    // строка статуса снова говорит про сам ход.
+    const done = { ...base, compacting: false }
     // Пока сжатие идёт, в ленту больше ничего не приходит (контекст в этот момент
     // как раз переписывается) — pending-карточка, если она есть, всегда последняя.
-    const last = base.items.at(-1)
+    const last = done.items.at(-1)
 
     if (last?.kind === 'compact' && last.pending) {
-      return { ...base, items: [...base.items.slice(0, -1), { ...last, target, pending: false }] }
+      return { ...done, items: [...done.items.slice(0, -1), { ...last, target, pending: false }] }
     }
 
     return {
-      ...base,
-      seq: base.seq + 1,
-      items: [...base.items, { id: `compact-${base.seq}`, kind: 'compact', target, pending: false }],
+      ...done,
+      seq: done.seq + 1,
+      items: [...done.items, { id: `compact-${done.seq}`, kind: 'compact', target, pending: false }],
     }
   }
 
@@ -694,6 +758,16 @@ const isNoContentPlaceholder = (blocks: ContentBlock[]): boolean => {
   return block.type === 'text' && block.text.trim() === '(no content)'
 }
 
+/** Показывали ли этот же текст ошибкой в текущем ходе — тогда повторять его нечем. */
+const alreadyShownAsError = (state: PanelState, text: string): boolean => {
+  const turnStart = state.items.map((item) => item.kind).lastIndexOf('user') + 1
+  const message = text.trim()
+
+  return state.items
+    .slice(turnStart)
+    .some((item) => item.kind === 'error' && item.message.trim() === message)
+}
+
 const applyAssistant = (state: PanelState, blocks: ContentBlock[], now: number): PanelState => {
   if (isNoContentPlaceholder(blocks)) {
     return { ...state, streamingText: '', streamingId: undefined, suppressNextMeta: true }
@@ -711,6 +785,11 @@ const applyAssistant = (state: PanelState, blocks: ContentBlock[], now: number):
   for (const block of blocks) {
     if (block.type === 'text') {
       if (!block.text.trim()) continue
+      // Тот же текст уже стоит в ленте красной плашкой — второй раз, обычным
+      // ответом, он ничего не добавляет. Так приходит неудачное сжатие: CLI
+      // сообщает о нём и отдельным событием, и репликой агента слово в слово.
+      if (alreadyShownAsError(next, block.text)) continue
+
       const paragraphs = parseParagraphs(block.text)
       const id = reserved
       reserved = undefined
@@ -823,7 +902,9 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
   }
 
   if (block.name === 'ExitPlanMode') {
-    const steps = readPlanSteps(input)
+    const paragraphs = readPlan(input)
+    const steps = paragraphs.filter((paragraph) => paragraph.bullet && (paragraph.depth ?? 0) === 0).length
+
     return {
       ...state,
       items: [
@@ -831,9 +912,11 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
         {
           id: block.id,
           kind: 'plan',
-          meta: `· ${steps.length} ${steps.length === 1 ? 'step' : 'steps'}`,
+          // Шагами считаем пункты верхнего уровня — то же, что человек посчитает
+          // глазами; вложенные уточнения отдельными шагами не звучат.
+          meta: steps > 0 ? `· ${steps} ${steps === 1 ? 'step' : 'steps'}` : '',
           duration: '',
-          steps,
+          paragraphs,
         },
       ],
     }
@@ -1128,38 +1211,12 @@ const readTodos = (input: Record<string, unknown>): TodoEntry[] => {
   })
 }
 
-/** План приходит одним текстом markdown — раскладываем его в нумерованные шаги. */
-const readPlanSteps = (input: Record<string, unknown>): PlanStep[] => {
-  const plan = typeof input.plan === 'string' ? input.plan : ''
-  const steps: PlanStep[] = []
-
-  for (const line of plan.split('\n')) {
-    const match = /^\s*(?:\d+[.)]|[-*])\s+(.*)$/.exec(line)
-    if (!match) continue
-
-    const text = (match[1] ?? '').trim()
-    if (!text) continue
-
-    // Файл выносим отдельной припиской, поэтому из текста шага его убираем —
-    // иначе имя стоит в строке дважды.
-    const files = /`([^`]+\.[a-z0-9]+)`/i.exec(text)
-    const withoutFile = files
-      ? text.replace(new RegExp(`\\s*(?:in|to|into|at)?\\s*\`${escapeRegExp(files[1] ?? '')}\``, 'i'), '')
-      : text
-
-    steps.push({
-      n: String(steps.length + 1),
-      text: withoutFile.replace(/`/g, '').trim(),
-      files: files?.[1] ?? '',
-    })
-  }
-
-  if (steps.length === 0 && plan.trim()) {
-    steps.push({ n: '1', text: plan.trim().split('\n')[0] ?? '', files: '' })
-  }
-
-  return steps
-}
+/**
+ * План приходит одним текстом markdown — и показываем мы его тем же разбором,
+ * что и обычный ответ агента (см. PlanItem.paragraphs).
+ */
+const readPlan = (input: Record<string, unknown>): Paragraph[] =>
+  parseParagraphs(typeof input.plan === 'string' ? input.plan : '')
 
 const readQuestions = (input: Record<string, unknown>): AskQuestion[] => {
   const raw = Array.isArray(input.questions) ? input.questions : []
@@ -1259,8 +1316,6 @@ const resultStats = (event: Extract<AgentEvent, { type: 'result' }>, cancelled: 
   return [duration ? `${STOPPED_BY_YOU} · ${duration}` : STOPPED_BY_YOU]
 }
 
-const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
 export const formatTokens = (value: number): string => {
   // Миллион пишем миллионом: у больших моделей окно контекста именно такое, и
   // «1000.0k» в датчике читается хуже, чем «1.0M».
@@ -1282,6 +1337,34 @@ const compactBoundaryText = (meta: AgentSystemEvent['compact_metadata']): string
 const formatClock = (ms: number): string => {
   const date = new Date(ms)
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+/**
+ * Что показывает датчик контекста: занято, всего и доля.
+ *
+ * Первым делом — цифра от самого CLI (см. PanelState.context): она знает и
+ * настоящий размер окна выбранной модели, и всё, что лежит в контексте помимо
+ * переписки. Пока её нет (разговор ещё не начинался, CLI постарше), считаем
+ * сами по usage хода — тем же способом, что и раньше.
+ */
+export const contextOf = (
+  state: PanelState,
+  fallbackLimit = 200_000,
+): { percent: number; used: number; limit: number } => {
+  const context = state.context
+  if (context && context.max > 0) {
+    return {
+      percent: Math.min(Math.round((context.used / context.max) * 100), 100),
+      used: context.used,
+      limit: context.max,
+    }
+  }
+
+  const used =
+    state.usage.input_tokens + state.usage.cache_read_input_tokens + state.usage.cache_creation_input_tokens
+  const limit = fallbackLimit > 0 ? fallbackLimit : 200_000
+
+  return { percent: contextUsage(state.usage, limit), used, limit }
 }
 
 /**

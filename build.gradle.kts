@@ -77,6 +77,37 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
+              <li>The model list now comes from Claude Code itself instead of a list baked into the
+              panel: the models your account can actually use, with the ones your plan or your
+              organisation blocks marked as unavailable. A model the agent refuses no longer stays
+              in the settings, and the panel keeps showing the one that is really running.</li>
+              <li>The panel now finds the CLI where it actually is — npm, bun, volta, scoop, and the
+              Windows variants of the file name. When it still can't, the screen lists every place
+              it looked and what your own shell answers, and lets you point at the file by hand.</li>
+              <li>Questions from the agent are answerable now: pick an option or type your own answer,
+              and the run continues from the exact point where it asked.</li>
+              <li>Plans and answers are rendered as real markdown — headings, nested bullets, inline
+              code — instead of a flattened list of steps.</li>
+              <li>Context compaction has its own card with a progress bar, so a long silent pause is
+              no longer unexplained. The context window is shown as it fills, straight from the CLI.</li>
+              <li>Tabs can be reordered by dragging, and a conversation moves together with its forks.</li>
+              <li>An error inside the panel now shows a crash screen with a reload button instead of
+              going black. Conversations live in the CLI and survive the reload.</li>
+              <li>A note typed while a plan is waiting goes to the agent as the reason to keep
+              planning — with any images attached to it — and lands in the tab you typed it in.</li>
+              <li>Fixed: the panel could hang on "loading" forever while looking for the CLI if the
+              login shell was slow to answer.</li>
+              <li>Fixed: an interrupted context compaction left the tab without a status line for the
+              rest of the session, and reloading the panel dropped every event that arrived during
+              the reload.</li>
+              <li>Fixed: answering a plan or a question after the conversation restarted silently
+              lost what you wrote; it is sent as an ordinary message now.</li>
+              <li>Fixed: reopening a past conversation turned the first message into a decision on a
+              plan from that old conversation.</li>
+              <li>Fixed: a background tab waiting for you on a plan or a question kept showing
+              "working" instead of asking for attention.</li>
+              <li>Fixed: dragging a tab and releasing it outside the tab strip swallowed the next
+              click, and the manual CLI path field opened empty and could wipe a saved path.</li>
               <li>Fixed: a tight console line spacing setting made selected text overlap between
               wrapped lines. The panel now enforces a minimum line height regardless of the
               console font setting.</li>

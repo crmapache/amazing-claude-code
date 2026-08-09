@@ -176,6 +176,27 @@ class PermissionPlanModeTest {
     }
 
     @Test
+    fun `вопрос о версии интерпретатора не спрашивает`() {
+        assertTrue(PermissionPlanMode.isSafe("Bash", "python3 --version"))
+        assertTrue(PermissionPlanMode.isSafe("Bash", "node --version"))
+        assertTrue(PermissionPlanMode.isSafe("Bash", "java -version"))
+        assertTrue(PermissionPlanMode.isSafe("Bash", "go version"))
+        assertTrue(PermissionPlanMode.isSafe("Bash", "python3 --version; pip3 --version; node --version"))
+        assertTrue(PermissionPlanMode.isSafe("Bash", "npm --version | head -1"))
+    }
+
+    @Test
+    fun `тот же интерпретатор с любым другим аргументом спрашивает`() {
+        assertFalse(PermissionPlanMode.isSafe("Bash", "python3 -c \"import torch\""))
+        assertFalse(PermissionPlanMode.isSafe("Bash", "python3"))
+        assertFalse(PermissionPlanMode.isSafe("Bash", "python3 -v"))
+        assertFalse(PermissionPlanMode.isSafe("Bash", "node script.js"))
+        assertFalse(PermissionPlanMode.isSafe("Bash", "npm install"))
+        assertFalse(PermissionPlanMode.isSafe("Bash", "pip3 install torch"))
+        assertFalse(PermissionPlanMode.isSafe("Bash", "python3 --version && python3 -c \"import os; os.remove('x')\""))
+    }
+
+    @Test
     fun `curl с записью или отправкой данных по-прежнему спрашивает`() {
         assertFalse(PermissionPlanMode.isSafe("Bash", "curl -s https://example.com -o out.html"))
         assertFalse(PermissionPlanMode.isSafe("Bash", "curl -sO https://example.com/file.zip"))

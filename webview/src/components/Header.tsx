@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import s from './shell.module.css'
 
 /**
@@ -74,10 +74,31 @@ interface HeaderProps {
   onPickSession: (id: string) => void
   onCloseSession: (id: string) => void
   onNewSession: () => void
+  /**
+   * Порядок вкладок после перетаскивания: группу `groupId` поставить перед
+   * группой `beforeGroupId` (или в конец, если её нет).
+   *
+   * Двигается именно группа целиком — разговор вместе со своими форками.
+   * Поштучно их не растащить и чужую вкладку внутрь не вставить: группа — это
+   * одна тема, и вкладка посреди чужой темы не значила бы ничего, кроме путаницы.
+   */
+  onReorderGroups: (groupId: string, beforeGroupId: string | null) => void
   onOpenHistory: () => void
   onOpenMcp: () => void
   onOpenPlugins: () => void
 }
+
+/** Дальше этого сдвига нажатие перестаёт быть кликом и становится перетаскиванием. */
+const DRAG_THRESHOLD_PX = 4
+
+/**
+ * Запас, на который проверяется смена места: рука на границе дрожит, и без него
+ * соседи подрагивали бы вместе с ней (см. startDrag).
+ */
+const SWAP_GAP_PX = 8
+
+/** Сколько длится приземление брошенной вкладки. Столько же, сколько переход в shell.module.css. */
+const LANDING_MS = 160
 
 const DOT_CLASS: Record<SessionState, string> = {
   idle: '',
@@ -101,11 +122,297 @@ export const Header = ({
   onPickSession,
   onCloseSession,
   onNewSession,
+  onReorderGroups,
   onOpenHistory,
   onOpenMcp,
   onOpenPlugins,
 }: HeaderProps) => {
   const header = useRef<HTMLElement>(null)
+  const tabs = useRef<HTMLDivElement>(null)
+
+  /** Вкладку только что тащили — ближайший клик по ней не выбор, а хвост жеста. */
+  const dragged = useRef(false)
+  /** Группа, которую тащат прямо сейчас, — она едет за курсором и приподнята. */
+  const [dragging, setDragging] = useState<string | null>(null)
+  /** На сколько её сдвинуть: столько же, сколько прошла рука от места нажатия. */
+  const [offset, setOffset] = useState(0)
+  /**
+   * Насколько подвинуть каждую из остальных групп, чтобы освободить место.
+   *
+   * Двигаем их сдвигом, а не перестановкой ряда: пока идёт жест, порядок в
+   * состоянии не меняется вовсе. Перестановка на ходу порождала обратную связь —
+   * сосед уезжал, геометрия менялась, условие срабатывало снова, и вкладки
+   * принимались метаться. Здесь же весь расчёт идёт от одного снимка, сделанного
+   * в начале жеста, и метаться нечему.
+   */
+  const [shifts, setShifts] = useState<Record<string, number>>({})
+
+  /**
+   * Где группы стояли на экране в тот миг, когда вкладку отпустили.
+   *
+   * Без этого снимка приземление дёргалось: перестановка ряда и снятие сдвигов
+   * случаются в одном кадре, и браузер видел только конечную вёрстку. Вкладка
+   * телепортировалась из-под руки в свой слот, а соседи вдобавок доигрывали уже
+   * отменённый сдвиг — прыжок на ширину вкладки и медленный возврат назад.
+   * Со снимком тот же кадр начинается с прежней картинки и доезжает до новой.
+   */
+  const landing = useRef<Map<string, { x: number; y: number }> | null>(null)
+
+  /**
+   * Снимок ряда: где какая группа стоит и какой она ширины.
+   *
+   * Снимается один раз, в начале жеста, и дальше не меняется — именно поэтому
+   * расталкивание получается спокойным: все решения принимаются по неподвижной
+   * картинке, а не по той, которую сами же и двигаем.
+   */
+  const rowSnapshot = (): { groupId: string; left: number; right: number; top: number; bottom: number }[] => {
+    const root = tabs.current
+    if (!root) return []
+
+    const groups: { groupId: string; left: number; right: number; top: number; bottom: number }[] = []
+
+    for (const node of Array.from(root.querySelectorAll<HTMLElement>('[data-group]'))) {
+      const groupId = node.dataset.group
+      if (!groupId) continue
+
+      const left = node.offsetLeft
+      const right = left + node.offsetWidth
+      const top = node.offsetTop
+      const bottom = top + node.offsetHeight
+      const last = groups.at(-1)
+
+      if (last?.groupId === groupId) {
+        last.left = Math.min(last.left, left)
+        last.right = Math.max(last.right, right)
+        last.top = Math.min(last.top, top)
+        last.bottom = Math.max(last.bottom, bottom)
+        continue
+      }
+
+      groups.push({ groupId, left, right, top, bottom })
+    }
+
+    return groups
+  }
+
+  /** Вкладки по группам: у группы их столько, сколько в разговоре форков. */
+  const groupNodes = (): Map<string, HTMLElement[]> => {
+    const root = tabs.current
+    const nodes = new Map<string, HTMLElement[]>()
+    if (!root) return nodes
+
+    for (const node of Array.from(root.querySelectorAll<HTMLElement>('[data-group]'))) {
+      const groupId = node.dataset.group
+      if (!groupId) continue
+
+      const list = nodes.get(groupId)
+      if (list) list.push(node)
+      else nodes.set(groupId, [node])
+    }
+
+    return nodes
+  }
+
+  /**
+   * На сколько вкладка сейчас смещена относительно своего места в вёрстке.
+   *
+   * Спрашиваем именно у браузера, а не считаем сами: если сосед в этот момент
+   * ещё едет, здесь будет его настоящее положение на полпути, а не то, куда он
+   * только собирается приехать. Иначе бросок посреди чужого переезда щёлкал бы
+   * соседом в конечную точку.
+   */
+  const liveShift = (node: HTMLElement): { x: number; y: number } => {
+    const transform = getComputedStyle(node).transform
+    if (!transform || transform === 'none') return { x: 0, y: 0 }
+
+    try {
+      const matrix = new DOMMatrixReadOnly(transform)
+      return { x: matrix.m41, y: matrix.m42 }
+    } catch {
+      return { x: 0, y: 0 }
+    }
+  }
+
+  /**
+   * Куда просится вкладка при таком сдвиге: номер места в ряду.
+   *
+   * Сосед уступает, когда вкладка наехала на него больше чем наполовину — то
+   * есть её край перешёл середину соседа. Ответ зависит только от положения
+   * руки и неподвижного снимка ряда: одна и та же рука даёт один и тот же
+   * ответ, сколько раз ни спроси.
+   */
+  const placeFor = (
+    row: { groupId: string; left: number; right: number; top: number; bottom: number }[],
+    from: number,
+    shift: number,
+  ): number => {
+    const own = row[from]
+    if (!own) return from
+
+    const left = own.left + shift
+    const right = own.right + shift
+    let place = from
+
+    for (const [index, group] of row.entries()) {
+      if (index === from) continue
+      // Соседи из других строк не расступаются: сдвиг по горизонтали для них
+      // бессмыслен, а ряд при нехватке места переносится.
+      if (group.bottom <= own.top || group.top >= own.bottom) continue
+
+      const middle = (group.left + group.right) / 2
+      if (index < from && left < middle) place = Math.min(place, index)
+      if (index > from && right > middle) place = Math.max(place, index)
+    }
+
+    return place
+  }
+
+  /**
+   * Начало перетаскивания.
+   *
+   * Обычные mouse-события и слушатели на самом окне, а не pointer-события с
+   * захватом: встроенный в IDE браузер рисуется офскрин и синтезирует ввод сам —
+   * pointer capture там до вкладки не доходит, и перетаскивание просто не
+   * начиналось. Слушатели на окне работают в обоих случаях и заодно продолжают
+   * ловить мышь, когда та ушла за пределы ряда вкладок.
+   *
+   * preventDefault сразу: иначе браузер понимает зажатую кнопку как выделение
+   * текста и вместо переезда вкладки подсвечивает её подпись.
+   */
+  const startDrag = (event: ReactMouseEvent<HTMLDivElement>, groupId: string) => {
+    // Новое нажатие — новая история: хвост прошлого перетаскивания к нему уже не
+    // относится. Снимаем именно здесь, а не в обработчике клика по вкладке: тот
+    // выполняется не всегда — отпустив вкладку мимо ряда, клик приходит общему
+    // предку, и поднятый флаг съедал бы следующий настоящий клик по вкладке.
+    dragged.current = false
+
+    // Тащим только левой кнопкой и только за саму вкладку: крестик закрытия
+    // остаётся кнопкой, а не ручкой для перетаскивания.
+    if (event.button !== 0) return
+    if ((event.target as HTMLElement).closest('button')) return
+
+    event.preventDefault()
+
+    const row = rowSnapshot()
+    const from = row.findIndex((group) => group.groupId === groupId)
+    if (from < 0) return
+
+    const own = row[from]!
+    const width = own.right - own.left
+    const startX = event.clientX
+    let started = false
+    let place = from
+
+    const onMove = (move: MouseEvent) => {
+      if (!started) {
+        // До порога это ещё обычный клик по вкладке, а не перетаскивание.
+        if (Math.abs(move.clientX - startX) < DRAG_THRESHOLD_PX) return
+        started = true
+        setDragging(groupId)
+      }
+
+      const shift = move.clientX - startX
+      setOffset(shift)
+
+      /**
+       * Новое место принимаем, только если оно устоит и при чуть меньшем сдвиге:
+       * ровно на границе рука дрожит на пару пикселей, и без этой проверки
+       * соседи начинали подрагивать туда-сюда вместе с ней.
+       */
+      const wanted = placeFor(row, from, shift)
+      if (wanted !== place) {
+        const backOff = wanted > place ? -SWAP_GAP_PX : SWAP_GAP_PX
+        if (placeFor(row, from, shift + backOff) === wanted) place = wanted
+      }
+
+      /**
+       * Соседи между старым местом и новым отходят на ширину вкладки — ровно
+       * настолько, чтобы освободить ей место. Двигаются сдвигом, а сам ряд
+       * остаётся как есть: порядок поменяется один раз, когда вкладку отпустят.
+       */
+      const next: Record<string, number> = {}
+      for (const [index, group] of row.entries()) {
+        if (index === from) continue
+        if (index > from && index <= place) next[group.groupId] = -width
+        if (index < from && index >= place) next[group.groupId] = width
+      }
+      setShifts(next)
+    }
+
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+
+      if (started) {
+        // Картинка на экране перед броском — с неё начнётся приземление.
+        // Вёрстка за жест не менялась, так что к местам из снимка достаточно
+        // добавить сдвиг, с которым каждая группа сейчас нарисована.
+        const nodes = groupNodes()
+        const rendered = new Map<string, { x: number; y: number }>()
+        for (const group of row) {
+          const node = nodes.get(group.groupId)?.[0]
+          const live = node ? liveShift(node) : { x: 0, y: 0 }
+          rendered.set(group.groupId, { x: group.left + live.x, y: group.top + live.y })
+        }
+        landing.current = rendered
+
+        // Место назначения в исходном ряду: уехав вправо, встаём перед той
+        // группой, что шла следом за последней расступившейся.
+        const before = place > from ? (row[place + 1]?.groupId ?? null) : row[place]?.groupId ?? null
+        if (place !== from) onReorderGroups(groupId, before)
+
+        // Клик после перетаскивания вкладку не переключает: рука двигала её, а
+        // не выбирала. Событие click прилетит сразу за mouseup — гасим его там.
+        dragged.current = true
+      }
+
+      setDragging(null)
+      setOffset(0)
+      setShifts({})
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  /**
+   * Приземление после броска.
+   *
+   * Кадр, в котором меняется порядок, начинается с прежней картинки: каждая
+   * группа получает короткий переезд от того места, где она была под рукой, к
+   * своему новому. Соседи при этом стоят как вкопанные (переезжать им некуда —
+   * они и так уже на своих местах), а брошенная вкладка спокойно доезжает
+   * из-под руки в освободившийся слот.
+   *
+   * Обычный effect тут не годится: он сработал бы после того, как браузер уже
+   * нарисовал кадр в новых местах, — то есть после самого рывка.
+   */
+  useLayoutEffect(() => {
+    const before = landing.current
+    if (!before) return
+    landing.current = null
+
+    const nodes = groupNodes()
+
+    for (const group of rowSnapshot()) {
+      const was = before.get(group.groupId)
+      if (!was) continue
+
+      const dx = was.x - group.left
+      const dy = was.y - group.top
+
+      for (const node of nodes.get(group.groupId) ?? []) {
+        // Переезд именно анимацией, а не переходом: у соседей сдвиг выходит
+        // нулевым, и без неё они доигрывали бы отменённый переход — прыжок на
+        // ширину вкладки и медленный возврат. Анимация в каскаде выше перехода
+        // и держит их на месте, пока тот доигрывает вхолостую.
+        node.animate?.([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], {
+          duration: LANDING_MS,
+          easing: 'ease',
+        })
+      }
+    }
+  })
 
   /**
    * Вкладки при нехватке места переносятся на вторую строку — хедер растёт.
@@ -129,7 +436,7 @@ export const Header = ({
 
   return (
     <header className={s.header} ref={header}>
-      <div className={s.tabs}>
+      <div className={s.tabs} ref={tabs}>
         {sessions.map((session, index) => {
           const color = colorForGroup(session.groupId)
           // Группу отбиваем от соседней зазором: цвета мало, если вкладки слиплись.
@@ -138,11 +445,32 @@ export const Header = ({
           return (
             <div
               key={session.id}
-              className={`${s.tab} ${session.id === activeSession ? s.tabActive : ''} ${
-                startsGroup ? s.tabGroupStart : ''
-              }`}
-              style={{ paddingLeft: 11 + session.depth * 9 }}
-              onClick={() => onPickSession(session.id)}
+              data-group={session.groupId}
+              className={[
+                s.tab,
+                session.id === activeSession ? s.tabActive : '',
+                startsGroup ? s.tabGroupStart : '',
+                dragging === session.groupId ? s.tabDragging : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              style={{
+                paddingLeft: 11 + session.depth * 9,
+                // Едет вся группа разом: разговор со своими форками — одно целое.
+                // Остальные расступаются, освобождая ей место (см. shifts).
+                ...(dragging === session.groupId
+                  ? { transform: `translateX(${offset}px)` }
+                  : shifts[session.groupId]
+                    ? { transform: `translateX(${shifts[session.groupId]}px)` }
+                    : {}),
+              }}
+              onMouseDown={(event) => startDrag(event, session.groupId)}
+              onClick={() => {
+                // Хвост перетаскивания, а не выбор вкладки — см. startDrag, там же
+                // флаг и снимается со следующим нажатием.
+                if (dragged.current) return
+                onPickSession(session.id)
+              }}
             >
               <span className={s.tabGroupBar} style={{ background: color }} />
               <span className={`${s.dot} ${DOT_CLASS[session.state]}`} title={DOT_TITLE[session.state]} />

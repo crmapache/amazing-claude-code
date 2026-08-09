@@ -98,6 +98,10 @@ const subagentAskEvent = (parentToolUseId: string): AgentEvent => ({
   parent_tool_use_id: parentToolUseId,
 })
 
+/** Тексты ошибок, стоящих в ленте — в том же порядке, в каком они там стоят. */
+const errorTexts = (state: PanelState): string[] =>
+  state.items.filter((item) => item.kind === 'error').map((item) => item.message)
+
 describe('ошибки в ленте', () => {
   const refusal = 'Cannot set permission mode to bypassPermissions'
 
@@ -109,7 +113,7 @@ describe('ошибки в ленте', () => {
       { kind: 'modeApplied', mode: 'bypassPermissions', applied: false, error: refusal } as const,
     ].reduce(reducePanel, initialPanelState)
 
-    expect(state.errors).toEqual([refusal])
+    expect(errorTexts(state)).toEqual([refusal])
   })
 
   it('разные ошибки по-прежнему показывает обе', () => {
@@ -118,10 +122,57 @@ describe('ошибки в ленте', () => {
       { kind: 'error', message: 'claude exited with code 1' } as const,
     ].reduce(reducePanel, initialPanelState)
 
-    expect(state.errors).toHaveLength(2)
+    expect(errorTexts(state)).toHaveLength(2)
+  })
+
+  it('тот же отказ в новом ходе показывается снова — это уже новая неприятность', () => {
+    let state = reducePanel(initialPanelState, { kind: 'error', message: refusal })
+    state = reducePanel(state, { kind: 'prompt', tokens: [{ kind: 'text', value: 'ещё раз' }], quotes: [] })
+    state = reducePanel(state, { kind: 'error', message: refusal })
+
+    expect(errorTexts(state)).toEqual([refusal, refusal])
+  })
+
+  it('ошибка живёт в ленте, а не отдельной плашкой — и убирается по своему номеру', () => {
+    const state = reducePanel(initialPanelState, { kind: 'error', message: refusal })
+    const error = state.items.find((item) => item.kind === 'error')
+    expect(error).toBeDefined()
+
+    const dismissed = reducePanel(state, { kind: 'dismissError', id: error!.id })
+    expect(errorTexts(dismissed)).toEqual([])
   })
 })
 
+
+describe('смена модели', () => {
+  it('до ответа агента показывает выбранную, а не прежнюю', () => {
+    const state = reducePanel(initialPanelState, { kind: 'modelRequested', model: 'sonnet' })
+
+    expect(state.pendingModel).toBe('sonnet')
+  })
+
+  it('согласие агента делает выбранную моделью разговора — без всякого каталога', () => {
+    let state = reducePanel(initialPanelState, { kind: 'modelRequested', model: 'sonnet' })
+    state = reducePanel(state, { kind: 'modelApplied', model: 'sonnet' })
+
+    expect(state.pendingModel).toBeUndefined()
+    expect(state.model).toBe('sonnet')
+  })
+
+  it('отказ возвращает прежнюю модель и объясняет причину в ленте', () => {
+    let state = reducePanel(initialPanelState, { kind: 'modelApplied', model: 'opus' })
+    state = reducePanel(state, { kind: 'modelRequested', model: 'haiku' })
+    state = reducePanel(state, {
+      kind: 'modelApplied',
+      model: 'opus',
+      error: 'Model haiku is not available on your plan',
+    })
+
+    expect(state.pendingModel).toBeUndefined()
+    expect(state.model).toBe('opus')
+    expect(errorTexts(state)).toEqual(['Model haiku is not available on your plan'])
+  })
+})
 
 describe('сборка ленты из потока агента', () => {
   it('доводит разговор до покоя и запоминает сессию', () => {
@@ -132,7 +183,7 @@ describe('сборка ленты из потока агента', () => {
     expect(state.status).toBe('idle')
     // Живой текст должен быть погашен готовым сообщением, иначе ответ удвоится.
     expect(state.streamingText).toBe('')
-    expect(state.errors).toEqual([])
+    expect(errorTexts(state)).toEqual([])
   })
 
   it('превращает вызов инструмента в карточку с результатом', () => {
@@ -810,11 +861,41 @@ describe('сжатие контекста', () => {
     expect(state.compacting).toBe(false)
   })
 
-  it('проваленная попытка сжатия добавляет ошибку в общий баннер', () => {
+  it('проваленная попытка сжатия ставит ошибку в ленту', () => {
     let state = play([compactingStatusEvent()])
     state = play([compactResultEvent('failed', 'Compaction failed · conversation could not be reduced')], state)
 
-    expect(state.errors).toContain('Compaction failed · conversation could not be reduced')
+    expect(errorTexts(state)).toContain('Compaction failed · conversation could not be reduced')
+  })
+
+  it('граница сжатия гасит флаг сама: итог отдельным статусом может и не прийти', () => {
+    let state = play([compactingStatusEvent()])
+    state = play([compactBoundaryEvent({ trigger: 'automatic', pre_tokens: 168000 })], state)
+
+    expect(state.compacting).toBe(false)
+  })
+
+  it('обрыв процесса посреди сжатия снимает флаг и убирает недорисованную карточку', () => {
+    let state = play([compactingStatusEvent()])
+    state = reducePanel(state, { kind: 'processExited', exitCode: 1 }, 1_700_000_000_000)
+
+    expect(state.compacting).toBe(false)
+    expect(state.items.some((item) => item.kind === 'compact')).toBe(false)
+  })
+
+  it('ход, закрывшийся посреди сжатия, тоже снимает флаг: закрывающий статус уже не придёт', () => {
+    let state = play([compactingStatusEvent()])
+    state = play([resultEvent(1200)], state)
+
+    expect(state.compacting).toBe(false)
+    expect(state.items.some((item) => item.kind === 'compact')).toBe(false)
+  })
+
+  it('прибитый разговор снимает флаг: иначе строка статуса пропадает до конца жизни вкладки', () => {
+    let state = play([compactingStatusEvent()])
+    state = reducePanel(state, { kind: 'status', status: 'idle' }, 1_700_000_000_000)
+
+    expect(state.compacting).toBe(false)
   })
 })
 
@@ -976,5 +1057,43 @@ describe('печатающийся ответ', () => {
 
     expect(stopped.streamingText).toBe('')
     expect(stopped.streamingId).toBeUndefined()
+  })
+})
+
+describe('карточка плана', () => {
+  const plan = [
+    '## Что делаем',
+    '',
+    '1. Вынести переменные в `config/env.ts`, **обязательно** до правки вызовов',
+    '   - сначала прочитать текущие обращения',
+    '2. Заменить обращения к process.env',
+    '',
+    'Дальше можно катить.',
+  ].join('\n')
+
+  const state = () => play([toolUseEvent('plan-1', 'ExitPlanMode', { plan })])
+  const card = () => state().items.find((item) => item.kind === 'plan')
+
+  it('показывает план целиком, а не одни лишь пункты списка', () => {
+    const paragraphs = card()?.paragraphs ?? []
+
+    // Заголовок раздела и абзац-пояснение раньше терялись: разбор оставлял
+    // только строки, начинавшиеся с маркера списка.
+    expect(paragraphs.some((paragraph) => paragraph.heading)).toBe(true)
+    expect(paragraphs.some((paragraph) => !paragraph.bullet && !paragraph.heading)).toBe(true)
+  })
+
+  it('разметка внутри пункта разбирается, а не показывается звёздочками', () => {
+    const step = card()?.paragraphs.find((paragraph) => paragraph.marker === '1.')
+
+    expect(step?.parts.some((part) => part.strong)).toBe(true)
+    expect(step?.parts.some((part) => part.code)).toBe(true)
+    // Путь остаётся в самом предложении: раньше его вырезали в отдельную
+    // приписку, и строка начиналась с запятой.
+    expect(step?.parts.map((part) => part.text).join('')).toContain('Вынести переменные в')
+  })
+
+  it('вложенное уточнение не считается отдельным шагом', () => {
+    expect(card()?.meta).toBe('· 2 steps')
   })
 })

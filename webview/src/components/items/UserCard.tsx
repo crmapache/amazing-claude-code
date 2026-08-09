@@ -1,3 +1,4 @@
+import { linkify } from '../../feed/markdown'
 import { chipLabel } from '../../feed/reference'
 import type { ChipKind, UserItem } from '../../feed/types'
 import s from '../feed.module.css'
@@ -13,9 +14,11 @@ const CHIP_CLASS: Record<ChipKind, string> = {
 
 interface UserCardProps {
   item: UserItem
+  /** Открыть ссылку из собственного сообщения в системном браузере. */
+  onOpenLink: (url: string) => void
 }
 
-export const UserCard = ({ item }: UserCardProps) => (
+export const UserCard = ({ item, onOpenLink }: UserCardProps) => (
   <div className={s.user}>
     <div className={s.userHead}>
       <span className={s.label}>YOU</span>
@@ -34,7 +37,29 @@ export const UserCard = ({ item }: UserCardProps) => (
     <div className={s.userBody}>
       {item.tokens.map((token, index) =>
         token.kind === 'text' ? (
-          <span key={index}>{token.value}</span>
+          // Текст показываем ровно как набрали — без разметки, — но адрес в нём
+          // остаётся живой ссылкой: её кликают, а не переписывают руками.
+          <span key={index}>
+            {linkify(token.value).map((part, partIndex) =>
+              part.href ? (
+                <a
+                  key={partIndex}
+                  href={part.href}
+                  className={s.link}
+                  // Как и в ответе агента: наружу, в системный браузер, иначе
+                  // сам вебвью панели уехал бы на этот адрес.
+                  onClick={(event) => {
+                    event.preventDefault()
+                    onOpenLink(part.href ?? '')
+                  }}
+                >
+                  {part.text}
+                </a>
+              ) : (
+                <span key={partIndex}>{part.text}</span>
+              ),
+            )}
+          </span>
         ) : (
           <span
             key={index}

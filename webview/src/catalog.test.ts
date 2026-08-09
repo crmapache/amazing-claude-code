@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { MODE_OPTIONS, modeLabel, modeShortLabel, nextMode, normalizeMode, withRefusedMode } from './catalog'
+import {
+  MODEL_OPTIONS,
+  MODE_OPTIONS,
+  modeLabel,
+  modelLabel,
+  modelOptions,
+  modeShortLabel,
+  nextMode,
+  normalizeMode,
+  withRefusedMode,
+} from './catalog'
 
 describe('режимы разрешений', () => {
   it('старое имя приводится к тому, которым режим зовётся сейчас', () => {
@@ -70,5 +80,41 @@ describe('режимы, в которых агент отказал', () => {
 
   it('старое имя режима приводится к нынешнему — иначе отказ не узнать', () => {
     expect(withRefusedMode([], 'default')).toEqual(['manual'])
+  })
+})
+
+describe('каталог моделей', () => {
+  const models = [
+    { value: 'default', label: 'Default (recommended)', description: 'Opus 5 with 1M context', resolved: 'claude-opus-5[1m]' },
+    { value: 'sonnet', label: 'Sonnet', description: 'Sonnet 5', resolved: 'claude-sonnet-5' },
+    { value: 'opus-legacy', label: 'Opus 4.1', description: 'legacy', resolved: 'claude-opus-4-1', disabled: true },
+  ]
+
+  it('живой каталог CLI важнее встроенного списка', () => {
+    expect(modelOptions(models).map((option) => option.id)).toEqual(['default', 'sonnet', 'opus-legacy'])
+  })
+
+  it('пока каталога нет, показываем встроенный список', () => {
+    expect(modelOptions(null)).toBe(MODEL_OPTIONS)
+    expect(modelOptions([])).toBe(MODEL_OPTIONS)
+  })
+
+  it('недоступную модель показываем, но помечаем', () => {
+    expect(modelOptions(models).find((option) => option.id === 'opus-legacy')?.tag).toBe('unavailable')
+  })
+})
+
+describe('подпись модели в нижней строке', () => {
+  it('из полного идентификатора остаётся имя семейства', () => {
+    expect(modelLabel('claude-sonnet-5')).toBe('Sonnet')
+    expect(modelLabel('claude-haiku-4-5-20251001')).toBe('Haiku')
+  })
+
+  it('про миллионное окно говорим отдельно — по имени семейства этого не понять', () => {
+    expect(modelLabel('claude-opus-5[1m]')).toBe('Opus 1M')
+  })
+
+  it('незнакомую модель показываем как есть, без префикса и суффикса', () => {
+    expect(modelLabel('claude-experimental-9')).toBe('experimental-9')
   })
 })

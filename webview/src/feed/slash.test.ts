@@ -77,6 +77,20 @@ describe('buildCommands', () => {
     expect(commands.some((command) => command.id === 'login' && command.local)).toBe(true)
     expect(commands.at(-1)?.id).toBe('ai-docs')
   })
+
+  it('скилл с диска попадает в список ещё до того, как агент назовёт свои команды', () => {
+    // До первого сообщения список от агента пуст: он приходит с system:init.
+    const commands = buildCommands([], { task: { description: 'Начать новую задачу', argumentHint: '[задача]' } })
+    const task = commands.find((command) => command.id === 'task')
+
+    expect(task).toEqual({ id: 'task', hint: 'Начать новую задачу', argumentHint: '[задача]', group: 'project' })
+  })
+
+  it('та же команда от агента и с диска не удваивается', () => {
+    const commands = buildCommands(['task'], { task: { description: 'Начать новую задачу', argumentHint: '' } })
+
+    expect(commands.filter((command) => command.id === 'task')).toHaveLength(1)
+  })
 })
 
 describe('localCommand', () => {

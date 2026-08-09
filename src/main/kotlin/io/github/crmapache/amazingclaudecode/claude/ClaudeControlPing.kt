@@ -22,22 +22,30 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 
 /**
- * Пятичасовое и недельное окно расхода сразу при открытии панели, а не только
- * после первого сообщения. У живого [ClaudeSession] эту цифру спросить нельзя
- * до первого промпта — процесса ещё нет, а поднимать его заранее ради одной
- * цифры раньше уже пробовали и убрали: это полноценный запуск со всеми MCP-
- * серверами и хуками, конкурирующий за ресурсы с реально работающей вкладкой.
+ * Разовый управляющий запрос к CLI, когда живого разговора ещё нет.
+ *
+ * Так спрашиваются вещи, которые нужны панели сразу при открытии, а не после
+ * первого сообщения: окна расхода подписки (`get_usage`) и каталог моделей
+ * (`list_models`). У живого [ClaudeSession] их спросить нельзя до первого
+ * промпта — процесса ещё нет, а поднимать полноценный разговор заранее ради
+ * одной цифры раньше уже пробовали и убрали: это запуск со всеми MCP-серверами
+ * и хуками, конкурирующий за ресурсы с реально работающей вкладкой.
  *
  * `--safe-mode` отключает ровно эти тяжёлые части (хуки, MCP, скиллы, проектные
- * настройки), но не вход и не лимиты — get_usage отвечает за секунду-две вместо
- * трёх с обычным запуском (проверено напрямую). Процесс разовый: один
- * control_request, один ответ, и сразу гасим.
+ * настройки), но не вход, не лимиты и не каталог моделей — ответ приходит за
+ * секунду-две вместо трёх с обычным запуском (проверено напрямую). Процесс
+ * разовый: один control_request, один ответ, и сразу гасим.
  */
-internal object ClaudeUsagePing {
+internal object ClaudeControlPing {
 
     private const val TIMEOUT_MS = 15_000L
 
-    fun request(workingDirectory: String?, onResult: (JsonObject) -> Unit, onError: (String) -> Unit) {
+    fun request(
+        workingDirectory: String?,
+        subtype: String,
+        onResult: (JsonObject) -> Unit,
+        onError: (String) -> Unit,
+    ) {
         val executable = ClaudeExecutable.find()
         if (executable == null) {
             onError("Claude Code executable not found.")
@@ -61,7 +69,7 @@ internal object ClaudeUsagePing {
 
             val process = runCatching { OSProcessHandler(commandLine) }
                 .onFailure {
-                    thisLogger().warn("Failed to start usage ping", it)
+                    thisLogger().warn("Failed to start $subtype ping", it)
                     onError(it.message ?: "Failed to start claude.")
                 }
                 .getOrNull() ?: return@submit
@@ -72,7 +80,7 @@ internal object ClaudeUsagePing {
                 {
                     if (done.compareAndSet(false, true)) {
                         process.destroyProcess()
-                        onError("get_usage timed out")
+                        onError("$subtype timed out")
                     }
                 },
                 TIMEOUT_MS,
@@ -90,7 +98,7 @@ internal object ClaudeUsagePing {
                     }.getOrNull()
 
                     when {
-                        response == null -> onError("Malformed get_usage response")
+                        response == null -> onError("Malformed $subtype response")
                         response["subtype"]?.jsonPrimitive?.contentOrNull == "success" ->
                             onResult(response["response"]?.jsonObject ?: JsonObject(emptyMap()))
                         else -> onError(response["error"]?.jsonPrimitive?.contentOrNull.orEmpty())
@@ -109,7 +117,7 @@ internal object ClaudeUsagePing {
                     override fun processTerminated(event: ProcessEvent) {
                         if (done.compareAndSet(false, true)) {
                             timeoutTask.cancel(false)
-                            onError("claude exited before answering get_usage")
+                            onError("claude exited before answering $subtype")
                         }
                     }
                 },
@@ -122,7 +130,7 @@ internal object ClaudeUsagePing {
                 val payload = buildJsonObject {
                     put("request_id", requestId)
                     put("type", "control_request")
-                    putJsonObject("request") { put("subtype", "get_usage") }
+                    putJsonObject("request") { put("subtype", subtype) }
                 }.toString()
 
                 process.processInput.write((payload + "\n").toByteArray(Charsets.UTF_8))

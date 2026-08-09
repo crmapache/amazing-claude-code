@@ -1,4 +1,5 @@
-import { BUILTIN_COMMANDS, EFFORT_OPTIONS, MODEL_OPTIONS, PANEL_COMMANDS, type CommandOption } from '../catalog'
+import { BUILTIN_COMMANDS, EFFORT_OPTIONS, modelOptions, PANEL_COMMANDS, type CommandOption } from '../catalog'
+import type { ModelInfo } from '../protocol'
 import type { Chip, UserToken } from './types'
 
 /** Только напечатанный текст, без вложений — вложение слэш-командой быть не может. */
@@ -108,6 +109,20 @@ export const buildCommands = (cliCommands: string[], hints: Record<string, Comma
     entries.push({ id, hint: hint?.description ?? '', argumentHint: hint?.argumentHint, group: 'project' })
   }
 
+  // Команды и скиллы, найденные на диске, но ещё не названные агентом.
+  //
+  // Свой список он присылает вместе с началом разговора (system:init), то есть
+  // только после первого отправленного сообщения — до тех пор подсказка знала
+  // одни лишь встроенные команды, и собственный скилл пользователя в ней просто
+  // не находился. Файлы на диске лежат независимо от того, начат разговор или
+  // нет, поэтому берём имена и оттуда: к моменту, когда агент назовёт свои,
+  // список уже совпадёт.
+  for (const [id, hint] of Object.entries(hints)) {
+    if (seen.has(id) || UNAVAILABLE_IN_STREAM_MODE.has(id)) continue
+    seen.add(id)
+    entries.push({ id, hint: hint.description, argumentHint: hint.argumentHint, group: 'project' })
+  }
+
   return entries
 }
 
@@ -177,7 +192,7 @@ export interface LocalCommand {
  * сессии») вдобавок неправда. Незнакомое значение остаётся агенту: вдруг он
  * знает модель, о которой не знаем мы.
  */
-export const localCommand = (text: string): LocalCommand | null => {
+export const localCommand = (text: string, models: ModelInfo[] | null = null): LocalCommand | null => {
   const trimmed = text.trim()
   if (!trimmed.startsWith('/')) return null
 
@@ -188,26 +203,28 @@ export const localCommand = (text: string): LocalCommand | null => {
 
   // Значения берём из того же списка, что и подсказка с меню в нижней строке —
   // расходиться этим трём было бы не на чем.
-  const known = ARGUMENT_OPTIONS[name]?.some((option) => option.id === argument)
+  const known = argumentOptions(name, models)?.some((option) => option.id === argument)
   return known ? { name, argument } : null
 }
 
 /**
- * Аргументы команд, у которых из фиксированного набора значений — ровно то же,
- * что показывает нативный терминал вторым шагом подсказки. Список берём из тех
- * же MODEL_OPTIONS/EFFORT_OPTIONS, что и меню в нижней строке: значения одни
- * и те же, дублировать их своим списком было бы верным способом разойтись.
+ * Аргументы команд, у которых значения из фиксированного набора — ровно то же,
+ * что показывает нативный терминал вторым шагом подсказки. Модели идут из
+ * живого каталога CLI (см. modelOptions), усилие — из своего списка: у него
+ * набор значений один на все версии.
  */
 const ARGUMENT_OPTIONS: Record<string, CommandOption[]> = {
-  model: MODEL_OPTIONS.map((option) => ({ id: option.id, hint: option.sub ?? '' })),
   effort: EFFORT_OPTIONS.map((option) => ({ id: option.id, hint: option.sub ?? '' })),
 }
 
 /** Команда без аргумента бессмысленна — отправлять её как есть незачем и Enter'ом. */
-export const requiresArgument = (id: string): boolean => id in ARGUMENT_OPTIONS
+export const requiresArgument = (id: string): boolean => id === 'model' || id in ARGUMENT_OPTIONS
 
 /** Перечислимые значения команды, если они у неё есть — для подсказки по аргументу. */
-export const argumentOptions = (command: string): CommandOption[] | undefined => ARGUMENT_OPTIONS[command]
+export const argumentOptions = (command: string, models: ModelInfo[] | null = null): CommandOption[] | undefined =>
+  command === 'model'
+    ? modelOptions(models).map((option) => ({ id: option.id, hint: option.sub ?? '' }))
+    : ARGUMENT_OPTIONS[command]
 
 /** Имя команды, набранной целиком, и ровно один пробел за ней — больше в поле ничего нет. */
 const COMPLETED_COMMAND = /^\/(\S+) $/
@@ -247,12 +264,12 @@ export interface ArgumentQuery {
  * Название команды уже набрано и за ним ровно один пробел — дальше идёт её
  * аргумент, и если команда его поддерживает, ему тоже нужна подсказка.
  */
-export const argumentQuery = (draft: string): ArgumentQuery | null => {
+export const argumentQuery = (draft: string, models: ModelInfo[] | null = null): ArgumentQuery | null => {
   const match = /^\/([a-z]+) ([^\s]*)$/.exec(draft)
   if (!match) return null
 
   const command = match[1] ?? ''
-  const options = ARGUMENT_OPTIONS[command]
+  const options = argumentOptions(command, models)
   if (!options) return null
 
   return { command, query: match[2] ?? '', options }

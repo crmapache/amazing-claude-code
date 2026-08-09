@@ -5,7 +5,7 @@ import type { AskItem, FeedItem, PermItem, TaskItem, TodoItem, ToolItem } from '
 import type { CardState } from '../hooks/useCardState'
 import s from './feed.module.css'
 import { PlanCard } from './items/PlanCard'
-import { CheckpointRow, CompactRow, CrashRow, MetaRow, ThinkRow } from './items/Rows'
+import { CheckpointRow, CompactRow, CrashRow, ErrorRow, MetaRow, ThinkRow } from './items/Rows'
 import { TextCard } from './items/TextCard'
 import { ToolGroupCard } from './items/ToolGroupCard'
 import { UserCard } from './items/UserCard'
@@ -32,10 +32,10 @@ interface FeedProps {
   streamingThinking: string
   streaming: boolean
   streamStatus: string
-  errors: string[]
   cards: CardState
   onPlanDecision: (itemId: string, decision: 'approve' | 'keepPlanning') => void
-  onDismissError: (index: number) => void
+  /** Ошибку прочитали и убрали руками — по её номеру в ленте. */
+  onDismissError: (id: string) => void
   /** Открыть ссылку из ответа агента в системном браузере. */
   onOpenLink: (url: string) => void
   scrollRef?: (element: HTMLElement | null) => void
@@ -49,7 +49,6 @@ export const Feed = ({
   streamingThinking,
   streaming,
   streamStatus,
-  errors,
   cards,
   onPlanDecision,
   onDismissError,
@@ -139,7 +138,7 @@ export const Feed = ({
     }
   }, [])
 
-  useLayoutEffect(toBottom, [items, pacedText, streamingThinking, errors.length, toBottom])
+  useLayoutEffect(toBottom, [items, pacedText, streamingThinking, toBottom])
 
   /**
    * Число непрочитанных — то, что накопилось от агента, пока лента не липнет к
@@ -180,7 +179,7 @@ export const Feed = ({
     return () => observer.disconnect()
   }, [rows.length, toBottom])
 
-  const isEmpty = rows.length === 0 && errors.length === 0
+  const isEmpty = rows.length === 0
 
   return (
     <div className={s.feedWrap}>
@@ -206,11 +205,21 @@ export const Feed = ({
 
         {rows.map((item) => (
           <div key={item.id} className={s.row}>
-            <ItemView item={item} cards={cards} lastPendingId={lastPendingId} onPlanDecision={onPlanDecision} onOpenLink={onOpenLink} />
+            <ItemView
+              item={item}
+              cards={cards}
+              lastPendingId={lastPendingId}
+              awaitingPlan={streaming}
+              onPlanDecision={onPlanDecision}
+              onDismissError={onDismissError}
+              onOpenLink={onOpenLink}
+            />
           </div>
         ))}
 
-        {streaming ? (
+        {/* Пустая строка статуса означает, что о происходящем уже сказано в самой
+            ленте (так во время сжатия контекста) — второй подписи не нужно. */}
+        {streaming && streamStatus ? (
           <div className={s.streaming}>
             {/* Переливается сам текст: белая плашка поверх него на тёмном фоне
                 выглядит грязно, а градиент по буквам читается как дыхание строки. */}
@@ -218,14 +227,6 @@ export const Feed = ({
           </div>
         ) : null}
 
-        {errors.map((error, index) => (
-          <p key={`${index}-${error.slice(0, 24)}`} className={s.error}>
-            <span className={s.errorText}>{error}</span>
-            <button type="button" className={s.errorDismiss} onClick={() => onDismissError(index)}>
-              ×
-            </button>
-          </p>
-        ))}
       </main>
 
       <ScrollThumb targetRef={view} />
@@ -257,14 +258,25 @@ interface ItemViewProps {
   cards: CardState
   /** id вызова, который сейчас реально ждёт разрешения (или undefined, если ждать нечего). */
   lastPendingId: string | undefined
+  /** Идёт ли ход: от этого зависит, живые ли кнопки под планом (см. PlanCard). */
+  awaitingPlan: boolean
   onPlanDecision: (itemId: string, decision: 'approve' | 'keepPlanning') => void
+  onDismissError: (id: string) => void
   onOpenLink: (url: string) => void
 }
 
-const ItemView = ({ item, cards, lastPendingId, onPlanDecision, onOpenLink }: ItemViewProps) => {
+const ItemView = ({
+  item,
+  cards,
+  lastPendingId,
+  awaitingPlan,
+  onPlanDecision,
+  onDismissError,
+  onOpenLink,
+}: ItemViewProps) => {
   switch (item.kind) {
     case 'user':
-      return <UserCard item={item} />
+      return <UserCard item={item} onOpenLink={onOpenLink} />
 
     case 'text':
       return <TextCard item={item} onOpenLink={onOpenLink} />
@@ -279,8 +291,10 @@ const ItemView = ({ item, cards, lastPendingId, onPlanDecision, onOpenLink }: It
       return (
         <PlanCard
           item={item}
+          awaiting={awaitingPlan}
           onApprove={() => onPlanDecision(item.id, 'approve')}
           onKeepPlanning={() => onPlanDecision(item.id, 'keepPlanning')}
+          onOpenLink={onOpenLink}
         />
       )
 
@@ -295,5 +309,8 @@ const ItemView = ({ item, cards, lastPendingId, onPlanDecision, onOpenLink }: It
 
     case 'crash':
       return <CrashRow item={item} />
+
+    case 'error':
+      return <ErrorRow item={item} onDismiss={() => onDismissError(item.id)} />
   }
 }

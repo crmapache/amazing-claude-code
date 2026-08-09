@@ -27,6 +27,15 @@ internal object ClaudePreferences {
         get() = read(MODE_KEY)
         set(value) = write(MODE_KEY, value)
 
+    /**
+     * Путь к исполняемому файлу, указанный руками. Пусто — ищем сами (см.
+     * [ClaudeExecutable]). Нужен там, где автоматический поиск промахивается:
+     * необычное место установки, PATH оболочки IDE не такой, как в терминале.
+     */
+    var executablePath: String
+        get() = read(EXECUTABLE_KEY)
+        set(value) = write(EXECUTABLE_KEY, value)
+
     private fun read(key: String): String = PropertiesComponent.getInstance().getValue(key).orEmpty()
 
     private fun write(key: String, value: String) {
@@ -38,4 +47,5 @@ internal object ClaudePreferences {
     private const val MODEL_KEY = "acc.model"
     private const val EFFORT_KEY = "acc.effort"
     private const val MODE_KEY = "acc.mode"
+    private const val EXECUTABLE_KEY = "acc.executable"
 }

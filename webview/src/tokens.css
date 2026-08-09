@@ -209,6 +209,10 @@
 
   /* Индикаторы расхода ctx / 5h / wk */
   --acc-meter-green: var(--acc-c-green);
+  /* Незакрашенная часть кольца и полосы: та же подложка, что у контролов. */
+  --acc-meter-track: var(--acc-bg-control);
+  /* Дуга равномерного темпа: заметно тусклее расхода, но светлее трека. */
+  --acc-meter-pace: var(--acc-c-ink-13);
   --acc-meter-green-35: rgb(var(--acc-ch-green) / 35%);
   --acc-meter-green-80: rgb(var(--acc-ch-green) / 80%);
 

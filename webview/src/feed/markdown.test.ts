@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseInline, parseParagraphs } from './markdown'
+import { linkify, parseInline, parseParagraphs } from './markdown'
 
 describe('parseInline', () => {
   it('превращает голый URL в ссылку', () => {
@@ -66,5 +66,39 @@ describe('parseParagraphs', () => {
   it('обычный абзац без пустой строки между строками остаётся одним целым — это ожидаемый markdown-рефлоу, не баг', () => {
     const paragraphs = parseParagraphs(['Первая строка.', 'Вторая строка без пустой строки между ними.'].join('\n'))
     expect(paragraphs).toHaveLength(1)
+  })
+
+  it('нумерованный пункт сохраняет свой номер — по нему на шаг и ссылаются', () => {
+    const [first, second] = parseParagraphs(['1. Первый шаг', '2. Второй шаг'].join('\n'))
+
+    expect(first?.marker).toBe('1.')
+    expect(second?.marker).toBe('2.')
+  })
+
+  it('обычный пункт номера не получает — его рисует тире', () => {
+    const [bullet] = parseParagraphs('- Просто пункт')
+    expect(bullet?.bullet).toBe(true)
+    expect(bullet?.marker).toBeUndefined()
+  })
+
+  it('вложенный пункт остаётся вложенным, а не становится равным шагом', () => {
+    const [outer, inner] = parseParagraphs(['1. Шаг', '   - уточнение к шагу'].join('\n'))
+
+    expect(outer?.depth).toBe(0)
+    expect(inner?.depth).toBe(1)
+  })
+})
+
+describe('linkify', () => {
+  it('делает ссылкой адрес в собственном сообщении, не трогая остальной текст', () => {
+    expect(linkify('см. https://example.com/x и всё')).toEqual([
+      { text: 'см. ' },
+      { text: 'https://example.com/x', href: 'https://example.com/x' },
+      { text: ' и всё' },
+    ])
+  })
+
+  it('разметку не трогает — человек написал звёздочки буквально', () => {
+    expect(linkify('**жирный** текст')).toEqual([{ text: '**жирный** текст' }])
   })
 })

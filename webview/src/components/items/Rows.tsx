@@ -1,4 +1,6 @@
-import type { CheckpointItem, CompactItem, CrashItem, MetaItem, ThinkItem } from '../../feed/types'
+import { useEffect, useRef, useState } from 'react'
+import { compactProgress } from '../../feed/compact'
+import type { CheckpointItem, CompactItem, CrashItem, ErrorItem, MetaItem, ThinkItem } from '../../feed/types'
 import s from '../feed.module.css'
 
 /**
@@ -22,13 +24,66 @@ export const CheckpointRow = ({ item }: { item: CheckpointItem }) => (
   </div>
 )
 
-export const CompactRow = ({ item }: { item: CompactItem }) => (
-  <div className={s.compact}>
-    <span className={`${s.compactLabel} ${item.pending ? s.pending : ''}`}>CONTEXT</span>
-    <span className={s.compactText}>{item.target}</span>
-    <div className={s.spacer} />
-  </div>
-)
+/** Как часто подрастает полоса сжатия: чаще незачем, кривая и так пологая. */
+const COMPACT_TICK_MS = 500
+
+/**
+ * Сколько сжатия позади — по секундомеру от первого сообщения о нём.
+ *
+ * Время считается от появления карточки, а не от какой-либо отметки в событии:
+ * карточка заводится тем же сообщением, которым CLI объявляет о начале сжатия,
+ * так что это и есть его начало.
+ */
+const useCompactProgress = (pending: boolean): number => {
+  const startedAt = useRef<number | null>(null)
+  const [percent, setPercent] = useState(0)
+
+  useEffect(() => {
+    if (!pending) return
+
+    const from = startedAt.current ?? Date.now()
+    startedAt.current = from
+
+    const tick = () => setPercent(compactProgress(Date.now() - from))
+    tick()
+
+    const timer = window.setInterval(tick, COMPACT_TICK_MS)
+    return () => window.clearInterval(timer)
+  }, [pending])
+
+  return percent
+}
+
+/**
+ * Сжатие контекста. Пока оно идёт, остаток строки занимает полоса штрихов и
+ * процент — единственная подпись о происходящем на всю панель (строка состояния
+ * под лентой в этот момент молчит, чтобы не говорить то же самое дважды).
+ *
+ * Процент считается от прошедшего времени: сколько сжатия позади, CLI не
+ * сообщает никому, включая собственный терминальный интерфейс, — тот рисует
+ * ту же кривую (см. compactProgress). Полоса поэтому не обещает точной доли, а
+ * показывает, что работа идёт и сколько примерно уже тянется.
+ */
+export const CompactRow = ({ item }: { item: CompactItem }) => {
+  const percent = useCompactProgress(item.pending)
+
+  return (
+    <div className={s.compact}>
+      <span className={`${s.compactLabel} ${item.pending ? s.pending : ''}`}>CONTEXT</span>
+      <span className={s.compactText}>{item.target}</span>
+      {item.pending ? (
+        <>
+          <span className={s.compactTicks} aria-hidden="true">
+            <span className={s.compactTicksFill} style={{ width: `${percent}%` }} />
+          </span>
+          <span className={s.compactPercent}>{percent}%</span>
+        </>
+      ) : (
+        <div className={s.spacer} />
+      )}
+    </div>
+  )
+}
 
 /** Итог хода — включая прерванный: он отличается подписью, а не видом строки. */
 export const MetaRow = ({ item }: { item: MetaItem }) => (
@@ -45,4 +100,18 @@ export const CrashRow = ({ item }: { item: CrashItem }) => (
     <span className={s.crashLabel}>SESSION</span>
     <span className={s.crashText}>{item.message}</span>
   </div>
+)
+
+/**
+ * Отказ агента или процесса — на своём месте в хронологии (см. ErrorItem).
+ * Крестик остаётся: прочитанную ошибку можно убрать сразу, не дожидаясь, пока
+ * она уедет вверх сама.
+ */
+export const ErrorRow = ({ item, onDismiss }: { item: ErrorItem; onDismiss: () => void }) => (
+  <p className={s.error}>
+    <span className={s.errorText}>{item.message}</span>
+    <button type="button" className={s.errorDismiss} onClick={onDismiss}>
+      ×
+    </button>
+  </p>
 )

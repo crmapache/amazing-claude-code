@@ -21,7 +21,9 @@ import com.intellij.util.ui.JBUI
 import io.github.crmapache.amazingclaudecode.AccBundle
 import io.github.crmapache.amazingclaudecode.claude.ClaudeAuth
 import io.github.crmapache.amazingclaudecode.claude.ClaudeCommandHints
+import io.github.crmapache.amazingclaudecode.claude.ClaudeExecutable
 import io.github.crmapache.amazingclaudecode.claude.ClaudeHistory
+import io.github.crmapache.amazingclaudecode.claude.ClaudeLaunch
 import io.github.crmapache.amazingclaudecode.claude.ClaudeLogin
 import io.github.crmapache.amazingclaudecode.claude.ClaudeMcp
 import io.github.crmapache.amazingclaudecode.claude.McpServer
@@ -33,7 +35,7 @@ import io.github.crmapache.amazingclaudecode.claude.PluginMarketplace
 import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessions
 import io.github.crmapache.amazingclaudecode.claude.ClaudeTokenUsage
-import io.github.crmapache.amazingclaudecode.claude.ClaudeUsagePing
+import io.github.crmapache.amazingclaudecode.claude.ClaudeControlPing
 import io.github.crmapache.amazingclaudecode.claude.ImageAttachment
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSettings
 import io.github.crmapache.amazingclaudecode.claude.PermissionBypass
@@ -54,9 +56,11 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import javax.swing.JComponent
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -99,6 +103,9 @@ internal class ClaudePanel(
     @Volatile
     private var awaitedAuth: Boolean? = null
 
+    /** Каталог моделей спрашиваем один раз за жизнь панели — см. checkAuth. */
+    private val modelsRequested = java.util.concurrent.atomic.AtomicBoolean(false)
+
     /** Запросы, на которые ждём ответа: по ним же вспоминаем правило для «всегда». */
     private val awaiting = ConcurrentHashMap<String, PermissionServer.Request>()
 
@@ -115,6 +122,17 @@ internal class ClaudePanel(
      * плана с её кнопками, которую панель уже нарисовала по вызову инструмента.
      */
     private val plans = ConcurrentHashMap<String, ChannelPermission>()
+
+    /**
+     * Вопросы с вариантами ответа, ждущие человека, — по идентификатору вызова
+     * AskUserQuestion, то есть по идентификатору карточки вопроса в ленте.
+     *
+     * Устроено как планы, и по той же причине: карточку рисует сам вызов
+     * инструмента, спрашивать поверх неё разрешение «можно ли задать вопрос»
+     * было бы вторым вопросом об одном и том же. Ответ возвращается тем же
+     * запросом — выбранные варианты уезжают в updatedInput (см. answerAsk).
+     */
+    private val asks = ConcurrentHashMap<String, ChannelPermission>()
 
     private data class ChannelPermission(
         val sessionId: String,
@@ -258,11 +276,20 @@ internal class ClaudePanel(
 
             "permissionDecision" -> decidePermission(field("id"), field("decision"))
 
-            "planDecision" -> decidePlan(field("id"), field("decision"))
+            "planDecision" -> decidePlan(sessionId, field("id"), field("decision"), field("message"))
+
+            "askAnswer" -> answerAsk(
+                sessionId,
+                itemId = field("id"),
+                answers = payload["answers"]?.jsonObject ?: JsonObject(emptyMap()),
+                fallbackText = field("text"),
+            )
 
             "setMode" -> changeMode(sessionId, field("mode"))
 
-            "setModel" -> sessions?.setModel(sessionId, field("model"))
+            // Окно контекста у другой модели своего размера — спрашиваем его заново,
+            // не дожидаясь конца следующего хода.
+            "setModel" -> changeModel(sessionId, field("model"))
 
             "setEffort" -> sessions?.setEffort(sessionId, field("effort"))
 
@@ -280,6 +307,15 @@ internal class ClaudePanel(
             "resumeSession" -> resumeConversation(sessionId, field("conversationId"))
 
             "checkAuth" -> checkAuth()
+
+            // Строка из самой панели — см. protocol, сообщение trace.
+            "trace" -> thisLogger().info("Webview: ${field("message")}")
+
+            // Автоматический поиск промахнулся — человек показал файл сам.
+            "setExecutablePath" -> {
+                ClaudePreferences.executablePath = field("path").trim()
+                checkAuth()
+            }
 
             "openDevTools" -> webview?.openDevTools()
 
@@ -433,18 +469,28 @@ internal class ClaudePanel(
             command = PermissionPrompt.command(request.toolName, request.input),
         )
 
-        if (request.toolName == PLAN_TOOL) {
+        if (request.toolName == PLAN_TOOL || request.toolName == ClaudeLaunch.ASK_TOOL) {
             val itemId = request.toolUseId
             if (itemId == null) {
                 // Без идентификатора вызова карточку в ленте не найти, а значит и
                 // кнопкам её не ответить — честнее отказать сразу, чем молча
                 // остановить ход навсегда.
-                thisLogger().warn("Plan permission without a tool_use_id: nothing to attach it to")
-                sessions?.answerPermission(sessionId, request.requestId, allow = false, message = PLAN_LOST)
+                thisLogger().warn("${request.toolName} permission without a tool_use_id: nothing to attach it to")
+                sessions?.answerPermission(sessionId, request.requestId, allow = false, message = CARD_LOST)
                 return
             }
 
-            plans[itemId] = pending
+            // Вопрос без единого вопроса лента не рисует (сбойный вызов бывает), и
+            // ждать тогда нечего: разрешение осталось бы висеть под карточкой,
+            // которой нет, а ход — стоять до закрытия вкладки. Отказ агент
+            // переживёт: спросит то же самое обычным текстом.
+            if (request.toolName == ClaudeLaunch.ASK_TOOL && !hasQuestions(request.input)) {
+                thisLogger().warn("${request.toolName} permission without questions: the feed has no card to answer it")
+                sessions?.answerPermission(sessionId, request.requestId, allow = false, message = CARD_LOST)
+                return
+            }
+
+            if (request.toolName == PLAN_TOOL) plans[itemId] = pending else asks[itemId] = pending
             return
         }
 
@@ -462,6 +508,29 @@ internal class ClaudePanel(
             }.toString(),
         )
     }
+
+    /**
+     * Жив ли ещё вопрос, под который кладут ответ.
+     *
+     * Записи в `plans`/`asks` переживают процесс: карточка в ленте остаётся, а
+     * разговор за это время могли перезапустить (переподключение MCP, Stop с
+     * последующим ходом). Новый процесс о старом запросе не знает и ответ на него
+     * молча выбросит — карточка при этом уже переключилась в «решено», и
+     * написанное человеком пропадёт совсем. Поэтому спрашиваем разговор, ждёт ли
+     * он ещё этого ответа, и если нет — уходим тем же запасным путём, что и для
+     * карточки без записи: обычным сообщением.
+     */
+    private fun awaited(pending: ChannelPermission): Boolean =
+        sessions?.isAwaitingPermission(pending.sessionId, pending.requestId) == true
+
+    /**
+     * Есть ли в вызове хоть один вопрос — ровно то же условие, по которому лента
+     * решает, рисовать ли карточку (см. build.ts, AskUserQuestion). Условия должны
+     * совпадать: карточка без ожидания ответа — просто мусор в ленте, а ожидание
+     * без карточки — намертво вставший ход.
+     */
+    private fun hasQuestions(input: JsonObject): Boolean =
+        (input["questions"] as? JsonArray)?.isNotEmpty() == true
 
     private fun decidePermission(id: String, decision: String) {
         val channel = channelPermissions.remove(id)
@@ -499,11 +568,19 @@ internal class ClaudePanel(
      * план целиком. Поэтому одобрение переключает режим в bypass следом: карточка
      * плана и была тем единственным вопросом, который стоило задать.
      */
-    private fun decidePlan(itemId: String, decision: String) {
-        val pending = plans.remove(itemId) ?: run {
+    private fun decidePlan(sessionId: String, itemId: String, decision: String, message: String = "") {
+        val pending = plans.remove(itemId)?.takeIf { awaited(it) } ?: run {
             // Карточка старше нынешнего процесса: разговор с тех пор перезапускали
-            // (или это чужая вкладка), и отвечать давно некому.
+            // (или это чужая вкладка), и отвечать давно некому. Замечание к плану
+            // тогда уходит обычным сообщением — потерять написанное человеком
+            // хуже, чем ответить не тем способом. Уходит именно в ту вкладку, где
+            // его писали: разговоров много, и чужой ответ в чужой ленте — не
+            // спасение, а вторая поломка.
             thisLogger().info("No plan waiting for a decision: $itemId")
+            if (message.isNotBlank()) {
+                sendStatus(sessionId, "running")
+                sessions?.prompt(sessionId, message)
+            }
             return
         }
 
@@ -511,10 +588,45 @@ internal class ClaudePanel(
             pending.sessionId,
             pending.requestId,
             allow = decision == "approve",
-            message = KEEP_PLANNING,
+            // Написанное человеком при живой карточке плана — это и есть его
+            // замечание: агент прочитает именно его, а не общее «доработай».
+            message = message.ifBlank { KEEP_PLANNING },
         )
 
         if (decision == "approve") changeMode(pending.sessionId, "bypassPermissions")
+    }
+
+    /**
+     * Ответ на вопрос с вариантами.
+     *
+     * Уходит тем же запросом, которым вопрос и пришёл: выбранное кладём в
+     * `answers` рядом с исходными аргументами вызова — ключом служит текст
+     * вопроса, значением подпись выбранного варианта (или свой ответ, если его
+     * напечатали). Дальше CLI сам собирает из этого результат инструмента, и ход
+     * продолжается с того же места.
+     *
+     * Вопрос мог остаться от прежнего процесса — тогда отвечать некому, и ответ
+     * уходит обычным следующим сообщением: так вёл себя панельный ответ и до
+     * того, как вопросы вообще стали доходить до агента.
+     */
+    private fun answerAsk(sessionId: String, itemId: String, answers: JsonObject, fallbackText: String) {
+        val pending = asks.remove(itemId)?.takeIf { awaited(it) }
+
+        if (pending == null) {
+            thisLogger().info("No question waiting for an answer: $itemId")
+            if (fallbackText.isNotBlank()) {
+                sendStatus(sessionId, "running")
+                sessions?.prompt(sessionId, fallbackText)
+            }
+            return
+        }
+
+        sessions?.answerPermission(
+            pending.sessionId,
+            pending.requestId,
+            allow = true,
+            extraInput = buildJsonObject { put("answers", answers) },
+        )
     }
 
     // --- Вход ---------------------------------------------------------------
@@ -533,7 +645,13 @@ internal class ClaudePanel(
                 loginPolling = null
             }
 
-            if (status.loggedIn) refreshUsage()
+            // Каталог моделей — только после подтверждённого входа: без него CLI
+            // ответит не списком, а «вы не вошли». И один раз: список не меняется
+            // от того, что мы лишний раз спросили, а стоит запрос запуска процесса.
+            if (status.loggedIn) {
+                refreshUsage()
+                if (modelsRequested.compareAndSet(false, true)) refreshModels()
+            }
         }
     }
 
@@ -595,6 +713,16 @@ internal class ClaudePanel(
                 put("loggedIn", status.loggedIn)
                 put("email", status.email)
                 put("plan", status.plan)
+                put("executablePath", ClaudePreferences.executablePath)
+                // Не нашли — показываем, где искали и что ответила сама система.
+                // По этим двум спискам видно, почему промахнулись, даже если
+                // машина чужая и посмотреть на неё нельзя.
+                if (!status.installed) {
+                    putJsonArray("searched") {
+                        add(ClaudeExecutable.systemAnswer())
+                        ClaudeExecutable.searchedPlaces().forEach { add(it) }
+                    }
+                }
             }.toString(),
         )
     }
@@ -630,6 +758,31 @@ internal class ClaudePanel(
                     if (change.error.isNotEmpty()) put("error", change.error)
                 }.toString(),
             )
+        }
+    }
+
+    /**
+     * Панель показывает применённую модель, а не выбранную — по той же причине,
+     * что и с режимом: отказать агент может по-настоящему (модель запрещена
+     * организацией или недоступна тарифу), и тогда интерфейс обязан вернуться к
+     * прежней и сказать почему, а не сообщать о смене, которой не было.
+     *
+     * Окно контекста спрашиваем заново только у настоящей смены: у другой модели
+     * оно своего размера, и ждать конца хода ради этой цифры незачем.
+     */
+    private fun changeModel(sessionId: String, model: String) {
+        sessions?.setModel(sessionId, model) { change ->
+            webview?.send(
+                buildJsonObject {
+                    put("type", "model")
+                    put("sessionId", sessionId)
+                    put("model", change.model)
+                    put("applied", change.applied)
+                    if (change.error.isNotEmpty()) put("error", change.error)
+                }.toString(),
+            )
+
+            if (change.applied) refreshContext(sessionId)
         }
     }
 
@@ -787,7 +940,7 @@ internal class ClaudePanel(
      * по управляющему каналу — бесплатно, процесс и так поднят. До первого
      * сообщения процесса нет, а поднимать полноценную сессию с MCP и хуками
      * только за этой цифрой не стоит — вместо этого разовый лёгкий пинг
-     * (--safe-mode, без customizations) через [ClaudeUsagePing].
+     * (--safe-mode, без customizations) через [ClaudeControlPing].
      */
     private fun refreshUsage() {
         // Спрашивать расход до входа нечего: процесс поднимется только затем, чтобы
@@ -797,8 +950,9 @@ internal class ClaudePanel(
         if (sessions?.isRunning(MAIN_SESSION) == true) {
             sessions?.requestUsage(MAIN_SESSION, ::sendUsage)
         } else {
-            ClaudeUsagePing.request(
+            ClaudeControlPing.request(
                 project.basePath,
+                subtype = "get_usage",
                 onResult = ::sendUsage,
                 onError = { error -> thisLogger().info("Usage ping skipped: $error") },
             )
@@ -814,6 +968,100 @@ internal class ClaudePanel(
                 }.toString(),
             )
         }
+    }
+
+    /**
+     * Каталог моделей — тот же, что показывает `/model` в терминале.
+     *
+     * Список нельзя держать у себя: какие модели доступны, решают учётная запись,
+     * провайдер и политика организации, а имена и подписи меняются с версиями CLI.
+     * Спрашиваем у живого разговора, а до первого сообщения — разовым пингом.
+     */
+    private fun refreshModels() {
+        if (!loggedIn) return
+
+        val onError = { error: String ->
+            thisLogger().info("Model catalog unavailable: $error")
+            // Осечка — не повод закрыть тему навсегда: снимаем защёлку, и следующая
+            // проверка входа спросит каталог заново. Иначе один неудачный пинг
+            // (холодный старт CLI не уложился в таймаут, процесс прибили) оставлял
+            // бы панель с зашитым списком моделей до самого закрытия проекта — вместе
+            // с моделями, которые в этой организации давно запрещены.
+            modelsRequested.set(false)
+        }
+
+        if (sessions?.isRunning(MAIN_SESSION) == true) {
+            sessions?.requestModels(MAIN_SESSION, onResult = ::sendModels, onFailure = onError)
+        } else {
+            ClaudeControlPing.request(
+                project.basePath,
+                subtype = "list_models",
+                onResult = ::sendModels,
+                onError = onError,
+            )
+        }
+    }
+
+    private fun sendModels(payload: JsonObject) {
+        val models = payload["models"]?.jsonArray ?: run {
+            // Ответ без списка — тот же промах, что и ошибка: каталога у нас нет,
+            // и спросить его ещё раз должно быть можно.
+            modelsRequested.set(false)
+            return
+        }
+        thisLogger().info("Model catalog from CLI: ${models.size} entries")
+
+        webview?.send(
+            buildJsonObject {
+                put("type", "models")
+                putJsonArray("models") {
+                    for (element in models) {
+                        val model = element as? JsonObject ?: continue
+                        val value = model["value"]?.jsonPrimitive?.contentOrNull ?: continue
+
+                        addJsonObject {
+                            put("value", value)
+                            put("label", model["displayName"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                            put("description", model["description"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                            put("resolved", model["resolvedModel"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                            model["disabled"]?.jsonPrimitive?.booleanOrNull?.let { put("disabled", it) }
+                        }
+                    }
+                }
+            }.toString(),
+        )
+    }
+
+    /**
+     * Занятое окно контекста — цифрой от самого CLI (та же, что печатает
+     * `/context`), а не подсчётом по usage хода: размер окна зависит от модели —
+     * у «1M»-моделей он впятеро больше обычного, — и своя арифметика на стороне
+     * панели показывала бы «контекст полон» на почти пустом разговоре.
+     *
+     * Спрашиваем только у живого разговора: у спящего контекст пуст по
+     * определению, а разовый пинг ответил бы про свой собственный процесс.
+     */
+    private fun refreshContext(sessionId: String) {
+        sessions?.requestContextUsage(
+            sessionId,
+            onResult = { usage -> sendContext(sessionId, usage) },
+            onFailure = { error -> thisLogger().debug("Context usage unavailable: $error") },
+        )
+    }
+
+    private fun sendContext(sessionId: String, usage: JsonObject) {
+        val used = usage["totalTokens"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: return
+        val max = usage["maxTokens"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: return
+        if (max <= 0) return
+
+        webview?.send(
+            buildJsonObject {
+                put("type", "context")
+                put("sessionId", sessionId)
+                put("used", used)
+                put("max", max)
+            }.toString(),
+        )
     }
 
     /** Общий разбор ответа get_usage — не важно, от живого разговора он или от пинга. */
@@ -990,6 +1238,11 @@ internal class ClaudePanel(
 
         noteLoggedOut(line)
         webview?.send("""{"type":"agent","sessionId":"$sessionId","event":$line}""")
+
+        // Конец хода — единственный момент, когда занятое окно контекста реально
+        // поменялось: спрашиваем свежую цифру у того же процесса, который только
+        // что закончил (см. refreshContext).
+        if (line.contains("\"type\":\"result\"")) refreshContext(sessionId)
     }
 
     private fun sendError(sessionId: String, text: String) {
@@ -1226,6 +1479,6 @@ internal class ClaudePanel(
         /** Что агент услышит в ответ на «Keep planning». */
         const val KEEP_PLANNING = "The user wants to keep planning: refine the plan and show it again."
 
-        const val PLAN_LOST = "The panel could not attach this plan to its card."
+        const val CARD_LOST = "The panel could not attach this request to its card."
     }
 }

@@ -10,17 +10,93 @@ export interface Anchor {
   top: number
 }
 
+interface UsageMetersProps {
+  /** Токены за сегодня по всем проектам — то же "tok", что в терминале. */
+  todayTokens: string
+  /** Окна расхода подписки. Приходят от самого агента, поэтому бывают пустыми. */
+  usage: { session?: UsageWindow; week?: UsageWindow }
+}
+
+/**
+ * Расход подписки: пятичасовое окно, недельное и объём работы за день.
+ *
+ * Живёт в нижнем ряду самого поля ввода, а не в строке состояния под ним: туда
+ * смотрят, когда решают, что писать дальше — хватит ли лимита на длинный ход, —
+ * и цифры должны быть там же, где рука.
+ *
+ * Кольцо рядом с цифрой, а не голая цифра: доля читается боковым зрением, не
+ * складывая в уме проценты, а места кольцо занимает не больше строки.
+ *
+ * Заполнения контекста тут нет намеренно: оно уже нарисовано полоской над самим
+ * полем (см. Composer), и вторая цифра про то же только отнимала бы место.
+ */
+export const UsageMeters = ({ todayTokens, usage }: UsageMetersProps) => (
+  <div className={s.meters}>
+    {usage.session ? (
+      <Meter
+        percent={usage.session.percent}
+        color={paceColor(usage.session.percent, usage.session.resets, FIVE_HOUR_MS)}
+        tooltip={`5-hour limit: ${usage.session.percent}% used\nResets in ${timeLeft(usage.session.resets)}`}
+      />
+    ) : null}
+
+    {usage.week ? <WeekMeter usage={usage.week} /> : null}
+
+    <span className={s.meterTokens} data-tooltip="Tokens spent today, across all projects">
+      {todayTokens}
+    </span>
+  </div>
+)
+
+/** Радиус кольца в его собственных координатах и длина дуги по этому радиусу. */
+const RING_RADIUS = 8.5
+const RING_LENGTH = 2 * Math.PI * RING_RADIUS
+
+/** Насколько дугу «недокрутить»: 0% — кольца нет вовсе, 100% — замкнуто. */
+const dashFor = (percent: number): number => RING_LENGTH * (1 - Math.min(100, Math.max(0, percent)) / 100)
+
+interface MeterProps {
+  percent: number
+  color: string
+  /** Блёклая дуга под основной: темп, с которым сверяются. Нет — не рисуем. */
+  pace?: number | null
+  /** Подсказка при наведении; перенос строки в ней — настоящая вторая строка. */
+  tooltip: string
+}
+
+const Meter = ({ percent, color, pace = null, tooltip }: MeterProps) => (
+  <span className={s.meter} data-tooltip={tooltip} role="img" aria-label={tooltip}>
+    {/* overflow видимый: круглые концы дуги вылезают за пределы вьюбокса. */}
+    <svg className={s.meterRing} viewBox="0 0 22 22" aria-hidden="true">
+      <circle className={s.meterTrack} cx="11" cy="11" r={RING_RADIUS} />
+      {pace === null ? null : (
+        <circle
+          className={s.meterPace}
+          cx="11"
+          cy="11"
+          r={RING_RADIUS}
+          style={{ strokeDasharray: RING_LENGTH, strokeDashoffset: dashFor(pace) }}
+        />
+      )}
+      <circle
+        className={s.meterArc}
+        cx="11"
+        cy="11"
+        r={RING_RADIUS}
+        style={{ stroke: color, strokeDasharray: RING_LENGTH, strokeDashoffset: dashFor(percent) }}
+      />
+    </svg>
+    <span className={s.meterValue} style={{ color }}>
+      {percent}%
+    </span>
+  </span>
+)
+
 interface StatusBarProps {
   gitBranch?: string
   pullRequest?: string
   /** Открыть PR текущей ветки в системном браузере. Не URL: сама ссылка живёт в панели. */
   onOpenPullRequest: () => void
-  contextPercent: number
-  contextTokens: string
-  /** Токены за сегодня по всем проектам — то же "tok", что в терминале. */
-  todayTokens: string
-  /** Окна расхода подписки. Приходят от самого агента, поэтому бывают пустыми. */
-  usage: { session?: UsageWindow; week?: UsageWindow }
   model?: string
   effort: string
   mode: string
@@ -28,26 +104,21 @@ interface StatusBarProps {
 }
 
 /**
- * Нижняя строка — та же сводка, что в строке состояния терминала: ветка, её PR,
- * заполнение контекста, окна подписки и объём работы. Полосок-градусников тут нет
- * намеренно: цифра с цветом читается быстрее, а места занимает втрое меньше.
+ * Нижняя строка: где мы работаем (ветка и её PR) и чем (модель, усилие, режим).
+ * Расход отсюда переехал в само поле ввода — см. [UsageMeters].
  */
 export const StatusBar = ({
   gitBranch,
   pullRequest,
   onOpenPullRequest,
-  contextPercent,
-  contextTokens,
-  todayTokens,
-  usage,
   model,
   effort,
   mode,
   onOpen,
 }: StatusBarProps) => (
   <div className={s.status}>
-    <div className={s.statusLine}>
-      {gitBranch ? (
+    {gitBranch ? (
+      <div className={s.statusLine}>
         <span className={`${s.statusItem} ${s.statusBranchItem}`}>
           <span className={s.statusBranch}>{gitBranch}</span>
           {pullRequest ? (
@@ -58,36 +129,8 @@ export const StatusBar = ({
             <span className={s.statusPr}>no PR</span>
           )}
         </span>
-      ) : null}
-
-      <div className={s.spacer} />
-
-      <span className={s.statusItem} title={`Context window · ${contextTokens}`}>
-        <span className={s.statusKey}>ctx</span>
-        <span className={s.statusValue} style={{ color: contextColor(contextPercent) }}>
-          {contextPercent}%
-        </span>
-      </span>
-
-      {usage.session ? (
-        <span className={s.statusItem} title={`Five-hour window · resets ${resetAt(usage.session.resets)}`}>
-          <span className={s.statusKey}>5h</span>
-          <span
-            className={s.statusValue}
-            style={{ color: paceColor(usage.session.percent, usage.session.resets, FIVE_HOUR_MS) }}
-          >
-            {usage.session.percent}%
-          </span>
-        </span>
-      ) : null}
-
-      {usage.week ? <WeekUsage usage={usage.week} /> : null}
-
-      <span className={s.statusItem} title="Tokens spent today, across all projects">
-        <span className={s.statusKey}>tok</span>
-        <span className={s.statusTok}>{todayTokens}</span>
-      </span>
-    </div>
+      </div>
+    ) : null}
 
     <div className={s.selectors}>
       <Selector label="MODEL" value={modelLabel(model)} title={`Model: ${modelLabel(model)}`} onOpen={(anchor) => onOpen('model', anchor)} />
@@ -104,26 +147,26 @@ export const StatusBar = ({
 )
 
 /**
- * Второй процент (дневной бюджет) — всегда блёклый целиком, вместе со своим "%":
- * в личном statusline.sh dim оборачивает "/budget%" одной группой, а не только
- * цифры. Если вынести "%" наружу, в общий крашеный span, он подсвечивается
- * тем же цветом, что и первое число, — и блёклость выглядит недоделанной.
+ * Недельное окно: под яркой дугой расхода — блёклая дуга равномерного темпа,
+ * то есть сколько лимита уже «положено» к сегодняшнему дню. Пока яркая короче
+ * блёклой, идём по плану — это видно, не читая ни одной цифры. Раньше тот же
+ * бюджет стоял вторым числом через дробь, но два процента подряд каждый раз
+ * приходилось сравнивать в уме.
  */
-const WeekUsage = ({ usage }: { usage: UsageWindow }) => {
+const WeekMeter = ({ usage }: { usage: UsageWindow }) => {
   const budget = weekBudgetToday(usage.resets)
 
   return (
-    <span
-      className={s.statusItem}
-      title={`Weekly window · resets ${resetAt(usage.resets)} · second number: budget available today at an even 14%/day pace`}
-    >
-      <span className={s.statusKey}>wk</span>
-      <span className={s.statusValue} style={{ color: paceColor(usage.percent, usage.resets, WEEK_MS) }}>
-        {usage.percent}
-        {budget === null ? '%' : null}
-      </span>
-      {budget !== null ? <span className={s.statusSlash}>/{budget}%</span> : null}
-    </span>
+    <Meter
+      percent={usage.percent}
+      color={paceColor(usage.percent, usage.resets, WEEK_MS)}
+      pace={budget}
+      tooltip={
+        budget === null
+          ? `Weekly limit: ${usage.percent}% used`
+          : `Weekly limit: ${usage.percent}% used\nDim ring: ${budget}% even-pace budget for today`
+      }
+    />
   )
 }
 
@@ -234,11 +277,21 @@ const CONTEXT_LEVEL_GLOW: Record<ContextLevel, { strong: string; soft: string }>
 
 export const contextGlow = (percent: number): { strong: string; soft: string } => CONTEXT_LEVEL_GLOW[contextLevel(percent)]
 
-const resetAt = (resets: string): string => {
-  if (!resets) return 'soon'
+/**
+ * Сколько осталось до сброса окна: «2h 41m».
+ *
+ * Именно остаток, а не время сброса: решают им один вопрос — дотерпеть или
+ * начинать экономить прямо сейчас, — и в этом виде ответ не надо считать.
+ */
+const timeLeft = (resets: string): string => {
+  const resetMs = resets ? new Date(resets).getTime() : Number.NaN
+  if (Number.isNaN(resetMs)) return 'soon'
 
-  const date = new Date(resets)
-  return Number.isNaN(date.getTime()) ? resets : date.toLocaleString()
+  const minutes = Math.round((resetMs - Date.now()) / 60_000)
+  if (minutes <= 0) return 'soon'
+
+  const hours = Math.floor(minutes / 60)
+  return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`
 }
 
 /**

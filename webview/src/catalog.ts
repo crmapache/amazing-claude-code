@@ -1,4 +1,5 @@
 import type { MenuOption } from './components/Menu'
+import type { ModelInfo } from './protocol'
 
 /**
  * Значения сверены с документацией CLI: панель отправляет их слэш-командой в живую
@@ -6,12 +7,43 @@ import type { MenuOption } from './components/Menu'
  * Подписи и пояснения взяты из макета.
  */
 
+/** Значение, которым CLI зовёт «модель по умолчанию» — оно же приходит в каталоге. */
+export const DEFAULT_MODEL = 'default'
+
+/**
+ * Каталог моделей, пока настоящий не приехал от CLI (см. ModelInfo и сообщение
+ * `models`). Это ровно тот список, что показывает `/model` в терминале обычной
+ * подписке — но живой каталог всегда важнее: он знает и про запреты организации,
+ * и про модели, которых на момент сборки панели ещё не существовало.
+ */
 export const MODEL_OPTIONS: MenuOption[] = [
-  { id: 'fable', label: 'Fable', sub: 'Alternative flagship — try it when Opus stalls on a problem.' },
-  { id: 'opus', label: 'Opus', tag: 'best', sub: 'Deepest reasoning, slowest. Default for plan mode.' },
-  { id: 'sonnet', label: 'Sonnet', tag: 'balanced', sub: 'Fast enough for tight loops, strong at edits.' },
-  { id: 'haiku', label: 'Haiku', tag: 'cheap', sub: 'Search, greps, mechanical refactors, subagents.' },
+  { id: DEFAULT_MODEL, label: 'Default (recommended)', sub: 'Use the model this session starts with.' },
+  { id: 'opus', label: 'Opus', sub: 'Opus 5 · Best for everyday, complex tasks' },
+  { id: 'opus[1m]', label: 'Opus (1M context)', sub: 'Opus 5 with 1M context · For long sessions with large codebases' },
+  { id: 'sonnet', label: 'Sonnet', sub: 'Sonnet 5 · Efficient for routine tasks' },
+  {
+    id: 'sonnet[1m]',
+    label: 'Sonnet (1M context)',
+    sub: 'Sonnet 5 with 1M context · For long sessions with large codebases',
+  },
+  { id: 'haiku', label: 'Haiku', sub: 'Haiku 4.5 · Fastest for quick answers' },
+  { id: 'opusplan', label: 'Opus Plan Mode', sub: 'Use Opus in plan mode, Sonnet otherwise' },
 ]
+
+/**
+ * Каталог от CLI в вид, который понимает меню. Недоступную строку показываем —
+ * ровно как терминал, — но помечаем: видеть, что модель существует и почему её
+ * нельзя выбрать, полезнее, чем не видеть её вовсе.
+ */
+export const modelOptions = (models: ModelInfo[] | null): MenuOption[] =>
+  models === null || models.length === 0
+    ? MODEL_OPTIONS
+    : models.map((model) => ({
+        id: model.value,
+        label: model.label || model.value,
+        sub: model.description,
+        ...(model.disabled ? { tag: 'unavailable' } : {}),
+      }))
 
 export const EFFORT_OPTIONS: MenuOption[] = [
   { id: 'low', label: 'low', sub: 'Minimal thinking. Mechanical edits and quick answers.' },
@@ -191,10 +223,28 @@ const MODE_SHORT: Record<string, string> = {
 
 export const modeShortLabel = (mode: string): string => MODE_SHORT[normalizeMode(mode)] ?? modeLabel(mode)
 
-/** Модель приходит полным идентификатором — в строке показываем понятное имя. */
+/**
+ * Семейства моделей для короткой подписи в нижней строке. Отдельно от каталога:
+ * там подписи полные («Opus (1M context)»), а кнопке нужно одно слово — она
+ * фиксированной ширины и от смены модели прыгать не может.
+ */
+const MODEL_FAMILIES: { id: string; label: string }[] = [
+  { id: 'fable', label: 'Fable' },
+  { id: 'opusplan', label: 'Opusplan' },
+  { id: 'opus', label: 'Opus' },
+  { id: 'sonnet', label: 'Sonnet' },
+  { id: 'haiku', label: 'Haiku' },
+]
+
+/**
+ * Модель приходит полным идентификатором — в строке показываем понятное имя.
+ * Про «1M» говорим отдельной пометкой: у такой модели окно контекста впятеро
+ * больше, и по одному имени семейства этого не понять.
+ */
 export const modelLabel = (model?: string): string => {
   if (!model) return 'default'
 
-  const known = MODEL_OPTIONS.find((option) => model.toLowerCase().includes(option.id))
-  return known?.label ?? model.replace(/^claude-/, '').replace(/\[.*\]$/, '')
+  const known = MODEL_FAMILIES.find((family) => model.toLowerCase().includes(family.id))
+  const base = known?.label ?? model.replace(/^claude-/, '').replace(/\[.*\]$/, '')
+  return /\[1m\]/i.test(model) ? `${base} 1M` : base
 }
