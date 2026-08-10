@@ -45,6 +45,73 @@ export const modelOptions = (models: ModelInfo[] | null): MenuOption[] =>
         ...(model.disabled ? { tag: 'unavailable' } : {}),
       }))
 
+/**
+ * Идентификатор модели без пометки об окне контекста: «opus[1m]» и «opus» — одна
+ * и та же модель, просто заряженная по-разному. Сравнивать выбранное с
+ * действующим нужно именно так: каталог и поток событий пишут эту пометку
+ * вразнобой, и без её отбрасывания разговор на своей же модели выглядел бы
+ * сбежавшим на чужую.
+ */
+const modelFamily = (model: string): string => model.toLowerCase().replace(/\[.*\]$/, '')
+
+/**
+ * Модель, на которую разговор ушёл не по нашей воле.
+ *
+ * Агент умеет сменить её сам, посреди хода: так срабатывает защита, уводящая
+ * ход на другую модель («Switched to Opus 4.8»). Дальше он работает уже на ней,
+ * и панель обязана говорить об этом — иначе она уверяет, что разговор идёт на
+ * одной модели, пока он идёт на другой.
+ *
+ * Пусто, если действующая модель отвечает выбранной или сверять не с чем:
+ * без каталога неизвестно, во что разворачивается сам выбор («default» — это
+ * какая?), и любое расхождение было бы выдумкой.
+ */
+export const switchedModel = (
+  models: ModelInfo[] | null,
+  selected: string,
+  actual: string | undefined,
+): string | undefined => {
+  if (!actual) return undefined
+
+  const resolved = models?.find((option) => option.value === (selected || DEFAULT_MODEL))?.resolved
+  if (!resolved) return undefined
+
+  return modelFamily(resolved) === modelFamily(actual) ? undefined : actual
+}
+
+/**
+ * Список моделей и та, что отмечена в нём галочкой.
+ *
+ * Пока разговор идёт на выбранной модели, отмечено выбранное — включая
+ * «default», который выбором и является. Стоит агенту уйти на другую модель,
+ * галочка переезжает на неё: список обязан показывать, чем разговор занят на
+ * самом деле. Модели, которой нет в каталоге (CLI зовёт её иначе или не
+ * показывает вовсе), заводится своя строка — иначе отмечать было бы нечего.
+ *
+ * Строка эта не оседает в каталоге: он общий на все вкладки, а переключение
+ * принадлежит одному разговору. Соседняя вкладка ничего про него знать не
+ * должна — ни лишним пунктом в меню, ни съехавшей галочкой.
+ */
+export const modelMenu = (
+  models: ModelInfo[] | null,
+  selected: string,
+  switched: string | undefined,
+): { options: MenuOption[]; selected: string } => {
+  const options = modelOptions(models)
+  if (!switched) return { options, selected: selected || DEFAULT_MODEL }
+
+  const known = models?.find((option) => option.resolved === switched || option.value === switched)
+  if (known) return { options, selected: known.value }
+
+  return {
+    options: [
+      ...options,
+      { id: switched, label: modelLabel(switched), sub: 'Claude Code switched to this model on its own.' },
+    ],
+    selected: switched,
+  }
+}
+
 export const EFFORT_OPTIONS: MenuOption[] = [
   { id: 'low', label: 'low', sub: 'Minimal thinking. Mechanical edits and quick answers.' },
   { id: 'medium', label: 'medium', sub: 'Balanced. Good default for feature work.' },

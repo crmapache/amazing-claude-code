@@ -4,7 +4,9 @@ import {
   MODE_OPTIONS,
   modeLabel,
   modelLabel,
+  modelMenu,
   modelOptions,
+  switchedModel,
   modeShortLabel,
   nextMode,
   normalizeMode,
@@ -101,6 +103,51 @@ describe('каталог моделей', () => {
 
   it('недоступную модель показываем, но помечаем', () => {
     expect(modelOptions(models).find((option) => option.id === 'opus-legacy')?.tag).toBe('unavailable')
+  })
+})
+
+describe('модель, на которую агент ушёл сам', () => {
+  const models = [
+    { value: 'default', label: 'Default', description: '', resolved: 'claude-opus-5[1m]' },
+    { value: 'sonnet', label: 'Sonnet', description: '', resolved: 'claude-sonnet-5' },
+  ]
+
+  it('разговор на выбранной модели переключением не считается', () => {
+    expect(switchedModel(models, 'default', 'claude-opus-5[1m]')).toBeUndefined()
+    expect(switchedModel(models, 'sonnet', 'claude-sonnet-5')).toBeUndefined()
+  })
+
+  it('пометка про окно контекста — не другая модель', () => {
+    // Каталог и поток пишут её вразнобой, и без этого разговор на своей же
+    // модели выглядел бы сбежавшим на чужую.
+    expect(switchedModel(models, 'default', 'claude-opus-5')).toBeUndefined()
+  })
+
+  it('уход на другую модель виден', () => {
+    expect(switchedModel(models, 'default', 'claude-opus-4-8')).toBe('claude-opus-4-8')
+  })
+
+  it('без каталога расхождение не выдумываем: во что разворачивается выбор — неизвестно', () => {
+    expect(switchedModel(null, 'default', 'claude-opus-4-8')).toBeUndefined()
+    expect(switchedModel(models, 'unknown-choice', 'claude-opus-4-8')).toBeUndefined()
+  })
+
+  it('пока разговор на выбранной модели, галочка стоит на выборе', () => {
+    expect(modelMenu(models, 'sonnet', undefined)).toMatchObject({ selected: 'sonnet' })
+    expect(modelMenu(models, '', undefined)).toMatchObject({ selected: 'default' })
+  })
+
+  it('после ухода галочка переезжает на модель каталога с тем же идентификатором', () => {
+    expect(modelMenu(models, 'default', 'claude-sonnet-5')).toMatchObject({ selected: 'sonnet' })
+  })
+
+  it('модели, которой нет в каталоге, заводится своя строка — иначе отмечать нечего', () => {
+    const menu = modelMenu(models, 'default', 'claude-opus-4-8')
+
+    expect(menu.selected).toBe('claude-opus-4-8')
+    expect(menu.options.at(-1)).toMatchObject({ id: 'claude-opus-4-8', label: 'Opus' })
+    // Каталог при этом не трогаем: он общий на все вкладки, а ушла одна.
+    expect(models).toHaveLength(2)
   })
 })
 

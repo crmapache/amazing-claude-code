@@ -86,6 +86,7 @@ interface HeaderProps {
   onOpenHistory: () => void
   onOpenMcp: () => void
   onOpenPlugins: () => void
+  onOpenSounds: () => void
 }
 
 /** Дальше этого сдвига нажатие перестаёт быть кликом и становится перетаскиванием. */
@@ -126,6 +127,7 @@ export const Header = ({
   onOpenHistory,
   onOpenMcp,
   onOpenPlugins,
+  onOpenSounds,
 }: HeaderProps) => {
   const header = useRef<HTMLElement>(null)
   const tabs = useRef<HTMLDivElement>(null)
@@ -530,6 +532,15 @@ export const Header = ({
           onClick={onOpenPlugins}
         >
           ⬡
+        </button>
+        <button
+          type="button"
+          className={s.historyButton}
+          aria-label="Sound alerts"
+          data-tooltip="Sound alerts"
+          onClick={onOpenSounds}
+        >
+          ♪
         </button>
       </div>
     </header>

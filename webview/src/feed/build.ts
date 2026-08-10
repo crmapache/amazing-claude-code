@@ -2,8 +2,10 @@ import type {
   AgentEvent,
   AgentStatus,
   AgentSystemEvent,
+  AgentRateLimitEvent,
   AgentUsage,
   ContentBlock,
+  MessageContent,
   ToolResultBlock,
   ToolUseBlock,
 } from '../protocol'
@@ -195,7 +197,7 @@ export const initialPanelState: PanelState = {
  * служит последнее сообщение человека: тот же отказ час спустя — это уже новая
  * неприятность, и промолчать о ней было бы хуже, чем повториться.
  */
-const addError = (state: PanelState, message: string): PanelState => {
+const addError = (state: PanelState, message: string, limit = false): PanelState => {
   const turnStart = state.items.map((item) => item.kind).lastIndexOf('user') + 1
   const alreadyShown = state.items
     .slice(turnStart)
@@ -203,7 +205,7 @@ const addError = (state: PanelState, message: string): PanelState => {
 
   if (alreadyShown) return state
 
-  return push(state, (id) => ({ id, kind: 'error', message }))
+  return push(state, (id) => ({ id, kind: 'error', message, ...(limit ? { limit: true } : {}) }))
 }
 
 export const reducePanel = (state: PanelState, action: PanelAction, now = Date.now()): PanelState => {
@@ -506,6 +508,49 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
   }
 }
 
+/**
+ * Содержимое сообщения списком блоков — каким бы оно ни пришло.
+ *
+ * Голая строка вместо списка приходит, например, со сводкой после `/compact`, и
+ * раньше на ней падала вся панель: разбор сразу же звал на содержимом методы
+ * массива. Строку показываем текстом, как она и есть, а всё остальное
+ * неожиданное молча считаем пустотой — незнакомая форма события не повод
+ * потерять разговор.
+ */
+const blocksOf = (content: MessageContent | undefined): ContentBlock[] => {
+  if (Array.isArray(content)) return content
+  if (typeof content === 'string') return content ? [{ type: 'text', text: content }] : []
+  return []
+}
+
+/**
+ * Статусы лимита, при которых всё в порядке: запрос прошёл. Про них молчим —
+ * событие приходит и в обычной жизни, а лента не сводка о состоянии подписки.
+ */
+const ALLOWED_RATE_LIMIT = new Set(['allowed', 'allowed_warning', 'ok'])
+
+/** Отказ по лимиту словами: главное здесь — когда снова можно работать. */
+const rateLimitMessage = (info: NonNullable<AgentRateLimitEvent['rate_limit_info']>): string => {
+  const window = info.rateLimitType === 'five_hour' ? '5-hour' : info.rateLimitType === 'weekly' ? 'weekly' : ''
+  const limit = window ? `Your ${window} limit is used up.` : 'Your usage limit is used up.'
+  // resetsAt приходит секундами, как это принято в самом CLI.
+  const resets = info.resetsAt ? ` Resets at ${new Date(info.resetsAt * 1000).toLocaleString()}.` : ''
+
+  return `${limit}${resets}`
+}
+
+/**
+ * Настоящая модель — или ничего.
+ *
+ * Часть сообщений подписана не моделью, а служебной пометкой в угловых скобках:
+ * так, например, помечен «<synthetic>» — заглушка, которой CLI закрывает ход,
+ * оборванный человеком. Модели с таким именем не существует, и пустить её
+ * дальше значит объявить, что разговор на неё перешёл: панель назвала бы её в
+ * нижней строке и предложила отдельной строкой в выборе моделей.
+ */
+const realModel = (model: string | undefined): string | undefined =>
+  model && !model.startsWith('<') ? model : undefined
+
 const applyAgentEvent = (state: PanelState, event: AgentEvent, now: number): PanelState => {
   switch (event.type) {
     case 'system':
@@ -515,6 +560,19 @@ const applyAgentEvent = (state: PanelState, event: AgentEvent, now: number): Pan
     // не очистить: агент выше уже ничего не помнит, а карточки выглядят так,
     // будто помнит.
     //
+    /**
+     * Лимит подписки. Событие приходит и в обычной жизни — со статусом
+     * «пропускаем», — поэтому в ленту попадает только отказ: ход остановлен, и
+     * до сброса окна ничего не поедет. Раньше об этом можно было узнать разве
+     * что из текста отказа, если CLI его пришлёт; сам сигнал разбор пропускал.
+     */
+    case 'rate_limit_event': {
+      const info = event.rate_limit_info
+      if (!info?.status || ALLOWED_RATE_LIMIT.has(info.status.toLowerCase())) return state
+
+      return addError(state, rateLimitMessage(info), true)
+    }
+
     // Вместе с лентой обнуляется и всё, что описывало ушедший разговор: занятое
     // окно контекста, расход, недочитанные ошибки, список задач. Иначе датчик
     // контекста показывал прежние проценты на пустом чате — то есть врал ровно
@@ -550,13 +608,26 @@ const applyAgentEvent = (state: PanelState, event: AgentEvent, now: number): Pan
       return state
     }
 
-    case 'assistant':
-      return event.parent_tool_use_id
-        ? noteSubagent(state, event.parent_tool_use_id, event.message.content ?? [])
-        : applyAssistant(state, event.message.content ?? [], now)
+    case 'assistant': {
+      // Подагент отвечает своей моделью — это не та, на которой идёт разговор.
+      if (event.parent_tool_use_id) {
+        return noteSubagent(state, event.parent_tool_use_id, blocksOf(event.message.content))
+      }
+
+      /**
+       * Модель берём с каждого ответа, а не только из системного события в
+       * начале сессии: агент умеет сменить её посреди разговора и сам — так,
+       * например, срабатывает защита, отправляющая ход на другую модель. О таком
+       * переключении в потоке не сообщает ничего, кроме подписи под ответом:
+       * помимо неё это единственный след того, что работает уже не то, что
+       * выбрали.
+       */
+      const model = realModel(event.message.model) ?? state.model
+      return applyAssistant({ ...state, model }, blocksOf(event.message.content), now)
+    }
 
     case 'user':
-      return applyToolResults(state, event.message.content ?? [], now)
+      return applyToolResults(state, blocksOf(event.message.content), now)
 
     case 'result': {
       // Когда ход внутри себя вызвал несколько инструментов подряд (num_turns > 1),
@@ -609,7 +680,7 @@ const applySystem = (
   const base: PanelState = {
     ...state,
     sessionId: event.session_id ?? state.sessionId,
-    model: event.model ?? state.model,
+    model: realModel(event.model) ?? state.model,
     permissionMode: event.permissionMode ? normalizeMode(event.permissionMode) : state.permissionMode,
     slashCommands: event.slash_commands ?? state.slashCommands,
     // Рабочий каталог агент сообщает сам; без него пути в карточках остаются
