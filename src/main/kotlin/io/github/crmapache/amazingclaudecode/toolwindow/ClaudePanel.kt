@@ -3,6 +3,7 @@ package io.github.crmapache.amazingclaudecode.toolwindow
 import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.ide.ui.LafManagerListener
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.colors.EditorColorsListener
@@ -11,6 +12,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowAnchor
+import com.intellij.openapi.wm.WindowManager
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.ui.components.JBLabel
@@ -46,6 +48,7 @@ import io.github.crmapache.amazingclaudecode.claude.PermissionRules
 import io.github.crmapache.amazingclaudecode.claude.PermissionServer
 import io.github.crmapache.amazingclaudecode.editor.SelectionReference
 import io.github.crmapache.amazingclaudecode.project.ProjectFacts
+import io.github.crmapache.amazingclaudecode.sound.AlertSounds
 import io.github.crmapache.amazingclaudecode.webview.FilePicker
 import io.github.crmapache.amazingclaudecode.webview.IdeTypography
 import io.github.crmapache.amazingclaudecode.webview.WebviewFileDrop
@@ -63,6 +66,7 @@ import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -307,6 +311,22 @@ internal class ClaudePanel(
             "resumeSession" -> resumeConversation(sessionId, field("conversationId"))
 
             "checkAuth" -> checkAuth()
+
+            // Панель зовёт человека. Решает она сама (только там известно, чем
+            // именно занят ход), а звучит здесь — см. AlertSounds.
+            "sound" -> playAlert(
+                sound = field("sound"),
+                volume = payload["volume"]?.jsonPrimitive?.intOrNull ?: 100,
+                onlyIfAway = payload["onlyIfAway"]?.jsonPrimitive?.booleanOrNull == true,
+            )
+
+            "soundSettings" -> {
+                ClaudePreferences.mutedSounds =
+                    payload["muted"]?.jsonArray.orEmpty().mapNotNull { it.jsonPrimitive.contentOrNull }.toSet()
+                ClaudePreferences.soundVolumes = payload["volumes"]?.jsonObject.orEmpty()
+                    .mapNotNull { (id, value) -> value.jsonPrimitive.intOrNull?.let { id to it } }
+                    .toMap()
+            }
 
             // Строка из самой панели — см. protocol, сообщение trace.
             "trace" -> thisLogger().info("Webview: ${field("message")}")
@@ -1367,6 +1387,53 @@ internal class ClaudePanel(
         )
     }
 
+    /**
+     * Проиграть оповещение — если человек и правда не смотрит.
+     *
+     * `onlyIfAway` приходит от повода, случившегося в открытой вкладке: звать
+     * к тому, что и так перед глазами, незачем. Но «открытая вкладка» ещё не
+     * значит «на неё смотрят»: панель бывает свёрнута в полоску сбоку или
+     * перекрыта соседним тулвиндоу, а окно IDE — убрано за браузер или свёрнуто
+     * вовсе. Знает об этом только оболочка, поэтому последнее слово здесь.
+     *
+     * Спрашиваем в потоке интерфейса: состояние окон живёт в нём, а сообщение
+     * приезжает из встроенного браузера своим.
+     */
+    private fun playAlert(sound: String, volume: Int, onlyIfAway: Boolean) {
+        if (!onlyIfAway) {
+            AlertSounds.play(sound, volume)
+            return
+        }
+
+        // Поверх IDE может стоять модальное окно — настройки, коммит, рефакторинг.
+        // Обычная очередь дождалась бы его закрытия, то есть промолчала бы ровно
+        // тогда, когда человек занят чем-то другим и звук нужнее всего, а потом
+        // выпустила бы всё накопившееся разом.
+        ApplicationManager.getApplication().invokeLater(
+            {
+                // Пока сигнал ждал очереди, проект могли закрыть, а панель —
+                // уничтожить: спрашивать у них, смотрят ли на панель, уже нельзя,
+                // да и звать больше некого.
+                if (!project.isDisposed && !Disposer.isDisposed(parentDisposable) && !isPanelWatched()) {
+                    AlertSounds.play(sound, volume)
+                }
+            },
+            ModalityState.any(),
+        )
+    }
+
+    /**
+     * Панель на виду, и окно IDE — то, с которым человек сейчас работает.
+     *
+     * Спрашиваем осторожно: к моменту ответа окно проекта могло начать
+     * закрываться, а тулвиндоу — уничтожиться. Ронять IDE отчётом об ошибке
+     * из-за звука нельзя; неизвестность толкуем как «не смотрят» — промолчать
+     * зря хуже, чем позвать зря.
+     */
+    private fun isPanelWatched(): Boolean = runCatching {
+        toolWindow.isVisible && WindowManager.getInstance().getFrame(project)?.isActive == true
+    }.getOrDefault(false)
+
     private fun sendInit() {
         val preferences = ClaudePreferences.snapshot()
 
@@ -1385,6 +1452,17 @@ internal class ClaudePanel(
                     // Тем же значением, с которым реально поднимется процесс:
                     // селектор в панели обязан показывать правду с первой секунды.
                     put("mode", PermissionModes.resolve(preferences.mode))
+                }
+                // Настройка звуков — тоже выбор, который делают один раз.
+                putJsonObject("sounds") {
+                    putJsonArray("muted") {
+                        ClaudePreferences.mutedSounds.filter { it in AlertSounds.ids }.forEach { add(it) }
+                    }
+                    putJsonObject("volumes") {
+                        ClaudePreferences.soundVolumes
+                            .filterKeys { it in AlertSounds.ids }
+                            .forEach { (id, volume) -> put(id, volume) }
+                    }
                 }
             }.toString(),
         )

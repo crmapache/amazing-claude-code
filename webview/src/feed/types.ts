@@ -254,6 +254,12 @@ export interface ErrorItem {
   id: string
   kind: 'error'
   message: string
+  /**
+   * Ход остановил исчерпанный лимит подписки, а не поломка. Отдельная пометка,
+   * потому что это не то же самое: чинить нечего, нужно дождаться сброса окна —
+   * и зовут об этом своим звуком.
+   */
+  limit?: boolean
 }
 
 export type FeedItem =

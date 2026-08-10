@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent } from '../protocol'
 import { contextUsage, initialPanelState, reducePanel, type PanelState } from './build'
-import type { CompactItem, TaskItem, TextItem, ThinkItem, TodoItem, ToolGroupItem } from './types'
+import type { CompactItem, ErrorItem, TaskItem, TextItem, ThinkItem, TodoItem, ToolGroupItem } from './types'
 
 /**
  * Поток записан живым прогоном агента, а не придуман: только так видно и порядок
@@ -184,6 +184,47 @@ describe('сборка ленты из потока агента', () => {
     // Живой текст должен быть погашен готовым сообщением, иначе ответ удвоится.
     expect(state.streamingText).toBe('')
     expect(errorTexts(state)).toEqual([])
+  })
+
+  it('запоминает модель, на которую агент переключился сам посреди разговора', () => {
+    // Так выглядит сработавшая защита: ход уходит на другую модель, и сказать
+    // об этом может только подпись под ответом.
+    let state = play([{ type: 'system', subtype: 'init', model: 'claude-opus-5[1m]' } as AgentEvent])
+    expect(state.model).toBe('claude-opus-5[1m]')
+
+    state = play(
+      [{ type: 'assistant', message: { content: [], model: 'claude-opus-4-8' } } as AgentEvent],
+      state,
+    )
+    expect(state.model).toBe('claude-opus-4-8')
+  })
+
+  it('не принимает служебную пометку за модель', () => {
+    // Так CLI подписывает заглушку, которой закрывает оборванный ход: модели с
+    // таким именем не существует, и в выборе моделей ей взяться неоткуда.
+    let state = play([{ type: 'system', subtype: 'init', model: 'claude-opus-5[1m]' } as AgentEvent])
+    state = play(
+      [{ type: 'assistant', message: { content: [], model: '<synthetic>' } } as AgentEvent],
+      state,
+    )
+
+    expect(state.model).toBe('claude-opus-5[1m]')
+  })
+
+  it('не принимает модель подагента за модель разговора', () => {
+    let state = play([{ type: 'system', subtype: 'init', model: 'claude-opus-5[1m]' } as AgentEvent])
+    state = play(
+      [
+        {
+          type: 'assistant',
+          message: { content: [], model: 'claude-haiku-4-5' },
+          parent_tool_use_id: 'tool-1',
+        } as AgentEvent,
+      ],
+      state,
+    )
+
+    expect(state.model).toBe('claude-opus-5[1m]')
   })
 
   it('превращает вызов инструмента в карточку с результатом', () => {
@@ -379,6 +420,21 @@ describe('сборка ленты из потока агента', () => {
     expect(state.streamingThinking).toBe('')
   })
 
+  it('переживает сообщение, где содержимое строкой, а не списком блоков', () => {
+    // Так приходит сводка после /compact. Раньше на ней падала вся панель:
+    // разбор сразу звал на содержимом методы массива.
+    const summary = 'Здесь была длинная переписка, вот её краткий пересказ.'
+
+    const state = play([
+      { type: 'user', message: { content: summary } } as AgentEvent,
+      { type: 'assistant', message: { content: summary } } as AgentEvent,
+    ])
+
+    const texts = state.items.filter((item): item is TextItem => item.kind === 'text')
+    expect(texts).toHaveLength(1)
+    expect(texts[0]?.paragraphs[0]?.parts[0]?.text).toBe(summary)
+  })
+
   it('не рушится на незнакомом событии', () => {
     const state = reducePanel(initialPanelState, {
       kind: 'agent',
@@ -386,6 +442,31 @@ describe('сборка ленты из потока агента', () => {
     })
 
     expect(state).toEqual(initialPanelState)
+  })
+
+  describe('лимит подписки', () => {
+    const limitEvent = (status: string, resetsAt?: number): AgentEvent => ({
+      type: 'rate_limit_event',
+      rate_limit_info: { status, resetsAt, rateLimitType: 'five_hour' },
+    })
+
+    it('про пропущенный запрос молчит: лента не сводка о состоянии подписки', () => {
+      expect(play([limitEvent('allowed')]).items).toEqual([])
+    })
+
+    it('отказ показывает в ленте и помечает как лимит, а не поломку', () => {
+      const items = play([limitEvent('rejected')]).items
+      const error = items.find((item): item is ErrorItem => item.kind === 'error')
+
+      expect(error?.limit).toBe(true)
+      expect(error?.message).toContain('5-hour')
+    })
+
+    it('повторное событие того же хода второй строкой не ложится', () => {
+      const state = play([limitEvent('rejected'), limitEvent('rejected')])
+
+      expect(state.items.filter((item) => item.kind === 'error')).toHaveLength(1)
+    })
   })
 
   describe('группировка вызовов инструментов', () => {

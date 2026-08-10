@@ -106,6 +106,30 @@ empty despite the agent remembering everything.
 This can't be done with its own slash command: in streaming mode, `/resume` opens
 an interactive list and refuses instead.
 
+## Sound alerts
+
+The panel calls you out loud when it stops needing the keyboard and starts
+needing you: a turn that finished, a tool call waiting for approval, a question,
+a plan asking to be accepted, a subscription limit that stopped the turn, and
+trouble (an error, a process that died on its own, a session that got signed
+out). The "♪" button in the header lists all six with a checkbox, a volume
+slider and a play button each. Zero volume unchecks the sound — silence and
+"off" are the same thing — and a sound turned off keeps its volume for when it
+comes back.
+
+A sound only plays when you're not already looking at what it's about. Anything
+from a background tab always rings; from the tab that's open it rings only when
+looking at it isn't possible — the panel is collapsed, hidden behind another
+tool window, or the IDE window itself is not the one you're in. A conversation
+replayed from history stays quiet too: its old questions and errors arrive as
+the very same events a live turn does, and only the fact that no turn is running
+tells them apart.
+
+The sound itself is played by the plugin, not by the page: the embedded browser
+renders offscreen and obeys the autoplay policy, so the first alert would never
+be heard without a click. Which moments are worth a sound is decided by the panel
+— that's the only side that knows a plan is waiting rather than being written.
+
 ## Running it
 
 You'll need JDK 21, pnpm, and Claude Code installed (`claude` on your PATH).

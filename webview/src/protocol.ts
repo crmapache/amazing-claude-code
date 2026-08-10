@@ -83,6 +83,28 @@ export interface ModelInfo {
   disabled?: boolean
 }
 
+/**
+ * Повод позвать человека звуком. Ровно эти имена знает и оболочка: у каждого
+ * там свой файл (см. AlertSounds.kt).
+ */
+export type SoundId = 'turnFinished' | 'permission' | 'plan' | 'question' | 'rateLimit' | 'trouble'
+
+export interface SoundSettings {
+  /**
+   * Звуки, отключённые вручную. Хранится именно выключенное: по умолчанию
+   * звучит всё, и пустой список означает «как задумано» — иначе звук,
+   * добавленный в следующей версии, оказался бы выключенным у всех, кто
+   * когда-либо открывал этот список.
+   */
+  muted: string[]
+  /**
+   * Громкость в процентах, если она не полная. Держится отдельно от muted
+   * намеренно: снятая галочка не стирает настроенные проценты — вернув звук,
+   * человек ждёт свои прежние семьдесят, а не сотню.
+   */
+  volumes: Record<string, number>
+}
+
 export type ShellMessage =
   | {
       type: 'init'
@@ -93,6 +115,8 @@ export type ShellMessage =
       canAskPermissions?: boolean
       /** Выбор модели, усилия и режима: он переживает и вкладки, и перезапуск IDE. */
       preferences?: { model: string; effort: string; mode: string }
+      /** Настройка звуковых оповещений — переживает перезапуск IDE. */
+      sounds?: SoundSettings
     }
   | {
       type: 'usage'
@@ -295,6 +319,30 @@ export type WebviewMessage =
    * (разговор с тех пор перезапускали): тогда он уходит следующим сообщением.
    */
   | { type: 'askAnswer'; sessionId: string; id: string; answers: Record<string, string>; text: string }
+  /**
+   * Проиграть звук оповещения.
+   *
+   * Решает панель, а звучит оболочка: страница живёт во встроенном браузере,
+   * который рисуется офскрин и подчиняется политике автовоспроизведения — без
+   * клика мышью первый же звук там просто не прозвучал бы. Зато только здесь
+   * известно, чем именно занят ход: ждёт ли он решения по плану или дошёл до
+   * конца сам.
+   */
+  | {
+      type: 'sound'
+      sound: SoundId
+      volume: number
+      /**
+       * Повод происходит в той самой вкладке, на которую человек сейчас смотрит.
+       * Тогда звук нужен, только если смотреть на неё не выходит: панель убрана
+       * с глаз или окно IDE не в фокусе — а это известно лишь оболочке. Из
+       * фоновой вкладки и по кнопке «послушать» приходит без него: там звучать
+       * надо в любом случае.
+       */
+      onlyIfAway?: boolean
+    }
+  /** Галочки и громкость звуков: их хранит оболочка вместе с моделью и режимом. */
+  | { type: 'soundSettings'; muted: SoundId[]; volumes: Record<string, number> }
   /** Режим разрешений задаётся при запуске процесса, поэтому меняет его оболочка. */
   | { type: 'setMode'; sessionId: string; mode: string }
   /** Модель и усилие тоже держит оболочка: их наследуют новые разговоры. */
@@ -422,16 +470,24 @@ export interface AgentSystemEvent {
   summary?: string
 }
 
+/**
+ * Содержимое сообщения — обычно список блоков, но не всегда: часть сообщений
+ * приходит с голой строкой вместо него. Так, например, устроена сводка после
+ * `/compact`. Разбор обязан принимать оба вида (см. blocksOf в build.ts):
+ * встретив строку там, где ждали список, панель падала целиком.
+ */
+export type MessageContent = ContentBlock[] | string
+
 export interface AgentAssistantEvent {
   type: 'assistant'
-  message: { id?: string; content: ContentBlock[]; model?: string }
+  message: { id?: string; content: MessageContent; model?: string }
   /** Не пусто у сообщений подагента: это идентификатор вызова, который его породил. */
   parent_tool_use_id?: string | null
 }
 
 export interface AgentUserEvent {
   type: 'user'
-  message: { content: ContentBlock[] }
+  message: { content: MessageContent }
   parent_tool_use_id?: string | null
 }
 

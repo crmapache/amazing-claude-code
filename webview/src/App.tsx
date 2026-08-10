@@ -4,8 +4,9 @@ import {
   DEFAULT_MODEL,
   EFFORT_OPTIONS,
   MODE_OPTIONS,
-  modelOptions,
+  modelMenu,
   nextMode,
+  switchedModel,
   normalizeMode,
   withRefusedMode,
 } from './catalog'
@@ -23,6 +24,7 @@ import { Plugins } from './components/Plugins'
 import { Queue, type QueuedPrompt } from './components/Queue'
 import { Quotes, type Quote } from './components/Quotes'
 import { SelectionMenu } from './components/SelectionMenu'
+import { Sounds } from './components/Sounds'
 import { StatusBar, UsageMeters, type Anchor, type SelectorKind } from './components/StatusBar'
 import { StreamSwitcher, type AgentStatus, type AgentTab } from './components/StreamSwitcher'
 import { TaskListPanel } from './components/TaskListPanel'
@@ -40,8 +42,20 @@ import type {
   McpServerInfo,
   ModelInfo,
   PluginMarketplaceInfo,
+  SoundId,
   UsageWindow,
 } from './protocol'
+import {
+  NO_SOUND_PREFS,
+  isMuted,
+  rememberPanel,
+  setVolume,
+  soundForPanel,
+  toggleSound,
+  volumeOf,
+  type SoundMemory,
+  type SoundPrefs,
+} from './sounds'
 import { useCardState, type CardState } from './hooks/useCardState'
 import { moveGroup } from './tabs'
 import { useSelection } from './hooks/useSelection'
@@ -76,6 +90,16 @@ const STOP_GRACE_MS = 8000
  * человек увидит настоящее положение дел, даже если конфиг правили из терминала.
  */
 const LIST_STALE_MS = 60_000
+
+/** Сколько ждать конца возни с ползунком громкости, прежде чем записать выбор. */
+const SOUND_SAVE_DELAY_MS = 250
+
+/**
+ * Сколько после нажатия «выйти» пропажа входа считается собственным действием, а
+ * не новостью. С запасом на сам выход: он идёт через терминал IDE, где человеку
+ * ещё предстоит увидеть, чем всё кончилось.
+ */
+const SIGN_OUT_GRACE_MS = 2 * 60 * 1000
 
 /**
  * Черновик, вложения и цитаты принадлежат разговору, а не панели целиком.
@@ -137,7 +161,9 @@ export const App = () => {
    * булевых. Так они взаимоисключающие по построению: открыть плагины само
    * закрывает историю, а не оставляет её тихо висеть под новой поверх неё.
    */
-  const [openPanel, setOpenPanel] = useState<'history' | 'mcp' | 'plugins' | null>(null)
+  const [openPanel, setOpenPanel] = useState<'history' | 'mcp' | 'plugins' | 'sounds' | null>(null)
+  /** Галочки и громкость звуковых оповещений — см. sounds.ts. */
+  const [soundPrefs, setSoundPrefs] = useState<SoundPrefs>(NO_SOUND_PREFS)
   /** Прошлые разговоры проекта: null — список ещё не приходил (см. стартовые запросы). */
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
   /**
@@ -216,18 +242,23 @@ export const App = () => {
 
   /**
    * Какая модель работает на самом деле. Пока агент не ответил на смену,
-   * показываем выбранное — иначе выбор выглядит потерянным. Дальше идёт
-   * действующее значение: оно бывает иносказательным («default»), поэтому
-   * разворачиваем его каталогом до настоящего идентификатора — по нему нижняя
-   * строка и называет модель. Каталога может не быть вовсе (старая сборка CLI,
-   * не дошедший запрос), тогда верим самому значению и тому, что назвал агент в
-   * системном событии.
+   * показываем выбранное — иначе выбор выглядит потерянным. Дальше идёт то,
+   * что назвал сам агент: он говорит это с каждым ответом и знает правду, в том
+   * числе когда сменил модель по своему усмотрению. Пока он не сказал ничего
+   * (разговор ещё не начинался), разворачиваем выбор каталогом: само значение
+   * бывает иносказательным («default»), а назвать модель нижняя строка должна
+   * с первой секунды.
    */
   const model =
     panel.pendingModel ??
-    (models?.find((option) => option.value === (prefs.model || DEFAULT_MODEL))?.resolved ||
-      panel.model ||
-      prefs.model)
+    panel.model ??
+    (models?.find((option) => option.value === (prefs.model || DEFAULT_MODEL))?.resolved || prefs.model)
+
+  /**
+   * Разговор ушёл на другую модель не по нашей воле — см. switchedModel. Живёт
+   * во вкладке, а не в общей настройке: у соседней свой разговор и своя модель.
+   */
+  const switched = switchedModel(models, prefs.model, panel.model)
 
   const editDraft = useCallback(
     (session: string, change: Partial<Draft>) => {
@@ -348,6 +379,112 @@ export const App = () => {
   panelsRef.current = panels
 
   /**
+   * Звуковые оповещения: что каждая вкладка успела рассказать наблюдателю.
+   * Память между кадрами, а не состояние — от неё ничего не перерисовывается.
+   */
+  const soundMemory = useRef<Record<string, SoundMemory>>({})
+  /** Настройку звуков читает эффект ниже, но перезапускаться из-за неё ему незачем. */
+  const soundPrefsRef = useRef(soundPrefs)
+  soundPrefsRef.current = soundPrefs
+
+  /**
+   * Позвать звуком, если этот повод не выключен галочкой.
+   *
+   * Вкладка, из которой зовут, решает, нужен ли звук вообще: за фоновой никто
+   * не следит, а на открытую человек, скорее всего, смотрит прямо сейчас — и
+   * звать его к тому, что у него перед глазами, незачем. «Скорее всего» уточняет
+   * оболочка: панель бывает убрана с глаз, а окно IDE — свёрнуто (см. onlyIfAway).
+   */
+  const alert = useCallback((sound: SoundId, sessionId: string) => {
+    const prefs = soundPrefsRef.current
+    if (isMuted(prefs, sound)) return
+
+    send({
+      type: 'sound',
+      sound,
+      volume: volumeOf(prefs, sound),
+      onlyIfAway: sessionId === activeRef.current,
+    })
+  }, [])
+
+  /** Отложенная запись настройки звуков — см. changeSoundPrefs. */
+  const soundSaveTimer = useRef<number | undefined>(undefined)
+
+  /**
+   * Показать новую настройку сразу, а записать чуть погодя.
+   *
+   * Ползунок громкости шлёт событие на каждый процент: без задержки одно
+   * перетаскивание превратилось бы в сотню обращений к настройкам IDE.
+   */
+  const changeSoundPrefs = (next: SoundPrefs) => {
+    setSoundPrefs(next)
+
+    window.clearTimeout(soundSaveTimer.current)
+    soundSaveTimer.current = window.setTimeout(() => {
+      soundSaveTimer.current = undefined
+      send({ type: 'soundSettings', muted: next.muted, volumes: next.volumes as Record<string, number> })
+    }, SOUND_SAVE_DELAY_MS)
+  }
+
+  /**
+   * Отложенную запись досылаем перед тем, как страница исчезнет.
+   *
+   * Иначе последняя четверть секунды возни с ползунком пропадала бы всякий раз,
+   * когда панель перезагружают: настройка выглядела бы выставленной, а вернулась
+   * бы прежней.
+   */
+  useEffect(() => {
+    const flush = () => {
+      if (soundSaveTimer.current === undefined) return
+
+      window.clearTimeout(soundSaveTimer.current)
+      soundSaveTimer.current = undefined
+
+      const prefs = soundPrefsRef.current
+      send({ type: 'soundSettings', muted: prefs.muted, volumes: prefs.volumes as Record<string, number> })
+    }
+
+    window.addEventListener('pagehide', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [])
+
+  /** Был ли вход в прошлом ответе оболочки: разлогин виден только по смене. */
+  const wasLoggedIn = useRef<boolean | null>(null)
+  /**
+   * Когда нажали «выйти»: пропажа входа сразу после этого — собственное действие,
+   * а не новость. Время, а не просто отметка: выход может и не состояться (окно
+   * терминала закрыли, опрос сдался), и вечная отметка проглотила бы потом
+   * настоящий разлогин — ровно то единственное, ради чего звук тут и нужен.
+   */
+  const signedOutAt = useRef(0)
+
+  /**
+   * Звук зовёт человека от любой вкладки, а не только от открытой: у фоновой
+   * есть лишь точка на ярлыке, а на неё смотрят ровно тогда, когда и так знают,
+   * что там что-то происходит.
+   */
+  useEffect(() => {
+    for (const sessionId of Object.keys(panels)) {
+      const panel = panels[sessionId]
+      if (!panel) continue
+
+      const memory = soundMemory.current[sessionId]
+      // Первый взгляд на вкладку — только знакомство: всё, что в ней уже лежит,
+      // звучать не должно (см. rememberPanel).
+      if (!memory) {
+        soundMemory.current[sessionId] = rememberPanel(panel)
+        continue
+      }
+
+      const sound = soundForPanel(panel, memory)
+      if (sound) alert(sound, sessionId)
+    }
+  }, [panels, alert])
+
+  /**
    * Перед тем как реально уйдёт новое сообщение в main, прячем из дропдауна всех
    * агентов, которые к этому моменту уже закончили работу — иначе за длинную
    * сессию там накопился бы длинный хвост ненужного. Ещё не завершённого агента
@@ -413,6 +550,12 @@ export const App = () => {
       subscribe((message) => {
         switch (message.type) {
           case 'init':
+            if (message.sounds) {
+              setSoundPrefs({
+                muted: message.sounds.muted as SoundId[],
+                volumes: message.sounds.volumes as Partial<Record<SoundId, number>>,
+              })
+            }
             if (message.preferences) {
               setPrefs((current) => ({
                 model: message.preferences?.model || current.model,
@@ -579,6 +722,21 @@ export const App = () => {
               searched: message.searched,
             })
             if (message.loggedIn) setLoginWaiting(false)
+            // Вход отвалился сам: пока не войдёшь заново, агент на любую просьбу
+            // отвечает отпиской про /login, и заметить это стоит сразу, а не
+            // через три бесполезных ответа. Про собственный выход и про самый
+            // первый ответ (когда прежнего состояния ещё нет) молчим.
+            // Про пропавший вход панель говорит и сама, целым экраном входа:
+            // тому, кто в неё смотрит, звук тут ничего не добавит.
+            if (
+              !message.loggedIn &&
+              wasLoggedIn.current === true &&
+              Date.now() - signedOutAt.current > SIGN_OUT_GRACE_MS
+            ) {
+              alert('trouble', activeRef.current)
+            }
+            if (message.loggedIn) signedOutAt.current = 0
+            wasLoggedIn.current = message.loggedIn
             break
 
           case 'modeAvailability':
@@ -626,11 +784,15 @@ export const App = () => {
     [],
   )
 
-  /** Подписка живёт один раз, а активная вкладка меняется — держим её в ссылке. */
+  /**
+   * Подписка живёт один раз, а активная вкладка меняется — держим её в ссылке.
+   *
+   * Обновляем прямо при отрисовке, а не эффектом: эффект оповещений объявлен
+   * выше и в том же кадре сработал бы раньше — то есть решал бы, звучать ли, по
+   * той вкладке, которая была открыта до переключения.
+   */
   const activeRef = useRef(active)
-  useEffect(() => {
-    activeRef.current = active
-  }, [active])
+  activeRef.current = active
 
   // Открытый стрим принадлежит той вкладке, где его открыли: у другой сессии
   // агента с таким id почти наверняка нет. Без сброса переключение вкладки
@@ -890,6 +1052,8 @@ export const App = () => {
       }
 
       if (name === 'logout') {
+        // Вышли сами — тревожить этим звуком некого (см. обработку auth).
+        signedOutAt.current = Date.now()
         send({ type: 'logout' })
         return
       }
@@ -1121,6 +1285,8 @@ export const App = () => {
           // показывать нечего, но хедер и его кнопки (история, MCP, плагины)
           // остаются: они не привязаны к тому, есть ли открытый разговор.
           send({ type: 'closeSession', sessionId: id })
+          delete soundMemory.current[id]
+          dispatchPanel({ session: id, closed: true })
           const next = sessions.filter((session) => session.id !== id)
           setSessions(next)
           if (active === id) setActive(next[0]?.id ?? MAIN_SESSION)
@@ -1160,10 +1326,24 @@ export const App = () => {
             loadPlugins(pluginsInstalled !== null)
           }
         }}
+        onOpenSounds={() => setOpenPanel(openPanel === 'sounds' ? null : 'sounds')}
       />
 
       {openPanel === 'history' ? (
         <History conversations={history} onOpen={resume} onClose={() => setOpenPanel(null)} />
+      ) : null}
+
+      {openPanel === 'sounds' ? (
+        <Sounds
+          prefs={soundPrefs}
+          onToggle={(sound) => changeSoundPrefs(toggleSound(soundPrefs, sound))}
+          onVolume={(sound, volume) => changeSoundPrefs(setVolume(soundPrefs, sound, volume))}
+          // Отключённый звук тоже проигрывается: послушать, что именно
+          // выключаешь, — ровно то, зачем на кнопку и жмут. Громкость берём
+          // ту, что стоит прямо сейчас: иначе ползунок не с чем сверять.
+          onPreview={(sound) => send({ type: 'sound', sound, volume: volumeOf(soundPrefs, sound) })}
+          onClose={() => setOpenPanel(null)}
+        />
       ) : null}
 
       {openPanel === 'mcp' ? (
@@ -1375,7 +1555,7 @@ export const App = () => {
 
       {menu ? (
         <Menu
-          {...menuProps(menu.kind, models, prefs.model, prefs.effort, mode)}
+          {...menuProps(menu.kind, models, prefs.model, switched, prefs.effort, mode)}
           anchor={menu.anchor}
           onClose={() => setMenu(null)}
           onPick={(id) => {
@@ -1395,15 +1575,34 @@ export const App = () => {
 
 type PanelsState = Record<string, PanelState>
 
-interface PanelsAction {
-  session: string
-  action: Parameters<typeof reducePanel>[1]
-}
+/**
+ * Обычное изменение разговора — или его закрытие: закрытая вкладка уходит из
+ * состояния целиком, а не остаётся лежать со своей лентой.
+ */
+type PanelsAction =
+  | { session: string; action: Parameters<typeof reducePanel>[1] }
+  | { session: string; closed: true }
 
-const panelsReducer = (state: PanelsState, { session, action }: PanelsAction): PanelsState => ({
-  ...state,
-  [session]: reducePanel(state[session] ?? initialPanelState, action),
-})
+const panelsReducer = (state: PanelsState, event: PanelsAction): PanelsState => {
+  /**
+   * Пока закрытая вкладка оставалась в состоянии, за неё продолжали платить: всё,
+   * что обходит разговоры (например, звуковые оповещения), видело её при каждом
+   * обновлении — то есть на каждом кусочке ответа, печатающегося в любой другой
+   * вкладке, — и заново разбиралось с лентой разговора, которого больше нет.
+   */
+  if ('closed' in event) {
+    if (!(event.session in state)) return state
+
+    const next = { ...state }
+    delete next[event.session]
+    return next
+  }
+
+  return {
+    ...state,
+    [event.session]: reducePanel(state[event.session] ?? initialPanelState, event.action),
+  }
+}
 
 /**
  * Что показывает кружок вкладки. Крах процесса важнее всего: ход прерван не по
@@ -1587,6 +1786,8 @@ const menuProps = (
   models: ModelInfo[] | null,
   /** Выбранное значение, а не то, во что его развернул агент: галочка обязана стоять на выбранном. */
   selectedModel: string,
+  /** Модель, на которую разговор увёл сам агент, — тогда галочка стоит на ней (см. modelMenu). */
+  switched: string | undefined,
   effort: string,
   mode: string,
 ): { title: string; hint: string; width: number; options: MenuOption[]; selected: string } => {
@@ -1595,9 +1796,7 @@ const menuProps = (
       title: 'MODEL',
       hint: '/model',
       width: 344,
-      options: modelOptions(models),
-      // Пустой выбор — это и есть «модель по умолчанию»: так её зовёт сам CLI.
-      selected: selectedModel || DEFAULT_MODEL,
+      ...modelMenu(models, selectedModel, switched),
     }
   }
 

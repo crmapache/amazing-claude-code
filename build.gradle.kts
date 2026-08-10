@@ -77,6 +77,25 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
+              <li>The panel now calls you out loud when it needs you: a turn that finished, a tool
+              call waiting for approval, a question, a plan waiting to be accepted, a subscription
+              limit that stopped the run, and trouble — an error, a process that died on its own, a
+              session that got signed out. The "♪" button in the header lists all six with a
+              checkbox, a volume slider and a play button each.</li>
+              <li>A sound only plays when you aren't already looking at what it's about. Anything
+              from a background tab always rings; from the open tab it rings only when looking at it
+              isn't possible — the panel is collapsed, hidden behind another tool window, or the IDE
+              window itself is not the one you're in. A conversation replayed from history stays
+              quiet.</li>
+              <li>A subscription limit that stops the run is now shown in the feed, with the time it
+              resets — until now the panel said nothing at all about it.</li>
+              <li>Fixed: the panel crashed with "t.filter is not a function" on /compact — the
+              summary arrives as plain text rather than the usual message blocks.</li>
+              <li>Fixed: when Claude Code switched the model on its own mid-run (its safeguards do
+              that), the panel kept naming the old one. The model that is really running is now shown
+              and ticked in the picker, even when the catalog doesn't list it.</li>
+              <li>Fixed: the dashes in the context-compaction bar looked uneven — the filled part
+              drew its own row of dashes on top of the one underneath.</li>
               <li>The model list now comes from Claude Code itself instead of a list baked into the
               panel: the models your account can actually use, with the ones your plan or your
               organisation blocks marked as unavailable. A model the agent refuses no longer stays

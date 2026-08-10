@@ -855,6 +855,170 @@
   color: var(--acc-fg-faint);
 }
 
+/* --- Звуковые оповещения ----------------------------------------------------- */
+
+.sounds {
+  position: absolute;
+  z-index: 41;
+  top: var(--header-height);
+  left: 8px;
+  right: 8px;
+  /* Панель бывает и в полэкрана высотой — тогда список прокручивается, а не
+     уезжает под поле ввода. */
+  max-height: 72vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-panel);
+  box-shadow: var(--acc-shadow-menu);
+  overflow: hidden;
+}
+
+.soundsBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.soundRow {
+  padding-bottom: 6px;
+  border-radius: var(--acc-r-md);
+}
+
+.soundRow:hover {
+  background: var(--acc-bg-menu-hover);
+}
+
+.soundTop {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.soundToggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 7px 9px 5px;
+  text-align: left;
+}
+
+/* Ползунок стоит под подписью, с отступом ровно под квадратик галочки: так
+   видно, что громкость относится именно к этому звуку. */
+.soundVolume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px 0 33px;
+}
+
+.soundSlider {
+  flex: 1;
+  min-width: 0;
+  height: 14px;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.soundSlider::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--acc-line-strong);
+}
+
+.soundSlider::-webkit-slider-thumb {
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  /* Половина разницы высот трека и пальца — иначе он сидит не по центру нити. */
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--acc-branch);
+}
+
+/* Выключенный звук виден и по ползунку — но тянуть его можно: этим он и
+   включается обратно. */
+.soundSliderOff::-webkit-slider-thumb {
+  background: var(--acc-fg-ghost);
+}
+
+.soundPercent {
+  flex: none;
+  width: 34px;
+  text-align: right;
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+  /* Цифры не пляшут при перетаскивании: 7% и 70% занимают одно место. */
+  font-variant-numeric: tabular-nums;
+}
+
+.soundPercentOff {
+  color: var(--acc-fg-ghost);
+}
+
+.soundCheck {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  /* Полпикселя вниз: квадратик ровняется по строчным буквам подписи, а не по её строке. */
+  margin-top: 1px;
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-xs);
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  color: var(--acc-on-accent);
+}
+
+.soundCheckOn {
+  border-color: var(--acc-branch);
+  background: var(--acc-branch);
+}
+
+.soundText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.soundLabel {
+  font-size: 12.5px;
+  color: var(--acc-fg-faint);
+}
+
+.soundLabelOn {
+  color: var(--acc-fg-body);
+}
+
+.soundHint {
+  font: 11px var(--acc-mono);
+  color: var(--acc-fg-fainter);
+  text-wrap: pretty;
+}
+
+.soundPreview {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-right: 5px;
+  border-radius: var(--acc-r-md);
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  color: var(--acc-fg-ghost);
+}
+
+.soundPreview:hover {
+  background: var(--acc-bg-control-hover);
+  color: var(--acc-fg);
+}
+
 /* --- MCP-сервера ------------------------------------------------------------ */
 
 .mcp {
