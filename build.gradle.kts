@@ -77,6 +77,9 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
+              <li>The paperclip and the slash next to the input now name themselves on hover, the way
+              the icons in the header already did — and so does the play button in the sound
+              settings, whose label never drew at all.</li>
               <li>Fixed: the panel asked permission for almost everything and the mode you picked
               barely mattered — "Don't ask", "Auto" and "Bypass" still prompted, "Always allow"
               changed nothing, and even <code>ls</code> or <code>git status</code> needed a click.

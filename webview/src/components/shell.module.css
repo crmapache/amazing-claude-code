@@ -285,35 +285,6 @@
   opacity: 0.5;
 }
 
-/* Свой тултип вместо нативного title: у него нет своей задержки и вида чужой
-   ОС — выглядит так же, как подписи у родных иконок самой IDE. */
-.historyButton::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  top: calc(100% + 7px);
-  right: 0;
-  padding: 4px 8px;
-  border-radius: var(--acc-r-sm);
-  background: var(--acc-bg-deep);
-  border: 1px solid var(--acc-line-strong);
-  box-shadow: var(--acc-shadow-menu);
-  color: var(--acc-fg);
-  font: 11px/1.3 var(--acc-font);
-  white-space: nowrap;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-2px);
-  transition: opacity 0.12s ease, transform 0.12s ease;
-  pointer-events: none;
-  z-index: 60;
-}
-
-.historyButton:hover::after {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
-}
-
 /* --- Переключатель стрима --------------------------------------------------- */
 
 .streams {
@@ -548,40 +519,14 @@
   white-space: nowrap;
 }
 
-/* Подсказка над метрикой, а не под ней: ряд стоит у самого низа панели, и
-   снизу ей просто некуда развернуться. Перенос строки в data-tooltip остаётся
-   переносом (pre-line) — во второй строке живёт пояснение к первой. */
-.meter::after,
-.meterTokens::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: calc(100% + 7px);
-  left: 0;
-  width: max-content;
+/* Подсказка метрики единственная разворачивается в две полноценные строки —
+   ей нужны своя ширина и просторнее межстрочье, чем короткой подписи кнопки.
+   Направление (вверх и от левого края) задано атрибутом в самой разметке. */
+.meter[data-tooltip]::after,
+.meterTokens[data-tooltip]::after {
   max-width: 190px;
   padding: 5px 9px;
-  border-radius: var(--acc-r-sm);
-  background: var(--acc-bg-deep);
-  border: 1px solid var(--acc-line-strong);
-  box-shadow: var(--acc-shadow-menu);
-  color: var(--acc-fg);
   font: 11px/1.45 var(--acc-font);
-  white-space: pre-line;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(2px);
-  transition:
-    opacity 0.12s ease,
-    transform 0.12s ease;
-  pointer-events: none;
-  z-index: 60;
-}
-
-.meter:hover::after,
-.meterTokens:hover::after {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
 }
 
 .selectors {

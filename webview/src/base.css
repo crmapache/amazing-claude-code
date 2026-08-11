@@ -69,6 +69,66 @@ button:disabled {
   background: var(--acc-accent-32);
 }
 
+/*
+ * Свой тултип вместо нативного title: у нативного своя задержка и вид чужой ОС,
+ * а подсказка должна выглядеть так же, как у родных значков самой IDE.
+ *
+ * Живёт в общем доме, а не в модуле отдельной панели: подсказка нужна и кнопке в
+ * шапке, и метрике в строке статуса, и кнопке у поля ввода — рисунок у всех один,
+ * разное только направление, куда ей разворачиваться. Оно задаётся через
+ * data-tooltip-at: по умолчанию вниз, от правого края элемента влево; `top`
+ * поднимает подсказку над элементом (у нижнего края панели вниз ей некуда), а
+ * `left` привязывает к левому краю (когда свободное место слева, а не справа).
+ *
+ * Перенос строки в data-tooltip остаётся переносом: в подсказке из двух строк
+ * вторая поясняет первую.
+ */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  width: max-content;
+  max-width: 220px;
+  padding: 4px 8px;
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-deep);
+  border: 1px solid var(--acc-line-strong);
+  box-shadow: var(--acc-shadow-menu);
+  color: var(--acc-fg);
+  font: 11px/1.3 var(--acc-font);
+  white-space: pre-line;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-2px);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+  pointer-events: none;
+  z-index: 60;
+}
+
+[data-tooltip-at~='top']::after {
+  top: auto;
+  bottom: calc(100% + 7px);
+  transform: translateY(2px);
+}
+
+[data-tooltip-at~='left']::after {
+  right: auto;
+  left: 0;
+}
+
+[data-tooltip]:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
 /* Пользователь явно попросил убрать рамку фокуса везде: раздражает больше,
    чем помогает. Один общий сброс вместо outline:none по каждому классу. */
 *:focus,

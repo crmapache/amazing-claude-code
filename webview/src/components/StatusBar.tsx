@@ -42,7 +42,7 @@ export const UsageMeters = ({ todayTokens, usage }: UsageMetersProps) => (
 
     {usage.week ? <WeekMeter usage={usage.week} /> : null}
 
-    <span className={s.meterTokens} data-tooltip="Tokens spent today, across all projects">
+    <span className={s.meterTokens} data-tooltip="Tokens spent today, across all projects" data-tooltip-at="top left">
       {todayTokens}
     </span>
   </div>
@@ -65,7 +65,7 @@ interface MeterProps {
 }
 
 const Meter = ({ percent, color, pace = null, tooltip }: MeterProps) => (
-  <span className={s.meter} data-tooltip={tooltip} role="img" aria-label={tooltip}>
+  <span className={s.meter} data-tooltip={tooltip} data-tooltip-at="top left" role="img" aria-label={tooltip}>
     {/* overflow видимый: круглые концы дуги вылезают за пределы вьюбокса. */}
     <svg className={s.meterRing} viewBox="0 0 22 22" aria-hidden="true">
       <circle className={s.meterTrack} cx="11" cy="11" r={RING_RADIUS} />

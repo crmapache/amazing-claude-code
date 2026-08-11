@@ -1106,10 +1106,13 @@ export const Composer = ({
 
           {/* Одна кнопка на все вложения: файл, картинка и папка выбираются одним
               и тем же диалогом, а разницу видно по самому пути. */}
+          {/* Подсказки этого ряда разворачиваются вверх: ряд стоит у нижнего
+              края панели, и вниз им некуда. */}
           <button
             type="button"
             className={s.attach}
-            title="Attach files or folders"
+            data-tooltip="Attach files or folders"
+            data-tooltip-at="top"
             aria-label="Attach files or folders"
             onClick={onAttach}
           >
@@ -1123,7 +1126,9 @@ export const Composer = ({
             <button
               type="button"
               className={s.attach}
-              title="Slash commands"
+              data-tooltip="Slash commands"
+              data-tooltip-at="top"
+              aria-label="Slash commands"
               onClick={() => {
                 insertTextAtCursor('/')
                 input.current?.focus()
@@ -1142,7 +1147,13 @@ export const Composer = ({
           {/* Обычный Stop честно ждёт подтверждения. Если оно не пришло дольше
               разумного — единственный работающий выход отсюда - убить процесс. */}
           {stopStalled ? (
-            <button type="button" className={s.forceStop} onClick={onForceStop} title="Claude isn't confirming the stop">
+            <button
+              type="button"
+              className={s.forceStop}
+              onClick={onForceStop}
+              data-tooltip="Claude isn't confirming the stop"
+              data-tooltip-at="top"
+            >
               ⚠ Not responding · Force stop
             </button>
           ) : null}
@@ -1160,7 +1171,8 @@ export const Composer = ({
               className={`${s.send} ${s.sendQueued}`}
               onClick={onQueue}
               disabled={!canSubmit || !streaming}
-              title="Send after the current run finishes"
+              data-tooltip="Send after the current run finishes"
+              data-tooltip-at="top"
             >
               Queue
             </button>
@@ -1171,7 +1183,8 @@ export const Composer = ({
             className={`${s.send} ${bash ? s.sendRun : ''}`}
             onClick={onSubmit}
             disabled={!canSubmit}
-            title={bash ? 'Run in your shell — Claude sees the output with your next message' : undefined}
+            data-tooltip={bash ? 'Run in your shell — Claude sees the output with your next message' : undefined}
+            data-tooltip-at="top"
           >
             {bash ? 'Run' : 'Send'}
           </button>
