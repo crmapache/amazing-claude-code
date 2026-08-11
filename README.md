@@ -310,4 +310,10 @@ without the owner's permission.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Source-available under the [Elastic License 2.0](LICENSE). You can read, use,
+modify, and redistribute the code. You can't offer it to others as a hosted or
+managed service, and you can't strip out the license, copyright, or authorship
+notices.
+
+The name, the logo, and the plugin ID are not part of that license: a fork ships
+under its own name and its own ID. See [TRADEMARK.md](TRADEMARK.md).
