@@ -878,7 +878,14 @@ const applySystem = (
         taskCards: { ...base.taskCards, [event.task_id]: linked },
         items: base.items.map((item) =>
           item.kind === 'task' && item.id === linked
-            ? { ...item, target: event.subagent_type ?? item.target, meta: item.meta || (event.description ?? '') }
+            ? {
+                ...item,
+                // Настоящее имя задачи приезжает только здесь — карточку завёл
+                // вызов инструмента, а он знает лишь свой идентификатор.
+                taskId: event.task_id,
+                target: event.subagent_type ?? item.target,
+                meta: item.meta || (event.description ?? ''),
+              }
             : item,
         ),
       }
@@ -895,6 +902,7 @@ const applySystem = (
         {
           id: event.task_id,
           kind: 'task',
+          taskId: event.task_id,
           target: event.subagent_type ?? 'agent',
           meta: event.description ?? '',
           duration: '',

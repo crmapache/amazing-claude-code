@@ -21,6 +21,12 @@ interface AskPanelProps {
    * по порядку (см. protocol, сообщение askAnswer).
    */
   onSubmit: (itemId: string, answers: { question: string; answer: string }[]) => void
+  /**
+   * Закрыть вопрос, не отвечая на варианты: человек скажет своими словами в
+   * поле ввода. Агент получит отказ на свой вызов и пойдёт дальше — иначе он
+   * так и стоял бы, ожидая выбора, которого никто не сделает.
+   */
+  onDismiss: (itemId: string) => void
 }
 
 /**
@@ -28,7 +34,7 @@ interface AskPanelProps {
  * Вопрос блокирует ход, поэтому не должен теряться где-то посреди ленты:
  * пропадает сразу после отправки ответа, а не остаётся висеть неактивным.
  */
-export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit }: AskPanelProps) => {
+export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: AskPanelProps) => {
   /** Выбранные варианты на вопрос: у обычного — не больше одного, у multiSelect — сколько угодно. */
   const [picks, setPicks] = useState<Record<string, string[]>>({})
   const [custom, setCustom] = useState<Record<string, string>>({})
@@ -154,6 +160,15 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit }: AskPanelPro
         <span className={s.askLabel}>CLAUDE ASKS</span>
         <span className={s.askMeta}>{item.meta}</span>
         <div className={s.spacer} />
+        <button
+          type="button"
+          className={s.askDismiss}
+          title="Close and answer in your own words"
+          aria-label="Close the question"
+          onClick={() => onDismiss(item.id)}
+        >
+          ×
+        </button>
       </div>
 
       <div className={s.askBody}>

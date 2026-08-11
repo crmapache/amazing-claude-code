@@ -13,6 +13,7 @@ import {
 import { AgentStreamView } from './components/AgentStreamView'
 import { AskPanel } from './components/AskPanel'
 import { Composer } from './components/Composer'
+import { Confirm } from './components/Confirm'
 import { Feed } from './components/Feed'
 import { Header, type Session, type SessionState } from './components/Header'
 import { History } from './components/History'
@@ -178,6 +179,12 @@ export const App = () => {
   /** Прошлые разговоры проекта: null — список ещё не приходил (см. стартовые запросы). */
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
   /**
+   * Работа, которую попросили прибить крестиком на чипе, — пока без ответа на
+   * «точно?». Спрашиваем, потому что промах по крестику стоит дорого: у агента
+   * это десятки минут работы, у фоновой команды — живой процесс вроде сервера.
+   */
+  const [stopping, setStopping] = useState<{ id: string; title: string; subject: string } | null>(null)
+  /**
    * Завершённый агент пропадает из вкладок сам, как только на него никто не
    * смотрит (см. эффект ниже) — а не мгновенно на глазах у того, кто как раз
    * его и просматривает: тогда он держится до переключения на что-то другое.
@@ -286,10 +293,15 @@ export const App = () => {
    * вкладка открывается мгновенно на готовом, а свежее подъезжает само, без
    * скелета и без «Refreshing…» на кнопке.
    */
-  const loadMcp = useCallback((quiet = false) => {
-    if (!quiet) setMcpLoading(true)
-    send({ type: 'mcpList' })
-  }, [])
+  const loadMcp = useCallback(
+    (quiet = false) => {
+      if (!quiet) setMcpLoading(true)
+      // Спрашиваем у разговора: серверы держит его процесс, и живое их
+      // состояние знает только он (см. mcpList в протоколе).
+      send({ type: 'mcpList', sessionId: activeRef.current })
+    },
+    [],
+  )
 
   const loadPlugins = useCallback((quiet = false) => {
     if (!quiet) setPluginsLoading(true)
@@ -929,6 +941,20 @@ export const App = () => {
   )
 
   /**
+   * Вопрос закрыли, не выбрав ни одного варианта: человек скажет своими
+   * словами. Агенту это уходит отказом на его вызов — тем же путём, что и
+   * «не разрешаю» у запроса разрешения: ход продолжается, а вопрос перестаёт
+   * держать панель. Промолчать нельзя — агент так и ждал бы выбора.
+   */
+  const dismissAsk = useCallback(
+    (itemId: string) => {
+      cards.answerAsk(itemId)
+      send({ type: 'askDismiss', sessionId: active, id: itemId })
+    },
+    [cards, active],
+  )
+
+  /**
    * Ответ на вопрос агента возвращается тем же вызовом инструмента, который его
    * и задал: ход стоит ровно на нём и продолжается с того же места, а не
    * начинается заново со следующего сообщения.
@@ -1478,6 +1504,22 @@ export const App = () => {
         <History conversations={history} onOpen={resume} onClose={() => setOpenPanel(null)} />
       ) : null}
 
+      {/* Прибиваем только по просьбе — саму работу останавливает CLI, а о том,
+          что она кончилась, он сообщит обычным уведомлением: чип уйдёт сам, и
+          подделывать его конец на своей стороне незачем. */}
+      {stopping ? (
+        <Confirm
+          title={stopping.title}
+          subject={stopping.subject}
+          confirmLabel="Stop"
+          onCancel={() => setStopping(null)}
+          onConfirm={() => {
+            send({ type: 'stopTask', sessionId: active, taskId: stopping.id })
+            setStopping(null)
+          }}
+        />
+      ) : null}
+
       {openPanel === 'sounds' ? (
         <Sounds
           prefs={soundPrefs}
@@ -1500,21 +1542,23 @@ export const App = () => {
             setMcpMessage(null)
             loadMcp()
           }}
-          // Не промптом в разговор, в отличие от enable/disable: слэш-команду
-          // /mcp потоковый режим не выполняет вовсе, и на месте переподключения
-          // получался отказ агента. Перезапуск процесса — единственное, что
-          // серверы правда переподключает.
-          onReconnect={() => {
+          onReconnect={(name) => {
             setMcpMessage(null)
-            send({ type: 'mcpReconnect', sessionId: active })
+            send({ type: 'mcpReconnect', sessionId: active, name })
+          }}
+          // Адрес входа откроет оболочка в системном браузере, а код от него
+          // поймает сам CLI: панели остаётся дождаться нового статуса.
+          onAuthenticate={(name) => {
+            setMcpMessage(null)
+            send({ type: 'mcpAuthenticate', sessionId: active, name })
           }}
           onRemove={(name) => {
             setMcpMessage(null)
-            send({ type: 'mcpRemove', name })
+            send({ type: 'mcpRemove', sessionId: active, name })
           }}
           onAdd={(name, command, transport) => {
             setMcpMessage(null)
-            send({ type: 'mcpAdd', name, command, transport })
+            send({ type: 'mcpAdd', sessionId: active, name, command, transport })
           }}
           onClose={() => setOpenPanel(null)}
         />
@@ -1575,6 +1619,7 @@ export const App = () => {
           mainStatus={mainStatus}
           active={resolvedStream}
           onPick={setActiveStream}
+          onStop={setStopping}
         />
 
         <div className={s.body}>
@@ -1635,6 +1680,7 @@ export const App = () => {
             // две панели, слушающие одну и ту же клавишу, отвечали бы обе разом.
             hotkeys={!permission}
             onSubmit={sendAnswers}
+            onDismiss={dismissAsk}
           />
 
           <TaskListPanel item={latestTodo(panel.items)} />
@@ -1940,6 +1986,9 @@ const buildAgentTabs = (panel: PanelState, answeredAsks: string[], hiddenTaskIds
       status: statusOf(task, panel.items, answeredAsks),
       percent: task.percent,
       duration: task.duration,
+      // Прибивать нечего у того, кто уже закончил, и нечем — пока CLI не назвал
+      // задачу своим именем (см. TaskItem.taskId).
+      stopId: task.pending ? task.taskId : undefined,
     }))
 
 const menuProps = (

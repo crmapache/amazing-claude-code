@@ -148,6 +148,13 @@ export type TaskOutcome = 'ok' | 'stopped' | 'failed'
 export interface TaskItem {
   id: string
   kind: 'task'
+  /**
+   * Как эту задачу зовёт сам CLI. Не всегда совпадает с id карточки: агента,
+   * запущенного вызовом Task, карточка знает по идентификатору вызова, а
+   * настоящее имя задачи приезжает следом, системным событием о её запуске.
+   * Без него задачу не остановить — по нему её и просят прибить.
+   */
+  taskId?: string
   target: string
   meta: string
   duration: string

@@ -237,6 +237,36 @@
   color: var(--acc-paste);
 }
 
+/* Вставка, за которой в сообщении ничего нет, занимает строку целиком. */
+.chipPasteBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  width: 100%;
+  margin-top: 3px;
+  padding: 5px 8px 6px;
+}
+
+.chipPasteCount {
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+/* Три строки — столько же, сколько занял бы обычный абзац ответа: дальше это
+   уже не напоминание о вставленном, а второй разговор поверх первого. */
+.chipPasteText {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--acc-fg-dim);
+  line-height: 16px;
+}
+
 /* Цитата внутри сообщения: тот же приём, что и в чате Claude — полоска слева и
    приглушённый текст, чтобы её нельзя было спутать с собственными словами. */
 .userQuote {
@@ -327,6 +357,18 @@
   color: var(--acc-agent-light);
   font-family: var(--acc-mono);
   font-size: 11.8px;
+  cursor: pointer;
+}
+
+.code:hover {
+  background: var(--acc-neutral-16);
+}
+
+/* Единственный ответ на клик, который здесь возможен: в буфер не заглянешь. */
+.codeCopied,
+.codeCopied:hover {
+  background: var(--acc-ok-12);
+  color: var(--acc-ok-text);
 }
 
 .mark {
@@ -351,8 +393,41 @@
   text-decoration: underline;
 }
 
-.codeBlock {
+/* Обёртка держит отступы блока и место под кнопку: сам pre прокручивается по
+   горизонтали, и кнопка внутри него уезжала бы вместе с длинной строкой. */
+.codeBlockWrap {
+  position: relative;
   margin: 2px 0 8px;
+}
+
+.codeCopy {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-deep);
+  color: var(--acc-fg-faint);
+  font-size: 11px;
+  opacity: 0;
+}
+
+.codeBlockWrap:hover .codeCopy,
+.codeCopy:focus-visible {
+  opacity: 1;
+}
+
+.codeCopy:hover {
+  background: var(--acc-bg-control);
+  color: var(--acc-fg);
+}
+
+.codeBlock {
+  margin: 0;
   padding: 8px 10px;
   border: 1px solid var(--acc-line);
   border-radius: var(--acc-r-lg);

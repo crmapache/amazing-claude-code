@@ -384,6 +384,116 @@
   color: var(--acc-fg-fainter);
 }
 
+/* Место крестику держим всегда, и справа его столько же, сколько у чипа сверху
+   и снизу: иначе он либо жмётся к самому краю, либо чип дёргается в ширину под
+   курсором. Отсюда и меньший правый отступ — крестик добирает его собой. */
+.streamStoppable {
+  padding-right: 3px;
+}
+
+/* Крестик прибивает саму работу, а не чип, поэтому проявляется только под
+   курсором: постоянно видимый на каждом чипе, он читался бы как «закрыть». */
+.streamStop {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--acc-r-xs);
+  color: var(--acc-fg-ghost);
+  opacity: 0;
+}
+
+/* Блочная, а не строчная: у строчной под линии остаётся щель на подстрочные
+   элементы, и рисунок съезжает вверх от середины кнопки. */
+.streamStopIcon {
+  display: block;
+  width: 8px;
+  height: 8px;
+}
+
+.stream:hover .streamStop,
+.streamStop:focus-visible {
+  opacity: 1;
+}
+
+.streamStop:hover {
+  background: var(--acc-line-strong);
+  color: var(--acc-bad);
+}
+
+/* --- Вопрос перед необратимым ---------------------------------------------- */
+
+.confirm {
+  position: absolute;
+  z-index: 41;
+  top: calc(var(--header-height) + 48px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(300px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 13px 14px 11px;
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-panel);
+  box-shadow: var(--acc-shadow-menu);
+}
+
+.confirmTitle {
+  font: 600 12px var(--acc-font);
+  color: var(--acc-fg);
+}
+
+.confirmSubject {
+  font: 11px var(--acc-mono);
+  color: var(--acc-fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.confirmCancel,
+.confirmAccept {
+  height: 24px;
+  padding: 0 11px;
+  border-radius: var(--acc-r-md);
+  font: 500 11px var(--acc-font);
+}
+
+.confirmCancel {
+  background: var(--acc-bg-control);
+  color: var(--acc-fg-dim);
+}
+
+.confirmCancel:hover {
+  background: var(--acc-bg-control-hover);
+  color: var(--acc-fg);
+}
+
+.confirmAccept {
+  background: var(--acc-bad);
+  color: var(--acc-on-accent);
+}
+
+.confirmAccept:hover {
+  filter: brightness(1.1);
+}
+
+.confirmAccept:focus-visible {
+  outline: 1px solid var(--acc-fg);
+  outline-offset: 1px;
+}
+
 /* --- Нижняя строка --------------------------------------------------------- */
 
 /* Нижняя строка: сводка текстом, как в строке состояния терминала. Метрики идут
@@ -1086,6 +1196,54 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 50%;
+}
+
+/* Цвет состояния — тот же язык, что и везде в панели: зелёное работает,
+   жёлтое ждёт человека, красное сломано. */
+.mcpStatusOk {
+  color: var(--acc-ok-text);
+}
+
+.mcpStatusWarn {
+  color: var(--acc-warn-light);
+}
+
+.mcpStatusBad {
+  color: var(--acc-bad-text);
+}
+
+.mcpStatusIdle {
+  color: var(--acc-fg-ghost);
+}
+
+/* Группы серверов по тому, откуда они взялись — как в терминальном /mcp. */
+.mcpGroup {
+  margin-bottom: 6px;
+}
+
+.mcpGroupHead {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 7px 9px 3px;
+}
+
+/* Объяснение отказа от самого CLI: длинное, поэтому переносим, а не режем. */
+.mcpError {
+  margin: 0 0 6px 14px;
+  font: 10.5px/15px var(--acc-mono);
+  color: var(--acc-bad-text);
+  word-break: break-word;
+}
+
+.mcpActionPrimary {
+  background: var(--acc-warn-12);
+  color: var(--acc-warn-light);
+}
+
+.mcpActionPrimary:hover:not(:disabled) {
+  background: var(--acc-warn-16);
+  color: var(--acc-warn-light);
 }
 
 .mcpCommand {

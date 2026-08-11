@@ -30,11 +30,24 @@ export interface HistoryEntry {
 }
 
 /** Один MCP-сервер — тем же текстом, что печатает `claude mcp list` в терминале. */
+/**
+ * MCP-сервер так, как его видит сам CLI (ответ mcp_status). Статусы и области
+ * — его слова, а не наши: панель обязана звать состояние сервера тем же, чем
+ * зовёт терминал.
+ *
+ * status: connected | needs-auth | failed | pending | disabled
+ * scope: project | user | local | dynamic (плагины и встроенные) | claudeai
+ */
 export interface McpServerInfo {
   name: string
-  command: string
-  connected: boolean
   status: string
+  scope: string
+  /** stdio, http, sse, claudeai-proxy — чем сервер подключается. */
+  transport: string
+  /** Команда с аргументами или адрес — то, чем сервер поднимается. */
+  command: string
+  /** Заполнено только у упавшего: объяснение от самого CLI. */
+  error: string
 }
 
 /** Установленный плагин: id уже содержит маркетплейс — "name@marketplace". */
@@ -282,6 +295,13 @@ export type WebviewMessage =
   | { type: 'stop'; sessionId: string }
   /** Обычный Stop не подтвердился — пользователь явно попросил прибить процесс. */
   | { type: 'kill'; sessionId: string }
+  /**
+   * Прибить одну задачу разговора — субагента или фоновую команду, — не трогая
+   * сам ход. Идентификатор тот же, которым CLI зовёт её в своих событиях
+   * (task_started и далее). О конце задачи CLI сообщит сам, обычным
+   * уведомлением со статусом «остановлена», — панель ничего не додумывает.
+   */
+  | { type: 'stopTask'; sessionId: string; taskId: string }
   | {
       type: 'newSession'
       kind: SessionKind
@@ -333,6 +353,12 @@ export type WebviewMessage =
    * (разговор с тех пор перезапускали): тогда он уходит следующим сообщением.
    */
   | { type: 'askAnswer'; sessionId: string; id: string; answers: Record<string, string>; text: string }
+  /**
+   * Вопрос закрыли, не выбрав вариантов: отвечать человек будет своими словами
+   * в поле ввода. Агент получает отказ на свой вызов — молчание оставило бы ход
+   * стоять на вопросе, которого на экране уже нет.
+   */
+  | { type: 'askDismiss'; sessionId: string; id: string }
   /**
    * Проиграть звук оповещения.
    *
@@ -393,17 +419,23 @@ export type WebviewMessage =
   | { type: 'trace'; message: string }
   /** Путь к CLI, указанный руками, — когда автоматический поиск промахнулся. */
   | { type: 'setExecutablePath'; path: string }
-  /** Список, добавление и удаление MCP-серверов — правки конфига, не часть разговора. */
-  | { type: 'mcpList' }
   /**
-   * Переподключить MCP-серверы. Своей команды у CLI для этого нет ни в
-   * подкомандах, ни в управляющем канале, поэтому оболочка перезапускает процесс
-   * разговора — он подключается к серверам заново при старте, а переписка
-   * продолжается с того же места.
+   * Статус MCP спрашивается у самого разговора — серверы держит его процесс,
+   * и только он знает, кто подключён, кому нужен вход и кто упал. Разговор для
+   * этого поднимается, как и в терминале, где `/mcp` спрашивают у сессии.
    */
-  | { type: 'mcpReconnect'; sessionId: string }
-  | { type: 'mcpAdd'; name: string; command: string; transport?: string }
-  | { type: 'mcpRemove'; name: string }
+  | { type: 'mcpList'; sessionId: string }
+  /** Поднять один сервер заново — им же и повторяют попытку после отказа. */
+  | { type: 'mcpReconnect'; sessionId: string; name: string }
+  /**
+   * Вход в сервер, который его требует. Адрес открывает оболочка в системном
+   * браузере, код от него ловит сам CLI — панели остаётся дождаться нового
+   * статуса.
+   */
+  | { type: 'mcpAuthenticate'; sessionId: string; name: string }
+  /** Добавление и удаление — правки конфига, не часть разговора. */
+  | { type: 'mcpAdd'; sessionId: string; name: string; command: string; transport?: string }
+  | { type: 'mcpRemove'; sessionId: string; name: string }
   /**
    * Плагины и маркетплейсы — тоже правки конфига. В отличие от MCP, у
    * install/uninstall/enable/disable есть собственные подкоманды CLI, поэтому

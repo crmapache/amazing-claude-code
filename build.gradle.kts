@@ -77,6 +77,31 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
+              <li>MCP servers are now shown the way the terminal shows them. The list is grouped by
+              where each server comes from — this project, your own config, claude.ai connectors,
+              built-ins and plugins — and every server says what state it is really in: connected,
+              needs authentication, failed, connecting. A server that failed explains why, right
+              under its name. A server that needs a sign-in now has an "Authenticate" button: the
+              panel opens the sign-in page in your browser, Claude Code catches the answer, and the
+              list updates itself. Reconnect now applies to a single server instead of restarting
+              the whole conversation. All of this comes from Claude Code itself over the same
+              channel the terminal's <code>/mcp</code> uses, instead of being read out of the text
+              printed by <code>claude mcp list</code> — which is why the panel used to show
+              "Pending approval (run claude to approve)" and offer no way to approve anything.</li>
+              <li>An agent or a background command can now be stopped from the chip in the header:
+              hover it and a cross appears. It asks first — the cross is small and an agent can be
+              half an hour of work — and then stops that one task, leaving the conversation itself
+              running.</li>
+              <li>A question with options can now be closed without answering it: the cross in its
+              header releases the turn, so you can reply in your own words in the message box
+              instead. Claude is told the question was closed, so it doesn't sit waiting for a pick
+              that will never come.</li>
+              <li>Every code block in a reply now has its own copy button, and a short inline piece
+              — a branch name, a flag, a path — is copied by clicking it. Copying the whole reply to
+              get one command out of it meant cleaning the story around it afterwards.</li>
+              <li>A pasted block in a sent message, when nothing follows it, now takes the full
+              width and shows how many lines were pasted plus the first few of them, instead of
+              seven words in a narrow chip.</li>
               <li>Fixed: a conversation started by a slash command was listed in History under a raw
               tag — "&lt;command-message&gt;task&lt;/command-message&gt;" instead of a name. Such a
               conversation is now named by the command itself, with its argument, and the shell's own

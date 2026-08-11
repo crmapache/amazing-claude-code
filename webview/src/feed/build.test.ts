@@ -887,6 +887,19 @@ describe('один субагент — одна карточка', () => {
     expect(tasks(state)[0]?.target).toBe('Explore')
   })
 
+  it('карточка запоминает имя задачи у CLI — по нему её и прибивают', () => {
+    // Карточку завёл вызов инструмента, и знает он только свой идентификатор:
+    // настоящее имя задачи приезжает следом, системным событием. Без него
+    // крестик на чипе нечего было бы отправить.
+    const state = play([
+      toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Discover files' }),
+      agentTaskStartedEvent('a90aa', 'toolu-1', 'Explore'),
+    ])
+
+    expect(tasks(state)[0]?.id).toBe('toolu-1')
+    expect(tasks(state)[0]?.taskId).toBe('a90aa')
+  })
+
   it('порядок наоборот — событие раньше вызова — тоже даёт одну карточку', () => {
     const state = play([
       agentTaskStartedEvent('a90aa', 'toolu-1', 'Explore'),

@@ -217,6 +217,26 @@
   color: var(--acc-fg-dim);
 }
 
+/* Отпускает вопрос, а не прячет его: ход стоит, пока агент ждёт ответа, —
+   поэтому крестик виден всегда, а не только под курсором. */
+.askDismiss {
+  align-self: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--acc-r-xs);
+  font-size: 13px;
+  line-height: 1;
+  color: var(--acc-fg-faint);
+}
+
+.askDismiss:hover {
+  background: var(--acc-branch-20);
+  color: var(--acc-fg);
+}
+
 /* Шапка и кнопка отправки остаются на месте — крутится только сам список
    вопросов. Без этого шесть вопросов в одном вызове (обычное дело) вытолкнули
    бы поле ввода за экран: панель здесь закреплённая, а не в бесконечной ленте. */

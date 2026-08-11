@@ -1,6 +1,6 @@
 import { RevealProvider } from 'smooth-stream-text/react'
-import { useEffect, useState } from 'react'
 import type { TextItem } from '../../feed/types'
+import { CopyButton } from './CopyButton'
 import { Markdown } from './Markdown'
 import s from '../feed.module.css'
 
@@ -9,9 +9,6 @@ interface TextCardProps {
   /** Открыть ссылку из ответа агента в системном браузере, а не внутри вебвью. */
   onOpenLink: (url: string) => void
 }
-
-/** Сколько подряд держим галочку после копирования, прежде чем вернуть иконку. */
-const COPIED_FLASH_MS = 1500
 
 /**
  * Дальше этого объёма текст показывается без волны проявления. Порог с запасом
@@ -50,14 +47,6 @@ const REVEAL = {
  * ответ — тот же приём, что и у сообщения пользователя, только с другой стороны.
  */
 export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
-  const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    if (!copied) return
-    const timeout = setTimeout(() => setCopied(false), COPIED_FLASH_MS)
-    return () => clearTimeout(timeout)
-  }, [copied])
-
   /**
    * Волна проявления рисует каждое слово отдельным узлом со своей анимацией —
    * на обычном ответе это красиво и незаметно по цене, а на полотне в десятки
@@ -74,18 +63,7 @@ export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
 
   return (
     <div className={s.text} data-copyable>
-      <button
-        type="button"
-        className={s.textCopy}
-        title="Copy"
-        onClick={() => {
-          void copyToClipboard(plainText(item)).then((ok) => {
-            if (ok) setCopied(true)
-          })
-        }}
-      >
-        {copied ? '✓' : '⧉'}
-      </button>
+      <CopyButton text={plainText(item)} className={s.textCopy} title="Copy the whole reply" />
 
       {/* Одна волна на всю карточку: иначе каждый абзац начинал бы проявление
           заново и текст загорался бы ступеньками, а не единым ходом. */}
@@ -98,44 +76,6 @@ export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
       )}
     </div>
   )
-}
-
-/** Сколько ждём современный Clipboard API, прежде чем считать его недоступным. */
-const CLIPBOARD_API_TIMEOUT_MS = 300
-
-/**
- * navigator.clipboard в здешнем встроенном в IDE браузере (JCEF) есть не
- * всегда — и, что хуже обычного отказа, может не отклониться с ошибкой, а
- * зависнуть без ответа насовсем (проверено живьём: обычный await так и не
- * дожидается ни успеха, ни отказа). Кнопка при этом рапортовала об успехе
- * (галочка) сразу, не дожидаясь вообще ничего. document.execCommand уже
- * используется в этом файле панели для других операций и там работает
- * стабильно, поэтому он — честный запасной путь, если современный API
- * недоступен, упал или молчит дольше разумного. "Успех" теперь значит именно
- * успех, а не просто вызов.
- */
-const copyToClipboard = async (text: string): Promise<boolean> => {
-  if (navigator.clipboard?.writeText) {
-    // .catch сразу на самом промисе — иначе он, отказавшись позже, чем таймаут
-    // уже выиграл гонку, всплывёт как uncaught (in promise) в консоли.
-    const write = navigator.clipboard
-      .writeText(text)
-      .then(() => 'done' as const)
-      .catch(() => 'failed' as const)
-    const timeout = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), CLIPBOARD_API_TIMEOUT_MS))
-
-    if ((await Promise.race([write, timeout])) === 'done') return true
-  }
-
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.style.position = 'fixed'
-  textarea.style.opacity = '0'
-  document.body.appendChild(textarea)
-  textarea.select()
-  const ok = document.execCommand('copy')
-  document.body.removeChild(textarea)
-  return ok
 }
 
 /** То, что реально уходит в буфер обмена — без markdown-разметки, простым текстом. */

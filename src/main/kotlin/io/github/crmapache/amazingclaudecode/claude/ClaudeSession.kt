@@ -208,6 +208,52 @@ internal class ClaudeSession(
     }
 
     /**
+     * MCP-серверы этого разговора: кто подключён, кто ждёт входа, кто упал и
+     * почему, откуда взялся каждый (проект, личный конфиг, claude.ai, плагин).
+     *
+     * Спрашиваем у самого разговора, а не разбираем вывод `claude mcp list`:
+     * в списке нет ни причины отказа, ни того, что серверу нужен вход, — а
+     * подключены серверы всё равно к процессу разговора, а не к какому-то
+     * отдельному «состоянию MCP» на диске.
+     */
+    fun requestMcpStatus(onResult: (JsonObject) -> Unit, onFailure: (String) -> Unit = {}) {
+        control("mcp_status", onResult = onResult, onFailure = onFailure)
+    }
+
+    /**
+     * Вход в MCP-сервер, который его требует. CLI отвечает адресом, который надо
+     * открыть человеку, и сам поднимает у себя локальный обработчик, куда
+     * браузер вернётся с кодом, — поэтому запрос обязан идти в живой процесс
+     * разговора, а не в разовый: с его смертью умрёт и обработчик.
+     */
+    fun authenticateMcp(server: String, onResult: (JsonObject) -> Unit, onFailure: (String) -> Unit = {}) {
+        control("mcp_authenticate", onResult = onResult, onFailure = onFailure) { put("serverName", server) }
+    }
+
+    /** Переподключение одного сервера — без перезапуска разговора. */
+    fun reconnectMcp(server: String, onResult: (JsonObject) -> Unit, onFailure: (String) -> Unit = {}) {
+        control("mcp_reconnect", onResult = onResult, onFailure = onFailure) { put("serverName", server) }
+    }
+
+    /**
+     * Прибить одну задачу разговора — субагента или фоновую команду, — не трогая
+     * сам ход: тем же управляющим запросом, которым это делает и терминал.
+     *
+     * Задачи, которой уже нет, CLI не пугается и отвечает успехом: к моменту
+     * нажатия она могла закончиться сама. Наверх сообщаем только настоящий отказ
+     * — иначе крестик молча ничего не делал бы.
+     */
+    fun stopTask(taskId: String, onFailure: (String) -> Unit = {}) {
+        control(
+            "stop_task",
+            onFailure = { message ->
+                thisLogger().warn("Agent refused to stop task $taskId: $message")
+                onFailure(message)
+            },
+        ) { put("task_id", taskId) }
+    }
+
+    /**
      * Сколько занято окна контекста прямо сейчас — цифра от самого CLI, та же,
      * что печатает `/context`. Считать её самим по usage нельзя: размер окна
      * зависит от модели (у «1M»-моделей он впятеро больше обычного), а в занятое

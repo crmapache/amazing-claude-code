@@ -756,6 +756,26 @@ export const scenariosCards: Scenario[] = [
           ],
         },
       }),
+      // Про каждый запуск CLI сообщает и системным событием со своим task_id —
+      // тем самым, которым задачу потом просят остановить.
+      agent({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'c12-a-id',
+        tool_use_id: 'c12-a',
+        subagent_type: 'react-architecture',
+        description: 'Ревью фронта',
+        task_type: 'local_agent',
+      }),
+      agent({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'c12-b-id',
+        tool_use_id: 'c12-b',
+        subagent_type: 'nest-architecture',
+        description: 'Ревью бэка',
+        task_type: 'local_agent',
+      }),
       wait(1500),
     ]),
     checkpoint('Агент фронта: смотрит компоненты', [subagentText('c12-a', 'Смотрю компоненты…'), wait(1200)]),

@@ -3,6 +3,7 @@ package io.github.crmapache.amazingclaudecode.claude
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.util.Disposer
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Набор разговоров одной панели.
@@ -90,6 +91,46 @@ internal class ClaudeSessions(
      */
     fun isAwaitingPermission(sessionId: String, requestId: String): Boolean =
         sessions[sessionId]?.isAwaitingPermission(requestId) == true
+
+    /** Прибить одну задачу разговора — см. [ClaudeSession.stopTask]. */
+    fun stopTask(sessionId: String, taskId: String, onFailure: (String) -> Unit = {}) {
+        if (taskId.isEmpty()) return
+        // Разговора уже нет — прибивать нечего: его задачи ушли вместе с ним.
+        sessions[sessionId]?.stopTask(taskId, onFailure)
+    }
+
+    /**
+     * MCP этого разговора — статус, вход, переподключение (см. [ClaudeSession]).
+     *
+     * Разговор для этого поднимаем, если он ещё спит: MCP-серверы живут внутри
+     * процесса, и у спящего их попросту нет — ни статуса, ни того, к чему
+     * подключаться. Ровно так же ведёт себя и терминал: `/mcp` там спрашивают у
+     * запущенной сессии.
+     */
+    fun mcpStatus(sessionId: String, onResult: (JsonObject) -> Unit, onFailure: (String) -> Unit = {}) {
+        awake(sessionId).requestMcpStatus(onResult, onFailure)
+    }
+
+    fun mcpAuthenticate(
+        sessionId: String,
+        server: String,
+        onResult: (JsonObject) -> Unit,
+        onFailure: (String) -> Unit = {},
+    ) {
+        awake(sessionId).authenticateMcp(server, onResult, onFailure)
+    }
+
+    fun mcpReconnect(
+        sessionId: String,
+        server: String,
+        onResult: (JsonObject) -> Unit,
+        onFailure: (String) -> Unit = {},
+    ) {
+        awake(sessionId).reconnectMcp(server, onResult, onFailure)
+    }
+
+    /** Разговор, у которого точно есть процесс: заводим и будим, если надо. */
+    private fun awake(sessionId: String): ClaudeSession = session(sessionId).also { it.wake() }
 
     /** Прерывание хода: разговор остаётся живым, в отличие от закрытия сессии. */
     fun interrupt(sessionId: String, onTimeout: () -> Unit = {}) {

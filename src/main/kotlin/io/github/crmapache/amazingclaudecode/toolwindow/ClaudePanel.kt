@@ -28,7 +28,6 @@ import io.github.crmapache.amazingclaudecode.claude.ClaudeHistory
 import io.github.crmapache.amazingclaudecode.claude.ClaudeLaunch
 import io.github.crmapache.amazingclaudecode.claude.ClaudeLogin
 import io.github.crmapache.amazingclaudecode.claude.ClaudeMcp
-import io.github.crmapache.amazingclaudecode.claude.McpServer
 import io.github.crmapache.amazingclaudecode.claude.AvailablePlugin
 import io.github.crmapache.amazingclaudecode.claude.ClaudeFileSearch
 import io.github.crmapache.amazingclaudecode.claude.ClaudePlugin
@@ -246,6 +245,14 @@ internal class ClaudePanel(
                 sendStatus(sessionId, "idle")
             }
 
+            // Крестик на чипе: прибиваем одну задачу — субагента или фоновую
+            // команду, — а ход продолжается. Своего ответа панели не нужно: о
+            // конце задачи CLI скажет обычным уведомлением, тем же, каким
+            // сообщает о её естественном конце.
+            "stopTask" -> sessions?.stopTask(sessionId, field("taskId")) { error ->
+                sendError(sessionId, "Couldn't stop the task: $error")
+            }
+
             "newSession" -> {
                 // Ветка наследует переписку того разговора, из которого её открыли.
                 if (field("kind") == "branch") {
@@ -272,6 +279,8 @@ internal class ClaudePanel(
                 answers = payload["answers"]?.jsonObject ?: JsonObject(emptyMap()),
                 fallbackText = field("text"),
             )
+
+            "askDismiss" -> dismissAsk(field("id"))
 
             "setMode" -> changeMode(sessionId, field("mode"))
 
@@ -330,11 +339,7 @@ internal class ClaudePanel(
             // а не внутри JCEF, чтобы не заводить внутри панели полноценный веб-вьюпорт.
             "openExternal" -> field("url").takeIf { it.isNotBlank() }?.let { BrowserUtil.browse(it) }
 
-            "mcpList" -> ClaudeMcp.list(
-                project.basePath,
-                onResult = { servers -> sendMcpServers(servers) },
-                onError = { error -> sendMcpActionResult(false, error) },
-            )
+            "mcpList" -> refreshMcp(sessionId)
 
             "mcpAdd" -> ClaudeMcp.add(
                 project.basePath,
@@ -343,19 +348,23 @@ internal class ClaudePanel(
                 transport = field("transport").ifBlank { null },
                 onResult = { message ->
                     sendMcpActionResult(true, message)
-                    ClaudeMcp.list(project.basePath, onResult = ::sendMcpServers, onError = {})
+                    // Добавленный сервер поднимется только в новом процессе: конфиг
+                    // читается при запуске, живому разговору его не подсунуть.
+                    refreshMcpAfterRestart(sessionId)
                 },
                 onError = { error -> sendMcpActionResult(false, error) },
             )
 
-            "mcpReconnect" -> reconnectMcp(sessionId)
+            "mcpReconnect" -> reconnectMcp(sessionId, field("name"))
+
+            "mcpAuthenticate" -> authenticateMcp(sessionId, field("name"))
 
             "mcpRemove" -> ClaudeMcp.remove(
                 project.basePath,
                 name = field("name"),
                 onResult = { message ->
                     sendMcpActionResult(true, message)
-                    ClaudeMcp.list(project.basePath, onResult = ::sendMcpServers, onError = {})
+                    refreshMcpAfterRestart(sessionId)
                 },
                 onError = { error -> sendMcpActionResult(false, error) },
             )
@@ -615,6 +624,23 @@ internal class ClaudePanel(
             pending.requestId,
             allow = true,
             extraInput = buildJsonObject { put("answers", answers) },
+        )
+    }
+
+    /**
+     * Вопрос закрыли крестиком: вариантов человек не выбрал и скажет своими
+     * словами. Агенту это уходит отказом на его вызов — так он узнаёт, что
+     * ждать выбора больше незачем, и продолжает ход. Молчание оставило бы его
+     * стоять на вопросе, которого на экране уже нет.
+     */
+    private fun dismissAsk(itemId: String) {
+        val pending = asks.remove(itemId)?.takeIf { awaited(it) } ?: return
+
+        sessions?.answerPermission(
+            pending.sessionId,
+            pending.requestId,
+            allow = false,
+            message = ASK_DISMISSED,
         )
     }
 
@@ -1158,37 +1184,89 @@ internal class ClaudePanel(
     }
 
     /**
-     * Переподключение MCP-серверов — перезапуском процесса разговора.
+     * Что панель знает об MCP — то же, что показывает `/mcp` в терминале: кто
+     * подключён, кому нужен вход, кто упал и почему, откуда каждый взялся.
      *
-     * Другого способа нет: подкоманды у `claude mcp` для этого не существует, а
-     * слэш-команда `/mcp` доступна только интерактивному терминалу — в потоковом
-     * режиме CLI на неё честно отвечает отказом (именно это и видел пользователь
-     * вместо переподключения). Переписка при перезапуске сохраняется: процесс
-     * поднимается тем же разговором.
+     * Спрашиваем у разговора, а не разбираем вывод `claude mcp list`: серверы
+     * поднимает и держит именно процесс разговора, и только он знает их живое
+     * состояние. Разговор ради этого поднимается — как и в терминале, где `/mcp`
+     * спрашивают у запущенной сессии (см. ClaudeSessions.mcpStatus).
      */
-    private fun reconnectMcp(sessionId: String) {
-        val restarted = sessions?.restart(sessionId) == true
-
-        sendMcpActionResult(
-            true,
-            if (restarted) {
-                "Restarted the conversation to reconnect MCP servers — your chat continues where it left off."
-            } else {
-                "Nothing to reconnect yet: servers connect when this chat starts."
-            },
+    private fun refreshMcp(sessionId: String) {
+        sessions?.mcpStatus(
+            sessionId,
+            onResult = { status -> sendMcpServers(status) },
+            onFailure = { error -> sendMcpActionResult(false, error) },
         )
+    }
 
-        // Список спрашиваем заново, но не сразу: свежеподнятому процессу нужно
-        // время на рукопожатие с серверами, иначе увидим прежние статусы.
-        AppExecutorUtil.getAppScheduledExecutorService().schedule(
-            {
-                ClaudeMcp.list(
-                    project.basePath,
-                    onResult = { servers -> sendMcpServers(servers) },
-                    onError = { error -> sendMcpActionResult(false, error) },
-                )
+    /**
+     * Переподключение одного сервера. Заодно это и «попробовать ещё раз» для
+     * упавшего: CLI поднимает его заново тем же запросом.
+     */
+    private fun reconnectMcp(sessionId: String, server: String) {
+        if (server.isEmpty()) return
+
+        sessions?.mcpReconnect(
+            sessionId,
+            server,
+            onResult = {
+                sendMcpActionResult(true, "Reconnecting $server…")
+                // Не сразу: рукопожатие с сервером занимает секунды, и спрошенный
+                // тут же статус показал бы прежний.
+                scheduleMcpRefresh(sessionId, MCP_RECONNECT_REFRESH_SECONDS)
             },
-            MCP_RECONNECT_REFRESH_SECONDS,
+            onFailure = { error -> sendMcpActionResult(false, error) },
+        )
+    }
+
+    /**
+     * Вход в сервер, который его требует, — то же, что «Authenticate» в
+     * терминальном `/mcp`.
+     *
+     * CLI отдаёт адрес, открывает его человеку панель, а код от браузера ловит
+     * сам CLI: он поднял для этого локальный обработчик в процессе разговора.
+     * Поэтому дальше остаётся только переспрашивать статус — о конце входа он
+     * отдельным событием не сообщает.
+     */
+    private fun authenticateMcp(sessionId: String, server: String) {
+        if (server.isEmpty()) return
+
+        sessions?.mcpAuthenticate(
+            sessionId,
+            server,
+            onResult = { response ->
+                val url = response["authUrl"]?.jsonPrimitive?.contentOrNull.orEmpty()
+
+                if (url.isEmpty()) {
+                    // Вход не потребовался — сервер уже пустили, статус это и покажет.
+                    sendMcpActionResult(true, "$server is signed in.")
+                    scheduleMcpRefresh(sessionId, MCP_AUTH_FIRST_REFRESH_SECONDS)
+                    return@mcpAuthenticate
+                }
+
+                BrowserUtil.browse(url)
+                sendMcpActionResult(true, "Finish signing in to $server in the browser — the list updates itself.")
+                for (delay in MCP_AUTH_REFRESH_SECONDS) scheduleMcpRefresh(sessionId, delay)
+            },
+            onFailure = { error -> sendMcpActionResult(false, error) },
+        )
+    }
+
+    /**
+     * Конфиг серверов читается при запуске процесса, поэтому добавленный или
+     * удалённый сервер виден только новому: перезапускаем разговор — переписка
+     * при этом остаётся, поднимается тот же самый.
+     */
+    private fun refreshMcpAfterRestart(sessionId: String) {
+        sessions?.restart(sessionId)
+        scheduleMcpRefresh(sessionId, MCP_RECONNECT_REFRESH_SECONDS)
+    }
+
+    private fun scheduleMcpRefresh(sessionId: String, delaySeconds: Long) {
+        AppExecutorUtil.getAppScheduledExecutorService().schedule(
+            { refreshMcp(sessionId) },
+            delaySeconds,
             TimeUnit.SECONDS,
         )
     }
@@ -1317,22 +1395,49 @@ internal class ClaudePanel(
         )
     }
 
-    private fun sendMcpServers(servers: List<McpServer>) {
+    /**
+     * Ответ CLI как есть, только разложенный по полям, которые рисует панель.
+     * Свои статусы не выдумываем: их набор («connected», «needs-auth»,
+     * «failed», «pending», «disabled») задаёт сам CLI, и панель обязана звать
+     * состояние сервера тем же словом, что и терминал.
+     */
+    private fun sendMcpServers(status: JsonObject) {
+        val servers = status["mcpServers"]?.jsonArray ?: JsonArray(emptyList())
+
         webview?.send(
             buildJsonObject {
                 put("type", "mcpServers")
                 putJsonArray("servers") {
-                    servers.forEach { server ->
+                    for (element in servers) {
+                        val server = element as? JsonObject ?: continue
+                        val config = server["config"]?.jsonObject
+
                         addJsonObject {
-                            put("name", server.name)
-                            put("command", server.command)
-                            put("connected", server.connected)
-                            put("status", server.status)
+                            put("name", server["name"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                            put("status", server["status"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                            put("scope", server["scope"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                            put("transport", config?.get("type")?.jsonPrimitive?.contentOrNull.orEmpty())
+                            put("command", commandOf(config))
+                            put("error", server["error"]?.jsonPrimitive?.contentOrNull.orEmpty())
                         }
                     }
                 }
             }.toString(),
         )
+    }
+
+    /** Чем сервер запускается: командой с аргументами или адресом. */
+    private fun commandOf(config: JsonObject?): String {
+        if (config == null) return ""
+
+        config["url"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }?.let { return it }
+
+        val command = config["command"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val arguments = config["args"]?.jsonArray.orEmpty()
+            .mapNotNull { it.jsonPrimitive.contentOrNull }
+            .joinToString(" ")
+
+        return listOf(command, arguments).filter { it.isNotBlank() }.joinToString(" ")
     }
 
     private fun sendMcpActionResult(ok: Boolean, message: String) {
@@ -1569,12 +1674,28 @@ internal class ClaudePanel(
         /** Сколько ждём после перезапуска, прежде чем спросить статусы MCP заново. */
         const val MCP_RECONNECT_REFRESH_SECONDS = 3L
 
+        /** Сервер уже пустил без входа — статус обновится почти сразу. */
+        const val MCP_AUTH_FIRST_REFRESH_SECONDS = 2L
+
+        /**
+         * Когда переспрашивать статус, пока человек входит в браузере. О конце
+         * входа CLI не сообщает, поэтому смотрим сами — редко и не вечно:
+         * секунд через десять вход обычно уже позади, а к минуте становится
+         * ясно, что окно просто закрыли.
+         */
+        val MCP_AUTH_REFRESH_SECONDS = listOf(10L, 25L, 60L)
+
         /** В пределах этого окна повторный бросок считаем эхом первого, а не вторым файлом. */
         const val DROP_ECHO_MS = 700L
         const val NOT_LOGGED_IN = "Not logged in"
 
         /** Выход из режима плана: тот самый вызов, под которым в ленте кнопки. */
         const val PLAN_TOOL = "ExitPlanMode"
+
+        /** Что агент услышит, когда вопрос закрыли, не выбрав вариантов. */
+        const val ASK_DISMISSED =
+            "The user closed the question without picking an option and will answer in their own words. " +
+                "Don't ask it again — wait for their message."
 
         /** Что агент услышит в ответ на «Keep planning». */
         const val KEEP_PLANNING = "The user wants to keep planning: refine the plan and show it again."

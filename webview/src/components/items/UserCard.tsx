@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { linkify } from '../../feed/markdown'
-import { chipLabel, chipTitle } from '../../feed/reference'
+import { chipLabel, chipTitle, pasteBlockPreview, pasteLineCount } from '../../feed/reference'
 import type { Chip, ChipKind, UserItem } from '../../feed/types'
 import s from '../feed.module.css'
 
@@ -62,6 +62,11 @@ export const UserCard = ({ item, onOpenLink }: UserCardProps) => (
               ),
             )}
           </span>
+        ) : // Вставка, за которой в сообщении уже ничего нет, занимает строку
+        // целиком: место всё равно свободно, а по семи словам в узкой плашке не
+        // вспомнить, что именно отправил.
+        token.chip.kind === 'paste' && index === item.tokens.length - 1 ? (
+          <PasteBlock key={index} chip={token.chip} />
         ) : (
           <ChipView key={index} chip={token.chip} />
         ),
@@ -85,3 +90,23 @@ const ChipView = memo(({ chip }: { chip: Chip }) => (
     {chipLabel(chip)}
   </span>
 ))
+
+/**
+ * Та же плашка вставки, но во всю ширину — и с началом текста в несколько
+ * строк вместо семи слов. Считается из текста вставки, как и обычная, поэтому
+ * тоже memo: лента перерисовывается на каждом кусочке печатающегося ответа, а
+ * отправленная вставка не меняется никогда.
+ */
+const PasteBlock = memo(({ chip }: { chip: Chip }) => {
+  const text = chip.text ?? ''
+  const lines = pasteLineCount(text)
+
+  return (
+    <span className={`${s.chip} ${s.chipPaste} ${s.chipPasteBlock}`} title={chipTitle(chip)}>
+      <span className={s.chipPasteCount}>
+        {lines} {lines === 1 ? 'line' : 'lines'} pasted
+      </span>
+      <span className={s.chipPasteText}>{pasteBlockPreview(text)}</span>
+    </span>
+  )
+})

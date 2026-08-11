@@ -1,6 +1,7 @@
 import { Reveal } from 'smooth-stream-text/react'
-import { createElement } from 'react'
+import { createElement, useEffect, useState } from 'react'
 import type { Paragraph, TextPart } from '../../feed/types'
+import { CopyButton, copyToClipboard } from './CopyButton'
 import s from '../feed.module.css'
 
 /**
@@ -42,10 +43,17 @@ const ParagraphView = ({
   onOpenLink: (url: string) => void
 }) => {
   if (paragraph.codeBlock) {
+    const code = paragraph.parts.map((part) => part.text).join('')
+
+    // Своя кнопка у каждого блока: копировать ответ целиком, чтобы забрать из
+    // него одну команду, значит потом вычищать вокруг неё весь рассказ.
     return (
-      <Piece reveal={reveal} as="pre" className={s.codeBlock}>
-        {paragraph.parts.map((part) => part.text).join('')}
-      </Piece>
+      <div className={s.codeBlockWrap}>
+        <Piece reveal={reveal} as="pre" className={s.codeBlock}>
+          {code}
+        </Piece>
+        <CopyButton text={code} className={s.codeCopy} title="Copy this block" />
+      </div>
     )
   }
 
@@ -119,8 +127,43 @@ const PartView = ({
     )
   }
 
-  if (part.code) return <Piece reveal={reveal} className={s.code}>{part.text}</Piece>
+  if (part.code) return <InlineCode text={part.text} reveal={reveal} />
   if (part.mark) return <Piece reveal={reveal} className={s.mark}>{part.text}</Piece>
   if (part.strong) return <Piece reveal={reveal} className={s.strong}>{part.text}</Piece>
   return <Piece reveal={reveal}>{part.text}</Piece>
+}
+
+/** Сколько держим подсветку скопированного, прежде чем вернуть обычный вид. */
+const COPIED_FLASH_MS = 900
+
+/**
+ * Имя ветки, флаг, путь — то, что чаще всего и нужно из ответа, — забирается
+ * кликом по нему же: своя кнопка у куска в два слова была бы больше него.
+ *
+ * Клик после выделения текста игнорируем: выделение и есть намерение забрать
+ * не только этот кусок, а подменять им буфер на полпути нечестно.
+ */
+const InlineCode = ({ text, reveal }: { text: string; reveal: boolean }) => {
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!copied) return
+    const timeout = setTimeout(() => setCopied(false), COPIED_FLASH_MS)
+    return () => clearTimeout(timeout)
+  }, [copied])
+
+  return (
+    <span
+      className={copied ? `${s.code} ${s.codeCopied}` : s.code}
+      title={copied ? 'Copied' : 'Click to copy'}
+      onClick={() => {
+        if (window.getSelection()?.isCollapsed === false) return
+        void copyToClipboard(text).then((ok) => {
+          if (ok) setCopied(true)
+        })
+      }}
+    >
+      <Piece reveal={reveal}>{text}</Piece>
+    </span>
+  )
 }
