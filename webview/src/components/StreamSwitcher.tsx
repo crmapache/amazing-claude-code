@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import s from './shell.module.css'
 
-export type AgentStatus = 'idle' | 'running' | 'done' | 'needs-input'
+export type AgentStatus = 'idle' | 'running' | 'done' | 'needs-input' | 'stopped' | 'failed'
 
 export interface AgentTab {
   id: string
@@ -13,8 +13,16 @@ export interface AgentTab {
   duration: string
 }
 
+/** Работающая прямо сейчас фоновая команда: не стрим, переключать в ней нечего. */
+export interface BackgroundChip {
+  id: string
+  label: string
+  duration: string
+}
+
 interface StreamSwitcherProps {
   tabs: AgentTab[]
+  background: BackgroundChip[]
   mainStatus: AgentStatus
   active: string
   onPick: (id: string) => void
@@ -24,6 +32,8 @@ const STATUS_DOT: Partial<Record<AgentStatus, string>> = {
   running: 'var(--acc-accent)',
   done: 'var(--acc-ok)',
   'needs-input': 'var(--acc-warn)',
+  stopped: 'var(--acc-fg-faint)',
+  failed: 'var(--acc-bad)',
 }
 
 /**
@@ -44,7 +54,7 @@ const ProgressDot = ({ percent, color }: { percent: number; color: string }) => 
  * только когда за сессию был хотя бы один агент — до этого переключать
  * нечего, а до первого запуска место в шапке лучше не занимать.
  */
-export const StreamSwitcher = ({ tabs, mainStatus, active, onPick }: StreamSwitcherProps) => {
+export const StreamSwitcher = ({ tabs, background, mainStatus, active, onPick }: StreamSwitcherProps) => {
   const listRef = useRef<HTMLDivElement | null>(null)
 
   // Колесо мыши крутит только по вертикали — переводим deltaY в горизонтальную
@@ -65,7 +75,7 @@ export const StreamSwitcher = ({ tabs, mainStatus, active, onPick }: StreamSwitc
     return () => element.removeEventListener('wheel', onWheel)
   }, [])
 
-  if (tabs.length === 0) return null
+  if (tabs.length === 0 && background.length === 0) return null
 
   return (
     <div className={s.streams}>
@@ -93,6 +103,18 @@ export const StreamSwitcher = ({ tabs, mainStatus, active, onPick }: StreamSwitc
             {tab.duration ? <span className={s.streamDuration}>{tab.duration}</span> : null}
             {tab.meta ? <span className={s.streamMeta}>{tab.meta}</span> : null}
           </button>
+        ))}
+
+        {/* Фоновая команда — не вкладка: своего потока у неё нет, показывать по
+            клику нечего. Это метка о том, что процесс всё ещё жив, и держится
+            она ровно столько, сколько он работает. */}
+        {background.map((task) => (
+          <span key={task.id} className={`${s.stream} ${s.streamStatic}`} title={task.label}>
+            <span className={s.streamDot} style={{ background: 'var(--acc-accent)' }} />
+            <span className={s.streamLabel}>bg</span>
+            <span className={s.streamDuration}>{task.duration}</span>
+            <span className={s.streamMeta}>{task.label}</span>
+          </span>
         ))}
       </div>
     </div>

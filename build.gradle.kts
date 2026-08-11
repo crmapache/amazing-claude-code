@@ -77,6 +77,19 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
+              <li>Fixed: a shell command was shown as a subagent. Anything running longer than a few
+              seconds took a chip labelled "agent:agent" in the switcher, and a command started in the
+              background — a dev server, say — kept one for as long as the process lived, reading
+              "1010m 08s" by the next morning. A background command now has a chip of its own that
+              names it and counts how long it has been up; when it ends the chip goes away and its own
+              card in the feed says how long it ran and how it ended, in red with the exit code if it
+              failed. An ordinary long command doesn't appear up there at all.</li>
+              <li>Fixed: one subagent took two chips in the switcher — the call that started it and
+              the system event about it were counted as two different agents.</li>
+              <li>Fixed: an agent that was stopped or failed looked exactly like one that finished its
+              work. Its chip and its log now say what actually happened.</li>
+              <li>Anything running longer than an hour is now timed in hours: "16h 50m" instead of
+              "1010m 08s".</li>
               <li>The paperclip and the slash next to the input now name themselves on hover, the way
               the icons in the header already did — and so does the play button in the sound
               settings, whose label never drew at all.</li>

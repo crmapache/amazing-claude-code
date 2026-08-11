@@ -190,14 +190,25 @@ const countLines = (value: string): number => {
   return trimmed.length === 0 ? 0 : trimmed.split('\n').length
 }
 
-/** Длительность в стиле макета: доли секунды у быстрых вызовов, целые у долгих. */
+/**
+ * Длительность в стиле макета: доли секунды у быстрых вызовов, целые у долгих.
+ *
+ * После часа единицы укрупняются ещё раз. Раньше минуты копились без предела, и
+ * фоновая команда, запущенная накануне (тот же dev-сервер), подписывалась
+ * «1010m 08s» — число, которое глазом в часы не переводится.
+ */
 export const formatDuration = (ms: number): string => {
   if (ms < 1000) return `${(ms / 1000).toFixed(1)}s`
   if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
 
-  const minutes = Math.floor(ms / 60_000)
-  const seconds = Math.round((ms % 60_000) / 1000)
-  return `${minutes}m ${String(seconds).padStart(2, '0')}s`
+  // Округление секунд вверх переносим в минуты сами: иначе на 59.6 секундах
+  // выходит «5m 60s» — время, которого не бывает.
+  const total = Math.round(ms / 1000)
+  const minutes = Math.floor(total / 60)
+  const seconds = total % 60
+  if (minutes < 60) return `${minutes}m ${String(seconds).padStart(2, '0')}s`
+
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`
 }
 
 /** Текст результата инструмента бывает строкой, списком блоков или объектом. */

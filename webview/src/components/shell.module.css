@@ -332,6 +332,16 @@
   border-color: var(--acc-line-hover);
 }
 
+/* Метка, а не кнопка: у фоновой команды нет своего потока, и подсветка под
+   курсором обещала бы, что по ней есть куда перейти. */
+.streamStatic {
+  border-style: dashed;
+}
+
+.streamStatic:hover {
+  border-color: var(--acc-line);
+}
+
 .streamActive {
   background: var(--acc-bg-control);
   border-color: var(--acc-line-hover);

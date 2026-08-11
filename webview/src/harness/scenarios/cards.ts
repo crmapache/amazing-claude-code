@@ -583,8 +583,20 @@ export const scenariosCards: Scenario[] = [
       user('Найди все места, где мы читаем переменные окружения'),
       wait(500),
     ]),
+    // Про один и тот же запуск CLI сообщает дважды: блоком вызова в ответе
+    // агента и системным событием со своим task_id. Здесь оба — чип в шапке
+    // обязан остаться один.
     checkpoint('Task: запуск субагента Explore', [
       toolUse('Task', { subagent_type: 'Explore', description: 'Найти чтение переменных окружения' }, 'c10-task'),
+      agent({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'c10-task-id',
+        tool_use_id: 'c10-task',
+        subagent_type: 'Explore',
+        description: 'Найти чтение переменных окружения',
+        task_type: 'local_agent',
+      }),
       wait(1200),
     ]),
     checkpoint('Субагент: смотрит config и server', [
@@ -646,6 +658,77 @@ export const scenariosCards: Scenario[] = [
       ...textReply('Ревью фонового субагента готово — два небольших замечания, посмотри карточку выше.'),
       turnResult(6500),
     ]),
+  ]),
+
+  /**
+   * Фоновая команда приходит теми же событиями, что и субагент, но агентом не
+   * является: чип в шапке — единственное место, где видно, что процесс ещё жив,
+   * а итог дописывается в её же карточку в ленте.
+   */
+  scenario('background-command', 'Фоновая команда', 'cards', [
+    checkpoint('Пользователь просит поднять dev-сервер', [user('Подними dev-сервер'), wait(500)]),
+    checkpoint('Bash в фоне: чип в шапке', [
+      toolUse('Bash', { command: 'yarn dev', description: 'Start the dev server', run_in_background: true }, 'c11b-dev'),
+      agent({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'c11b-task',
+        tool_use_id: 'c11b-dev',
+        description: 'Start the dev server',
+        task_type: 'local_bash',
+      }),
+      toolResult('c11b-dev', 'Command running in background with ID: c11b-task'),
+      wait(2000),
+    ]),
+    checkpoint('Ответ агента, пока сервер работает', [
+      ...textReply('Сервер поднят, слушает http://localhost:5173 — чип в шапке считает, сколько он уже работает.'),
+      turnResult(3200),
+      wait(3000),
+    ]),
+    checkpoint('Сервер упал — чип уходит, карточка краснеет', [
+      agent({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'c11b-task',
+        tool_use_id: 'c11b-dev',
+        status: 'failed',
+        summary: 'Background command "Start the dev server" failed with exit code 1',
+      }),
+      wait(500),
+    ]),
+  ]),
+
+  /**
+   * Обычная долгая команда сообщает о себе тем же каналом — и не должна давать
+   * ни чипа, ни карточки агента: она вся видна карточкой в ленте.
+   */
+  scenario('long-command', 'Долгая команда без фона', 'cards', [
+    checkpoint('Пользователь просит прогнать типы', [user('Прогони типы'), wait(500)]),
+    checkpoint('Bash: долгий typecheck', [
+      toolUse('Bash', { command: 'yarn typecheck', description: 'Update the metrics test and typecheck' }, 'c11c-tc'),
+      agent({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'c11c-task',
+        tool_use_id: 'c11c-tc',
+        description: 'Update the metrics test and typecheck',
+        task_type: 'local_bash',
+      }),
+      wait(2500),
+    ]),
+    checkpoint('→ результат команды', [
+      agent({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'c11c-task',
+        tool_use_id: 'c11c-tc',
+        status: 'completed',
+        summary: 'Update the metrics test and typecheck',
+      }),
+      toolResult('c11c-tc', 'No errors found.'),
+      wait(400),
+    ]),
+    checkpoint('Готовый ответ', [...textReply('Типы чистые.'), turnResult(2600)]),
   ]),
 
   scenario('multiple-agents', 'Несколько агентов параллельно', 'cards', [

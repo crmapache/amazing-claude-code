@@ -14,10 +14,12 @@ import { parseParagraphs } from './markdown'
 import { chipFor, detailFor, formatDuration, hunksFor, metaFor, resultToText, targetFor } from './tools'
 import type {
   AskQuestion,
+  BackgroundTask,
   DetailLine,
   FeedItem,
   Paragraph,
   TaskItem,
+  TaskOutcome,
   TodoEntry,
   ToolGroupItem,
   ToolItem,
@@ -91,12 +93,26 @@ export interface PanelState {
   /** Время начала каждого незавершённого вызова — из него считается длительность. */
   startedAt: Record<string, number>
   /**
-   * task_id субагента по tool_use_id вызова Task, который его породил — из
-   * системного события task_started. Сообщения самого субагента несут только
-   * tool_use_id в parent_tool_use_id, а карточка живёт под task_id: без этой
-   * карты их нечем связать.
+   * Карточка субагента по tool_use_id вызова Task/Agent, который его породил —
+   * из системного события task_started. Сообщения самого субагента несут только
+   * tool_use_id в parent_tool_use_id, а карточка может жить под task_id: без
+   * этой карты их нечем связать.
    */
   taskByToolUseId: Record<string, string>
+  /**
+   * Карточка субагента по task_id — обратная сторона той же связи. Один и тот
+   * же субагент приходит двумя дорогами: блоком tool_use в ответе агента (свой
+   * идентификатор вызова) и системными событиями task_* (свой task_id). Карточка
+   * заводится по той, что пришла первой, а вторая через эту карту находит уже
+   * заведённую — иначе на одного субагента их было бы две, и в шапке он занимал
+   * бы два чипа сразу.
+   */
+  taskCards: Record<string, string>
+  /**
+   * Команды, запущенные в фоне и работающие прямо сейчас. Дальше живут чипом в
+   * шапке: пока dev-сервер поднят, это единственное место, где это видно.
+   */
+  background: BackgroundTask[]
   seq: number
   /**
    * Когда нажали Stop — до этого момента статус меняем только по-настоящему
@@ -193,6 +209,8 @@ export const initialPanelState: PanelState = {
   cost: 0,
   startedAt: {},
   taskByToolUseId: {},
+  taskCards: {},
+  background: [],
   slashCommands: [],
   seq: 1,
   crashed: false,
@@ -429,6 +447,13 @@ const tickDurations = (state: PanelState, now: number): PanelState => {
 
   let changed = false
 
+  const background = state.background.map((task) => {
+    const started = state.startedAt[task.id]
+    if (!started) return task
+    changed = true
+    return { ...task, duration: formatDuration(now - started) }
+  })
+
   const items = state.items.map((item) => {
     if (item.kind === 'task') {
       if (!item.pending) return item
@@ -452,7 +477,7 @@ const tickDurations = (state: PanelState, now: number): PanelState => {
     return { ...item, tools, duration: formatDuration(now - item.startedAt) }
   })
 
-  return changed ? { ...state, items } : state
+  return changed ? { ...state, items, background } : state
 }
 
 /**
@@ -517,6 +542,7 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
         ...item,
         pending: false,
         duration,
+        outcome: 'stopped' as const,
         log: appendAgentLog(item.log, [{ text: 'Session ended before this returned.', tone: 'bad' as const }]),
       }
     }
@@ -527,6 +553,30 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
     return { ...item, tools, pending: false, duration: formatDuration(now - item.startedAt) }
   })
 
+  /**
+   * Фоновые команды переживают этот процесс: dev-сервер, поднятый ходом, никуда
+   * не денется. Но сообщать о них больше некому — уведомления шёл тот же CLI,
+   * которого не стало, — и оставить чипы с бегущим временем значит показывать
+   * заведомо мёртвый счётчик. Чипы убираем, а в карточку команды ставим ровно
+   * то, что правда: панель за ней больше не следит.
+   */
+  const withBackground = state.background.reduce((current, task) => {
+    const started = startedAt[task.id]
+    delete startedAt[task.id]
+    const duration = started ? formatDuration(now - started) : task.duration
+
+    return task.toolUseId
+      ? mapTool(current, task.toolUseId, (tool) => ({
+          ...tool,
+          duration,
+          detail: [
+            ...tool.detail,
+            { text: `Ran ${duration} in the background — no longer tracked.`, tone: 'dim' as const },
+          ],
+        }))
+      : current
+  }, items)
+
   return {
     ...state,
     status: 'idle',
@@ -536,9 +586,10 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
     crashed: true,
     stopRequestedAt: undefined,
     startedAt,
+    background: [],
     seq: state.seq + 1,
     items: [
-      ...items,
+      ...withBackground,
       {
         id: `crash-${state.seq}`,
         kind: 'crash',
@@ -793,6 +844,28 @@ const applySystem = (
    * стримов, экран агента) всё равно, откуда взялся kind:'task'.
    */
   if (event.subtype === 'task_started' && event.task_id) {
+    // Команда терминала — не агент, хотя приходит тем же каналом.
+    if (isBashTask(event)) return startBackgroundCommand(base, event, now)
+
+    /**
+     * Тот же субагент, но пришедший вторым путём: карточку на него уже завёл
+     * блок tool_use в ответе агента. Здесь только связываем task_id с ней и
+     * уточняем подпись — заводить вторую значит показать одного агента двумя
+     * чипами в шапке.
+     */
+    const linked = event.tool_use_id
+    if (linked && base.items.some((item) => item.kind === 'task' && item.id === linked)) {
+      return {
+        ...base,
+        taskCards: { ...base.taskCards, [event.task_id]: linked },
+        items: base.items.map((item) =>
+          item.kind === 'task' && item.id === linked
+            ? { ...item, target: event.subagent_type ?? item.target, meta: item.meta || (event.description ?? '') }
+            : item,
+        ),
+      }
+    }
+
     return {
       ...base,
       startedAt: { ...base.startedAt, [event.task_id]: now },
@@ -816,10 +889,12 @@ const applySystem = (
   }
 
   if (event.subtype === 'task_progress' && event.task_id) {
+    const card = cardFor(base, event.task_id)
+
     return {
       ...base,
       items: base.items.map((item) => {
-        if (item.kind !== 'task' || item.id !== event.task_id) return item
+        if (item.kind !== 'task' || item.id !== card) return item
 
         // Тот же самый вызов уже мог прийти через основной поток субагента
         // (noteSubagent, строка вида "Bash…"/"Bash: команда") — этот канал
@@ -841,22 +916,33 @@ const applySystem = (
   }
 
   if (event.subtype === 'task_notification' && event.task_id) {
-    const startedTime = base.startedAt[event.task_id]
+    const running = base.background.find((task) => task.id === event.task_id)
+    if (running) return finishBackgroundCommand(base, running, event, now)
+
+    const card = cardFor(base, event.task_id)
+    const startedTime = base.startedAt[card]
     const duration = startedTime ? formatDuration(now - startedTime) : ''
     const startedAt = { ...base.startedAt }
-    delete startedAt[event.task_id]
+    delete startedAt[card]
+    const outcome = outcomeOf(event.status)
+    const summary = event.summary ? detailFor(event.summary) : []
+    // Прибитый или упавший агент раньше выглядел ровно как отработавший: и
+    // кружок зелёный, и сводка на месте. Пометку ставим первой строкой — она и
+    // объясняет, почему сводка обрывается на середине.
+    const lines = outcome === 'ok' ? summary : [{ text: endedText(outcome), tone: 'bad' as const }, ...summary]
 
     return {
       ...base,
       startedAt,
       items: base.items.map((item) =>
-        item.kind === 'task' && item.id === event.task_id
+        item.kind === 'task' && item.id === card
           ? {
               ...item,
               pending: false,
               percent: 100,
               duration,
-              log: event.summary ? appendAgentLog(item.log, detailFor(event.summary)) : item.log,
+              outcome,
+              log: lines.length > 0 ? appendAgentLog(item.log, lines) : item.log,
             }
           : item,
       ),
@@ -865,6 +951,119 @@ const applySystem = (
 
   return base
 }
+
+/**
+ * Задача из системных событий task_* — это не обязательно субагент.
+ *
+ * Тем же каналом CLI ведёт и команды терминала: любую фоновую и любую обычную,
+ * которая идёт дольше нескольких секунд. Отличает их только task_type
+ * ('local_bash' против 'local_agent'). Пока панель его не смотрела, на каждую
+ * такую команду заводилась карточка субагента — отсюда брались чипы «agent:agent»
+ * (имени субагента у команды нет) и dev-сервер, «работающий агентом» вторые
+ * сутки. Событие вовсе без типа — это старый CLI, где так ходили только
+ * субагенты, поэтому неизвестный тип считаем агентом, а не командой.
+ */
+const isBashTask = (event: Extract<AgentEvent, { type: 'system' }>): boolean => event.task_type === 'local_bash'
+
+/** Карточка, на которой живёт эта задача: см. taskCards. */
+const cardFor = (state: PanelState, taskId: string): string => state.taskCards[taskId] ?? taskId
+
+const outcomeOf = (status: string | undefined): TaskOutcome =>
+  status === 'failed' ? 'failed' : status === 'stopped' ? 'stopped' : 'ok'
+
+const endedText = (outcome: TaskOutcome): string =>
+  outcome === 'failed' ? 'Failed before it finished.' : 'Stopped before it finished.'
+
+/** Вызов инструмента по его id — карточки живут внутри групп, а не в ленте напрямую. */
+const findTool = (items: FeedItem[], id: string): ToolItem | undefined => {
+  for (const item of items) {
+    if (item.kind !== 'toolGroup') continue
+
+    const tool = item.tools.find((candidate) => candidate.id === id)
+    if (tool) return tool
+  }
+
+  return undefined
+}
+
+const isBackgroundCommand = (tool: ToolItem | undefined): boolean => {
+  if (!tool || typeof tool.input !== 'object' || tool.input === null) return false
+  return (tool.input as { run_in_background?: unknown }).run_in_background === true
+}
+
+/**
+ * Фоновая команда получает чип в шапке: карточка в ленте говорит только о том,
+ * что её запустили, и уезжает вверх вместе с разговором, а процесс живёт и
+ * дальше — иногда сутками (dev-сервер). Обычная команда этим же событием
+ * сообщает о себе тоже, но её чип был бы миганием на пару секунд: она вся
+ * целиком видна карточкой, ради которой ход и стоит.
+ */
+const startBackgroundCommand = (
+  state: PanelState,
+  event: Extract<AgentEvent, { type: 'system' }>,
+  now: number,
+): PanelState => {
+  const taskId = event.task_id
+  if (!taskId) return state
+  if (!isBackgroundCommand(event.tool_use_id ? findTool(state.items, event.tool_use_id) : undefined)) return state
+
+  return {
+    ...state,
+    startedAt: { ...state.startedAt, [taskId]: now },
+    background: [
+      ...state.background,
+      {
+        id: taskId,
+        toolUseId: event.tool_use_id,
+        label: event.description ?? 'background command',
+        duration: formatDuration(0),
+      },
+    ],
+  }
+}
+
+/**
+ * Фоновая команда кончилась. Чип уходит из шапки, а итог дописываем прямо в её
+ * карточку в ленте: своей карточки у неё нет и не нужно — в ленте уже стоит та,
+ * которой её запускали, и правильное место для «сколько проработала и чем
+ * кончилась» именно там.
+ */
+const finishBackgroundCommand = (
+  state: PanelState,
+  task: BackgroundTask,
+  event: Extract<AgentEvent, { type: 'system' }>,
+  now: number,
+): PanelState => {
+  const started = state.startedAt[task.id]
+  const duration = started ? formatDuration(now - started) : task.duration
+  const startedAt = { ...state.startedAt }
+  delete startedAt[task.id]
+
+  const outcome = outcomeOf(event.status)
+  const tone = outcome === 'failed' ? ('bad' as const) : ('dim' as const)
+  const ended = outcome === 'failed' ? 'failed' : outcome === 'stopped' ? 'was stopped' : 'finished'
+  // Текст CLI объясняет провал по делу («exit code 3»), а при обычном конце
+  // повторяет описание команды, которое и так стоит в карточке.
+  const detail = outcome === 'failed' && event.summary ? detailFor(event.summary) : []
+
+  const items = task.toolUseId
+    ? mapTool(state.items, task.toolUseId, (tool) => ({
+        ...tool,
+        duration,
+        isError: tool.isError || outcome === 'failed',
+        detail: [...tool.detail, { text: `Background command ${ended} after ${duration}.`, tone }, ...detail],
+      }))
+    : state.items
+
+  return { ...state, startedAt, background: state.background.filter((item) => item.id !== task.id), items }
+}
+
+/** Правка одного вызова инструмента на месте — он лежит внутри своей группы. */
+const mapTool = (items: FeedItem[], id: string, change: (tool: ToolItem) => ToolItem): FeedItem[] =>
+  items.map((item) => {
+    if (item.kind !== 'toolGroup' || !item.tools.some((tool) => tool.id === id)) return item
+    return { ...item, tools: item.tools.map((tool) => (tool.id === id ? change(tool) : tool)) }
+  })
 
 /**
  * Заглушка, которой CLI закрывает ход без настоящего ответа (например, после
@@ -1063,6 +1262,24 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
 
   if (block.name === 'Task' || block.name === 'Agent') {
     const subagent = typeof input.subagent_type === 'string' ? input.subagent_type : 'general'
+    /**
+     * Карточку на этого субагента уже завело системное событие task_started —
+     * оно приходит раньше блока tool_use, когда субагента поднимает не ход, а
+     * скилл. Второй карточки быть не должно (см. taskCards): уточняем ту, что
+     * есть, — во входе вызова описание подробнее, чем в событии.
+     */
+    const known = state.taskByToolUseId[block.id]
+    if (known) {
+      return {
+        ...state,
+        items: state.items.map((item) =>
+          item.kind === 'task' && item.id === known
+            ? { ...item, target: subagent, meta: targetFor(block.name, input, workingDirectory) }
+            : item,
+        ),
+      }
+    }
+
     return {
       ...state,
       startedAt: { ...state.startedAt, [block.id]: now },
@@ -1133,7 +1350,11 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
 
   const items = state.items.map((item) => {
     if (item.kind === 'task') {
-      const result = results.find((candidate) => candidate.tool_use_id === item.id)
+      // Карточка субагента живёт либо под id вызова, либо под task_id системного
+      // события — смотря что пришло первым (см. taskByToolUseId).
+      const result = results.find(
+        (candidate) => (state.taskByToolUseId[candidate.tool_use_id] ?? candidate.tool_use_id) === item.id,
+      )
       if (!result) return item
 
       const started = state.startedAt[item.id]
@@ -1148,6 +1369,7 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
         pending: false,
         percent: 100,
         duration,
+        outcome: isError ? 'failed' : 'ok',
         log: appendAgentLog(item.log, detailFor(text).map((line) => ({ ...line, tone }))),
       }
       return task

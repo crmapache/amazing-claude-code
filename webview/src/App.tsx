@@ -1566,7 +1566,13 @@ export const App = () => {
         </div>
       ) : (
         <>
-        <StreamSwitcher tabs={agentTabs} mainStatus={mainStatus} active={resolvedStream} onPick={setActiveStream} />
+        <StreamSwitcher
+          tabs={agentTabs}
+          background={panel.background}
+          mainStatus={mainStatus}
+          active={resolvedStream}
+          onPick={setActiveStream}
+        />
 
         <div className={s.body}>
           {resolvedStream === 'main' ? (
@@ -1898,7 +1904,9 @@ const pendingPermission = (items: FeedItem[], stream: string): PermItem | undefi
     )
 
 const statusOf = (task: TaskItem, items: FeedItem[], answeredAsks: string[]): AgentStatus => {
-  if (!task.pending) return 'done'
+  // Оборванный агент — не то же самое, что отработавший: раньше и прибитый, и
+  // упавший получали тот же зелёный кружок, что и дошедший до конца.
+  if (!task.pending) return task.outcome === 'failed' ? 'failed' : task.outcome === 'stopped' ? 'stopped' : 'done'
 
   const blocked = items.some(
     (item) =>

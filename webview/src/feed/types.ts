@@ -138,6 +138,13 @@ export interface ToolGroupItem {
   startedAt: number
 }
 
+/**
+ * Чем кончилась задача: своим ходом, остановкой снаружи или ошибкой. Приходит
+ * статусом в task_notification — до этого любой конец рисовался одинаково
+ * зелёным, и прибитый агент выглядел как успешно отработавший.
+ */
+export type TaskOutcome = 'ok' | 'stopped' | 'failed'
+
 export interface TaskItem {
   id: string
   kind: 'task'
@@ -147,6 +154,23 @@ export interface TaskItem {
   percent: number
   log: DetailLine[]
   pending: boolean
+  /** Пусто, пока задача идёт; после конца — чем именно она кончилась. */
+  outcome?: TaskOutcome
+}
+
+/**
+ * Команда, запущенная в фоне (`run_in_background`). Своей карточкой она уже
+ * есть в ленте — здесь живёт только то, что нужно чипу в шапке: пока процесс
+ * работает, это единственное место во всей панели, где видно, что он вообще
+ * жив. Агентом такую задачу звать нельзя, хотя CLI и сообщает о ней теми же
+ * событиями (см. task_type в build.ts).
+ */
+export interface BackgroundTask {
+  id: string
+  /** Вызов Bash, который её запустил — по нему в ленте лежит карточка команды. */
+  toolUseId?: string
+  label: string
+  duration: string
 }
 
 export type TodoState = 'todo' | 'active' | 'done'

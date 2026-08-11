@@ -67,6 +67,35 @@ const taskProgressEvent = (taskId: string, lastToolName: string): AgentEvent => 
   last_tool_name: lastToolName,
 })
 
+/** Как это приходит с живого CLI: у субагента свой task_id, отдельный от id вызова. */
+const agentTaskStartedEvent = (taskId: string, toolUseId: string, subagentType: string): AgentEvent => ({
+  type: 'system',
+  subtype: 'task_started',
+  task_id: taskId,
+  tool_use_id: toolUseId,
+  subagent_type: subagentType,
+  description: 'Discover files',
+  task_type: 'local_agent',
+})
+
+/** Тем же каналом CLI ведёт команды терминала — субагента в них нет вовсе. */
+const bashTaskStartedEvent = (taskId: string, toolUseId: string, description: string): AgentEvent => ({
+  type: 'system',
+  subtype: 'task_started',
+  task_id: taskId,
+  tool_use_id: toolUseId,
+  description,
+  task_type: 'local_bash',
+})
+
+const taskNotificationEvent = (taskId: string, status?: string, summary?: string): AgentEvent => ({
+  type: 'system',
+  subtype: 'task_notification',
+  task_id: taskId,
+  ...(status ? { status } : {}),
+  ...(summary ? { summary } : {}),
+})
+
 const compactingStatusEvent = (): AgentEvent => ({ type: 'system', subtype: 'status', status: 'compacting' })
 
 const compactBoundaryEvent = (metadata: {
@@ -820,6 +849,164 @@ describe('лог фонового субагента', () => {
     const after = play([subagentMessageEvent('toolu-unknown', 'Привет из ниоткуда')], before)
 
     expect(after).toEqual(before)
+  })
+})
+
+describe('один субагент — одна карточка', () => {
+  const tasks = (state: PanelState) => state.items.filter((item): item is TaskItem => item.kind === 'task')
+
+  it('вызов Agent и системное событие о нём не удваивают карточку', () => {
+    const state = play([
+      toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Discover files' }),
+      agentTaskStartedEvent('a90aa', 'toolu-1', 'Explore'),
+    ])
+
+    expect(tasks(state)).toHaveLength(1)
+    expect(tasks(state)[0]?.target).toBe('Explore')
+  })
+
+  it('порядок наоборот — событие раньше вызова — тоже даёт одну карточку', () => {
+    const state = play([
+      agentTaskStartedEvent('a90aa', 'toolu-1', 'Explore'),
+      toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Discover files' }),
+    ])
+
+    expect(tasks(state)).toHaveLength(1)
+  })
+
+  it('шаги и итог по task_id доходят до карточки, заведённой вызовом', () => {
+    let state = play([
+      toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Discover files' }),
+      agentTaskStartedEvent('a90aa', 'toolu-1', 'Explore'),
+    ])
+    state = play([taskProgressEvent('a90aa', 'Read')], state)
+    state = reducePanel(
+      state,
+      { kind: 'agent', event: taskNotificationEvent('a90aa', 'completed', 'Нашёл шесть мест') },
+      1_700_000_005_000,
+    )
+
+    const task = tasks(state)[0]
+    expect(task?.pending).toBe(false)
+    expect(task?.duration).toBe('5.0s')
+    expect(task?.outcome).toBe('ok')
+    expect(task?.log.map((line) => line.text)).toEqual(['→ Read', 'Нашёл шесть мест'])
+  })
+
+  it('результат вызова закрывает карточку, заведённую системным событием', () => {
+    let state = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
+    state = play([toolResultEvent('toolu-parent', 'Готово')], state)
+
+    const task = tasks(state)[0]
+    expect(task?.pending).toBe(false)
+    expect(task?.outcome).toBe('ok')
+  })
+
+  it('оборванный агент помечается остановленным, а не отработавшим', () => {
+    let state = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
+    state = play([taskNotificationEvent('task-1', 'stopped')], state)
+
+    const task = tasks(state)[0]
+    expect(task?.outcome).toBe('stopped')
+    expect(task?.log.map((line) => line.text)).toEqual(['Stopped before it finished.'])
+  })
+})
+
+describe('фоновые команды в канале задач', () => {
+  const bashEvent = (id: string, command: string, background = false): AgentEvent =>
+    toolUseEvent(id, 'Bash', { command, description: 'Start the dev server', ...(background ? { run_in_background: true } : {}) })
+
+  /** Карточка команды — она лежит внутри группы вызовов, а не в ленте напрямую. */
+  const tool = (state: PanelState, id: string) =>
+    state.items
+      .filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
+      .flatMap((group) => group.tools)
+      .find((item) => item.id === id)
+
+  it('обычная долгая команда не становится агентом', () => {
+    const state = play([
+      bashEvent('toolu-1', 'yarn typecheck'),
+      bashTaskStartedEvent('b0eb4', 'toolu-1', 'Update the metrics test and typecheck'),
+    ])
+
+    expect(state.items.some((item) => item.kind === 'task')).toBe(false)
+    expect(state.background).toHaveLength(0)
+  })
+
+  it('фоновая команда получает чип, но не карточку агента', () => {
+    const state = play([
+      bashEvent('toolu-1', 'yarn dev', true),
+      bashTaskStartedEvent('bv7hh', 'toolu-1', 'Start the dev server'),
+    ])
+
+    expect(state.items.some((item) => item.kind === 'task')).toBe(false)
+    expect(state.background).toEqual([
+      { id: 'bv7hh', toolUseId: 'toolu-1', label: 'Start the dev server', duration: '0.0s' },
+    ])
+  })
+
+  it('время фоновой команды тикает и после часа считается в часах', () => {
+    let state = play([
+      bashEvent('toolu-1', 'yarn dev', true),
+      bashTaskStartedEvent('bv7hh', 'toolu-1', 'Start the dev server'),
+    ])
+    state = reducePanel(state, { kind: 'tick' }, 1_700_000_000_000 + 60_608_000)
+
+    expect(state.background[0]?.duration).toBe('16h 50m')
+  })
+
+  it('конец фоновой команды снимает чип и подписывает её карточку', () => {
+    let state = play([
+      bashEvent('toolu-1', 'yarn dev', true),
+      bashTaskStartedEvent('bv7hh', 'toolu-1', 'Start the dev server'),
+    ])
+    state = reducePanel(
+      state,
+      { kind: 'agent', event: taskNotificationEvent('bv7hh', 'stopped') },
+      1_700_000_030_000,
+    )
+
+    expect(state.background).toHaveLength(0)
+    expect(tool(state, 'toolu-1')?.duration).toBe('30s')
+    expect(tool(state, 'toolu-1')?.detail.map((line) => line.text)).toContain(
+      'Background command was stopped after 30s.',
+    )
+    expect(tool(state, 'toolu-1')?.isError).toBe(false)
+  })
+
+  it('упавшая фоновая команда краснеет и объясняет причину', () => {
+    let state = play([
+      bashEvent('toolu-1', 'yarn dev', true),
+      bashTaskStartedEvent('bv7hh', 'toolu-1', 'Start the dev server'),
+    ])
+    state = reducePanel(
+      state,
+      {
+        kind: 'agent',
+        event: taskNotificationEvent('bv7hh', 'failed', 'Background command "Start the dev server" failed with exit code 3'),
+      },
+      1_700_000_002_000,
+    )
+
+    const command = tool(state, 'toolu-1')
+    expect(command?.isError).toBe(true)
+    expect(command?.detail.map((line) => line.text)).toEqual([
+      'Background command failed after 2.0s.',
+      'Background command "Start the dev server" failed with exit code 3',
+    ])
+  })
+
+  it('смерть процесса снимает чипы: следить за командой больше некому', () => {
+    let state = play([
+      bashEvent('toolu-1', 'yarn dev', true),
+      bashTaskStartedEvent('bv7hh', 'toolu-1', 'Start the dev server'),
+    ])
+    state = reducePanel(state, { kind: 'processExited', exitCode: 1 }, 1_700_000_060_000)
+
+    expect(state.background).toHaveLength(0)
+    expect(tool(state, 'toolu-1')?.detail.map((line) => line.text)).toContain(
+      'Ran 1m 00s in the background — no longer tracked.',
+    )
   })
 })
 
