@@ -61,6 +61,74 @@ const quotePreview = (text: string): string => {
 }
 
 /**
+ * Сколько слов вставки показываем в плашке. Больше, чем у цитаты: у цитаты перед
+ * превью стоит её номер, и по нему её и узнают, а вставку узнают только по
+ * началу текста — оно и есть всё, что о ней известно с одного взгляда.
+ */
+const PASTE_PREVIEW_WORDS = 7
+
+/**
+ * Сколько символов вставки хватает на превью. Дальше не смотрим вовсе: подпись
+ * плашки строится на каждой перерисовке ленты, а вставляют в поле и стокилобайтные
+ * логи — разбирать такой текст целиком ради семи слов незачем.
+ *
+ * С запасом: семь слов даже из длинных путей укладываются с большим отрывом.
+ */
+const PASTE_SCAN_CHARS = 300
+
+/**
+ * Начало вставленного текста — многоточие в конце стоит всегда, даже если текст
+ * уместился целиком: свёрнута вставка ровно потому, что она многострочная, и за
+ * первой строкой в ней всегда есть что-то ещё.
+ */
+const pastePreview = (text: string): string => {
+  const words = text.slice(0, PASTE_SCAN_CHARS).trim().split(/\s+/).filter(Boolean)
+  return `${words.slice(0, PASTE_PREVIEW_WORDS).join(' ')}…`
+}
+
+/**
+ * Сколько строк во вставке — цифра для подсказки при наведении, не для подписи.
+ *
+ * Считаем переводы строки, а не режем текст на массив: у стокилобайтного лога
+ * это тысячи ненужных строк в памяти на каждой перерисовке ленты.
+ */
+export const pasteLineCount = (text: string): number => {
+  const body = text.trimEnd()
+  if (!body) return 0
+
+  let lines = 1
+  for (let index = body.indexOf('\n'); index >= 0; index = body.indexOf('\n', index + 1)) lines += 1
+  return lines
+}
+
+/**
+ * Сколько текста вставки показываем в подсказке при наведении. Системная
+ * подсказка длиннее и не покажет — а вот в атрибут узла ляжет всё, что дадут.
+ */
+const PASTE_TITLE_CHARS = 2_000
+
+/**
+ * Что показывает плашка при наведении. Одна на все места, где она рисуется:
+ * в поле ввода узлом DOM и в ленте разметкой React — разъехаться этим двум
+ * подсказкам нельзя, плашка человеку одна и та же.
+ *
+ * У свёрнутой вставки это её объём и весь текст целиком: подпись показывает
+ * только начало, и другого способа увидеть, что там внутри, не разворачивая
+ * плашку, нет.
+ */
+export const chipTitle = (chip: Chip): string => {
+  if (chip.kind === 'quote') return chip.text ?? ''
+
+  if (chip.kind === 'paste') {
+    const text = chip.text ?? ''
+    const shown = text.length > PASTE_TITLE_CHARS ? `${text.slice(0, PASTE_TITLE_CHARS)}\n…` : text
+    return `${pasteLineCount(text)} lines pasted\n\n${shown}`
+  }
+
+  return chip.range ? `${chip.value} ${chip.range}` : chip.value
+}
+
+/**
  * В самой плашке путь сокращаем до имени файла: полный не помещается, а для
  * файла вне проекта (например, из Downloads) это ещё и абсолютный путь целиком.
  * Полный путь остаётся в тексте, который получает агент, и в подсказке при
@@ -68,6 +136,7 @@ const quotePreview = (text: string): string => {
  */
 export const chipLabel = (chip: Chip): string => {
   if (chip.kind === 'quote') return `${chip.value}: ${quotePreview(chip.text ?? '')}`
+  if (chip.kind === 'paste') return pastePreview(chip.text ?? '')
   // Со слэшем, как её и набирали: без него плашка команды читается просто словом.
   if (chip.kind === 'cmd') return `/${chip.value}`
 

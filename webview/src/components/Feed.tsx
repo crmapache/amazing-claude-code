@@ -4,6 +4,7 @@ import { parseParagraphs } from '../feed/markdown'
 import type { AskItem, FeedItem, PermItem, TaskItem, TodoItem, ToolItem } from '../feed/types'
 import type { CardState } from '../hooks/useCardState'
 import s from './feed.module.css'
+import { BashCard } from './items/BashCard'
 import { PlanCard } from './items/PlanCard'
 import { CheckpointRow, CompactRow, CrashRow, ErrorRow, MetaRow, ThinkRow } from './items/Rows'
 import { TextCard } from './items/TextCard'
@@ -277,6 +278,9 @@ const ItemView = ({
   switch (item.kind) {
     case 'user':
       return <UserCard item={item} onOpenLink={onOpenLink} />
+
+    case 'bash':
+      return <BashCard item={item} />
 
     case 'text':
       return <TextCard item={item} onOpenLink={onOpenLink} />

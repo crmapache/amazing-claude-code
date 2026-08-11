@@ -6,6 +6,13 @@ export type ScenarioStep =
   | { kind: 'user'; text: string }
   | { kind: 'wait'; ms: number }
   | { kind: 'resolvePlan'; itemId: string; decision: 'approve' | 'keepPlanning' }
+  /**
+   * Команда bash-режима вместе с её выводом. Отдельным шагом, а не парой
+   * «отправили — ответили»: номер запущенной команде даёт сама панель, и
+   * сценарию его заранее не знать — плеер подсматривает его в том, что панель
+   * отправила оболочке (см. ScenarioPlayer).
+   */
+  | { kind: 'bash'; command: string; stdout: string; stderr?: string; exitCode?: number; runMs?: number }
 
 /**
  * Один осмысленный момент сценария с подписью для карточки чекпоинтов.

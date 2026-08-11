@@ -46,6 +46,7 @@ import io.github.crmapache.amazingclaudecode.claude.PermissionModes
 import io.github.crmapache.amazingclaudecode.claude.PermissionPrompt
 import io.github.crmapache.amazingclaudecode.claude.PermissionRules
 import io.github.crmapache.amazingclaudecode.claude.PermissionServer
+import io.github.crmapache.amazingclaudecode.claude.ShellCommand
 import io.github.crmapache.amazingclaudecode.editor.SelectionReference
 import io.github.crmapache.amazingclaudecode.project.ProjectFacts
 import io.github.crmapache.amazingclaudecode.sound.AlertSounds
@@ -245,6 +246,9 @@ internal class ClaudePanel(
                     sessions?.prompt(sessionId, text, images)
                 }
             }
+
+            // Команда через «!» — bash-режим панели, см. runShellCommand.
+            "bash" -> runShellCommand(sessionId, field("id"), field("command"))
 
             "stop" -> {
                 // Прерываем ход, а не рубим процесс: разговор должен остаться. В idle
@@ -1122,6 +1126,44 @@ internal class ClaudePanel(
             put("percent", percent.toInt())
             put("resets", window["resets_at"]?.jsonPrimitive?.contentOrNull.orEmpty())
         }
+    }
+
+    /**
+     * Команда из поля ввода, набранная через «!»: выполняем сами, в рабочей
+     * директории проекта, и возвращаем панели её вывод (см. [ShellCommand]).
+     *
+     * На пуле, а не в потоке интерфейса: команда может идти минуты, а панель всё
+     * это время обязана оставаться живой — карточка в ленте уже нарисована и
+     * ждёт результата.
+     */
+    private fun runShellCommand(sessionId: String, id: String, command: String) {
+        // Без номера отвечать некому: карточку в ленте ищут именно по нему.
+        if (id.isBlank()) return
+
+        // А вот на пустую команду отвечаем, а не молчим: карточка в ленте уже
+        // стоит и без ответа осталась бы «выполняется» до конца разговора —
+        // остановить или убрать её нечем.
+        if (command.isBlank()) {
+            sendBashResult(sessionId, id, ShellCommand.Result(exitCode = -1, stdout = "", stderr = "Empty command."))
+            return
+        }
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            sendBashResult(sessionId, id, ShellCommand.run(command, project.basePath))
+        }
+    }
+
+    private fun sendBashResult(sessionId: String, id: String, result: ShellCommand.Result) {
+        webview?.send(
+            buildJsonObject {
+                put("type", "bashResult")
+                put("sessionId", sessionId)
+                put("id", id)
+                put("exitCode", result.exitCode)
+                put("stdout", result.stdout)
+                put("stderr", result.stderr)
+            }.toString(),
+        )
     }
 
     // --- Прочее -------------------------------------------------------------

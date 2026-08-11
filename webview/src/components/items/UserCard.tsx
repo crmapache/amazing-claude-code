@@ -1,6 +1,7 @@
+import { memo } from 'react'
 import { linkify } from '../../feed/markdown'
-import { chipLabel } from '../../feed/reference'
-import type { ChipKind, UserItem } from '../../feed/types'
+import { chipLabel, chipTitle } from '../../feed/reference'
+import type { Chip, ChipKind, UserItem } from '../../feed/types'
 import s from '../feed.module.css'
 
 const CHIP_CLASS: Record<ChipKind, string> = {
@@ -10,6 +11,7 @@ const CHIP_CLASS: Record<ChipKind, string> = {
   cmd: s.chipCmd ?? '',
   ref: s.chipRef ?? '',
   quote: s.chipQuote ?? '',
+  paste: s.chipPaste ?? '',
 }
 
 interface UserCardProps {
@@ -61,23 +63,25 @@ export const UserCard = ({ item, onOpenLink }: UserCardProps) => (
             )}
           </span>
         ) : (
-          <span
-            key={index}
-            className={`${s.chip} ${CHIP_CLASS[token.chip.kind]}`}
-            title={
-              token.chip.kind === 'quote'
-                ? (token.chip.text ?? '')
-                : token.chip.range
-                  ? `${token.chip.value} ${token.chip.range}`
-                  : token.chip.value
-            }
-          >
-            {/* Значка типа вложения нет намеренно — см. renderChipNode в Composer:
-                плашка здесь та же, что и в поле ввода, и выглядеть должна так же. */}
-            {chipLabel(token.chip)}
-          </span>
+          <ChipView key={index} chip={token.chip} />
         ),
       )}
     </div>
   </div>
 )
+
+/**
+ * Плашка вложения в отправленном сообщении.
+ *
+ * Отдельным memo-компонентом ради свёрнутой вставки: её подпись и подсказка
+ * считаются из самого текста, а лента перерисовывается на каждом кусочке
+ * печатающегося ответа. Плашка при этом не меняется вовсе — и пересчитывать её
+ * по сто раз в секунду не за чем.
+ */
+const ChipView = memo(({ chip }: { chip: Chip }) => (
+  <span className={`${s.chip} ${CHIP_CLASS[chip.kind]}`} title={chipTitle(chip)}>
+    {/* Значка типа вложения нет намеренно — см. renderChipNode в Composer:
+        плашка здесь та же, что и в поле ввода, и выглядеть должна так же. */}
+    {chipLabel(chip)}
+  </span>
+))

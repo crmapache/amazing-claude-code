@@ -172,13 +172,13 @@
   overflow-wrap: anywhere;
 }
 
+/* Своих боковых отступов у плашки нет — ровно по той же причине, что и в поле
+   ввода (см. .token в composer.module.css): пробел вокруг вложения стоит в самом
+   тексте сообщения, и отступ складывался с ним в полуторный зазор. */
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  /* Зазор вокруг плашки — тот же, что и в поле ввода: раньше его давал gap
-     флекса, которого здесь больше нет. */
-  margin: 0 2px;
+  gap: 4px;
   padding: 1px 7px 2px;
   border: 1px solid;
   border-radius: var(--acc-r-sm);
@@ -228,6 +228,13 @@
   background: var(--acc-quote-12);
   border-color: var(--acc-quote-32);
   color: var(--acc-quote);
+}
+
+/* Свёрнутая вставка из буфера — нейтральная, см. --acc-paste в tokens.css. */
+.chipPaste {
+  background: var(--acc-paste-12);
+  border-color: var(--acc-paste-32);
+  color: var(--acc-paste);
 }
 
 /* Цитата внутри сообщения: тот же приём, что и в чате Claude — полоска слева и
@@ -866,6 +873,61 @@
 
 .thinkPending {
   animation: acc-pulse 1.6s infinite;
+}
+
+/* --- Команда bash-режима ------------------------------------------------- */
+
+/*
+ * Команда, которую человек выполнил сам через «!». Вид ближе к вызову
+ * инструмента, чем к своему сообщению: это не реплика в разговоре, а действие,
+ * у которого есть результат. Но плашка в начале другая — знак «!», которым её и
+ * набрали, вместо подписи BASH: там инструмент вызвал агент, здесь — человек.
+ */
+.bash {
+  margin: 12px 0;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-raised);
+  overflow: hidden;
+}
+
+.bashHead {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 6px 9px;
+}
+
+.bashCommand {
+  min-width: 0;
+  font: 11.5px var(--acc-mono);
+  color: var(--acc-warn-light);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bashFailed {
+  font: 11px var(--acc-mono);
+  color: var(--acc-bad-light);
+}
+
+/* Вывод целиком, но не во весь экран: длинная простыня прокручивается внутри
+   карточки, а лента остаётся листаемой. */
+.bashOutput {
+  margin: 0;
+  padding: 7px 9px;
+  border-top: 1px solid var(--acc-line);
+  background: var(--acc-bg-sunken);
+  max-height: 260px;
+  overflow: auto;
+  font: 11.5px/1.5 var(--acc-mono);
+  color: var(--acc-fg-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bashOutputFailed {
+  color: var(--acc-bad-text);
 }
 
 /* По центру, а не по базовой линии: в строке есть не только текст, но и полоса

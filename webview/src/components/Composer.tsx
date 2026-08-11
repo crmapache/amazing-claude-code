@@ -8,8 +8,9 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react'
+import { isBashDraft } from '../feed/bash'
 import { matchFiles } from '../feed/files'
-import { chipLabel } from '../feed/reference'
+import { chipLabel, chipTitle } from '../feed/reference'
 import {
   argumentOptions,
   argumentQuery,
@@ -92,10 +93,20 @@ const CHIP_STYLE: Record<ChipKind, { background: string; borderColor: string; co
   cmd: { background: 'var(--acc-warn-12)', borderColor: 'var(--acc-warn-32)', color: 'var(--acc-warn-light)' },
   ref: { background: 'var(--acc-branch-12)', borderColor: 'var(--acc-branch-32)', color: 'var(--acc-branch-light)' },
   quote: { background: 'var(--acc-quote-12)', borderColor: 'var(--acc-quote-32)', color: 'var(--acc-quote)' },
+  // Вставка из буфера — единственная плашка без своей сущности за спиной: это
+  // просто текст, который свернули. Поэтому и цвет у неё нейтральный, а не
+  // очередной цветной: она не встаёт в один ряд с файлом, картинкой и командой.
+  paste: { background: 'var(--acc-paste-12)', borderColor: 'var(--acc-paste-32)', color: 'var(--acc-paste)' },
 }
 
 /** Чей это узел: чтобы забрать байты картинки обратно, строку с DOM не парсим. */
 const chipByNode = new WeakMap<HTMLElement, Chip>()
+
+/** Подсветка плашки, до которой дошли стрелкой (см. .tokenSelected в стилях). */
+const SELECTED_CHIP_CLASS = s.tokenSelected ?? ''
+
+/** Клавиши, которые сами по себе ничего не набирают и ничего не двигают. */
+const MODIFIER_KEYS = ['Shift', 'Meta', 'Control', 'Alt', 'CapsLock']
 
 interface ComposerProps {
   /** Чья это вкладка — история отмены своя у каждой, а не одна на все сразу. */
@@ -183,10 +194,36 @@ export const Composer = ({
    */
   const lastReported = useRef<UserToken[] | null>(null)
 
+  /**
+   * Плашка, до которой дошёл курсор стрелкой. Она неделима, и перешагивать её
+   * молча, как это делает браузер, нельзя: тогда единственный способ убрать
+   * вложение с клавиатуры — угадать, с какой стороны стоит курсор, и надеяться,
+   * что backspace снесёт именно её. Пока плашка выделена, backspace убирает
+   * ровно её, а следующая стрелка в ту же сторону проходит дальше — тот же
+   * жест, что и в самом Claude Code.
+   *
+   * Ссылка, а не состояние: плашки живут в DOM мимо React (см. renderChipNode),
+   * и перерисовывать из-за подсветки нечего — класс ставится прямо на узел.
+   */
+  const selectedChip = useRef<HTMLElement | null>(null)
+
+  const clearChipSelection = () => {
+    if (SELECTED_CHIP_CLASS) selectedChip.current?.classList.remove(SELECTED_CHIP_CLASS)
+    selectedChip.current = null
+  }
+
+  const selectChip = (node: HTMLElement) => {
+    clearChipSelection()
+    if (SELECTED_CHIP_CLASS) node.classList.add(SELECTED_CHIP_CLASS)
+    selectedChip.current = node
+  }
+
   useEffect(() => {
     const root = input.current
     if (!root || tokens === lastReported.current) return
 
+    // Поле пересобирается целиком — выделенного узла сейчас не станет.
+    clearChipSelection()
     rebuildDom(root, tokens)
     // Черновик мог быть отложен с подписями, которые с тех пор устарели, —
     // показываем номера по факту, а состояние догонит первой же правкой.
@@ -257,6 +294,13 @@ export const Composer = ({
   )
 
   const query = plain === null ? null : slashQueryFromText(plain)
+
+  /**
+   * Набрана команда терминала, а не сообщение агенту (см. feed/bash). Поле от
+   * этого меняет вид: уходит она не туда, куда обычно, и понять это нужно до
+   * нажатия, а не по появившейся в ленте карточке.
+   */
+  const bash = isBashDraft(tokens)
 
   const commandMatches = useMemo(
     () => (query === null || dismissed ? [] : matchCommands(commands, query)),
@@ -397,6 +441,7 @@ export const Composer = ({
       return
     }
 
+    clearChipSelection()
     rebuildDom(root, next)
     // Читаем поле обратно, а не докладываем next как есть: картинок могло стать
     // меньше (вырезали кусок вместе с одной из них), и подписи оставшихся должны
@@ -408,6 +453,7 @@ export const Composer = ({
   const restoreTokens = (next: UserToken[]) => {
     const root = input.current
     if (root) {
+      clearChipSelection()
       rebuildDom(root, next)
       scrollCaretIntoView(root)
     }
@@ -487,7 +533,7 @@ export const Composer = ({
     range.deleteContents()
 
     const chip: Chip = { kind: path.endsWith('/') ? 'dir' : 'file', value: path }
-    const node = renderChipNode(chip, () => onChipRemoved(root, node))
+    const node = chipNodeIn(root, chip)
     range.insertNode(node)
     range.setStartAfter(node)
     range.collapse(true)
@@ -568,7 +614,7 @@ export const Composer = ({
       range.collapse(true)
     }
 
-    const node = renderChipNode(chip, () => onChipRemoved(root, node))
+    const node = chipNodeIn(root, chip)
     range.insertNode(node)
     range.setStartAfter(node)
     range.collapse(true)
@@ -613,7 +659,7 @@ export const Composer = ({
         range.setStartAfter(text)
         tail = text
       } else {
-        const node: HTMLElement = renderChipNode(token.chip, () => onChipRemoved(root, node))
+        const node = chipNodeIn(root, token.chip)
         range.insertNode(node)
         range.setStartAfter(node)
         tail = node
@@ -698,7 +744,15 @@ export const Composer = ({
 
     if (images.length === 0) {
       const text = event.clipboardData?.getData('text/plain') ?? ''
-      if (text) insertTextAtCursor(text)
+      if (!text) return
+
+      // Многострочное — плашкой, как файл или картинка: вставленная простыня
+      // выталкивала из поля всё остальное, и своё же сообщение приходилось
+      // прокручивать, чтобы увидеть, что вокруг неё написано. Однострочное
+      // остаётся текстом: короткую вставку правят прямо в поле, а плашка это
+      // как раз запрещает.
+      if (isMultiline(text)) insertChipAtCursor({ kind: 'paste', value: 'pasted', text })
+      else insertTextAtCursor(text)
       return
     }
 
@@ -766,7 +820,70 @@ export const Composer = ({
       ? 'Describe what to plan…'
       : 'Ask, or describe a change…'
 
+  /**
+   * Курсор упёрся в плашку и остановился на ней, не перешагнув: дальше по ней
+   * работают backspace (убрать) и та же стрелка (пройти мимо).
+   *
+   * Отдельной веткой до всего остального в обработчике: пока плашка выделена,
+   * клавиши принадлежат ей — ровно как список подсказок забирает себе стрелки,
+   * пока открыт.
+   */
+  const handleChipKey = (event: KeyboardEvent<HTMLDivElement>): boolean => {
+    const root = input.current
+    if (!root) return false
+
+    // Сам по себе зажатый модификатор ещё ничего не делает — снимать из-за него
+    // выделение значило бы терять его от одного намерения набрать заглавную.
+    if (MODIFIER_KEYS.includes(event.key)) return false
+
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+      clearChipSelection()
+      return false
+    }
+
+    const selected = selectedChip.current
+
+    if (selected) {
+      if (event.key === 'Backspace' || event.key === 'Delete') {
+        event.preventDefault()
+        // Курсор на место убранной плашки: продолжают печатать там же, где
+        // только что стёрли, а не в конце поля.
+        placeCaretBeside(selected, 'before')
+        clearChipSelection()
+        // Тем же путём, что и крестик на плашке: правка поля обязана пройти
+        // через handleInput, иначе мимо пройдут и его доделки — подчистка
+        // одинокого <br> (без неё не появляется подсказка в пустом поле), и
+        // превращение дописанного имени команды в плашку.
+        onChipRemoved(root, selected)
+        return true
+      }
+
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault()
+        placeCaretBeside(selected, event.key === 'ArrowLeft' ? 'before' : 'after')
+        clearChipSelection()
+        return true
+      }
+
+      // Всё прочее (печать, Enter, Escape) выделение просто снимает и работает
+      // как обычно: удерживать его после того, как человек занялся другим, незачем.
+      clearChipSelection()
+      return false
+    }
+
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return false
+
+    const chip = chipBesideCaret(root, event.key === 'ArrowLeft' ? 'backward' : 'forward')
+    if (!chip) return false
+
+    event.preventDefault()
+    selectChip(chip)
+    return true
+  }
+
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (handleChipKey(event)) return
+
     // JCEF не пробрасывает нативные для macOS сочетания «по строке» —
     // Cmd+Backspace и Cmd+стрелка молчат в contentEditable, хотя Option+стрелка
     // (по слову) работает штатно. Реализуем их сами через Selection.modify: это
@@ -926,7 +1043,7 @@ export const Composer = ({
       ) : null}
 
       <div
-        className={`${s.box} ${focused ? s.boxFocused : ''} ${dropping ? s.boxDropping : ''}`}
+        className={`${s.box} ${focused ? s.boxFocused : ''} ${dropping ? s.boxDropping : ''} ${bash ? s.boxBash : ''}`}
         ref={box}
         onDragOver={(event) => {
           if (!hasFiles(event.dataTransfer)) return
@@ -964,7 +1081,15 @@ export const Composer = ({
           data-placeholder={placeholder}
           onInput={handleInput}
           onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          onBlur={() => {
+            setFocused(false)
+            // Подсветка обещает, что следующий backspace уберёт эту плашку, —
+            // а с ушедшим из поля фокусом она уже ничего не обещает.
+            clearChipSelection()
+          }}
+          // Курсор поставили мышью — с плашкой, до которой дошли стрелками,
+          // это никак не связано.
+          onMouseDown={clearChipSelection}
           onPaste={handlePaste}
           onCopy={(event) => copySelection(event, false)}
           onCut={(event) => copySelection(event, true)}
@@ -1025,19 +1150,30 @@ export const Composer = ({
           {/* Две отдельные кнопки, а не одна с двумя лицами: пока агент занят,
               у сообщения есть выбор — дойти до него сейчас, посреди работы, или
               дождаться своей очереди. Send работает всегда, Queue осмысленна
-              только при занятом агенте: свободному ждать нечего. */}
+              только при занятом агенте: свободному ждать нечего.
+
+              У команды терминала очереди не бывает вовсе: её выполняет сама
+              панель, и ждать освобождения агента ей незачем. */}
+          {bash ? null : (
+            <button
+              type="button"
+              className={`${s.send} ${s.sendQueued}`}
+              onClick={onQueue}
+              disabled={!canSubmit || !streaming}
+              title="Send after the current run finishes"
+            >
+              Queue
+            </button>
+          )}
+
           <button
             type="button"
-            className={`${s.send} ${s.sendQueued}`}
-            onClick={onQueue}
-            disabled={!canSubmit || !streaming}
-            title="Send after the current run finishes"
+            className={`${s.send} ${bash ? s.sendRun : ''}`}
+            onClick={onSubmit}
+            disabled={!canSubmit}
+            title={bash ? 'Run in your shell — Claude sees the output with your next message' : undefined}
           >
-            Queue
-          </button>
-
-          <button type="button" className={s.send} onClick={onSubmit} disabled={!canSubmit}>
-            Send
+            {bash ? 'Run' : 'Send'}
           </button>
         </div>
       </div>
@@ -1210,6 +1346,52 @@ const placeCaretAtEnd = (root: HTMLElement | null) => {
   selection?.addRange(padTrailingBreak(root) ?? endRange(root))
 }
 
+/** Курсор вплотную к плашке — с той стороны, куда шли стрелкой. */
+const placeCaretBeside = (node: HTMLElement, side: 'before' | 'after') => {
+  const range = document.createRange()
+  if (side === 'before') range.setStartBefore(node)
+  else range.setStartAfter(node)
+  range.collapse(true)
+
+  const selection = window.getSelection()
+  selection?.removeAllRanges()
+  selection?.addRange(range)
+}
+
+/** Плашка это или обычный узел: свои узнаём по той же таблице, что и разбор поля. */
+const chipNodeOf = (node: Node | null | undefined): HTMLElement | null =>
+  node instanceof HTMLElement && chipByNode.has(node) ? node : null
+
+/**
+ * Плашка, в которую курсор упрётся следующим шагом стрелки, — или ничего, если
+ * с этой стороны от него обычный символ.
+ *
+ * Проверяем именно край: посреди слова слева от курсора буква, а не вложение,
+ * и останавливать движение там не за что.
+ */
+const chipBesideCaret = (root: HTMLElement, direction: 'backward' | 'forward'): HTMLElement | null => {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) return null
+
+  const range = selection.getRangeAt(0)
+  const { startContainer, startOffset } = range
+  if (!root.contains(startContainer)) return null
+
+  if (startContainer.nodeType === Node.TEXT_NODE) {
+    const length = (startContainer.textContent ?? '').length
+    if (direction === 'backward' ? startOffset > 0 : startOffset < length) return null
+    return chipNodeOf(direction === 'backward' ? startContainer.previousSibling : startContainer.nextSibling)
+  }
+
+  // Курсор стоит прямо между детьми поля: смещение — номер ребёнка, а не символа.
+  if (startContainer === root) {
+    const children = Array.from(root.childNodes)
+    return chipNodeOf(children[direction === 'backward' ? startOffset - 1 : startOffset])
+  }
+
+  return null
+}
+
 /**
  * Курсор перед ребёнком с таким номером — место, где только что вырезали.
  * Оставлять его в конце поля после Cmd+X нельзя: вырезают обычно из середины и
@@ -1280,6 +1462,13 @@ const charAfter = (range: Range): string => {
   return (startContainer.textContent ?? '').charAt(startOffset)
 }
 
+/**
+ * Занимает ли вставленное больше одной строки. Хвостовой перевод строки не в
+ * счёт: скопированная из терминала строка почти всегда кончается им, а строкой
+ * от этого не перестаёт быть.
+ */
+const isMultiline = (text: string): boolean => text.trimEnd().includes('\n')
+
 /** Перед вложением пробел нужен, только если там уже стоит непробельный символ — пустое начало поля не в счёт. */
 const needsLeadingSpace = (char: string): boolean => char.length > 0 && !/\s/.test(char)
 
@@ -1296,6 +1485,36 @@ const onChipRemoved = (root: HTMLElement, node: HTMLElement) => {
   root.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
+/**
+ * Свёрнутую вставку вернули в поле обычным текстом. Тем же путём, что и
+ * удаление: подменяем узел и сообщаем полю через 'input'.
+ *
+ * normalize() — чтобы вставший на место плашки текст слился с соседними
+ * кусками в один узел: иначе разбор поля вернул бы подряд несколько текстовых
+ * токенов вместо одного, и дальнейшая правка этого места считалась бы правкой
+ * разных кусков.
+ */
+const onChipExpanded = (root: HTMLElement, node: HTMLElement, text: string) => {
+  node.replaceWith(document.createTextNode(text))
+  root.normalize()
+  root.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
+/**
+ * Плашка вместе с её кнопками, привязанная к конкретному полю: обе кнопки
+ * правят его содержимое, поэтому знать это поле обязаны обе.
+ */
+const chipNodeIn = (root: HTMLElement, chip: Chip): HTMLElement => {
+  const node: HTMLElement = renderChipNode(
+    chip,
+    () => onChipRemoved(root, node),
+    // Разворачивать обратно есть что только у вставки: у остальных плашек за
+    // подписью стоит путь или байты, а не текст, который набирали руками.
+    chip.kind === 'paste' ? () => onChipExpanded(root, node, chip.text ?? '') : undefined,
+  )
+  return node
+}
+
 /** Пересобирает DOM с нуля из токенов — только для программных правок, не для печати. */
 const rebuildDom = (root: HTMLElement, tokens: UserToken[]) => {
   root.innerHTML = ''
@@ -1306,7 +1525,7 @@ const rebuildDom = (root: HTMLElement, tokens: UserToken[]) => {
       continue
     }
 
-    const node = renderChipNode(token.chip, () => onChipRemoved(root, node))
+    const node = chipNodeIn(root, token.chip)
     root.appendChild(node)
   }
 
@@ -1505,16 +1724,35 @@ const relabelImages = (root: HTMLElement, base: number): boolean => {
  * делить содержимое contentEditable с браузером, который сам правит DOM по
  * каждой напечатанной букве — эти узлы React никогда не должен видеть.
  */
-const renderChipNode = (chip: Chip, onRemove: () => void): HTMLElement => {
+const renderChipNode = (chip: Chip, onRemove: () => void, onExpand?: () => void): HTMLElement => {
   const node = document.createElement('span')
   node.className = s.token ?? ''
   node.contentEditable = 'false'
-  node.title = chip.kind === 'quote' ? (chip.text ?? '') : chip.range ? `${chip.value} ${chip.range}` : chip.value
+  node.title = chipTitle(chip)
   Object.assign(node.style, CHIP_STYLE[chip.kind])
 
   // Значка типа вложения тут нет намеренно: он ничего не добавлял к подписи, а
   // место в начале плашки занимал. Тип и так виден по цвету и по самой подписи.
   node.appendChild(document.createTextNode(chipLabel(chip)))
+
+  /**
+   * Только у свёрнутой вставки: она единственная плашка, за которой не стоит
+   * ничего кроме текста, — а значит и разворачивать обратно есть что. Знак
+   * абзаца, а не стрелка: стрелок в моноширинном шрифте панели нет, они
+   * подставляются из чужого и стоят рядом с крестиком чуть другого кегля.
+   */
+  if (onExpand) {
+    const expand = document.createElement('button')
+    expand.type = 'button'
+    expand.className = s.tokenExpand ?? ''
+    expand.textContent = '¶'
+    expand.title = 'Insert as plain text'
+    expand.addEventListener('click', (event) => {
+      event.stopPropagation()
+      onExpand()
+    })
+    node.appendChild(expand)
+  }
 
   const remove = document.createElement('button')
   remove.type = 'button'

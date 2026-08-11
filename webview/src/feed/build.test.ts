@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent } from '../protocol'
-import { contextUsage, initialPanelState, reducePanel, type PanelState } from './build'
+import { contextOf, contextUsage, initialPanelState, reducePanel, type PanelState } from './build'
 import type { CompactItem, ErrorItem, TaskItem, TextItem, ThinkItem, TodoItem, ToolGroupItem } from './types'
 
 /**
@@ -303,6 +303,72 @@ describe('сборка ленты из потока агента', () => {
 
     expect(before).toBeGreaterThan(0)
     expect(contextUsage(after.usage)).toBe(before)
+  })
+
+  it('датчик контекста растёт по ходу, не дожидаясь его конца', () => {
+    // Цифра от CLI приезжает только концом хода, и за самый долгий запрос —
+    // первый — полоска не двигалась вовсе. Считаем по usage ответа агента.
+    const answering: AgentEvent = {
+      type: 'assistant',
+      message: {
+        content: [{ type: 'text', text: 'думаю' }],
+        usage: { input_tokens: 10_000, cache_read_input_tokens: 30_000, cache_creation_input_tokens: 10_000 },
+      },
+    }
+    const state = reducePanel(initialPanelState, { kind: 'agent', event: answering }, 1_700_000_000_000)
+
+    expect(contextOf(state, 200_000)).toEqual({ used: 50_000, limit: 200_000, percent: 25 })
+  })
+
+  it('точная цифра от CLI вытесняет прикидку по ходу', () => {
+    const answering: AgentEvent = {
+      type: 'assistant',
+      message: {
+        content: [{ type: 'text', text: 'думаю' }],
+        usage: { input_tokens: 50_000 },
+      },
+    }
+    let state = reducePanel(initialPanelState, { kind: 'agent', event: answering }, 1_700_000_000_000)
+    state = reducePanel(state, { kind: 'context', used: 82_000, max: 1_000_000 }, 1_700_000_000_100)
+
+    expect(state.liveContextUsed).toBeUndefined()
+    expect(contextOf(state, 200_000)).toEqual({ used: 82_000, limit: 1_000_000, percent: 8 })
+  })
+
+  it('прикидка считается от настоящего размера окна, а не от запасного', () => {
+    // Размер окна знает только CLI — у «1M»-моделей он впятеро больше обычного,
+    // и прикидка по ходу обязана делиться на него же, иначе она вчетверо завышена.
+    let state = reducePanel(initialPanelState, { kind: 'context', used: 100_000, max: 1_000_000 }, 1_700_000_000_000)
+    state = reducePanel(
+      state,
+      {
+        kind: 'agent',
+        event: { type: 'assistant', message: { content: [{ type: 'text', text: '…' }], usage: { input_tokens: 200_000 } } },
+      },
+      1_700_000_000_100,
+    )
+
+    expect(contextOf(state, 200_000)).toEqual({ used: 200_000, limit: 1_000_000, percent: 20 })
+  })
+
+  it('служебный ответ без обращения к модели датчик не обнуляет', () => {
+    let state = reducePanel(initialPanelState, { kind: 'context', used: 90_000, max: 200_000 }, 1_700_000_000_000)
+    state = reducePanel(
+      state,
+      {
+        kind: 'agent',
+        event: {
+          type: 'assistant',
+          message: {
+            content: [{ type: 'text', text: '(no content)' }],
+            usage: { input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+          },
+        },
+      },
+      1_700_000_000_100,
+    )
+
+    expect(contextOf(state, 200_000).used).toBe(90_000)
   })
 
   it('обычное освобождение агента ленту не трогает: останавливать было нечего', () => {

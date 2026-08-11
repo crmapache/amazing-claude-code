@@ -150,6 +150,12 @@ export type ShellMessage =
    * зависит от модели, а в занятое входит и то, чего в usage хода не видно.
    */
   | { type: 'context'; sessionId: string; used: number; max: number }
+  /**
+   * Чем кончилась команда из bash-режима. Отдельно stdout и stderr: агенту они
+   * уходят разными полями, как это делает и сам Claude Code, — по ним видно, что
+   * команда ругалась, даже когда код возврата нулевой.
+   */
+  | { type: 'bashResult'; sessionId: string; id: string; exitCode: number; stdout: string; stderr: string }
   | { type: 'sessions'; sessions: SessionInfo[]; active: string }
   | { type: 'status'; sessionId: string; state: AgentStatus }
   | { type: 'error'; sessionId: string; message: string }
@@ -265,6 +271,11 @@ export type WebviewMessage =
       /** Картинки из буфера обмена: байты, а не путь для чтения инструментом. */
       images?: { mediaType: string; data: string }[]
     }
+  /**
+   * Команда, набранная в поле через «!»: выполняет её сама оболочка в рабочей
+   * директории проекта, а не агент. Ответ приходит одним bashResult с тем же id.
+   */
+  | { type: 'bash'; sessionId: string; id: string; command: string }
   | { type: 'stop'; sessionId: string }
   /** Обычный Stop не подтвердился — пользователь явно попросил прибить процесс. */
   | { type: 'kill'; sessionId: string }
@@ -480,7 +491,12 @@ export type MessageContent = ContentBlock[] | string
 
 export interface AgentAssistantEvent {
   type: 'assistant'
-  message: { id?: string; content: MessageContent; model?: string }
+  /**
+   * usage тут — снимок ЭТОГО запроса к модели, а не сумма по ходу: его входная
+   * часть и есть занятое окно контекста на этот шаг. По нему датчик живёт, пока
+   * идёт ход и точной цифры от CLI ещё нет (см. liveContextUsed в build).
+   */
+  message: { id?: string; content: MessageContent; model?: string; usage?: AgentUsage }
   /** Не пусто у сообщений подагента: это идентификатор вызова, который его породил. */
   parent_tool_use_id?: string | null
 }

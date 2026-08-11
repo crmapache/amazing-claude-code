@@ -20,6 +20,13 @@ export const checkpoint = (label: string, steps: ScenarioStep[]): Checkpoint => 
 })
 
 export const shell = (message: ShellMessage): ScenarioStep => ({ kind: 'shell', message })
+
+/** Команда bash-режима вместе с её выводом — см. ScenarioStep. */
+export const bash = (
+  command: string,
+  stdout: string,
+  options: { stderr?: string; exitCode?: number; runMs?: number } = {},
+): ScenarioStep => ({ kind: 'bash', command, stdout, ...options })
 export const agent = (event: AgentEvent): ScenarioStep => ({ kind: 'agent', event })
 export const user = (text: string): ScenarioStep => ({ kind: 'user', text })
 export const wait = (ms: number): ScenarioStep => ({ kind: 'wait', ms })

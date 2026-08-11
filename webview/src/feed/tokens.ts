@@ -22,6 +22,9 @@ export const tokenText = (token: UserToken): string => {
   if (chip.kind === 'ref') return referenceText(chip)
   // Цитата не путь на диске, а сам текст: агенту уходит целиком, а не то, что видно в плашке.
   if (chip.kind === 'quote') return `"${chip.text ?? ''}"`
+  // Свёрнутая вставка — это ровно тот текст, который вставили: плашкой он
+  // свёрнут только на экране, а агенту уходит как если бы его набрали руками.
+  if (chip.kind === 'paste') return chip.text ?? ''
   // Картинка без байтов — выбранная в диалоге IDE, а не вставленная из буфера.
   // Это обычная ссылка на файл, и уходить она должна через @, как любая другая:
   // в скобках агент видел бы только имя и прочитать файл не мог.
@@ -132,7 +135,7 @@ const escapeHtml = (text: string): string =>
 export const clipboardHtml = (tokens: UserToken[]): string =>
   `<span ${CLIPBOARD_ATTRIBUTE}="${encodeURIComponent(JSON.stringify(tokens))}">${escapeHtml(tokensText(tokens))}</span>`
 
-const CHIP_KINDS: ChipKind[] = ['file', 'img', 'dir', 'cmd', 'ref', 'quote']
+const CHIP_KINDS: ChipKind[] = ['file', 'img', 'dir', 'cmd', 'ref', 'quote', 'paste']
 
 const isChip = (value: unknown): value is Chip => {
   if (typeof value !== 'object' || value === null) return false

@@ -30,6 +30,7 @@ import { StreamSwitcher, type AgentStatus, type AgentTab } from './components/St
 import { TaskListPanel } from './components/TaskListPanel'
 import composer from './components/composer.module.css'
 import s from './components/shell.module.css'
+import { bashCommand, shellText, type ShellRun } from './feed/bash'
 import { contextOf, initialPanelState, reducePanel, type PanelState } from './feed/build'
 import { referenceChip } from './feed/reference'
 import { appendChip, appendText, buildCommands, localCommand, plainText, type LocalCommand } from './feed/slash'
@@ -124,6 +125,16 @@ export const App = () => {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
 
   const [queue, setQueue] = useState<QueuedPrompt[]>([])
+  /**
+   * Что человек успел выполнить в bash-режиме с прошлого своего сообщения — по
+   * вкладкам, у каждой свой разговор.
+   *
+   * Уезжает агенту приложением к следующему сообщению, как это делает и сам
+   * Claude Code: собственного хода такая команда не стоит (иначе «!git status»
+   * гонял бы модель ради двух строк), но и пропадать её вывод не должен — без
+   * него следующая просьба вроде «почини вот это» повисает в воздухе.
+   */
+  const [shellRuns, setShellRuns] = useState<Record<string, ShellRun[]>>({})
   const [menu, setMenu] = useState<{ kind: SelectorKind; anchor: Anchor } | null>(null)
   /**
    * Выбор модели, усилия и режима. Приходит от оболочки при запуске и там же
@@ -331,6 +342,25 @@ export const App = () => {
       document.removeEventListener('mouseleave', onLeave)
     }
   }, [])
+
+  /**
+   * Запущенные команды bash-режима по их номеру: ответ оболочки приносит только
+   * вывод, а агенту нужна и сама команда. Вкладку помним рядом с командой —
+   * по ней вычёркиваем всё, что не должно пережить `/clear` или закрытие
+   * разговора. Ссылка, а не состояние: от неё ничего не перерисовывается, и
+   * подписка на сообщения оболочки, живущая один раз на всю панель, свежего
+   * состояния всё равно бы не увидела.
+   */
+  const shellCommands = useRef<Record<string, { session: string; command: string }>>({})
+
+  /** Забыть команды вкладки, которые ещё бегут: их вывод этому разговору уже не нужен. */
+  const forgetShellCommands = (session: string) => {
+    for (const [id, run] of Object.entries(shellCommands.current)) {
+      if (run.session === session) delete shellCommands.current[id]
+    }
+  }
+  /** Порядковый номер запуска — от него уникальность id, см. runShell. */
+  const shellSeq = useRef(0)
 
   /**
    * Вставка в поле ввода тем, что пришло из IDE: ссылкой из редактора, файлом
@@ -610,6 +640,15 @@ export const App = () => {
 
           case 'agent':
             dispatchPanel({ session: message.sessionId, action: { kind: 'agent', event: message.event } })
+            // Разговор стёрли: вывод команд, который не успел уехать агенту, к
+            // новому разговору отношения не имеет — вместе с лентой уходит и он.
+            // Вместе с уже собранным забываем и то, что ещё бежит: иначе вывод
+            // команды, запущенной в прошлом разговоре, приехал бы в новый и
+            // уехал агенту с первым же его сообщением.
+            if (message.event.type === 'conversation_reset') {
+              forgetShellCommands(message.sessionId)
+              setShellRuns((current) => ({ ...current, [message.sessionId]: [] }))
+            }
             break
 
           case 'processExited':
@@ -666,6 +705,38 @@ export const App = () => {
               action: { kind: 'context', used: message.used, max: message.max },
             })
             break
+
+          case 'bashResult': {
+            // В карточку — как в терминале, одним потоком: ошибки идут вперемешку
+            // с обычным выводом ровно там, где их напечатала сама команда.
+            const output = [message.stdout, message.stderr].filter((part) => part.trim().length > 0).join('\n')
+
+            dispatchPanel({
+              session: message.sessionId,
+              action: { kind: 'bashFinished', id: message.id, output, exitCode: message.exitCode },
+            })
+
+            // Агенту — раздельно, своими тегами (см. shellText): по ним видно,
+            // что команда ругалась, даже когда код возврата нулевой.
+            //
+            // Саму команду забираем ДО setState, а не внутри него: обновляющую
+            // функцию React вызывает не ровно один раз (в строгом режиме —
+            // дважды), и вычёркивание записи оттуда съедало бы собственный
+            // результат — вывод не доезжал до агента вовсе.
+            const ran = shellCommands.current[message.id]
+            if (ran) {
+              delete shellCommands.current[message.id]
+
+              setShellRuns((current) => ({
+                ...current,
+                [ran.session]: [
+                  ...(current[ran.session] ?? []),
+                  { command: ran.command, stdout: message.stdout, stderr: message.stderr, exitCode: message.exitCode },
+                ],
+              }))
+            }
+            break
+          }
 
           case 'files':
             setFiles(message.files)
@@ -873,7 +944,12 @@ export const App = () => {
       const answered = answers.filter((entry) => entry.answer.trim().length > 0)
       if (answered.length === 0) return
 
-      const text = answered.map((entry) => entry.answer).join('\n')
+      // Вопрос вместе со своим ответом, пары — через пустую строку. Одними
+      // ответами подряд эта реплика в ленте не читалась вовсе: «Только
+      // многострочной» без вопроса над ним не значит ничего, а вопросов в одном
+      // вызове бывает до шести. Тем же текстом отвечаем и агенту, если ждать
+      // ответа уже некому (см. askAnswer в protocol) — там он тоже понятнее.
+      const text = answered.map((entry) => `${entry.question}\n${entry.answer}`).join('\n\n')
 
       send({
         type: 'askAnswer',
@@ -1086,6 +1162,27 @@ export const App = () => {
   }, [selection, fork, clearSelection])
 
   /**
+   * Команда bash-режима: её выполняет оболочка в рабочей директории проекта, а
+   * не агент (см. feed/bash). Карточку ставим в ленту сразу, ещё до вывода, —
+   * длинная команда идёт секундами, и всё это время должно быть видно, что она
+   * запущена.
+   */
+  const runShell = useCallback(
+    (command: string) => {
+      // Счётчик, а не одно только время: две команды, запущенные в одну и ту же
+      // миллисекунду (так их проигрывает харнесс), получили бы один номер — а по
+      // нему в ленте ищут карточку и вспоминают текст команды для агента.
+      shellSeq.current += 1
+      const id = `bash-${Date.now()}-${shellSeq.current}`
+      shellCommands.current[id] = { session: active, command }
+
+      dispatchPanel({ session: active, action: { kind: 'bashStarted', id, command } })
+      send({ type: 'bash', sessionId: active, id, command })
+    },
+    [active],
+  )
+
+  /**
    * Отправка сообщения: сразу в работу или в очередь.
    *
    * «Сразу» работает и во время хода: агент запущен с потоковым вводом, и
@@ -1110,6 +1207,15 @@ export const App = () => {
       : trimTrailingSpace(draft.tokens)
     const quotes = isOverride ? [] : draft.quotes
 
+    // «!» в начале — команда терминала, а не сообщение агенту: выполняет её
+    // панель и показывает вывод своей карточкой (см. runShell).
+    const command = bashCommand(tokens)
+    if (command) {
+      runShell(command)
+      if (!isOverride) editDraft(active, { tokens: [] })
+      return
+    }
+
     // Через tokensText, а не plainText: команда в поле — плашка, и голый текст
     // её не видит вовсе (см. captureCommand). Для агента она и так значит ровно
     // "/имя", им же её и узнаём.
@@ -1120,8 +1226,15 @@ export const App = () => {
       return
     }
 
-    const text = isOverride ? overrideText : composePrompt(draft, imageBaseCount)
-    if (!text) return
+    const written = isOverride ? overrideText : composePrompt(draft, imageBaseCount)
+    if (!written) return
+
+    // Вывод команд, выполненных с прошлого сообщения, уезжает впереди этого —
+    // и уходит из накопителя: второй раз агенту он ни к чему. В ленту при этом
+    // не попадает: там он уже стоит своей карточкой, на своём месте по времени.
+    const runs = shellRuns[active] ?? []
+    const text = runs.length > 0 ? `${shellText(runs)}\n\n${written}` : written
+    if (runs.length > 0) setShellRuns((current) => ({ ...current, [active]: [] }))
 
     const images = isOverride ? [] : imageAttachments(draft.tokens)
     const attachCount = isOverride ? 0 : draft.tokens.filter((token) => token.kind === 'chip').length
@@ -1190,7 +1303,20 @@ export const App = () => {
 
     send({ type: 'prompt', sessionId: active, text, images })
     if (!isOverride) setDrafts((current) => ({ ...current, [active]: EMPTY_DRAFT }))
-  }, [draft, running, active, runLocal, editDraft, imageBaseCount, models, panel, cards.planDecisions, decidePlan])
+  }, [
+    draft,
+    running,
+    active,
+    runLocal,
+    runShell,
+    editDraft,
+    imageBaseCount,
+    models,
+    panel,
+    cards.planDecisions,
+    decidePlan,
+    shellRuns,
+  ])
 
   const sendNow = useCallback(() => submit(false), [submit])
   const queueNext = useCallback(() => submit(true), [submit])
@@ -1242,6 +1368,13 @@ export const App = () => {
   // в этой панели не найдена — считаем это main, а не рисуем пустой экран.
   const activeTask = panel.items.find((item): item is TaskItem => item.kind === 'task' && item.id === activeStream)
   const resolvedStream = activeStream === 'main' || activeTask ? activeStream : 'main'
+  /**
+   * Что сейчас держит ход и ждёт человека. Обе панели считаем здесь, а не по
+   * месту: цифровые хоткеи у них общие, и решить, чьи они, можно только зная
+   * обе сразу.
+   */
+  const permission = pendingPermission(panel.items, resolvedStream)
+  const ask = pendingAsk(panel.items, cards.answeredAsks, resolvedStream)
   const commands = useMemo(
     () => buildCommands(panel.slashCommands, commandHints),
     [panel.slashCommands, commandHints],
@@ -1286,6 +1419,15 @@ export const App = () => {
           // остаются: они не привязаны к тому, есть ли открытый разговор.
           send({ type: 'closeSession', sessionId: id })
           delete soundMemory.current[id]
+          // И собранный вывод, и то, что ещё бежит: без второго пришедший позже
+          // ответ оболочки завёл бы запись обратно — на разговор, которого нет.
+          forgetShellCommands(id)
+          setShellRuns((current) => {
+            if (!(id in current)) return current
+            const next = { ...current }
+            delete next[id]
+            return next
+          })
           dispatchPanel({ session: id, closed: true })
           const next = sessions.filter((session) => session.id !== id)
           setSessions(next)
@@ -1470,11 +1612,19 @@ export const App = () => {
         </div>
 
         <div className={composer.dock}>
-          <PermissionPanel item={pendingPermission(panel.items, resolvedStream)} onDecide={decidePermission} />
+          <PermissionPanel
+            item={permission}
+            composerEmpty={!draftReady}
+            onDecide={decidePermission}
+          />
 
           <AskPanel
-            key={pendingAsk(panel.items, cards.answeredAsks, resolvedStream)?.id ?? 'none'}
-            item={pendingAsk(panel.items, cards.answeredAsks, resolvedStream)}
+            key={ask?.id ?? 'none'}
+            item={ask}
+            composerEmpty={!draftReady}
+            // Пока рядом висит неотвеченное разрешение, цифры принадлежат ему:
+            // две панели, слушающие одну и ту же клавишу, отвечали бы обе разом.
+            hotkeys={!permission}
             onSubmit={sendAnswers}
           />
 

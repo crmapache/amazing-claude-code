@@ -54,9 +54,12 @@ const Harness = () => {
       if (!scenario) return
       if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
 
-      // Не перехватываем стрелки, пока фокус в поле ввода — там они листают текст.
+      // Не перехватываем стрелки, пока фокус в любом поле ввода — там они ходят
+      // по тексту. Поле сообщения панели — contenteditable, а не <textarea>:
+      // без этой проверки стрелка в нём перематывала чекпоинт, вместе с ним
+      // пересоздавала панель и стирала набранный черновик.
       const target = event.target as HTMLElement | null
-      if (target?.tagName === 'TEXTAREA' || target?.tagName === 'INPUT') return
+      if (target?.tagName === 'TEXTAREA' || target?.tagName === 'INPUT' || target?.isContentEditable) return
 
       event.preventDefault()
       jumpToCheckpoint(scenario, event.key === 'ArrowRight' ? index + 1 : index - 1)

@@ -1,4 +1,4 @@
-import { agent, checkpoint, scenario, shell, SESSION, textReply, toolResult, toolUse, turnResult, user, wait } from '../events'
+import { agent, bash, checkpoint, scenario, shell, SESSION, textReply, toolResult, toolUse, turnResult, user, wait } from '../events'
 import type { Scenario } from '../types'
 
 export const scenariosSystem: Scenario[] = [
@@ -70,6 +70,28 @@ export const scenariosSystem: Scenario[] = [
     checkpoint('Ход /clear завершается', [
       agent({ type: 'assistant', message: { content: [{ type: 'text', text: '(no content)' }] } }),
       turnResult(300),
+    ]),
+  ]),
+
+  scenario('bash-mode', 'Команда через !', 'system', [
+    checkpoint('Смотрит статус сам, без агента', [
+      bash('git status -sb', '## main...origin/main\n M webview/src/App.tsx\n?? webview/src/feed/bash.ts'),
+      wait(600),
+    ]),
+    checkpoint('Команда упала', [
+      bash('pnpm typecheck', 'src/App.tsx(42,7): error TS2322: Type "string" is not assignable to type "number".', {
+        exitCode: 2,
+        stderr: 'ELIFECYCLE  Command failed with exit code 2.',
+      }),
+      wait(600),
+    ]),
+    checkpoint('Спрашивает агента — вывод уезжает вместе с вопросом', [
+      user('Почини эту ошибку'),
+      wait(600),
+    ]),
+    checkpoint('Готовый ответ', [
+      ...textReply('Вижу — в App.tsx строка попала туда, где ждут число. Правлю.'),
+      turnResult(1800),
     ]),
   ]),
 

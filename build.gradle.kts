@@ -77,6 +77,29 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
+              <li>A command typed with <code>!</code> in front now runs in your own shell, the way it
+              does in the Claude Code terminal: <code>!git status</code>, <code>!pnpm test</code>. The
+              panel runs it itself, in the project directory, and shows the output as a card in the
+              feed — no agent turn spent on it and no permission to approve. Claude sees the command
+              and its output attached to your next message.</li>
+              <li>A multi-line paste now collapses into a chip showing the start of the text, so a
+              pasted log no longer pushes everything else out of the input. The chip expands back
+              into plain text with one click, and hovering it shows the whole thing.</li>
+              <li>Arrow keys no longer step over an attachment chip: the caret stops on it and
+              highlights it, Backspace removes it, and the same arrow again moves past. The
+              highlight looks the same on chips of every colour.</li>
+              <li>Options in a question and buttons in a permission request are numbered, and the
+              number keys pick them — as long as the input is empty, so typing a message still types
+              digits. Enter moves to the next question and sends the answers once everything is
+              answered.</li>
+              <li>The context bar now fills as the turn runs instead of only updating when it ends —
+              until now it stood at zero through the longest request of all, the first one.</li>
+              <li>Answers to a question are now shown in the feed as question-and-answer pairs
+              instead of a bare list of answers.</li>
+              <li>Fixed: a link Claude put in a heading (or in bold) was not clickable — it rendered
+              as plain bold text.</li>
+              <li>Fixed: the gap between two attachment chips was half as wide again as a normal
+              word space, so neighbouring chips read as torn apart.</li>
               <li>The panel now calls you out loud when it needs you: a turn that finished, a tool
               call waiting for approval, a question, a plan waiting to be accepted, a subscription
               limit that stopped the run, and trouble — an error, a process that died on its own, a

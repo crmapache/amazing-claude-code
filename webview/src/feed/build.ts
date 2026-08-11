@@ -73,6 +73,18 @@ export interface PanelState {
    * инструментов, памяти проекта.
    */
   context?: { used: number; max: number }
+  /**
+   * Сколько занято окна прямо сейчас, по последнему ответу самого агента.
+   *
+   * Цифра от CLI приезжает только концом хода: пока идёт первый — и самый
+   * длинный — запрос, показывать было бы попросту нечего, и полоска стояла бы
+   * на нуле ровно там, где за контекстом и следят. А каждый ответ агента несёт
+   * свой usage, и входная его часть — это буквально то, что ушло модели, то
+   * есть занятое окно на этот шаг. Считаем по нему, пока не приедет точная
+   * цифра, и обнуляем, когда она приедет: она знает и про системный промпт, и
+   * про описания инструментов, которых в usage хода не видно.
+   */
+  liveContextUsed?: number
   cost: number
   /** Список слэш-команд приходит от самого агента при старте сессии. */
   slashCommands: string[]
@@ -143,6 +155,9 @@ export type PanelAction =
   | { kind: 'project'; gitBranch?: string; pullRequest?: string; pullRequestUrl?: string }
   /** Занятое окно контекста этого разговора — цифра от самого CLI. */
   | { kind: 'context'; used: number; max: number }
+  /** Команда bash-режима: сперва карточка с ней, потом её вывод. */
+  | { kind: 'bashStarted'; id: string; command: string }
+  | { kind: 'bashFinished'; id: string; output: string; exitCode: number }
   | { kind: 'permission'; id: string; target: string; command: string; mode: string; taskId?: string }
   | { kind: 'permissionResolved'; id: string; decision: 'once' | 'always' | 'deny' }
   | { kind: 'modeRequested'; mode: string }
@@ -255,7 +270,11 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
     }
 
     case 'context':
-      return action.max > 0 ? { ...state, context: { used: action.used, max: action.max } } : state
+      // Точная цифра вытесняет прикидку по ходу: своя арифметика знает только
+      // про переписку, а эта — про всё содержимое окна.
+      return action.max > 0
+        ? { ...state, context: { used: action.used, max: action.max }, liveContextUsed: undefined }
+        : state
 
     case 'tick':
       return tickDurations(state, now)
@@ -307,6 +326,30 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         pendingTasks: {},
       }
     }
+
+    /**
+     * Команда bash-режима. Ход агента она не начинает и не трогает: он мог идти
+     * прямо сейчас, а мог и не идти вовсе — карточка просто встаёт в ленту
+     * своим чередом.
+     */
+    case 'bashStarted':
+      return {
+        ...state,
+        items: [
+          ...state.items,
+          { id: action.id, kind: 'bash', command: action.command, output: '', pending: true },
+        ],
+      }
+
+    case 'bashFinished':
+      return {
+        ...state,
+        items: state.items.map((item) =>
+          item.kind === 'bash' && item.id === action.id
+            ? { ...item, output: action.output, exitCode: action.exitCode, pending: false }
+            : item,
+        ),
+      }
 
     case 'permission':
       return {
@@ -584,6 +627,7 @@ const applyAgentEvent = (state: PanelState, event: AgentEvent, now: number): Pan
         sessionId: event.new_conversation_id ?? state.sessionId,
         usage: initialPanelState.usage,
         context: undefined,
+        liveContextUsed: undefined,
         cost: 0,
         tasks: {},
         pendingTasks: {},
@@ -623,7 +667,11 @@ const applyAgentEvent = (state: PanelState, event: AgentEvent, now: number): Pan
        * выбрали.
        */
       const model = realModel(event.message.model) ?? state.model
-      return applyAssistant({ ...state, model }, blocksOf(event.message.content), now)
+      // Занятое окно на этот шаг — пока не приехала точная цифра от CLI (см.
+      // liveContextUsed). Только у главного разговора: подагент выше уже ушёл
+      // своей веткой, и его контекст к этому окну отношения не имеет.
+      const liveContextUsed = contextUsedOf(event.message.usage) ?? state.liveContextUsed
+      return applyAssistant({ ...state, model, liveContextUsed }, blocksOf(event.message.content), now)
     }
 
     case 'user':
@@ -1356,6 +1404,25 @@ const contextSnapshot = (event: Extract<AgentEvent, { type: 'result' }>): AgentU
 }
 
 /**
+ * Сколько занимал контекст в момент этого запроса к модели: вся входная часть
+ * usage — и свежие токены, и то, что модель прочитала из кеша.
+ *
+ * Пустой usage (служебный ход, который к модели не ходил вовсе) отдаёт ничего,
+ * а не ноль: иначе датчик падал бы в ноль посреди разговора — та же ловушка,
+ * что и у снимка из result, см. withoutEmpty.
+ */
+const contextUsedOf = (usage?: AgentUsage): number | undefined => {
+  const filled = withoutEmpty(usage)
+  if (!filled) return undefined
+
+  return (
+    (filled.input_tokens ?? 0) +
+    (filled.cache_read_input_tokens ?? 0) +
+    (filled.cache_creation_input_tokens ?? 0)
+  )
+}
+
+/**
  * Пустой снимок — не «контекст обнулился», а «этот ход к модели не ходил вовсе».
  *
  * Так закрывается ход служебной команды: `/model`, например, CLI выполняет сам,
@@ -1413,22 +1480,28 @@ const formatClock = (ms: number): string => {
 /**
  * Что показывает датчик контекста: занято, всего и доля.
  *
- * Первым делом — цифра от самого CLI (см. PanelState.context): она знает и
- * настоящий размер окна выбранной модели, и всё, что лежит в контексте помимо
- * переписки. Пока её нет (разговор ещё не начинался, CLI постарше), считаем
- * сами по usage хода — тем же способом, что и раньше.
+ * Размер окна — от самого CLI (см. PanelState.context): он зависит от модели, у
+ * «1M»-моделей впятеро больше обычного, и своей арифметикой его не угадать.
+ *
+ * А вот занятое берём по свежести. Точная цифра от CLI приезжает только концом
+ * хода, поэтому пока идёт ход, показываем прикидку по последнему ответу агента
+ * (liveContextUsed): без неё за самый долгий запрос — первый — полоска не
+ * двигалась вовсе, хотя окно за это время и заполняется. Как только ход
+ * закончится, точная цифра эту прикидку вытеснит (см. case 'context').
  */
 export const contextOf = (
   state: PanelState,
   fallbackLimit = 200_000,
 ): { percent: number; used: number; limit: number } => {
   const context = state.context
-  if (context && context.max > 0) {
-    return {
-      percent: Math.min(Math.round((context.used / context.max) * 100), 100),
-      used: context.used,
-      limit: context.max,
-    }
+  const known = context && context.max > 0 ? context : undefined
+  const live = state.liveContextUsed
+
+  if (known || live !== undefined) {
+    const limit = known?.max ?? (fallbackLimit > 0 ? fallbackLimit : 200_000)
+    const used = live ?? known?.used ?? 0
+
+    return { percent: Math.min(Math.round((used / limit) * 100), 100), used, limit }
   }
 
   const used =

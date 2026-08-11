@@ -73,7 +73,11 @@ export const parseParagraphs = (source: string): Paragraph[] => {
 
     if (heading) {
       flushPlain()
-      paragraphs.push({ heading: true, parts: [{ text: heading[1] ?? '', strong: true }] })
+      // Через общий разбор строки, а не одним куском текста: в заголовке бывает
+      // и адрес, и код в бэктиках, и по ним точно так же кликают. Целым куском
+      // ссылка в заголовке оставалась просто жирной строкой, которую приходилось
+      // выделять и копировать руками.
+      paragraphs.push({ heading: true, parts: emphasized(heading[1] ?? '') })
       continue
     }
 
@@ -160,7 +164,10 @@ export const parseInline = (line: string): TextPart[] => {
       parts.push({ text: match[2], code: true })
       last = match.index + match[0].length
     } else if (match[3] !== undefined) {
-      parts.push({ text: match[3], strong: true })
+      // Внутри жирного тоже бывает адрес — «**http://localhost:5173/**» пишут
+      // сплошь и рядом. Разбираем содержимое тем же разбором, иначе ссылка
+      // теряется ровно там, где её выделили как самое важное в ответе.
+      for (const part of emphasized(match[3])) parts.push(part)
       last = match.index + match[0].length
     } else if (match[5] !== undefined) {
       parts.push({ text: match[4] ?? match[5], href: match[5] })
@@ -175,3 +182,13 @@ export const parseInline = (line: string): TextPart[] => {
   if (last < line.length) parts.push({ text: line.slice(last) })
   return parts.length > 0 ? parts : [{ text: line }]
 }
+
+/**
+ * Строка целиком под ударением — заголовок или содержимое жирного куска.
+ *
+ * Разбирается как обычная строка, а поверх на все её части ложится пометка
+ * жирного: ссылка внутри остаётся ссылкой, код — кодом. Рекурсия конечна:
+ * содержимое жирного по своему же шаблону звёздочек не содержит.
+ */
+const emphasized = (text: string): TextPart[] =>
+  parseInline(text).map((part) => ({ ...part, strong: true }))

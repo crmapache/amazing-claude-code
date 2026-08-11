@@ -45,6 +45,17 @@ attachments through the IDE's own dialog — one button for files, folders, and
 images at once. Slash commands are suggested right in the input field, just like
 in the terminal: the list narrows as you type, and arrows plus ⏎ pick an item.
 
+Everything that isn't typed text lives in the field as a chip: a file, a folder,
+an image, a quote, a command — and a multi-line paste, which collapses into one so
+a pasted log doesn't push the rest of the message out of sight (one click expands
+it back into plain text). Chips are indivisible, so the caret doesn't step over
+them: it stops on one and highlights it, Backspace removes it, and the same arrow
+again moves past.
+
+A question from the agent and a permission request are answered from the keyboard
+too: their options are numbered, and the number keys pick them — as long as the
+input is empty, so a message that starts with a digit still types one.
+
 The list has three sources. Project commands come from the agent itself — the
 panel doesn't invent its own. Built-in ones (`/model`, `/effort`, `/context`,
 `/cost`, `/usage`) were checked against a live agent: not all of them work in
@@ -105,6 +116,32 @@ empty despite the agent remembering everything.
 
 This can't be done with its own slash command: in streaming mode, `/resume` opens
 an interactive list and refuses instead.
+
+## Shell commands
+
+A message starting with `!` isn't a message at all — it's a command, the same
+bash mode the Claude Code terminal has: `!git status`, `!pnpm test`. The panel
+runs it itself, through your own login shell and in the project directory, so it
+sees the same `PATH` and the same profile the terminal next to it does. The field
+turns amber and the Send button becomes Run, so it's clear before the keypress
+that this goes somewhere else than the agent.
+
+The output lands as a card in the feed, on its own place in time, and travels to
+the agent attached to your next message, wrapped in the same `<bash-input>` /
+`<bash-stdout>` tags Claude Code uses. That's the point of the mode: looking
+something up costs no turn of the agent and no permission prompt, but the agent
+still sees what you saw.
+
+Two things follow from the panel not being a terminal. There's no input, so it is
+closed straight away — anything that asks a question (`git commit` without a
+message, `npm login`) gets end-of-file and finishes instead of hanging. And there
+is a two-minute limit, after which the command is killed and says so, keeping
+whatever it managed to print.
+
+Chips inside a command expand to their value — drag a file in and its path lands
+in the command — and always as a single argument: quoting is added when the value
+needs it, so a path with a space stays one argument and a file name with a
+semicolon in it can't tack a second command onto the line.
 
 ## Sound alerts
 

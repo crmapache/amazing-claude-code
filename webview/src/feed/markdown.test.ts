@@ -56,6 +56,36 @@ describe('parseParagraphs', () => {
     expect(heading?.parts).toEqual([{ text: 'Текущее состояние', strong: true }])
   })
 
+  it('адрес в заголовке остаётся живой ссылкой, а не жирной строкой', () => {
+    // Ровно так агент и отвечает на «на каком адресе смотреть демку»: адресом
+    // заголовком, и кликать по нему хочется прямо там.
+    const [heading] = parseParagraphs('## http://localhost:5174/')
+
+    expect(heading?.heading).toBe(true)
+    expect(heading?.parts).toEqual([
+      { text: 'http://localhost:5174/', href: 'http://localhost:5174/', strong: true },
+    ])
+  })
+
+  it('код в заголовке остаётся кодом', () => {
+    const [heading] = parseParagraphs('### Запуск `pnpm dev`')
+
+    expect(heading?.parts).toEqual([
+      { text: 'Запуск ', strong: true },
+      { text: 'pnpm dev', code: true, strong: true },
+    ])
+  })
+
+  it('адрес внутри жирного тоже остаётся ссылкой', () => {
+    const [paragraph] = parseParagraphs('Открывай **http://localhost:5173/** и смотри')
+
+    expect(paragraph?.parts).toEqual([
+      { text: 'Открывай ' },
+      { text: 'http://localhost:5173/', href: 'http://localhost:5173/', strong: true },
+      { text: ' и смотри' },
+    ])
+  })
+
   it('без пустой строки заголовок и следующий абзац не сливаются в один', () => {
     const paragraphs = parseParagraphs(['## Раздел', 'Текст сразу под заголовком.'].join('\n'))
     expect(paragraphs).toHaveLength(2)
