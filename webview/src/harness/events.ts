@@ -50,7 +50,6 @@ export const bootstrap: ScenarioStep[] = [
     projectName: 'demo-project',
     workingDirectory: '/Users/you/demo-project',
     gitBranch: 'main',
-    canAskPermissions: true,
   }),
   // Без расхода нижний ряд поля ввода пустой, и кольца в нём не посмотреть.
   // Неделя стоит на третьем дне окна: блёклая дуга темпа тогда обгоняет яркую,

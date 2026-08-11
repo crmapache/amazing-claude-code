@@ -8,7 +8,6 @@ import kotlin.test.assertTrue
 class ClaudeLaunchTest {
 
     private fun arguments(
-        settingsJson: String? = null,
         model: String = "",
         effort: String = "",
         permissionMode: String? = null,
@@ -16,7 +15,6 @@ class ClaudeLaunchTest {
         forkFrom: String? = null,
         allowBypassSwitch: Boolean = true,
     ) = ClaudeLaunch.arguments(
-        settingsJson = settingsJson,
         model = model,
         effort = effort,
         permissionMode = permissionMode,
@@ -89,15 +87,22 @@ class ClaudeLaunchTest {
     }
 
     @Test
-    fun `настройки, модель и усилие уходят только когда они есть`() {
+    fun `модель и усилие уходят только когда они есть`() {
         val bare = arguments()
-        assertFalse("--settings" in bare)
         assertFalse("--model" in bare)
         assertFalse("--effort" in bare)
 
-        val full = arguments(settingsJson = "{}", model = "opus", effort = "xhigh")
-        assertEquals("{}", full[full.indexOf("--settings") + 1])
+        val full = arguments(model = "opus", effort = "xhigh")
         assertEquals("opus", full[full.indexOf("--model") + 1])
         assertEquals("xhigh", full[full.indexOf("--effort") + 1])
+    }
+
+    // Панель больше не подменяет разрешения своим PreToolUse-хуком: он стоял
+    // раньше всех проверок CLI и потому спрашивал даже там, где спрашивать не о
+    // чем — в «Don't ask», в «Auto», по уже разрешённому правилу. Настройки
+    // разговору теперь не подсовываются вовсе, вопросы идут только каналом.
+    @Test
+    fun `свои настройки разговору не подсовываются`() {
+        assertFalse("--settings" in arguments(model = "opus", effort = "xhigh"))
     }
 }

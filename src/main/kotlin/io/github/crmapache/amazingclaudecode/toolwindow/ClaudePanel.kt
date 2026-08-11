@@ -39,13 +39,10 @@ import io.github.crmapache.amazingclaudecode.claude.ClaudeSessions
 import io.github.crmapache.amazingclaudecode.claude.ClaudeTokenUsage
 import io.github.crmapache.amazingclaudecode.claude.ClaudeControlPing
 import io.github.crmapache.amazingclaudecode.claude.ImageAttachment
-import io.github.crmapache.amazingclaudecode.claude.ClaudeSettings
 import io.github.crmapache.amazingclaudecode.claude.PermissionBypass
 import io.github.crmapache.amazingclaudecode.claude.PermissionChannel
 import io.github.crmapache.amazingclaudecode.claude.PermissionModes
 import io.github.crmapache.amazingclaudecode.claude.PermissionPrompt
-import io.github.crmapache.amazingclaudecode.claude.PermissionRules
-import io.github.crmapache.amazingclaudecode.claude.PermissionServer
 import io.github.crmapache.amazingclaudecode.claude.ShellCommand
 import io.github.crmapache.amazingclaudecode.editor.SelectionReference
 import io.github.crmapache.amazingclaudecode.project.ProjectFacts
@@ -92,7 +89,6 @@ internal class ClaudePanel(
 
     private var webview: WebviewHost? = null
     private var sessions: ClaudeSessions? = null
-    private var permissions: PermissionServer? = null
 
     /**
      * Пока вход не подтверждён, процессы не поднимаем: без него агент отвечает на
@@ -111,12 +107,9 @@ internal class ClaudePanel(
     /** Каталог моделей спрашиваем один раз за жизнь панели — см. checkAuth. */
     private val modelsRequested = java.util.concurrent.atomic.AtomicBoolean(false)
 
-    /** Запросы, на которые ждём ответа: по ним же вспоминаем правило для «всегда». */
-    private val awaiting = ConcurrentHashMap<String, PermissionServer.Request>()
-
     /**
-     * То же, но спрошенное самим агентом по управляющему каналу, а не хуком:
-     * отвечать на такой вопрос надо тому разговору, который его задал.
+     * Запросы, на которые ждём ответа человека: отвечать надо тому разговору,
+     * который спросил, — вкладок много, и чужой ответ никого не разблокирует.
      */
     private val channelPermissions = ConcurrentHashMap<String, ChannelPermission>()
 
@@ -167,21 +160,8 @@ internal class ClaudePanel(
         val host = WebviewHost(parentDisposable) { message -> handleWebviewMessage(message) }
         webview = host
 
-        val server = if (ClaudeSettings.canHook()) {
-            PermissionServer { request -> askPermission(request) }.also {
-                Disposer.register(parentDisposable, it)
-                permissions = it
-            }
-        } else {
-            thisLogger().warn("curl not found: the panel will not be able to ask for permissions")
-            null
-        }
-
         sessions = ClaudeSessions(
             workingDirectory = project.basePath,
-            settingsJson = { sessionId ->
-                server?.let { ClaudeSettings.withPermissionHook(it.port, it.token, sessionId) }
-            },
             parentDisposable = parentDisposable,
             onEvent = { sessionId, line -> forwardAgentEvent(sessionId, line) },
             onError = { sessionId, text -> sendError(sessionId, text) },
@@ -458,32 +438,15 @@ internal class ClaudePanel(
 
     // --- Разрешения ---------------------------------------------------------
 
-    private fun askPermission(request: PermissionServer.Request) {
-        awaiting[request.id] = request
-
-        webview?.send(
-            buildJsonObject {
-                put("type", "permission")
-                put("id", request.id)
-                put("sessionId", request.sessionId.ifEmpty { MAIN_SESSION })
-                put("toolName", request.toolName)
-                put("target", request.target)
-                put("command", request.command)
-                put("mode", request.mode)
-                request.agentId?.let { put("agentId", it) }
-            }.toString(),
-        )
-    }
-
     /**
-     * Разрешения спрашивает и сам агент — встречным управляющим запросом по потоку
-     * разговора (см. ClaudeLaunch.PERMISSION_CHANNEL_FLAG). До хука такие вызовы не
-     * доходят: либо инструмент не из тех, что хук стережёт, либо человек нужен
-     * инструменту по самой его природе.
+     * Агент спрашивает разрешение встречным управляющим запросом по потоку
+     * разговора (см. ClaudeLaunch.PERMISSION_CHANNEL_FLAG) — единственным путём,
+     * которым разрешения вообще доходят до панели.
      *
-     * План — как раз второй случай, и карточка для него в ленте уже есть: её
-     * нарисовал сам вызов ExitPlanMode. Спрашивать поверх неё второй раз нечего,
-     * нужно лишь запомнить, куда отправить ответ её кнопок.
+     * Часть вопросов рисовать карточкой не надо: у плана и у вопроса с вариантами
+     * карточка в ленте уже есть, её нарисовал сам вызов инструмента. Спрашивать
+     * поверх неё второй раз нечего, нужно лишь запомнить, куда отправить ответ её
+     * кнопок.
      */
     private fun askToolPermission(sessionId: String, request: PermissionChannel.ToolPermission) {
         val pending = ChannelPermission(
@@ -529,6 +492,9 @@ internal class ClaudePanel(
                 put("target", PermissionPrompt.target(request.toolName, request.input))
                 put("command", pending.command)
                 put("mode", PermissionModes.resolve(ClaudePreferences.mode))
+                // Спрашивает инструмент внутри субагента — карточке место в его
+                // ветке ленты, а не в общем разговоре.
+                request.agentId?.let { put("agentId", it) }
             }.toString(),
         )
     }
@@ -556,27 +522,26 @@ internal class ClaudePanel(
     private fun hasQuestions(input: JsonObject): Boolean =
         (input["questions"] as? JsonArray)?.isNotEmpty() == true
 
+    /**
+     * Ответ человека на карточку разрешения.
+     *
+     * «Всегда» уходит тем же ответом, а не записью в настройки своими руками: CLI
+     * прикладывает к вопросу готовое правило и сам решает, куда его положить —
+     * см. PermissionChannel.rememberRules. Дописывать файл настроек мимо него
+     * незачем: правило приходится сочинять по команде наугад, а сам CLI разбирает
+     * её точно и знает, какая часть значимая.
+     */
     private fun decidePermission(id: String, decision: String) {
-        val channel = channelPermissions.remove(id)
-        val request = awaiting.remove(id)
-        val toolName = request?.toolName ?: channel?.toolName
-        val command = request?.command ?: channel?.command
-
-        if (decision == "always" && toolName != null && command != null) {
-            project.basePath?.let { path -> PermissionRules.allowAlways(path, toolName, command) }
-        }
-
-        if (channel != null) {
-            sessions?.answerPermission(channel.sessionId, id, allow = decision != "deny")
+        val channel = channelPermissions.remove(id) ?: run {
+            thisLogger().info("No permission waiting for a decision: $id")
             return
         }
 
-        permissions?.resolve(
+        sessions?.answerPermission(
+            channel.sessionId,
             id,
-            when (decision) {
-                "deny" -> PermissionServer.Decision.DENY
-                else -> PermissionServer.Decision.ALLOW
-            },
+            allow = decision != "deny",
+            remember = decision == "always",
         )
     }
 
@@ -1484,7 +1449,6 @@ internal class ClaudePanel(
                 put("type", "init")
                 put("projectName", project.name)
                 put("workingDirectory", project.basePath.orEmpty())
-                put("canAskPermissions", permissions != null)
                 ProjectFacts.gitBranch(project)?.let { put("gitBranch", it) }
                 // Выбор модели и остального переживает перезапуск IDE: искать его
                 // заново после каждого открытия — то же, что не сохранять вовсе.

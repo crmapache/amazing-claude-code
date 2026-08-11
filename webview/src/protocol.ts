@@ -111,8 +111,6 @@ export type ShellMessage =
       projectName: string
       workingDirectory: string
       gitBranch?: string
-      /** Ложь, если оболочка не может перехватывать вызовы инструментов. */
-      canAskPermissions?: boolean
       /** Выбор модели, усилия и режима: он переживает и вкладки, и перезапуск IDE. */
       preferences?: { model: string; effort: string; mode: string }
       /** Настройка звуковых оповещений — переживает перезапуск IDE. */

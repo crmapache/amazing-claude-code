@@ -114,6 +114,11 @@ in the terminal. Picking one opens a tab: the process starts with its transcript
 and the panel replays the saved events into the feed, otherwise the tab would look
 empty despite the agent remembering everything.
 
+The folder is found by the CLI's own rule: the project path with every character
+that isn't a letter or a digit turned into a dash. Both the path the IDE reports
+and its resolved form are checked, since a project can sit behind a symlink and
+the CLI files conversations under the real path.
+
 This can't be done with its own slash command: in streaming mode, `/resume` opens
 an interactive list and refuses instead.
 
@@ -203,23 +208,25 @@ live agent run, not made-up events.
 
 ## Permissions
 
-The panel asks for real. The agent, run in streaming mode, never asks questions on
-its own: before a dangerous tool call it triggers a hook, and our hook is a call
-to a local server inside the plugin. The server holds the request until a human
-clicks a button on the card, then returns the decision. While the card is up, the
-agent is stopped and does nothing.
+The panel asks for real, and it asks exactly when the terminal would. The agent
+run in streaming mode raises a `can_use_tool` request over the control channel,
+the panel shows a card, and the turn stands still until a human clicks a button.
 
-Not everything gets asked about: reads and searches don't change anything.
-Commands, writes, edits, network access, and MCP tools do. The panel respects
-modes that skip questions — it stays quiet in bypass mode and when edits are
-auto-accepted.
+Deciding *what* is worth asking about is the CLI's job, not ours: it applies the
+current mode, the allow and deny rules from every settings layer, and its own list
+of harmless commands. Reads and searches go through untouched; commands, writes,
+network access, and MCP tools reach the card.
 
-"Always allow" writes a rule into the project's local settings, the same place
-Claude Code itself keeps them: the rule survives a restart and also applies in the
-terminal.
+The panel used to add a `PreToolUse` hook of its own on top of that. A hook runs
+before any of the CLI's own permission checks, so it asked about everything —
+about `ls` and `git status`, about calls already covered by a rule, and in the
+very modes that promise no questions at all ("Don't ask", "Auto", "Bypass"). It's
+gone; the channel alone is the path.
 
-The server only listens on loopback and checks a shared secret — the local port is
-visible to other processes on the machine.
+"Always allow" is answered on the same request, with the rule the CLI itself
+suggests for that call. The CLI applies it to the live session immediately and
+writes it into the project's local settings, so it survives a restart and holds in
+the terminal too.
 
 ## Control channel
 
@@ -249,9 +256,6 @@ invoked in non-interactive mode — both were checked before settling on this pa
 
 - **A light theme.** The mockup describes one dark scheme only; in a light IDE the
   panel stays dark.
-- **Confirmations over the control channel.** The agent has a path for this too,
-  but it couldn't be turned on from the outside, so permissions go through the
-  hook instead — it works and has been checked against a live run.
 
 ## Logo and icons
 

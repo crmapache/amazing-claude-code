@@ -5,6 +5,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 
 class PermissionChannelTest {
@@ -81,6 +83,80 @@ class PermissionChannelTest {
         val decision = response["response"]!!.jsonObject
         assertEquals("\"allow\"", decision["behavior"].toString())
         assertEquals(input, decision["updatedInput"]?.jsonObject)
+    }
+
+    // Вопрос от инструмента внутри субагента: без этой метки карточка ушла бы в
+    // общий разговор, хотя ждёт ответа ветка субагента.
+    @Test
+    fun `запрос из субагента приносит его метку`() {
+        val incoming = parse(
+            """
+            {"type":"control_request","request_id":"запрос-4","request":{
+              "subtype":"can_use_tool","tool_name":"Bash","input":{"command":"mkdir -p /tmp/x"},
+              "tool_use_id":"toolu_4","agent_id":"a809ed6c3ed130b74"}}
+            """.trimIndent(),
+        )
+
+        assertEquals("a809ed6c3ed130b74", (incoming as PermissionChannel.Incoming.Permission).request.agentId)
+    }
+
+    // «Always allow» отвечается правилом самого CLI: он разбирает команду лучше
+    // любой нашей эвристики и знает, какая её часть значимая. Из предложенного
+    // берём только правила — открыть себе каталог целиком или переключить режим
+    // человек не просил.
+    @Test
+    fun `разрешать всегда — правилом от CLI, без всего, о чём не просили`() {
+        val incoming = parse(
+            """
+            {"type":"control_request","request_id":"запрос-5","request":{
+              "subtype":"can_use_tool","tool_name":"Bash","input":{"command":"rm -f /tmp/x.txt"},
+              "permission_suggestions":[
+                {"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"rm -f /tmp/x.txt"}],
+                 "behavior":"allow","destination":"localSettings"},
+                {"type":"addDirectories","directories":["/tmp"],"destination":"session"},
+                {"type":"setMode","mode":"acceptEdits","destination":"session"}]}}
+            """.trimIndent(),
+        )
+
+        val rules = PermissionChannel.rememberRules((incoming as PermissionChannel.Incoming.Permission).request)
+        assertEquals(1, rules.size)
+        assertEquals("\"addRules\"", rules[0].jsonObject["type"].toString())
+
+        val decision = Json.parseToJsonElement(PermissionChannel.allow("запрос-5", JsonObject(emptyMap()), rules))
+            .jsonObject["response"]!!.jsonObject["response"]!!.jsonObject
+        assertEquals(rules, decision["updatedPermissions"])
+    }
+
+    // У инструментов без разбираемых аргументов (MCP, WebFetch) предложений не
+    // бывает вовсе — правилом становится сам инструмент, иначе кнопка «всегда»
+    // молча ничего бы не запомнила.
+    @Test
+    fun `без предложений правилом становится сам инструмент`() {
+        val incoming = parse(
+            """
+            {"type":"control_request","request_id":"запрос-6","request":{
+              "subtype":"can_use_tool","tool_name":"mcp__github__create_pr","input":{}}}
+            """.trimIndent(),
+        )
+
+        val rule = PermissionChannel.rememberRules((incoming as PermissionChannel.Incoming.Permission).request)[0]
+            .jsonObject
+        assertEquals("\"addRules\"", rule["type"].toString())
+        assertEquals("\"allow\"", rule["behavior"].toString())
+        assertEquals(
+            "\"mcp__github__create_pr\"",
+            rule["rules"]!!.jsonArray[0].jsonObject["toolName"].toString(),
+        )
+    }
+
+    // Разово разрешённое остаётся разовым: правило без спроса поменяло бы
+    // настройки проекта, а человек нажал «разрешить», а не «разрешать всегда».
+    @Test
+    fun `обычное разрешение правил за собой не тянет`() {
+        val decision = Json.parseToJsonElement(PermissionChannel.allow("запрос-7", JsonObject(emptyMap())))
+            .jsonObject["response"]!!.jsonObject["response"]!!.jsonObject
+
+        assertNull(decision["updatedPermissions"])
     }
 
     // Отказ по плану — это не ошибка, а замечание: агент читает текст и предлагает

@@ -25,9 +25,22 @@ internal object ClaudeLaunch {
     const val ALLOW_BYPASS_FLAG = "--allow-dangerously-skip-permissions"
 
     /**
-     * Канал, по которому CLI спрашивает разрешение у самой панели, а не у хука.
+     * Канал, по которому CLI спрашивает разрешение у самой панели.
      *
-     * Без него потоковый режим считается «безлюдным» и выключает все инструменты,
+     * Единственный: раньше рядом жил ещё и PreToolUse-хук, который стучался в
+     * панель перед каждым Bash, Write, Edit, WebFetch и MCP-вызовом. Хук стоит в
+     * потоке раньше всех разрешений CLI, поэтому он спрашивал вообще всегда — и
+     * про `ls` с `git status`, которые CLI пропускает молча, и про то, что уже
+     * разрешено правилом в settings, и в режимах, где вопросов не должно быть по
+     * определению: «Don't ask», «Auto», «Bypass». Отсюда и «спрашивает на каждый
+     * чих, кнопка Always allow ничего не меняет»: правило записывалось честно, но
+     * следующий же вызов снова упирался в хук.
+     *
+     * Через канал решает сам CLI: он применяет режим, свои правила allow/deny и
+     * список безопасных команд, а панель спрашивает только там, где терминальный
+     * Claude Code спросил бы человека.
+     *
+     * Без канала потоковый режим считается «безлюдным» и выключает все инструменты,
      * которым нужен живой человек, — в первую очередь ExitPlanMode. Агент про него
      * знает и всё равно вызывает, но получает «No such tool available: ExitPlanMode
      * … is not enabled in this context», после чего пересказывает план текстом и
@@ -62,7 +75,6 @@ internal object ClaudeLaunch {
     const val ASK_TOOL = "AskUserQuestion"
 
     fun arguments(
-        settingsJson: String?,
         model: String,
         effort: String,
         permissionMode: String?,
@@ -78,8 +90,6 @@ internal object ClaudeLaunch {
         add("--include-partial-messages")
 
         addAll(listOf(PERMISSION_CHANNEL_FLAG, "stdio"))
-
-        settingsJson?.let { addAll(listOf("--settings", it)) }
 
         if (model.isNotEmpty()) addAll(listOf("--model", model))
         if (effort.isNotEmpty()) addAll(listOf("--effort", effort))

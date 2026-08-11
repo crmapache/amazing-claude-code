@@ -13,11 +13,6 @@ import java.util.concurrent.ConcurrentHashMap
  */
 internal class ClaudeSessions(
     private val workingDirectory: String?,
-    /**
-     * Настройки запуска строятся под каждый разговор: в хук разрешений зашит
-     * идентификатор его вкладки, иначе ответ на вопрос некуда возвращать.
-     */
-    private val settingsJson: (sessionId: String) -> String?,
     private val parentDisposable: Disposable,
     private val onEvent: (sessionId: String, line: String) -> Unit,
     private val onError: (sessionId: String, message: String) -> Unit,
@@ -71,8 +66,9 @@ internal class ClaudeSessions(
         allow: Boolean,
         message: String = "",
         extraInput: kotlinx.serialization.json.JsonObject? = null,
+        remember: Boolean = false,
     ) {
-        sessions[sessionId]?.answerPermission(requestId, allow, message, extraInput)
+        sessions[sessionId]?.answerPermission(requestId, allow, message, extraInput, remember)
     }
 
     /**
@@ -207,7 +203,6 @@ internal class ClaudeSessions(
         resumeFrom: String? = null,
     ): ClaudeSession = ClaudeSession(
         workingDirectory = workingDirectory,
-        settingsJson = settingsJson(sessionId),
         forkFrom = forkFrom,
         resumeFrom = resumeFrom,
         // Новый разговор начинается с того же, что выбрано сейчас: перевыбирать

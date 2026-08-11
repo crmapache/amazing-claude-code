@@ -77,6 +77,16 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
+              <li>Fixed: the panel asked permission for almost everything and the mode you picked
+              barely mattered — "Don't ask", "Auto" and "Bypass" still prompted, "Always allow"
+              changed nothing, and even <code>ls</code> or <code>git status</code> needed a click.
+              The panel no longer second-guesses Claude Code: it asks exactly where the terminal
+              would, honours the selected mode, and respects the permission rules you already have.
+              "Always allow" now takes hold at once, survives a restart, and applies in the terminal
+              too.</li>
+              <li>Fixed: conversations started in the terminal were missing from History when the
+              project path contained a space or an underscore — and on Windows the list was empty
+              every time.</li>
               <li>A command typed with <code>!</code> in front now runs in your own shell, the way it
               does in the Claude Code terminal: <code>!git status</code>, <code>!pnpm test</code>. The
               panel runs it itself, in the project directory, and shows the output as a card in the

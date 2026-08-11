@@ -32,19 +32,19 @@ internal object ClaudeHistory {
         val messages: Int,
     )
 
-    fun list(workingDirectory: String?, limit: Int = 40): List<Entry> {
-        val directory = directoryFor(workingDirectory) ?: return emptyList()
-
-        return (directory.listFiles { file -> file.extension == "jsonl" } ?: emptyArray())
+    fun list(workingDirectory: String?, limit: Int = 40): List<Entry> =
+        directoriesFor(workingDirectory)
+            .flatMap { directory -> (directory.listFiles { file -> file.extension == "jsonl" } ?: emptyArray()).asList() }
             .sortedByDescending { it.lastModified() }
             .take(limit)
             .mapNotNull { file -> entryFor(file) }
-    }
 
     /** Строки разговора, которые панель умеет рисовать: реплики и ответы. */
     fun replay(workingDirectory: String?, id: String): List<String> {
-        val file = directoryFor(workingDirectory)?.resolve("$id.jsonl") ?: return emptyList()
-        if (!file.isFile) return emptyList()
+        val file = directoriesFor(workingDirectory)
+            .map { it.resolve("$id.jsonl") }
+            .firstOrNull { it.isFile }
+            ?: return emptyList()
 
         return runCatching {
             file.readLines()
@@ -76,16 +76,40 @@ internal object ClaudeHistory {
     }
 
     /**
-     * Папка разговоров: путь проекта, где разделители заменены дефисами. Так их
-     * раскладывает сам Claude Code — своей схемы у нас быть не может.
+     * Имя папки разговоров по пути проекта — ровно по правилу самого Claude Code:
+     * всё, что не буква и не цифра, становится дефисом.
+     *
+     * Раньше здесь менялись только слеш и точка, и на этом история разъезжалась с
+     * терминалом: у пути с пробелом или подчёркиванием («my_project») папка
+     * получалась своя, а на Windows — вообще всегда, потому что двоеточие после
+     * буквы диска оставалось на месте. Панель смотрела в несуществующий каталог и
+     * показывала пустой список, хотя разговоры лежали рядом.
      */
-    private fun directoryFor(workingDirectory: String?): File? {
-        val path = workingDirectory ?: return null
-        val slug = path.replace('/', '-').replace('.', '-')
-        val directory = File(System.getProperty("user.home"), ".claude/projects/$slug")
+    internal fun slugFor(path: String): String = path.map { if (it.isLetterOrDigit()) it else '-' }.joinToString("")
 
-        return directory.takeIf { it.isDirectory }
+    /**
+     * Где искать разговоры этого проекта. Кандидатов два, потому что путь до
+     * проекта и путь, которым его знает CLI, совпадают не всегда: `/tmp` на macOS
+     * на самом деле `/private/tmp`, а проект вполне может лежать за символической
+     * ссылкой. CLI раскладывает разговоры по настоящему пути, IDE же отдаёт свой —
+     * поэтому смотрим в обе папки и показываем всё, что нашлось.
+     */
+    private fun directoriesFor(workingDirectory: String?): List<File> {
+        val path = workingDirectory ?: return emptyList()
+        val real = runCatching { File(path).canonicalPath }.getOrDefault(path)
+        val projects = File(configDirectory(), "projects")
+
+        return listOf(path, real)
+            .distinct()
+            .map { File(projects, slugFor(it)) }
+            .distinctBy { it.path }
+            .filter { it.isDirectory }
     }
+
+    /** Каталог настроек переезжает переменной окружения — как и у самого CLI. */
+    private fun configDirectory(): File =
+        System.getenv("CLAUDE_CONFIG_DIR")?.takeIf { it.isNotBlank() }?.let(::File)
+            ?: File(System.getProperty("user.home"), ".claude")
 
     private fun entryFor(file: File): Entry? {
         val id = file.nameWithoutExtension

@@ -61,4 +61,26 @@ class ClaudeHistoryTest {
         assertEquals(line, ClaudeHistory.normalizeContent(line))
         assertTrue(ClaudeHistory.normalizeContent(line).contains("\"content\":null"))
     }
+
+    // Имя папки разговоров придумываем не мы — оно обязано совпасть с тем, которое
+    // делает сам Claude Code, иначе панель и терминал разговоров друг друга не
+    // видят. Правило у CLI одно на все символы: не буква и не цифра — дефис.
+    @Test
+    fun `папка разговоров называется ровно так же, как у CLI`() {
+        assertEquals(
+            "-Users-max-Documents-Projects-amazing-claude-code",
+            ClaudeHistory.slugFor("/Users/max/Documents/Projects/amazing-claude-code"),
+        )
+    }
+
+    // Ровно те случаи, на которых история и разъезжалась: подчёркивание и пробел
+    // в имени папки — и путь Windows, где двоеточие после буквы диска оставалось
+    // на месте, из-за чего в панели не было видно вообще ни одного разговора.
+    @Test
+    fun `подчёркивание, пробел и путь Windows тоже становятся дефисами`() {
+        assertEquals("-home-ivan-dev-my-project", ClaudeHistory.slugFor("/home/ivan/dev/my_project"))
+        assertEquals("-home-ivan-my-app-v2", ClaudeHistory.slugFor("/home/ivan/my app.v2"))
+        assertEquals("C--Users-Ivan-dev-proj", ClaudeHistory.slugFor("C:/Users/Ivan/dev/proj"))
+        assertEquals("C--Users-Ivan-dev-proj", ClaudeHistory.slugFor("C:\\Users\\Ivan\\dev\\proj"))
+    }
 }

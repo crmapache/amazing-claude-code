@@ -12,6 +12,7 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.addJsonObject
@@ -40,8 +41,6 @@ internal data class ImageAttachment(val mediaType: String, val data: String)
  */
 internal class ClaudeSession(
     private val workingDirectory: String?,
-    /** Настройки запуска: через них подключается хук разрешений. */
-    private val settingsJson: String?,
     /**
      * Разговор, от которого ответвляется этот. Ветка получает всю переписку
      * родителя и свой идентификатор, поэтому продолжение в ней родителя не трогает.
@@ -106,8 +105,12 @@ internal class ClaudeSession(
 
     private class Control(val onResult: (JsonObject) -> Unit, val onFailure: (String) -> Unit)
 
-    /** Чем ответить агенту, пока человек думает: аргументы вызова ждут своего часа. */
-    private val awaitingPermission = ConcurrentHashMap<String, JsonObject>()
+    /**
+     * Чем ответить агенту, пока человек думает: вопрос ждёт своего часа целиком.
+     * Не только аргументы вызова — в ответ может уйти ещё и правило «больше не
+     * спрашивать», а его CLI предлагает в самом вопросе (см. PermissionChannel).
+     */
+    private val awaitingPermission = ConcurrentHashMap<String, PermissionChannel.ToolPermission>()
 
     private val lines = StreamLines(onLine = ::consume)
 
@@ -396,7 +399,7 @@ internal class ClaudeSession(
     private fun askPermission(payload: JsonObject) {
         when (val incoming = PermissionChannel.parse(payload)) {
             is PermissionChannel.Incoming.Permission -> {
-                awaitingPermission[incoming.request.requestId] = incoming.request.input
+                awaitingPermission[incoming.request.requestId] = incoming.request
                 onToolPermission(incoming.request)
             }
 
@@ -421,21 +424,31 @@ internal class ClaudeSession(
      * [extraInput] дописывается к аргументам вызова — так возвращаются ответы на
      * вопрос с вариантами: CLI ждёт их в том же `updatedInput`, поле `answers`
      * (см. ClaudeLaunch.ASK_TOOL).
+     *
+     * [remember] — это «Always allow»: вместе с разрешением уходит правило, после
+     * которого про такую же команду CLI больше не спросит ни панель, ни терминал.
      */
     fun answerPermission(
         requestId: String,
         allow: Boolean,
         message: String = "",
         extraInput: JsonObject? = null,
+        remember: Boolean = false,
     ) {
         val process = handler ?: return
-        val input = awaitingPermission.remove(requestId) ?: JsonObject(emptyMap())
+        val request = awaitingPermission.remove(requestId)
+        val input = request?.input ?: JsonObject(emptyMap())
         val updated = if (extraInput == null) input else JsonObject(input + extraInput)
 
         write(
             process,
             if (allow) {
-                PermissionChannel.allow(requestId, updated)
+                val rules = if (remember && request != null) {
+                    PermissionChannel.rememberRules(request)
+                } else {
+                    JsonArray(emptyList())
+                }
+                PermissionChannel.allow(requestId, updated, rules)
             } else {
                 PermissionChannel.deny(requestId, message)
             },
@@ -469,7 +482,6 @@ internal class ClaudeSession(
         val commandLine = GeneralCommandLine(executable.absolutePath)
             .withParameters(
                 ClaudeLaunch.arguments(
-                    settingsJson = settingsJson,
                     model = model,
                     effort = effort,
                     permissionMode = permissionMode,
