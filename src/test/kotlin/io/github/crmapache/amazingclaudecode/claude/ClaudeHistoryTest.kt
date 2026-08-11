@@ -62,6 +62,95 @@ class ClaudeHistoryTest {
         assertTrue(ClaudeHistory.normalizeContent(line).contains("\"content\":null"))
     }
 
+    // Обвязка слэш-команды пишется двумя порядками тегов: у встроенных команд
+    // первым идёт имя, у скиллов и плагинов — подпись. Разбор ждал только
+    // первого, и разговор, начатый скиллом, назывался в списке сырым тегом —
+    // ровно то, что было видно в панели («<command-message>task</command-message>»).
+    @Test
+    fun `разговор, начатый скиллом, называется самой командой`() {
+        val lines = sequenceOf(
+            """{"type":"user","isMeta":true,"message":{"role":"user","content":"<local-command-caveat>Caveat: …</local-command-caveat>"}}""",
+            """{"type":"user","message":{"role":"user","content":"<command-message>task</command-message>\n<command-name>/task</command-name>\n<command-args>починить историю</command-args>"}}""",
+            """{"type":"user","isMeta":true,"message":{"role":"user","content":[{"type":"text","text":"Base directory for this skill: /Users/max/.claude/skills/task"}]}}""",
+        )
+
+        assertEquals("/task починить историю", ClaudeHistory.scan(lines).title)
+    }
+
+    // Встроенные команды CLI пишут обвязку в обратном порядке — их разбирали и
+    // раньше, эта проверка держит оба порядка вместе.
+    @Test
+    fun `встроенная команда с именем впереди тоже узнаётся`() {
+        val lines = sequenceOf(
+            """{"type":"user","message":{"role":"user","content":"<command-name>/compact</command-name>\n            <command-message>compact</command-message>\n            <command-args></command-args>"}}""",
+        )
+
+        assertEquals("/compact", ClaudeHistory.scan(lines).title)
+    }
+
+    // Заголовок — то, что написал человек, а не то, чем оболочка обставила его
+    // слова: тело вызванного скилла, уведомление о фоновой задаче и подпись к
+    // картинке оказывались в списке вместо самой реплики.
+    @Test
+    fun `служебные реплики уступают заголовок настоящей`() {
+        val lines = sequenceOf(
+            """{"type":"user","message":{"role":"user","content":"<task-notification> <task-id>bmkth5kqm</task-id> </task-notification>"}}""",
+            """{"type":"user","isMeta":true,"message":{"role":"user","content":"[Image: original 2048x1536]"}}""",
+            """{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Разберись, что со временем агента"}]}}""",
+        )
+
+        assertEquals("Разберись, что со временем агента", ClaudeHistory.scan(lines).title)
+    }
+
+    // Настоящая реплика человека перебивает команду, даже если команда была
+    // первой: /clear в начале разговора не должен становиться его именем.
+    @Test
+    fun `реплика человека важнее команды, с которой начали`() {
+        val lines = sequenceOf(
+            """{"type":"user","message":{"role":"user","content":"<command-name>/clear</command-name>"}}""",
+            """{"type":"user","message":{"role":"user","content":"поднимай песочницу"}}""",
+        )
+
+        val scan = ClaudeHistory.scan(lines)
+
+        assertEquals("поднимай песочницу", scan.title)
+        assertEquals(2, scan.messages)
+    }
+
+    // Сообщений в карточке столько, сколько человек написал, — а не сколько
+    // реплик оказалось в файле. Транскрипт записывает репликами человека и
+    // результат каждого вызова инструмента, и обвязку команд: счёт по ним
+    // разъезжался с виденным на экране в десять раз.
+    @Test
+    fun `в счёт идут только сообщения человека`() {
+        val lines = sequenceOf(
+            """{"type":"user","message":{"role":"user","content":[{"type":"text","text":"поднимай песочницу"}]}}""",
+            """{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"поднимаю"}]}}""",
+            """{"type":"user","message":{"role":"user","content":[{"tool_use_id":"t1","type":"tool_result","content":"готово"}]}}""",
+            """{"type":"user","isMeta":true,"message":{"role":"user","content":"<local-command-caveat>Caveat: …</local-command-caveat>"}}""",
+            """{"type":"user","message":{"role":"user","content":"<local-command-stdout>сделано</local-command-stdout>"}}""",
+            """{"type":"user","message":{"role":"user","content":"<task-notification>\n<task-id>bmkth5kqm</task-id>\n</task-notification>"}}""",
+            """{"type":"user","message":{"role":"user","content":[{"type":"text","text":"спасибо"}]}}""",
+        )
+
+        assertEquals(2, ClaudeHistory.scan(lines).messages)
+    }
+
+    // Команда — тоже сказанное человеком, и разговор, который весь из неё и
+    // состоит, обязан остаться в списке: иначе он пропадёт из истории целиком.
+    @Test
+    fun `команда считается сообщением`() {
+        val lines = sequenceOf(
+            """{"type":"user","isMeta":true,"message":{"role":"user","content":"<local-command-caveat>Caveat: …</local-command-caveat>"}}""",
+            """{"type":"user","message":{"role":"user","content":"<command-name>/compact</command-name>"}}""",
+        )
+
+        val scan = ClaudeHistory.scan(lines)
+
+        assertEquals(1, scan.messages)
+        assertEquals("/compact", scan.title)
+    }
+
     // Имя папки разговоров придумываем не мы — оно обязано совпасть с тем, которое
     // делает сам Claude Code, иначе панель и терминал разговоров друг друга не
     // видят. Правило у CLI одно на все символы: не буква и не цифра — дефис.

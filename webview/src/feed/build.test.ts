@@ -349,6 +349,28 @@ describe('сборка ленты из потока агента', () => {
     expect(contextOf(state, 200_000)).toEqual({ used: 50_000, limit: 200_000, percent: 25 })
   })
 
+  it('перепись прошлого разговора датчик контекста не двигает', () => {
+    // Открытый из истории разговор проигрывается теми же событиями, но usage в
+    // них — про давно прошедший шаг, а размер окна из переписи не узнать вовсе:
+    // разговор на «1M»-модели делился на запасные двести тысяч и выглядел
+    // переполненным. Точную цифру IDE спрашивает у CLI отдельным сообщением.
+    const answered: AgentEvent = {
+      type: 'assistant',
+      message: {
+        content: [{ type: 'text', text: 'отвечал час назад' }],
+        usage: { input_tokens: 236_000 },
+      },
+    }
+    let state = reducePanel(initialPanelState, { kind: 'agent', event: answered, replay: true }, 1_700_000_000_000)
+
+    expect(state.liveContextUsed).toBeUndefined()
+    expect(contextOf(state, 200_000).percent).toBe(0)
+
+    state = reducePanel(state, { kind: 'context', used: 236_192, max: 1_000_000 }, 1_700_000_000_100)
+
+    expect(contextOf(state, 200_000)).toEqual({ used: 236_192, limit: 1_000_000, percent: 24 })
+  })
+
   it('точная цифра от CLI вытесняет прикидку по ходу', () => {
     const answering: AgentEvent = {
       type: 'assistant',

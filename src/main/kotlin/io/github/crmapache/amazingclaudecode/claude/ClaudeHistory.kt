@@ -113,61 +113,116 @@ internal object ClaudeHistory {
 
     private fun entryFor(file: File): Entry? {
         val id = file.nameWithoutExtension
+
+        val scan = runCatching { file.useLines(block = ::scan) }
+            .onFailure { thisLogger().warn("Failed to scan conversation $id", it) }
+            .getOrDefault(Scan("", 0))
+
+        // Разговор без единой реплики — это брошенный запуск, показывать нечего.
+        if (scan.messages == 0) return null
+
+        return Entry(
+            id = id,
+            title = scan.title.ifEmpty { "untitled" },
+            updatedAt = file.lastModified(),
+            messages = scan.messages,
+        )
+    }
+
+    /** Что удалось узнать про разговор за один проход по его файлу. */
+    internal data class Scan(val title: String, val messages: Int)
+
+    /**
+     * Заголовок и число сообщений — за один проход: файл разговора весит
+     * мегабайты, а в списке их сорок.
+     *
+     * Сообщение здесь — то, что сказал человек: своими словами или командой. В
+     * транскрипте его репликами записано и всё служебное — результат каждого
+     * вызова инструмента, обвязка команды, уведомление о фоновой задаче, — и
+     * такой счёт разъезжается с виденным на экране в десять раз: «375
+     * сообщений» там, где человек написал тридцать.
+     *
+     * Отсеиваем по сырой строке, не разбирая её: служебных реплик кратно
+     * больше, чем всех остальных, а среди них попадаются и на сотню килобайт.
+     * Подстроки берём в том виде, в каком их пишет CLI, — внутри текста самого
+     * человека такая не встретится, там кавычки экранированы.
+     */
+    internal fun scan(lines: Sequence<String>): Scan {
         var title = ""
         // Разговор — это сплошь /compact или похожая команда, ни одной реплики
         // человека: имя команды тогда и есть единственный осмысленный заголовок.
         var fallbackCommand = ""
         var messages = 0
 
-        runCatching {
-            file.useLines { lines ->
-                for (line in lines) {
-                    if (!line.startsWith("{")) continue
-                    if (line.contains("\"type\":\"user\"")) {
-                        messages += 1
-                        if (title.isNotEmpty()) continue
+        for (line in lines) {
+            if (!line.startsWith("{")) continue
+            if (!line.contains("\"type\":\"user\"")) continue
+            // Результат вызова инструмента: реплика человека только по форме.
+            if (line.contains("\"type\":\"tool_result\"")) continue
+            // Пометка самого CLI: писал не человек, а оболочка — тело вызванного
+            // скилла, предупреждение перед командой, подпись к картинке.
+            if (line.contains("\"isMeta\":true")) continue
+            // Остальная обвязка команд и уведомления фоновых задач: человек их
+            // не писал и на экране не видел.
+            if (SERVICE_CONTENT.any { line.contains(it) }) continue
 
-                        when (val wrapper = localCommandName(line)) {
-                            // Настоящая реплика человека — не служебная обвязка команды.
-                            null -> firstText(line).takeIf { it.isNotEmpty() }?.let { title = it }
-                            else -> if (wrapper.isNotEmpty() && fallbackCommand.isEmpty()) fallbackCommand = wrapper
-                        }
-                    }
-                }
+            messages += 1
+            if (title.isNotEmpty()) continue
+
+            val payload = runCatching { Json.parseToJsonElement(line).jsonObject }.getOrNull() ?: continue
+
+            when (val wrapper = serviceReplica(payload)) {
+                // Настоящая реплика человека — не служебная обвязка команды.
+                null -> firstText(payload).takeIf { it.isNotEmpty() }?.let { title = it }
+                else -> if (wrapper.isNotEmpty() && fallbackCommand.isEmpty()) fallbackCommand = wrapper
             }
-        }.onFailure { thisLogger().warn("Failed to scan conversation $id", it) }
+        }
 
-        // Разговор без единой реплики — это брошенный запуск, показывать нечего.
-        if (messages == 0) return null
-
-        return Entry(
-            id = id,
-            title = title.ifEmpty { fallbackCommand.ifEmpty { "untitled" } },
-            updatedAt = file.lastModified(),
-            messages = messages,
-        )
+        return Scan(title.ifEmpty { fallbackCommand }, messages)
     }
 
     /**
-     * Локальные команды (/compact, /clear…) оставляют в транскрипте служебную
-     * обвязку — предупреждение-caveat, разбор команды, её вывод — тремя отдельными
-     * репликами человека подряд, каждая своей строкой JSONL. Ни одна не годится в
-     * заголовок разговора буквально: null — это настоящая реплика человека, не
-     * обвязка; "" — обвязка без имени команды (caveat/stdout); непустая строка —
-     * само имя команды, единственное осмысленное, что можно из неё показать.
+     * Служебные реплики, которые в транскрипте выглядят как слова человека, но
+     * ими не являются: обвязка слэш-команды, предупреждение и вывод локальной
+     * команды, уведомление о фоновой задаче. Ни одна не годится в заголовок
+     * буквально: null — это настоящая реплика человека, не служебная; "" —
+     * служебная, показывать из неё нечего; непустая строка — сама команда,
+     * единственное осмысленное, что из обвязки можно достать.
      */
-    private fun localCommandName(rawLine: String): String? {
-        val payload = runCatching { Json.parseToJsonElement(rawLine).jsonObject }.getOrNull() ?: return null
-        val content = payload["message"]?.jsonObject?.get("content") ?: return null
-        val text = runCatching { content.jsonPrimitive.contentOrNull }.getOrNull() ?: return null
-        val trimmed = text.trim()
+    private fun serviceReplica(payload: JsonObject): String? {
+        val content = payload["message"]?.jsonObject?.get("content") as? JsonPrimitive ?: return null
+        if (!content.isString) return null
+        val text = content.content.trim()
 
         return when {
-            trimmed.startsWith("<local-command-caveat>") || trimmed.startsWith("<local-command-stdout>") -> ""
-            trimmed.startsWith("<command-name>") -> COMMAND_NAME_TAG.find(trimmed)?.groupValues?.get(1)?.trim().orEmpty()
+            // Порядок тегов в обвязке не один: у встроенных команд (/model,
+            // /compact) первым идёт имя, у скиллов и плагинов — подпись. Раньше
+            // разбор ждал только первого порядка, и разговор, начатый скиллом,
+            // назывался в списке сырым «<command-message>task</command-message>».
+            text.startsWith("<command-name>") || text.startsWith("<command-message>") -> commandTitle(text)
+            text.startsWith("<local-command-") || text.startsWith("<task-notification>") -> ""
             else -> null
         }
     }
+
+    /**
+     * Имя команды с аргументом — так разговор узнаётся в списке: десяток
+     * запусков одного и того же скилла отличается друг от друга только им.
+     */
+    private fun commandTitle(text: String): String {
+        val name = tag(COMMAND_NAME_TAG, text).ifEmpty { tag(COMMAND_MESSAGE_TAG, text) }
+        if (name.isEmpty()) return ""
+
+        // Имя приходит и со слэшем, и без — зависит от того, каким тегом его
+        // записали; в заголовке команда должна выглядеть командой.
+        val command = if (name.startsWith("/")) name else "/$name"
+        val arguments = tag(COMMAND_ARGS_TAG, text)
+
+        return (if (arguments.isEmpty()) command else "$command $arguments").take(120)
+    }
+
+    private fun tag(pattern: Regex, text: String): String =
+        pattern.find(text)?.groupValues?.get(1)?.trim().orEmpty()
 
     /**
      * Заголовком служит первая реплика человека — но не сама по себе, а её
@@ -178,8 +233,7 @@ internal object ClaudeHistory {
      * (одно вложение или голая команда), это и есть весь смысл реплики — берём
      * последнюю строку, ровно так же, как её показывает нативный picker.
      */
-    private fun firstText(line: String): String {
-        val payload = runCatching { Json.parseToJsonElement(line).jsonObject }.getOrNull() ?: return ""
+    private fun firstText(payload: JsonObject): String {
         val content = payload["message"]?.jsonObject?.get("content") ?: return ""
 
         val text = runCatching {
@@ -197,6 +251,14 @@ internal object ClaudeHistory {
     private fun isAttachmentLine(line: String): Boolean =
         line.startsWith("@") || line.startsWith("> ") || IMAGE_PLACEHOLDER.matches(line)
 
+    /** Начало служебных реплик, которые в счёт сообщений не идут (см. scan). */
+    private val SERVICE_CONTENT = listOf(
+        "\"content\":\"<local-command-",
+        "\"content\":\"<task-notification>",
+    )
+
     private val IMAGE_PLACEHOLDER = Regex("^\\[Image #\\d+]$")
     private val COMMAND_NAME_TAG = Regex("""<command-name>(.*?)</command-name>""")
+    private val COMMAND_MESSAGE_TAG = Regex("""<command-message>(.*?)</command-message>""")
+    private val COMMAND_ARGS_TAG = Regex("""<command-args>(.*?)</command-args>""", RegexOption.DOT_MATCHES_ALL)
 }

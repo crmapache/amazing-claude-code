@@ -163,7 +163,11 @@ export type PanelAction =
    * ленту и ничего в ней не обрывает.
    */
   | { kind: 'prompt'; tokens: UserToken[]; quotes: string[]; steering?: boolean }
-  | { kind: 'agent'; event: AgentEvent }
+  /**
+   * replay — событие не живого хода, а переписи прошлого разговора: в ленту оно
+   * ложится так же, но сиюминутного о разговоре не рассказывает (см. 'assistant').
+   */
+  | { kind: 'agent'; event: AgentEvent; replay?: boolean }
   | { kind: 'status'; status: AgentStatus }
   | { kind: 'error'; message: string }
   | { kind: 'init'; project: PanelProject }
@@ -433,7 +437,7 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
     }
 
     case 'agent':
-      return applyAgentEvent(state, action.event, now)
+      return applyAgentEvent(state, action.event, now, action.replay === true)
   }
 }
 
@@ -645,7 +649,13 @@ const rateLimitMessage = (info: NonNullable<AgentRateLimitEvent['rate_limit_info
 const realModel = (model: string | undefined): string | undefined =>
   model && !model.startsWith('<') ? model : undefined
 
-const applyAgentEvent = (state: PanelState, event: AgentEvent, now: number): PanelState => {
+const applyAgentEvent = (
+  state: PanelState,
+  event: AgentEvent,
+  now: number,
+  /** Перепись прошлого разговора, а не живой ход — см. PanelAction. */
+  replay = false,
+): PanelState => {
   switch (event.type) {
     case 'system':
       return applySystem(state, event, now)
@@ -721,7 +731,15 @@ const applyAgentEvent = (state: PanelState, event: AgentEvent, now: number): Pan
       // Занятое окно на этот шаг — пока не приехала точная цифра от CLI (см.
       // liveContextUsed). Только у главного разговора: подагент выше уже ушёл
       // своей веткой, и его контекст к этому окну отношения не имеет.
-      const liveContextUsed = contextUsedOf(event.message.usage) ?? state.liveContextUsed
+      //
+      // И только у живого хода: в переписи прошлого разговора те же числа
+      // говорят о давно прошедшем шаге, а размер окна из неё не узнать вовсе —
+      // на «1M»-модели прикидка делилась на обычные двести тысяч, и открытый из
+      // истории разговор выглядел переполненным. Точную цифру IDE спрашивает у
+      // CLI отдельно (см. ClaudePanel.refreshResumedContext).
+      const liveContextUsed = replay
+        ? state.liveContextUsed
+        : contextUsedOf(event.message.usage) ?? state.liveContextUsed
       return applyAssistant({ ...state, model, liveContextUsed }, blocksOf(event.message.content), now)
     }
 

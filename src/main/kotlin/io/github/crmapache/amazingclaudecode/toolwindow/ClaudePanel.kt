@@ -812,8 +812,17 @@ internal class ClaudePanel(
 
         ApplicationManager.getApplication().executeOnPooledThread {
             for (line in ClaudeHistory.replay(project.basePath, conversationId)) {
-                forwardAgentEvent(sessionId, line)
+                forwardAgentEvent(sessionId, line, replay = true)
             }
+
+            // Занятое окно спрашиваем у самого разговора — и ради этого поднимаем
+            // его, не дожидаясь первого сообщения. Перепись этой цифры не знает
+            // вовсе: в транскрипте нет ни системного промпта с инструментами, ни
+            // размера окна модели, и разговор на «1M»-модели выглядел по ней
+            // переполненным с первой же секунды. Процесс всё равно нужен — в нём
+            // и будут продолжать разговор, — просто он готов чуть раньше.
+            sessions?.wake(sessionId)
+            refreshContext(sessionId)
         }
     }
 
@@ -1256,15 +1265,22 @@ internal class ClaudePanel(
         }
     }
 
-    /** Событие агента — уже готовый JSON, поэтому вкладываем его в конверт как есть. */
-    private fun forwardAgentEvent(sessionId: String, line: String) {
+    /**
+     * Событие агента — уже готовый JSON, поэтому вкладываем его в конверт как есть.
+     *
+     * [replay] отличает перепись прошлого разговора от живого хода: событие то же
+     * самое, но случилось оно давно, и всё, что панель считает «прямо сейчас»
+     * (занятое окно контекста в первую очередь), из него брать нельзя.
+     */
+    private fun forwardAgentEvent(sessionId: String, line: String, replay: Boolean = false) {
         if (!line.startsWith("{")) {
             sendError(sessionId, line)
             return
         }
 
         noteLoggedOut(line)
-        webview?.send("""{"type":"agent","sessionId":"$sessionId","event":$line}""")
+        val replayFlag = if (replay) ""","replay":true""" else ""
+        webview?.send("""{"type":"agent","sessionId":"$sessionId"$replayFlag,"event":$line}""")
 
         // Конец хода — единственный момент, когда занятое окно контекста реально
         // поменялось: спрашиваем свежую цифру у того же процесса, который только

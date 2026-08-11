@@ -77,6 +77,20 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
+              <li>Fixed: a conversation started by a slash command was listed in History under a raw
+              tag — "&lt;command-message&gt;task&lt;/command-message&gt;" instead of a name. Such a
+              conversation is now named by the command itself, with its argument, and the shell's own
+              service messages — the body of a called skill, a background-task notice, an image
+              caption — no longer pass for something you typed.</li>
+              <li>Fixed: a conversation opened from History showed the context bar full, whatever was
+              really in it. The panel guessed the used context from the saved transcript, which
+              doesn't record the model's window size, so on a 1M model the guess was divided by the
+              usual 200k and always came out full. The panel now asks the conversation itself and
+              shows the same number <code>/context</code> prints. Opening a past conversation also
+              starts it right away, so it's ready to answer a few seconds earlier.</li>
+              <li>The message count in History now counts what you said — your messages and the
+              commands you ran. It used to count every service record in the transcript, tool results
+              included: "375 messages" where you had written thirty.</li>
               <li>Fixed: a shell command was shown as a subagent. Anything running longer than a few
               seconds took a chip labelled "agent:agent" in the switcher, and a command started in the
               background — a dev server, say — kept one for as long as the process lived, reading

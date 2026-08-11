@@ -157,7 +157,12 @@ export type ShellMessage =
   | { type: 'sessions'; sessions: SessionInfo[]; active: string }
   | { type: 'status'; sessionId: string; state: AgentStatus }
   | { type: 'error'; sessionId: string; message: string }
-  | { type: 'agent'; sessionId: string; event: AgentEvent }
+  /**
+   * Событие разговора. `replay` — перепись прошлого разговора, открытого из
+   * истории: события те же, но случились они давно, и всё сиюминутное (занятое
+   * окно контекста) из них брать нельзя — точную цифру пришлёт IDE отдельно.
+   */
+  | { type: 'agent'; sessionId: string; event: AgentEvent; replay?: boolean }
   /** Ответ на просьбу выбрать файл, папку или картинку через диалог IDE. */
   | { type: 'picked'; kind: 'file' | 'dir' | 'img'; value: string }
   /**

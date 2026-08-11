@@ -639,7 +639,10 @@ export const App = () => {
             break
 
           case 'agent':
-            dispatchPanel({ session: message.sessionId, action: { kind: 'agent', event: message.event } })
+            dispatchPanel({
+              session: message.sessionId,
+              action: { kind: 'agent', event: message.event, replay: message.replay },
+            })
             // Разговор стёрли: вывод команд, который не успел уехать агенту, к
             // новому разговору отношения не имеет — вместе с лентой уходит и он.
             // Вместе с уже собранным забываем и то, что ещё бежит: иначе вывод
