@@ -123,14 +123,17 @@ internal object ClaudeHistory {
 
         return Entry(
             id = id,
-            title = scan.title.ifEmpty { "untitled" },
+            // Родное название от самого CLI (см. Scan.aiTitle) — предпочитаем
+            // его эвристике, когда оно есть: короче, точнее по смыслу и не
+            // зависит от того, насколько удачной вышла первая строка человека.
+            title = scan.aiTitle?.takeIf { it.isNotBlank() } ?: scan.title.ifEmpty { "untitled" },
             updatedAt = file.lastModified(),
             messages = scan.messages,
         )
     }
 
     /** Что удалось узнать про разговор за один проход по его файлу. */
-    internal data class Scan(val title: String, val messages: Int)
+    internal data class Scan(val title: String, val messages: Int, val aiTitle: String? = null)
 
     /**
      * Заголовок и число сообщений — за один проход: файл разговора весит
@@ -152,10 +155,20 @@ internal object ClaudeHistory {
         // Разговор — это сплошь /compact или похожая команда, ни одной реплики
         // человека: имя команды тогда и есть единственный осмысленный заголовок.
         var fallbackCommand = ""
+        var aiTitle: String? = null
         var messages = 0
 
         for (line in lines) {
             if (!line.startsWith("{")) continue
+
+            // Родное название от CLI повторяется по ходу файла много раз с
+            // одним и тем же значением — держим последнее увиденное: если
+            // тема разговора успела смениться, оно успевает обновиться тоже.
+            if (line.contains("\"type\":\"ai-title\"")) {
+                AI_TITLE.find(line)?.groupValues?.get(1)?.let { aiTitle = it }
+                continue
+            }
+
             if (!line.contains("\"type\":\"user\"")) continue
             // Результат вызова инструмента: реплика человека только по форме.
             if (line.contains("\"type\":\"tool_result\"")) continue
@@ -178,7 +191,7 @@ internal object ClaudeHistory {
             }
         }
 
-        return Scan(title.ifEmpty { fallbackCommand }, messages)
+        return Scan(title.ifEmpty { fallbackCommand }, messages, aiTitle)
     }
 
     /**
@@ -226,12 +239,14 @@ internal object ClaudeHistory {
 
     /**
      * Заголовком служит первая реплика человека — но не сама по себе, а её
-     * содержательная строка. Вложения (`@путь`, `[Image #N]`, цитата) панель
+     * содержательные строки. Вложения (`@путь`, `[Image #N]`, цитата) панель
      * складывает в текст ПЕРЕД настоящими словами человека, а не вместо них —
-     * взять буквально первую строку значит показать путь к файлу вместо того,
-     * что человек на самом деле спросил. Если содержательной строки вообще нет
-     * (одно вложение или голая команда), это и есть весь смысл реплики — берём
-     * последнюю строку, ровно так же, как её показывает нативный picker.
+     * взять буквально первую строку значит нередко показать одно короткое
+     * слово («Давай») вместо того, что человек на самом деле спросил строкой
+     * ниже. Поэтому склеиваем все содержательные строки подряд, а не берём
+     * только первую. Если содержательной строки вообще нет (одно вложение или
+     * голая команда), это и есть весь смысл реплики — берём последнюю строку,
+     * ровно так же, как её показывает нативный picker.
      */
     private fun firstText(payload: JsonObject): String {
         val content = payload["message"]?.jsonObject?.get("content") ?: return ""
@@ -242,14 +257,34 @@ internal object ClaudeHistory {
                 .firstOrNull { it.isNotBlank() }
         }.getOrNull() ?: runCatching { content.jsonPrimitive.contentOrNull }.getOrNull()
 
-        val lines = text.orEmpty().lineSequence().filter { it.isNotBlank() }.toList()
-        val meaningful = lines.firstOrNull { !isAttachmentLine(it) }
+        val rawLines = text.orEmpty().lineSequence().filter { it.isNotBlank() }.toList()
+        val meaningful = rawLines
+            .map { stripImageTags(it) }
+            .filter { it.isNotEmpty() && !isAttachmentLine(it) }
 
-        return (meaningful ?: lines.lastOrNull()).orEmpty().take(120)
+        val joined = meaningful.ifEmpty { rawLines.takeLast(1) }.joinToString(" ")
+
+        return truncateAtWord(joined, 120)
     }
 
-    private fun isAttachmentLine(line: String): Boolean =
-        line.startsWith("@") || line.startsWith("> ") || IMAGE_PLACEHOLDER.matches(line)
+    /**
+     * `[Image #N]` — плейсхолдер вложения, который композер вставляет прямо
+     * посреди фразы («смотри [Image #1] сюда»), а не только отдельной
+     * строкой. Раньше фильтр распознавал лишь строку целиком из плейсхолдера
+     * и пропускал этот случай — тег утекал в заголовок как есть.
+     */
+    private fun stripImageTags(line: String): String =
+        line.replace(IMAGE_PLACEHOLDER, " ").replace(MULTIPLE_SPACES, " ").trim()
+
+    private fun isAttachmentLine(line: String): Boolean = line.startsWith("@") || line.startsWith("> ")
+
+    /** Обрезка по границе слова — иначе заголовок может оборваться на середине слова. */
+    private fun truncateAtWord(text: String, max: Int): String {
+        if (text.length <= max) return text
+        val cut = text.take(max)
+        val lastSpace = cut.lastIndexOf(' ')
+        return if (lastSpace > 0) cut.take(lastSpace) else cut
+    }
 
     /** Начало служебных реплик, которые в счёт сообщений не идут (см. scan). */
     private val SERVICE_CONTENT = listOf(
@@ -257,7 +292,9 @@ internal object ClaudeHistory {
         "\"content\":\"<task-notification>",
     )
 
-    private val IMAGE_PLACEHOLDER = Regex("^\\[Image #\\d+]$")
+    private val AI_TITLE = Regex("\"aiTitle\"\\s*:\\s*\"([^\"]+)\"")
+    private val IMAGE_PLACEHOLDER = Regex("\\[Image #\\d+]")
+    private val MULTIPLE_SPACES = Regex(" {2,}")
     private val COMMAND_NAME_TAG = Regex("""<command-name>(.*?)</command-name>""")
     private val COMMAND_MESSAGE_TAG = Regex("""<command-message>(.*?)</command-message>""")
     private val COMMAND_ARGS_TAG = Regex("""<command-args>(.*?)</command-args>""", RegexOption.DOT_MATCHES_ALL)

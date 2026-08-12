@@ -167,6 +167,7 @@ internal class ClaudePanel(
             onFinished = { sessionId -> sendStatus(sessionId, "idle") },
             onCrashed = { sessionId, exitCode -> sendProcessExited(sessionId, exitCode) },
             onToolPermission = { sessionId, request -> askToolPermission(sessionId, request) },
+            onTitle = { sessionId, title -> sendSessionTitle(sessionId, title) },
         )
 
         // Перетаскивание файлов в панель: внутри IDE оно идёт мимо встроенного
@@ -1511,6 +1512,22 @@ internal class ClaudePanel(
                 put("type", "status")
                 put("sessionId", sessionId)
                 put("state", state)
+            }.toString(),
+        )
+    }
+
+    /**
+     * Название вкладки, которое подобрала LLM по первому сообщению (см.
+     * ClaudeTitleGenerator). Пока панель ждёт этот ответ, вкладка уже носит
+     * эвристический заголовок — вебвью решает сам, применять ли этот ответ
+     * (вкладку могли успеть закрыть или очистить разговор заново).
+     */
+    private fun sendSessionTitle(sessionId: String, title: String) {
+        webview?.send(
+            buildJsonObject {
+                put("type", "sessionTitle")
+                put("sessionId", sessionId)
+                put("title", title)
             }.toString(),
         )
     }

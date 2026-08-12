@@ -169,6 +169,12 @@ export type ShellMessage =
   | { type: 'bashResult'; sessionId: string; id: string; exitCode: number; stdout: string; stderr: string }
   | { type: 'sessions'; sessions: SessionInfo[]; active: string }
   | { type: 'status'; sessionId: string; state: AgentStatus }
+  /**
+   * Название вкладки по первому сообщению — не сразу: пока LLM думает,
+   * вкладка уже носит эвристический заголовок (см. deriveSessionTitle), а
+   * это сообщение лишь заменяет его на более осмысленный, когда получится.
+   */
+  | { type: 'sessionTitle'; sessionId: string; title: string }
   | { type: 'error'; sessionId: string; message: string }
   /**
    * Событие разговора. `replay` — перепись прошлого разговора, открытого из

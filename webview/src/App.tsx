@@ -34,6 +34,7 @@ import s from './components/shell.module.css'
 import { bashCommand, shellText, type ShellRun } from './feed/bash'
 import { contextOf, initialPanelState, reducePanel, type PanelState } from './feed/build'
 import { referenceChip } from './feed/reference'
+import { deriveSessionTitle } from './feed/title'
 import { appendChip, appendText, buildCommands, localCommand, plainText, type LocalCommand } from './feed/slash'
 import { composePrompt, imageAttachments, tokensText, trimTrailingSpace } from './feed/tokens'
 import type { AskItem, FeedItem, PermItem, PlanItem, TaskItem, TodoItem, UserToken } from './feed/types'
@@ -63,6 +64,9 @@ import { moveGroup } from './tabs'
 import { useSelection } from './hooks/useSelection'
 
 const MAIN_SESSION = 'main'
+
+/** Заглушка заголовка вкладки — до первого сообщения и сразу после /clear. */
+const defaultTitle = (sessionId: string): string => (sessionId === MAIN_SESSION ? 'main session' : 'new session')
 
 /**
  * Шрифты IDE — прямо в корень документа, а не в состояние React: их читают
@@ -120,7 +124,7 @@ const EMPTY_DRAFT: Draft = { tokens: [], quotes: [] }
 export const App = () => {
   const [panels, dispatchPanel] = useReducer(panelsReducer, { [MAIN_SESSION]: initialPanelState })
   const [sessions, setSessions] = useState<Session[]>([
-    { id: MAIN_SESSION, title: 'main session', state: 'idle', groupId: MAIN_SESSION, depth: 0 },
+    { id: MAIN_SESSION, title: defaultTitle(MAIN_SESSION), state: 'idle', groupId: MAIN_SESSION, depth: 0, titleSource: 'default' },
   ])
   const [active, setActive] = useState(MAIN_SESSION)
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
@@ -638,12 +642,27 @@ export const App = () => {
                 state: 'idle' as const,
                 groupId: info.id,
                 depth: 0,
+                titleSource: 'default' as const,
               })),
             )
             break
 
           case 'status':
             dispatchPanel({ session: message.sessionId, action: { kind: 'status', status: message.state } })
+            break
+
+          // Ответ на генерацию заголовка (см. submit): перезаписываем только
+          // если вкладка ещё жива и с /clear её не переименовали обратно в
+          // заглушку прямо сейчас — иначе устаревший ответ вернул бы заголовок,
+          // от которого пользователь только что явно отказался.
+          case 'sessionTitle':
+            setSessions((current) =>
+              current.map((session) =>
+                session.id === message.sessionId && session.titleSource !== 'default'
+                  ? { ...session, title: message.title, titleSource: 'llm' }
+                  : session,
+              ),
+            )
             break
 
           case 'error':
@@ -663,6 +682,16 @@ export const App = () => {
             if (message.event.type === 'conversation_reset') {
               forgetShellCommands(message.sessionId)
               setShellRuns((current) => ({ ...current, [message.sessionId]: [] }))
+              // Заголовок вкладки — тоже часть того разговора, который только что
+              // стёрли: без сброса он остался бы висеть от прежней темы, а
+              // следующее сообщение уже не переименовало бы вкладку (см. submit).
+              setSessions((current) =>
+                current.map((session) =>
+                  session.id === message.sessionId
+                    ? { ...session, title: defaultTitle(session.id), titleSource: 'default' }
+                    : session,
+                ),
+              )
             }
             break
 
@@ -1045,7 +1074,9 @@ export const App = () => {
    */
   const fork = useCallback(
     (quote = '') => {
-      const short = quote.length > 48 ? `${quote.slice(0, 48)}…` : quote
+      // Мгновенная догадка по самой цитате — уже осмысленнее общего "fork N";
+      // первое сообщение в форке сменит её на ответ LLM (см. sessionTitle).
+      const short = deriveSessionTitle(quote, 48)
       const id = `branch-${Date.now()}`
       const parent = sessions.find((session) => session.id === active)
       const parentTitle = parent?.title ?? 'main session'
@@ -1060,7 +1091,14 @@ export const App = () => {
         const next = [...current]
         // Ставим сразу после последней вкладки своей группы, а не в конец списка.
         const lastOfGroup = next.map((session) => session.groupId).lastIndexOf(groupId)
-        next.splice(lastOfGroup + 1, 0, { id, title: `fork ${inGroup}`, state: 'idle', groupId, depth })
+        next.splice(lastOfGroup + 1, 0, {
+          id,
+          title: short || `fork ${inGroup}`,
+          state: 'idle',
+          groupId,
+          depth,
+          titleSource: short ? 'heuristic' : 'default',
+        })
         return next
       })
 
@@ -1089,9 +1127,12 @@ export const App = () => {
    * встречает пользователя после того, как он закрыл вообще все.
    */
   const startSession = useCallback((id: string) => {
-    setSessions((current) => [...current, { id, title: 'new session', state: 'idle', groupId: id, depth: 0 }])
+    setSessions((current) => [
+      ...current,
+      { id, title: defaultTitle(id), state: 'idle', groupId: id, depth: 0, titleSource: 'default' },
+    ])
     setActive(id)
-    send({ type: 'newSession', kind: 'main', sessionId: id, title: 'new session' })
+    send({ type: 'newSession', kind: 'main', sessionId: id, title: defaultTitle(id) })
   }, [])
 
   /** Новый порядок вкладок после перетаскивания — см. moveGroup. */
@@ -1102,13 +1143,16 @@ export const App = () => {
   /** Прошлый разговор продолжается в своей вкладке: панель проиграет его переписку. */
   const resume = useCallback((entry: HistoryEntry) => {
     const id = `resumed-${entry.id.slice(0, 8)}`
-    const title = entry.title.length > 40 ? `${entry.title.slice(0, 40)}…` : entry.title
+    const title = deriveSessionTitle(entry.title, 40)
 
     setOpenPanel(null)
     setSessions((current) =>
       current.some((session) => session.id === id)
         ? current
-        : [...current, { id, title, state: 'idle', groupId: id, depth: 0 }],
+        : // Название уже установлено панелью истории (LLM-заголовок из кеша или
+          // эвристика) — это не заглушка, которую стоит заменить первым же
+          // следующим сообщением в этой вкладке.
+          [...current, { id, title, state: 'idle', groupId: id, depth: 0, titleSource: 'llm' }],
     )
     setActive(id)
     send({ type: 'resumeSession', sessionId: id, conversationId: entry.id })
@@ -1257,6 +1301,17 @@ export const App = () => {
 
     const written = isOverride ? overrideText : composePrompt(draft, imageBaseCount)
     if (!written) return
+
+    // Первое сообщение этого захода вкладки — сразу ставим человекочитаемую
+    // догадку вместо "new session"/"fork N", не дожидаясь ответа LLM (см.
+    // sessionTitle): тот придёт следом и заменит её, если получится.
+    setSessions((current) =>
+      current.map((session) =>
+        session.id === active && session.titleSource === 'default'
+          ? { ...session, title: deriveSessionTitle(written), titleSource: 'heuristic' }
+          : session,
+      ),
+    )
 
     // Вывод команд, выполненных с прошлого сообщения, уезжает впереди этого —
     // и уходит из накопителя: второй раз агенту он ни к чему. В ленту при этом

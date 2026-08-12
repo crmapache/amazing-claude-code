@@ -67,6 +67,8 @@ internal class ClaudeSession(
      * разговор (см. [PermissionChannel]). Пока никто не ответил, ход стоит.
      */
     private val onToolPermission: (PermissionChannel.ToolPermission) -> Unit = {},
+    /** Название разговора подобрала LLM по первому сообщению — см. [requestTitleIfNeeded]. */
+    private val onTitle: (String) -> Unit = {},
     /**
      * Процесс умер сам — не потому что мы его остановили. Разговор в этот момент
      * мог стоять посреди инструмента: карточки, которые остались «выполняется»,
@@ -115,6 +117,15 @@ internal class ClaudeSession(
     private val lines = StreamLines(onLine = ::consume)
 
     val isRunning: Boolean get() = handler?.isProcessTerminated == false
+
+    /**
+     * Название разговора, которое последним ушло наверх — не шлём повторно то
+     * же самое (см. consume): сам CLI повторяет событие `ai-title` по ходу
+     * файла много раз подряд с одним и тем же значением. null и сразу после
+     * /clear — начавшийся заново разговор заслуживает нового названия, даже
+     * если CLI вдруг подберёт для него точно такую же строку.
+     */
+    private var lastSentTitle: String? = null
 
     fun sendPrompt(text: String, images: List<ImageAttachment> = emptyList()) {
         val process = handler ?: start() ?: return
@@ -446,6 +457,23 @@ internal class ClaudeSession(
             if (!line.contains("\"type\":\"system\"")) return
         }
 
+        // /clear начинает разговор заново — не сравниваем следующее название с
+        // тем, что было до очистки: даже случайное совпадение не должно
+        // выглядеть так, будто вкладку никто не переименовал.
+        if (line.contains("\"type\":\"conversation_reset\"")) lastSentTitle = null
+
+        // Название разговора — родное, от самого CLI (см. lastSentTitle):
+        // событие повторяется по ходу файла много раз с одним и тем же
+        // значением, шлём наверх только когда оно и правда новое.
+        if (line.contains("\"type\":\"ai-title\"")) {
+            AI_TITLE.find(line)?.groupValues?.get(1)?.let { title ->
+                if (title.isNotBlank() && title != lastSentTitle) {
+                    lastSentTitle = title
+                    onTitle(title)
+                }
+            }
+        }
+
         rememberConversation(line)
         onEvent(line)
     }
@@ -629,6 +657,7 @@ internal class ClaudeSession(
 
     private companion object {
         val SESSION_ID = Regex("\"session_id\"\\s*:\\s*\"([^\"]+)\"")
+        val AI_TITLE = Regex("\"aiTitle\"\\s*:\\s*\"([^\"]+)\"")
 
         /** Сколько ждём ответа на любой управляющий запрос, прежде чем сдаться сами. */
         const val CONTROL_TIMEOUT_SECONDS = 20L

@@ -8,6 +8,7 @@ const tab = (id: string, groupId: string, depth = 0): Session => ({
   state: 'idle',
   groupId,
   depth,
+  titleSource: 'default',
 })
 
 /** Разговор с двумя форками и два обычных разговора вокруг него. */

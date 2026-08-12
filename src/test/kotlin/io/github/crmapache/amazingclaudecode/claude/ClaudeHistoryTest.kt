@@ -102,6 +102,57 @@ class ClaudeHistoryTest {
         assertEquals("Разберись, что со временем агента", ClaudeHistory.scan(lines).title)
     }
 
+    // Родное название от самого CLI (событие ai-title в транскрипте) читается
+    // отдельным полем — entryFor предпочитает его эвристике, когда оно есть.
+    @Test
+    fun `ai-title читается отдельным полем скана`() {
+        val lines = sequenceOf(
+            """{"type":"user","message":{"role":"user","content":"Расскажи, что видишь на картинке."}}""",
+            """{"type":"ai-title","aiTitle":"Описание содержимого изображения","sessionId":"abc"}""",
+        )
+
+        val scan = ClaudeHistory.scan(lines)
+
+        assertEquals("Расскажи, что видишь на картинке.", scan.title)
+        assertEquals("Описание содержимого изображения", scan.aiTitle)
+    }
+
+    // Событие повторяется по ходу файла — если тема успела смениться, держим
+    // последнее увиденное значение, а не то, что CLI подобрал в самом начале.
+    @Test
+    fun `при нескольких ai-title остаётся последнее`() {
+        val lines = sequenceOf(
+            """{"type":"user","message":{"role":"user","content":"давай"}}""",
+            """{"type":"ai-title","aiTitle":"Первая тема","sessionId":"abc"}""",
+            """{"type":"ai-title","aiTitle":"Тема сменилась","sessionId":"abc"}""",
+        )
+
+        assertEquals("Тема сменилась", ClaudeHistory.scan(lines).aiTitle)
+    }
+
+    // Короткая первая строка не должна становиться всем заголовком — раньше
+    // бралась ровно она («Давай»), хотя суть вопроса была строкой ниже.
+    @Test
+    fun `короткая первая строка склеивается с продолжением`() {
+        val lines = sequenceOf(
+            """{"type":"user","message":{"role":"user","content":"Давай\nсделаем красивый диалог с кнопками"}}""",
+        )
+
+        assertEquals("Давай сделаем красивый диалог с кнопками", ClaudeHistory.scan(lines).title)
+    }
+
+    // Композер вставляет `[Image #N]` посреди фразы, а не только отдельной
+    // строкой («смотри [Image #1] сюда») — тег должен вырезаться, а не
+    // утекать в заголовок целиком вместе со словами.
+    @Test
+    fun `inline-тег картинки посреди фразы вырезается`() {
+        val lines = sequenceOf(
+            """{"type":"user","message":{"role":"user","content":[{"type":"text","text":"смотри [Image #1] сюда, что не так"}]}}""",
+        )
+
+        assertEquals("смотри сюда, что не так", ClaudeHistory.scan(lines).title)
+    }
+
     // Настоящая реплика человека перебивает команду, даже если команда была
     // первой: /clear в начале разговора не должен становиться его именем.
     @Test

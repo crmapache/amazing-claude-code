@@ -32,7 +32,7 @@ export const History = ({ conversations, onOpen, onClose }: HistoryProps) => (
           <button key={entry.id} type="button" className={s.historyItem} onClick={() => onOpen(entry)}>
             <span className={s.historyTitle}>{entry.title}</span>
             <span className={s.historyMeta}>
-              {when(entry.updatedAt)} · {entry.messages} {entry.messages === 1 ? 'message' : 'messages'}
+              {when(entry.updatedAt)} · {entry.messages} {entry.messages === 1 ? 'message' : 'messages'} · {entry.id}
             </span>
           </button>
         ))}

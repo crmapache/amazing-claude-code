@@ -8,6 +8,16 @@ import s from './shell.module.css'
  */
 export type SessionState = 'idle' | 'running' | 'done' | 'attention' | 'crashed'
 
+/**
+ * Откуда взялось название вкладки — решает, можно ли его перезаписать.
+ * 'default' — ещё не сказано ни слова, стоит заглушка ('main session' /
+ * 'new session'). 'heuristic' — мгновенная догадка по первому сообщению,
+ * её вправе заменить пришедший следом ответ LLM. 'llm' — то, что прислала
+ * генерация (см. sessionTitle в protocol.ts): следующим ответом её больше
+ * не перезаписываем, только сбросом на /clear.
+ */
+export type TitleSource = 'default' | 'heuristic' | 'llm'
+
 export interface Session {
   id: string
   title: string
@@ -16,6 +26,7 @@ export interface Session {
   groupId: string
   /** Глубина ветвления: 0 — корень, 1 — форк, 2 — форк форка. */
   depth: number
+  titleSource: TitleSource
 }
 
 /**
