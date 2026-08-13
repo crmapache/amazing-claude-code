@@ -2,7 +2,7 @@ import { modeLabel, modeShortLabel, modelLabel } from '../catalog'
 import type { UsageWindow } from '../protocol'
 import s from './shell.module.css'
 
-export type SelectorKind = 'model' | 'effort' | 'mode'
+export type SelectorKind = 'model' | 'effort' | 'mode' | 'composerLayout'
 
 /** Где стоит кнопка селектора: меню открывается ровно над ней. */
 export interface Anchor {

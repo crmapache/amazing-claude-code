@@ -125,7 +125,15 @@ export type ShellMessage =
       workingDirectory: string
       gitBranch?: string
       /** Выбор модели, усилия и режима: он переживает и вкладки, и перезапуск IDE. */
-      preferences?: { model: string; effort: string; mode: string }
+      preferences?: {
+        model: string
+        effort: string
+        mode: string
+        /** Где сидит поле ввода. Не задано — впервые открытая панель, ведёт себя как раньше (снизу). */
+        composerLayout?: string
+        /** Ширина панели ввода при layout left/right, в пикселях. */
+        composerWidth?: number
+      }
       /** Настройка звуковых оповещений — переживает перезапуск IDE. */
       sounds?: SoundSettings
     }
@@ -394,6 +402,10 @@ export type WebviewMessage =
   /** Модель и усилие тоже держит оболочка: их наследуют новые разговоры. */
   | { type: 'setModel'; sessionId: string; model: string }
   | { type: 'setEffort'; sessionId: string; effort: string }
+  /** Расположение поля ввода — тоже выбор, который переживает перезапуск IDE. */
+  | { type: 'setComposerLayout'; layout: string }
+  /** Ширина панели ввода при layout left/right — записывается, когда ресайз отпускают. */
+  | { type: 'setComposerWidth'; width: number }
   | { type: 'refreshUsage' }
   | { type: 'openDevTools' }
   /**

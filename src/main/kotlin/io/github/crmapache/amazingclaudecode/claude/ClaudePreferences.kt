@@ -11,9 +11,21 @@ import com.intellij.ide.util.PropertiesComponent
  */
 internal object ClaudePreferences {
 
-    data class Snapshot(val model: String, val effort: String, val mode: String)
+    data class Snapshot(
+        val model: String,
+        val effort: String,
+        val mode: String,
+        val composerLayout: String,
+        val composerWidth: Int,
+    )
 
-    fun snapshot(): Snapshot = Snapshot(model = model, effort = effort, mode = mode)
+    fun snapshot(): Snapshot = Snapshot(
+        model = model,
+        effort = effort,
+        mode = mode,
+        composerLayout = composerLayout,
+        composerWidth = composerWidth,
+    )
 
     var model: String
         get() = read(MODEL_KEY)
@@ -26,6 +38,16 @@ internal object ClaudePreferences {
     var mode: String
         get() = read(MODE_KEY)
         set(value) = write(MODE_KEY, value)
+
+    /** Где сидит поле ввода: 'left' | 'bottom' | 'right'. Пусто — впервые открытая панель, ведёт себя как раньше. */
+    var composerLayout: String
+        get() = read(COMPOSER_LAYOUT_KEY)
+        set(value) = write(COMPOSER_LAYOUT_KEY, value)
+
+    /** Ширина панели ввода при layout left/right, в пикселях. 0 — ещё не выбирали, панель возьмёт свой дефолт. */
+    var composerWidth: Int
+        get() = read(COMPOSER_WIDTH_KEY).toIntOrNull() ?: 0
+        set(value) = write(COMPOSER_WIDTH_KEY, value.toString())
 
     /**
      * Путь к исполняемому файлу, указанный руками. Пусто — ищем сами (см.
@@ -76,6 +98,8 @@ internal object ClaudePreferences {
     private const val MODEL_KEY = "acc.model"
     private const val EFFORT_KEY = "acc.effort"
     private const val MODE_KEY = "acc.mode"
+    private const val COMPOSER_LAYOUT_KEY = "acc.composerLayout"
+    private const val COMPOSER_WIDTH_KEY = "acc.composerWidth"
     private const val EXECUTABLE_KEY = "acc.executable"
     private const val MUTED_SOUNDS_KEY = "acc.sounds.muted"
     private const val SOUND_VOLUMES_KEY = "acc.sounds.volumes"

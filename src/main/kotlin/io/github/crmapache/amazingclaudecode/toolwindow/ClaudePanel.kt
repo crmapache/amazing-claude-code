@@ -291,6 +291,10 @@ internal class ClaudePanel(
 
             "setEffort" -> sessions?.setEffort(sessionId, field("effort"))
 
+            "setComposerLayout" -> ClaudePreferences.composerLayout = field("layout")
+
+            "setComposerWidth" -> payload["width"]?.jsonPrimitive?.intOrNull?.let { ClaudePreferences.composerWidth = it }
+
             "refreshUsage" -> refreshUsage()
 
             "login" -> startLogin()
@@ -1596,6 +1600,8 @@ internal class ClaudePanel(
                     // Тем же значением, с которым реально поднимется процесс:
                     // селектор в панели обязан показывать правду с первой секунды.
                     put("mode", PermissionModes.resolve(preferences.mode))
+                    if (preferences.composerLayout.isNotEmpty()) put("composerLayout", preferences.composerLayout)
+                    if (preferences.composerWidth > 0) put("composerWidth", preferences.composerWidth)
                 }
                 // Настройка звуков — тоже выбор, который делают один раз.
                 putJsonObject("sounds") {

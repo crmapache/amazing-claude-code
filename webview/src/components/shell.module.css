@@ -45,6 +45,42 @@
   border-bottom: 1px solid var(--acc-line-strong);
 }
 
+/*
+ * Лента и поле ввода (composer.dock) делят место так, как решает layout поля
+ * ввода: снизу (по умолчанию) — колонка, лента сверху под общей шапкой, ввод
+ * под ней, как и было всегда; слева/справа — строка, где ввод встаёт колонкой
+ * рядом с лентой — и уже без общей шапки над собой (см. App.tsx: в этом
+ * режиме шапка переезжает внутрь content, чтобы не отнимать высоту у поля
+ * ввода — оно тогда занимает всю высоту панели, а не высоту минус шапка).
+ *
+ * DOM-порядок детей [content, dock] не меняется ни при каком layout — только
+ * flex-direction: 'right' — обычная строка (ввод последним, то есть справа),
+ * 'left' — обратная строка (тот же порядок в разметке, но ввод визуально
+ * первым, то есть слева). Тот же приём, что и в дизайн-макете панели.
+ */
+.workArea {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.workArea[data-layout='left'] {
+  flex-direction: row-reverse;
+}
+
+.workArea[data-layout='right'] {
+  flex-direction: row;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .body {
   flex: 1;
   min-height: 0;
@@ -52,6 +88,29 @@
   align-items: stretch;
   position: relative;
   background: var(--acc-bg);
+}
+
+/* Разделитель для ресайза ширины поля ввода при layout left/right — см. App.startComposerResize. */
+.composerResizeHandle {
+  flex: none;
+  width: 5px;
+  position: relative;
+  cursor: col-resize;
+}
+
+.composerResizeHandle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 1px;
+  background: var(--acc-line);
+}
+
+.composerResizeHandle:hover::after,
+.composerResizeHandleActive::after {
+  background: var(--acc-accent);
 }
 
 .spacer {

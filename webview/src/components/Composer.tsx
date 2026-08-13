@@ -150,6 +150,12 @@ interface ComposerProps {
   /** Stop не подтвердился дольше разумного — предлагаем убить процесс насильно. */
   stopStalled: boolean
   onForceStop: () => void
+  /**
+   * Поле растёт на всю высоту колонки, а не стоит короткой полоской над пустым
+   * местом — для layout left/right, где рядом с ним нет ленты снизу, которая
+   * забрала бы освободившееся место сама (см. composer.module.css).
+   */
+  fillHeight?: boolean
 }
 
 export const Composer = ({
@@ -174,6 +180,7 @@ export const Composer = ({
   onStop,
   stopStalled,
   onForceStop,
+  fillHeight = false,
 }: ComposerProps) => {
   const [focused, setFocused] = useState(false)
   /** Над полем висит перетаскиваемый файл — подсвечиваем, куда его бросят. */
@@ -1031,7 +1038,7 @@ export const Composer = ({
   }
 
   return (
-    <div className={s.boxWrap}>
+    <div className={`${s.boxWrap} ${fillHeight ? s.boxWrapFill : ''}`}>
       {suggesting ? (
         <SlashSuggest
           commands={suggestionItems}
@@ -1039,11 +1046,12 @@ export const Composer = ({
           onPick={isFileSuggest ? (picked) => insertFileReference(picked.id) : insert}
           onHighlight={setHighlight}
           showSlash={showSlash}
+          openDownward={fillHeight}
         />
       ) : null}
 
       <div
-        className={`${s.box} ${focused ? s.boxFocused : ''} ${dropping ? s.boxDropping : ''} ${bash ? s.boxBash : ''}`}
+        className={`${s.box} ${fillHeight ? s.boxFill : ''} ${focused ? s.boxFocused : ''} ${dropping ? s.boxDropping : ''} ${bash ? s.boxBash : ''}`}
         ref={box}
         onDragOver={(event) => {
           if (!hasFiles(event.dataTransfer)) return
@@ -1075,7 +1083,7 @@ export const Composer = ({
 
         <div
           ref={input}
-          className={s.field}
+          className={`${s.field} ${fillHeight ? s.fieldFill : ''}`}
           contentEditable
           suppressContentEditableWarning
           data-placeholder={placeholder}

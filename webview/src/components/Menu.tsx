@@ -20,13 +20,22 @@ interface MenuProps {
   selected: string
   onPick: (id: string) => void
   onClose: () => void
+  /**
+   * Кнопки нижней строки открывают меню вверх — над собой. Кнопка в хедере стоит
+   * у верхнего края панели, там расти вверх некуда: для неё anchor.top — нижний
+   * край самой кнопки, и меню растёт вниз от него.
+   */
+  openDownward?: boolean
 }
 
-export const Menu = ({ title, hint, width, anchor, options, selected, onPick, onClose }: MenuProps) => {
+export const Menu = ({ title, hint, width, anchor, options, selected, onPick, onClose, openDownward = false }: MenuProps) => {
   // Прижимаемся к правому краю кнопки, но не даём уехать за края панели: она в
   // IDE бывает уже самого меню.
   const actualWidth = Math.min(width, window.innerWidth - 16)
   const right = Math.min(Math.max(8, anchor.right), Math.max(8, window.innerWidth - actualWidth - 8))
+  const verticalStyle = openDownward
+    ? { top: `${Math.max(8, anchor.top + 6)}px` }
+    : { bottom: `${Math.max(8, window.innerHeight - anchor.top + 6)}px` }
 
   return (
     <>
@@ -36,7 +45,7 @@ export const Menu = ({ title, hint, width, anchor, options, selected, onPick, on
         style={{
           width: `${actualWidth}px`,
           right: `${right}px`,
-          bottom: `${Math.max(8, window.innerHeight - anchor.top + 6)}px`,
+          ...verticalStyle,
         }}
       >
         <div className={s.menuHead}>

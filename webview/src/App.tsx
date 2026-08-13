@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { send, subscribe } from './bridge'
 import {
   DEFAULT_MODEL,
@@ -13,6 +13,13 @@ import {
 import { AgentStreamView } from './components/AgentStreamView'
 import { AskPanel } from './components/AskPanel'
 import { Composer } from './components/Composer'
+import {
+  COMPOSER_LAYOUT_OPTIONS,
+  DEFAULT_COMPOSER_WIDTH,
+  clampComposerWidth,
+  normalizeComposerLayout,
+  type ComposerLayout,
+} from './composerLayout'
 import { Confirm } from './components/Confirm'
 import { Feed } from './components/Feed'
 import { Header, type Session, type SessionState } from './components/Header'
@@ -163,6 +170,20 @@ export const App = () => {
   const [refusedModes, setRefusedModes] = useState<string[]>([])
   /** Сторона экрана, к которой прижата панель — определяет, где рисовать рамку к редактору. */
   const [dockAnchor, setDockAnchor] = useState<'left' | 'right' | 'top' | 'bottom'>('right')
+  /** Где сидит поле ввода. Приходит от оболочки при запуске и сохраняется там же. */
+  const [composerLayout, setComposerLayoutState] = useState<ComposerLayout>('bottom')
+  /**
+   * Ширина панели ввода при layout left/right — своя, независимая от
+   * dockAnchor. Хранит предпочтение как есть, не подрезанное под текущее
+   * окно: подрезка — только при отрисовке (см. clampComposerWidth в style
+   * дока и в startComposerResize), иначе сужение тулвиндоу стирало бы
+   * сохранённое значение необратимо.
+   */
+  const [composerWidth, setComposerWidth] = useState(DEFAULT_COMPOSER_WIDTH)
+  /** Ширина окна панели — только чтобы отрисовка обновлялась при ресайзе, само предпочтение не трогает. */
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
+  /** Идёт ли сейчас перетаскивание разделителя — красит его ярче, пока рука на нём. */
+  const [resizingComposer, setResizingComposer] = useState(false)
   const [loginWaiting, setLoginWaiting] = useState(false)
   /** Растёт, когда полю ввода нужно вернуть фокус: например после ссылки из редактора. */
   const [focusToken, setFocusToken] = useState(0)
@@ -608,6 +629,18 @@ export const App = () => {
                 effort: message.preferences?.effort || current.effort,
                 mode: normalizeMode(message.preferences?.mode || current.mode),
               }))
+              if (message.preferences.composerLayout) {
+                setComposerLayoutState(normalizeComposerLayout(message.preferences.composerLayout))
+              }
+              if (message.preferences.composerWidth) {
+                // Хендлер подписан один раз при монтировании (deps: [] ниже) и
+                // больше не пересоздаётся — state viewportWidth из его замыкания
+                // был бы читан навсегда тем, каким был при монтировании. Читаем
+                // window.innerWidth напрямую: init приходит через мгновение после
+                // монтирования, разницы быть не успевает, а так корректность не
+                // зависит от того, что даже не должно меняться на эту секунду.
+                setComposerWidth(clampComposerWidth(message.preferences.composerWidth, window.innerWidth))
+              }
             }
             dispatchPanel({
               session: MAIN_SESSION,
@@ -950,6 +983,72 @@ export const App = () => {
     },
     [active],
   )
+
+  /** Расположение поля ввода — тоже выбор оболочки: новый запуск IDE начинается с него. */
+  const setComposerLayout = useCallback((next: ComposerLayout) => {
+    send({ type: 'setComposerLayout', layout: next })
+    setComposerLayoutState(next)
+  }, [])
+
+  /**
+   * Перетаскивание разделителя между полем ввода и лентой при layout left/right.
+   *
+   * Тот же приём, что и у перетаскивания вкладок в Header (см. startDrag там же):
+   * слушатели на window, а не Pointer Capture — офскрин-браузер IDE (JCEF) его не
+   * поддерживает. Ширину записываем оболочке один раз, когда кнопку отпускают, а
+   * не на каждый пиксель движения — тащить мышью и это не должно спорить за канал.
+   */
+  const startComposerResize = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return
+      event.preventDefault()
+
+      const startX = event.clientX
+      // На экране сейчас — возможно, уже подрезанная под текущее окно версия
+      // сохранённого значения (см. clampComposerWidth в style ниже). Тащить
+      // нужно от неё: иначе первый же пиксель движения телепортировал бы
+      // панель на разницу между тем, что видно, и тем, что лежит в состоянии
+      // с прошлого, более широкого окна.
+      const startWidth = clampComposerWidth(composerWidth, viewportWidth)
+      const side = composerLayout
+      let width = startWidth
+
+      setResizingComposer(true)
+
+      const onMove = (move: MouseEvent) => {
+        const delta = move.clientX - startX
+        // Ручка справа от панели слева — тянешь вправо, панель шире. Ручка
+        // слева от панели справа — тянешь влево, панель шире. Знак обратный.
+        width = clampComposerWidth(startWidth + (side === 'left' ? delta : -delta), viewportWidth)
+        setComposerWidth(width)
+      }
+
+      const onUp = () => {
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', onUp)
+        setResizingComposer(false)
+        send({ type: 'setComposerWidth', width })
+      }
+
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', onUp)
+    },
+    [composerWidth, composerLayout, viewportWidth],
+  )
+
+  /**
+   * Только на перерисовку — саму ширину не трогаем. Раньше слушатель писал
+   * подрезанное значение прямо в composerWidth: сузил тулвиндоу, раздвинул
+   * обратно — а сохранённые 700px уже не вернуть, состояние необратимо осело
+   * на подрезанных ~350. Подрезка — только на глаз, при отрисовке (см. style
+   * ниже и startWidth выше); предпочтение остаётся как есть, пока его не
+   * поменяют явно — ручкой или из настроек.
+   */
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   /**
    * Решение по карточке плана — единая точка для обеих кнопок: помечает план
@@ -1491,9 +1590,16 @@ export const App = () => {
     )
   }
 
-  return (
-    <div className={s.panel} data-anchor={dockAnchor}>
-      <Header
+  /**
+   * Вкладки сессий и кнопки истории/MCP/плагинов/звуков/раскладки — общие на
+   * всю панель, а не привязаны к одной колонке. В bottom-раскладке (и когда
+   * сессий вовсе нет — тогда делить нечего) хедер стоит сверху, как и всегда.
+   * В left/right он переезжает внутрь колонки с лентой (см. ниже, у content)
+   * — тогда у поля ввода со своей стороны не остаётся чужого хедера, и оно
+   * забирает всю высоту панели целиком, а не высоту минус хедер.
+   */
+  const header = (
+    <Header
         sessions={tabs}
         activeSession={active}
         onPickSession={setActive}
@@ -1523,6 +1629,10 @@ export const App = () => {
         // следом: он дешёвый (чтение файлов на диске), зато прибавляется прямо
         // во время работы — каждый новый разговор.
         onOpenHistory={() => {
+          // Всплывающее меню (модель/effort/режим/раскладка) не должно висеть
+          // поверх открывшейся большой панели — см. onOpenLayoutMenu ниже, та же
+          // логика, только в обратную сторону.
+          setMenu(null)
           if (openPanel === 'history') {
             setOpenPanel(null)
             return
@@ -1533,6 +1643,7 @@ export const App = () => {
         // Вкладка открывается на том, что загружено заранее. Спрашиваем заново,
         // только если прошлый запрос уже вернулся, а показанное успело устареть.
         onOpenMcp={() => {
+          setMenu(null)
           if (openPanel === 'mcp') {
             setOpenPanel(null)
             return
@@ -1542,6 +1653,7 @@ export const App = () => {
           if (!mcpLoading && Date.now() - mcpFetchedAt > LIST_STALE_MS) loadMcp(mcpServers !== null)
         }}
         onOpenPlugins={() => {
+          setMenu(null)
           if (openPanel === 'plugins') {
             setOpenPanel(null)
             return
@@ -1552,8 +1664,22 @@ export const App = () => {
             loadPlugins(pluginsInstalled !== null)
           }
         }}
-        onOpenSounds={() => setOpenPanel(openPanel === 'sounds' ? null : 'sounds')}
+        onOpenSounds={() => {
+          setMenu(null)
+          setOpenPanel(openPanel === 'sounds' ? null : 'sounds')
+        }}
+        // Скрим меню нарочно не закрывает хедер (см. .menuScrim) — иначе кнопки
+        // истории/MCP не кликались бы, пока открыт какой-то из его попапов.
+        // Поэтому второй клик по этой самой кнопке скрим не ловит: тоглим сами.
+        onOpenLayoutMenu={(anchor) =>
+          setMenu((current) => (current?.kind === 'composerLayout' ? null : { kind: 'composerLayout', anchor }))
+        }
       />
+  )
+
+  return (
+    <div className={s.panel} data-anchor={dockAnchor}>
+      {composerLayout === 'bottom' || sessions.length === 0 ? header : null}
 
       {openPanel === 'history' ? (
         <History conversations={history} onOpen={resume} onClose={() => setOpenPanel(null)} />
@@ -1667,7 +1793,9 @@ export const App = () => {
           </button>
         </div>
       ) : (
-        <>
+        <div className={s.workArea} data-layout={composerLayout}>
+        <div className={s.content}>
+        {composerLayout !== 'bottom' ? header : null}
         <StreamSwitcher
           tabs={agentTabs}
           background={panel.background}
@@ -1719,8 +1847,29 @@ export const App = () => {
             />
           ) : null}
         </div>
+        </div>
 
-        <div className={composer.dock}>
+        {composerLayout !== 'bottom' ? (
+          <div
+            className={`${s.composerResizeHandle} ${resizingComposer ? s.composerResizeHandleActive : ''}`}
+            onMouseDown={startComposerResize}
+          />
+        ) : null}
+
+        <div
+          className={composer.dock}
+          data-layout={composerLayout}
+          // Клэмп прямо тут, а не только при чтении preferences/resize: значение
+          // в состоянии могло прийти неклэмпленным (например DEFAULT_COMPOSER_WIDTH
+          // на первом же переключении в left/right на узком тулвиндоу) — а от
+          // рассинхрона реальной ширины и того, что уехало за край, спасает
+          // только проверка в точке, где ширина и правда применяется.
+          style={
+            composerLayout !== 'bottom'
+              ? { width: `${clampComposerWidth(composerWidth, viewportWidth)}px` }
+              : undefined
+          }
+        >
           <PermissionPanel
             item={permission}
             composerEmpty={!draftReady}
@@ -1774,6 +1923,7 @@ export const App = () => {
             files={files}
             imageBaseCount={imageBaseCount}
             focusToken={focusToken}
+            fillHeight={composerLayout !== 'bottom'}
             onTokensChange={(tokens) => editDraft(active, { tokens })}
             onAttach={() => send({ type: 'pick' })}
             // Плашки соберёт оболочка и вернёт их обычным picked — тем же путём,
@@ -1810,13 +1960,14 @@ export const App = () => {
             onOpen={(kind, anchor) => setMenu({ kind, anchor })}
           />
         </div>
-        </>
+        </div>
       )}
 
       {menu ? (
         <Menu
-          {...menuProps(menu.kind, models, prefs.model, switched, prefs.effort, mode)}
+          {...menuProps(menu.kind, models, prefs.model, switched, prefs.effort, mode, composerLayout)}
           anchor={menu.anchor}
+          openDownward={menu.kind === 'composerLayout'}
           onClose={() => setMenu(null)}
           onPick={(id) => {
             setMenu(null)
@@ -1824,6 +1975,7 @@ export const App = () => {
             if (menu.kind === 'model') pickModel(id)
             if (menu.kind === 'effort') pickEffort(id)
             if (menu.kind === 'mode') setMode(id)
+            if (menu.kind === 'composerLayout') setComposerLayout(normalizeComposerLayout(id))
           }}
         />
       ) : null}
@@ -2055,6 +2207,7 @@ const menuProps = (
   switched: string | undefined,
   effort: string,
   mode: string,
+  composerLayout: string,
 ): { title: string; hint: string; width: number; options: MenuOption[]; selected: string } => {
   if (kind === 'model') {
     return {
@@ -2072,6 +2225,19 @@ const menuProps = (
       width: 320,
       options: EFFORT_OPTIONS,
       selected: effort,
+    }
+  }
+
+  if (kind === 'composerLayout') {
+    return {
+      title: 'COMPOSER LAYOUT',
+      hint: 'where the input sits',
+      // Заголовок и подсказка стоят в один ряд (см. Menu.menuHead) — на 220px
+      // они сталкивались и подсказка переносилась посреди слова. 300px — тот же
+      // запас, что и у EFFORT при сравнимой длине текста.
+      width: 300,
+      options: COMPOSER_LAYOUT_OPTIONS,
+      selected: composerLayout,
     }
   }
 

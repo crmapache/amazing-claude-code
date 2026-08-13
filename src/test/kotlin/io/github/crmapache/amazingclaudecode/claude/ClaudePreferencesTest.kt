@@ -13,12 +13,16 @@ class ClaudePreferencesTest : BasePlatformTestCase() {
         ClaudePreferences.model = "haiku"
         ClaudePreferences.effort = "low"
         ClaudePreferences.mode = "acceptEdits"
+        ClaudePreferences.composerLayout = "right"
+        ClaudePreferences.composerWidth = 480
 
         val snapshot = ClaudePreferences.snapshot()
 
         assertEquals("haiku", snapshot.model)
         assertEquals("low", snapshot.effort)
         assertEquals("acceptEdits", snapshot.mode)
+        assertEquals("right", snapshot.composerLayout)
+        assertEquals(480, snapshot.composerWidth)
     }
 
     fun testEmptyValueMeansDefault() {
@@ -34,6 +38,8 @@ class ClaudePreferencesTest : BasePlatformTestCase() {
         ClaudePreferences.model = ""
         ClaudePreferences.effort = ""
         ClaudePreferences.mode = ""
+        ClaudePreferences.composerLayout = ""
+        ClaudePreferences.composerWidth = 0
         super.tearDown()
     }
 }

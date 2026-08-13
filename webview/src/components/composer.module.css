@@ -17,8 +17,36 @@
 .dock {
   flex: none;
   background: var(--acc-bg-panel);
-  border-top: 1px solid var(--acc-line);
   padding: 8px 10px 0;
+}
+
+/* Граница смотрит туда, откуда к полю ввода примыкает лента — см. App.tsx (layout). */
+.dock[data-layout='bottom'] {
+  border-top: 1px solid var(--acc-line);
+}
+
+/*
+ * Слева/справа высота колонки задана соседней лентой (stretch), а не своим
+ * содержимым, как снизу, — и просто оставлять её пустой до низа некрасиво.
+ * Колонка становится flex-столбцом: задачи/очередь/цитаты/статус-бар держат
+ * свою обычную высоту, а поле ввода (см. Composer.fillHeight) забирает всё,
+ * что осталось. Если содержимого всё равно набежало больше, чем влезает, —
+ * прокручиваем саму панель, а не обрезаем её молча.
+ */
+.dock[data-layout='left'],
+.dock[data-layout='right'] {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.dock[data-layout='left'] {
+  border-right: 1px solid var(--acc-line);
+}
+
+.dock[data-layout='right'] {
+  border-left: 1px solid var(--acc-line);
 }
 
 /* --- Кнопки блокирующих панелей ---------------------------------------------- */
@@ -693,6 +721,19 @@
   position: relative;
 }
 
+/*
+ * Layout left/right (см. App.tsx, Composer.fillHeight): поле ввода растёт на
+ * всю высоту колонки, а не стоит короткой полоской над пустым местом. flex:1
+ * действует, только когда родитель (.dock) сам flex-контейнер, — а это ровно
+ * тот же left/right, так что в bottom-раскладке класс ни на что не влияет.
+ */
+.boxWrapFill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .suggest {
   position: absolute;
   left: 0;
@@ -706,6 +747,18 @@
   border-radius: var(--acc-r-xl);
   background: var(--acc-bg-panel);
   box-shadow: var(--acc-shadow-menu);
+}
+
+/*
+ * fillHeight (layout left/right, см. Composer.tsx): поле растянуто на всю
+ * колонку, и "вверх от поля" уводит список выше её собственного верха — в
+ * место, которое перекрывает dock[data-layout] overflow-y:auto никак не
+ * прокрутить. Список растёт вниз от верха поля вместо этого — там он остаётся
+ * внутри той же прокручиваемой области, что и всё остальное.
+ */
+.suggestDown {
+  top: 8px;
+  bottom: auto;
 }
 
 .suggestItem {
@@ -754,6 +807,14 @@
   border-radius: var(--acc-r-2xl);
   background: var(--acc-bg);
   overflow: hidden;
+}
+
+/* Пара к .boxWrapFill: сама рамка тоже становится столбцом, чтобы .fieldFill внутри неё могло вытянуться. */
+.boxFill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /*
@@ -885,6 +946,14 @@
   font-size: 13px;
   line-height: var(--acc-leading, 1.55);
   color: var(--acc-fg);
+}
+
+/* Снимает потолок в 160px: в left/right полю есть куда расти, и вместо пустой
+   панели ниже растёт сам ввод — до места, что реально освободила лента. */
+.fieldFill {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
 }
 
 .field:empty::before {

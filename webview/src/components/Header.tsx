@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import type { Anchor } from './StatusBar'
 import s from './shell.module.css'
 
 /**
@@ -98,6 +99,7 @@ interface HeaderProps {
   onOpenMcp: () => void
   onOpenPlugins: () => void
   onOpenSounds: () => void
+  onOpenLayoutMenu: (anchor: Anchor) => void
 }
 
 /** Дальше этого сдвига нажатие перестаёт быть кликом и становится перетаскиванием. */
@@ -139,6 +141,7 @@ export const Header = ({
   onOpenMcp,
   onOpenPlugins,
   onOpenSounds,
+  onOpenLayoutMenu,
 }: HeaderProps) => {
   const header = useRef<HTMLElement>(null)
   const tabs = useRef<HTMLDivElement>(null)
@@ -552,6 +555,20 @@ export const Header = ({
           onClick={onOpenSounds}
         >
           ♪
+        </button>
+        <button
+          type="button"
+          className={s.historyButton}
+          aria-label="Composer layout"
+          data-tooltip="Composer layout"
+          onClick={(event) => {
+            // Меню растёт вниз от кнопки — anchor.top тут нижний край кнопки,
+            // не верхний (см. Menu.openDownward).
+            const rect = event.currentTarget.getBoundingClientRect()
+            onOpenLayoutMenu({ right: window.innerWidth - rect.right, top: rect.bottom })
+          }}
+        >
+          ▦
         </button>
       </div>
     </header>
