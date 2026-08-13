@@ -20,6 +20,13 @@ describe('deriveSessionTitle', () => {
     expect(deriveSessionTitle('@src/App.tsx\n[Image #1]')).toBe('[Image #1]')
   })
 
+  it('вывод команды bash-режима не становится названием вкладки', () => {
+    const text =
+      '<bash-input>git pull</bash-input>\n<bash-stdout>Already up to date.\nvia origin/main</bash-stdout>\n\nДавай перейдём к этой задаче'
+
+    expect(deriveSessionTitle(text)).toBe('Давай перейдём к этой задаче')
+  })
+
   it('обрезает длинный текст по границе слова с многоточием', () => {
     const text = 'разбери пожалуйста эту очень длинную и подробную формулировку задачи целиком'
     const title = deriveSessionTitle(text, 40)

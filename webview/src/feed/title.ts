@@ -7,6 +7,8 @@
  * узнаваемо тем же самым для одного и того же сообщения.
  */
 
+import { withoutShellText } from './bash'
+
 const IMAGE_PLACEHOLDER = /\[Image #\d+]/g
 const MULTIPLE_SPACES = / {2,}/g
 
@@ -25,10 +27,12 @@ const truncateAtWord = (text: string, max: number): string => {
  * Склеивает содержательные строки первого сообщения в одну — короткая первая
  * строка («Давай») не должна становиться всем названием вкладки, если суть
  * вопроса написана строкой ниже. Вложения (`@путь`, цитата, `[Image #N]` даже
- * посреди фразы) из названия вырезаются как шум.
+ * посреди фразы) и вывод команд bash-режима из названия вырезаются как шум.
  */
 export const deriveSessionTitle = (text: string, max = 60): string => {
-  const rawLines = text.split('\n').filter((line) => line.trim().length > 0)
+  const rawLines = withoutShellText(text)
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
   const meaningful = rawLines.map(stripImageTags).filter((line) => line.length > 0 && !isAttachmentLine(line))
 
   const joined = (meaningful.length > 0 ? meaningful : rawLines.slice(-1)).join(' ').trim()

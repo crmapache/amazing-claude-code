@@ -1,4 +1,5 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { withoutShellText } from '../feed/bash'
 import type { UserToken } from '../feed/types'
 import s from './composer.module.css'
 
@@ -10,7 +11,9 @@ export interface QueuedPrompt {
    * Само содержимое поля, каким его набрали. Текст выше — уже готовая строка для
    * агента, а вложения из неё не восстановить: по ним панель считает, сколько
    * картинок ушло в этой сессии, и без них нумерация следующих начиналась бы
-   * заново, стоило сообщению уйти через очередь.
+   * заново, стоило сообщению уйти через очередь. Он же несёт вывод команд
+   * bash-режима, которого человек в поле не набирал, — на экране его в строке
+   * очереди быть не должно (см. withoutShellText).
    */
   tokens: UserToken[]
   /** Картинки из буфера обмена, которые уйдут вместе с текстом при отправке. */
@@ -92,7 +95,7 @@ export const Queue = ({ items, onReorder, onRemove }: QueueProps) => {
             ⠿
           </span>
           <span className={s.queueNum}>{index + 1}</span>
-          <span className={s.queueText}>{item.text}</span>
+          <span className={s.queueText}>{withoutShellText(item.text)}</span>
           {item.attach ? <span className={s.queueAttach}>{item.attach}</span> : null}
           <button type="button" className={s.iconButton} onClick={() => onRemove(item.id)}>
             ×

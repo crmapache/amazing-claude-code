@@ -257,7 +257,7 @@ internal object ClaudeHistory {
                 .firstOrNull { it.isNotBlank() }
         }.getOrNull() ?: runCatching { content.jsonPrimitive.contentOrNull }.getOrNull()
 
-        val rawLines = text.orEmpty().lineSequence().filter { it.isNotBlank() }.toList()
+        val rawLines = withoutShellText(text.orEmpty()).lineSequence().filter { it.isNotBlank() }.toList()
         val meaningful = rawLines
             .map { stripImageTags(it) }
             .filter { it.isNotEmpty() && !isAttachmentLine(it) }
@@ -276,6 +276,19 @@ internal object ClaudeHistory {
     private fun stripImageTags(line: String): String =
         line.replace(IMAGE_PLACEHOLDER, " ").replace(MULTIPLE_SPACES, " ").trim()
 
+    /**
+     * Вывод команд bash-режима панель дописывает В НАЧАЛО следующей реплики
+     * человека (см. shellText в webview): агенту он нужен, а разговор от этого
+     * назывался в списке «<bash-input>git pull</bash-input> <bash-stdout>Already
+     * up to date.</bash-stdout> Давай перейдём…» вместо того, что человек
+     * спросил строкой ниже.
+     *
+     * Вырезаем блоками целиком, а не строками с тегами: вывод команды
+     * многострочный, и его середина тегов уже не содержит — в заголовок утекла
+     * бы она.
+     */
+    private fun withoutShellText(text: String): String = text.replace(SHELL_BLOCK, "").trim()
+
     private fun isAttachmentLine(line: String): Boolean = line.startsWith("@") || line.startsWith("> ")
 
     /** Обрезка по границе слова — иначе заголовок может оборваться на середине слова. */
@@ -293,6 +306,8 @@ internal object ClaudeHistory {
     )
 
     private val AI_TITLE = Regex("\"aiTitle\"\\s*:\\s*\"([^\"]+)\"")
+    private val SHELL_BLOCK =
+        Regex("""<bash-(input|stdout|stderr|exit-code)>.*?</bash-\1>""", RegexOption.DOT_MATCHES_ALL)
     private val IMAGE_PLACEHOLDER = Regex("\\[Image #\\d+]")
     private val MULTIPLE_SPACES = Regex(" {2,}")
     private val COMMAND_NAME_TAG = Regex("""<command-name>(.*?)</command-name>""")

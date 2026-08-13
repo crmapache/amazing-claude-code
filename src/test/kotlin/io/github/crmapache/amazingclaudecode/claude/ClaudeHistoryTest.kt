@@ -153,6 +153,30 @@ class ClaudeHistoryTest {
         assertEquals("смотри сюда, что не так", ClaudeHistory.scan(lines).title)
     }
 
+    // Вывод команд bash-режима панель дописывает в начало следующей реплики
+    // человека — в заголовке разговора его быть не должно: список показывал
+    // сырые теги вместо вопроса, ради которого разговор и начинали.
+    @Test
+    fun `вывод команды bash-режима не попадает в заголовок`() {
+        val lines = sequenceOf(
+            """{"type":"user","message":{"role":"user","content":[{"type":"text","text":"<bash-input>git pull</bash-input>\n<bash-stdout>Already up to date.\nfrom origin/main</bash-stdout>\n\nДавай перейдём к этой задаче"}]}}""",
+        )
+
+        assertEquals("Давай перейдём к этой задаче", ClaudeHistory.scan(lines).title)
+    }
+
+    // Реплика, в которой кроме команд ничего и нет, разговор не описывает —
+    // заголовок обязан достаться следующей, настоящей.
+    @Test
+    fun `реплика из одних команд уступает заголовок словам человека`() {
+        val lines = sequenceOf(
+            """{"type":"user","message":{"role":"user","content":"<bash-input>git status</bash-input>\n<bash-stdout>clean</bash-stdout>"}}""",
+            """{"type":"user","message":{"role":"user","content":"поднимай песочницу"}}""",
+        )
+
+        assertEquals("поднимай песочницу", ClaudeHistory.scan(lines).title)
+    }
+
     // Настоящая реплика человека перебивает команду, даже если команда была
     // первой: /clear в начале разговора не должен становиться его именем.
     @Test
