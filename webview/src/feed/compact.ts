@@ -18,3 +18,20 @@ export const compactProgress = (elapsedMs: number): number => {
   const ratio = 1 - Math.exp(-seconds / TIME_CONSTANT_S)
   return Math.min(CEILING_PERCENT, Math.round(ratio * 100))
 }
+
+/** `/compact` с аргументом или без — не `/compaction` и не команда в середине строки. */
+export const isCompactCommand = (text: string): boolean => /^\/compact(?:\s|$)/.test(text.trim())
+
+/**
+ * Пока идёт сжатие, stdin агенту слать нельзя: он его не подхватит «на следующем
+ * шаге», как обычную дописку, а проглотит и после конца сжатия не выполнит.
+ *
+ * `compacting` — уже пришёл статус. Второй флаг ловит гонку: человек отправил
+ * `/compact` и сразу следующее сообщение, а статус compacting ещё в пути —
+ * ход уже начался командой сжатия, и дописка туда же пропадёт.
+ */
+export const deferFollowUpForCompact = (
+  compacting: boolean,
+  running: boolean,
+  lastUserText: string,
+): boolean => compacting || (running && isCompactCommand(lastUserText))

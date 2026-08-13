@@ -1136,6 +1136,28 @@ describe('список задач через TaskCreate/TaskUpdate', () => {
     expect(latestTodo(state)?.todos).toEqual([{ id: 'task-2', text: 'Новая задача', state: 'todo' }])
   })
 
+  it('новое сообщение прячет незакрытый список — иначе панель держит прежнюю просьбу', () => {
+    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Старая задача' })])
+    state = play([taskCreatedResult('t1', 1, 'Старая задача')], state)
+
+    state = newPrompt(state, 'продолжи после лимита')
+    expect(latestTodo(state)?.todos).toEqual([])
+
+    // Агент пытается закрыть старые номера — их уже нет, панель не должна ожить.
+    state = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'completed' })], state)
+    expect(latestTodo(state)?.todos).toEqual([])
+  })
+
+  it('полностью закрытый список новым сообщением не дублирует пустым снимком', () => {
+    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Старая задача' })])
+    state = play([taskCreatedResult('t1', 1, 'Старая задача')], state)
+    state = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'completed' })], state)
+
+    const before = latestTodo(state)
+    state = newPrompt(state, 'другая, не связанная просьба')
+    expect(latestTodo(state)).toEqual(before)
+  })
+
   it('задачи одной и той же просьбы копятся вместе, даже если ведутся по одной', () => {
     let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Первая' })])
     state = play([taskCreatedResult('t1', 1, 'Первая')], state)

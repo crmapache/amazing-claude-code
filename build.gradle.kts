@@ -77,6 +77,12 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
+              <li>Fixed: after a usage limit, a crash, or any other stop, an unfinished task list
+              stayed on screen and could not be closed — even if you asked Claude to close it. A new
+              message now hides the old list; if the work continues, a fresh list appears.</li>
+              <li>Fixed: messages sent while <code>/compact</code> was running were swallowed and
+              never executed after compaction finished. They now wait in the queue and run once
+              compaction is done.</li>
               <li>A fourth composer layout — Compact — for tool windows docked short and wide,
               where the usual bottom layout's separate status line and full-size task list don't
               fit. The input stays at the bottom, but MODEL/EFFORT/MODE move into the composer

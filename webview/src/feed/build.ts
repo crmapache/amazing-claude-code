@@ -21,6 +21,7 @@ import type {
   TaskItem,
   TaskOutcome,
   TodoEntry,
+  TodoItem,
   ToolGroupItem,
   ToolItem,
   UserItem,
@@ -145,6 +146,9 @@ export interface PanelState {
    * оказаться полностью закрытым и посреди одной работы, если агент ведёт
    * задачи по одной, а не пачкой), а по новому сообщению человека — см. case
    * 'prompt' — оно и есть настоящая граница между «прежней» и «новой» просьбой.
+   * Вместе со словарём в ленту кладётся пустой снимок: панель над полем зеркалит
+   * последний todo-элемент, и без него продолжала бы показывать прежнюю просьбу,
+   * а TaskUpdate по старым номерам уже не находил бы их и молча ничего не делал.
    */
   tasks: Record<string, TodoEntry>
   /**
@@ -329,7 +333,10 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         return { ...state, seq: state.seq + 1, items: [...state.items, message] }
       }
 
-      return {
+      const lastTodo = [...state.items].reverse().find((item): item is TodoItem => item.kind === 'todo')
+      const hideOpenList = lastTodo !== undefined && lastTodo.todos.some((todo) => todo.state !== 'done')
+
+      const next: PanelState = {
         ...state,
         status: 'running',
         streamingText: '',
@@ -347,6 +354,10 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         tasks: {},
         pendingTasks: {},
       }
+
+      // Пустой снимок, чтобы панель не держала прежний незакрытый список:
+      // словарь tasks уже сброшен, а latestTodo смотрит в ленту.
+      return hideOpenList ? push(next, (id) => ({ id, kind: 'todo', todos: [] })) : next
     }
 
     /**

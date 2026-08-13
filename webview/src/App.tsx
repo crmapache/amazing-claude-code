@@ -41,11 +41,12 @@ import composer from './components/composer.module.css'
 import s from './components/shell.module.css'
 import { bashCommand, shellText, type ShellRun } from './feed/bash'
 import { contextOf, initialPanelState, reducePanel, type PanelState } from './feed/build'
+import { deferFollowUpForCompact } from './feed/compact'
 import { referenceChip } from './feed/reference'
 import { deriveSessionTitle } from './feed/title'
 import { appendChip, appendText, buildCommands, localCommand, plainText, type LocalCommand } from './feed/slash'
 import { composePrompt, imageAttachments, tokensText, trimTrailingSpace } from './feed/tokens'
-import type { AskItem, FeedItem, PermItem, PlanItem, TaskItem, TodoItem, UserToken } from './feed/types'
+import type { AskItem, FeedItem, PermItem, PlanItem, TaskItem, TodoItem, UserItem, UserToken } from './feed/types'
 import type {
   AvailablePluginInfo,
   HistoryEntry,
@@ -1372,6 +1373,9 @@ export const App = () => {
    * дописанное в него сообщение он подхватывает на ближайшем шаге, не начиная
    * ход заново — то же самое делает Enter в терминале. Очередь — обратное:
    * явная просьба сначала доделать текущее, а это взять следующим.
+   *
+   * Исключение — сжатие контекста: /compact глотает stdin, и дописка туда
+   * пропадает. Пока оно идёт, Enter ведёт себя как Queue (см. deferFollowUpForCompact).
    */
   const submit = useCallback((queued: boolean, overrideText?: string) => {
     // Команды панели агенту не уходят: вход и выход в потоковом режиме ему
@@ -1433,9 +1437,10 @@ export const App = () => {
     const images = isOverride ? [] : imageAttachments(draft.tokens)
     const attachCount = isOverride ? 0 : draft.tokens.filter((token) => token.kind === 'chip').length
 
-    // В очередь — только пока агент занят: свободному отправляем сразу, ждать
-    // ему нечего.
-    if (queued && running) {
+    // В очередь — пока агент занят и человека явно попросили подождать, либо
+    // пока идёт сжатие: /compact глотает stdin и после конца эти сообщения
+    // не выполняет (см. deferFollowUpForCompact). Свободному ждать нечего.
+    if ((queued && running) || deferFollowUpForCompact(panel.compacting, running, lastUserText(panel.items))) {
       setQueue((current) => [
         ...current,
         {
@@ -2185,6 +2190,12 @@ const pendingPlan = (
 /** Последний присланный агентом список задач — панель над полем ввода зеркалит только его. */
 const latestTodo = (items: FeedItem[]): TodoItem | undefined =>
   [...items].reverse().find((item): item is TodoItem => item.kind === 'todo')
+
+/** Текст последней реплики человека — чтобы понять, не сжатие ли это сейчас. */
+const lastUserText = (items: FeedItem[]): string => {
+  const last = [...items].reverse().find((item): item is UserItem => item.kind === 'user')
+  return last ? tokensText(last.tokens).trim() : ''
+}
 
 /**
  * Чей это, собственно, стрим. taskId без задачи, на которую он ссылается

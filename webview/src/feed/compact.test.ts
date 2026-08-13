@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compactProgress } from './compact'
+import { compactProgress, deferFollowUpForCompact, isCompactCommand } from './compact'
 
 describe('compactProgress', () => {
   it('в начале ноль, а не пустая полоса непонятно на сколько', () => {
@@ -23,5 +23,36 @@ describe('compactProgress', () => {
 
   it('отрицательное время (часы съехали назад) считает за начало', () => {
     expect(compactProgress(-5_000)).toBe(0)
+  })
+})
+
+describe('isCompactCommand', () => {
+  it('узнаёт голую команду и ту же с аргументом', () => {
+    expect(isCompactCommand('/compact')).toBe(true)
+    expect(isCompactCommand('  /compact focus on auth  ')).toBe(true)
+  })
+
+  it('не путает с похожим именем и с командой не с начала строки', () => {
+    expect(isCompactCommand('/compaction')).toBe(false)
+    expect(isCompactCommand('please /compact')).toBe(false)
+    expect(isCompactCommand('/clear')).toBe(false)
+  })
+})
+
+describe('deferFollowUpForCompact', () => {
+  it('откладывает, пока статус compacting уже стоит', () => {
+    expect(deferFollowUpForCompact(true, true, 'продолжи рефакторинг')).toBe(true)
+  })
+
+  it('откладывает ход, который начался /compact, даже до статуса compacting', () => {
+    expect(deferFollowUpForCompact(false, true, '/compact')).toBe(true)
+  })
+
+  it('свободной панели ждать нечего — даже если последнее сообщение было /compact', () => {
+    expect(deferFollowUpForCompact(false, false, '/compact')).toBe(false)
+  })
+
+  it('обычный ход дописку не откладывает', () => {
+    expect(deferFollowUpForCompact(false, true, 'продолжи рефакторинг')).toBe(false)
   })
 })
