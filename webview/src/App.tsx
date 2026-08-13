@@ -147,6 +147,12 @@ export const App = () => {
    * него следующая просьба вроде «почини вот это» повисает в воздухе.
    */
   const [shellRuns, setShellRuns] = useState<Record<string, ShellRun[]>>({})
+  /**
+   * Над панелью держат файл, брошенный из IDE или из проводника (см. fileDrag).
+   * Само перетаскивание в страницу не приходит, поэтому подсветку поля ввода
+   * зажигает оболочка своим сообщением, а не события браузера.
+   */
+  const [fileDragOver, setFileDragOver] = useState(false)
   const [menu, setMenu] = useState<{ kind: SelectorKind; anchor: Anchor } | null>(null)
   /**
    * Выбор модели, усилия и режима. Приходит от оболочки при запуске и там же
@@ -737,6 +743,10 @@ export const App = () => {
 
           case 'picked':
             addToDraft({ kind: 'chip', chip: { kind: message.kind, value: message.value } })
+            break
+
+          case 'fileDrag':
+            setFileDragOver(message.over)
             break
 
           case 'history':
@@ -1924,6 +1934,7 @@ export const App = () => {
             imageBaseCount={imageBaseCount}
             focusToken={focusToken}
             fillHeight={composerLayout !== 'bottom'}
+            fileDragOver={fileDragOver}
             onTokensChange={(tokens) => editDraft(active, { tokens })}
             onAttach={() => send({ type: 'pick' })}
             // Плашки соберёт оболочка и вернёт их обычным picked — тем же путём,

@@ -134,6 +134,12 @@ interface ComposerProps {
   /** Файлы и папки, брошенные в поле: плашки из них соберёт оболочка (см. protocol). */
   onDropFiles: (paths: string[]) => void
   /**
+   * Над панелью держат файл, о котором знает только оболочка: перетаскивание
+   * внутри IDE в страницу не приходит вовсе (см. fileDrag). Подсветка от него
+   * та же, что и от переноса, который поле видит само.
+   */
+  fileDragOver?: boolean
+  /**
    * Отдаёт наружу вставку в место курсора — ею панель кладёт в поле то, что
    * пришло из IDE: ссылку из редактора, выбранный диалогом файл, брошенную
    * мышью папку. Дописывать такое в конец состояния нельзя: место курсора живёт
@@ -173,6 +179,7 @@ export const Composer = ({
   onTokensChange,
   onAttach,
   onDropFiles,
+  fileDragOver = false,
   registerInsert,
   onSubmit,
   onQueue,
@@ -183,7 +190,11 @@ export const Composer = ({
   fillHeight = false,
 }: ComposerProps) => {
   const [focused, setFocused] = useState(false)
-  /** Над полем висит перетаскиваемый файл — подсвечиваем, куда его бросят. */
+  /**
+   * Над полем висит перетаскиваемый файл — подсвечиваем, куда его бросят. Это
+   * перенос, который видит сама страница (обычный браузер, харнесс); тот, что
+   * ведёт IDE, приходит отдельным пропом (см. fileDragOver).
+   */
   const [dropping, setDropping] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const [highlight, setHighlight] = useState(0)
@@ -1054,7 +1065,7 @@ export const Composer = ({
       ) : null}
 
       <div
-        className={`${s.box} ${fillHeight ? s.boxFill : ''} ${focused ? s.boxFocused : ''} ${dropping ? s.boxDropping : ''} ${bash ? s.boxBash : ''}`}
+        className={`${s.box} ${fillHeight ? s.boxFill : ''} ${focused ? s.boxFocused : ''} ${dropping || fileDragOver ? s.boxDropping : ''} ${bash ? s.boxBash : ''}`}
         ref={box}
         onDragOver={(event) => {
           if (!hasFiles(event.dataTransfer)) return

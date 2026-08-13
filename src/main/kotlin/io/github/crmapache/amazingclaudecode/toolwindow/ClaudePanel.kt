@@ -142,6 +142,10 @@ internal class ClaudePanel(
     @Volatile
     private var lastDropAt = 0L
 
+    /** Держат ли сейчас над панелью файл — см. sendFileDrag. */
+    @Volatile
+    private var fileDragOver = false
+
     init {
         component = if (JBCefApp.isSupported()) {
             buildWebview(parentDisposable)
@@ -172,9 +176,12 @@ internal class ClaudePanel(
 
         // Перетаскивание файлов в панель: внутри IDE оно идёт мимо встроенного
         // браузера, поэтому принимаем его здесь — см. WebviewFileDrop.
-        WebviewFileDrop.install(host.component, parentDisposable) { files ->
-            attachDropped(files.map { it.path })
-        }
+        WebviewFileDrop.install(
+            component = host.component,
+            parentDisposable = parentDisposable,
+            onDragging = ::sendFileDrag,
+            onDropped = ::attachDropped,
+        )
 
         scheduleUsageUpdates(parentDisposable)
         scheduleBranchUpdates(parentDisposable)
@@ -1273,6 +1280,25 @@ internal class ClaudePanel(
             { refreshMcp(sessionId) },
             delaySeconds,
             TimeUnit.SECONDS,
+        )
+    }
+
+    /**
+     * Над панелью держат файл — страница подсвечивает поле ввода, куда он и
+     * ляжет плашкой.
+     *
+     * Спрашивают об этом на каждое движение мыши, а отправка сообщения — вызов
+     * в браузер: шлём только сами переходы, а не каждый пиксель пути.
+     */
+    private fun sendFileDrag(over: Boolean) {
+        if (over == fileDragOver) return
+        fileDragOver = over
+
+        webview?.send(
+            buildJsonObject {
+                put("type", "fileDrag")
+                put("over", over)
+            }.toString(),
         )
     }
 
