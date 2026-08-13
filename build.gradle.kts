@@ -77,6 +77,23 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
+              <li>Fixed: the drag handle for the left/right input column highlighted and could be
+              dragged, but the mouse cursor over it stayed a plain arrow instead of a resize cursor.
+              Fixed: Ctrl+Z in the input triggered some other, chip-unaware undo instead of the
+              input's own — only Cmd+Z was caught before, so Ctrl+Z fell through to whatever the
+              embedded browser does with the underlying content by default.</li>
+              <li>The input box can now sit to the left or right of the feed instead of always at the
+              bottom — pick it from a new button in the header, next to History/MCP/Plugins/Sounds.
+              In the left/right layout the input becomes a resizable column that fills the panel's
+              full height, with a drag handle between it and the feed; the choice and the column's
+              width are saved and survive a restart.</li>
+              <li>Tab names now come from Claude Code itself — its own <code>ai-title</code> event —
+              instead of being guessed from the first line of the first message, so a short opener
+              like "Давай" or a pasted image placeholder no longer becomes the whole name. Until that
+              arrives, the tab shows a live guess built from every meaningful line typed, not just the
+              first. <code>/clear</code> now resets the tab's name along with the conversation, and
+              each card in History shows the conversation's own id next to the date and message
+              count.</li>
               <li>MCP servers are now shown the way the terminal shows them. The list is grouped by
               where each server comes from — this project, your own config, claude.ai connectors,
               built-ins and plugins — and every server says what state it is really in: connected,

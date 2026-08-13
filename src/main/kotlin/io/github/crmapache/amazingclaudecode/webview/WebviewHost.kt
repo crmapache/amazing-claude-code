@@ -5,6 +5,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.wm.IdeGlassPaneUtil
 import java.awt.Cursor
 import java.net.URI
 import com.intellij.ui.jcef.JBCefBrowser
@@ -204,7 +205,15 @@ internal class WebviewHost(
         }
 
         val component = browser.component
-        ApplicationManager.getApplication().invokeLater { component.cursor = Cursor.getPredefinedCursor(type) }
+        val predefined = Cursor.getPredefinedCursor(type)
+        ApplicationManager.getApplication().invokeLater {
+            component.cursor = predefined
+            // Тем же приёмом, что и делитель ThreeComponentsSplitter в самой
+            // платформе: одного component.cursor поверх стеклянной панели окна не
+            // всегда достаточно — она отвечает за то, что видно поверх компонента,
+            // пока по нему двигают мышью.
+            IdeGlassPaneUtil.find(component)?.setCursor(predefined, this)
+        }
     }
 
     /**

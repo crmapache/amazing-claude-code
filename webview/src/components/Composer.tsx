@@ -912,16 +912,19 @@ export const Composer = ({
       return
     }
 
-    // Своя история отмены — родной Cmd+Z браузера про наши чипы ничего не
-    // знает и восстановит их некорректно, поэтому перехватываем полностью.
-    if (event.metaKey && event.key.toLowerCase() === 'z') {
+    // Своя история отмены — родной Cmd+Z/Ctrl+Z браузера про наши чипы ничего
+    // не знает и восстановит их некорректно, поэтому перехватываем полностью.
+    // Ctrl нужен и на Mac: Chromium внутри JCEF откликается на Ctrl+Z своим
+    // отменённым undo независимо от хостовой ОС, и без перехвата это
+    // выглядело бы как случайный «чужой» undo поверх поля ввода.
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault()
       if (event.shiftKey) redo()
       else undo()
       return
     }
 
-    if (event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'y') {
+    if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'y') {
       event.preventDefault()
       redo()
       return
