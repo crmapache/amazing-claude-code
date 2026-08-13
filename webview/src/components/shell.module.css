@@ -129,6 +129,34 @@
   border-bottom: 1px solid var(--acc-line);
 }
 
+/*
+ * Compact экономит высоту всюду, где может, и шапка не исключение: ниже на
+ * 2px, а её значки — на 2px мельче. Один модификатор на самой шапке, а не
+ * пропы на каждой кнопке: правит один каскад здесь, а не десяток мест в
+ * Header.tsx.
+ */
+.headerCompact {
+  min-height: 32px;
+}
+
+.headerCompact .tab,
+.headerCompact .tabAdd {
+  height: 32px;
+}
+
+/* Уже обычных 9px/11px на 8px с каждой стороны — тесно, но задача compact
+   не в том, чтобы вкладке было просторно, а в том, чтобы место осталось
+   ленте под ней. */
+.headerCompact .tab {
+  padding: 0 1px 0 3px;
+}
+
+.headerCompact .historyButton {
+  width: 26px;
+  height: 26px;
+  font-size: 15px;
+}
+
 .tabs {
   display: flex;
   flex-wrap: wrap;
@@ -372,6 +400,17 @@
 
 .streamList::-webkit-scrollbar {
   display: none;
+}
+
+/*
+ * Compact держит тот же список чипов не отдельной строкой, а прямо в шапке,
+ * рядом со значками (см. Header.streamSwitcher) — своей ширины там ему никто
+ * не выделяет, поэтому сам список обязан уступать место соседям, а не
+ * раздвигать шапку на вторую строку.
+ */
+.streamListInline {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .stream {
@@ -737,9 +776,25 @@
   border-color: var(--acc-line-hover);
 }
 
+/*
+ * Каждый режим — свой акцент на фоне и рамке в покое, и тот же акцент, только
+ * ярче, под курсором: без своего :hover побеждал бы общий .selector:hover
+ * (та же специфичность, класс режима и так уже стоит вторым в разметке) — он
+ * красил рамку в нейтральный серый, и цветной селектор на ховере линял в
+ * обычный. Метка тоже красится акцентом состояния, а не остаётся нейтральной:
+ * иначе "MODE" читалась отдельно от цветной капсулы вокруг неё.
+ */
 .selectorPlan {
   background: var(--acc-accent-16);
   border-color: var(--acc-accent-40);
+}
+
+.selectorPlan:hover {
+  border-color: var(--acc-accent);
+}
+
+.selectorPlan .selectorLabel {
+  color: var(--acc-accent-light);
 }
 
 .selectorAccept {
@@ -747,9 +802,25 @@
   border-color: var(--acc-ok-32);
 }
 
+.selectorAccept:hover {
+  border-color: var(--acc-ok);
+}
+
+.selectorAccept .selectorLabel {
+  color: var(--acc-ok-light);
+}
+
 .selectorDanger {
   background: var(--acc-bad-12);
   border-color: var(--acc-bad-40);
+}
+
+.selectorDanger:hover {
+  border-color: var(--acc-bad);
+}
+
+.selectorDanger .selectorLabel {
+  color: var(--acc-bad-light);
 }
 
 /* Метка и значение одного кегля и одного line-height: при разных размерах их
@@ -770,6 +841,26 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/*
+ * Compact держит эти же кнопки в самом поле ввода, а не в строке статуса (см.
+ * Composer.tsx) — там им незачем делить фиксированные 120px на троих:
+ * соседей всего три, и делят они между собой всю ширину ряда поровну, а не
+ * жмутся к правому краю с пустотой слева. Позже .selector в файле — и поэтому
+ * побеждает его flex: 0 0 120px при той же специфичности.
+ *
+ * min-width: min-content, а не 0 — иначе flex-basis: 0 перестаёт учитывать
+ * собственную ширину значения при подсчёте ширины ряда (см. Composer.tsx,
+ * компонент Selector), и длинное значение (например, "default" до первого
+ * /model) обрезалось бы многоточием, хотя место рядом есть. С min-content
+ * ни одна кнопка не сожмётся уже своего текста — поровну делится только
+ * то, что останется сверх него.
+ */
+.selectorAuto {
+  flex: 1 1 0;
+  width: auto;
+  min-width: min-content;
 }
 
 .selectorCaret {
@@ -1469,8 +1560,15 @@
   border-bottom-color: var(--acc-accent);
 }
 
+/*
+ * display: flex — без него flex: 1 у самого поля (.mcpInput) ни на что не
+ * действует: это свойство работает только у flex-элемента, а строка была
+ * обычным блоком. Поле рисовалось дефолтной браузерной шириной инпута
+ * (~20 символов) вместо того, чтобы занять всю строку.
+ */
 .pluginSearchRow {
   flex: none;
+  display: flex;
   padding: 8px 9px;
   border-bottom: 1px solid var(--acc-line);
 }

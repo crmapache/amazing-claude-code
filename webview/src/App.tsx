@@ -17,6 +17,7 @@ import {
   COMPOSER_LAYOUT_OPTIONS,
   DEFAULT_COMPOSER_WIDTH,
   clampComposerWidth,
+  isSideComposerLayout,
   normalizeComposerLayout,
   type ComposerLayout,
 } from './composerLayout'
@@ -1602,15 +1603,33 @@ export const App = () => {
 
   /**
    * Вкладки сессий и кнопки истории/MCP/плагинов/звуков/раскладки — общие на
-   * всю панель, а не привязаны к одной колонке. В bottom-раскладке (и когда
-   * сессий вовсе нет — тогда делить нечего) хедер стоит сверху, как и всегда.
-   * В left/right он переезжает внутрь колонки с лентой (см. ниже, у content)
-   * — тогда у поля ввода со своей стороны не остаётся чужого хедера, и оно
-   * забирает всю высоту панели целиком, а не высоту минус хедер.
+   * всю панель, а не привязаны к одной колонке. В bottom- и compact-раскладке
+   * (и когда сессий вовсе нет — тогда делить нечего) хедер стоит сверху, как и
+   * всегда. В left/right он переезжает внутрь колонки с лентой (см. ниже, у
+   * content) — тогда у поля ввода со своей стороны не остаётся чужого хедера,
+   * и оно забирает всю высоту панели целиком, а не высоту минус хедер.
+   *
+   * Compact вдобавок сжимает саму шапку и переносит в неё переключатель
+   * стримов (см. compact/streamSwitcher ниже) — своей строки под ней у него
+   * нет, высота отдана ленте.
    */
   const header = (
     <Header
         sessions={tabs}
+        layout={composerLayout}
+        streamSwitcher={
+          composerLayout === 'compact' ? (
+            <StreamSwitcher
+              tabs={agentTabs}
+              background={panel.background}
+              mainStatus={mainStatus}
+              active={resolvedStream}
+              onPick={setActiveStream}
+              onStop={setStopping}
+              inline
+            />
+          ) : undefined
+        }
         activeSession={active}
         onPickSession={setActive}
         onCloseSession={(id) => {
@@ -1687,9 +1706,20 @@ export const App = () => {
       />
   )
 
+  /**
+   * Открыть PR текущей ветки в системном браузере — сама ссылка живёт в
+   * панели, наружу уходит только по клику. Общая на compact (см.
+   * TaskListPanel) и остальные раскладки (см. StatusBar): ветка и её PR
+   * везде одни и те же, разнится только то, в какой строке они стоят.
+   */
+  const openPullRequest = () => {
+    const url = panels[MAIN_SESSION]?.project?.pullRequestUrl
+    if (url) send({ type: 'openExternal', url })
+  }
+
   return (
     <div className={s.panel} data-anchor={dockAnchor}>
-      {composerLayout === 'bottom' || sessions.length === 0 ? header : null}
+      {composerLayout === 'bottom' || composerLayout === 'compact' || sessions.length === 0 ? header : null}
 
       {openPanel === 'history' ? (
         <History conversations={history} onOpen={resume} onClose={() => setOpenPanel(null)} />
@@ -1805,15 +1835,19 @@ export const App = () => {
       ) : (
         <div className={s.workArea} data-layout={composerLayout}>
         <div className={s.content}>
-        {composerLayout !== 'bottom' ? header : null}
-        <StreamSwitcher
-          tabs={agentTabs}
-          background={panel.background}
-          mainStatus={mainStatus}
-          active={resolvedStream}
-          onPick={setActiveStream}
-          onStop={setStopping}
-        />
+        {isSideComposerLayout(composerLayout) ? header : null}
+        {/* Compact держит тот же переключатель в шапке (см. streamSwitcher
+            выше) — своей строки под ней у него нет, высота отдана ленте. */}
+        {composerLayout === 'compact' ? null : (
+          <StreamSwitcher
+            tabs={agentTabs}
+            background={panel.background}
+            mainStatus={mainStatus}
+            active={resolvedStream}
+            onPick={setActiveStream}
+            onStop={setStopping}
+          />
+        )}
 
         <div className={s.body}>
           {resolvedStream === 'main' ? (
@@ -1859,7 +1893,7 @@ export const App = () => {
         </div>
         </div>
 
-        {composerLayout !== 'bottom' ? (
+        {isSideComposerLayout(composerLayout) ? (
           <div
             className={`${s.composerResizeHandle} ${resizingComposer ? s.composerResizeHandleActive : ''}`}
             onMouseDown={startComposerResize}
@@ -1873,9 +1907,10 @@ export const App = () => {
           // в состоянии могло прийти неклэмпленным (например DEFAULT_COMPOSER_WIDTH
           // на первом же переключении в left/right на узком тулвиндоу) — а от
           // рассинхрона реальной ширины и того, что уехало за край, спасает
-          // только проверка в точке, где ширина и правда применяется.
+          // только проверка в точке, где ширина и правда применяется. Compact
+          // ширину не подстраивает — он занимает её всю, как и bottom.
           style={
-            composerLayout !== 'bottom'
+            isSideComposerLayout(composerLayout)
               ? { width: `${clampComposerWidth(composerWidth, viewportWidth)}px` }
               : undefined
           }
@@ -1897,7 +1932,13 @@ export const App = () => {
             onDismiss={dismissAsk}
           />
 
-          <TaskListPanel item={latestTodo(panel.items)} />
+          <TaskListPanel
+            item={latestTodo(panel.items)}
+            layout={composerLayout}
+            gitBranch={panels[MAIN_SESSION]?.project?.gitBranch}
+            pullRequest={panels[MAIN_SESSION]?.project?.pullRequest}
+            onOpenPullRequest={openPullRequest}
+          />
 
           <Queue
             items={queue}
@@ -1933,7 +1974,11 @@ export const App = () => {
             files={files}
             imageBaseCount={imageBaseCount}
             focusToken={focusToken}
-            fillHeight={composerLayout !== 'bottom'}
+            layout={composerLayout}
+            model={model}
+            effort={prefs.effort}
+            mode={mode}
+            onOpenSelector={(kind, anchor) => setMenu({ kind, anchor })}
             fileDragOver={fileDragOver}
             onTokensChange={(tokens) => editDraft(active, { tokens })}
             onAttach={() => send({ type: 'pick' })}
@@ -1958,18 +2003,20 @@ export const App = () => {
             }}
           />
 
-          <StatusBar
-            gitBranch={panels[MAIN_SESSION]?.project?.gitBranch}
-            pullRequest={panels[MAIN_SESSION]?.project?.pullRequest}
-            onOpenPullRequest={() => {
-              const url = panels[MAIN_SESSION]?.project?.pullRequestUrl
-              if (url) send({ type: 'openExternal', url })
-            }}
-            model={model}
-            effort={prefs.effort}
-            mode={mode}
-            onOpen={(kind, anchor) => setMenu({ kind, anchor })}
-          />
+          {/* Compact держит ветку/PR в строке задач, а MODEL/EFFORT/MODE — в
+              самом поле ввода (см. TaskListPanel и Composer) — своей строки
+              статуса под полем у него нет, высота отдана ленте. */}
+          {composerLayout === 'compact' ? null : (
+            <StatusBar
+              gitBranch={panels[MAIN_SESSION]?.project?.gitBranch}
+              pullRequest={panels[MAIN_SESSION]?.project?.pullRequest}
+              onOpenPullRequest={openPullRequest}
+              model={model}
+              effort={prefs.effort}
+              mode={mode}
+              onOpen={(kind, anchor) => setMenu({ kind, anchor })}
+            />
+          )}
         </div>
         </div>
       )}

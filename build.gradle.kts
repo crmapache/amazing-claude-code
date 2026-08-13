@@ -77,6 +77,23 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
+              <li>A fourth composer layout — Compact — for tool windows docked short and wide,
+              where the usual bottom layout's separate status line and full-size task list don't
+              fit. The input stays at the bottom, but MODEL/EFFORT/MODE move into the composer
+              itself, the context bar becomes a vertical strip instead of a horizontal one, the
+              branch and its PR share the row with the task list, and the stream switcher collapses
+              into chips in the header instead of its own row. The task list itself shows only the
+              current task plus a count, with an arrow to expand the rest.</li>
+              <li>A question repeated back in a sent message — a line ending in "?" — now shows
+              dimmed, with a small gap above it, so the answer next to it reads apart from the
+              question it's answering.</li>
+              <li>Fixed: shell command output typed with <code>!</code> leaked its raw
+              <code>&lt;bash-input&gt;</code>/<code>&lt;bash-stdout&gt;</code> markup into
+              conversation titles, tab names, and the queued-message row instead of showing what was
+              actually asked.</li>
+              <li>Dragging a file from the project tree or the system file explorer now highlights
+              the composer as a drop target, the same way a browser-native drag already did. Also
+              fixes native drops from outside the IDE being silently rejected.</li>
               <li>Fixed: the drag handle for the left/right input column highlighted and could be
               dragged, but the mouse cursor over it stayed a plain arrow instead of a resize cursor.
               Fixed: Ctrl+Z in the input triggered some other, chip-unaware undo instead of the

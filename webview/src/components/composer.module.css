@@ -21,7 +21,8 @@
 }
 
 /* Граница смотрит туда, откуда к полю ввода примыкает лента — см. App.tsx (layout). */
-.dock[data-layout='bottom'] {
+.dock[data-layout='bottom'],
+.dock[data-layout='compact'] {
   border-top: 1px solid var(--acc-line);
 }
 
@@ -550,6 +551,82 @@
   background: var(--acc-bg-card);
 }
 
+/* --- Список задач: compact --------------------------------------------------- */
+
+/*
+ * Ряды compact идут во всю ширину панели, а не карточкой с отступами, как
+ * .taskPanel выше, — вплотную к строке задач под ними стоит такая же
+ * полноширинная шапка (см. .header) и такой же композер (см. .compactRow), и
+ * рядом с ними инсет .dock читался бы чужеродной рамкой посередине плотной
+ * колонки. Отрицательные поля возвращают инсет .dock как padding у самих
+ * рядов — фон остаётся во всю ширину, текст стоит там же, где и раньше.
+ */
+.taskCompactBleed {
+  margin: 0 -10px;
+}
+
+.taskCompactExpanded {
+  display: flex;
+  flex-direction: column;
+  padding: 5px 0 6px;
+  background: var(--acc-bg-raised);
+  border-top: 1px solid var(--acc-line);
+  /* Как .taskPanelListScroll в обычной раскладке — иначе длинный список
+     выталкивает поле ввода за нижний край короткой пристыкованной панели. */
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* Отступ слева — до текста строки под ней, а не до чекбокса: сама задача из
+   этого списка не бежит, ей чекбокс без надобности. */
+.taskCompactExpandedRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 3px 10px 3px 30px;
+}
+
+.taskCompactRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 25px;
+  padding: 0 10px;
+  background: var(--acc-bg-raised);
+  border-top: 1px solid var(--acc-line);
+}
+
+/* min-width: 0 пускает текст задачи в обрезку раньше, чем ряд начнёт терять
+   ветку и стрелку справа — они важнее середины длинного названия задачи. */
+.taskCompactCurrentText {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-width: 0;
+}
+
+.taskCompactCurrentText .taskPanelText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.taskCompactArrow {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--acc-r-xs);
+  font: 9px/1 var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.taskCompactArrow:hover {
+  background: var(--acc-line-strong);
+  color: var(--acc-fg);
+}
+
 /* --- Очередь --------------------------------------------------------------- */
 
 .queue {
@@ -927,6 +1004,123 @@
   box-shadow: 0 0 0 1px var(--acc-warn);
 }
 
+/* --- Поле ввода: compact ----------------------------------------------------- */
+
+/*
+ * Ряд из двух частей: box (шкала контекста + поле) занимает всё доступное
+ * место, колонка справа (см. .compactControls) — ровно столько, сколько
+ * просят её кнопки. Снаружи .box, а не внутри него, как в обычной раскладке
+ * (там низ .box — это .tools, тут .tools стоит уже за его пределами): в
+ * compact полю нужна не полоска снизу во всю ширину, а колонка сбоку.
+ *
+ * margin слева/справа — тот же bleed, что и у .taskCompactBleed (см. ниже):
+ * без него боковой инсет .dock (10px) складывался бы с собственным паддингом
+ * ряда, и композер оказывался бы на 10px уже строки задач над ним — их левые
+ * края переставали совпадать.
+ */
+.compactRow {
+  display: flex;
+  align-items: stretch;
+  gap: 9px;
+  margin: 0 -10px;
+  padding: 8px 10px;
+}
+
+/*
+ * Когда перед композером в доке ничего не отрисовалось (нет ни разрешения,
+ * ни вопроса, ни строки задач/ветки, ни очереди, ни цитат — см. App.tsx) —
+ * верхний инсет .dock (8px, см. ниже) уже даёт нужный отступ от ленты сам.
+ * Собственные 8px ряда сверху стали бы вторым отступом поверх первого — вдвое
+ * толще нижнего, где .dock отступа не даёт вовсе. Когда же перед композером
+ * что-то есть, эти же 8px ряда — единственный отступ ОТ этого соседа, и их
+ * трогать не нужно.
+ */
+.dock[data-layout='compact'] > .boxWrap:first-child .compactRow {
+  padding-top: 0;
+}
+
+/* flex: 1 1 auto — сжимается первым, когда тесно: у компакт-меню и кнопок
+   своя фиксированная ширина по содержимому (см. .selectorAuto), а полю есть
+   куда уступать. */
+.boxCompact {
+  display: flex;
+  align-items: stretch;
+  gap: 9px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 11px 7px 9px;
+}
+
+/*
+ * Вертикальная шкала контекста — та же роль, что у горизонтальной
+ * .contextMeter над полем в остальных раскладках, но занимает высоту, а не
+ * ширину: compact экономит именно высоту, отдавая освободившееся полю ввода.
+ */
+.compactMeter {
+  flex: none;
+  position: relative;
+  width: 3px;
+  min-height: 20px;
+}
+
+/*
+ * Трек и заливка — один и тот же столбик сегментов, только заливка обрезана
+ * .compactMeterFillClip высотой ровно в процент контекста и растянута обратно
+ * во всю исходную высоту (см. Composer.ContextMeterVertical): так её сегменты
+ * встают на границы сегментов трека под ней, а не садятся произвольно.
+ */
+.compactMeterTrack {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 4px;
+}
+
+.compactMeterSeg {
+  flex: 1 1 0;
+  border-radius: 999px;
+  background: var(--acc-bg-control);
+}
+
+.compactMeterFillClip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+}
+
+/* Колонка справа от box: верхний ряд — MODEL/EFFORT/MODE, нижний —
+   расход/вложения/отправка (см. .compactSelectors и .compactToolsRow). Прижата
+   к низу — так нижний ряд стоит вровень с нижним краем box независимо от
+   того, сколько строк сейчас в поле. */
+.compactControls {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* justify-content не нужен: кнопки сами делят ряд поровну (см. .selectorAuto
+   в shell.module.css), тесниться в его правый край им незачем. */
+.compactSelectors {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Те же дети, что и в .tools обычной раскладки (см. Composer.toolsRow), но
+   без его фона/рамки/паддинга — те здесь ни к чему, ряд уже стоит в своей
+   колонке с собственными отступами (см. .compactRow). */
+.compactToolsRow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
 /*
  * Обычный блочный поток, не flex: чипы — inline-flex внутри него, поэтому
  * текст и вложения переносятся вместе, ровно там, где стоят по порядку, как
@@ -964,6 +1158,33 @@
   flex: 1;
   min-height: 0;
   max-height: none;
+}
+
+/*
+ * Compact: своя высота вместо унаследованной от .field (79–160px) — 2 строки
+ * по умолчанию, до 5 дальше прокрутка. Позже .field в файле и поэтому
+ * побеждает его min-height/max-height/padding при той же специфичности (см.
+ * .selectorAuto в shell.module.css — тот же приём).
+ *
+ * Прижато к верху, а не растянуто на всю высоту box: высота поля определяется
+ * его собственным содержимым (2–5 строк), а не высотой соседа (вертикальной
+ * шкалы контекста).
+ *
+ * flex: 1 1 auto — без него поле как flex-элемент сжималось по ширине
+ * СОДЕРЖИМОГО (обычное поведение flex-элемента с flex-basis: auto), а не
+ * растягивалось на всё, что осталось от box после шкалы контекста слева.
+ * Узкое поле переносило текст по своей узкой ширине, а не по ширине box, и
+ * родная полоса прокрутки рисовалась у правого края ЭТОЙ узкой области —
+ * где-то посреди пустого box, а не у его настоящего правого края.
+ */
+.fieldCompact {
+  align-self: flex-start;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  min-height: 40px;
+  max-height: 100px;
+  overflow-y: auto;
 }
 
 .field:empty::before {

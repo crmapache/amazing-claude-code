@@ -26,10 +26,13 @@ import {
 } from '../feed/slash'
 import { clipboardHtml, clipboardTokens, tokensText } from '../feed/tokens'
 import type { Chip, ChipKind, UserToken } from '../feed/types'
+import { modeLabel, modeShortLabel, modelLabel } from '../catalog'
+import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
 import type { ModelInfo } from '../protocol'
 import { SlashSuggest } from './SlashSuggest'
-import { contextColor, contextGlow } from './StatusBar'
+import { contextColor, contextGlow, modeClass, Selector, type Anchor, type SelectorKind } from './StatusBar'
 import s from './composer.module.css'
+import shell from './shell.module.css'
 
 /** Засечки на пятых долях — не связаны с порогами цвета, чисто масштаб шкалы. */
 const CONTEXT_METER_TICKS = [20, 40, 60, 80]
@@ -58,6 +61,48 @@ const ContextMeter = ({ percent }: { percent: number }) => {
         {CONTEXT_METER_TICKS.map((tick) => (
           <span key={tick} className={s.contextMeterTick} style={{ left: `${tick}%` }} />
         ))}
+      </div>
+    </div>
+  )
+}
+
+/** Сколько сегментов в вертикальной шкале compact — см. ContextMeterVertical. */
+const CONTEXT_METER_SEGMENTS = 5
+
+/**
+ * То же самое, что ContextMeter, но вертикальной шкалой слева от поля —
+ * так compact экономит высоту, отдавая её textarea, а не горизонтальной
+ * полоске над ним (см. Composer.layout).
+ *
+ * Трек и заливка — два одинаковых столбика с одними и теми же сегментами
+ * (снизу вверх, column-reverse): заливка обрезана контейнером высотой ровно
+ * в percent% и сама растянута обратно до полной высоты (100/percent), так что
+ * её сегменты встают ровно на границы сегментов трека под ней — засечкой
+ * поверх полосы, как в горизонтальной версии, тут взяться неоткуда.
+ */
+const ContextMeterVertical = ({ percent }: { percent: number }) => {
+  const color = contextColor(percent)
+  const glow = contextGlow(percent)
+  const clamped = Math.min(100, Math.max(0, percent))
+  const fillTrackHeight = clamped > 0 ? `${(100 / clamped) * 100}%` : '100%'
+
+  return (
+    <div className={s.compactMeter} aria-hidden="true">
+      <div className={s.compactMeterTrack}>
+        {Array.from({ length: CONTEXT_METER_SEGMENTS }, (_, index) => (
+          <span key={index} className={s.compactMeterSeg} />
+        ))}
+      </div>
+      <div className={s.compactMeterFillClip} style={{ height: `${clamped}%` }}>
+        <div className={s.compactMeterTrack} style={{ height: fillTrackHeight }}>
+          {Array.from({ length: CONTEXT_METER_SEGMENTS }, (_, index) => (
+            <span
+              key={index}
+              className={s.compactMeterSeg}
+              style={{ background: color, boxShadow: `0 0 8px ${glow.strong}, 0 0 16px ${glow.soft}` }}
+            />
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -157,11 +202,22 @@ interface ComposerProps {
   stopStalled: boolean
   onForceStop: () => void
   /**
-   * Поле растёт на всю высоту колонки, а не стоит короткой полоской над пустым
-   * местом — для layout left/right, где рядом с ним нет ленты снизу, которая
-   * забрала бы освободившееся место сама (см. composer.module.css).
+   * Где сидит поле ввода — та же раскладка, что и у всей панели (см. App.tsx).
+   * Left/right растягивают поле на всю высоту колонки (см. fillHeight ниже),
+   * а compact перестраивает сам ряд: полоска контекста уходит налево вертикальной
+   * шкалой, а MODEL/EFFORT/MODE встают рядом с полем — своей строки статуса
+   * под ним в compact не бывает (см. App.tsx).
    */
-  fillHeight?: boolean
+  layout?: ComposerLayout
+  /**
+   * Только для compact: строки статуса под полем в этой раскладке нет (см.
+   * App.tsx), и MODEL/EFFORT/MODE переезжают в сам композер — тем же
+   * колбэком, что открывает и остальные меню.
+   */
+  model?: string
+  effort?: string
+  mode?: string
+  onOpenSelector?: (kind: SelectorKind, anchor: Anchor) => void
 }
 
 export const Composer = ({
@@ -187,8 +243,14 @@ export const Composer = ({
   onStop,
   stopStalled,
   onForceStop,
-  fillHeight = false,
+  layout = 'bottom',
+  model,
+  effort,
+  mode,
+  onOpenSelector,
 }: ComposerProps) => {
+  const compact = layout === 'compact'
+  const fillHeight = isSideComposerLayout(layout)
   const [focused, setFocused] = useState(false)
   /**
    * Над полем висит перетаскиваемый файл — подсвечиваем, куда его бросят. Это
@@ -1051,21 +1113,259 @@ export const Composer = ({
     }
   }
 
+  /* Одна кнопка на все вложения: файл, картинка и папка выбираются одним
+     и тем же диалогом, а разницу видно по самому пути. Подсказка разворачивается
+     вверх: ряд стоит у нижнего края панели, и вниз ей некуда. */
+  const attachButton = (
+    <button
+      type="button"
+      className={s.attach}
+      data-tooltip="Attach files or folders"
+      data-tooltip-at="top"
+      aria-label="Attach files or folders"
+      onClick={onAttach}
+    >
+      <Paperclip />
+    </button>
+  )
+
+  /* Кнопка не открывает каталог, а ставит слэш в поле: дальше команду
+     набирают, и список сужается сам. Пока в поле уже что-то есть, слэш
+     посреди текста не запускает подсказку — кнопка прячется, чтобы не звать
+     на бесполезное нажатие. */
+  const slashButton =
+    tokens.length === 0 ? (
+      <button
+        type="button"
+        className={s.attach}
+        data-tooltip="Slash commands"
+        data-tooltip-at="top"
+        aria-label="Slash commands"
+        onClick={() => {
+          insertTextAtCursor('/')
+          input.current?.focus()
+        }}
+      >
+        <span className={s.attachSlash}>/</span>
+      </button>
+    ) : null
+
+  const stopButton = streaming ? (
+    <button type="button" className={s.stop} onClick={onStop}>
+      ■ Stop
+    </button>
+  ) : null
+
+  // Обычный Stop честно ждёт подтверждения. Если оно не пришло дольше
+  // разумного — единственный работающий выход отсюда - убить процесс.
+  const forceStopButton = stopStalled ? (
+    <button
+      type="button"
+      className={s.forceStop}
+      onClick={onForceStop}
+      data-tooltip="Claude isn't confirming the stop"
+      data-tooltip-at="top"
+    >
+      ⚠ Not responding · Force stop
+    </button>
+  ) : null
+
+  /* Две отдельные кнопки, а не одна с двумя лицами: пока агент занят, у
+     сообщения есть выбор — дойти до него сейчас, посреди работы, или
+     дождаться своей очереди. Send работает всегда, Queue осмысленна только
+     при занятом агенте: свободному ждать нечего.
+
+     У команды терминала очереди не бывает вовсе: её выполняет сама панель, и
+     ждать освобождения агента ей незачем. */
+  const queueButton = bash ? null : (
+    <button
+      type="button"
+      className={`${s.send} ${s.sendQueued}`}
+      onClick={onQueue}
+      disabled={!canSubmit || !streaming}
+      data-tooltip="Send after the current run finishes"
+      data-tooltip-at="top"
+    >
+      Queue
+    </button>
+  )
+
+  const sendButton = (
+    <button
+      type="button"
+      className={`${s.send} ${bash ? s.sendRun : ''}`}
+      onClick={onSubmit}
+      disabled={!canSubmit}
+      data-tooltip={bash ? 'Run in your shell — Claude sees the output with your next message' : undefined}
+      data-tooltip-at="top"
+    >
+      {bash ? 'Run' : 'Send'}
+    </button>
+  )
+
+  /**
+   * Ряд кнопок под полем: расход, вложения, команды, отправка. Один и тот же
+   * набор детей и в обычной раскладке (своя строка `.tools` внутри box), и в
+   * compact (вторая строка колонки справа от box, см. ниже) — поведение кнопок
+   * раскладке не подчиняется, меняется лишь то, куда ряд встаёт и в каком
+   * порядке он их читает.
+   *
+   * Порядок различается перестановкой самих детей в разметке, а не CSS
+   * `order`: клавиатурная табуляция идёт по порядку в DOM и не следит за
+   * визуальным `order`, так что перестановка через CSS расходилась бы с тем,
+   * что видно на экране.
+   */
+  const toolsRow = compact ? (
+    <>
+      {/* В compact кнопки — самое важное на строке (расход уже виден строкой
+          выше, в кольцах), поэтому Send и Queue идут первыми, а расход —
+          последним, за иконками. */}
+      {sendButton}
+      {stopButton}
+      {forceStopButton}
+      {queueButton}
+      {attachButton}
+      {slashButton}
+      {meters}
+    </>
+  ) : (
+    <>
+      {/* Расход — слева, на месте, где раньше стояли кнопки вложения и команд:
+          сюда смотрят, решая, что писать дальше, и цифры должны быть под
+          рукой, а не строкой ниже. Сами кнопки уехали вправо, к Send. */}
+      {meters}
+      <div className={s.spacer} />
+      {attachButton}
+      {slashButton}
+      {stopButton}
+      {forceStopButton}
+      {queueButton}
+      {sendButton}
+    </>
+  )
+
+  const ghostHintNode =
+    ghostHint && ghostRect ? (
+      <span
+        className={s.ghostHint}
+        style={{ left: ghostRect.left, top: ghostRect.top, lineHeight: `${ghostRect.height}px` }}
+        aria-hidden="true"
+      >
+        {ghostHint}
+      </span>
+    ) : null
+
+  const fieldNode = (
+    <div
+      ref={input}
+      className={`${s.field} ${compact ? s.fieldCompact : fillHeight ? s.fieldFill : ''}`}
+      contentEditable
+      suppressContentEditableWarning
+      data-placeholder={placeholder}
+      onInput={handleInput}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false)
+        // Подсветка обещает, что следующий backspace уберёт эту плашку, —
+        // а с ушедшим из поля фокусом она уже ничего не обещает.
+        clearChipSelection()
+      }}
+      // Курсор поставили мышью — с плашкой, до которой дошли стрелками,
+      // это никак не связано.
+      onMouseDown={clearChipSelection}
+      onPaste={handlePaste}
+      onCopy={(event) => copySelection(event, false)}
+      onCut={(event) => copySelection(event, true)}
+      onKeyDown={handleKeyDown}
+    />
+  )
+
+  const boxClassName = (extra: string) =>
+    `${s.box} ${extra} ${focused ? s.boxFocused : ''} ${dropping || fileDragOver ? s.boxDropping : ''} ${bash ? s.boxBash : ''}`
+
+  const suggestNode = suggesting ? (
+    <SlashSuggest
+      commands={suggestionItems}
+      highlight={highlight}
+      onPick={isFileSuggest ? (picked) => insertFileReference(picked.id) : insert}
+      onHighlight={setHighlight}
+      showSlash={showSlash}
+      // Compact сидит внизу панели, как и обычная раскладка снизу: подсказке
+      // расти вверх, в сторону ленты, а не вниз — там уже край панели.
+      openDownward={compact ? false : fillHeight}
+    />
+  ) : null
+
+  if (compact) {
+    return (
+      <div className={s.boxWrap}>
+        {suggestNode}
+
+        <div className={s.compactRow}>
+          <div
+            className={boxClassName(s.boxCompact)}
+            ref={box}
+            onDragOver={(event) => {
+              if (!hasFiles(event.dataTransfer)) return
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'copy'
+              setDropping(true)
+            }}
+            onDragLeave={(event) => {
+              if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+              setDropping(false)
+            }}
+            onDrop={handleDrop}
+          >
+            <ContextMeterVertical percent={contextPercent} />
+            {ghostHintNode}
+            {fieldNode}
+          </div>
+
+          {/*
+           * MODEL/EFFORT/MODE и кнопки — раньше в отдельной строке статуса под
+           * полем (см. StatusBar), но у compact своей строки статуса нет: обе
+           * строки переехали сюда, в колонку рядом с полем, чтобы под ленту
+           * осталось как можно больше высоты.
+           */}
+          <div className={s.compactControls}>
+            <div className={s.compactSelectors}>
+              <Selector
+                label="MODEL"
+                value={modelLabel(model)}
+                title={`Model: ${modelLabel(model)}`}
+                className={shell.selectorAuto}
+                onOpen={(anchor) => onOpenSelector?.('model', anchor)}
+              />
+              <Selector
+                label="EFFORT"
+                value={effort ?? ''}
+                title={`Reasoning effort: ${effort ?? ''}`}
+                className={shell.selectorAuto}
+                onOpen={(anchor) => onOpenSelector?.('effort', anchor)}
+              />
+              <Selector
+                label="MODE"
+                value={modeShortLabel(mode ?? '')}
+                title={`Permission mode: ${modeLabel(mode ?? '')}`}
+                className={`${shell.selectorAuto} ${modeClass(mode ?? '')}`}
+                onOpen={(anchor) => onOpenSelector?.('mode', anchor)}
+              />
+            </div>
+
+            <div className={s.compactToolsRow}>{toolsRow}</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={`${s.boxWrap} ${fillHeight ? s.boxWrapFill : ''}`}>
-      {suggesting ? (
-        <SlashSuggest
-          commands={suggestionItems}
-          highlight={highlight}
-          onPick={isFileSuggest ? (picked) => insertFileReference(picked.id) : insert}
-          onHighlight={setHighlight}
-          showSlash={showSlash}
-          openDownward={fillHeight}
-        />
-      ) : null}
+      {suggestNode}
 
       <div
-        className={`${s.box} ${fillHeight ? s.boxFill : ''} ${focused ? s.boxFocused : ''} ${dropping || fileDragOver ? s.boxDropping : ''} ${bash ? s.boxBash : ''}`}
+        className={boxClassName(fillHeight ? s.boxFill : '')}
         ref={box}
         onDragOver={(event) => {
           if (!hasFiles(event.dataTransfer)) return
@@ -1084,133 +1384,10 @@ export const Composer = ({
         onDrop={handleDrop}
       >
         <ContextMeter percent={contextPercent} />
+        {ghostHintNode}
+        {fieldNode}
 
-        {ghostHint && ghostRect ? (
-          <span
-            className={s.ghostHint}
-            style={{ left: ghostRect.left, top: ghostRect.top, lineHeight: `${ghostRect.height}px` }}
-            aria-hidden="true"
-          >
-            {ghostHint}
-          </span>
-        ) : null}
-
-        <div
-          ref={input}
-          className={`${s.field} ${fillHeight ? s.fieldFill : ''}`}
-          contentEditable
-          suppressContentEditableWarning
-          data-placeholder={placeholder}
-          onInput={handleInput}
-          onFocus={() => setFocused(true)}
-          onBlur={() => {
-            setFocused(false)
-            // Подсветка обещает, что следующий backspace уберёт эту плашку, —
-            // а с ушедшим из поля фокусом она уже ничего не обещает.
-            clearChipSelection()
-          }}
-          // Курсор поставили мышью — с плашкой, до которой дошли стрелками,
-          // это никак не связано.
-          onMouseDown={clearChipSelection}
-          onPaste={handlePaste}
-          onCopy={(event) => copySelection(event, false)}
-          onCut={(event) => copySelection(event, true)}
-          onKeyDown={handleKeyDown}
-        />
-
-        <div className={s.tools}>
-          {/* Расход — слева, на месте, где раньше стояли кнопки вложения и
-              команд: сюда смотрят, решая, что писать дальше, и цифры должны быть
-              под рукой, а не строкой ниже. Сами кнопки уехали вправо, к Send. */}
-          {meters}
-
-          <div className={s.spacer} />
-
-          {/* Одна кнопка на все вложения: файл, картинка и папка выбираются одним
-              и тем же диалогом, а разницу видно по самому пути. */}
-          {/* Подсказки этого ряда разворачиваются вверх: ряд стоит у нижнего
-              края панели, и вниз им некуда. */}
-          <button
-            type="button"
-            className={s.attach}
-            data-tooltip="Attach files or folders"
-            data-tooltip-at="top"
-            aria-label="Attach files or folders"
-            onClick={onAttach}
-          >
-            <Paperclip />
-          </button>
-          {/* Кнопка не открывает каталог, а ставит слэш в поле: дальше команду
-              набирают, и список сужается сам. Пока в поле уже что-то есть, слэш
-              посреди текста не запускает подсказку — кнопка прячется, чтобы не
-              звать на бесполезное нажатие. */}
-          {tokens.length === 0 ? (
-            <button
-              type="button"
-              className={s.attach}
-              data-tooltip="Slash commands"
-              data-tooltip-at="top"
-              aria-label="Slash commands"
-              onClick={() => {
-                insertTextAtCursor('/')
-                input.current?.focus()
-              }}
-            >
-              <span className={s.attachSlash}>/</span>
-            </button>
-          ) : null}
-
-          {streaming ? (
-            <button type="button" className={s.stop} onClick={onStop}>
-              ■ Stop
-            </button>
-          ) : null}
-
-          {/* Обычный Stop честно ждёт подтверждения. Если оно не пришло дольше
-              разумного — единственный работающий выход отсюда - убить процесс. */}
-          {stopStalled ? (
-            <button
-              type="button"
-              className={s.forceStop}
-              onClick={onForceStop}
-              data-tooltip="Claude isn't confirming the stop"
-              data-tooltip-at="top"
-            >
-              ⚠ Not responding · Force stop
-            </button>
-          ) : null}
-
-          {/* Две отдельные кнопки, а не одна с двумя лицами: пока агент занят,
-              у сообщения есть выбор — дойти до него сейчас, посреди работы, или
-              дождаться своей очереди. Send работает всегда, Queue осмысленна
-              только при занятом агенте: свободному ждать нечего.
-
-              У команды терминала очереди не бывает вовсе: её выполняет сама
-              панель, и ждать освобождения агента ей незачем. */}
-          {bash ? null : (
-            <button
-              type="button"
-              className={`${s.send} ${s.sendQueued}`}
-              onClick={onQueue}
-              disabled={!canSubmit || !streaming}
-              data-tooltip="Send after the current run finishes"
-              data-tooltip-at="top"
-            >
-              Queue
-            </button>
-          )}
-
-          <button
-            type="button"
-            className={`${s.send} ${bash ? s.sendRun : ''}`}
-            onClick={onSubmit}
-            disabled={!canSubmit}
-            data-tooltip={bash ? 'Run in your shell — Claude sees the output with your next message' : undefined}
-            data-tooltip-at="top"
-          >
-            {bash ? 'Run' : 'Send'}
-          </button>
-        </div>
+        <div className={s.tools}>{toolsRow}</div>
       </div>
     </div>
   )

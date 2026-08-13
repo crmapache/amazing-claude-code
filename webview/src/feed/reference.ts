@@ -25,6 +25,14 @@ export const rangeLabel = (span: SelectionSpan): string => {
   return `L${startLine}:${startColumn}-L${endLine}:${endColumn}`
 }
 
+/**
+ * Строка похожа на заданный вопрос — заканчивается вопросительным знаком. В
+ * собственном сообщении такую строку показываем приглушённой: рядом почти
+ * всегда стоит решение по ней, и внимание должно доставаться решению, а не
+ * повторённому контексту вопроса.
+ */
+export const isQuestionLine = (line: string): boolean => line.trim().endsWith('?')
+
 export const referenceChip = (span: SelectionSpan): Chip => ({
   kind: 'ref',
   value: span.path,
@@ -68,6 +76,14 @@ const quotePreview = (text: string): string => {
 const PASTE_PREVIEW_WORDS = 7
 
 /**
+ * Символьный потолок поверх словесного — семь слов сами по себе не защищают от
+ * длины: попадись среди них голый URL или путь без пробелов, и плашка
+ * растягивалась бы в узкую длинную полосу вместо компактной, как у соседних
+ * вложений (см. MAX_LABEL_LENGTH выше — та же по духу защита у имени файла).
+ */
+const PASTE_PREVIEW_CHARS = 40
+
+/**
  * Сколько символов вставки хватает на превью. Дальше не смотрим вовсе: подпись
  * плашки строится на каждой перерисовке ленты, а вставляют в поле и стокилобайтные
  * логи — разбирать такой текст целиком ради семи слов незачем.
@@ -83,7 +99,8 @@ const PASTE_SCAN_CHARS = 300
  */
 const pastePreview = (text: string): string => {
   const words = text.slice(0, PASTE_SCAN_CHARS).trim().split(/\s+/).filter(Boolean)
-  return `${words.slice(0, PASTE_PREVIEW_WORDS).join(' ')}…`
+  const preview = words.slice(0, PASTE_PREVIEW_WORDS).join(' ')
+  return `${preview.slice(0, PASTE_PREVIEW_CHARS)}…`
 }
 
 /**

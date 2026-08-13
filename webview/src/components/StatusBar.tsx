@@ -119,16 +119,7 @@ export const StatusBar = ({
   <div className={s.status}>
     {gitBranch ? (
       <div className={s.statusLine}>
-        <span className={`${s.statusItem} ${s.statusBranchItem}`}>
-          <span className={s.statusBranch}>{gitBranch}</span>
-          {pullRequest ? (
-            <button type="button" className={s.statusPrLink} onClick={onOpenPullRequest} title="Open pull request in browser">
-              PR #{pullRequest}
-            </button>
-          ) : (
-            <span className={s.statusPr}>no PR</span>
-          )}
-        </span>
+        <BranchChip gitBranch={gitBranch} pullRequest={pullRequest} onOpenPullRequest={onOpenPullRequest} />
       </div>
     ) : null}
 
@@ -145,6 +136,34 @@ export const StatusBar = ({
     </div>
   </div>
 )
+
+interface BranchChipProps {
+  gitBranch?: string
+  pullRequest?: string
+  onOpenPullRequest?: () => void
+}
+
+/**
+ * Ветка и её PR — экспортирован по тому же принципу, что и [Selector]: Compact
+ * показывает ту же плашку у себя, в ряду с задачами, а не в отдельной строке
+ * статуса (см. TaskListPanel.tsx), но вид и поведение должны остаться теми же.
+ */
+export const BranchChip = ({ gitBranch, pullRequest, onOpenPullRequest }: BranchChipProps) => {
+  if (!gitBranch) return null
+
+  return (
+    <span className={`${s.statusItem} ${s.statusBranchItem}`}>
+      <span className={s.statusBranch}>{gitBranch}</span>
+      {pullRequest ? (
+        <button type="button" className={s.statusPrLink} onClick={onOpenPullRequest} title="Open pull request in browser">
+          PR #{pullRequest}
+        </button>
+      ) : (
+        <span className={s.statusPr}>no PR</span>
+      )}
+    </span>
+  )
+}
 
 /**
  * Недельное окно: под яркой дугой расхода — блёклая дуга равномерного темпа,
@@ -178,7 +197,13 @@ interface SelectorProps {
   onOpen: (anchor: Anchor) => void
 }
 
-const Selector = ({ label, value, title, className = '', onOpen }: SelectorProps) => (
+/**
+ * Кнопка одного селектора (MODEL/EFFORT/MODE) — экспортирована, чтобы Compact
+ * мог собрать тот же ряд у себя внутри поля ввода, а не в отдельной строке
+ * статуса (см. Composer.tsx): вид один и тот же, разнится только то, где ряд
+ * стоит.
+ */
+export const Selector = ({ label, value, title, className = '', onOpen }: SelectorProps) => (
   <button
     type="button"
     className={`${s.selector} ${className}`}
@@ -312,7 +337,8 @@ const weekBudgetToday = (resets: string): number | null => {
   return Math.min(day * WEEK_DAILY_BUDGET, 100)
 }
 
-const modeClass = (mode: string): string => {
+/** Тот же модификатор цвета режима, что и в строке статуса — см. Selector выше. */
+export const modeClass = (mode: string): string => {
   if (mode === 'plan') return s.selectorPlan ?? ''
   if (mode === 'acceptEdits') return s.selectorAccept ?? ''
   if (mode === 'bypassPermissions') return s.selectorDanger ?? ''

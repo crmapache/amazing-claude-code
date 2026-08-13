@@ -34,6 +34,13 @@ interface StreamSwitcherProps {
   onPick: (id: string) => void
   /** Крестик на чипе: спрашиваем подтверждение, прибивает уже App. */
   onStop: (task: { id: string; title: string; subject: string }) => void
+  /**
+   * Compact экономит высоту и держит переключатель не отдельной строкой под
+   * шапкой, а чипами внутри неё самой, рядом с иконками (см. Header). Без
+   * своих отступов, фона и рамки снизу — они здесь чужие, чипы и так стоят в
+   * ряду с остальными элементами шапки.
+   */
+  inline?: boolean
 }
 
 const STATUS_DOT: Partial<Record<AgentStatus, string>> = {
@@ -81,6 +88,7 @@ export const StreamSwitcher = ({
   active,
   onPick,
   onStop,
+  inline = false,
 }: StreamSwitcherProps) => {
   const listRef = useRef<HTMLDivElement | null>(null)
 
@@ -104,83 +112,83 @@ export const StreamSwitcher = ({
 
   if (tabs.length === 0 && background.length === 0) return null
 
-  return (
-    <div className={s.streams}>
-      <div className={s.streamList} ref={listRef}>
-        <button
-          type="button"
-          className={`${s.stream} ${active === 'main' ? s.streamActive : ''}`}
-          onClick={() => onPick('main')}
+  const list = (
+    <div className={`${s.streamList} ${inline ? s.streamListInline : ''}`} ref={listRef}>
+      <button
+        type="button"
+        className={`${s.stream} ${active === 'main' ? s.streamActive : ''}`}
+        onClick={() => onPick('main')}
+      >
+        {STATUS_DOT[mainStatus] ? (
+          <span className={s.streamDot} style={{ background: STATUS_DOT[mainStatus] }} />
+        ) : null}
+        <span className={s.streamLabel}>main</span>
+      </button>
+
+      {/* Не кнопка, а строка с кнопками внутри: у чипа их две — сам он
+          переключает поток, крестик прибивает работу. */}
+      {tabs.map((tab) => (
+        <div
+          key={tab.id}
+          className={`${s.stream} ${tab.stopId ? s.streamStoppable : ''} ${tab.id === active ? s.streamActive : ''}`}
+          role="button"
+          tabIndex={0}
+          onClick={() => onPick(tab.id)}
+          // Кнопкой чип быть перестал (внутри своя, крестик), но с клавиатуры
+          // он обязан работать по-прежнему — оттого роль и обе клавиши.
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return
+            event.preventDefault()
+            onPick(tab.id)
+          }}
         >
-          {STATUS_DOT[mainStatus] ? (
-            <span className={s.streamDot} style={{ background: STATUS_DOT[mainStatus] }} />
-          ) : null}
-          <span className={s.streamLabel}>main</span>
-        </button>
-
-        {/* Не кнопка, а строка с кнопками внутри: у чипа их две — сам он
-            переключает поток, крестик прибивает работу. */}
-        {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            className={`${s.stream} ${tab.stopId ? s.streamStoppable : ''} ${tab.id === active ? s.streamActive : ''}`}
-            role="button"
-            tabIndex={0}
-            onClick={() => onPick(tab.id)}
-            // Кнопкой чип быть перестал (внутри своя, крестик), но с клавиатуры
-            // он обязан работать по-прежнему — оттого роль и обе клавиши.
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' && event.key !== ' ') return
-              event.preventDefault()
-              onPick(tab.id)
-            }}
-          >
-            <ProgressDot percent={tab.percent} color={STATUS_DOT[tab.status] ?? 'var(--acc-fg-fainter)'} />
-            <span className={s.streamLabel}>{tab.label}</span>
-            {tab.duration ? <span className={s.streamDuration}>{tab.duration}</span> : null}
-            {tab.meta ? <span className={s.streamMeta}>{tab.meta}</span> : null}
-            {tab.stopId ? (
-              <button
-                type="button"
-                className={s.streamStop}
-                title="Stop this agent"
-                aria-label={`Stop ${tab.label}`}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onStop({
-                    id: tab.stopId as string,
-                    title: 'Stop this agent?',
-                    subject: tab.meta || tab.label,
-                  })
-                }}
-              >
-                <StopCross />
-              </button>
-            ) : null}
-          </div>
-        ))}
-
-        {/* Фоновая команда — не вкладка: своего потока у неё нет, показывать по
-            клику нечего. Это метка о том, что процесс всё ещё жив, и держится
-            она ровно столько, сколько он работает. */}
-        {background.map((task) => (
-          <span key={task.id} className={`${s.stream} ${s.streamStatic} ${s.streamStoppable}`} title={task.label}>
-            <span className={s.streamDot} style={{ background: 'var(--acc-accent)' }} />
-            <span className={s.streamLabel}>bg</span>
-            <span className={s.streamDuration}>{task.duration}</span>
-            <span className={s.streamMeta}>{task.label}</span>
+          <ProgressDot percent={tab.percent} color={STATUS_DOT[tab.status] ?? 'var(--acc-fg-fainter)'} />
+          <span className={s.streamLabel}>{tab.label}</span>
+          {tab.duration ? <span className={s.streamDuration}>{tab.duration}</span> : null}
+          {tab.meta ? <span className={s.streamMeta}>{tab.meta}</span> : null}
+          {tab.stopId ? (
             <button
               type="button"
               className={s.streamStop}
-              title="Stop this command"
-              aria-label={`Stop ${task.label}`}
-              onClick={() => onStop({ id: task.id, title: 'Stop this command?', subject: task.label })}
+              title="Stop this agent"
+              aria-label={`Stop ${tab.label}`}
+              onClick={(event) => {
+                event.stopPropagation()
+                onStop({
+                  id: tab.stopId as string,
+                  title: 'Stop this agent?',
+                  subject: tab.meta || tab.label,
+                })
+              }}
             >
               <StopCross />
             </button>
-          </span>
-        ))}
-      </div>
+          ) : null}
+        </div>
+      ))}
+
+      {/* Фоновая команда — не вкладка: своего потока у неё нет, показывать по
+          клику нечего. Это метка о том, что процесс всё ещё жив, и держится
+          она ровно столько, сколько он работает. */}
+      {background.map((task) => (
+        <span key={task.id} className={`${s.stream} ${s.streamStatic} ${s.streamStoppable}`} title={task.label}>
+          <span className={s.streamDot} style={{ background: 'var(--acc-accent)' }} />
+          <span className={s.streamLabel}>bg</span>
+          <span className={s.streamDuration}>{task.duration}</span>
+          <span className={s.streamMeta}>{task.label}</span>
+          <button
+            type="button"
+            className={s.streamStop}
+            title="Stop this command"
+            aria-label={`Stop ${task.label}`}
+            onClick={() => onStop({ id: task.id, title: 'Stop this command?', subject: task.label })}
+          >
+            <StopCross />
+          </button>
+        </span>
+      ))}
     </div>
   )
+
+  return inline ? list : <div className={s.streams}>{list}</div>
 }

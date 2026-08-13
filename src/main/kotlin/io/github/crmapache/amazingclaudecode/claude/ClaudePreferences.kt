@@ -39,7 +39,7 @@ internal object ClaudePreferences {
         get() = read(MODE_KEY)
         set(value) = write(MODE_KEY, value)
 
-    /** Где сидит поле ввода: 'left' | 'bottom' | 'right'. Пусто — впервые открытая панель, ведёт себя как раньше. */
+    /** Где сидит поле ввода: 'left' | 'bottom' | 'right' | 'compact'. Пусто — впервые открытая панель, ведёт себя как раньше. */
     var composerLayout: String
         get() = read(COMPOSER_LAYOUT_KEY)
         set(value) = write(COMPOSER_LAYOUT_KEY, value)

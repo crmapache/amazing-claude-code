@@ -33,9 +33,10 @@ describe('clampComposerWidth', () => {
 })
 
 describe('normalizeComposerLayout', () => {
-  it('пропускает left и right как есть', () => {
+  it('пропускает left, right и compact как есть', () => {
     expect(normalizeComposerLayout('left')).toBe('left')
     expect(normalizeComposerLayout('right')).toBe('right')
+    expect(normalizeComposerLayout('compact')).toBe('compact')
   })
 
   it('всё остальное — включая пусто, мусор и старое/чужое значение — считает «снизу»', () => {

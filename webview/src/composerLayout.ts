@@ -1,12 +1,18 @@
 import type { MenuOption } from './components/Menu'
 
-/** Где сидит поле ввода: слева и справа колонкой рядом с лентой, снизу — как раньше. */
-export type ComposerLayout = 'left' | 'bottom' | 'right'
+/**
+ * Где сидит поле ввода: слева и справа колонкой рядом с лентой, снизу — как
+ * раньше, compact — тоже снизу, но плотная раскладка для ограниченной высоты
+ * (панель в нижнем доке IDE): без отдельной строки статуса и раскрытого
+ * списка задач, максимум места отдаётся ленте.
+ */
+export type ComposerLayout = 'left' | 'bottom' | 'right' | 'compact'
 
 export const COMPOSER_LAYOUT_OPTIONS: MenuOption[] = [
   { id: 'left', label: 'Left' },
   { id: 'bottom', label: 'Bottom', tag: 'default' },
   { id: 'right', label: 'Right' },
+  { id: 'compact', label: 'Compact' },
 ]
 
 /**
@@ -40,4 +46,7 @@ export const clampComposerWidth = (width: number, viewportWidth: number): number
 
 /** Оболочка присылает layout как есть из настроек — старое или чужое значение считаем «снизу». */
 export const normalizeComposerLayout = (value: string | undefined): ComposerLayout =>
-  value === 'left' || value === 'right' ? value : 'bottom'
+  value === 'left' || value === 'right' || value === 'compact' ? value : 'bottom'
+
+/** Поле ввода стоит колонкой рядом с лентой (слева или справа), а не строкой сверху/снизу. */
+export const isSideComposerLayout = (layout: ComposerLayout): boolean => layout === 'left' || layout === 'right'

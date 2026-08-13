@@ -41,4 +41,14 @@ describe('reference', () => {
   it('у папки берёт её имя, а не пустоту за последним слэшем', () => {
     expect(chipLabel({ kind: 'dir', value: 'src/components/' })).toBe('components')
   })
+
+  it('у вставки из буфера — первые слова текста', () => {
+    const text = 'Разберись в модуле аналитики и заведи план работ на оставшиеся задачи'
+    expect(chipLabel({ kind: 'paste', value: 'paste1', text })).toBe('Разберись в модуле аналитики и заведи пл…')
+  })
+
+  it('длинное слово (например ссылка) не растягивает плашку — обрезается по символам', () => {
+    const text = 'Use the claude_design MCP (https://api.anthropic.com/v1/design/mcp, auth via /design-login) to import this project'
+    expect(chipLabel({ kind: 'paste', value: 'paste1', text })).toBe('Use the claude_design MCP (https://api.a…')
+  })
 })

@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import type { ComposerLayout } from '../composerLayout'
 import type { Anchor } from './StatusBar'
 import s from './shell.module.css'
 
@@ -100,6 +101,19 @@ interface HeaderProps {
   onOpenPlugins: () => void
   onOpenSounds: () => void
   onOpenLayoutMenu: (anchor: Anchor) => void
+  /**
+   * Та же раскладка, что и у всей панели (см. App.tsx) — здесь важно только
+   * compact: экономит высоту, шапка ниже (32px вместо 34px), а значки в ней —
+   * меньше (26px вместо 28px). Модификатор на самой шапке, а не пропы на
+   * каждой кнопке — правит один каскад в стилях, а не десяток мест здесь.
+   */
+  layout: ComposerLayout
+  /**
+   * Compact прячет отдельную строку переключателя стримов (см. App.tsx) —
+   * чипы вместо неё переезжают сюда же, в правую часть шапки, рядом со
+   * значками. Другие раскладки её не передают: там у переключателя своя строка.
+   */
+  streamSwitcher?: ReactNode
 }
 
 /** Дальше этого сдвига нажатие перестаёт быть кликом и становится перетаскиванием. */
@@ -142,7 +156,10 @@ export const Header = ({
   onOpenPlugins,
   onOpenSounds,
   onOpenLayoutMenu,
+  layout,
+  streamSwitcher,
 }: HeaderProps) => {
+  const compact = layout === 'compact'
   const header = useRef<HTMLElement>(null)
   const tabs = useRef<HTMLDivElement>(null)
 
@@ -451,7 +468,7 @@ export const Header = ({
   }, [])
 
   return (
-    <header className={s.header} ref={header}>
+    <header className={`${s.header} ${compact ? s.headerCompact : ''}`} ref={header}>
       <div className={s.tabs} ref={tabs}>
         {sessions.map((session, index) => {
           const color = colorForGroup(session.groupId)
@@ -518,6 +535,8 @@ export const Header = ({
       <div className={s.spacer} />
 
       <div className={s.headerTools}>
+        {streamSwitcher}
+
         {/* Возобновление разговора в потоковом режиме недоступно слэш-командой:
             она открывает интерактивный список. Поэтому список свой. */}
         <button

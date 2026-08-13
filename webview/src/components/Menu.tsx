@@ -37,6 +37,24 @@ export const Menu = ({ title, hint, width, anchor, options, selected, onPick, on
     ? { top: `${Math.max(8, anchor.top + 6)}px` }
     : { bottom: `${Math.max(8, window.innerHeight - anchor.top + 6)}px` }
 
+  /*
+   * Меню растёт от кнопки в сторону, где нет соседа (вверх у нижней строки,
+   * вниз у кнопки в шапке — см. openDownward), но место в этой стороне не
+   * бесконечно: у compact, например, MODE сидит невысоко над низом панели, а
+   * вариантов в нём — на добрую сотню пикселей текста. Без своего потолка
+   * меню просто продолжало расти вверх поверх экрана — заголовок и первые
+   * пункты уезжали за верхний край, до них было не дотянуться. max-height в
+   * самой .menu (86vh) не спасает: он отмеряет от всего окна, а не от места,
+   * которое реально осталось от кнопки до края. Пола под availableHeight нет
+   * нарочно — искусственный минимум точно так же выталкивал бы меню за
+   * экран, если реального места меньше минимума; список внутри и так
+   * скроллится (см. overflow-y в .menu).
+   */
+  const availableHeight = openDownward ? window.innerHeight - anchor.top - 14 : anchor.top - 14
+  // Не шире потолка самого класса .menu (min(640px, 86vh)) — иначе инлайн-стиль
+  // молча его перебивает для любой раскладки, не только compact.
+  const maxHeight = Math.min(640, window.innerHeight * 0.86, Math.max(0, availableHeight))
+
   return (
     <>
       <div className={s.menuScrim} onClick={onClose} />
@@ -45,6 +63,7 @@ export const Menu = ({ title, hint, width, anchor, options, selected, onPick, on
         style={{
           width: `${actualWidth}px`,
           right: `${right}px`,
+          maxHeight: `${maxHeight}px`,
           ...verticalStyle,
         }}
       >

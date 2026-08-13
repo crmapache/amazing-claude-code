@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { linkify } from '../../feed/markdown'
-import { chipLabel, chipTitle, pasteBlockPreview, pasteLineCount } from '../../feed/reference'
+import { chipLabel, chipTitle, isQuestionLine, pasteBlockPreview, pasteLineCount } from '../../feed/reference'
 import type { Chip, ChipKind, UserItem } from '../../feed/types'
 import s from '../feed.module.css'
 
@@ -39,29 +39,7 @@ export const UserCard = ({ item, onOpenLink }: UserCardProps) => (
     <div className={s.userBody}>
       {item.tokens.map((token, index) =>
         token.kind === 'text' ? (
-          // Текст показываем ровно как набрали — без разметки, — но адрес в нём
-          // остаётся живой ссылкой: её кликают, а не переписывают руками.
-          <span key={index}>
-            {linkify(token.value).map((part, partIndex) =>
-              part.href ? (
-                <a
-                  key={partIndex}
-                  href={part.href}
-                  className={s.link}
-                  // Как и в ответе агента: наружу, в системный браузер, иначе
-                  // сам вебвью панели уехал бы на этот адрес.
-                  onClick={(event) => {
-                    event.preventDefault()
-                    onOpenLink(part.href ?? '')
-                  }}
-                >
-                  {part.text}
-                </a>
-              ) : (
-                <span key={partIndex}>{part.text}</span>
-              ),
-            )}
-          </span>
+          <TextToken key={index} value={token.value} onOpenLink={onOpenLink} />
         ) : // Вставка, за которой в сообщении уже ничего нет, занимает строку
         // целиком: место всё равно свободно, а по семи словам в узкой плашке не
         // вспомнить, что именно отправил.
@@ -73,6 +51,47 @@ export const UserCard = ({ item, onOpenLink }: UserCardProps) => (
       )}
     </div>
   </div>
+)
+
+/**
+ * Текст показываем ровно как набрали — без разметки, — но построчно: если
+ * похоже, что где-то заново заданный вопрос (строка кончается на "?"), она
+ * тускнеет, а перед ней добавляется пустая строка — чтобы пары вопрос/ответ
+ * не слипались в один абзац, даже когда в сообщении между ними не было
+ * пустой строки. Адрес в тексте остаётся живой ссылкой: её кликают, а не
+ * переписывают руками.
+ */
+const TextToken = ({ value, onOpenLink }: { value: string; onOpenLink: (url: string) => void }) => (
+  <>
+    {value.split('\n').map((line, lineIndex) => {
+      const question = isQuestionLine(line)
+
+      return (
+        <span key={lineIndex} className={question ? s.userQuestionLine : undefined}>
+          {lineIndex > 0 ? (question ? '\n\n' : '\n') : null}
+          {linkify(line).map((part, partIndex) =>
+            part.href ? (
+              <a
+                key={partIndex}
+                href={part.href}
+                className={s.link}
+                // Как и в ответе агента: наружу, в системный браузер, иначе
+                // сам вебвью панели уехал бы на этот адрес.
+                onClick={(event) => {
+                  event.preventDefault()
+                  onOpenLink(part.href ?? '')
+                }}
+              >
+                {part.text}
+              </a>
+            ) : (
+              <span key={partIndex}>{part.text}</span>
+            ),
+          )}
+        </span>
+      )
+    })}
+  </>
 )
 
 /**
