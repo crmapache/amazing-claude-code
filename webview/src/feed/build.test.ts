@@ -1488,3 +1488,66 @@ describe('карточка плана', () => {
     expect(card()?.meta).toBe('· 2 steps')
   })
 })
+
+describe('живой счётчик текущего хода (turnStartedAt)', () => {
+  it('обычный prompt отмечает начало хода — из него растёт счётчик рядом с «Claude is thinking»', () => {
+    const state = reducePanel(
+      initialPanelState,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      1_700_000_000_000,
+    )
+
+    expect(state.turnStartedAt).toBe(1_700_000_000_000)
+  })
+
+  it('досылка в идущий ход не двигает начало — досланное сообщение не новый ход, а продолжение прежнего', () => {
+    let state = reducePanel(
+      initialPanelState,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'первое' }], quotes: [] },
+      1_700_000_000_000,
+    )
+
+    state = reducePanel(
+      state,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'стой, не этот' }], quotes: [], steering: true },
+      1_700_000_005_000,
+    )
+
+    expect(state.turnStartedAt).toBe(1_700_000_000_000)
+  })
+
+  it('status idle гасит счётчик — ход кончился, считать больше нечего', () => {
+    let state = reducePanel(
+      initialPanelState,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      1_700_000_000_000,
+    )
+
+    state = reducePanel(state, { kind: 'status', status: 'idle' }, 1_700_000_005_000)
+
+    expect(state.turnStartedAt).toBeUndefined()
+  })
+
+  it('status running без своего prompt (переподключение к фоновому ходу) тоже заводит счётчик', () => {
+    const state = reducePanel(initialPanelState, { kind: 'status', status: 'running' }, 1_700_000_000_000)
+    expect(state.turnStartedAt).toBe(1_700_000_000_000)
+  })
+
+  it('повторный status running не откатывает уже идущий счётчик назад', () => {
+    let state = reducePanel(initialPanelState, { kind: 'status', status: 'running' }, 1_700_000_000_000)
+    state = reducePanel(state, { kind: 'status', status: 'running' }, 1_700_000_005_000)
+
+    expect(state.turnStartedAt).toBe(1_700_000_000_000)
+  })
+
+  it('тик двигает рендер дальше даже без единого вызова инструмента — иначе счётчик стоял бы на нуле до первого вызова', () => {
+    const running = reducePanel(initialPanelState, { kind: 'status', status: 'running' }, 1_700_000_000_000)
+    const ticked = reducePanel(running, { kind: 'tick' }, 1_700_000_001_000)
+
+    // startedAt (по вызовам инструментов) пуст — сравниваем сами объекты
+    // состояния: тик обязан вернуть новый, а не тот же самый, иначе useReducer
+    // решит, что рендерить нечего, и счётчик рядом с «Claude is thinking» не сдвинется.
+    expect(ticked).not.toBe(running)
+    expect(ticked.turnStartedAt).toBe(1_700_000_000_000)
+  })
+})

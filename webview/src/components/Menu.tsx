@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Anchor } from './StatusBar'
 import s from './shell.module.css'
 
@@ -26,9 +27,39 @@ interface MenuProps {
    * край самой кнопки, и меню растёт вниз от него.
    */
   openDownward?: boolean
+  /**
+   * Колонка под галочку слева от каждого пункта — по умолчанию есть, она
+   * нужна там, где выбор действительно один из вариантов (модель, effort,
+   * режим, раскладка). Меню бургера в шапке (история/MCP/плагины/звуки/
+   * раскладка) — список действий, а не переключатель одного значения:
+   * почти никогда ни один пункт не выбран, и пустая колонка была просто
+   * лишним отступом слева у каждой строки без всякого смысла.
+   */
+  tick?: boolean
 }
 
-export const Menu = ({ title, hint, width, anchor, options, selected, onPick, onClose, openDownward = false }: MenuProps) => {
+export const Menu = ({
+  title,
+  hint,
+  width,
+  anchor,
+  options,
+  selected,
+  onPick,
+  onClose,
+  openDownward = false,
+  tick = true,
+}: MenuProps) => {
+  /*
+   * Подсветка под мышью — своим состоянием, а не чистым CSS :hover: тот же
+   * приём, что и в SlashSuggest (см. её onMouseEnter), и по той же причине —
+   * в JCEF он срабатывает не всегда. В частности, на пункте, который окажется
+   * под уже неподвижным курсором прямо в момент открытия меню (кнопку нажали
+   * мышью, курсор с неё никуда не уехал), :hover вовсе не включится, пока
+   * мышь не шевельнётся хоть на пиксель, — так и выглядело «часто не срабатывает».
+   */
+  const [hovered, setHovered] = useState<string | null>(null)
+
   // Прижимаемся к правому краю кнопки, но не даём уехать за края панели: она в
   // IDE бывает уже самого меню.
   const actualWidth = Math.min(width, window.innerWidth - 16)
@@ -78,10 +109,14 @@ export const Menu = ({ title, hint, width, anchor, options, selected, onPick, on
             <button
               key={option.id}
               type="button"
-              className={`${s.menuItem} ${on ? s.menuItemOn : ''}`}
+              className={[s.menuItem, on && s.menuItemOn, hovered === option.id && s.menuItemHover]
+                .filter(Boolean)
+                .join(' ')}
               onClick={() => onPick(option.id)}
+              onMouseEnter={() => setHovered(option.id)}
+              onMouseLeave={() => setHovered((current) => (current === option.id ? null : current))}
             >
-              <span className={s.menuTick}>{on ? '✓' : ''}</span>
+              {tick ? <span className={s.menuTick}>{on ? '✓' : ''}</span> : null}
               <div className={s.menuBody}>
                 <div className={s.menuRow}>
                   <span className={`${s.menuLabel} ${on ? s.menuLabelOn : ''}`}>{option.label}</span>

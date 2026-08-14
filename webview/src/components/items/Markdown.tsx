@@ -1,6 +1,6 @@
 import { Reveal } from 'smooth-stream-text/react'
 import { createElement, useEffect, useState } from 'react'
-import type { Paragraph, TextPart } from '../../feed/types'
+import type { Paragraph, TableAlign, TableData, TextPart } from '../../feed/types'
 import { CopyButton, copyToClipboard } from './CopyButton'
 import s from '../feed.module.css'
 
@@ -57,7 +57,14 @@ const ParagraphView = ({
     )
   }
 
-  const paraClass = [s.para, paragraph.bullet && s.paraBullet, paragraph.heading && s.paraHeading]
+  if (paragraph.table) return <TableView table={paragraph.table} reveal={reveal} onOpenLink={onOpenLink} />
+
+  const paraClass = [
+    s.para,
+    paragraph.bullet && s.paraBullet,
+    paragraph.heading && s.paraHeading,
+    paragraph.quote && s.paraQuote,
+  ]
     .filter(Boolean)
     .join(' ')
 
@@ -74,6 +81,58 @@ const ParagraphView = ({
     </div>
   )
 }
+
+const ALIGN_CLASS: Record<Exclude<TableAlign, undefined>, string> = {
+  center: s.tableCellCenter,
+  right: s.tableCellRight,
+  left: '',
+}
+
+const alignClass = (align: TableAlign): string | undefined => (align ? ALIGN_CLASS[align] : undefined)
+
+/**
+ * Таблица из ответа агента — `| a | b |` и разделитель `|---|---|` следом
+ * (см. parseTableAt). Ячейки разобраны тем же parseInline, что и обычный
+ * текст — код, жирное и ссылки внутри таблицы работают точно так же.
+ */
+const TableView = ({
+  table,
+  reveal,
+  onOpenLink,
+}: {
+  table: TableData
+  reveal: boolean
+  onOpenLink: (url: string) => void
+}) => (
+  <div className={s.tableWrap}>
+    <table className={s.table}>
+      <thead>
+        <tr>
+          {table.header.map((cell, index) => (
+            <th key={index} className={alignClass(table.align[index])}>
+              {cell.map((part, partIndex) => (
+                <PartView key={partIndex} part={part} reveal={reveal} onOpenLink={onOpenLink} />
+              ))}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {table.rows.map((row, rowIndex) => (
+          <tr key={rowIndex}>
+            {row.map((cell, cellIndex) => (
+              <td key={cellIndex} className={alignClass(table.align[cellIndex])}>
+                {cell.map((part, partIndex) => (
+                  <PartView key={partIndex} part={part} reveal={reveal} onOpenLink={onOpenLink} />
+                ))}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)
 
 /**
  * Кусок текста: с волной проявления или без. Без неё это обычный span/pre —

@@ -22,32 +22,27 @@
 
 /* Граница смотрит туда, откуда к полю ввода примыкает лента — см. App.tsx (layout). */
 .dock[data-layout='bottom'],
-.dock[data-layout='compact'] {
+.dock[data-layout='compact'],
+.dock[data-layout='left'],
+.dock[data-layout='right'] {
   border-top: 1px solid var(--acc-line);
 }
 
 /*
- * Слева/справа высота колонки задана соседней лентой (stretch), а не своим
- * содержимым, как снизу, — и просто оставлять её пустой до низа некрасиво.
- * Колонка становится flex-столбцом: задачи/очередь/цитаты/статус-бар держат
- * свою обычную высоту, а поле ввода (см. Composer.fillHeight) забирает всё,
- * что осталось. Если содержимого всё равно набежало больше, чем влезает, —
- * прокручиваем саму панель, а не обрезаем её молча.
+ * left/right: грид стоит на .panel целиком, шапка — первая строка, лента и
+ * док делят с ней одну колонку по строкам дальше — лента второй строкой,
+ * док третьей (см. shell.module.css). Боковая рельса (.railColumn) занимает
+ * все три строки разом, слева у left, справа у right — её собственная рамка
+ * уже отделяет её на всю высоту, доку своя рамка сбоку не нужна.
  */
-.dock[data-layout='left'],
 .dock[data-layout='right'] {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow-y: auto;
+  grid-column: 1;
+  grid-row: 3;
 }
 
 .dock[data-layout='left'] {
-  border-right: 1px solid var(--acc-line);
-}
-
-.dock[data-layout='right'] {
-  border-left: 1px solid var(--acc-line);
+  grid-column: 2;
+  grid-row: 3;
 }
 
 /* --- Кнопки блокирующих панелей ---------------------------------------------- */
@@ -798,19 +793,6 @@
   position: relative;
 }
 
-/*
- * Layout left/right (см. App.tsx, Composer.fillHeight): поле ввода растёт на
- * всю высоту колонки, а не стоит короткой полоской над пустым местом. flex:1
- * действует, только когда родитель (.dock) сам flex-контейнер, — а это ровно
- * тот же left/right, так что в bottom-раскладке класс ни на что не влияет.
- */
-.boxWrapFill {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
 .suggest {
   position: absolute;
   left: 0;
@@ -824,18 +806,6 @@
   border-radius: var(--acc-r-xl);
   background: var(--acc-bg-panel);
   box-shadow: var(--acc-shadow-menu);
-}
-
-/*
- * fillHeight (layout left/right, см. Composer.tsx): поле растянуто на всю
- * колонку, и "вверх от поля" уводит список выше её собственного верха — в
- * место, которое перекрывает dock[data-layout] overflow-y:auto никак не
- * прокрутить. Список растёт вниз от верха поля вместо этого — там он остаётся
- * внутри той же прокручиваемой области, что и всё остальное.
- */
-.suggestDown {
-  top: 8px;
-  bottom: auto;
 }
 
 .suggestItem {
@@ -889,14 +859,6 @@
   border-radius: var(--acc-r-2xl);
   background: var(--acc-field-bg);
   overflow: hidden;
-}
-
-/* Пара к .boxWrapFill: сама рамка тоже становится столбцом, чтобы .fieldFill внутри неё могло вытянуться. */
-.boxFill {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
 }
 
 /*
@@ -1035,7 +997,9 @@
  * что-то есть, эти же 8px ряда — единственный отступ ОТ этого соседа, и их
  * трогать не нужно.
  */
-.dock[data-layout='compact'] > .boxWrap:first-child .compactRow {
+.dock[data-layout='compact'] > .boxWrap:first-child .compactRow,
+.dock[data-layout='left'] > .boxWrap:first-child .railRow,
+.dock[data-layout='right'] > .boxWrap:first-child .railRow {
   padding-top: 0;
 }
 
@@ -1054,7 +1018,8 @@
 /*
  * Вертикальная шкала контекста — та же роль, что у горизонтальной
  * .contextMeter над полем в остальных раскладках, но занимает высоту, а не
- * ширину: compact экономит именно высоту, отдавая освободившееся полю ввода.
+ * ширину: compact и left/right экономят именно высоту поля, отдавая
+ * освободившееся самому textarea.
  */
 .compactMeter {
   flex: none;
@@ -1064,10 +1029,10 @@
 }
 
 /*
- * Трек и заливка — один и тот же столбик сегментов, только заливка обрезана
- * .compactMeterFillClip высотой ровно в процент контекста и растянута обратно
- * во всю исходную высоту (см. Composer.ContextMeterVertical): так её сегменты
- * встают на границы сегментов трека под ней, а не садятся произвольно.
+ * Пять сегментов снизу вверх (column-reverse — первый в разметке встаёт
+ * внизу): цвет и свечение зажигаются им сразу через inline style, целиком, а
+ * не заливкой по проценту (см. Composer.ContextMeterVertical) — так все
+ * закрашенные сегменты одной высоты, без обрезанного по границе процента.
  */
 .compactMeterTrack {
   position: absolute;
@@ -1081,14 +1046,6 @@
   flex: 1 1 0;
   border-radius: 999px;
   background: var(--acc-bg-control);
-}
-
-.compactMeterFillClip {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  overflow: hidden;
 }
 
 /* Колонка справа от box: верхний ряд — MODEL/EFFORT/MODE, нижний —
@@ -1121,6 +1078,80 @@
   gap: 4px;
 }
 
+/* --- Поле ввода: left/right (боковая рельса) --------------------------------- */
+
+/*
+ * Обёртка box (шкала контекста + поле) — единственный ребёнок: MODEL/EFFORT/
+ * MODE и кнопки уходят порталом в боковую рельсу на всю высоту панели (см.
+ * .railColumn в shell.module.css и Composer.railContainer).
+ *
+ * margin/padding — тот же приём, что и у .compactRow выше (см. её описание).
+ */
+.railRow {
+  display: flex;
+  margin: 0 -10px;
+  padding: 8px 10px;
+}
+
+/* flex: 1 1 auto — единственный ребёнок .railRow растягивается на всю его
+   ширину, а не жмётся к ширине своего содержимого, как обычный flex-элемент
+   без явного flex-basis. */
+.boxRail {
+  display: flex;
+  align-items: stretch;
+  gap: 9px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 11px 7px 9px;
+}
+
+/* Тот же приём, что и .compactSelectors выше — общий .selectorAuto делит
+   ряд поровну между тремя кнопками. */
+.railSelectors {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Расход — своей строкой под селекторами, а не в один ряд с кнопками (см.
+   .railToolsRow ниже): кольца приходят от CLI не сразу и тогда короче (нет
+   колец, только «…»), а Stop/ForceStop показываются и прячутся при каждом
+   ходе агента — если бы всё это делило один ряд, любое из них меняло бы
+   позицию соседей при своём появлении. Порознь — трогает только себя. */
+.railMeters {
+  display: flex;
+}
+
+/* Те же дети, что и в .tools обычной раскладки (см. Composer.toolsRow), но
+   без его фона/рамки/паддинга — те здесь ни к чему, ряд уже стоит в боковой
+   рельсе с собственными отступами (см. .railColumn в shell.module.css).
+   margin-top: auto — прижимает именно этот ряд к низу рельсы, сколько бы
+   карточек (разрешение, вопрос, задачи, очередь, цитаты) ни встало над ним:
+   у них самих никаких особых отступов нет, они просто идут по порядку сверху.
+
+   justify-content по умолчанию flex-start — Send идёт первым и всегда стоит
+   у края, что бы ни появилось и ни исчезло за ним (Stop, ForceStop, Queue).
+   У right этот край — левый, и он же граница с лентой (рельса справа от
+   ленты). См. .railToolsRowLeft ниже — у left всё зеркально. */
+.railToolsRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: auto;
+}
+
+/*
+ * Зеркало .railToolsRow для left: рельса там стоит слева от ленты, и без
+ * этого модификатора Send оказывался бы у внешнего края всей панели —
+ * дальше всего от того, что вообще-то рядом, ленты и поля ввода. row-reverse
+ * разворачивает разом и порядок, и упаковку: ряд прижимается к правому краю
+ * рельсы (граница с лентой у left), и Send встаёт первым у этой границы —
+ * ровно там же, где он стоит и у right относительно своей границы.
+ */
+.railToolsRowLeft {
+  flex-direction: row-reverse;
+}
+
 /*
  * Обычный блочный поток, не flex: чипы — inline-flex внутри него, поэтому
  * текст и вложения переносятся вместе, ровно там, где стоят по порядку, как
@@ -1140,8 +1171,21 @@
  */
 .field {
   padding: 7px 12px 11px;
-  min-height: 79px;
-  max-height: 160px;
+  /*
+   * 3 строки по умолчанию, до 5 дальше прокрутка. lh — реальная вычисленная
+   * высота строки ТЕКУЩЕГО шрифта (не голое умножение font-size на
+   * line-height): моноширинный шрифт панель берёт из настроек IDE (см.
+   * applyTypography в App.tsx), и у разных шрифтов эта высота на глаз
+   * заметно отличается — калиброванное под один шрифт число пикселей на
+   * другом либо показывало бы лишнюю пустую строку, либо обрезало бы
+   * последнюю. 81px/123px ниже — запасной вариант для браузера без
+   * поддержки lh (правило целиком отбрасывается, если lh не понимает, а не
+   * применяется частично, — второе объявление просто не подхватится).
+   */
+  min-height: 81px;
+  min-height: calc(3 * 1lh + 18px);
+  max-height: 123px;
+  max-height: calc(5 * 1lh + 18px);
   overflow-y: auto;
   cursor: text;
   outline: none;
@@ -1150,14 +1194,6 @@
   font-size: 13px;
   line-height: var(--acc-leading, 1.55);
   color: var(--acc-fg);
-}
-
-/* Снимает потолок в 160px: в left/right полю есть куда расти, и вместо пустой
-   панели ниже растёт сам ввод — до места, что реально освободила лента. */
-.fieldFill {
-  flex: 1;
-  min-height: 0;
-  max-height: none;
 }
 
 /*
@@ -1184,6 +1220,22 @@
   padding: 0;
   min-height: 40px;
   max-height: 100px;
+  overflow-y: auto;
+}
+
+/*
+ * left/right: тот же приём, что и .fieldCompact выше, только предел ниже —
+ * 4 строки (84px = 4 × 21.06px), а не 5: рельса рядом и так забирает часть
+ * ширины панели, и высокое поле здесь смотрится тяжелее, чем в compact,
+ * которому отдана вся ширина целиком.
+ */
+.fieldRail {
+  align-self: flex-start;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  min-height: 40px;
+  max-height: 84px;
   overflow-y: auto;
 }
 
@@ -1286,6 +1338,14 @@
   background: none;
   color: var(--acc-fg-ghost);
   opacity: 0.6;
+}
+
+/* Невидимая, но живая в разметке — место под кнопкой остаётся, ряды вокруг
+   неё (и всё, что считает от них ширину, см. Composer.slashButton) не
+   дёргаются от её исчезновения. */
+.attachHidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /*

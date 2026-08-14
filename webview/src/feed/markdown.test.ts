@@ -117,6 +117,87 @@ describe('parseParagraphs', () => {
     expect(outer?.depth).toBe(0)
     expect(inner?.depth).toBe(1)
   })
+
+  it('строка с | и разделитель под ней собираются в таблицу, а не остаются сырым текстом', () => {
+    const [table] = parseParagraphs(['| модель | цена |', '|---|---|', '| Haiku | $1.90 |'].join('\n'))
+
+    expect(table?.table).toEqual({
+      align: [undefined, undefined],
+      header: [[{ text: 'модель' }], [{ text: 'цена' }]],
+      rows: [[[{ text: 'Haiku' }], [{ text: '$1.90' }]]],
+    })
+    expect(table?.parts).toEqual([])
+  })
+
+  it('выравнивание столбца читается из разделителя: :--- слева, ---: справа, :---: по центру', () => {
+    const [table] = parseParagraphs(['| a | b | c |', '|:---|---:|:---:|', '| 1 | 2 | 3 |'].join('\n'))
+    expect(table?.table?.align).toEqual(['left', 'right', 'center'])
+  })
+
+  it('ячейки таблицы разбираются тем же parseInline — код и жирное внутри работают', () => {
+    const [table] = parseParagraphs(['| файл | статус |', '|---|---|', '| `a.ts` | **готово** |'].join('\n'))
+
+    expect(table?.table?.rows).toEqual([[[{ text: 'a.ts', code: true }], [{ text: 'готово', strong: true }]]])
+  })
+
+  it('| без строки-разделителя под ней таблицей не становится — это может быть просто пайп в тексте', () => {
+    const [paragraph] = parseParagraphs('вывод: cmd1 | cmd2')
+    expect(paragraph?.table).toBeUndefined()
+  })
+
+  it('число ячеек разделителя должно совпасть с шапкой — иначе это не таблица', () => {
+    const [paragraph] = parseParagraphs(['| a | b |', '|---|'].join('\n'))
+    expect(paragraph?.table).toBeUndefined()
+  })
+
+  it('таблица без единой строки тела (ещё печатается) — шапка и пустой список строк, не ошибка', () => {
+    const [table] = parseParagraphs(['| a | b |', '|---|---|'].join('\n'))
+    expect(table?.table?.rows).toEqual([])
+  })
+
+  it('строка с > помечается цитатой, сам маркер в тексте не остаётся', () => {
+    const [quote] = parseParagraphs('> checked the data, you are right')
+    expect(quote?.quote).toBe(true)
+    expect(quote?.parts).toEqual([{ text: 'checked the data, you are right' }])
+  })
+
+  it('подряд идущие строки цитаты собираются в один абзац, как обычный текст', () => {
+    const paragraphs = parseParagraphs(['> первая строка', '> вторая строка'].join('\n'))
+    expect(paragraphs).toHaveLength(1)
+    expect(paragraphs[0]?.parts).toEqual([{ text: 'первая строка вторая строка' }])
+  })
+
+  it('пустая строка цитаты (голое >) разбивает её на отдельные абзацы, не завершая цитату целиком', () => {
+    const paragraphs = parseParagraphs(['> первый абзац цитаты', '>', '> второй абзац цитаты'].join('\n'))
+    expect(paragraphs).toHaveLength(2)
+    expect(paragraphs[0]?.quote).toBe(true)
+    expect(paragraphs[1]?.quote).toBe(true)
+    expect(paragraphs[0]?.parts).toEqual([{ text: 'первый абзац цитаты' }])
+    expect(paragraphs[1]?.parts).toEqual([{ text: 'второй абзац цитаты' }])
+  })
+
+  it('вложенное «> >» остаётся одной цитатой без раздвоенного маркера', () => {
+    const [quote] = parseParagraphs('> > вложенный ответ')
+    expect(quote?.quote).toBe(true)
+    expect(quote?.parts).toEqual([{ text: 'вложенный ответ' }])
+  })
+
+  it('цитата разбирается тем же parseInline — код и ссылки внутри неё работают', () => {
+    const [quote] = parseParagraphs('> смотри `a.ts` и https://example.com')
+    expect(quote?.parts).toEqual([
+      { text: 'смотри ' },
+      { text: 'a.ts', code: true },
+      { text: ' и ' },
+      { text: 'https://example.com', href: 'https://example.com' },
+    ])
+  })
+
+  it('цитата без пустой строки после себя не сливается со следующим обычным абзацем', () => {
+    const paragraphs = parseParagraphs(['> цитата', 'обычный текст следом'].join('\n'))
+    expect(paragraphs).toHaveLength(2)
+    expect(paragraphs[0]?.quote).toBe(true)
+    expect(paragraphs[1]?.quote).toBeUndefined()
+  })
 })
 
 describe('linkify', () => {

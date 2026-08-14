@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { isBashDraft } from '../feed/bash'
 import { matchFiles } from '../feed/files'
 import { chipLabel, chipTitle } from '../feed/reference'
@@ -66,43 +67,41 @@ const ContextMeter = ({ percent }: { percent: number }) => {
   )
 }
 
-/** Сколько сегментов в вертикальной шкале compact — см. ContextMeterVertical. */
+/** Сколько сегментов в вертикальной шкале — см. ContextMeterVertical. */
 const CONTEXT_METER_SEGMENTS = 5
 
 /**
- * То же самое, что ContextMeter, но вертикальной шкалой слева от поля —
- * так compact экономит высоту, отдавая её textarea, а не горизонтальной
- * полоске над ним (см. Composer.layout).
+ * То же самое, что ContextMeter, но вертикальной шкалой слева от поля — так
+ * узкое поле (compact, left, right) экономит высоту, отдавая её textarea, а
+ * не горизонтальной полоске над ним (см. Composer.layout).
  *
- * Трек и заливка — два одинаковых столбика с одними и теми же сегментами
- * (снизу вверх, column-reverse): заливка обрезана контейнером высотой ровно
- * в percent% и сама растянута обратно до полной высоты (100/percent), так что
- * её сегменты встают ровно на границы сегментов трека под ней — засечкой
- * поверх полосы, как в горизонтальной версии, тут взяться неоткуда.
+ * Сегменты зажигаются целиком, а не заливкой по проценту: с плавной заливкой,
+ * обрезанной точно по percent%, самый верхний закрашенный сегмент почти
+ * всегда попадал под обрез серединой — выходил на глаз короче остальных,
+ * ровных. Дискретные пять делений и не обещают точности до пикселя, поэтому
+ * округляем вверх — сегмент загорается, как только прогресс зашёл в его
+ * долю хоть немного, тем же способом, что и стрелка индикатора заряда.
  */
 const ContextMeterVertical = ({ percent }: { percent: number }) => {
   const color = contextColor(percent)
   const glow = contextGlow(percent)
   const clamped = Math.min(100, Math.max(0, percent))
-  const fillTrackHeight = clamped > 0 ? `${(100 / clamped) * 100}%` : '100%'
+  const lit = Math.ceil((clamped / 100) * CONTEXT_METER_SEGMENTS)
 
   return (
     <div className={s.compactMeter} aria-hidden="true">
       <div className={s.compactMeterTrack}>
         {Array.from({ length: CONTEXT_METER_SEGMENTS }, (_, index) => (
-          <span key={index} className={s.compactMeterSeg} />
+          <span
+            key={index}
+            className={s.compactMeterSeg}
+            style={
+              index < lit
+                ? { background: color, boxShadow: `0 0 8px ${glow.strong}, 0 0 16px ${glow.soft}` }
+                : undefined
+            }
+          />
         ))}
-      </div>
-      <div className={s.compactMeterFillClip} style={{ height: `${clamped}%` }}>
-        <div className={s.compactMeterTrack} style={{ height: fillTrackHeight }}>
-          {Array.from({ length: CONTEXT_METER_SEGMENTS }, (_, index) => (
-            <span
-              key={index}
-              className={s.compactMeterSeg}
-              style={{ background: color, boxShadow: `0 0 8px ${glow.strong}, 0 0 16px ${glow.soft}` }}
-            />
-          ))}
-        </div>
       </div>
     </div>
   )
@@ -203,21 +202,32 @@ interface ComposerProps {
   onForceStop: () => void
   /**
    * Где сидит поле ввода — та же раскладка, что и у всей панели (см. App.tsx).
-   * Left/right растягивают поле на всю высоту колонки (см. fillHeight ниже),
-   * а compact перестраивает сам ряд: полоска контекста уходит налево вертикальной
+   * compact сжимает сам ряд: полоска контекста уходит налево вертикальной
    * шкалой, а MODEL/EFFORT/MODE встают рядом с полем — своей строки статуса
-   * под ним в compact не бывает (см. App.tsx).
+   * под ним в compact не бывает. left/right тоже сжимают ряд и полоску, но
+   * MODEL/EFFORT/MODE с кнопками уезжают в боковую рельсу на всю высоту
+   * панели (см. railContainer) — своей строки статуса тоже нет (см. App.tsx).
    */
   layout?: ComposerLayout
   /**
-   * Только для compact: строки статуса под полем в этой раскладке нет (см.
-   * App.tsx), и MODEL/EFFORT/MODE переезжают в сам композер — тем же
-   * колбэком, что открывает и остальные меню.
+   * Для compact и left/right: строки статуса под полем в этих раскладках нет
+   * (см. App.tsx), и MODEL/EFFORT/MODE переезжают в сам композер (compact)
+   * или в боковую рельсу (left/right) — тем же колбэком, что открывает и
+   * остальные меню.
    */
   model?: string
   effort?: string
   mode?: string
   onOpenSelector?: (kind: SelectorKind, anchor: Anchor) => void
+  /**
+   * Узел боковой рельсы left/right (см. App.tsx) — MODEL/EFFORT/MODE, расход
+   * и кнопки уходят туда порталом, а не рендерятся прямо здесь: рельсе нужна
+   * вся высота панели, от верха ленты до низа поля, а сам композер стоит
+   * только рядом с полем, гораздо ниже. Состояние и обработчики при этом
+   * остаются в композере — портал переносит только разметку.
+   * null/undefined — ещё не примонтирован либо раскладка не left/right.
+   */
+  railContainer?: HTMLElement | null
 }
 
 export const Composer = ({
@@ -248,9 +258,10 @@ export const Composer = ({
   effort,
   mode,
   onOpenSelector,
+  railContainer,
 }: ComposerProps) => {
   const compact = layout === 'compact'
-  const fillHeight = isSideComposerLayout(layout)
+  const rail = isSideComposerLayout(layout)
   const [focused, setFocused] = useState(false)
   /**
    * Над полем висит перетаскиваемый файл — подсвечиваем, куда его бросят. Это
@@ -1132,23 +1143,31 @@ export const Composer = ({
   /* Кнопка не открывает каталог, а ставит слэш в поле: дальше команду
      набирают, и список сужается сам. Пока в поле уже что-то есть, слэш
      посреди текста не запускает подсказку — кнопка прячется, чтобы не звать
-     на бесполезное нажатие. */
-  const slashButton =
-    tokens.length === 0 ? (
-      <button
-        type="button"
-        className={s.attach}
-        data-tooltip="Slash commands"
-        data-tooltip-at="top"
-        aria-label="Slash commands"
-        onClick={() => {
-          insertTextAtCursor('/')
-          input.current?.focus()
-        }}
-      >
-        <span className={s.attachSlash}>/</span>
-      </button>
-    ) : null
+     на бесполезное нажатие.
+     Прячется именно невидимостью, а не размонтированием: в compact и
+     left/right за рядом кнопок нет спейсера, который принял бы освободившееся
+     место, — пропавший из разметки ребёнок сужал весь ряд, а с ним и колонку
+     MODEL/EFFORT/MODE рядом (её ширина в compact/rail считается по этому же
+     ряду, см. .compactControls в composer.module.css), и все элементы на
+     экране будто меняли ширину при каждом нажатии клавиши. */
+  const slashHidden = tokens.length > 0
+  const slashButton = (
+    <button
+      type="button"
+      className={slashHidden ? `${s.attach} ${s.attachHidden}` : s.attach}
+      data-tooltip="Slash commands"
+      data-tooltip-at="top"
+      aria-label="Slash commands"
+      aria-hidden={slashHidden}
+      tabIndex={slashHidden ? -1 : 0}
+      onClick={() => {
+        insertTextAtCursor('/')
+        input.current?.focus()
+      }}
+    >
+      <span className={s.attachSlash}>/</span>
+    </button>
+  )
 
   const stopButton = streaming ? (
     <button type="button" className={s.stop} onClick={onStop}>
@@ -1208,7 +1227,9 @@ export const Composer = ({
    * набор детей и в обычной раскладке (своя строка `.tools` внутри box), и в
    * compact (вторая строка колонки справа от box, см. ниже) — поведение кнопок
    * раскладке не подчиняется, меняется лишь то, куда ряд встаёт и в каком
-   * порядке он их читает.
+   * порядке он их читает. В left/right расход стоит отдельной строкой над
+   * этим рядом, в боковой рельсе (см. .railMeters ниже) — сюда бы он полез
+   * той же кучей, что толкает Send/Queue при появлении Stop.
    *
    * Порядок различается перестановкой самих детей в разметке, а не CSS
    * `order`: клавиатурная табуляция идёт по порядку в DOM и не следит за
@@ -1227,6 +1248,15 @@ export const Composer = ({
       {attachButton}
       {slashButton}
       {meters}
+    </>
+  ) : rail ? (
+    <>
+      {sendButton}
+      {stopButton}
+      {forceStopButton}
+      {queueButton}
+      {attachButton}
+      {slashButton}
     </>
   ) : (
     <>
@@ -1258,7 +1288,7 @@ export const Composer = ({
   const fieldNode = (
     <div
       ref={input}
-      className={`${s.field} ${compact ? s.fieldCompact : fillHeight ? s.fieldFill : ''}`}
+      className={`${s.field} ${compact ? s.fieldCompact : rail ? s.fieldRail : ''}`}
       contentEditable
       suppressContentEditableWarning
       data-placeholder={placeholder}
@@ -1290,9 +1320,6 @@ export const Composer = ({
       onPick={isFileSuggest ? (picked) => insertFileReference(picked.id) : insert}
       onHighlight={setHighlight}
       showSlash={showSlash}
-      // Compact сидит внизу панели, как и обычная раскладка снизу: подсказке
-      // расти вверх, в сторону ленты, а не вниз — там уже край панели.
-      openDownward={compact ? false : fillHeight}
     />
   ) : null
 
@@ -1360,12 +1387,90 @@ export const Composer = ({
     )
   }
 
+  if (rail) {
+    return (
+      <div className={s.boxWrap}>
+        {suggestNode}
+
+        <div className={s.railRow}>
+          <div
+            className={boxClassName(s.boxRail)}
+            ref={box}
+            onDragOver={(event) => {
+              if (!hasFiles(event.dataTransfer)) return
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'copy'
+              setDropping(true)
+            }}
+            onDragLeave={(event) => {
+              if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+              setDropping(false)
+            }}
+            onDrop={handleDrop}
+          >
+            <ContextMeterVertical percent={contextPercent} />
+            {ghostHintNode}
+            {fieldNode}
+          </div>
+        </div>
+
+        {/*
+         * MODEL/EFFORT/MODE и кнопки — своей строки статуса под полем в
+         * left/right нет: через портал уходят в боковую рельсу на всю высоту
+         * панели (см. railContainer и App.tsx). Состояние и обработчики
+         * остаются здесь, в композере, разметка лишь рисуется в другом месте
+         * DOM. Пока узел ещё не примонтирован (первый рендер), не рисуем
+         * вовсе — идти в portal(null-контейнер) React не даст.
+         */}
+        {railContainer
+          ? createPortal(
+              <>
+                <div className={s.railSelectors}>
+                  <Selector
+                    label="MODEL"
+                    value={modelLabel(model)}
+                    title={`Model: ${modelLabel(model)}`}
+                    className={shell.selectorAuto}
+                    onOpen={(anchor) => onOpenSelector?.('model', anchor)}
+                  />
+                  <Selector
+                    label="EFFORT"
+                    value={effort ?? ''}
+                    title={`Reasoning effort: ${effort ?? ''}`}
+                    className={shell.selectorAuto}
+                    onOpen={(anchor) => onOpenSelector?.('effort', anchor)}
+                  />
+                  <Selector
+                    label="MODE"
+                    value={modeShortLabel(mode ?? '')}
+                    title={`Permission mode: ${modeLabel(mode ?? '')}`}
+                    className={`${shell.selectorAuto} ${modeClass(mode ?? '')}`}
+                    onOpen={(anchor) => onOpenSelector?.('mode', anchor)}
+                  />
+                </div>
+
+                {/* Расход — сразу под селекторами, своей строкой: ни он от
+                    появления Stop/Queue ниже, ни они от роста колец расхода
+                    после того, как придут данные, теперь не двигаются. */}
+                <div className={s.railMeters}>{meters}</div>
+
+                <div className={layout === 'left' ? `${s.railToolsRow} ${s.railToolsRowLeft}` : s.railToolsRow}>
+                  {toolsRow}
+                </div>
+              </>,
+              railContainer,
+            )
+          : null}
+      </div>
+    )
+  }
+
   return (
-    <div className={`${s.boxWrap} ${fillHeight ? s.boxWrapFill : ''}`}>
+    <div className={s.boxWrap}>
       {suggestNode}
 
       <div
-        className={boxClassName(fillHeight ? s.boxFill : '')}
+        className={boxClassName('')}
         ref={box}
         onDragOver={(event) => {
           if (!hasFiles(event.dataTransfer)) return
