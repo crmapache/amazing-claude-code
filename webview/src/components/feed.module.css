@@ -353,6 +353,15 @@
   margin-top: 14px;
 }
 
+/* Цитата markdown (строка с «>») — тот же приём, что у .userQuote, и тот же
+   цвет, что у .chipQuote: полоска слева и приглушённый текст, чтобы её было
+   не спутать со словами самого агента. */
+.paraQuote {
+  padding: 3px 0 3px 10px;
+  border-left: 2px solid var(--acc-quote-32);
+  color: var(--acc-fg-dim);
+}
+
 .bullet {
   font: 12px/var(--acc-leading, 1.62) var(--acc-mono);
   color: var(--acc-fg-fainter);
@@ -443,6 +452,58 @@
   color: var(--acc-fg-mono);
   white-space: pre-wrap;
   overflow-x: auto;
+}
+
+/* Обёртка держит рамку и скругление, сама прокручивается по горизонтали —
+   колонок в ответе бывает больше, чем строка панели способна показать без
+   переноса заголовков вкось. */
+.tableWrap {
+  margin: 2px 0 8px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-lg);
+  overflow: auto;
+}
+
+.table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12.5px;
+}
+
+.table th,
+.table td {
+  padding: 5px 9px;
+  border: 1px solid var(--acc-line);
+  text-align: left;
+  vertical-align: top;
+}
+
+/* Верхнюю и левую рамки таблицы уже даёт .tableWrap — свои у крайних ячеек
+   поверх неё читались бы вдвое толще ровно по этим двум сторонам. thead, а
+   не tr:first-child — та же строка "первая в своём родителе" верна и для
+   первой строки тела, которой верхняя рамка как раз нужна: она же граница
+   с шапкой. */
+.table thead th {
+  border-top: none;
+}
+
+.table tr th:first-child,
+.table tr td:first-child {
+  border-left: none;
+}
+
+.table th {
+  background: var(--acc-bg-card);
+  color: var(--acc-fg);
+  font-weight: 600;
+}
+
+.tableCellCenter {
+  text-align: center;
+}
+
+.tableCellRight {
+  text-align: right;
 }
 
 /* Отступ снизу у последнего абзаца/блока кода в ответе не нужен — под ним нет
@@ -1058,6 +1119,11 @@
  * значит и своя растеризация) вставал относительно нижнего с точностью до доли
  * пикселя: в пройденной части штрихи двоились, выглядя то вдвое толще соседних,
  * то шире самих себя. С общей маской разъезжаться больше нечему.
+ *
+ * Шаг маски задан в процентах от ширины, а не в пикселях: ширина полосы у
+ * каждой панели своя и редко делится на пиксельный шаг без остатка, так что
+ * последний штрих у правого края обрезался и выходил уже остальных. Процент
+ * всегда укладывается в контейнер ровно 28 раз, без обрезков.
  */
 .compactTicks {
   position: relative;
@@ -1066,8 +1132,12 @@
   height: 7px;
   overflow: hidden;
   background: var(--acc-line);
-  mask-image: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 7px);
-  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 7px);
+  mask-image: linear-gradient(90deg, #000 0 30%, transparent 30% 100%);
+  mask-size: calc(100% / 28) 100%;
+  mask-repeat: repeat-x;
+  -webkit-mask-image: linear-gradient(90deg, #000 0 30%, transparent 30% 100%);
+  -webkit-mask-size: calc(100% / 28) 100%;
+  -webkit-mask-repeat: repeat-x;
 }
 
 .compactTicksFill {

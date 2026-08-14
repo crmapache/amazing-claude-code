@@ -94,6 +94,13 @@ export interface PanelState {
   /** Время начала каждого незавершённого вызова — из него считается длительность. */
   startedAt: Record<string, number>
   /**
+   * Когда начался текущий ход — undefined, если сейчас никакой не идёт. Из
+   * него растёт живой счётчик рядом с «Claude is thinking» (см. streamStatus в
+   * App.tsx): «Worked Ns» под самим ответом приезжает только его концом, а до
+   * этого сколько уже прошло — не видно совсем.
+   */
+  turnStartedAt?: number
+  /**
    * Карточка субагента по tool_use_id вызова Task/Agent, который его породил —
    * из системного события task_started. Сообщения самого субагента несут только
    * tool_use_id в parent_tool_use_id, а карточка может жить под task_id: без
@@ -286,6 +293,11 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         // и старая пометка о крахе (если процесс снова заработал) теряют смысл.
         stopRequestedAt: undefined,
         crashed: action.status === 'running' ? false : state.crashed,
+        // Обычно ход уже отмечен через 'prompt' — тут только запасной путь:
+        // статус 'running' догнал панель сам, без локального prompt (например,
+        // после переподключения к уже идущему фоновому ходу). Не трогаем то,
+        // что уже тикает — иначе повторный тот же статус двигал бы отсчёт назад.
+        turnStartedAt: action.status === 'running' ? (state.turnStartedAt ?? now) : undefined,
         seq: stoppedSilently ? state.seq + 1 : state.seq,
         items: stoppedSilently
           ? [...state.items, { id: `meta-${state.seq}`, kind: 'meta', stats: [STOPPED_BY_YOU] }]
@@ -339,6 +351,7 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
       const next: PanelState = {
         ...state,
         status: 'running',
+        turnStartedAt: now,
         streamingText: '',
         streamingId: undefined,
         streamingThinking: '',
@@ -456,11 +469,17 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
  * Пока инструмент или подзадача выполняются, их длительность иначе появляется
  * только вместе с результатом — счётчик стоит на месте, и работа выглядит
  * зависшей. Тик пересчитывает её от startedAt на каждую секунду.
+ *
+ * turnStartedAt в этот пересчёт сам не входит (его читают прямо при рендере,
+ * см. streamStatus в App.tsx) — но пока он есть, а startedAt ещё пуст (ход
+ * только начался, до первого вызова инструмента), ранний выход ниже вернул бы
+ * тот же объект состояния, и React решил бы, что рендерить нечего: живой
+ * счётчик рядом с «Claude is thinking» так и стоял бы на нуле.
  */
 const tickDurations = (state: PanelState, now: number): PanelState => {
-  if (Object.keys(state.startedAt).length === 0) return state
+  if (Object.keys(state.startedAt).length === 0 && !state.turnStartedAt) return state
 
-  let changed = false
+  let changed = Boolean(state.turnStartedAt)
 
   const background = state.background.map((task) => {
     const started = state.startedAt[task.id]

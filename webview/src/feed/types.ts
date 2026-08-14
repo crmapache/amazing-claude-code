@@ -38,6 +38,15 @@ export interface TextPart {
   href?: string
 }
 
+/** Как выровнен столбец таблицы — из строки-разделителя (`:---`, `---:`, `:---:`). */
+export type TableAlign = 'left' | 'center' | 'right' | undefined
+
+export interface TableData {
+  align: TableAlign[]
+  header: TextPart[][]
+  rows: TextPart[][][]
+}
+
 export interface Paragraph {
   bullet?: boolean
   /**
@@ -50,9 +59,13 @@ export interface Paragraph {
   depth?: number
   /** Заголовок (`#`..`######`) — рисуется жирным, как и раньше, но с зазором перед собой, чтобы читаться началом раздела, а не сливаться с абзацем над ним. */
   heading?: boolean
+  /** Цитата (строка начинается с `>`) — полоска слева и приглушённый текст, как переписка внутри переписки. */
+  quote?: boolean
   /** Блок кода рисуется моноширинной плашкой целиком, без разбора на части. */
   codeBlock?: boolean
   language?: string
+  /** Таблица — строка `| a | b |` и разделитель `|---|---|` следом. parts тогда пуст. */
+  table?: TableData
   parts: TextPart[]
 }
 

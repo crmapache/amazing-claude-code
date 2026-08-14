@@ -9,13 +9,6 @@ interface SlashSuggestProps {
   onHighlight: (index: number) => void
   /** Аргумент команды показываем без слэша — это не имя команды, а её значение. */
   showSlash?: boolean
-  /**
-   * Список растёт вниз от верха поля, а не вверх от него — для composer с
-   * fillHeight (layout left/right): там поле растянуто на всю колонку, и
-   * «вверх» уводит список выше её собственного верха, в место, которое
-   * никаким скроллом не достать (см. composer.module.css).
-   */
-  openDownward?: boolean
 }
 
 /** Список команд над полем ввода. Выбор идёт с клавиатуры, мышь — на всякий случай. */
@@ -25,7 +18,6 @@ export const SlashSuggest = ({
   onPick,
   onHighlight,
   showSlash = true,
-  openDownward = false,
 }: SlashSuggestProps) => {
   const active = useRef<HTMLButtonElement>(null)
 
@@ -35,7 +27,7 @@ export const SlashSuggest = ({
   }, [highlight])
 
   return (
-    <div className={`${s.suggest} ${openDownward ? s.suggestDown : ''}`}>
+    <div className={s.suggest}>
       {commands.map((command, index) => (
         <button
           key={`${command.group}-${command.id}`}

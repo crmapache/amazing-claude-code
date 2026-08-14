@@ -83,7 +83,9 @@ const plainText = (item: TextItem): string =>
   item.paragraphs
     .map((paragraph) => {
       const text = paragraph.parts.map((part) => part.text).join('')
-      return paragraph.bullet ? `- ${text}` : text
+      if (paragraph.bullet) return `- ${text}`
+      if (paragraph.quote) return `> ${text}`
+      return text
     })
     .join('\n')
 

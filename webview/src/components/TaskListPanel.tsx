@@ -1,26 +1,18 @@
 import { useEffect, useState } from 'react'
-import type { ComposerLayout } from '../composerLayout'
+import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
 import type { TodoEntry, TodoItem } from '../feed/types'
 import s from './composer.module.css'
-import { BranchChip } from './StatusBar'
 
 interface TaskListPanelProps {
   /** Последний присланный агентом список задач — или ничего, если его ещё не было. */
   item: TodoItem | undefined
   /**
-   * Та же раскладка, что и у всей панели (см. App.tsx) — здесь важно только
-   * compact: экономит высоту, вместо развёрнутой карточки — одна строка с
-   * текущей задачей, а остальные сворачиваются под стрелку (см. ниже).
+   * Та же раскладка, что и у всей панели (см. App.tsx) — здесь важно, сжатая
+   * ли она (compact и left/right, см. isSideComposerLayout): экономит высоту,
+   * вместо развёрнутой карточки — одна строка с текущей задачей, а остальные
+   * сворачиваются под стрелку (см. ниже).
    */
   layout: ComposerLayout
-  /**
-   * Только для compact: своей строки статуса там нет (см. App.tsx), ветка и
-   * её PR переезжают в тот же ряд, что и задачи, — а при их отсутствии эта
-   * строка остаётся единственным местом, откуда ветку вообще видно.
-   */
-  gitBranch?: string
-  pullRequest?: string
-  onOpenPullRequest?: () => void
 }
 
 const VISIBLE_LIMIT = 5
@@ -30,8 +22,8 @@ const VISIBLE_LIMIT = 5
  * В отличие от прежней карточки в ленте, ничего не листается: пользователь
  * ничего не отмечает сам, это чистое зеркало состояния, которое прислал агент.
  */
-export const TaskListPanel = ({ item, layout, gitBranch, pullRequest, onOpenPullRequest }: TaskListPanelProps) => {
-  const compact = layout === 'compact'
+export const TaskListPanel = ({ item, layout }: TaskListPanelProps) => {
+  const compact = layout === 'compact' || isSideComposerLayout(layout)
   const [expanded, setExpanded] = useState(false)
 
   // Один инстанс панели переживает переключение раскладки (App.tsx меняет
@@ -46,21 +38,7 @@ export const TaskListPanel = ({ item, layout, gitBranch, pullRequest, onOpenPull
   const hasOpenTasks = todos.length > 0 && done < todos.length
 
   if (compact) {
-    // Ни одной незавершённой задачи — обычно эта панель вовсе не рисуется
-    // (см. ниже), но ветка не должна пропадать вместе с ней: тут единственное
-    // место, где она видна в compact (своей строки статуса у него нет).
-    if (!hasOpenTasks) {
-      if (!gitBranch) return null
-      return (
-        <div className={`${s.taskCompactRow} ${s.taskCompactBleed}`}>
-          {/* Спейсер держит чип у правого края и здесь — как в ряду с
-              открытыми задачами ниже, — иначе чип прыгает между краями по
-              мере появления и завершения задач в рамках одной сессии. */}
-          <div className={s.spacer} />
-          <BranchChip gitBranch={gitBranch} pullRequest={pullRequest} onOpenPullRequest={onOpenPullRequest} />
-        </div>
-      )
-    }
+    if (!hasOpenTasks) return null
 
     const { current, rest } = pickCurrent(todos)
     const canExpand = rest.length > 0
@@ -96,8 +74,6 @@ export const TaskListPanel = ({ item, layout, gitBranch, pullRequest, onOpenPull
           ) : null}
 
           <div className={s.spacer} />
-
-          <BranchChip gitBranch={gitBranch} pullRequest={pullRequest} onOpenPullRequest={onOpenPullRequest} />
 
           {canExpand ? (
             <button

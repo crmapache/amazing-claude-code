@@ -1,4 +1,4 @@
-import type { Paragraph, TextPart } from './types'
+import type { Paragraph, TableAlign, TableData, TextPart } from './types'
 
 /**
  * Глубже панель не отступает: она бывает узкой, и четвёртый уровень вложенности
@@ -19,6 +19,7 @@ export const parseParagraphs = (source: string): Paragraph[] => {
 
   let codeFence: { language: string; lines: string[] } | null = null
   let plain: string[] = []
+  let quoteLines: string[] = []
 
   const flushPlain = () => {
     if (plain.length === 0) return
@@ -26,7 +27,14 @@ export const parseParagraphs = (source: string): Paragraph[] => {
     plain = []
   }
 
-  for (const line of lines) {
+  const flushQuote = () => {
+    if (quoteLines.length === 0) return
+    paragraphs.push({ quote: true, parts: parseInline(quoteLines.join(' ')) })
+    quoteLines = []
+  }
+
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]!
     const fence = /^\s*```(\w*)\s*$/.exec(line)
 
     if (fence) {
@@ -39,6 +47,7 @@ export const parseParagraphs = (source: string): Paragraph[] => {
         codeFence = null
       } else {
         flushPlain()
+        flushQuote()
         codeFence = { language: fence[1] ?? '', lines: [] }
       }
       continue
@@ -49,6 +58,38 @@ export const parseParagraphs = (source: string): Paragraph[] => {
       continue
     }
 
+    // Таблица: строка с | и сразу под ней — строка-разделитель (`---|---`,
+    // `:---|---:`…). Число ячеек разделителя должно совпадать с шапкой —
+    // без этого случайная строка вида «команда | другая» перед горизонтальной
+    // чертой «---» тоже сошла бы за таблицу.
+    const table = parseTableAt(lines, index)
+
+    if (table) {
+      flushPlain()
+      flushQuote()
+      paragraphs.push({ table: table.data, parts: [] })
+      index = table.nextIndex - 1
+      continue
+    }
+
+    // Цитата: одна или несколько строк, начинающихся с «>» (вложенное «> >» —
+    // тоже цитата, без своего уровня вложенности, панели глубже одной черты не
+    // нужно). Пустая «>» внутри цитаты — граница между её абзацами, как пустая
+    // строка для обычного текста: закрывает уже накопленное, не завершая саму
+    // цитату целиком.
+    const quote = /^[ \t]*(?:>[ \t]?)+(.*)$/.exec(line)
+
+    if (quote) {
+      flushPlain()
+      const content = (quote[1] ?? '').trim()
+      if (content.length > 0) {
+        quoteLines.push(content)
+      } else {
+        flushQuote()
+      }
+      continue
+    }
+
     // Номер и отступ пункта сохраняем: и то, и другое несёт смысл — по номеру
     // на шаг ссылаются словами, а по отступу видно, что это уточнение к пункту
     // выше, а не ещё один равноправный шаг.
@@ -56,6 +97,7 @@ export const parseParagraphs = (source: string): Paragraph[] => {
 
     if (bullet) {
       flushPlain()
+      flushQuote()
       const indent = (bullet[1] ?? '').replace(/\t/g, '  ').length
       paragraphs.push({
         bullet: true,
@@ -73,6 +115,7 @@ export const parseParagraphs = (source: string): Paragraph[] => {
 
     if (heading) {
       flushPlain()
+      flushQuote()
       // Через общий разбор строки, а не одним куском текста: в заголовке бывает
       // и адрес, и код в бэктиках, и по ним точно так же кликают. Целым куском
       // ссылка в заголовке оставалась просто жирной строкой, которую приходилось
@@ -83,9 +126,11 @@ export const parseParagraphs = (source: string): Paragraph[] => {
 
     if (line.trim().length === 0) {
       flushPlain()
+      flushQuote()
       continue
     }
 
+    flushQuote()
     plain.push(line.trim())
   }
 
@@ -94,7 +139,66 @@ export const parseParagraphs = (source: string): Paragraph[] => {
   }
 
   flushPlain()
+  flushQuote()
   return paragraphs
+}
+
+/** Ячейки одной строки таблицы — по `|`, без пустых крайних от рамочных `|`. */
+const splitTableRow = (line: string): string[] => {
+  let trimmed = line.trim()
+  if (trimmed.startsWith('|')) trimmed = trimmed.slice(1)
+  if (trimmed.endsWith('|')) trimmed = trimmed.slice(0, -1)
+  return trimmed.split('|')
+}
+
+/** `:---`, `---:`, `:---:` — выравнивание столбца; голое `---` его не задаёт. */
+const cellAlign = (spec: string): TableAlign => {
+  const trimmed = spec.trim()
+  const left = trimmed.startsWith(':')
+  const right = trimmed.endsWith(':')
+  if (left && right) return 'center'
+  if (right) return 'right'
+  if (left) return 'left'
+  return undefined
+}
+
+const SEPARATOR_CELL = /^:?-+:?$/
+
+/**
+ * Таблица от строки `index`: она сама и следующая строка образуют шапку и
+ * разделитель, дальше — идущие подряд строки с `|` как тело, до первой без
+ * `|` или до конца текста (таблица ещё печатается — тело просто короче).
+ *
+ * Число ячеек разделителя обязано совпасть с шапкой: без этой проверки
+ * случайная строка с `|` (например, вывод команды) перед любой горизонтальной
+ * чертой «---» в ответе тоже сходила бы за таблицу.
+ */
+const parseTableAt = (lines: string[], index: number): { data: TableData; nextIndex: number } | null => {
+  const line = lines[index]!
+  if (!line.includes('|') || index + 1 >= lines.length) return null
+
+  const headerCells = splitTableRow(line)
+  const separatorCells = splitTableRow(lines[index + 1]!)
+
+  if (
+    headerCells.length === 0 ||
+    separatorCells.length !== headerCells.length ||
+    !separatorCells.every((cell) => SEPARATOR_CELL.test(cell.trim()))
+  ) {
+    return null
+  }
+
+  const header = headerCells.map((cell) => parseInline(cell.trim()))
+  const align = separatorCells.map((cell) => cellAlign(cell))
+  const rows: TextPart[][][] = []
+
+  let cursor = index + 2
+  while (cursor < lines.length && lines[cursor]!.includes('|')) {
+    rows.push(splitTableRow(lines[cursor]!).map((cell) => parseInline(cell.trim())))
+    cursor += 1
+  }
+
+  return { data: { align, header, rows }, nextIndex: cursor }
 }
 
 /**

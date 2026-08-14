@@ -2,7 +2,7 @@ import { modeLabel, modeShortLabel, modelLabel } from '../catalog'
 import type { UsageWindow } from '../protocol'
 import s from './shell.module.css'
 
-export type SelectorKind = 'model' | 'effort' | 'mode' | 'composerLayout'
+export type SelectorKind = 'model' | 'effort' | 'mode' | 'composerLayout' | 'header'
 
 /** Где стоит кнопка селектора: меню открывается ровно над ней. */
 export interface Anchor {
@@ -93,10 +93,6 @@ const Meter = ({ percent, color, pace = null, tooltip }: MeterProps) => (
 )
 
 interface StatusBarProps {
-  gitBranch?: string
-  pullRequest?: string
-  /** Открыть PR текущей ветки в системном браузере. Не URL: сама ссылка живёт в панели. */
-  onOpenPullRequest: () => void
   model?: string
   effort: string
   mode: string
@@ -104,25 +100,12 @@ interface StatusBarProps {
 }
 
 /**
- * Нижняя строка: где мы работаем (ветка и её PR) и чем (модель, усилие, режим).
- * Расход отсюда переехал в само поле ввода — см. [UsageMeters].
+ * Нижняя строка: чем мы работаем (модель, усилие, режим). Ветка и её PR
+ * отсюда переехали в шапку — одно место у любой раскладки, а не своя копия
+ * под каждую (см. Header.tsx). Расход — в самом поле ввода, см. [UsageMeters].
  */
-export const StatusBar = ({
-  gitBranch,
-  pullRequest,
-  onOpenPullRequest,
-  model,
-  effort,
-  mode,
-  onOpen,
-}: StatusBarProps) => (
+export const StatusBar = ({ model, effort, mode, onOpen }: StatusBarProps) => (
   <div className={s.status}>
-    {gitBranch ? (
-      <div className={s.statusLine}>
-        <BranchChip gitBranch={gitBranch} pullRequest={pullRequest} onOpenPullRequest={onOpenPullRequest} />
-      </div>
-    ) : null}
-
     <div className={s.selectors}>
       <Selector label="MODEL" value={modelLabel(model)} title={`Model: ${modelLabel(model)}`} onOpen={(anchor) => onOpen('model', anchor)} />
       <Selector label="EFFORT" value={effort} title={`Reasoning effort: ${effort}`} onOpen={(anchor) => onOpen('effort', anchor)} />
@@ -152,7 +135,7 @@ export const BranchChip = ({ gitBranch, pullRequest, onOpenPullRequest }: Branch
   if (!gitBranch) return null
 
   return (
-    <span className={`${s.statusItem} ${s.statusBranchItem}`}>
+    <span className={s.statusItem}>
       <span className={s.statusBranch}>{gitBranch}</span>
       {pullRequest ? (
         <button type="button" className={s.statusPrLink} onClick={onOpenPullRequest} title="Open pull request in browser">

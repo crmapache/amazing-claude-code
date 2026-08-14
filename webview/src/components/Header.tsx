@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
-import type { ComposerLayout } from '../composerLayout'
-import type { Anchor } from './StatusBar'
+import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
+import { BranchChip, type Anchor } from './StatusBar'
 import s from './shell.module.css'
 
 /**
@@ -96,24 +96,38 @@ interface HeaderProps {
    * одна тема, и вкладка посреди чужой темы не значила бы ничего, кроме путаницы.
    */
   onReorderGroups: (groupId: string, beforeGroupId: string | null) => void
-  onOpenHistory: () => void
-  onOpenMcp: () => void
-  onOpenPlugins: () => void
-  onOpenSounds: () => void
-  onOpenLayoutMenu: (anchor: Anchor) => void
   /**
-   * Та же раскладка, что и у всей панели (см. App.tsx) — здесь важно только
-   * compact: экономит высоту, шапка ниже (32px вместо 34px), а значки в ней —
+   * История, MCP, плагины, звуки и раскладка композера собраны в одно меню
+   * за кнопкой-бургером справа в шапке — по одной кнопке на каждый пункт
+   * места в шапке уже не хватало. Разметку самого меню рисует App.tsx, тем
+   * же способом, что и MODEL/EFFORT/MODE (см. SelectorKind), сюда приходит
+   * только точка открытия.
+   */
+  onOpenMenu: (anchor: Anchor) => void
+  /**
+   * Та же раскладка, что и у всей панели (см. App.tsx) — здесь важно, сжатая
+   * ли она (compact и left/right — обе экономят высоту той же боковой рельсой,
+   * см. isSideComposerLayout): шапка ниже (32px вместо 34px), а значки в ней —
    * меньше (26px вместо 28px). Модификатор на самой шапке, а не пропы на
    * каждой кнопке — правит один каскад в стилях, а не десяток мест здесь.
    */
   layout: ComposerLayout
   /**
-   * Compact прячет отдельную строку переключателя стримов (см. App.tsx) —
-   * чипы вместо неё переезжают сюда же, в правую часть шапки, рядом со
-   * значками. Другие раскладки её не передают: там у переключателя своя строка.
+   * Сжатые раскладки (compact и left/right) прячут отдельную строку
+   * переключателя стримов (см. App.tsx) — чипы вместо неё переезжают сюда же,
+   * в правую часть шапки, рядом со значками. Bottom её не передаёт: там у
+   * переключателя своя строка.
    */
   streamSwitcher?: ReactNode
+  /**
+   * Ветка и её PR — одно и то же место у любой раскладки: справа в шапке,
+   * перед бургером. Раньше жили в трёх разных местах в зависимости от layout
+   * (строка статуса, строка задач, сам композер) — теперь один источник
+   * правды, не три копии, которые надо было бы держать в согласии.
+   */
+  gitBranch?: string
+  pullRequest?: string
+  onOpenPullRequest?: () => void
 }
 
 /** Дальше этого сдвига нажатие перестаёт быть кликом и становится перетаскиванием. */
@@ -151,15 +165,14 @@ export const Header = ({
   onCloseSession,
   onNewSession,
   onReorderGroups,
-  onOpenHistory,
-  onOpenMcp,
-  onOpenPlugins,
-  onOpenSounds,
-  onOpenLayoutMenu,
+  onOpenMenu,
   layout,
   streamSwitcher,
+  gitBranch,
+  pullRequest,
+  onOpenPullRequest,
 }: HeaderProps) => {
-  const compact = layout === 'compact'
+  const compact = layout === 'compact' || isSideComposerLayout(layout)
   const header = useRef<HTMLElement>(null)
   const tabs = useRef<HTMLDivElement>(null)
 
@@ -537,57 +550,21 @@ export const Header = ({
       <div className={s.headerTools}>
         {streamSwitcher}
 
-        {/* Возобновление разговора в потоковом режиме недоступно слэш-командой:
-            она открывает интерактивный список. Поэтому список свой. */}
+        <BranchChip gitBranch={gitBranch} pullRequest={pullRequest} onOpenPullRequest={onOpenPullRequest} />
+
         <button
           type="button"
           className={s.historyButton}
-          aria-label="Past conversations in this project"
-          data-tooltip="Past conversations in this project"
-          onClick={onOpenHistory}
-        >
-          ◷
-        </button>
-        <button
-          type="button"
-          className={s.historyButton}
-          aria-label="MCP servers"
-          data-tooltip="MCP servers"
-          onClick={onOpenMcp}
-        >
-          ⇄
-        </button>
-        <button
-          type="button"
-          className={s.historyButton}
-          aria-label="Plugins"
-          data-tooltip="Plugins"
-          onClick={onOpenPlugins}
-        >
-          ⬡
-        </button>
-        <button
-          type="button"
-          className={s.historyButton}
-          aria-label="Sound alerts"
-          data-tooltip="Sound alerts"
-          onClick={onOpenSounds}
-        >
-          ♪
-        </button>
-        <button
-          type="button"
-          className={s.historyButton}
-          aria-label="Composer layout"
-          data-tooltip="Composer layout"
+          aria-label="Menu"
+          data-tooltip="Menu"
           onClick={(event) => {
             // Меню растёт вниз от кнопки — anchor.top тут нижний край кнопки,
             // не верхний (см. Menu.openDownward).
             const rect = event.currentTarget.getBoundingClientRect()
-            onOpenLayoutMenu({ right: window.innerWidth - rect.right, top: rect.bottom })
+            onOpenMenu({ right: window.innerWidth - rect.right, top: rect.bottom })
           }}
         >
-          ▦
+          ☰
         </button>
       </div>
     </header>

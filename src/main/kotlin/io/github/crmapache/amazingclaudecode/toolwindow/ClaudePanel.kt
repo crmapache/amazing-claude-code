@@ -2,6 +2,7 @@ package io.github.crmapache.amazingclaudecode.toolwindow
 
 import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationActivationListener
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.ide.ui.LafManagerListener
@@ -10,6 +11,7 @@ import com.intellij.openapi.editor.colors.EditorColorsListener
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.wm.IdeFrame
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowAnchor
 import com.intellij.openapi.wm.WindowManager
@@ -146,6 +148,16 @@ internal class ClaudePanel(
     @Volatile
     private var fileDragOver = false
 
+    /**
+     * Разговор и срок, до которого возврат фокуса в IDE должен подтолкнуть
+     * статус MCP раньше расписания — см. watchIdeActivation и scheduleMcpRefresh.
+     */
+    @Volatile
+    private var pendingMcpRefreshSessionId: String? = null
+
+    @Volatile
+    private var pendingMcpRefreshUntil: Long = 0L
+
     init {
         component = if (JBCefApp.isSupported()) {
             buildWebview(parentDisposable)
@@ -157,6 +169,7 @@ internal class ClaudePanel(
         Disposer.register(parentDisposable) { loginPolling?.cancel(false) }
         watchDockAnchor()
         watchTypography()
+        watchIdeActivation()
     }
 
     private fun buildWebview(parentDisposable: Disposable): JComponent {
@@ -1276,6 +1289,11 @@ internal class ClaudePanel(
     }
 
     private fun scheduleMcpRefresh(sessionId: String, delaySeconds: Long) {
+        // Тот же разговор и окно ожидания видит watchIdeActivation: так возврат
+        // фокуса в IDE раньше расписания подталкивает то же самое обновление.
+        pendingMcpRefreshSessionId = sessionId
+        pendingMcpRefreshUntil = System.currentTimeMillis() + delaySeconds * 1000
+
         AppExecutorUtil.getAppScheduledExecutorService().schedule(
             { refreshMcp(sessionId) },
             delaySeconds,
@@ -1689,6 +1707,26 @@ internal class ClaudePanel(
         val connection = ApplicationManager.getApplication().messageBus.connect(parentDisposable)
         connection.subscribe(EditorColorsManager.TOPIC, EditorColorsListener { sendTypography() })
         connection.subscribe(LafManagerListener.TOPIC, LafManagerListener { sendTypography() })
+    }
+
+    /**
+     * Вход в MCP-сервер уходит в браузер вовне IDE — статус там же и подтягивается
+     * заново по расписанию (см. scheduleMcpRefresh), но ждать до ближайшей отметки
+     * не с руки: человек авторизовался и тут же вернулся в IDE, а список ещё
+     * старый. Как только окно снова в фокусе, подталкиваем обновление сразу же —
+     * пределы окна и разговор запоминает scheduleMcpRefresh.
+     */
+    private fun watchIdeActivation() {
+        ApplicationManager.getApplication().messageBus.connect(parentDisposable).subscribe(
+            ApplicationActivationListener.TOPIC,
+            object : ApplicationActivationListener {
+                override fun applicationActivated(ideFrame: IdeFrame) {
+                    val sessionId = pendingMcpRefreshSessionId ?: return
+                    if (System.currentTimeMillis() > pendingMcpRefreshUntil) return
+                    refreshMcp(sessionId)
+                }
+            },
+        )
     }
 
     private fun sendTypography() {

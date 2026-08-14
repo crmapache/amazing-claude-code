@@ -131,8 +131,6 @@ export type ShellMessage =
         mode: string
         /** Где сидит поле ввода. Не задано — впервые открытая панель, ведёт себя как раньше (снизу). */
         composerLayout?: string
-        /** Ширина панели ввода при layout left/right, в пикселях. */
-        composerWidth?: number
       }
       /** Настройка звуковых оповещений — переживает перезапуск IDE. */
       sounds?: SoundSettings
@@ -412,8 +410,6 @@ export type WebviewMessage =
   | { type: 'setEffort'; sessionId: string; effort: string }
   /** Расположение поля ввода — тоже выбор, который переживает перезапуск IDE. */
   | { type: 'setComposerLayout'; layout: string }
-  /** Ширина панели ввода при layout left/right — записывается, когда ресайз отпускают. */
-  | { type: 'setComposerWidth'; width: number }
   | { type: 'refreshUsage' }
   | { type: 'openDevTools' }
   /**

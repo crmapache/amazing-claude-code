@@ -39,7 +39,12 @@ export const UserCard = ({ item, onOpenLink }: UserCardProps) => (
     <div className={s.userBody}>
       {item.tokens.map((token, index) =>
         token.kind === 'text' ? (
-          <TextToken key={index} value={token.value} onOpenLink={onOpenLink} />
+          <TextToken
+            key={index}
+            value={token.value}
+            onOpenLink={onOpenLink}
+            precededByChip={item.tokens[index - 1]?.kind === 'chip'}
+          />
         ) : // Вставка, за которой в сообщении уже ничего нет, занимает строку
         // целиком: место всё равно свободно, а по семи словам в узкой плашке не
         // вспомнить, что именно отправил.
@@ -60,11 +65,25 @@ export const UserCard = ({ item, onOpenLink }: UserCardProps) => (
  * не слипались в один абзац, даже когда в сообщении между ними не было
  * пустой строки. Адрес в тексте остаётся живой ссылкой: её кликают, а не
  * переписывают руками.
+ *
+ * Первую строку токена, идущего сразу за плашкой (цитатой или ссылкой),
+ * приглушение не трогает никогда — это ответ на неё, а не повтор вопроса,
+ * даже если сам ответ по смыслу тоже вопрос («оставим и задеплоим тогда?»).
+ * Плашка уже показана отдельно, дублировать её нечему; более поздние строки
+ * того же токена под это исключение не попадают — они снова просто текст.
  */
-const TextToken = ({ value, onOpenLink }: { value: string; onOpenLink: (url: string) => void }) => (
+const TextToken = ({
+  value,
+  onOpenLink,
+  precededByChip = false,
+}: {
+  value: string
+  onOpenLink: (url: string) => void
+  precededByChip?: boolean
+}) => (
   <>
     {value.split('\n').map((line, lineIndex) => {
-      const question = isQuestionLine(line)
+      const question = !(lineIndex === 0 && precededByChip) && isQuestionLine(line)
 
       return (
         <span key={lineIndex} className={question ? s.userQuestionLine : undefined}>
