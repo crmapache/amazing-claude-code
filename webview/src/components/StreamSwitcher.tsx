@@ -34,13 +34,6 @@ interface StreamSwitcherProps {
   onPick: (id: string) => void
   /** Крестик на чипе: спрашиваем подтверждение, прибивает уже App. */
   onStop: (task: { id: string; title: string; subject: string }) => void
-  /**
-   * Compact экономит высоту и держит переключатель не отдельной строкой под
-   * шапкой, а чипами внутри неё самой, рядом с иконками (см. Header). Без
-   * своих отступов, фона и рамки снизу — они здесь чужие, чипы и так стоят в
-   * ряду с остальными элементами шапки.
-   */
-  inline?: boolean
 }
 
 const STATUS_DOT: Partial<Record<AgentStatus, string>> = {
@@ -88,7 +81,6 @@ export const StreamSwitcher = ({
   active,
   onPick,
   onStop,
-  inline = false,
 }: StreamSwitcherProps) => {
   const listRef = useRef<HTMLDivElement | null>(null)
 
@@ -113,7 +105,7 @@ export const StreamSwitcher = ({
   if (tabs.length === 0 && background.length === 0) return null
 
   const list = (
-    <div className={`${s.streamList} ${inline ? s.streamListInline : ''}`} ref={listRef}>
+    <div className={s.streamList} ref={listRef}>
       <button
         type="button"
         className={`${s.stream} ${active === 'main' ? s.streamActive : ''}`}
@@ -190,5 +182,5 @@ export const StreamSwitcher = ({
     </div>
   )
 
-  return inline ? list : <div className={s.streams}>{list}</div>
+  return <div className={s.streams}>{list}</div>
 }

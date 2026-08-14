@@ -238,7 +238,15 @@
 .headerCompact .historyButton {
   width: 26px;
   height: 26px;
-  font-size: 15px;
+}
+
+/* 14, не 15: разница с кнопкой (26px) должна делиться на 2 без остатка,
+   иначе центрирование съезжает на пол-пикселя и браузер видимо округляет
+   иконку в сторону от истинного центра — тот же отступ 6px с каждой стороны,
+   что и у обычной шапки (см. .menuIcon выше). */
+.headerCompact .menuIcon {
+  width: 14px;
+  height: 14px;
 }
 
 .tabs {
@@ -444,8 +452,13 @@
   height: 28px;
   flex: none;
   border-radius: var(--acc-r-sm);
-  font: 16px/1 var(--acc-mono);
   color: var(--acc-fg-dim);
+}
+
+.menuIcon {
+  display: block;
+  width: 16px;
+  height: 16px;
 }
 
 .historyButton:hover {
@@ -492,17 +505,6 @@
 
 .streamList::-webkit-scrollbar {
   display: none;
-}
-
-/*
- * Compact держит тот же список чипов не отдельной строкой, а прямо в шапке,
- * рядом со значками (см. Header.streamSwitcher) — своей ширины там ему никто
- * не выделяет, поэтому сам список обязан уступать место соседям, а не
- * раздвигать шапку на вторую строку.
- */
-.streamListInline {
-  flex: 0 1 auto;
-  min-width: 0;
 }
 
 .stream {

@@ -1540,10 +1540,6 @@ export const App = () => {
    * всю панель, а не привязаны к одной колонке, и стоят сверху при любом
    * layout: лента (и рядом с ней, в left/right, боковая рельса) занимает всё,
    * что осталось ниже.
-   *
-   * Сжатые раскладки (compact и left/right) вдобавок сжимают саму шапку и
-   * переносят в неё переключатель стримов (см. compact/streamSwitcher ниже) —
-   * своей строки под ней у них нет, высота отдана ленте.
    */
   /**
    * История, MCP, плагины, звуки — переключатели одной и той же закреплённой
@@ -1608,19 +1604,6 @@ export const App = () => {
     <Header
         sessions={tabs}
         layout={composerLayout}
-        streamSwitcher={
-          composerLayout === 'compact' || isSideComposerLayout(composerLayout) ? (
-            <StreamSwitcher
-              tabs={agentTabs}
-              background={panel.background}
-              mainStatus={mainStatus}
-              active={resolvedStream}
-              onPick={setActiveStream}
-              onStop={setStopping}
-              inline
-            />
-          ) : undefined
-        }
         activeSession={active}
         onPickSession={setActive}
         onCloseSession={(id) => {
@@ -1825,19 +1808,14 @@ export const App = () => {
       ) : (
         <div className={s.workArea} data-layout={composerLayout}>
         <div className={s.content}>
-        {/* Сжатые раскладки держат тот же переключатель в шапке (см.
-            streamSwitcher выше) — своей строки под ней у них нет, высота
-            отдана ленте. */}
-        {composerLayout === 'compact' || isSideComposerLayout(composerLayout) ? null : (
-          <StreamSwitcher
-            tabs={agentTabs}
-            background={panel.background}
-            mainStatus={mainStatus}
-            active={resolvedStream}
-            onPick={setActiveStream}
-            onStop={setStopping}
-          />
-        )}
+        <StreamSwitcher
+          tabs={agentTabs}
+          background={panel.background}
+          mainStatus={mainStatus}
+          active={resolvedStream}
+          onPick={setActiveStream}
+          onStop={setStopping}
+        />
 
         <div className={s.body}>
           {resolvedStream === 'main' ? (

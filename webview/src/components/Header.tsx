@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
 import { BranchChip, type Anchor } from './StatusBar'
 import s from './shell.module.css'
@@ -113,13 +113,6 @@ interface HeaderProps {
    */
   layout: ComposerLayout
   /**
-   * Сжатые раскладки (compact и left/right) прячут отдельную строку
-   * переключателя стримов (см. App.tsx) — чипы вместо неё переезжают сюда же,
-   * в правую часть шапки, рядом со значками. Bottom её не передаёт: там у
-   * переключателя своя строка.
-   */
-  streamSwitcher?: ReactNode
-  /**
    * Ветка и её PR — одно и то же место у любой раскладки: справа в шапке,
    * перед бургером. Раньше жили в трёх разных местах в зависимости от layout
    * (строка статуса, строка задач, сам композер) — теперь один источник
@@ -158,6 +151,19 @@ const DOT_TITLE: Record<SessionState, string> = {
   crashed: 'Session stopped unexpectedly',
 }
 
+/**
+ * Три полоски рисунком, а не символом «☰»: у типографской версии своя посадка
+ * в шрифте, она сидит ниже середины своей строки — рядом с веткой (см.
+ * BranchChip), у которой центр честный, разница на глаз читалась как
+ * непрокрашенный ряд. Рисунком строки стоят строго по центру viewBox, а с ним
+ * и кнопки.
+ */
+const HamburgerIcon = () => (
+  <svg className={s.menuIcon} viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+)
+
 export const Header = ({
   sessions,
   activeSession,
@@ -167,7 +173,6 @@ export const Header = ({
   onReorderGroups,
   onOpenMenu,
   layout,
-  streamSwitcher,
   gitBranch,
   pullRequest,
   onOpenPullRequest,
@@ -548,8 +553,6 @@ export const Header = ({
       <div className={s.spacer} />
 
       <div className={s.headerTools}>
-        {streamSwitcher}
-
         <BranchChip gitBranch={gitBranch} pullRequest={pullRequest} onOpenPullRequest={onOpenPullRequest} />
 
         <button
@@ -564,7 +567,7 @@ export const Header = ({
             onOpenMenu({ right: window.innerWidth - rect.right, top: rect.bottom })
           }}
         >
-          ☰
+          <HamburgerIcon />
         </button>
       </div>
     </header>

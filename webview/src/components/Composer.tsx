@@ -1240,21 +1240,29 @@ export const Composer = ({
     <>
       {/* В compact кнопки — самое важное на строке (расход уже виден строкой
           выше, в кольцах), поэтому Send и Queue идут первыми, а расход —
-          последним, за иконками. */}
+          последним, за иконками. Send и Queue — обычные действия, поэтому
+          стоят первыми; Stop и Force stop прерывают агента, поэтому едут
+          следом за ними, а не разрывают пару Send/Queue. .spacer перед
+          расходом прижимает кнопки к левому краю: без него они висят в общей
+          группе с расходом, которую .compactToolsRow (justify-content:
+          flex-end) целиком гонит к правому краю, — и в первый миг после
+          старта плагина, пока расход ещё пустой и узкий, кнопки едут вправо
+          вместе с ним. */}
       {sendButton}
+      {queueButton}
       {stopButton}
       {forceStopButton}
-      {queueButton}
       {attachButton}
       {slashButton}
+      <div className={s.spacer} />
       {meters}
     </>
   ) : rail ? (
     <>
       {sendButton}
+      {queueButton}
       {stopButton}
       {forceStopButton}
-      {queueButton}
       {attachButton}
       {slashButton}
     </>

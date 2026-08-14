@@ -77,6 +77,12 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
+              <li>Fixed several rough edges in the Compact layout introduced last version: the
+              Send/Queue buttons no longer drift to the right when the usage rings next to them are
+              still empty (right after the plugin starts); Stop now sits after Queue instead of
+              between Send and Queue; background agents show above the feed, the same place as in
+              the default layout, instead of being squeezed into the header; and the header's menu
+              icon now lines up with the branch name instead of sitting a pixel off.</li>
               <li>Fixed: after a usage limit, a crash, or any other stop, an unfinished task list
               stayed on screen and could not be closed — even if you asked Claude to close it. A new
               message now hides the old list; if the work continues, a fresh list appears.</li>
