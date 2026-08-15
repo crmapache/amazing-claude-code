@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { createPortal } from 'react-dom'
 import { send, subscribe } from './bridge'
 import {
-  DEFAULT_MODEL,
   EFFORT_OPTIONS,
-  MODE_OPTIONS,
+  modeMenuOptions,
   modelMenu,
+  type ModeAvailability,
   nextMode,
+  resolvePanelModel,
   switchedModel,
   normalizeMode,
   withRefusedMode,
@@ -170,12 +171,22 @@ export const App = () => {
    */
   const [bypassAvailable, setBypassAvailable] = useState(false)
   /**
-   * Режимы, в которых агент уже отказал. Про auto заранее не знает никто — ни
-   * панель, ни оболочка: доступен он или нет, отвечает сам агент, и отвечает
-   * единственным способом — отказом на просьбу переключиться. Услышанный отказ
-   * помним на всю панель: дело не во вкладке, а в машине и учётной записи.
+   * Режимы, в которых агент уже отказал (сейчас — только bypass). Про него
+   * заранее не знает никто — ни панель, ни оболочка: доступен он или нет,
+   * решает политика организации, отвечает сам агент, и отвечает единственным
+   * способом — отказом на просьбу переключиться. Услышанный отказ помним на
+   * всю панель: дело не во вкладке, а в учётной записи.
    */
   const [refusedModes, setRefusedModes] = useState<string[]>([])
+  /**
+   * Модели, на которых агент уже отказал переключить в auto. Раньше этот отказ
+   * тоже жил в refusedModes как признак «на всю панель» — но подпись самого
+   * режима у MODE_OPTIONS прямо говорит «Not on every model»: недоступность
+   * зависит от модели, а не только от машины/аккаунта, и один отказ на Haiku
+   * не должен молча гасить auto и на Sonnet. Список общий на все вкладки (та
+   * же логика, что и у refusedModes) — только со своим ключом на модель.
+   */
+  const [autoRefusedModels, setAutoRefusedModels] = useState<string[]>([])
   /** Сторона экрана, к которой прижата панель — определяет, где рисовать рамку к редактору. */
   const [dockAnchor, setDockAnchor] = useState<'left' | 'right' | 'top' | 'bottom'>('right')
   /** Где сидит поле ввода. Приходит от оболочки при запуске и сохраняется там же. */
@@ -278,29 +289,19 @@ export const App = () => {
   // показываем выбранное, дальше — то, что он реально применил.
   const mode = panel.pendingMode ?? panel.permissionMode ?? prefs.mode
 
+  // Какая модель работает на самом деле — см. resolvePanelModel, там же и почему
+  // она вынесена отдельной функцией.
+  const model = resolvePanelModel(panel, models, prefs.model)
+
   // Что из необязательного доступно кругу Shift+Tab: разрешение на bypass приходит
-  // от оболочки, а остальное вычёркивают отказы самого агента.
+  // от оболочки, auto — своим отказом на действующей модели (см. autoRefusedModels).
   const availableModes = useMemo(
     () => ({
       bypass: bypassAvailable && !refusedModes.includes('bypassPermissions'),
-      auto: !refusedModes.includes('auto'),
+      auto: !autoRefusedModels.includes(model),
     }),
-    [bypassAvailable, refusedModes],
+    [bypassAvailable, refusedModes, autoRefusedModels, model],
   )
-
-  /**
-   * Какая модель работает на самом деле. Пока агент не ответил на смену,
-   * показываем выбранное — иначе выбор выглядит потерянным. Дальше идёт то,
-   * что назвал сам агент: он говорит это с каждым ответом и знает правду, в том
-   * числе когда сменил модель по своему усмотрению. Пока он не сказал ничего
-   * (разговор ещё не начинался), разворачиваем выбор каталогом: само значение
-   * бывает иносказательным («default»), а назвать модель нижняя строка должна
-   * с первой секунды.
-   */
-  const model =
-    panel.pendingModel ??
-    panel.model ??
-    (models?.find((option) => option.value === (prefs.model || DEFAULT_MODEL))?.resolved || prefs.model)
 
   /**
    * Разговор ушёл на другую модель не по нашей воле — см. switchedModel. Живёт
@@ -449,6 +450,17 @@ export const App = () => {
    */
   const panelsRef = useRef(panels)
   panelsRef.current = panels
+
+  /**
+   * Та же причина, что у panelsRef: подписка на сообщения оболочки держится
+   * один раз при монтировании и своего рендера не имеет, а какая модель
+   * работает на самом деле у отказавшей вкладки (см. autoRefusedModels) —
+   * знать нужно свежую, не ту, что была на момент подписки.
+   */
+  const modelsRef = useRef(models)
+  modelsRef.current = models
+  const prefsRef = useRef(prefs)
+  prefsRef.current = prefs
 
   /**
    * Звуковые оповещения: что каждая вкладка успела рассказать наблюдателю.
@@ -905,7 +917,20 @@ export const App = () => {
             break
 
           case 'mode':
-            if (!message.applied) setRefusedModes((current) => withRefusedMode(current, message.mode))
+            if (!message.applied) {
+              if (normalizeMode(message.mode) === 'auto') {
+                // Модель этой самой вкладки на момент отказа, а не активной
+                // (можно переключиться на другую вкладку раньше, чем придёт
+                // ответ) — см. autoRefusedModels. Разворачиваем той же
+                // формулой, что и в рендере (см. resolvePanelModel), иначе
+                // «сказал ли агент модель» решаем по-разному в двух местах.
+                const sessionPanel = panelsRef.current[message.sessionId]
+                const refusedModel = resolvePanelModel(sessionPanel ?? {}, modelsRef.current, prefsRef.current.model)
+                setAutoRefusedModels((current) => (current.includes(refusedModel) ? current : [...current, refusedModel]))
+              } else {
+                setRefusedModes((current) => withRefusedMode(current, message.mode))
+              }
+            }
             dispatchPanel({
               session: message.sessionId,
               action: {
@@ -985,6 +1010,23 @@ export const App = () => {
     },
     [active],
   )
+
+  /**
+   * Действующий режим — необязательный (auto/bypass) и стал недоступен на этой
+   * же вкладке, а её никто ни о чём не спрашивал: например auto выбрали при
+   * одной модели, а потом сменили модель на ту, где агент его уже отклонял
+   * (см. autoRefusedModels). Сам он не поправится — источники mode (см. выше)
+   * не пересчитывают его назад, стоит просто последним, что запросили или
+   * унаследовали от prefs, — поэтому откатываем на Ask permissions тем же
+   * путём, каким его выбирают руками: это заодно чистит и prefs.mode, если
+   * протух именно он (см. setMode). Не трогаем, пока ответа на смену ещё
+   * ждём (pendingMode) — нашего отказа тут ещё не было, ждём настоящий.
+   */
+  useEffect(() => {
+    if (panel.pendingMode) return
+    const stale = (mode === 'auto' && !availableModes.auto) || (mode === 'bypassPermissions' && !availableModes.bypass)
+    if (stale) setMode('manual')
+  }, [mode, availableModes, panel.pendingMode, setMode])
 
   /** Расположение поля ввода — тоже выбор оболочки: новый запуск IDE начинается с него. */
   const setComposerLayout = useCallback((next: ComposerLayout) => {
@@ -1591,6 +1633,23 @@ export const App = () => {
   }
 
   /**
+   * Открыть селектор MODEL/EFFORT/MODE — или закрыть его повторным кликом по
+   * той же кнопке. Скрим меню нарочно не закрывает шапку и, в left/right, верх
+   * боковой рельсы, где эти кнопки и стоят (см. .menuScrim и Header.onOpenMenu —
+   * тот же приём уже стоит там): иначе кнопка не кликалась бы, пока открыт её
+   * собственный попап. Второй клик по ней самой скрим не ловит, поэтому
+   * тоглим сами, а не полагаемся на клик мимо меню.
+   */
+  const openSelector = (kind: SelectorKind, anchor: Anchor) => {
+    if (menu?.kind === kind) {
+      setMenu(null)
+      return
+    }
+    setOpenPanel(null)
+    setMenu({ kind, anchor })
+  }
+
+  /**
    * Открыть PR текущей ветки в системном браузере — сама ссылка живёт в
    * панели, наружу уходит только по клику. Ветка и её PR — в шапке (см.
    * Header), одно и то же место у любой раскладки.
@@ -1628,17 +1687,7 @@ export const App = () => {
         }}
         onNewSession={() => startSession(`session-${Date.now()}`)}
         onReorderGroups={reorderGroups}
-        // Скрим меню нарочно не закрывает хедер (см. .menuScrim) — иначе кнопка
-        // не кликалась бы, пока открыт её собственный попап. Поэтому второй
-        // клик по этой самой кнопке скрим не ловит: тоглим сами.
-        onOpenMenu={(anchor) => {
-          if (menu?.kind === 'header') {
-            setMenu(null)
-            return
-          }
-          setOpenPanel(null)
-          setMenu({ kind: 'header', anchor })
-        }}
+        onOpenMenu={(anchor) => openSelector('header', anchor)}
         gitBranch={panels[MAIN_SESSION]?.project?.gitBranch}
         pullRequest={panels[MAIN_SESSION]?.project?.pullRequest}
         onOpenPullRequest={openPullRequest}
@@ -1889,12 +1938,7 @@ export const App = () => {
             model={model}
             effort={prefs.effort}
             mode={mode}
-            onOpenSelector={(kind, anchor) => {
-              // Закреплённая панель (история/MCP/плагины/звуки) и всплывающее
-              // меню не должны стоять разом — см. openHistory и соседей выше.
-              setOpenPanel(null)
-              setMenu({ kind, anchor })
-            }}
+            onOpenSelector={openSelector}
             railContainer={railNode}
             fileDragOver={fileDragOver}
             onTokensChange={(tokens) => editDraft(active, { tokens })}
@@ -1929,10 +1973,7 @@ export const App = () => {
               model={model}
               effort={prefs.effort}
               mode={mode}
-              onOpen={(kind, anchor) => {
-                setOpenPanel(null)
-                setMenu({ kind, anchor })
-              }}
+              onOpen={openSelector}
             />
           )}
         </div>
@@ -1941,9 +1982,8 @@ export const App = () => {
 
       {menu ? (
         <Menu
-          {...menuProps(menu.kind, models, prefs.model, switched, prefs.effort, mode, composerLayout, openPanel)}
+          {...menuProps(menu.kind, models, prefs.model, switched, prefs.effort, mode, composerLayout, openPanel, availableModes)}
           anchor={menu.anchor}
-          openDownward={menu.kind === 'composerLayout' || menu.kind === 'header'}
           onClose={() => setMenu(null)}
           onPick={(id) => {
             const anchor = menu.anchor
@@ -2220,6 +2260,7 @@ const menuProps = (
   composerLayout: string,
   /** Какая закреплённая панель сейчас открыта — галочка в меню бургера стоит на ней. */
   openPanel: 'history' | 'mcp' | 'plugins' | 'sounds' | null,
+  availableModes: ModeAvailability,
 ): { title: string; hint: string; width: number; options: MenuOption[]; selected: string; tick?: boolean } => {
   if (kind === 'model') {
     return {
@@ -2273,7 +2314,7 @@ const menuProps = (
     title: 'PERMISSION MODE',
     hint: 'shift+tab cycles the first three',
     width: 372,
-    options: MODE_OPTIONS,
+    options: modeMenuOptions(availableModes),
     selected: mode,
   }
 }

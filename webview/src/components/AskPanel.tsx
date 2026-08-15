@@ -63,6 +63,31 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
         : [...selected, optionId]
       return { ...current, [question.id]: next }
     })
+
+    // Обычный вариант — не «свой ответ»: если до этого была включена строка
+    // Other, её текст больше не имеет права быть ответом на вопрос с
+    // единственным выбором. В multiSelect Other — такая же галочка, как и
+    // остальные, поэтому уживается с обычными вариантами и не гасится.
+    if (!question.multiSelect) {
+      setCustom((current) => {
+        if (current[question.id] === undefined) return current
+        const next = { ...current }
+        delete next[question.id]
+        return next
+      })
+    }
+  }, [])
+
+  /* Other — не отдельная форма где-то сбоку, а такой же вариант в общем ряду:
+     сама панель обещает его AskUserQuestion (см. описание инструмента), поэтому
+     его добавляет панель, а не вызывающий агент. Нажатие открывает на его
+     месте поле ввода — цифра и подсветка ведут себя как у обычного варианта,
+     только вместо готовой подписи в кружке появляется свой текст. */
+  const pickOther = useCallback((question: AskQuestion) => {
+    setCustom((current) => (current[question.id] !== undefined ? current : { ...current, [question.id]: '' }))
+    if (!question.multiSelect) {
+      setPicks((current) => ({ ...current, [question.id]: [] }))
+    }
   }, [])
 
   const answerFor = useCallback(
@@ -92,17 +117,27 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
 
   const pick = useCallback(
     (index: number) => {
-      const option = active?.options[index]
-      if (!active || !option) return
+      if (!active) return
+
+      // Other — последний по счёту вариант, на цифру после всех настоящих.
+      // Открывает поле ввода и на этом останавливается: отвечать нечем, пока
+      // не напечатан текст, — advance() увёл бы дальше на пустом ответе.
+      if (index === active.options.length) {
+        pickOther(active)
+        return
+      }
+
+      const option = active.options[index]
+      if (!option) return
 
       toggle(active, option.id)
       // Обычный вопрос закрыт этим же нажатием — цифры уходят к следующему.
       if (!active.multiSelect) advance()
     },
-    [active, toggle, advance],
+    [active, toggle, advance, pickOther],
   )
 
-  useDigitHotkey(Math.min(active?.options.length ?? 0, MAX_DIGIT_HOTKEYS), pick, {
+  useDigitHotkey(Math.min(active ? active.options.length + 1 : 0, MAX_DIGIT_HOTKEYS), pick, {
     enabled: hotkeys && Boolean(item),
     composerEmpty,
   })
@@ -140,8 +175,8 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
       // нём набрано, — адрес маркетплейса, команду MCP-сервера. Панель вопроса
       // при этом остаётся висеть над полем и её слушатель жив, поэтому без этой
       // проверки Enter в чужой форме отвечал бы агенту наполовину выбранным
-      // вариантом, а сама форма не срабатывала вовсе. Свои поля («свой ответ»
-      // под вариантами) — исключение: они часть этой же панели.
+      // вариантом, а сама форма не срабатывала вовсе. Поле Other — исключение:
+      // оно часть этой же панели.
       if (typedOutside(target, panel.current)) return
 
       event.preventDefault()
@@ -219,19 +254,45 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
                     </button>
                   )
                 })}
-              </div>
 
-              <div className={s.other}>
-                <span className={s.otherLabel}>OTHER</span>
-                <input
-                  className={s.otherInput}
-                  placeholder="type your own answer…"
-                  value={custom[question.id] ?? ''}
-                  onFocus={() => setActiveIndex(questionIndex)}
-                  onChange={(event) =>
-                    setCustom((current) => ({ ...current, [question.id]: event.target.value }))
+                {(() => {
+                  const otherOn = custom[question.id] !== undefined
+                  // Продолжает ту же нумерацию, что и настоящие варианты выше —
+                  // Other воспринимается как ещё один из них, а не отдельная сущность.
+                  const otherDigit = question.options.length < MAX_DIGIT_HOTKEYS ? String(question.options.length + 1) : ''
+
+                  if (otherOn) {
+                    return (
+                      <div className={`${s.option} ${s.optionOn} ${s.optionOther}`}>
+                        <span className={`${s.optionKey} ${s.optionKeyOn} ${keyed ? '' : s.optionKeyIdle}`}>✓</span>
+                        <input
+                          className={s.otherInput}
+                          autoFocus
+                          placeholder="type your own answer…"
+                          value={custom[question.id] ?? ''}
+                          onFocus={() => setActiveIndex(questionIndex)}
+                          onChange={(event) =>
+                            setCustom((current) => ({ ...current, [question.id]: event.target.value }))
+                          }
+                        />
+                      </div>
+                    )
                   }
-                />
+
+                  return (
+                    <button
+                      type="button"
+                      className={`${s.option} ${s.optionOther}`}
+                      onClick={() => {
+                        setActiveIndex(questionIndex)
+                        pickOther(question)
+                      }}
+                    >
+                      <span className={`${s.optionKey} ${keyed ? '' : s.optionKeyIdle}`}>{otherDigit}</span>
+                      <div className={s.optionLabel}>Other</div>
+                    </button>
+                  )
+                })()}
               </div>
             </div>
           )

@@ -66,6 +66,10 @@ export const UserCard = ({ item, onOpenLink }: UserCardProps) => (
  * пустой строки. Адрес в тексте остаётся живой ссылкой: её кликают, а не
  * переписывают руками.
  *
+ * Пустую строку не задваиваем: у панели вопроса (см. App.onAskSubmit) пары
+ * вопрос/ответ и так разделены пустой строкой в самом тексте — добавить ещё
+ * одну поверх значило бы просить два разрыва там, где нужен один.
+ *
  * Первую строку токена, идущего сразу за плашкой (цитатой или ссылкой),
  * приглушение не трогает никогда — это ответ на неё, а не повтор вопроса,
  * даже если сам ответ по смыслу тоже вопрос («оставим и задеплоим тогда?»).
@@ -82,12 +86,13 @@ const TextToken = ({
   precededByChip?: boolean
 }) => (
   <>
-    {value.split('\n').map((line, lineIndex) => {
+    {value.split('\n').map((line, lineIndex, lines) => {
       const question = !(lineIndex === 0 && precededByChip) && isQuestionLine(line)
+      const alreadyBlank = lineIndex > 0 && lines[lineIndex - 1] === ''
 
       return (
         <span key={lineIndex} className={question ? s.userQuestionLine : undefined}>
-          {lineIndex > 0 ? (question ? '\n\n' : '\n') : null}
+          {lineIndex > 0 ? (question && !alreadyBlank ? '\n\n' : '\n') : null}
           {linkify(line).map((part, partIndex) =>
             part.href ? (
               <a

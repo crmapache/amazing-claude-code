@@ -4,10 +4,15 @@ import s from './shell.module.css'
 
 export type SelectorKind = 'model' | 'effort' | 'mode' | 'composerLayout' | 'header'
 
-/** Где стоит кнопка селектора: меню открывается ровно над ней. */
+/**
+ * Где стоит кнопка селектора — оба края по вертикали, а не один: меню решает
+ * само, расти вверх или вниз, по тому, где реально есть место (см. Menu), и
+ * ему нужны оба края независимо от того, в какую сторону оно в итоге откроется.
+ */
 export interface Anchor {
   right: number
   top: number
+  bottom: number
 }
 
 interface UsageMetersProps {
@@ -195,7 +200,7 @@ export const Selector = ({ label, value, title, className = '', onOpen }: Select
       // Меню встаёт по месту кнопки, а не по фиксированным координатам: панель
       // бывает любой ширины, и «примерно справа» промахивается.
       const rect = event.currentTarget.getBoundingClientRect()
-      onOpen({ right: window.innerWidth - rect.right, top: rect.top })
+      onOpen({ right: window.innerWidth - rect.right, top: rect.top, bottom: rect.bottom })
     }}
   >
     <span className={s.selectorLabel}>{label}</span>

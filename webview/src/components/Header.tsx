@@ -561,10 +561,8 @@ export const Header = ({
           aria-label="Menu"
           data-tooltip="Menu"
           onClick={(event) => {
-            // Меню растёт вниз от кнопки — anchor.top тут нижний край кнопки,
-            // не верхний (см. Menu.openDownward).
             const rect = event.currentTarget.getBoundingClientRect()
-            onOpenMenu({ right: window.innerWidth - rect.right, top: rect.bottom })
+            onOpenMenu({ right: window.innerWidth - rect.right, top: rect.top, bottom: rect.bottom })
           }}
         >
           <HamburgerIcon />
