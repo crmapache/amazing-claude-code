@@ -389,18 +389,11 @@
   margin-top: 1px;
 }
 
-.other {
-  display: flex;
+/* Other — такой же вариант в сетке, что и остальные (см. AskPanel.pickOther),
+   только во всю строку: свой ответ пишут не в кружке ценой соседних вариантов. */
+.optionOther {
+  grid-column: 1 / -1;
   align-items: center;
-  gap: 8px;
-  padding: 5px 9px;
-  border: 1px dashed var(--acc-line-strong);
-  border-radius: var(--acc-r-lg);
-}
-
-.otherLabel {
-  font: 10px var(--acc-mono);
-  color: var(--acc-fg-faint);
 }
 
 .otherInput {
@@ -1061,11 +1054,15 @@
 }
 
 /* justify-content не нужен: кнопки сами делят ряд поровну (см. .selectorAuto
-   в shell.module.css), тесниться в его правый край им незачем. */
+   в shell.module.css), тесниться в его правый край им незачем.
+   position+z-index — та же причина, что у .selectors в shell.module.css: выше
+   скрима меню, иначе повторный клик по своей же кнопке достаётся скриму. */
 .compactSelectors {
   display: flex;
   align-items: center;
   gap: 4px;
+  position: relative;
+  z-index: 41;
 }
 
 /* Те же дети, что и в .tools обычной раскладки (см. Composer.toolsRow), но
@@ -1107,11 +1104,17 @@
 }
 
 /* Тот же приём, что и .compactSelectors выше — общий .selectorAuto делит
-   ряд поровну между тремя кнопками. */
+   ряд поровну между тремя кнопками, а position+z-index поднимают их над
+   скримом меню (см. .compactSelectors и .selectors в shell.module.css). Тут
+   этого на глаз не видно — рельса и так стоит выше зоны скрима, — но так
+   поведение не завязано на то, что кнопки случайно оказались достаточно
+   высоко. */
 .railSelectors {
   display: flex;
   align-items: center;
   gap: 4px;
+  position: relative;
+  z-index: 41;
 }
 
 /* Расход — своей строкой под селекторами, а не в один ряд с кнопками (см.
@@ -1318,15 +1321,16 @@
 .attach {
   display: flex;
   align-items: center;
-  gap: 5px;
-  height: 23px;
-  padding: 0 8px;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
   border-radius: var(--acc-r-md);
+  background: var(--acc-neutral-12);
   color: var(--acc-fg-dim);
 }
 
 .attach:hover {
-  background: var(--acc-bg-control);
+  background: var(--acc-neutral-16);
   color: var(--acc-fg);
 }
 
@@ -1335,18 +1339,15 @@
   color: var(--acc-fg);
 }
 
+/* Тот же рецепт, что у .send:disabled, включая приглушённость — два вида
+   погашенных кнопок в одном ряду обязаны выглядеть одной парой. Один только
+   серый фон+текст на глаз путался с обычным (ненажатым) состоянием кнопки —
+   не залитой ничем ярким, ей и так почти нечем выделяться; прозрачность
+   добавляет то самое «явно не сейчас», которого не хватало. */
 .attach:disabled {
-  background: none;
+  background: var(--acc-bg-control);
   color: var(--acc-fg-ghost);
-  opacity: 0.6;
-}
-
-/* Невидимая, но живая в разметке — место под кнопкой остаётся, ряды вокруг
-   неё (и всё, что считает от них ширину, см. Composer.slashButton) не
-   дёргаются от её исчезновения. */
-.attachHidden {
-  visibility: hidden;
-  pointer-events: none;
+  opacity: 0.55;
 }
 
 /*
@@ -1483,9 +1484,11 @@
 }
 
 /* Ниже вариантных :hover — иначе они перебивали бы его при равной специфичности.
-   Курсор погашенной кнопки задан один раз для всех — см. base.css. */
+   Курсор погашенной кнопки задан один раз для всех — см. base.css. Та же
+   приглушённость, что у .attach:disabled — см. комментарий там. */
 .send:disabled {
   background: var(--acc-bg-control);
   color: var(--acc-fg-ghost);
+  opacity: 0.55;
 }
 

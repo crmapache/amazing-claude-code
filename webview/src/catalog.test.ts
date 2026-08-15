@@ -3,6 +3,7 @@ import {
   MODEL_OPTIONS,
   MODE_OPTIONS,
   modeLabel,
+  modeMenuOptions,
   modelLabel,
   modelMenu,
   modelOptions,
@@ -82,6 +83,31 @@ describe('режимы, в которых агент отказал', () => {
 
   it('старое имя режима приводится к нынешнему — иначе отказ не узнать', () => {
     expect(withRefusedMode([], 'default')).toEqual(['manual'])
+  })
+})
+
+describe('доступность необязательных режимов в меню', () => {
+  it('auto и bypass видны, но помечены недоступными — как и модель, а не пропадают из списка', () => {
+    const options = modeMenuOptions({ bypass: false, auto: false })
+
+    expect(options.find((option) => option.id === 'auto')?.disabled).toBe(true)
+    expect(options.find((option) => option.id === 'bypassPermissions')?.disabled).toBe(true)
+  })
+
+  it('доступный режим — обычный пункт, без пометки', () => {
+    const options = modeMenuOptions({ bypass: true, auto: true })
+
+    expect(options.find((option) => option.id === 'auto')?.disabled).toBeUndefined()
+    expect(options.find((option) => option.id === 'bypassPermissions')?.disabled).toBeUndefined()
+  })
+
+  it('остальные режимы недоступность auto/bypass не трогает', () => {
+    const options = modeMenuOptions({ bypass: false, auto: false })
+
+    expect(options.find((option) => option.id === 'manual')?.disabled).toBeUndefined()
+    expect(options.find((option) => option.id === 'acceptEdits')?.disabled).toBeUndefined()
+    expect(options.find((option) => option.id === 'plan')?.disabled).toBeUndefined()
+    expect(options.find((option) => option.id === 'dontAsk')?.disabled).toBeUndefined()
   })
 })
 

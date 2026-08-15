@@ -1142,24 +1142,17 @@ export const Composer = ({
 
   /* Кнопка не открывает каталог, а ставит слэш в поле: дальше команду
      набирают, и список сужается сам. Пока в поле уже что-то есть, слэш
-     посреди текста не запускает подсказку — кнопка прячется, чтобы не звать
-     на бесполезное нажатие.
-     Прячется именно невидимостью, а не размонтированием: в compact и
-     left/right за рядом кнопок нет спейсера, который принял бы освободившееся
-     место, — пропавший из разметки ребёнок сужал весь ряд, а с ним и колонку
-     MODEL/EFFORT/MODE рядом (её ширина в compact/rail считается по этому же
-     ряду, см. .compactControls в composer.module.css), и все элементы на
-     экране будто меняли ширину при каждом нажатии клавиши. */
-  const slashHidden = tokens.length > 0
+     посреди текста не запускает подсказку — кнопка становится disabled, чтобы
+     не звать на бесполезное нажатие. */
+  const slashDisabled = tokens.length > 0
   const slashButton = (
     <button
       type="button"
-      className={slashHidden ? `${s.attach} ${s.attachHidden}` : s.attach}
+      className={s.attach}
       data-tooltip="Slash commands"
       data-tooltip-at="top"
       aria-label="Slash commands"
-      aria-hidden={slashHidden}
-      tabIndex={slashHidden ? -1 : 0}
+      disabled={slashDisabled}
       onClick={() => {
         insertTextAtCursor('/')
         input.current?.focus()

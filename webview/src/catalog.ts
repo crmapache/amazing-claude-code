@@ -55,6 +55,27 @@ export const modelOptions = (models: ModelInfo[] | null): MenuOption[] =>
 const modelFamily = (model: string): string => model.toLowerCase().replace(/\[.*\]$/, '')
 
 /**
+ * Какая модель работает на самом деле у конкретной вкладки — та же формула,
+ * что и у переменной `model` в App: пока агент не подтвердил смену, показываем
+ * выбранное; дальше — то, что он назвал сам; а если он ещё не сказал ни
+ * слова, разворачиваем выбор каталогом.
+ *
+ * Своей функцией, а не только инлайн в App: подписка на сообщения оболочки
+ * держит её один раз при монтировании (см. App, useEffect с subscribe) и
+ * своего рендера не имеет — models и prefs.model к ней приходят через ref,
+ * а не через замыкание, и формула нужна ровно та же, что и в рендере,
+ * без права разойтись.
+ */
+export const resolvePanelModel = (
+  panel: { pendingModel?: string; model?: string },
+  models: ModelInfo[] | null,
+  prefsModel: string,
+): string =>
+  panel.pendingModel ??
+  panel.model ??
+  (models?.find((option) => option.value === (prefsModel || DEFAULT_MODEL))?.resolved || prefsModel)
+
+/**
  * Модель, на которую разговор ушёл не по нашей воле.
  *
  * Агент умеет сменить её сам, посреди хода: так срабатывает защита, уводящая
@@ -242,9 +263,23 @@ export interface ModeAvailability {
 }
 
 /**
- * Помнит режим, в котором агент отказал. Доступность режима — свойство машины и
- * учётной записи, а не отдельной вкладки, поэтому список общий на всю панель:
- * услышав отказ один раз, водить в этот режим не должна ни одна вкладка.
+ * MODE_OPTIONS с пометкой недоступных вариантов (см. ModeAvailability) — тем же
+ * приёмом, каким уже размечены недоступные модели (см. modelOptions):
+ * пункт виден и понятен, но не нажимается, вместо того чтобы отвечать
+ * ошибкой агента уже после клика.
+ */
+export const modeMenuOptions = (available: ModeAvailability): MenuOption[] =>
+  MODE_OPTIONS.map((option) =>
+    (option.id === 'auto' && !available.auto) || (option.id === 'bypassPermissions' && !available.bypass)
+      ? { ...option, disabled: true }
+      : option,
+  )
+
+/**
+ * Помнит режим, в котором агент отказал (сейчас — только bypass: он не
+ * зависит от модели, только от политики организации, поэтому один отказ
+ * действительно верен для всей панели). Про auto — своя память на модель,
+ * см. autoRefusedModels в App.tsx.
  */
 export const withRefusedMode = (refused: string[], mode: string): string[] => {
   const known = normalizeMode(mode)
