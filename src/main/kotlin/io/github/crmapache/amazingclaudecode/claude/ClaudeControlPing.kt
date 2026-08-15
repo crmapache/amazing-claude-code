@@ -94,15 +94,19 @@ internal object ClaudeControlPing {
                     timeoutTask.cancel(false)
 
                     val response = runCatching {
-                        Json.parseToJsonElement(line).jsonObject["response"]?.jsonObject
+                        Json.parseToJsonElement(line).jsonObject["response"] as? JsonObject
                     }.getOrNull()
 
-                    when {
-                        response == null -> onError("Malformed $subtype response")
-                        response["subtype"]?.jsonPrimitive?.contentOrNull == "success" ->
-                            onResult(response["response"]?.jsonObject ?: JsonObject(emptyMap()))
-                        else -> onError(response["error"]?.jsonPrimitive?.contentOrNull.orEmpty())
-                    }
+                    // Осечка в обработчике не должна оставить процесс висеть: он
+                    // разовый, гасить его больше некому — см. destroyProcess ниже.
+                    runCatching {
+                        when {
+                            response == null -> onError("Malformed $subtype response")
+                            response["subtype"]?.jsonPrimitive?.contentOrNull == "success" ->
+                                onResult(response["response"] as? JsonObject ?: JsonObject(emptyMap()))
+                            else -> onError(response["error"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                        }
+                    }.onFailure { thisLogger().warn("Handler for $subtype ping failed", it) }
 
                     process.destroyProcess()
                 },

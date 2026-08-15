@@ -435,17 +435,23 @@ internal class ClaudeSession(
 
         if (line.contains("\"control_response\"")) {
             val response = runCatching {
-                kotlinx.serialization.json.Json.parseToJsonElement(line).jsonObject["response"]?.jsonObject
+                kotlinx.serialization.json.Json.parseToJsonElement(line).jsonObject["response"] as? JsonObject
             }.getOrNull()
 
             val id = response?.get("request_id")?.jsonPrimitive?.contentOrNull
             val control = id?.let { awaitingControl.remove(it) } ?: return
 
-            if (response?.get("subtype")?.jsonPrimitive?.contentOrNull == "success") {
-                control.onResult(response["response"]?.jsonObject ?: JsonObject(emptyMap()))
-            } else {
-                control.onFailure(response?.get("error")?.jsonPrimitive?.contentOrNull.orEmpty())
-            }
+            // Осечка в обработчике служебного ответа не должна ронять разбор
+            // потока: он общий с событиями разговора, и брошенное отсюда
+            // исключение уносит с собой ещё не разобранный хвост вывода —
+            // панель теряет кусок ленты из-за цифры в углу.
+            runCatching {
+                if (response["subtype"]?.jsonPrimitive?.contentOrNull == "success") {
+                    control.onResult(response["response"] as? JsonObject ?: JsonObject(emptyMap()))
+                } else {
+                    control.onFailure(response["error"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                }
+            }.onFailure { thisLogger().warn("Control response handler failed", it) }
             return
         }
 

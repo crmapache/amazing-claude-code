@@ -63,6 +63,29 @@ class PermissionChannelTest {
         assertEquals("request_user_dialog", unsupported.subtype)
     }
 
+    // Пустое место в запросе CLI пишет честным null, и разбор обязан пережить
+    // его молча: исключение отсюда летит прямо в чтение потока и уносит с собой
+    // ещё не разобранные события разговора.
+    @Test
+    fun `пустые поля запроса не роняют разбор`() {
+        // Самого запроса нет — отвечаем как на незнакомый: молчание останавливает ход.
+        val empty = parse("""{"type":"control_request","request_id":"запрос-6","request":null}""")
+        assertEquals("запрос-6", (empty as PermissionChannel.Incoming.Unsupported).requestId)
+
+        val incoming = parse(
+            """
+            {"type":"control_request","request_id":"запрос-7","request":{
+              "subtype":"can_use_tool","tool_name":"Bash","input":null,
+              "tool_use_id":"toolu_7","permission_suggestions":null}}
+            """.trimIndent(),
+        )
+
+        val request = (incoming as PermissionChannel.Incoming.Permission).request
+        assertEquals("Bash", request.toolName)
+        assertTrue(request.input.isEmpty())
+        assertTrue(request.suggestions.isEmpty())
+    }
+
     @Test
     fun `события разговора и наши собственные ответы каналу не принадлежат`() {
         assertNull(parse("""{"type":"assistant","message":{"role":"assistant","content":[]}}"""))

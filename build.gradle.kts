@@ -77,6 +77,13 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
+              <li>Fixed: the usage rings stayed empty for up to a minute after a project was
+              opened. Asked about the subscription limits before it has heard them from the server,
+              the CLI answers with an empty slot instead of numbers, and the panel treated that
+              answer as broken: the rings waited for the next poll a minute later, and the same
+              failure interrupted the parsing of whatever else was arriving at that moment — which
+              is what made the IDE report the plugin as failing. The panel now takes the empty
+              answer for what it is and asks again a few seconds later.</li>
               <li>Fixed several rough edges in the Compact layout introduced last version: the
               Send/Queue buttons no longer drift to the right when the usage rings next to them are
               still empty (right after the plugin starts); Stop now sits after Queue instead of

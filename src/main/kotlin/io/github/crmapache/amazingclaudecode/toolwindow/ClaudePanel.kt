@@ -38,7 +38,10 @@ import io.github.crmapache.amazingclaudecode.claude.PluginMarketplace
 import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessions
 import io.github.crmapache.amazingclaudecode.claude.ClaudeTokenUsage
+import io.github.crmapache.amazingclaudecode.claude.ClaudeUsage
 import io.github.crmapache.amazingclaudecode.claude.ClaudeControlPing
+import io.github.crmapache.amazingclaudecode.claude.child
+import io.github.crmapache.amazingclaudecode.claude.items
 import io.github.crmapache.amazingclaudecode.claude.ImageAttachment
 import io.github.crmapache.amazingclaudecode.claude.PermissionBypass
 import io.github.crmapache.amazingclaudecode.claude.PermissionChannel
@@ -60,6 +63,8 @@ import javax.swing.JComponent
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.booleanOrNull
@@ -991,21 +996,27 @@ internal class ClaudePanel(
      * только за этой цифрой не стоит — вместо этого разовый лёгкий пинг
      * (--safe-mode, без customizations) через [ClaudeControlPing].
      */
-    private fun refreshUsage() {
+    private fun refreshUsage(attempt: Int = 0) {
         // Спрашивать расход до входа нечего: процесс поднимется только затем, чтобы
         // ответить, что пользователь не вошёл.
         if (!loggedIn) return
 
+        val onUsage = { usage: JsonObject -> receiveUsage(usage, attempt) }
+
         if (sessions?.isRunning(MAIN_SESSION) == true) {
-            sessions?.requestUsage(MAIN_SESSION, ::sendUsage)
+            sessions?.requestUsage(MAIN_SESSION, onUsage)
         } else {
             ClaudeControlPing.request(
                 project.basePath,
                 subtype = "get_usage",
-                onResult = ::sendUsage,
+                onResult = onUsage,
                 onError = { error -> thisLogger().info("Usage ping skipped: $error") },
             )
         }
+
+        // Только на первом заходе: переспрашиваем мы лимиты (см. receiveUsage), а
+        // скан транскриптов от них не зависит и повторять его незачем.
+        if (attempt > 0) return
 
         // Отдельно и в фоне: это скан транскриптов ВСЕХ проектов, а не спрос у
         // текущего разговора — своя цена, поэтому не ждём и не блокируем ответ выше.
@@ -1017,6 +1028,23 @@ internal class ClaudePanel(
                 }.toString(),
             )
         }
+    }
+
+    /**
+     * Ответ на get_usage. Только что поднятый CLI успевает ответить раньше, чем
+     * узнает окна подписки от сервера, — тогда лимитов в ответе нет вовсе, и
+     * кольца расхода в панели пусты. Ждать общего круга (раз в минуту) в этом
+     * случае незачем: переспрашиваем через несколько секунд, и кольца
+     * появляются сразу после открытия проекта, а не когда повезёт.
+     */
+    private fun receiveUsage(usage: JsonObject, attempt: Int) {
+        if (sendUsage(usage) || attempt >= USAGE_RETRY_LIMIT) return
+
+        AppExecutorUtil.getAppScheduledExecutorService().schedule(
+            { refreshUsage(attempt + 1) },
+            USAGE_RETRY_SECONDS,
+            TimeUnit.SECONDS,
+        )
     }
 
     /**
@@ -1052,7 +1080,7 @@ internal class ClaudePanel(
     }
 
     private fun sendModels(payload: JsonObject) {
-        val models = payload["models"]?.jsonArray ?: run {
+        val models = payload.items("models") ?: run {
             // Ответ без списка — тот же промах, что и ошибка: каталога у нас нет,
             // и спросить его ещё раз должно быть можно.
             modelsRequested.set(false)
@@ -1113,43 +1141,31 @@ internal class ClaudePanel(
         )
     }
 
-    /** Общий разбор ответа get_usage — не важно, от живого разговора он или от пинга. */
-    private fun sendUsage(usage: JsonObject) {
-        val limits = usage["rate_limits"]?.jsonObject
+    /**
+     * Ответ get_usage наверх — не важно, от живого разговора он или от пинга.
+     * Возвращает, приехали ли сами окна лимитов: без них переспрашиваем (см.
+     * receiveUsage), а вот размер окна контекста в ответе бывает и тогда,
+     * поэтому сообщение уходит наверх в любом случае.
+     */
+    private fun sendUsage(usage: JsonObject): Boolean {
+        val snapshot = ClaudeUsage.parse(usage)
 
         webview?.send(
             buildJsonObject {
                 put("type", "usage")
-                limits?.let { window(it, "five_hour")?.let { w -> put("session", w) } }
-                limits?.let { window(it, "seven_day")?.let { w -> put("week", w) } }
-                contextWindow(usage)?.let { put("contextWindow", it) }
+                snapshot.session?.let { putWindow("session", it) }
+                snapshot.week?.let { putWindow("week", it) }
+                snapshot.contextWindow?.let { put("contextWindow", it) }
             }.toString(),
         )
+
+        return snapshot.hasLimits
     }
 
-    /**
-     * Размер окна контекста зависит от модели: у больших он миллион, а не двести
-     * тысяч. Берём его из ответа, иначе доля на датчике будет втрое заниженной.
-     */
-    private fun contextWindow(usage: JsonObject): Int? {
-        val models = usage["session"]?.jsonObject?.get("model_usage")?.jsonObject ?: return null
-
-        return models.values
-            .mapNotNull { it.jsonObject["contextWindow"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() }
-            // 0 отсекаем наравне с null: на стороне вебвью его девать некуда —
-            // `?? current` не срабатывает на 0 (это не nullish), он застревает
-            // в state панели навсегда, и датчик контекста делится на ноль.
-            .filter { it > 0 }
-            .maxOrNull()
-    }
-
-    private fun window(limits: JsonObject, name: String): JsonObject? {
-        val window = limits[name]?.jsonObject ?: return null
-        val percent = window["utilization"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() ?: return null
-
-        return buildJsonObject {
-            put("percent", percent.toInt())
-            put("resets", window["resets_at"]?.jsonPrimitive?.contentOrNull.orEmpty())
+    private fun JsonObjectBuilder.putWindow(name: String, window: ClaudeUsage.Window) {
+        putJsonObject(name) {
+            put("percent", window.percent)
+            put("resets", window.resets)
         }
     }
 
@@ -1451,7 +1467,7 @@ internal class ClaudePanel(
      * состояние сервера тем же словом, что и терминал.
      */
     private fun sendMcpServers(status: JsonObject) {
-        val servers = status["mcpServers"]?.jsonArray ?: JsonArray(emptyList())
+        val servers = status.items("mcpServers") ?: JsonArray(emptyList())
 
         webview?.send(
             buildJsonObject {
@@ -1459,7 +1475,7 @@ internal class ClaudePanel(
                 putJsonArray("servers") {
                     for (element in servers) {
                         val server = element as? JsonObject ?: continue
-                        val config = server["config"]?.jsonObject
+                        val config = server.child("config")
 
                         addJsonObject {
                             put("name", server["name"]?.jsonPrimitive?.contentOrNull.orEmpty())
@@ -1482,8 +1498,8 @@ internal class ClaudePanel(
         config["url"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }?.let { return it }
 
         val command = config["command"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        val arguments = config["args"]?.jsonArray.orEmpty()
-            .mapNotNull { it.jsonPrimitive.contentOrNull }
+        val arguments = config.items("args").orEmpty()
+            .mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
             .joinToString(" ")
 
         return listOf(command, arguments).filter { it.isNotBlank() }.joinToString(" ")
@@ -1754,6 +1770,15 @@ internal class ClaudePanel(
     private companion object {
         const val MAIN_SESSION = "main"
         const val USAGE_PERIOD_MINUTES = 1L
+
+        /**
+         * Переспрос лимитов, когда CLI ответил без них (см. receiveUsage): пары
+         * секунд ему хватает, чтобы узнать окна подписки от сервера. Попыток
+         * немного — дальше всё равно подхватит общий круг, а каждая из них у
+         * спящей панели стоит отдельного процесса.
+         */
+        const val USAGE_RETRY_SECONDS = 3L
+        const val USAGE_RETRY_LIMIT = 3
         const val BRANCH_PERIOD_SECONDS = 5L
         const val LOGIN_POLL_SECONDS = 3L
         const val LOGIN_POLL_LIMIT_MINUTES = 10L

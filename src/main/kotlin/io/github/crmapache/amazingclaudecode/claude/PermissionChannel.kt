@@ -7,8 +7,6 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -71,7 +69,10 @@ internal object PermissionChannel {
         if (payload["type"]?.jsonPrimitive?.contentOrNull != "control_request") return null
 
         val requestId = payload["request_id"]?.jsonPrimitive?.contentOrNull ?: return null
-        val request = payload["request"]?.jsonObject
+        // Здесь и ниже `as?`, а не `jsonObject`: пустое место в ответе CLI — это
+        // не всегда отсутствующее поле, туда пишется и честный null, а на нём
+        // `jsonObject` бросает исключение прямо в разборе потока.
+        val request = payload["request"] as? JsonObject
         val subtype = request?.get("subtype")?.jsonPrimitive?.contentOrNull.orEmpty()
 
         if (request == null || subtype != CAN_USE_TOOL) return Incoming.Unsupported(requestId, subtype)
@@ -81,11 +82,11 @@ internal object PermissionChannel {
                 requestId = requestId,
                 toolName = request["tool_name"]?.jsonPrimitive?.contentOrNull.orEmpty(),
                 toolUseId = request["tool_use_id"]?.jsonPrimitive?.contentOrNull,
-                input = request["input"]?.jsonObject ?: JsonObject(emptyMap()),
+                input = request["input"] as? JsonObject ?: JsonObject(emptyMap()),
                 requiresUserInteraction =
                     request["requires_user_interaction"]?.jsonPrimitive?.booleanOrNull ?: false,
                 agentId = request["agent_id"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() },
-                suggestions = request["permission_suggestions"]?.jsonArray ?: JsonArray(emptyList()),
+                suggestions = request["permission_suggestions"] as? JsonArray ?: JsonArray(emptyList()),
             ),
         )
     }
@@ -105,7 +106,7 @@ internal object PermissionChannel {
      */
     fun rememberRules(request: ToolPermission): JsonArray {
         val offered = request.suggestions.filter { suggestion ->
-            suggestion.jsonObject["type"]?.jsonPrimitive?.contentOrNull == ADD_RULES
+            (suggestion as? JsonObject)?.get("type")?.jsonPrimitive?.contentOrNull == ADD_RULES
         }
 
         if (offered.isNotEmpty()) return JsonArray(offered)
