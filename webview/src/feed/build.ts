@@ -522,8 +522,8 @@ const tickDurations = (state: PanelState, now: number): PanelState => {
  * события тогда не будет вовсе, а поднятый флаг стоит дорого: пока он поднят,
  * строка статуса не показывается вообще (см. streamStatus), то есть и этот ход,
  * и все следующие в этой вкладке идут без единой подписи о том, что происходит.
- * Заодно убираем недорисованную карточку CONTEXT — её бегущая полоса иначе
- * упрётся в потолок и останется так стоять.
+ * Заодно убираем недорисованную карточку CONTEXT — её процент иначе упрётся в
+ * потолок и останется так стоять.
  */
 const finishCompacting = (state: PanelState): PanelState => {
   const unfinished = state.items.some((item) => item.kind === 'compact' && item.pending)

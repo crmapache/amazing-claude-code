@@ -2089,8 +2089,8 @@ const ownStream = (item: FeedItem): boolean => !('taskId' in item) || item.taskI
  * tickDurations в feed/build.ts).
  */
 const streamStatus = (panel: PanelState, cards: CardState): string => {
-  // Про сжатие говорит его собственная карточка в ленте (CONTEXT с бегущей
-  // полосой) — второй подписи о том же прямо под ней быть не должно.
+  // Про сжатие говорит его собственная карточка в ленте (CONTEXT с растущим
+  // процентом) — второй подписи о том же прямо под ней быть не должно.
   if (panel.compacting) return ''
 
   const awaitingDecision = panel.items.some((item) => ownStream(item) && awaitsYou(item, cards))

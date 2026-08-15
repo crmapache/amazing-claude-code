@@ -77,6 +77,8 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
+              <li>The CONTEXT row shown while a conversation is being compacted no longer draws a
+              bar of ticks across the row — the label, the text, and the percentage are left.</li>
               <li>Fixed: the usage rings stayed empty for up to a minute after a project was
               opened. Asked about the subscription limits before it has heard them from the server,
               the CLI answers with an empty slot instead of numbers, and the panel treated that

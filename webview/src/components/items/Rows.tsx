@@ -55,13 +55,13 @@ const useCompactProgress = (pending: boolean): number => {
 }
 
 /**
- * Сжатие контекста. Пока оно идёт, остаток строки занимает полоса штрихов и
- * процент — единственная подпись о происходящем на всю панель (строка состояния
- * под лентой в этот момент молчит, чтобы не говорить то же самое дважды).
+ * Сжатие контекста. Пока оно идёт, за подписью стоит процент — единственный
+ * рассказ о происходящем на всю панель (строка состояния под лентой в этот
+ * момент молчит, чтобы не говорить то же самое дважды).
  *
  * Процент считается от прошедшего времени: сколько сжатия позади, CLI не
- * сообщает никому, включая собственный терминальный интерфейс, — тот рисует
- * ту же кривую (см. compactProgress). Полоса поэтому не обещает точной доли, а
+ * сообщает никому, включая собственный терминальный интерфейс, — тот рисует ту
+ * же кривую (см. compactProgress). Цифра поэтому не обещает точной доли, а
  * показывает, что работа идёт и сколько примерно уже тянется.
  */
 export const CompactRow = ({ item }: { item: CompactItem }) => {
@@ -71,16 +71,8 @@ export const CompactRow = ({ item }: { item: CompactItem }) => {
     <div className={s.compact}>
       <span className={`${s.compactLabel} ${item.pending ? s.pending : ''}`}>CONTEXT</span>
       <span className={s.compactText}>{item.target}</span>
-      {item.pending ? (
-        <>
-          <span className={s.compactTicks} aria-hidden="true">
-            <span className={s.compactTicksFill} style={{ width: `${percent}%` }} />
-          </span>
-          <span className={s.compactPercent}>{percent}%</span>
-        </>
-      ) : (
-        <div className={s.spacer} />
-      )}
+      {item.pending ? <span className={s.compactPercent}>{percent}%</span> : null}
+      <div className={s.spacer} />
     </div>
   )
 }
