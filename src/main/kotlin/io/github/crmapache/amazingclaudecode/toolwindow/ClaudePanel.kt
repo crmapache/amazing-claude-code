@@ -1737,6 +1737,11 @@ internal class ClaudePanel(
             ApplicationActivationListener.TOPIC,
             object : ApplicationActivationListener {
                 override fun applicationActivated(ideFrame: IdeFrame) {
+                    // Заодно перерисовываем панель начисто: кадр мог остаться
+                    // разорванным ещё с прошлого раза (см. repaintWhole), и
+                    // возвращаться в IDE к такому виду не дело.
+                    webview?.repaintWhole()
+
                     val sessionId = pendingMcpRefreshSessionId ?: return
                     if (System.currentTimeMillis() > pendingMcpRefreshUntil) return
                     refreshMcp(sessionId)

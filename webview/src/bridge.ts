@@ -4,8 +4,11 @@ declare global {
   interface Window {
     /** Ставит оболочка, когда мост готов. */
     __accSend?: (payload: string) => void
-    /** Ставим мы: сюда оболочка складывает свои сообщения. */
-    __accReceive?: (message: ShellMessage) => void
+    /**
+     * Ставим мы: сюда оболочка складывает свои сообщения — пачкой за кадр, а из
+     * харнесса по одному.
+     */
+    __accReceive?: (batch: ShellMessage[] | ShellMessage) => void
   }
 }
 
@@ -34,7 +37,17 @@ export const send = (message: WebviewMessage): void => {
 }
 
 export const subscribe = (handler: (message: ShellMessage) => void): (() => void) => {
-  window.__accReceive = handler
+  // Вся пачка разбирается внутри одного вызова — и React сливает её в одно
+  // обновление интерфейса вместо десятка подряд.
+  window.__accReceive = (batch) => {
+    if (!Array.isArray(batch)) {
+      handler(batch)
+      return
+    }
+
+    for (const message of batch) handler(message)
+  }
+
   return () => {
     window.__accReceive = undefined
   }

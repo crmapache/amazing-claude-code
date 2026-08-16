@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useState, type RefObject } from 'react'
 
 export interface Selection {
   text: string
@@ -68,5 +68,9 @@ export const useSelection = (container: RefObject<HTMLElement | null>): [Selecti
     return () => document.removeEventListener('mouseup', onMouseUp)
   }, [container])
 
-  return [selection, () => setSelection(null)]
+  // Не новая функция на каждый рендер: она уезжает в ленту, а там от постоянства
+  // ссылок зависит, перерисовывать ли карточки заново (см. Feed).
+  const clear = useCallback(() => setSelection(null), [])
+
+  return [selection, clear]
 }

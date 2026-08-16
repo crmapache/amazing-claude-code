@@ -1,5 +1,5 @@
 import { useSmoothStream } from 'smooth-stream-text/react'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { parseParagraphs } from '../feed/markdown'
 import type { AskItem, FeedItem, PermItem, TaskItem, TodoItem, ToolItem } from '../feed/types'
 import type { CardState } from '../hooks/useCardState'
@@ -66,13 +66,17 @@ export const Feed = ({
    * плана уходит из ленты, как только по ней принято решение (в любую
    * сторону) — она своё дело сделала, а не остаётся висеть неактивной.
    */
-  const settled = items.filter(
-    (item): item is FeedRowItem =>
-      item.kind !== 'todo' &&
-      item.kind !== 'ask' &&
-      item.kind !== 'perm' &&
-      item.kind !== 'task' &&
-      !(item.kind === 'plan' && cards.planDecisions[item.id] !== undefined),
+  const settled = useMemo(
+    () =>
+      items.filter(
+        (item): item is FeedRowItem =>
+          item.kind !== 'todo' &&
+          item.kind !== 'ask' &&
+          item.kind !== 'perm' &&
+          item.kind !== 'task' &&
+          !(item.kind === 'plan' && cards.planDecisions[item.id] !== undefined),
+      ),
+    [items, cards.planDecisions],
   )
 
   /**
@@ -105,14 +109,16 @@ export const Feed = ({
    * свежая «выполняется»-карточка на деле просто ждёт человека. Без этой
    * пометки обе ситуации выглядят одинаковым спиннером.
    */
-  const awaitingPermission = items.some(
-    (item) => item.kind === 'perm' && item.decision === null && item.taskId === undefined,
-  )
-  const lastPendingId = awaitingPermission
-    ? items
-        .flatMap<ToolItem>((item) => (item.kind === 'toolGroup' ? item.tools.filter((tool) => tool.pending) : []))
-        .at(-1)?.id
-    : undefined
+  const lastPendingId = useMemo(() => {
+    const awaitingPermission = items.some(
+      (item) => item.kind === 'perm' && item.decision === null && item.taskId === undefined,
+    )
+    if (!awaitingPermission) return undefined
+
+    return items
+      .flatMap<ToolItem>((item) => (item.kind === 'toolGroup' ? item.tools.filter((tool) => tool.pending) : []))
+      .at(-1)?.id
+  }, [items])
   /** Пока пользователь не отмотал вверх сам, лента липнет к низу. */
   const stick = useRef(true)
   /** То же самое, но в состоянии — от него зависит, рисовать ли кнопку «вниз». */
@@ -266,7 +272,21 @@ interface ItemViewProps {
   onOpenLink: (url: string) => void
 }
 
-const ItemView = ({
+/**
+ * Осевшая карточка не меняется — и перерисовывать её незачем.
+ *
+ * Пока идёт ответ, лента обновляется каждый кадр: текст прибывает по паре
+ * символов, и на каждую такую порцию React проходит по всему списку. Без этой
+ * памяти вместе с печатающейся строкой заново собирались бы и все карточки
+ * разговора — сотни узлов с разметкой, диффами и логами команд, каждый раз
+ * целиком. Отсюда и провалы, из-за которых панель переставала успевать за
+ * происходящим.
+ *
+ * Работает это ровно потому, что всё остальное вокруг постоянно: события
+ * складываются в ленту, не пересобирая уже лежащее (см. reducePanel), состояние
+ * карточек и обработчики держат свои ссылки (useCardState, App).
+ */
+const ItemView = memo(({
   item,
   cards,
   lastPendingId,
@@ -317,4 +337,6 @@ const ItemView = ({
     case 'error':
       return <ErrorRow item={item} onDismiss={() => onDismissError(item.id)} />
   }
-}
+})
+
+ItemView.displayName = 'ItemView'

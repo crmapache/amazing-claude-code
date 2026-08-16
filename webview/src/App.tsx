@@ -1053,6 +1053,23 @@ export const App = () => {
   )
 
   /**
+   * Всё, что уезжает в ленту, живёт одной и той же ссылкой от рендера к рендеру.
+   * Иначе карточки перерисовывались бы заново на каждый кадр печатающегося
+   * ответа: новая функция в пропсах для React — такой же повод, как новый текст
+   * (см. Feed).
+   */
+  const attachFeed = useCallback((element: HTMLElement | null) => {
+    feedRef.current = element
+  }, [])
+
+  const openLink = useCallback((url: string) => send({ type: 'openExternal', url }), [])
+
+  const dismissError = useCallback(
+    (id: string) => dispatchPanel({ session: active, action: { kind: 'dismissError', id } }),
+    [active],
+  )
+
+  /**
    * Вопрос закрыли, не выбрав ни одного варианта: человек скажет своими
    * словами. Агенту это уходит отказом на его вызов — тем же путём, что и
    * «не разрешаю» у запроса разрешения: ход продолжается, а вопрос перестаёт
@@ -1876,13 +1893,11 @@ export const App = () => {
               streaming={running}
               streamStatus={streamStatus(panel, cards)}
               cards={cards}
-              scrollRef={(element) => {
-                feedRef.current = element
-              }}
+              scrollRef={attachFeed}
               onScroll={clearSelection}
               onPlanDecision={decidePlan}
-              onDismissError={(id) => dispatchPanel({ session: active, action: { kind: 'dismissError', id } })}
-              onOpenLink={(url) => send({ type: 'openExternal', url })}
+              onDismissError={dismissError}
+              onOpenLink={openLink}
             />
           ) : (
             <AgentStreamView item={activeTask} />

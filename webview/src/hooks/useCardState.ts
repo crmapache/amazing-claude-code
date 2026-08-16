@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 /**
  * Состояние карточек, которое живёт только в интерфейсе: что раскрыто, какие
@@ -45,15 +45,20 @@ export const useCardState = (): CardState => {
     setAnsweredAsks((current) => (current.includes(itemId) ? current : [...current, itemId]))
   }, [])
 
-  return {
-    isOpen,
-    toggle,
-    appliedHunks: hunks,
-    applyHunk,
-    rejectHunk,
-    planDecisions,
-    decidePlan,
-    answeredAsks,
-    answerAsk,
-  }
+  // Собранный заново объект менялся бы на каждый кадр печатающегося ответа, а он
+  // уезжает в каждую карточку ленты — и обесценивал бы там любую мемоизацию.
+  return useMemo(
+    () => ({
+      isOpen,
+      toggle,
+      appliedHunks: hunks,
+      applyHunk,
+      rejectHunk,
+      planDecisions,
+      decidePlan,
+      answeredAsks,
+      answerAsk,
+    }),
+    [isOpen, toggle, hunks, applyHunk, rejectHunk, planDecisions, decidePlan, answeredAsks, answerAsk],
+  )
 }

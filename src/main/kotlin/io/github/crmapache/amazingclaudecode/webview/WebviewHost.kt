@@ -6,6 +6,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.IdeGlassPaneUtil
+import com.intellij.util.Alarm
 import java.awt.Cursor
 import java.net.URI
 import com.intellij.ui.jcef.JBCefBrowser
@@ -20,6 +21,37 @@ import org.cef.handler.CefLifeSpanHandlerAdapter
 import org.cef.handler.CefLoadHandlerAdapter
 import org.cef.handler.CefRequestHandlerAdapter
 import org.cef.network.CefRequest
+
+/**
+ * Вызов приёмника на странице для целой пачки сообщений.
+ *
+ * Каждое сообщение — уже готовый JSON, поэтому массив из них собирается склейкой.
+ * Саму строку в JS безопасно вносить только как литерал, поэтому кодируем её
+ * сериализатором, а на странице разбираем обратно: иначе первая же кавычка или
+ * перенос строки в тексте ответа рвали бы весь вызов, и канал замолкал бы целиком.
+ */
+internal fun receiveCall(batch: List<String>): String {
+    val array = batch.joinToString(",", prefix = "[", postfix = "]")
+    val literal = Json.encodeToString(String.serializer(), array)
+
+    return "window.__accReceive && window.__accReceive(JSON.parse($literal));"
+}
+
+/**
+ * Сколько ждём, прежде чем отдать накопившееся странице. Кадр примерно столько и
+ * длится: чаще перерисовывать интерфейс всё равно некуда, а задержка в одну
+ * шестидесятую секунды на глаз неотличима от мгновенной.
+ */
+private const val FLUSH_DELAY_MS = 16
+
+/** Предел одной пачки — см. flush. */
+private const val MAX_BATCH = 200
+
+/** Как часто просим полный кадр, пока сообщения идут потоком. */
+private const val HEAL_PERIOD_MS = 1000L
+
+/** Через сколько после последней пачки просим полный кадр ещё раз — уже начисто. */
+private const val HEAL_SETTLE_MS = 250
 
 /**
  * Встроенный браузер плюс канал сообщений между интерфейсом и оболочкой.
@@ -40,11 +72,31 @@ internal class WebviewHost(
     private val fromWebview = JBCefJSQuery.create(browser as JBCefBrowserBase)
 
     /**
-     * Сообщения, накопленные до готовности страницы. Без этой очереди первые
-     * события агента улетают в пустоту: страница ещё не успела объявить приёмник.
+     * Сообщения, ещё не уехавшие в страницу: и накопленные до её готовности
+     * (иначе первые события агента улетают в пустоту — приёмник ещё не объявлен),
+     * и собранные в пачку за последний кадр.
      */
-    private val pending = ArrayDeque<String>()
+    private val outbox = ArrayDeque<String>()
     private var pageReady = false
+    private var flushScheduled = false
+
+    /**
+     * Разбирать очередь можно только одному потоку за раз. Их тут двое: таймер и
+     * тот, что объявляет страницу готовой, — и без этого замка они могли бы
+     * разобрать очередь одновременно и занести свои пачки в странице в обратном
+     * порядке. Событие агента, приехавшее раньше своего предшественника, — это уже
+     * не подтормаживание, а перепутанная лента.
+     */
+    private val flushLock = Any()
+
+    // Заводятся не здесь, а в init: своим родителем они берут этот же объект, а он
+    // до init ещё не встал в дерево disposable-ов.
+    private val flushAlarm: Alarm
+    private val healAlarm: Alarm
+
+    /** Когда в последний раз просили перерисовать кадр целиком — см. heal. */
+    @Volatile
+    private var lastHealAt = 0L
 
     val component: JComponent get() = browser.component
 
@@ -52,6 +104,9 @@ internal class WebviewHost(
         Disposer.register(parentDisposable, this)
         Disposer.register(this, browser)
         Disposer.register(this, fromWebview)
+
+        flushAlarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, this)
+        healAlarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, this)
 
         fromWebview.addHandler { payload: String ->
             onMessage(payload)
@@ -70,7 +125,7 @@ internal class WebviewHost(
                  */
                 override fun onLoadStart(browser: CefBrowser?, frame: CefFrame?, transitionType: CefRequest.TransitionType?) {
                     if (frame?.isMain != true) return
-                    synchronized(pending) { pageReady = false }
+                    synchronized(outbox) { pageReady = false }
                 }
 
                 override fun onLoadEnd(browser: CefBrowser, frame: CefFrame, httpStatusCode: Int) {
@@ -167,15 +222,24 @@ internal class WebviewHost(
         "${uri.scheme.orEmpty().lowercase()}://${host.lowercase()}:${uri.port}"
     }.getOrNull()
 
-    /** Отправить сообщение в интерфейс. Порядок сохраняется, даже если страница ещё грузится. */
+    /**
+     * Отправить сообщение в интерфейс. Порядок сохраняется, даже если страница ещё
+     * грузится.
+     *
+     * Уходит не сразу: сообщения копятся и отдаются пачкой раз в кадр. Агент
+     * запущен с частичными сообщениями, то есть во время ответа события сыплются
+     * десятками в секунду, а каждый отдельный заход в страницу — это и вызов через
+     * границу процессов, и своя задача в браузере, которую тот уже не может слить
+     * с соседними: сколько сообщений, столько и полных перерисовок интерфейса.
+     * Пачкой они превращаются в одну.
+     */
     fun send(json: String) {
-        synchronized(pending) {
-            if (!pageReady) {
-                pending.addLast(json)
-                return
-            }
+        synchronized(outbox) {
+            outbox.addLast(json)
+            if (!pageReady || flushScheduled) return
+            flushScheduled = true
         }
-        deliver(json)
+        flushAlarm.addRequest(::flush, FLUSH_DELAY_MS)
     }
 
     /** Открыть инструменты разработчика браузера — иначе интерфейс не отладить. */
@@ -258,19 +322,69 @@ internal class WebviewHost(
 
         browser.cefBrowser.executeJavaScript(bridge, browser.cefBrowser.url, 0)
 
-        val queued = synchronized(pending) {
-            pageReady = true
-            pending.toList().also { pending.clear() }
-        }
-        queued.forEach(::deliver)
+        synchronized(outbox) { pageReady = true }
+        flush()
     }
 
-    private fun deliver(json: String) {
-        // Строку в JS безопасно вносить только как литерал, поэтому кодируем её
-        // сериализатором, а на странице разбираем обратно.
-        val literal = Json.encodeToString(String.serializer(), json)
-        val call = "window.__accReceive && window.__accReceive(JSON.parse($literal));"
-        browser.cefBrowser.executeJavaScript(call, browser.cefBrowser.url, 0)
+    /**
+     * Отдать странице всё, что накопилось.
+     *
+     * Пачку ограничиваем по числу сообщений: перепись прошлого разговора приходит
+     * сразу целиком, и без предела вся её история склеилась бы в одну строку в
+     * несколько мегабайт — такую в браузер уже не занесёшь. Остаток уезжает
+     * следующей пачкой в том же заходе, без лишнего ожидания.
+     */
+    private fun flush() {
+        synchronized(flushLock) {
+            while (true) {
+                val batch = synchronized(outbox) {
+                    flushScheduled = false
+                    if (!pageReady || outbox.isEmpty()) return
+                    List(minOf(outbox.size, MAX_BATCH)) { outbox.removeFirst() }
+                }
+                deliver(batch)
+            }
+        }
+    }
+
+    private fun deliver(batch: List<String>) {
+        browser.cefBrowser.executeJavaScript(receiveCall(batch), browser.cefBrowser.url, 0)
+
+        heal()
+    }
+
+    /**
+     * Попросить браузер перерисовать кадр целиком.
+     *
+     * Панель рисуется офскрин (режим окна платформа не даёт — см. setCursor), то
+     * есть готовый кадр едет из отдельного процесса через общую память, а IDE
+     * обновляет у себя только изменившиеся куски. Под потоком событий кадры
+     * наезжают друг на друга, и на панели остаётся полоса от старого: слева одно
+     * состояние, справа другое. Само это не проходит — следующие кадры трогают
+     * только мелочь вроде бегущего счётчика, а полосу никто не перерисовывает.
+     *
+     * Полный кадр эту полосу стирает. Просим его не чаще раза в секунду, пока идёт
+     * поток, и ещё раз — когда поток стих: так разрыв живёт доли секунды вместо
+     * «пока не потрогаешь панель», а на спокойной панели этой работы нет вовсе.
+     */
+    private fun heal() {
+        val now = System.currentTimeMillis()
+        if (now - lastHealAt >= HEAL_PERIOD_MS) repaintWhole()
+
+        healAlarm.cancelAllRequests()
+        healAlarm.addRequest(::repaintWhole, HEAL_SETTLE_MS)
+    }
+
+    /**
+     * То же самое, но по внешнему поводу: вернулись в окно IDE — а кадр там мог
+     * остаться разорванным ещё с прошлого раза.
+     */
+    fun repaintWhole() {
+        lastHealAt = System.currentTimeMillis()
+        if (browser.isOffScreenRendering) browser.cefBrowser.invalidate()
+        // Один invalidate чинит не всё: полоса могла остаться и в том кадре,
+        // который IDE уже держит у себя. repaint() из любого потока безопасен.
+        browser.component.repaint()
     }
 
     /** Адрес dev-сервера Vite, если панель просили грузить с него, а не из ресурсов плагина. */
