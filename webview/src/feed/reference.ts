@@ -25,14 +25,6 @@ export const rangeLabel = (span: SelectionSpan): string => {
   return `L${startLine}:${startColumn}-L${endLine}:${endColumn}`
 }
 
-/**
- * Строка похожа на заданный вопрос — заканчивается вопросительным знаком. В
- * собственном сообщении такую строку показываем приглушённой: рядом почти
- * всегда стоит решение по ней, и внимание должно доставаться решению, а не
- * повторённому контексту вопроса.
- */
-export const isQuestionLine = (line: string): boolean => line.trim().endsWith('?')
-
 export const referenceChip = (span: SelectionSpan): Chip => ({
   kind: 'ref',
   value: span.path,

@@ -27,13 +27,11 @@ import {
 } from '../feed/slash'
 import { clipboardHtml, clipboardTokens, tokensText } from '../feed/tokens'
 import type { Chip, ChipKind, UserToken } from '../feed/types'
-import { modeLabel, modeShortLabel, modelLabel } from '../catalog'
 import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
 import type { ModelInfo } from '../protocol'
 import { SlashSuggest } from './SlashSuggest'
-import { contextColor, contextGlow, modeClass, Selector, type Anchor, type SelectorKind } from './StatusBar'
+import { contextColor, contextGlow, Selectors, type Anchor, type SelectorKind } from './StatusBar'
 import s from './composer.module.css'
-import shell from './shell.module.css'
 
 /** Засечки на пятых долях — не связаны с порогами цвета, чисто масштаб шкалы. */
 const CONTEXT_METER_TICKS = [20, 40, 60, 80]
@@ -1358,26 +1356,12 @@ export const Composer = ({
            */}
           <div className={s.compactControls}>
             <div className={s.compactSelectors}>
-              <Selector
-                label="MODEL"
-                value={modelLabel(model)}
-                title={`Model: ${modelLabel(model)}`}
-                className={shell.selectorAuto}
-                onOpen={(anchor) => onOpenSelector?.('model', anchor)}
-              />
-              <Selector
-                label="EFFORT"
-                value={effort ?? ''}
-                title={`Reasoning effort: ${effort ?? ''}`}
-                className={shell.selectorAuto}
-                onOpen={(anchor) => onOpenSelector?.('effort', anchor)}
-              />
-              <Selector
-                label="MODE"
-                value={modeShortLabel(mode ?? '')}
-                title={`Permission mode: ${modeLabel(mode ?? '')}`}
-                className={`${shell.selectorAuto} ${modeClass(mode ?? '')}`}
-                onOpen={(anchor) => onOpenSelector?.('mode', anchor)}
+              <Selectors
+                model={model}
+                effort={effort ?? ''}
+                mode={mode ?? ''}
+                auto
+                onOpen={(kind, anchor) => onOpenSelector?.(kind, anchor)}
               />
             </div>
 
@@ -1427,26 +1411,12 @@ export const Composer = ({
           ? createPortal(
               <>
                 <div className={s.railSelectors}>
-                  <Selector
-                    label="MODEL"
-                    value={modelLabel(model)}
-                    title={`Model: ${modelLabel(model)}`}
-                    className={shell.selectorAuto}
-                    onOpen={(anchor) => onOpenSelector?.('model', anchor)}
-                  />
-                  <Selector
-                    label="EFFORT"
-                    value={effort ?? ''}
-                    title={`Reasoning effort: ${effort ?? ''}`}
-                    className={shell.selectorAuto}
-                    onOpen={(anchor) => onOpenSelector?.('effort', anchor)}
-                  />
-                  <Selector
-                    label="MODE"
-                    value={modeShortLabel(mode ?? '')}
-                    title={`Permission mode: ${modeLabel(mode ?? '')}`}
-                    className={`${shell.selectorAuto} ${modeClass(mode ?? '')}`}
-                    onOpen={(anchor) => onOpenSelector?.('mode', anchor)}
+                  <Selectors
+                    model={model}
+                    effort={effort ?? ''}
+                    mode={mode ?? ''}
+                    auto
+                    onOpen={(kind, anchor) => onOpenSelector?.(kind, anchor)}
                   />
                 </div>
 

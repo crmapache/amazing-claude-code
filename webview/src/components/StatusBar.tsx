@@ -1,4 +1,4 @@
-import { modeLabel, modeShortLabel, modelLabel } from '../catalog'
+import { EFFORT_SAMPLE, MODE_SAMPLE, MODEL_SAMPLE, modeLabel, modeShortLabel, modelLabel } from '../catalog'
 import type { UsageWindow } from '../protocol'
 import s from './shell.module.css'
 
@@ -112,15 +112,7 @@ interface StatusBarProps {
 export const StatusBar = ({ model, effort, mode, onOpen }: StatusBarProps) => (
   <div className={s.status}>
     <div className={s.selectors}>
-      <Selector label="MODEL" value={modelLabel(model)} title={`Model: ${modelLabel(model)}`} onOpen={(anchor) => onOpen('model', anchor)} />
-      <Selector label="EFFORT" value={effort} title={`Reasoning effort: ${effort}`} onOpen={(anchor) => onOpen('effort', anchor)} />
-      <Selector
-        label="MODE"
-        value={modeShortLabel(mode)}
-        title={`Permission mode: ${modeLabel(mode)}`}
-        className={modeClass(mode)}
-        onOpen={(anchor) => onOpen('mode', anchor)}
-      />
+      <Selectors model={model} effort={effort} mode={mode} onOpen={onOpen} />
     </div>
   </div>
 )
@@ -180,18 +172,15 @@ const WeekMeter = ({ usage }: { usage: UsageWindow }) => {
 interface SelectorProps {
   label: string
   value: string
+  /** Самый длинный вариант значения: по нему и отмеряется ширина — см. разметку ниже. */
+  sample: string
   title: string
   className?: string
   onOpen: (anchor: Anchor) => void
 }
 
-/**
- * Кнопка одного селектора (MODEL/EFFORT/MODE) — экспортирована, чтобы Compact
- * мог собрать тот же ряд у себя внутри поля ввода, а не в отдельной строке
- * статуса (см. Composer.tsx): вид один и тот же, разнится только то, где ряд
- * стоит.
- */
-export const Selector = ({ label, value, title, className = '', onOpen }: SelectorProps) => (
+/** Кнопка одного селектора (MODEL/EFFORT/MODE). Наружу отдаётся весь ряд — см. [Selectors]. */
+const Selector = ({ label, value, sample, title, className = '', onOpen }: SelectorProps) => (
   <button
     type="button"
     className={`${s.selector} ${className}`}
@@ -204,10 +193,68 @@ export const Selector = ({ label, value, title, className = '', onOpen }: Select
     }}
   >
     <span className={s.selectorLabel}>{label}</span>
-    <span className={s.selectorValue}>{value}</span>
+    {/*
+      Ширину держит невидимый самый длинный вариант, а само значение лежит поверх
+      него и в ширину не считается вовсе. Иначе кнопка меряется тем, что выбрано
+      прямо сейчас: «Ask» уже «Bypass», «low» уже «ultracode» — и каждое
+      переключение сдвигало бы соседей по ряду.
+    */}
+    <span className={s.selectorValue}>
+      <span className={s.selectorSample} aria-hidden="true">
+        {sample}
+      </span>
+      <span className={s.selectorText}>{value}</span>
+    </span>
     <Chevron />
   </button>
 )
+
+interface SelectorsProps {
+  model?: string
+  effort: string
+  mode: string
+  /** Ряд делит ширину поровну, а не стоит фиксированными кнопками — см. .selectorAuto. */
+  auto?: boolean
+  onOpen: (kind: SelectorKind, anchor: Anchor) => void
+}
+
+/**
+ * Ряд из трёх селекторов целиком. Собран здесь, а не в каждой раскладке своей
+ * копией: подписи, подсказки и образцы ширины у них одни и те же, и разъехаться
+ * между строкой статуса, compact и боковой рельсой они не должны.
+ */
+export const Selectors = ({ model, effort, mode, auto = false, onOpen }: SelectorsProps) => {
+  const grow = auto ? s.selectorAuto : ''
+
+  return (
+    <>
+      <Selector
+        label="MODEL"
+        value={modelLabel(model)}
+        sample={MODEL_SAMPLE}
+        title={`Model: ${modelLabel(model)}`}
+        className={grow}
+        onOpen={(anchor) => onOpen('model', anchor)}
+      />
+      <Selector
+        label="EFFORT"
+        value={effort}
+        sample={EFFORT_SAMPLE}
+        title={`Reasoning effort: ${effort}`}
+        className={grow}
+        onOpen={(anchor) => onOpen('effort', anchor)}
+      />
+      <Selector
+        label="MODE"
+        value={modeShortLabel(mode)}
+        sample={MODE_SAMPLE}
+        title={`Permission mode: ${modeLabel(mode)}`}
+        className={`${grow} ${modeClass(mode)}`}
+        onOpen={(anchor) => onOpen('mode', anchor)}
+      />
+    </>
+  )
+}
 
 /** Аккуратная галка вместо ▼: у типографского треугольника чужой вес и вид. */
 const Chevron = () => (
@@ -325,8 +372,8 @@ const weekBudgetToday = (resets: string): number | null => {
   return Math.min(day * WEEK_DAILY_BUDGET, 100)
 }
 
-/** Тот же модификатор цвета режима, что и в строке статуса — см. Selector выше. */
-export const modeClass = (mode: string): string => {
+/** Свой акцент у каждого режима разрешений — см. .selectorPlan и соседей. */
+const modeClass = (mode: string): string => {
   if (mode === 'plan') return s.selectorPlan ?? ''
   if (mode === 'acceptEdits') return s.selectorAccept ?? ''
   if (mode === 'bypassPermissions') return s.selectorDanger ?? ''

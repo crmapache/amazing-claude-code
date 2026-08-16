@@ -26,7 +26,15 @@ export interface Chip {
   text?: string
 }
 
-export type UserToken = { kind: 'text'; value: string } | { kind: 'chip'; chip: Chip }
+export type UserToken =
+  /**
+   * echo — кусок текста, который панель подставила за человека, а не он сам:
+   * так рядом с выбранным ответом в ленту попадает и сам вопрос агента (см.
+   * App.sendAnswers). В карточке такой кусок приглушён — вопрос уже прочитан
+   * выше, и внимание должно доставаться ответу на него.
+   */
+  | { kind: 'text'; value: string; echo?: boolean }
+  | { kind: 'chip'; chip: Chip }
 
 /** Кусок текста внутри абзаца: обычный, кодовый, выделенный или жирный. */
 export interface TextPart {

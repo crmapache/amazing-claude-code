@@ -344,9 +344,43 @@ const MODEL_FAMILIES: { id: string; label: string }[] = [
  * больше, и по одному имени семейства этого не понять.
  */
 export const modelLabel = (model?: string): string => {
-  if (!model) return 'default'
+  if (!model) return DEFAULT_MODEL_LABEL
 
   const known = MODEL_FAMILIES.find((family) => model.toLowerCase().includes(family.id))
   const base = known?.label ?? model.replace(/^claude-/, '').replace(/\[.*\]$/, '')
   return /\[1m\]/i.test(model) ? `${base} 1M` : base
 }
+
+/** Подпись, пока модель не названа ни выбором, ни самим агентом. */
+const DEFAULT_MODEL_LABEL = 'default'
+
+/**
+ * Самая длинная подпись из тех, что могут оказаться на кнопке.
+ *
+ * По ней и отмеряется ширина селектора — вместо той, что стоит там прямо сейчас.
+ * Иначе каждая смена модели или режима меняла бы ширину кнопки, а вместе с ней и
+ * положение соседей: весь ряд дёргался бы на ровном месте.
+ *
+ * Считаем по числу символов, а не по настоящей ширине: значение набрано тем же
+ * моноширинным шрифтом, что и остальная лента, — там длиннее и есть шире.
+ */
+const widestLabel = (labels: string[]): string =>
+  labels.reduce((longest, label) => (label.length > longest.length ? label : longest), '')
+
+/**
+ * Ширину держат эти три образца — их и рисует кнопка невидимой распоркой (см.
+ * Selector). Собраны из тех же списков, откуда берутся настоящие подписи, чтобы
+ * новый режим или семейство моделей раздвигали кнопку сами, без правки здесь.
+ *
+ * Модель, которой нет среди семейств (CLI зовёт её по-своему), может оказаться и
+ * длиннее — такая подпись обрежется многоточием, но ряд не тронет. Полное имя
+ * всегда есть в подсказке под курсором.
+ */
+export const MODEL_SAMPLE = widestLabel([
+  DEFAULT_MODEL_LABEL,
+  ...MODEL_FAMILIES.flatMap((family) => [family.label, `${family.label} 1M`]),
+])
+
+export const EFFORT_SAMPLE = widestLabel(EFFORT_OPTIONS.map((option) => option.label))
+
+export const MODE_SAMPLE = widestLabel(Object.values(MODE_SHORT))

@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { linkify } from '../../feed/markdown'
-import { chipLabel, chipTitle, isQuestionLine, pasteBlockPreview, pasteLineCount } from '../../feed/reference'
+import { chipLabel, chipTitle, pasteBlockPreview, pasteLineCount } from '../../feed/reference'
 import type { Chip, ChipKind, UserItem } from '../../feed/types'
 import s from '../feed.module.css'
 
@@ -39,12 +39,7 @@ export const UserCard = ({ item, onOpenLink }: UserCardProps) => (
     <div className={s.userBody}>
       {item.tokens.map((token, index) =>
         token.kind === 'text' ? (
-          <TextToken
-            key={index}
-            value={token.value}
-            onOpenLink={onOpenLink}
-            precededByChip={item.tokens[index - 1]?.kind === 'chip'}
-          />
+          <TextToken key={index} value={token.value} echo={token.echo === true} onOpenLink={onOpenLink} />
         ) : // Вставка, за которой в сообщении уже ничего нет, занимает строку
         // целиком: место всё равно свободно, а по семи словам в узкой плашке не
         // вспомнить, что именно отправил.
@@ -59,63 +54,47 @@ export const UserCard = ({ item, onOpenLink }: UserCardProps) => (
 )
 
 /**
- * Текст показываем ровно как набрали — без разметки, — но построчно: если
- * похоже, что где-то заново заданный вопрос (строка кончается на "?"), она
- * тускнеет, а перед ней добавляется пустая строка — чтобы пары вопрос/ответ
- * не слипались в один абзац, даже когда в сообщении между ними не было
- * пустой строки. Адрес в тексте остаётся живой ссылкой: её кликают, а не
- * переписывают руками.
+ * Текст показываем ровно как набрали — без разметки и без своих переносов:
+ * строки сохраняет сам .userBody (white-space: pre-wrap). Адрес в тексте
+ * остаётся живой ссылкой: её кликают, а не переписывают руками.
  *
- * Пустую строку не задваиваем: у панели вопроса (см. App.onAskSubmit) пары
- * вопрос/ответ и так разделены пустой строкой в самом тексте — добавить ещё
- * одну поверх значило бы просить два разрыва там, где нужен один.
- *
- * Первую строку токена, идущего сразу за плашкой (цитатой или ссылкой),
- * приглушение не трогает никогда — это ответ на неё, а не повтор вопроса,
- * даже если сам ответ по смыслу тоже вопрос («оставим и задеплоим тогда?»).
- * Плашка уже показана отдельно, дублировать её нечему; более поздние строки
- * того же токена под это исключение не попадают — они снова просто текст.
+ * Приглушаем только то, что подставила сама панель, — повтор вопроса агента
+ * рядом с выбранным ответом (см. UserToken.echo). Набранное человеком не
+ * тускнеет никогда, чем бы оно ни заканчивалось: раньше повтор угадывался по
+ * вопросительному знаку в конце строки, и в блёклое уезжал обычный вопрос
+ * агенту («сам замержил?») — то есть выглядело неважным ровно то, что и было
+ * всем сообщением.
  */
 const TextToken = ({
   value,
+  echo,
   onOpenLink,
-  precededByChip = false,
 }: {
   value: string
+  echo: boolean
   onOpenLink: (url: string) => void
-  precededByChip?: boolean
 }) => (
-  <>
-    {value.split('\n').map((line, lineIndex, lines) => {
-      const question = !(lineIndex === 0 && precededByChip) && isQuestionLine(line)
-      const alreadyBlank = lineIndex > 0 && lines[lineIndex - 1] === ''
-
-      return (
-        <span key={lineIndex} className={question ? s.userQuestionLine : undefined}>
-          {lineIndex > 0 ? (question && !alreadyBlank ? '\n\n' : '\n') : null}
-          {linkify(line).map((part, partIndex) =>
-            part.href ? (
-              <a
-                key={partIndex}
-                href={part.href}
-                className={s.link}
-                // Как и в ответе агента: наружу, в системный браузер, иначе
-                // сам вебвью панели уехал бы на этот адрес.
-                onClick={(event) => {
-                  event.preventDefault()
-                  onOpenLink(part.href ?? '')
-                }}
-              >
-                {part.text}
-              </a>
-            ) : (
-              <span key={partIndex}>{part.text}</span>
-            ),
-          )}
-        </span>
-      )
-    })}
-  </>
+  <span className={echo ? s.userEcho : undefined}>
+    {linkify(value).map((part, partIndex) =>
+      part.href ? (
+        <a
+          key={partIndex}
+          href={part.href}
+          className={s.link}
+          // Как и в ответе агента: наружу, в системный браузер, иначе
+          // сам вебвью панели уехал бы на этот адрес.
+          onClick={(event) => {
+            event.preventDefault()
+            onOpenLink(part.href ?? '')
+          }}
+        >
+          {part.text}
+        </a>
+      ) : (
+        <span key={partIndex}>{part.text}</span>
+      ),
+    )}
+  </span>
 )
 
 /**

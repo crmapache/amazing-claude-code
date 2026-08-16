@@ -631,6 +631,21 @@ export const App = () => {
     return () => clearInterval(id)
   }, [])
 
+  /**
+   * Permission/ask/plan главного потока может решить только тот, кто смотрит
+   * на эту самую вкладку — карточки решения рендерятся из panel.items активной
+   * сессии (см. permission/ask чуть ниже и onPlanDecision у Feed), поэтому
+   * достаточно следить за одной активной сессией, а не гонять это по всем
+   * открытым вкладкам. Реагируем на смену awaitsYou и переносим её в panel
+   * (attentionStarted/attentionEnded — см. build.ts), чтобы streamStatus мог
+   * вычесть время ожидания из «Claude is thinking · Xm Ys», а не приписывать
+   * его агенту.
+   */
+  useEffect(() => {
+    const awaiting = panel.items.some((item) => ownStream(item) && awaitsYou(item, cards))
+    dispatchPanel({ session: active, action: { kind: awaiting ? 'attentionStarted' : 'attentionEnded' } })
+  }, [active, panel.items, cards])
+
   useEffect(
     () =>
       subscribe((message) => {
@@ -1130,7 +1145,19 @@ export const App = () => {
       })
       dispatchPanel({
         session: active,
-        action: { kind: 'prompt', tokens: [{ kind: 'text', value: text }], quotes: [], steering: true },
+        action: {
+          kind: 'prompt',
+          // В ленту тот же текст, но по кусочкам: вопрос отдельным токеном от
+          // своего ответа. Только так карточка знает, какие строки написал
+          // человек, а какие подставила панель, и приглушает ровно повтор
+          // вопроса (см. UserToken.echo) — по самому тексту это неотличимо.
+          tokens: answered.flatMap<UserToken>((entry, index) => [
+            { kind: 'text', value: index === 0 ? entry.question : `\n\n${entry.question}`, echo: true },
+            { kind: 'text', value: `\n${entry.answer}` },
+          ]),
+          quotes: [],
+          steering: true,
+        },
       })
     },
     [cards, active],
@@ -2151,9 +2178,13 @@ const ownStream = (item: FeedItem): boolean => !('taskId' in item) || item.taskI
  *
  * Прошедшее время дописывается тут же, а не ждёт итога хода: «Worked Ns» под
  * готовым ответом приезжает только его концом, а до этого — сколько уже
- * прошло — было не видно совсем. Считается от turnStartedAt, обновляется раз
- * в секунду тем же тиком, что двигает длительность вызовов инструментов (см.
- * tickDurations в feed/build.ts).
+ * прошло — было не видно совсем. Считается от turnStartedAt за вычетом
+ * pausedMs — суммарного времени всех таких ожиданий за этот ход (см.
+ * attentionStarted/attentionEnded в feed/build.ts и эффект в App, который их
+ * шлёт): иначе после решения секунды простоя задним числом приписались бы
+ * агенту, как будто он всё это время «думал». Обновляется раз в секунду тем
+ * же тиком, что двигает длительность вызовов инструментов (см. tickDurations
+ * в feed/build.ts).
  */
 const streamStatus = (panel: PanelState, cards: CardState): string => {
   // Про сжатие говорит его собственная карточка в ленте (CONTEXT с растущим
@@ -2166,8 +2197,16 @@ const streamStatus = (panel: PanelState, cards: CardState): string => {
   const last = panel.items.at(-1)
   const working = last?.kind === 'toolGroup' && last.pending && last.tools.length > 0
   const label = working ? 'Claude is working' : 'Claude is thinking'
-  const elapsed = panel.turnStartedAt ? formatDuration(Date.now() - panel.turnStartedAt) : ''
-  return elapsed ? `${label} · ${elapsed}` : label
+  if (!panel.turnStartedAt) return label
+
+  // Решение только что приняли: awaitingDecision уже false, но эффект,
+  // который переносит waitStartedAt в pausedMs, ещё не отработал (он бьёт
+  // после этого рендера) — досчитываем текущую паузу тут же, чтобы число не
+  // дёрнулось на следующем тике.
+  const now = Date.now()
+  const ongoingWait = panel.waitStartedAt ? now - panel.waitStartedAt : 0
+  const elapsed = formatDuration(now - panel.turnStartedAt - panel.pausedMs - ongoingWait)
+  return `${label} · ${elapsed}`
 }
 
 /**

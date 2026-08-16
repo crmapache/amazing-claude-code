@@ -1550,4 +1550,93 @@ describe('живой счётчик текущего хода (turnStartedAt)', 
     expect(ticked).not.toBe(running)
     expect(ticked.turnStartedAt).toBe(1_700_000_000_000)
   })
+
+  it('result кончает ход и гасит счётчик сразу же, не дожидаясь отдельного status idle', () => {
+    let state = reducePanel(
+      initialPanelState,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      1_700_000_000_000,
+    )
+    state = reducePanel(state, { kind: 'agent', event: resultEvent(3_000) }, 1_700_000_003_000)
+
+    expect(state.turnStartedAt).toBeUndefined()
+  })
+
+  it('обрыв процесса гасит счётчик — иначе setInterval тикал бы вхолостую до следующего сообщения', () => {
+    let state = reducePanel(
+      initialPanelState,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      1_700_000_000_000,
+    )
+    state = reducePanel(state, { kind: 'processExited', exitCode: 1 }, 1_700_000_005_000)
+
+    expect(state.turnStartedAt).toBeUndefined()
+  })
+})
+
+describe('пауза счётчика на решении человека (pausedMs)', () => {
+  it('attentionStarted → attentionEnded копит время ожидания в pausedMs', () => {
+    let state = reducePanel(
+      initialPanelState,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      1_700_000_000_000,
+    )
+    state = reducePanel(state, { kind: 'attentionStarted' }, 1_700_000_010_000)
+    state = reducePanel(state, { kind: 'attentionEnded' }, 1_700_000_015_000)
+
+    expect(state.pausedMs).toBe(5_000)
+    expect(state.waitStartedAt).toBeUndefined()
+  })
+
+  it('повторный attentionStarted не двигает начало паузы назад', () => {
+    let state = reducePanel(
+      initialPanelState,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      1_700_000_000_000,
+    )
+    state = reducePanel(state, { kind: 'attentionStarted' }, 1_700_000_010_000)
+    state = reducePanel(state, { kind: 'attentionStarted' }, 1_700_000_012_000)
+    state = reducePanel(state, { kind: 'attentionEnded' }, 1_700_000_015_000)
+
+    expect(state.pausedMs).toBe(5_000)
+  })
+
+  it('attentionEnded без активной паузы — no-op', () => {
+    const state = reducePanel(initialPanelState, { kind: 'attentionEnded' }, 1_700_000_000_000)
+    expect(state.pausedMs).toBe(0)
+  })
+
+  it('несколько пауз за один ход суммируются', () => {
+    let state = reducePanel(
+      initialPanelState,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      1_700_000_000_000,
+    )
+    state = reducePanel(state, { kind: 'attentionStarted' }, 1_700_000_010_000)
+    state = reducePanel(state, { kind: 'attentionEnded' }, 1_700_000_013_000)
+    state = reducePanel(state, { kind: 'attentionStarted' }, 1_700_000_020_000)
+    state = reducePanel(state, { kind: 'attentionEnded' }, 1_700_000_030_000)
+
+    expect(state.pausedMs).toBe(3_000 + 10_000)
+  })
+
+  it('новый ход обнуляет накопленную паузу прежнего', () => {
+    let state = reducePanel(
+      initialPanelState,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'первое' }], quotes: [] },
+      1_700_000_000_000,
+    )
+    state = reducePanel(state, { kind: 'attentionStarted' }, 1_700_000_010_000)
+    state = reducePanel(state, { kind: 'attentionEnded' }, 1_700_000_020_000)
+    state = reducePanel(state, { kind: 'agent', event: resultEvent(20_000) }, 1_700_000_020_000)
+
+    state = reducePanel(
+      state,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'второе' }], quotes: [] },
+      1_700_001_000_000,
+    )
+
+    expect(state.pausedMs).toBe(0)
+    expect(state.waitStartedAt).toBeUndefined()
+  })
 })

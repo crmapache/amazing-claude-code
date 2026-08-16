@@ -101,6 +101,17 @@ export interface PanelState {
    */
   turnStartedAt?: number
   /**
+   * Сколько всего за текущий ход набежало на ожидании решения человека —
+   * permission, ExitPlanMode, AskUserQuestion. Вычитается из elapsed в
+   * streamStatus (App.tsx): пока висит такая карточка, ход не думает, а стоит,
+   * и после решения секунды ожидания не должны задним числом стать «Claude is
+   * thinking». Копится через attentionStarted/attentionEnded — их шлёт App.tsx,
+   * заметив по awaitsYou смену состояния карточек главного потока.
+   */
+  pausedMs: number
+  /** Когда началось текущее ожидание решения человека — undefined, если сейчас не ждём. */
+  waitStartedAt?: number
+  /**
    * Карточка субагента по tool_use_id вызова Task/Agent, который его породил —
    * из системного события task_started. Сообщения самого субагента несут только
    * tool_use_id в parent_tool_use_id, а карточка может жить под task_id: без
@@ -209,6 +220,13 @@ export type PanelAction =
   | { kind: 'processExited'; exitCode: number }
   /** Ошибку убрали из ленты вручную — она прочитана, и держать её незачем. */
   | { kind: 'dismissError'; id: string }
+  /**
+   * Ход встал на решение человека (permission/ask/plan главного потока) — с
+   * этого момента время идёт в pausedMs, а не в счётчик «Claude is thinking».
+   */
+  | { kind: 'attentionStarted' }
+  /** Решение принято — время ожидания уходит в pausedMs текущего хода. */
+  | { kind: 'attentionEnded' }
 
 export const initialPanelState: PanelState = {
   items: [],
@@ -233,6 +251,7 @@ export const initialPanelState: PanelState = {
   suppressNextMeta: false,
   tasks: {},
   pendingTasks: {},
+  pausedMs: 0,
 }
 
 /**
@@ -285,6 +304,10 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
       // Тогда единственный след остановки — этот статус, и без своей строки
       // лента не сказала бы о ней ничего: работа просто замирала на полуслове.
       const stoppedSilently = action.status === 'idle' && state.stopRequestedAt !== undefined
+      // Переподключение к фоновому ходу (см. ниже) считаем новым ходом и для
+      // паузы — иначе она тащила бы с собой ожидание из совсем другого хода,
+      // о котором эта вкладка ещё не знала.
+      const turnReconnected = action.status === 'running' && state.turnStartedAt === undefined
 
       const next: PanelState = {
         ...state,
@@ -298,6 +321,11 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         // после переподключения к уже идущему фоновому ходу). Не трогаем то,
         // что уже тикает — иначе повторный тот же статус двигал бы отсчёт назад.
         turnStartedAt: action.status === 'running' ? (state.turnStartedAt ?? now) : undefined,
+        // Ход кончился (или это на самом деле новый) — счётчик паузы обнуляем
+        // вместе с turnStartedAt, иначе setInterval в App.tsx тикал бы вхолостую
+        // до следующего сообщения, а следующий ход стартовал бы с чужой паузой.
+        pausedMs: action.status === 'idle' || turnReconnected ? 0 : state.pausedMs,
+        waitStartedAt: action.status === 'idle' ? undefined : state.waitStartedAt,
         seq: stoppedSilently ? state.seq + 1 : state.seq,
         items: stoppedSilently
           ? [...state.items, { id: `meta-${state.seq}`, kind: 'meta', stats: [STOPPED_BY_YOU] }]
@@ -322,6 +350,17 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
 
     case 'dismissError':
       return { ...state, items: state.items.filter((item) => item.id !== action.id) }
+
+    // Идемпотентны нарочно: App.tsx шлёт их на каждую смену awaitsYou, не
+    // отслеживая сама, был ли уже отправлен такой же — проще положиться на
+    // редьюсер, чем городить для этого отдельный ref.
+    case 'attentionStarted':
+      return state.waitStartedAt === undefined ? { ...state, waitStartedAt: now } : state
+
+    case 'attentionEnded':
+      return state.waitStartedAt === undefined
+        ? state
+        : { ...state, pausedMs: state.pausedMs + (now - state.waitStartedAt), waitStartedAt: undefined }
 
     case 'stopRequested':
       return { ...state, stopRequestedAt: now }
@@ -352,6 +391,8 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         ...state,
         status: 'running',
         turnStartedAt: now,
+        pausedMs: 0,
+        waitStartedAt: undefined,
         streamingText: '',
         streamingId: undefined,
         streamingThinking: '',
@@ -619,6 +660,12 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
     streamingThinking: '',
     crashed: true,
     stopRequestedAt: undefined,
+    // Ход оборвался — без этого turnStartedAt повис бы до следующего сообщения,
+    // и setInterval в App.tsx тикал бы вхолостую (следующий ход может начаться
+    // нескоро).
+    turnStartedAt: undefined,
+    pausedMs: 0,
+    waitStartedAt: undefined,
     startedAt,
     background: [],
     seq: state.seq + 1,
@@ -803,6 +850,12 @@ const applyAgentEvent = (
         streamingId: undefined,
         streamingThinking: '',
         stopRequestedAt: undefined,
+        // Ход настоящим итогом кончился здесь и сейчас — не ждём отдельного
+        // status:'idle' от бэкенда, чтобы погасить turnStartedAt: до его
+        // прихода setInterval в App.tsx тикал бы впустую ещё какое-то время.
+        turnStartedAt: undefined,
+        pausedMs: 0,
+        waitStartedAt: undefined,
         usage,
         cost: event.total_cost_usd ?? state.cost,
         sessionId: event.session_id ?? state.sessionId,

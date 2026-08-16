@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  EFFORT_OPTIONS,
+  EFFORT_SAMPLE,
+  MODE_SAMPLE,
+  MODEL_SAMPLE,
   MODEL_OPTIONS,
   MODE_OPTIONS,
   modeLabel,
@@ -189,5 +193,28 @@ describe('подпись модели в нижней строке', () => {
 
   it('незнакомую модель показываем как есть, без префикса и суффикса', () => {
     expect(modelLabel('claude-experimental-9')).toBe('experimental-9')
+  })
+})
+
+/**
+ * Кнопка отмеряет себе ширину по этим образцам, а не по тому, что выбрано
+ * сейчас (см. Selector в StatusBar.tsx). Стоит образцу оказаться короче
+ * настоящей подписи — и она обрежется многоточием на ровном месте.
+ */
+describe('образцы ширины для селекторов', () => {
+  it('образец модели не короче любой подписи из известных семейств', () => {
+    const labels = ['default', ...MODEL_OPTIONS.map((option) => modelLabel(option.id))]
+
+    for (const label of labels) expect(label.length).toBeLessThanOrEqual(MODEL_SAMPLE.length)
+  })
+
+  it('образец усилия не короче любого варианта из меню', () => {
+    for (const option of EFFORT_OPTIONS) expect(option.label.length).toBeLessThanOrEqual(EFFORT_SAMPLE.length)
+  })
+
+  it('образец режима не короче любой короткой подписи', () => {
+    const labels = MODE_OPTIONS.map((option) => modeShortLabel(option.id))
+
+    for (const label of labels) expect(label.length).toBeLessThanOrEqual(MODE_SAMPLE.length)
   })
 })
