@@ -916,9 +916,20 @@ export const App = () => {
             })
             break
 
-          case 'mode':
+          case 'mode': {
+            // auto недоступен не по вине человека и не разово — это свойство
+            // модели, узнать которое заранее неоткуда (см. ModeAvailability):
+            // единственный способ — попробовать и посмотреть на отказ. До
+            // первой попытки Shift+Tab и меню считают его доступным, поэтому
+            // самый первый отказ неизбежен для каждой новой модели. Дальше
+            // autoRefusedModels запоминает его и меню/цикл больше на auto не
+            // попадут — а этот, первый и ожидаемый, отказ не показываем
+            // красной карточкой в разговоре: это внутренняя проверка
+            // возможностей, а не что-то, что нужно прочитать и закрыть руками.
+            const routineAutoRefusal = !message.applied && normalizeMode(message.mode) === 'auto'
+
             if (!message.applied) {
-              if (normalizeMode(message.mode) === 'auto') {
+              if (routineAutoRefusal) {
                 // Модель этой самой вкладки на момент отказа, а не активной
                 // (можно переключиться на другую вкладку раньше, чем придёт
                 // ответ) — см. autoRefusedModels. Разворачиваем той же
@@ -937,10 +948,11 @@ export const App = () => {
                 kind: 'modeApplied',
                 mode: normalizeMode(message.mode),
                 applied: message.applied,
-                error: message.error,
+                error: routineAutoRefusal ? undefined : message.error,
               },
             })
             break
+          }
 
           case 'selection':
             // Ссылка на кусок файла из редактора: текст не тащим, агент прочитает
