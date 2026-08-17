@@ -9,6 +9,10 @@ commits.
 
 ## [Unreleased]
 
+## [0.7.7] - 2026-08-17
+
+- Fixed: the IDE could show an internal plugin error ("Already disposed"), most visible right after startup. A conversation's process reports it finished on its own background thread, and that report could still land after the panel it belonged to was already torn down (project closing, panel rebuilt) - the panel tried to schedule a screen update through an object that no longer existed. Such late reports are now dropped instead of crashing.
+
 ## [0.7.6] - 2026-08-17
 
 - Fixed: a background agent's own tab (opened from its chip above the feed) went quiet as soon as its log had a first line, with nothing left to say whether it was still running — the "Working…" placeholder covered only the moment before that. The tab now carries the same ticking timer its chip already showed.
@@ -197,7 +201,9 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.5...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.7...HEAD
+[0.7.7]: https://github.com/crmapache/amazing-claude-code/compare/0.7.6...0.7.7
+[0.7.6]: https://github.com/crmapache/amazing-claude-code/compare/0.7.5...0.7.6
 [0.7.5]: https://github.com/crmapache/amazing-claude-code/compare/0.7.4...0.7.5
 [0.7.4]: https://github.com/crmapache/amazing-claude-code/compare/0.7.3...0.7.4
 [0.7.3]: https://github.com/crmapache/amazing-claude-code/compare/0.7.2...0.7.3

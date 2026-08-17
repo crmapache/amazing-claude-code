@@ -234,6 +234,12 @@ internal class WebviewHost(
      * Пачкой они превращаются в одну.
      */
     fun send(json: String) {
+        // Событие агента может прилететь с фонового потока (например,
+        // processTerminated) уже после того, как панель закрыли и этот хост
+        // задиспоузили вместе со своим flushAlarm — тогда планировать в него
+        // запрос нечего, иначе платформа заругается «Already disposed».
+        if (Disposer.isDisposed(this)) return
+
         synchronized(outbox) {
             outbox.addLast(json)
             if (!pageReady || flushScheduled) return
@@ -368,6 +374,8 @@ internal class WebviewHost(
      * «пока не потрогаешь панель», а на спокойной панели этой работы нет вовсе.
      */
     private fun heal() {
+        if (Disposer.isDisposed(this)) return
+
         val now = System.currentTimeMillis()
         if (now - lastHealAt >= HEAL_PERIOD_MS) repaintWhole()
 
