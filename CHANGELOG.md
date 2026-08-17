@@ -2,11 +2,10 @@
 
 All notable changes to Amazing Claude Code. The section for the version being
 built is what the Marketplace and the IDE's update dialog show, so every release
-lists only its own changes.
-
-Entries up to 0.7.4 were reconstructed from the plugin's git history: until then
-all releases shared one ever-growing block of notes, and a few releases never
-updated it at all — those are described by their commits.
+lists only its own changes. Entries up to 0.7.4 were reconstructed from the
+plugin's git history: until then all releases shared one ever-growing block of
+notes, and a few releases never updated it at all — those are described by their
+commits.
 
 ## [Unreleased]
 
