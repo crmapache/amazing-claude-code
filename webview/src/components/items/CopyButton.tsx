@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { writeClipboard } from '../../clipboard'
 
 interface CopyButtonProps {
   /** Что уйдёт в буфер — уже готовый простой текст, без markdown-разметки. */
@@ -57,6 +58,13 @@ const CLIPBOARD_API_TIMEOUT_MS = 300
  * дольше разумного. «Успех» теперь значит именно успех, а не просто вызов.
  */
 export const copyToClipboard = async (text: string): Promise<boolean> => {
+  // Отдельно от обоих браузерных путей: на Linux буфер встроенного браузера ни
+  // с чем не связан, и оба они кладут текст туда, откуда его уже никто не
+  // достанет — ни редактор, ни соседнее приложение (см. clipboard.ts). Мимо
+  // общего перехвата копирования эта кнопка проходит потому, что современный
+  // Clipboard API события копирования не поднимает.
+  const bridged = writeClipboard(text)
+
   if (navigator.clipboard?.writeText) {
     // .catch сразу на самом промисе — иначе он, отказавшись позже, чем таймаут
     // уже выиграл гонку, всплывёт как uncaught (in promise) в консоли.
@@ -77,5 +85,5 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
   textarea.select()
   const ok = document.execCommand('copy')
   document.body.removeChild(textarea)
-  return ok
+  return ok || bridged
 }

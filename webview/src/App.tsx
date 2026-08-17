@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { send, subscribe } from './bridge'
+import { installClipboardBridge, resolveClipboard } from './clipboard'
 import {
   EFFORT_OPTIONS,
   modeMenuOptions,
@@ -969,6 +970,10 @@ export const App = () => {
             break
           }
 
+          case 'clipboard':
+            resolveClipboard(message)
+            break
+
           case 'selection':
             // Ссылка на кусок файла из редактора: текст не тащим, агент прочитает
             // файл сам и увидит его целиком. Абсолютный путь — исключение: его
@@ -985,6 +990,13 @@ export const App = () => {
       }),
     [],
   )
+
+  /**
+   * Буфер обмена встроенного браузера на Linux ни с чем не связан: скопированное
+   * во вкладке кода до панели не доходит, и наоборот. Мост чинит это через
+   * оболочку — см. clipboard.ts.
+   */
+  useEffect(() => installClipboardBridge(), [])
 
   /**
    * Подписка живёт один раз, а активная вкладка меняется — держим её в ссылке.

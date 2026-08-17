@@ -258,6 +258,11 @@ export type ShellMessage =
    */
   | { type: 'processExited'; sessionId: string; exitCode: number }
   /** Ответ на mcpList — а также на mcpAdd/mcpRemove, чтобы список сразу обновился. */
+  /**
+   * Содержимое системного буфера — ответ на clipboardRead, см. clipboard.ts.
+   * `id` тот же, что был в запросе: их может лететь несколько подряд.
+   */
+  | { type: 'clipboard'; id: string; text: string; html: string; image: string }
   | { type: 'mcpServers'; servers: McpServerInfo[] }
   /** Итог mcpAdd/mcpRemove — их не с чем спутать со «своим» /mcp в разговоре. */
   | { type: 'mcpActionResult'; ok: boolean; message: string }
@@ -424,6 +429,13 @@ export type WebviewMessage =
   | { type: 'cursor'; cursor: string }
   /** Ссылка (например, номер PR) — открываем в системном браузере, не в JCEF. */
   | { type: 'openExternal'; url: string }
+  /**
+   * Буфер обмена через оболочку: у встроенного браузера он свой и с буфером
+   * IDE не пересекается (см. clipboard.ts). Чтение — с ответом, поэтому у него
+   * есть `id`; запись ответа не требует.
+   */
+  | { type: 'clipboardRead'; id: string }
+  | { type: 'clipboardWrite'; text: string; html: string }
   | { type: 'history' }
   /** Продолжить прошлый разговор в новой вкладке. */
   | { type: 'resumeSession'; sessionId: string; conversationId: string }

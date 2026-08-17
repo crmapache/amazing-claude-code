@@ -53,6 +53,7 @@ import io.github.crmapache.amazingclaudecode.project.ProjectFacts
 import io.github.crmapache.amazingclaudecode.sound.AlertSounds
 import io.github.crmapache.amazingclaudecode.webview.FilePicker
 import io.github.crmapache.amazingclaudecode.webview.IdeTypography
+import io.github.crmapache.amazingclaudecode.webview.WebviewClipboard
 import io.github.crmapache.amazingclaudecode.webview.WebviewFileDrop
 import io.github.crmapache.amazingclaudecode.webview.WebviewHost
 import java.awt.BorderLayout
@@ -368,6 +369,12 @@ internal class ClaudePanel(
             // Номер PR в статус-баре — ссылка: открываем её в системном браузере,
             // а не внутри JCEF, чтобы не заводить внутри панели полноценный веб-вьюпорт.
             "openExternal" -> field("url").takeIf { it.isNotBlank() }?.let { BrowserUtil.browse(it) }
+
+            // Буфер обмена у встроенного браузера свой, до буфера IDE он не
+            // достаёт (см. WebviewClipboard) — ходим в настоящий за него.
+            "clipboardWrite" -> writeClipboard(field("text"), field("html"))
+
+            "clipboardRead" -> readClipboard(field("id"))
 
             "mcpList" -> refreshMcp(sessionId)
 
@@ -1372,6 +1379,49 @@ internal class ClaudePanel(
             if (attachments.isNotEmpty()) {
                 ApplicationManager.getApplication().invokeLater { webview?.focus() }
             }
+        }
+    }
+
+    /**
+     * Положить в системный буфер то, что скопировали в панели.
+     *
+     * Кладём из потока интерфейса: платформа держит поверх буфера свою
+     * синхронизацию и оповещает о смене содержимого тех, кто на неё подписан, —
+     * а такие оповещения ждут именно этого потока.
+     */
+    private fun writeClipboard(text: String, html: String) {
+        if (text.isEmpty() && html.isEmpty()) return
+
+        ApplicationManager.getApplication().invokeLater { WebviewClipboard.write(text, html) }
+    }
+
+    /**
+     * Отдать панели содержимое системного буфера — ответом на её запрос.
+     *
+     * Читаем не из потока интерфейса намеренно: на X11 чтение буфера — это
+     * запрос к чужому приложению-владельцу с ожиданием ответа, и приложение это
+     * может отвечать долго или не ответить вовсе. На потоке интерфейса такое
+     * ожидание — застывшая IDE, поэтому оно уезжает в фон, а страница ждёт
+     * ответа своим таймаутом (см. clipboard.ts).
+     *
+     * `id` — тот же, что прислала страница: запросов может лететь несколько
+     * подряд, и каждый ждёт именно свой ответ.
+     */
+    private fun readClipboard(id: String) {
+        if (id.isEmpty()) return
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val content = WebviewClipboard.read()
+
+            webview?.send(
+                buildJsonObject {
+                    put("type", "clipboard")
+                    put("id", id)
+                    put("text", content.text)
+                    put("html", content.html)
+                    put("image", content.image)
+                }.toString(),
+            )
         }
     }
 

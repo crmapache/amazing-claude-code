@@ -77,6 +77,15 @@ intellijPlatform {
         changeNotes =
             """
             <ul>
+              <li>Fixed on Linux: the panel's clipboard was cut off from the rest of the IDE.
+              Copying in an editor tab and pasting into the panel did nothing, and neither did the
+              other direction — only cut and paste inside the input field worked, because that
+              never leaves the panel. The embedded browser draws without a window of its own, and
+              on Linux the system clipboard belongs to a window: not getting one, the browser
+              quietly falls back to a private clipboard nobody else can see. Copying, cutting and
+              pasting now go through the IDE's own clipboard instead — including the copy button on
+              code blocks and images pasted into the input field. macOS and Windows are untouched:
+              their clipboard works, and the panel stays on it.</li>
               <li>The CONTEXT row shown while a conversation is being compacted no longer draws a
               bar of ticks across the row — the label, the text, and the percentage are left.</li>
               <li>Fixed: the usage rings stayed empty for up to a minute after a project was
