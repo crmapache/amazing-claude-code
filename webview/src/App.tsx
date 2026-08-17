@@ -2204,6 +2204,19 @@ const streamStatus = (panel: PanelState, cards: CardState): string => {
   const awaitingDecision = panel.items.some((item) => ownStream(item) && awaitsYou(item, cards))
   if (awaitingDecision) return 'Waiting for you'
 
+  /**
+   * Собственный ход главного потока мог уже закончиться (агент запустил
+   * фонового субагента и на этом сам замолчал — так делает Task-инструмент вне
+   * скилла), а субагент — ещё нет. Без этой ветки единственным следом того,
+   * что что-то всё ещё происходит, была бы точка на чипе субагента, которую
+   * сначала нужно заметить и понять, что она значит.
+   */
+  if (panel.status !== 'running') {
+    const pending = panel.items.filter((item) => item.kind === 'task' && item.pending).length
+    if (pending === 0) return ''
+    return pending === 1 ? 'Waiting for subagent' : `Waiting for ${pending} subagents`
+  }
+
   const last = panel.items.at(-1)
   const working = last?.kind === 'toolGroup' && last.pending && last.tools.length > 0
   const label = working ? 'Claude is working' : 'Claude is thinking'

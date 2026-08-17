@@ -9,6 +9,12 @@ commits.
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-08-17
+
+- Fixed: a background agent's own tab (opened from its chip above the feed) went quiet as soon as its log had a first line, with nothing left to say whether it was still running — the "Working…" placeholder covered only the moment before that. The tab now carries the same ticking timer its chip already showed.
+- Fixed: the main feed's status line went blank whenever any parallel background agent compacted its own context, not only when the main conversation did. The flag behind that line was shared by the whole session instead of belonging to whoever was actually compacting, so one agent's housekeeping silenced everyone else's status.
+- Fixed: when a turn launched a background agent and finished right away without waiting for it, the status line disappeared along with the turn, and nothing below the composer said an agent was still working — the chip's dot color was the only trace, easy to miss without already knowing what it meant. A quiet "Waiting for subagent" line now covers that gap until the agent reports back.
+
 ## [0.7.5] - 2026-08-17
 
 - Fixed: the first message in a forked tab looked like it never went through. The panel closed the turn the moment the conversation's process came up — the spinner stopped and a "Worked 0.1s" line appeared under the message — while Claude was in fact only starting to think. Anything typed after that queued up behind the answer nobody was waiting for anymore. The startup itself is no longer mistaken for a finished turn.

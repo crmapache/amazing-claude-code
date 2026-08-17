@@ -30,18 +30,18 @@ export const AgentStreamView = ({ item }: AgentStreamViewProps) => {
 
   return (
     <div className={s.agentViewBody} ref={body}>
-      {item.log.length === 0 ? (
-        <div className={`${s.agentViewLine} ${s.agentViewDim}`}>Working…</div>
-      ) : (
-        item.log.map((line, index) => (
-          <div
-            key={index}
-            className={`${s.agentViewLine} ${line.tone === 'ok' ? s.agentViewOk : ''} ${line.tone === 'bad' ? s.agentViewBad : ''} ${line.tone === 'dim' ? s.agentViewDim : ''}`}
-          >
-            {line.text}
-          </div>
-        ))
-      )}
+      {item.log.map((line, index) => (
+        <div
+          key={index}
+          className={`${s.agentViewLine} ${line.tone === 'ok' ? s.agentViewOk : ''} ${line.tone === 'bad' ? s.agentViewBad : ''} ${line.tone === 'dim' ? s.agentViewDim : ''}`}
+        >
+          {line.text}
+        </div>
+      ))}
+      {/* Тикает тем же общим tick-механизмом, что и чип этого агента в шапке
+          (см. tickDurations в feed/build.ts) — просто показываем то же самое
+          значение здесь, а не только в чипе. */}
+      {item.pending ? <div className={s.agentViewWorking}>Working · {item.duration || '0.0s'}</div> : null}
     </div>
   )
 }

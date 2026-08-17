@@ -641,6 +641,55 @@ export const scenariosCards: Scenario[] = [
     ]),
   ]),
 
+  /**
+   * Task-инструмент с run_in_background: свой ход агент заканчивает сразу
+   * после запуска, не дожидаясь субагента — тот доводит работу до конца уже
+   * после того, как streamStatus главного потока замолчал. Без отдельной
+   * ветки в streamStatus для «ход кончился, а pending-таск ещё есть» строка
+   * статуса пропадала бы насовсем до самого task_notification.
+   */
+  scenario('subagent-outlives-turn', 'Субагент фоном: ход кончился, а он ещё работает', 'cards', [
+    checkpoint('Пользователь просит найти и посчитать TODO по всему репозиторию', [
+      user('Найди все TODO по всему репозиторию и посчитай их — это может быть долго, не жди, делай в фоне'),
+      wait(500),
+    ]),
+    checkpoint('Task: запуск фонового субагента', [
+      toolUse(
+        'Task',
+        { subagent_type: 'Explore', description: 'Найти и посчитать TODO', run_in_background: true },
+        'c10b-task',
+      ),
+      agent({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'c10b-task-id',
+        tool_use_id: 'c10b-task',
+        subagent_type: 'Explore',
+        description: 'Найти и посчитать TODO',
+        task_type: 'local_agent',
+      }),
+      wait(800),
+    ]),
+    checkpoint('Свой ход агент заканчивает сразу, не дожидаясь субагента', [
+      ...textReply('Запустил поиск TODO фоновым агентом — сообщу, как только будет готово.'),
+      turnResult(2200),
+    ]),
+    checkpoint('Субагент продолжает работать после ответа — статус-строка это показывает', [
+      subagentText('c10b-task', 'Прохожу по каталогам src/ и test/…'),
+      wait(1500),
+    ]),
+    checkpoint('→ результат субагента, пришедший уже после ответа', [
+      toolResult('c10b-task', 'Нашёл 14 TODO в 9 файлах, больше всего в src/legacy/.'),
+      agent({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'c10b-task-id',
+        summary: 'Нашёл 14 TODO в 9 файлах.',
+      }),
+      wait(500),
+    ]),
+  ]),
+
   scenario('background-subagent', 'Фоновый субагент от скилла', 'cards', [
     checkpoint('Пользователь запускает /code-review', [user('/code-review'), wait(500)]),
     checkpoint('Фоновый субагент стартовал', [

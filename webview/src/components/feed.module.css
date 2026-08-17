@@ -840,6 +840,30 @@
   color: var(--acc-fg-faint);
 }
 
+/* Тот же переливающийся текст, что и статус-строка главной ленты (.streamingText
+   ниже) — у экрана агента нет своей карточки, значит и тикающий таймер должен
+   выглядеть так же узнаваемо, а не отдельным изобретённым стилем. Не composes:
+   postcss-modules-scope резолвит его только на классы, объявленные раньше по
+   файлу, а .streamingText объявлен ниже. */
+.agentViewWorking {
+  font: 11.5px var(--acc-mono);
+  background: linear-gradient(
+    100deg,
+    var(--acc-stream-1) 0%,
+    var(--acc-stream-2) 30%,
+    var(--acc-stream-3) 45%,
+    var(--acc-stream-2) 55%,
+    var(--acc-stream-1) 70%,
+    var(--acc-stream-1) 100%
+  );
+  background-size: 260% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  white-space: nowrap;
+  animation: acc-shimmer 2.6s linear infinite alternate;
+}
+
 /* --- План ------------------------------------------------------------------ */
 
 .plan {

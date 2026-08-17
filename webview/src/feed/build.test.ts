@@ -96,14 +96,27 @@ const taskNotificationEvent = (taskId: string, status?: string, summary?: string
   ...(summary ? { summary } : {}),
 })
 
-const compactingStatusEvent = (): AgentEvent => ({ type: 'system', subtype: 'status', status: 'compacting' })
+const compactingStatusEvent = (taskId?: string): AgentEvent => ({
+  type: 'system',
+  subtype: 'status',
+  status: 'compacting',
+  ...(taskId ? { task_id: taskId } : {}),
+})
 
-const compactBoundaryEvent = (metadata: {
-  trigger?: string
-  pre_tokens?: number
-  post_tokens?: number
-  duration_ms?: number
-}): AgentEvent => ({ type: 'system', subtype: 'compact_boundary', compact_metadata: metadata })
+const compactBoundaryEvent = (
+  metadata: {
+    trigger?: string
+    pre_tokens?: number
+    post_tokens?: number
+    duration_ms?: number
+  },
+  taskId?: string,
+): AgentEvent => ({
+  type: 'system',
+  subtype: 'compact_boundary',
+  compact_metadata: metadata,
+  ...(taskId ? { task_id: taskId } : {}),
+})
 
 const compactResultEvent = (result: string, error?: string): AgentEvent => ({
   type: 'system',
@@ -1412,6 +1425,24 @@ describe('сжатие контекста', () => {
     state = reducePanel(state, { kind: 'status', status: 'idle' }, 1_700_000_000_000)
 
     expect(state.compacting).toBe(false)
+  })
+
+  it('сжатие у параллельного субагента не гасит статус-строку главного потока и не заводит карточку CONTEXT в общей ленте', () => {
+    let state = play([taskStartedEvent('task-1', 'toolu-parent', 'code-review')])
+    state = play([compactingStatusEvent('task-1')], state)
+
+    expect(state.compacting).toBe(false)
+    expect(state.items.some((item) => item.kind === 'compact')).toBe(false)
+  })
+
+  it('свой compact_boundary у субагента не закрывает и не путает с чужой pending-карточкой CONTEXT главного потока', () => {
+    let state = play([compactingStatusEvent()])
+    state = play([taskStartedEvent('task-1', 'toolu-parent', 'code-review')], state)
+    state = play([compactBoundaryEvent({ trigger: 'automatic', pre_tokens: 5000 }, 'task-1')], state)
+
+    expect(state.compacting).toBe(true)
+    const compact = state.items.find((item): item is CompactItem => item.kind === 'compact')
+    expect(compact?.pending).toBe(true)
   })
 })
 

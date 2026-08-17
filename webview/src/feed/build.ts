@@ -932,17 +932,25 @@ const applySystem = (
     project: event.cwd
       ? { name: state.project?.name ?? '', ...state.project, workingDirectory: event.cwd }
       : state.project,
-    compacting: event.status === 'compacting' ? true : state.compacting,
+    // task_id есть — сжимает конкретный субагент, а не главный поток; его
+    // собственный таймер во вкладке агента (см. AgentStreamView) честно тикает
+    // через всё сжатие и без этого флага, а вот главная строка статуса не
+    // должна гаснуть из-за того, что происходит в чужом, параллельном потоке.
+    compacting: event.status === 'compacting' && event.task_id === undefined ? true : state.compacting,
     // Процесс поднялся: следующий за этим «нулевой» итог хода — про сам подъём,
     // а не про работу агента (см. case 'result').
     starting: event.subtype === 'init' ? true : state.starting,
   }
 
+  const isMainStreamEvent = event.task_id === undefined
+
   // Сама карточка CONTEXT должна быть видна ещё до готового результата — иначе
   // единственный след того, что что-то происходит, это переливающаяся строка
   // статуса, которая не остаётся в истории (см. жалобу, из-за которой это
-  // вообще завели).
-  if (event.status === 'compacting' && !state.compacting) {
+  // вообще завели). Только для главного потока: у карточки нет своего owner-а
+  // по task_id, а субагенту она вообще не нужна — его сжатие и так видно по
+  // тикающему таймеру в его собственной вкладке.
+  if (isMainStreamEvent && event.status === 'compacting' && !state.compacting) {
     return {
       ...base,
       seq: base.seq + 1,
@@ -956,7 +964,7 @@ const applySystem = (
   // Итог попытки сжатия приходит отдельной строкой статуса, а не compact_boundary,
   // если сжимать оказалось нечего — тогда pending-карточка так и останется
   // недорисованной, если её не убрать здесь же явно.
-  if (event.compact_result !== undefined) {
+  if (isMainStreamEvent && event.compact_result !== undefined) {
     const finished = finishCompacting(base)
 
     return event.compact_result === 'failed' && event.compact_error
@@ -964,7 +972,7 @@ const applySystem = (
       : finished
   }
 
-  if (event.subtype === 'compact_boundary') {
+  if (isMainStreamEvent && event.subtype === 'compact_boundary') {
     const target = compactBoundaryText(event.compact_metadata)
     // Граница и есть конец сжатия: дальше карточка стоит в ленте с цифрами, а
     // строка статуса снова говорит про сам ход.
