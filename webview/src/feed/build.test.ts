@@ -443,6 +443,85 @@ describe('сборка ленты из потока агента', () => {
     expect(meta[0]?.stats).toEqual(['Worked 0.4s'])
   })
 
+  // Форк поднимает процесс вместе с первым сообщением, и CLI сразу закрывает
+  // «нулевой» ход: агент к сообщению ещё не приступал. Приняв его за конец хода,
+  // панель гасила спиннер и подписывала «Worked 0.1s» — выглядело так, будто
+  // отправка не завелась.
+  it('пустой ход поднявшегося разговора не гасит спиннер и не пишет Worked', () => {
+    let state = reducePanel(
+      initialPanelState,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      1_700_000_000_000,
+    )
+    // Процесс форка поднимается уже с отправленным сообщением: сначала init…
+    state = reducePanel(
+      state,
+      { kind: 'agent', event: { type: 'system', subtype: 'init' } as AgentEvent },
+      1_700_000_000_050,
+    )
+    // …а сразу за ним — тот самый «нулевой» ход.
+    state = reducePanel(
+      state,
+      {
+        kind: 'agent',
+        event: { type: 'result', subtype: 'success', duration_ms: 73, num_turns: 0, session_id: 'новый-разговор' },
+      },
+      1_700_000_000_100,
+    )
+
+    expect(state.items.filter((item) => item.kind === 'meta')).toHaveLength(0)
+    expect(state.status).toBe('running')
+    expect(state.turnStartedAt).toBe(1_700_000_000_000)
+    // Идентификатор форка новый, и он приезжает именно этим событием.
+    expect(state.sessionId).toBe('новый-разговор')
+  })
+
+  // Ошибку молчанием не проглатываем: нулевой ход бывает и с отказом, и его
+  // человек обязан увидеть.
+  it('нулевой ход с ошибкой остаётся обычным концом хода', () => {
+    let state = reducePanel(
+      initialPanelState,
+      { kind: 'agent', event: { type: 'system', subtype: 'init' } as AgentEvent },
+      1_700_000_000_050,
+    )
+    state = reducePanel(
+      state,
+      {
+        kind: 'agent',
+        event: {
+          type: 'result',
+          subtype: 'error_during_execution',
+          duration_ms: 90,
+          num_turns: 0,
+          is_error: true,
+          result: 'Credit balance is too low',
+        },
+      },
+      1_700_000_000_100,
+    )
+
+    expect(state.items.some((item) => item.kind === 'error')).toBe(true)
+    expect(state.status).toBe('idle')
+  })
+
+  // Ход, который и правда кончился ничем, гасить спиннер обязан: подъёма перед
+  // ним не было, значит это настоящий итог.
+  it('нулевой ход посреди разговора остаётся концом хода', () => {
+    let state = reducePanel(
+      initialPanelState,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      1_700_000_000_000,
+    )
+    state = reducePanel(
+      state,
+      { kind: 'agent', event: { type: 'result', subtype: 'success', duration_ms: 120, num_turns: 0 } },
+      1_700_000_000_120,
+    )
+
+    expect(state.status).toBe('idle')
+    expect(state.items.filter((item) => item.kind === 'meta')).toHaveLength(1)
+  })
+
   it('показывает свой ход сразу, не дожидаясь агента', () => {
     const state = reducePanel(
       initialPanelState,
@@ -864,6 +943,52 @@ describe('лог фонового субагента', () => {
 
     const perm = state.items.find((item) => item.kind === 'perm')
     expect(perm?.kind === 'perm' && perm.taskId).toBe('task-1')
+  })
+
+  // Режим человек выбирал подписью из меню — именем из протокола он его нигде не видел.
+  it('карточка разрешения подписана режимом так же, как он подписан в меню', () => {
+    const state = reducePanel(initialPanelState, {
+      kind: 'permission',
+      id: 'perm-2',
+      target: 'wants to run a command',
+      command: 'rm -rf сборка/*',
+      mode: 'bypassPermissions',
+    })
+
+    const perm = state.items.find((item) => item.kind === 'perm')
+    expect(perm?.kind === 'perm' && perm.meta).toBe('Bypass mode')
+  })
+
+  // Причина и запрет на «Always allow» приезжают от IDE — панель их только показывает.
+  it('причина вопроса и запрет запоминать доходят до карточки', () => {
+    const state = reducePanel(initialPanelState, {
+      kind: 'permission',
+      id: 'perm-3',
+      target: 'wants to run a command',
+      command: 'rm -rf сборка/*',
+      mode: 'bypassPermissions',
+      reason: 'Dangerous rm operation detected',
+      rememberable: false,
+    })
+
+    const perm = state.items.find((item) => item.kind === 'perm')
+    expect(perm?.kind === 'perm' && perm.reason).toBe('Dangerous rm operation detected')
+    expect(perm?.kind === 'perm' && perm.rememberable).toBe(false)
+  })
+
+  // Молчание — обычный вопрос: правило сработает, и кнопка на месте.
+  it('без запрета решение остаётся запоминаемым', () => {
+    const state = reducePanel(initialPanelState, {
+      kind: 'permission',
+      id: 'perm-4',
+      target: 'wants to run a command',
+      command: 'npm test',
+      mode: 'manual',
+    })
+
+    const perm = state.items.find((item) => item.kind === 'perm')
+    expect(perm?.kind === 'perm' && perm.rememberable).toBe(true)
+    expect(perm?.kind === 'perm' && perm.reason).toBeUndefined()
   })
 
   it('игнорирует сообщение субагента без задачи в ленте, а не падает и не создаёт мусор', () => {

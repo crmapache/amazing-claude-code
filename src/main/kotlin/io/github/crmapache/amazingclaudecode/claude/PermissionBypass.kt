@@ -1,9 +1,6 @@
 package io.github.crmapache.amazingclaudecode.claude
 
 import java.io.File
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Доступен ли этому компьютеру режим «без вопросов».
@@ -33,52 +30,27 @@ internal object PermissionBypass {
         cliKnowsFlag && settings.none(::disables)
 
     /**
+     * Не запрещён ли режим настройками — без расспроса самого CLI.
+     *
+     * Отдельно от [isAvailable] потому, что тот запускает процесс (`--help`), а
+     * спросить про запрет нужно и там, где на это нет права: разбор настроек
+     * идёт в потоке интерфейса, пока панель ещё только открывается (см.
+     * [PermissionDefaultMode]).
+     */
+    fun allowedBySettings(projectDirectory: String?): Boolean =
+        settingsFiles(projectDirectory).none(::disables)
+
+    /**
      * Те же файлы, что читает сам CLI: политика организации, личные настройки
      * человека и настройки проекта. Значение `disable` отменить нельзя — обратного
      * значения у поля просто нет, — поэтому порядок слоёв тут ни на что не влияет
      * и достаточно найти запрет хоть в одном.
      */
-    fun settingsFiles(projectDirectory: String?): List<File> = buildList {
-        add(File(managedDirectory(), MANAGED_SETTINGS))
-        managedDirectory().resolve("$MANAGED_SETTINGS.d").listFiles()
-            ?.filter { it.extension == "json" }
-            ?.let(::addAll)
+    fun settingsFiles(projectDirectory: String?): List<File> =
+        ClaudeSettings.sources(projectDirectory).map { it.file }
 
-        add(File(userDirectory(), SETTINGS))
+    private fun disables(file: File): Boolean =
+        ClaudeSettings.permission(file, DISABLE_BYPASS) == "disable"
 
-        projectDirectory?.let { directory ->
-            add(File(directory, ".claude/$SETTINGS"))
-            add(File(directory, ".claude/$LOCAL_SETTINGS"))
-        }
-    }
-
-    private fun disables(file: File): Boolean = runCatching {
-        if (!file.isFile) return false
-
-        Json.parseToJsonElement(file.readText())
-            .jsonObject["permissions"]
-            ?.jsonObject
-            ?.get("disableBypassPermissionsMode")
-            ?.jsonPrimitive
-            ?.content == "disable"
-    }.getOrDefault(false)
-
-    private fun managedDirectory(): File {
-        val os = System.getProperty("os.name")
-
-        return when {
-            os.startsWith("Mac") -> File("/Library/Application Support/ClaudeCode")
-            os.startsWith("Windows") -> File("C:\\Program Files\\ClaudeCode")
-            else -> File("/etc/claude-code")
-        }
-    }
-
-    /** Каталог личных настроек переезжает переменной окружения — как и у CLI. */
-    private fun userDirectory(): File =
-        System.getenv("CLAUDE_CONFIG_DIR")?.takeIf { it.isNotBlank() }?.let(::File)
-            ?: File(System.getProperty("user.home"), ".claude")
-
-    private const val MANAGED_SETTINGS = "managed-settings.json"
-    private const val SETTINGS = "settings.json"
-    private const val LOCAL_SETTINGS = "settings.local.json"
+    private const val DISABLE_BYPASS = "disableBypassPermissionsMode"
 }

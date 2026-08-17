@@ -45,8 +45,10 @@ import io.github.crmapache.amazingclaudecode.claude.items
 import io.github.crmapache.amazingclaudecode.claude.ImageAttachment
 import io.github.crmapache.amazingclaudecode.claude.PermissionBypass
 import io.github.crmapache.amazingclaudecode.claude.PermissionChannel
+import io.github.crmapache.amazingclaudecode.claude.PermissionDefaultMode
 import io.github.crmapache.amazingclaudecode.claude.PermissionModes
 import io.github.crmapache.amazingclaudecode.claude.PermissionPrompt
+import io.github.crmapache.amazingclaudecode.claude.PermissionReason
 import io.github.crmapache.amazingclaudecode.claude.ShellCommand
 import io.github.crmapache.amazingclaudecode.editor.SelectionReference
 import io.github.crmapache.amazingclaudecode.project.ProjectFacts
@@ -538,6 +540,14 @@ internal class ClaudePanel(
                 put("target", PermissionPrompt.target(request.toolName, request.input))
                 put("command", pending.command)
                 put("mode", PermissionModes.resolve(ClaudePreferences.mode))
+                // Кто поднял вопрос. В «Bypass» и «Auto» вопросов не ждут вовсе, и
+                // без этой строки они выглядят приставучестью панели — см.
+                // PermissionReason.
+                PermissionReason.text(request).takeIf { it.isNotEmpty() }?.let { put("reason", it) }
+                // Правило «больше не спрашивать» тут не сработает — предлагать его
+                // значит обмануть: человек нажмёт, правило запишется, а вопрос
+                // вернётся следующим таким же вызовом.
+                if (!PermissionReason.rememberable(request)) put("rememberable", false)
                 // Спрашивает инструмент внутри субагента — карточке место в его
                 // ветке ленты, а не в общем разговоре.
                 request.agentId?.let { put("agentId", it) }
@@ -892,6 +902,33 @@ internal class ClaudePanel(
     // --- Ссылка из редактора ------------------------------------------------
 
     /** Кусок файла из редактора: в поле ввода он станет ссылкой, а не текстом. */
+    /**
+     * Положить в поле ввода вложение по готовому пути — тем же способом, каким
+     * туда попадает файл, брошенный в панель мышью.
+     *
+     * Путь берём как есть, не укорачивая: сюда приходит «Send Absolute Path…», а
+     * там полный путь и есть весь смысл действия (см. SendSelectionAbsoluteAction).
+     */
+    fun attachPath(path: String) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            // Файловую систему трогаем не из потока интерфейса: путь может вести
+            // куда угодно, вплоть до неподмонтированного диска.
+            val kind = FilePicker.kindOf(path) ?: return@executeOnPooledThread
+
+            webview?.send(
+                buildJsonObject {
+                    put("type", "picked")
+                    put("kind", kind)
+                    put("value", path)
+                }.toString(),
+            )
+
+            // Действие звали из редактора или из дерева проекта — фокус остался
+            // там, и печатать в поле ввода пришлось бы после отдельного клика.
+            ApplicationManager.getApplication().invokeLater { webview?.focus() }
+        }
+    }
+
     fun sendSelection(reference: SelectionReference) {
         webview?.send(
             buildJsonObject {
@@ -902,7 +939,6 @@ internal class ClaudePanel(
                 put("endLine", reference.endLine)
                 put("endColumn", reference.endColumn)
                 put("wholeLines", reference.wholeLines)
-                put("asPlainText", reference.asPlainText)
             }.toString(),
         )
     }
@@ -1709,7 +1745,15 @@ internal class ClaudePanel(
                     put("effort", preferences.effort)
                     // Тем же значением, с которым реально поднимется процесс:
                     // селектор в панели обязан показывать правду с первой секунды.
-                    put("mode", PermissionModes.resolve(preferences.mode))
+                    // Ни разу не выбирали — берём умолчание самого Claude Code, как
+                    // его берёт терминал (см. PermissionDefaultMode).
+                    put(
+                        "mode",
+                        PermissionModes.resolve(
+                            preferences.mode,
+                            fallback = PermissionDefaultMode.of(project.basePath),
+                        ),
+                    )
                     if (preferences.composerLayout.isNotEmpty()) put("composerLayout", preferences.composerLayout)
                     if (preferences.composerWidth > 0) put("composerWidth", preferences.composerWidth)
                 }

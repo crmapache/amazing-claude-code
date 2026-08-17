@@ -182,6 +182,62 @@ class PermissionChannelTest {
         assertNull(decision["updatedPermissions"])
     }
 
+    // Причина приезжает вместе с вопросом: без неё вопрос в режиме «Bypass»
+    // выглядит приставучестью панели, а не проверкой безопасности CLI.
+    @Test
+    fun `причина вопроса разбирается целиком`() {
+        val incoming = parse(
+            """
+            {"type":"control_request","request_id":"запрос-8","request":{
+              "subtype":"can_use_tool","tool_name":"Bash","input":{"command":"rm -rf сборка/*"},
+              "decision_reason":"Dangerous rm operation detected","decision_reason_type":"safetyCheck",
+              "classifier_approvable":false,"suppress_always_allow_rule":true,
+              "matched_ask_rule":{"source":"projectSettings","tool_name":"Bash","rule_content":"rm *"}}}
+            """.trimIndent(),
+        )
+
+        val request = (incoming as PermissionChannel.Incoming.Permission).request
+        assertEquals("Dangerous rm operation detected", request.reason)
+        assertEquals("safetyCheck", request.reasonType)
+        assertEquals(false, request.classifierApprovable)
+        assertTrue(request.suppressAlwaysAllow)
+        assertEquals("projectSettings", request.matchedAskRule?.source)
+        assertEquals("rm *", request.matchedAskRule?.content)
+    }
+
+    // Текст причины CLI пишет так, как напечатал бы его в терминале, — с раскраской.
+    // В панели она не раскрашивает ничего и показалась бы мусором посреди фразы.
+    @Test
+    fun `раскраска из причины вырезается`() {
+        val incoming = parse(
+            """
+            {"type":"control_request","request_id":"запрос-9","request":{
+              "subtype":"can_use_tool","tool_name":"Bash","input":{},
+              "decision_reason":"\u001b[1mDangerous\u001b[0m rm operation","decision_reason_type":"safetyCheck"}}
+            """.trimIndent(),
+        )
+
+        val request = (incoming as PermissionChannel.Incoming.Permission).request
+        assertEquals("Dangerous rm operation", request.reason)
+    }
+
+    @Test
+    fun `вопрос без причины остаётся вопросом без причины`() {
+        val incoming = parse(
+            """
+            {"type":"control_request","request_id":"запрос-10","request":{
+              "subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"}}}
+            """.trimIndent(),
+        )
+
+        val request = (incoming as PermissionChannel.Incoming.Permission).request
+        assertEquals("", request.reason)
+        assertEquals("", request.reasonType)
+        assertNull(request.classifierApprovable)
+        assertNull(request.matchedAskRule)
+        assertTrue(!request.suppressAlwaysAllow)
+    }
+
     // Отказ по плану — это не ошибка, а замечание: агент читает текст и предлагает
     // план заново.
     @Test

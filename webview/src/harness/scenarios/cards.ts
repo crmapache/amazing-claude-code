@@ -578,6 +578,34 @@ export const scenariosCards: Scenario[] = [
     ]),
   ]),
 
+  // Тот самый вопрос, который приходит и в «Bypass»: опасное удаление CLI не
+  // пропускает ни в одном режиме и правилом его не отключить — поэтому под
+  // карточкой стоит причина, а «Always allow» здесь нет вовсе.
+  scenario('permission-dangerous', 'Разрешение вопреки режиму', 'cards', [
+    checkpoint('Пользователь просит вычистить сборку', [
+      user('Вычисти каталог сборки перед релизом'),
+      wait(500),
+    ]),
+    checkpoint('Bash: rm со звёздочкой — спрашивают даже в Bypass', [
+      toolUse('Bash', { command: 'cd build && rm -rf ./*' }, 'c9b-rm'),
+      wait(400),
+      shell({
+        type: 'permission',
+        id: 'c9b-perm',
+        sessionId: SESSION,
+        toolName: 'Bash',
+        target: 'wants to run a command',
+        command: 'cd build && rm -rf ./*',
+        mode: 'bypassPermissions',
+        reason:
+          "Dangerous rm operation detected: 'build/*'. This command changes directories before the " +
+          'removal, so the relative glob target cannot be statically resolved. This requires explicit ' +
+          'approval and cannot be auto-allowed by permission rules.',
+        rememberable: false,
+      }),
+    ]),
+  ]),
+
   scenario('subagent-task', 'Вызов субагента', 'cards', [
     checkpoint('Пользователь просит найти чтение переменных окружения', [
       user('Найди все места, где мы читаем переменные окружения'),

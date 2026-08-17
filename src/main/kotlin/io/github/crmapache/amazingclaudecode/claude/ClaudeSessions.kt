@@ -261,7 +261,12 @@ internal class ClaudeSessions(
         // модель в каждой вкладке — работа на ровном месте.
         model = ClaudePreferences.model,
         effort = ClaudePreferences.effort,
-        permissionMode = PermissionModes.resolve(ClaudePreferences.mode),
+        // Не выбирали ни разу — начинаем с того же режима, с какого начал бы
+        // терминал в этом каталоге (см. PermissionDefaultMode).
+        permissionMode = PermissionModes.resolve(
+            ClaudePreferences.mode,
+            fallback = PermissionDefaultMode.of(workingDirectory),
+        ),
         onEvent = { line -> onEvent(sessionId, line) },
         onError = { message -> onError(sessionId, message) },
         onFinished = { onFinished(sessionId) },

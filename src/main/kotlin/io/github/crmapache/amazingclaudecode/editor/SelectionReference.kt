@@ -23,17 +23,11 @@ internal data class SelectionReference(
      * только зашумляют её, ничего не уточняя.
      */
     val wholeLines: Boolean,
-    /**
-     * Абсолютный путь просят затем, чтобы его было видно и можно было скопировать
-     * буквально — плашка с укороченной подписью это прячет. Поэтому у такой ссылки
-     * своя форма в поле ввода: обычный текст, а не чип.
-     */
-    val asPlainText: Boolean = false,
 ) {
 
     companion object {
 
-        fun of(project: Project, editor: Editor, file: VirtualFile, absolute: Boolean = false): SelectionReference {
+        fun of(project: Project, editor: Editor, file: VirtualFile): SelectionReference {
             val document = editor.document
             val selection = editor.selectionModel
 
@@ -57,13 +51,12 @@ internal data class SelectionReference(
                 (startColumn == 0 && end >= document.getLineEndOffset(endLine))
 
             return SelectionReference(
-                path = if (absolute) file.path else relativePath(project, file),
+                path = relativePath(project, file),
                 startLine = startLine + 1,
                 startColumn = startColumn + 1,
                 endLine = endLine + 1,
                 endColumn = endColumn + 1,
                 wholeLines = wholeLines,
-                asPlainText = absolute,
             )
         }
 

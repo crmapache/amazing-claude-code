@@ -9,7 +9,7 @@ import type {
   ToolResultBlock,
   ToolUseBlock,
 } from '../protocol'
-import { normalizeMode } from '../catalog'
+import { modeShortLabel, normalizeMode } from '../catalog'
 import { parseParagraphs } from './markdown'
 import { chipFor, detailFor, formatDuration, hunksFor, metaFor, resultToText, targetFor } from './tools'
 import type {
@@ -151,6 +151,14 @@ export interface PanelState {
    */
   suppressNextMeta: boolean
   /**
+   * Процесс разговора только что поднялся и ещё не брался за дело.
+   *
+   * Ставится на system/init и снимается первым же итогом хода. Нужно, чтобы
+   * отличить служебный «нулевой» ход, которым CLI закрывает сам подъём, от
+   * настоящего хода, который и правда кончился ничем, — см. case 'result'.
+   */
+  starting: boolean
+  /**
    * Список задач нового трекера (TaskCreate/TaskUpdate), по его номеру — тому
    * же, которым его называет и TaskUpdate. В отличие от прежнего TodoWrite,
    * здесь нет одного вызова с целым списком: список приходится собирать самим
@@ -200,7 +208,16 @@ export type PanelAction =
   /** Команда bash-режима: сперва карточка с ней, потом её вывод. */
   | { kind: 'bashStarted'; id: string; command: string }
   | { kind: 'bashFinished'; id: string; output: string; exitCode: number }
-  | { kind: 'permission'; id: string; target: string; command: string; mode: string; taskId?: string }
+  | {
+      kind: 'permission'
+      id: string
+      target: string
+      command: string
+      mode: string
+      reason?: string
+      rememberable?: boolean
+      taskId?: string
+    }
   | { kind: 'permissionResolved'; id: string; decision: 'once' | 'always' | 'deny' }
   | { kind: 'modeRequested'; mode: string }
   | { kind: 'modeApplied'; mode: string; applied: boolean; error?: string }
@@ -249,6 +266,7 @@ export const initialPanelState: PanelState = {
   crashed: false,
   compacting: false,
   suppressNextMeta: false,
+  starting: false,
   tasks: {},
   pendingTasks: {},
   pausedMs: 0,
@@ -447,9 +465,15 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
             id: action.id,
             kind: 'perm',
             target: action.target,
-            meta: `${action.mode} mode`,
+            // Подписью из меню, а не именем из протокола: «bypassPermissions mode»
+            // человек нигде больше не видит, он выбирал «Bypass».
+            meta: `${modeShortLabel(action.mode)} mode`,
             command: action.command,
             decision: null,
+            reason: action.reason,
+            // Не сказано — значит сработает: молчание CLI и панели тут означает
+            // обычный вопрос, а не запрет (см. protocol.ts).
+            rememberable: action.rememberable !== false,
             taskId: action.taskId,
           },
         ],
@@ -824,6 +848,25 @@ const applyAgentEvent = (
       return applyToolResults(state, blocksOf(event.message.content), now)
 
     case 'result': {
+      // Поднявшийся разговор CLI закрывает «нулевым» ходом: сразу за system/init
+      // приезжает result, в котором ходов ноль и ответа нет. Ходом это не было —
+      // агент к сообщению человека ещё даже не приступал.
+      //
+      // Заметнее всего это на форке: там процесс поднимается вместе с первым
+      // сообщением, и панель гасила по этому result спиннер и подписывала ход
+      // «Worked 0.1s», хотя агент только начинал думать. Со стороны выглядело так,
+      // будто отправка не завелась, — и человек отправлял следующее сообщение,
+      // которое CLI честно ставил в очередь за первым.
+      //
+      // Только сразу после подъёма (см. starting): ход, который и правда кончился
+      // ничем, обязан гасить спиннер, как любой другой.
+      //
+      // Идентификатор разговора отсюда всё же берём: у форка он новый, и без него
+      // разговор потом не продолжить.
+      if (state.starting && event.num_turns === 0 && !event.is_error && state.stopRequestedAt === undefined) {
+        return { ...state, starting: false, sessionId: event.session_id ?? state.sessionId }
+      }
+
       // Когда ход внутри себя вызвал несколько инструментов подряд (num_turns > 1),
       // верхнеуровневые поля usage — это СУММА по всем внутренним шагам: годится для
       // счётчика общего расхода снизу, но как «сколько сейчас занято окно контекста»
@@ -856,6 +899,7 @@ const applyAgentEvent = (
         turnStartedAt: undefined,
         pausedMs: 0,
         waitStartedAt: undefined,
+        starting: false,
         usage,
         cost: event.total_cost_usd ?? state.cost,
         sessionId: event.session_id ?? state.sessionId,
@@ -889,6 +933,9 @@ const applySystem = (
       ? { name: state.project?.name ?? '', ...state.project, workingDirectory: event.cwd }
       : state.project,
     compacting: event.status === 'compacting' ? true : state.compacting,
+    // Процесс поднялся: следующий за этим «нулевой» итог хода — про сам подъём,
+    // а не про работу агента (см. case 'result').
+    starting: event.subtype === 'init' ? true : state.starting,
   }
 
   // Сама карточка CONTEXT должна быть видна ещё до готового результата — иначе

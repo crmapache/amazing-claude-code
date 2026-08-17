@@ -33,7 +33,7 @@
         <action id="AmazingClaudeCode.SendSelectionAbsolute"
                 class="io.github.crmapache.amazingclaudecode.editor.SendSelectionAbsoluteAction"
                 text="Send Absolute Path to Amazing Claude Code"
-                description="Put a reference to the selected lines into the Claude panel input, with the full path instead of a project-relative one">
+                description="Put the file's full path into the Claude panel input, for a conversation started outside this project">
             <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="AmazingClaudeCode.SendSelection"/>
         </action>
     </actions>

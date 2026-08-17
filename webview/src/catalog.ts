@@ -191,7 +191,10 @@ export const MODE_OPTIONS: MenuOption[] = [
     label: 'Bypass permissions',
     tag: 'danger',
     danger: true,
-    sub: 'Skips every check. Containers and throwaway VMs only.',
+    // Не «пропускает любую проверку»: даже в этом режиме CLI спрашивает про
+    // опасные удаления и про то, что запрещено или помечено «спрашивать» в
+    // настройках. Обещать полное молчание — врать (см. PermissionReason в IDE).
+    sub: 'Skips almost every check. Dangerous deletions still ask. Containers and throwaway VMs only.',
   },
 ]
 

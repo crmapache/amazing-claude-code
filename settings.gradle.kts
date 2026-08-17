@@ -8,6 +8,8 @@ pluginManagement {
         // быть старше платформы: иначе он не прочитает её же stdlib.
         id("org.jetbrains.kotlin.jvm") version "2.4.10"
         id("org.jetbrains.kotlin.plugin.serialization") version "2.4.10"
+        // Собирает changeNotes из CHANGELOG.md — только секцию собираемой версии.
+        id("org.jetbrains.changelog") version "2.4.0"
     }
 }
 

@@ -885,6 +885,8 @@ export const App = () => {
                 target: message.target,
                 command: message.command,
                 mode: message.mode,
+                reason: message.reason,
+                rememberable: message.rememberable,
                 taskId: message.agentId,
               },
             })
@@ -976,14 +978,10 @@ export const App = () => {
 
           case 'selection':
             // Ссылка на кусок файла из редактора: текст не тащим, агент прочитает
-            // файл сам и увидит его целиком. Абсолютный путь — исключение: его
-            // просят затем, чтобы видеть и скопировать буквально, поэтому он идёт
-            // обычным текстом, а не чипом с укороченной подписью.
-            addToDraft(
-              message.asPlainText
-                ? { kind: 'text', value: `@${message.path}` }
-                : { kind: 'chip', chip: referenceChip(message) },
-            )
+            // файл сам и увидит его целиком. Плашкой — и для пути от корня проекта,
+            // и для абсолютного: поле ввода не место сырому пути в полсотни знаков,
+            // а агенту в любом случае уезжает полный путь (см. referenceText).
+            addToDraft({ kind: 'chip', chip: referenceChip(message) })
             setFocusToken((current) => current + 1)
             break
         }
@@ -2390,7 +2388,9 @@ const menuProps = (
 
   return {
     title: 'PERMISSION MODE',
-    hint: 'shift+tab cycles the first three',
+    // Круг тот же, что в терминале, и в него входит всё кроме «Don't ask» —
+    // недоступное он просто перешагивает (см. nextMode).
+    hint: "shift+tab cycles every mode but Don't ask",
     width: 372,
     options: modeMenuOptions(availableModes),
     selected: mode,

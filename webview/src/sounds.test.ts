@@ -28,6 +28,7 @@ const perm = (id: string): FeedItem => ({
   meta: '',
   command: 'rm -rf /',
   decision: null,
+  rememberable: true,
 })
 
 const crash = (id: string): FeedItem => ({ id, kind: 'crash', message: 'exit 1' })

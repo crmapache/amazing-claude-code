@@ -49,7 +49,41 @@ internal object PermissionChannel {
          * значимая, а какая — случайный аргумент этого вызова.
          */
         val suggestions: JsonArray = JsonArray(emptyList()),
+        /**
+         * Почему спросили — словами самого CLI. Есть не у всякого вопроса: при
+         * обычном «режим требует спрашивать» объяснять нечего, а вот проверка
+         * безопасности, хук и классификатор приезжают с текстом.
+         */
+        val reason: String = "",
+        /**
+         * Разновидность причины: `safetyCheck`, `subcommandResults`, `hook`,
+         * `classifier`, `rule`, `mode` и прочие имена из протокола. По ней панель
+         * решает, как подать текст, — разбирать сам текст для этого не надо.
+         */
+        val reasonType: String = "",
+        /**
+         * Проверка безопасности требует именно человека: правило её не отменит и
+         * классификатор `auto` её не пропустит. `null` — проверки безопасности в
+         * причине нет вовсе.
+         */
+        val classifierApprovable: Boolean? = null,
+        /**
+         * CLI прямо просит не предлагать «разрешать всегда»: правило вышло бы шире
+         * самого вопроса (разрешение всему инструменту вместо одного вызова).
+         */
+        val suppressAlwaysAllow: Boolean = false,
+        /** Правило «спрашивать», из-за которого возник вопрос, — если он от правила. */
+        val matchedAskRule: AskRule? = null,
     )
+
+    /**
+     * Правило `permissions.ask`, поймавшее этот вызов.
+     *
+     * [source] — имя слоя настроек из протокола (`userSettings`, `projectSettings`
+     * и т.д.), [content] — значимая часть правила: у `Bash(git push *)` это
+     * `git push *`, а у правила на весь инструмент её нет.
+     */
+    data class AskRule(val source: String, val toolName: String, val content: String?)
 
     /** Что за запрос пришёл: либо понятный нам вопрос, либо всё остальное. */
     sealed interface Incoming {
@@ -87,9 +121,37 @@ internal object PermissionChannel {
                     request["requires_user_interaction"]?.jsonPrimitive?.booleanOrNull ?: false,
                 agentId = request["agent_id"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() },
                 suggestions = request["permission_suggestions"] as? JsonArray ?: JsonArray(emptyList()),
+                reason = plain(request["decision_reason"]?.jsonPrimitive?.contentOrNull),
+                reasonType = request["decision_reason_type"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                classifierApprovable = request["classifier_approvable"]?.jsonPrimitive?.booleanOrNull,
+                suppressAlwaysAllow =
+                    request["suppress_always_allow_rule"]?.jsonPrimitive?.booleanOrNull ?: false,
+                matchedAskRule = askRule(request["matched_ask_rule"] as? JsonObject),
             ),
         )
     }
+
+    private fun askRule(rule: JsonObject?): AskRule? {
+        val toolName = rule?.get("tool_name")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() }
+            ?: return null
+
+        return AskRule(
+            source = rule["source"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+            toolName = toolName,
+            content = rule["rule_content"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() },
+        )
+    }
+
+    /**
+     * Текст причины приходит таким, каким его напечатал бы терминал, — то есть
+     * может нести управляющие последовательности раскраски. В панели они не
+     * раскрашивают ничего, а показались бы мусором посреди фразы, поэтому
+     * вырезаются здесь же, при разборе.
+     */
+    private fun plain(text: String?): String = text.orEmpty().replace(ANSI, "").trim()
+
+    /** Escape, за ним параметры и буква команды: раскраска терминала целиком. */
+    private val ANSI = Regex("\u001B\\[[0-9;?]*[ -/]*[@-~]")
 
     /**
      * Чем ответить на «Always allow»: правилом, которое CLI применит к этой же

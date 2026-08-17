@@ -19,10 +19,17 @@ class PermissionModesTest {
     }
 
     @Test
-    fun `невыбранный режим становится самым строгим, а не отдаётся на откуп конфигу`() {
-        // Иначе панель показывает «Ask», а процесс поднимается с permissions.defaultMode
-        // из личного конфига — вплоть до bypassPermissions.
+    fun `невыбранный режим берёт умолчание, а не тайное значение из конфига`() {
+        // Умолчание панель вычисляет сама (см. PermissionDefaultMode) и передаёт
+        // флагом: селектор обязан показывать тот же режим, с которым поднялся
+        // процесс. Без переданного умолчания — самый строгий режим.
         assertEquals("manual", PermissionModes.resolve(""))
+        assertEquals("auto", PermissionModes.resolve("", fallback = "auto"))
+    }
+
+    @Test
+    fun `выбранный режим умолчание не перебивает`() {
+        assertEquals("plan", PermissionModes.resolve("plan", fallback = "auto"))
     }
 
     @Test

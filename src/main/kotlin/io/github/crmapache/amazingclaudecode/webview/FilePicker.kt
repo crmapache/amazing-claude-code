@@ -42,6 +42,16 @@ internal object FilePicker {
         return kindOf(file) to relativePath(project, file)
     }
 
+    /**
+     * Вид вложения для пути, который укорачивать нельзя.
+     *
+     * Так приходит «Send Absolute Path…»: полный путь там и есть весь смысл
+     * действия — его просят для разговора, поднятого не в этом проекте, где путь
+     * от корня никуда не ведёт.
+     */
+    fun kindOf(path: String): String? =
+        LocalFileSystem.getInstance().refreshAndFindFileByPath(path)?.let(::kindOf)
+
     private fun kindOf(file: VirtualFile): String = when {
         file.isDirectory -> "dir"
         file.extension?.lowercase() in IMAGE_EXTENSIONS -> "img"
