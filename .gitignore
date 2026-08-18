@@ -32,3 +32,8 @@ src/main/resources/webview/
 .env
 secrets/
 t
+
+# Личное в настройках Claude Code: разрешения этой машины и замок планировщика.
+# Сами скиллы проекта (.claude/skills/) отслеживаются - они общие.
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
