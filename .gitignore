@@ -37,3 +37,6 @@ t
 # Сами скиллы проекта (.claude/skills/) отслеживаются - они общие.
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# Рабочие заметки и планы в корне: черновики для себя, не часть проекта.
+REMOTE-ACCESS-PLAN.md
