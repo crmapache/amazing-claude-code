@@ -9,6 +9,13 @@ commits.
 
 ## [Unreleased]
 
+## [0.7.8] - 2026-08-17
+
+- Fixed: sending `/clear` while a reply was still being generated could leave "Claude is thinking" and its timer running forever. The turn's own end never arrives once the conversation it belonged to is gone, and `/clear` itself wasn't closing that turn out the way a normal finish does.
+- Fixed: launching a background agent closed its card and cleared its "still working" status right away, even though the agent kept running for a while after. The CLI's immediate "launched in background" acknowledgment was mistaken for the agent's actual result — the card now waits for the real completion notification instead.
+- Fixed: `/clear` sent while the context was being compacted could leave the main status line blank for the rest of that tab, silently, for every turn after. The flag behind that blank line never got cleared by `/clear` the way a normal end of compaction clears it.
+- Fixed: commands run through `!` in the input field couldn't see shell aliases from `.zshrc`/`.bashrc`, even though the very same command worked in a real terminal. The shell was started as login-only, which doesn't read the file where most people's aliases live; it's now started the same way an interactive terminal session would be.
+
 ## [0.7.7] - 2026-08-17
 
 - Fixed: the IDE could show an internal plugin error ("Already disposed"), most visible right after startup. A conversation's process reports it finished on its own background thread, and that report could still land after the panel it belonged to was already torn down (project closing, panel rebuilt) - the panel tried to schedule a screen update through an object that no longer existed. Such late reports are now dropped instead of crashing.
