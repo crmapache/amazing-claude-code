@@ -9,6 +9,15 @@ commits.
 
 ## [Unreleased]
 
+## [0.7.9] - 2026-08-17
+
+- Fixed: an unknown slash command left "Claude is thinking" and its timer running forever. A command the CLI refuses outright - a typo, or one belonging to an MCP server that didn't come up this time - is answered without ever reaching the model, so its finish carries no turns at all; the panel mistook that for the startup of a conversation, which it deliberately ignores, and nothing was left to close the turn out.
+- Fixed: switching the effort level while a reply was still being generated swallowed the rest of that reply, its finish included, and again left the panel thinking forever. The panel sends that switch as an ordinary message and hides the answer to it until the next finish - which belonged to the turn already running. The switch now waits for the current turn to end; it only ever applied to the next turn anyway.
+- Fixed: a long burst of events could vanish on its way into the panel, silently, taking the end of the turn with it. Everything is handed to the interface in one string, and too long a string never arrives - no error, nothing in the log. Turns with many parallel subagents, where every event carries a whole report, hit that limit easily: the feed stopped mid-turn and the spinner ran on. Long bursts are now delivered in pieces.
+- The end of a turn now also reaches the panel by a second, independent route, straight from the IDE. However the finish event is lost or misread, work stops looking like it's still going.
+- Fixed: stopping a turn left whatever was running at that moment - a command, a file search, a subagent - showing as "running" forever, each with its own ticking timer, right under a turn already marked "Stopped by you". Those cards are now closed off along with the turn, and marked with why. Background agents are untouched: they legitimately outlive the turn that launched them.
+- Fixed: when a conversation's process couldn't be started or couldn't be written to, the panel showed the error and went on showing work in progress next to it.
+
 ## [0.7.8] - 2026-08-17
 
 - Fixed: sending `/clear` while a reply was still being generated could leave "Claude is thinking" and its timer running forever. The turn's own end never arrives once the conversation it belonged to is gone, and `/clear` itself wasn't closing that turn out the way a normal finish does.
@@ -208,7 +217,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.8...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.9...HEAD
+[0.7.9]: https://github.com/crmapache/amazing-claude-code/compare/0.7.8...0.7.9
 [0.7.8]: https://github.com/crmapache/amazing-claude-code/compare/0.7.7...0.7.8
 [0.7.7]: https://github.com/crmapache/amazing-claude-code/compare/0.7.6...0.7.7
 [0.7.6]: https://github.com/crmapache/amazing-claude-code/compare/0.7.5...0.7.6
