@@ -69,6 +69,21 @@ class ShellCommandTest {
     }
 
     @Test
+    fun `bash получает явное подключение bashrc отдельной строкой — login-оболочка сама его не читает`() {
+        // Строкой ниже, не через «;»: алиас, объявленный и тут же использованный
+        // через «;» на одной строке, bash молча не разворачивает.
+        val command = ShellCommand.withBashrc("/bin/bash", "echo hi")
+
+        assertEquals("[ -f ~/.bashrc ] && source ~/.bashrc\necho hi", command)
+    }
+
+    @Test
+    fun `у не-bash оболочки withBashrc команду не трогает — там всё уже читает сам -ilc`() {
+        assertEquals("echo hi", ShellCommand.withBashrc("/bin/zsh", "echo hi"))
+        assertEquals("echo hi", ShellCommand.withBashrc("/bin/sh", "echo hi"))
+    }
+
+    @Test
     fun `длинный вывод обрезается — целиком он не влезает ни в карточку, ни в контекст`() {
         if (!posix) return
 

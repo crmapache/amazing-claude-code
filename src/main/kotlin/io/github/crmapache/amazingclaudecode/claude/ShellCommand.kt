@@ -3,6 +3,7 @@ package io.github.crmapache.amazingclaudecode.claude
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.openapi.diagnostic.thisLogger
+import java.io.File
 import java.nio.file.Path
 
 /**
@@ -101,15 +102,32 @@ internal object ShellCommand {
 
     /**
      * Оболочка человека, а не своя: команду набирали так, как набрали бы в
-     * терминале, и работать она должна с тем же PATH и теми же настройками
-     * профиля. `-lc` — то же самое, чем эта же оболочка спрашивается о пути к
-     * CLI (см. ClaudeExecutable.lookupCommand).
+     * терминале, и работать она должна с тем же PATH, тем же профилем и теми же
+     * алиасами. Одного `-l` (как у ClaudeExecutable.lookupCommand, которому
+     * алиасы не нужны — там ищут исполняемый файл через `command -v`) для этого
+     * мало: `.zshrc`/`.bashrc`, где обычно и живут алиасы, оболочка читает,
+     * только когда считает себя интерактивной — без `-i` `!pull` не находил бы
+     * алиас `pull`, хотя в настоящем терминале он есть.
      */
     private fun shell(command: String): List<String> = if (windows) {
         listOf("cmd.exe", "/c", command)
     } else {
-        listOf(System.getenv("SHELL")?.takeIf { it.isNotBlank() } ?: "/bin/sh", "-lc", command)
+        val userShell = System.getenv("SHELL")?.takeIf { it.isNotBlank() } ?: "/bin/sh"
+        listOf(userShell, "-ilc", withBashrc(userShell, command))
     }
+
+    /**
+     * У zsh `-l` и `-i` вместе читают все файлы профиля разом, `.zshrc` в том
+     * числе — там всё уже есть. У bash не так: сочетание `-l` и `-i` — это всё
+     * ещё login-оболочка, а `.bashrc` (где обычно и лежат алиасы) login-оболочка
+     * не трогает вовсе, кем бы она ни считала себя ещё. Подключаем его сами.
+     *
+     * Строкой ниже, а не через «;» на той же: алиасы в bash разворачиваются
+     * только у команды со следующей прочитанной строки — объявленный и тут же
+     * через «;» использованный алиас bash молча не находит.
+     */
+    internal fun withBashrc(userShell: String, command: String): String =
+        if (File(userShell).name == "bash") "[ -f ~/.bashrc ] && source ~/.bashrc\n$command" else command
 
     private fun truncate(text: String): String =
         if (text.length <= MAX_OUTPUT_CHARS) text else "${text.take(MAX_OUTPUT_CHARS)}\n… output truncated"
