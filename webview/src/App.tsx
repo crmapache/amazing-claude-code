@@ -74,6 +74,7 @@ import {
 import { useCardState, type CardState } from './hooks/useCardState'
 import { moveGroup } from './tabs'
 import { useSelection } from './hooks/useSelection'
+import { useSteadyActivity } from './hooks/useSteadyActivity'
 
 const MAIN_SESSION = 'main'
 
@@ -1610,6 +1611,13 @@ export const App = () => {
     [panel, cards.answeredAsks, hiddenTaskIds],
   )
   const mainStatus = useMemo(() => mainStatusOf(panel, cards.answeredAsks), [panel, cards.answeredAsks])
+  /**
+   * Дело, которым ход занят прямо сейчас, — с выдержкой, чтобы строку состояния
+   * успевали прочитать (см. useSteadyActivity). Ход опознаём парой «вкладка +
+   * начало хода»: на стыке двух ходов и при переключении вкладки выдержка не
+   * досиживается, иначе новый ход первые секунды подписан чужим делом.
+   */
+  const activity = useSteadyActivity(activityFor(panel.items), `${active}:${panel.turnStartedAt ?? 0}`)
 
   // activeStream переживает переключение сессии/`/clear` на один кадр раньше,
   // чем эффект успевает сбросить его на 'main' (а после /clear эффект вообще
@@ -1953,7 +1961,7 @@ export const App = () => {
               streamingId={panel.streamingId}
               streamingThinking={panel.streamingThinking}
               streaming={running}
-              streamStatus={streamStatus(panel, cards)}
+              streamStatus={streamStatus(panel, cards, activity)}
               statusStalled={panel.retry !== undefined}
               cards={cards}
               scrollRef={attachFeed}
@@ -2209,8 +2217,12 @@ const ownStream = (item: FeedItem): boolean => !('taskId' in item) || item.taskI
  * агенту, как будто он всё это время «думал». Обновляется раз в секунду тем
  * же тиком, что двигает длительность вызовов инструментов (см. tickDurations
  * в feed/build.ts).
+ *
+ * Дело сюда приходит уже придержанным (см. useSteadyActivity): вызовы сменяют
+ * друг друга быстрее, чем строку успевают дочитать, и без выдержки в ней видно
+ * не работу, а мельтешение.
  */
-const streamStatus = (panel: PanelState, cards: CardState): string => {
+const streamStatus = (panel: PanelState, cards: CardState, activity: string): string => {
   /**
    * Запрос к модели сорвался и ждёт повтора: ход в этот момент не идёт вовсе —
    * ни текста, ни вызовов, ни вопроса, — и «Claude is thinking» с бегущим
@@ -2258,7 +2270,7 @@ const streamStatus = (panel: PanelState, cards: CardState): string => {
    * Пусто — значит ничего конкретного не происходит: ход думает, и назвать это
    * можно только так.
    */
-  const label = activityFor(panel.items) || 'Claude is thinking'
+  const label = activity || 'Claude is thinking'
   if (!panel.turnStartedAt) return label
 
   // Решение только что приняли: awaitingDecision уже false, но эффект,

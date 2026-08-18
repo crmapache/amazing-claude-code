@@ -881,8 +881,47 @@ describe('сборка ленты из потока агента', () => {
 
       const thinks = state.items.filter((item): item is ThinkItem => item.kind === 'think')
       expect(thinks).toHaveLength(1)
-      expect(thinks[0]?.text).toBe('Надо посмотреть файл.')
+      expect(thinks[0]?.thoughts).toEqual(['Надо посмотреть файл.'])
       expect(thinks[0]?.pending).toBe(false)
+    })
+
+    /**
+     * Между вызовами модель думает почти всегда, и каждая мысль своей карточкой
+     * резала ленту на ломтики — вызов, мысль, вызов, мысль.
+     */
+    it('мысли между вызовами копятся в одну карточку, а вызовы остаются одной группой', () => {
+      const think = (thought: string) =>
+        ({ type: 'assistant', message: { content: [{ type: 'thinking', thinking: thought }] } }) as AgentEvent
+
+      let state = play([think('Сначала посмотрю файл.')])
+      state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })], state)
+      state = play([toolResultEvent('t1', 'line 1')], state)
+      state = play([think('Теперь поищу по проекту.')], state)
+      state = play([toolUseEvent('t2', 'Grep', { pattern: 'Session' })], state)
+      state = play([toolResultEvent('t2', 'a.ts:1')], state)
+      state = play([think('Готово, можно отвечать.')], state)
+
+      const thinks = state.items.filter((item): item is ThinkItem => item.kind === 'think')
+      expect(thinks).toHaveLength(1)
+      expect(thinks[0]?.thoughts).toEqual(['Сначала посмотрю файл.', 'Теперь поищу по проекту.', 'Готово, можно отвечать.'])
+
+      const groups = state.items.filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
+      expect(groups).toHaveLength(1)
+      expect(groups[0]?.tools.map((tool) => tool.chip)).toEqual(['READ', 'GREP'])
+    })
+
+    // Сказанное вслух кончает кусок хода: дальше модель думает уже про другое.
+    it('после ответа агента мысль начинает новую карточку', () => {
+      let state = play([
+        { type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'Сначала посмотрю файл.' }] } },
+      ])
+      state = play([{ type: 'assistant', message: { content: [{ type: 'text', text: 'Посмотрел, там пусто.' }] } }], state)
+      state = play([{ type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'Что дальше?' }] } }], state)
+
+      const thinks = state.items.filter((item): item is ThinkItem => item.kind === 'think')
+      expect(thinks).toHaveLength(2)
+      expect(thinks[0]?.thoughts).toEqual(['Сначала посмотрю файл.'])
+      expect(thinks[1]?.thoughts).toEqual(['Что дальше?'])
     })
 
     it('закрывает незавершённые вызовы внутри группы при обрыве сессии', () => {
@@ -1028,7 +1067,7 @@ describe('сборка ленты из потока агента', () => {
 
       const thinks = state.items.filter((item): item is ThinkItem => item.kind === 'think')
       expect(thinks).toHaveLength(1)
-      expect(thinks[0]?.text).toBe('Готово, можно отвечать.')
+      expect(thinks[0]?.thoughts).toEqual(['Готово, можно отвечать.'])
     })
 
     it('startedAt пустеет, когда все вызовы хода разрешились', () => {
@@ -1349,7 +1388,7 @@ describe('фоновые команды в канале задач', () => {
     ])
     state = reducePanel(state, { kind: 'tick' }, 1_700_000_000_000 + 60_608_000)
 
-    expect(state.background[0]?.duration).toBe('16h 50m')
+    expect(state.background[0]?.duration).toBe('16h 50m 08s')
   })
 
   it('конец фоновой команды снимает чип и подписывает её карточку', () => {

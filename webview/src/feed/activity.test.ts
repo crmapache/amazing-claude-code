@@ -75,6 +75,19 @@ describe('строка про текущее дело', () => {
     )
   })
 
+  /**
+   * В одну карточку попадают и вызовы, сделанные один за другим, — числом
+   * называется только то, что идёт прямо сейчас, а не вся карточка.
+   */
+  it('называет идущее сейчас, а не всю карточку: закончившийся вызов в счёт не идёт', () => {
+    const batch = group(
+      tool('Read', { file_path: '/a.ts' }, false),
+      tool('Read', { file_path: '/b.ts' }, false),
+      tool('Grep', { pattern: 'retryLabel' }),
+    )
+    expect(activity(batch)).toBe('Searching for retryLabel')
+  })
+
   // Общего глагола у разных инструментов нет, и выдумывать его нечестно.
   it('пачку разных вызовов называет пачкой', () => {
     expect(activity(group(tool('Read', { file_path: '/a.ts' }), tool('Grep', { pattern: 'x' })))).toBe('Running 2 tools')

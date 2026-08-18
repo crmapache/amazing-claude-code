@@ -23,6 +23,7 @@ import type {
   RetryOutcome,
   TaskItem,
   TaskOutcome,
+  ThinkItem,
   TodoEntry,
   TodoItem,
   ToolGroupItem,
@@ -1667,7 +1668,7 @@ const applyAssistant = (state: PanelState, blocks: ContentBlock[], now: number):
     // первой же свёрнутой «N tools», и её не видно, пока группу не раскрыть.
     if (block.type === 'thinking') {
       if (!block.thinking.trim()) continue
-      next = push(next, (id) => ({ id, kind: 'think', text: block.thinking.trim(), pending: false }))
+      next = addThought(next, block.thinking.trim())
       continue
     }
 
@@ -1677,6 +1678,40 @@ const applyAssistant = (state: PanelState, blocks: ContentBlock[], now: number):
   }
 
   return next
+}
+
+/**
+ * Мысль, к которой копятся следующие: последняя карточка мыслей этого куска
+ * хода. Кусок кончается там, где агент заговорил сам — обычным ответом или
+ * планом, — и дальше думает уже про другое, о чём и карточка должна быть новая.
+ *
+ * Вызовы инструментов кусок не рвут намеренно: между ними модель думает почти
+ * всегда, и это ровно тот случай, ради которого мысли и собираются вместе.
+ */
+export const openThought = (items: FeedItem[]): number => {
+  for (let index = items.length - 1; index >= 0; index--) {
+    const item = items[index]!
+    if (item.kind === 'think') return index
+    if (item.kind === 'user' || item.kind === 'text' || item.kind === 'plan') return -1
+  }
+
+  return -1
+}
+
+/**
+ * Мысль — в открытую карточку этого куска хода, а не отдельной строкой в конец
+ * ленты. Оттого и вызовы вокруг остаются одной группой: последним в ленте
+ * по-прежнему стоит их группа, а не вклинившаяся между ними мысль.
+ */
+const addThought = (state: PanelState, thought: string): PanelState => {
+  const index = openThought(state.items)
+  if (index < 0) return push(state, (id) => ({ id, kind: 'think', thoughts: [thought], pending: false }))
+
+  const card = state.items[index] as ThinkItem
+  const items = [...state.items]
+  items[index] = { ...card, thoughts: [...card.thoughts, thought] }
+
+  return { ...state, items }
 }
 
 /**

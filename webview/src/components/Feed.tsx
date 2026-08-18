@@ -1,5 +1,6 @@
 import { useSmoothStream } from 'smooth-stream-text/react'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { openThought } from '../feed/build'
 import { parseParagraphs } from '../feed/markdown'
 import type { AskItem, FeedItem, PermItem, TaskItem, TodoItem, ToolItem } from '../feed/types'
 import type { CardState } from '../hooks/useCardState'
@@ -100,10 +101,23 @@ export const Feed = ({
    * узлом, когда тот же ответ придёт готовым блоком, иначе на стыке рвётся волна
    * проявления, а лента моргает.
    */
+  /**
+   * Печатающаяся мысль дописывается в ту же карточку, в которую потом ляжет
+   * готовым блоком (см. openThought в build.ts). Отдельной строкой внизу она
+   * висела бы ровно до конца стрима, а потом на глазах перепрыгивала бы в
+   * карточку выше — своя строка остаётся только у самой первой мысли куска,
+   * когда дописывать ещё некуда.
+   */
+  const openThink = streamingThinking ? openThought(settled) : -1
+
   const rows: FeedRowItem[] = [
-    ...settled,
-    ...(streamingThinking
-      ? [{ id: 'streaming-think', kind: 'think' as const, text: streamingThinking, pending: true }]
+    ...settled.map((item, index) =>
+      index === openThink && item.kind === 'think'
+        ? { ...item, thoughts: [...item.thoughts, streamingThinking], pending: true }
+        : item,
+    ),
+    ...(streamingThinking && openThink < 0
+      ? [{ id: 'streaming-think', kind: 'think' as const, thoughts: [streamingThinking], pending: true }]
       : []),
     ...(pacedText
       ? [
@@ -323,7 +337,7 @@ const ItemView = memo(({
       return <TextCard item={item} onOpenLink={onOpenLink} />
 
     case 'think':
-      return <ThinkRow item={item} />
+      return <ThinkRow item={item} open={cards.isOpen(item.id)} onToggle={() => cards.toggle(item.id)} />
 
     case 'toolGroup':
       return <ToolGroupCard item={item} cards={cards} awaitingPermissionId={lastPendingId} />

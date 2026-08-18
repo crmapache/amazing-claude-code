@@ -17,7 +17,14 @@ describe('длительность вызова', () => {
   })
 
   it('после часа считает часами: «1010m» глазом в часы не переводится', () => {
-    expect(formatDuration(3_600_000)).toBe('1h 00m')
-    expect(formatDuration(60_608_000)).toBe('16h 50m')
+    expect(formatDuration(3_600_000)).toBe('1h 00m 00s')
+    expect(formatDuration(60_608_000)).toBe('16h 50m 08s')
+  })
+
+  // Секунды — то единственное, по чему видно, что время идёт: без них длинный
+  // ход выглядит замершим на целую минуту.
+  it('часы не съедают секунды', () => {
+    expect(formatDuration(3_600_000 + 5_000)).toBe('1h 00m 05s')
+    expect(formatDuration(3_600_000 + 70_000)).toBe('1h 01m 10s')
   })
 })

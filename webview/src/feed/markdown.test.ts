@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { linkify, parseInline, parseParagraphs } from './markdown'
+import { linkify, parseInline, parseParagraphs, plainLine } from './markdown'
 
 describe('parseInline', () => {
   it('превращает голый URL в ссылку', () => {
@@ -211,5 +211,31 @@ describe('linkify', () => {
 
   it('разметку не трогает — человек написал звёздочки буквально', () => {
     expect(linkify('**жирный** текст')).toEqual([{ text: '**жирный** текст' }])
+  })
+})
+
+describe('plainLine', () => {
+  it('снимает разметку: в одну строку выделять нечем', () => {
+    expect(plainLine('Он дал два теста: 1. **Основной тест** — проверить строку')).toBe(
+      'Он дал два теста: 1. Основной тест — проверить строку',
+    )
+    expect(plainLine('## Заголовок')).toBe('Заголовок')
+    expect(plainLine('правлю `build.ts` и всё')).toBe('правлю build.ts и всё')
+  })
+
+  it('склеивает абзацы и переносы в одну строку', () => {
+    expect(plainLine(['Сначала посмотрю файл.', '', 'Потом поправлю его.'].join('\n'))).toBe(
+      'Сначала посмотрю файл. Потом поправлю его.',
+    )
+  })
+
+  // Номер пункта — часть смысла перечисления, а не его оформление.
+  it('оставляет номер пункта списка', () => {
+    expect(plainLine(['1. первое', '2. второе'].join('\n'))).toBe('1. первое 2. второе')
+  })
+
+  it('пустой текст остаётся пустым', () => {
+    expect(plainLine('')).toBe('')
+    expect(plainLine('\n\n')).toBe('')
   })
 })

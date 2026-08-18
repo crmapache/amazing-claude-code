@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { LinkedText } from './LinkedText'
 import { compactProgress } from '../../feed/compact'
+import { plainLine } from '../../feed/markdown'
 import type {
   CheckpointItem,
   CompactItem,
@@ -13,17 +14,48 @@ import type {
 import s from '../feed.module.css'
 
 /**
- * Всегда в одну строку — обрезаем многоточием через CSS (text-overflow), а не
- * разворачиваем на полэкрана: это ход мысли между делом, не то, ради чего
- * приходят в панель. Пока мысль ещё стримится, plашка дышит тем же пульсом,
- * что и CONTEXT во время сжатия — тот же язык «идёт, не готово».
+ * Мысли одного куска хода — одной карточкой, снаружи последняя из них.
+ *
+ * Снаружи всегда одна строка (дальше многоточие): это ход мысли между делом, не
+ * то, ради чего приходят в панель. Целиком мысль читается по клику — вместе со
+ * всеми, что были до неё в этом же куске хода; сколько их там, говорит счётчик.
+ * Пока мысль ещё стримится, плашка дышит тем же пульсом, что и CONTEXT во время
+ * сжатия — тот же язык «идёт, не готово».
+ *
+ * Модель думает тем же markdown, каким пишет ответ, а строке выделить жирным
+ * нечего: звёздочки и решётки в ней ничего не значат и просто торчат посреди
+ * фразы (см. plainLine).
  */
-export const ThinkRow = ({ item }: { item: ThinkItem }) => (
-  <div className={s.think}>
-    <span className={`${s.toolChip} ${s.chipThink} ${item.pending ? s.thinkPending : ''}`}>THINK</span>
-    <span className={s.thinkText}>{item.text}</span>
-  </div>
-)
+export const ThinkRow = ({ item, open, onToggle }: { item: ThinkItem; open: boolean; onToggle: () => void }) => {
+  const last = item.thoughts.at(-1) ?? ''
+
+  return (
+    <div className={s.think}>
+      <button type="button" className={s.thinkHead} onClick={onToggle}>
+        <span className={`${s.caret} ${open ? s.caretOpen : ''}`}>▶</span>
+        <span className={`${s.toolChip} ${s.chipThink} ${item.pending ? s.thinkPending : ''}`}>THINK</span>
+        {/* Раскрытая карточка называет себя числом, а не последней мыслью: сама
+            эта мысль стоит строкой ниже, и повторять её заголовком незачем. */}
+        <span className={s.thinkText}>
+          {open ? `${item.thoughts.length} ${item.thoughts.length === 1 ? 'thought' : 'thoughts'}` : plainLine(last)}
+        </span>
+        {item.thoughts.length > 1 && !open ? <span className={s.thinkCount}>{item.thoughts.length}</span> : null}
+      </button>
+
+      {open ? (
+        <div className={s.thinkBody}>
+          {/* Ключ по номеру: мысли только дописываются в конец и никогда не
+              меняются местами — их порядок и есть их различие. */}
+          {item.thoughts.map((thought, index) => (
+            <p key={index} className={s.thinkFull}>
+              {plainLine(thought)}
+            </p>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
 export const CheckpointRow = ({ item }: { item: CheckpointItem }) => (
   <div className={s.checkpoint}>

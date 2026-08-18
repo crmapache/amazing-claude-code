@@ -296,3 +296,28 @@ export const parseInline = (line: string): TextPart[] => {
  */
 const emphasized = (text: string): TextPart[] =>
   parseInline(text).map((part) => ({ ...part, strong: true }))
+
+/**
+ * Тот же текст, но одной строкой и без разметки — для мест, где показать её
+ * нечем. Превью мысли в ленте идёт одной строкой с многоточием: звёздочки и
+ * решётки в нём ничего не выделяют, а просто торчат как мусор посреди фразы.
+ *
+ * Разбирается тем же разбором, что и ответ агента: своего понимания разметки
+ * здесь заводить незачем — берутся готовые куски и склеиваются своим текстом.
+ * Номер пункта остаётся: «1.» — часть смысла перечисления, а не его оформление.
+ */
+export const plainLine = (source: string): string =>
+  parseParagraphs(source)
+    .map(plainParagraph)
+    .filter((text) => text.length > 0)
+    .join(' ')
+
+const plainParagraph = (paragraph: Paragraph): string => {
+  const text = paragraph.parts
+    .map((part) => part.text)
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return paragraph.marker ? `${paragraph.marker} ${text}`.trim() : text
+}
