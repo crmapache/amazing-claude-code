@@ -193,6 +193,11 @@ internal class ClaudePanel(
             onCrashed = { sessionId, exitCode -> sendProcessExited(sessionId, exitCode) },
             onToolPermission = { sessionId, request -> askToolPermission(sessionId, request) },
             onTitle = { sessionId, title -> sendSessionTitle(sessionId, title) },
+            // Второй, независимый путь к «работа кончилась»: обычно ход закрывает
+            // сам итог, приехавший в ленту, но он может до неё и не дойти — см.
+            // ClaudeSession.onTurnEnded. Статус идёт следом за событием, поэтому
+            // в обычной жизни он лишь подтверждает уже нарисованное.
+            onTurnEnded = { sessionId -> sendStatus(sessionId, "idle") },
         )
 
         // Перетаскивание файлов в панель: внутри IDE оно идёт мимо встроенного

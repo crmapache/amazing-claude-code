@@ -23,18 +23,54 @@ import org.cef.handler.CefRequestHandlerAdapter
 import org.cef.network.CefRequest
 
 /**
- * Вызов приёмника на странице для целой пачки сообщений.
+ * Вызовы приёмника на странице для целой пачки сообщений.
  *
  * Каждое сообщение — уже готовый JSON, поэтому массив из них собирается склейкой.
  * Саму строку в JS безопасно вносить только как литерал, поэтому кодируем её
  * сериализатором, а на странице разбираем обратно: иначе первая же кавычка или
  * перенос строки в тексте ответа рвали бы весь вызов, и канал замолкал бы целиком.
+ *
+ * Длинную пачку отдаём частями, а не одним вызовом. Каждый заход в страницу — это
+ * сообщение между процессами, и слишком большое до неё просто не доходит: молча,
+ * без исключения и без записи в лог. Терялась при этом не одна карточка, а весь
+ * кусок разговора вместе с итогом хода — панель навсегда оставалась «думающей»
+ * над ответом, который давно пришёл. Ходом ревью с десятком субагентов, где
+ * каждое событие несёт готовый отчёт, такую пачку набрать проще всего.
  */
-internal fun receiveCall(batch: List<String>): String {
+internal fun receiveCalls(batch: List<String>): List<String> {
     val array = batch.joinToString(",", prefix = "[", postfix = "]")
-    val literal = Json.encodeToString(String.serializer(), array)
+    if (array.length <= MAX_CHUNK_CHARS) return listOf("window.__accReceive && window.__accReceive(JSON.parse(${literal(array)}));")
 
-    return "window.__accReceive && window.__accReceive(JSON.parse($literal));"
+    val parts = splitKeepingPairs(array, MAX_CHUNK_CHARS)
+
+    return parts.mapIndexed { index, part ->
+        val last = index == parts.size - 1
+        "window.__accChunk && window.__accChunk(${literal(part)}, $last);"
+    }
+}
+
+/** Строка как литерал JavaScript: экранирование берём у сериализатора, а не своё. */
+private fun literal(text: String): String = Json.encodeToString(String.serializer(), text)
+
+/**
+ * Нарезка по длине, не разрывающая пару суррогатов.
+ *
+ * Эмодзи и прочее за пределами основной плоскости живёт в строке двумя половинками, и половинка
+ * сама по себе — не символ: до страницы она доедет заменяющим знаком, а склеенная
+ * обратно строка перестанет разбираться как JSON. Поэтому границу сдвигаем.
+ */
+private fun splitKeepingPairs(text: String, size: Int): List<String> {
+    val parts = mutableListOf<String>()
+    var start = 0
+
+    while (start < text.length) {
+        var end = minOf(start + size, text.length)
+        if (end < text.length && text[end - 1].isHighSurrogate() && end - 1 > start) end--
+        parts.add(text.substring(start, end))
+        start = end
+    }
+
+    return parts
 }
 
 /**
@@ -44,8 +80,14 @@ internal fun receiveCall(batch: List<String>): String {
  */
 private const val FLUSH_DELAY_MS = 16
 
-/** Предел одной пачки — см. flush. */
+/** Предел одной пачки по числу сообщений — см. flush. */
 private const val MAX_BATCH = 200
+
+/**
+ * Сколько букв разом заносим в страницу — см. receiveCalls. Четверть мегабайта
+ * проходит с запасом, а пачка длиннее уезжает несколькими частями.
+ */
+private const val MAX_CHUNK_CHARS = 256 * 1024
 
 /** Как часто просим полный кадр, пока сообщения идут потоком. */
 private const val HEAL_PERIOD_MS = 1000L
@@ -319,9 +361,20 @@ internal class WebviewHost(
         // Интерфейс отправляет через window.__accSend, а получает через window.__accReceive,
         // который объявляет сам. О готовности сообщаем событием: страница могла
         // отрисоваться раньше, чем мост встал на место.
+        // __accChunk собирает пачку, приехавшую частями (см. receiveCalls): части
+        // приходят по очереди тем же каналом, поэтому склеиваются в порядке
+        // прихода, без номеров. Буфер живёт в самой странице и пропадает вместе с
+        // ней — недосланный хвост после перезагрузки ни с чем не склеится.
         val bridge = """
             window.__accSend = function (payload) {
                 ${fromWebview.inject("payload")}
+            };
+            window.__accChunk = function (part, last) {
+                window.__accParts = (window.__accParts || []).concat(part);
+                if (!last) return;
+                var joined = window.__accParts.join('');
+                window.__accParts = [];
+                if (window.__accReceive) window.__accReceive(JSON.parse(joined));
             };
             window.dispatchEvent(new Event('acc:ready'));
         """.trimIndent()
@@ -336,9 +389,9 @@ internal class WebviewHost(
      * Отдать странице всё, что накопилось.
      *
      * Пачку ограничиваем по числу сообщений: перепись прошлого разговора приходит
-     * сразу целиком, и без предела вся её история склеилась бы в одну строку в
-     * несколько мегабайт — такую в браузер уже не занесёшь. Остаток уезжает
-     * следующей пачкой в том же заходе, без лишнего ожидания.
+     * сразу целиком, и разбирать её интерфейсу удобнее порциями, а не всю сразу.
+     * Остаток уезжает следующей пачкой в том же заходе, без лишнего ожидания. За
+     * длину самой строки отвечает receiveCalls — она же и режет её на части.
      */
     private fun flush() {
         synchronized(flushLock) {
@@ -354,7 +407,9 @@ internal class WebviewHost(
     }
 
     private fun deliver(batch: List<String>) {
-        browser.cefBrowser.executeJavaScript(receiveCall(batch), browser.cefBrowser.url, 0)
+        for (call in receiveCalls(batch)) {
+            browser.cefBrowser.executeJavaScript(call, browser.cefBrowser.url, 0)
+        }
 
         heal()
     }

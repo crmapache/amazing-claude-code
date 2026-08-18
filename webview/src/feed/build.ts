@@ -602,11 +602,26 @@ const finishCompacting = (state: PanelState): PanelState => {
 }
 
 /**
- * Процесс умер сам, не по нашей просьбе. Любая карточка, которая была
- * «выполняется» в этот момент, иначе так и останется висеть вечно — закрываем
- * их явно и оставляем в ленте недвусмысленную пометку, что случилось.
+ * Карточки, которые остались «выполняется», когда ждать их результата больше
+ * нечего: вызовы инструментов и субагенты.
+ *
+ * Оставить их как есть — значит показывать работу, которой давно нет: у каждой
+ * такой карточки свой счётчик, и он тикает и тикает, пока открыта вкладка.
+ * Поводов остаться без результата ровно два — процесс разговора умер и ход
+ * кончился раньше, чем вернулся вызов (обычно потому, что его прервали), —
+ * поэтому пометка приходит текстом от того, кто закрывает.
+ *
+ * [keepBackgroundTasks] — про фоновых субагентов: они переживают ход по
+ * определению, их итог приносит отдельное уведомление уже после него (см.
+ * ASYNC_AGENT_LAUNCHED), и закрывать такую карточку по итогу хода нельзя. А вот
+ * смерть процесса — конец и для них: сообщать о себе им больше некому.
  */
-const applyProcessExited = (state: PanelState, exitCode: number, now: number): PanelState => {
+const closeUnfinished = (
+  state: PanelState,
+  now: number,
+  notes: { tool: string; task: string; meta: string },
+  keepBackgroundTasks: boolean,
+): { items: FeedItem[]; startedAt: Record<string, number> } => {
   const startedAt = { ...state.startedAt }
 
   const closeTool = (tool: ToolItem): ToolItem => {
@@ -621,17 +636,15 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
       pending: false,
       isError: true,
       duration,
-      meta: '· interrupted',
-      detail: [
-        ...tool.detail,
-        { text: 'Claude Code stopped responding before this finished.', tone: 'bad' as const },
-      ],
+      meta: notes.meta,
+      detail: [...tool.detail, { text: notes.tool, tone: 'bad' as const }],
     }
   }
 
   const items = state.items.map((item) => {
     if (item.kind === 'task') {
       if (!item.pending) return item
+      if (keepBackgroundTasks && item.background) return item
 
       const started = startedAt[item.id]
       delete startedAt[item.id]
@@ -642,7 +655,7 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
         pending: false,
         duration,
         outcome: 'stopped' as const,
-        log: appendAgentLog(item.log, [{ text: 'Session ended before this returned.', tone: 'bad' as const }]),
+        log: appendAgentLog(item.log, [{ text: notes.task, tone: 'bad' as const }]),
       }
     }
 
@@ -651,6 +664,26 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
     const tools = item.tools.map(closeTool)
     return { ...item, tools, pending: false, duration: formatDuration(now - item.startedAt) }
   })
+
+  return { items, startedAt }
+}
+
+/**
+ * Процесс умер сам, не по нашей просьбе. Любая карточка, которая была
+ * «выполняется» в этот момент, иначе так и останется висеть вечно — закрываем
+ * их явно и оставляем в ленте недвусмысленную пометку, что случилось.
+ */
+const applyProcessExited = (state: PanelState, exitCode: number, now: number): PanelState => {
+  const { items, startedAt } = closeUnfinished(
+    state,
+    now,
+    {
+      tool: 'Claude Code stopped responding before this finished.',
+      task: 'Session ended before this returned.',
+      meta: '· interrupted',
+    },
+    false,
+  )
 
   /**
    * Фоновые команды переживают этот процесс: dev-сервер, поднятый ходом, никуда
@@ -860,7 +893,16 @@ const applyAgentEvent = (
       const liveContextUsed = replay
         ? state.liveContextUsed
         : contextUsedOf(event.message.usage) ?? state.liveContextUsed
-      return applyAssistant({ ...state, model, liveContextUsed }, blocksOf(event.message.content), now)
+      // Разговору ответили — подъём кончился, и следующий result закрывает
+      // именно ход, чем бы тот ни оказался (см. starting и «нулевой» ход выше).
+      // Число ходов тут не показатель: заглушки от <synthetic> — отказ по
+      // неизвестной команде, ответ вместо запрещённого хуком хода — приезжают
+      // репликой в ленту, а ходов в итоге по-прежнему ноль.
+      return applyAssistant(
+        { ...state, model, liveContextUsed, starting: false },
+        blocksOf(event.message.content),
+        now,
+      )
     }
 
     case 'user':
@@ -880,9 +922,23 @@ const applyAgentEvent = (
       // Только сразу после подъёма (см. starting): ход, который и правда кончился
       // ничем, обязан гасить спиннер, как любой другой.
       //
+      // И только пока итог пуст. Ходов ноль CLI ставит и там, где ход состоялся,
+      // но выполнять его он не стал: неизвестная слэш-команда (в том числе
+      // команда MCP-сервера, который в этот раз не поднялся) закрывается ответом
+      // «Unknown command: …» — заглушкой от <synthetic>, без обращения к модели,
+      // а значит и без ходов. Раз такой result глотать, ход не закроет уже
+      // никто: «Claude is thinking» с бегущим счётчиком висит до конца жизни
+      // вкладки. Текст в итоге — верный признак того, что этому ходу ответили.
+      //
       // Идентификатор разговора отсюда всё же берём: у форка он новый, и без него
       // разговор потом не продолжить.
-      if (state.starting && event.num_turns === 0 && !event.is_error && state.stopRequestedAt === undefined) {
+      if (
+        state.starting &&
+        event.num_turns === 0 &&
+        !event.is_error &&
+        !event.result &&
+        state.stopRequestedAt === undefined
+      ) {
         return { ...state, starting: false, sessionId: event.session_id ?? state.sessionId }
       }
 
@@ -905,8 +961,35 @@ const applyAgentEvent = (
         event.is_error && event.result ? addError(state, event.result) : state,
       )
 
+      /**
+       * Ход кончился — значит и всё, что он начал, кончилось вместе с ним.
+       * Прерванный ход бросает вызов инструмента прямо посреди работы (Stop
+       * приходит, когда что-то выполняется, — иначе прерывать было бы нечего), и
+       * без этого его карточка навсегда оставалась «выполняется» с бегущим
+       * счётчиком: ход внизу давно подписан «Stopped by you», а работа по виду
+       * всё ещё идёт. Тем же закрываются и вызовы, чей результат до панели не
+       * дошёл.
+       */
+      const { items: settled, startedAt } = closeUnfinished(
+        withError,
+        now,
+        cancelled
+          ? {
+              tool: 'Stopped before it finished.',
+              task: 'Stopped before it returned.',
+              meta: '· interrupted',
+            }
+          : {
+              tool: 'The turn ended before this finished.',
+              task: 'The turn ended before this returned.',
+              meta: '· unfinished',
+            },
+        true,
+      )
+
       return {
         ...withError,
+        startedAt,
         status: 'idle',
         streamingText: '',
         streamingId: undefined,
@@ -925,8 +1008,8 @@ const applyAgentEvent = (
         seq: withError.seq + 1,
         suppressNextMeta: false,
         items: state.suppressNextMeta
-          ? withError.items
-          : [...withError.items, { id: `meta-${withError.seq}`, kind: 'meta', stats }],
+          ? settled
+          : [...settled, { id: `meta-${withError.seq}`, kind: 'meta', stats }],
       }
     }
 
@@ -1552,8 +1635,10 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
       const text = resultToText(result.content)
       // Ещё не итог — просто подтверждение, что фоновый субагент стартовал.
       // Ждём его настоящий конец через task_notification, а не гасим карточку
-      // на первом же слове от CLI.
-      if (ASYNC_AGENT_LAUNCHED.test(text)) return item
+      // на первом же слове от CLI. Заодно помечаем её фоновой: конец хода такую
+      // карточку не закрывает (см. closeUnfinished), уведомление о её итоге
+      // приходит уже после него.
+      if (ASYNC_AGENT_LAUNCHED.test(text)) return item.background ? item : { ...item, background: true }
 
       const started = state.startedAt[item.id]
       const duration = started ? formatDuration(now - started) : ''

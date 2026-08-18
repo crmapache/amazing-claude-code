@@ -75,9 +75,37 @@ internal class ClaudeSession(
      * так и останутся висеть навсегда, если никого не предупредить.
      */
     private val onCrashed: (Int) -> Unit = {},
+    /**
+     * Ход человека кончился — итогом, крахом процесса или тем, что отправить его
+     * не удалось вовсе.
+     *
+     * Панель узнаёт об этом и из самого потока (событие итога едет в ленту), но
+     * полагаться только на него нельзя: до ленты оно может не дойти — например,
+     * его съедает подавление ответа на служебную команду (см.
+     * [suppressingPreferenceReply]), или интерфейс не разбирает его как конец
+     * хода. Тогда «Claude is thinking» с бегущим счётчиком остаётся на экране
+     * навсегда, хотя агент давно свободен, и разговор выглядит зависшим —
+     * ровно та поломка, из-за которой этот отдельный сигнал и заведён.
+     */
+    private val onTurnEnded: () -> Unit = {},
 ) : Disposable {
 
     private var handler: OSProcessHandler? = null
+
+    /**
+     * Идёт ход человека: сообщение отправлено, итога ещё не было.
+     *
+     * Нужен не для ленты, а для решений самой сессии: пока ход идёт, служебная
+     * команда вроде `/effort` в процесс не уходит (см. [setEffort]).
+     */
+    @Volatile
+    private var busy = false
+
+    /**
+     * Служебная команда, которая ждёт конца текущего хода — см. [setEffort].
+     */
+    @Volatile
+    private var pendingPreference: String? = null
 
     /** Правда ли, что смерть процесса — наша просьба, а не крах. */
     @Volatile
@@ -128,7 +156,12 @@ internal class ClaudeSession(
     private var lastSentTitle: String? = null
 
     fun sendPrompt(text: String, images: List<ImageAttachment> = emptyList()) {
-        val process = handler ?: start() ?: return
+        // Процесс не поднялся (об этом уже сказал onError) — ход не начался и
+        // начаться не может. Не сказать об этом отдельно значит оставить панель
+        // со спиннером, который она поставила на отправку: сообщение об ошибке в
+        // ленте есть, а работа по виду всё ещё идёт.
+        val process = handler ?: start() ?: run { endTurn(); return }
+        busy = true
         write(process, userMessage(text, images))
     }
 
@@ -206,6 +239,19 @@ internal class ClaudeSession(
     fun setEffort(effort: String) {
         this.effort = effort
         if (handler == null) return
+
+        // Посреди идущего хода команду держим при себе. Отправить её сейчас
+        // нельзя: подавление ответа (см. [suppressingPreferenceReply]) молчит до
+        // ближайшего итога, а ближайший итог — у чужого, уже идущего хода. Его
+        // конец тогда пропадает целиком: и остаток ответа агента, и сам итог,
+        // после которого панель гасит спиннер, — то есть разговор навсегда
+        // остаётся «думающим». На сам идущий ход усилие всё равно не влияет: CLI
+        // применяет его к следующему, так что ожидание ничего не меняет по делу.
+        if (busy) {
+            pendingPreference = "/effort $effort"
+            return
+        }
+
         applyPreference("/effort $effort")
     }
 
@@ -367,6 +413,8 @@ internal class ClaudeSession(
         val process = handler ?: return
         stopRequested = true
         handler = null
+        busy = false
+        pendingPreference = null
         lines.reset()
         awaitingControl.clear()
         // Отвечать на висящие вопросы уже некому и нечем: процесса, который их
@@ -455,11 +503,24 @@ internal class ClaudeSession(
             return
         }
 
+        // Итог хода замечаем до всего остального и сообщаем о нём наверх в любом
+        // случае — даже когда сама строка в ленту не пойдёт (см. onTurnEnded).
+        val turnResult = AgentStream.isTurnResult(line)
+
+        try {
+            consumeEvent(line, turnResult)
+        } finally {
+            if (turnResult) endTurn()
+        }
+    }
+
+    /** Тело разбора: всё, после чего ход всё равно обязан закрыться — см. [consume]. */
+    private fun consumeEvent(line: String, turnResult: Boolean) {
         if (suppressingPreferenceReply) {
             // Системные события пропускаем как всегда — по ним живёт строка
             // состояния (модель, режим). Сам ход помечаем прошедшим по result:
             // он всегда один и без него это разночтение никогда не кончится.
-            if (line.contains("\"type\":\"result\"")) suppressingPreferenceReply = false
+            if (turnResult) suppressingPreferenceReply = false
             if (!line.contains("\"type\":\"system\"")) return
         }
 
@@ -485,6 +546,19 @@ internal class ClaudeSession(
     }
 
     /**
+     * Ход кончился: панели пора гасить работу, а отложенной служебной команде —
+     * ехать (см. [setEffort]).
+     */
+    private fun endTurn() {
+        busy = false
+        onTurnEnded()
+
+        val command = pendingPreference ?: return
+        pendingPreference = null
+        applyPreference(command)
+    }
+
+    /**
      * Агент просит разрешения на вызов инструмента. Отдаём вопрос наверх и ждём
      * человека: ответить обязаны мы, иначе ход стоит до самого конца разговора.
      */
@@ -506,7 +580,11 @@ internal class ClaudeSession(
                 )
             }
 
-            null -> Unit
+            // Ни номера запроса, ни самого запроса — отвечать буквально некуда, и
+            // ход, если он ждал ответа, так и останется ждать. Единственное, что
+            // здесь можно сделать полезного, — оставить след: иначе разговор,
+            // замерший по этой причине, выглядит зависшим без объяснений.
+            null -> thisLogger().warn("Unanswerable control request from claude: $payload")
         }
     }
 
@@ -556,6 +634,10 @@ internal class ClaudeSession(
             process.processInput.flush()
         }.onFailure {
             onError("Failed to talk to claude: ${it.message}")
+            // Написать в процесс не вышло — значит и ответа от него не будет:
+            // ни этого хода, ни его итога. Без этого панель осталась бы с вечным
+            // «Claude is thinking» рядом с сообщением о самой поломке.
+            endTurn()
         }
     }
 
@@ -607,6 +689,10 @@ internal class ClaudeSession(
 
                 override fun processTerminated(event: ProcessEvent) {
                     handler = null
+                    busy = false
+                    // Отправлять её теперь некуда, а следующий процесс получит
+                    // усилие флагом при запуске (см. ClaudeLaunch).
+                    pendingPreference = null
                     // Мы сами его остановили — это не крах, объяснять пользователю
                     // нечего. А вот если процесс умер сам, любая карточка, которая
                     // была «выполняется» в этот момент, иначе зависнет так навсегда.

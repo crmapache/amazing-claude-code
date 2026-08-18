@@ -517,6 +517,92 @@ describe('сборка ленты из потока агента', () => {
     expect(state.status).toBe('idle')
   })
 
+  // Неизвестную слэш-команду CLI закрывает мгновенно и без обращения к модели:
+  // ответ приезжает заглушкой от <synthetic>, ходов в итоге ноль, ошибкой это не
+  // помечено. Приняв такой итог за «нулевой» ход подъёма, панель не закрывала ход
+  // вовсе — «Claude is thinking» со счётчиком висел до конца жизни вкладки.
+  it('неизвестная команда сразу после подъёма закрывает ход', () => {
+    let state = reducePanel(
+      initialPanelState,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: '/mcp__snakein__analyze' }], quotes: [] },
+      1_700_000_000_000,
+    )
+    state = reducePanel(
+      state,
+      { kind: 'agent', event: { type: 'system', subtype: 'init' } as AgentEvent },
+      1_700_000_000_050,
+    )
+    state = reducePanel(
+      state,
+      {
+        kind: 'agent',
+        event: {
+          type: 'assistant',
+          message: {
+            model: '<synthetic>',
+            content: [{ type: 'text', text: 'Unknown command: /mcp__snakein__analyze' }],
+          },
+        } as AgentEvent,
+      },
+      1_700_000_000_080,
+    )
+    state = reducePanel(
+      state,
+      {
+        kind: 'agent',
+        event: {
+          type: 'result',
+          subtype: 'success',
+          duration_ms: 45,
+          num_turns: 0,
+          is_error: false,
+          result: 'Unknown command: /mcp__snakein__analyze',
+        },
+      },
+      1_700_000_000_100,
+    )
+
+    expect(state.status).toBe('idle')
+    expect(state.turnStartedAt).toBeUndefined()
+    expect(state.starting).toBe(false)
+    // Модель разговора заглушка не подменяет — см. realModel.
+    expect(state.model).toBe(initialPanelState.model)
+  })
+
+  // Тот же отказ, но итог приехал без текста: закрыть ход всё равно обязан —
+  // ответ агента уже был, значит подъём кончился раньше.
+  it('заглушка без текста в итоге тоже закрывает ход', () => {
+    let state = reducePanel(
+      initialPanelState,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: '/что-то' }], quotes: [] },
+      1_700_000_000_000,
+    )
+    state = reducePanel(
+      state,
+      { kind: 'agent', event: { type: 'system', subtype: 'init' } as AgentEvent },
+      1_700_000_000_050,
+    )
+    state = reducePanel(
+      state,
+      {
+        kind: 'agent',
+        event: {
+          type: 'assistant',
+          message: { model: '<synthetic>', content: [{ type: 'text', text: 'Не выполняю.' }] },
+        } as AgentEvent,
+      },
+      1_700_000_000_080,
+    )
+    state = reducePanel(
+      state,
+      { kind: 'agent', event: { type: 'result', subtype: 'success', duration_ms: 45, num_turns: 0 } },
+      1_700_000_000_100,
+    )
+
+    expect(state.status).toBe('idle')
+    expect(state.turnStartedAt).toBeUndefined()
+  })
+
   // Ход, который и правда кончился ничем, гасить спиннер обязан: подъёма перед
   // ним не было, значит это настоящий итог.
   it('нулевой ход посреди разговора остаётся концом хода', () => {
@@ -778,6 +864,47 @@ describe('сборка ленты из потока агента', () => {
       expect(groups[0]?.tools.at(-1)?.isError).toBe(true)
       expect(groups[0]?.tools.at(-1)?.meta).toBe('· interrupted')
       expect(state.crashed).toBe(true)
+    })
+
+    it('прерванный ход закрывает вызов, который в этот момент выполнялся', () => {
+      let state = reducePanel(
+        initialPanelState,
+        { kind: 'prompt', tokens: [{ kind: 'text', value: 'сделай' }], quotes: [] },
+        1_700_000_000_000,
+      )
+      state = play([toolUseEvent('t1', 'Bash', { command: 'sleep 300' })], state)
+      state = reducePanel(state, { kind: 'stopRequested' }, 1_700_000_002_000)
+      state = reducePanel(state, { kind: 'agent', event: resultEvent(2_500) }, 1_700_000_002_500)
+
+      const groups = state.items.filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
+      expect(groups[0]?.pending).toBe(false)
+      expect(groups[0]?.tools.at(-1)?.pending).toBe(false)
+      expect(groups[0]?.tools.at(-1)?.meta).toBe('· interrupted')
+      // Счётчик карточки живёт в startedAt — оставить запись значит и дальше
+      // пересчитывать длительность на каждый тик.
+      expect(state.startedAt.t1).toBeUndefined()
+    })
+
+    it('итог хода закрывает вызов, чей результат до панели не дошёл', () => {
+      let state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })])
+      state = reducePanel(state, { kind: 'agent', event: resultEvent(1_000) }, 1_700_000_001_000)
+
+      const groups = state.items.filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
+      expect(groups[0]?.tools.at(-1)?.pending).toBe(false)
+      expect(groups[0]?.tools.at(-1)?.meta).toBe('· unfinished')
+    })
+
+    it('фоновый субагент переживает итог хода: его конец приносит уведомление', () => {
+      let state = play([
+        toolUseEvent('a1', 'Task', { description: 'ревью', prompt: 'посмотри диф' }),
+        toolResultEvent('a1', 'Async agent launched successfully. Agent id: a1'),
+      ])
+      state = reducePanel(state, { kind: 'agent', event: resultEvent(800) }, 1_700_000_000_800)
+
+      const tasks = state.items.filter((item): item is TaskItem => item.kind === 'task')
+      expect(tasks).toHaveLength(1)
+      expect(tasks[0]?.pending).toBe(true)
+      expect(tasks[0]?.outcome).toBeUndefined()
     })
 
     it('вычисляет полный span группы при re-append после resolve (regression)', () => {

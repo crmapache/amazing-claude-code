@@ -24,6 +24,8 @@ internal class ClaudeSessions(
     private val onToolPermission: (sessionId: String, request: PermissionChannel.ToolPermission) -> Unit = { _, _ -> },
     /** Название разговора подобрала LLM по первому сообщению — см. ClaudeSession.onTitle. */
     private val onTitle: (sessionId: String, title: String) -> Unit = { _, _ -> },
+    /** Ход кончился — панели пора гасить работу; см. ClaudeSession.onTurnEnded. */
+    private val onTurnEnded: (sessionId: String) -> Unit = {},
 ) : Disposable {
 
     private val sessions = ConcurrentHashMap<String, ClaudeSession>()
@@ -273,5 +275,6 @@ internal class ClaudeSessions(
         onCrashed = { exitCode -> onCrashed(sessionId, exitCode) },
         onToolPermission = { request -> onToolPermission(sessionId, request) },
         onTitle = { title -> onTitle(sessionId, title) },
+        onTurnEnded = { onTurnEnded(sessionId) },
     )
 }
