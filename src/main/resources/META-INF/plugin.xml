@@ -18,6 +18,10 @@
          разговор с процессом. Ведём его во встроенном терминале, а не выдумываем
          свой экран входа. -->
     <depends>org.jetbrains.plugins.terminal</depends>
+    <!-- Файл, брошенный в панель из окна коммита, приезжает объектом системы
+         контроля версий, а не путём — разбирать его нечем без её классов (см.
+         WebviewFileDrop). Модуль встроен в любую JetBrains IDE. -->
+    <depends>com.intellij.modules.vcs</depends>
 
     <resource-bundle>messages.AccBundle</resource-bundle>
 

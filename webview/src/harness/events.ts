@@ -142,6 +142,32 @@ export const thinkReply = (thought: string): ScenarioStep[] => {
   return steps
 }
 
+/**
+ * Сорвавшийся запрос к модели, который CLI повторит после паузы. Форма ровно
+ * та, что приходит из потока: одна попытка — одно событие, а пауза до следующей
+ * идёт отдельным шагом сценария, чтобы обратный отсчёт было видно живьём.
+ */
+export const apiRetry = (attempt: number, delayMs: number, status: number | null = 529): ScenarioStep =>
+  agent({
+    type: 'system',
+    subtype: 'api_retry',
+    attempt,
+    max_retries: 10,
+    retry_delay_ms: delayMs,
+    error_status: status,
+    error: status === 529 ? 'overloaded' : 'unknown',
+  })
+
+/**
+ * Те же шаги, но как перепись прошлого разговора, открытого из истории: события
+ * едут с пометкой replay, по которой панель отличает давно случившееся от живого
+ * (см. protocol.ts). Паузы и всё остальное остаются как есть.
+ */
+export const replayed = (steps: ScenarioStep[]): ScenarioStep[] =>
+  steps.map((step) =>
+    step.kind === 'agent' ? shell({ type: 'agent', sessionId: SESSION, event: step.event, replay: true }) : step,
+  )
+
 export const turnResult = (durationMs: number): ScenarioStep =>
   agent({
     type: 'result',

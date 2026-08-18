@@ -1,4 +1,4 @@
-import { agent, bash, checkpoint, scenario, shell, SESSION, textReply, toolResult, toolUse, turnResult, user, wait } from '../events'
+import { agent, apiRetry, bash, checkpoint, replayed, scenario, shell, SESSION, textReply, toolResult, toolUse, turnResult, user, wait } from '../events'
 import type { Scenario } from '../types'
 
 export const scenariosSystem: Scenario[] = [
@@ -55,6 +55,96 @@ export const scenariosSystem: Scenario[] = [
     ]),
   ]),
 
+  /**
+   * Сорвавшийся запрос CLI говорит дважды: сперва репликой агента в потоке,
+   * следом той же строкой в своём stderr. Смысл сценария — второй чекпоинт: в
+   * ленте остаётся одна красная плашка вместо пары одинаковых абзацев подряд, и
+   * адрес в ней живой — по нему и идут смотреть, что со сторонним сервисом.
+   */
+  scenario('error-echo', 'Ошибка приходит дважды', 'system', [
+    checkpoint('Агент отвечает текстом ошибки', [
+      ...textReply('API Error: 500 Internal server error. This is a server-side issue, usually temporary — try again in a moment. If it persists, check https://status.claude.com.'),
+      wait(600),
+    ]),
+    checkpoint('Та же строка приходит от процесса', [
+      shell({
+        type: 'error',
+        sessionId: SESSION,
+        message:
+          'API Error: 500 Internal server error. This is a server-side issue, usually temporary — try again in a moment. If it persists, check https://status.claude.com.',
+      }),
+      turnResult(4300),
+    ]),
+  ]),
+
+  /**
+   * Серверы Anthropic перегружены, и CLI пережидает отказ, чтобы повторить
+   * запрос. Смысл сценария — первые два чекпоинта: до них панель на таком месте
+   * молчала совсем, показывая «Claude is thinking» с бегущим счётчиком, хотя
+   * запрос вообще не доходил до модели и разговор просто стоял.
+   *
+   * Паузы настоящие: попытки идут с нарастающим ожиданием, как в жизни, и
+   * обратный отсчёт до следующей видно живьём.
+   */
+  scenario('api-retry', 'Перегрузка API', 'system', [
+    checkpoint('Пользователь просит закоммитить', [user('Закоммить и запушь'), wait(600)]),
+    checkpoint('Сервер перегружен, идут повторы', [
+      apiRetry(1, 600),
+      wait(600),
+      apiRetry(2, 1200),
+      wait(1200),
+      apiRetry(3, 2500),
+      wait(2500),
+      apiRetry(4, 5000),
+      wait(5000),
+    ]),
+    checkpoint('Запрос прошёл, агент отвечает', [
+      ...textReply('Сервер отпустило — коммичу и пушу.'),
+      toolUse('Bash', { command: 'git commit -am "fix: close out stalled turns" && git push' }, 's16-1'),
+      wait(900),
+      toolResult('s16-1', 'main -> main'),
+      turnResult(11800),
+    ]),
+  ]),
+
+  /**
+   * Тот же отказ, но попытки кончились. CLI закрывает такой ход не ответом
+   * модели, а своей заглушкой с текстом ошибки — по ней карточка повторов и
+   * понимает, что дело кончилось сдачей, а не удачей.
+   */
+  scenario('api-retry-exhausted', 'Перегрузка API: попытки кончились', 'system', [
+    checkpoint('Пользователь просит разобраться в логе', [user('Разберись, почему падает сборка'), wait(500)]),
+    checkpoint('Повторы не помогают', [
+      apiRetry(1, 600),
+      wait(600),
+      apiRetry(2, 1500),
+      wait(1500),
+      apiRetry(3, 4000),
+      wait(4000),
+    ]),
+    checkpoint('CLI сдаётся', [
+      agent({
+        type: 'assistant',
+        message: {
+          model: '<synthetic>',
+          content: [
+            {
+              type: 'text',
+              text: 'API Error: 529 Overloaded. This is a server-side issue, usually temporary — try again in a moment.',
+            },
+          ],
+        },
+      }),
+      agent({
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        result: 'API Error: 529 Overloaded. This is a server-side issue, usually temporary — try again in a moment.',
+        duration_ms: 9200,
+      }),
+    ]),
+  ]),
+
   scenario('clear-conversation', '/clear стирает разговор', 'system', [
     checkpoint('Пользователь спрашивает про историю', [user('Расскажи, что мы уже обсудили'), wait(500)]),
     checkpoint('Готовый ответ', [
@@ -93,6 +183,36 @@ export const scenariosSystem: Scenario[] = [
       ...textReply('Вижу — в App.tsx строка попала туда, где ждут число. Правлю.'),
       turnResult(1800),
     ]),
+  ]),
+
+  /**
+   * Вкладка, открытая из истории: панель проигрывает сохранённый разговор, а
+   * потом объявляет перепись законченной. Смысл сценария — второй чекпоинт: до
+   * него фоновый субагент выглядит работающим (чип в шапке, счётчик, «Waiting
+   * for subagent» под лентой), хотя работать в этой вкладке нечему. Его итог
+   * приезжает системным событием, а в переписке лежат одни реплики, так что
+   * закрыть карточку может только конец переписи.
+   */
+  scenario('resumed-conversation', 'Разговор из истории', 'system', [
+    checkpoint('Перепись прошлого разговора', [
+      ...replayed([
+        // Реплика человека приходит записью из переписки: класть её в ленту при
+        // отправке, как в живом разговоре, здесь было некому.
+        agent({
+          type: 'user',
+          message: { content: [{ type: 'text', text: 'Посмотри свежим взглядом на панель настроек' }] },
+          timestamp: '2026-08-17T09:41:07.000Z',
+        }),
+        wait(300),
+        toolUse('Agent', { subagent_type: 'Explore', description: 'Review plan: UI consistency' }, 'r-1'),
+        wait(300),
+        toolResult('r-1', 'Async agent launched successfully. Agent ID: a90aa'),
+        wait(300),
+        ...textReply('Запустил разбор в фоне — вернусь с находками.'),
+        turnResult(4200),
+      ]),
+    ]),
+    checkpoint('Перепись доиграна', [shell({ type: 'replayFinished', sessionId: SESSION })]),
   ]),
 
   scenario('rich-markdown', 'Ответ с markdown', 'system', [

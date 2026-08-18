@@ -6,6 +6,7 @@ import type {
   AgentUsage,
   ContentBlock,
   MessageContent,
+  TextBlock,
   ToolResultBlock,
   ToolUseBlock,
 } from '../protocol'
@@ -18,6 +19,8 @@ import type {
   DetailLine,
   FeedItem,
   Paragraph,
+  RetryItem,
+  RetryOutcome,
   TaskItem,
   TaskOutcome,
   TodoEntry,
@@ -36,6 +39,25 @@ export interface PanelProject {
   pullRequest?: string
   /** Адрес того же PR — по нему открывается страница в браузере. */
   pullRequestUrl?: string
+}
+
+/**
+ * Череда повторных запросов к API, которая идёт прямо сейчас.
+ *
+ * Живёт рядом с карточкой в ленте, а не только в ней: по этому полю строка
+ * состояния под лентой заменяет «Claude is thinking» на правду о происходящем
+ * (см. streamStatus в App.tsx), и по нему же следующая попытка находит уже
+ * заведённую карточку вместо того, чтобы класть в ленту вторую такую же.
+ */
+export interface ApiRetry {
+  /** Карточка этой череды в ленте. */
+  itemId: string
+  label: string
+  attempt: number
+  maxRetries: number
+  retryAt: number
+  /** Когда сорвался первый запрос — из него считается длительность всей череды. */
+  startedAt: number
 }
 
 export interface PanelState {
@@ -144,6 +166,12 @@ export interface PanelState {
   /** Идёт сжатие контекста прямо сейчас — статус-строка должна называть это, а не «работает». */
   compacting: boolean
   /**
+   * Запрос к модели сорвался, и CLI пережидает отказ перед повтором. Пока это
+   * поле стоит, в разговоре не происходит вообще ничего (см. RetryItem), и
+   * говорить «Claude is thinking» — неправда.
+   */
+  retry?: ApiRetry
+  /**
    * Локальные команды вроде /clear не зовут модель, но CLI всё равно закрывает
    * ход служебной репликой "(no content)" и итоговым result — в терминале их не
    * видно, а капсула с копированием и строчка длительности хода тут были бы
@@ -183,7 +211,7 @@ export interface PanelState {
    * не отдаёт вовсе, только словами в тексте ответа («Task #3 created…»), и
    * узнать его получится не раньше, чем придёт этот ответ.
    */
-  pendingTasks: Record<string, string>
+  pendingTasks: Record<string, { subject: string; activeForm?: string }>
 }
 
 export type PanelAction =
@@ -198,6 +226,12 @@ export type PanelAction =
    * ложится так же, но сиюминутного о разговоре не рассказывает (см. 'assistant').
    */
   | { kind: 'agent'; event: AgentEvent; replay?: boolean }
+  /**
+   * Перепись доиграна — дальше в этой вкладке только живой разговор. Всё, что
+   * осталось в переписи незаконченным, закрываем здесь: ждать его результата
+   * больше не от кого (см. applyReplayFinished).
+   */
+  | { kind: 'replayFinished' }
   | { kind: 'status'; status: AgentStatus }
   | { kind: 'error'; message: string }
   | { kind: 'init'; project: PanelProject }
@@ -290,7 +324,28 @@ const addError = (state: PanelState, message: string, limit = false): PanelState
 
   if (alreadyShown) return state
 
-  return push(state, (id) => ({ id, kind: 'error', message, ...(limit ? { limit: true } : {}) }))
+  /**
+   * Ту же беду CLI умеет сказать дважды: репликой агента в потоке и строкой в
+   * stderr, слово в слово, — так приходит, например, «API Error: 500 …». Первой
+   * успевает реплика, и в ленте оставалась пара одинаковых абзацев подряд:
+   * обычный ответ и красная плашка под ним.
+   *
+   * Из двух видов оставляем плашку: она называет случившееся ошибкой, её можно
+   * закрыть крестиком, и в ней же ждут ссылку вроде status.claude.com. Обратный
+   * порядок (ошибка пришла первой) разбирается там, где рождается реплика, —
+   * см. alreadyShownAsError.
+   */
+  const said = message.trim()
+  const withoutEcho = state.items.filter(
+    (item, index) => !(index >= turnStart && item.kind === 'text' && item.source.trim() === said),
+  )
+
+  return push({ ...state, items: withoutEcho }, (id) => ({
+    id,
+    kind: 'error',
+    message,
+    ...(limit ? { limit: true } : {}),
+  }))
 }
 
 export const reducePanel = (state: PanelState, action: PanelAction, now = Date.now()): PanelState => {
@@ -350,7 +405,11 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
           : state.items,
       }
 
-      return action.status === 'idle' ? finishCompacting(next) : next
+      // Ход кончился, а череда повторов всё ещё открыта — значит его оборвали
+      // прямо посреди паузы: своего события об этом у неё нет, закрывать некому
+      // (см. closeRetryFor), и без этого её карточка осталась бы ждать попытки,
+      // которой уже не будет.
+      return action.status === 'idle' ? closeRetry(finishCompacting(next), 'stopped', now) : next
     }
 
     case 'context':
@@ -384,7 +443,12 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
       return { ...state, stopRequestedAt: now }
 
     case 'processExited':
-      return applyProcessExited(finishCompacting(state), action.exitCode, now)
+      // Процесса не стало прямо посреди паузы перед повтором — повторять больше
+      // некому, и карточка обязана перестать ждать вместе с ним.
+      return applyProcessExited(closeRetry(finishCompacting(state), 'stopped', now), action.exitCode, now)
+
+    case 'replayFinished':
+      return applyReplayFinished(finishCompacting(state), now)
 
     case 'prompt': {
       const message: UserItem = {
@@ -542,9 +606,12 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
  * счётчик рядом с «Claude is thinking» так и стоял бы на нуле.
  */
 const tickDurations = (state: PanelState, now: number): PanelState => {
-  if (Object.keys(state.startedAt).length === 0 && !state.turnStartedAt) return state
+  if (Object.keys(state.startedAt).length === 0 && !state.turnStartedAt && !state.retry) return state
 
-  let changed = Boolean(state.turnStartedAt)
+  // Череда повторов сама по себе ничего в ленте не двигает, но обратный отсчёт
+  // в строке состояния считается от текущего времени — без нового состояния он
+  // замер бы на секунде, когда попытка сорвалась (см. streamStatus в App.tsx).
+  let changed = Boolean(state.turnStartedAt) || Boolean(state.retry)
 
   const background = state.background.map((task) => {
     const started = state.startedAt[task.id]
@@ -602,14 +669,156 @@ const finishCompacting = (state: PanelState): PanelState => {
 }
 
 /**
+ * Отказ сервера словами самого терминала: там эта же пауза подписана ровно так.
+ *
+ * Панель обязана звать происходящее тем же, чем зовёт CLI, — иначе про одну и ту
+ * же перегрузку в терминале и в панели рассказывают разное. Обрыв связи попадает
+ * в общее «API error» по той же причине: кода ответа у него нет (см. protocol),
+ * и терминал тоже не отличает его от прочих отказов.
+ */
+const retryLabel = (status: number | null | undefined): string => {
+  switch (status) {
+    case 429:
+      return 'Rate limited'
+    case 529:
+      return 'API overloaded'
+    case 401:
+    case 403:
+      return 'Authentication failed'
+    default:
+      return 'API error'
+  }
+}
+
+/**
+ * Насколько короткой должна быть удачная череда, чтобы не оставлять следа.
+ *
+ * Одна попытка через полсекунды — обычная жизнь сети: работа от неё не встала,
+ * человек её даже не заметил, и карточка о ней в ленте была бы шумом между
+ * настоящими шагами. Живьём такую всё равно видно — карточка появляется на
+ * первом же отказе, — а вот в истории разговора ей делать нечего. Всё, что
+ * заметно задержало ход, в ленте остаётся: иначе потом не понять, почему ход
+ * длился пять минут. Граница — примерно там, где пауза перестаёт быть заминкой
+ * и становится ожиданием.
+ */
+const RETRY_TRACE_MS = 5_000
+
+/**
+ * Очередная попытка: карточка одна на всю череду, меняются только цифры.
+ *
+ * Событие не говорит, чей запрос сорвался — главного разговора или субагента, —
+ * и знать этого неоткуда: у отказа нет ни task_id, ни родительского вызова.
+ * Показываем в общей ленте: перегрузка сервера всё равно касается всего
+ * разговора целиком, а не отдельной его ветки.
+ */
+const applyApiRetry = (state: PanelState, event: AgentSystemEvent, now: number): PanelState => {
+  const label = retryLabel(event.error_status)
+  const attempt = event.attempt ?? (state.retry ? state.retry.attempt + 1 : 1)
+  const maxRetries = event.max_retries ?? state.retry?.maxRetries ?? 0
+  const retryAt = now + Math.max(0, event.retry_delay_ms ?? 0)
+
+  if (state.retry) {
+    const retry = { ...state.retry, label, attempt, maxRetries, retryAt }
+
+    return {
+      ...state,
+      retry,
+      items: state.items.map((item) =>
+        item.kind === 'retry' && item.id === retry.itemId ? { ...item, label, attempt, maxRetries, retryAt } : item,
+      ),
+    }
+  }
+
+  const itemId = `retry-${state.seq}`
+  const card: RetryItem = { id: itemId, kind: 'retry', label, attempt, maxRetries, retryAt, duration: '', pending: true }
+
+  return {
+    ...state,
+    seq: state.seq + 1,
+    items: [...state.items, card],
+    retry: { itemId, label, attempt, maxRetries, retryAt, startedAt: now },
+  }
+}
+
+/**
+ * Череда повторов кончилась.
+ *
+ * Отдельного события об этом нет ни у удачного конца, ни у неудачного: CLI
+ * просто перестаёт повторять — либо потому, что запрос наконец прошёл, либо
+ * потому, что попытки исчерпаны, — поэтому закрывает череду тот, кто заметил
+ * первое событие после неё (см. closeRetryFor), и он же говорит, чем она
+ * кончилась.
+ */
+const closeRetry = (state: PanelState, outcome: RetryOutcome, now: number): PanelState => {
+  const retry = state.retry
+  if (!retry) return state
+
+  const elapsed = now - retry.startedAt
+  const forget = outcome === 'recovered' && elapsed < RETRY_TRACE_MS
+
+  return {
+    ...state,
+    retry: undefined,
+    items: forget
+      ? state.items.filter((item) => item.id !== retry.itemId)
+      : state.items.map((item) =>
+          item.kind === 'retry' && item.id === retry.itemId
+            ? { ...item, pending: false, outcome, duration: formatDuration(elapsed) }
+            : item,
+        ),
+  }
+}
+
+/**
+ * Чем череда повторов кончилась — по первому же событию, пришедшему после неё.
+ *
+ * Системные события её не рвут: сама попытка приходит ими же, и между попытками
+ * тем же каналом идут служебные пометки вроде смены статуса. Всё остальное
+ * означает, что запрос куда-то дошёл, — и остаётся только понять, ответила ли
+ * модель. Исчерпав попытки, CLI закрывает ход не её ответом, а своей заглушкой
+ * от `<synthetic>` с текстом ошибки — по ней и отличаем сдачу от удачи.
+ */
+const closeRetryFor = (state: PanelState, event: AgentEvent, now: number): PanelState => {
+  if (!state.retry) return state
+
+  switch (event.type) {
+    case 'system':
+      return state
+
+    // Отказ по лимиту подписки сам по себе ничего не решает: ход в этот момент
+    // может и продолжаться, и встать насовсем — об этом скажет то, что придёт
+    // следом (см. rate_limit_event).
+    case 'rate_limit_event':
+      return state
+
+    // Заглушку узнаём по служебному имени модели, а не по отсутствию настоящей:
+    // молчание о модели — всего лишь молчание, и объявлять по нему ход сдавшимся
+    // значит записывать в поломки обычные ответы.
+    case 'assistant':
+      return closeRetry(state, syntheticReply(event.message.model) ? 'failed' : 'recovered', now)
+
+    case 'result':
+      return closeRetry(state, event.is_error ? 'failed' : 'recovered', now)
+
+    default:
+      return closeRetry(state, 'recovered', now)
+  }
+}
+
+/**
  * Карточки, которые остались «выполняется», когда ждать их результата больше
  * нечего: вызовы инструментов и субагенты.
  *
  * Оставить их как есть — значит показывать работу, которой давно нет: у каждой
  * такой карточки свой счётчик, и он тикает и тикает, пока открыта вкладка.
- * Поводов остаться без результата ровно два — процесс разговора умер и ход
- * кончился раньше, чем вернулся вызов (обычно потому, что его прервали), —
- * поэтому пометка приходит текстом от того, кто закрывает.
+ * Поводов остаться без результата три — процесс разговора умер, ход кончился
+ * раньше, чем вернулся вызов (обычно потому, что его прервали), и перепись
+ * прошлого разговора кончилась на незакрытой работе, — поэтому пометка приходит
+ * текстом от того, кто закрывает.
+ *
+ * [notes.tone] — красным помечаем только то, что действительно не доработало:
+ * у переписи вызов вполне мог закончиться удачно, просто его результат в ней не
+ * сохранился, и красная строка приписывала бы разговору несуществующую ошибку.
  *
  * [keepBackgroundTasks] — про фоновых субагентов: они переживают ход по
  * определению, их итог приносит отдельное уведомление уже после него (см.
@@ -619,7 +828,7 @@ const finishCompacting = (state: PanelState): PanelState => {
 const closeUnfinished = (
   state: PanelState,
   now: number,
-  notes: { tool: string; task: string; meta: string },
+  notes: { tool: string; task: string; meta: string; tone: 'bad' | 'dim' },
   keepBackgroundTasks: boolean,
 ): { items: FeedItem[]; startedAt: Record<string, number> } => {
   const startedAt = { ...state.startedAt }
@@ -634,10 +843,10 @@ const closeUnfinished = (
     return {
       ...tool,
       pending: false,
-      isError: true,
+      isError: notes.tone === 'bad' || tool.isError,
       duration,
       meta: notes.meta,
-      detail: [...tool.detail, { text: notes.tool, tone: 'bad' as const }],
+      detail: [...tool.detail, { text: notes.tool, tone: notes.tone }],
     }
   }
 
@@ -655,7 +864,7 @@ const closeUnfinished = (
         pending: false,
         duration,
         outcome: 'stopped' as const,
-        log: appendAgentLog(item.log, [{ text: notes.task, tone: 'bad' as const }]),
+        log: appendAgentLog(item.log, [{ text: notes.task, tone: notes.tone }]),
       }
     }
 
@@ -666,6 +875,50 @@ const closeUnfinished = (
   })
 
   return { items, startedAt }
+}
+
+/**
+ * Перепись прошлого разговора доиграна: всё, что осталось в ней «выполняется»,
+ * закрываем — в этой вкладке не работает ничего, а результата этой работы ждать
+ * больше не от кого.
+ *
+ * Отвечать за такие карточки было бы кому только в том разговоре, где их
+ * запустили, — а его процесса давно нет. Особенно это про фоновых субагентов:
+ * их итог приносит отдельное системное событие, в переписке же хранятся одни
+ * реплики, так что для карточки он не приедет никогда. Вкладка, открытая из
+ * истории, показывала прошлых агентов работающими прямо сейчас: с бегущим
+ * счётчиком (он шёл от момента открытия вкладки, а не от их запуска), с чипом в
+ * шапке, с крестиком «прибить» — прибивать в этом процессе было нечего, — и со
+ * строкой «Waiting for N subagents» под лентой.
+ *
+ * Карточки при этом остаются: разговор их правда запускал, и это часть его
+ * истории. Меняется только пометка — вместо «выполняется» на них то, что о них
+ * действительно известно.
+ */
+const applyReplayFinished = (state: PanelState, now: number): PanelState => {
+  /**
+   * Пока перепись играла, человек мог уже написать в эту вкладку — длинный
+   * разговор проигрывается не мгновенно. Тогда всё «выполняется» в ленте
+   * принадлежит уже живому ходу, и закрывать его нельзя: панель объявила бы
+   * законченной работу, которая идёт прямо сейчас. Из двух бед выбираем
+   * меньшую и не трогаем ничего: карточка из переписи в этом редком случае
+   * останется висеть — ровно как раньше, — зато живой ход цел.
+   */
+  if (state.turnStartedAt !== undefined) return state
+
+  const { items, startedAt } = closeUnfinished(
+    state,
+    now,
+    {
+      tool: 'The saved conversation keeps no result for this call.',
+      task: 'How this one ended is not part of the saved conversation.',
+      meta: '· not in the transcript',
+      tone: 'dim',
+    },
+    false,
+  )
+
+  return { ...state, items, startedAt }
 }
 
 /**
@@ -681,6 +934,7 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
       tool: 'Claude Code stopped responding before this finished.',
       task: 'Session ended before this returned.',
       meta: '· interrupted',
+      tone: 'bad',
     },
     false,
   )
@@ -783,13 +1037,25 @@ const rateLimitMessage = (info: NonNullable<AgentRateLimitEvent['rate_limit_info
 const realModel = (model: string | undefined): string | undefined =>
   model && !model.startsWith('<') ? model : undefined
 
+/**
+ * Ответил не агент, а сам CLI: та же пометка в угловых скобках, что и в
+ * [realModel], но вопрос здесь обратный — не «на чём мы работаем», а «дошло ли
+ * вообще до модели». Неподписанное сообщение считаем обычным ответом: молчание
+ * о модели — не признак поломки.
+ */
+const syntheticReply = (model: string | undefined): boolean => model !== undefined && model.startsWith('<')
+
 const applyAgentEvent = (
-  state: PanelState,
+  incoming: PanelState,
   event: AgentEvent,
   now: number,
   /** Перепись прошлого разговора, а не живой ход — см. PanelAction. */
   replay = false,
 ): PanelState => {
+  // Первое же событие после череды повторов и есть весь рассказ о том, чем она
+  // кончилась: своего события у её конца нет (см. closeRetryFor).
+  const state = closeRetryFor(incoming, event, now)
+
   switch (event.type) {
     case 'system':
       return applySystem(state, event, now)
@@ -905,8 +1171,15 @@ const applyAgentEvent = (
       )
     }
 
-    case 'user':
-      return applyToolResults(state, blocksOf(event.message.content), now)
+    case 'user': {
+      // В живом разговоре реплика человека ложится в ленту сразу при отправке
+      // (см. 'prompt'), и то же самое из потока удвоило бы её. В переписи класть
+      // её было некому: там эта запись — единственный след того, что человек
+      // вообще что-то говорил, и без неё лента прошлого разговора состояла из
+      // одних ответов.
+      const withPrompt = replay ? addReplayedPrompt(state, event, now) : state
+      return applyToolResults(withPrompt, blocksOf(event.message.content), now)
+    }
 
     case 'result': {
       // Поднявшийся разговор CLI закрывает «нулевым» ходом: сразу за system/init
@@ -978,11 +1251,13 @@ const applyAgentEvent = (
               tool: 'Stopped before it finished.',
               task: 'Stopped before it returned.',
               meta: '· interrupted',
+              tone: 'bad',
             }
           : {
               tool: 'The turn ended before this finished.',
               task: 'The turn ended before this returned.',
               meta: '· unfinished',
+              tone: 'bad',
             },
         true,
       )
@@ -1043,6 +1318,10 @@ const applySystem = (
     // а не про работу агента (см. case 'result').
     starting: event.subtype === 'init' ? true : state.starting,
   }
+
+  // Запрос сорвался и пойдёт заново после паузы — единственное, что вообще
+  // происходит в разговоре, пока эта пауза идёт (см. applyApiRetry).
+  if (event.subtype === 'api_retry') return applyApiRetry(base, event, now)
 
   const isMainStreamEvent = event.task_id === undefined
 
@@ -1379,8 +1658,8 @@ const applyAssistant = (state: PanelState, blocks: ContentBlock[], now: number):
       reserved = undefined
 
       next = id
-        ? { ...next, items: [...next.items, { id, kind: 'text', paragraphs }] }
-        : push(next, (itemId) => ({ id: itemId, kind: 'text', paragraphs }))
+        ? { ...next, items: [...next.items, { id, kind: 'text', paragraphs, source: block.text }] }
+        : push(next, (itemId) => ({ id: itemId, kind: 'text', paragraphs, source: block.text }))
       continue
     }
 
@@ -1459,7 +1738,11 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
   if (block.name === 'TaskCreate') {
     const subject = typeof input.subject === 'string' ? input.subject : ''
     if (!subject) return state
-    return { ...state, pendingTasks: { ...state.pendingTasks, [block.id]: subject } }
+    const activeForm = typeof input.activeForm === 'string' ? input.activeForm : ''
+    return {
+      ...state,
+      pendingTasks: { ...state.pendingTasks, [block.id]: { subject, activeForm: activeForm || undefined } },
+    }
   }
 
   if (block.name === 'TaskUpdate') {
@@ -1478,9 +1761,15 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
     }
 
     const subject = typeof input.subject === 'string' ? input.subject : existing.text
+    const activeForm = typeof input.activeForm === 'string' ? input.activeForm : ''
     const tasks = {
       ...state.tasks,
-      [taskId]: { ...existing, text: subject, state: taskState(input.status, existing.state) },
+      [taskId]: {
+        ...existing,
+        text: subject,
+        state: taskState(input.status, existing.state),
+        activeForm: activeForm || existing.activeForm,
+      },
     }
     return push({ ...state, tasks }, (id) => ({ id, kind: 'todo', todos: orderedTasks(tasks) }))
   }
@@ -1590,6 +1879,73 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
  * Приняв это подтверждение за результат, карточка закрывалась бы мгновенно —
  * агент ещё и начать не успел, а чип в шапке уже гас как отработавший.
  */
+/**
+ * Служебное, что CLI кладёт в реплику человека его же словами: напоминание
+ * самому себе, преамбула про локальные команды и их вывод. В ленте прошлого
+ * разговора это выглядело бы сказанным человеком.
+ */
+const SERVICE_BLOCK = /<(system-reminder|local-command-caveat|local-command-stdout|command-message)>[\s\S]*?<\/\1>/g
+
+/** Слэш-команда лежит в переписке разметкой, а не строкой «/deploy 0.7.11». */
+const COMMAND_NAME = /<command-name>([\s\S]*?)<\/command-name>/
+const COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/
+
+/** Отметка CLI об остановке — не реплика: про неё говорит сам оборванный ход. */
+const INTERRUPTED = '[Request interrupted by user]'
+
+/**
+ * Что из записи прошлого разговора было настоящей репликой человека. Пусто —
+ * значит показывать нечего: вся запись служебная.
+ */
+const replayedPromptText = (blocks: ContentBlock[]): string => {
+  const text = blocks
+    .filter((block): block is TextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n')
+    .trim()
+
+  const name = text.match(COMMAND_NAME)?.[1]?.trim()
+  if (name) {
+    const args = text.match(COMMAND_ARGS)?.[1]?.trim()
+    return args ? `${name} ${args}` : name
+  }
+
+  const spoken = text.replace(SERVICE_BLOCK, '').trim()
+  return spoken === INTERRUPTED ? '' : spoken
+}
+
+/**
+ * Реплика человека из переписи прошлого разговора.
+ *
+ * Живой разговор кладёт её в ленту сам, когда человек нажимает Send, — в
+ * переписи же это единственный её след, и без него открытый из истории разговор
+ * состоял из одних ответов, как будто их никто ни о чём не просил.
+ */
+const addReplayedPrompt = (
+  state: PanelState,
+  event: Extract<AgentEvent, { type: 'user' }>,
+  now: number,
+): PanelState => {
+  // Запись самого CLI, а не человека, и реплика вложенного потока: субагенту
+  // пишет ход, а не человек, и его переписка к ленте отношения не имеет.
+  if (event.isMeta || event.parent_tool_use_id) return state
+
+  const text = replayedPromptText(blocksOf(event.message.content))
+  if (!text) return state
+
+  // Время берём то, когда это было сказано: у переписи «сейчас» — это момент,
+  // когда открыли вкладку, и весь прошлый разговор выглядел бы сегодняшним.
+  const said = Date.parse(event.timestamp ?? '')
+
+  return push(state, (id) => ({
+    id,
+    kind: 'user',
+    time: formatClock(Number.isNaN(said) ? now : said),
+    tokens: [{ kind: 'text', value: text }],
+    quotes: [],
+  }))
+}
+
 const ASYNC_AGENT_LAUNCHED = /^Async agent launched successfully/
 
 const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number): PanelState => {
@@ -1690,14 +2046,19 @@ const applyTaskCreated = (state: PanelState, results: ToolResultBlock[]): PanelS
   const tasks = { ...state.tasks }
 
   for (const toolUseId of pendingIds) {
-    const subject = pendingTasks[toolUseId] ?? ''
+    const created = pendingTasks[toolUseId]
     delete pendingTasks[toolUseId]
 
     const result = results.find((r) => r.tool_use_id === toolUseId)
     const match = TASK_CREATED.exec(resultToText(result?.content).trim())
     if (!match) continue
 
-    tasks[match[1]] = { id: `task-${match[1]}`, text: subject, state: 'todo' }
+    tasks[match[1]] = {
+      id: `task-${match[1]}`,
+      text: created?.subject ?? '',
+      state: 'todo',
+      activeForm: created?.activeForm,
+    }
   }
 
   return push({ ...state, tasks, pendingTasks }, (id) => ({ id, kind: 'todo', todos: orderedTasks(tasks) }))
@@ -1830,6 +2191,7 @@ const readTodos = (input: Record<string, unknown>): TodoEntry[] => {
       id: `todo-${index}`,
       text: typeof item.content === 'string' ? item.content : '',
       state: status === 'completed' ? 'done' : status === 'in_progress' ? 'active' : 'todo',
+      activeForm: (typeof item.activeForm === 'string' ? item.activeForm : '') || undefined,
     }
   })
 }

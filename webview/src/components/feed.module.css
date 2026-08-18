@@ -861,6 +861,11 @@
   -webkit-background-clip: text;
   color: transparent;
   white-space: nowrap;
+  /* Строка называет текущее дело словами самой модели, и длина у него любая, а
+     панель бывает узкой. Многоточие в конце честнее строки, уехавшей за край. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   animation: acc-shimmer 2.6s linear infinite alternate;
 }
 
@@ -1154,6 +1159,49 @@
   flex-wrap: wrap;
 }
 
+/* Пауза перед повторным запросом — та же строка, что и у сжатия контекста (см.
+   .compact), но на предупреждающем фоне: сжатие идёт своим чередом, а здесь
+   разговор стоит из-за чужой поломки, и это должно быть видно, не читая. */
+.retry {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin: 12px 0;
+  padding: 6px 9px;
+  border: 1px solid var(--acc-warn-line);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-warn-soft);
+}
+
+.retryLabel {
+  font: 600 9px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-warn-light);
+}
+
+/* Пока попытки идут — метка дышит тем же пульсом, что и CONTEXT во время сжатия. */
+.retryLabel.pending {
+  animation: acc-pulse 1.6s infinite;
+}
+
+.retryText {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
+  color: var(--acc-fg-dim);
+}
+
+.retryCount {
+  flex: none;
+  font: 9.5px/1 var(--acc-mono);
+  color: var(--acc-fg-dim);
+  /* Цифры одной ширины: иначе обратный отсчёт дёргает строку на каждой секунде. */
+  font-variant-numeric: tabular-nums;
+}
+
 .crash {
   display: flex;
   align-items: baseline;
@@ -1204,7 +1252,23 @@
   -webkit-background-clip: text;
   color: transparent;
   white-space: nowrap;
+  /* Строка называет текущее дело словами самой модели, и длина у него любая, а
+     панель бывает узкой. Многоточие в конце честнее строки, уехавшей за край. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   animation: acc-shimmer 2.6s linear infinite alternate;
+}
+
+/* Работа стоит и ждёт чужой сервер: перелив по буквам означает идущее дело, и
+   здесь он врал бы. Строка вместо этого просто окрашена предупреждением — тем
+   же, что и карточка паузы над ней (.retry). */
+.streamingText.streamingStalled {
+  background: none;
+  background-clip: border-box;
+  -webkit-background-clip: border-box;
+  color: var(--acc-warn-light);
+  animation: none;
 }
 
 /* Ширина как у остальных карточек ленты: боковые отступы даёт сама строка

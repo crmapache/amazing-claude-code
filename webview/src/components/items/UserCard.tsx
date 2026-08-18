@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { linkify } from '../../feed/markdown'
+import { LinkedText } from './LinkedText'
 import { chipLabel, chipTitle, pasteBlockPreview, pasteLineCount } from '../../feed/reference'
 import type { Chip, ChipKind, UserItem } from '../../feed/types'
 import s from '../feed.module.css'
@@ -75,25 +75,7 @@ const TextToken = ({
   onOpenLink: (url: string) => void
 }) => (
   <span className={echo ? s.userEcho : undefined}>
-    {linkify(value).map((part, partIndex) =>
-      part.href ? (
-        <a
-          key={partIndex}
-          href={part.href}
-          className={s.link}
-          // Как и в ответе агента: наружу, в системный браузер, иначе
-          // сам вебвью панели уехал бы на этот адрес.
-          onClick={(event) => {
-            event.preventDefault()
-            onOpenLink(part.href ?? '')
-          }}
-        >
-          {part.text}
-        </a>
-      ) : (
-        <span key={partIndex}>{part.text}</span>
-      ),
-    )}
+    <LinkedText text={value} onOpenLink={onOpenLink} />
   </span>
 )
 

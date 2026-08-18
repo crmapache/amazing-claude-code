@@ -40,6 +40,7 @@ import { StreamSwitcher, type AgentStatus, type AgentTab } from './components/St
 import { TaskListPanel } from './components/TaskListPanel'
 import composer from './components/composer.module.css'
 import s from './components/shell.module.css'
+import { activityFor } from './feed/activity'
 import { bashCommand, shellText, type ShellRun } from './feed/bash'
 import { contextOf, initialPanelState, reducePanel, type PanelState } from './feed/build'
 import { deferFollowUpForCompact } from './feed/compact'
@@ -623,7 +624,15 @@ export const App = () => {
         // вызова инструмента (turnStartedAt тогда уже есть, а startedAt ещё
         // пуст) — иначе «Claude is thinking» так и стояло бы с нулевым
         // счётчиком, пока не начнётся первый вызов.
-        if (Object.keys(panel.startedAt).length > 0 || panel.stopRequestedAt || panel.turnStartedAt) {
+        // panel.retry — обратный отсчёт до следующей попытки в строке
+        // состояния: он тикает и тогда, когда никакой работы в панели нет
+        // вовсе (ход мог кончиться, а повтора ждёт запрос фонового субагента).
+        if (
+          Object.keys(panel.startedAt).length > 0 ||
+          panel.stopRequestedAt ||
+          panel.turnStartedAt ||
+          panel.retry
+        ) {
           dispatchPanel({ session: sessionId, action: { kind: 'tick' } })
         }
       }
@@ -752,6 +761,10 @@ export const App = () => {
                 ),
               )
             }
+            break
+
+          case 'replayFinished':
+            dispatchPanel({ session: message.sessionId, action: { kind: 'replayFinished' } })
             break
 
           case 'processExited':
@@ -1941,6 +1954,7 @@ export const App = () => {
               streamingThinking={panel.streamingThinking}
               streaming={running}
               streamStatus={streamStatus(panel, cards)}
+              statusStalled={panel.retry !== undefined}
               cards={cards}
               scrollRef={attachFeed}
               onScroll={clearSelection}
@@ -2197,6 +2211,23 @@ const ownStream = (item: FeedItem): boolean => !('taskId' in item) || item.taskI
  * в feed/build.ts).
  */
 const streamStatus = (panel: PanelState, cards: CardState): string => {
+  /**
+   * Запрос к модели сорвался и ждёт повтора: ход в этот момент не идёт вовсе —
+   * ни текста, ни вызовов, ни вопроса, — и «Claude is thinking» с бегущим
+   * счётчиком было бы прямой неправдой. Ровно из-за неё панель и выглядела
+   * зависшей: единственное, что происходило, нигде не показывалось.
+   *
+   * Раньше сжатия: сорваться может и запрос, которым контекст сжимают, и тогда
+   * рассказывать надо про отказ, а не про сжатие, которое из-за него стоит.
+   */
+  if (panel.retry) {
+    // Про попытки и обратный отсчёт рассказывает карточка в ленте прямо над этой
+    // строкой (см. RetryRow) — здесь только то, чего в ней нет: сколько всё это
+    // уже тянется. Привычный вид строки при этом сохраняется — «что происходит ·
+    // сколько идёт», — меняется ровно то, что было неправдой.
+    return `${panel.retry.label} · waiting ${formatDuration(Date.now() - panel.retry.startedAt)}`
+  }
+
   // Про сжатие говорит его собственная карточка в ленте (CONTEXT с растущим
   // процентом) — второй подписи о том же прямо под ней быть не должно.
   if (panel.compacting) return ''
@@ -2217,9 +2248,17 @@ const streamStatus = (panel: PanelState, cards: CardState): string => {
     return pending === 1 ? 'Waiting for subagent' : `Waiting for ${pending} subagents`
   }
 
-  const last = panel.items.at(-1)
-  const working = last?.kind === 'toolGroup' && last.pending && last.tools.length > 0
-  const label = working ? 'Claude is working' : 'Claude is thinking'
+  /**
+   * Чем ход занят прямо сейчас — «Reading build.ts», «Searching for retryLabel»
+   * (см. activityFor). Раньше здесь на всю работу стояло одно «Claude is
+   * working», хотя поток называет каждое действие поимённо. Строка при этом
+   * остаётся одной и той же строкой — сменившееся дело заменяет прежнее, а не
+   * дописывается следом: в ленте о нём уже есть карточка.
+   *
+   * Пусто — значит ничего конкретного не происходит: ход думает, и назвать это
+   * можно только так.
+   */
+  const label = activityFor(panel.items) || 'Claude is thinking'
   if (!panel.turnStartedAt) return label
 
   // Решение только что приняли: awaitingDecision уже false, но эффект,

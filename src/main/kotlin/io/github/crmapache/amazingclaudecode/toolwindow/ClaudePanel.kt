@@ -19,7 +19,6 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
-import com.intellij.ui.jcef.JBCefApp
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.ui.JBUI
 import io.github.crmapache.amazingclaudecode.AccBundle
@@ -167,7 +166,7 @@ internal class ClaudePanel(
     private var pendingMcpRefreshUntil: Long = 0L
 
     init {
-        component = if (JBCefApp.isSupported()) {
+        component = if (WebviewHost.isSupported()) {
             buildWebview(parentDisposable)
         } else {
             buildUnsupportedNotice()
@@ -892,6 +891,13 @@ internal class ClaudePanel(
             for (line in ClaudeHistory.replay(project.basePath, conversationId)) {
                 forwardAgentEvent(sessionId, line, replay = true)
             }
+
+            // Перепись кончилась — панель закрывает работу, которая осталась в ней
+            // незаконченной. В переписке лежат только реплики, а итог фонового
+            // субагента приезжает отдельным системным событием, так что для его
+            // карточки он не пришёл бы никогда: открытая из истории вкладка
+            // показывала прошлых агентов работающими прямо сейчас.
+            sendReplayFinished(sessionId)
 
             // Занятое окно спрашиваем у самого разговора — и ради этого поднимаем
             // его, не дожидаясь первого сообщения. Перепись этой цифры не знает
@@ -1657,6 +1663,16 @@ internal class ClaudePanel(
                         }
                     }
                 }
+            }.toString(),
+        )
+    }
+
+    /** Перепись прошлого разговора доиграна до конца — см. resumeConversation. */
+    private fun sendReplayFinished(sessionId: String) {
+        webview?.send(
+            buildJsonObject {
+                put("type", "replayFinished")
+                put("sessionId", sessionId)
             }.toString(),
         )
     }

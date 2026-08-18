@@ -6,7 +6,7 @@ import type { CardState } from '../hooks/useCardState'
 import s from './feed.module.css'
 import { BashCard } from './items/BashCard'
 import { PlanCard } from './items/PlanCard'
-import { CheckpointRow, CompactRow, CrashRow, ErrorRow, MetaRow, ThinkRow } from './items/Rows'
+import { CheckpointRow, CompactRow, CrashRow, ErrorRow, MetaRow, RetryRow, ThinkRow } from './items/Rows'
 import { TextCard } from './items/TextCard'
 import { ToolGroupCard } from './items/ToolGroupCard'
 import { UserCard } from './items/UserCard'
@@ -33,6 +33,12 @@ interface FeedProps {
   streamingThinking: string
   streaming: boolean
   streamStatus: string
+  /**
+   * Строка состояния говорит не про работу, а про ожидание чужой поломки —
+   * сорванный запрос к API, который ждёт повтора. Перелив по буквам означает
+   * идущую работу, а её в этот момент нет вовсе (см. streamStatus в App.tsx).
+   */
+  statusStalled: boolean
   cards: CardState
   onPlanDecision: (itemId: string, decision: 'approve' | 'keepPlanning') => void
   /** Ошибку прочитали и убрали руками — по её номеру в ленте. */
@@ -50,6 +56,7 @@ export const Feed = ({
   streamingThinking,
   streaming,
   streamStatus,
+  statusStalled,
   cards,
   onPlanDecision,
   onDismissError,
@@ -99,7 +106,14 @@ export const Feed = ({
       ? [{ id: 'streaming-think', kind: 'think' as const, text: streamingThinking, pending: true }]
       : []),
     ...(pacedText
-      ? [{ id: streamingId ?? 'streaming', kind: 'text' as const, paragraphs: parseParagraphs(pacedText) }]
+      ? [
+          {
+            id: streamingId ?? 'streaming',
+            kind: 'text' as const,
+            paragraphs: parseParagraphs(pacedText),
+            source: pacedText,
+          },
+        ]
       : []),
   ]
 
@@ -233,7 +247,7 @@ export const Feed = ({
           <div className={s.streaming}>
             {/* Переливается сам текст: белая плашка поверх него на тёмном фоне
                 выглядит грязно, а градиент по буквам читается как дыхание строки. */}
-            <span className={s.streamingText}>{streamStatus}</span>
+            <span className={`${s.streamingText} ${statusStalled ? s.streamingStalled : ''}`}>{streamStatus}</span>
           </div>
         ) : null}
 
@@ -331,6 +345,9 @@ const ItemView = memo(({
     case 'compact':
       return <CompactRow item={item} />
 
+    case 'retry':
+      return <RetryRow item={item} />
+
     case 'meta':
       return <MetaRow item={item} />
 
@@ -338,7 +355,7 @@ const ItemView = memo(({
       return <CrashRow item={item} />
 
     case 'error':
-      return <ErrorRow item={item} onDismiss={() => onDismissError(item.id)} />
+      return <ErrorRow item={item} onDismiss={() => onDismissError(item.id)} onOpenLink={onOpenLink} />
   }
 })
 

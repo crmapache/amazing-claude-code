@@ -175,4 +175,86 @@ export const scenariosGrouping: Scenario[] = [
       turnResult(3400),
     ]),
   ]),
+
+  /**
+   * Смотреть надо на строку под лентой: она называет то, что происходит прямо
+   * сейчас, и на каждом шаге заменяется целиком — «Running the type checker» →
+   * «Reading build.ts» → «Reading 3 files» → пункт списка задач в паузе между
+   * вызовами.
+   */
+  scenario('activity-line', 'Строка про текущее дело', 'grouping', [
+    checkpoint('Пользователь просит починить сборку', [user('Разберись, почему не собирается вебвью'), wait(400)]),
+    checkpoint('Список задач: первый пункт в работе', [
+      toolUse(
+        'TodoWrite',
+        {
+          todos: [
+            { content: 'Найти ошибку типов', activeForm: 'Looking for the type error', status: 'in_progress' },
+            { content: 'Починить её', activeForm: 'Fixing the type error', status: 'pending' },
+          ],
+        },
+        'g6-todo',
+      ),
+      wait(700),
+    ]),
+    checkpoint('Bash: своё описание вместо команды', [
+      toolUse('Bash', { command: 'pnpm tsc --noEmit', description: 'Run the type checker' }, 'g6-1'),
+      wait(1600),
+    ]),
+    checkpoint('→ результат', [
+      toolResult(
+        'g6-1',
+        "src/feed/build.ts(212,3): error TS2322: Type 'string' is not assignable to type 'number'.",
+        true,
+      ),
+      wait(600),
+    ]),
+    checkpoint('Read: один файл', [
+      toolUse('Read', { file_path: '/Users/you/demo-project/src/feed/build.ts' }, 'g6-2'),
+      wait(900),
+    ]),
+    checkpoint('→ результат', [toolResult('g6-2', '210\t  const seq: number = state.seq\n'), wait(700)]),
+    checkpoint('Три чтения разом — пачка называется числом', [
+      toolUse('Read', { file_path: '/Users/you/demo-project/src/feed/types.ts' }, 'g6-3'),
+      toolUse('Read', { file_path: '/Users/you/demo-project/src/feed/tools.ts' }, 'g6-4'),
+      toolUse('Read', { file_path: '/Users/you/demo-project/src/App.tsx' }, 'g6-5'),
+      wait(1500),
+    ]),
+    checkpoint('→ результаты', [
+      toolResult('g6-3', '1\texport interface PanelState {\n'),
+      toolResult('g6-4', '1\texport const chipFor = (name: string) => {\n'),
+      toolResult('g6-5', '1\timport { Feed } from "./components/Feed"\n'),
+      wait(900),
+    ]),
+    checkpoint('Список задач: второй пункт в работе', [
+      toolUse(
+        'TodoWrite',
+        {
+          todos: [
+            { content: 'Найти ошибку типов', activeForm: 'Looking for the type error', status: 'completed' },
+            { content: 'Починить её', activeForm: 'Fixing the type error', status: 'in_progress' },
+          ],
+        },
+        'g6-todo-2',
+      ),
+      wait(1200),
+    ]),
+    checkpoint('Edit: правка', [
+      toolUse(
+        'Edit',
+        {
+          file_path: '/Users/you/demo-project/src/feed/build.ts',
+          old_string: 'const seq: number = state.seq',
+          new_string: 'const seq: number = Number(state.seq)',
+        },
+        'g6-6',
+      ),
+      wait(800),
+    ]),
+    checkpoint('→ результат', [toolResult('g6-6', 'The file has been updated.'), wait(500)]),
+    checkpoint('Готовый ответ', [
+      ...textReply('Ошибка была в build.ts: в seq клали строку. Поправил, сборка проходит.'),
+      turnResult(9800),
+    ]),
+  ]),
 ]

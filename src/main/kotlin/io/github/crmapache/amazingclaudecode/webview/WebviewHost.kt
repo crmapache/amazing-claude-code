@@ -9,9 +9,11 @@ import com.intellij.openapi.wm.IdeGlassPaneUtil
 import com.intellij.util.Alarm
 import java.awt.Cursor
 import java.net.URI
+import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
+import com.intellij.ui.jcef.JBCefProxySettings
 import javax.swing.JComponent
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -107,9 +109,7 @@ internal class WebviewHost(
     private val onMessage: (String) -> Unit,
 ) : Disposable {
 
-    private val browser = JBCefBrowser.createBuilder()
-        .setOffScreenRendering(false)
-        .build()
+    private val browser = createBrowser()
 
     private val fromWebview = JBCefJSQuery.create(browser as JBCefBrowserBase)
 
@@ -459,5 +459,53 @@ internal class WebviewHost(
             return devUrl
         }
         return "${WebviewResources.ORIGIN}/index.html"
+    }
+
+    internal companion object {
+
+        /**
+         * Умеет ли эта IDE показывать встроенный браузер, в котором живёт панель.
+         *
+         * Спрашиваем через себя, а не у JCEF напрямую: любое касание браузера — и
+         * проверка в том числе — должно идти после чтения настроек прокси, см.
+         * loadProxySettings.
+         */
+        fun isSupported(): Boolean {
+            loadProxySettings()
+            return JBCefApp.isSupported()
+        }
+
+        private fun createBrowser(): JBCefBrowser {
+            loadProxySettings()
+            return JBCefBrowser.createBuilder()
+                .setOffScreenRendering(false)
+                .build()
+        }
+
+        /**
+         * Настройки прокси, прочитанные заранее и обычным путём.
+         *
+         * Поднимая встроенный браузер, JCEF читает прокси IDE в статическом
+         * инициализаторе своего класса, а платформа запрещает создавать в таких
+         * инициализаторах сервисы — и на первое же чтение отвечает ошибкой в «IDE
+         * Internal Errors», с нашим плагином в заголовке, хотя код там не наш.
+         *
+         * Достаётся она тому, кто первым в процессе поднимает браузер: запрещено
+         * именно создание сервиса, а живёт он от первого обращения до закрытия
+         * IDE, и следующим достаётся уже готовый. Поэтому ошибка и приходила
+         * через раз — панель, восстановленная из прошлой сессии, открывается на
+         * самом старте и обгоняет тут саму IDE.
+         *
+         * Читаем те же настройки тем же способом, но из обычного кода: к моменту
+         * инициализатора создавать ему уже нечего, и жаловаться не на что.
+         */
+        private fun loadProxySettings() {
+            // Класс лежит в том же bundled-плагине, что и сам браузер, так что
+            // просто так не пропадёт. Но панель важнее прогрева: если он однажды
+            // не пройдёт, вернётся ровно та безобидная запись в лог, которую он и
+            // убирает, а браузер поднимется как раньше.
+            runCatching { JBCefProxySettings.getInstance() }
+                .onFailure { thisLogger().warn("Could not read the IDE proxy settings up front", it) }
+        }
     }
 }

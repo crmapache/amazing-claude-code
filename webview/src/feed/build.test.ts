@@ -3,7 +3,17 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent } from '../protocol'
 import { contextOf, contextUsage, initialPanelState, reducePanel, type PanelState } from './build'
-import type { CompactItem, ErrorItem, TaskItem, TextItem, ThinkItem, TodoItem, ToolGroupItem } from './types'
+import type {
+  CompactItem,
+  ErrorItem,
+  RetryItem,
+  TaskItem,
+  TextItem,
+  ThinkItem,
+  TodoItem,
+  ToolGroupItem,
+  UserItem,
+} from './types'
 
 /**
  * Поток записан живым прогоном агента, а не придуман: только так видно и порядок
@@ -182,6 +192,30 @@ describe('ошибки в ленте', () => {
 
     const dismissed = reducePanel(state, { kind: 'dismissError', id: error!.id })
     expect(errorTexts(dismissed)).toEqual([])
+  })
+
+  /**
+   * Сорвавшийся запрос CLI говорит дважды: сперва репликой агента в потоке,
+   * следом той же строкой в stderr. В ленте от этого стояли два одинаковых
+   * абзаца подряд — обычный ответ и красная плашка под ним.
+   */
+  it('ошибка вытесняет свой же дубль, пришедший ответом агента', () => {
+    const apiError = 'API Error: 500 Internal server error. Check https://status.claude.com.'
+    let state = reducePanel(initialPanelState, { kind: 'agent', event: textEvent(apiError) })
+    expect(state.items.filter((item) => item.kind === 'text')).toHaveLength(1)
+
+    state = reducePanel(state, { kind: 'error', message: apiError })
+
+    expect(state.items.filter((item) => item.kind === 'text')).toHaveLength(0)
+    expect(errorTexts(state)).toEqual([apiError])
+  })
+
+  it('обычный ответ рядом с ошибкой остаётся на месте', () => {
+    let state = reducePanel(initialPanelState, { kind: 'agent', event: textEvent('Правлю сборку.') })
+    state = reducePanel(state, { kind: 'error', message: 'claude exited with code 1' })
+
+    expect(state.items.filter((item) => item.kind === 'text')).toHaveLength(1)
+    expect(errorTexts(state)).toEqual(['claude exited with code 1'])
   })
 })
 
@@ -1373,6 +1407,27 @@ describe('фоновые команды в канале задач', () => {
   })
 })
 
+describe('список задач через TodoWrite', () => {
+  // activeForm — тот же пункт, названный происходящим сейчас делом. Строка
+  // состояния под лентой берёт его, пока пункт в работе (см. feed/activity.ts).
+  it('запоминает activeForm пункта рядом с ним самим', () => {
+    const state = play([
+      toolUseEvent('t1', 'TodoWrite', {
+        todos: [
+          { content: 'Собрать проект', activeForm: 'Building the project', status: 'in_progress' },
+          { content: 'Прогнать тесты', status: 'pending' },
+        ],
+      }),
+    ])
+
+    const todo = [...state.items].reverse().find((item): item is TodoItem => item.kind === 'todo')
+    expect(todo?.todos).toEqual([
+      { id: 'todo-0', text: 'Собрать проект', state: 'active', activeForm: 'Building the project' },
+      { id: 'todo-1', text: 'Прогнать тесты', state: 'todo' },
+    ])
+  })
+})
+
 describe('список задач через TaskCreate/TaskUpdate', () => {
   const taskCreatedResult = (id: string, n: number, subject: string): AgentEvent =>
     toolResultEvent(id, `Task #${n} created successfully: ${subject}`)
@@ -1386,6 +1441,40 @@ describe('список задач через TaskCreate/TaskUpdate', () => {
 
     const after = play([taskCreatedResult('t1', 1, 'Собрать проект')], mid)
     expect(latestTodo(after)?.todos).toEqual([{ id: 'task-1', text: 'Собрать проект', state: 'todo' }])
+  })
+
+  /**
+   * activeForm — тот же пункт, названный происходящим сейчас делом; из него
+   * строится строка состояния под лентой, пока пункт в работе (см. activityFor
+   * в feed/activity.ts). Приходит он только при создании задачи, а нужен
+   * позже — когда до неё дойдёт очередь, и правка статуса его не несёт.
+   */
+  it('activeForm задачи переживает правки статуса', () => {
+    let state = play([
+      toolUseEvent('t1', 'TaskCreate', { subject: 'Собрать проект', activeForm: 'Building the project' }),
+    ])
+    state = play([taskCreatedResult('t1', 1, 'Собрать проект')], state)
+    expect(latestTodo(state)?.todos).toEqual([
+      { id: 'task-1', text: 'Собрать проект', state: 'todo', activeForm: 'Building the project' },
+    ])
+
+    state = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'in_progress' })], state)
+    expect(latestTodo(state)?.todos).toEqual([
+      { id: 'task-1', text: 'Собрать проект', state: 'active', activeForm: 'Building the project' },
+    ])
+  })
+
+  it('TaskUpdate со своим activeForm перебивает прежний', () => {
+    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Собрать', activeForm: 'Building' })])
+    state = play([taskCreatedResult('t1', 1, 'Собрать')], state)
+
+    state = play(
+      [toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'in_progress', activeForm: 'Rebuilding' })],
+      state,
+    )
+    expect(latestTodo(state)?.todos).toEqual([
+      { id: 'task-1', text: 'Собрать', state: 'active', activeForm: 'Rebuilding' },
+    ])
   })
 
   it('TaskUpdate двигает статус той же задачи по её номеру', () => {
@@ -1984,5 +2073,283 @@ describe('пауза счётчика на решении человека (paus
 
     expect(state.pausedMs).toBe(0)
     expect(state.waitStartedAt).toBeUndefined()
+  })
+})
+
+/**
+ * Вкладка, открытая из истории, — это перепись прошлого разговора: живого хода в
+ * ней нет ни одного, и работать в ней нечему. Всё, что осталось в переписи
+ * незаконченным, панель закрывает сама — см. applyReplayFinished.
+ */
+describe('конец переписи прошлого разговора', () => {
+  const tasks = (state: PanelState) => state.items.filter((item): item is TaskItem => item.kind === 'task')
+
+  const replay = (events: AgentEvent[], state = initialPanelState): PanelState =>
+    events.reduce((acc, event) => reducePanel(acc, { kind: 'agent', event, replay: true }, 1_700_000_000_000), state)
+
+  it('фоновый агент из переписи перестаёт выглядеть работающим', () => {
+    // Итог фонового агента приезжает системным событием, а в переписке лежат
+    // только реплики — значит для этой карточки он не придёт никогда.
+    let state = replay([
+      toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Review plan: UI consistency' }),
+      toolResultEvent('toolu-1', 'Async agent launched successfully. Agent ID: a90aa'),
+    ])
+
+    expect(tasks(state)[0]?.pending).toBe(true)
+
+    state = reducePanel(state, { kind: 'replayFinished' }, 1_700_000_060_000)
+
+    const task = tasks(state)[0]
+    expect(task?.pending).toBe(false)
+    expect(task?.outcome).toBe('stopped')
+    expect(task?.log.at(-1)?.text).toBe('How this one ended is not part of the saved conversation.')
+    // Счётчик карточки больше не тикает: без этого он шёл бы от момента, когда
+    // вкладку открыли, и рос, пока она открыта.
+    expect(state.startedAt).toEqual({})
+  })
+
+  it('незакрытый вызов инструмента закрывается, но ошибкой не считается', () => {
+    let state = replay([toolUseEvent('toolu-1', 'Bash', { command: 'pnpm test' })])
+    state = reducePanel(state, { kind: 'replayFinished' }, 1_700_000_060_000)
+
+    const group = state.items.find((item): item is ToolGroupItem => item.kind === 'toolGroup')
+    const tool = group?.tools[0]
+    expect(group?.pending).toBe(false)
+    expect(tool?.pending).toBe(false)
+    expect(tool?.isError).toBe(false)
+    expect(tool?.detail.at(-1)).toEqual({
+      text: 'The saved conversation keeps no result for this call.',
+      tone: 'dim',
+    })
+  })
+
+  it('живой ход, начатый пока перепись играла, не закрывается вместе с ней', () => {
+    // Длинный разговор проигрывается не мгновенно, и человек успевает написать
+    // раньше, чем перепись доиграет. Всё «выполняется» в этот момент — уже его
+    // ход, и объявить его законченным было бы хуже висящей карточки.
+    let state = replay([toolUseEvent('r-1', 'Agent', { subagent_type: 'Explore' })])
+    state = reducePanel(
+      state,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'продолжим' }], quotes: [] },
+      1_700_000_030_000,
+    )
+    state = reducePanel(state, { kind: 'agent', event: toolUseEvent('live-1', 'Bash', { command: 'pnpm test' }) }, 1_700_000_031_000)
+    const after = reducePanel(state, { kind: 'replayFinished' }, 1_700_000_060_000)
+
+    expect(after).toEqual(state)
+  })
+
+  it('уже закрытые карточки переписи не переписываются заново', () => {
+    const state = replay([
+      toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Discover files' }),
+      toolResultEvent('toolu-1', 'Нашёл шесть мест'),
+    ])
+    const after = reducePanel(state, { kind: 'replayFinished' }, 1_700_000_060_000)
+
+    expect(tasks(after)[0]).toEqual(tasks(state)[0])
+  })
+})
+
+/**
+ * Прошлый разговор, открытый из истории, должен читаться разговором: реплики
+ * человека приходят в нём единственным способом — записью из переписки, потому
+ * что класть их в ленту при отправке было некому.
+ */
+describe('реплики человека в переписи', () => {
+  const users = (state: PanelState) => state.items.filter((item): item is UserItem => item.kind === 'user')
+
+  const userEvent = (text: string, extra: Record<string, unknown> = {}): AgentEvent =>
+    ({ type: 'user', message: { content: [{ type: 'text', text }] }, ...extra }) as AgentEvent
+
+  const replayUser = (text: string, extra: Record<string, unknown> = {}): PanelState =>
+    reducePanel(initialPanelState, { kind: 'agent', event: userEvent(text, extra), replay: true }, 1_700_000_000_000)
+
+  it('реплика человека попадает в ленту со своим временем', () => {
+    const state = replayUser('Посмотри, почему падает сборка', { timestamp: '2026-08-17T09:41:07.000Z' })
+
+    expect(users(state)).toHaveLength(1)
+    expect(users(state)[0]?.tokens).toEqual([{ kind: 'text', value: 'Посмотри, почему падает сборка' }])
+    // Время из самой записи, а не «когда открыли вкладку».
+    expect(users(state)[0]?.time).not.toBe('')
+  })
+
+  it('живой разговор реплику из потока не дублирует', () => {
+    const live = reducePanel(
+      initialPanelState,
+      { kind: 'agent', event: userEvent('Посмотри, почему падает сборка') },
+      1_700_000_000_000,
+    )
+
+    expect(users(live)).toHaveLength(0)
+  })
+
+  it('слэш-команда читается командой, а не разметкой', () => {
+    const state = replayUser(
+      '<command-message>deploy</command-message>\n<command-name>/deploy</command-name>\n<command-args>0.7.11</command-args>',
+    )
+
+    expect(users(state)[0]?.tokens).toEqual([{ kind: 'text', value: '/deploy 0.7.11' }])
+  })
+
+  it('служебные записи в ленту не идут', () => {
+    const skill = replayUser('Base directory for this skill: /Users/you/.claude/skills/task', { isMeta: true })
+    const caveat = replayUser(
+      '<local-command-caveat>Caveat: The messages below were generated by the user while running local commands.</local-command-caveat>',
+    )
+    const stopped = replayUser('[Request interrupted by user]')
+    const subagent = replayUser('Прочитай эти файлы', { parent_tool_use_id: 'toolu-1' })
+
+    expect(users(skill)).toHaveLength(0)
+    expect(users(caveat)).toHaveLength(0)
+    expect(users(stopped)).toHaveLength(0)
+    expect(users(subagent)).toHaveLength(0)
+  })
+
+  it('результаты вызовов по-прежнему разбираются', () => {
+    let state = reducePanel(
+      initialPanelState,
+      { kind: 'agent', event: toolUseEvent('toolu-1', 'Bash', { command: 'pnpm test' }), replay: true },
+      1_700_000_000_000,
+    )
+    state = reducePanel(
+      state,
+      { kind: 'agent', event: toolResultEvent('toolu-1', '12 passed'), replay: true },
+      1_700_000_000_100,
+    )
+
+    const group = state.items.find((item): item is ToolGroupItem => item.kind === 'toolGroup')
+    expect(group?.tools[0]?.pending).toBe(false)
+    expect(users(state)).toHaveLength(0)
+  })
+})
+
+/**
+ * Отказ сервера, который CLI пережидает сам: пока идут повторы, в потоке не
+ * происходит ничего — ни текста, ни вызовов, — и рассказать об этом может
+ * только карточка с обратным отсчётом (см. applyApiRetry).
+ */
+describe('повторные запросы к API', () => {
+  const START = 1_700_000_000_000
+
+  const retryEvent = (attempt: number, delayMs: number, status: number | null = 529): AgentEvent => ({
+    type: 'system',
+    subtype: 'api_retry',
+    attempt,
+    max_retries: 10,
+    retry_delay_ms: delayMs,
+    error_status: status,
+    error: 'overloaded',
+  })
+
+  const syntheticEvent = (text: string): AgentEvent => ({
+    type: 'assistant',
+    message: { model: '<synthetic>', content: [{ type: 'text', text }] },
+  })
+
+  const cards = (state: PanelState) => state.items.filter((item): item is RetryItem => item.kind === 'retry')
+
+  const failedResultEvent = (): AgentEvent => ({
+    type: 'result',
+    subtype: 'success',
+    is_error: true,
+    result: 'API Error: 529 Overloaded.',
+    duration_ms: 9200,
+  })
+
+  it('первый отказ заводит карточку и рассказывает о нём словами терминала', () => {
+    const state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600) }, START)
+
+    expect(cards(state)).toHaveLength(1)
+    expect(cards(state)[0]).toMatchObject({ label: 'API overloaded', attempt: 1, maxRetries: 10, pending: true })
+    expect(cards(state)[0]?.retryAt).toBe(START + 600)
+    expect(state.retry?.attempt).toBe(1)
+  })
+
+  it('следующие попытки идут в ту же карточку, а не плодят новые', () => {
+    let state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600) }, START)
+    state = reducePanel(state, { kind: 'agent', event: retryEvent(2, 1200) }, START + 600)
+    state = reducePanel(state, { kind: 'agent', event: retryEvent(3, 2400) }, START + 1_800)
+
+    expect(cards(state)).toHaveLength(1)
+    expect(cards(state)[0]).toMatchObject({ attempt: 3, pending: true })
+    expect(cards(state)[0]?.retryAt).toBe(START + 1_800 + 2_400)
+  })
+
+  it('отказ зовётся тем же, чем зовёт его терминал', () => {
+    const limited = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600, 429) }, START)
+    const auth = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600, 401) }, START)
+    // Обрыв связи приходит вовсе без кода ответа — терминал и его зовёт общим словом.
+    const offline = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600, null) }, START)
+
+    expect(cards(limited)[0]?.label).toBe('Rate limited')
+    expect(cards(auth)[0]?.label).toBe('Authentication failed')
+    expect(cards(offline)[0]?.label).toBe('API error')
+  })
+
+  it('затянувшаяся череда остаётся в ленте следом, когда запрос наконец проходит', () => {
+    let state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600) }, START)
+    state = reducePanel(state, { kind: 'agent', event: retryEvent(2, 30_000) }, START + 600)
+    state = reducePanel(state, { kind: 'agent', event: textEvent('Готово') }, START + 41_000)
+
+    expect(state.retry).toBeUndefined()
+    expect(cards(state)[0]).toMatchObject({ pending: false, outcome: 'recovered', attempt: 2 })
+    expect(cards(state)[0]?.duration).toBe('41s')
+  })
+
+  it('мелькнувшая череда следа не оставляет', () => {
+    // Одна попытка через полсекунды — обычная жизнь сети: живьём её видно, а в
+    // истории разговора такая карточка была бы шумом между настоящими шагами.
+    let state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 500) }, START)
+    state = reducePanel(state, { kind: 'agent', event: textEvent('Готово') }, START + 900)
+
+    expect(state.retry).toBeUndefined()
+    expect(cards(state)).toHaveLength(0)
+  })
+
+  it('исчерпанные попытки читаются сдачей, а не удачей', () => {
+    // Ход, у которого кончились попытки, CLI закрывает не ответом модели, а
+    // своей заглушкой от <synthetic> с текстом ошибки.
+    let state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600) }, START)
+    state = reducePanel(state, { kind: 'agent', event: retryEvent(10, 30_000) }, START + 600)
+    state = reducePanel(state, { kind: 'agent', event: syntheticEvent('API Error: 529 Overloaded.') }, START + 61_000)
+
+    expect(cards(state)[0]).toMatchObject({ pending: false, outcome: 'failed', attempt: 10 })
+  })
+
+  it('ход, кончившийся ошибкой, закрывает череду сдачей', () => {
+    let state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 20_000) }, START)
+    state = reducePanel(state, { kind: 'agent', event: failedResultEvent() }, START + 21_000)
+
+    expect(cards(state)[0]).toMatchObject({ pending: false, outcome: 'failed' })
+  })
+
+  it('прерванный посреди паузы ход не оставляет карточку ждущей', () => {
+    let state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(3, 30_000) }, START)
+    state = reducePanel(state, { kind: 'status', status: 'idle' }, START + 12_000)
+
+    expect(state.retry).toBeUndefined()
+    expect(cards(state)[0]).toMatchObject({ pending: false, outcome: 'stopped', attempt: 3 })
+  })
+
+  it('умерший процесс тоже закрывает череду', () => {
+    let state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(2, 30_000) }, START)
+    state = reducePanel(state, { kind: 'processExited', exitCode: 1 }, START + 15_000)
+
+    expect(state.retry).toBeUndefined()
+    expect(cards(state)[0]).toMatchObject({ pending: false, outcome: 'stopped' })
+  })
+
+  it('служебные события паузу не обрывают', () => {
+    // Между попытками тем же каналом идут системные пометки — принять их за
+    // ответ значит объявить череду законченной, пока она идёт.
+    let state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 30_000) }, START)
+    state = reducePanel(
+      state,
+      { kind: 'agent', event: { type: 'system', subtype: 'status', status: 'requesting' } as AgentEvent },
+      START + 1_000,
+    )
+
+    expect(state.retry?.attempt).toBe(1)
+    expect(cards(state)[0]?.pending).toBe(true)
   })
 })

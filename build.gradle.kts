@@ -41,6 +41,10 @@ dependencies {
         bundledPlugin("com.intellij.modules.jcef")
         // Вход в Claude Code интерактивный, поэтому идёт во встроенном терминале.
         bundledPlugin("org.jetbrains.plugins.terminal")
+        // Окно коммита отдаёт перетаскиваемое своим объектом, а не списком
+        // файлов, и разобрать его нечем без классов самого VCS (см.
+        // WebviewFileDrop.changedPaths).
+        bundledModule("intellij.platform.vcs.impl.shared")
         testFramework(TestFrameworkType.Platform)
     }
 }

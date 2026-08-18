@@ -33,7 +33,7 @@ const perm = (id: string): FeedItem => ({
 
 const crash = (id: string): FeedItem => ({ id, kind: 'crash', message: 'exit 1' })
 
-const text = (id: string): FeedItem => ({ id, kind: 'text', paragraphs: [] })
+const text = (id: string): FeedItem => ({ id, kind: 'text', paragraphs: [], source: '' })
 
 const panel = (items: FeedItem[], status: AgentStatus = 'running'): PanelView => ({ items, status })
 

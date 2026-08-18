@@ -200,6 +200,12 @@ export type ShellMessage =
    * окно контекста) из них брать нельзя — точную цифру пришлёт IDE отдельно.
    */
   | { type: 'agent'; sessionId: string; event: AgentEvent; replay?: boolean }
+  /**
+   * Перепись доиграна до конца — дальше в этой вкладке только живой разговор.
+   * Панели это нужно, чтобы закрыть работу, которая в переписи так и осталась
+   * незаконченной: её результата ждать больше не от кого (см. build.ts).
+   */
+  | { type: 'replayFinished'; sessionId: string }
   /** Ответ на просьбу выбрать файл, папку или картинку через диалог IDE. */
   | { type: 'picked'; kind: 'file' | 'dir' | 'img'; value: string }
   /**
@@ -558,6 +564,24 @@ export interface AgentSystemEvent {
   usage?: { total_tokens?: number; tool_uses?: number; duration_ms?: number }
   last_tool_name?: string
   summary?: string
+  /**
+   * Запрос к модели сорвался отказом, который CLI пережидает сам (subtype
+   * `api_retry`): номер попытки, сколько их всего и через сколько пойдёт
+   * следующая. Пока идёт эта пауза, в потоке не происходит ровным счётом
+   * ничего — панель показывает её словами, иначе разговор выглядит зависшим
+   * (см. applyApiRetry в feed/build.ts).
+   *
+   * error_status — код ответа сервера; у обрыва связи (таймаут, сеть отвалилась)
+   * ответа не было вовсе, и приходит null. error — тот же отказ одним словом:
+   * overloaded, rate_limit, authentication_failed, server_error, unknown. Панель
+   * читает только код: словами отказ зовётся по нему же, чем и в терминале (см.
+   * retryLabel в feed/build.ts), а слово оставлено описанием формы потока.
+   */
+  attempt?: number
+  max_retries?: number
+  retry_delay_ms?: number
+  error_status?: number | null
+  error?: string
 }
 
 /**
@@ -584,6 +608,17 @@ export interface AgentUserEvent {
   type: 'user'
   message: { content: MessageContent }
   parent_tool_use_id?: string | null
+  /**
+   * Оба поля есть только у записей из сохранённого разговора — в живом потоке
+   * их не бывает, и нужны они только переписи (см. build.ts).
+   *
+   * isMeta — запись не человека, а самого CLI: инструкции скилла, подпись под
+   * приложенной картинкой и прочее, что попадает в разговор служебно.
+   * timestamp — когда это было сказано на самом деле; без него у реплик из
+   * прошлого разговора стояло бы время, когда открыли вкладку.
+   */
+  isMeta?: boolean
+  timestamp?: string
 }
 
 export interface AgentUsage {
