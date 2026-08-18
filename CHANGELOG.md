@@ -9,6 +9,10 @@ commits.
 
 ## [Unreleased]
 
+## [0.7.10] - 2026-08-18
+
+- Updating the plugin now asks for a restart of the IDE up front, instead of warning afterwards that the plugin "didn't unload fully, this may cause functionality issues". The warning was telling the truth: the panel hands its interface to the embedded browser through a handler registered with the browser engine for the whole life of the IDE, and nothing can take that registration back. Swapped in place, the plugin left the old handler behind - so a freshly updated plugin would have gone on serving the previous version's interface on top of its new code. Conversations and their running processes don't survive such a swap either way, so a restart loses nothing and the misleading warning is gone.
+
 ## [0.7.9] - 2026-08-17
 
 - Fixed: an unknown slash command left "Claude is thinking" and its timer running forever. A command the CLI refuses outright - a typo, or one belonging to an MCP server that didn't come up this time - is answered without ever reaching the model, so its finish carries no turns at all; the panel mistook that for the startup of a conversation, which it deliberately ignores, and nothing was left to close the turn out.
@@ -217,7 +221,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.9...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.10...HEAD
+[0.7.10]: https://github.com/crmapache/amazing-claude-code/compare/0.7.9...0.7.10
 [0.7.9]: https://github.com/crmapache/amazing-claude-code/compare/0.7.8...0.7.9
 [0.7.8]: https://github.com/crmapache/amazing-claude-code/compare/0.7.7...0.7.8
 [0.7.7]: https://github.com/crmapache/amazing-claude-code/compare/0.7.6...0.7.7
