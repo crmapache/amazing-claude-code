@@ -535,6 +535,47 @@ describe('сборка ленты из потока агента', () => {
     expect(state.items.filter((item) => item.kind === 'meta')).toHaveLength(1)
   })
 
+  it('/clear во время идущего хода гасит спиннер, а не оставляет его висеть навсегда', () => {
+    let state = reducePanel(
+      initialPanelState,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      1_700_000_000_000,
+    )
+    expect(state.status).toBe('running')
+
+    // /clear, отправленный, пока предыдущий ход ещё думает, идёт steering-путём —
+    // тем же самым, что и в 'досылка в идущий ход не стирает недописанный ответ
+    // агента' — и сам по себе не трогает status/turnStartedAt.
+    state = reducePanel(
+      state,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: '/clear' }], quotes: [], steering: true },
+      1_700_000_000_500,
+    )
+    expect(state.status).toBe('running')
+
+    state = reducePanel(
+      state,
+      { kind: 'agent', event: { type: 'conversation_reset' } },
+      1_700_000_001_000,
+    )
+
+    expect(state.status).toBe('idle')
+    expect(state.turnStartedAt).toBeUndefined()
+    expect(state.pausedMs).toBe(0)
+    expect(state.waitStartedAt).toBeUndefined()
+    expect(state.stopRequestedAt).toBeUndefined()
+    expect(state.starting).toBe(false)
+  })
+
+  it('/clear во время сжатия контекста снимает флаг, а не гасит строку статуса навсегда', () => {
+    let state = play([compactingStatusEvent()])
+    expect(state.compacting).toBe(true)
+
+    state = reducePanel(state, { kind: 'agent', event: { type: 'conversation_reset' } })
+
+    expect(state.compacting).toBe(false)
+  })
+
   it('показывает свой ход сразу, не дожидаясь агента', () => {
     const state = reducePanel(
       initialPanelState,
@@ -1064,6 +1105,28 @@ describe('один субагент — одна карточка', () => {
     expect(task?.duration).toBe('5.0s')
     expect(task?.outcome).toBe('ok')
     expect(task?.log.map((line) => line.text)).toEqual(['→ Read', 'Нашёл шесть мест'])
+  })
+
+  it('подтверждение фонового запуска не закрывает карточку — ждём task_notification', () => {
+    let state = play([
+      toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Discover files' }),
+      agentTaskStartedEvent('a90aa', 'toolu-1', 'Explore'),
+      toolResultEvent('toolu-1', 'Async agent launched successfully. Agent ID: a90aa'),
+    ])
+
+    let task = tasks(state)[0]
+    expect(task?.pending).toBe(true)
+    expect(task?.outcome).toBeUndefined()
+
+    state = reducePanel(
+      state,
+      { kind: 'agent', event: taskNotificationEvent('a90aa', 'completed', 'Нашёл шесть мест') },
+      1_700_000_005_000,
+    )
+
+    task = tasks(state)[0]
+    expect(task?.pending).toBe(false)
+    expect(task?.outcome).toBe('ok')
   })
 
   it('результат вызова закрывает карточку, заведённую системным событием', () => {

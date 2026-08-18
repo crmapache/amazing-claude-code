@@ -782,11 +782,18 @@ const applyAgentEvent = (
     // окно контекста, расход, недочитанные ошибки, список задач. Иначе датчик
     // контекста показывал прежние проценты на пустом чате — то есть врал ровно
     // про то единственное, ради чего /clear обычно и зовут.
-    case 'conversation_reset':
+    case 'conversation_reset': {
+      // Сжатие могло идти прямо в момент clear — своего закрывающего события
+      // (compact_result/compact_boundary) оно тогда уже не дождётся, раз разговор,
+      // который сжимался, стёрт. Тот же самый случай, для которого finishCompacting
+      // и заведён (см. её комментарий про «разговор прибили»): не снять флаг здесь —
+      // и строка статуса будет пустой у всех последующих ходов в этой вкладке.
+      const uncompacted = finishCompacting(state)
+
       return {
-        ...state,
-        seq: state.seq + 1,
-        sessionId: event.new_conversation_id ?? state.sessionId,
+        ...uncompacted,
+        seq: uncompacted.seq + 1,
+        sessionId: event.new_conversation_id ?? uncompacted.sessionId,
         usage: initialPanelState.usage,
         context: undefined,
         liveContextUsed: undefined,
@@ -796,10 +803,22 @@ const applyAgentEvent = (
         streamingText: '',
         streamingId: undefined,
         streamingThinking: '',
+        // Тот же сброс состояния хода, что и в case 'result': /clear закрывает
+        // разговор безусловно, даже тот ход, что ещё не успел дойти до своего
+        // result (например, если clear пришёл, пока агент ещё думал). Без этого
+        // «Claude is thinking» вешалось навсегда — ждать за него было уже некому,
+        // раз вся история, которую тот ход отвечал, только что стёрлась.
+        status: 'idle',
+        turnStartedAt: undefined,
+        pausedMs: 0,
+        waitStartedAt: undefined,
+        stopRequestedAt: undefined,
+        starting: false,
         items: [
           { id: `cleared-${state.seq}`, kind: 'checkpoint', chip: 'CLEAR', target: 'conversation cleared — nothing above this is remembered anymore' },
         ],
       }
+    }
 
     case 'stream_event': {
       const delta = event.event.delta
@@ -1481,6 +1500,15 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
   return appendToolCall(state, tool, now)
 }
 
+/**
+ * Вызов Task/Agent в фоновом режиме (по умолчанию) отвечает этим текстом сразу,
+ * не дожидаясь субагента, — это подтверждение запуска, а не итог его работы.
+ * Настоящий конец потом приносит отдельное событие task_notification (см. ниже).
+ * Приняв это подтверждение за результат, карточка закрывалась бы мгновенно —
+ * агент ещё и начать не успел, а чип в шапке уже гас как отработавший.
+ */
+const ASYNC_AGENT_LAUNCHED = /^Async agent launched successfully/
+
 const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number): PanelState => {
   const results = blocks.filter((block): block is ToolResultBlock => block.type === 'tool_result')
   if (results.length === 0) return state
@@ -1521,11 +1549,16 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
       )
       if (!result) return item
 
+      const text = resultToText(result.content)
+      // Ещё не итог — просто подтверждение, что фоновый субагент стартовал.
+      // Ждём его настоящий конец через task_notification, а не гасим карточку
+      // на первом же слове от CLI.
+      if (ASYNC_AGENT_LAUNCHED.test(text)) return item
+
       const started = state.startedAt[item.id]
       const duration = started ? formatDuration(now - started) : ''
       delete startedAt[item.id]
 
-      const text = resultToText(result.content)
       const isError = result.is_error === true
       const tone = isError ? ('bad' as const) : ('ok' as const)
       const task: TaskItem = {
