@@ -9,6 +9,10 @@ commits.
 
 ## [Unreleased]
 
+## [0.7.16] - 2026-08-19
+
+- Fixed: a technical warning from Claude Code itself - about how an MCP server's stored credentials are kept, for instance - turned up in the feed as a red error, in a conversation that was running perfectly well. Anything the CLI said outside its stream of events counted as a failure of the conversation, and the CLI uses that channel for ordinary warnings from its own libraries too: notes about something you never broke and cannot fix. Such lines now go to the IDE log instead. They still reach the feed in the one case where they explain something - if the process dies on its own, its last words are shown as the reason the conversation ended.
+
 ## [0.7.15] - 2026-08-19
 
 - Fixed: subagents started by a skill - the ten of them a `/code-review` fans out, for instance - disappeared from the header the moment the turn that launched them said so, even though every one of them was still working. The panel had nothing left to show that anything was going on: no chips, no "Waiting for 10 subagents" under the feed, and the run looked like it had simply stopped answering. A turn cannot end while it waits for a subagent, so anything still working when a turn ends by itself now stays in the header, with its timer running, until its own result arrives. A turn stopped by hand is a different matter and still closes off the work it was standing on.
@@ -255,7 +259,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.15...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.16...HEAD
+[0.7.16]: https://github.com/crmapache/amazing-claude-code/compare/0.7.15...0.7.16
 [0.7.15]: https://github.com/crmapache/amazing-claude-code/compare/0.7.14...0.7.15
 [0.7.14]: https://github.com/crmapache/amazing-claude-code/compare/0.7.13...0.7.14
 [0.7.13]: https://github.com/crmapache/amazing-claude-code/compare/0.7.12...0.7.13
