@@ -5,8 +5,6 @@ import com.intellij.ide.dnd.DnDSupport
 import com.intellij.ide.dnd.FileCopyPasteUtil
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.vcs.changes.ChangesUtil
-import com.intellij.openapi.vcs.changes.ui.ChangeListDragBean
 import javax.swing.JComponent
 
 /**
@@ -78,55 +76,22 @@ internal object WebviewFileDrop {
     /**
      * Пути того, что бросили. Перетаскивание внутри IDE несёт свои объекты (узлы
      * дерева, файлы проекта), системное — обычный список файлов; платформа
-     * разбирает оба случая, а для панели они и так ничем не отличаются. Что не
-     * разобрала она — разбираем сами, см. [changedPaths].
+     * разбирает оба случая, а для панели они и так ничем не отличаются.
      *
      * Именно пути, а не файлы проекта: превращать путь в файл — значит идти в
      * виртуальную файловую систему, а бросок панель обрабатывает в потоке
      * интерфейса, где такое запрещено (в логе — «slow operations are prohibited
      * on EDT»). Путь дальше и так уходит в фоновый поток, где его разбирают
      * спокойно (см. attachDropped).
+     *
+     * Единственное, что панель принять не может, — бросок из окна коммита.
+     * Список изменений отдаёт при перетаскивании не файлы, а собственный объект
+     * с правками, и платформа держит его закрытым для плагинов: публичного
+     * способа прочитать оттуда пути нет вовсе. Разбирать закрытое панель больше
+     * не берётся — из-за этого маркетплейс не пропускал версию на модерации, а
+     * стоила такая настойчивость одного способа перетащить файл из двух-трёх
+     * возможных.
      */
-    private fun paths(event: DnDEvent): List<String> {
-        val attached = event.attachedObject
-        val files = FileCopyPasteUtil.getFileListFromAttachedObject(attached).map { file -> file.path }
-
-        return files.ifEmpty { changedPaths(attached) }
-    }
-
-    /**
-     * Пути того, что тащат из окна коммита.
-     *
-     * Список изменений — единственное дерево файлов в IDE, которое отдаёт при
-     * перетаскивании не файлы, а свой собственный объект: он несёт правки, а не
-     * пути, потому что внутри самого окна их и таскают между списками. Разбор
-     * платформы про такое не знает и отдаёт пусто — панель считала, что принять
-     * нечего, и бросок из окна коммита не принимался вовсе, хотя из дерева
-     * проекта тот же файл долетал.
-     *
-     * У правки берём файл после неё — то есть тот, что лежит на диске сейчас;
-     * у удалённого его нет вовсе, и остаётся путь до удаления. Такой путь
-     * отсеется сам, когда по нему пойдут искать файл (см. FilePicker.describe):
-     * плашки на несуществующий файл в поле ввода быть не должно.
-     *
-     * Неотслеживаемые и игнорируемые лежат в том же объекте отдельно от правок —
-     * своей правки у них нет, а файл есть, и тащат их ровно так же.
-     *
-     * Сам объект платформа помечает внутренним (ApiStatus.Internal): публичного
-     * способа прочитать перетаскиваемое из окна коммита нет вовсе, и других
-     * желающих у этих данных тоже нет — снаружи окна их некому передать иначе.
-     * Поэтому промах ловим здесь целиком: этот разбор идёт на каждое движение
-     * мышью над панелью (см. canAttach), и если однажды класса не станет или он
-     * сменит форму, отвалиться должно ровно перетаскивание из окна коммита — а
-     * не всё перетаскивание в панель заодно.
-     */
-    private fun changedPaths(attached: Any?): List<String> = runCatching {
-        val bean = attached as? ChangeListDragBean ?: return@runCatching emptyList()
-
-        val changed = bean.changes.map { change -> ChangesUtil.getFilePath(change) }
-        (changed + bean.unversionedFiles + bean.ignoredFiles).map { path -> path.path }
-    }.getOrElse { failure ->
-        thisLogger().warn("Cannot read the dragged changes", failure)
-        emptyList()
-    }
+    private fun paths(event: DnDEvent): List<String> =
+        FileCopyPasteUtil.getFileListFromAttachedObject(event.attachedObject).map { file -> file.path }
 }

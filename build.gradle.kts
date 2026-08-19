@@ -54,10 +54,6 @@ dependencies {
         bundledPlugin("com.intellij.modules.jcef")
         // Вход в Claude Code интерактивный, поэтому идёт во встроенном терминале.
         bundledPlugin("org.jetbrains.plugins.terminal")
-        // Окно коммита отдаёт перетаскиваемое своим объектом, а не списком
-        // файлов, и разобрать его нечем без классов самого VCS (см.
-        // WebviewFileDrop.changedPaths).
-        bundledModule("intellij.platform.vcs.impl.shared")
         testFramework(TestFrameworkType.Platform)
     }
 }
@@ -137,16 +133,17 @@ intellijPlatform {
         // в плагине нет ни одного обращения, и держать этот счёт на нуле дешевле,
         // чем однажды разбирать накопившийся список в карточке версии.
         //
-        // Мягче: устаревшее и закрытое для плагинов задачу не роняют. Такие места
-        // наперечёт, все осознанные, и поддерживаемой замены у платформы для них
-        // нет: открытие терминала для входа (ClaudeLogin), прежняя пара методов
-        // обработчика ресурсов, без которой не грузится сама панель
-        // (WebviewResources.ResourceHandler), перетаскивание из окна коммита
-        // (WebviewFileDrop.changedPaths) и прогрев настроек прокси для встроенного
-        // браузера (WebviewHost.loadProxySettings). Пока замены не появится,
-        // зелёной задачу сделает только отказ от самих возможностей.
+        // Мягче: устаревшее задачу не роняет. Таких мест два, оба осознанные, и
+        // поддерживаемой замены у платформы для них нет: открытие терминала для
+        // входа (ClaudeLogin) и прежняя пара методов обработчика ресурсов, без
+        // которой не грузится сама панель (WebviewResources.ResourceHandler).
+        //
+        // Закрытого для плагинов не осталось ни одного — и не должно появляться:
+        // маркетплейс из-за таких обращений не пропускает версию на модерации.
+        // Поэтому они роняют задачу наравне с несовместимостью.
         failureLevel = listOf(
             VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
+            VerifyPluginTask.FailureLevel.INTERNAL_API_USAGES,
             VerifyPluginTask.FailureLevel.EXPERIMENTAL_API_USAGES,
             VerifyPluginTask.FailureLevel.SCHEDULED_FOR_REMOVAL_API_USAGES,
             VerifyPluginTask.FailureLevel.OVERRIDE_ONLY_API_USAGES,
