@@ -9,6 +9,12 @@ commits.
 
 ## [Unreleased]
 
+## [0.7.15] - 2026-08-19
+
+- Fixed: subagents started by a skill - the ten of them a `/code-review` fans out, for instance - disappeared from the header the moment the turn that launched them said so, even though every one of them was still working. The panel had nothing left to show that anything was going on: no chips, no "Waiting for 10 subagents" under the feed, and the run looked like it had simply stopped answering. A turn cannot end while it waits for a subagent, so anything still working when a turn ends by itself now stays in the header, with its timer running, until its own result arrives. A turn stopped by hand is a different matter and still closes off the work it was standing on.
+- Fixed: a conversation opened from History greeted you with a question card floating over the input field - options and all - for a question that had been asked, and usually answered, days ago. The answer was already there in the feed as your own next message; the card was a leftover of the replay, and it held the panel until dismissed. Questions and plans that come back with a replayed conversation are now read as part of its history: they no longer ask for a decision, and the run no longer reports itself as waiting for you.
+- Changed: a conversation picked in History now opens in the tab you picked it from, instead of quietly adding one more tab next to it. Tabs are yours to open, close and arrange, and a look into a past conversation used to cost you tidying up afterwards. The conversation the tab was showing is not lost - it stays in the same History it was opened from. A tab that is still working asks first, because taking it over ends the run inside it.
+
 ## [0.7.14] - 2026-08-18
 
 - Changed: the line under the feed went back to always saying "Claude is thinking" while a turn runs, instead of naming the current call or file ("Running ...", "Reading ..."). That call already has its own card in the feed right above the line, so the two were saying the same thing twice.
@@ -249,7 +255,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.14...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.15...HEAD
+[0.7.15]: https://github.com/crmapache/amazing-claude-code/compare/0.7.14...0.7.15
 [0.7.14]: https://github.com/crmapache/amazing-claude-code/compare/0.7.13...0.7.14
 [0.7.13]: https://github.com/crmapache/amazing-claude-code/compare/0.7.12...0.7.13
 [0.7.12]: https://github.com/crmapache/amazing-claude-code/compare/0.7.11...0.7.12
