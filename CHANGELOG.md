@@ -9,6 +9,10 @@ commits.
 
 ## [Unreleased]
 
+## [0.7.17] - 2026-08-19
+
+- Changed: a file dragged with the mouse out of the Commit tool window is no longer accepted by the panel, and the panel no longer lights up for it. That window hands over its own object full of changes rather than plain files, and the only way to read paths out of it is an API the platform keeps closed to plugins - which is what the Marketplace turns a release down for. Every other way in is untouched: the project tree, editor tabs, your file manager, the attach button, and naming a file as you type.
+
 ## [0.7.16] - 2026-08-19
 
 - Fixed: a technical warning from Claude Code itself - about how an MCP server's stored credentials are kept, for instance - turned up in the feed as a red error, in a conversation that was running perfectly well. Anything the CLI said outside its stream of events counted as a failure of the conversation, and the CLI uses that channel for ordinary warnings from its own libraries too: notes about something you never broke and cannot fix. Such lines now go to the IDE log instead. They still reach the feed in the one case where they explain something - if the process dies on its own, its last words are shown as the reason the conversation ended.
@@ -259,7 +263,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.16...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.17...HEAD
+[0.7.17]: https://github.com/crmapache/amazing-claude-code/compare/0.7.16...0.7.17
 [0.7.16]: https://github.com/crmapache/amazing-claude-code/compare/0.7.15...0.7.16
 [0.7.15]: https://github.com/crmapache/amazing-claude-code/compare/0.7.14...0.7.15
 [0.7.14]: https://github.com/crmapache/amazing-claude-code/compare/0.7.13...0.7.14
