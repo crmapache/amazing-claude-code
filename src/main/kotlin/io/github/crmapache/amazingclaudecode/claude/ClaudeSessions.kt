@@ -52,9 +52,18 @@ internal class ClaudeSessions(
         }
     }
 
-    /** Продолжение прошлого разговора: он поднимется со своей перепиской. */
+    /**
+     * Продолжение прошлого разговора: он поднимется со своей перепиской.
+     *
+     * Прошлый разговор открывается в той вкладке, из которой его выбрали (см.
+     * App.resume), а значит на её месте уже может быть свой процесс — с чужой
+     * перепиской, которую этой вкладке продолжать больше не нужно. Продолжить
+     * выбранный разговор в нём нельзя: разговор процессу задаётся при запуске.
+     * Поэтому прежний закрываем и поднимаем новый, ровно как при закрытии
+     * вкладки.
+     */
     fun resume(sessionId: String, conversationId: String) {
-        if (sessions.containsKey(sessionId)) return
+        close(sessionId)
 
         sessions[sessionId] = newSession(sessionId, forkFrom = null, resumeFrom = conversationId).also {
             Disposer.register(this, it)

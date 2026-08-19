@@ -217,6 +217,15 @@ export const App = () => {
    * это десятки минут работы, у фоновой команды — живой процесс вроде сервера.
    */
   const [stopping, setStopping] = useState<{ id: string; title: string; subject: string } | null>(null)
+
+  /**
+   * Разговор, выбранный в истории, пока за него не ответили на вопрос: занять им
+   * вкладку — значит прибить процесс того разговора, что в ней сейчас, а с ним и
+   * ход, который в этот момент работает. Спрашиваем только про работающую
+   * вкладку: у свободной терять нечего, её разговор никуда не пропадает — он
+   * остаётся в той же истории, откуда открыли этот.
+   */
+  const [resuming, setResuming] = useState<HistoryEntry | null>(null)
   /**
    * Завершённый агент пропадает из вкладок сам, как только на него никто не
    * смотрит (см. эффект ниже) — а не мгновенно на глазах у того, кто как раз
@@ -1301,23 +1310,69 @@ export const App = () => {
     setSessions((current) => moveGroup(current, groupId, beforeGroupId))
   }, [])
 
-  /** Прошлый разговор продолжается в своей вкладке: панель проиграет его переписку. */
-  const resume = useCallback((entry: HistoryEntry) => {
-    const id = `resumed-${entry.id.slice(0, 8)}`
-    const title = deriveSessionTitle(entry.title, 40)
+  /**
+   * Прошлый разговор продолжается в той вкладке, из которой его выбрали: панель
+   * проиграет его переписку прямо в ней.
+   *
+   * Своей вкладки ему больше не заводим. Вкладками распоряжается человек — он их
+   * открывает, закрывает и раскладывает по порядку, — а история, подсовывая
+   * каждому открытому разговору ещё одну, набивала верх панели вкладками,
+   * которых никто не просил: заглянуть в прошлый разговор и вернуться стоило
+   * потом ещё и уборки за собой.
+   */
+  const openResumed = useCallback(
+    (entry: HistoryEntry) => {
+      const title = deriveSessionTitle(entry.title, 40)
 
-    setOpenPanel(null)
-    setSessions((current) =>
-      current.some((session) => session.id === id)
-        ? current
-        : // Название уже установлено панелью истории (LLM-заголовок из кеша или
-          // эвристика) — это не заглушка, которую стоит заменить первым же
-          // следующим сообщением в этой вкладке.
-          [...current, { id, title, state: 'idle', groupId: id, depth: 0, titleSource: 'llm' }],
-    )
-    setActive(id)
-    send({ type: 'resumeSession', sessionId: id, conversationId: entry.id })
-  }, [])
+      setOpenPanel(null)
+      // Название уже установлено панелью истории (LLM-заголовок из кеша или
+      // эвристика) — это не заглушка, которую стоит заменить первым же
+      // следующим сообщением в этой вкладке.
+      //
+      // Вкладки может не оказаться вовсе: человек закрыл все и открывает прошлый
+      // разговор из истории на пустой панели. Тогда она и заводится здесь —
+      // иначе перепись поехала бы в разговор, которого не видно ни одной
+      // вкладкой (см. пустое состояние в разметке ниже).
+      setSessions((current) =>
+        current.some((session) => session.id === active)
+          ? current.map((session) => (session.id === active ? { ...session, title, titleSource: 'llm' } : session))
+          : [...current, { id: active, title, state: 'idle', groupId: active, depth: 0, titleSource: 'llm' }],
+      )
+
+      /**
+       * Всё, что панель помнила об этой вкладке, — про разговор, которого в ней
+       * больше нет: лента, чипы субагентов, вывод команд bash-режима, снимок для
+       * звуковых оповещений. Оставить хоть что-то значит подмешать это в перепись
+       * чужого разговора, которая сейчас поедет сверху.
+       */
+      dispatchPanel({ session: active, closed: true })
+      setActiveStream('main')
+      forgetShellCommands(active)
+      setShellRuns((current) => ({ ...current, [active]: [] }))
+      delete soundMemory.current[active]
+
+      send({ type: 'resumeSession', sessionId: active, conversationId: entry.id })
+    },
+    [active],
+  )
+
+  const resume = useCallback(
+    (entry: HistoryEntry) => {
+      // Этот разговор в этой вкладке уже открыт — переигрывать его заново незачем.
+      if (panelsRef.current[active]?.sessionId === entry.id) {
+        setOpenPanel(null)
+        return
+      }
+
+      if (panelsRef.current[active]?.status === 'running') {
+        setResuming(entry)
+        return
+      }
+
+      openResumed(entry)
+    },
+    [active, openResumed],
+  )
 
   /**
    * Выбор модели: и из меню в нижней строке, и командой в поле — одно и то же
@@ -1841,6 +1896,22 @@ export const App = () => {
         />
       ) : null}
 
+      {/* Вкладка занята работой — перед тем как отдать её прошлому разговору,
+          спрашиваем: процесс с идущим ходом переживёт это не больше, чем
+          закрытие вкладки (см. resume). */}
+      {resuming ? (
+        <Confirm
+          title="This tab is still working. Open the past chat here?"
+          subject={resuming.title}
+          confirmLabel="Open"
+          onCancel={() => setResuming(null)}
+          onConfirm={() => {
+            openResumed(resuming)
+            setResuming(null)
+          }}
+        />
+      ) : null}
+
       {openPanel === 'sounds' ? (
         <Sounds
           prefs={soundPrefs}
@@ -2185,8 +2256,8 @@ const countSessionImages = (panel: PanelState, queue: QueuedPrompt[]): number =>
  */
 const awaitsYou = (item: FeedItem, cards: CardState): boolean =>
   (item.kind === 'perm' && item.decision === null) ||
-  (item.kind === 'ask' && !cards.answeredAsks.includes(item.id)) ||
-  (item.kind === 'plan' && cards.planDecisions[item.id] === undefined)
+  (item.kind === 'ask' && !item.historic && !cards.answeredAsks.includes(item.id)) ||
+  (item.kind === 'plan' && !item.historic && cards.planDecisions[item.id] === undefined)
 
 /** Главный поток, а не отдельный субагент: у того своя вкладка и свой статус. */
 const ownStream = (item: FeedItem): boolean => !('taskId' in item) || item.taskId === undefined
@@ -2312,7 +2383,11 @@ const pendingAsk = (items: FeedItem[], answered: string[], stream: string): AskI
     .reverse()
     .find(
       (item): item is AskItem =>
-        item.kind === 'ask' && !answered.includes(item.id) && ownerStream(item.taskId, items) === stream,
+        item.kind === 'ask' &&
+        // Вопрос из переписи прошлого разговора карточкой не показываем — см. AskItem.historic.
+        !item.historic &&
+        !answered.includes(item.id) &&
+        ownerStream(item.taskId, items) === stream,
     )
 
 /** Последний вызов текущего стрима, который всё ещё ждёт решения по разрешению. */
@@ -2332,7 +2407,7 @@ const statusOf = (task: TaskItem, items: FeedItem[], answeredAsks: string[]): Ag
   const blocked = items.some(
     (item) =>
       (item.kind === 'perm' && item.taskId === task.id && item.decision === null) ||
-      (item.kind === 'ask' && item.taskId === task.id && !answeredAsks.includes(item.id)),
+      (item.kind === 'ask' && item.taskId === task.id && !item.historic && !answeredAsks.includes(item.id)),
   )
   return blocked ? 'needs-input' : 'running'
 }
@@ -2341,7 +2416,7 @@ const mainStatusOf = (panel: PanelState, answeredAsks: string[]): AgentStatus =>
   const blocked = panel.items.some(
     (item) =>
       (item.kind === 'perm' && item.taskId === undefined && item.decision === null) ||
-      (item.kind === 'ask' && item.taskId === undefined && !answeredAsks.includes(item.id)),
+      (item.kind === 'ask' && item.taskId === undefined && !item.historic && !answeredAsks.includes(item.id)),
   )
   if (blocked) return 'needs-input'
   return panel.status === 'running' ? 'running' : 'idle'

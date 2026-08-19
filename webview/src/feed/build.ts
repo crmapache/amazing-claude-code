@@ -821,16 +821,28 @@ const closeRetryFor = (state: PanelState, event: AgentEvent, now: number): Panel
  * у переписи вызов вполне мог закончиться удачно, просто его результат в ней не
  * сохранился, и красная строка приписывала бы разговору несуществующую ошибку.
  *
- * [keepBackgroundTasks] — про фоновых субагентов: они переживают ход по
- * определению, их итог приносит отдельное уведомление уже после него (см.
- * ASYNC_AGENT_LAUNCHED), и закрывать такую карточку по итогу хода нельзя. А вот
- * смерть процесса — конец и для них: сообщать о себе им больше некому.
+ * [keepTasks] — что делать с субагентами, которые всё ещё работают:
+ *
+ * - 'all' — не трогать ни одного. Так закрывается ход, кончившийся сам: пока
+ *   ход ждёт субагента, он не кончается — значит всё, что осталось в работе к
+ *   его естественному концу, работает отдельно от него и доживёт до своего
+ *   уведомления (task_notification). Признака «фоновый» на такой карточке может
+ *   не быть вовсе: субагентов, поднятых скиллом (например /code-review), главный
+ *   поток запускает не своим вызовом инструмента — ответа «Async agent launched»
+ *   в нём не бывает, и по нему их не узнать (см. ASYNC_AGENT_LAUNCHED). Раньше
+ *   их закрывало здесь же, и десяток работающих агентов исчезал из шапки в тот
+ *   момент, когда ход отчитался о запуске.
+ * - 'background' — оставить только помеченных фоновыми. Так закрывается
+ *   прерванный ход: работу оборвали посреди дела, и всё, за чем стоял сам ход,
+ *   оборвано вместе с ним.
+ * - 'none' — закрыть всех. Смерть процесса и конец переписи прошлого разговора:
+ *   сообщать о себе субагентам больше некому.
  */
 const closeUnfinished = (
   state: PanelState,
   now: number,
   notes: { tool: string; task: string; meta: string; tone: 'bad' | 'dim' },
-  keepBackgroundTasks: boolean,
+  keepTasks: 'all' | 'background' | 'none',
 ): { items: FeedItem[]; startedAt: Record<string, number> } => {
   const startedAt = { ...state.startedAt }
 
@@ -854,7 +866,8 @@ const closeUnfinished = (
   const items = state.items.map((item) => {
     if (item.kind === 'task') {
       if (!item.pending) return item
-      if (keepBackgroundTasks && item.background) return item
+      if (keepTasks === 'all') return item
+      if (keepTasks === 'background' && item.background) return item
 
       const started = startedAt[item.id]
       delete startedAt[item.id]
@@ -916,7 +929,7 @@ const applyReplayFinished = (state: PanelState, now: number): PanelState => {
       meta: '· not in the transcript',
       tone: 'dim',
     },
-    false,
+    'none',
   )
 
   return { ...state, items, startedAt }
@@ -937,7 +950,7 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
       meta: '· interrupted',
       tone: 'bad',
     },
-    false,
+    'none',
   )
 
   /**
@@ -1136,7 +1149,7 @@ const applyAgentEvent = (
     case 'assistant': {
       // Подагент отвечает своей моделью — это не та, на которой идёт разговор.
       if (event.parent_tool_use_id) {
-        return noteSubagent(state, event.parent_tool_use_id, blocksOf(event.message.content))
+        return noteSubagent(state, event.parent_tool_use_id, blocksOf(event.message.content), replay)
       }
 
       /**
@@ -1169,6 +1182,7 @@ const applyAgentEvent = (
         { ...state, model, liveContextUsed, starting: false },
         blocksOf(event.message.content),
         now,
+        replay,
       )
     }
 
@@ -1236,13 +1250,19 @@ const applyAgentEvent = (
       )
 
       /**
-       * Ход кончился — значит и всё, что он начал, кончилось вместе с ним.
-       * Прерванный ход бросает вызов инструмента прямо посреди работы (Stop
-       * приходит, когда что-то выполняется, — иначе прерывать было бы нечего), и
-       * без этого его карточка навсегда оставалась «выполняется» с бегущим
+       * Ход кончился — значит и все его вызовы инструментов кончились вместе с
+       * ним. Прерванный ход бросает вызов прямо посреди работы (Stop приходит,
+       * когда что-то выполняется, — иначе прерывать было бы нечего), и без
+       * этого его карточка навсегда оставалась «выполняется» с бегущим
        * счётчиком: ход внизу давно подписан «Stopped by you», а работа по виду
        * всё ещё идёт. Тем же закрываются и вызовы, чей результат до панели не
        * дошёл.
+       *
+       * Субагенты — не вызовы: ход, кончившийся сам, не мог ждать ни одного из
+       * них (ждал бы — не кончился), поэтому работающих не трогаем вовсе и
+       * оставляем их чипы в шапке до их собственных уведомлений. Оборванный ход
+       * — другое дело: то, за чем он стоял, оборвано вместе с ним (см. keepTasks
+       * в closeUnfinished).
        */
       const { items: settled, startedAt } = closeUnfinished(
         withError,
@@ -1260,7 +1280,7 @@ const applyAgentEvent = (
               meta: '· unfinished',
               tone: 'bad',
             },
-        true,
+        cancelled ? 'background' : 'all',
       )
 
       return {
@@ -1632,7 +1652,13 @@ const alreadyShownAsError = (state: PanelState, text: string): boolean => {
     .some((item) => item.kind === 'error' && item.message.trim() === message)
 }
 
-const applyAssistant = (state: PanelState, blocks: ContentBlock[], now: number): PanelState => {
+const applyAssistant = (
+  state: PanelState,
+  blocks: ContentBlock[],
+  now: number,
+  /** Перепись прошлого разговора, а не живой ход — см. applyAgentEvent. */
+  replay = false,
+): PanelState => {
   if (isNoContentPlaceholder(blocks)) {
     return { ...state, streamingText: '', streamingId: undefined, suppressNextMeta: true }
   }
@@ -1673,7 +1699,7 @@ const applyAssistant = (state: PanelState, blocks: ContentBlock[], now: number):
     }
 
     if (block.type === 'tool_use') {
-      next = applyToolUse(next, block, now)
+      next = applyToolUse(next, block, now, replay)
     }
   }
 
@@ -1754,7 +1780,13 @@ const appendToolCall = (state: PanelState, tool: ToolItem, now: number): PanelSt
   }
 }
 
-const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): PanelState => {
+const applyToolUse = (
+  state: PanelState,
+  block: ToolUseBlock,
+  now: number,
+  /** Перепись прошлого разговора, а не живой ход — см. applyAgentEvent. */
+  replay = false,
+): PanelState => {
   const input = (block.input ?? {}) as Record<string, unknown>
   const workingDirectory = state.project?.workingDirectory ?? ''
 
@@ -1825,6 +1857,8 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
           meta: steps > 0 ? `· ${steps} ${steps === 1 ? 'step' : 'steps'}` : '',
           duration: '',
           paragraphs,
+          // План из переписи решения не ждёт — см. PlanItem.historic.
+          historic: replay,
         },
       ],
     }
@@ -1845,6 +1879,9 @@ const applyToolUse = (state: PanelState, block: ToolUseBlock, now: number): Pane
           kind: 'ask',
           meta: `${questions.length} ${questions.length === 1 ? 'question' : 'questions'} · blocks the run`,
           questions,
+          // Вопрос из переписи ничего не держит: ход, который его задал, кончился
+          // когда-то в прошлом (см. AskItem.historic).
+          historic: replay,
         },
       ],
     }
@@ -2161,7 +2198,13 @@ const resolveTaskId = (state: PanelState, parentToolUseId: string): string =>
  * Anthropic такое ограничение снимет — тогда вопрос от субагента не потеряется
  * одной строкой без вариантов ответа, как было раньше.
  */
-const noteSubagent = (state: PanelState, parentToolUseId: string, blocks: ContentBlock[]): PanelState => {
+const noteSubagent = (
+  state: PanelState,
+  parentToolUseId: string,
+  blocks: ContentBlock[],
+  /** Перепись прошлого разговора, а не живой ход — см. applyAgentEvent. */
+  replay = false,
+): PanelState => {
   const taskId = resolveTaskId(state, parentToolUseId)
   if (!state.items.some((item) => item.kind === 'task' && item.id === taskId)) return state
 
@@ -2183,6 +2226,8 @@ const noteSubagent = (state: PanelState, parentToolUseId: string, blocks: Conten
           meta: `${questions.length} ${questions.length === 1 ? 'question' : 'questions'} · blocks the run`,
           questions,
           taskId,
+          // См. applyToolUse: вопрос из переписи никого не держит.
+          historic: replay,
         },
       ],
     }

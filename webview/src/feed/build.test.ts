@@ -4,8 +4,10 @@ import { describe, expect, it } from 'vitest'
 import type { AgentEvent } from '../protocol'
 import { contextOf, contextUsage, initialPanelState, reducePanel, type PanelState } from './build'
 import type {
+  AskItem,
   CompactItem,
   ErrorItem,
+  PlanItem,
   RetryItem,
   TaskItem,
   TextItem,
@@ -1346,6 +1348,66 @@ describe('один субагент — одна карточка', () => {
     expect(task?.outcome).toBe('stopped')
     expect(task?.log.map((line) => line.text)).toEqual(['Stopped before it finished.'])
   })
+
+  /**
+   * Так приходят субагенты, поднятые скиллом (/code-review и подобные): своего
+   * вызова в главном потоке у них нет вовсе — только системное событие о запуске,
+   * — а значит нет и ответа «Async agent launched», по которому фоновый агент
+   * узнаётся. Ход при этом отчитывается о запуске и заканчивается сам, пока они
+   * работают: закрыв их по его итогу, панель гасила чипы десятка работающих
+   * агентов ровно в тот момент, когда за ними и надо было следить.
+   */
+  it('агент, поднятый скиллом, переживает естественный конец хода', () => {
+    let state = play([agentTaskStartedEvent('a90aa', 'toolu-inner', 'general-purpose')])
+    state = reducePanel(state, { kind: 'agent', event: resultEvent(5_000) }, 1_700_000_005_000)
+
+    const task = tasks(state)[0]
+    expect(task?.pending).toBe(true)
+    expect(task?.outcome).toBeUndefined()
+    // Счётчик карточки продолжает идти от запуска: работа-то не кончилась.
+    expect(state.startedAt['a90aa']).toBe(1_700_000_000_000)
+
+    state = reducePanel(
+      state,
+      { kind: 'agent', event: taskNotificationEvent('a90aa', 'completed', 'Нашёл шесть мест') },
+      1_700_000_010_000,
+    )
+
+    expect(tasks(state)[0]?.pending).toBe(false)
+    expect(tasks(state)[0]?.outcome).toBe('ok')
+  })
+
+  it('прерванный ход такого агента всё-таки закрывает: его оборвали вместе с ходом', () => {
+    let state = play([agentTaskStartedEvent('a90aa', 'toolu-inner', 'general-purpose')])
+    state = reducePanel(state, { kind: 'stopRequested' }, 1_700_000_004_000)
+    state = reducePanel(state, { kind: 'agent', event: resultEvent(5_000) }, 1_700_000_005_000)
+
+    const task = tasks(state)[0]
+    expect(task?.pending).toBe(false)
+    expect(task?.outcome).toBe('stopped')
+    expect(task?.log.at(-1)?.text).toBe('Stopped before it returned.')
+  })
+
+  it('фоновый агент переживает и прерванный ход: остановка хода его не касается', () => {
+    let state = play([
+      toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Discover files' }),
+      agentTaskStartedEvent('a90aa', 'toolu-1', 'Explore'),
+      toolResultEvent('toolu-1', 'Async agent launched successfully. Agent ID: a90aa'),
+    ])
+    state = reducePanel(state, { kind: 'stopRequested' }, 1_700_000_004_000)
+    state = reducePanel(state, { kind: 'agent', event: resultEvent(5_000) }, 1_700_000_005_000)
+
+    expect(tasks(state)[0]?.pending).toBe(true)
+  })
+
+  it('смерть процесса закрывает и работающих агентов: сообщать о себе им некому', () => {
+    let state = play([agentTaskStartedEvent('a90aa', 'toolu-inner', 'general-purpose')])
+    state = reducePanel(state, { kind: 'processExited', exitCode: 1 }, 1_700_000_005_000)
+
+    const task = tasks(state)[0]
+    expect(task?.pending).toBe(false)
+    expect(task?.log.at(-1)?.text).toBe('Session ended before this returned.')
+  })
 })
 
 describe('фоновые команды в канале задач', () => {
@@ -2175,6 +2237,53 @@ describe('конец переписи прошлого разговора', () =
     const after = reducePanel(state, { kind: 'replayFinished' }, 1_700_000_060_000)
 
     expect(after).toEqual(state)
+  })
+
+  /**
+   * Вопрос с вариантами и план — единственные карточки, которые в переписи
+   * приезжают вместе с переписью и при этом просят человека нажать: вопрос
+   * всплывал поверх поля ввода, план держал «Waiting for you» под лентой.
+   * Отвечать на них уже некому — ход, который спрашивал, кончился в прошлом.
+   */
+  it('вопрос из переписи помечен historic — карточкой он не всплывает', () => {
+    const state = replay([
+      toolUseEvent('ask-1', 'AskUserQuestion', {
+        questions: [{ question: 'Какой сделать вариант?', header: 'Вариант', options: [{ label: 'Первый' }] }],
+      }),
+    ])
+
+    const ask = state.items.find((item): item is AskItem => item.kind === 'ask')
+    expect(ask?.historic).toBe(true)
+  })
+
+  it('вопрос живого хода historic не помечается — на него как раз и ждут ответа', () => {
+    const state = play([
+      toolUseEvent('ask-1', 'AskUserQuestion', {
+        questions: [{ question: 'Какой сделать вариант?', header: 'Вариант', options: [{ label: 'Первый' }] }],
+      }),
+    ])
+
+    const ask = state.items.find((item): item is AskItem => item.kind === 'ask')
+    expect(ask?.historic).toBeFalsy()
+  })
+
+  it('вопрос субагента из переписи тоже помечен historic', () => {
+    const state = replay([
+      agentTaskStartedEvent('a90aa', 'toolu-1', 'Explore'),
+      subagentAskEvent('toolu-1'),
+    ])
+
+    const ask = state.items.find((item): item is AskItem => item.kind === 'ask')
+    expect(ask?.historic).toBe(true)
+  })
+
+  it('план из переписи помечен historic — решение по нему принимали в прошлом', () => {
+    const state = replay([toolUseEvent('plan-1', 'ExitPlanMode', { plan: '- Первый шаг\n- Второй шаг' })])
+
+    const plan = state.items.find((item): item is PlanItem => item.kind === 'plan')
+    expect(plan?.historic).toBe(true)
+    expect(play([toolUseEvent('plan-1', 'ExitPlanMode', { plan: '- Шаг' })])
+      .items.find((item): item is PlanItem => item.kind === 'plan')?.historic).toBeFalsy()
   })
 
   it('уже закрытые карточки переписи не переписываются заново', () => {

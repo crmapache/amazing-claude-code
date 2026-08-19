@@ -690,50 +690,101 @@ export const scenariosCards: Scenario[] = [
     ]),
   ]),
 
-  scenario('background-subagent', 'Фоновый субагент от скилла', 'cards', [
+  /**
+   * Как это приходит с живого CLI (проверено на 2.1.235 на скилле с `context:
+   * fork`): скилл поднимает субагентов сам, и в главном потоке о них нет ни
+   * вызова инструмента, ни его результата — только системные события о запуске.
+   * Свой ход скилл заканчивает сразу, отчитавшись о запуске, а агенты работают
+   * дальше и присылают итоги уже после него, каждый своим уведомлением.
+   *
+   * Смысл сценария — третий чекпоинт: чипы всех трёх агентов обязаны остаться в
+   * шапке после того, как ход кончился. Раньше конец хода закрывал их как
+   * незавершённую работу, и десяток работающих агентов исчезал из шапки ровно
+   * тогда, когда за ними и надо было следить.
+   */
+  scenario('background-subagent', 'Субагенты от скилла: ход кончился, а они работают', 'cards', [
     checkpoint('Пользователь запускает /code-review', [user('/code-review'), wait(500)]),
-    checkpoint('Фоновый субагент стартовал', [
+    checkpoint('Скилл поднял трёх субагентов сам — вызова в потоке нет', [
       agent({
         type: 'system',
         subtype: 'task_started',
-        task_id: 'c11-bg',
-        subagent_type: 'code-reviewer',
-        description: 'Ревью изменений в PR',
+        task_id: 'c11-bg-a',
+        tool_use_id: 'c11-inner-a',
+        subagent_type: 'general-purpose',
+        description: 'Angle A - line-by-line diff scan',
+        task_type: 'local_agent',
+      }),
+      agent({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'c11-bg-b',
+        tool_use_id: 'c11-inner-b',
+        subagent_type: 'general-purpose',
+        description: 'Angle B - removed-behavior auditor',
+        task_type: 'local_agent',
+      }),
+      agent({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'c11-bg-c',
+        tool_use_id: 'c11-inner-c',
+        subagent_type: 'general-purpose',
+        description: 'Angle C - cross-file tracer',
+        task_type: 'local_agent',
       }),
       wait(1200),
     ]),
-    checkpoint('Прогресс: читает файлы', [
+    checkpoint('Ход кончился на отчёте о запуске — чипы обязаны остаться', [
+      ...textReply('Запустил ревью тремя гранями и жду уведомлений — соберу итог, как только все закончат.'),
+      turnResult(5900),
+      wait(2000),
+    ]),
+    checkpoint('Агенты работают дальше: прогресс идёт в их карточки', [
       agent({
         type: 'system',
         subtype: 'task_progress',
-        task_id: 'c11-bg',
-        description: 'Ревью изменений в PR',
+        task_id: 'c11-bg-a',
+        description: 'Angle A - line-by-line diff scan',
         last_tool_name: 'Read',
       }),
-      wait(1200),
-    ]),
-    checkpoint('Прогресс: ищет по коду', [
       agent({
         type: 'system',
         subtype: 'task_progress',
-        task_id: 'c11-bg',
-        description: 'Ревью изменений в PR',
+        task_id: 'c11-bg-b',
+        description: 'Angle B - removed-behavior auditor',
         last_tool_name: 'Grep',
       }),
-      wait(1500),
+      wait(2000),
     ]),
-    checkpoint('→ итог ревью', [
+    checkpoint('→ итог первого агента', [
       agent({
         type: 'system',
         subtype: 'task_notification',
-        task_id: 'c11-bg',
+        task_id: 'c11-bg-a',
         summary: 'Нашёл 2 замечания: неиспользуемый импорт и отсутствующую проверку null.',
+      }),
+      ...textReply('Один из трёх закончил (грань «line-by-line»), жду остальных.'),
+      turnResult(1500),
+      wait(1500),
+    ]),
+    checkpoint('→ итоги остальных двух', [
+      agent({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'c11-bg-b',
+        summary: 'Удалённое поведение нигде не потерялось.',
+      }),
+      agent({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'c11-bg-c',
+        summary: 'Сквозные правки на месте во всех трёх слоях.',
       }),
       wait(500),
     ]),
     checkpoint('Готовый ответ', [
-      ...textReply('Ревью фонового субагента готово — два небольших замечания, посмотри карточку выше.'),
-      turnResult(6500),
+      ...textReply('Все три грани отработали — из находок стоит смотреть только на проверку null.'),
+      turnResult(2300),
     ]),
   ]),
 
