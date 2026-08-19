@@ -9,6 +9,10 @@ commits.
 
 ## [Unreleased]
 
+## [0.7.13] - 2026-08-18
+
+- Fixed: the "Claude is thinking" line under the feed sat noticeably further right than every card above it, so it read as misaligned rather than part of the same feed. It now lines up with the rest.
+
 ## [0.7.12] - 2026-08-18
 
 - Fixed: the line under the feed changed faster than anyone could read it, flicking between the current call and "Claude is thinking" several times a second, so all you saw was twitching. It now holds whatever it says for two seconds before moving on. What happens during those two seconds is not queued up and replayed afterwards: when the wait is over the line names what is happening right now, and everything that ran past in between is already a card in the feed above it.
@@ -239,7 +243,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.12...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.13...HEAD
+[0.7.13]: https://github.com/crmapache/amazing-claude-code/compare/0.7.12...0.7.13
 [0.7.12]: https://github.com/crmapache/amazing-claude-code/compare/0.7.11...0.7.12
 [0.7.11]: https://github.com/crmapache/amazing-claude-code/compare/0.7.10...0.7.11
 [0.7.10]: https://github.com/crmapache/amazing-claude-code/compare/0.7.9...0.7.10
