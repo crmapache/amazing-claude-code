@@ -17,6 +17,8 @@ internal class ClaudeSessions(
     private val parentDisposable: Disposable,
     private val onEvent: (sessionId: String, line: String) -> Unit,
     private val onError: (sessionId: String, message: String) -> Unit,
+    /** Процесс сказал что-то мимо потока событий — см. ClaudeSession.onDiagnostic. */
+    private val onDiagnostic: (sessionId: String, message: String) -> Unit = { _, _ -> },
     private val onFinished: (sessionId: String) -> Unit,
     /** Процесс разговора умер сам — панели есть что закрыть и объяснить. */
     private val onCrashed: (sessionId: String, exitCode: Int) -> Unit = { _, _ -> },
@@ -280,6 +282,7 @@ internal class ClaudeSessions(
         ),
         onEvent = { line -> onEvent(sessionId, line) },
         onError = { message -> onError(sessionId, message) },
+        onDiagnostic = { message -> onDiagnostic(sessionId, message) },
         onFinished = { onFinished(sessionId) },
         onCrashed = { exitCode -> onCrashed(sessionId, exitCode) },
         onToolPermission = { request -> onToolPermission(sessionId, request) },

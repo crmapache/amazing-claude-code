@@ -95,6 +95,13 @@ internal class ClaudePanel(
 
     val component: JComponent
 
+    /**
+     * Жива ли ещё панель. Тот же вопрос платформе задаётся только устаревшим
+     * способом, а проверяемый disposable отвечает на него сам: он умирает вместе
+     * с родителем и с этого мгновения честно говорит о себе «меня уже нет».
+     */
+    private val alive = Disposer.newCheckedDisposable(parentDisposable)
+
     private var webview: WebviewHost? = null
     private var sessions: ClaudeSessions? = null
 
@@ -188,6 +195,9 @@ internal class ClaudePanel(
             parentDisposable = parentDisposable,
             onEvent = { sessionId, line -> forwardAgentEvent(sessionId, line) },
             onError = { sessionId, text -> sendError(sessionId, text) },
+            // В ленту это не идёт, но про потерянный вход надо узнавать и отсюда:
+            // об этом CLI сообщает мимо потока событий, ещё до первого ответа.
+            onDiagnostic = { _, text -> noteLoggedOut(text) },
             onFinished = { sessionId -> sendStatus(sessionId, "idle") },
             onCrashed = { sessionId, exitCode -> sendProcessExited(sessionId, exitCode) },
             onToolPermission = { sessionId, request -> askToolPermission(sessionId, request) },
@@ -1513,10 +1523,10 @@ internal class ClaudePanel(
      * (занятое окно контекста в первую очередь), из него брать нельзя.
      */
     private fun forwardAgentEvent(sessionId: String, line: String, replay: Boolean = false) {
-        if (!line.startsWith("{")) {
-            sendError(sessionId, line)
-            return
-        }
+        // Не событие — в конверт такое класть нечего. Живой процесс до сюда
+        // такую строку и не доводит (см. ClaudeSession.noteDiagnostic), а вот
+        // в старом транскрипте попасться может.
+        if (!line.startsWith("{")) return
 
         noteLoggedOut(line)
         val replayFlag = if (replay) ""","replay":true""" else ""
@@ -1730,7 +1740,7 @@ internal class ClaudePanel(
                 // Пока сигнал ждал очереди, проект могли закрыть, а панель —
                 // уничтожить: спрашивать у них, смотрят ли на панель, уже нельзя,
                 // да и звать больше некого.
-                if (!project.isDisposed && !Disposer.isDisposed(parentDisposable) && !isPanelWatched()) {
+                if (!project.isDisposed && !alive.isDisposed && !isPanelWatched()) {
                     AlertSounds.play(sound, volume)
                 }
             },

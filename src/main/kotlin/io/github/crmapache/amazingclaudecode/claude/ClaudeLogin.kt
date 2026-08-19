@@ -25,6 +25,12 @@ internal object ClaudeLogin {
     private fun openTerminal(project: Project, verb: String) {
         ApplicationManager.getApplication().invokeLater {
             runCatching {
+                // Способ открыть терминал помечен устаревшим, но замены ему у
+                // платформы нет: всё остальное в этом менеджере либо так же
+                // устарело, либо закрыто для плагинов. Нужна именно оболочка, в
+                // которую мы потом напишем, — вход, запущенный терминалом напрямую,
+                // закрыл бы вкладку вместе с собой и со всем, что успел сказать.
+                @Suppress("DEPRECATION")
                 val widget = TerminalToolWindowManager.getInstance(project)
                     .createShellWidget(project.basePath, "claude $verb", true, true)
 

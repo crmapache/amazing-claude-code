@@ -61,6 +61,12 @@ internal class ClaudeSession(
     permissionMode: String = "",
     private val onEvent: (String) -> Unit,
     private val onError: (String) -> Unit,
+    /**
+     * Процесс сказал что-то мимо потока событий — см. [noteDiagnostic]. Ленты
+     * это не касается, но панель по такой строке узнаёт, например, что вход
+     * перестал действовать.
+     */
+    private val onDiagnostic: (String) -> Unit = {},
     private val onFinished: () -> Unit,
     /**
      * Агент спрашивает разрешение у самой панели — по тому же потоку, которым идёт
@@ -143,6 +149,12 @@ internal class ClaudeSession(
     private val awaitingPermission = ConcurrentHashMap<String, PermissionChannel.ToolPermission>()
 
     private val lines = StreamLines(onLine = ::consume)
+
+    /**
+     * Последнее, что процесс сказал мимо потока событий, — см. [noteDiagnostic].
+     * Держим хвост, а не одну строку: объяснение обычно состоит из нескольких.
+     */
+    private val diagnostics = ArrayDeque<String>()
 
     val isRunning: Boolean get() = handler?.isProcessTerminated == false
 
@@ -469,6 +481,13 @@ internal class ClaudeSession(
      * служебная переписка с процессом.
      */
     private fun consume(line: String) {
+        // Не событие, а просто сказанное в общий вывод: разбирать нечего, а
+        // ленте это так же не нужно, как и stderr (см. noteDiagnostic).
+        if (!line.startsWith("{")) {
+            noteDiagnostic(line)
+            return
+        }
+
         // Встречный запрос: не ответ на нашу просьбу, а вопрос агента к панели.
         if (line.contains("\"control_request\"")) {
             val payload = runCatching {
@@ -641,11 +660,45 @@ internal class ClaudeSession(
         }
     }
 
+    // --- Диагностика процесса ------------------------------------------------
+
+    /**
+     * Процесс сказал что-то мимо потока событий: это либо stderr, либо строка
+     * stdout, которая не разбирается как событие.
+     *
+     * В ленту такое не идёт. CLI пишет туда и предупреждения своих библиотек —
+     * про хранилище токенов MCP, про устаревшие возможности Node и подобное, —
+     * а разговор при этом идёт как ни в чём не бывало. Показывать их ошибкой
+     * значит пугать человека тем, чего он не ломал и починить не может.
+     *
+     * Но и терять их нельзя: если процесс всё-таки умрёт, эти строки —
+     * единственное объяснение, почему. Поэтому копим хвост и показываем его
+     * ровно в тот момент, когда он и правда что-то значит (см. [start]).
+     */
+    private fun noteDiagnostic(text: String) {
+        val line = text.trim()
+        if (line.isEmpty()) return
+
+        thisLogger().info("claude said: $line")
+        onDiagnostic(line)
+
+        synchronized(diagnostics) {
+            diagnostics.addLast(line)
+            while (diagnostics.size > DIAGNOSTICS_KEPT) diagnostics.removeFirst()
+        }
+    }
+
+    private fun diagnosticsTail(): String =
+        synchronized(diagnostics) { diagnostics.joinToString("\n") }
+
     // --- Процесс ------------------------------------------------------------
 
     private fun start(): OSProcessHandler? {
         stopRequested = false
         suppressingPreferenceReply = false
+        // Прошлый процесс мог наговорить своего перед смертью — к новому это
+        // отношения не имеет, и объяснять его будущий крах чужими словами нечестно.
+        synchronized(diagnostics) { diagnostics.clear() }
         val executable = ClaudeExecutable.find()
 
         if (executable == null) {
@@ -683,7 +736,7 @@ internal class ClaudeSession(
                 override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
                     when (outputType) {
                         ProcessOutputTypes.STDOUT -> lines.append(event.text)
-                        ProcessOutputTypes.STDERR -> onError(event.text.trim())
+                        ProcessOutputTypes.STDERR -> noteDiagnostic(event.text)
                     }
                 }
 
@@ -696,7 +749,12 @@ internal class ClaudeSession(
                     // Мы сами его остановили — это не крах, объяснять пользователю
                     // нечего. А вот если процесс умер сам, любая карточка, которая
                     // была «выполняется» в этот момент, иначе зависнет так навсегда.
-                    if (!stopRequested) onCrashed(event.exitCode)
+                    if (!stopRequested) {
+                        // Вот теперь всё, что процесс говорил мимо потока, стало
+                        // ошибкой: разговора не стало, и объяснить это больше нечем.
+                        diagnosticsTail().takeIf { it.isNotEmpty() }?.let(onError)
+                        onCrashed(event.exitCode)
+                    }
                     onFinished()
                 }
             },
@@ -753,5 +811,12 @@ internal class ClaudeSession(
 
         /** Сколько ждём ответа на любой управляющий запрос, прежде чем сдаться сами. */
         const val CONTROL_TIMEOUT_SECONDS = 20L
+
+        /**
+         * Сколько последних строк диагностики держим. Причина смерти процесса —
+         * это его последние слова, а не весь разговор с ним: полный stderr
+         * долгого разговора в ленту вываливать незачем.
+         */
+        const val DIAGNOSTICS_KEPT = 20
     }
 }

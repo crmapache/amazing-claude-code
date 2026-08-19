@@ -1,6 +1,7 @@
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask
+import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
 
 plugins {
     id("org.jetbrains.kotlin.jvm")
@@ -14,6 +15,18 @@ version = providers.gradleProperty("version").get()
 
 kotlin {
     jvmToolchain(21)
+
+    compilerOptions {
+        // Интерфейсы платформы (ToolWindowFactory в первую очередь) несут готовые
+        // реализации своих необязательных методов. По умолчанию Kotlin на всякий
+        // случай штампует в нашем классе переходники к ним — и со стороны это
+        // выглядит так, будто плагин переопределяет десяток чужих методов, включая
+        // устаревшие и экспериментальные. Верификатор маркетплейса ровно об этом и
+        // сообщал: десять устаревших и шесть экспериментальных обращений, которых
+        // в исходниках нет ни одного. Переходники нужны только тем, кто собирался
+        // против старых версий этих интерфейсов; у плагина таких потребителей нет.
+        jvmDefault = org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode.NO_COMPATIBILITY
+    }
 }
 
 // Стандартная библиотека Kotlin и аннотации приходят из самой IDE, причём более
@@ -116,6 +129,31 @@ intellijPlatform {
         ides {
             recommended()
         }
+
+        // Что считаем провалом проверки. Список явный, потому что от умолчания он
+        // отличается в обе стороны.
+        //
+        // Строже: экспериментальное тоже роняет задачу. Своего экспериментального
+        // в плагине нет ни одного обращения, и держать этот счёт на нуле дешевле,
+        // чем однажды разбирать накопившийся список в карточке версии.
+        //
+        // Мягче: устаревшее и закрытое для плагинов задачу не роняют. Такие места
+        // наперечёт, все осознанные, и поддерживаемой замены у платформы для них
+        // нет: открытие терминала для входа (ClaudeLogin), прежняя пара методов
+        // обработчика ресурсов, без которой не грузится сама панель
+        // (WebviewResources.ResourceHandler), перетаскивание из окна коммита
+        // (WebviewFileDrop.changedPaths) и прогрев настроек прокси для встроенного
+        // браузера (WebviewHost.loadProxySettings). Пока замены не появится,
+        // зелёной задачу сделает только отказ от самих возможностей.
+        failureLevel = listOf(
+            VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
+            VerifyPluginTask.FailureLevel.EXPERIMENTAL_API_USAGES,
+            VerifyPluginTask.FailureLevel.SCHEDULED_FOR_REMOVAL_API_USAGES,
+            VerifyPluginTask.FailureLevel.OVERRIDE_ONLY_API_USAGES,
+            VerifyPluginTask.FailureLevel.NON_EXTENDABLE_API_USAGES,
+            VerifyPluginTask.FailureLevel.MISSING_DEPENDENCIES,
+            VerifyPluginTask.FailureLevel.INVALID_PLUGIN,
+        )
     }
 
     // Подпись архива. Ключ и цепочка сертификатов приходят из окружения: в
