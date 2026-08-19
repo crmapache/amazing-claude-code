@@ -9,6 +9,12 @@ commits.
 
 ## [Unreleased]
 
+## [0.7.14] - 2026-08-18
+
+- Changed: the line under the feed went back to always saying "Claude is thinking" while a turn runs, instead of naming the current call or file ("Running ...", "Reading ..."). That call already has its own card in the feed right above the line, so the two were saying the same thing twice.
+- Fixed: a tool call collapsed into a plain "N tools" count sat one pixel shorter than the same row showing a named call, so the card's height ticked by a pixel on every collapse and dragged the "Claude is thinking" line under it along with it. Both now hold the same height.
+- Fixed: the thinking card had its own border and background, and sat noticeably further right than the tool call it was grouped with, so the two looked like they belonged to different parts of the interface. It now matches the tool call's plain look and indent exactly.
+
 ## [0.7.13] - 2026-08-18
 
 - Fixed: the "Claude is thinking" line under the feed sat noticeably further right than every card above it, so it read as misaligned rather than part of the same feed. It now lines up with the rest.
@@ -243,7 +249,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.13...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.14...HEAD
+[0.7.14]: https://github.com/crmapache/amazing-claude-code/compare/0.7.13...0.7.14
 [0.7.13]: https://github.com/crmapache/amazing-claude-code/compare/0.7.12...0.7.13
 [0.7.12]: https://github.com/crmapache/amazing-claude-code/compare/0.7.11...0.7.12
 [0.7.11]: https://github.com/crmapache/amazing-claude-code/compare/0.7.10...0.7.11
