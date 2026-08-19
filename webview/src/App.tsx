@@ -40,7 +40,6 @@ import { StreamSwitcher, type AgentStatus, type AgentTab } from './components/St
 import { TaskListPanel } from './components/TaskListPanel'
 import composer from './components/composer.module.css'
 import s from './components/shell.module.css'
-import { activityFor } from './feed/activity'
 import { bashCommand, shellText, type ShellRun } from './feed/bash'
 import { contextOf, initialPanelState, reducePanel, type PanelState } from './feed/build'
 import { deferFollowUpForCompact } from './feed/compact'
@@ -74,7 +73,6 @@ import {
 import { useCardState, type CardState } from './hooks/useCardState'
 import { moveGroup } from './tabs'
 import { useSelection } from './hooks/useSelection'
-import { useSteadyActivity } from './hooks/useSteadyActivity'
 
 const MAIN_SESSION = 'main'
 
@@ -1611,13 +1609,6 @@ export const App = () => {
     [panel, cards.answeredAsks, hiddenTaskIds],
   )
   const mainStatus = useMemo(() => mainStatusOf(panel, cards.answeredAsks), [panel, cards.answeredAsks])
-  /**
-   * Дело, которым ход занят прямо сейчас, — с выдержкой, чтобы строку состояния
-   * успевали прочитать (см. useSteadyActivity). Ход опознаём парой «вкладка +
-   * начало хода»: на стыке двух ходов и при переключении вкладки выдержка не
-   * досиживается, иначе новый ход первые секунды подписан чужим делом.
-   */
-  const activity = useSteadyActivity(activityFor(panel.items), `${active}:${panel.turnStartedAt ?? 0}`)
 
   // activeStream переживает переключение сессии/`/clear` на один кадр раньше,
   // чем эффект успевает сбросить его на 'main' (а после /clear эффект вообще
@@ -1961,7 +1952,7 @@ export const App = () => {
               streamingId={panel.streamingId}
               streamingThinking={panel.streamingThinking}
               streaming={running}
-              streamStatus={streamStatus(panel, cards, activity)}
+              streamStatus={streamStatus(panel, cards)}
               statusStalled={panel.retry !== undefined}
               cards={cards}
               scrollRef={attachFeed}
@@ -2217,12 +2208,8 @@ const ownStream = (item: FeedItem): boolean => !('taskId' in item) || item.taskI
  * агенту, как будто он всё это время «думал». Обновляется раз в секунду тем
  * же тиком, что двигает длительность вызовов инструментов (см. tickDurations
  * в feed/build.ts).
- *
- * Дело сюда приходит уже придержанным (см. useSteadyActivity): вызовы сменяют
- * друг друга быстрее, чем строку успевают дочитать, и без выдержки в ней видно
- * не работу, а мельтешение.
  */
-const streamStatus = (panel: PanelState, cards: CardState, activity: string): string => {
+const streamStatus = (panel: PanelState, cards: CardState): string => {
   /**
    * Запрос к модели сорвался и ждёт повтора: ход в этот момент не идёт вовсе —
    * ни текста, ни вызовов, ни вопроса, — и «Claude is thinking» с бегущим
@@ -2261,16 +2248,13 @@ const streamStatus = (panel: PanelState, cards: CardState, activity: string): st
   }
 
   /**
-   * Чем ход занят прямо сейчас — «Reading build.ts», «Searching for retryLabel»
-   * (см. activityFor). Раньше здесь на всю работу стояло одно «Claude is
-   * working», хотя поток называет каждое действие поимённо. Строка при этом
-   * остаётся одной и той же строкой — сменившееся дело заменяет прежнее, а не
-   * дописывается следом: в ленте о нём уже есть карточка.
-   *
-   * Пусто — значит ничего конкретного не происходит: ход думает, и назвать это
-   * можно только так.
+   * Что именно сейчас делается — уже названо карточкой в самой ленте (вызов
+   * инструмента, его команда, описание). Повторять то же самое здесь второй
+   * раз, другими словами, — не рассказ о происходящем, а дублирование того, что
+   * и так видно строкой выше. Пока ход идёт и решения от человека не ждут,
+   * здесь ровно одна честная подпись — ход думает.
    */
-  const label = activity || 'Claude is thinking'
+  const label = 'Claude is thinking'
   if (!panel.turnStartedAt) return label
 
   // Решение только что приняли: awaitingDecision уже false, но эффект,
