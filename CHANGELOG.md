@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.7.18] - 2026-08-20
+
+- Fixed: the five-hour ring showed a share belonging to a window that had already reset - 99% used while the account was barely into a fresh one - and the number flipped between two values from one minute to the next. The panel asked whichever process was at hand and drew the answer as it came, and the two paths do not agree. A conversation learns its share from the server's replies to its own requests, so a process that is not working repeats the last share it saw for as long as it stays open: a tab left open overnight answered with yesterday's window all day. A one-off ping asks the server for a summary instead, and that summary trails a few minutes behind. A share is now shown only for the window it names: once the reset time has passed, the ring starts from zero and waits for real numbers, and within one window the panel keeps the highest share it has seen, so a lagging answer no longer drags the ring backwards. An answer about an expired window also sends the panel straight to the server, instead of trusting the process that gave it. The tooltip no longer claims "Resets in soon" for a window whose next reset nobody knows yet - it starts with the first turn.
+- Changed: the usage rings refresh every thirty seconds now, and again the moment a turn ends. While a turn runs the question is free - it goes to the process that is already working, and that process knows the freshest share there is. With nothing running the panel asks the server, but no more than once a minute: that answer costs a separate short-lived process, and without conversations the share only moves if you are working in the terminal or in the browser. The daily token count keeps its own slower round - it is a scan of every project's transcripts.
+
 ## [0.7.17] - 2026-08-19
 
 - Changed: a file dragged with the mouse out of the Commit tool window is no longer accepted by the panel, and the panel no longer lights up for it. That window hands over its own object full of changes rather than plain files, and the only way to read paths out of it is an API the platform keeps closed to plugins - which is what the Marketplace turns a release down for. Every other way in is untouched: the project tree, editor tabs, your file manager, the attach button, and naming a file as you type.
@@ -263,7 +268,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.17...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.18...HEAD
+[0.7.18]: https://github.com/crmapache/amazing-claude-code/compare/0.7.17...0.7.18
 [0.7.17]: https://github.com/crmapache/amazing-claude-code/compare/0.7.16...0.7.17
 [0.7.16]: https://github.com/crmapache/amazing-claude-code/compare/0.7.15...0.7.16
 [0.7.15]: https://github.com/crmapache/amazing-claude-code/compare/0.7.14...0.7.15
