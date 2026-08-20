@@ -159,6 +159,14 @@ internal class ClaudeSession(
     val isRunning: Boolean get() = handler?.isProcessTerminated == false
 
     /**
+     * Идёт ли ход прямо сейчас. Наружу это нужно ради расхода подписки: пока ход
+     * идёт, процесс получает свежую долю с каждым ответом сервера, а у свободного
+     * она замирает на той, что приехала с последним, — и спрашивать его смысла нет
+     * (см. ClaudePanel.refreshLimits).
+     */
+    val isBusy: Boolean get() = isRunning && busy
+
+    /**
      * Название разговора, которое последним ушло наверх — не шлём повторно то
      * же самое (см. consume): сам CLI повторяет событие `ai-title` по ходу
      * файла много раз подряд с одним и тем же значением. null и сразу после
@@ -384,8 +392,8 @@ internal class ClaudeSession(
      * ресурсы с реально работающим разговором в другой вкладке — разовый расход
      * того не стоит. До первого сообщения панель просто ничего не показывает.
      */
-    fun requestUsage(onUsage: (JsonObject) -> Unit) {
-        control("get_usage", onResult = onUsage)
+    fun requestUsage(onUsage: (JsonObject) -> Unit, onFailure: (String) -> Unit = {}) {
+        control("get_usage", onResult = onUsage, onFailure = onFailure)
     }
 
     /**

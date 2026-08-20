@@ -168,6 +168,16 @@ internal class ClaudeSessions(
     fun isRunning(sessionId: String): Boolean = sessions[sessionId]?.isRunning == true
 
     /**
+     * Разговор, у которого прямо сейчас идёт ход, — любой из вкладок.
+     *
+     * Нужно это для расхода подписки: он общий на всю учётную запись, и ответит
+     * про него любой процесс, но осмысленно отвечает только работающий — свежую
+     * долю процесс узнаёт из ответов сервера на свои же запросы. Спрашивать
+     * строго главную вкладку было бы промахом: работать могут в любой.
+     */
+    fun busySession(): String? = sessions.entries.firstOrNull { it.value.isBusy }?.key
+
+    /**
      * Режим применяется сразу, к следующим же вызовам инструментов. Разговор при
      * этом заводим, даже если его ещё нет: выбранный режим должен пережить момент
      * до первого вопроса, иначе процесс поднимется с обычным.
@@ -242,8 +252,12 @@ internal class ClaudeSessions(
      * Расход спрашиваем у разговора, поднимая его при необходимости: иначе цифры
      * появятся только после первого сообщения, а видеть их хочется сразу.
      */
-    fun requestUsage(sessionId: String, onUsage: (kotlinx.serialization.json.JsonObject) -> Unit) {
-        session(sessionId).requestUsage(onUsage)
+    fun requestUsage(
+        sessionId: String,
+        onUsage: (kotlinx.serialization.json.JsonObject) -> Unit,
+        onFailure: (String) -> Unit = {},
+    ) {
+        session(sessionId).requestUsage(onUsage, onFailure)
     }
 
     fun close(sessionId: String) {

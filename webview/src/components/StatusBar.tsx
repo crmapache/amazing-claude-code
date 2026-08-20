@@ -41,7 +41,7 @@ export const UsageMeters = ({ todayTokens, usage }: UsageMetersProps) => (
       <Meter
         percent={usage.session.percent}
         color={paceColor(usage.session.percent, usage.session.resets, FIVE_HOUR_MS)}
-        tooltip={`5-hour limit: ${usage.session.percent}% used\nResets in ${timeLeft(usage.session.resets)}`}
+        tooltip={windowTooltip('5-hour limit', usage.session)}
       />
     ) : null}
 
@@ -162,8 +162,8 @@ const WeekMeter = ({ usage }: { usage: UsageWindow }) => {
       pace={budget}
       tooltip={
         budget === null
-          ? `Weekly limit: ${usage.percent}% used`
-          : `Weekly limit: ${usage.percent}% used\nDim ring: ${budget}% even-pace budget for today`
+          ? windowTooltip('Weekly limit', usage)
+          : `${windowTooltip('Weekly limit', usage)}\nDim ring: ${budget}% even-pace budget for today`
       }
     />
   )
@@ -343,15 +343,28 @@ export const contextGlow = (percent: number): { strong: string; soft: string } =
  * Именно остаток, а не время сброса: решают им один вопрос — дотерпеть или
  * начинать экономить прямо сейчас, — и в этом виде ответ не надо считать.
  */
-const timeLeft = (resets: string): string => {
+const timeLeft = (resets: string): string | null => {
   const resetMs = resets ? new Date(resets).getTime() : Number.NaN
-  if (Number.isNaN(resetMs)) return 'soon'
+  if (Number.isNaN(resetMs)) return null
 
   const minutes = Math.round((resetMs - Date.now()) / 60_000)
-  if (minutes <= 0) return 'soon'
+  if (minutes <= 0) return null
 
   const hours = Math.floor(minutes / 60)
   return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`
+}
+
+/**
+ * Подсказка окна: доля и, если известно, сколько до сброса. Именно «если»: у
+ * только что сброшенного окна время следующего сброса ещё никому не известно —
+ * оно начнётся с первого же хода, — и строчка про сброс тогда не пишется вовсе.
+ * Раньше на её месте стояло «Resets in soon», которое в этом случае значило
+ * ровно обратное: не «вот-вот», а «неизвестно».
+ */
+const windowTooltip = (title: string, usage: UsageWindow): string => {
+  const left = timeLeft(usage.resets)
+
+  return left === null ? `${title}: ${usage.percent}% used` : `${title}: ${usage.percent}% used\nResets in ${left}`
 }
 
 /**

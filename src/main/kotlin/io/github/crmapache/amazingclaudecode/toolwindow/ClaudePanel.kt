@@ -123,6 +123,21 @@ internal class ClaudePanel(
     private val modelsRequested = java.util.concurrent.atomic.AtomicBoolean(false)
 
     /**
+     * Память об окнах расхода: снимки приезжают из двух путей с разной задержкой,
+     * и складывать их в одну правдивую картину — работа копилки (см.
+     * [ClaudeUsage.Tracker]), а не панели.
+     */
+    private val usageWindows = ClaudeUsage.Tracker()
+
+    /**
+     * Когда последний раз поднимали пинг за расходом. Опрос идёт каждые полминуты,
+     * но у спящей панели каждый заход стоит отдельного процесса на несколько
+     * секунд, а расход без разговоров почти не меняется — потому пингуем реже
+     * (см. [refreshLimits]).
+     */
+    private val lastUsagePing = java.util.concurrent.atomic.AtomicLong(0)
+
+    /**
      * Запросы, на которые ждём ответа человека: отвечать надо тому разговору,
      * который спросил, — вкладок много, и чужой ответ никого не разблокирует.
      */
@@ -219,6 +234,7 @@ internal class ClaudePanel(
         )
 
         scheduleUsageUpdates(parentDisposable)
+        scheduleLimitUpdates(parentDisposable)
         scheduleBranchUpdates(parentDisposable)
         return host.component
     }
@@ -725,7 +741,8 @@ internal class ClaudePanel(
             // ответит не списком, а «вы не вошли». И один раз: список не меняется
             // от того, что мы лишний раз спросили, а стоит запрос запуска процесса.
             if (status.loggedIn) {
-                refreshUsage()
+                refreshLimits(urgent = true)
+                refreshTodayTokens()
                 if (modelsRequested.compareAndSet(false, true)) refreshModels()
             }
         }
@@ -966,11 +983,31 @@ internal class ClaudePanel(
 
     // --- Расход по окнам ----------------------------------------------------
 
+    /**
+     * Окна расхода — свой круг, вдвое чаще остального: их видно на кольцах у самого
+     * поля ввода, и пока агент работает, доля растёт на глазах. У живого разговора
+     * это ничего не стоит (вопрос уходит в уже поднятый процесс), а спящую панель
+     * от лишних процессов бережёт отдельный порог в [refreshLimits].
+     */
+    private fun scheduleLimitUpdates(parentDisposable: Disposable) {
+        val task = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
+            { refreshLimits() },
+            LIMITS_PERIOD_SECONDS,
+            LIMITS_PERIOD_SECONDS,
+            TimeUnit.SECONDS,
+        )
+
+        Disposer.register(parentDisposable) { task.cancel(false) }
+    }
+
     /** Опрос не бесплатный (отдельный процесс), поэтому редкий и в фоне. */
     private fun scheduleUsageUpdates(parentDisposable: Disposable) {
         val task = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
             {
-                refreshUsage()
+                // Скан транскриптов ВСЕХ проектов ради «токенов за сегодня» — тяжёлая
+                // штука, и меняется эта цифра неспешно: она остаётся на редком круге,
+                // в отличие от самих окон расхода (см. scheduleLimitUpdates).
+                refreshTodayTokens()
                 // PR спрашивает GitHub отдельным процессом — та же редкая
                 // периодичность, что у расхода. Ветку сюда не тащим: она обновляется
                 // своим отдельным, куда более частым кругом (см. scheduleBranchUpdates).
@@ -1054,36 +1091,93 @@ internal class ClaudePanel(
     }
 
     /**
-     * Расход по окнам подписки. Пока разговор уже живёт, спрашиваем его самого
-     * по управляющему каналу — бесплатно, процесс и так поднят. До первого
-     * сообщения процесса нет, а поднимать полноценную сессию с MCP и хуками
-     * только за этой цифрой не стоит — вместо этого разовый лёгкий пинг
-     * (--safe-mode, без customizations) через [ClaudeControlPing].
+     * Весь расход целиком, по просьбе самой панели: и окна подписки, и токены за
+     * день. Просит она об этом, когда открывается, — поэтому спрашиваем сразу, не
+     * оглядываясь на порог для пинга.
      */
-    private fun refreshUsage(attempt: Int = 0) {
+    private fun refreshUsage() {
+        refreshLimits(urgent = true)
+        refreshTodayTokens()
+    }
+
+    /**
+     * Окна расхода подписки.
+     *
+     * Спрашиваем работающий разговор — тот, который только что закончил ход, или
+     * тот, у кого ход идёт прямо сейчас: свою долю процесс узнаёт из ответов
+     * сервера на собственные запросы, и у работающего она самая свежая из
+     * возможных. Это ещё и бесплатно: процесс уже поднят.
+     *
+     * Свободный разговор так не спросишь: он повторит цифру, приехавшую с его
+     * последним ответом, — а он мог работать вчера. За настоящей идём к серверу,
+     * разовым лёгким пингом (`--safe-mode`, без customizations) через
+     * [ClaudeControlPing].
+     *
+     * Пинг стоит запуска процесса на несколько секунд, поэтому идёт не на каждый
+     * круг, а по своему порогу: без работы расход растёт разве что от терминала
+     * или браузера — на этот случай порог и оставлен, вместо того чтобы не
+     * спрашивать вовсе. [urgent] его снимает: так спрашивают при открытии панели и
+     * при переспросе, когда цифры нужны сейчас, а не «на следующем круге».
+     */
+    private fun refreshLimits(
+        attempt: Int = 0,
+        /** Разговор, который только что работал: у него доля свежее всех. */
+        preferred: String? = null,
+        urgent: Boolean = false,
+        /** Мимо разговоров, прямо к серверу: его ответ и есть то, чем лечат замерший. */
+        viaPing: Boolean = false,
+    ) {
         // Спрашивать расход до входа нечего: процесс поднимется только затем, чтобы
         // ответить, что пользователь не вошёл.
         if (!loggedIn) return
 
-        val onUsage = { usage: JsonObject -> receiveUsage(usage, attempt) }
-
-        if (sessions?.isRunning(MAIN_SESSION) == true) {
-            sessions?.requestUsage(MAIN_SESSION, onUsage)
-        } else {
-            ClaudeControlPing.request(
-                project.basePath,
-                subtype = "get_usage",
-                onResult = onUsage,
-                onError = { error -> thisLogger().info("Usage ping skipped: $error") },
-            )
+        val onUsage = { usage: JsonObject -> receiveUsage(usage, attempt, preferred) }
+        // Кого спрашивать. Тот, кто только что закончил ход, знает свежайшую долю —
+        // он получил её в ответе на свой же запрос. Идёт ход прямо сейчас — то же
+        // самое, доля растёт у него на глазах. А вот свободный разговор отвечает
+        // ровно тем, что уже приезжало: его не тревожим и идём к серверу.
+        val live = when {
+            viaPing -> null
+            preferred != null && sessions?.isRunning(preferred) == true -> preferred
+            else -> sessions?.busySession()
         }
 
-        // Только на первом заходе: переспрашиваем мы лимиты (см. receiveUsage), а
-        // скан транскриптов от них не зависит и повторять его незачем.
-        if (attempt > 0) return
+        if (live != null) {
+            sessions?.requestUsage(
+                live,
+                onUsage,
+                // Разговор мог и не ответить (у управляющего запроса свой таймаут):
+                // тогда за цифрами всё равно идём к серверу, иначе кольца замрут до
+                // конца дня на том, что панель узнала последним.
+                onFailure = { error ->
+                    thisLogger().info("Usage from live session unavailable: $error")
+                    if (attempt < USAGE_RETRY_LIMIT) refreshLimits(attempt + 1, preferred, viaPing = true)
+                },
+            )
+            return
+        }
 
-        // Отдельно и в фоне: это скан транскриптов ВСЕХ проектов, а не спрос у
-        // текущего разговора — своя цена, поэтому не ждём и не блокируем ответ выше.
+        val now = System.currentTimeMillis()
+        val since = now - lastUsagePing.get()
+        if (!urgent && since < TimeUnit.SECONDS.toMillis(LIMITS_PING_MIN_SECONDS)) return
+        lastUsagePing.set(now)
+
+        ClaudeControlPing.request(
+            project.basePath,
+            subtype = "get_usage",
+            onResult = onUsage,
+            onError = { error -> thisLogger().info("Usage ping skipped: $error") },
+        )
+    }
+
+    /**
+     * Токены за сегодня — скан транскриптов ВСЕХ проектов, а не спрос у текущего
+     * разговора: своя цена, поэтому в фоне, отдельным сообщением наверх и на своём,
+     * редком круге (см. scheduleUsageUpdates).
+     */
+    private fun refreshTodayTokens() {
+        if (!loggedIn) return
+
         AppExecutorUtil.getAppExecutorService().submit {
             webview?.send(
                 buildJsonObject {
@@ -1097,15 +1191,28 @@ internal class ClaudePanel(
     /**
      * Ответ на get_usage. Только что поднятый CLI успевает ответить раньше, чем
      * узнает окна подписки от сервера, — тогда лимитов в ответе нет вовсе, и
-     * кольца расхода в панели пусты. Ждать общего круга (раз в минуту) в этом
-     * случае незачем: переспрашиваем через несколько секунд, и кольца
-     * появляются сразу после открытия проекта, а не когда повезёт.
+     * кольца расхода в панели пусты. Ждать общего круга в этом случае незачем:
+     * переспрашиваем через несколько секунд, и кольца появляются сразу после
+     * открытия проекта, а не когда повезёт.
      */
-    private fun receiveUsage(usage: JsonObject, attempt: Int) {
-        if (sendUsage(usage) || attempt >= USAGE_RETRY_LIMIT) return
+    private fun receiveUsage(usage: JsonObject, attempt: Int, preferred: String?) {
+        val snapshot = sendUsage(usage)
+        if (attempt >= USAGE_RETRY_LIMIT) return
+
+        // Ответ замер: отвечал процесс, который сам не обращался к серверу с
+        // прошлого окна (в панели с открытыми вкладками такой живёт сутками). Долю
+        // из него панель уже отбросила, а взять настоящую можно только у сервера.
+        if (snapshot.isStale()) {
+            refreshLimits(attempt + 1, preferred, viaPing = true)
+            return
+        }
+
+        if (snapshot.hasLimits) return
 
         AppExecutorUtil.getAppScheduledExecutorService().schedule(
-            { refreshUsage(attempt + 1) },
+            // Переспрос — из тех случаев, когда цифры нужны сейчас: порог на пинг
+            // тут не к месту, иначе попытки уйдут в него, а не к CLI.
+            { refreshLimits(attempt + 1, preferred, urgent = true) },
             USAGE_RETRY_SECONDS,
             TimeUnit.SECONDS,
         )
@@ -1207,23 +1314,30 @@ internal class ClaudePanel(
 
     /**
      * Ответ get_usage наверх — не важно, от живого разговора он или от пинга.
-     * Возвращает, приехали ли сами окна лимитов: без них переспрашиваем (см.
-     * receiveUsage), а вот размер окна контекста в ответе бывает и тогда,
-     * поэтому сообщение уходит наверх в любом случае.
+     * Возвращает сам разобранный ответ: по нему решают, надо ли переспрашивать
+     * (см. receiveUsage). Сообщение наверх уходит в любом случае — размер окна
+     * контекста в ответе бывает и тогда, когда окон лимитов в нём нет.
      */
-    private fun sendUsage(usage: JsonObject): Boolean {
+    private fun sendUsage(usage: JsonObject): ClaudeUsage.Snapshot {
         val snapshot = ClaudeUsage.parse(usage)
+        // Наверх идёт не сырой ответ, а сверенный с тем, что видели раньше: сам по
+        // себе снимок не говорит, про нынешнее ли он окно (см. ClaudeUsage.Tracker).
+        val merged = usageWindows.merge(snapshot)
 
         webview?.send(
             buildJsonObject {
                 put("type", "usage")
-                snapshot.session?.let { putWindow("session", it) }
-                snapshot.week?.let { putWindow("week", it) }
-                snapshot.contextWindow?.let { put("contextWindow", it) }
+                merged.session?.let { putWindow("session", it) }
+                merged.week?.let { putWindow("week", it) }
+                merged.contextWindow?.let { put("contextWindow", it) }
             }.toString(),
         )
 
-        return snapshot.hasLimits
+        // Наружу отдаём сырой ответ, а не сверенный: по нему и решают, надо ли
+        // переспрашивать (см. receiveUsage). У сверенного и «лимиты есть», и «окно
+        // нынешнее» вышли бы даже тогда, когда CLI в этот раз не сказал ничего:
+        // копилка помнит окна с прошлых заходов.
+        return snapshot
     }
 
     private fun JsonObjectBuilder.putWindow(name: String, window: ClaudeUsage.Window) {
@@ -1535,7 +1649,13 @@ internal class ClaudePanel(
         // Конец хода — единственный момент, когда занятое окно контекста реально
         // поменялось: спрашиваем свежую цифру у того же процесса, который только
         // что закончил (см. refreshContext).
-        if (line.contains("\"type\":\"result\"")) refreshContext(sessionId)
+        if (line.contains("\"type\":\"result\"")) {
+            refreshContext(sessionId)
+            // И расход подписки за компанию: ход только что стоил лимита, а самая
+            // свежая доля — именно у этого процесса, он её и получил в ответе.
+            // Перепись прошлого разговора тут не в счёт: там всё уже случилось.
+            if (!replay) refreshLimits(preferred = sessionId)
+        }
     }
 
     private fun sendError(sessionId: String, text: String) {
@@ -1909,6 +2029,19 @@ internal class ClaudePanel(
          */
         const val USAGE_RETRY_SECONDS = 3L
         const val USAGE_RETRY_LIMIT = 3
+
+        /**
+         * Круг для самих окон расхода — чаще общего: пока агент работает, доля
+         * растёт на глазах, а спросить её у живого разговора ничего не стоит.
+         */
+        const val LIMITS_PERIOD_SECONDS = 30L
+
+        /**
+         * А вот у спящей панели тот же вопрос стоит запуска отдельного процесса на
+         * несколько секунд, и чаще этого его не задаём: без разговоров расход растёт
+         * разве что от работы в терминале или в браузере.
+         */
+        const val LIMITS_PING_MIN_SECONDS = 60L
         const val BRANCH_PERIOD_SECONDS = 5L
         const val LOGIN_POLL_SECONDS = 3L
         const val LOGIN_POLL_LIMIT_MINUTES = 10L
