@@ -7,20 +7,20 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 
 /**
- * Выбор вложения через штатный диалог IDE.
+ * Choosing an attachment through the IDE's own dialog.
  *
- * Свой список файлов панель не строит намеренно: у IDE уже есть дерево проекта с
- * исключениями, иконками и поиском, и пользователь ждёт именно его.
+ * The panel deliberately builds no file list of its own: the IDE already has a project tree with
+ * exclusions, icons and search, and that is exactly what the user expects.
  */
 internal object FilePicker {
 
     /**
-     * Один диалог на всё: файл, картинка и папка выбираются одинаково, и делить их
-     * по трём кнопкам незачем — разницу видно по самому пути.
+     * One dialog for everything: a file, an image and a folder are chosen the same way, and splitting
+     * them across three buttons serves nothing - the difference is visible from the path itself.
      */
     fun pick(project: Project, onPicked: (kind: String, path: String) -> Unit) {
-        // Описатель собираем конструктором: у фабрики нужные нам методы объявлены
-        // устаревшими, а поведение здесь и так задаётся флагами.
+        // The descriptor is built with the constructor: the factory's methods we need are declared
+        // deprecated, while the behaviour here is set by flags anyway.
         val descriptor = FileChooserDescriptor(true, true, false, false, false, true)
             .withTitle("Attach files or folders")
 
@@ -30,12 +30,12 @@ internal object FilePicker {
     }
 
     /**
-     * То же описание вложения, но для пути, который пришёл со стороны: файл
-     * бросили в поле ввода мышью. Панель знает о нём только строку — папка это
-     * или файл и как путь выглядит от корня проекта, видно лишь здесь.
+     * The same description of an attachment, but for a path that came from outside: a file dropped into
+     * the input field with the mouse. The panel knows only a string about it - whether it is a folder or
+     * a file, and how the path looks from the project's root, is visible only here.
      *
-     * Несуществующий путь пропускаем молча: перетащить могли что угодно, вплоть
-     * до ссылки из браузера.
+     * A path that does not exist is skipped silently: anything at all could have been dragged in, up to
+     * a link from a browser.
      */
     fun describe(project: Project, path: String): Pair<String, String>? {
         val file = LocalFileSystem.getInstance().refreshAndFindFileByPath(path) ?: return null
@@ -43,11 +43,11 @@ internal object FilePicker {
     }
 
     /**
-     * Вид вложения для пути, который укорачивать нельзя.
+     * The attachment kind for a path that must not be shortened.
      *
-     * Так приходит «Send Absolute Path…»: полный путь там и есть весь смысл
-     * действия — его просят для разговора, поднятого не в этом проекте, где путь
-     * от корня никуда не ведёт.
+     * That is how "Send Absolute Path…" arrives: there the full path is the whole point of the action -
+     * it is asked for a conversation raised outside this project, where a path from the root leads
+     * nowhere.
      */
     fun kindOf(path: String): String? =
         LocalFileSystem.getInstance().refreshAndFindFileByPath(path)?.let(::kindOf)
@@ -59,10 +59,9 @@ internal object FilePicker {
     }
 
     /**
-     * Внутри проекта путь короткий, от его корня — такой же, как у ссылки из
-     * редактора, и агент читает его от своей рабочей директории. Файл снаружи
-     * остаётся с полным путём: срезать у него ведущий слэш означало бы отдать
-     * агенту путь, которого не существует.
+     * Inside the project the path is short, from its root - the same as for a reference from the editor,
+     * and the agent reads it relative to its working directory. A file outside keeps its full path:
+     * trimming its leading slash would hand the agent a path that does not exist.
      */
     private fun relativePath(project: Project, file: VirtualFile): String {
         val base = project.basePath ?: return file.path

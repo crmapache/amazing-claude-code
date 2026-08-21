@@ -10,7 +10,7 @@ interface QuotesProps {
   onRemove: (id: string) => void
 }
 
-/** Куски вывода, выделенные мышью: они уедут вместе со следующим сообщением. */
+/** Pieces of output selected with the mouse: they will travel along with the next message. */
 export const Quotes = ({ items, onRemove }: QuotesProps) => {
   if (items.length === 0) return null
 

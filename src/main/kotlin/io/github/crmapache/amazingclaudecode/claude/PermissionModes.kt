@@ -1,23 +1,21 @@
 package io.github.crmapache.amazingclaudecode.claude
 
 /**
- * Названия режимов разрешений.
+ * The names of the permission modes.
  *
- * Режим «спрашивать перед каждым действием» панель исторически звала `default` —
- * так его звал и сам CLI. Нынешний флаг запуска знает его под именем `manual`, а
- * значения `default` у него нет вовсе.
+ * The panel used to call the "ask before every action" mode `default` - that is what the CLI called it
+ * too. The current launch flag knows it as `manual`, and has no value `default` at all.
  *
- * Раньше на этом основании флаг для него просто не передавался: раз «обычный»
- * режим и так по умолчанию, зачем. Но умолчание у CLI своё — `permissions.defaultMode`
- * из личного конфига пользователя. У кого там стоял `bypassPermissions`, тот,
- * выбрав в панели самый строгий режим, молча получал самый свободный: панель
- * показывала «Ask», процесс поднимался без единого вопроса, а после первого же
- * хода селектор откатывался обратно на «Bypass». Поэтому режим теперь передаётся
- * всегда и под тем именем, которое CLI понимает.
+ * On that basis the flag simply was not passed for it: if the "normal" mode is the default anyway, why
+ * bother. But the CLI's default is its own - `permissions.defaultMode` from the user's personal
+ * config. Anyone who had `bypassPermissions` there silently got the loosest mode after picking the
+ * strictest one in the panel: the panel showed "Ask", the process came up without a single question,
+ * and after the first turn the selector fell back to "Bypass". So the mode is now always passed, under
+ * the name the CLI understands.
  */
 internal object PermissionModes {
 
-    /** Как этот режим называется в флаге запуска и в управляющих запросах. */
+    /** What this mode is called in the launch flag and in control requests. */
     const val ASK = "manual"
 
     const val ACCEPT_EDITS = "acceptEdits"
@@ -26,33 +24,30 @@ internal object PermissionModes {
     const val DONT_ASK = "dontAsk"
     const val BYPASS = "bypassPermissions"
 
-    /** Как его звала панель раньше — встречается в сохранённых настройках. */
+    /** What the panel used to call it - it still turns up in saved settings. */
     private const val LEGACY_ASK = "default"
 
     /**
-     * Все режимы нынешнего CLI. Незнакомое имя (из чужих настроек или из старой
-     * переписки) панель не показывает и агенту не передаёт: он на нём просто
-     * откажется запускаться.
+     * Every mode of the current CLI. A name it does not know (from someone else's settings or from an
+     * old conversation) the panel neither shows nor passes on: the CLI would simply refuse to start.
      */
     val KNOWN = setOf(ASK, ACCEPT_EDITS, PLAN, AUTO, DONT_ASK, BYPASS)
 
-    /** Приводит любое пришедшее извне название к тому, которым пользуемся мы. */
+    /** Brings any name arriving from outside to the one we use. */
     fun normalize(mode: String): String = if (mode == LEGACY_ASK) ASK else mode
 
     /**
-     * Режим для разговора: выбранный в панели, а если там ещё не выбирали —
-     * [fallback].
+     * The mode for a conversation: the one picked in the panel, or [fallback] if nothing was ever
+     * picked there.
      *
-     * Пусто здесь раньше значило «самый строгий»: панель поднимала разговор в
-     * «Ask», что бы ни стояло в настройках Claude Code. Так она защищалась от
-     * обратного — от молчаливого `bypassPermissions` из личного конфига, — но
-     * заодно расходилась с терминалом у всех, кто настроил себе другой режим по
-     * умолчанию: в терминале разговор начинался в нём, в панели — в «Ask».
+     * Empty used to mean "the strictest": the panel raised conversations in "Ask" whatever stood in
+     * the Claude Code settings. That guarded against the opposite - a silent `bypassPermissions` from
+     * a personal config - but it also parted ways with the terminal for everyone who had configured a
+     * different default: in the terminal a conversation began in it, in the panel in "Ask".
      *
-     * Теперь пустая настройка означает «как настроено у Claude Code», и умолчание
-     * читает [PermissionDefaultMode] — по тем же правилам, по которым его
-     * применяет сам CLI. Врать селектору это по-прежнему не даёт: панель
-     * показывает именно то значение, с которым поднимется процесс.
+     * Now empty settings mean "however Claude Code is configured", and the default is read by
+     * [PermissionDefaultMode] - by the same rules the CLI applies it. That still leaves the selector
+     * no room to lie: the panel shows exactly the value the process will come up with.
      */
     fun resolve(stored: String, fallback: String = ASK): String =
         if (stored.isEmpty()) fallback else normalize(stored)

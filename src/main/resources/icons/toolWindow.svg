@@ -1,17 +1,15 @@
-<!-- Монограмма ACC: три буквы идут по диагонали сверху слева вниз направо и
-     слегка находят друг на друга — так все три помещаются в квадрат значка и
-     читаются как один знак, а не как строчка мелкого текста. Буквы предельно
-     простые (галочка с перекладиной и две дуги): на 20 пикселях любая деталь
-     сложнее превращается в грязь.
+<!-- The ACC monogram: three letters run diagonally from the top left down to the right and slightly overlap
+     one another - that way all three fit into the icon's square and read as one mark rather than as a line
+     of small text. The letters are as simple as they get (a tick with a crossbar and two arcs): at 20
+     pixels any finer detail turns into mud.
 
-     Лучи расходятся веером от середины знака — по три в каждую сторону.
-     Середина веера смотрит поперёк монограммы (вверх-вправо и вниз-влево),
-     боковые лучи разведены от неё на 25°, поэтому сияние читается именно как
-     исходящее от букв, а не как штриховка рядом с ними. Толщина у лучей вдвое
-     меньше буквенной: на равной они спорили бы со знаком, а не подсвечивали его.
+     The rays fan out from the middle of the mark - three to each side. The fan's middle looks across the
+     monogram (up-right and down-left), and the side rays are spread 25 degrees from it, so the glow reads
+     as coming out of the letters rather than as hatching beside them. The rays are half the letters'
+     thickness: at an equal one they would compete with the mark instead of lighting it up.
 
-     Цвет обводки один на буквы и лучи — значок монохромный, платформа
-     перекрашивает его целиком под тему New UI. -->
+     The stroke colour is one for the letters and the rays - the icon is monochrome and the platform
+     repaints it whole for the New UI theme. -->
 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
   <g stroke="#6C707E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
     <path d="M1.8 9.6 5.2 2.0 8.6 9.6"/>

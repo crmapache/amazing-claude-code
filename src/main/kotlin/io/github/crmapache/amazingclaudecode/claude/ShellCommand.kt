@@ -7,52 +7,48 @@ import java.io.File
 import java.nio.file.Path
 
 /**
- * Команда, набранная в поле ввода через «!» — тот же bash-режим, что в терминале
- * Claude Code и у соседних агентских оболочек.
+ * A command typed into the input field through "!" - the same bash mode the Claude Code terminal and
+ * neighbouring agent shells have.
  *
- * Выполняет её сама панель, а не агент: смысл этого режима ровно в том, чтобы
- * посмотреть что-нибудь своими глазами — ветку, статус, содержимое файла — не
- * тратя на это ход агента и не спрашивая разрешения на вызов инструмента.
- * Агент вывод всё равно увидит: он уезжает ему вместе со следующим сообщением
- * (см. ClaudePanel и shellLog на стороне панели).
+ * The panel runs it, not the agent: the whole point of this mode is to look at something with your own
+ * eyes - a branch, a status, a file's contents - without spending the agent's turn on it and without
+ * asking permission for a tool call. The agent will see the output anyway: it travels along with the
+ * next message (see ClaudePanel and shellLog on the panel's side).
  *
- * Через пользовательскую оболочку с профилем, а не напрямую: IDE, запущенная из
- * Dock, живёт с урезанным PATH (та же беда, что и у поиска самого CLI, см.
- * [ClaudeExecutable]), и «!npm test» в ней не нашёлся бы вовсе.
+ * Through the user's shell with its profile rather than directly: an IDE launched from the Dock lives
+ * with a trimmed PATH (the same trouble the CLI lookup has, see [ClaudeExecutable]), and "!npm test"
+ * would not be found there at all.
  */
 internal object ShellCommand {
 
     data class Result(val exitCode: Int, val stdout: String, val stderr: String)
 
     /**
-     * Сколько ждём команду, прежде чем убить. С запасом на сборку и тесты, но не
-     * бесконечно: своего Stop у этой карточки нет, и зависший `!tail -f` иначе
-     * держал бы процесс до закрытия IDE.
+     * How long a command is given before it is killed. With room for a build and tests, but not
+     * endless: this card has no Stop of its own, and a stuck `!tail -f` would otherwise hold a process
+     * until the IDE closes.
      */
     private const val TIMEOUT_MS = 120_000
 
     /**
-     * Докуда обрезаем вывод. Панель показывает его целиком в карточке и потом
-     * отправляет агенту — мегабайтная простыня из `!find /` не помещается ни
-     * туда, ни в окно контекста.
+     * Where the output gets cut. The panel shows it whole in a card and then sends it to the agent - a
+     * megabyte-long sheet from `!find /` fits into neither that nor the context window.
      */
     private const val MAX_OUTPUT_CHARS = 40_000
 
     /**
-     * Код возврата у того, что до самой команды так и не дошло: оболочку не
-     * удалось запустить вовсе. Отрицательный намеренно — настоящая команда таким
-     * не отвечает никогда, и спутать его с её собственным ответом нельзя.
+     * The exit code of something that never reached the command at all: the shell itself could not be
+     * started. Negative on purpose - a real command never answers with such a code, and it cannot be
+     * mistaken for one of its own.
      */
     private const val NOT_STARTED = -1
 
     /**
-     * Убита по сроку. 124 — то же число, которым отвечает утилита `timeout`:
-     * человек и агент читают его как «не уложилась», а не как ошибку самой
-     * команды, и от «не запустилась» оно тоже отличается.
+     * Killed on time. 124 is the same number the `timeout` utility answers with: a person and an agent
+     * read it as "did not fit in time" rather than as an error of the command itself, and it also
+     * differs from "did not start".
      */
     private const val TIMED_OUT = 124
-
-    private val windows: Boolean get() = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
 
     fun run(command: String, workingDirectory: String?): Result {
         val commandLine = runCatching {
@@ -68,12 +64,12 @@ internal object ShellCommand {
             val handler = CapturingProcessHandler(commandLine)
 
             /*
-             * Ввода у команды нет и не будет: панель — не терминал, набрать в неё
-             * ответ на «Are you sure? [y/N]» некуда. Закрываем поток сразу, чтобы
-             * всё, что читает ввод (`git commit` без -m, `npm login`, обычный
-             * `cat`), получило конец файла и завершилось само. Иначе такая
-             * команда просто стояла бы все две минуты до срока, а карточка в
-             * ленте всё это время обещала бы работу, которой нет.
+             * The command has no input and never will: the panel is not a terminal, there is nowhere to
+             * type an answer to "Are you sure? [y/N]". We close the stream right away so that anything
+             * reading input (`git commit` without -m, `npm login`, a plain `cat`) gets end-of-file and
+             * finishes by itself. Otherwise such a command would simply stand there for the full two
+             * minutes until the deadline, with the card in the feed promising work that is not
+             * happening.
              */
             runCatching { handler.processInput.close() }
 
@@ -84,9 +80,9 @@ internal object ShellCommand {
         }
 
         if (output.isTimeout) {
-            // То, что команда успела написать в stderr, сохраняем: у долгой
-            // сборки там и лежит вся диагностика, ради которой её и запускали, —
-            // а сообщение о сроке просто дописываем последней строкой.
+            // Whatever the command managed to write to stderr is kept: for a long build that is where
+            // all the diagnostics it was run for live - the note about the deadline is simply appended
+            // as the last line.
             val said = truncate(output.stderr)
             val note = "Timed out after ${TIMEOUT_MS / 1000}s and was killed."
 
@@ -101,15 +97,14 @@ internal object ShellCommand {
     }
 
     /**
-     * Оболочка человека, а не своя: команду набирали так, как набрали бы в
-     * терминале, и работать она должна с тем же PATH, тем же профилем и теми же
-     * алиасами. Одного `-l` (как у ClaudeExecutable.lookupCommand, которому
-     * алиасы не нужны — там ищут исполняемый файл через `command -v`) для этого
-     * мало: `.zshrc`/`.bashrc`, где обычно и живут алиасы, оболочка читает,
-     * только когда считает себя интерактивной — без `-i` `!pull` не находил бы
-     * алиас `pull`, хотя в настоящем терминале он есть.
+     * The person's shell rather than one of our own: the command was typed the way it would be typed in
+     * a terminal, and it should run with the same PATH, the same profile and the same aliases. A single
+     * `-l` (as in ClaudeExecutable.lookupCommand, which needs no aliases - it looks up an executable
+     * through `command -v`) is not enough for that: `.zshrc`/`.bashrc`, where aliases usually live, a
+     * shell reads only when it considers itself interactive - without `-i`, `!pull` would not find the
+     * `pull` alias, even though a real terminal has it.
      */
-    private fun shell(command: String): List<String> = if (windows) {
+    private fun shell(command: String): List<String> = if (HostOs.isWindows) {
         listOf("cmd.exe", "/c", command)
     } else {
         val userShell = System.getenv("SHELL")?.takeIf { it.isNotBlank() } ?: "/bin/sh"
@@ -117,14 +112,14 @@ internal object ShellCommand {
     }
 
     /**
-     * У zsh `-l` и `-i` вместе читают все файлы профиля разом, `.zshrc` в том
-     * числе — там всё уже есть. У bash не так: сочетание `-l` и `-i` — это всё
-     * ещё login-оболочка, а `.bashrc` (где обычно и лежат алиасы) login-оболочка
-     * не трогает вовсе, кем бы она ни считала себя ещё. Подключаем его сами.
+     * With zsh, `-l` and `-i` together read every profile file, `.zshrc` included - everything is
+     * already there. With bash it is not so: the combination of `-l` and `-i` is still a login shell,
+     * and `.bashrc` (where aliases usually live) a login shell does not touch at all, whatever else it
+     * considers itself. So we source it ourselves.
      *
-     * Строкой ниже, а не через «;» на той же: алиасы в bash разворачиваются
-     * только у команды со следующей прочитанной строки — объявленный и тут же
-     * через «;» использованный алиас bash молча не находит.
+     * On the line below rather than through ";" on the same one: aliases in bash are expanded only for
+     * a command from the next line read - an alias declared and immediately used through ";" bash
+     * silently fails to find.
      */
     internal fun withBashrc(userShell: String, command: String): String =
         if (File(userShell).name == "bash") "[ -f ~/.bashrc ] && source ~/.bashrc\n$command" else command

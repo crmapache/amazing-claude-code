@@ -4,19 +4,18 @@ import { BranchChip, type Anchor } from './StatusBar'
 import s from './shell.module.css'
 
 /**
- * Что происходит во вкладке: ничего, идёт работа, работа закончена или ждут
- * человека. Кружок один и тот же, отличаются цвет и дыхание — так состояние видно
- * боковым зрением, не читая подпись.
+ * What is happening in a tab: nothing, work under way, work finished, or someone being waited for. The
+ * circle is one and the same, the colour and the breathing differ - that way the state is visible out of
+ * the corner of the eye, without reading a caption.
  */
 export type SessionState = 'idle' | 'running' | 'done' | 'attention' | 'crashed'
 
 /**
- * Откуда взялось название вкладки — решает, можно ли его перезаписать.
- * 'default' — ещё не сказано ни слова, стоит заглушка ('main session' /
- * 'new session'). 'heuristic' — мгновенная догадка по первому сообщению,
- * её вправе заменить пришедший следом ответ LLM. 'llm' — то, что прислала
- * генерация (см. sessionTitle в protocol.ts): следующим ответом её больше
- * не перезаписываем, только сбросом на /clear.
+ * Where a tab's name came from - it decides whether it may be overwritten. 'default' means not a word
+ * has been said yet and a stand-in is in place ('main session' / 'new session'). 'heuristic' is an
+ * instant guess from the first message, which the LLM's answer arriving after it may replace. 'llm' is
+ * what the generation sent (see sessionTitle in protocol.ts): the next answer no longer overwrites it,
+ * only a reset on /clear does.
  */
 export type TitleSource = 'default' | 'heuristic' | 'llm'
 
@@ -24,28 +23,27 @@ export interface Session {
   id: string
   title: string
   state: SessionState
-  /** Корневой разговор: форки и форки форков носят один и тот же. */
+  /** The root conversation: forks and forks of forks carry one and the same one. */
   groupId: string
-  /** Глубина ветвления: 0 — корень, 1 — форк, 2 — форк форка. */
+  /** The branching depth: 0 is the root, 1 a fork, 2 a fork of a fork. */
   depth: number
   titleSource: TitleSource
 }
 
 /**
- * Цвета групп, но не просто оттенок по кругу: два соседних оттенка при одной
- * яркости/насыщенности на глаз почти не отличаются (первая попытка именно так
- * и вышла) — золотой угол между оттенками расшатывает соседство, а чередование
- * из трёх поясов яркости/насыщенности разводит по контрасту даже те пары
- * оттенков, что всё равно оказались рядом.
+ * The groups' colours, but not simply a hue around the circle: two neighbouring hues at the same
+ * lightness and saturation are almost indistinguishable to the eye (the first attempt came out exactly
+ * that way) - the golden angle between hues loosens that neighbourhood, while alternating three bands of
+ * lightness and saturation separates by contrast even the pairs of hues that still ended up side by
+ * side.
  *
- * Радуга на все 360° была единственным цветным шумом в панели: вкладки
- * перекрикивали ленту, ради которой панель и открывают. Теперь оттенки живут в
- * холодной дуге темы (аквамарин → лунно-голубой → ирис) — группы по-прежнему
- * различимы, но не спорят с акцентами.
+ * A rainbow across all 360° was the one piece of colour noise in the panel: the tabs shouted over the
+ * feed the panel is opened for. Now the hues live in the theme's cool arc (aquamarine → moon blue →
+ * iris) - the groups are still distinguishable but no longer argue with the accents.
  */
 const GROUP_COLOR_COUNT = 18
 const GOLDEN_ANGLE = 137.508
-/** Холодная дуга: аквамарин → лунно-голубой → ирис. Ширина дуги 114°. */
+/** The cool arc: aquamarine → moon blue → iris. The arc is 114° wide. */
 const HUE_START = 178
 const HUE_SPAN = 114
 const COLOR_BANDS = [
@@ -60,13 +58,12 @@ const GROUP_COLORS = Array.from({ length: GROUP_COLOR_COUNT }, (_, index) => {
 })
 
 /**
- * Не по счёту вкладок, а от самого id группы — цвет не сползает, когда рядом
- * открываются и закрываются другие. Простое умножение на 31 плохо
- * перемешивает похожие строки (у "session-<timestamp>" отличаются только
- * последние цифры) — соседние по времени вкладки получали соседние по кругу
- * оттенки, то есть визуально одинаковые. Финализатор MurmurHash3 ниже — тот
- * самый шаг лавинного перемешивания, после которого мелкая разница на входе
- * даёт совсем другой номер цвета на выходе.
+ * By the group's own id rather than by a tab count - the colour does not slide when others are opened
+ * and closed beside it. A plain multiplication by 31 mixes similar strings poorly (in
+ * "session-<timestamp>" only the last digits differ) - tabs close in time got neighbouring hues around
+ * the circle, that is, visually identical ones. MurmurHash3's finalizer below is the avalanche mixing
+ * step after which a small difference in the input gives an entirely different colour number in the
+ * output.
  */
 const colorForGroup = (groupId: string): string => {
   let hash = 0
@@ -88,51 +85,50 @@ interface HeaderProps {
   onCloseSession: (id: string) => void
   onNewSession: () => void
   /**
-   * Порядок вкладок после перетаскивания: группу `groupId` поставить перед
-   * группой `beforeGroupId` (или в конец, если её нет).
+   * The tab order after a drag: put the group `groupId` before the group `beforeGroupId` (or at the end,
+   * when there is none).
    *
-   * Двигается именно группа целиком — разговор вместе со своими форками.
-   * Поштучно их не растащить и чужую вкладку внутрь не вставить: группа — это
-   * одна тема, и вкладка посреди чужой темы не значила бы ничего, кроме путаницы.
+   * What moves is the whole group - a conversation together with its forks. They cannot be dragged apart
+   * one by one and someone else's tab cannot be inserted inside: a group is one topic, and a tab in the
+   * middle of someone else's topic would mean nothing but confusion.
    */
   onReorderGroups: (groupId: string, beforeGroupId: string | null) => void
   /**
-   * История, MCP, плагины, звуки и раскладка композера собраны в одно меню
-   * за кнопкой-бургером справа в шапке — по одной кнопке на каждый пункт
-   * места в шапке уже не хватало. Разметку самого меню рисует App.tsx, тем
-   * же способом, что и MODEL/EFFORT/MODE (см. SelectorKind), сюда приходит
-   * только точка открытия.
+   * The history, MCP, plugins, sounds and the composer's layout are gathered into one menu behind the
+   * burger button on the right of the header - there was no longer room in the header for a button per
+   * entry. The menu's own markup is drawn by App.tsx, the same way as MODEL/EFFORT/MODE (see
+   * SelectorKind); what arrives here is only the point it opens from.
    */
   onOpenMenu: (anchor: Anchor) => void
   /**
-   * Та же раскладка, что и у всей панели (см. App.tsx) — здесь важно, сжатая
-   * ли она (compact и left/right — обе экономят высоту той же боковой рельсой,
-   * см. isSideComposerLayout): шапка ниже (32px вместо 34px), а значки в ней —
-   * меньше (26px вместо 28px). Модификатор на самой шапке, а не пропы на
-   * каждой кнопке — правит один каскад в стилях, а не десяток мест здесь.
+   * The same layout as the whole panel's (see App.tsx) - what matters here is whether it is a tight one
+   * (compact and left/right both save height with the same side rail, see isSideComposerLayout): the
+   * header is lower (32px instead of 34px) and its icons smaller (26px instead of 28px). A modifier on
+   * the header itself rather than props on every button - that edits one cascade in the styles rather
+   * than a dozen places here.
    */
   layout: ComposerLayout
   /**
-   * Ветка и её PR — одно и то же место у любой раскладки: справа в шапке,
-   * перед бургером. Раньше жили в трёх разных местах в зависимости от layout
-   * (строка статуса, строка задач, сам композер) — теперь один источник
-   * правды, не три копии, которые надо было бы держать в согласии.
+   * The branch and its PR live in one and the same place in every layout: on the right of the header,
+   * before the burger. They used to live in three different places depending on the layout (the status
+   * line, the task line, the composer itself) - now there is one source of truth rather than three copies
+   * that would have to be kept in agreement.
    */
   gitBranch?: string
   pullRequest?: string
   onOpenPullRequest?: () => void
 }
 
-/** Дальше этого сдвига нажатие перестаёт быть кликом и становится перетаскиванием. */
+/** Past this offset a press stops being a click and becomes a drag. */
 const DRAG_THRESHOLD_PX = 4
 
 /**
- * Запас, на который проверяется смена места: рука на границе дрожит, и без него
- * соседи подрагивали бы вместе с ней (см. startDrag).
+ * The margin a change of place is checked against: a hand on the boundary trembles, and without it the
+ * neighbours would tremble along with it (see startDrag).
  */
 const SWAP_GAP_PX = 8
 
-/** Сколько длится приземление брошенной вкладки. Столько же, сколько переход в shell.module.css. */
+/** How long a dropped tab's landing lasts. The same as the transition in shell.module.css. */
 const LANDING_MS = 160
 
 const DOT_CLASS: Record<SessionState, string> = {
@@ -152,11 +148,10 @@ const DOT_TITLE: Record<SessionState, string> = {
 }
 
 /**
- * Три полоски рисунком, а не символом «☰»: у типографской версии своя посадка
- * в шрифте, она сидит ниже середины своей строки — рядом с веткой (см.
- * BranchChip), у которой центр честный, разница на глаз читалась как
- * непрокрашенный ряд. Рисунком строки стоят строго по центру viewBox, а с ним
- * и кнопки.
+ * Three lines as a drawing rather than the "☰" character: the typographic version has a seat of its own
+ * in the font and sits below the middle of its line - next to the branch (see BranchChip), whose centre
+ * is honest, the difference read to the eye as an unpainted row. Drawn, the lines stand strictly in the
+ * centre of the viewBox, and with it of the button.
  */
 const HamburgerIcon = () => (
   <svg className={s.menuIcon} viewBox="0 0 16 16" aria-hidden="true">
@@ -181,40 +176,40 @@ export const Header = ({
   const header = useRef<HTMLElement>(null)
   const tabs = useRef<HTMLDivElement>(null)
 
-  /** Вкладку только что тащили — ближайший клик по ней не выбор, а хвост жеста. */
+  /** The tab has just been dragged - the next click on it is the gesture's tail rather than a choice. */
   const dragged = useRef(false)
-  /** Группа, которую тащат прямо сейчас, — она едет за курсором и приподнята. */
+  /** The group being dragged right now - it travels with the cursor and is lifted. */
   const [dragging, setDragging] = useState<string | null>(null)
-  /** На сколько её сдвинуть: столько же, сколько прошла рука от места нажатия. */
+  /** How far to shift it: as far as the hand has travelled from where it pressed. */
   const [offset, setOffset] = useState(0)
   /**
-   * Насколько подвинуть каждую из остальных групп, чтобы освободить место.
+   * How far to move each of the other groups to make room.
    *
-   * Двигаем их сдвигом, а не перестановкой ряда: пока идёт жест, порядок в
-   * состоянии не меняется вовсе. Перестановка на ходу порождала обратную связь —
-   * сосед уезжал, геометрия менялась, условие срабатывало снова, и вкладки
-   * принимались метаться. Здесь же весь расчёт идёт от одного снимка, сделанного
-   * в начале жеста, и метаться нечему.
+   * We move them by an offset rather than by rearranging the row: while the gesture lasts, the order in
+   * the state does not change at all. Rearranging on the fly created a feedback loop - a neighbour moved
+   * away, the geometry changed, the condition fired again, and the tabs started darting about. Here the
+   * whole calculation runs off one snapshot taken at the gesture's start, and there is nothing to dart
+   * about.
    */
   const [shifts, setShifts] = useState<Record<string, number>>({})
 
   /**
-   * Где группы стояли на экране в тот миг, когда вкладку отпустили.
+   * Where the groups stood on screen at the moment the tab was released.
    *
-   * Без этого снимка приземление дёргалось: перестановка ряда и снятие сдвигов
-   * случаются в одном кадре, и браузер видел только конечную вёрстку. Вкладка
-   * телепортировалась из-под руки в свой слот, а соседи вдобавок доигрывали уже
-   * отменённый сдвиг — прыжок на ширину вкладки и медленный возврат назад.
-   * Со снимком тот же кадр начинается с прежней картинки и доезжает до новой.
+   * Without this snapshot the landing jerked: rearranging the row and dropping the offsets happen in one
+   * frame, and the browser saw only the final layout. The tab teleported from under the hand into its
+   * slot, while the neighbours on top of that played out an offset that had already been cancelled - a
+   * jump by a tab's width and a slow return. With the snapshot that same frame starts from the previous
+   * picture and travels to the new one.
    */
   const landing = useRef<Map<string, { x: number; y: number }> | null>(null)
 
   /**
-   * Снимок ряда: где какая группа стоит и какой она ширины.
+   * A snapshot of the row: where each group stands and how wide it is.
    *
-   * Снимается один раз, в начале жеста, и дальше не меняется — именно поэтому
-   * расталкивание получается спокойным: все решения принимаются по неподвижной
-   * картинке, а не по той, которую сами же и двигаем.
+   * It is taken once, at the gesture's start, and does not change after that - which is exactly why the
+   * pushing apart comes out calm: every decision is made from a motionless picture rather than from the
+   * one we are moving ourselves.
    */
   const rowSnapshot = (): { groupId: string; left: number; right: number; top: number; bottom: number }[] => {
     const root = tabs.current
@@ -246,7 +241,7 @@ export const Header = ({
     return groups
   }
 
-  /** Вкладки по группам: у группы их столько, сколько в разговоре форков. */
+  /** The tabs by group: a group holds as many as the conversation has forks. */
   const groupNodes = (): Map<string, HTMLElement[]> => {
     const root = tabs.current
     const nodes = new Map<string, HTMLElement[]>()
@@ -265,12 +260,11 @@ export const Header = ({
   }
 
   /**
-   * На сколько вкладка сейчас смещена относительно своего места в вёрстке.
+   * How far a tab is currently offset from its place in the layout.
    *
-   * Спрашиваем именно у браузера, а не считаем сами: если сосед в этот момент
-   * ещё едет, здесь будет его настоящее положение на полпути, а не то, куда он
-   * только собирается приехать. Иначе бросок посреди чужого переезда щёлкал бы
-   * соседом в конечную точку.
+   * We ask the browser rather than compute it ourselves: if a neighbour is still travelling at that
+   * moment, this gives its real position halfway there rather than where it is only about to arrive.
+   * Otherwise a drop in the middle of someone else's move would snap that neighbour to its end point.
    */
   const liveShift = (node: HTMLElement): { x: number; y: number } => {
     const transform = getComputedStyle(node).transform
@@ -285,12 +279,12 @@ export const Header = ({
   }
 
   /**
-   * Куда просится вкладка при таком сдвиге: номер места в ряду.
+   * Where a tab is asking to go at such an offset: its place number in the row.
    *
-   * Сосед уступает, когда вкладка наехала на него больше чем наполовину — то
-   * есть её край перешёл середину соседа. Ответ зависит только от положения
-   * руки и неподвижного снимка ряда: одна и та же рука даёт один и тот же
-   * ответ, сколько раз ни спроси.
+   * A neighbour gives way when the tab has covered more than half of it - that is, when its edge has
+   * passed the neighbour's middle. The answer depends only on the hand's position and the motionless
+   * snapshot of the row: one and the same hand gives one and the same answer, however many times it is
+   * asked.
    */
   const placeFor = (
     row: { groupId: string; left: number; right: number; top: number; bottom: number }[],
@@ -306,8 +300,8 @@ export const Header = ({
 
     for (const [index, group] of row.entries()) {
       if (index === from) continue
-      // Соседи из других строк не расступаются: сдвиг по горизонтали для них
-      // бессмыслен, а ряд при нехватке места переносится.
+      // Neighbours from other rows do not step aside: a horizontal offset is meaningless for them, and
+      // the row wraps when there is not enough space.
       if (group.bottom <= own.top || group.top >= own.bottom) continue
 
       const middle = (group.left + group.right) / 2
@@ -319,26 +313,25 @@ export const Header = ({
   }
 
   /**
-   * Начало перетаскивания.
+   * The start of a drag.
    *
-   * Обычные mouse-события и слушатели на самом окне, а не pointer-события с
-   * захватом: встроенный в IDE браузер рисуется офскрин и синтезирует ввод сам —
-   * pointer capture там до вкладки не доходит, и перетаскивание просто не
-   * начиналось. Слушатели на окне работают в обоих случаях и заодно продолжают
-   * ловить мышь, когда та ушла за пределы ряда вкладок.
+   * Ordinary mouse events and listeners on the window itself rather than pointer events with capture:
+   * the IDE's embedded browser renders offscreen and synthesizes input itself - pointer capture there
+   * never reaches the tab, and a drag simply did not begin. Listeners on the window work in both cases
+   * and go on catching the mouse when it has left the row of tabs.
    *
-   * preventDefault сразу: иначе браузер понимает зажатую кнопку как выделение
-   * текста и вместо переезда вкладки подсвечивает её подпись.
+   * preventDefault straight away: otherwise the browser reads a held button as a text selection and
+   * highlights the tab's caption instead of moving it.
    */
   const startDrag = (event: ReactMouseEvent<HTMLDivElement>, groupId: string) => {
-    // Новое нажатие — новая история: хвост прошлого перетаскивания к нему уже не
-    // относится. Снимаем именно здесь, а не в обработчике клика по вкладке: тот
-    // выполняется не всегда — отпустив вкладку мимо ряда, клик приходит общему
-    // предку, и поднятый флаг съедал бы следующий настоящий клик по вкладке.
+    // A new press is a new story: the previous drag's tail has nothing to do with it. We clear it here
+    // rather than in the tab's click handler: that one does not always run - releasing a tab outside the
+    // row sends the click to a common ancestor, and a raised flag would swallow the next genuine click on
+    // a tab.
     dragged.current = false
 
-    // Тащим только левой кнопкой и только за саму вкладку: крестик закрытия
-    // остаётся кнопкой, а не ручкой для перетаскивания.
+    // We drag with the left button only and by the tab itself only: the close cross stays a button
+    // rather than a drag handle.
     if (event.button !== 0) return
     if ((event.target as HTMLElement).closest('button')) return
 
@@ -356,7 +349,7 @@ export const Header = ({
 
     const onMove = (move: MouseEvent) => {
       if (!started) {
-        // До порога это ещё обычный клик по вкладке, а не перетаскивание.
+        // Below the threshold this is still an ordinary click on a tab rather than a drag.
         if (Math.abs(move.clientX - startX) < DRAG_THRESHOLD_PX) return
         started = true
         setDragging(groupId)
@@ -366,9 +359,9 @@ export const Header = ({
       setOffset(shift)
 
       /**
-       * Новое место принимаем, только если оно устоит и при чуть меньшем сдвиге:
-       * ровно на границе рука дрожит на пару пикселей, и без этой проверки
-       * соседи начинали подрагивать туда-сюда вместе с ней.
+       * A new place is accepted only if it holds at a slightly smaller offset too: right on the
+       * boundary a hand trembles by a couple of pixels, and without this check the neighbours started
+       * trembling back and forth along with it.
        */
       const wanted = placeFor(row, from, shift)
       if (wanted !== place) {
@@ -377,9 +370,9 @@ export const Header = ({
       }
 
       /**
-       * Соседи между старым местом и новым отходят на ширину вкладки — ровно
-       * настолько, чтобы освободить ей место. Двигаются сдвигом, а сам ряд
-       * остаётся как есть: порядок поменяется один раз, когда вкладку отпустят.
+       * The neighbours between the old place and the new one move aside by a tab's width - exactly
+       * enough to make room for it. They move by an offset while the row itself stays as it is: the
+       * order changes once, when the tab is released.
        */
       const next: Record<string, number> = {}
       for (const [index, group] of row.entries()) {
@@ -395,9 +388,9 @@ export const Header = ({
       window.removeEventListener('mouseup', onUp)
 
       if (started) {
-        // Картинка на экране перед броском — с неё начнётся приземление.
-        // Вёрстка за жест не менялась, так что к местам из снимка достаточно
-        // добавить сдвиг, с которым каждая группа сейчас нарисована.
+        // The picture on screen before the drop - the landing starts from it. The layout did not change
+        // during the gesture, so it is enough to add to the snapshot's places the offset each group is
+        // currently drawn with.
         const nodes = groupNodes()
         const rendered = new Map<string, { x: number; y: number }>()
         for (const group of row) {
@@ -407,13 +400,13 @@ export const Header = ({
         }
         landing.current = rendered
 
-        // Место назначения в исходном ряду: уехав вправо, встаём перед той
-        // группой, что шла следом за последней расступившейся.
+        // The destination in the original row: having travelled to the right, we stand before the group
+        // that came after the last one to step aside.
         const before = place > from ? (row[place + 1]?.groupId ?? null) : row[place]?.groupId ?? null
         if (place !== from) onReorderGroups(groupId, before)
 
-        // Клик после перетаскивания вкладку не переключает: рука двигала её, а
-        // не выбирала. Событие click прилетит сразу за mouseup — гасим его там.
+        // A click after a drag does not switch the tab: the hand was moving it rather than choosing it.
+        // The click event arrives right after mouseup - we suppress it there.
         dragged.current = true
       }
 
@@ -427,16 +420,15 @@ export const Header = ({
   }
 
   /**
-   * Приземление после броска.
+   * The landing after a drop.
    *
-   * Кадр, в котором меняется порядок, начинается с прежней картинки: каждая
-   * группа получает короткий переезд от того места, где она была под рукой, к
-   * своему новому. Соседи при этом стоят как вкопанные (переезжать им некуда —
-   * они и так уже на своих местах), а брошенная вкладка спокойно доезжает
-   * из-под руки в освободившийся слот.
+   * The frame in which the order changes starts from the previous picture: every group gets a short
+   * journey from where it stood under the hand to its new place. The neighbours meanwhile stand rooted
+   * (they have nowhere to travel - they are already where they belong), while the dropped tab calmly
+   * travels from under the hand into the freed slot.
    *
-   * Обычный effect тут не годится: он сработал бы после того, как браузер уже
-   * нарисовал кадр в новых местах, — то есть после самого рывка.
+   * An ordinary effect will not do here: it would fire after the browser had already drawn the frame in
+   * the new places - that is, after the jerk itself.
    */
   useLayoutEffect(() => {
     const before = landing.current
@@ -453,10 +445,10 @@ export const Header = ({
       const dy = was.y - group.top
 
       for (const node of nodes.get(group.groupId) ?? []) {
-        // Переезд именно анимацией, а не переходом: у соседей сдвиг выходит
-        // нулевым, и без неё они доигрывали бы отменённый переход — прыжок на
-        // ширину вкладки и медленный возврат. Анимация в каскаде выше перехода
-        // и держит их на месте, пока тот доигрывает вхолостую.
+        // The journey goes as an animation rather than a transition: for the neighbours the offset comes
+        // out zero, and without one they would play out a cancelled transition - a jump by a tab's width
+        // and a slow return. An animation stands above a transition in the cascade and holds them in
+        // place while that one plays out for nothing.
         node.animate?.([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], {
           duration: LANDING_MS,
           easing: 'ease',
@@ -466,10 +458,9 @@ export const Header = ({
   })
 
   /**
-   * Вкладки при нехватке места переносятся на вторую строку — хедер растёт.
-   * Оверлеи (история, MCP, плагины, меню) позиционируются от его реальной
-   * высоты через переменную, а не число: иначе на второй строке они легли бы
-   * поверх вкладок.
+   * When there is not enough room the tabs wrap onto a second line - the header grows. The overlays
+   * (history, MCP, plugins, the menu) are positioned from its real height through a variable rather than
+   * a number: otherwise, with a second line, they would lie over the tabs.
    */
   useEffect(() => {
     const element = header.current
@@ -490,7 +481,7 @@ export const Header = ({
       <div className={s.tabs} ref={tabs}>
         {sessions.map((session, index) => {
           const color = colorForGroup(session.groupId)
-          // Группу отбиваем от соседней зазором: цвета мало, если вкладки слиплись.
+          // A group is set off from its neighbour by a gap: colour is not enough when the tabs are stuck together.
           const startsGroup = index === 0 || sessions[index - 1]?.groupId !== session.groupId
 
           return (
@@ -507,8 +498,8 @@ export const Header = ({
                 .join(' ')}
               style={{
                 paddingLeft: 11 + session.depth * 9,
-                // Едет вся группа разом: разговор со своими форками — одно целое.
-                // Остальные расступаются, освобождая ей место (см. shifts).
+                // The whole group travels at once: a conversation with its forks is one thing. The rest
+                // step aside to make room for it (see shifts).
                 ...(dragging === session.groupId
                   ? { transform: `translateX(${offset}px)` }
                   : shifts[session.groupId]
@@ -517,8 +508,8 @@ export const Header = ({
               }}
               onMouseDown={(event) => startDrag(event, session.groupId)}
               onClick={() => {
-                // Хвост перетаскивания, а не выбор вкладки — см. startDrag, там же
-                // флаг и снимается со следующим нажатием.
+                // The drag's tail rather than a tab being chosen - see startDrag, where the flag is also
+                // cleared by the next press.
                 if (dragged.current) return
                 onPickSession(session.id)
               }}

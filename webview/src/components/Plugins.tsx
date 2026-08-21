@@ -6,11 +6,11 @@ import s from './shell.module.css'
 type View = 'installed' | 'browse' | 'marketplaces'
 
 interface PluginsProps {
-  /** null — список ещё не приходил: он загружается сам, задолго до открытия вкладки. */
+  /** null means the list has not arrived yet: it loads by itself, long before the tab is opened. */
   installed: InstalledPluginInfo[] | null
   available: AvailablePluginInfo[] | null
   marketplaces: PluginMarketplaceInfo[] | null
-  /** Идёт запрос, о котором стоит сказать вслух: обновление по кнопке. */
+  /** A request worth saying out loud is under way: a refresh from the button. */
   loading: boolean
   message: { ok: boolean; text: string } | null
   onRefresh: () => void
@@ -24,21 +24,20 @@ interface PluginsProps {
   onClose: () => void
 }
 
-/** 1 636 → "1.6k": счётчик установок бывает четырёхзначным, а карточка узкая. */
+/** 1636 → "1.6k": the install counter runs to four digits while the card is narrow. */
 const formatCount = (count: number) => (count >= 1000 ? `${(count / 1000).toFixed(1)}k` : String(count))
 
-/** " (3)" у названия вкладки — но только когда список правда приехал: нуля до загрузки быть не должно. */
+/** " (3)" beside a tab's name - but only once the list has genuinely arrived: there must be no zero before it loads. */
 const tabCount = (items: unknown[] | null) => (items ? ` (${items.length})` : '')
 
 const BROWSE_LIMIT = 30
 const ADD_MARKETPLACE_KEY = 'add-marketplace'
 
 /**
- * Плагины и маркетплейсы — то же самое, что модалка MCP-серверов, но с одним
- * принципиальным отличием: install/uninstall/enable/disable — собственные
- * подкоманды CLI (см. ClaudePlugin.kt), и `claude plugin list --available`
- * реально отдаёт каталог всех плагинов подключённых маркетплейсов — поэтому
- * здесь есть настоящий поиск, невозможный для MCP-серверов.
+ * Plugins and marketplaces - the same thing as the MCP servers modal, but with one fundamental
+ * difference: install/uninstall/enable/disable are the CLI's own subcommands (see ClaudePlugin.kt), and
+ * `claude plugin list --available` genuinely hands over the catalogue of every plugin in the connected
+ * marketplaces - which is why there is a real search here, impossible for MCP servers.
  */
 export const Plugins = ({
   installed,
@@ -60,15 +59,15 @@ export const Plugins = ({
   const [query, setQuery] = useState('')
   const [source, setSource] = useState('')
   /**
-   * Что сейчас в работе — ключ вида "install:id". Отклик на клик обязан быть
-   * мгновенным: кнопка гаснет и меняет подпись сразу, не дожидаясь ответа CLI,
-   * который может идти пару секунд (сеть, git clone плагина).
+   * What is currently in progress - a key of the form "install:id". The response to a click has to be
+   * instant: the button dims and changes its caption at once, without waiting for the CLI's answer, which
+   * may take a couple of seconds (the network, a git clone of the plugin).
    */
   const [pendingAction, setPendingAction] = useState<string | null>(null)
 
-  // Снимаем "в работе" только когда пришёл настоящий итог, а не когда баннер
-  // погас от переключения вкладки — иначе не дождавшийся ответа Install
-  // разблокируется раньше времени.
+  // We clear "in progress" only when a real outcome has arrived rather than when the banner went out
+  // because a tab was switched - otherwise an Install still waiting for its answer would unblock too
+  // early.
   useEffect(() => {
     if (message) setPendingAction(null)
   }, [message])
@@ -282,7 +281,7 @@ export const Plugins = ({
               })}
 
               {browseResults.length === BROWSE_LIMIT ? (
-                <div className={s.historyMeta}>Showing first {BROWSE_LIMIT} matches — narrow your search for more.</div>
+                <div className={s.historyMeta}>Showing first {BROWSE_LIMIT} matches - narrow your search for more.</div>
               ) : null}
             </div>
           </>

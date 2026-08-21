@@ -12,42 +12,42 @@ const span = (over: Partial<Parameters<typeof rangeLabel>[0]> = {}) => ({
 })
 
 describe('rangeLabel', () => {
-  it('прячет колонки, когда выделены целые строки', () => {
+  it('hides the columns when whole lines are selected', () => {
     expect(rangeLabel(span({ wholeLines: true }))).toBe('L12-L18')
   })
 
-  it('сжимается до одной строки, если она одна', () => {
+  it('shrinks to one line if it is a single one', () => {
     expect(rangeLabel(span({ wholeLines: true, endLine: 12 }))).toBe('L12')
   })
 
-  it('внутри одной строки показывает только колонки', () => {
+  it('shows only the columns within a single line', () => {
     expect(rangeLabel(span({ endLine: 12, endColumn: 30 }))).toBe('L12:5-30')
   })
 
-  it('через несколько строк называет и строку, и колонку с обеих сторон', () => {
+  it('names both the line and the column on both sides across several lines', () => {
     expect(rangeLabel(span())).toBe('L12:5-L18:30')
   })
 })
 
 describe('reference', () => {
-  it('уходит агенту ссылкой на файл, а не текстом', () => {
+  it('travels to the agent as a file reference rather than as text', () => {
     expect(referenceText(referenceChip(span()))).toBe('@src/useSocket.js (L12:5-L18:30)')
   })
 
-  it('в плашке остаётся имя файла: полный путь в панель не влезает', () => {
+  it('leaves the file name in the chip: a full path does not fit into the panel', () => {
     expect(chipLabel(referenceChip(span({ wholeLines: true })))).toBe('useSocket.js L12-L18')
   })
 
-  it('у папки берёт её имя, а не пустоту за последним слэшем', () => {
+  it('takes a folder name rather than the emptiness after the last slash', () => {
     expect(chipLabel({ kind: 'dir', value: 'src/components/' })).toBe('components')
   })
 
-  it('у вставки из буфера — первые слова текста', () => {
-    const text = 'Разберись в модуле аналитики и заведи план работ на оставшиеся задачи'
-    expect(chipLabel({ kind: 'paste', value: 'paste1', text })).toBe('Разберись в модуле аналитики и заведи пл…')
+  it('takes the first words of the text for a paste from the clipboard', () => {
+    const text = 'Work through the analytics module and draw up a plan for the remaining tasks'
+    expect(chipLabel({ kind: 'paste', value: 'paste1', text })).toBe('Work through the analytics module and dr…')
   })
 
-  it('длинное слово (например ссылка) не растягивает плашку — обрезается по символам', () => {
+  it('does not let a long word (a link, say) stretch the chip - it is clipped by characters', () => {
     const text = 'Use the claude_design MCP (https://api.anthropic.com/v1/design/mcp, auth via /design-login) to import this project'
     expect(chipLabel({ kind: 'paste', value: 'paste1', text })).toBe('Use the claude_design MCP (https://api.a…')
   })

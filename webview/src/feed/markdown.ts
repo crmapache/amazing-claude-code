@@ -1,17 +1,17 @@
 import type { Paragraph, TableAlign, TableData, TextPart } from './types'
 
 /**
- * Глубже панель не отступает: она бывает узкой, и четвёртый уровень вложенности
- * съедал бы больше места, чем сам текст пункта.
+ * The panel indents no deeper: it is sometimes narrow, and a fourth nesting level would eat more room
+ * than the item's own text.
  */
 const MAX_LIST_DEPTH = 3
 
 /**
- * Разбор ответа агента в абзацы макета.
+ * Parsing the agent's answer into the design's paragraphs.
  *
- * Полноценный markdown здесь не нужен и вреден: панель рисует пять вещей —
- * абзац, пункт списка, блок кода, кодовую вставку и жирный кусок. Всё прочее
- * остаётся текстом, а не превращается в разметку, которую макет не описывает.
+ * Full markdown here is neither needed nor useful: the panel draws five things - a paragraph, a list
+ * item, a code block, an inline code span and a bold piece. Everything else stays text rather than
+ * turning into markup the design does not describe.
  */
 export const parseParagraphs = (source: string): Paragraph[] => {
   const paragraphs: Paragraph[] = []
@@ -58,10 +58,9 @@ export const parseParagraphs = (source: string): Paragraph[] => {
       continue
     }
 
-    // Таблица: строка с | и сразу под ней — строка-разделитель (`---|---`,
-    // `:---|---:`…). Число ячеек разделителя должно совпадать с шапкой —
-    // без этого случайная строка вида «команда | другая» перед горизонтальной
-    // чертой «---» тоже сошла бы за таблицу.
+    // A table: a line with | and a separator line right under it (`---|---`, `:---|---:`…). The
+    // separator's cell count has to match the header - without that an accidental line like
+    // "command | another" before a horizontal rule "---" would pass for a table too.
     const table = parseTableAt(lines, index)
 
     if (table) {
@@ -72,11 +71,10 @@ export const parseParagraphs = (source: string): Paragraph[] => {
       continue
     }
 
-    // Цитата: одна или несколько строк, начинающихся с «>» (вложенное «> >» —
-    // тоже цитата, без своего уровня вложенности, панели глубже одной черты не
-    // нужно). Пустая «>» внутри цитаты — граница между её абзацами, как пустая
-    // строка для обычного текста: закрывает уже накопленное, не завершая саму
-    // цитату целиком.
+    // A quote: one or more lines starting with ">" (a nested "> >" is a quote too, without a nesting
+    // level of its own - the panel needs nothing deeper than one strip). An empty ">" inside a quote is
+    // the boundary between its paragraphs, like an empty line for ordinary text: it closes what has
+    // accumulated without ending the quote itself.
     const quote = /^[ \t]*(?:>[ \t]?)+(.*)$/.exec(line)
 
     if (quote) {
@@ -90,9 +88,9 @@ export const parseParagraphs = (source: string): Paragraph[] => {
       continue
     }
 
-    // Номер и отступ пункта сохраняем: и то, и другое несёт смысл — по номеру
-    // на шаг ссылаются словами, а по отступу видно, что это уточнение к пункту
-    // выше, а не ещё один равноправный шаг.
+    // The item's number and indentation are kept: both carry meaning - a step is referred to by its
+    // number in words, and the indentation shows this is a clarification of the item above rather than
+    // another step of equal standing.
     const bullet = /^([ \t]*)(?:[-*•]|(\d+)[.)])\s+(.*)$/.exec(line)
 
     if (bullet) {
@@ -108,18 +106,17 @@ export const parseParagraphs = (source: string): Paragraph[] => {
       continue
     }
 
-    // Отдельного шрифта/кегля заголовки не получают — остаются жирной строкой,
-    // но с пометкой heading: макет добавляет зазор перед ней, чтобы раздел не
-    // сливался с абзацем над собой при отрисовке.
+    // Headings get no font or size of their own - they stay a bold line, but with a heading mark: the
+    // design adds a gap in front of it, so that a section does not merge with the paragraph above it
+    // when drawn.
     const heading = /^\s*#{1,6}\s+(.*)$/.exec(line)
 
     if (heading) {
       flushPlain()
       flushQuote()
-      // Через общий разбор строки, а не одним куском текста: в заголовке бывает
-      // и адрес, и код в бэктиках, и по ним точно так же кликают. Целым куском
-      // ссылка в заголовке оставалась просто жирной строкой, которую приходилось
-      // выделять и копировать руками.
+      // Through the shared line parsing rather than as one piece of text: a heading may hold an address
+      // and code in backticks, and those are clicked just the same. As one whole piece a link in a
+      // heading stayed a plain bold line one had to select and copy by hand.
       paragraphs.push({ heading: true, parts: emphasized(heading[1] ?? '') })
       continue
     }
@@ -143,7 +140,7 @@ export const parseParagraphs = (source: string): Paragraph[] => {
   return paragraphs
 }
 
-/** Ячейки одной строки таблицы — по `|`, без пустых крайних от рамочных `|`. */
+/** The cells of one table row - split by `|`, without the empty edges left by the framing `|`. */
 const splitTableRow = (line: string): string[] => {
   let trimmed = line.trim()
   if (trimmed.startsWith('|')) trimmed = trimmed.slice(1)
@@ -151,7 +148,7 @@ const splitTableRow = (line: string): string[] => {
   return trimmed.split('|')
 }
 
-/** `:---`, `---:`, `:---:` — выравнивание столбца; голое `---` его не задаёт. */
+/** `:---`, `---:`, `:---:` set a column's alignment; a bare `---` sets none. */
 const cellAlign = (spec: string): TableAlign => {
   const trimmed = spec.trim()
   const left = trimmed.startsWith(':')
@@ -165,13 +162,13 @@ const cellAlign = (spec: string): TableAlign => {
 const SEPARATOR_CELL = /^:?-+:?$/
 
 /**
- * Таблица от строки `index`: она сама и следующая строка образуют шапку и
- * разделитель, дальше — идущие подряд строки с `|` как тело, до первой без
- * `|` или до конца текста (таблица ещё печатается — тело просто короче).
+ * A table starting at line `index`: that line and the next form the header and the separator, and after
+ * them the consecutive lines holding `|` are the body, up to the first line without one or to the end of
+ * the text (the table is still being printed - the body is simply shorter).
  *
- * Число ячеек разделителя обязано совпасть с шапкой: без этой проверки
- * случайная строка с `|` (например, вывод команды) перед любой горизонтальной
- * чертой «---» в ответе тоже сходила бы за таблицу.
+ * The separator's cell count has to match the header's: without that check an accidental line with `|`
+ * (a command's output, for instance) before any horizontal rule "---" in an answer would pass for a
+ * table too.
  */
 const parseTableAt = (lines: string[], index: number): { data: TableData; nextIndex: number } | null => {
   const line = lines[index]!
@@ -202,10 +199,10 @@ const parseTableAt = (lines: string[], index: number): { data: TableData; nextIn
 }
 
 /**
- * Хвостовая пунктуация из окружающего текста, а не часть адреса: "смотри
- * https://example.com." не должна утаскивать точку в ссылку. Закрывающую
- * скобку срезаем только когда она не балансирует открывающую внутри самого
- * адреса — иначе ссылки вида "(https://example.com/foo(bar))" ломались бы.
+ * Trailing punctuation belongs to the surrounding text rather than to the address: "see
+ * https://example.com." must not drag the full stop into the link. A closing bracket is cut only when it
+ * does not balance an opening one inside the address itself - otherwise links like
+ * "(https://example.com/foo(bar))" would break.
  */
 const trimUrlPunctuation = (url: string): string => {
   let end = url.length
@@ -223,12 +220,11 @@ const trimUrlPunctuation = (url: string): string => {
 }
 
 /**
- * Голые адреса в обычном тексте — и только они.
+ * Bare addresses in ordinary text - and nothing else.
  *
- * Для сообщения пользователя: набранное человеком показывается ровно так, как
- * он его набрал (никакой разметки — звёздочки и решётки в вопросе он имел в
- * виду буквально), но адрес обязан оставаться адресом: по нему кликают, чтобы
- * открыть страницу, а не переписывают руками в браузер.
+ * For a user's message: what a person typed is shown exactly as they typed it (no markup - the asterisks
+ * and hashes in their question were meant literally), but an address has to stay an address: it is
+ * clicked to open a page rather than retyped into a browser by hand.
  */
 export const linkify = (text: string): TextPart[] => {
   const parts: TextPart[] = []
@@ -250,7 +246,7 @@ export const linkify = (text: string): TextPart[] => {
   return parts
 }
 
-/** Кодовые вставки, жирный текст, ссылки (markdown и голые URL) и подсветка веток внутри строки. */
+/** Inline code, bold text, links (markdown and bare URLs) and branch highlighting inside a line. */
 export const parseInline = (line: string): TextPart[] => {
   const parts: TextPart[] = []
   const pattern = /\[\[(.+?)\]\]|`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/\S+)/g
@@ -268,9 +264,9 @@ export const parseInline = (line: string): TextPart[] => {
       parts.push({ text: match[2], code: true })
       last = match.index + match[0].length
     } else if (match[3] !== undefined) {
-      // Внутри жирного тоже бывает адрес — «**http://localhost:5173/**» пишут
-      // сплошь и рядом. Разбираем содержимое тем же разбором, иначе ссылка
-      // теряется ровно там, где её выделили как самое важное в ответе.
+      // A bold piece may hold an address too - "**http://localhost:5173/**" is written all the time. We
+      // parse its contents with the same parsing, or the link is lost exactly where it was singled out
+      // as the most important thing in the answer.
       for (const part of emphasized(match[3])) parts.push(part)
       last = match.index + match[0].length
     } else if (match[5] !== undefined) {
@@ -288,23 +284,23 @@ export const parseInline = (line: string): TextPart[] => {
 }
 
 /**
- * Строка целиком под ударением — заголовок или содержимое жирного куска.
+ * A whole line under emphasis - a heading or the contents of a bold piece.
  *
- * Разбирается как обычная строка, а поверх на все её части ложится пометка
- * жирного: ссылка внутри остаётся ссылкой, код — кодом. Рекурсия конечна:
- * содержимое жирного по своему же шаблону звёздочек не содержит.
+ * It is parsed as an ordinary line, and the bold mark is laid over every part of it: a link inside stays
+ * a link, code stays code. The recursion is finite: by its own pattern, the contents of a bold piece
+ * hold no asterisks.
  */
 const emphasized = (text: string): TextPart[] =>
   parseInline(text).map((part) => ({ ...part, strong: true }))
 
 /**
- * Тот же текст, но одной строкой и без разметки — для мест, где показать её
- * нечем. Превью мысли в ленте идёт одной строкой с многоточием: звёздочки и
- * решётки в нём ничего не выделяют, а просто торчат как мусор посреди фразы.
+ * The same text, but on one line and without markup - for places that have nothing to show it with. A
+ * thought's preview in the feed goes on one line with an ellipsis: asterisks and hashes in it single out
+ * nothing and merely stick out as rubbish mid-sentence.
  *
- * Разбирается тем же разбором, что и ответ агента: своего понимания разметки
- * здесь заводить незачем — берутся готовые куски и склеиваются своим текстом.
- * Номер пункта остаётся: «1.» — часть смысла перечисления, а не его оформление.
+ * It is parsed by the same parsing as the agent's answer: starting an understanding of markup of its own
+ * here serves nothing - the ready pieces are taken and joined by their text. The item's number stays:
+ * "1." is part of a list's meaning rather than its decoration.
  */
 export const plainLine = (source: string): string =>
   parseParagraphs(source)

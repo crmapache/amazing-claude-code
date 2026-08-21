@@ -2,33 +2,33 @@ import { describe, expect, it } from 'vitest'
 import { deriveSessionTitle } from './title'
 
 describe('deriveSessionTitle', () => {
-  it('склеивает короткую первую строку с продолжением', () => {
-    expect(deriveSessionTitle('Давай\nсделаем красивый диалог с кнопками')).toBe(
-      'Давай сделаем красивый диалог с кнопками',
+  it('glues a short first line to its continuation', () => {
+    expect(deriveSessionTitle('Let us\nmake a pretty dialog with buttons')).toBe(
+      'Let us make a pretty dialog with buttons',
     )
   })
 
-  it('вырезает inline-тег картинки посреди фразы', () => {
-    expect(deriveSessionTitle('смотри [Image #1] сюда, что не так')).toBe('смотри сюда, что не так')
+  it('cuts an inline image tag out of the middle of a phrase', () => {
+    expect(deriveSessionTitle('look [Image #1] here, what is wrong')).toBe('look here, what is wrong')
   })
 
-  it('пропускает строки с цитатой и упоминанием файла', () => {
-    expect(deriveSessionTitle('> старый текст\n@src/App.tsx\nпочини вот это')).toBe('почини вот это')
+  it('skips the lines with a quote and a file mention', () => {
+    expect(deriveSessionTitle('> old text\n@src/App.tsx\nfix this here')).toBe('fix this here')
   })
 
-  it('если после зачистки ничего не осталось, берёт последнюю исходную строку', () => {
+  it('takes the last original line if nothing is left after the clean-up', () => {
     expect(deriveSessionTitle('@src/App.tsx\n[Image #1]')).toBe('[Image #1]')
   })
 
-  it('вывод команды bash-режима не становится названием вкладки', () => {
+  it('does not let bash-mode command output become a tab title', () => {
     const text =
-      '<bash-input>git pull</bash-input>\n<bash-stdout>Already up to date.\nvia origin/main</bash-stdout>\n\nДавай перейдём к этой задаче'
+      '<bash-input>git pull</bash-input>\n<bash-stdout>Already up to date.\nvia origin/main</bash-stdout>\n\nLet us move on to this task'
 
-    expect(deriveSessionTitle(text)).toBe('Давай перейдём к этой задаче')
+    expect(deriveSessionTitle(text)).toBe('Let us move on to this task')
   })
 
-  it('обрезает длинный текст по границе слова с многоточием', () => {
-    const text = 'разбери пожалуйста эту очень длинную и подробную формулировку задачи целиком'
+  it('clips long text at a word boundary with an ellipsis', () => {
+    const text = 'please work through this very long and detailed statement of the task in full'
     const title = deriveSessionTitle(text, 40)
 
     expect(title.length).toBeLessThanOrEqual(41)
@@ -36,7 +36,7 @@ describe('deriveSessionTitle', () => {
     expect(text.startsWith(title.slice(0, -1))).toBe(true)
   })
 
-  it('короткий текст не трогает', () => {
-    expect(deriveSessionTitle('давай')).toBe('давай')
+  it('leaves short text alone', () => {
+    expect(deriveSessionTitle('go on')).toBe('go on')
   })
 })

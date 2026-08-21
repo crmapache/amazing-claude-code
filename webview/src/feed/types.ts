@@ -1,52 +1,51 @@
 /**
- * Виды элементов ленты из макета. Каждый рисуется своей карточкой и приходит из
- * своего места потока: часть — из блоков ответа, часть — из вызовов конкретных
- * инструментов (список задач, план, вопросы), часть — из служебных событий.
+ * The kinds of feed item from the design. Each is drawn by a card of its own and comes from its own
+ * place in the stream: some from an answer's blocks, some from calls of particular tools (the task
+ * list, the plan, the questions), some from system events.
  */
 
 /**
- * Приложение к сообщению пользователя: файл, картинка, папка, команда или кусок
- * файла, присланный из редактора.
+ * An attachment to a user's message: a file, an image, a folder, a command, or a piece of a file sent
+ * from the editor.
  */
 export type ChipKind = 'file' | 'img' | 'dir' | 'cmd' | 'ref' | 'quote' | 'paste'
 
 export interface Chip {
   kind: ChipKind
   value: string
-  /** Диапазон внутри файла у ссылки из редактора, например `L12:5-L18:30`. */
+  /** The range inside a file for a reference from the editor, `L12:5-L18:30` for instance. */
   range?: string
-  /** Картинка, вставленная из буфера обмена: data URL с байтами, а не путь на диске. */
+  /** An image pasted from the clipboard: a data URL with bytes rather than a path on disk. */
   data?: string
   /**
-   * Полный текст того, у чего нет пути на диске, откуда его можно перечитать:
-   * цитата из вывода агента и свёрнутая вставка из буфера. Сам текст и есть
-   * содержимое такой плашки — именно он уходит агенту, а в подписи видно только
-   * его начало.
+   * The full text of something that has no path on disk to be re-read from: a quote out of the agent's
+   * output and a collapsed paste from the clipboard. That text is the chip's whole content - it is what
+   * travels to the agent, while the caption shows only its beginning.
    */
   text?: string
 }
 
 export type UserToken =
   /**
-   * echo — кусок текста, который панель подставила за человека, а не он сам:
-   * так рядом с выбранным ответом в ленту попадает и сам вопрос агента (см.
-   * App.sendAnswers). В карточке такой кусок приглушён — вопрос уже прочитан
-   * выше, и внимание должно доставаться ответу на него.
+   * echo marks a piece of text the panel put in on the person's behalf rather than something they wrote:
+   * that is how the agent's question itself lands in the feed beside the chosen answer (see
+   * App.sendAnswers). In the card such a piece is dimmed - the question has already been read above, and
+   * the attention should go to the answer to it.
    */
   | { kind: 'text'; value: string; echo?: boolean }
   | { kind: 'chip'; chip: Chip }
 
-/** Кусок текста внутри абзаца: обычный, кодовый, выделенный или жирный. */
+/** A piece of text inside a paragraph: plain, code, marked or bold. */
 export interface TextPart {
   text: string
   code?: boolean
   mark?: boolean
   strong?: boolean
-  /** URL, если кусок — ссылка (markdown-ссылка или голый http/https-адрес в тексте). */
+  /** The URL, when the piece is a link (a markdown link or a bare http/https address in the text). */
   href?: string
 }
 
-/** Как выровнен столбец таблицы — из строки-разделителя (`:---`, `---:`, `:---:`). */
+/** How a table's column is aligned - from the separator row (`:---`, `---:`, `:---:`). */
 export type TableAlign = 'left' | 'center' | 'right' | undefined
 
 export interface TableData {
@@ -58,26 +57,31 @@ export interface TableData {
 export interface Paragraph {
   bullet?: boolean
   /**
-   * Чем помечен пункт списка: «1.» у нумерованного, пусто у обычного (тогда
-   * рисуется тире). Нумерация — часть смысла: «сделай шаг 3» без номеров не
-   * прочитать.
+   * What marks a list item: "1." for a numbered one, empty for an ordinary one (a dash is drawn then).
+   * The numbering is part of the meaning: "do step 3" cannot be read without numbers.
    */
   marker?: string
-  /** Уровень вложенности пункта, от нуля. Считается по отступу исходной строки. */
+  /** The item's nesting level, from zero. Worked out from the source line's indentation. */
   depth?: number
-  /** Заголовок (`#`..`######`) — рисуется жирным, как и раньше, но с зазором перед собой, чтобы читаться началом раздела, а не сливаться с абзацем над ним. */
+  /**
+   * A heading (`#`..`######`) - drawn bold, as before, but with a gap in front of it, so that it reads
+   * as the start of a section rather than merging with the paragraph above.
+   */
   heading?: boolean
-  /** Цитата (строка начинается с `>`) — полоска слева и приглушённый текст, как переписка внутри переписки. */
+  /**
+   * A quote (the line starts with `>`) - a strip on the left and dimmed text, like a conversation inside
+   * a conversation.
+   */
   quote?: boolean
-  /** Блок кода рисуется моноширинной плашкой целиком, без разбора на части. */
+  /** A code block is drawn as a monospaced slab whole, without being broken into parts. */
   codeBlock?: boolean
   language?: string
-  /** Таблица — строка `| a | b |` и разделитель `|---|---|` следом. parts тогда пуст. */
+  /** A table - a `| a | b |` row with a `|---|---|` separator after it. parts is then empty. */
   table?: TableData
   parts: TextPart[]
 }
 
-/** Категория плашки у вызова инструмента. Задаёт и подпись, и цвет. */
+/** The chip category of a tool call. It sets both the caption and the colour. */
 export type ToolChip = 'READ' | 'GREP' | 'EDIT' | 'WRITE' | 'BASH' | 'WEB' | 'MCP' | 'TOOL'
 
 export interface DiffLine {
@@ -104,7 +108,7 @@ export interface UserItem {
   kind: 'user'
   time: string
   tokens: UserToken[]
-  /** Куски вывода, на которые ссылается сообщение. Показываются им же в ленте. */
+  /** The pieces of output the message refers to. They are shown with it in the feed. */
   quotes: string[]
 }
 
@@ -113,30 +117,28 @@ export interface TextItem {
   kind: 'text'
   paragraphs: Paragraph[]
   /**
-   * Тот же ответ до разбора разметки. Нужен для сравнения с ошибками: одну и ту
-   * же беду CLI умеет сказать дважды — репликой агента и строкой в stderr, — и
-   * узнать в красной плашке уже показанный ответ можно только по исходному
-   * тексту (см. addError).
+   * The same answer before the markup was parsed. Needed for comparison with errors: the CLI can say one
+   * and the same trouble twice - as the agent's message and as a line in stderr - and recognising an
+   * already-shown answer inside a red slab is only possible by the original text (see addError).
    */
   source: string
 }
 
 /**
- * Мысли модели — своя карточка, а не строки внутри группы вызовов: иначе они
- * терялись среди тулзов первой же сворачиваемой группой.
+ * The model's thoughts - a card of their own rather than lines inside a group of calls: otherwise they
+ * were lost among the tools inside the first collapsible group.
  *
- * Карточка на все мысли куска хода одна, как группа на все вызовы подряд: между
- * вызовами модель думает почти всегда, и каждая мысль своей карточкой резала
- * ленту на ломтики — вызов, мысль, вызов, мысль, — из которых читать нечего.
- * Снаружи стоит последняя (в одну строку, дальше многоточие), остальные
- * открываются вместе с ней.
+ * One card for every thought in a piece of a turn, as one group holds every call in a row: between
+ * calls the model thinks almost always, and every thought as a card of its own sliced the feed into
+ * slivers - a call, a thought, a call, a thought - with nothing to read in them. The last one stands
+ * outside (on one line, with an ellipsis after it), the rest open along with it.
  */
 export interface ThinkItem {
   id: string
   kind: 'think'
-  /** По одной на каждую мысль, в порядке появления; снаружи видно последнюю. */
+  /** One per thought, in the order they appeared; the last one is visible from outside. */
   thoughts: string[]
-  /** Ещё стримится — карточка обновляется по мере поступления текста. */
+  /** Still streaming - the card updates as the text arrives. */
   pending: boolean
 }
 
@@ -144,8 +146,10 @@ export interface ToolItem {
   id: string
   kind: 'tool'
   chip: ToolChip
-  /** Имя и вход инструмента нужны позже: результат приходит отдельным событием,
-   *  а дифф и подпись строятся из того, что было на входе. */
+  /**
+   * The tool's name and input are needed later: the result arrives as a separate event, while the diff
+   * and the caption are built out of what was in the input.
+   */
   toolName: string
   input: unknown
   target: string
@@ -154,27 +158,27 @@ export interface ToolItem {
   detail: DetailLine[]
   hunks: Hunk[]
   isError: boolean
-  /** Пока результата нет, строка показывает, что инструмент ещё работает. */
+  /** While there is no result, the line shows that the tool is still working. */
   pending: boolean
 }
 
 export interface ToolGroupItem {
   id: string
   kind: 'toolGroup'
-  /** Подряд идущие вызовы обычных инструментов, без разрывов текстом или другой карточкой. */
+  /** Consecutive calls of ordinary tools, unbroken by text or by another card. */
   tools: ToolItem[]
-  /** Есть ли внутри хотя бы один ещё не завершившийся вызов. */
+  /** Whether at least one call inside has not finished yet. */
   pending: boolean
-  /** Точное время от создания группы до последнего результата; пока pending — тикает. */
+  /** The exact time from the group's creation to the last result; while pending it ticks. */
   duration: string
-  /** Момент создания группы — неизменный, не зависит от того, что происходит с state.startedAt. */
+  /** The moment the group was created - fixed, independent of what happens to state.startedAt. */
   startedAt: number
 }
 
 /**
- * Чем кончилась задача: своим ходом, остановкой снаружи или ошибкой. Приходит
- * статусом в task_notification — до этого любой конец рисовался одинаково
- * зелёным, и прибитый агент выглядел как успешно отработавший.
+ * How a task ended: on its own, by being stopped from outside, or with an error. It arrives as a status
+ * in task_notification - before that every ending was drawn the same green, and a killed agent looked
+ * like one that had finished successfully.
  */
 export type TaskOutcome = 'ok' | 'stopped' | 'failed'
 
@@ -182,10 +186,10 @@ export interface TaskItem {
   id: string
   kind: 'task'
   /**
-   * Как эту задачу зовёт сам CLI. Не всегда совпадает с id карточки: агента,
-   * запущенного вызовом Task, карточка знает по идентификатору вызова, а
-   * настоящее имя задачи приезжает следом, системным событием о её запуске.
-   * Без него задачу не остановить — по нему её и просят прибить.
+   * What the CLI itself calls this task. It does not always match the card's id: an agent launched by a
+   * Task call is known to the card by the call's identifier, while the task's real name arrives after
+   * it, in a system event about its start. Without it a task cannot be stopped - it is what one asks to
+   * kill it by.
    */
   taskId?: string
   target: string
@@ -194,33 +198,38 @@ export interface TaskItem {
   percent: number
   log: DetailLine[]
   pending: boolean
-  /** Пусто, пока задача идёт; после конца — чем именно она кончилась. */
+  /** Empty while the task runs; after it ends, exactly how it ended. */
   outcome?: TaskOutcome
   /**
-   * Субагент запущен в фоне: ход, который его позвал, кончается не дожидаясь
-   * его, а итог приходит потом отдельным уведомлением. Такая карточка переживает
-   * даже оборванный ход — Stop останавливает то, за чем ход стоял, а фоновая
-   * работа шла отдельно от него (см. keepTasks в closeUnfinished).
+   * The subagent was launched in the background: the turn that called it ends without waiting for it,
+   * and the result arrives later as a separate notification. Such a card survives even an interrupted
+   * turn - Stop stops what the turn stood for, while the background work ran apart from it (see
+   * keepTasks in closeUnfinished).
    *
-   * Признак этот необязательный и знать по нему можно только то, что он и
-   * говорит: он ставится по ответу «Async agent launched» на вызов в главном
-   * потоке, а у субагентов, поднятых скиллом, такого вызова нет вовсе.
+   * The mark is optional, and all one may know by it is what it says: it is set by the "Async agent
+   * launched" answer to a call in the main stream, while subagents raised by a skill have no such call
+   * at all.
    */
   background?: boolean
 }
 
 /**
- * Команда, запущенная в фоне (`run_in_background`). Своей карточкой она уже
- * есть в ленте — здесь живёт только то, что нужно чипу в шапке: пока процесс
- * работает, это единственное место во всей панели, где видно, что он вообще
- * жив. Агентом такую задачу звать нельзя, хотя CLI и сообщает о ней теми же
- * событиями (см. task_type в build.ts).
+ * A command launched in the background (`run_in_background`). It already has a card of its own in the
+ * feed - what lives here is only what the chip in the header needs: while the process runs, this is the
+ * one place in the whole panel where it is visible at all. Such a task must not be called an agent,
+ * although the CLI reports it with the same events (see task_type in build.ts).
  */
 export interface BackgroundTask {
   id: string
-  /** Вызов Bash, который её запустил — по нему в ленте лежит карточка команды. */
+  /** The Bash call that launched it - the command's card lies in the feed under it. */
   toolUseId?: string
+  /** What it was launched with, in two words: `sandbox.sh`, `pnpm dev`. That is what stands on the chip. */
   label: string
+  /**
+   * The model's own human description of the command ("Bringing up the sandbox with the plugin"). It
+   * does not fit on the chip - it lives in the hover tooltip.
+   */
+  description: string
   duration: string
 }
 
@@ -231,11 +240,10 @@ export interface TodoEntry {
   text: string
   state: TodoState
   /**
-   * Тот же пункт, названный происходящим сейчас делом: «Fix auth bug» →
-   * «Fixing auth bug». Пишет его сама модель, и терминал показывает в спиннере
-   * именно его, пока пункт в работе. Необязателен: модель вправе его не
-   * писать. Панель это поле сейчас нигде не показывает — только хранит вместе
-   * с остальными данными пункта.
+   * The same item named as the work happening right now: "Fix auth bug" → "Fixing auth bug". The model
+   * writes it itself, and the terminal shows exactly that in its spinner while the item is in progress.
+   * Optional: the model is free not to write it. The panel does not show this field anywhere at the
+   * moment - it merely keeps it along with the item's other data.
    */
   activeForm?: string
 }
@@ -252,20 +260,18 @@ export interface PlanItem {
   meta: string
   duration: string
   /**
-   * План целиком, разобранный как markdown — тем же разбором, что и обычный
-   * ответ агента. Раньше здесь лежали «шаги»: строки, вырезанные из плана по
-   * маркеру списка. Всё, что не пункт (заголовки разделов, абзацы-пояснения,
-   * вложенные уточнения), при этом терялось, разметка внутри пункта показывалась
-   * сырыми звёздочками, а первый попавшийся путь в бэктиках вырезался из текста
-   * в отдельную приписку — предложение после этого начиналось с запятой.
+   * The whole plan parsed as markdown - by the same parsing as an ordinary answer from the agent. This
+   * used to hold "steps": lines cut out of the plan by their list marker. Everything that was not an
+   * item (section headings, explanatory paragraphs, nested clarifications) was lost in the process,
+   * markup inside an item showed up as raw asterisks, and the first path in backticks was cut out of the
+   * text into a separate note - after which the sentence began with a comma.
    */
   paragraphs: Paragraph[]
   /**
-   * План из переписи прошлого разговора: решение по нему принимали (или не
-   * приняли) когда-то в прошлом, и держать им панель нельзя — иначе открытая
-   * из истории вкладка вечно стоит с «Waiting for you» под лентой и точкой
-   * «ждёт ответа» на своей вкладке. Кнопок у такой карточки и так нет (см.
-   * PlanCard.awaiting).
+   * A plan out of a past conversation's replay: the decision about it was taken (or not taken) some time
+   * in the past, and holding the panel with it is not an option - otherwise a tab opened from the
+   * history stands forever with "Waiting for you" under the feed and a "needs an answer" dot on its tab.
+   * Such a card has no buttons anyway (see PlanCard.awaiting).
    */
   historic?: boolean
 }
@@ -278,14 +284,13 @@ export interface PermItem {
   command: string
   decision: 'once' | 'always' | 'deny' | null
   /**
-   * Почему спросили, если спросил не режим: проверка безопасности, правило `ask`,
-   * хук, классификатор. Пусто — вопрос обычный, и лишней строки в карточке быть
-   * не должно.
+   * Why it asked, when the asker was not the mode: a safety check, an `ask` rule, a hook, a classifier.
+   * Empty means an ordinary question, and there must be no extra line in the card.
    */
   reason?: string
-  /** Сработает ли «Always allow»: нет — кнопки не будет вовсе. */
+  /** Whether "Always allow" will work: no means there will be no button at all. */
   rememberable: boolean
-  /** Не задано — решение главного потока. Задано — принадлежит конкретному агенту. */
+  /** Unset means a decision of the main stream. Set means it belongs to a particular agent. */
   taskId?: string
 }
 
@@ -308,16 +313,16 @@ export interface AskItem {
   kind: 'ask'
   meta: string
   questions: AskQuestion[]
-  /** Не задано — вопрос главного потока. Задано — вопрос конкретного агента. */
+  /** Unset means a question of the main stream. Set means a question of a particular agent. */
   taskId?: string
   /**
-   * Вопрос из переписи прошлого разговора, а не живого хода.
+   * A question out of a past conversation's replay rather than a live turn.
    *
-   * Карточкой такой вопрос не показывается: отвечать на него уже некому — ход,
-   * который его задал, кончился когда-то в прошлом, — а сам ответ, если он был,
-   * стоит в ленте следующей же репликой человека. Открытая из истории вкладка
-   * иначе встречала человека всплывшей поверх поля ввода карточкой с вариантами
-   * на вопрос из позапрошлой недели, и та держала панель, пока её не закроют.
+   * Such a question is not shown as a card: there is nobody left to answer it - the turn that asked
+   * ended some time in the past - and the answer, if there was one, stands in the feed as the person's
+   * very next message. A tab opened from the history would otherwise greet the person with a card of
+   * options floating over the input field about a question from the week before last, and it would hold
+   * the panel until closed.
    */
   historic?: boolean
 }
@@ -330,22 +335,21 @@ export interface CheckpointItem {
 }
 
 /**
- * Команда, выполненная самой панелью через «!» — не вызов инструмента агентом, а
- * поход человека в терминал. Стоит в ленте на своём месте по времени.
+ * A command run by the panel itself through "!" - not a tool call by the agent but the person's trip to
+ * a terminal. It stands in the feed in its own place in time.
  *
- * Агент видит вывод не здесь, а приложением к следующему сообщению — и только
- * тот, что успел вернуться к моменту отправки. Отправленное, пока команда ещё
- * идёт, уйдёт без него, а сам вывод достанется сообщению после: ход агента
- * панель ради этого не задерживает. Карточка в ленте всё это время честно
- * показывает «running», так что видно, чего ещё нет.
+ * The agent sees the output not here but appended to the next message - and only what managed to come
+ * back by the time of sending. Anything sent while the command is still running travels without it, and
+ * the output goes to the message after: the panel does not hold the agent's turn back for it. The card
+ * in the feed honestly shows "running" the whole time, so what is missing is visible.
  */
 export interface BashItem {
   id: string
   kind: 'bash'
   command: string
-  /** stdout и stderr вместе, как их видно в терминале; пока pending — пусто. */
+  /** stdout and stderr together, as they are seen in a terminal; empty while pending. */
   output: string
-  /** Не задан, пока команда идёт. */
+  /** Unset while the command runs. */
   exitCode?: number
   pending: boolean
 }
@@ -354,7 +358,7 @@ export interface CompactItem {
   id: string
   kind: 'compact'
   target: string
-  /** Сжатие ещё идёт — карточка появляется сразу, до того как известен итог. */
+  /** The compaction is still running - the card appears at once, before the outcome is known. */
   pending: boolean
 }
 
@@ -364,39 +368,38 @@ export interface MetaItem {
   stats: string[]
 }
 
-/** Чем кончилась череда повторов: запрос прошёл, CLI сдался или ход оборвали. */
+/** How a chain of retries ended: the request went through, the CLI gave up, or the turn was interrupted. */
 export type RetryOutcome = 'recovered' | 'failed' | 'stopped'
 
 /**
- * Сервер отказал, и CLI пережидает отказ, чтобы повторить запрос.
+ * The server refused, and the CLI is waiting the refusal out to repeat the request.
  *
- * Пока идёт эта пауза, в разговоре не происходит ничего: ни текста, ни вызовов,
- * ни даже вопроса — запрос не доходит до модели. Со стороны это выглядит
- * зависшей панелью, и единственным честным рассказом о происходящем остаётся
- * эта карточка. Одна на всю череду попыток: они идут подряд, отличаясь только
- * номером и паузой, и каждая своей строкой утопила бы ленту.
+ * While that pause lasts, nothing happens in the conversation: no text, no calls, not even a question -
+ * the request does not reach the model. From outside that looks like a hung panel, and this card is the
+ * only honest account of what is going on. One card for the whole chain of attempts: they run one after
+ * another, differing only by number and pause, and each on a line of its own would drown the feed.
  *
- * Своего события об удачном конце у череды нет — она просто перестаёт мешать,
- * и дальше идёт обычный поток, — поэтому карточка закрывается тем, что случится
- * следом (см. closeRetry в build.ts).
+ * The chain has no event of its own for a successful end - it simply stops getting in the way, and the
+ * ordinary stream carries on - so the card is closed by whatever happens next (see closeRetry in
+ * build.ts).
  */
 export interface RetryItem {
   id: string
   kind: 'retry'
-  /** Отказ словами самого терминала: «API overloaded», «Rate limited». */
+  /** The refusal in the terminal's own words: "API overloaded", "Rate limited". */
   label: string
   attempt: number
   maxRetries: number
-  /** Когда пойдёт следующая попытка — из него растёт обратный отсчёт. */
+  /** When the next attempt goes - the countdown grows out of it. */
   retryAt: number
-  /** Сколько заняла вся череда. Пусто, пока она идёт. */
+  /** How long the whole chain took. Empty while it runs. */
   duration: string
   pending: boolean
-  /** Пусто, пока череда идёт; после — чем именно она кончилась. */
+  /** Empty while the chain runs; after it, exactly how it ended. */
   outcome?: RetryOutcome
 }
 
-/** Процесс разговора умер сам — отдельная, недвусмысленная пометка в ленте. */
+/** The conversation's process died on its own - a separate, unambiguous mark in the feed. */
 export interface CrashItem {
   id: string
   kind: 'crash'
@@ -404,23 +407,22 @@ export interface CrashItem {
 }
 
 /**
- * Отказ агента или процесса — на своём месте в хронологии, а не закреплённой
- * плашкой над полем ввода.
+ * A refusal from the agent or the process - in its place in the chronology rather than as a pinned slab
+ * over the input field.
  *
- * Закреплённой она висела до тех пор, пока её не закроют руками, — и через
- * полчаса работы всё ещё сообщала, например, о лимите, который давно
- * сбросился. В ленте у ошибки есть то, чего плашке не хватало: время. Она
- * уезжает вверх вместе с ходом, в котором случилась, и перестаёт выдавать себя
- * за положение дел прямо сейчас.
+ * Pinned, it hung there until closed by hand - and half an hour into the work it still reported, say, a
+ * limit that had long since reset. In the feed an error has what the slab lacked: a time. It travels
+ * upwards along with the turn it happened in and stops passing itself off as the state of things right
+ * now.
  */
 export interface ErrorItem {
   id: string
   kind: 'error'
   message: string
   /**
-   * Ход остановил исчерпанный лимит подписки, а не поломка. Отдельная пометка,
-   * потому что это не то же самое: чинить нечего, нужно дождаться сброса окна —
-   * и зовут об этом своим звуком.
+   * The turn was stopped by an exhausted subscription limit rather than by a breakage. A separate mark,
+   * because it is not the same thing: there is nothing to fix, one has to wait for the window to reset -
+   * and a sound of its own calls about it.
    */
   limit?: boolean
 }

@@ -7,18 +7,16 @@ export type ScenarioStep =
   | { kind: 'wait'; ms: number }
   | { kind: 'resolvePlan'; itemId: string; decision: 'approve' | 'keepPlanning' }
   /**
-   * Команда bash-режима вместе с её выводом. Отдельным шагом, а не парой
-   * «отправили — ответили»: номер запущенной команде даёт сама панель, и
-   * сценарию его заранее не знать — плеер подсматривает его в том, что панель
-   * отправила оболочке (см. ScenarioPlayer).
+   * A bash-mode command together with its output. As a step of its own rather than as a "sent - answered"
+   * pair: the number for a started command is given by the panel itself, and the scenario cannot know it in
+   * advance - the player peeks at it in what the panel sent to the shell (see ScenarioPlayer).
    */
   | { kind: 'bash'; command: string; stdout: string; stderr?: string; exitCode?: number; runMs?: number }
 
 /**
- * Один осмысленный момент сценария с подписью для карточки чекпоинтов.
- * В автовоспроизведении его шаги играются как есть, с настоящими паузами.
- * В пошаговом режиме шаги 'wait' и кусочки печатающегося текста ('stream_event')
- * пропускаются — переход на чекпоинт происходит мгновенно и целиком.
+ * One meaningful moment of a scenario with a caption for the checkpoints card. In auto playback its steps
+ * are played as they are, with genuine pauses. In step mode the 'wait' steps and the pieces of typing text
+ * ('stream_event') are skipped - the move to a checkpoint happens instantly and whole.
  */
 export interface Checkpoint {
   id: string
@@ -33,19 +31,19 @@ export interface Scenario {
   checkpoints: Checkpoint[]
 }
 
-/** 'auto' — живое воспроизведение с паузами, 'step' — чекпоинт за чекпоинтом вручную. */
+/** 'auto' is live playback with pauses, 'step' is checkpoint after checkpoint by hand. */
 export type PlaybackMode = 'auto' | 'step'
 
 declare global {
   interface Window {
     /**
-     * Тонкий хук в App.tsx (только dev-сборка): харнесс имитирует настоящую
-     * отправку сообщения из поля ввода, не трогая само поле ввода.
+     * A thin hook in App.tsx (dev builds only): the harness imitates a genuine send of a message from the
+     * input field without touching the input field itself.
      */
     __accHarnessSend?: (text: string) => void
     /**
-     * Тот же приём: имитирует настоящий клик по кнопке карточки плана
-     * («Approve & run» / «Keep planning»), не трогая саму кнопку.
+     * The same trick: it imitates a genuine click on a plan card's button ("Approve & run" / "Keep
+     * planning") without touching the button itself.
      */
     __accHarnessResolvePlan?: (itemId: string, decision: 'approve' | 'keepPlanning') => void
   }

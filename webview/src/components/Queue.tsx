@@ -8,15 +8,14 @@ export interface QueuedPrompt {
   text: string
   attach: string
   /**
-   * Само содержимое поля, каким его набрали. Текст выше — уже готовая строка для
-   * агента, а вложения из неё не восстановить: по ним панель считает, сколько
-   * картинок ушло в этой сессии, и без них нумерация следующих начиналась бы
-   * заново, стоило сообщению уйти через очередь. Он же несёт вывод команд
-   * bash-режима, которого человек в поле не набирал, — на экране его в строке
-   * очереди быть не должно (см. withoutShellText).
+   * The field's contents as they were typed. The text above is already a finished string for the agent,
+   * and the attachments cannot be recovered from it: the panel counts by them how many images have gone
+   * out in this session, and without them the numbering of the next ones would start afresh as soon as a
+   * message went out through the queue. The same text carries bash-mode output the person never typed
+   * into the field - it has no place on screen in the queue's row (see withoutShellText).
    */
   tokens: UserToken[]
-  /** Картинки из буфера обмена, которые уйдут вместе с текстом при отправке. */
+  /** Images from the clipboard that will travel along with the text when it is sent. */
   images: { mediaType: string; data: string }[]
 }
 
@@ -30,16 +29,15 @@ export const Queue = ({ items, onReorder, onRemove }: QueueProps) => {
   const [dragFrom, setDragFrom] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState<number | null>(null)
   const rowRefs = useRef<(HTMLDivElement | null)[]>([])
-  /** Тот же индекс, что и dragOver, но без задержки на ре-рендер — onPointerUp читает его сразу. */
+  /** The same index as dragOver, but without waiting for a re-render - onPointerUp reads it at once. */
   const overIndexRef = useRef<number | null>(null)
 
   if (items.length === 0) return null
 
   /**
-   * Ручка тащит по pointer-событиям, а не нативным HTML5 DnD: внутри JCEF
-   * (встроенный в IDE браузер) dragstart/dragover молча не приходят — само
-   * перетаскивание там не работало вообще. Pointer-события — это обычные
-   * мышиные события, они одинаково доступны и в обычном браузере, и в JCEF.
+   * The handle drags by pointer events rather than native HTML5 DnD: inside JCEF (the IDE's embedded
+   * browser) dragstart/dragover silently never arrive - dragging simply did not work there at all.
+   * Pointer events are ordinary mouse events, equally available in a plain browser and in JCEF.
    */
   const startDrag = (from: number) => (event: ReactPointerEvent<HTMLSpanElement>) => {
     event.preventDefault()

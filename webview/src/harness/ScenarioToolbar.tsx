@@ -12,10 +12,10 @@ interface ScenarioToolbarProps {
 }
 
 const CATEGORY_LABEL: Record<Scenario['category'], string> = {
-  grouping: 'Группировка вызовов',
-  cards: 'Остальные карточки',
-  system: 'Служебные состояния',
-  combined: 'Комбинированный',
+  grouping: 'Call grouping',
+  cards: 'The other cards',
+  system: 'Service states',
+  combined: 'Combined',
 }
 
 const CATEGORY_ORDER: Scenario['category'][] = ['grouping', 'cards', 'system', 'combined']
@@ -32,7 +32,7 @@ export const ScenarioToolbar = ({
   return (
     <div className={`${s.toolbar} ${collapsed ? s.toolbarCollapsed : ''}`}>
       <div className={s.toolbarHead}>
-        {!collapsed ? <span className={s.toolbarTitle}>Сценарии</span> : null}
+        {!collapsed ? <span className={s.toolbarTitle}>Scenarios</span> : null}
         <button type="button" className={s.toolbarToggle} onClick={onToggleCollapsed}>
           {collapsed ? '«' : '»'}
         </button>
@@ -45,14 +45,14 @@ export const ScenarioToolbar = ({
             className={`${s.modeButton} ${mode === 'auto' ? s.modeActive : ''}`}
             onClick={() => onModeChange('auto')}
           >
-            Авто
+            Auto
           </button>
           <button
             type="button"
             className={`${s.modeButton} ${mode === 'step' ? s.modeActive : ''}`}
             onClick={() => onModeChange('step')}
           >
-            Шаги
+            Steps
           </button>
         </div>
       ) : null}

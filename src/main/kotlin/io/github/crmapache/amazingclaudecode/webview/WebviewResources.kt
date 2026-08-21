@@ -20,16 +20,15 @@ import org.cef.network.CefRequest
 import org.cef.network.CefResponse
 
 /**
- * Отдача собранного интерфейса встроенному браузеру.
+ * Serving the built interface to the embedded browser.
  *
- * Файлы лежат внутри архива плагина, а браузеру нужен настоящий адрес: без него
- * не работают модульные скрипты и запросы из страницы (пустой Origin у `file://`
- * ломает и то, и другое). Поэтому перехватываем `http` для своего домена и
- * отвечаем байтами из ресурсов.
+ * The files live inside the plugin's archive, while the browser needs a real address: without one,
+ * module scripts and requests from the page do not work (an empty Origin on `file://` breaks both). So
+ * we intercept `http` for a domain of our own and answer with bytes from the resources.
  */
 internal object WebviewResources {
 
-    /** Домен вымышленный: наружу такие запросы не уходят, их забирает наш обработчик. */
+    /** The domain is made up: no such requests go outwards, our handler takes them. */
     const val ORIGIN: String = "http://acc-webview"
 
     private const val DOMAIN = "acc-webview"
@@ -37,7 +36,7 @@ internal object WebviewResources {
 
     private val registered = AtomicBoolean(false)
 
-    /** Регистрация действует на весь процесс IDE, поэтому выполняем её один раз. */
+    /** The registration applies to the whole IDE process, so it is done once. */
     fun register() {
         if (!registered.compareAndSet(false, true)) return
 
@@ -56,16 +55,16 @@ internal object WebviewResources {
     }
 
     /**
-     * У обработчика два набора методов: `open`/`read` из нынешнего API и
-     * `processRequest`/`readResponse` из прежнего. Реализованы оба, потому что какой
-     * из них позовёт CEF, зависит от версии, а расходиться в поведении им нельзя.
+     * The handler has two sets of methods: `open`/`read` from the current API and
+     * `processRequest`/`readResponse` from the previous one. Both are implemented, because which of them
+     * CEF will call depends on the version, and they must not differ in behaviour.
      *
-     * Устаревшую пару верификатор маркетплейса считает за два обращения к
-     * устаревшему API, и убрать её оттуда просится само собой — достаточно
-     * наследоваться от готового `CefResourceHandlerAdapter` и переопределить одну
-     * нынешнюю. Так делать нельзя, это проверено живьём: в текущей сборке JCEF
-     * зовёт как раз прежние методы, заготовка отвечает на них отказом, и панель
-     * не загружается вовсе — вместо страницы пустота и HTTP 0 в логе.
+     * The deprecated pair counts as two references to a deprecated API for the marketplace's verifier,
+     * and removing them from there suggests itself - it would be enough to inherit from the ready
+     * `CefResourceHandlerAdapter` and override one current method. That cannot be done, and it has been
+     * verified live: in the current JCEF build it is the previous methods that get called, the base class
+     * answers them with a refusal, and the panel does not load at all - emptiness instead of a page and
+     * HTTP 0 in the log.
      */
     @Suppress("OVERRIDE_DEPRECATION")
     private class ResourceHandler : CefResourceHandler {
@@ -76,7 +75,8 @@ internal object WebviewResources {
 
         override fun open(request: CefRequest, handleRequest: BoolRef, callback: CefCallback): Boolean {
             openResource(request)
-            // Отвечаем немедленно и синхронно: ресурс лежит в архиве, ждать нечего.
+            // We answer immediately and synchronously: the resource lies in the archive, there is nothing
+            // to wait for.
             handleRequest.set(true)
             return true
         }
@@ -101,7 +101,7 @@ internal object WebviewResources {
 
             response.mimeType = mimeType
             response.status = 200
-            // Длину не знаем заранее — читаем поток до конца.
+            // The length is not known in advance - we read the stream to the end.
             responseLength.set(-1)
         }
 
@@ -136,7 +136,7 @@ internal object WebviewResources {
             val resource = javaClass.classLoader.getResourceAsStream("$RESOURCE_ROOT/$path")
 
             if (resource == null) {
-                // Браузер сам просит иконку вкладки, которой у панели нет: это не ошибка.
+                // The browser asks for a tab icon the panel does not have by itself: that is not an error.
                 if (path != "favicon.ico") thisLogger().warn("Webview resource not found: $path")
                 found = false
                 return

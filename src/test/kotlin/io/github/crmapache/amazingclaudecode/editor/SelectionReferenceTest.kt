@@ -3,9 +3,8 @@ package io.github.crmapache.amazingclaudecode.editor
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 /**
- * Ссылка на кусок файла должна совпадать с тем, что пользователь видит в строке
- * состояния редактора. Отсюда единица в отсчёте и отдельный случай для выделения,
- * захватившего перевод строки.
+ * A reference to a piece of a file has to match what the user sees in the editor's status bar. Hence
+ * counting from one, and a separate case for a selection that swallowed a newline.
  */
 class SelectionReferenceTest : BasePlatformTestCase() {
 
@@ -13,8 +12,8 @@ class SelectionReferenceTest : BasePlatformTestCase() {
         val reference = referenceFor("one\ntwo\nthree\n", start = 0, end = 8)
 
         assertEquals(1, reference.startLine)
-        // Тройной клик забирает перевод строки: считать его началом следующей
-        // строки нельзя, иначе диапазон уезжает на строку вперёд.
+        // A triple click takes the newline with it: counting that as the start of the next line is not
+        // an option, or the range slides a line forward.
         assertEquals(2, reference.endLine)
         assertTrue(reference.wholeLines)
     }

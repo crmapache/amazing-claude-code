@@ -10,12 +10,11 @@ const container = document.getElementById('root')
 if (!container) throw new Error('Root container is missing in index.html')
 
 /**
- * Всё, что упало мимо React, — в лог IDE.
+ * Everything that fell over outside React goes into the IDE's log.
  *
- * Панель живёт во встроенном браузере, который рисуется офскрин: его консоль
- * никто не видит, и любая ошибка вне дерева компонентов (обработчик события,
- * сорванный промис) исчезала бесследно — оставался только рассказ «оно
- * повисло». Теперь такой рассказ можно проверить по логу.
+ * The panel lives in an embedded browser rendering offscreen: nobody sees its console, and any error
+ * outside the component tree (an event handler, a rejected promise) used to disappear without a trace -
+ * leaving only the account "it hung". Now such an account can be checked against the log.
  */
 window.addEventListener('error', (event) => {
   send({ type: 'trace', message: `uncaught: ${event.error?.stack ?? event.message}` })

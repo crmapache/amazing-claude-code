@@ -11,20 +11,19 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Мелкие сведения о проекте для нижней строки панели.
+ * Small facts about the project for the panel's bottom line.
  *
- * Текущую ветку читаем прямо из служебного файла репозитория, а не через плагин
- * системы контроля версий: одна строка вместо зависимости, которой у панели
- * больше нигде нет.
+ * The current branch is read straight out of the repository's own file rather than through the version
+ * control plugin: one line instead of a dependency the panel has nowhere else.
  */
 internal object ProjectFacts {
 
     data class PullRequestInfo(val number: String, val url: String)
 
     /**
-     * Pull request текущей ветки, если он есть. Спрашиваем `gh`, потому что
-     * знание о том, что ветка уже уехала в PR, живёт на стороне GitHub, а не в
-     * репозитории. Вызывать только из фонового потока: это запуск процесса.
+     * The current branch's pull request, if it has one. We ask `gh`, because the knowledge that a branch
+     * has already gone into a PR lives on GitHub's side rather than in the repository. Call from a
+     * background thread only: this starts a process.
      */
     fun pullRequest(project: Project): PullRequestInfo? {
         val base = project.basePath ?: return null
@@ -40,8 +39,8 @@ internal object ProjectFacts {
             CapturingProcessHandler(commandLine).runProcess(GH_TIMEOUT_MS)
         }.getOrNull() ?: return null
 
-        // Ошибка здесь — обычное дело: нет удалённого репозитория, нет PR, gh не
-        // залогинен. Молчим и показываем «no PR».
+        // An error here is an everyday thing: no remote repository, no PR, gh not signed in. We stay
+        // silent and show "no PR".
         if (output.exitCode != 0) return null
 
         val json = runCatching { Json.parseToJsonElement(output.stdout.trim()).jsonObject }.getOrNull() ?: return null
@@ -77,15 +76,14 @@ internal object ProjectFacts {
     }
 
     /**
-     * Разбор содержимого `.git/HEAD`. Вынесено из [gitBranch] отдельной чистой
-     * функцией, чтобы разбор формата тестировался без файлов и IntelliJ-проекта.
+     * Parsing the contents of `.git/HEAD`. Split out of [gitBranch] as a pure function so that the
+     * format's parsing can be tested without files and without an IntelliJ project.
      */
     internal fun parseHeadBranch(content: String): String? = when {
-        // substringAfterLast('/') резал бы префикс веток вида "feature/foo" до
-        // одного "foo" — снимаем только служебный "refs/heads/", а не всё до
-        // последнего слэша.
+        // substringAfterLast('/') would cut a branch prefixed like "feature/foo" down to a bare "foo" -
+        // we strip only the internal "refs/heads/" rather than everything up to the last slash.
         content.startsWith("ref:") -> content.removePrefix("ref:").trim().removePrefix("refs/heads/")
-        // Отсоединённая голова: показываем короткий хеш, как это делает IDE.
+        // A detached head: we show the short hash, as the IDE does.
         content.length >= 7 -> content.take(7)
         else -> null
     }

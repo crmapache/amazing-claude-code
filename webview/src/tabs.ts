@@ -1,15 +1,14 @@
 import type { Session } from './components/Header'
 
 /**
- * Новый порядок вкладок после перетаскивания.
+ * The new order of the tabs after a drag.
  *
- * Единица перестановки — группа: разговор вместе со своими форками. Поштучно их
- * не растащить и чужую вкладку внутрь не вставить — группа это одна тема, и
- * вкладка посреди чужой темы не значила бы ничего, кроме путаницы. Порядок
- * внутри группы тоже не трогаем: форк идёт за своим родителем, и менять их
- * местами было бы враньём про то, откуда он взялся.
+ * The unit of rearrangement is a group: a conversation together with its forks. They cannot be dragged
+ * apart one by one, and someone else's tab cannot be inserted inside - a group is one topic, and a tab
+ * in the middle of someone else's topic would mean nothing but confusion. The order inside a group is
+ * left alone too: a fork follows its parent, and swapping them would be a lie about where it came from.
  *
- * `beforeGroupId` — группа, ПЕРЕД которой встанем, или null — в самый конец.
+ * `beforeGroupId` is the group we will stand BEFORE, or null for the very end.
  */
 export const moveGroup = (sessions: Session[], groupId: string, beforeGroupId: string | null): Session[] => {
   const moving = sessions.filter((session) => session.groupId === groupId)

@@ -14,14 +14,14 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * Прошлые разговоры этого проекта.
+ * This project's past conversations.
  *
- * Claude Code хранит их сам: по файлу на разговор в своей папке, имя файла — это
- * идентификатор, которым разговор и возобновляется. Никакой своей базы панель не
- * заводит, иначе история в панели и в терминале разъехались бы.
+ * Claude Code keeps them itself: a file per conversation in its own folder, the file name being the
+ * identifier a conversation is resumed by. The panel starts no database of its own - otherwise the
+ * history in the panel and in the terminal would drift apart.
  *
- * Слэш-команда возобновления в потоковом режиме недоступна — она открывает
- * интерактивный список. Отсюда и своя кнопка.
+ * The resume slash command is unavailable in streaming mode - it opens an interactive list. Hence a
+ * button of our own.
  */
 internal object ClaudeHistory {
 
@@ -39,29 +39,58 @@ internal object ClaudeHistory {
             .take(limit)
             .mapNotNull { file -> entryFor(file) }
 
-    /** Строки разговора, которые панель умеет рисовать: реплики и ответы. */
-    fun replay(workingDirectory: String?, id: String): List<String> {
-        val file = directoriesFor(workingDirectory)
+    /**
+     * The conversation's file on disk - if the CLI has started one already.
+     *
+     * Needed outside for more than the history: it is also what tells whether a message written into a
+     * running turn reached the conversation (see [PromptDelivery]).
+     */
+    fun transcriptFile(workingDirectory: String?, id: String): File? =
+        directoriesFor(workingDirectory)
             .map { it.resolve("$id.jsonl") }
             .firstOrNull { it.isFile }
-            ?: return emptyList()
 
-        return runCatching {
-            file.readLines()
-                .filter { line ->
-                    line.startsWith("{") && (line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\""))
-                }
-                .map(::normalizeContent)
-        }.onFailure { thisLogger().warn("Failed to read conversation $id", it) }.getOrDefault(emptyList())
+    /**
+     * The conversation's lines the panel knows how to draw - messages and replies - handed over one at a
+     * time as they are read.
+     *
+     * A line at a time rather than a list of them all, because a long conversation's file runs to tens of
+     * megabytes: read whole it was three lists of it in memory at once (the file, the lines kept, the
+     * lines normalized) for a tab that is merely being opened. [onLine] is called in the file's own
+     * order, and the caller is free to treat the moment it returns as "the replay is over" - that is what
+     * closes the cards left unfinished inside it (see ClaudePanel.resumeConversation).
+     *
+     * A file that breaks off mid-read leaves what was already handed over in the feed rather than
+     * throwing the conversation away whole. That is the better of the two: the agent remembers the whole
+     * talk either way, and a tab showing most of it beats a tab showing none of it.
+     */
+    fun replay(workingDirectory: String?, id: String, onLine: (String) -> Unit) {
+        val file = transcriptFile(workingDirectory, id) ?: return
+
+        runCatching { file.useLines { lines -> replayable(lines).forEach(onLine) } }
+            .onFailure { thisLogger().warn("Failed to replay conversation $id", it) }
     }
 
     /**
-     * На диске голая текстовая реплика человека — это строка в message.content, а
-     * не массив блоков: так её пишет сам Claude Code, когда во вводе не было ни
-     * вложений, ни tool_result. Живой поток отдаёт панели только массивы блоков —
-     * лента разбирает исключительно их и падает на строке. Раз это единственное
-     * место, где старый формат превращается в живое событие, приводим форму здесь,
-     * а не защитными проверками по всей ленте.
+     * Which of the conversation's lines the feed can draw, and in the shape it expects them - apart from
+     * the disk, so a test can check it.
+     *
+     * A lazy sequence rather than a list on purpose: it is the whole point of reading a transcript by
+     * lines at all, and it is easy to undo by accident with a stray toList().
+     */
+    internal fun replayable(lines: Sequence<String>): Sequence<String> =
+        lines
+            .filter { line ->
+                line.startsWith("{") && (line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\""))
+            }
+            .map(::normalizeContent)
+
+    /**
+     * On disk a person's bare text message is a string in message.content, not an array of blocks: that
+     * is how Claude Code writes it when the input held neither attachments nor a tool_result. The live
+     * stream hands the panel arrays of blocks only - the feed parses nothing but those and breaks on a
+     * string. Since this is the one place where the old shape turns into a live event, the shape is
+     * brought into line here, rather than by defensive checks all over the feed.
      */
     internal fun normalizeContent(line: String): String {
         val payload = runCatching { Json.parseToJsonElement(line).jsonObject }.getOrNull() ?: return line
@@ -76,28 +105,28 @@ internal object ClaudeHistory {
     }
 
     /**
-     * Имя папки разговоров по пути проекта — ровно по правилу самого Claude Code:
-     * всё, что не буква и не цифра, становится дефисом.
+     * The conversations folder's name for a project path - by Claude Code's own rule exactly: anything
+     * that is not a letter or a digit becomes a hyphen.
      *
-     * Раньше здесь менялись только слеш и точка, и на этом история разъезжалась с
-     * терминалом: у пути с пробелом или подчёркиванием («my_project») папка
-     * получалась своя, а на Windows — вообще всегда, потому что двоеточие после
-     * буквы диска оставалось на месте. Панель смотрела в несуществующий каталог и
-     * показывала пустой список, хотя разговоры лежали рядом.
+     * This used to replace only slashes and dots, and on that the history drifted apart from the
+     * terminal: a path with a space or an underscore ("my_project") got a folder of its own, and on
+     * Windows always did, because the colon after the drive letter stayed where it was. The panel
+     * looked into a folder that did not exist and showed an empty list, while the conversations lay
+     * right beside it.
      */
     internal fun slugFor(path: String): String = path.map { if (it.isLetterOrDigit()) it else '-' }.joinToString("")
 
     /**
-     * Где искать разговоры этого проекта. Кандидатов два, потому что путь до
-     * проекта и путь, которым его знает CLI, совпадают не всегда: `/tmp` на macOS
-     * на самом деле `/private/tmp`, а проект вполне может лежать за символической
-     * ссылкой. CLI раскладывает разговоры по настоящему пути, IDE же отдаёт свой —
-     * поэтому смотрим в обе папки и показываем всё, что нашлось.
+     * Where to look for this project's conversations. There are two candidates, because a project's
+     * path and the path the CLI knows it by do not always match: `/tmp` on macOS is really
+     * `/private/tmp`, and a project may well sit behind a symbolic link. The CLI files conversations
+     * under the real path while the IDE hands over its own - so we look into both folders and show
+     * whatever was found.
      */
     private fun directoriesFor(workingDirectory: String?): List<File> {
         val path = workingDirectory ?: return emptyList()
         val real = runCatching { File(path).canonicalPath }.getOrDefault(path)
-        val projects = File(configDirectory(), "projects")
+        val projects = File(HostOs.configDirectory(), "projects")
 
         return listOf(path, real)
             .distinct()
@@ -106,11 +135,6 @@ internal object ClaudeHistory {
             .filter { it.isDirectory }
     }
 
-    /** Каталог настроек переезжает переменной окружения — как и у самого CLI. */
-    private fun configDirectory(): File =
-        System.getenv("CLAUDE_CONFIG_DIR")?.takeIf { it.isNotBlank() }?.let(::File)
-            ?: File(System.getProperty("user.home"), ".claude")
-
     private fun entryFor(file: File): Entry? {
         val id = file.nameWithoutExtension
 
@@ -118,42 +142,41 @@ internal object ClaudeHistory {
             .onFailure { thisLogger().warn("Failed to scan conversation $id", it) }
             .getOrDefault(Scan("", 0))
 
-        // Разговор без единой реплики — это брошенный запуск, показывать нечего.
+        // A conversation without a single message is an abandoned launch, with nothing to show.
         if (scan.messages == 0) return null
 
         return Entry(
             id = id,
-            // Родное название от самого CLI (см. Scan.aiTitle) — предпочитаем
-            // его эвристике, когда оно есть: короче, точнее по смыслу и не
-            // зависит от того, насколько удачной вышла первая строка человека.
+            // The CLI's own name (see Scan.aiTitle) - preferred over the heuristic when there is one:
+            // shorter, closer to the point, and independent of how well the person's first line came
+            // out.
             title = scan.aiTitle?.takeIf { it.isNotBlank() } ?: scan.title.ifEmpty { "untitled" },
             updatedAt = file.lastModified(),
             messages = scan.messages,
         )
     }
 
-    /** Что удалось узнать про разговор за один проход по его файлу. */
+    /** What could be learned about a conversation in a single pass over its file. */
     internal data class Scan(val title: String, val messages: Int, val aiTitle: String? = null)
 
     /**
-     * Заголовок и число сообщений — за один проход: файл разговора весит
-     * мегабайты, а в списке их сорок.
+     * The title and the message count - in one pass: a conversation's file weighs megabytes, and there
+     * are forty of them in the list.
      *
-     * Сообщение здесь — то, что сказал человек: своими словами или командой. В
-     * транскрипте его репликами записано и всё служебное — результат каждого
-     * вызова инструмента, обвязка команды, уведомление о фоновой задаче, — и
-     * такой счёт разъезжается с виденным на экране в десять раз: «375
-     * сообщений» там, где человек написал тридцать.
+     * A message here is what the person said: in their own words or as a command. The transcript
+     * records everything internal as their messages too - every tool result, a command's wrapper, a
+     * background task's notification - and such a count parts ways with what was on screen tenfold:
+     * "375 messages" where a person wrote thirty.
      *
-     * Отсеиваем по сырой строке, не разбирая её: служебных реплик кратно
-     * больше, чем всех остальных, а среди них попадаются и на сотню килобайт.
-     * Подстроки берём в том виде, в каком их пишет CLI, — внутри текста самого
-     * человека такая не встретится, там кавычки экранированы.
+     * The filtering goes by the raw line, without parsing it: internal messages outnumber all the
+     * others many times over, and some of them run to a hundred kilobytes. The substrings are taken in
+     * the shape the CLI writes them - inside a person's own text such a substring cannot occur, the
+     * quotes there are escaped.
      */
     internal fun scan(lines: Sequence<String>): Scan {
         var title = ""
-        // Разговор — это сплошь /compact или похожая команда, ни одной реплики
-        // человека: имя команды тогда и есть единственный осмысленный заголовок.
+        // The conversation is all /compact or a similar command, with not a single message from the
+        // person: then the command's name is the only meaningful title there is.
         var fallbackCommand = ""
         var aiTitle: String? = null
         var messages = 0
@@ -161,22 +184,23 @@ internal object ClaudeHistory {
         for (line in lines) {
             if (!line.startsWith("{")) continue
 
-            // Родное название от CLI повторяется по ходу файла много раз с
-            // одним и тем же значением — держим последнее увиденное: если
-            // тема разговора успела смениться, оно успевает обновиться тоже.
-            if (line.contains("\"type\":\"ai-title\"")) {
-                AI_TITLE.find(line)?.groupValues?.get(1)?.let { aiTitle = it }
+            // The CLI's own name repeats many times over through the file with the same value - we keep
+            // the last one seen: if the conversation's topic has changed since, it has had time to
+            // change too.
+            val named = AgentStream.aiTitle(line)
+            if (named != null) {
+                aiTitle = named
                 continue
             }
 
             if (!line.contains("\"type\":\"user\"")) continue
-            // Результат вызова инструмента: реплика человека только по форме.
+            // A tool call's result: a person's message by shape only.
             if (line.contains("\"type\":\"tool_result\"")) continue
-            // Пометка самого CLI: писал не человек, а оболочка — тело вызванного
-            // скилла, предупреждение перед командой, подпись к картинке.
+            // The CLI's own mark: written not by the person but by the shell - a skill's body, a
+            // warning before a command, a caption under an image.
             if (line.contains("\"isMeta\":true")) continue
-            // Остальная обвязка команд и уведомления фоновых задач: человек их
-            // не писал и на экране не видел.
+            // The rest of the commands' wrapping and background task notifications: the person neither
+            // wrote them nor saw them on screen.
             if (SERVICE_CONTENT.any { line.contains(it) }) continue
 
             messages += 1
@@ -185,7 +209,7 @@ internal object ClaudeHistory {
             val payload = runCatching { Json.parseToJsonElement(line).jsonObject }.getOrNull() ?: continue
 
             when (val wrapper = serviceReplica(payload)) {
-                // Настоящая реплика человека — не служебная обвязка команды.
+                // A real message from the person - not a command's wrapping.
                 null -> firstText(payload).takeIf { it.isNotEmpty() }?.let { title = it }
                 else -> if (wrapper.isNotEmpty() && fallbackCommand.isEmpty()) fallbackCommand = wrapper
             }
@@ -195,12 +219,11 @@ internal object ClaudeHistory {
     }
 
     /**
-     * Служебные реплики, которые в транскрипте выглядят как слова человека, но
-     * ими не являются: обвязка слэш-команды, предупреждение и вывод локальной
-     * команды, уведомление о фоновой задаче. Ни одна не годится в заголовок
-     * буквально: null — это настоящая реплика человека, не служебная; "" —
-     * служебная, показывать из неё нечего; непустая строка — сама команда,
-     * единственное осмысленное, что из обвязки можно достать.
+     * Internal messages that look like a person's words in the transcript but are not: a slash
+     * command's wrapping, the warning and output of a local command, a background task's notification.
+     * None of them will do as a title literally: null means a real message from the person, not an
+     * internal one; "" means internal, with nothing to show; a non-empty string is the command itself,
+     * the one meaningful thing the wrapping holds.
      */
     private fun serviceReplica(payload: JsonObject): String? {
         val content = payload["message"]?.jsonObject?.get("content") as? JsonPrimitive ?: return null
@@ -208,10 +231,10 @@ internal object ClaudeHistory {
         val text = content.content.trim()
 
         return when {
-            // Порядок тегов в обвязке не один: у встроенных команд (/model,
-            // /compact) первым идёт имя, у скиллов и плагинов — подпись. Раньше
-            // разбор ждал только первого порядка, и разговор, начатый скиллом,
-            // назывался в списке сырым «<command-message>task</command-message>».
+            // The order of tags in the wrapping is not fixed: built-in commands (/model, /compact) put
+            // the name first, skills and plugins the caption. The parsing used to expect only the first
+            // order, and a conversation started by a skill was listed as a raw
+            // "<command-message>task</command-message>".
             text.startsWith("<command-name>") || text.startsWith("<command-message>") -> commandTitle(text)
             text.startsWith("<local-command-") || text.startsWith("<task-notification>") -> ""
             else -> null
@@ -219,15 +242,15 @@ internal object ClaudeHistory {
     }
 
     /**
-     * Имя команды с аргументом — так разговор узнаётся в списке: десяток
-     * запусков одного и того же скилла отличается друг от друга только им.
+     * The command's name with its argument - that is how a conversation is recognised in the list: a
+     * dozen runs of one and the same skill differ from each other by nothing else.
      */
     private fun commandTitle(text: String): String {
         val name = tag(COMMAND_NAME_TAG, text).ifEmpty { tag(COMMAND_MESSAGE_TAG, text) }
         if (name.isEmpty()) return ""
 
-        // Имя приходит и со слэшем, и без — зависит от того, каким тегом его
-        // записали; в заголовке команда должна выглядеть командой.
+        // The name arrives both with and without a slash - it depends on which tag it was written in;
+        // in a title a command should look like a command.
         val command = if (name.startsWith("/")) name else "/$name"
         val arguments = tag(COMMAND_ARGS_TAG, text)
 
@@ -238,15 +261,13 @@ internal object ClaudeHistory {
         pattern.find(text)?.groupValues?.get(1)?.trim().orEmpty()
 
     /**
-     * Заголовком служит первая реплика человека — но не сама по себе, а её
-     * содержательные строки. Вложения (`@путь`, `[Image #N]`, цитата) панель
-     * складывает в текст ПЕРЕД настоящими словами человека, а не вместо них —
-     * взять буквально первую строку значит нередко показать одно короткое
-     * слово («Давай») вместо того, что человек на самом деле спросил строкой
-     * ниже. Поэтому склеиваем все содержательные строки подряд, а не берём
-     * только первую. Если содержательной строки вообще нет (одно вложение или
-     * голая команда), это и есть весь смысл реплики — берём последнюю строку,
-     * ровно так же, как её показывает нативный picker.
+     * The title is the person's first message - not as it stands, but its meaningful lines. Attachments
+     * (`@path`, `[Image #N]`, a quote) the panel puts into the text BEFORE the person's real words
+     * rather than instead of them - taking the literally first line often means showing one short word
+     * ("Right") instead of what the person actually asked a line below. So we join every meaningful
+     * line rather than take only the first. When there is no meaningful line at all (a lone attachment
+     * or a bare command), that is the whole substance of the message - we take the last line, exactly
+     * as the native picker shows it.
      */
     private fun firstText(payload: JsonObject): String {
         val content = payload["message"]?.jsonObject?.get("content") ?: return ""
@@ -268,30 +289,27 @@ internal object ClaudeHistory {
     }
 
     /**
-     * `[Image #N]` — плейсхолдер вложения, который композер вставляет прямо
-     * посреди фразы («смотри [Image #1] сюда»), а не только отдельной
-     * строкой. Раньше фильтр распознавал лишь строку целиком из плейсхолдера
-     * и пропускал этот случай — тег утекал в заголовок как есть.
+     * `[Image #N]` is an attachment placeholder the composer inserts right in the middle of a sentence
+     * ("look [Image #1] here"), not only on a line of its own. The filter used to recognise a line made
+     * entirely of a placeholder and missed this case - the tag leaked into the title as it was.
      */
     private fun stripImageTags(line: String): String =
         line.replace(IMAGE_PLACEHOLDER, " ").replace(MULTIPLE_SPACES, " ").trim()
 
     /**
-     * Вывод команд bash-режима панель дописывает В НАЧАЛО следующей реплики
-     * человека (см. shellText в webview): агенту он нужен, а разговор от этого
-     * назывался в списке «<bash-input>git pull</bash-input> <bash-stdout>Already
-     * up to date.</bash-stdout> Давай перейдём…» вместо того, что человек
-     * спросил строкой ниже.
+     * The output of bash-mode commands the panel puts at the START of the person's next message (see
+     * shellText in the webview): the agent needs it, and because of it a conversation was listed as
+     * "<bash-input>git pull</bash-input> <bash-stdout>Already up to date.</bash-stdout> Now let's move…"
+     * instead of what the person asked a line below.
      *
-     * Вырезаем блоками целиком, а не строками с тегами: вывод команды
-     * многострочный, и его середина тегов уже не содержит — в заголовок утекла
-     * бы она.
+     * Cut out as whole blocks rather than as lines carrying tags: a command's output is multi-line, and
+     * its middle holds no tags at all - that middle is what would have leaked into the title.
      */
     private fun withoutShellText(text: String): String = text.replace(SHELL_BLOCK, "").trim()
 
     private fun isAttachmentLine(line: String): Boolean = line.startsWith("@") || line.startsWith("> ")
 
-    /** Обрезка по границе слова — иначе заголовок может оборваться на середине слова. */
+    /** Cut on a word boundary - otherwise a title can break off mid-word. */
     private fun truncateAtWord(text: String, max: Int): String {
         if (text.length <= max) return text
         val cut = text.take(max)
@@ -299,13 +317,12 @@ internal object ClaudeHistory {
         return if (lastSpace > 0) cut.take(lastSpace) else cut
     }
 
-    /** Начало служебных реплик, которые в счёт сообщений не идут (см. scan). */
+    /** The start of internal messages that do not count towards the message total (see scan). */
     private val SERVICE_CONTENT = listOf(
         "\"content\":\"<local-command-",
         "\"content\":\"<task-notification>",
     )
 
-    private val AI_TITLE = Regex("\"aiTitle\"\\s*:\\s*\"([^\"]+)\"")
     private val SHELL_BLOCK =
         Regex("""<bash-(input|stdout|stderr|exit-code)>.*?</bash-\1>""", RegexOption.DOT_MATCHES_ALL)
     private val IMAGE_PLACEHOLDER = Regex("\\[Image #\\d+]")

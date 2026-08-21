@@ -2,15 +2,15 @@ import type { HistoryEntry } from '../protocol'
 import s from './shell.module.css'
 
 interface HistoryProps {
-  /** null — список ещё не приходил: он читается с диска сам, до открытия модалки. */
+  /** null means the list has not arrived yet: it is read from disk by itself, before the modal opens. */
   conversations: HistoryEntry[] | null
   onOpen: (entry: HistoryEntry) => void
   onClose: () => void
 }
 
 /**
- * Прошлые разговоры проекта. Список ведёт сам Claude Code, поэтому здесь видно и
- * то, что начиналось в терминале, — панель ничего своего не хранит.
+ * The project's past conversations. Claude Code keeps the list itself, so what was started in a terminal
+ * is visible here too - the panel stores nothing of its own.
  */
 export const History = ({ conversations, onOpen, onClose }: HistoryProps) => (
   <>
@@ -41,7 +41,7 @@ export const History = ({ conversations, onOpen, onClose }: HistoryProps) => (
   </>
 )
 
-/** Свежие разговоры называем по времени, старые — по дате: так их проще узнать. */
+/** Recent conversations are labelled by time, older ones by date: that makes them easier to recognise. */
 const when = (updatedAt: number): string => {
   const date = new Date(updatedAt)
   const sameDay = new Date().toDateString() === date.toDateString()

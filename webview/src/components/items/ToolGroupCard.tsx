@@ -7,17 +7,15 @@ import { CHIP_CLASS, ToolCard } from './ToolCard'
 interface ToolGroupCardProps {
   item: ToolGroupItem
   cards: CardState
-  /** id вызова, который прямо сейчас ждёт твоего решения — если такой есть среди детей группы. */
+  /** The id of the call awaiting your decision right now - when there is one among the group's children. */
   awaitingPermissionId: string | undefined
 }
 
 /**
- * Между вызовами внутри одного «взрыва» группа на мгновение честно становится
- * не pending — предыдущий вызов уже разрешился, следующий ещё не начался (см.
- * appendToolCall в build.ts). Без задержки это дёргает заголовок между именем
- * инструмента и счётчиком «N tools» на каждом таком зазоре. Задержка даёт
- * следующему вызову шанс прилететь и отменить схлопывание, не показывая
- * счётчик зазря.
+ * Between calls inside one "burst" the group honestly becomes non-pending for a moment - the previous
+ * call has resolved and the next has not begun yet (see appendToolCall in build.ts). Without a delay that
+ * jerks the header between a tool's name and the "N tools" counter on every such gap. The delay gives the
+ * next call a chance to arrive and cancel the collapse without showing the counter for nothing.
  */
 const COLLAPSE_DELAY_MS = 300
 
@@ -33,8 +31,8 @@ export const ToolGroupCard = ({ item, cards, awaitingPermissionId }: ToolGroupCa
     return () => window.clearTimeout(timer)
   }, [item.pending])
 
-  // Один вызов подряд — рисуем его как обычную одиночную карточку, без рамки
-  // группы: сворачивать нечего, а лишняя стрелочка только мешала бы.
+  // A single call in a row is drawn as an ordinary standalone card, without the group's frame: there is
+  // nothing to collapse, and an extra arrow would only get in the way.
   if (item.tools.length === 1) {
     const tool = item.tools[0]!
     return (

@@ -12,27 +12,25 @@ import javax.sound.sampled.LineEvent
 import kotlin.math.log10
 
 /**
- * Звуковые оповещения панели.
+ * The panel's sound alerts.
  *
- * Звук проигрывает оболочка, а не сама страница: встроенный браузер рисуется
- * офскрин и подчиняется политике автовоспроизведения, из-за которой первый же
- * звук без клика мышью просто не прозвучал бы. Системному микшеру всё равно,
- * смотрит ли человек в панель и открыта ли она вообще, — а именно этого от
- * оповещения и ждут.
+ * The shell plays the sound rather than the page: the embedded browser renders offscreen and obeys the
+ * autoplay policy, because of which the very first sound without a mouse click would simply not be
+ * heard. The system mixer does not care whether the person is looking at the panel or whether it is
+ * open at all - which is exactly what one expects from an alert.
  *
- * Решает, когда звучать, интерфейс: только он знает, что план ждёт решения, а
- * ход дошёл до конца. Сюда приходит уже готовое имя звука.
+ * When to sound is decided by the interface: only it knows that a plan is waiting for a decision and
+ * that a turn has reached its end. What arrives here is a ready sound name.
  */
 internal object AlertSounds {
 
     /**
-     * Имена — те же, что в протоколе панели. Файлы лежат в ресурсах плагина, а
-     * не читаются с диска пользователя: набор звуков — часть плагина.
+     * The names are the same as in the panel's protocol. The files live in the plugin's resources
+     * rather than being read from the user's disk: the set of sounds is part of the plugin.
      *
-     * Порядок здесь — это важность, от самого тревожного к самому будничному:
-     * по нему решается, чей сигнал переживёт другой, если оба случились разом
-     * (см. [AlertThrottle]). Тот же порядок описан и в самой панели, где из
-     * нескольких поводов одной вкладки выбирается главный (sounds.ts).
+     * The order here is importance, from the most alarming to the most everyday: it decides whose signal
+     * outlives the other when both happen at once (see [AlertThrottle]). The same order is described in
+     * the panel itself, where the main one is picked out of several occasions in one tab (sounds.ts).
      */
     internal val FILES = mapOf(
         "trouble" to "trouble.wav",
@@ -45,19 +43,19 @@ internal object AlertSounds {
 
     val ids: Set<String> get() = FILES.keys
 
-    /** Байты уже прочитанных файлов: со второго раза звук не трогает диск. */
+    /** The bytes of files already read: from the second time on a sound does not touch the disk. */
     private val cache = ConcurrentHashMap<String, ByteArray>()
 
     private val throttle = AlertThrottle()
 
-    /** [volume] — проценты от полной громкости файла, как в списке настроек. */
+    /** [volume] is a percentage of the file's full volume, as in the settings list. */
     fun play(id: String, volume: Int = 100) {
         val file = FILES[id] ?: return
         if (volume <= 0) return
         if (!throttle.allow(FILES.keys.indexOf(id), System.currentTimeMillis())) return
 
-        // Открытие линии обращается к системному микшеру и ждёт его ответа —
-        // на потоке интерфейса это заметная пауза в самой панели.
+        // Opening a line reaches into the system mixer and waits for its answer - on the interface
+        // thread that is a noticeable pause in the panel itself.
         AppExecutorUtil.getAppExecutorService().submit { playNow(id, file, volume) }
     }
 
@@ -71,17 +69,16 @@ internal object AlertSounds {
             resource.use { it.readBytes() }
         }
 
-        // Линия звуковой карты — ресурс не бесконечный, и занимает её уже сам
-        // запрос клипа, до всякого проигрывания. Поэтому дальше она закрывается
-        // при любом исходе: и когда звук доиграл, и когда открыть его не вышло —
-        // иначе занятое устройство отнимало бы по линии на каждое оповещение,
-        // пока панель не замолчала бы совсем.
+        // A sound card's line is not an endless resource, and it is taken by the very request for a
+        // clip, before any playing. So from here on it is closed on every outcome: both when the sound
+        // has finished and when opening it did not work out - otherwise a busy device would take a line
+        // per alert until the panel fell silent altogether.
         val clip = runCatching { AudioSystem.getClip() }.getOrElse {
             thisLogger().warn("No audio line for sound $id", it)
             return
         }
 
-        // Поток одноразовый: на каждое проигрывание он свой, а вот байты общие.
+        // The stream is single-use: one per playback, while the bytes are shared.
         var stream: AudioInputStream? = null
 
         runCatching {
@@ -98,10 +95,10 @@ internal object AlertSounds {
             applyVolume(clip, volume)
             clip.start()
         }.onFailure {
-            // Звук — не то, ради чего стоит ронять панель: на машине без звуковой
-            // карты (или с занятым устройством) оповещение просто не прозвучит.
-            // Слушателю выше тут рассчитывать не на что — он ждёт конца того, что
-            // так и не началось, — поэтому прибираем за собой здесь.
+            // A sound is not worth bringing the panel down for: on a machine without a sound card (or
+            // with a busy device) the alert simply will not be heard. The listener above has nothing to
+            // count on here - it is waiting for the end of something that never began - so we clean up
+            // after ourselves right here.
             runCatching { clip.close() }
             runCatching { stream?.close() }
             thisLogger().warn("Failed to play sound $id", it)
@@ -109,15 +106,14 @@ internal object AlertSounds {
     }
 
     /**
-     * Убавить громкость линии до просимой доли.
+     * Turn a line's volume down to the requested share.
      *
-     * Микшер принимает не проценты, а усиление в децибелах — величину
-     * логарифмическую, потому что таков и слух: половина процентов на слух не
-     * половина громкости, а «чуть тише». Отсюда перевод через логарифм: он
-     * делает шкалу равномерной на слух, а не на бумаге.
+     * The mixer takes not per cent but gain in decibels - a logarithmic quantity, because so is hearing:
+     * half the per cent is not half the loudness to the ear but "a little quieter". Hence the conversion
+     * through a logarithm: it makes the scale even to the ear rather than on paper.
      *
-     * Своего регулятора у линии может и не быть — тогда звук просто идёт как
-     * есть: это лучше, чем не зазвучать вовсе.
+     * A line may have no control of its own - then the sound simply plays as it is: that is better than
+     * not sounding at all.
      */
     private fun applyVolume(clip: Clip, volume: Int) {
         val fraction = volume.coerceIn(0, 100) / 100.0
@@ -132,19 +128,18 @@ internal object AlertSounds {
 }
 
 /**
- * Кто из подряд идущих сигналов прозвучит.
+ * Which of several signals in a row gets heard.
  *
- * Поводов, зовущих человека, случается по нескольку разом: агент просит подряд
- * три разрешения, ход обрывается ошибкой и тут же заканчивается, а один проход
- * панели по вкладкам умеет позвать сразу от нескольких разговоров. Играть их
- * все — каша из наложенных сигналов, из которой не разобрать ни одного, поэтому
- * идущие следом какое-то время молчат.
+ * Occasions that call a person come several at a time: the agent asks for three permissions in a row, a
+ * turn breaks off with an error and immediately ends, and one pass of the panel over its tabs can call
+ * from several conversations at once. Playing them all is a mush of overlaid signals in which none can
+ * be made out, so the ones that follow stay silent for a while.
  *
- * Но молчать обязано менее важное, а не то, что просто опоздало на миллисекунду.
- * Пропусти оболочка первый попавшийся сигнал — умерший процесс фоновой вкладки
- * потерялся бы за только что закончившимся ходом соседней. Поэтому сигнал важнее
- * предыдущего проходит и внутри окна: услышать два подряд лучше, чем не услышать
- * главный.
+ * But what must stay silent is the less important one, not the one that merely arrived a millisecond
+ * late. Had the shell let through the first that came, a dead process in a background tab would have
+ * been lost behind a neighbour's turn that had just finished. So a signal more important than the
+ * previous one passes even inside the window: hearing two in a row is better than not hearing the main
+ * one.
  */
 internal class AlertThrottle(private val gapMs: Long = MIN_GAP_MS) {
 

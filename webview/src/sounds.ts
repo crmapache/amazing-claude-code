@@ -1,13 +1,13 @@
 /**
- * Звуковые оповещения: когда панель зовёт человека.
+ * Sound alerts: when the panel calls the person.
  *
- * Решает панель, а звучит оболочка (см. protocol, сообщение sound): только
- * здесь известно, чем занят ход — ждёт ли он решения по плану, упёрся в лимит
- * или дошёл до конца сам.
+ * The panel decides and the shell sounds (see protocol, the sound message): only here is it known what
+ * the turn is busy with - whether it waits for a decision about a plan, has run into a limit, or reached
+ * its end by itself.
  *
- * Звук нужен именно тогда, когда смотрят не сюда, поэтому наблюдение идёт по
- * всем вкладкам сразу, а не по открытой: фоновый разговор зовёт точно так же,
- * а его точку на вкладке никто не видит.
+ * A sound is needed precisely when one is not looking here, so the watching covers every tab at once
+ * rather than the open one: a background conversation calls in exactly the same way, and nobody sees the
+ * dot on its tab.
  */
 
 import { STOPPED_BY_YOU } from './feed/build'
@@ -20,10 +20,10 @@ export interface SoundInfo {
   hint: string
 }
 
-/** Громкость звука, о котором ничего не сказано: файл как есть. */
+/** The volume of a sound nothing has been said about: the file as it is. */
 export const FULL_VOLUME = 100
 
-/** Галочки и громкость — то, что человек настроил в списке звуков. */
+/** The checkboxes and the volumes - what the person configured in the sounds list. */
 export interface SoundPrefs {
   muted: SoundId[]
   volumes: Partial<Record<SoundId, number>>
@@ -36,12 +36,12 @@ export const volumeOf = (prefs: SoundPrefs, sound: SoundId): number => prefs.vol
 export const isMuted = (prefs: SoundPrefs, sound: SoundId): boolean => prefs.muted.includes(sound)
 
 /**
- * Снять или вернуть галочку.
+ * Clear or restore a checkbox.
  *
- * Выключенный звук помнит свою громкость: вернув его, человек ждёт прежние
- * семьдесят процентов, а не сотню. Исключение — звук, выключенный самим
- * ползунком, доведённым до нуля: вернуть его «как было» значит вернуть тишину,
- * поэтому он начинает с полной громкости.
+ * A switched-off sound remembers its volume: turning it back on, the person expects their previous
+ * seventy per cent rather than a hundred. The exception is a sound switched off by the slider itself,
+ * dragged down to zero: restoring it "as it was" would mean restoring silence, so it starts at full
+ * volume.
  */
 export const toggleSound = (prefs: SoundPrefs, sound: SoundId): SoundPrefs => {
   if (!isMuted(prefs, sound)) return { ...prefs, muted: [...prefs.muted, sound] }
@@ -53,17 +53,17 @@ export const toggleSound = (prefs: SoundPrefs, sound: SoundId): SoundPrefs => {
 }
 
 /**
- * Громкость с ползунка — она же и галочка.
+ * The volume from the slider - which is the checkbox too.
  *
- * Ноль и выключенный звук это одно и то же, поэтому ползунок распоряжается и
- * галочкой: доведённый до нуля снимает её, поднятый обратно — возвращает.
- * Отдельного «выключен, но громкий» состояния не бывает.
+ * Zero and a switched-off sound are one and the same, so the slider governs the checkbox as well:
+ * dragged to zero it clears it, raised back it restores it. There is no separate "switched off but
+ * loud" state.
  */
 export const setVolume = (prefs: SoundPrefs, sound: SoundId, volume: number): SoundPrefs => {
   const value = Math.min(FULL_VOLUME, Math.max(0, Math.round(volume)))
   const volumes = { ...prefs.volumes }
 
-  // Полную громкость не храним: молчание настроек и значит «как есть».
+  // Full volume is not stored: silence in the settings is what means "as it is".
   if (value === FULL_VOLUME) delete volumes[sound]
   else volumes[sound] = value
 
@@ -80,7 +80,7 @@ export const setVolume = (prefs: SoundPrefs, sound: SoundId, volume: number): So
   return { muted, volumes }
 }
 
-/** Порядок здесь — порядок в списке настроек: сперва то, что зовёт чаще. */
+/** The order here is the order in the settings list: what calls most often comes first. */
 export const SOUNDS: SoundInfo[] = [
   { id: 'turnFinished', label: 'Turn finished', hint: 'Claude answered and is waiting for you' },
   { id: 'permission', label: 'Permission asked', hint: 'a tool call needs your approval' },
@@ -91,60 +91,60 @@ export const SOUNDS: SoundInfo[] = [
 ]
 
 /**
- * Что звучит, если поводов сразу несколько. Ход, оборванный отказом, приносит и
- * ошибку, и итог хода одним обновлением — сказать об этом должно то, что важнее,
- * а не два наложенных друг на друга сигнала.
+ * What sounds when there are several occasions at once. A turn broken off by a refusal brings both an
+ * error and the turn's result in one update - what says so should be the more important of the two
+ * rather than two signals overlaid on each other.
  *
- * Тот же порядок знает и оболочка: там он решает, чей сигнал переживёт другой,
- * когда позвали сразу несколько вкладок (см. AlertSounds.kt).
+ * The shell knows the same order: there it decides whose signal outlives the other when several tabs
+ * call at once (see AlertSounds.kt).
  */
 const PRIORITY: SoundId[] = ['trouble', 'rateLimit', 'permission', 'question', 'plan', 'turnFinished']
 
 /**
- * Отказ по лимиту, узнанный по тексту.
+ * A limit refusal recognised by its text.
  *
- * Основной путь другой: событие о лимите приходит отдельно и разбирается в
- * ленте пометкой (см. ErrorItem.limit) — на неё и опираемся, потому что она не
- * зависит от формулировок. Но лимит доезжает и просто отказом хода, словами от
- * CLI, и тогда узнать его больше не по чему. Ошибиться тут дёшево: не угадали —
- * прозвучит обычный сигнал о поломке, а не тишина.
+ * The main route is different: the limit event arrives separately and is parsed in the feed into a mark
+ * (see ErrorItem.limit) - that is what we lean on, because it does not depend on wording. But a limit
+ * also arrives as a plain turn refusal, in the CLI's words, and then there is nothing else to recognise
+ * it by. Being wrong here is cheap: a miss means the ordinary breakage signal sounds rather than
+ * silence.
  */
 const LIMIT_PATTERN = /(rate|usage|quota)[ -]?limit|limit (reached|exceeded|is used up)|out of (usage|credits)/i
 
 /**
- * Что наблюдатель уже видел в этой вкладке.
+ * What the watcher has already seen in this tab.
  *
- * Меняется на месте: это не состояние React, а память между кадрами, и копия на
- * каждое обновление ленты обошлась бы дороже самого наблюдения.
+ * Mutated in place: this is not React state but memory between frames, and a copy on every feed update
+ * would cost more than the watching itself.
  */
 export interface SoundMemory {
-  /** Элементы, о которых уже сказали. Новые всегда дописываются в конец ленты. */
+  /** The items already spoken about. New ones are always appended to the end of the feed. */
   seen: Set<string>
-  /** Статус на прошлой проверке: конец хода виден только по переходу из работы. */
+  /** The status at the previous check: a turn's end is visible only as a transition out of work. */
   status: AgentStatus
 }
 
 /**
- * Первый взгляд на вкладку: всё, что в ней уже есть, звучать не должно.
+ * The first look at a tab: nothing already in it should sound.
  *
- * Иначе поднятый из истории разговор проиграл бы разом все свои прошлогодние
- * вопросы и ошибки.
+ * Otherwise a conversation raised from the history would play every question and error it has held for a
+ * year all at once.
  */
 export const rememberPanel = (panel: PanelView): SoundMemory => ({
   seen: new Set(panel.items.map((item) => item.id)),
   status: panel.status,
 })
 
-/** Ровно то, что нужно наблюдателю от состояния вкладки. */
+/** Exactly what the watcher needs out of a tab's state. */
 export interface PanelView {
   items: FeedItem[]
   status: AgentStatus
 }
 
 /**
- * Чем позвать человека после этого обновления вкладки, если есть чем.
+ * What to call the person with after this update of a tab, if there is anything.
  *
- * Память обновляется здесь же — вызывать имеет смысл ровно один раз на кадр.
+ * The memory is updated here as well - calling this makes sense exactly once per frame.
  */
 export const soundForPanel = (panel: PanelView, memory: SoundMemory): SoundId | null => {
   const fresh = freshItems(panel.items, memory.seen)
@@ -165,11 +165,11 @@ export const soundForPanel = (panel: PanelView, memory: SoundMemory): SoundId | 
 }
 
 /**
- * Элементы, появившиеся с прошлой проверки.
+ * The items that have appeared since the previous check.
  *
- * Идём с конца до первого знакомого: лента растёт только в конец, поэтому
- * проход стоит по числу новых карточек, а не по длине всего разговора — иначе
- * каждый кусочек печатающегося ответа перебирал бы тысячу карточек заново.
+ * We walk from the end to the first familiar one: the feed only grows at the end, so a pass costs as
+ * many steps as there are new cards rather than as the whole conversation is long - otherwise every
+ * chunk of a printing answer would walk a thousand cards afresh.
  */
 const freshItems = (items: FeedItem[], seen: Set<string>): FeedItem[] => {
   const fresh: FeedItem[] = []
@@ -184,15 +184,13 @@ const freshItems = (items: FeedItem[], seen: Set<string>): FeedItem[] => {
 }
 
 /**
- * Чем звучит появление одной карточки.
+ * What the appearance of one card sounds like.
  *
- * `live` — идёт ли ход прямо сейчас (или шёл мгновение назад, если этой самой
- * карточкой он и закончился). Без него разговор, поднятый из истории, звучал бы
- * своими старыми вопросами и отказами: переписка приезжает теми же событиями,
- * что и живая, и на вид ничем от неё не отличается. Крах процесса — исключение:
- * он приходит не событием агента, а сообщением самой оболочки, поэтому в
- * поднятой переписке его быть не может, зато случиться он способен и в тишине,
- * когда никакого хода не идёт.
+ * `live` is whether a turn is running right now (or was a moment ago, if this very card is what ended
+ * it). Without it a conversation raised from the history would sound with its old questions and
+ * refusals: a transcript arrives as the same events a live one does and looks no different. A process
+ * crash is the exception: it comes not as an agent's event but as a message from the shell itself, so it
+ * cannot occur in a raised transcript, while it can happen in silence, with no turn running at all.
  */
 const soundFor = (item: FeedItem, live: boolean): SoundId | null => {
   if (item.kind === 'crash') return 'trouble'
@@ -211,9 +209,9 @@ const soundFor = (item: FeedItem, live: boolean): SoundId | null => {
     case 'error':
       return item.limit || LIMIT_PATTERN.test(item.message) ? 'rateLimit' : 'trouble'
 
-    // Итог хода и есть его конец — но только если ход закончил сам агент.
-    // Прерванный человеком помечен здесь же, и звать того, кто минуту назад
-    // сам нажал «стоп», незачем.
+    // A turn's result is its end - but only if the agent finished the turn itself. One interrupted by
+    // the person is marked right here, and calling someone who pressed "stop" a minute ago serves
+    // nothing.
     case 'meta':
       return item.stats.some((stat) => stat.startsWith(STOPPED_BY_YOU)) ? null : 'turnFinished'
 

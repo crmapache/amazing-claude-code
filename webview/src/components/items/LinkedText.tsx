@@ -3,18 +3,17 @@ import s from '../feed.module.css'
 
 interface LinkedTextProps {
   text: string
-  /** Открыть адрес в системном браузере, а не внутри вебвью панели. */
+  /** Open the address in the system browser rather than inside the panel's webview. */
   onOpenLink: (url: string) => void
 }
 
 /**
- * Текст ровно такой, каким пришёл, но с живыми адресами внутри.
+ * The text exactly as it arrived, but with live addresses inside it.
  *
- * Для мест, где разметку разбирать нельзя: в сообщении человека звёздочки и
- * решётки значат сами себя, а ошибка — это строка от процесса, а не markdown.
- * Адрес при этом обязан оставаться адресом: по ссылке на статус сервиса из
- * «API Error … check https://status.claude.com» кликают, а не переписывают её
- * руками в браузер.
+ * For places where markup must not be parsed: in a person's message asterisks and hashes mean themselves,
+ * and an error is a line from a process rather than markdown. An address, though, has to stay an address:
+ * the link to the service status in "API Error … check https://status.claude.com" is clicked rather than
+ * retyped into a browser by hand.
  */
 export const LinkedText = ({ text, onOpenLink }: LinkedTextProps) => (
   <>
@@ -24,8 +23,8 @@ export const LinkedText = ({ text, onOpenLink }: LinkedTextProps) => (
           key={index}
           href={part.href}
           className={s.link}
-          // Наружу, в системный браузер: обычная навигация увела бы на этот
-          // адрес сам вебвью панели, вместе с интерфейсом.
+          // Outwards, into the system browser: ordinary navigation would carry the panel's own webview
+          // off to that address, interface and all.
           onClick={(event) => {
             event.preventDefault()
             onOpenLink(part.href ?? '')

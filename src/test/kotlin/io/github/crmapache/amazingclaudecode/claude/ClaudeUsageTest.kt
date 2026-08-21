@@ -14,7 +14,7 @@ class ClaudeUsageTest {
     private fun parse(line: String) = ClaudeUsage.parse(Json.parseToJsonElement(line).jsonObject)
 
     @Test
-    fun `окна расхода и размер контекста разбираются целиком`() {
+    fun `the usage windows and the context size are parsed whole`() {
         val snapshot = parse(
             """
             {"session":{"model_usage":{"claude-opus-4":{"contextWindow":200000}}},
@@ -31,35 +31,35 @@ class ClaudeUsageTest {
         assertTrue(snapshot.hasLimits)
     }
 
-    // Из-за этого ответа панель и падала: лимитов ещё нет, но поле в ответе есть —
-    // с честным null внутри. Разбор обязан пережить его молча.
+    // This answer is what used to bring the panel down: there are no limits yet, but the field is in
+    // the answer - with an honest null inside. The parsing has to survive it silently.
     @Test
-    fun `ответ без лимитов не роняет разбор, а просто остаётся пустым`() {
+    fun `an answer without limits does not break the parsing, it simply stays empty`() {
         val snapshot = parse("""{"rate_limits":null,"rate_limits_available":false,"session":null}""")
 
         assertNull(snapshot.session)
         assertNull(snapshot.week)
         assertNull(snapshot.contextWindow)
-        // Ровно этим панель и решает переспросить через пару секунд.
+        // This is exactly what makes the panel ask again in a couple of seconds.
         assertFalse(snapshot.hasLimits)
     }
 
-    // У окон подписки своя правда: недельное может приехать раньше пятичасового.
+    // The subscription windows have a truth of their own: the weekly one may arrive before the five-hour one.
     @Test
-    fun `пустое окно не мешает соседнему`() {
+    fun `an empty window does not get in the neighbour's way`() {
         val snapshot = parse("""{"rate_limits":{"five_hour":null,"seven_day":{"utilization":26}}}""")
 
         assertNull(snapshot.session)
         assertEquals(26, snapshot.week?.percent)
-        // Про сброс CLI не сказал — пустая строка, а не выдуманное время.
+        // The CLI said nothing about the reset - an empty string rather than an invented time.
         assertEquals("", snapshot.week?.resets)
         assertTrue(snapshot.hasLimits)
     }
 
-    // Размер окна берём самый большой: разговор на «1M»-модели иначе выглядел бы
-    // переполненным с первой секунды.
+    // We take the largest window size: a conversation on a "1M" model would otherwise look overflowing
+    // from the first second.
     @Test
-    fun `из разбивки по моделям берётся самое большое окно, а ноль не в счёт`() {
+    fun `the largest window is taken from the per-model breakdown, and a zero does not count`() {
         val snapshot = parse(
             """
             {"session":{"model_usage":{
@@ -73,7 +73,7 @@ class ClaudeUsageTest {
     }
 
     @Test
-    fun `разбивки по моделям нет — размер окна не выдумываем`() {
+    fun `with no per-model breakdown we do not invent a window size`() {
         assertNull(parse("""{"session":{"model_usage":{}}}""").contextWindow)
         assertNull(parse("""{"session":{}}""").contextWindow)
         assertNull(parse("""{}""").contextWindow)
@@ -89,11 +89,11 @@ class ClaudeUsageTrackerTest {
     private fun snapshot(session: ClaudeUsage.Window? = null, week: ClaudeUsage.Window? = null) =
         ClaudeUsage.Snapshot(session = session, week = week, contextWindow = null)
 
-    // Тот самый косяк: панель месяцами показывала долю окна, которого уже нет.
-    // Процесс, работавший до сброса, продолжает отвечать своей замершей цифрой —
-    // 99% при почти пустом новом окне.
+    // The very bug this exists for: for months the panel showed the share of a window that was already
+    // gone. A process that worked before the reset goes on answering with its frozen figure - 99% on an
+    // almost empty new window.
     @Test
-    fun `доля из уже сброшенного окна не показывается`() {
+    fun `a share from an already reset window is not shown`() {
         val tracker = ClaudeUsage.Tracker()
 
         val merged = tracker.merge(snapshot(session = window(99, "2026-08-20T11:30:00Z")), now)
@@ -102,10 +102,10 @@ class ClaudeUsageTrackerTest {
         assertEquals("", merged.session?.resets)
     }
 
-    // Внутри окна расход только растёт: расхождение путей — это задержка одного
-    // из них, а не откат. Иначе кольцо мигало бы туда-сюда каждые полминуты.
+    // Within a window usage only grows: a disagreement between the routes is one of them lagging, not a
+    // roll-back. Otherwise the ring would flicker back and forth every half-minute.
     @Test
-    fun `внутри одного окна доля не уменьшается`() {
+    fun `within one window the share does not go down`() {
         val tracker = ClaudeUsage.Tracker()
         val future = "2026-08-20T14:00:00Z"
 
@@ -115,11 +115,11 @@ class ClaudeUsageTrackerTest {
         assertEquals(20, merged.session?.percent)
     }
 
-    // Одно и то же окно приезжает в разных форматах: живой разговор округляет до
-    // секунд, сводка от сервера несёт микросекунды. Строкой это разные значения,
-    // а окно — одно.
+    // One and the same window arrives in different formats: a live conversation rounds to seconds, the
+    // server's summary carries microseconds. As strings those are different values, while the window is
+    // one.
     @Test
-    fun `окно узнаётся по времени сброса, а не по строке`() {
+    fun `a window is recognised by its reset time rather than by its string`() {
         val tracker = ClaudeUsage.Tracker()
 
         tracker.merge(snapshot(session = window(20, "2026-08-20T14:00:00.000Z")), now)
@@ -128,9 +128,9 @@ class ClaudeUsageTrackerTest {
         assertEquals(20, merged.session?.percent)
     }
 
-    // Новое окно — новый счёт: копилка не должна тащить в него долю прошлого.
+    // A new window is a new count: the memory must not drag the previous share into it.
     @Test
-    fun `со сменой окна счёт начинается заново`() {
+    fun `with a window change the count starts afresh`() {
         val tracker = ClaudeUsage.Tracker()
 
         tracker.merge(snapshot(session = window(90, "2026-08-20T14:00:00Z")), now)
@@ -140,10 +140,10 @@ class ClaudeUsageTrackerTest {
         assertEquals("2026-08-20T19:00:00Z", merged.session?.resets)
     }
 
-    // Отставший путь может принести снимок прошлого окна уже после того, как
-    // приехало новое: держим новое, а не откатываемся на доброе старое.
+    // A lagging route may bring a snapshot of the previous window after the new one has arrived: we
+    // keep the new one rather than roll back to the good old one.
     @Test
-    fun `снимок прошлого окна не перебивает нынешнее`() {
+    fun `a snapshot of the previous window does not override the present one`() {
         val tracker = ClaudeUsage.Tracker()
 
         tracker.merge(snapshot(session = window(4, "2026-08-20T19:00:00Z")), now)
@@ -153,10 +153,10 @@ class ClaudeUsageTrackerTest {
         assertEquals("2026-08-20T19:00:00Z", merged.session?.resets)
     }
 
-    // Так отвечает процесс, ещё не сделавший ни одного запроса: окно не открыто,
-    // и нуль в нём — правда, а не «нет данных».
+    // That is how a process that has made no requests yet answers: the window is not open, and a zero
+    // in it is the truth rather than "no data".
     @Test
-    fun `нуль без времени сброса — это честное пустое окно`() {
+    fun `a zero without a reset time is an honest empty window`() {
         val tracker = ClaudeUsage.Tracker()
 
         val merged = tracker.merge(snapshot(session = window(0, "")), now)
@@ -164,9 +164,9 @@ class ClaudeUsageTrackerTest {
         assertEquals(0, merged.session?.percent)
     }
 
-    // А вот долю без окна привязать не к чему — известное окно ею не перебиваем.
+    // A share without a window, on the other hand, has nothing to attach to - we do not override a known window with it.
     @Test
-    fun `доля без времени сброса не перебивает известное окно`() {
+    fun `a share without a reset time does not override a known window`() {
         val tracker = ClaudeUsage.Tracker()
         val future = "2026-08-20T14:00:00Z"
 
@@ -177,10 +177,10 @@ class ClaudeUsageTrackerTest {
         assertEquals(future, merged.session?.resets)
     }
 
-    // Ответ без лимитов вовсе (так бывает у только что поднятого процесса) не
-    // должен ни выдумывать окна, ни забывать уже известные.
+    // An answer with no limits at all (that happens with a freshly raised process) must neither invent
+    // windows nor forget the known ones.
     @Test
-    fun `пустой ответ не выдумывает окон и не забывает известные`() {
+    fun `an empty answer invents no windows and forgets no known ones`() {
         val tracker = ClaudeUsage.Tracker()
 
         assertNull(tracker.merge(snapshot(), now).session)
@@ -189,9 +189,9 @@ class ClaudeUsageTrackerTest {
         assertEquals(20, tracker.merge(snapshot(), now).session?.percent)
     }
 
-    // Окна независимы: недельное живёт своей неделей, пятичасовое своими часами.
+    // The windows are independent: the weekly one lives by its week, the five-hour one by its hours.
     @Test
-    fun `окна считаются по отдельности`() {
+    fun `the windows are counted separately`() {
         val tracker = ClaudeUsage.Tracker()
 
         val merged = tracker.merge(
@@ -206,9 +206,9 @@ class ClaudeUsageTrackerTest {
         assertEquals(52, merged.week?.percent)
     }
 
-    // Время идёт и без новых данных: окно кончилось — доля больше не про сейчас.
+    // Time passes without new data too: the window has ended, and the share is no longer about now.
     @Test
-    fun `известное окно перестаёт показываться, когда время сброса проходит`() {
+    fun `a known window stops being shown once its reset time has passed`() {
         val tracker = ClaudeUsage.Tracker()
         val resets = "2026-08-20T14:00:00Z"
 

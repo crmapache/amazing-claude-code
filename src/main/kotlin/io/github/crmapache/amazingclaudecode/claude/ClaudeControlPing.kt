@@ -22,19 +22,18 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 
 /**
- * Разовый управляющий запрос к CLI, когда живого разговора ещё нет.
+ * A one-off control request to the CLI when there is no live conversation yet.
  *
- * Так спрашиваются вещи, которые нужны панели сразу при открытии, а не после
- * первого сообщения: окна расхода подписки (`get_usage`) и каталог моделей
- * (`list_models`). У живого [ClaudeSession] их спросить нельзя до первого
- * промпта — процесса ещё нет, а поднимать полноценный разговор заранее ради
- * одной цифры раньше уже пробовали и убрали: это запуск со всеми MCP-серверами
- * и хуками, конкурирующий за ресурсы с реально работающей вкладкой.
+ * This is how the panel asks for the things it needs the moment it opens rather than after the first
+ * message: the subscription usage windows (`get_usage`) and the model catalogue (`list_models`). A live
+ * [ClaudeSession] cannot be asked before the first prompt - there is no process yet - and raising a
+ * full conversation in advance for one figure was tried and removed: that is a launch with all the MCP
+ * servers and hooks, competing for resources with a tab genuinely at work.
  *
- * `--safe-mode` отключает ровно эти тяжёлые части (хуки, MCP, скиллы, проектные
- * настройки), но не вход, не лимиты и не каталог моделей — ответ приходит за
- * секунду-две вместо трёх с обычным запуском (проверено напрямую). Процесс
- * разовый: один control_request, один ответ, и сразу гасим.
+ * `--safe-mode` switches off exactly those heavy parts (hooks, MCP, skills, project settings) but not
+ * the sign-in, the limits or the model catalogue - the answer comes back in a second or two instead of
+ * three with an ordinary launch (verified directly). The process is single-use: one control_request,
+ * one answer, and down it goes.
  */
 internal object ClaudeControlPing {
 
@@ -97,8 +96,8 @@ internal object ClaudeControlPing {
                         Json.parseToJsonElement(line).jsonObject["response"] as? JsonObject
                     }.getOrNull()
 
-                    // Осечка в обработчике не должна оставить процесс висеть: он
-                    // разовый, гасить его больше некому — см. destroyProcess ниже.
+                    // A slip inside the handler must not leave the process hanging: it is single-use,
+                    // and there is nobody else to take it down - see destroyProcess below.
                     runCatching {
                         when {
                             response == null -> onError("Malformed $subtype response")

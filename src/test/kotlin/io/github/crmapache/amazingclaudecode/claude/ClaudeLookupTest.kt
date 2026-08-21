@@ -6,10 +6,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Поиск исполняемого файла ломается там, куда не дотянуться руками: чужая
- * Windows, необычное место установки, PATH оболочки IDE. Проверяем перебор
- * путей на подставленном окружении — иначе про Windows пришлось бы гадать и
- * отправлять человека проверять вслепую.
+ * The executable lookup breaks where hands cannot reach: someone else's Windows, an unusual install
+ * location, the PATH of the IDE's shell. We check the path walking against a substituted environment -
+ * otherwise Windows would be guesswork and a person would be sent to check blind.
  */
 class ClaudeLookupTest {
 
@@ -26,15 +25,15 @@ class ClaudeLookupTest {
     ) = ClaudeLookup.candidates(windows = true, home = home, env = env, configured = configured, separator = ';')
 
     @Test
-    fun `на Windows проверяем все имена, которыми ставят CLI`() {
-        // Нативный установщик кладёт exe, npm — обёртку cmd, сборки из MSYS —
-        // файл без расширения вовсе.
+    fun `on Windows every name the CLI is installed under is checked`() {
+        // The native installer puts down an exe, npm a cmd wrapper, MSYS builds a file with no extension
+        // at all.
         assertEquals(listOf("claude.exe", "claude.cmd", "claude.bat", "claude"), ClaudeLookup.executableNames(true))
         assertEquals(listOf("claude"), ClaudeLookup.executableNames(false))
     }
 
     @Test
-    fun `каждая папка PATH проверяется всеми именами`() {
+    fun `every PATH folder is checked with every name`() {
         val paths = windows(env = mapOf("Path" to "C:\\tools\\bin;C:\\other"))
 
         assertTrue("C:\\tools\\bin\\claude.exe" in paths)
@@ -42,30 +41,30 @@ class ClaudeLookupTest {
         assertTrue("C:\\other\\claude.exe" in paths)
     }
 
-    // На Windows переменная зовётся `Path`, и карта окружения не всегда
-    // регистронезависима: спросив только «PATH», мы не нашли бы ничего.
+    // On Windows the variable is called `Path`, and the environment map is not always case-insensitive:
+    // asking for "PATH" alone would have found nothing.
     @Test
-    fun `PATH находится под любым написанием`() {
+    fun `PATH is found under any spelling`() {
         assertEquals("A", ClaudeLookup.pathValue(mapOf("PATH" to "A")))
         assertEquals("B", ClaudeLookup.pathValue(mapOf("Path" to "B")))
         assertEquals("C", ClaudeLookup.pathValue(mapOf("path" to "C")))
     }
 
     @Test
-    fun `npm-обёртка из APPDATA попадает в список`() {
+    fun `the npm wrapper from APPDATA gets into the list`() {
         val paths = windows(env = mapOf("APPDATA" to "C:\\Users\\max\\AppData\\Roaming"))
         assertTrue("C:\\Users\\max\\AppData\\Roaming\\npm\\claude.cmd" in paths)
     }
 
     @Test
-    fun `нативная установка в домашней папке проверяется на обеих системах`() {
+    fun `a native install in the home folder is checked on both systems`() {
         assertTrue("/Users/max/.local/bin/claude" in unix())
         assertTrue("C:\\Users\\max\\.local\\bin\\claude.exe" in windows())
     }
 
-    // Человек с равной вероятностью укажет и сам файл, и папку с ним.
+    // A person is just as likely to point at the file itself as at the folder holding it.
     @Test
-    fun `указанный руками путь идёт первым — и файлом, и папкой`() {
+    fun `a path given by hand comes first - as a file and as a folder`() {
         val paths = unix(configured = "/opt/claude")
 
         assertEquals("/opt/claude", paths.first())
@@ -73,18 +72,18 @@ class ClaudeLookupTest {
     }
 
     @Test
-    fun `тильда в указанном пути разворачивается в домашнюю папку`() {
+    fun `a tilde in the given path expands to the home folder`() {
         assertTrue("/Users/max/bin/claude" in unix(configured = "~/bin/claude"))
     }
 
     @Test
-    fun `пустая настройка ничего не добавляет`() {
+    fun `an empty setting adds nothing`() {
         assertFalse(unix(configured = "   ").any { it.isBlank() })
     }
 
     @Test
-    fun `один и тот же путь не проверяется дважды`() {
-        // PATH нередко содержит ту же папку, что и наш список типовых мест.
+    fun `one and the same path is not checked twice`() {
+        // PATH often holds the same folder as our list of usual locations.
         val paths = unix(env = mapOf("PATH" to "/Users/max/.local/bin"))
         assertEquals(1, paths.count { it == "/Users/max/.local/bin/claude" })
     }

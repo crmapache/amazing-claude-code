@@ -12,37 +12,33 @@ import java.util.Base64
 import javax.imageio.ImageIO
 
 /**
- * Системный буфер обмена глазами панели.
+ * The system clipboard through the panel's eyes.
  *
- * Панель живёт во встроенном браузере, а тот держит свой буфер отдельно от
- * буфера IDE. На Linux эти два буфера не встречаются вовсе: скопированное в
- * редакторе до панели не доходит, скопированное в панели — до редактора, и
- * работает только «вырезал и вставил, не выходя из поля ввода». Через этот
- * объект страница ходит в настоящий буфер — тот же самый, которым пользуется
- * вся остальная IDE.
+ * The panel lives in an embedded browser, and that keeps its clipboard apart from the IDE's. On Linux
+ * those two never meet at all: what is copied in the editor does not reach the panel, what is copied in
+ * the panel does not reach the editor, and only "cut and paste without leaving the input field" works.
+ * Through this object the page reaches the real clipboard - the same one the rest of the IDE uses.
  *
- * Ходим через CopyPasteManager, а не в java.awt.Toolkit напрямую: платформа
- * держит поверх системного буфера свою синхронизацию (на разных системах она
- * разная) и знает про повторные попытки, когда буфером в этот момент занят
- * кто-то ещё.
+ * We go through CopyPasteManager rather than into java.awt.Toolkit directly: the platform keeps its own
+ * synchronization over the system clipboard (a different one on different systems) and knows about
+ * retries when somebody else is holding it at that moment.
  */
 internal object WebviewClipboard {
 
     /**
-     * Содержимое буфера в том виде, в котором его понимает страница.
+     * The clipboard's contents in the shape the page understands.
      *
-     * Картинка — data-URL: другого способа занести байты в браузер через
-     * текстовый канал сообщений нет. Разметка нужна не для красоты: вложения в
-     * поле ввода переживают копирование именно в ней (см. feed/tokens).
+     * An image comes as a data URL: there is no other way to carry bytes into a browser through a text
+     * message channel. The markup is not there for looks: attachments in the input field survive a copy
+     * precisely inside it (see feed/tokens).
      */
     data class Content(val text: String, val html: String, val image: String)
 
     private val EMPTY = Content("", "", "")
 
     /**
-     * Разметку разные источники кладут под разными флаворами: полный документ,
-     * фрагмент, выделение. Спрашиваем по очереди — берём первый, который
-     * реально отдал строку.
+     * Different sources put markup under different flavours: a whole document, a fragment, a selection.
+     * We ask in turn and take the first that actually handed over a string.
      */
     private val HTML_FLAVORS = listOf(
         DataFlavor.selectionHtmlFlavor,
@@ -69,9 +65,9 @@ internal object WebviewClipboard {
     }
 
     /**
-     * Каждый флавор спрашиваем отдельно и в своей обёртке: чужой Transferable
-     * волен отвечать чем угодно, вплоть до исключения на ровном месте, а из-за
-     * одного неудачного формата терять весь буфер целиком незачем.
+     * Every flavour is asked for separately and in its own wrapper: someone else's Transferable is free
+     * to answer with anything at all, up to an exception out of nowhere, and losing the whole clipboard
+     * over one unlucky format serves nothing.
      */
     private fun stringOf(transferable: Transferable, flavor: DataFlavor): String = runCatching {
         if (!transferable.isDataFlavorSupported(flavor)) return@runCatching ""
@@ -88,9 +84,9 @@ internal object WebviewClipboard {
     }.getOrDefault("")
 
     /**
-     * ImageIO пишет только растр, а из буфера приходит любая реализация Image —
-     * например, «ещё не догруженная» из другого приложения. Рисуем её в свой
-     * растр с прозрачностью: скриншот с прозрачным фоном не должен почернеть.
+     * ImageIO writes rasters only, while the clipboard hands over any Image implementation - a
+     * "not fully loaded yet" one from another application, for instance. We draw it into a raster of our
+     * own with transparency: a screenshot with a transparent background must not turn black.
      */
     private fun rasterize(image: Image): BufferedImage {
         if (image is BufferedImage) return image
@@ -109,13 +105,12 @@ internal object WebviewClipboard {
     }
 
     /**
-     * Что кладём в буфер: читаемый текст и, если он есть, тот же кусок разметкой.
+     * What we put into the clipboard: readable text and, if there is any, the same piece as markup.
      *
-     * Разметку объявляем всеми тремя флаворами сразу, потому что спрашивать её
-     * будут по-разному: «весь документ» просят как документ, поэтому фрагмент
-     * туда заворачиваем, а фрагмент и выделение — это ровно то, что скопировали.
-     * Когда разметки нет, наружу торчит один текст: пустой text/html сбивает с
-     * толку тех, кто предпочитает его простому тексту.
+     * The markup is declared under all three flavours at once, because it will be asked for in different
+     * ways: "the whole document" is asked for as a document, so a fragment is wrapped into one, while a
+     * fragment and a selection are exactly what was copied. When there is no markup, plain text alone is
+     * offered: an empty text/html confuses those who prefer it to plain text.
      */
     private class TextWithHtml(private val text: String, private val html: String) : Transferable {
 

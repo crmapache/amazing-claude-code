@@ -10,11 +10,11 @@ export interface SelectionSpan {
 }
 
 /**
- * Подпись диапазона для ссылки из редактора.
+ * The range's caption for a reference from the editor.
  *
- * Колонки показываем, только когда выделение режет строку: у целых строк они
- * ничего не уточняют, а место в панели тратят. Формат один и тот же и в поле
- * ввода, и в сообщении агенту — сверять их глазами должно быть нечего.
+ * Columns are shown only when the selection cuts a line: for whole lines they add no precision while
+ * taking up room in the panel. The format is one and the same in the input field and in the message to
+ * the agent - there should be nothing to compare by eye.
  */
 export const rangeLabel = (span: SelectionSpan): string => {
   const { startLine, startColumn, endLine, endColumn, wholeLines } = span
@@ -32,14 +32,14 @@ export const referenceChip = (span: SelectionSpan): Chip => ({
 })
 
 /**
- * Что уходит агенту. Путь идёт через @, как в терминале: так агент понимает, что
- * файл надо прочитать. Диапазон — припиской, чтобы он знал, о каком куске речь,
- * но видел файл целиком.
+ * What travels to the agent. The path goes through @, as in the terminal: that is how the agent
+ * understands the file has to be read. The range is appended, so that it knows which piece is meant
+ * while still seeing the file whole.
  */
 export const referenceText = (chip: Chip): string =>
   chip.range ? `@${chip.value} (${chip.range})` : `@${chip.value}`
 
-/** Дальше имя не показываем целиком: обрезаем середину, расширение остаётся видно. */
+/** Past this a name is not shown whole: the middle is cut out, the extension stays visible. */
 const MAX_LABEL_LENGTH = 28
 
 const truncateMiddle = (text: string, max = MAX_LABEL_LENGTH): string => {
@@ -50,10 +50,13 @@ const truncateMiddle = (text: string, max = MAX_LABEL_LENGTH): string => {
   return `${text.slice(0, head)}…${text.slice(text.length - tail)}`
 }
 
-/** Сколько слов цитаты показываем в самой плашке — дальше её просто не разглядеть. */
+/** How many words of a quote are shown in the chip itself - past that it cannot be made out anyway. */
 const QUOTE_PREVIEW_WORDS = 5
 
-/** "ref1: пара слов текста…" — плашка не по длине символов, а по количеству слов: так превью не обрывается на середине слова. */
+/**
+ * "ref1: a couple of words…" - the chip goes by word count rather than character length, so that the
+ * preview does not break off mid-word.
+ */
 const quotePreview = (text: string): string => {
   const words = text.trim().split(/\s+/).filter(Boolean)
   const preview = words.slice(0, QUOTE_PREVIEW_WORDS).join(' ')
@@ -61,33 +64,33 @@ const quotePreview = (text: string): string => {
 }
 
 /**
- * Сколько слов вставки показываем в плашке. Больше, чем у цитаты: у цитаты перед
- * превью стоит её номер, и по нему её и узнают, а вставку узнают только по
- * началу текста — оно и есть всё, что о ней известно с одного взгляда.
+ * How many words of a paste are shown in the chip. More than for a quote: a quote has its number in
+ * front of the preview and is recognised by it, while a paste is recognised only by the start of its
+ * text - that is all one knows about it at a glance.
  */
 const PASTE_PREVIEW_WORDS = 7
 
 /**
- * Символьный потолок поверх словесного — семь слов сами по себе не защищают от
- * длины: попадись среди них голый URL или путь без пробелов, и плашка
- * растягивалась бы в узкую длинную полосу вместо компактной, как у соседних
- * вложений (см. MAX_LABEL_LENGTH выше — та же по духу защита у имени файла).
+ * A character ceiling on top of the word one - seven words by themselves are no protection against
+ * length: let one of them be a bare URL or a path without spaces, and the chip would stretch into a
+ * narrow long strip instead of staying compact like its neighbours (see MAX_LABEL_LENGTH above - the
+ * same guard in spirit for a file's name).
  */
 const PASTE_PREVIEW_CHARS = 40
 
 /**
- * Сколько символов вставки хватает на превью. Дальше не смотрим вовсе: подпись
- * плашки строится на каждой перерисовке ленты, а вставляют в поле и стокилобайтные
- * логи — разбирать такой текст целиком ради семи слов незачем.
+ * How many characters of a paste are enough for a preview. Past that we do not look at all: a chip's
+ * caption is built on every repaint of the feed, and people paste hundred-kilobyte logs into the field -
+ * parsing such a text whole for the sake of seven words serves nothing.
  *
- * С запасом: семь слов даже из длинных путей укладываются с большим отрывом.
+ * With room to spare: seven words even of long paths fit well inside it.
  */
 const PASTE_SCAN_CHARS = 300
 
 /**
- * Начало вставленного текста — многоточие в конце стоит всегда, даже если текст
- * уместился целиком: свёрнута вставка ровно потому, что она многострочная, и за
- * первой строкой в ней всегда есть что-то ещё.
+ * The start of pasted text - the ellipsis at the end is always there, even when the text fits whole: a
+ * paste is collapsed precisely because it is multi-line, and past the first line there is always
+ * something else in it.
  */
 const pastePreview = (text: string): string => {
   const words = text.slice(0, PASTE_SCAN_CHARS).trim().split(/\s+/).filter(Boolean)
@@ -96,16 +99,16 @@ const pastePreview = (text: string): string => {
 }
 
 /**
- * Сколько текста берём во вставку, показанную блоком. Строк на экране всё равно
- * три (обрезает вёрстка), но взять ровно три строки здесь нельзя: в них может
- * быть и десять символов, и тысяча — ширину знает только сам экран.
+ * How much text is taken into a paste shown as a block. There are three lines on screen either way (the
+ * layout cuts it), but taking exactly three lines here is impossible: they may hold ten characters or a
+ * thousand - only the screen itself knows the width.
  */
 const PASTE_BLOCK_CHARS = 600
 
 /**
- * Начало вставки для широкой плашки — той, за которой в сообщении уже ничего
- * нет и место можно занять целиком. В отличие от подписи в строке, здесь текст
- * идёт как есть, с переносами: по ним и узнают, что именно вставили.
+ * The start of a paste for the wide chip - the one with nothing after it in the message, where the room
+ * can be taken whole. Unlike the in-line caption, here the text goes as it is, with its line breaks:
+ * that is how one recognises what exactly was pasted.
  */
 export const pasteBlockPreview = (text: string): string => {
   const body = text.trim()
@@ -113,10 +116,10 @@ export const pasteBlockPreview = (text: string): string => {
 }
 
 /**
- * Сколько строк во вставке — цифра для подсказки при наведении, не для подписи.
+ * How many lines a paste holds - a figure for the hover tooltip rather than for the caption.
  *
- * Считаем переводы строки, а не режем текст на массив: у стокилобайтного лога
- * это тысячи ненужных строк в памяти на каждой перерисовке ленты.
+ * We count the newlines rather than cut the text into an array: for a hundred-kilobyte log that is
+ * thousands of needless strings in memory on every repaint of the feed.
  */
 export const pasteLineCount = (text: string): number => {
   const body = text.trimEnd()
@@ -128,19 +131,18 @@ export const pasteLineCount = (text: string): number => {
 }
 
 /**
- * Сколько текста вставки показываем в подсказке при наведении. Системная
- * подсказка длиннее и не покажет — а вот в атрибут узла ляжет всё, что дадут.
+ * How much of a paste's text is shown in the hover tooltip. A system tooltip will not show more anyway -
+ * but a node's attribute takes whatever it is given.
  */
 const PASTE_TITLE_CHARS = 2_000
 
 /**
- * Что показывает плашка при наведении. Одна на все места, где она рисуется:
- * в поле ввода узлом DOM и в ленте разметкой React — разъехаться этим двум
- * подсказкам нельзя, плашка человеку одна и та же.
+ * What a chip shows on hover. One function for every place it is drawn: in the input field as a DOM
+ * node and in the feed as React markup - those two tooltips must not drift apart, the chip is one and
+ * the same to the person.
  *
- * У свёрнутой вставки это её объём и весь текст целиком: подпись показывает
- * только начало, и другого способа увидеть, что там внутри, не разворачивая
- * плашку, нет.
+ * For a collapsed paste this is its size and its whole text: the caption shows only the beginning, and
+ * there is no other way to see what is inside without expanding the chip.
  */
 export const chipTitle = (chip: Chip): string => {
   if (chip.kind === 'quote') return chip.text ?? ''
@@ -155,19 +157,18 @@ export const chipTitle = (chip: Chip): string => {
 }
 
 /**
- * В самой плашке путь сокращаем до имени файла: полный не помещается, а для
- * файла вне проекта (например, из Downloads) это ещё и абсолютный путь целиком.
- * Полный путь остаётся в тексте, который получает агент, и в подсказке при
- * наведении — здесь только то, что видно глазами.
+ * In the chip itself a path is shortened to the file's name: a full one does not fit, and for a file
+ * outside the project (from Downloads, say) it is an absolute path at that. The full path stays in the
+ * text the agent receives and in the hover tooltip - here is only what is seen by eye.
  */
 export const chipLabel = (chip: Chip): string => {
   if (chip.kind === 'quote') return `${chip.value}: ${quotePreview(chip.text ?? '')}`
   if (chip.kind === 'paste') return pastePreview(chip.text ?? '')
-  // Со слэшем, как её и набирали: без него плашка команды читается просто словом.
+  // With the slash, the way it was typed: without one a command chip reads as an ordinary word.
   if (chip.kind === 'cmd') return `/${chip.value}`
 
-  // Пустые куски отбрасываем: у папки путь кончается слэшем, и последним куском
-  // там идёт пустая строка — плашка оставалась бы вовсе без подписи.
+  // Empty pieces are dropped: a folder's path ends with a slash, and the last piece there is an empty
+  // string - the chip would be left with no caption at all.
   const parts = chip.value.split('/').filter(Boolean)
   const name = truncateMiddle(parts.at(-1) ?? chip.value)
   return chip.range ? `${name} ${chip.range}` : name

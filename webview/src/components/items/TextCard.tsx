@@ -6,31 +6,29 @@ import s from '../feed.module.css'
 
 interface TextCardProps {
   item: TextItem
-  /** Открыть ссылку из ответа агента в системном браузере, а не внутри вебвью. */
+  /** Open a link from the agent's answer in the system browser rather than inside the webview. */
   onOpenLink: (url: string) => void
 }
 
 /**
- * Дальше этого объёма текст показывается без волны проявления. Порог с запасом
- * выше любого живого ответа: столько букв набирается только у полотна, которое
- * пришло готовым куском, — сводки после сжатия контекста, длинного файла в
- * ответе.
+ * Past this size the text is shown without the reveal wave. The threshold is well above any live answer:
+ * that many characters gather only in a sheet that arrived as a finished piece - a summary after a
+ * context compaction, a long file inside an answer.
  */
 const REVEAL_LIMIT = 12_000
 
 /**
- * Появление нового текста: слова проступают волной слева направо, а не
- * зажигаются пачкой.
+ * How new text appears: the words come through as a wave from left to right rather than lighting up in a
+ * batch.
  *
- * Задержка между соседними словами намеренно короткая. Поток сюда приходит уже
- * сглаженным, то есть по паре символов за кадр, и на каждый кадр рождается своя
- * порция волны: сделай паузу между ними длиннее кадра — и очередь начнёт копиться
- * быстрее, чем проигрывается, а показ отстанет от ответа на добрую секунду.
+ * The delay between neighbouring words is deliberately short. The stream arrives here already smoothed,
+ * that is, a couple of characters per frame, and every frame gives birth to a portion of the wave: make
+ * the pause between them longer than a frame and the queue starts piling up faster than it plays,
+ * putting the display a good second behind the answer.
  *
- * Вертикальный сдвиг выключен по той же причине аккуратности: с ним слово на
- * время анимации становится блочным, и строка вокруг него подрагивает
- * переносами. Прозрачности с лёгкой размытостью для «проявления из ниоткуда»
- * достаточно, а лента остаётся неподвижной.
+ * The vertical shift is switched off for the same reason of tidiness: with it a word becomes a block for
+ * the duration of the animation, and the line around it trembles with rewraps. Opacity with a light blur
+ * is enough for "appearing out of nowhere", while the feed stays still.
  */
 const REVEAL = {
   unit: 'word',
@@ -42,18 +40,18 @@ const REVEAL = {
 } as const
 
 /**
- * Капсула, а не голый текст вподряд с остальной лентой: по ней сразу видно, где
- * кончились технические логи (мысли, вызовы инструментов) и начался настоящий
- * ответ — тот же приём, что и у сообщения пользователя, только с другой стороны.
+ * A capsule rather than bare text running on with the rest of the feed: it shows at a glance where the
+ * technical logs (thoughts, tool calls) ended and the real answer began - the same trick as with a user's
+ * message, only from the other side.
  */
 export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
   /**
-   * Волна проявления рисует каждое слово отдельным узлом со своей анимацией —
-   * на обычном ответе это красиво и незаметно по цене, а на полотне в десятки
-   * тысяч слов (сводка после сжатия контекста — как раз такое) превращается в
-   * десятки тысяч анимаций разом: панель замирала, а потом гасла совсем.
-   * Длинный текст показываем сразу целиком — проявляться там всё равно нечему,
-   * он приходит одним куском, а не печатается на глазах.
+   * The reveal wave draws every word as a separate node with an animation of its own - on an ordinary
+   * answer that is pretty and costs nothing noticeable, while on a sheet of tens of thousands of words (a
+   * summary after a context compaction is exactly that) it turns into tens of thousands of animations at
+   * once: the panel froze and then went dark altogether. Long text is shown whole at once - there is
+   * nothing to reveal there anyway, it arrives as one piece rather than being printed before one's
+   * eyes.
    */
   const length = item.paragraphs.reduce(
     (sum, paragraph) => sum + paragraph.parts.reduce((inner, part) => inner + part.text.length, 0),
@@ -65,8 +63,8 @@ export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
     <div className={s.text} data-copyable>
       <CopyButton text={plainText(item)} className={s.textCopy} title="Copy the whole reply" />
 
-      {/* Одна волна на всю карточку: иначе каждый абзац начинал бы проявление
-          заново и текст загорался бы ступеньками, а не единым ходом. */}
+      {/* One wave for the whole card: otherwise every paragraph would start the reveal afresh and the
+          text would light up in steps rather than in one motion. */}
       {reveal ? (
         <RevealProvider resetKey={item.id} {...REVEAL}>
           <Markdown paragraphs={item.paragraphs} reveal onOpenLink={onOpenLink} />
@@ -78,7 +76,7 @@ export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
   )
 }
 
-/** То, что реально уходит в буфер обмена — без markdown-разметки, простым текстом. */
+/** What genuinely travels into the clipboard - without markdown, as plain text. */
 const plainText = (item: TextItem): string =>
   item.paragraphs
     .map((paragraph) => {

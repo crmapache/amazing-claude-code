@@ -1,5 +1,5 @@
-/* Той же ширины, что нативный скроллбар редактора самой IDE (см. base.css) —
-   рядом с ним наш не должен выглядеть игрушечным или прятаться совсем. */
+/* The same width as the IDE editor's own native scrollbar (see base.css) - beside it ours must not look
+   like a toy or hide away entirely. */
 .thumb {
   position: absolute;
   right: 0;

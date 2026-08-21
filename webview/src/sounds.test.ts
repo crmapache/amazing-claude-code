@@ -37,30 +37,30 @@ const text = (id: string): FeedItem => ({ id, kind: 'text', paragraphs: [], sour
 
 const panel = (items: FeedItem[], status: AgentStatus = 'running'): PanelView => ({ items, status })
 
-/** Вкладка, за которой уже наблюдали: звучит только то, что появилось после. */
+/** A tab that has already been watched: only what appeared after that sounds. */
 const watching = (items: FeedItem[], status: AgentStatus = 'running') => {
   const view = panel(items, status)
   return { memory: rememberPanel(view), view }
 }
 
 describe('soundForPanel', () => {
-  it('молчит про то, что было в ленте до начала наблюдения', () => {
+  it('stays silent about what was in the feed before the watching began', () => {
     const { memory, view } = watching([plan('p1'), ask('a1'), error('e1', 'boom')])
     expect(soundForPanel(view, memory)).toBeNull()
   })
 
-  it('зовёт на конец хода', () => {
+  it('calls on the end of a turn', () => {
     const { memory } = watching([text('t1')])
     expect(soundForPanel(panel([text('t1'), meta('m1')], 'idle'), memory)).toBe('turnFinished')
   })
 
-  it('молчит, когда ход оборвал сам человек', () => {
+  it('stays silent when the person cut the turn short themselves', () => {
     const { memory } = watching([text('t1')])
     const stopped = meta('m1', [`${STOPPED_BY_YOU} · 3s`])
     expect(soundForPanel(panel([text('t1'), stopped], 'idle'), memory)).toBeNull()
   })
 
-  it('зовёт на разрешение, вопрос и план', () => {
+  it('calls on a permission, a question and a plan', () => {
     const first = watching([text('t1')])
     expect(soundForPanel(panel([text('t1'), perm('perm-1')]), first.memory)).toBe('permission')
 
@@ -71,7 +71,7 @@ describe('soundForPanel', () => {
     expect(soundForPanel(panel([text('t1'), plan('p1')]), third.memory)).toBe('plan')
   })
 
-  it('отличает исчерпанный лимит от обычного отказа', () => {
+  it('tells an exhausted limit from an ordinary refusal', () => {
     const limited = watching([text('t1')])
     const limitMessage = 'Claude usage limit reached. Your limit will reset at 3pm.'
     expect(soundForPanel(panel([text('t1'), error('e1', limitMessage)]), limited.memory)).toBe('rateLimit')
@@ -80,13 +80,13 @@ describe('soundForPanel', () => {
     expect(soundForPanel(panel([text('t1'), error('e2', 'API error')]), broken.memory)).toBe('trouble')
   })
 
-  it('из нескольких поводов разом выбирает главный', () => {
+  it('picks the main one out of several occasions at once', () => {
     const { memory } = watching([text('t1')])
     const finished = panel([text('t1'), error('e1', 'API error'), meta('m1')], 'idle')
     expect(soundForPanel(finished, memory)).toBe('trouble')
   })
 
-  it('звучит один раз: повторная проверка той же ленты молчит', () => {
+  it('sounds once: a repeated check of the same feed stays silent', () => {
     const { memory } = watching([text('t1')])
     const withPlan = panel([text('t1'), plan('p1')])
 
@@ -94,33 +94,33 @@ describe('soundForPanel', () => {
     expect(soundForPanel(withPlan, memory)).toBeNull()
   })
 
-  it('молчит на поднятой из истории переписке: ход в ней давно не идёт', () => {
+  it('stays silent on a conversation raised from the history: no turn has run in it for a long time', () => {
     const { memory } = watching([], 'idle')
     const replayed = panel([plan('p1'), ask('a1'), error('e1', 'boom'), meta('m1')], 'idle')
 
     expect(soundForPanel(replayed, memory)).toBeNull()
   })
 
-  it('про умерший процесс говорит даже в тишине, вне хода', () => {
+  it('speaks about a dead process even in silence, outside a turn', () => {
     const { memory } = watching([text('t1')], 'idle')
     expect(soundForPanel(panel([text('t1'), crash('c1')], 'idle'), memory)).toBe('trouble')
   })
 
-  it('замечает конец хода, даже если статус успел смениться раньше карточки', () => {
+  it('notices the end of a turn even if the status changed before the card', () => {
     const { memory } = watching([text('t1')])
-    // Итог приезжает тем же обновлением, в котором ход стал свободным: к моменту
-    // проверки статус уже 'idle', и опереться можно только на прошлый.
+    // The outcome arrives through the same update in which the turn came free: by the time of the check the
+    // status is already 'idle', and the only thing to lean on is the previous one.
     expect(soundForPanel(panel([text('t1'), meta('m1')], 'idle'), memory)).toBe('turnFinished')
   })
 })
 
-describe('галочки и громкость', () => {
-  it('по умолчанию звучит всё и на полную', () => {
+describe('the tick boxes and the volume', () => {
+  it('sounds everything at full volume by default', () => {
     expect(isMuted(NO_SOUND_PREFS, 'plan')).toBe(false)
     expect(volumeOf(NO_SOUND_PREFS, 'plan')).toBe(100)
   })
 
-  it('снятая галочка помнит настроенную громкость', () => {
+  it('lets an unticked box remember the configured volume', () => {
     const quiet = setVolume(NO_SOUND_PREFS, 'plan', 70)
     const off = toggleSound(quiet, 'plan')
 
@@ -132,21 +132,21 @@ describe('галочки и громкость', () => {
     expect(volumeOf(backOn, 'plan')).toBe(70)
   })
 
-  it('ноль на ползунке сам снимает галочку', () => {
+  it('lets a zero on the slider untick the box itself', () => {
     const silent = setVolume(NO_SOUND_PREFS, 'plan', 0)
 
     expect(isMuted(silent, 'plan')).toBe(true)
     expect(volumeOf(silent, 'plan')).toBe(0)
   })
 
-  it('поднятый с нуля ползунок сам возвращает галочку', () => {
+  it('lets a slider raised from zero bring the tick back itself', () => {
     const back = setVolume(setVolume(NO_SOUND_PREFS, 'plan', 0), 'plan', 30)
 
     expect(isMuted(back, 'plan')).toBe(false)
     expect(volumeOf(back, 'plan')).toBe(30)
   })
 
-  it('ползунком включается и звук, выключенный галочкой', () => {
+  it('lets the slider switch on a sound that a tick box switched off too', () => {
     const off = toggleSound(setVolume(NO_SOUND_PREFS, 'plan', 70), 'plan')
     const back = setVolume(off, 'plan', 45)
 
@@ -154,25 +154,25 @@ describe('галочки и громкость', () => {
     expect(volumeOf(back, 'plan')).toBe(45)
   })
 
-  it('выключенный нулём возвращается на полную: иначе галочка вернула бы тишину', () => {
+  it('brings one switched off by a zero back to full: otherwise the tick would bring silence back', () => {
     const backOn = toggleSound(setVolume(NO_SOUND_PREFS, 'plan', 0), 'plan')
 
     expect(isMuted(backOn, 'plan')).toBe(false)
     expect(volumeOf(backOn, 'plan')).toBe(100)
   })
 
-  it('полную громкость не хранит: молчание настроек и значит «как есть»', () => {
+  it('does not store full volume: silence in the settings means "as it is"', () => {
     const loud = setVolume(setVolume(NO_SOUND_PREFS, 'plan', 40), 'plan', 100)
     expect(loud.volumes.plan).toBeUndefined()
     expect(volumeOf(loud, 'plan')).toBe(100)
   })
 
-  it('громкость держится в своих берегах', () => {
+  it('keeps the volume within its banks', () => {
     expect(volumeOf(setVolume(NO_SOUND_PREFS, 'plan', 240), 'plan')).toBe(100)
     expect(volumeOf(setVolume(NO_SOUND_PREFS, 'plan', -40), 'plan')).toBe(0)
   })
 
-  it('соседние звуки не задевает', () => {
+  it('does not touch the neighbouring sounds', () => {
     const prefs = toggleSound(setVolume(NO_SOUND_PREFS, 'plan', 20), 'question')
 
     expect(volumeOf(prefs, 'trouble')).toBe(100)

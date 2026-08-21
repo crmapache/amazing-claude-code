@@ -8,11 +8,11 @@ import com.intellij.openapi.project.DumbAware
 import io.github.crmapache.amazingclaudecode.toolwindow.ClaudePanels
 
 /**
- * «Send to Amazing Claude Code» в контекстном меню редактора.
+ * "Send to Amazing Claude Code" in the editor's context menu.
  *
- * В поле ввода уходит ссылка на кусок файла, а не сам текст: агент прочитает файл
- * целиком и увидит вокруг то, чего в выделении нет. Путь — от корня проекта:
- * полный не помещается в панель и ничего не добавляет.
+ * What travels into the input field is a reference to a piece of a file rather than the text itself:
+ * the agent will read the whole file and see what surrounds the selection. The path is relative to the
+ * project's root: a full one does not fit the panel and adds nothing.
  */
 internal class SendSelectionAction : AnAction(), DumbAware {
 
@@ -35,13 +35,13 @@ internal class SendSelectionAction : AnAction(), DumbAware {
 }
 
 /**
- * «Send Absolute Path to Amazing Claude Code» — сосед по меню, но не разновидность:
- * это ссылка на файл целиком, а не на выделенные строки.
+ * "Send Absolute Path to Amazing Claude Code" - a neighbour in the menu, but not a variation of it:
+ * this is a reference to a whole file rather than to the selected lines.
  *
- * Полный путь просят для разговора, поднятого не в этом проекте: там путь от
- * корня никуда не ведёт. Строки к такой ссылке не приписываем — просили файл, а
- * не место в нём; в поле ввода она встаёт обычной плашкой вложения, как файл,
- * брошенный в панель мышью.
+ * A full path is asked for when the conversation was raised outside this project: there a path from the
+ * root leads nowhere. Lines are not appended to such a reference - a file was asked for, not a place
+ * inside it; in the input field it stands as an ordinary attachment chip, like a file dropped into the
+ * panel with the mouse.
  */
 internal class SendSelectionAbsoluteAction : AnAction(), DumbAware {
 

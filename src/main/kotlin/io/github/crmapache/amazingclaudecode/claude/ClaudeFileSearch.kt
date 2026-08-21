@@ -3,11 +3,10 @@ package io.github.crmapache.amazingclaudecode.claude
 import java.io.File
 
 /**
- * Список файлов проекта для подсказки "@" в поле ввода — та же цифра, что видит
- * нативный терминал, набирая @путь. Свой список, а не разбор `.gitignore` через
- * индекс IDE: тот же простой прямой обход диска, что уже используют
- * [ClaudeHistory] и [ClaudeTokenUsage] в этом файле — экономит зависимость от
- * PSI/индексации ради одного плоского списка путей.
+ * The project's file list for the "@" hint in the input field - the same thing the native terminal
+ * sees while a @path is typed. A list of our own rather than parsing `.gitignore` through the IDE's
+ * index: the same plain direct disk walk [ClaudeHistory] and [ClaudeTokenUsage] already use - it saves
+ * a dependency on PSI and indexing for the sake of one flat list of paths.
  */
 internal object ClaudeFileSearch {
 
@@ -16,16 +15,16 @@ internal object ClaudeFileSearch {
         "target", ".next", ".turbo", "coverage", ".venv", "venv", "__pycache__",
     )
 
-    // Щедрый, но конечный запас: подсказка фильтрует на стороне интерфейса, ей
-    // незачем видеть буквально каждый файл огромного репозитория.
+    // A generous but finite allowance: the hint filters on the interface side, it has no need to see
+    // literally every file of a huge repository.
     private const val LIMIT = 4000
     private const val MAX_DEPTH = 14
 
     fun list(workingDirectory: String?): List<String> {
         val root = workingDirectory?.let { File(it) }?.takeIf { it.isDirectory } ?: return emptyList()
 
-        // .take() на ленивой Sequence останавливает сам обход — не тратим время
-        // на остаток огромного репозитория после набранного лимита.
+        // .take() on a lazy Sequence stops the walk itself - we do not spend time on the rest of a huge
+        // repository once the limit is reached.
         return root.walkTopDown()
             .maxDepth(MAX_DEPTH)
             .onEnter { it == root || (it.name !in EXCLUDED_DIRS && !it.name.startsWith(".")) }

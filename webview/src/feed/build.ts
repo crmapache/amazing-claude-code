@@ -1,8 +1,7 @@
 import type {
   AgentEvent,
-  AgentStatus,
-  AgentSystemEvent,
   AgentRateLimitEvent,
+  AgentSystemEvent,
   AgentUsage,
   ContentBlock,
   MessageContent,
@@ -12,310 +11,53 @@ import type {
 } from '../protocol'
 import { modeShortLabel, normalizeMode } from '../catalog'
 import { parseParagraphs } from './markdown'
+import { initialPanelState, push, type PanelAction, type PanelState } from './panelState'
+import { applyApiRetry, closeRetry, closeRetryFor } from './retry'
+import {
+  appendAgentLog,
+  applyTaskNotification,
+  applyTaskProgress,
+  applyTaskStarted,
+  mapTool,
+  noteSubagent,
+} from './tasks'
+import { readPlan, readQuestions, readTodos } from './toolInput'
 import { chipFor, detailFor, formatDuration, hunksFor, metaFor, resultToText, targetFor } from './tools'
 import type {
-  AskQuestion,
-  BackgroundTask,
   DetailLine,
   FeedItem,
-  Paragraph,
-  RetryItem,
-  RetryOutcome,
-  TaskItem,
-  TaskOutcome,
   ThinkItem,
   TodoEntry,
   TodoItem,
   ToolGroupItem,
   ToolItem,
   UserItem,
-  UserToken,
 } from './types'
 
-export interface PanelProject {
-  name: string
-  workingDirectory: string
-  gitBranch?: string
-  /** Номер pull request текущей ветки, если он есть. */
-  pullRequest?: string
-  /** Адрес того же PR — по нему открывается страница в браузере. */
-  pullRequestUrl?: string
-}
-
 /**
- * Череда повторных запросов к API, которая идёт прямо сейчас.
+ * The agent's event stream turned into the feed's cards.
  *
- * Живёт рядом с карточкой в ленте, а не только в ней: по этому полю строка
- * состояния под лентой заменяет «Claude is thinking» на правду о происходящем
- * (см. streamStatus в App.tsx), и по нему же следующая попытка находит уже
- * заведённую карточку вместо того, чтобы класть в ленту вторую такую же.
+ * One reducer for one tab: everything that arrives - the agent's events, the shell's messages, the
+ * person's own actions - passes through it and leaves the tab in a new state (see [PanelState]). The
+ * interface only draws that state and adds nothing of its own to it.
+ *
+ * What lives in modules of its own beside this one: the state's shape ([panelState]), subagents and
+ * background commands ([tasks]), the pause between repeated API requests ([retry]), and reading a tool's
+ * input ([toolInput]). Each of those follows rules of its own, and kept here they buried the simple part
+ * of the assembly - a message, an answer, a tool call.
  */
-export interface ApiRetry {
-  /** Карточка этой череды в ленте. */
-  itemId: string
-  label: string
-  attempt: number
-  maxRetries: number
-  retryAt: number
-  /** Когда сорвался первый запрос — из него считается длительность всей череды. */
-  startedAt: number
-}
 
-export interface PanelState {
-  items: FeedItem[]
-  /** Текст ответа, который печатается прямо сейчас. Живёт до готового сообщения. */
-  streamingText: string
-  /**
-   * Номер, под которым печатающийся ответ ляжет в ленту, когда придёт готовым
-   * блоком. Выдаётся заранее, на первой же дельте, чтобы печатающаяся карточка и
-   * готовая оказались для React одним и тем же узлом: иначе на стыке он выкинул
-   * бы одну карточку и создал вторую, а вместе с ней оборвалась бы и волна
-   * проявления — ровно на последних словах ответа.
-   */
-  streamingId?: string
-  /** То же самое, но для мысли — пока не пришёл готовый блок thinking. */
-  streamingThinking: string
-  status: AgentStatus
-  sessionId?: string
-  model?: string
-  permissionMode?: string
-  /**
-   * Выбранный, но ещё не подтверждённый режим. Кнопка и меню показывают его, пока
-   * агент не ответит: иначе выбор выглядит потерянным, а после отказа — принятым.
-   */
-  pendingMode?: string
-  /**
-   * Выбранная, но ещё не подтверждённая модель — по той же причине, что и режим:
-   * ответ от агента приходит не мгновенно, а отказать он может по-настоящему.
-   */
-  pendingModel?: string
-  project?: PanelProject
-  usage: Required<AgentUsage>
-  /**
-   * Занятое окно контекста — цифрой от самого CLI (см. protocol, сообщение
-   * context). Своя арифметика по usage остаётся запасным вариантом: она не знает
-   * ни настоящего размера окна (у «1M»-моделей он впятеро больше обычного), ни
-   * того, что лежит в контексте помимо переписки — системного промпта, описаний
-   * инструментов, памяти проекта.
-   */
-  context?: { used: number; max: number }
-  /**
-   * Сколько занято окна прямо сейчас, по последнему ответу самого агента.
-   *
-   * Цифра от CLI приезжает только концом хода: пока идёт первый — и самый
-   * длинный — запрос, показывать было бы попросту нечего, и полоска стояла бы
-   * на нуле ровно там, где за контекстом и следят. А каждый ответ агента несёт
-   * свой usage, и входная его часть — это буквально то, что ушло модели, то
-   * есть занятое окно на этот шаг. Считаем по нему, пока не приедет точная
-   * цифра, и обнуляем, когда она приедет: она знает и про системный промпт, и
-   * про описания инструментов, которых в usage хода не видно.
-   */
-  liveContextUsed?: number
-  cost: number
-  /** Список слэш-команд приходит от самого агента при старте сессии. */
-  slashCommands: string[]
-  /** Время начала каждого незавершённого вызова — из него считается длительность. */
-  startedAt: Record<string, number>
-  /**
-   * Когда начался текущий ход — undefined, если сейчас никакой не идёт. Из
-   * него растёт живой счётчик рядом с «Claude is thinking» (см. streamStatus в
-   * App.tsx): «Worked Ns» под самим ответом приезжает только его концом, а до
-   * этого сколько уже прошло — не видно совсем.
-   */
-  turnStartedAt?: number
-  /**
-   * Сколько всего за текущий ход набежало на ожидании решения человека —
-   * permission, ExitPlanMode, AskUserQuestion. Вычитается из elapsed в
-   * streamStatus (App.tsx): пока висит такая карточка, ход не думает, а стоит,
-   * и после решения секунды ожидания не должны задним числом стать «Claude is
-   * thinking». Копится через attentionStarted/attentionEnded — их шлёт App.tsx,
-   * заметив по awaitsYou смену состояния карточек главного потока.
-   */
-  pausedMs: number
-  /** Когда началось текущее ожидание решения человека — undefined, если сейчас не ждём. */
-  waitStartedAt?: number
-  /**
-   * Карточка субагента по tool_use_id вызова Task/Agent, который его породил —
-   * из системного события task_started. Сообщения самого субагента несут только
-   * tool_use_id в parent_tool_use_id, а карточка может жить под task_id: без
-   * этой карты их нечем связать.
-   */
-  taskByToolUseId: Record<string, string>
-  /**
-   * Карточка субагента по task_id — обратная сторона той же связи. Один и тот
-   * же субагент приходит двумя дорогами: блоком tool_use в ответе агента (свой
-   * идентификатор вызова) и системными событиями task_* (свой task_id). Карточка
-   * заводится по той, что пришла первой, а вторая через эту карту находит уже
-   * заведённую — иначе на одного субагента их было бы две, и в шапке он занимал
-   * бы два чипа сразу.
-   */
-  taskCards: Record<string, string>
-  /**
-   * Команды, запущенные в фоне и работающие прямо сейчас. Дальше живут чипом в
-   * шапке: пока dev-сервер поднят, это единственное место, где это видно.
-   */
-  background: BackgroundTask[]
-  seq: number
-  /**
-   * Когда нажали Stop — до этого момента статус меняем только по-настоящему
-   * пришедшему событию, а не оптимистично: соврать «свободен» дешевле, чем потом
-   * объяснять, почему агент всё равно не отвечает.
-   */
-  stopRequestedAt?: number
-  /** Процесс разговора умер сам с прошлого хода — вкладке есть на что указать. */
-  crashed: boolean
-  /** Идёт сжатие контекста прямо сейчас — статус-строка должна называть это, а не «работает». */
-  compacting: boolean
-  /**
-   * Запрос к модели сорвался, и CLI пережидает отказ перед повтором. Пока это
-   * поле стоит, в разговоре не происходит вообще ничего (см. RetryItem), и
-   * говорить «Claude is thinking» — неправда.
-   */
-  retry?: ApiRetry
-  /**
-   * Локальные команды вроде /clear не зовут модель, но CLI всё равно закрывает
-   * ход служебной репликой "(no content)" и итоговым result — в терминале их не
-   * видно, а капсула с копированием и строчка длительности хода тут были бы
-   * пустым шумом. Ставим при этой заглушке, снимаем на ближайшем result.
-   */
-  suppressNextMeta: boolean
-  /**
-   * Процесс разговора только что поднялся и ещё не брался за дело.
-   *
-   * Ставится на system/init и снимается первым же итогом хода. Нужно, чтобы
-   * отличить служебный «нулевой» ход, которым CLI закрывает сам подъём, от
-   * настоящего хода, который и правда кончился ничем, — см. case 'result'.
-   */
-  starting: boolean
-  /**
-   * Список задач нового трекера (TaskCreate/TaskUpdate), по его номеру — тому
-   * же, которым его называет и TaskUpdate. В отличие от прежнего TodoWrite,
-   * здесь нет одного вызова с целым списком: список приходится собирать самим
-   * из отдельных вызовов создания и правки (см. applyToolUse/applyTaskCreated).
-   *
-   * Сам инструмент не разделяет разные просьбы одного разговора — с его точки
-   * зрения это один список на весь сеанс. Панели это не подходит: список над
-   * полем ввода должен отвечать на «как дела с тем, что я только что попросил»,
-   * а не расти вечно пунктами позапрошлой просьбы. Поэтому список сбрасывается
-   * не по состоянию задач (обманчивый сигнал — тот же список мог на миг
-   * оказаться полностью закрытым и посреди одной работы, если агент ведёт
-   * задачи по одной, а не пачкой), а по новому сообщению человека — см. case
-   * 'prompt' — оно и есть настоящая граница между «прежней» и «новой» просьбой.
-   * Вместе со словарём в ленту кладётся пустой снимок: панель над полем зеркалит
-   * последний todo-элемент, и без него продолжала бы показывать прежнюю просьбу,
-   * а TaskUpdate по старым номерам уже не находил бы их и молча ничего не делал.
-   */
-  tasks: Record<string, TodoEntry>
-  /**
-   * Название задачи по id её вызова TaskCreate — до тех пор, пока не станет
-   * известен присвоенный ей номер. Номера в структурированном виде инструмент
-   * не отдаёт вовсе, только словами в тексте ответа («Task #3 created…»), и
-   * узнать его получится не раньше, чем придёт этот ответ.
-   */
-  pendingTasks: Record<string, { subject: string; activeForm?: string }>
-}
-
-export type PanelAction =
-  /**
-   * steering — сообщение, досланное в уже идущий ход: агент подхватит его между
-   * шагами, а не начнёт с него новый. Такое сообщение только добавляется в
-   * ленту и ничего в ней не обрывает.
-   */
-  | { kind: 'prompt'; tokens: UserToken[]; quotes: string[]; steering?: boolean }
-  /**
-   * replay — событие не живого хода, а переписи прошлого разговора: в ленту оно
-   * ложится так же, но сиюминутного о разговоре не рассказывает (см. 'assistant').
-   */
-  | { kind: 'agent'; event: AgentEvent; replay?: boolean }
-  /**
-   * Перепись доиграна — дальше в этой вкладке только живой разговор. Всё, что
-   * осталось в переписи незаконченным, закрываем здесь: ждать его результата
-   * больше не от кого (см. applyReplayFinished).
-   */
-  | { kind: 'replayFinished' }
-  | { kind: 'status'; status: AgentStatus }
-  | { kind: 'error'; message: string }
-  | { kind: 'init'; project: PanelProject }
-  /** Ветка и её pull request приходят позже: за номером ходят в GitHub. */
-  | { kind: 'project'; gitBranch?: string; pullRequest?: string; pullRequestUrl?: string }
-  /** Занятое окно контекста этого разговора — цифра от самого CLI. */
-  | { kind: 'context'; used: number; max: number }
-  /** Команда bash-режима: сперва карточка с ней, потом её вывод. */
-  | { kind: 'bashStarted'; id: string; command: string }
-  | { kind: 'bashFinished'; id: string; output: string; exitCode: number }
-  | {
-      kind: 'permission'
-      id: string
-      target: string
-      command: string
-      mode: string
-      reason?: string
-      rememberable?: boolean
-      taskId?: string
-    }
-  | { kind: 'permissionResolved'; id: string; decision: 'once' | 'always' | 'deny' }
-  | { kind: 'modeRequested'; mode: string }
-  | { kind: 'modeApplied'; mode: string; applied: boolean; error?: string }
-  | { kind: 'modelRequested'; model: string }
-  /** Модель, которая теперь в силе: при отказе агента — прежняя, а не выбранная. */
-  | { kind: 'modelApplied'; model: string; error?: string }
-  /** Отметка панели в ленте: например, что этот разговор ответвлён от другого. */
-  | { kind: 'checkpoint'; chip: string; target: string }
-  /** Раз в секунду подтягивает длительность ещё не завершённых вызовов. */
-  | { kind: 'tick' }
-  /** Нажали Stop — статус ждём по-настоящему, не подставляем сами. */
-  | { kind: 'stopRequested' }
-  /**
-   * Процесс умер сам. Всё, что было «выполняется», зависло бы так навсегда,
-   * если не закрыть явно и не сказать пользователю, что случилось.
-   */
-  | { kind: 'processExited'; exitCode: number }
-  /** Ошибку убрали из ленты вручную — она прочитана, и держать её незачем. */
-  | { kind: 'dismissError'; id: string }
-  /**
-   * Ход встал на решение человека (permission/ask/plan главного потока) — с
-   * этого момента время идёт в pausedMs, а не в счётчик «Claude is thinking».
-   */
-  | { kind: 'attentionStarted' }
-  /** Решение принято — время ожидания уходит в pausedMs текущего хода. */
-  | { kind: 'attentionEnded' }
-
-export const initialPanelState: PanelState = {
-  items: [],
-  streamingText: '',
-  streamingThinking: '',
-  status: 'idle',
-  usage: {
-    input_tokens: 0,
-    output_tokens: 0,
-    cache_read_input_tokens: 0,
-    cache_creation_input_tokens: 0,
-  },
-  cost: 0,
-  startedAt: {},
-  taskByToolUseId: {},
-  taskCards: {},
-  background: [],
-  slashCommands: [],
-  seq: 1,
-  crashed: false,
-  compacting: false,
-  suppressNextMeta: false,
-  starting: false,
-  tasks: {},
-  pendingTasks: {},
-  pausedMs: 0,
-}
+export type { ApiRetry, PanelAction, PanelProject, PanelState } from './panelState'
+export { initialPanelState } from './panelState'
 
 /**
- * Ошибка встаёт в ленту на своё место — там же, где случилась (см. ErrorItem).
+ * An error stands in the feed in its place - where it happened (see ErrorItem).
  *
- * Один и тот же отказ приходит двумя дорогами: текстом в поток ошибок процесса
- * и разобранным ответом на управляющий запрос. Две одинаковые красные плашки
- * подряд читаются как две разные поломки, хотя случилась одна, — поэтому в
- * пределах текущего хода один и тот же текст показываем однажды. Границей хода
- * служит последнее сообщение человека: тот же отказ час спустя — это уже новая
- * неприятность, и промолчать о ней было бы хуже, чем повториться.
+ * One and the same refusal arrives by two routes: as text in the process's error stream and as a parsed
+ * answer to a control request. Two identical red slabs in a row read as two different breakages although
+ * one happened - so within the current turn one and the same text is shown once. The turn's boundary is
+ * the person's last message: the same refusal an hour later is a fresh piece of trouble, and staying
+ * silent about it would be worse than repeating oneself.
  */
 const addError = (state: PanelState, message: string, limit = false): PanelState => {
   const turnStart = state.items.map((item) => item.kind).lastIndexOf('user') + 1
@@ -326,15 +68,14 @@ const addError = (state: PanelState, message: string, limit = false): PanelState
   if (alreadyShown) return state
 
   /**
-   * Ту же беду CLI умеет сказать дважды: репликой агента в потоке и строкой в
-   * stderr, слово в слово, — так приходит, например, «API Error: 500 …». Первой
-   * успевает реплика, и в ленте оставалась пара одинаковых абзацев подряд:
-   * обычный ответ и красная плашка под ним.
+   * The CLI can say the same trouble twice: as the agent's message in the stream and as a line in
+   * stderr, word for word - that is how "API Error: 500 …" arrives, for instance. The message gets there
+   * first, and the feed was left with a pair of identical paragraphs in a row: an ordinary answer and a
+   * red slab under it.
    *
-   * Из двух видов оставляем плашку: она называет случившееся ошибкой, её можно
-   * закрыть крестиком, и в ней же ждут ссылку вроде status.claude.com. Обратный
-   * порядок (ошибка пришла первой) разбирается там, где рождается реплика, —
-   * см. alreadyShownAsError.
+   * Out of the two kinds we keep the slab: it names what happened an error, it can be closed with a
+   * cross, and it is where a link like status.claude.com is expected. The opposite order (the error came
+   * first) is handled where the message is born - see alreadyShownAsError.
    */
   const said = message.trim()
   const withoutEcho = state.items.filter(
@@ -355,10 +96,9 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
       return { ...state, project: action.project }
 
     case 'project':
-      // Ветка и PR теперь приходят раздельными сообщениями со своей частотой
-      // (см. ClaudePanel.refreshBranch/refreshPullRequest) — каждое поле падает
-      // назад к прежнему значению, если в этот раз пришло не про него, а не
-      // затирается пустотой.
+      // The branch and the PR now arrive as separate messages with frequencies of their own (see
+      // ClaudePanel.refreshBranch/refreshPullRequest) - each field falls back to its previous value when
+      // this message was not about it, rather than being wiped with emptiness.
       return {
         ...state,
         project: {
@@ -372,32 +112,32 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
       }
 
     case 'status': {
-      // Обычно прерванный ход закрывает себя сам — обычным result чуть раньше
-      // срока, и подпись о прерывании ставится там (см. ниже). Но ход может
-      // оборваться и молча: агент успевает освободиться, не прислав итога вовсе.
-      // Тогда единственный след остановки — этот статус, и без своей строки
-      // лента не сказала бы о ней ничего: работа просто замирала на полуслове.
+      // Usually an interrupted turn closes itself - with an ordinary result a little before its time, and
+      // the interruption caption is put there (see below). But a turn can also break off silently: the
+      // agent frees itself without sending a result at all. Then this status is the only trace of the
+      // stop, and without a line of its own the feed would say nothing about it: the work simply froze
+      // mid-sentence.
       const stoppedSilently = action.status === 'idle' && state.stopRequestedAt !== undefined
-      // Переподключение к фоновому ходу (см. ниже) считаем новым ходом и для
-      // паузы — иначе она тащила бы с собой ожидание из совсем другого хода,
-      // о котором эта вкладка ещё не знала.
+      // Reconnecting to a background turn (see below) counts as a new turn for the pause as well -
+      // otherwise it would drag along a wait from a completely different turn, one this tab knew nothing
+      // about.
       const turnReconnected = action.status === 'running' && state.turnStartedAt === undefined
 
       const next: PanelState = {
         ...state,
         status: action.status,
-        // Раз статус реально пришёл, ждать больше нечего — оптимистичный Stop
-        // и старая пометка о крахе (если процесс снова заработал) теряют смысл.
+        // Since a status genuinely arrived, there is nothing left to wait for - the optimistic Stop and
+        // an old crash mark (if the process is working again) lose their meaning.
         stopRequestedAt: undefined,
         crashed: action.status === 'running' ? false : state.crashed,
-        // Обычно ход уже отмечен через 'prompt' — тут только запасной путь:
-        // статус 'running' догнал панель сам, без локального prompt (например,
-        // после переподключения к уже идущему фоновому ходу). Не трогаем то,
-        // что уже тикает — иначе повторный тот же статус двигал бы отсчёт назад.
+        // Usually the turn is already marked through 'prompt' - this is only the fallback route: the
+        // 'running' status caught the panel up by itself, without a local prompt (after reconnecting to a
+        // background turn already under way, for instance). We do not touch what is already ticking -
+        // otherwise the same status arriving again would move the count backwards.
         turnStartedAt: action.status === 'running' ? (state.turnStartedAt ?? now) : undefined,
-        // Ход кончился (или это на самом деле новый) — счётчик паузы обнуляем
-        // вместе с turnStartedAt, иначе setInterval в App.tsx тикал бы вхолостую
-        // до следующего сообщения, а следующий ход стартовал бы с чужой паузой.
+        // The turn has ended (or this is really a new one) - the pause counter is cleared along with
+        // turnStartedAt, or the setInterval in App.tsx would tick for nothing until the next message,
+        // while the next turn would start with someone else's pause.
         pausedMs: action.status === 'idle' || turnReconnected ? 0 : state.pausedMs,
         waitStartedAt: action.status === 'idle' ? undefined : state.waitStartedAt,
         seq: stoppedSilently ? state.seq + 1 : state.seq,
@@ -406,16 +146,15 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
           : state.items,
       }
 
-      // Ход кончился, а череда повторов всё ещё открыта — значит его оборвали
-      // прямо посреди паузы: своего события об этом у неё нет, закрывать некому
-      // (см. closeRetryFor), и без этого её карточка осталась бы ждать попытки,
-      // которой уже не будет.
+      // The turn has ended while a chain of retries is still open - which means it was broken off right
+      // in the middle of the pause: it has no event of its own for that and nobody to close it (see
+      // closeRetryFor), and without this its card would go on waiting for an attempt that will not come.
       return action.status === 'idle' ? closeRetry(finishCompacting(next), 'stopped', now) : next
     }
 
     case 'context':
-      // Точная цифра вытесняет прикидку по ходу: своя арифметика знает только
-      // про переписку, а эта — про всё содержимое окна.
+      // The exact figure displaces the estimate made during the turn: arithmetic of our own knows only
+      // about the conversation, this one knows about everything in the window.
       return action.max > 0
         ? { ...state, context: { used: action.used, max: action.max }, liveContextUsed: undefined }
         : state
@@ -429,9 +168,8 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
     case 'dismissError':
       return { ...state, items: state.items.filter((item) => item.id !== action.id) }
 
-    // Идемпотентны нарочно: App.tsx шлёт их на каждую смену awaitsYou, не
-    // отслеживая сама, был ли уже отправлен такой же — проще положиться на
-    // редьюсер, чем городить для этого отдельный ref.
+    // Deliberately idempotent: App.tsx sends them on every change of awaitsYou without tracking whether
+    // the same one has already been sent - leaning on the reducer is simpler than keeping a ref for it.
     case 'attentionStarted':
       return state.waitStartedAt === undefined ? { ...state, waitStartedAt: now } : state
 
@@ -444,8 +182,8 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
       return { ...state, stopRequestedAt: now }
 
     case 'processExited':
-      // Процесса не стало прямо посреди паузы перед повтором — повторять больше
-      // некому, и карточка обязана перестать ждать вместе с ним.
+      // The process is gone right in the middle of a pause before a retry - there is nobody left to
+      // retry, and the card has to stop waiting along with it.
       return applyProcessExited(closeRetry(finishCompacting(state), 'stopped', now), action.exitCode, now)
 
     case 'replayFinished':
@@ -460,9 +198,9 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         quotes: action.quotes,
       }
 
-      // Досылка в идущий ход ничего не начинает заново: агент продолжает своё,
-      // и недописанный ответ, который он печатает прямо сейчас, обрывать нельзя —
-      // сброс потоковых полей стёр бы его с экрана на полуслове.
+      // A message written into a running turn starts nothing afresh: the agent carries on with its own,
+      // and the unfinished answer it is printing right now must not be interrupted - clearing the
+      // streaming fields would wipe it off the screen mid-sentence.
       if (action.steering) {
         return { ...state, seq: state.seq + 1, items: [...state.items, message] }
       }
@@ -483,24 +221,22 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         crashed: false,
         seq: state.seq + 1,
         items: [...state.items, message],
-        // Новая просьба — граница списка задач нового трекера: см. комментарий
-        // у tasks в PanelState. Начатую задачу без ответа TaskCreate обрывать
-        // здесь нечем страшным — pendingTasks просто больше никогда не
-        // разрешится, что и правильно: её TaskUpdate относился бы к прежней
-        // просьбе, а искать её было уже негде.
+        // A new request is the boundary of the new tracker's task list: see the comment on tasks in
+        // PanelState. A started task with no TaskCreate answer is nothing dreadful to break off here -
+        // pendingTasks will simply never resolve, which is right: its TaskUpdate would belong to the
+        // previous request, and there was nowhere left to look for it.
         tasks: {},
         pendingTasks: {},
       }
 
-      // Пустой снимок, чтобы панель не держала прежний незакрытый список:
-      // словарь tasks уже сброшен, а latestTodo смотрит в ленту.
+      // An empty snapshot, so that the panel does not hold on to the previous unclosed list: the tasks
+      // dictionary has already been reset, while latestTodo looks into the feed.
       return hideOpenList ? push(next, (id) => ({ id, kind: 'todo', todos: [] })) : next
     }
 
     /**
-     * Команда bash-режима. Ход агента она не начинает и не трогает: он мог идти
-     * прямо сейчас, а мог и не идти вовсе — карточка просто встаёт в ленту
-     * своим чередом.
+     * A bash-mode command. It neither starts nor touches the agent's turn: one may have been running at
+     * that moment or not at all - the card simply takes its place in the feed.
      */
     case 'bashStarted':
       return {
@@ -530,14 +266,14 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
             id: action.id,
             kind: 'perm',
             target: action.target,
-            // Подписью из меню, а не именем из протокола: «bypassPermissions mode»
-            // человек нигде больше не видит, он выбирал «Bypass».
+            // With the caption from the menu rather than the protocol's name: "bypassPermissions mode" is
+            // something the person sees nowhere else, they chose "Bypass".
             meta: `${modeShortLabel(action.mode)} mode`,
             command: action.command,
             decision: null,
             reason: action.reason,
-            // Не сказано — значит сработает: молчание CLI и панели тут означает
-            // обычный вопрос, а не запрет (см. protocol.ts).
+            // Not said means it will work: silence from the CLI and from the panel here means an ordinary
+            // question rather than a ban (see protocol.ts).
             rememberable: action.rememberable !== false,
             taskId: action.taskId,
           },
@@ -565,9 +301,9 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         ],
       }
 
-    // Отказ агента возвращает панель к прежнему режиму: показывать применённым то,
-    // что не применилось, — худшее из возможного. Причину отказа показываем прямо
-    // в ленте, иначе кнопка просто «не нажимается» без объяснений.
+    // The agent's refusal returns the panel to the previous mode: showing as applied what was not applied
+    // is the worst of all outcomes. The reason for the refusal is shown right in the feed, or the button
+    // simply "does not press" without an explanation.
     case 'modeApplied': {
       const applied: PanelState = {
         ...state,
@@ -580,11 +316,10 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
     case 'modelRequested':
       return { ...state, pendingModel: action.model }
 
-    // То же самое для модели: оболочка присылает действующую, и она же
-    // становится моделью разговора — отвергнутая не оставляет следа. Запоминаем
-    // именно здесь, а не полагаемся на каталог: на сборке CLI без списка моделей
-    // (или если запрос за ним не дошёл) разворачивать выбранное было бы нечем, и
-    // подпись под панелью так и осталась бы называть прежнюю модель.
+    // The same for the model: the shell sends the one in force, and it becomes the conversation's model -
+    // a rejected one leaves no trace. We remember it here rather than lean on the catalogue: on a CLI
+    // build without a model list (or if the request for it never arrived) there would be nothing to
+    // expand the choice with, and the caption under the panel would go on naming the previous model.
     case 'modelApplied': {
       const applied: PanelState = { ...state, pendingModel: undefined, model: action.model }
       return action.error ? addError(applied, action.error) : applied
@@ -596,22 +331,21 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
 }
 
 /**
- * Пока инструмент или подзадача выполняются, их длительность иначе появляется
- * только вместе с результатом — счётчик стоит на месте, и работа выглядит
- * зависшей. Тик пересчитывает её от startedAt на каждую секунду.
+ * While a tool or a subtask runs, its duration otherwise appears only together with the result - the
+ * counter stands still, and the work looks stuck. The tick recomputes it from startedAt every second.
  *
- * turnStartedAt в этот пересчёт сам не входит (его читают прямо при рендере,
- * см. streamStatus в App.tsx) — но пока он есть, а startedAt ещё пуст (ход
- * только начался, до первого вызова инструмента), ранний выход ниже вернул бы
- * тот же объект состояния, и React решил бы, что рендерить нечего: живой
- * счётчик рядом с «Claude is thinking» так и стоял бы на нуле.
+ * turnStartedAt does not take part in this recount itself (it is read straight at render time, see
+ * streamStatus in App.tsx) - but while it is set and startedAt is still empty (the turn has just begun,
+ * before the first tool call), the early return below would give back the same state object, and React
+ * would decide there is nothing to render: the live counter beside "Claude is thinking" would stand at
+ * zero.
  */
 const tickDurations = (state: PanelState, now: number): PanelState => {
   if (Object.keys(state.startedAt).length === 0 && !state.turnStartedAt && !state.retry) return state
 
-  // Череда повторов сама по себе ничего в ленте не двигает, но обратный отсчёт
-  // в строке состояния считается от текущего времени — без нового состояния он
-  // замер бы на секунде, когда попытка сорвалась (см. streamStatus в App.tsx).
+  // A chain of retries moves nothing in the feed by itself, but the countdown in the status line is
+  // computed from the current time - without a new state it would freeze at the second the attempt failed
+  // (see streamStatus in App.tsx).
   let changed = Boolean(state.turnStartedAt) || Boolean(state.retry)
 
   const background = state.background.map((task) => {
@@ -648,15 +382,14 @@ const tickDurations = (state: PanelState, now: number): PanelState => {
 }
 
 /**
- * Сжатие кончилось — удачно или нет.
+ * A compaction has ended - successfully or not.
  *
- * Об удачном конце говорит своё событие с итогом, но ход может оборваться и
- * раньше: процесс упал, человек нажал Stop, разговор прибили. Закрывающего
- * события тогда не будет вовсе, а поднятый флаг стоит дорого: пока он поднят,
- * строка статуса не показывается вообще (см. streamStatus), то есть и этот ход,
- * и все следующие в этой вкладке идут без единой подписи о том, что происходит.
- * Заодно убираем недорисованную карточку CONTEXT — её процент иначе упрётся в
- * потолок и останется так стоять.
+ * A successful end has an event of its own carrying the outcome, but a turn can break off earlier too:
+ * the process fell over, the person pressed Stop, the conversation was killed. There would then be no
+ * closing event at all, while a raised flag costs dearly: while it is raised the status line is not shown
+ * at all, that is, this turn and every turn after it in this tab run without a single caption about what
+ * is happening. Along the way we remove the half-drawn CONTEXT card - its percentage would otherwise run
+ * into the ceiling and stand there.
  */
 const finishCompacting = (state: PanelState): PanelState => {
   const unfinished = state.items.some((item) => item.kind === 'compact' && item.pending)
@@ -670,173 +403,32 @@ const finishCompacting = (state: PanelState): PanelState => {
 }
 
 /**
- * Отказ сервера словами самого терминала: там эта же пауза подписана ровно так.
+ * The cards left "running" when there is nothing left to wait for their result from: tool calls and
+ * subagents.
  *
- * Панель обязана звать происходящее тем же, чем зовёт CLI, — иначе про одну и ту
- * же перегрузку в терминале и в панели рассказывают разное. Обрыв связи попадает
- * в общее «API error» по той же причине: кода ответа у него нет (см. protocol),
- * и терминал тоже не отличает его от прочих отказов.
- */
-const retryLabel = (status: number | null | undefined): string => {
-  switch (status) {
-    case 429:
-      return 'Rate limited'
-    case 529:
-      return 'API overloaded'
-    case 401:
-    case 403:
-      return 'Authentication failed'
-    default:
-      return 'API error'
-  }
-}
-
-/**
- * Насколько короткой должна быть удачная череда, чтобы не оставлять следа.
+ * Leaving them as they are means showing work that has long since gone: every such card has a counter of
+ * its own, and it ticks and ticks while the tab is open. There are three reasons to be left without a
+ * result - the conversation's process died, the turn ended before the call came back (usually because it
+ * was interrupted), and a past conversation's replay ended on unfinished work - so the note arrives as
+ * text from whoever closes them.
  *
- * Одна попытка через полсекунды — обычная жизнь сети: работа от неё не встала,
- * человек её даже не заметил, и карточка о ней в ленте была бы шумом между
- * настоящими шагами. Живьём такую всё равно видно — карточка появляется на
- * первом же отказе, — а вот в истории разговора ей делать нечего. Всё, что
- * заметно задержало ход, в ленте остаётся: иначе потом не понять, почему ход
- * длился пять минут. Граница — примерно там, где пауза перестаёт быть заминкой
- * и становится ожиданием.
- */
-const RETRY_TRACE_MS = 5_000
-
-/**
- * Очередная попытка: карточка одна на всю череду, меняются только цифры.
+ * [notes.tone] - only what genuinely did not finish is marked red: in a replay a call may well have ended
+ * successfully, its result merely was not saved in it, and a red line would credit the conversation with
+ * an error that never happened.
  *
- * Событие не говорит, чей запрос сорвался — главного разговора или субагента, —
- * и знать этого неоткуда: у отказа нет ни task_id, ни родительского вызова.
- * Показываем в общей ленте: перегрузка сервера всё равно касается всего
- * разговора целиком, а не отдельной его ветки.
- */
-const applyApiRetry = (state: PanelState, event: AgentSystemEvent, now: number): PanelState => {
-  const label = retryLabel(event.error_status)
-  const attempt = event.attempt ?? (state.retry ? state.retry.attempt + 1 : 1)
-  const maxRetries = event.max_retries ?? state.retry?.maxRetries ?? 0
-  const retryAt = now + Math.max(0, event.retry_delay_ms ?? 0)
-
-  if (state.retry) {
-    const retry = { ...state.retry, label, attempt, maxRetries, retryAt }
-
-    return {
-      ...state,
-      retry,
-      items: state.items.map((item) =>
-        item.kind === 'retry' && item.id === retry.itemId ? { ...item, label, attempt, maxRetries, retryAt } : item,
-      ),
-    }
-  }
-
-  const itemId = `retry-${state.seq}`
-  const card: RetryItem = { id: itemId, kind: 'retry', label, attempt, maxRetries, retryAt, duration: '', pending: true }
-
-  return {
-    ...state,
-    seq: state.seq + 1,
-    items: [...state.items, card],
-    retry: { itemId, label, attempt, maxRetries, retryAt, startedAt: now },
-  }
-}
-
-/**
- * Череда повторов кончилась.
+ * [keepTasks] - what to do with the subagents still working:
  *
- * Отдельного события об этом нет ни у удачного конца, ни у неудачного: CLI
- * просто перестаёт повторять — либо потому, что запрос наконец прошёл, либо
- * потому, что попытки исчерпаны, — поэтому закрывает череду тот, кто заметил
- * первое событие после неё (см. closeRetryFor), и он же говорит, чем она
- * кончилась.
- */
-const closeRetry = (state: PanelState, outcome: RetryOutcome, now: number): PanelState => {
-  const retry = state.retry
-  if (!retry) return state
-
-  const elapsed = now - retry.startedAt
-  const forget = outcome === 'recovered' && elapsed < RETRY_TRACE_MS
-
-  return {
-    ...state,
-    retry: undefined,
-    items: forget
-      ? state.items.filter((item) => item.id !== retry.itemId)
-      : state.items.map((item) =>
-          item.kind === 'retry' && item.id === retry.itemId
-            ? { ...item, pending: false, outcome, duration: formatDuration(elapsed) }
-            : item,
-        ),
-  }
-}
-
-/**
- * Чем череда повторов кончилась — по первому же событию, пришедшему после неё.
- *
- * Системные события её не рвут: сама попытка приходит ими же, и между попытками
- * тем же каналом идут служебные пометки вроде смены статуса. Всё остальное
- * означает, что запрос куда-то дошёл, — и остаётся только понять, ответила ли
- * модель. Исчерпав попытки, CLI закрывает ход не её ответом, а своей заглушкой
- * от `<synthetic>` с текстом ошибки — по ней и отличаем сдачу от удачи.
- */
-const closeRetryFor = (state: PanelState, event: AgentEvent, now: number): PanelState => {
-  if (!state.retry) return state
-
-  switch (event.type) {
-    case 'system':
-      return state
-
-    // Отказ по лимиту подписки сам по себе ничего не решает: ход в этот момент
-    // может и продолжаться, и встать насовсем — об этом скажет то, что придёт
-    // следом (см. rate_limit_event).
-    case 'rate_limit_event':
-      return state
-
-    // Заглушку узнаём по служебному имени модели, а не по отсутствию настоящей:
-    // молчание о модели — всего лишь молчание, и объявлять по нему ход сдавшимся
-    // значит записывать в поломки обычные ответы.
-    case 'assistant':
-      return closeRetry(state, syntheticReply(event.message.model) ? 'failed' : 'recovered', now)
-
-    case 'result':
-      return closeRetry(state, event.is_error ? 'failed' : 'recovered', now)
-
-    default:
-      return closeRetry(state, 'recovered', now)
-  }
-}
-
-/**
- * Карточки, которые остались «выполняется», когда ждать их результата больше
- * нечего: вызовы инструментов и субагенты.
- *
- * Оставить их как есть — значит показывать работу, которой давно нет: у каждой
- * такой карточки свой счётчик, и он тикает и тикает, пока открыта вкладка.
- * Поводов остаться без результата три — процесс разговора умер, ход кончился
- * раньше, чем вернулся вызов (обычно потому, что его прервали), и перепись
- * прошлого разговора кончилась на незакрытой работе, — поэтому пометка приходит
- * текстом от того, кто закрывает.
- *
- * [notes.tone] — красным помечаем только то, что действительно не доработало:
- * у переписи вызов вполне мог закончиться удачно, просто его результат в ней не
- * сохранился, и красная строка приписывала бы разговору несуществующую ошибку.
- *
- * [keepTasks] — что делать с субагентами, которые всё ещё работают:
- *
- * - 'all' — не трогать ни одного. Так закрывается ход, кончившийся сам: пока
- *   ход ждёт субагента, он не кончается — значит всё, что осталось в работе к
- *   его естественному концу, работает отдельно от него и доживёт до своего
- *   уведомления (task_notification). Признака «фоновый» на такой карточке может
- *   не быть вовсе: субагентов, поднятых скиллом (например /code-review), главный
- *   поток запускает не своим вызовом инструмента — ответа «Async agent launched»
- *   в нём не бывает, и по нему их не узнать (см. ASYNC_AGENT_LAUNCHED). Раньше
- *   их закрывало здесь же, и десяток работающих агентов исчезал из шапки в тот
- *   момент, когда ход отчитался о запуске.
- * - 'background' — оставить только помеченных фоновыми. Так закрывается
- *   прерванный ход: работу оборвали посреди дела, и всё, за чем стоял сам ход,
- *   оборвано вместе с ним.
- * - 'none' — закрыть всех. Смерть процесса и конец переписи прошлого разговора:
- *   сообщать о себе субагентам больше некому.
+ * - 'all' - touch none of them. That is how a turn that ended by itself is closed: while a turn waits for
+ *   a subagent it does not end - so everything still working when it ends naturally works apart from it
+ *   and will live to its own notification (task_notification). Such a card may have no "background" mark
+ *   at all: subagents raised by a skill (/code-review, for instance) are not launched by the main stream's
+ *   own tool call - there is no "Async agent launched" answer in it, and there is no recognising them by
+ *   that (see ASYNC_AGENT_LAUNCHED). They used to be closed here, and a dozen working agents disappeared
+ *   from the header the moment the turn reported launching them.
+ * - 'background' - keep only those marked background. That is how an interrupted turn is closed: the work
+ *   was broken off mid-way, and everything the turn stood for was broken off with it.
+ * - 'none' - close them all. A process's death and the end of a past conversation's replay: there is
+ *   nobody left for the subagents to report to.
  */
 const closeUnfinished = (
   state: PanelState,
@@ -892,31 +484,27 @@ const closeUnfinished = (
 }
 
 /**
- * Перепись прошлого разговора доиграна: всё, что осталось в ней «выполняется»,
- * закрываем — в этой вкладке не работает ничего, а результата этой работы ждать
- * больше не от кого.
+ * A past conversation's replay has been played to the end: everything left "running" in it is closed -
+ * nothing is working in this tab, and there is nobody left to wait for that work's result from.
  *
- * Отвечать за такие карточки было бы кому только в том разговоре, где их
- * запустили, — а его процесса давно нет. Особенно это про фоновых субагентов:
- * их итог приносит отдельное системное событие, в переписке же хранятся одни
- * реплики, так что для карточки он не приедет никогда. Вкладка, открытая из
- * истории, показывала прошлых агентов работающими прямо сейчас: с бегущим
- * счётчиком (он шёл от момента открытия вкладки, а не от их запуска), с чипом в
- * шапке, с крестиком «прибить» — прибивать в этом процессе было нечего, — и со
- * строкой «Waiting for N subagents» под лентой.
+ * There would have been someone to answer for such cards only in the conversation they were launched in -
+ * and its process has long been gone. This is especially about background subagents: their outcome is
+ * brought by a separate system event, while a transcript holds nothing but messages, so for the card it
+ * would never arrive at all. A tab opened from the history showed past agents as working right now: with
+ * a running counter (it ran from the moment the tab was opened rather than from their launch), with a
+ * chip in the header, with a "kill" cross - there was nothing to kill in this process - and with a
+ * "Waiting for N subagents" line under the feed.
  *
- * Карточки при этом остаются: разговор их правда запускал, и это часть его
- * истории. Меняется только пометка — вместо «выполняется» на них то, что о них
- * действительно известно.
+ * The cards themselves stay: the conversation genuinely launched them, and that is part of its history.
+ * All that changes is the note - instead of "running" they carry what is actually known about them.
  */
 const applyReplayFinished = (state: PanelState, now: number): PanelState => {
   /**
-   * Пока перепись играла, человек мог уже написать в эту вкладку — длинный
-   * разговор проигрывается не мгновенно. Тогда всё «выполняется» в ленте
-   * принадлежит уже живому ходу, и закрывать его нельзя: панель объявила бы
-   * законченной работу, которая идёт прямо сейчас. Из двух бед выбираем
-   * меньшую и не трогаем ничего: карточка из переписи в этом редком случае
-   * останется висеть — ровно как раньше, — зато живой ход цел.
+   * While the replay was playing, the person may already have written into this tab - a long conversation
+   * does not replay instantly. Then everything "running" in the feed belongs to a live turn already, and
+   * closing it is not an option: the panel would declare finished work that is happening right now. Of
+   * two evils we choose the smaller and touch nothing: in that rare case a card from the replay is left
+   * hanging - exactly as before - while the live turn is intact.
    */
   if (state.turnStartedAt !== undefined) return state
 
@@ -936,9 +524,9 @@ const applyReplayFinished = (state: PanelState, now: number): PanelState => {
 }
 
 /**
- * Процесс умер сам, не по нашей просьбе. Любая карточка, которая была
- * «выполняется» в этот момент, иначе так и останется висеть вечно — закрываем
- * их явно и оставляем в ленте недвусмысленную пометку, что случилось.
+ * The process died on its own rather than at our request. Any card that was "running" at that moment
+ * would otherwise hang there forever - we close them outright and leave an unambiguous note in the feed
+ * about what happened.
  */
 const applyProcessExited = (state: PanelState, exitCode: number, now: number): PanelState => {
   const { items, startedAt } = closeUnfinished(
@@ -954,11 +542,10 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
   )
 
   /**
-   * Фоновые команды переживают этот процесс: dev-сервер, поднятый ходом, никуда
-   * не денется. Но сообщать о них больше некому — уведомления шёл тот же CLI,
-   * которого не стало, — и оставить чипы с бегущим временем значит показывать
-   * заведомо мёртвый счётчик. Чипы убираем, а в карточку команды ставим ровно
-   * то, что правда: панель за ней больше не следит.
+   * Background commands outlive this process: a dev server raised by a turn is not going anywhere. But
+   * there is nobody left to report about them - the notifications came from the same CLI that is gone -
+   * and leaving chips with a running clock means showing a knowingly dead counter. The chips are removed,
+   * and into the command's card goes exactly what is true: the panel no longer follows it.
    */
   const withBackground = state.background.reduce((current, task) => {
     const started = startedAt[task.id]
@@ -971,7 +558,7 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
           duration,
           detail: [
             ...tool.detail,
-            { text: `Ran ${duration} in the background — no longer tracked.`, tone: 'dim' as const },
+            { text: `Ran ${duration} in the background - no longer tracked.`, tone: 'dim' as const },
           ],
         }))
       : current
@@ -985,9 +572,8 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
     streamingThinking: '',
     crashed: true,
     stopRequestedAt: undefined,
-    // Ход оборвался — без этого turnStartedAt повис бы до следующего сообщения,
-    // и setInterval в App.tsx тикал бы вхолостую (следующий ход может начаться
-    // нескоро).
+    // The turn broke off - without this turnStartedAt would hang until the next message, and the
+    // setInterval in App.tsx would tick for nothing (the next turn may be a long way off).
     turnStartedAt: undefined,
     pausedMs: 0,
     waitStartedAt: undefined,
@@ -1009,13 +595,12 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
 }
 
 /**
- * Содержимое сообщения списком блоков — каким бы оно ни пришло.
+ * A message's content as a list of blocks - however it arrived.
  *
- * Голая строка вместо списка приходит, например, со сводкой после `/compact`, и
- * раньше на ней падала вся панель: разбор сразу же звал на содержимом методы
- * массива. Строку показываем текстом, как она и есть, а всё остальное
- * неожиданное молча считаем пустотой — незнакомая форма события не повод
- * потерять разговор.
+ * A bare string instead of a list arrives with the summary after `/compact`, for instance, and the whole
+ * panel used to break on it: the parsing called array methods on the content straight away. A string is
+ * shown as text, as it is, while anything else unexpected silently counts as emptiness - an unfamiliar
+ * event shape is no reason to lose the conversation.
  */
 const blocksOf = (content: MessageContent | undefined): ContentBlock[] => {
   if (Array.isArray(content)) return content
@@ -1024,65 +609,52 @@ const blocksOf = (content: MessageContent | undefined): ContentBlock[] => {
 }
 
 /**
- * Статусы лимита, при которых всё в порядке: запрос прошёл. Про них молчим —
- * событие приходит и в обычной жизни, а лента не сводка о состоянии подписки.
+ * The limit statuses that mean all is well: the request went through. About those we stay silent - the
+ * event arrives in ordinary life too, and the feed is not a subscription status report.
  */
 const ALLOWED_RATE_LIMIT = new Set(['allowed', 'allowed_warning', 'ok'])
 
-/** Отказ по лимиту словами: главное здесь — когда снова можно работать. */
+/** A limit refusal in words: what matters here is when work is possible again. */
 const rateLimitMessage = (info: NonNullable<AgentRateLimitEvent['rate_limit_info']>): string => {
   const window = info.rateLimitType === 'five_hour' ? '5-hour' : info.rateLimitType === 'weekly' ? 'weekly' : ''
   const limit = window ? `Your ${window} limit is used up.` : 'Your usage limit is used up.'
-  // resetsAt приходит секундами, как это принято в самом CLI.
+  // resetsAt arrives in seconds, as is customary in the CLI itself.
   const resets = info.resetsAt ? ` Resets at ${new Date(info.resetsAt * 1000).toLocaleString()}.` : ''
 
   return `${limit}${resets}`
 }
 
 /**
- * Настоящая модель — или ничего.
+ * A real model - or nothing.
  *
- * Часть сообщений подписана не моделью, а служебной пометкой в угловых скобках:
- * так, например, помечен «<synthetic>» — заглушка, которой CLI закрывает ход,
- * оборванный человеком. Модели с таким именем не существует, и пустить её
- * дальше значит объявить, что разговор на неё перешёл: панель назвала бы её в
- * нижней строке и предложила отдельной строкой в выборе моделей.
+ * Some messages are signed not with a model but with an internal mark in angle brackets: "<synthetic>",
+ * for instance - the placeholder the CLI closes a turn interrupted by the person with. No model of that
+ * name exists, and letting it through means declaring the conversation has moved to it: the panel would
+ * name it in the bottom line and offer it as a separate row in the model list.
  */
 const realModel = (model: string | undefined): string | undefined =>
   model && !model.startsWith('<') ? model : undefined
-
-/**
- * Ответил не агент, а сам CLI: та же пометка в угловых скобках, что и в
- * [realModel], но вопрос здесь обратный — не «на чём мы работаем», а «дошло ли
- * вообще до модели». Неподписанное сообщение считаем обычным ответом: молчание
- * о модели — не признак поломки.
- */
-const syntheticReply = (model: string | undefined): boolean => model !== undefined && model.startsWith('<')
 
 const applyAgentEvent = (
   incoming: PanelState,
   event: AgentEvent,
   now: number,
-  /** Перепись прошлого разговора, а не живой ход — см. PanelAction. */
+  /** A past conversation's replay rather than a live turn - see PanelAction. */
   replay = false,
 ): PanelState => {
-  // Первое же событие после череды повторов и есть весь рассказ о том, чем она
-  // кончилась: своего события у её конца нет (см. closeRetryFor).
+  // The first event after a chain of retries is the whole account of how it ended: its end has no event
+  // of its own (see closeRetryFor).
   const state = closeRetryFor(incoming, event, now)
 
   switch (event.type) {
     case 'system':
       return applySystem(state, event, now)
 
-    // /clear стирает историю по-настоящему — лента остаётся показывать её, если
-    // не очистить: агент выше уже ничего не помнит, а карточки выглядят так,
-    // будто помнит.
-    //
     /**
-     * Лимит подписки. Событие приходит и в обычной жизни — со статусом
-     * «пропускаем», — поэтому в ленту попадает только отказ: ход остановлен, и
-     * до сброса окна ничего не поедет. Раньше об этом можно было узнать разве
-     * что из текста отказа, если CLI его пришлёт; сам сигнал разбор пропускал.
+     * The subscription limit. The event arrives in ordinary life too - with a "let through" status - so
+     * only a refusal lands in the feed: the turn is stopped, and nothing will move until the window
+     * resets. This used to be learnable only from the refusal's text, if the CLI sent one; the signal
+     * itself the parsing skipped.
      */
     case 'rate_limit_event': {
       const info = event.rate_limit_info
@@ -1091,16 +663,16 @@ const applyAgentEvent = (
       return addError(state, rateLimitMessage(info), true)
     }
 
-    // Вместе с лентой обнуляется и всё, что описывало ушедший разговор: занятое
-    // окно контекста, расход, недочитанные ошибки, список задач. Иначе датчик
-    // контекста показывал прежние проценты на пустом чате — то есть врал ровно
-    // про то единственное, ради чего /clear обычно и зовут.
+    // Along with the feed, everything describing the conversation that has gone is reset: the taken
+    // context window, the usage, the unread errors, the task list. Otherwise the context meter would show
+    // the previous percentage on an empty chat - that is, lie about the one thing /clear is usually called
+    // for.
     case 'conversation_reset': {
-      // Сжатие могло идти прямо в момент clear — своего закрывающего события
-      // (compact_result/compact_boundary) оно тогда уже не дождётся, раз разговор,
-      // который сжимался, стёрт. Тот же самый случай, для которого finishCompacting
-      // и заведён (см. её комментарий про «разговор прибили»): не снять флаг здесь —
-      // и строка статуса будет пустой у всех последующих ходов в этой вкладке.
+      // A compaction may have been running at the very moment of the clear - it will never get its closing
+      // event (compact_result/compact_boundary) now that the conversation being compacted has been wiped.
+      // This is the same case finishCompacting exists for (see its comment about "the conversation was
+      // killed"): not clearing the flag here means an empty status line for every following turn in this
+      // tab.
       const uncompacted = finishCompacting(state)
 
       return {
@@ -1116,11 +688,11 @@ const applyAgentEvent = (
         streamingText: '',
         streamingId: undefined,
         streamingThinking: '',
-        // Тот же сброс состояния хода, что и в case 'result': /clear закрывает
-        // разговор безусловно, даже тот ход, что ещё не успел дойти до своего
-        // result (например, если clear пришёл, пока агент ещё думал). Без этого
-        // «Claude is thinking» вешалось навсегда — ждать за него было уже некому,
-        // раз вся история, которую тот ход отвечал, только что стёрлась.
+        // The same reset of the turn's state as in case 'result': /clear closes the conversation
+        // unconditionally, even a turn that has not reached its result yet (if the clear arrived while the
+        // agent was still thinking, for instance). Without this "Claude is thinking" hung forever - there
+        // was nobody left to wait for, now that the whole history that turn was answering has just been
+        // wiped.
         status: 'idle',
         turnStartedAt: undefined,
         pausedMs: 0,
@@ -1128,7 +700,7 @@ const applyAgentEvent = (
         stopRequestedAt: undefined,
         starting: false,
         items: [
-          { id: `cleared-${state.seq}`, kind: 'checkpoint', chip: 'CLEAR', target: 'conversation cleared — nothing above this is remembered anymore' },
+          { id: `cleared-${state.seq}`, kind: 'checkpoint', chip: 'CLEAR', target: 'conversation cleared - nothing above this is remembered anymore' },
         ],
       }
     }
@@ -1136,7 +708,7 @@ const applyAgentEvent = (
     case 'stream_event': {
       const delta = event.event.delta
       if (event.event.type !== 'content_block_delta') return state
-      // Текст и мысль подагента в основную ленту не текут: у него своя карточка.
+      // A subagent's text and its thinking do not flow into the main feed: it has a card of its own.
       if (event.parent_tool_use_id) return state
 
       if (delta?.type === 'text_delta') return appendStreamingText(state, delta.text ?? '')
@@ -1147,37 +719,34 @@ const applyAgentEvent = (
     }
 
     case 'assistant': {
-      // Подагент отвечает своей моделью — это не та, на которой идёт разговор.
+      // A subagent answers with a model of its own - not the one the conversation runs on.
       if (event.parent_tool_use_id) {
         return noteSubagent(state, event.parent_tool_use_id, blocksOf(event.message.content), replay)
       }
 
       /**
-       * Модель берём с каждого ответа, а не только из системного события в
-       * начале сессии: агент умеет сменить её посреди разговора и сам — так,
-       * например, срабатывает защита, отправляющая ход на другую модель. О таком
-       * переключении в потоке не сообщает ничего, кроме подписи под ответом:
-       * помимо неё это единственный след того, что работает уже не то, что
-       * выбрали.
+       * The model is taken from every answer rather than only from the system event at the session's
+       * start: the agent can change it mid-conversation itself - that is how the guard that moves a turn
+       * to another model fires. Nothing in the stream reports such a switch except the signature under
+       * the answer: besides it, that is the only trace that what is working is no longer what was chosen.
        */
       const model = realModel(event.message.model) ?? state.model
-      // Занятое окно на этот шаг — пока не приехала точная цифра от CLI (см.
-      // liveContextUsed). Только у главного разговора: подагент выше уже ушёл
-      // своей веткой, и его контекст к этому окну отношения не имеет.
+      // The window taken at this step - until the exact figure from the CLI arrives (see
+      // liveContextUsed). Only for the main conversation: a subagent has gone off into its own branch
+      // above, and its context has nothing to do with this window.
       //
-      // И только у живого хода: в переписи прошлого разговора те же числа
-      // говорят о давно прошедшем шаге, а размер окна из неё не узнать вовсе —
-      // на «1M»-модели прикидка делилась на обычные двести тысяч, и открытый из
-      // истории разговор выглядел переполненным. Точную цифру IDE спрашивает у
-      // CLI отдельно (см. ClaudePanel.refreshResumedContext).
+      // And only for a live turn: in a past conversation's replay those same numbers speak of a step long
+      // gone, and the window's size cannot be learned from it at all - on a "1M" model the estimate
+      // divided by the ordinary two hundred thousand, and a conversation opened from the history looked
+      // overflowing. The exact figure the IDE asks the CLI for separately (see PanelUsage.refreshContext).
       const liveContextUsed = replay
         ? state.liveContextUsed
         : contextUsedOf(event.message.usage) ?? state.liveContextUsed
-      // Разговору ответили — подъём кончился, и следующий result закрывает
-      // именно ход, чем бы тот ни оказался (см. starting и «нулевой» ход выше).
-      // Число ходов тут не показатель: заглушки от <synthetic> — отказ по
-      // неизвестной команде, ответ вместо запрещённого хуком хода — приезжают
-      // репликой в ленту, а ходов в итоге по-прежнему ноль.
+      // The conversation has been answered - the start-up is over, and the next result closes a turn,
+      // whatever it turns out to be (see starting and the "zero" turn above). The number of turns is no
+      // measure here: placeholders from <synthetic> - a refusal about an unknown command, an answer
+      // instead of a turn forbidden by a hook - arrive as a message in the feed, while the turn count
+      // stays at zero.
       return applyAssistant(
         { ...state, model, liveContextUsed, starting: false },
         blocksOf(event.message.content),
@@ -1187,39 +756,36 @@ const applyAgentEvent = (
     }
 
     case 'user': {
-      // В живом разговоре реплика человека ложится в ленту сразу при отправке
-      // (см. 'prompt'), и то же самое из потока удвоило бы её. В переписи класть
-      // её было некому: там эта запись — единственный след того, что человек
-      // вообще что-то говорил, и без неё лента прошлого разговора состояла из
-      // одних ответов.
+      // In a live conversation a person's message lands in the feed at the moment of sending (see
+      // 'prompt'), and the same thing out of the stream would double it. In a replay there was nobody to
+      // put it there: that record is the only trace that the person said anything at all, and without it
+      // a past conversation's feed consisted of answers alone.
       const withPrompt = replay ? addReplayedPrompt(state, event, now) : state
       return applyToolResults(withPrompt, blocksOf(event.message.content), now)
     }
 
     case 'result': {
-      // Поднявшийся разговор CLI закрывает «нулевым» ходом: сразу за system/init
-      // приезжает result, в котором ходов ноль и ответа нет. Ходом это не было —
-      // агент к сообщению человека ещё даже не приступал.
+      // A conversation that has just come up the CLI closes with a "zero" turn: right after system/init a
+      // result arrives holding zero turns and no answer. That was not a turn - the agent had not even got
+      // to the person's message yet.
       //
-      // Заметнее всего это на форке: там процесс поднимается вместе с первым
-      // сообщением, и панель гасила по этому result спиннер и подписывала ход
-      // «Worked 0.1s», хотя агент только начинал думать. Со стороны выглядело так,
-      // будто отправка не завелась, — и человек отправлял следующее сообщение,
-      // которое CLI честно ставил в очередь за первым.
+      // It shows most clearly on a fork: there the process comes up together with the first message, and
+      // the panel cleared its spinner by that result and captioned the turn "Worked 0.1s", although the
+      // agent was only beginning to think. From outside it looked as though the send had not caught - and
+      // the person sent the next message, which the CLI honestly queued behind the first.
       //
-      // Только сразу после подъёма (см. starting): ход, который и правда кончился
-      // ничем, обязан гасить спиннер, как любой другой.
+      // Only right after the start-up (see starting): a turn that genuinely ended with nothing has to
+      // clear the spinner like any other.
       //
-      // И только пока итог пуст. Ходов ноль CLI ставит и там, где ход состоялся,
-      // но выполнять его он не стал: неизвестная слэш-команда (в том числе
-      // команда MCP-сервера, который в этот раз не поднялся) закрывается ответом
-      // «Unknown command: …» — заглушкой от <synthetic>, без обращения к модели,
-      // а значит и без ходов. Раз такой result глотать, ход не закроет уже
-      // никто: «Claude is thinking» с бегущим счётчиком висит до конца жизни
-      // вкладки. Текст в итоге — верный признак того, что этому ходу ответили.
+      // And only while the result is empty. The CLI puts zero turns where a turn did happen but it chose
+      // not to carry it out: an unknown slash command (including a command of an MCP server that did not
+      // come up this time) is closed with an "Unknown command: …" answer - a placeholder from <synthetic>,
+      // without any request to the model and therefore without turns. Swallow such a result, and nobody
+      // will close the turn: "Claude is thinking" with a running counter hangs for the rest of the tab's
+      // life. Text in the result is the sure sign that this turn was answered.
       //
-      // Идентификатор разговора отсюда всё же берём: у форка он новый, и без него
-      // разговор потом не продолжить.
+      // The conversation's identifier is still taken from here: a fork has a new one, and without it the
+      // conversation cannot be continued afterwards.
       if (
         state.starting &&
         event.num_turns === 0 &&
@@ -1230,39 +796,36 @@ const applyAgentEvent = (
         return { ...state, starting: false, sessionId: event.session_id ?? state.sessionId }
       }
 
-      // Когда ход внутри себя вызвал несколько инструментов подряд (num_turns > 1),
-      // верхнеуровневые поля usage — это СУММА по всем внутренним шагам: годится для
-      // счётчика общего расхода снизу, но как «сколько сейчас занято окно контекста»
-      // даёт кратно завышенное число. Настоящий снимок текущего состояния — у
-      // последнего шага в iterations; при одном шаге он и так совпадает с usage.
+      // When a turn called several tools in a row inside itself (num_turns > 1), the top-level usage
+      // fields are a SUM over every internal step: that suits the overall usage counter below, but as "how
+      // much of the context window is taken now" it gives a figure many times too high. The real snapshot
+      // of the current state is in the last step of iterations; with one step it coincides with usage
+      // anyway.
       const usage = mergeUsage(state.usage, contextSnapshot(event))
-      // Прерывание не рвёт поток отдельным событием — агент просто закрывает ход
-      // обычным result чуть раньше срока (см. ClaudeSession.interrupt). Единственный
-      // след, что это не естественный конец хода, а Stop/Escape — то, что запрос на
-      // остановку всё ещё висит непогашенным к этому моменту.
+      // An interruption does not tear the stream with an event of its own - the agent simply closes the
+      // turn with an ordinary result a little before its time (see ClaudeSession.interrupt). The only
+      // trace that this is not a natural end but a Stop/Escape is that the stop request is still standing
+      // uncleared at this moment.
       const cancelled = state.stopRequestedAt !== undefined
       const stats = resultStats(event, cancelled)
 
-      // Отказ ставим в ленту ПЕРЕД итогом хода: он и случился раньше, а
-      // «Worked 3s» под ним читается концом этого же хода, а не следующего.
+      // The refusal goes into the feed BEFORE the turn's result: it happened earlier, and "Worked 3s"
+      // under it reads as the end of this very turn rather than of the next one.
       const withError = finishCompacting(
         event.is_error && event.result ? addError(state, event.result) : state,
       )
 
       /**
-       * Ход кончился — значит и все его вызовы инструментов кончились вместе с
-       * ним. Прерванный ход бросает вызов прямо посреди работы (Stop приходит,
-       * когда что-то выполняется, — иначе прерывать было бы нечего), и без
-       * этого его карточка навсегда оставалась «выполняется» с бегущим
-       * счётчиком: ход внизу давно подписан «Stopped by you», а работа по виду
-       * всё ещё идёт. Тем же закрываются и вызовы, чей результат до панели не
-       * дошёл.
+       * The turn has ended - which means every tool call of its own has ended with it. An interrupted turn
+       * throws a call away right in the middle of its work (Stop arrives while something is running -
+       * otherwise there would be nothing to interrupt), and without this its card stayed "running" forever
+       * with a live counter: the turn below has long been captioned "Stopped by you" while the work looks
+       * as though it is still going. The same closes calls whose result never reached the panel.
        *
-       * Субагенты — не вызовы: ход, кончившийся сам, не мог ждать ни одного из
-       * них (ждал бы — не кончился), поэтому работающих не трогаем вовсе и
-       * оставляем их чипы в шапке до их собственных уведомлений. Оборванный ход
-       * — другое дело: то, за чем он стоял, оборвано вместе с ним (см. keepTasks
-       * в closeUnfinished).
+       * Subagents are not calls: a turn that ended by itself could not have been waiting for any of them
+       * (had it been, it would not have ended), so the ones still working are not touched at all and their
+       * chips stay in the header until their own notifications. An interrupted turn is another matter:
+       * what it stood for was broken off with it (see keepTasks in closeUnfinished).
        */
       const { items: settled, startedAt } = closeUnfinished(
         withError,
@@ -1291,9 +854,9 @@ const applyAgentEvent = (
         streamingId: undefined,
         streamingThinking: '',
         stopRequestedAt: undefined,
-        // Ход настоящим итогом кончился здесь и сейчас — не ждём отдельного
-        // status:'idle' от бэкенда, чтобы погасить turnStartedAt: до его
-        // прихода setInterval в App.tsx тикал бы впустую ещё какое-то время.
+        // The turn ended here and now with a real result - we do not wait for a separate status:'idle'
+        // from the backend to clear turnStartedAt: until it arrived the setInterval in App.tsx would tick
+        // for nothing a while longer.
         turnStartedAt: undefined,
         pausedMs: 0,
         waitStartedAt: undefined,
@@ -1316,7 +879,7 @@ const applyAgentEvent = (
 
 const applySystem = (
   state: PanelState,
-  event: Extract<AgentEvent, { type: 'system' }>,
+  event: AgentSystemEvent,
   now: number,
 ): PanelState => {
   const base: PanelState = {
@@ -1325,33 +888,31 @@ const applySystem = (
     model: realModel(event.model) ?? state.model,
     permissionMode: event.permissionMode ? normalizeMode(event.permissionMode) : state.permissionMode,
     slashCommands: event.slash_commands ?? state.slashCommands,
-    // Рабочий каталог агент сообщает сам; без него пути в карточках остаются
-    // полными и не помещаются в панель.
+    // The working directory the agent reports itself; without it the paths in the cards stay full and do
+    // not fit the panel.
     project: event.cwd
       ? { name: state.project?.name ?? '', ...state.project, workingDirectory: event.cwd }
       : state.project,
-    // task_id есть — сжимает конкретный субагент, а не главный поток; его
-    // собственный таймер во вкладке агента (см. AgentStreamView) честно тикает
-    // через всё сжатие и без этого флага, а вот главная строка статуса не
-    // должна гаснуть из-за того, что происходит в чужом, параллельном потоке.
+    // A task_id means a particular subagent is compacting rather than the main stream; its own timer in
+    // the agent's tab (see AgentStreamView) ticks honestly through the whole compaction without this
+    // flag, while the main status line must not go dark because of what is happening in someone else's,
+    // parallel stream.
     compacting: event.status === 'compacting' && event.task_id === undefined ? true : state.compacting,
-    // Процесс поднялся: следующий за этим «нулевой» итог хода — про сам подъём,
-    // а не про работу агента (см. case 'result').
+    // The process has come up: the "zero" turn result that follows is about the start-up itself rather
+    // than about the agent's work (see case 'result').
     starting: event.subtype === 'init' ? true : state.starting,
   }
 
-  // Запрос сорвался и пойдёт заново после паузы — единственное, что вообще
-  // происходит в разговоре, пока эта пауза идёт (см. applyApiRetry).
+  // The request failed and will go again after a pause - the only thing happening in the conversation
+  // while that pause lasts (see applyApiRetry).
   if (event.subtype === 'api_retry') return applyApiRetry(base, event, now)
 
   const isMainStreamEvent = event.task_id === undefined
 
-  // Сама карточка CONTEXT должна быть видна ещё до готового результата — иначе
-  // единственный след того, что что-то происходит, это переливающаяся строка
-  // статуса, которая не остаётся в истории (см. жалобу, из-за которой это
-  // вообще завели). Только для главного потока: у карточки нет своего owner-а
-  // по task_id, а субагенту она вообще не нужна — его сжатие и так видно по
-  // тикающему таймеру в его собственной вкладке.
+  // The CONTEXT card itself has to be visible before the finished result - otherwise the only trace that
+  // anything is happening is the shimmering status line, which does not stay in the history (see the
+  // complaint this was started over). Only for the main stream: the card has no owner by task_id, and a
+  // subagent has no need of it at all - its compaction is visible from the ticking timer in its own tab.
   if (isMainStreamEvent && event.status === 'compacting' && !state.compacting) {
     return {
       ...base,
@@ -1363,9 +924,9 @@ const applySystem = (
     }
   }
 
-  // Итог попытки сжатия приходит отдельной строкой статуса, а не compact_boundary,
-  // если сжимать оказалось нечего — тогда pending-карточка так и останется
-  // недорисованной, если её не убрать здесь же явно.
+  // The outcome of a compaction attempt arrives as a separate status line rather than a compact_boundary
+  // when there turned out to be nothing to compact - the pending card would then stay half-drawn unless
+  // it is removed right here, outright.
   if (isMainStreamEvent && event.compact_result !== undefined) {
     const finished = finishCompacting(base)
 
@@ -1376,11 +937,11 @@ const applySystem = (
 
   if (isMainStreamEvent && event.subtype === 'compact_boundary') {
     const target = compactBoundaryText(event.compact_metadata)
-    // Граница и есть конец сжатия: дальше карточка стоит в ленте с цифрами, а
-    // строка статуса снова говорит про сам ход.
+    // The boundary is the compaction's end: from here on the card stands in the feed with its figures,
+    // and the status line speaks about the turn again.
     const done = { ...base, compacting: false }
-    // Пока сжатие идёт, в ленту больше ничего не приходит (контекст в этот момент
-    // как раз переписывается) — pending-карточка, если она есть, всегда последняя.
+    // While a compaction runs nothing else arrives in the feed (the context is being rewritten at that
+    // very moment) - the pending card, if there is one, is always the last.
     const last = done.items.at(-1)
 
     if (last?.kind === 'compact' && last.pending) {
@@ -1394,247 +955,17 @@ const applySystem = (
     }
   }
 
-  /**
-   * Фоновый подагент скилла/воркфлоу (/code-review и подобные) — своей карточки
-   * не было вовсе, потому что у него нет вызова инструмента Task в потоке
-   * ассистента: скилл поднимает его напрямую, в обход обычного цикла хода.
-   * Карточка та же самая, что и у обычного Task — потребителям ниже (дропдаун
-   * стримов, экран агента) всё равно, откуда взялся kind:'task'.
-   */
-  if (event.subtype === 'task_started' && event.task_id) {
-    // Команда терминала — не агент, хотя приходит тем же каналом.
-    if (isBashTask(event)) return startBackgroundCommand(base, event, now)
-
-    /**
-     * Тот же субагент, но пришедший вторым путём: карточку на него уже завёл
-     * блок tool_use в ответе агента. Здесь только связываем task_id с ней и
-     * уточняем подпись — заводить вторую значит показать одного агента двумя
-     * чипами в шапке.
-     */
-    const linked = event.tool_use_id
-    if (linked && base.items.some((item) => item.kind === 'task' && item.id === linked)) {
-      return {
-        ...base,
-        taskCards: { ...base.taskCards, [event.task_id]: linked },
-        items: base.items.map((item) =>
-          item.kind === 'task' && item.id === linked
-            ? {
-                ...item,
-                // Настоящее имя задачи приезжает только здесь — карточку завёл
-                // вызов инструмента, а он знает лишь свой идентификатор.
-                taskId: event.task_id,
-                target: event.subagent_type ?? item.target,
-                meta: item.meta || (event.description ?? ''),
-              }
-            : item,
-        ),
-      }
-    }
-
-    return {
-      ...base,
-      startedAt: { ...base.startedAt, [event.task_id]: now },
-      taskByToolUseId: event.tool_use_id
-        ? { ...base.taskByToolUseId, [event.tool_use_id]: event.task_id }
-        : base.taskByToolUseId,
-      items: [
-        ...base.items,
-        {
-          id: event.task_id,
-          kind: 'task',
-          taskId: event.task_id,
-          target: event.subagent_type ?? 'agent',
-          meta: event.description ?? '',
-          duration: '',
-          percent: 0,
-          log: [],
-          pending: true,
-        },
-      ],
-    }
-  }
-
-  if (event.subtype === 'task_progress' && event.task_id) {
-    const card = cardFor(base, event.task_id)
-
-    return {
-      ...base,
-      items: base.items.map((item) => {
-        if (item.kind !== 'task' || item.id !== card) return item
-
-        // Тот же самый вызов уже мог прийти через основной поток субагента
-        // (noteSubagent, строка вида "Bash…"/"Bash: команда") — этот канал
-        // сообщает то же самое имя следом, без него лог превращался в пары
-        // повторяющихся строк на каждый вызов.
-        const lastLine = item.log.at(-1)?.text
-        const isDuplicate = Boolean(event.last_tool_name && lastLine?.startsWith(event.last_tool_name))
-
-        return {
-          ...item,
-          meta: event.description ?? item.meta,
-          log:
-            event.last_tool_name && !isDuplicate
-              ? appendAgentLog(item.log, [{ text: `→ ${event.last_tool_name}` }])
-              : item.log,
-        }
-      }),
-    }
-  }
-
-  if (event.subtype === 'task_notification' && event.task_id) {
-    const running = base.background.find((task) => task.id === event.task_id)
-    if (running) return finishBackgroundCommand(base, running, event, now)
-
-    const card = cardFor(base, event.task_id)
-    const startedTime = base.startedAt[card]
-    const duration = startedTime ? formatDuration(now - startedTime) : ''
-    const startedAt = { ...base.startedAt }
-    delete startedAt[card]
-    const outcome = outcomeOf(event.status)
-    const summary = event.summary ? detailFor(event.summary) : []
-    // Прибитый или упавший агент раньше выглядел ровно как отработавший: и
-    // кружок зелёный, и сводка на месте. Пометку ставим первой строкой — она и
-    // объясняет, почему сводка обрывается на середине.
-    const lines = outcome === 'ok' ? summary : [{ text: endedText(outcome), tone: 'bad' as const }, ...summary]
-
-    return {
-      ...base,
-      startedAt,
-      items: base.items.map((item) =>
-        item.kind === 'task' && item.id === card
-          ? {
-              ...item,
-              pending: false,
-              percent: 100,
-              duration,
-              outcome,
-              log: lines.length > 0 ? appendAgentLog(item.log, lines) : item.log,
-            }
-          : item,
-      ),
-    }
-  }
+  if (event.subtype === 'task_started' && event.task_id) return applyTaskStarted(base, event, now)
+  if (event.subtype === 'task_progress' && event.task_id) return applyTaskProgress(base, event)
+  if (event.subtype === 'task_notification' && event.task_id) return applyTaskNotification(base, event, now)
 
   return base
 }
 
 /**
- * Задача из системных событий task_* — это не обязательно субагент.
- *
- * Тем же каналом CLI ведёт и команды терминала: любую фоновую и любую обычную,
- * которая идёт дольше нескольких секунд. Отличает их только task_type
- * ('local_bash' против 'local_agent'). Пока панель его не смотрела, на каждую
- * такую команду заводилась карточка субагента — отсюда брались чипы «agent:agent»
- * (имени субагента у команды нет) и dev-сервер, «работающий агентом» вторые
- * сутки. Событие вовсе без типа — это старый CLI, где так ходили только
- * субагенты, поэтому неизвестный тип считаем агентом, а не командой.
- */
-const isBashTask = (event: Extract<AgentEvent, { type: 'system' }>): boolean => event.task_type === 'local_bash'
-
-/** Карточка, на которой живёт эта задача: см. taskCards. */
-const cardFor = (state: PanelState, taskId: string): string => state.taskCards[taskId] ?? taskId
-
-const outcomeOf = (status: string | undefined): TaskOutcome =>
-  status === 'failed' ? 'failed' : status === 'stopped' ? 'stopped' : 'ok'
-
-const endedText = (outcome: TaskOutcome): string =>
-  outcome === 'failed' ? 'Failed before it finished.' : 'Stopped before it finished.'
-
-/** Вызов инструмента по его id — карточки живут внутри групп, а не в ленте напрямую. */
-const findTool = (items: FeedItem[], id: string): ToolItem | undefined => {
-  for (const item of items) {
-    if (item.kind !== 'toolGroup') continue
-
-    const tool = item.tools.find((candidate) => candidate.id === id)
-    if (tool) return tool
-  }
-
-  return undefined
-}
-
-const isBackgroundCommand = (tool: ToolItem | undefined): boolean => {
-  if (!tool || typeof tool.input !== 'object' || tool.input === null) return false
-  return (tool.input as { run_in_background?: unknown }).run_in_background === true
-}
-
-/**
- * Фоновая команда получает чип в шапке: карточка в ленте говорит только о том,
- * что её запустили, и уезжает вверх вместе с разговором, а процесс живёт и
- * дальше — иногда сутками (dev-сервер). Обычная команда этим же событием
- * сообщает о себе тоже, но её чип был бы миганием на пару секунд: она вся
- * целиком видна карточкой, ради которой ход и стоит.
- */
-const startBackgroundCommand = (
-  state: PanelState,
-  event: Extract<AgentEvent, { type: 'system' }>,
-  now: number,
-): PanelState => {
-  const taskId = event.task_id
-  if (!taskId) return state
-  if (!isBackgroundCommand(event.tool_use_id ? findTool(state.items, event.tool_use_id) : undefined)) return state
-
-  return {
-    ...state,
-    startedAt: { ...state.startedAt, [taskId]: now },
-    background: [
-      ...state.background,
-      {
-        id: taskId,
-        toolUseId: event.tool_use_id,
-        label: event.description ?? 'background command',
-        duration: formatDuration(0),
-      },
-    ],
-  }
-}
-
-/**
- * Фоновая команда кончилась. Чип уходит из шапки, а итог дописываем прямо в её
- * карточку в ленте: своей карточки у неё нет и не нужно — в ленте уже стоит та,
- * которой её запускали, и правильное место для «сколько проработала и чем
- * кончилась» именно там.
- */
-const finishBackgroundCommand = (
-  state: PanelState,
-  task: BackgroundTask,
-  event: Extract<AgentEvent, { type: 'system' }>,
-  now: number,
-): PanelState => {
-  const started = state.startedAt[task.id]
-  const duration = started ? formatDuration(now - started) : task.duration
-  const startedAt = { ...state.startedAt }
-  delete startedAt[task.id]
-
-  const outcome = outcomeOf(event.status)
-  const tone = outcome === 'failed' ? ('bad' as const) : ('dim' as const)
-  const ended = outcome === 'failed' ? 'failed' : outcome === 'stopped' ? 'was stopped' : 'finished'
-  // Текст CLI объясняет провал по делу («exit code 3»), а при обычном конце
-  // повторяет описание команды, которое и так стоит в карточке.
-  const detail = outcome === 'failed' && event.summary ? detailFor(event.summary) : []
-
-  const items = task.toolUseId
-    ? mapTool(state.items, task.toolUseId, (tool) => ({
-        ...tool,
-        duration,
-        isError: tool.isError || outcome === 'failed',
-        detail: [...tool.detail, { text: `Background command ${ended} after ${duration}.`, tone }, ...detail],
-      }))
-    : state.items
-
-  return { ...state, startedAt, background: state.background.filter((item) => item.id !== task.id), items }
-}
-
-/** Правка одного вызова инструмента на месте — он лежит внутри своей группы. */
-const mapTool = (items: FeedItem[], id: string, change: (tool: ToolItem) => ToolItem): FeedItem[] =>
-  items.map((item) => {
-    if (item.kind !== 'toolGroup' || !item.tools.some((tool) => tool.id === id)) return item
-    return { ...item, tools: item.tools.map((tool) => (tool.id === id ? change(tool) : tool)) }
-  })
-
-/**
- * Заглушка, которой CLI закрывает ход без настоящего ответа (например, после
- * локальной команды вроде /clear — она не зовёт модель). Единственный признак
- * отличить её от настоящего ответа — она приходит одна, без единого другого блока.
+ * The placeholder the CLI closes a turn with when there is no real answer (after a local command such as
+ * /clear, for instance - it calls no model). The one sign that tells it from a real answer is that it
+ * arrives alone, without a single other block.
  */
 const isNoContentPlaceholder = (blocks: ContentBlock[]): boolean => {
   if (blocks.length !== 1) return false
@@ -1642,7 +973,7 @@ const isNoContentPlaceholder = (blocks: ContentBlock[]): boolean => {
   return block.type === 'text' && block.text.trim() === '(no content)'
 }
 
-/** Показывали ли этот же текст ошибкой в текущем ходе — тогда повторять его нечем. */
+/** Whether this same text has already been shown as an error in the current turn - then repeating it serves nothing. */
 const alreadyShownAsError = (state: PanelState, text: string): boolean => {
   const turnStart = state.items.map((item) => item.kind).lastIndexOf('user') + 1
   const message = text.trim()
@@ -1656,7 +987,7 @@ const applyAssistant = (
   state: PanelState,
   blocks: ContentBlock[],
   now: number,
-  /** Перепись прошлого разговора, а не живой ход — см. applyAgentEvent. */
+  /** A past conversation's replay rather than a live turn - see applyAgentEvent. */
   replay = false,
 ): PanelState => {
   if (isNoContentPlaceholder(blocks)) {
@@ -1664,20 +995,19 @@ const applyAssistant = (
   }
 
   let next: PanelState = { ...state, streamingText: '', streamingThinking: '' }
-  // Номер, занятый печатающейся карточкой, достаётся первому текстовому блоку —
-  // это тот же самый ответ, только целиком. Остальные блоки берут номера как
-  // обычно, а если текста в сообщении не оказалось вовсе, занятый номер просто
-  // пропадает: дырка в нумерации никого не беспокоит, а вот повтор — сломал бы
-  // ключи в ленте.
+  // The number taken by the printing card goes to the first text block - it is the same answer, only
+  // whole. The remaining blocks take numbers as usual, and if there turned out to be no text in the
+  // message at all, the taken number is simply lost: a gap in the numbering troubles nobody, while a
+  // repeat would break the keys in the feed.
   let reserved = state.streamingId
   next = { ...next, streamingId: undefined }
 
   for (const block of blocks) {
     if (block.type === 'text') {
       if (!block.text.trim()) continue
-      // Тот же текст уже стоит в ленте красной плашкой — второй раз, обычным
-      // ответом, он ничего не добавляет. Так приходит неудачное сжатие: CLI
-      // сообщает о нём и отдельным событием, и репликой агента слово в слово.
+      // The same text already stands in the feed as a red slab - a second time, as an ordinary answer, it
+      // adds nothing. That is how a failed compaction arrives: the CLI reports it both as a separate event
+      // and as the agent's message, word for word.
       if (alreadyShownAsError(next, block.text)) continue
 
       const paragraphs = parseParagraphs(block.text)
@@ -1690,8 +1020,8 @@ const applyAssistant = (
       continue
     }
 
-    // Своей карточкой, а не строкой в группе вызовов рядом: там она тонет в
-    // первой же свёрнутой «N tools», и её не видно, пока группу не раскрыть.
+    // A card of its own rather than a line in the neighbouring group of calls: there it drowns in the
+    // first collapsed "N tools" and is invisible until the group is expanded.
     if (block.type === 'thinking') {
       if (!block.thinking.trim()) continue
       next = addThought(next, block.thinking.trim())
@@ -1707,12 +1037,12 @@ const applyAssistant = (
 }
 
 /**
- * Мысль, к которой копятся следующие: последняя карточка мыслей этого куска
- * хода. Кусок кончается там, где агент заговорил сам — обычным ответом или
- * планом, — и дальше думает уже про другое, о чём и карточка должна быть новая.
+ * The thought the next ones accumulate into: the last thought card of this piece of the turn. A piece
+ * ends where the agent spoke for itself - with an ordinary answer or with a plan - and from then on it
+ * thinks about something else, which deserves a card of its own.
  *
- * Вызовы инструментов кусок не рвут намеренно: между ними модель думает почти
- * всегда, и это ровно тот случай, ради которого мысли и собираются вместе.
+ * Tool calls deliberately do not break a piece: between them the model thinks almost always, and that is
+ * exactly the case the thoughts are gathered together for.
  */
 export const openThought = (items: FeedItem[]): number => {
   for (let index = items.length - 1; index >= 0; index--) {
@@ -1725,9 +1055,9 @@ export const openThought = (items: FeedItem[]): number => {
 }
 
 /**
- * Мысль — в открытую карточку этого куска хода, а не отдельной строкой в конец
- * ленты. Оттого и вызовы вокруг остаются одной группой: последним в ленте
- * по-прежнему стоит их группа, а не вклинившаяся между ними мысль.
+ * A thought goes into this piece of the turn's open card rather than as a separate line at the end of the
+ * feed. That is also why the calls around it stay one group: what stands last in the feed is still their
+ * group rather than a thought wedged between them.
  */
 const addThought = (state: PanelState, thought: string): PanelState => {
   const index = openThought(state.items)
@@ -1741,16 +1071,14 @@ const addThought = (state: PanelState, thought: string): PanelState => {
 }
 
 /**
- * Подряд идущие вызовы обычных инструментов складываются в одну группу, пока их
- * не прервёт что-то другое (текст, todo, план, вопрос, задача субагента). Между
- * внутренними шагами одного агентского хода группа может на мгновение полностью
- * разрешиться и тут же продолжиться следующим вызовом без единого текстового
- * блока между ними — это тот самый непрерывный «взрыв» вызовов, который и должен
- * остаться одной группой. Поэтому смотрим только на то, чем был последний
- * элемент ленты, а не на его pending. Сам pending группы при этом честно
- * выводится из детей, а не проставляется вслепую: мысль модели (thinking),
- * например, добавляется уже разрешённой — если бы группа снова становилась
- * pending от одного факта добавления, её было бы уже некому разрешить обратно.
+ * Consecutive calls of ordinary tools fold into one group until something else interrupts them (text, a
+ * todo, a plan, a question, a subagent's task). Between the internal steps of one agent turn a group may
+ * briefly resolve entirely and immediately continue with the next call without a single text block
+ * between them - that is the very unbroken "burst" of calls that should stay one group. So we look only
+ * at what the feed's last item was rather than at its pending. The group's own pending, meanwhile, is
+ * honestly derived from its children rather than set blindly: the model's thinking, for instance, is
+ * added already resolved - if a group became pending again from the mere fact of an addition, there would
+ * be nobody left to resolve it back.
  */
 const appendToolCall = (state: PanelState, tool: ToolItem, now: number): PanelState => {
   const last = state.items.at(-1)
@@ -1784,7 +1112,7 @@ const applyToolUse = (
   state: PanelState,
   block: ToolUseBlock,
   now: number,
-  /** Перепись прошлого разговора, а не живой ход — см. applyAgentEvent. */
+  /** A past conversation's replay rather than a live turn - see applyAgentEvent. */
   replay = false,
 ): PanelState => {
   const input = (block.input ?? {}) as Record<string, unknown>
@@ -1797,11 +1125,10 @@ const applyToolUse = (
     }
   }
 
-  // Эта версия CLI ведёт список задач уже не через TodoWrite (одним вызовом со
-  // всем списком целиком), а через отдельные TaskCreate/TaskUpdate — см. тип
-  // pendingTasks. Само появление задачи в панели откладывается до ответа
-  // TaskCreate (см. applyTaskCreated): раньше просто нечего показывать —
-  // номер, под которым TaskUpdate будет её узнавать, известен только оттуда.
+  // This version of the CLI leads its task list not through TodoWrite (one call carrying the whole list)
+  // but through separate TaskCreate/TaskUpdate calls - see the pendingTasks type. A task's appearance in
+  // the panel is deferred until the TaskCreate answer (see applyTaskCreated): before that there is
+  // nothing to show - the number TaskUpdate will recognise it by is known only from there.
   if (block.name === 'TaskCreate') {
     const subject = typeof input.subject === 'string' ? input.subject : ''
     if (!subject) return state
@@ -1815,8 +1142,8 @@ const applyToolUse = (
   if (block.name === 'TaskUpdate') {
     const taskId = typeof input.taskId === 'string' ? input.taskId : ''
     const existing = state.tasks[taskId]
-    // Задача не из нашего списка (например, принадлежит фоновому агенту) —
-    // и трогать нечего.
+    // The task is not from our list (it belongs to a background agent, for instance) - and there is
+    // nothing to touch.
     if (!existing) return state
 
     if (input.status === 'deleted') {
@@ -1852,12 +1179,12 @@ const applyToolUse = (
         {
           id: block.id,
           kind: 'plan',
-          // Шагами считаем пункты верхнего уровня — то же, что человек посчитает
-          // глазами; вложенные уточнения отдельными шагами не звучат.
+          // Steps are the top-level items - the same thing a person counts by eye; nested clarifications
+          // do not sound like steps of their own.
           meta: steps > 0 ? `· ${steps} ${steps === 1 ? 'step' : 'steps'}` : '',
           duration: '',
           paragraphs,
-          // План из переписи решения не ждёт — см. PlanItem.historic.
+          // A plan out of a replay waits for no decision - see PlanItem.historic.
           historic: replay,
         },
       ],
@@ -1866,8 +1193,8 @@ const applyToolUse = (
 
   if (block.name === 'AskUserQuestion') {
     const questions = readQuestions(input)
-    // Без единого вопроса блокировать нечем и нечего показывать — а карточку
-    // без вопросов и закрыть-то нечем (отвечать не на что), она бы зависла.
+    // Without a single question there is nothing to block with and nothing to show - and a card without
+    // questions cannot even be closed (there is nothing to answer), it would hang.
     if (questions.length === 0) return state
 
     return {
@@ -1879,8 +1206,8 @@ const applyToolUse = (
           kind: 'ask',
           meta: `${questions.length} ${questions.length === 1 ? 'question' : 'questions'} · blocks the run`,
           questions,
-          // Вопрос из переписи ничего не держит: ход, который его задал, кончился
-          // когда-то в прошлом (см. AskItem.historic).
+          // A question out of a replay holds nothing: the turn that asked it ended some time in the past
+          // (see AskItem.historic).
           historic: replay,
         },
       ],
@@ -1890,10 +1217,10 @@ const applyToolUse = (
   if (block.name === 'Task' || block.name === 'Agent') {
     const subagent = typeof input.subagent_type === 'string' ? input.subagent_type : 'general'
     /**
-     * Карточку на этого субагента уже завело системное событие task_started —
-     * оно приходит раньше блока tool_use, когда субагента поднимает не ход, а
-     * скилл. Второй карточки быть не должно (см. taskCards): уточняем ту, что
-     * есть, — во входе вызова описание подробнее, чем в событии.
+     * A card for this subagent has already been created by the task_started system event - it arrives
+     * before the tool_use block when the subagent is raised not by the turn but by a skill. There must be
+     * no second card (see taskCards): we refine the one that exists - the call's input holds a fuller
+     * description than the event.
      */
     const known = state.taskByToolUseId[block.id]
     if (known) {
@@ -1945,29 +1272,31 @@ const applyToolUse = (
 }
 
 /**
- * Вызов Task/Agent в фоновом режиме (по умолчанию) отвечает этим текстом сразу,
- * не дожидаясь субагента, — это подтверждение запуска, а не итог его работы.
- * Настоящий конец потом приносит отдельное событие task_notification (см. ниже).
- * Приняв это подтверждение за результат, карточка закрывалась бы мгновенно —
- * агент ещё и начать не успел, а чип в шапке уже гас как отработавший.
+ * A Task/Agent call in background mode (the default) answers with this text at once, without waiting for
+ * the subagent - it is a confirmation of the launch rather than the outcome of its work. The real end is
+ * brought later by a separate task_notification event (see below). Taking this confirmation for a result,
+ * the card would close instantly - the agent had not even begun while the chip in the header went out as
+ * though it had finished.
  */
+const ASYNC_AGENT_LAUNCHED = /^Async agent launched successfully/
+
 /**
- * Служебное, что CLI кладёт в реплику человека его же словами: напоминание
- * самому себе, преамбула про локальные команды и их вывод. В ленте прошлого
- * разговора это выглядело бы сказанным человеком.
+ * The internal things the CLI puts into a person's message in their own words: a reminder to itself, the
+ * preamble about local commands and their output. In a past conversation's feed that would look like
+ * something the person said.
  */
 const SERVICE_BLOCK = /<(system-reminder|local-command-caveat|local-command-stdout|command-message)>[\s\S]*?<\/\1>/g
 
-/** Слэш-команда лежит в переписке разметкой, а не строкой «/deploy 0.7.11». */
+/** A slash command lies in a transcript as markup rather than as the string "/deploy 0.7.11". */
 const COMMAND_NAME = /<command-name>([\s\S]*?)<\/command-name>/
 const COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/
 
-/** Отметка CLI об остановке — не реплика: про неё говорит сам оборванный ход. */
+/** The CLI's mark about a stop - not a message: the interrupted turn itself speaks about that. */
 const INTERRUPTED = '[Request interrupted by user]'
 
 /**
- * Что из записи прошлого разговора было настоящей репликой человека. Пусто —
- * значит показывать нечего: вся запись служебная.
+ * What in a past conversation's record was a real message from the person. Empty means there is nothing
+ * to show: the whole record is internal.
  */
 const replayedPromptText = (blocks: ContentBlock[]): string => {
   const text = blocks
@@ -1987,26 +1316,27 @@ const replayedPromptText = (blocks: ContentBlock[]): string => {
 }
 
 /**
- * Реплика человека из переписи прошлого разговора.
+ * A person's message out of a past conversation's replay.
  *
- * Живой разговор кладёт её в ленту сам, когда человек нажимает Send, — в
- * переписи же это единственный её след, и без него открытый из истории разговор
- * состоял из одних ответов, как будто их никто ни о чём не просил.
+ * A live conversation puts it into the feed itself, when the person presses Send - in a replay this is
+ * its only trace, and without it a conversation opened from the history consisted of answers alone, as
+ * though nobody had asked for any of it.
  */
 const addReplayedPrompt = (
   state: PanelState,
   event: Extract<AgentEvent, { type: 'user' }>,
   now: number,
 ): PanelState => {
-  // Запись самого CLI, а не человека, и реплика вложенного потока: субагенту
-  // пишет ход, а не человек, и его переписка к ленте отношения не имеет.
+  // A record written by the CLI rather than the person, and a message of a nested stream: a subagent is
+  // written to by the turn rather than by the person, and its correspondence has nothing to do with this
+  // feed.
   if (event.isMeta || event.parent_tool_use_id) return state
 
   const text = replayedPromptText(blocksOf(event.message.content))
   if (!text) return state
 
-  // Время берём то, когда это было сказано: у переписи «сейчас» — это момент,
-  // когда открыли вкладку, и весь прошлый разговор выглядел бы сегодняшним.
+  // The time is taken from when it was said: in a replay "now" is the moment the tab was opened, and the
+  // whole past conversation would look like today's.
   const said = Date.parse(event.timestamp ?? '')
 
   return push(state, (id) => ({
@@ -2017,8 +1347,6 @@ const addReplayedPrompt = (
     quotes: [],
   }))
 }
-
-const ASYNC_AGENT_LAUNCHED = /^Async agent launched successfully/
 
 const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number): PanelState => {
   const results = blocks.filter((block): block is ToolResultBlock => block.type === 'tool_result')
@@ -2044,8 +1372,8 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
       isError,
       duration,
       meta: metaFor(item.toolName, item.input, text, isError),
-      // При диффе сырой ответ инструмента не показываем: он повторяет то же самое
-      // строками вида «файл обновлён» и куском кода вокруг правки.
+      // With a diff we do not show the tool's raw answer: it repeats the same thing with lines like "the
+      // file was updated" and a piece of code around the edit.
       detail: hunks.length > 0 ? [] : detailFor(text),
       hunks,
     }
@@ -2053,19 +1381,18 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
 
   const items = state.items.map((item) => {
     if (item.kind === 'task') {
-      // Карточка субагента живёт либо под id вызова, либо под task_id системного
-      // события — смотря что пришло первым (см. taskByToolUseId).
+      // A subagent's card lives either under the call's id or under a system event's task_id - whichever
+      // came first (see taskByToolUseId).
       const result = results.find(
         (candidate) => (state.taskByToolUseId[candidate.tool_use_id] ?? candidate.tool_use_id) === item.id,
       )
       if (!result) return item
 
       const text = resultToText(result.content)
-      // Ещё не итог — просто подтверждение, что фоновый субагент стартовал.
-      // Ждём его настоящий конец через task_notification, а не гасим карточку
-      // на первом же слове от CLI. Заодно помечаем её фоновой: конец хода такую
-      // карточку не закрывает (см. closeUnfinished), уведомление о её итоге
-      // приходит уже после него.
+      // Not the outcome yet - merely a confirmation that a background subagent has started. We wait for
+      // its real end through task_notification rather than putting the card out on the CLI's first word.
+      // We also mark it background along the way: the turn's end does not close such a card (see
+      // closeUnfinished), its outcome notification arrives after it.
       if (ASYNC_AGENT_LAUNCHED.test(text)) return item.background ? item : { ...item, background: true }
 
       const started = state.startedAt[item.id]
@@ -2074,15 +1401,14 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
 
       const isError = result.is_error === true
       const tone = isError ? ('bad' as const) : ('ok' as const)
-      const task: TaskItem = {
+      return {
         ...item,
         pending: false,
         percent: 100,
         duration,
-        outcome: isError ? 'failed' : 'ok',
-        log: appendAgentLog(item.log, detailFor(text).map((line) => ({ ...line, tone }))),
+        outcome: isError ? ('failed' as const) : ('ok' as const),
+        log: appendAgentLog(item.log, detailFor(text).map((line): DetailLine => ({ ...line, tone }))),
       }
-      return task
     }
 
     if (item.kind !== 'toolGroup') return item
@@ -2100,15 +1426,14 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
   return applyTaskCreated({ ...state, items, startedAt }, results)
 }
 
-/** "Task #3 created successfully: …" — единственное место, где TaskCreate называет присвоенный номер. */
+/** "Task #3 created successfully: …" - the only place TaskCreate names the number it assigned. */
 const TASK_CREATED = /^Task #(\d+) created successfully/
 
 /**
- * Довешивает задачи, чей TaskCreate только что подтвердился, к списку — с тем
- * самым номером, каким их будет называть TaskUpdate. Не сумели распознать номер
- * (текст ответа однажды изменится — мы не властны над словами инструмента) —
- * оставляем как есть, не показывая и не ломая остальной список: лучше
- * недостающая строка, чем весь список с перепутанными номерами.
+ * Appends the tasks whose TaskCreate has just been confirmed to the list - under the very number
+ * TaskUpdate will call them by. When the number could not be recognised (the answer's wording will change
+ * one day - we have no power over the tool's words), the task is left as it is, neither shown nor
+ * breaking the rest of the list: a missing line is better than the whole list with mixed-up numbers.
  */
 const applyTaskCreated = (state: PanelState, results: ToolResultBlock[]): PanelState => {
   const pendingIds = Object.keys(state.pendingTasks).filter((id) => results.some((r) => r.tool_use_id === id))
@@ -2125,7 +1450,7 @@ const applyTaskCreated = (state: PanelState, results: ToolResultBlock[]): PanelS
     const match = TASK_CREATED.exec(resultToText(result?.content).trim())
     if (!match) continue
 
-    tasks[match[1]] = {
+    tasks[match[1]!] = {
       id: `task-${match[1]}`,
       text: created?.subject ?? '',
       state: 'todo',
@@ -2136,7 +1461,7 @@ const applyTaskCreated = (state: PanelState, results: ToolResultBlock[]): PanelS
   return push({ ...state, tasks, pendingTasks }, (id) => ({ id, kind: 'todo', todos: orderedTasks(tasks) }))
 }
 
-/** pending/in_progress/completed — тот же словарь состояний, что и у TodoWrite. */
+/** pending/in_progress/completed - the same state dictionary TodoWrite has. */
 const taskState = (status: unknown, fallback: TodoEntry['state']): TodoEntry['state'] => {
   if (status === 'completed') return 'done'
   if (status === 'in_progress') return 'active'
@@ -2144,180 +1469,17 @@ const taskState = (status: unknown, fallback: TodoEntry['state']): TodoEntry['st
   return fallback
 }
 
-/** По номеру задачи, как их присваивает TaskCreate — не по порядку последней правки. */
+/** By the task's number, as TaskCreate assigns them - not by the order of the last edit. */
 const orderedTasks = (tasks: Record<string, TodoEntry>): TodoEntry[] =>
   Object.keys(tasks)
     .sort((a, b) => Number(a) - Number(b))
-    .map((id) => tasks[id])
+    .map((id) => tasks[id]!)
+
+// --- Small things -----------------------------------------------------------
 
 /**
- * Кап на лог агента — иначе очень длинный субагент рос бы в памяти неограниченно.
- * 300 строк — с большим запасом на реальный ход субагента; при переполнении
- * старейшие строки уходят под одну сводную пометку вместо того, чтобы пропадать
- * молча.
- */
-const AGENT_LOG_LIMIT = 300
-const TRIM_MARK = /^…(\d+) earlier steps trimmed$/
-
-const appendAgentLog = (log: DetailLine[], lines: DetailLine[]): DetailLine[] => {
-  if (lines.length === 0) return log
-
-  const merged = [...log, ...lines]
-  if (merged.length <= AGENT_LOG_LIMIT) return merged
-
-  const already = TRIM_MARK.exec(merged[0]?.text ?? '')
-  const priorTrimmed = already ? Number(already[1]) : 0
-  const withoutMark = already ? merged.slice(1) : merged
-  const keep = withoutMark.slice(withoutMark.length - (AGENT_LOG_LIMIT - 1))
-  const trimmedNow = withoutMark.length - keep.length
-
-  return [{ text: `…${priorTrimmed + trimmedNow} earlier steps trimmed`, tone: 'dim' as const }, ...keep]
-}
-
-/**
- * Резолвит id вызова, который породил субагента, в реальный task_id его
- * карточки. У фонового канала (task_started/...) это два разных значения —
- * карта строится в applySystem. У прямого вызова Task/Agent tool_use они
- * совпадают напрямую (сама карточка создана с id, равным этому же вызову),
- * поэтому карта для него не нужна — резолвится в самого себя через ?? .
- */
-const resolveTaskId = (state: PanelState, parentToolUseId: string): string =>
-  state.taskByToolUseId[parentToolUseId] ?? parentToolUseId
-
-/**
- * Сообщения субагента идут в лог его же карточки, а не в общую ленту — у него
- * своя вкладка (см. AgentStreamView).
- *
- * Ветка AskUserQuestion ниже — на будущее, а не для сегодняшнего Claude Code:
- * по официальной документации Agent SDK (user-input.md, раздел Limitations;
- * sub-agents.md, "Control subagent capabilities") AskUserQuestion сейчас
- * вообще недоступен субагентам, запущенным через Task/Agent — SDK вырезает
- * его из набора инструментов до того, как субагент успеет его вызвать. Раз
- * инструмент недостижим, до этой ветки в реальности дело не доходит: она не
- * лечит какую-то поломку доставки ответа, а просто готова к моменту, если
- * Anthropic такое ограничение снимет — тогда вопрос от субагента не потеряется
- * одной строкой без вариантов ответа, как было раньше.
- */
-const noteSubagent = (
-  state: PanelState,
-  parentToolUseId: string,
-  blocks: ContentBlock[],
-  /** Перепись прошлого разговора, а не живой ход — см. applyAgentEvent. */
-  replay = false,
-): PanelState => {
-  const taskId = resolveTaskId(state, parentToolUseId)
-  if (!state.items.some((item) => item.kind === 'task' && item.id === taskId)) return state
-
-  const askBlock = blocks.find(
-    (block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'AskUserQuestion',
-  )
-
-  let next = state
-  const questions = askBlock ? readQuestions((askBlock.input ?? {}) as Record<string, unknown>) : []
-  // См. applyToolUse: без вопросов карточку нечем закрыть, она бы зависла.
-  if (askBlock && questions.length > 0) {
-    next = {
-      ...next,
-      items: [
-        ...next.items,
-        {
-          id: askBlock.id,
-          kind: 'ask',
-          meta: `${questions.length} ${questions.length === 1 ? 'question' : 'questions'} · blocks the run`,
-          questions,
-          taskId,
-          // См. applyToolUse: вопрос из переписи никого не держит.
-          historic: replay,
-        },
-      ],
-    }
-  }
-
-  const workingDirectory = state.project?.workingDirectory ?? ''
-
-  const lines = blocks.flatMap((block): DetailLine[] => {
-    if (block.type === 'text' && block.text.trim()) return [{ text: block.text.trim().split('\n')[0] ?? '' }]
-
-    if (block.type === 'tool_use') {
-      // targetFor всегда что-то отдаёт — при отсутствии более точной цели
-      // просто возвращает само имя инструмента; такой случай не дублируем.
-      const target = targetFor(block.name, block.input, workingDirectory)
-      return [{ text: target === block.name ? `${block.name}…` : `${block.name}: ${target}`, tone: 'dim' as const }]
-    }
-
-    return []
-  })
-
-  return {
-    ...next,
-    items: next.items.map((item) =>
-      item.id === taskId && item.kind === 'task'
-        ? { ...item, log: appendAgentLog(item.log, lines), percent: Math.min(item.percent + 12, 92) }
-        : item,
-    ),
-  }
-}
-
-// --- Чтение входных данных инструментов -------------------------------------
-
-const readTodos = (input: Record<string, unknown>): TodoEntry[] => {
-  const raw = Array.isArray(input.todos) ? input.todos : []
-
-  return raw.map((entry, index) => {
-    const item = (entry ?? {}) as Record<string, unknown>
-    const status = typeof item.status === 'string' ? item.status : 'pending'
-
-    return {
-      id: `todo-${index}`,
-      text: typeof item.content === 'string' ? item.content : '',
-      state: status === 'completed' ? 'done' : status === 'in_progress' ? 'active' : 'todo',
-      activeForm: (typeof item.activeForm === 'string' ? item.activeForm : '') || undefined,
-    }
-  })
-}
-
-/**
- * План приходит одним текстом markdown — и показываем мы его тем же разбором,
- * что и обычный ответ агента (см. PlanItem.paragraphs).
- */
-const readPlan = (input: Record<string, unknown>): Paragraph[] =>
-  parseParagraphs(typeof input.plan === 'string' ? input.plan : '')
-
-const readQuestions = (input: Record<string, unknown>): AskQuestion[] => {
-  const raw = Array.isArray(input.questions) ? input.questions : []
-
-  return raw.map((entry, index) => {
-    const question = (entry ?? {}) as Record<string, unknown>
-    const options = Array.isArray(question.options) ? question.options : []
-
-    return {
-      id: `q-${index}`,
-      title: typeof question.question === 'string' ? question.question : '',
-      hint: typeof question.header === 'string' ? question.header : '',
-      multiSelect: question.multiSelect === true,
-      options: options.map((optionRaw, optionIndex) => {
-        const option = (optionRaw ?? {}) as Record<string, unknown>
-        return {
-          id: `o-${optionIndex}`,
-          label: typeof option.label === 'string' ? option.label : '',
-          sub: typeof option.description === 'string' ? option.description : '',
-        }
-      }),
-    }
-  })
-}
-
-// --- Мелочи -----------------------------------------------------------------
-
-const push = (state: PanelState, make: (id: string) => FeedItem): PanelState => ({
-  ...state,
-  seq: state.seq + 1,
-  items: [...state.items, make(`i-${state.seq}`)],
-})
-
-/**
- * Кусочек печатающегося ответа. Вместе с первым кусочком занимаем и номер в
- * ленте — под ним же ответ потом ляжет готовым блоком (см. streamingId).
+ * A chunk of a printing answer. Along with the first chunk we take a number in the feed as well - the
+ * answer will later lie under it as a finished block (see streamingId).
  */
 const appendStreamingText = (state: PanelState, text: string): PanelState => {
   if (!text) return state
@@ -2335,12 +1497,12 @@ const mergeUsage = (current: Required<AgentUsage>, incoming?: AgentUsage): Requi
 })
 
 /**
- * «Сейчас занято окна контекста» — снимок ПОСЛЕДНЕГО внутреннего шага, а не
- * сумма по всем (см. комментарий у места вызова). При однoшаговом ходе
- * верхнеуровневые поля usage и так совпадают со снимком, можно смело взять их.
- * А вот при многошаговом (num_turns > 1) без единого снимка в iterations —
- * верхнеуровневые поля это точно сумма, а не снимок; доверять ей молча
- * нельзя, поэтому оставляем state.usage нетронутым, а не завышенным.
+ * "How much of the context window is taken now" is a snapshot of the LAST internal step rather than a sum
+ * over all of them (see the comment at the call site). With a single-step turn the top-level usage
+ * fields coincide with the snapshot anyway, so they can safely be taken. With a multi-step one
+ * (num_turns > 1) and no snapshot in iterations, though, the top-level fields are certainly a sum rather
+ * than a snapshot; trusting them silently is not an option, so state.usage is left untouched rather than
+ * inflated.
  */
 const contextSnapshot = (event: Extract<AgentEvent, { type: 'result' }>): AgentUsage | undefined => {
   const last = event.usage?.iterations?.at(-1)
@@ -2350,12 +1512,12 @@ const contextSnapshot = (event: Extract<AgentEvent, { type: 'result' }>): AgentU
 }
 
 /**
- * Сколько занимал контекст в момент этого запроса к модели: вся входная часть
- * usage — и свежие токены, и то, что модель прочитала из кеша.
+ * How much the context took at the moment of this request to the model: the whole input part of usage -
+ * both fresh tokens and what the model read out of the cache.
  *
- * Пустой usage (служебный ход, который к модели не ходил вовсе) отдаёт ничего,
- * а не ноль: иначе датчик падал бы в ноль посреди разговора — та же ловушка,
- * что и у снимка из result, см. withoutEmpty.
+ * An empty usage (an internal turn that never went to the model at all) returns nothing rather than zero:
+ * otherwise the meter would fall to zero mid-conversation - the same trap as with the snapshot from a
+ * result, see withoutEmpty.
  */
 const contextUsedOf = (usage?: AgentUsage): number | undefined => {
   const filled = withoutEmpty(usage)
@@ -2369,12 +1531,12 @@ const contextUsedOf = (usage?: AgentUsage): number | undefined => {
 }
 
 /**
- * Пустой снимок — не «контекст обнулился», а «этот ход к модели не ходил вовсе».
+ * An empty snapshot is not "the context has been reset" but "this turn never went to the model at all".
  *
- * Так закрывается ход служебной команды: `/model`, например, CLI выполняет сам,
- * без единого запроса к модели, и в result присылает нули. Приняв их за снимок
- * окна, датчик контекста падал до нуля прямо посреди разговора, хотя вся
- * переписка никуда не делась.
+ * That is how an internal command's turn is closed: `/model`, for instance, the CLI carries out itself,
+ * without a single request to the model, and sends zeros in its result. Taking those for a snapshot of
+ * the window, the context meter fell to zero right in the middle of a conversation, although the whole
+ * transcript had gone nowhere.
  */
 const withoutEmpty = (usage?: AgentUsage): AgentUsage | undefined => {
   if (!usage) return undefined
@@ -2387,27 +1549,27 @@ const withoutEmpty = (usage?: AgentUsage): AgentUsage | undefined => {
   return total > 0 ? usage : undefined
 }
 
-/** Подпись прерванного хода — одна на все пути, которыми он мог оборваться. */
+/** The caption of an interrupted turn - one for every route it could have broken off by. */
 export const STOPPED_BY_YOU = 'Stopped by you'
 
-/** Токены, цена и модель — шум под каждым ходом; из всего этого нужна только длительность. */
+/** Tokens, price and model are noise under every turn; out of all that only the duration is needed. */
 const resultStats = (event: Extract<AgentEvent, { type: 'result' }>, cancelled: boolean): string[] => {
   const duration = typeof event.duration_ms === 'number' ? formatDuration(event.duration_ms) : ''
 
   if (!cancelled) return duration ? [`Worked ${duration}`] : []
-  // Не «Worked»: ход не отработал, а был оборван на полпути, и подпись обязана
-  // говорить именно это — иначе прерванный ход не отличить от законченного.
+  // Not "Worked": the turn did not work through, it was broken off halfway, and the caption is obliged to
+  // say exactly that - otherwise an interrupted turn is indistinguishable from a finished one.
   return [duration ? `${STOPPED_BY_YOU} · ${duration}` : STOPPED_BY_YOU]
 }
 
 export const formatTokens = (value: number): string => {
-  // Миллион пишем миллионом: у больших моделей окно контекста именно такое, и
-  // «1000.0k» в датчике читается хуже, чем «1.0M».
+  // A million is written as a million: with large models the context window is exactly that, and
+  // "1000.0k" on the meter reads worse than "1.0M".
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
   return value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value)
 }
 
-/** Текст готовой карточки CONTEXT — с реальными до/после и временем, если IDE их прислала. */
+/** The text of a finished CONTEXT card - with real before and after figures and a time, when the IDE sent them. */
 const compactBoundaryText = (meta: AgentSystemEvent['compact_metadata']): string => {
   const before = meta?.pre_tokens
   const trigger = meta?.trigger === 'manual' ? 'manually' : 'automatically'
@@ -2424,16 +1586,16 @@ const formatClock = (ms: number): string => {
 }
 
 /**
- * Что показывает датчик контекста: занято, всего и доля.
+ * What the context meter shows: taken, total and the share.
  *
- * Размер окна — от самого CLI (см. PanelState.context): он зависит от модели, у
- * «1M»-моделей впятеро больше обычного, и своей арифметикой его не угадать.
+ * The window's size comes from the CLI itself (see PanelState.context): it depends on the model, with
+ * "1M" models it is five times the usual, and arithmetic of ours cannot guess it.
  *
- * А вот занятое берём по свежести. Точная цифра от CLI приезжает только концом
- * хода, поэтому пока идёт ход, показываем прикидку по последнему ответу агента
- * (liveContextUsed): без неё за самый долгий запрос — первый — полоска не
- * двигалась вовсе, хотя окно за это время и заполняется. Как только ход
- * закончится, точная цифра эту прикидку вытеснит (см. case 'context').
+ * What is taken, though, is chosen by freshness. The exact figure from the CLI arrives only at a turn's
+ * end, so while a turn runs we show the estimate from the agent's latest answer (liveContextUsed):
+ * without it, through the longest request - the first - the bar did not move at all, although the window
+ * fills up in that time. As soon as the turn ends, the exact figure displaces that estimate (see case
+ * 'context').
  */
 export const contextOf = (
   state: PanelState,
@@ -2458,14 +1620,14 @@ export const contextOf = (
 }
 
 /**
- * Доля занятого окна контекста для датчика в нижней строке. Размер окна зависит от
- * модели, поэтому приходит извне; двести тысяч — только запасное значение.
+ * The share of the context window taken, for the meter in the bottom line. The window's size depends on
+ * the model, so it arrives from outside; two hundred thousand is only the fallback.
  */
 export const contextUsage = (usage: Required<AgentUsage>, limit = 200_000): number => {
   const used = usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens
-  // Дефолт параметра срабатывает только на literally undefined — явный 0 (или
-  // отрицательное значение) прошёл бы мимо него прямиком в used / 0 = Infinity,
-  // а дальше Math.min(Infinity, 100) даёт ровно 100 — ложное «контекст полон».
+  // A parameter's default fires only on a literal undefined - an explicit 0 (or a negative value) would
+  // slip past it straight into used / 0 = Infinity, and Math.min(Infinity, 100) gives exactly 100, a false
+  // "the context is full".
   const safeLimit = limit > 0 ? limit : 200_000
   return Math.min(Math.round((used / safeLimit) * 100), 100)
 }

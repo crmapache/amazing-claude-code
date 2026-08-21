@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { normalizeComposerLayout } from './composerLayout'
 
 describe('normalizeComposerLayout', () => {
-  it('пропускает left, right и compact как есть', () => {
+  it('lets left, right and compact through as they are', () => {
     expect(normalizeComposerLayout('left')).toBe('left')
     expect(normalizeComposerLayout('right')).toBe('right')
     expect(normalizeComposerLayout('compact')).toBe('compact')
   })
 
-  it('всё остальное — включая пусто, мусор и старое/чужое значение — считает «снизу»', () => {
+  it('treats everything else - empty, rubbish and an old or foreign value - as "bottom"', () => {
     expect(normalizeComposerLayout('bottom')).toBe('bottom')
     expect(normalizeComposerLayout(undefined)).toBe('bottom')
     expect(normalizeComposerLayout('')).toBe('bottom')

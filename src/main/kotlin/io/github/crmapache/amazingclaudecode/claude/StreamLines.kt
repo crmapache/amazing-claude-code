@@ -1,11 +1,11 @@
 package io.github.crmapache.amazingclaudecode.claude
 
 /**
- * Сборка целых строк из потока вывода процесса.
+ * Whole lines assembled out of a process's output stream.
  *
- * Процесс отдаёт текст кусками произвольной длины: одно событие может прийти
- * половинками, а в одном куске может оказаться сразу несколько строк. Отдавать
- * наверх обрывок нельзя — он не разберётся как JSON.
+ * The process hands over text in chunks of arbitrary length: one event can arrive in halves, and one
+ * chunk can hold several lines at once. Passing a fragment upwards is not an option - it does not
+ * parse as JSON.
  */
 internal class StreamLines(private val onLine: (String) -> Unit) {
 

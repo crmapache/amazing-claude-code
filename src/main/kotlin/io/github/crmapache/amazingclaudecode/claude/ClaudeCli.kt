@@ -7,9 +7,9 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import java.nio.file.Path
 
 /**
- * Разовый запуск `claude <args>` в фоне — общий рантайм для команд, у которых
- * есть собственная подкоманда CLI (mcp, plugin) и не нужен долгоживущий процесс
- * разговора. Каждый вызов независим: свой процесс, свой таймаут, свой результат.
+ * A one-off `claude <args>` run in the background - the shared runtime for the commands that have a
+ * CLI subcommand of their own (mcp, plugin) and need no long-lived conversation process. Every call is
+ * independent: its own process, its own timeout, its own result.
  */
 internal object ClaudeCli {
 

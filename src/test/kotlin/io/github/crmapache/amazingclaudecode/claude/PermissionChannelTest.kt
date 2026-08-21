@@ -13,35 +13,35 @@ class PermissionChannelTest {
 
     private fun parse(line: String) = PermissionChannel.parse(Json.parseToJsonElement(line).jsonObject)
 
-    // Тот самый вопрос, из-за отсутствия которого кнопки под планом ничего не делали:
-    // именно им агент и спрашивает разрешение выйти из режима плана.
+    // The very question whose absence made the buttons under a plan do nothing: this is how the agent
+    // asks permission to leave plan mode.
     @Test
-    fun `вопрос про выход из плана разбирается целиком`() {
+    fun `the question about leaving plan mode is parsed whole`() {
         val incoming = parse(
             """
-            {"type":"control_request","request_id":"запрос-1","request":{
+            {"type":"control_request","request_id":"request-1","request":{
               "subtype":"can_use_tool","tool_name":"ExitPlanMode","display_name":"ExitPlanMode",
-              "input":{"plan":"1. Сделать\n2. Проверить","planFilePath":"/tmp/план.md"},
+              "input":{"plan":"1. Do it\n2. Check it","planFilePath":"/tmp/plan.md"},
               "tool_use_id":"toolu_1","requires_user_interaction":true}}
             """.trimIndent(),
         )
 
         val request = (incoming as PermissionChannel.Incoming.Permission).request
-        assertEquals("запрос-1", request.requestId)
+        assertEquals("request-1", request.requestId)
         assertEquals("ExitPlanMode", request.toolName)
-        // По нему панель и находит уже нарисованную карточку плана.
+        // This is what the panel finds the already-drawn plan card by.
         assertEquals("toolu_1", request.toolUseId)
         assertTrue(request.requiresUserInteraction)
-        assertEquals("1. Сделать\n2. Проверить", request.input["plan"]?.toString()?.trim('"')?.replace("\\n", "\n"))
+        assertEquals("1. Do it\n2. Check it", request.input["plan"]?.toString()?.trim('"')?.replace("\\n", "\n"))
     }
 
     @Test
-    fun `обычный вопрос про инструмент — без пометки про человека`() {
+    fun `an ordinary tool question carries no human-needed mark`() {
         val incoming = parse(
             """
-            {"type":"control_request","request_id":"запрос-2","request":{
+            {"type":"control_request","request_id":"request-2","request":{
               "subtype":"can_use_tool","tool_name":"Write",
-              "input":{"file_path":"/проект/файл.txt","content":"привет"},"tool_use_id":"toolu_2"}}
+              "input":{"file_path":"/project/file.txt","content":"hello"},"tool_use_id":"toolu_2"}}
             """.trimIndent(),
         )
 
@@ -50,31 +50,31 @@ class PermissionChannelTest {
         assertTrue(!request.requiresUserInteraction)
     }
 
-    // Неотвеченный запрос останавливает ход навсегда, поэтому даже незнакомый вид
-    // обязан дойти до ответа, а не потеряться.
+    // An unanswered request stops a turn forever, so even an unfamiliar kind has to reach an answer
+    // rather than get lost.
     @Test
-    fun `незнакомый запрос не теряется, а доходит до ответа`() {
+    fun `an unfamiliar request is not lost but reaches an answer`() {
         val incoming = parse(
-            """{"type":"control_request","request_id":"запрос-3","request":{"subtype":"request_user_dialog"}}""",
+            """{"type":"control_request","request_id":"request-3","request":{"subtype":"request_user_dialog"}}""",
         )
 
         val unsupported = incoming as PermissionChannel.Incoming.Unsupported
-        assertEquals("запрос-3", unsupported.requestId)
+        assertEquals("request-3", unsupported.requestId)
         assertEquals("request_user_dialog", unsupported.subtype)
     }
 
-    // Пустое место в запросе CLI пишет честным null, и разбор обязан пережить
-    // его молча: исключение отсюда летит прямо в чтение потока и уносит с собой
-    // ещё не разобранные события разговора.
+    // An empty spot in a request the CLI writes as an honest null, and the parsing has to survive it
+    // silently: an exception from here flies straight into the stream's reading and takes the
+    // conversation's not-yet-parsed events with it.
     @Test
-    fun `пустые поля запроса не роняют разбор`() {
-        // Самого запроса нет — отвечаем как на незнакомый: молчание останавливает ход.
-        val empty = parse("""{"type":"control_request","request_id":"запрос-6","request":null}""")
-        assertEquals("запрос-6", (empty as PermissionChannel.Incoming.Unsupported).requestId)
+    fun `empty request fields do not break the parsing`() {
+        // There is no request at all - we answer as to an unfamiliar one: silence stops the turn.
+        val empty = parse("""{"type":"control_request","request_id":"request-6","request":null}""")
+        assertEquals("request-6", (empty as PermissionChannel.Incoming.Unsupported).requestId)
 
         val incoming = parse(
             """
-            {"type":"control_request","request_id":"запрос-7","request":{
+            {"type":"control_request","request_id":"request-7","request":{
               "subtype":"can_use_tool","tool_name":"Bash","input":null,
               "tool_use_id":"toolu_7","permission_suggestions":null}}
             """.trimIndent(),
@@ -87,34 +87,34 @@ class PermissionChannelTest {
     }
 
     @Test
-    fun `события разговора и наши собственные ответы каналу не принадлежат`() {
+    fun `the conversation's events and our own answers do not belong to the channel`() {
         assertNull(parse("""{"type":"assistant","message":{"role":"assistant","content":[]}}"""))
         assertNull(parse("""{"type":"control_response","response":{"subtype":"success","request_id":"x"}}"""))
     }
 
-    // Разрешение обязано вернуть аргументы вызова: без updatedInput CLI считает
-    // ответ неполным, а менять чужой вызов за агента панель не берётся.
+    // Allowing has to return the call's arguments: without updatedInput the CLI counts the answer as
+    // incomplete, and the panel does not take it upon itself to change someone else's call.
     @Test
-    fun `разрешение возвращает вызов с теми же аргументами`() {
-        val input = Json.parseToJsonElement("""{"plan":"1. Сделать"}""").jsonObject
-        val answer = Json.parseToJsonElement(PermissionChannel.allow("запрос-1", input)).jsonObject
+    fun `allowing returns the call with the same arguments`() {
+        val input = Json.parseToJsonElement("""{"plan":"1. Do it"}""").jsonObject
+        val answer = Json.parseToJsonElement(PermissionChannel.allow("request-1", input)).jsonObject
 
         val response = answer["response"]!!.jsonObject
         assertEquals("\"success\"", response["subtype"].toString())
-        assertEquals("\"запрос-1\"", response["request_id"].toString())
+        assertEquals("\"request-1\"", response["request_id"].toString())
 
         val decision = response["response"]!!.jsonObject
         assertEquals("\"allow\"", decision["behavior"].toString())
         assertEquals(input, decision["updatedInput"]?.jsonObject)
     }
 
-    // Вопрос от инструмента внутри субагента: без этой метки карточка ушла бы в
-    // общий разговор, хотя ждёт ответа ветка субагента.
+    // A question from a tool inside a subagent: without this mark the card would go into the shared
+    // conversation, although it is the subagent's branch that waits for an answer.
     @Test
-    fun `запрос из субагента приносит его метку`() {
+    fun `a request from a subagent carries its mark`() {
         val incoming = parse(
             """
-            {"type":"control_request","request_id":"запрос-4","request":{
+            {"type":"control_request","request_id":"request-4","request":{
               "subtype":"can_use_tool","tool_name":"Bash","input":{"command":"mkdir -p /tmp/x"},
               "tool_use_id":"toolu_4","agent_id":"a809ed6c3ed130b74"}}
             """.trimIndent(),
@@ -123,15 +123,14 @@ class PermissionChannelTest {
         assertEquals("a809ed6c3ed130b74", (incoming as PermissionChannel.Incoming.Permission).request.agentId)
     }
 
-    // «Always allow» отвечается правилом самого CLI: он разбирает команду лучше
-    // любой нашей эвристики и знает, какая её часть значимая. Из предложенного
-    // берём только правила — открыть себе каталог целиком или переключить режим
-    // человек не просил.
+    // "Always allow" is answered with the CLI's own rule: it parses the command better than any
+    // heuristic of ours and knows which part matters. Out of what is offered we take rules only - the
+    // person did not ask to open a whole directory or to switch the mode.
     @Test
-    fun `разрешать всегда — правилом от CLI, без всего, о чём не просили`() {
+    fun `always allow uses the CLI's rule, without anything nobody asked for`() {
         val incoming = parse(
             """
-            {"type":"control_request","request_id":"запрос-5","request":{
+            {"type":"control_request","request_id":"request-5","request":{
               "subtype":"can_use_tool","tool_name":"Bash","input":{"command":"rm -f /tmp/x.txt"},
               "permission_suggestions":[
                 {"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"rm -f /tmp/x.txt"}],
@@ -145,19 +144,18 @@ class PermissionChannelTest {
         assertEquals(1, rules.size)
         assertEquals("\"addRules\"", rules[0].jsonObject["type"].toString())
 
-        val decision = Json.parseToJsonElement(PermissionChannel.allow("запрос-5", JsonObject(emptyMap()), rules))
+        val decision = Json.parseToJsonElement(PermissionChannel.allow("request-5", JsonObject(emptyMap()), rules))
             .jsonObject["response"]!!.jsonObject["response"]!!.jsonObject
         assertEquals(rules, decision["updatedPermissions"])
     }
 
-    // У инструментов без разбираемых аргументов (MCP, WebFetch) предложений не
-    // бывает вовсе — правилом становится сам инструмент, иначе кнопка «всегда»
-    // молча ничего бы не запомнила.
+    // Tools whose arguments cannot be parsed (MCP, WebFetch) get no suggestions at all - the rule
+    // becomes the tool itself, or the "always" button would silently remember nothing.
     @Test
-    fun `без предложений правилом становится сам инструмент`() {
+    fun `with no suggestions the tool itself becomes the rule`() {
         val incoming = parse(
             """
-            {"type":"control_request","request_id":"запрос-6","request":{
+            {"type":"control_request","request_id":"request-6","request":{
               "subtype":"can_use_tool","tool_name":"mcp__github__create_pr","input":{}}}
             """.trimIndent(),
         )
@@ -172,24 +170,24 @@ class PermissionChannelTest {
         )
     }
 
-    // Разово разрешённое остаётся разовым: правило без спроса поменяло бы
-    // настройки проекта, а человек нажал «разрешить», а не «разрешать всегда».
+    // What was allowed once stays once: an unasked-for rule would change the project's settings, while
+    // the person pressed "allow" rather than "always allow".
     @Test
-    fun `обычное разрешение правил за собой не тянет`() {
-        val decision = Json.parseToJsonElement(PermissionChannel.allow("запрос-7", JsonObject(emptyMap())))
+    fun `an ordinary permission drags no rules behind it`() {
+        val decision = Json.parseToJsonElement(PermissionChannel.allow("request-7", JsonObject(emptyMap())))
             .jsonObject["response"]!!.jsonObject["response"]!!.jsonObject
 
         assertNull(decision["updatedPermissions"])
     }
 
-    // Причина приезжает вместе с вопросом: без неё вопрос в режиме «Bypass»
-    // выглядит приставучестью панели, а не проверкой безопасности CLI.
+    // The reason arrives with the question: without it a question in "Bypass" mode looks like nagging
+    // from the panel rather than a safety check by the CLI.
     @Test
-    fun `причина вопроса разбирается целиком`() {
+    fun `the question's reason is parsed whole`() {
         val incoming = parse(
             """
-            {"type":"control_request","request_id":"запрос-8","request":{
-              "subtype":"can_use_tool","tool_name":"Bash","input":{"command":"rm -rf сборка/*"},
+            {"type":"control_request","request_id":"request-8","request":{
+              "subtype":"can_use_tool","tool_name":"Bash","input":{"command":"rm -rf build/*"},
               "decision_reason":"Dangerous rm operation detected","decision_reason_type":"safetyCheck",
               "classifier_approvable":false,"suppress_always_allow_rule":true,
               "matched_ask_rule":{"source":"projectSettings","tool_name":"Bash","rule_content":"rm *"}}}
@@ -205,13 +203,13 @@ class PermissionChannelTest {
         assertEquals("rm *", request.matchedAskRule?.content)
     }
 
-    // Текст причины CLI пишет так, как напечатал бы его в терминале, — с раскраской.
-    // В панели она не раскрашивает ничего и показалась бы мусором посреди фразы.
+    // The CLI writes the reason's text the way it would print it in a terminal - with colouring. In the
+    // panel that colours nothing and would show up as rubbish in the middle of a sentence.
     @Test
-    fun `раскраска из причины вырезается`() {
+    fun `colouring is cut out of the reason`() {
         val incoming = parse(
             """
-            {"type":"control_request","request_id":"запрос-9","request":{
+            {"type":"control_request","request_id":"request-9","request":{
               "subtype":"can_use_tool","tool_name":"Bash","input":{},
               "decision_reason":"\u001b[1mDangerous\u001b[0m rm operation","decision_reason_type":"safetyCheck"}}
             """.trimIndent(),
@@ -222,10 +220,10 @@ class PermissionChannelTest {
     }
 
     @Test
-    fun `вопрос без причины остаётся вопросом без причины`() {
+    fun `a question without a reason stays a question without a reason`() {
         val incoming = parse(
             """
-            {"type":"control_request","request_id":"запрос-10","request":{
+            {"type":"control_request","request_id":"request-10","request":{
               "subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"}}}
             """.trimIndent(),
         )
@@ -238,16 +236,16 @@ class PermissionChannelTest {
         assertTrue(!request.suppressAlwaysAllow)
     }
 
-    // Отказ по плану — это не ошибка, а замечание: агент читает текст и предлагает
-    // план заново.
+    // A refusal about a plan is not an error but a remark: the agent reads the text and offers the plan
+    // again.
     @Test
-    fun `отказ уходит с объяснением, а без него — с общим`() {
-        val explained = Json.parseToJsonElement(PermissionChannel.deny("запрос-1", "Доработай план."))
+    fun `a refusal travels with an explanation, and without one with a generic message`() {
+        val explained = Json.parseToJsonElement(PermissionChannel.deny("request-1", "Rework the plan."))
             .jsonObject["response"]!!.jsonObject["response"]!!.jsonObject
         assertEquals("\"deny\"", explained["behavior"].toString())
-        assertEquals("\"Доработай план.\"", explained["message"].toString())
+        assertEquals("\"Rework the plan.\"", explained["message"].toString())
 
-        val bare = Json.parseToJsonElement(PermissionChannel.deny("запрос-1", ""))
+        val bare = Json.parseToJsonElement(PermissionChannel.deny("request-1", ""))
             .jsonObject["response"]!!.jsonObject["response"]!!.jsonObject
         assertTrue(bare["message"].toString().length > 2)
     }

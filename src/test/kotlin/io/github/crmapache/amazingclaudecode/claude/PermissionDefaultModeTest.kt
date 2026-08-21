@@ -18,27 +18,27 @@ class PermissionDefaultModeTest {
     private fun mode(mode: String): String = """{"permissions": {"defaultMode": "$mode"}}"""
 
     @Test
-    fun `без настроек начинаем с самого строгого режима`() {
+    fun `with no settings we start in the strictest mode`() {
         assertEquals(PermissionModes.ASK, PermissionDefaultMode.of(sources = emptyList(), bypassAllowed = true))
     }
 
     @Test
-    fun `режим из личных настроек человека и есть умолчание панели`() {
+    fun `the mode from a person's own settings is the panel's default`() {
         val sources = listOf(source(ClaudeSettings.Layer.USER, mode("acceptEdits")))
 
         assertEquals("acceptEdits", PermissionDefaultMode.of(sources, bypassAllowed = true))
     }
 
-    // Так этот режим зовётся во флаге запуска, и селектор в панели знает только это имя.
+    // That is what this mode is called in the launch flag, and the panel's selector knows only that name.
     @Test
-    fun `старое имя приводится к нынешнему`() {
+    fun `the old name is brought to the current one`() {
         val sources = listOf(source(ClaudeSettings.Layer.USER, mode("default")))
 
         assertEquals(PermissionModes.ASK, PermissionDefaultMode.of(sources, bypassAllowed = true))
     }
 
     @Test
-    fun `старший слой перебивает младший`() {
+    fun `a stronger layer overrides a weaker one`() {
         val sources = listOf(
             source(ClaudeSettings.Layer.POLICY, mode("plan")),
             source(ClaudeSettings.Layer.USER, mode("acceptEdits")),
@@ -48,7 +48,7 @@ class PermissionDefaultModeTest {
     }
 
     @Test
-    fun `пустой файл настроек пропускается, а не отменяет остальные`() {
+    fun `an empty settings file is skipped rather than cancelling the rest`() {
         val sources = listOf(
             source(ClaudeSettings.Layer.POLICY, "{}"),
             source(ClaudeSettings.Layer.USER, mode("dontAsk")),
@@ -57,11 +57,11 @@ class PermissionDefaultModeTest {
         assertEquals("dontAsk", PermissionDefaultMode.of(sources, bypassAllowed = true))
     }
 
-    // Настройки проекта лежат в репозитории: режим, в котором вопросы решает
-    // классификатор, туда мог бы положить кто угодно с правом на правку. CLI такому
-    // умолчанию не верит — и панель не должна.
+    // A project's settings live in the repository: the mode where a classifier decides the questions
+    // could have been put there by anyone with write access. The CLI does not trust such a default - and
+    // the panel must not either.
     @Test
-    fun `auto из настроек проекта не принимается`() {
+    fun `auto from a project's settings is not accepted`() {
         for (layer in listOf(ClaudeSettings.Layer.PROJECT, ClaudeSettings.Layer.LOCAL)) {
             val sources = listOf(source(layer, mode("auto")))
 
@@ -70,7 +70,7 @@ class PermissionDefaultModeTest {
     }
 
     @Test
-    fun `auto из личных настроек и из политики принимается`() {
+    fun `auto from personal settings and from a policy is accepted`() {
         for (layer in listOf(ClaudeSettings.Layer.USER, ClaudeSettings.Layer.POLICY)) {
             val sources = listOf(source(layer, mode("auto")))
 
@@ -78,28 +78,28 @@ class PermissionDefaultModeTest {
         }
     }
 
-    // Запрещённый режим CLI всё равно отбросит, а панель осталась бы показывать
-    // режим, которого у разговора нет.
+    // A forbidden mode the CLI would throw away anyway, and the panel would be left showing a mode the
+    // conversation does not have.
     @Test
-    fun `bypass не берётся в умолчание, когда режим запрещён`() {
+    fun `bypass is not taken as the default when the mode is forbidden`() {
         val sources = listOf(source(ClaudeSettings.Layer.USER, mode("bypassPermissions")))
 
         assertEquals(PermissionModes.ASK, PermissionDefaultMode.of(sources, bypassAllowed = false))
         assertEquals("bypassPermissions", PermissionDefaultMode.of(sources, bypassAllowed = true))
     }
 
-    // С незнакомым именем CLI не запустится вовсе — панель на нём стартовать не должна.
+    // With an unfamiliar name the CLI would not start at all - the panel must not start on it either.
     @Test
-    fun `незнакомое имя режима отбрасывается`() {
+    fun `an unfamiliar mode name is thrown away`() {
         val sources = listOf(source(ClaudeSettings.Layer.USER, mode("yolo")))
 
         assertEquals(PermissionModes.ASK, PermissionDefaultMode.of(sources, bypassAllowed = true))
     }
 
     @Test
-    fun `битые настройки не мешают взять умолчание из следующего слоя`() {
+    fun `broken settings do not stop the default being taken from the next layer`() {
         val sources = listOf(
-            source(ClaudeSettings.Layer.POLICY, "{ это не json"),
+            source(ClaudeSettings.Layer.POLICY, "{ this is not json"),
             source(ClaudeSettings.Layer.USER, mode("plan")),
         )
 

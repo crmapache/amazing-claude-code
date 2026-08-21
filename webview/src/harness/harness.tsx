@@ -19,7 +19,7 @@ const Harness = () => {
   const [mode, setMode] = useState<PlaybackMode>('auto')
   const [copied, setCopied] = useState(false)
 
-  // Клавиши читают самые свежие значения без пересоздания обработчика на каждый чих.
+  // The keys read the freshest values without recreating the handler on every little thing.
   const stateRef = useRef({ activeScenario, checkpointIndex })
   stateRef.current = { activeScenario, checkpointIndex }
 
@@ -54,10 +54,9 @@ const Harness = () => {
       if (!scenario) return
       if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
 
-      // Не перехватываем стрелки, пока фокус в любом поле ввода — там они ходят
-      // по тексту. Поле сообщения панели — contenteditable, а не <textarea>:
-      // без этой проверки стрелка в нём перематывала чекпоинт, вместе с ним
-      // пересоздавала панель и стирала набранный черновик.
+      // We do not intercept the arrows while the focus is in any input field - there they walk the text.
+      // The panel's message field is a contenteditable rather than a <textarea>: without this check an
+      // arrow in it wound the checkpoint on, recreated the panel along with it and wiped the typed draft.
       const target = event.target as HTMLElement | null
       if (target?.tagName === 'TEXTAREA' || target?.tagName === 'INPUT' || target?.isContentEditable) return
 
@@ -74,9 +73,9 @@ const Harness = () => {
 
     const current = activeScenario.checkpoints[checkpointIndex]
     const text = [
-      `Сценарий: ${activeScenario.id} — ${activeScenario.title}`,
-      `Режим: ${mode === 'auto' ? 'авто' : 'шаги'}`,
-      `Чекпоинт: ${checkpointIndex + 1} / ${activeScenario.checkpoints.length} — ${current?.label ?? ''}`,
+      `Scenario: ${activeScenario.id} - ${activeScenario.title}`,
+      `Mode: ${mode === 'auto' ? 'auto' : 'steps'}`,
+      `Checkpoint: ${checkpointIndex + 1} / ${activeScenario.checkpoints.length} - ${current?.label ?? ''}`,
     ].join('\n')
 
     void navigator.clipboard.writeText(text).then(() => {

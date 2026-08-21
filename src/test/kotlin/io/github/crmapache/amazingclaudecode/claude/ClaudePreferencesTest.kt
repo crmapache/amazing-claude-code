@@ -3,9 +3,9 @@ package io.github.crmapache.amazingclaudecode.claude
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 /**
- * Выбор модели и режима переживает перезапуск IDE, поэтому лежит в её настройках.
- * Тест сторожит именно это: молча пропавшее хранилище выглядит как «панель опять
- * забыла мою модель».
+ * The choice of model and mode outlives an IDE restart, which is why it lives in the IDE's settings.
+ * This test guards exactly that: storage gone silently looks like "the panel has forgotten my model
+ * again".
  */
 class ClaudePreferencesTest : BasePlatformTestCase() {
 
@@ -14,7 +14,6 @@ class ClaudePreferencesTest : BasePlatformTestCase() {
         ClaudePreferences.effort = "low"
         ClaudePreferences.mode = "acceptEdits"
         ClaudePreferences.composerLayout = "right"
-        ClaudePreferences.composerWidth = 480
 
         val snapshot = ClaudePreferences.snapshot()
 
@@ -22,15 +21,14 @@ class ClaudePreferencesTest : BasePlatformTestCase() {
         assertEquals("low", snapshot.effort)
         assertEquals("acceptEdits", snapshot.mode)
         assertEquals("right", snapshot.composerLayout)
-        assertEquals(480, snapshot.composerWidth)
     }
 
     fun testEmptyValueMeansDefault() {
         ClaudePreferences.model = "opus"
         ClaudePreferences.model = ""
 
-        // Пустая строка означает «как у Claude Code по умолчанию»: тогда флаг при
-        // запуске процесса не передаётся вовсе.
+        // An empty string means "as Claude Code has it by default": then the flag is not passed at
+        // process launch at all.
         assertEquals("", ClaudePreferences.model)
     }
 
@@ -39,7 +37,6 @@ class ClaudePreferencesTest : BasePlatformTestCase() {
         ClaudePreferences.effort = ""
         ClaudePreferences.mode = ""
         ClaudePreferences.composerLayout = ""
-        ClaudePreferences.composerWidth = 0
         super.tearDown()
     }
 }

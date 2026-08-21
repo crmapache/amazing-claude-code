@@ -4,13 +4,12 @@ import type { TodoEntry, TodoItem } from '../feed/types'
 import s from './composer.module.css'
 
 interface TaskListPanelProps {
-  /** Последний присланный агентом список задач — или ничего, если его ещё не было. */
+  /** The last task list the agent sent - or nothing, when there has not been one yet. */
   item: TodoItem | undefined
   /**
-   * Та же раскладка, что и у всей панели (см. App.tsx) — здесь важно, сжатая
-   * ли она (compact и left/right, см. isSideComposerLayout): экономит высоту,
-   * вместо развёрнутой карточки — одна строка с текущей задачей, а остальные
-   * сворачиваются под стрелку (см. ниже).
+   * The same layout as the whole panel's (see App.tsx) - what matters here is whether it is a tight one
+   * (compact and left/right, see isSideComposerLayout): that saves height, and instead of an expanded
+   * card there is one line with the current task while the rest fold under an arrow (see below).
    */
   layout: ComposerLayout
 }
@@ -18,17 +17,17 @@ interface TaskListPanelProps {
 const VISIBLE_LIMIT = 5
 
 /**
- * Закреплённая read-only панель над полем ввода — по образцу Queue/Quotes.
- * В отличие от прежней карточки в ленте, ничего не листается: пользователь
- * ничего не отмечает сам, это чистое зеркало состояния, которое прислал агент.
+ * A pinned read-only panel above the input field - after the pattern of Queue/Quotes. Unlike the former
+ * card in the feed, nothing is scrolled here: the user ticks nothing themselves, this is a pure mirror of
+ * the state the agent sent.
  */
 export const TaskListPanel = ({ item, layout }: TaskListPanelProps) => {
   const compact = layout === 'compact' || isSideComposerLayout(layout)
   const [expanded, setExpanded] = useState(false)
 
-  // Один инстанс панели переживает переключение раскладки (App.tsx меняет
-  // только проп compact, без key/ремонта) — без сброса разворот списка из
-  // одной раскладки протекал бы в другую, где пользователь его не открывал.
+  // One instance of the panel outlives a layout change (App.tsx changes only the compact prop, with no
+  // key and no remount) - without a reset, a list expanded in one layout would leak into another, where
+  // the user never opened it.
   useEffect(() => {
     setExpanded(false)
   }, [compact])
@@ -110,8 +109,8 @@ export const TaskListPanel = ({ item, layout }: TaskListPanelProps) => {
         {visible.map((todo) => (
           <div key={todo.id} className={s.taskPanelRow}>
             <TodoCheckbox todo={todo} />
-            {/* Текст и подпись RUNNING — своей группой: чекбокс остаётся по центру
-                строки, а разнокегельный текст выравнивается по базовой линии. */}
+            {/* The text and the RUNNING caption go in a group of their own: the checkbox stays centred in
+                the row, while text of different sizes lines up on the baseline. */}
             <span className={s.taskPanelTextGroup}>
               <TodoLabel todo={todo} />
             </span>
@@ -128,7 +127,7 @@ export const TaskListPanel = ({ item, layout }: TaskListPanelProps) => {
   )
 }
 
-/** Невыполненные — в приоритете, выполненные схлопываются первыми. Порядок внутри видимых не меняется. */
+/** Unfinished ones take priority, finished ones fold away first. The order among the visible ones does not change. */
 export const pickVisible = (todos: TodoEntry[]): { visible: TodoEntry[]; hidden: TodoEntry[] } => {
   const notDone = todos.filter((todo) => todo.state !== 'done')
   const done = todos.filter((todo) => todo.state === 'done')
@@ -141,9 +140,8 @@ export const pickVisible = (todos: TodoEntry[]): { visible: TodoEntry[]; hidden:
 }
 
 /**
- * Задача, которую compact держит в самой строке (см. TaskListPanel):
- * бегущая, а если такой сейчас нет — первая ещё не начатая. Остальные уходят
- * в список, что раскрывает стрелка.
+ * The task compact keeps in the row itself (see TaskListPanel): the one running, or - when there is none
+ * right now - the first one not yet started. The rest go into the list the arrow expands.
  */
 export const pickCurrent = (todos: TodoEntry[]): { current: TodoEntry | undefined; rest: TodoEntry[] } => {
   const current = todos.find((todo) => todo.state === 'active') ?? todos.find((todo) => todo.state !== 'done')

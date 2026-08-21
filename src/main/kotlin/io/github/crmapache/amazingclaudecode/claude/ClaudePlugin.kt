@@ -11,12 +11,12 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 internal data class InstalledPlugin(
-    /** "context7@claude-plugins-official" — имя плагина и его маркетплейс одной строкой. */
+    /** "context7@claude-plugins-official" - the plugin's name and its marketplace in one string. */
     val id: String,
     val version: String,
     val scope: String,
     val enabled: Boolean,
-    /** Путь на диске, где лежат его commands/ и skills/ — нужен для ClaudeCommandHints. */
+    /** The path on disk where its commands/ and skills/ live - needed by ClaudeCommandHints. */
     val installPath: String? = null,
 )
 
@@ -30,23 +30,23 @@ internal data class AvailablePlugin(
 
 internal data class PluginMarketplace(
     val name: String,
-    /** Человекочитаемый источник: "github: anthropics/claude-plugins-official" и т.п. */
+    /** A human-readable source: "github: anthropics/claude-plugins-official" and the like. */
     val source: String,
 )
 
 /**
- * Плагины и маркетплейсы — то же самое, что [ClaudeMcp] для MCP-серверов: разовые
- * вызовы `claude plugin ...`, а не часть живого разговора. В отличие от MCP, тут у
- * install/uninstall/enable/disable есть собственные подкоманды CLI — маршрутизировать
- * их через слэш-команду внутри сессии не нужно, все идут напрямую.
+ * Plugins and marketplaces - the same thing [ClaudeMcp] is for MCP servers: one-off `claude plugin ...`
+ * calls rather than part of a live conversation. Unlike MCP, install/uninstall/enable/disable have CLI
+ * subcommands of their own - there is no need to route them through a slash command inside the session,
+ * they all go directly.
  *
- * `list` заодно тянет каталог доступных в подключённых маркетплейсах плагинов
- * (`--available`) — реальный поиск по 200+ плагинам, чего для MCP-серверов в
- * принципе не существует (там нет публичного реестра).
+ * `list` also pulls the catalogue of plugins available in the connected marketplaces (`--available`) -
+ * a real search across 200+ plugins, which for MCP servers does not exist at all (there is no public
+ * registry there).
  */
 internal object ClaudePlugin {
 
-    // Каталог маркетплейсов заметно тяжелее одного списка MCP-серверов.
+    // The marketplace catalogue is noticeably heavier than a single list of MCP servers.
     private const val LIST_TIMEOUT_MS = 60_000
 
     fun list(
@@ -74,9 +74,9 @@ internal object ClaudePlugin {
     }
 
     /**
-     * Только установленные, без каталога доступных — для подсказок аргументов
-     * слэш-команд нужны лишь id и installPath, а полный `--available` тянет
-     * каталог всех плагинов подключённых маркетплейсов и ощутимо медленнее.
+     * The installed ones only, without the available catalogue - for slash command argument hints only
+     * the id and the installPath are needed, while a full `--available` pulls the catalogue of every
+     * plugin in every connected marketplace and is noticeably slower.
      */
     fun installed(
         workingDirectory: String?,
@@ -147,9 +147,9 @@ internal object ClaudePlugin {
     }
 
     /**
-     * `claude plugin install` печатает "Installing plugin…" и итог (✔/✘) одним
-     * куском без единого разделителя — проверено напрямую побайтово, это не наша
-     * недостача переноса строки, а как есть у самого CLI. Ставим перенос сами.
+     * `claude plugin install` prints "Installing plugin…" and the outcome (✔/✘) as one lump without a
+     * single separator - checked byte by byte directly, this is not a newline we dropped but how the
+     * CLI has it. So we add the break ourselves.
      */
     private fun formatResult(output: String): String =
         output.trim().replace(Regex("""\s*([✔✘])"""), "\n$1").trim()
@@ -183,8 +183,8 @@ internal object ClaudePlugin {
     private fun parseMarketplace(element: JsonElement): PluginMarketplace? {
         val obj = element as? JsonObject ?: return null
         val name = obj["name"]?.jsonPrimitive?.contentOrNull ?: return null
-        // Форма источника разная в зависимости от типа: у github есть repo, у
-        // прочих (url/path) — соответствующее поле с тем же смыслом.
+        // The shape of the source differs by type: github has a repo, the others (url/path) have the
+        // corresponding field with the same meaning.
         val kind = obj["source"]?.jsonPrimitive?.contentOrNull.orEmpty()
         val detail = obj["repo"]?.jsonPrimitive?.contentOrNull
             ?: obj["url"]?.jsonPrimitive?.contentOrNull

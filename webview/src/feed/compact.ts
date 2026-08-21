@@ -1,14 +1,14 @@
 /**
- * Доля сжатия контекста — по прошедшему времени, а не по сделанной работе.
+ * The share of a context compaction - by the time elapsed rather than by the work done.
  *
- * Настоящего прогресса тут нет ни у кого: сжатие — это один запрос к модели, и
- * CLI сообщает только его начало и конец. Собственный интерфейс Claude Code
- * рисует ровно ту же кривую от секундомера, и здесь она повторена один в один,
- * чтобы процент в панели и процент в терминале показывали одно и то же число.
+ * There is no real progress here for anyone: a compaction is one request to the model, and the CLI
+ * reports only its start and its end. Claude Code's own interface draws exactly the same curve off a
+ * stopwatch, and it is repeated here one to one, so that the percentage in the panel and the percentage
+ * in the terminal show one and the same number.
  *
- * Кривая насыщения: быстро растёт в первые секунды, дальше почти стоит и
- * упирается в потолок. Потолок нужен, чтобы счётчик не добрался до сотни раньше
- * самого сжатия и не заставлял думать, что панель зависла на «100%».
+ * A saturation curve: it grows fast in the first seconds, then almost stands still and runs into a
+ * ceiling. The ceiling is there so that the counter does not reach a hundred before the compaction does
+ * and leave one thinking the panel has hung at "100%".
  */
 const TIME_CONSTANT_S = 90
 const CEILING_PERCENT = 95
@@ -19,16 +19,17 @@ export const compactProgress = (elapsedMs: number): number => {
   return Math.min(CEILING_PERCENT, Math.round(ratio * 100))
 }
 
-/** `/compact` с аргументом или без — не `/compaction` и не команда в середине строки. */
+/** `/compact` with or without an argument - not `/compaction` and not a command mid-line. */
 export const isCompactCommand = (text: string): boolean => /^\/compact(?:\s|$)/.test(text.trim())
 
 /**
- * Пока идёт сжатие, stdin агенту слать нельзя: он его не подхватит «на следующем
- * шаге», как обычную дописку, а проглотит и после конца сжатия не выполнит.
+ * While a compaction runs, stdin must not be sent to the agent: it will not pick it up "at the next
+ * step" as it does an ordinary mid-turn message, it will swallow it and not carry it out once the
+ * compaction ends.
  *
- * `compacting` — уже пришёл статус. Второй флаг ловит гонку: человек отправил
- * `/compact` и сразу следующее сообщение, а статус compacting ещё в пути —
- * ход уже начался командой сжатия, и дописка туда же пропадёт.
+ * `compacting` means the status has already arrived. The second flag catches a race: the person sent
+ * `/compact` and immediately the next message while the compacting status is still on its way - the turn
+ * has already begun with the compaction command, and a message written into it will vanish too.
  */
 export const deferFollowUpForCompact = (
   compacting: boolean,

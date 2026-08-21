@@ -1,6 +1,6 @@
 import type { DetailLine, DiffLine, Hunk, ToolChip } from './types'
 
-/** Сколько строк вывода инструмента показываем в раскрытом виде. */
+/** How many lines of a tool's output are shown when it is expanded. */
 const DETAIL_LIMIT = 60
 
 const CHIPS: Record<string, ToolChip> = {
@@ -31,13 +31,49 @@ const asInput = (input: unknown): ToolInput =>
 
 const str = (value: unknown): string => (typeof value === 'string' ? value : '')
 
-/** Путь показываем относительно проекта: полный не помещается и ничего не добавляет. */
+/** A path is shown relative to the project: a full one does not fit and adds nothing. */
 export const shortenPath = (path: string, workingDirectory: string): string => {
   if (!path) return ''
   if (workingDirectory && path.startsWith(workingDirectory)) {
     return path.slice(workingDirectory.length).replace(/^\//, '')
   }
   return path
+}
+
+/** Preparation for a run rather than the work itself: such a start of a command only clutters the caption. */
+const SETUP_HEAD = /^(?:cd|source|export|\.)\s/
+
+/** `NODE_ENV=production pnpm build` - what tells about the command is the second word, not the first. */
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
+
+/**
+ * A short caption of a command for a background work chip: what it was launched with, in two words. The
+ * full line is not needed there - it is in the command's card in the feed whole, while the chip in the
+ * header only answers "what is this that keeps running".
+ *
+ * A script's path is collapsed to the file's name, flags and arguments are dropped: out of
+ * `cd /long/path && ./scripts/sandbox.sh --fresh` only `sandbox.sh` is left.
+ */
+export const commandLabel = (command: string): string => {
+  const line = command.split('\n')[0]?.trim() ?? ''
+  if (!line) return ''
+
+  // A leading `cd … &&` or `source … &&` is a preamble before the business, and what the command was
+  // launched for stands after it.
+  const step =
+    line
+      .split('&&')
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .find((part) => !SETUP_HEAD.test(part)) ?? line
+
+  const words = step.split(/\s+/).filter((word) => !ASSIGNMENT.test(word))
+  const head = words[0]?.split('/').pop() ?? ''
+  if (!head) return ''
+
+  const next = words[1]
+  const takesNext = next && !next.startsWith('-') && !next.includes('/') && next.length <= 14
+  return takesNext ? `${head} ${next}` : head
 }
 
 export const targetFor = (name: string, input: unknown, workingDirectory: string): string => {
@@ -114,11 +150,11 @@ const toneOf = (line: string): DetailLine['tone'] => {
 }
 
 /**
- * Кусок правки для показа в ленте.
+ * A piece of an edit to be shown in the feed.
  *
- * Настоящего диффа в потоке нет: инструмент правки присылает старый и новый текст.
- * Поэтому отрезаем совпадающие начало и конец, а расхождение показываем как
- * удалённые и добавленные строки — ровно то, что рисует макет.
+ * There is no real diff in the stream: the edit tool sends the old and the new text. So we cut off the
+ * matching start and end and show the difference as removed and added lines - exactly what the design
+ * draws.
  */
 export const hunksFor = (id: string, name: string, input: unknown, result: string): Hunk[] => {
   if (name !== 'Edit' && name !== 'MultiEdit' && name !== 'NotebookEdit') return []
@@ -176,7 +212,7 @@ export const hunksFor = (id: string, name: string, input: unknown, result: strin
   ]
 }
 
-/** Инструмент правки возвращает кусок файла с номерами строк — берём первый номер оттуда. */
+/** The edit tool returns a piece of the file with line numbers - we take the first number from there. */
 const firstLineNumber = (result: string): number | null => {
   const match = /^\s*(\d+)\t/m.exec(result)
   if (!match) return null
@@ -191,20 +227,20 @@ const countLines = (value: string): number => {
 }
 
 /**
- * Длительность в стиле макета: доли секунды у быстрых вызовов, целые у долгих.
+ * Duration in the design's style: fractions of a second for quick calls, whole ones for long calls.
  *
- * После часа к минутам добавляются часы, но секунды остаются: минуты до этого
- * копились без предела, и фоновая команда, запущенная накануне (тот же
- * dev-сервер), подписывалась «1010m 08s» — число, которое глазом в часы не
- * переводится. Секунды же тикают ровно тем, по чему видно, что время идёт, а не
- * встало: без них длинный ход выглядит замершим на целую минуту.
+ * Past an hour, hours are added to the minutes, but the seconds stay: the minutes used to pile up
+ * without a limit, and a background command launched the day before (the same dev server) was captioned
+ * "1010m 08s" - a number the eye does not convert into hours. The seconds, meanwhile, tick with exactly
+ * what shows that time is passing rather than standing still: without them a long turn looks frozen for
+ * a whole minute.
  */
 export const formatDuration = (ms: number): string => {
   if (ms < 1000) return `${(ms / 1000).toFixed(1)}s`
   if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
 
-  // Округление секунд вверх переносим в минуты сами: иначе на 59.6 секундах
-  // выходит «5m 60s» — время, которого не бывает.
+  // We carry the seconds' rounding up into the minutes ourselves: otherwise 59.6 seconds comes out as
+  // "5m 60s" - a time that does not exist.
   const total = Math.round(ms / 1000)
   const minutes = Math.floor(total / 60)
   const seconds = total % 60
@@ -214,7 +250,7 @@ export const formatDuration = (ms: number): string => {
   return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m ${paddedSeconds}s`
 }
 
-/** Текст результата инструмента бывает строкой, списком блоков или объектом. */
+/** A tool result's text may be a string, a list of blocks or an object. */
 export const resultToText = (content: unknown): string => {
   if (typeof content === 'string') return content
   if (content === null || content === undefined) return ''

@@ -1,47 +1,45 @@
 package io.github.crmapache.amazingclaudecode.claude
 
 /**
- * Почему у человека вообще спрашивают про этот вызов — и стоит ли предлагать ему
- * «разрешать всегда».
+ * Why the person is being asked about this call at all - and whether "always allow" is worth offering.
  *
- * Разрешения приходят не только из режима. Их поднимают проверки безопасности,
- * правила `ask` из настроек, хуки и классификатор режима `auto` — и в режимах, где
- * вопросов не ждут вовсе («Bypass», «Auto»), остаются как раз они. Без объяснения
- * такой вопрос выглядит необъяснимой приставучестью: человек выбрал «не спрашивать»,
- * а панель всё равно спрашивает.
+ * Permissions come from more than the mode. Safety checks raise them, so do `ask` rules from the
+ * settings, hooks, and the `auto` mode's classifier - and in the modes where no questions are expected
+ * at all ("Bypass", "Auto") those are precisely what is left. Without an explanation such a question
+ * reads as unaccountable nagging: the person chose "do not ask", and the panel asks anyway.
  *
- * Отдельно от [PermissionPrompt] потому, что тот подписывает сам вызов («хочет
- * запустить команду»), а это — строка о том, кто вопрос поднял.
+ * Apart from [PermissionPrompt] because that one captions the call itself ("wants to run a command"),
+ * while this is the line about who raised the question.
  */
 internal object PermissionReason {
 
-    /** Строка для карточки. Пусто — объяснять нечего, и лишней строки быть не должно. */
+    /** The line for the card. Empty means there is nothing to explain, and no line should appear. */
     fun text(request: PermissionChannel.ToolPermission): String = when (request.reasonType) {
-        // Обычное «режим требует спрашивать» — в карточке и так подписан режим.
+        // The ordinary "the mode requires asking" - the card already names the mode.
         MODE, "" -> ""
-        // Про песочницу CLI молчит и в терминале: она подменяет решение, а не
-        // объясняет его.
+        // About the sandbox the CLI stays silent in the terminal too: it substitutes the decision
+        // rather than explains it.
         SANDBOX -> ""
         RULE -> request.matchedAskRule?.let(::ruleText) ?: request.reason
         HOOK -> explained("A hook asked to confirm this", request.reason)
         CLASSIFIER -> explained("The auto-mode classifier asked to confirm this", request.reason)
-        // safetyCheck, subcommandResults, workingDir, asyncAgent, other: CLI уже
-        // сформулировал это для человека — пересказывать своими словами незачем.
+        // safetyCheck, subcommandResults, workingDir, asyncAgent, other: the CLI has already put this
+        // into words for the person - retelling it in our own is pointless.
         else -> request.reason
     }
 
     /**
-     * Предлагать ли «разрешать всегда».
+     * Whether to offer "always allow".
      *
-     * Правило помогает не всегда, и терминал в таких случаях третий пункт просто
-     * не показывает. Панель предлагала его везде: человек нажимал, правило честно
-     * записывалось в настройки — и следующий такой же вызов снова упирался в
-     * вопрос. Два случая, когда правила не будет:
+     * A rule does not always help, and in those cases the terminal simply does not show the third
+     * option. The panel offered it everywhere: the person pressed, the rule was honestly written into
+     * the settings - and the next call just like it ran into the same question again. Two cases where
+     * there will be no rule:
      *
-     * - CLI прямо просит не предлагать: правило вышло бы шире самого вопроса.
-     * - Проверка безопасности требует человека ([PermissionChannel.ToolPermission.classifierApprovable]),
-     *   а готового правила CLI не предложил. Таковы опасные удаления: их не
-     *   отменяет ни правило, ни режим «без вопросов».
+     * - The CLI asks outright not to offer one: the rule would come out wider than the question.
+     * - A safety check demands a person ([PermissionChannel.ToolPermission.classifierApprovable]) and
+     *   the CLI offered no ready rule. Dangerous deletions are like that: neither a rule nor the "no
+     *   questions" mode waives them.
      */
     fun rememberable(request: PermissionChannel.ToolPermission): Boolean = when {
         request.suppressAlwaysAllow -> false
@@ -60,9 +58,8 @@ internal object PermissionReason {
         if (reason.isEmpty()) "$lead." else "$lead: $reason"
 
     /**
-     * Как называть слои настроек — теми же словами, какими их называет сам CLI:
-     * человеку идти правило искать, и название должно совпадать с тем, что он
-     * прочитает в его сообщениях.
+     * What to call the settings layers - by the same words the CLI calls them: the person will go
+     * looking for that rule, and the name should match what they read in its messages.
      */
     private val SOURCES = mapOf(
         "userSettings" to "user settings",

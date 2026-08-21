@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { contextColor, contextGlow } from './StatusBar'
 
 describe('contextColor', () => {
-  it('красит по тем же порогам, что и полоска контекста в композере', () => {
+  it('paints by the same thresholds as the context bar in the composer', () => {
     expect(contextColor(0)).toBe('var(--acc-meter-green)')
     expect(contextColor(49)).toBe('var(--acc-meter-green)')
     expect(contextColor(50)).toBe('var(--acc-warn)')
@@ -15,7 +15,7 @@ describe('contextColor', () => {
 })
 
 describe('contextGlow', () => {
-  it('свечение того же уровня, что и цвет — не расходится на границах', () => {
+  it('keeps the glow at the same level as the colour - they do not part ways at the boundaries', () => {
     expect(contextGlow(49)).toEqual({ strong: 'var(--acc-meter-green-80)', soft: 'var(--acc-meter-green-35)' })
     expect(contextGlow(50)).toEqual({ strong: 'var(--acc-warn-80)', soft: 'var(--acc-warn-35)' })
     expect(contextGlow(70)).toEqual({ strong: 'var(--acc-orange-80)', soft: 'var(--acc-orange-35)' })

@@ -3,7 +3,7 @@ import s from './shell.module.css'
 
 interface ConfirmProps {
   title: string
-  /** Что именно затронет решение — имя агента или команды, как оно в чипе. */
+  /** What exactly the decision affects - the agent's or the command's name, as it stands in the chip. */
   subject: string
   confirmLabel: string
   onConfirm: () => void
@@ -11,11 +11,11 @@ interface ConfirmProps {
 }
 
 /**
- * Спросить, прежде чем делать необратимое.
+ * Ask before doing something irreversible.
  *
- * Клавиши перехватываем в фазе перехвата и гасим: Escape в панели занят — он
- * останавливает ход (см. App), — и без этого закрытие вопроса заодно обрывало
- * бы работу, о которой никто не просил.
+ * The keys are intercepted in the capture phase and suppressed: Escape in the panel is taken - it stops
+ * the turn (see App) - and without this, closing the question would also break off work nobody asked to
+ * break off.
  */
 export const Confirm = ({ title, subject, confirmLabel, onConfirm, onCancel }: ConfirmProps) => {
   const confirmRef = useRef<HTMLButtonElement | null>(null)

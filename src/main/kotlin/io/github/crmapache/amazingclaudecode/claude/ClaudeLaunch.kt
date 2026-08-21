@@ -1,76 +1,71 @@
 package io.github.crmapache.amazingclaudecode.claude
 
 /**
- * С чем поднимается процесс разговора.
+ * What a conversation's process comes up with.
  *
- * Вынесено из сессии отдельно, потому что это единственное место, где решается
- * судьба разговора на весь его срок: часть решений после запуска уже не поменять,
- * и проверять их лучше тестом, а не глазами по логам.
+ * Kept apart from the session because this is the one place where a conversation's fate is decided for
+ * its whole life: some of these decisions cannot be changed after the launch, and checking them is
+ * better done by a test than by eye over the logs.
  */
 internal object ClaudeLaunch {
 
     /**
-     * Разрешает переключиться в режим «без вопросов» посреди разговора.
+     * Allows switching into the "no questions" mode mid-conversation.
      *
-     * Сам по себе ключ ничего не разрешает — он лишь делает режим доступным. Без
-     * него CLI отвечает на просьбу сменить режим отказом («сессия запущена без
-     * --dangerously-skip-permissions»), и кнопка «Approve & run» под планом
-     * оказывалась пустышкой: человек одобрял план, панель откатывалась обратно в
-     * plan, а агент продолжал спрашивать разрешение на каждый шаг.
+     * The flag by itself allows nothing - it merely makes the mode reachable. Without it the CLI
+     * answers a mode change with a refusal ("session was started without
+     * --dangerously-skip-permissions"), and the "Approve & run" button under a plan turned out to be a
+     * sham: the person approved the plan, the panel fell back into plan, and the agent went on asking
+     * permission for every step.
      *
-     * Стартовать сразу в «без вопросов» CLI позволяет и без ключа — ломалось
-     * именно переключение на лету, то есть ровно тот путь, которым идёт одобрение
-     * плана.
+     * Starting straight in "no questions" the CLI allows without the flag as well - what broke was
+     * switching on the fly, that is, exactly the path an approved plan takes.
      */
     const val ALLOW_BYPASS_FLAG = "--allow-dangerously-skip-permissions"
 
     /**
-     * Канал, по которому CLI спрашивает разрешение у самой панели.
+     * The channel the CLI asks the panel itself for permission over.
      *
-     * Единственный: раньше рядом жил ещё и PreToolUse-хук, который стучался в
-     * панель перед каждым Bash, Write, Edit, WebFetch и MCP-вызовом. Хук стоит в
-     * потоке раньше всех разрешений CLI, поэтому он спрашивал вообще всегда — и
-     * про `ls` с `git status`, которые CLI пропускает молча, и про то, что уже
-     * разрешено правилом в settings, и в режимах, где вопросов не должно быть по
-     * определению: «Don't ask», «Auto», «Bypass». Отсюда и «спрашивает на каждый
-     * чих, кнопка Always allow ничего не меняет»: правило записывалось честно, но
-     * следующий же вызов снова упирался в хук.
+     * The only one: a PreToolUse hook used to live beside it, knocking on the panel before every Bash,
+     * Write, Edit, WebFetch and MCP call. A hook stands earlier in the flow than any of the CLI's
+     * permissions, so it asked about everything - about `ls` and `git status`, which the CLI lets
+     * through silently, about what a rule in the settings already allowed, and in the modes where by
+     * definition there should be no questions: "Don't ask", "Auto", "Bypass". Hence "it asks about
+     * every little thing, and the Always allow button changes nothing": the rule was written honestly,
+     * and the very next call ran into the hook again.
      *
-     * Через канал решает сам CLI: он применяет режим, свои правила allow/deny и
-     * список безопасных команд, а панель спрашивает только там, где терминальный
-     * Claude Code спросил бы человека.
+     * Over the channel the CLI decides: it applies the mode, its own allow/deny rules and its list of
+     * safe commands, and the panel asks only where the terminal Claude Code would have asked a person.
      *
-     * Без канала потоковый режим считается «безлюдным» и выключает все инструменты,
-     * которым нужен живой человек, — в первую очередь ExitPlanMode. Агент про него
-     * знает и всё равно вызывает, но получает «No such tool available: ExitPlanMode
-     * … is not enabled in this context», после чего пересказывает план текстом и
-     * заканчивает ход. В панели это выглядело так: карточка плана с кнопками
-     * появлялась (её рисует сам вызов инструмента), а «Approve & run» оказывалось
-     * пустышкой — отвечать было уже некому и нечему.
+     * Without the channel the streaming mode counts as unattended and switches off every tool that
+     * needs a live person - ExitPlanMode first of all. The agent knows about it and calls it anyway,
+     * only to get "No such tool available: ExitPlanMode … is not enabled in this context", after which
+     * it retells the plan as text and ends the turn. In the panel that looked like this: the plan card
+     * with its buttons appeared (the tool call itself draws it), and "Approve & run" turned out to be a
+     * sham - there was no longer anyone or anything to answer.
      *
-     * Со включённым каналом CLI шлёт control_request `can_use_tool` и ждёт ответа
-     * (см. ClaudeSession): «разрешаю» возвращает агенту «User has approved your
-     * plan», он тут же продолжает работу в том же ходе, а режим CLI переключает
-     * сам и сообщает об этом обычным системным событием.
+     * With the channel on, the CLI sends a `can_use_tool` control_request and waits for an answer (see
+     * [ClaudeSession]): "allowed" returns "User has approved your plan" to the agent, it goes straight
+     * back to work within the same turn, and the CLI switches the mode itself, reporting it as an
+     * ordinary system event.
      *
-     * Значение "stdio" — то же, что подставляет себе Agent SDK: спрашивать по
-     * тому же потоку, которым идёт разговор.
+     * The value "stdio" is what the Agent SDK substitutes for itself: ask over the same stream the
+     * conversation runs on.
      */
     const val PERMISSION_CHANNEL_FLAG = "--permission-prompt-tool"
 
     /**
-     * Инструмент вопроса с вариантами ответа.
+     * The tool for a question with answer options.
      *
-     * Включён тем же каналом разрешений и отвечается через него же: вопрос
-     * приходит обычным `can_use_tool` с `requires_user_interaction`, а выбранные
-     * варианты возвращаются в `updatedInput` — CLI кладёт их в поле `answers`
-     * (ключ — текст вопроса, значение — подпись выбранного варианта) и сам
-     * собирает из них результат инструмента (проверено на живом CLI 2.1.226).
+     * Enabled by the same permission channel and answered over it too: the question arrives as an
+     * ordinary `can_use_tool` with `requires_user_interaction`, and the chosen options go back in
+     * `updatedInput` - the CLI puts them into the `answers` field (key: the question's text, value: the
+     * chosen option's label) and assembles the tool result out of them itself (verified against a live
+     * CLI 2.1.226).
      *
-     * Раньше инструмент был выключен ключом `--disallowed-tools`: панель умела
-     * показать вопрос, но не умела вернуть ответ, и разрешённый вызов молча
-     * отвечал агенту «человек не ответил». Теперь ответ доходит — см.
-     * ClaudePanel.answerAsk.
+     * The tool used to be switched off with `--disallowed-tools`: the panel could show the question but
+     * could not return the answer, and an allowed call silently told the agent "the person did not
+     * answer". Now the answer gets through - see ClaudePanel.answerAsk.
      */
     const val ASK_TOOL = "AskUserQuestion"
 
@@ -83,7 +78,7 @@ internal object ClaudeLaunch {
         allowBypassSwitch: Boolean,
     ): List<String> = buildList {
         add("--print")
-        // Без --verbose поток событий не отдаётся, это требование самого CLI.
+        // Without --verbose the event stream is not handed over at all; that is the CLI's own demand.
         add("--verbose")
         addAll(listOf("--output-format", "stream-json"))
         addAll(listOf("--input-format", "stream-json"))
@@ -94,21 +89,21 @@ internal object ClaudeLaunch {
         if (model.isNotEmpty()) addAll(listOf("--model", model))
         if (effort.isNotEmpty()) addAll(listOf("--effort", effort))
 
-        // Режим передаём всегда — даже «спрашивать всегда». Умолчание у CLI своё
-        // (permissions.defaultMode из личного конфига), и промолчав здесь, мы
-        // отдавали бы выбор ему: см. PermissionModes.
+        // The mode is always passed - even "ask every time". The CLI's default is its own
+        // (permissions.defaultMode from the personal config), and staying silent here would hand the
+        // choice over to it: see PermissionModes.
         permissionMode
             ?.let(PermissionModes::normalize)
             ?.let { addAll(listOf("--permission-mode", it)) }
 
-        // Только если этот CLI вообще знает такой ключ: неизвестный он не пропустит
-        // мимо ушей, а откажется запускаться вовсе.
+        // Only if this CLI knows the flag at all: an unknown one it does not wave through, it refuses
+        // to start.
         if (allowBypassSwitch) add(ALLOW_BYPASS_FLAG)
 
         when {
-            // Продолжаем свой разговор после перезапуска процесса.
+            // Continuing our own conversation after the process was restarted.
             conversationId != null -> addAll(listOf("--resume", conversationId))
-            // Первый запуск ветки: копируем переписку родителя, но с новым номером.
+            // A branch's first launch: copy the parent's transcript, but under a new number.
             forkFrom != null -> addAll(listOf("--resume", forkFrom, "--fork-session"))
         }
     }

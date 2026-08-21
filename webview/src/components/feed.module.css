@@ -1,8 +1,8 @@
-/* Лента вывода и все её карточки. Порядок секций совпадает с порядком в макете. */
+/* The output feed and all its cards. The order of the sections matches the order in the design. */
 
-/* Кадры анимаций живут здесь, а не в общем файле: CSS-модуль переименовывает
-   имена анимаций так же, как классы, и ссылка на глобальные кадры молча ни во что
-   не превращается — анимация просто не идёт. */
+/* The animation keyframes live here rather than in a shared file: a CSS module renames animation names
+   just as it renames classes, and a reference to global keyframes silently turns into nothing - the
+   animation simply does not run. */
 
 @keyframes acc-shimmer {
   from {
@@ -25,9 +25,8 @@
   }
 }
 
-/* Обёртка нужна отдельно от .feed: кнопка «вниз» должна стоять на месте, пока
-   сама лента прокручивается — а не ехать вместе с содержимым как обычный
-   потомок скроллящегося блока. */
+/* The wrapper is needed apart from .feed: the "down" button has to stand still while the feed itself
+   scrolls rather than ride along with the contents like an ordinary child of a scrolling block. */
 .feedWrap {
   flex: 1 1 0;
   min-width: 0;
@@ -42,16 +41,16 @@
   overflow-x: hidden;
   padding: 14px 0 18px;
   position: relative;
-  /* Свой плавающий палец рисует ScrollThumb — нативный скроллбар здесь не нужен
-     даже видимым, он бы резервировал ширину и двигал контент при появлении. */
+  /* A floating thumb of our own is drawn by ScrollThumb - the native scrollbar is not wanted here even as
+     something visible, it would reserve width and move the content when it appeared. */
   scrollbar-width: none;
-  /* Ленту читают и выделяют мышью — курсор об этом и говорит. Кнопки внутри
-     перебивают его своим указателем, как и в обычной вебстранице. */
+  /* The feed is read and selected with a mouse - the cursor says so. The buttons inside override it with
+     a pointer of their own, as on an ordinary web page. */
   cursor: text;
-  /* Содержимое ленты — то же, что показывает терминал, поэтому и шрифт тот же:
-     консольный из настроек IDE (см. IdeTypography.kt). Тем же шрифтом набирают и
-     в поле ввода, чтобы набранное и отправленное выглядели одинаково.
-     Интерфейсным шрифтом остаётся обвязка вокруг — кнопки, шапка, меню. */
+  /* The feed's contents are what a terminal shows, so the font is the same: the console one from the
+     IDE's settings (see IdeTypography.kt). The same font is typed in in the input field so that what is
+     typed and what is sent look alike. The interface font is left to the wrapping around - the buttons,
+     the header, the menus. */
   font-family: var(--acc-mono);
 }
 
@@ -98,7 +97,7 @@
   padding: 0 16px;
 }
 
-/* --- Пустое состояние ------------------------------------------------------ */
+/* --- The empty state ------------------------------------------------------- */
 
 .empty {
   height: 100%;
@@ -120,7 +119,7 @@
   color: var(--acc-fg-fainter);
 }
 
-/* --- Сообщение пользователя ------------------------------------------------ */
+/* --- The user's message ---------------------------------------------------- */
 
 .user {
   display: flex;
@@ -155,14 +154,14 @@
 }
 
 /*
- * Обычный блочный поток, не flex — ровно как в поле ввода, откуда это сообщение
- * и пришло: плашки внутри него inline-flex, поэтому текст и вложения стоят как
- * слова и картинки в абзаце. Flex тут раскладывал бы детей по своей оси, а не
- * текстом, и переводы строк между ними пропадали: набранное в несколько строк
- * сообщение слипалось в ленте в одну.
+ * An ordinary block flow rather than flex - exactly as in the input field this message came from: the
+ * chips inside it are inline-flex, so the text and the attachments stand like words and pictures in a
+ * paragraph. Flex here would lay the children out along its own axis rather than as text, and the line
+ * breaks between them would disappear: a message typed over several lines stuck together into one in the
+ * feed.
  *
- * Длинное слово без пробелов (путь, ссылка, хеш) в потоке рвём принудительно:
- * раньше от него спасал перенос флекса, а так оно распирает карточку вширь.
+ * A long word without spaces (a path, a link, a hash) is broken by force in the flow: previously the
+ * flex's wrapping saved us from it, and left alone it stretches the card sideways.
  */
 .userBody {
   font-size: 13px;
@@ -172,16 +171,16 @@
   overflow-wrap: anywhere;
 }
 
-/* Кусок, подставленный самой панелью, — повтор вопроса агента рядом с ответом
-   на него (см. UserToken.echo). Тот же приём приглушения, что и у .userQuote:
-   вопрос уже прочитан выше, внимание должно доставаться ответу. */
+/* A piece the panel filled in itself - a repeat of the agent's question beside the answer to it (see
+   UserToken.echo). The same dimming trick as .userQuote: the question has been read above, the attention
+   has to go to the answer. */
 .userEcho {
   color: var(--acc-fg-faint);
 }
 
-/* Своих боковых отступов у плашки нет — ровно по той же причине, что и в поле
-   ввода (см. .token в composer.module.css): пробел вокруг вложения стоит в самом
-   тексте сообщения, и отступ складывался с ним в полуторный зазор. */
+/* A chip has no side margins of its own - for exactly the same reason as in the input field (see .token in
+   composer.module.css): the space around an attachment stands in the message's text itself, and a margin
+   added up with it into a gap and a half. */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -190,10 +189,9 @@
   border: 1px solid;
   border-radius: var(--acc-r-sm);
   font: 11px var(--acc-mono);
-  /* baseline у центрированного inline-flex без своей строки текста браузер
-     синтезирует по нижнему краю поля — плашка повисает ниже строки. middle —
-     тот же приём, что и у токена в поле ввода (composer.module.css), откуда
-     плашка сюда и попадает. */
+  /* The baseline of a centred inline-flex without a text line of its own the browser synthesises from the
+     box's bottom edge - the chip hangs below the line. middle is the same trick as the token in the input
+     field (composer.module.css), which is where the chip comes here from. */
   vertical-align: middle;
 }
 
@@ -221,30 +219,30 @@
   color: var(--acc-warn-light);
 }
 
-/* Ссылка на кусок файла из редактора: цвет тот же, что у боковых веток, — и то,
-   и другое привязано к конкретному месту, а не ко всему файлу. */
+/* A reference to a piece of a file from the editor: the same colour as the side branches - both are tied
+   to a particular place rather than to a whole file. */
 .chipRef {
   background: var(--acc-branch-12);
   border-color: var(--acc-branch-32);
   color: var(--acc-branch-light);
 }
 
-/* Цитата, выделенная в собственном выводе агента — свой цвет, не пересекается
-   ни с одним из остальных вложений. */
+/* A quote selected in the agent's own output - a colour of its own, overlapping none of the other
+   attachments. */
 .chipQuote {
   background: var(--acc-quote-12);
   border-color: var(--acc-quote-32);
   color: var(--acc-quote);
 }
 
-/* Свёрнутая вставка из буфера — нейтральная, см. --acc-paste в tokens.css. */
+/* A collapsed paste from the clipboard - neutral, see --acc-paste in tokens.css. */
 .chipPaste {
   background: var(--acc-paste-12);
   border-color: var(--acc-paste-32);
   color: var(--acc-paste);
 }
 
-/* Вставка, за которой в сообщении ничего нет, занимает строку целиком. */
+/* A paste with nothing after it in the message takes up a whole line. */
 .chipPasteBlock {
   display: flex;
   flex-direction: column;
@@ -260,8 +258,8 @@
   color: var(--acc-fg-faint);
 }
 
-/* Три строки — столько же, сколько занял бы обычный абзац ответа: дальше это
-   уже не напоминание о вставленном, а второй разговор поверх первого. */
+/* Three lines - as many as an ordinary paragraph of an answer would take: beyond that it is no longer a
+   reminder of what was pasted but a second conversation on top of the first. */
 .chipPasteText {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -274,8 +272,8 @@
   line-height: 16px;
 }
 
-/* Цитата внутри сообщения: тот же приём, что и в чате Claude — полоска слева и
-   приглушённый текст, чтобы её нельзя было спутать с собственными словами. */
+/* A quote inside a message: the same trick as in the Claude chat - a stripe on the left and dimmed text so
+   that it cannot be mistaken for one's own words. */
 .userQuote {
   margin: 0 0 2px;
   padding: 4px 0 4px 9px;
@@ -290,11 +288,11 @@
   overflow-y: auto;
 }
 
-/* --- Текст ответа ---------------------------------------------------------- */
+/* --- The answer's text ----------------------------------------------------- */
 
-/* Капсула, а не голый текст вподряд с остальной лентой — тот же приём, что и у
-   сообщения пользователя (граница вместо заливки: тише, но всё ещё видно, где
-   кончились технические логи и начался настоящий ответ). */
+/* A capsule rather than bare text running on with the rest of the feed - the same trick as the user's
+   message (a border instead of a fill: quieter, but it is still visible where the technical logs ended and
+   the genuine answer began). */
 .text {
   position: relative;
   margin: 8px 0 10px;
@@ -326,13 +324,12 @@
 }
 
 /*
- * Раньше буллет и текст были отдельными flex-элементами (span + div) — при
- * копировании браузер вставляет перенос строки на границе блочных элементов
- * независимо от того, что визуально они в одной строке, поэтому буллет
- * копировался отдельной строкой над текстом. Теперь это один инлайновый поток
- * в одном блоке — копируется одной строкой, как выглядит. Скруглённый отступ
- * (padding-left + отрицательный text-indent) даёт тот же "висячий" вид: буллет
- * торчит влево, перенесённые строки выравниваются по тексту, а не по буллету.
+ * The bullet and the text used to be separate flex items (a span + a div) - when copying, the browser
+ * inserts a line break at the boundary of block elements regardless of the fact that visually they are on
+ * one line, so the bullet was copied as a separate line above the text. Now this is one inline flow in one
+ * block - copied as one line, as it looks. The hanging indent (padding-left + a negative text-indent) gives
+ * the same "hanging" look: the bullet sticks out to the left while wrapped lines align to the text rather
+ * than to the bullet.
  */
 .para {
   margin: 0 0 6px;
@@ -344,18 +341,17 @@
   text-indent: -16px;
 }
 
-/* Тот же жирный текст, что и у обычного абзаца (см. .strong в PartView), но с
-   зазором сверху — иначе заголовок читается продолжением абзаца над собой, а
-   не началом нового раздела, особенно когда следом сразу идёт ещё жирная
-   строка. У самого первого абзаца в ответе зазор снимается ниже, вместе с
+/* The same bold text as an ordinary paragraph has (see .strong in PartView), but with a gap above -
+   otherwise a heading reads as a continuation of the paragraph above it rather than as the start of a new
+   section, especially when another bold line follows right after. For the answer's very first paragraph the
+   gap is removed below, along with
    .text > *:first-child. */
 .paraHeading {
   margin-top: 14px;
 }
 
-/* Цитата markdown (строка с «>») — тот же приём, что у .userQuote, и тот же
-   цвет, что у .chipQuote: полоска слева и приглушённый текст, чтобы её было
-   не спутать со словами самого агента. */
+/* A markdown quote (a line with a ">") - the same trick as .userQuote and the same colour as .chipQuote: a
+   stripe on the left and dimmed text so that it is not mistaken for the agent's own words. */
 .paraQuote {
   padding: 3px 0 3px 10px;
   border-left: 2px solid var(--acc-quote-32);
@@ -380,7 +376,7 @@
   background: var(--acc-neutral-16);
 }
 
-/* Единственный ответ на клик, который здесь возможен: в буфер не заглянешь. */
+/* The only answer to a click that is possible here: one cannot look into the clipboard. */
 .codeCopied,
 .codeCopied:hover {
   background: var(--acc-ok-12);
@@ -409,8 +405,8 @@
   text-decoration: underline;
 }
 
-/* Обёртка держит отступы блока и место под кнопку: сам pre прокручивается по
-   горизонтали, и кнопка внутри него уезжала бы вместе с длинной строкой. */
+/* The wrapper holds the block's padding and the room for the button: the pre itself scrolls horizontally,
+   and a button inside it would ride away with a long line. */
 .codeBlockWrap {
   position: relative;
   margin: 2px 0 8px;
@@ -454,9 +450,8 @@
   overflow-x: auto;
 }
 
-/* Обёртка держит рамку и скругление, сама прокручивается по горизонтали —
-   колонок в ответе бывает больше, чем строка панели способна показать без
-   переноса заголовков вкось. */
+/* The wrapper holds the border and the rounding and scrolls horizontally itself - an answer may hold more
+   columns than the panel's width can show without wrapping the headings sideways. */
 .tableWrap {
   margin: 2px 0 8px;
   border: 1px solid var(--acc-line);
@@ -478,11 +473,10 @@
   vertical-align: top;
 }
 
-/* Верхнюю и левую рамки таблицы уже даёт .tableWrap — свои у крайних ячеек
-   поверх неё читались бы вдвое толще ровно по этим двум сторонам. thead, а
-   не tr:first-child — та же строка "первая в своём родителе" верна и для
-   первой строки тела, которой верхняя рамка как раз нужна: она же граница
-   с шапкой. */
+/* The table's top and left borders are already given by .tableWrap - the edge cells' own on top of it
+   would read twice as thick along exactly those two sides. thead rather than tr:first-child - the same
+   "first in its parent" line also holds for the body's first row, which does need a top border: it is the
+   boundary with the head. */
 .table thead th {
   border-top: none;
 }
@@ -506,10 +500,9 @@
   text-align: right;
 }
 
-/* Отступ снизу у последнего абзаца/блока кода в ответе не нужен — под ним нет
-   больше ничего, а .text уже даёт свой padding-bottom. Симметрично сверху:
-   если ответ сразу начинается с заголовка, его добавочный зазор (.paraHeading)
-   не должен складываться с padding-top контейнера. */
+/* The last paragraph or code block in an answer needs no bottom margin - there is nothing else under it,
+   and .text already gives its own padding-bottom. Symmetrically at the top: if an answer begins straight
+   with a heading, its extra gap (.paraHeading) must not add up with the container's padding-top. */
 .text > *:last-child {
   margin-bottom: 0;
 }
@@ -518,7 +511,7 @@
   margin-top: 0;
 }
 
-/* --- Вызов инструмента ----------------------------------------------------- */
+/* --- A tool call ----------------------------------------------------------- */
 
 .tool {
   margin: 1px 0;
@@ -526,23 +519,21 @@
   overflow: hidden;
 }
 
-/* По базовой линии, как и остальные строки ленты (.think, .checkpoint,
-   .compact): подписи здесь разного кегля — плашка 9.5px, цель 12px, статус
-   11px, длительность 10px, — и общий центр по коробкам ставит их буквы на
-   четыре разные высоты, что и читается как «съехало». Высота строки поэтому
-   растёт от содержимого: с фиксированной высотой baseline прижал бы всю
-   группу к верхнему краю. */
+/* On the baseline, like the feed's other rows (.think, .checkpoint, .compact): the captions here are of
+   different sizes - the chip 9.5px, the target 12px, the status 11px, the duration 10px - and a shared
+   centre by boxes puts their letters at four different heights, which is what reads as "slipped". The
+   row's height therefore grows from its contents: with a fixed height the baseline would press the whole
+   group to the top edge. */
 .toolHead {
   display: flex;
   align-items: baseline;
   gap: 8px;
   width: 100%;
   padding: 4px 7px;
-  /* Свёрнутая группа («N tools») обходится без плашки (.toolChip) — а та на
-     1px выше обычного текста строки из-за своих отступов. Без этого пола
-     высота карточки на этот 1px прыгает туда-обратно на каждом схлопывании
-     группы, двигая за собой всё, что ниже в ленте. 25px = свои же 8px
-     (padding сверху и снизу) + 17px высоты плашки. */
+  /* A collapsed group ("N tools") does without a chip (.toolChip) - and that one is 1px taller than the
+     row's ordinary text because of its own padding. Without this floor the card's height jumps by that 1px
+     back and forth on every collapse of the group, dragging everything below it in the feed along. 25px =
+     our own 8px (padding top and bottom) + the chip's 17px height. */
   min-height: 25px;
   border-radius: var(--acc-r-md);
   text-align: left;
@@ -552,8 +543,8 @@
   background: var(--acc-bg-card);
 }
 
-/* Стрелка — значок, а не подпись: базовая линия ей чужая, поэтому единственная
-   в строке центрируется по её высоте. */
+/* The arrow is an icon rather than a caption: the baseline is alien to it, so the only one in the row is
+   centred by its height. */
 .caret {
   flex: none;
   align-self: center;
@@ -568,13 +559,12 @@
   transform: rotate(90deg);
 }
 
-/* Плашка встаёт в строку по базовой линии — как и всё остальное в шапке. Но
-   базовая линия ставит по буквам, а рядом с текстом видно не буквы плашки, а её
-   заливку: прямоугольник целиком. Коробка эта симметрична вокруг метрик своего,
-   более мелкого шрифта, и её середина оказывается выше середины соседнего слова
-   — на глаз плашка висит над строкой. Опускаем её на пиксель, чтобы середины
-   сошлись; сдвиг рисованный, в поток не вмешивается, высоту строки не трогает и
-   надпись внутри плашки оставляет ровно по её центру. */
+/* The chip stands in the row on the baseline - like everything else in the head. But the baseline aligns
+   by letters, while beside the text what is seen is not the chip's letters but its fill: the rectangle
+   whole. That box is symmetrical around the metrics of its own, smaller font, and its middle ends up above
+   the middle of the neighbouring word - to the eye the chip hangs above the row. We drop it by a pixel so
+   that the middles meet; the shift is a painted one, does not meddle with the flow, does not touch the
+   row's height and leaves the caption inside the chip exactly at its centre. */
 .toolChip {
   flex: none;
   padding: 2px 6px;
@@ -639,8 +629,8 @@
   animation: acc-pulse 1.6s infinite;
 }
 
-/* Не пульсирует нарочно: агент ничего не делает, а стоит и ждёт тебя — не
-   стоит выглядеть так же бодро, как реальная работа. */
+/* Deliberately not pulsing: the agent is doing nothing, it stands and waits for you - it should not look
+   as brisk as genuine work. */
 .toolMeta.waiting {
   color: var(--acc-warn);
 }
@@ -670,7 +660,7 @@
   color: var(--acc-bad-light);
 }
 
-/* --- Группа вызовов инструментов -------------------------------------------- */
+/* --- A group of tool calls -------------------------------------------------- */
 
 .toolGroup {
   composes: tool;
@@ -684,7 +674,7 @@
   composes: toolBody;
 }
 
-/* --- Дифф ------------------------------------------------------------------ */
+/* --- The diff -------------------------------------------------------------- */
 
 .hunks {
   display: flex;
@@ -819,11 +809,10 @@
   color: var(--acc-bad-text);
 }
 
-/* --- Экран агента (вкладка чипа вместо main) -------------------------------- */
+/* --- The agent's screen (a chip's tab instead of main) ---------------------- */
 
-/* Просто текст, тем же языком, что и обычный ответ в главной ленте — без
-   карточки-рамки: сам экран уже полностью занимает область вывода, второй
-   уровень обводки тут не нужен. */
+/* Simply text, in the same language as an ordinary answer in the main feed - without a card frame: the
+   screen itself already fills the whole output area, a second level of outline is not wanted here. */
 .agentViewBody {
   flex: 1 1 0;
   min-width: 0;
@@ -853,11 +842,10 @@
   color: var(--acc-fg-faint);
 }
 
-/* Тот же переливающийся текст, что и статус-строка главной ленты (.streamingText
-   ниже) — у экрана агента нет своей карточки, значит и тикающий таймер должен
-   выглядеть так же узнаваемо, а не отдельным изобретённым стилем. Не composes:
-   postcss-modules-scope резолвит его только на классы, объявленные раньше по
-   файлу, а .streamingText объявлен ниже. */
+/* The same shimmering text as the main feed's status line (.streamingText below) - the agent's screen has
+   no card of its own, so the ticking timer has to look just as recognisable rather than in a separate
+   invented style. Not composes: postcss-modules-scope resolves it only against classes declared earlier in
+   the file, and .streamingText is declared below. */
 .agentViewWorking {
   font: 11.5px var(--acc-mono);
   background: linear-gradient(
@@ -874,15 +862,15 @@
   -webkit-background-clip: text;
   color: transparent;
   white-space: nowrap;
-  /* Строка называет текущее дело словами самой модели, и длина у него любая, а
-     панель бывает узкой. Многоточие в конце честнее строки, уехавшей за край. */
+  /* The line names the current business in the model's own words, and its length is anyone's guess while
+     the panel may be narrow. An ellipsis at the end is more honest than a line that ran off the edge. */
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   animation: acc-shimmer 2.6s linear infinite alternate;
 }
 
-/* --- План ------------------------------------------------------------------ */
+/* --- The plan -------------------------------------------------------------- */
 
 .plan {
   margin: 10px 0;
@@ -892,7 +880,7 @@
   overflow: hidden;
 }
 
-/* По базовой линии, а не по центру: у метки PLAN и подсказки разный кегль. */
+/* On the baseline rather than centred: the PLAN label and the hint are of different sizes. */
 .planHead {
   display: flex;
   align-items: baseline;
@@ -912,9 +900,8 @@
   color: var(--acc-fg-faint);
 }
 
-/* Тело плана — тот же markdown, что и в ответе агента (см. Markdown.tsx), с
-   собственной прокруткой: длинный план не должен выдавливать кнопки под ним за
-   край панели. */
+/* The plan's body is the same markdown as in the agent's answer (see Markdown.tsx), with a scroll of its
+   own: a long plan must not push the buttons under it past the panel's edge. */
 .planBody {
   max-height: 320px;
   overflow-y: auto;
@@ -930,7 +917,7 @@
   border-top: 1px solid var(--acc-accent-20);
 }
 
-/* --- Кнопки карточек ------------------------------------------------------- */
+/* --- The cards' buttons ---------------------------------------------------- */
 
 .primary {
   height: 25px;
@@ -1005,10 +992,10 @@
   opacity: 0.6;
 }
 
-/* --- Служебные строки ------------------------------------------------------ */
+/* --- The service rows ------------------------------------------------------ */
 
-/* По базовой линии, а не по центру: у чипа и текста разный кегль, и центрирование
-   ставит первое слово выше остальной строки. */
+/* On the baseline rather than centred: the chip and the text are of different sizes, and centring puts the
+   first word above the rest of the row. */
 .checkpoint {
   display: flex;
   align-items: baseline;
@@ -1033,23 +1020,20 @@
   background: repeating-linear-gradient(90deg, var(--acc-line) 0 4px, transparent 4px 8px);
 }
 
-/* Ни рамки, ни своей подложки — тот же плоский вид, что и у карточки вызова
-   инструмента (.tool) рядом: разного оформления у двух вперемешку идущих
-   карточек одного ряда быть не должно. */
+/* Neither a border nor a backing of its own - the same flat look as the tool call card (.tool) beside it:
+   two cards of one rank running interleaved must not be styled differently. */
 .think {
   margin: 1px 0;
   border-radius: var(--acc-r-md);
   overflow: hidden;
 }
 
-/* По базовой линии, как и заголовок вызова: плашка, строка мысли и счётчик
-   разного кегля, и общий центр по коробкам ставит их на разные высоты — коробка
-   строки выше своих букв на просвет над ними, и по её середине плашка уезжает
-   вверх. По базовой линии заливка плашки встаёт серединой ровно против середины
-   строчных букв рядом. */
-/* Тот же отступ, что и у заголовка вызова (.toolHead) — иначе стрелка-каретка
-   у мысли стоит на пару пикселей правее, чем у вызова строкой выше или ниже, и
-   ряд читается неровным. */
+/* On the baseline, like the call's head: the chip, the thought's line and the counter are of different
+   sizes, and a shared centre by boxes puts them at different heights - the line's box is taller than its
+   letters by the gap above them, and by its middle the chip rides upwards. On the baseline the chip's fill
+   stands with its middle exactly opposite the middle of the lowercase letters beside it. */
+/* The same padding as the call's head (.toolHead) - otherwise the thought's caret arrow stands a couple of
+   pixels further right than the call's a row above or below, and the row reads as uneven. */
 .thinkHead {
   display: flex;
   align-items: baseline;
@@ -1059,14 +1043,14 @@
   text-align: left;
 }
 
-/* Тот же отклик, что и у заголовка группы вызовов: карточка нажимается, и это
-   должно быть видно до нажатия. */
+/* The same response as the head of a group of calls: the card can be pressed, and that has to be visible
+   before the press. */
 .thinkHead:hover {
   background: var(--acc-bg-card);
 }
 
-/* min-width: 0 — иначе flex-элемент не сжимается под текст своей ширины, и
-   text-overflow: ellipsis никогда не срабатывает, сколько бы ни было текста. */
+/* min-width: 0 - otherwise a flex item does not shrink below the width of its own text, and
+   text-overflow: ellipsis never fires, however much text there is. */
 .thinkText {
   min-width: 0;
   flex: 1 1 auto;
@@ -1077,8 +1061,8 @@
   color: var(--acc-fg-dim);
 }
 
-/* Сколько мыслей внутри — то же, чем группа вызовов подписывает своё «N tools»:
-   снаружи видно последнюю, а число говорит, что за ней есть ещё. */
+/* How many thoughts are inside - the same thing a group of calls signs its "N tools" with: from outside
+   the last one is visible, and the number says there are more behind it. */
 .thinkCount {
   flex: none;
   font: 10px var(--acc-mono);
@@ -1096,8 +1080,8 @@
   padding: 2px 9px 9px 26px;
 }
 
-/* Раскрытая мысль читается абзацем: та же ширина строки и тот же интерлиньяж,
-   что у ответа агента, только тише — это его размышление, а не сказанное вслух. */
+/* An unfolded thought reads as a paragraph: the same line width and the same leading as the agent's
+   answer, only quieter - this is its reasoning rather than what it said aloud. */
 .thinkFull {
   margin: 0;
   font-size: 11.5px;
@@ -1107,13 +1091,13 @@
   overflow-wrap: anywhere;
 }
 
-/* --- Команда bash-режима ------------------------------------------------- */
+/* --- A bash-mode command --------------------------------------------------- */
 
 /*
- * Команда, которую человек выполнил сам через «!». Вид ближе к вызову
- * инструмента, чем к своему сообщению: это не реплика в разговоре, а действие,
- * у которого есть результат. Но плашка в начале другая — знак «!», которым её и
- * набрали, вместо подписи BASH: там инструмент вызвал агент, здесь — человек.
+ * A command the person ran themselves through a "!". The look is closer to a tool call than to one's own
+ * message: this is not a line in a conversation but an action that has a result. But the chip at the start
+ * is different - the "!" sign it was typed with instead of a BASH caption: there the tool was called by the
+ * agent, here by the person.
  */
 .bash {
   margin: 12px 0;
@@ -1143,8 +1127,8 @@
   color: var(--acc-bad-light);
 }
 
-/* Вывод целиком, но не во весь экран: длинная простыня прокручивается внутри
-   карточки, а лента остаётся листаемой. */
+/* The output whole but not filling the screen: a long wall of it scrolls inside the card while the feed
+   stays scrollable. */
 .bashOutput {
   margin: 0;
   padding: 7px 9px;
@@ -1162,9 +1146,8 @@
   color: var(--acc-bad-text);
 }
 
-/* По базовой линии, как .think и .checkpoint: в строке одни только подписи
-   разного кегля, и общий центр по коробкам ставил бы их буквы на разные
-   высоты. */
+/* On the baseline, like .think and .checkpoint: the row holds nothing but captions of different sizes, and
+   a shared centre by boxes would put their letters at different heights. */
 .compact {
   display: flex;
   align-items: baseline;
@@ -1182,15 +1165,15 @@
   color: var(--acc-warn);
 }
 
-/* Пока сжатие реально идёт — метка дышит, как и статус активных вызовов
-   инструментов (.toolMeta.running); как только итог известен, анимация гаснет. */
+/* While the compaction genuinely runs the label breathes, like the status of active tool calls
+   (.toolMeta.running); as soon as the outcome is known the animation dies down. */
 .compactLabel.pending {
   animation: acc-pulse 1.6s infinite;
 }
 
-/* Сжимается с многоточием, как мысль в .think: итоговая подпись с цифрами до и
-   после длиннее ширины узкой панели, и без этого она выдавила бы процент за
-   правый край. */
+/* Shrinks with an ellipsis, like a thought in .think: the final caption with the numbers before and after
+   is longer than a narrow panel's width, and without this it would push the percentage past the right
+   edge. */
 .compactText {
   min-width: 0;
   flex: 0 1 auto;
@@ -1205,7 +1188,7 @@
   flex: none;
   font: 9.5px/1 var(--acc-mono);
   color: var(--acc-fg-dim);
-  /* Цифры одной ширины: иначе процент дёргает всю строку при каждом шаге. */
+  /* Digits of one width: otherwise the percentage jerks the whole row on every step. */
   font-variant-numeric: tabular-nums;
 }
 
@@ -1219,9 +1202,9 @@
   flex-wrap: wrap;
 }
 
-/* Пауза перед повторным запросом — та же строка, что и у сжатия контекста (см.
-   .compact), но на предупреждающем фоне: сжатие идёт своим чередом, а здесь
-   разговор стоит из-за чужой поломки, и это должно быть видно, не читая. */
+/* The pause before a repeated request - the same row as the context compaction (see .compact), but on a
+   warning background: a compaction runs its course, while here the conversation stands because of someone
+   else's breakage, and that has to be visible without reading. */
 .retry {
   display: flex;
   align-items: baseline;
@@ -1239,7 +1222,7 @@
   color: var(--acc-warn-light);
 }
 
-/* Пока попытки идут — метка дышит тем же пульсом, что и CONTEXT во время сжатия. */
+/* While the attempts run the label breathes with the same pulse as CONTEXT during a compaction. */
 .retryLabel.pending {
   animation: acc-pulse 1.6s infinite;
 }
@@ -1258,7 +1241,7 @@
   flex: none;
   font: 9.5px/1 var(--acc-mono);
   color: var(--acc-fg-dim);
-  /* Цифры одной ширины: иначе обратный отсчёт дёргает строку на каждой секунде. */
+  /* Digits of one width: otherwise the countdown jerks the row on every second. */
   font-variant-numeric: tabular-nums;
 }
 
@@ -1284,7 +1267,7 @@
   color: var(--acc-bad-text);
 }
 
-/* --- Индикатор работы ------------------------------------------------------ */
+/* --- The working indicator ------------------------------------------------- */
 
 .streaming {
   display: flex;
@@ -1293,9 +1276,9 @@
   padding: 4px 16px 0;
 }
 
-/* Перелив идёт по самим буквам: градиент шире строки и медленно едет вдоль неё.
-   direction: alternate — волна едет туда-обратно, а не дёргается назад скачком
-   на каждом повторе. */
+/* The shimmer runs over the letters themselves: the gradient is wider than the line and travels slowly
+   along it. direction: alternate - the wave travels there and back rather than jerking back in a jump on
+   every repeat. */
 .streamingText {
   font: 11.5px var(--acc-mono);
   background: linear-gradient(
@@ -1312,17 +1295,17 @@
   -webkit-background-clip: text;
   color: transparent;
   white-space: nowrap;
-  /* Строка называет текущее дело словами самой модели, и длина у него любая, а
-     панель бывает узкой. Многоточие в конце честнее строки, уехавшей за край. */
+  /* The line names the current business in the model's own words, and its length is anyone's guess while
+     the panel may be narrow. An ellipsis at the end is more honest than a line that ran off the edge. */
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   animation: acc-shimmer 2.6s linear infinite alternate;
 }
 
-/* Работа стоит и ждёт чужой сервер: перелив по буквам означает идущее дело, и
-   здесь он врал бы. Строка вместо этого просто окрашена предупреждением — тем
-   же, что и карточка паузы над ней (.retry). */
+/* The work stands waiting for someone else's server: a shimmer over the letters means business under way,
+   and here it would lie. The line is instead simply painted in the warning colour - the same one as the
+   pause card above it (.retry). */
 .streamingText.streamingStalled {
   background: none;
   background-clip: border-box;
@@ -1331,9 +1314,9 @@
   animation: none;
 }
 
-/* Ширина как у остальных карточек ленты: боковые отступы даёт сама строка
-   (.row), и своих у ошибки быть не должно — иначе она уже соседей и читается
-   как что-то вставное, а не как часть разговора. */
+/* The width is that of the feed's other cards: the side padding is given by the row itself (.row), and an
+   error must have none of its own - otherwise it is narrower than its neighbours and reads as something
+   inserted rather than as a part of the conversation. */
 .error {
   display: flex;
   align-items: flex-start;

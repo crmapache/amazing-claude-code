@@ -8,11 +8,11 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindowManager
 
 /**
- * Как добраться до панели снаружи.
+ * How to reach the panel from outside.
  *
- * Панель создаёт платформа, когда пользователь впервые открывает её кнопку, поэтому
- * действия из редактора не могут просто взять её у себя: сначала окно надо открыть,
- * а уже потом отправлять. Открытие асинхронное — отсюда колбэк.
+ * The panel is created by the platform, when the user first opens its button, so actions from the
+ * editor cannot simply take it for themselves: the window has to be opened first and only then sent to.
+ * The opening is asynchronous - hence the callback.
  */
 @Service(Service.Level.PROJECT)
 internal class ClaudePanels(private val project: Project) {
@@ -25,7 +25,7 @@ internal class ClaudePanels(private val project: Project) {
         Disposer.register(parentDisposable) { if (this.panel === panel) this.panel = null }
     }
 
-    /** Открывает панель, если она ещё не открыта, и отдаёт её колбэку. */
+    /** Opens the panel if it is not open yet, and hands it to the callback. */
     fun withPanel(use: (ClaudePanel) -> Unit) {
         val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return
 
@@ -34,6 +34,7 @@ internal class ClaudePanels(private val project: Project) {
 
     companion object {
 
+        /** The panel's id in the platform - the same one plugin.xml registers it under. */
         const val TOOL_WINDOW_ID = "AmazingClaudeCode"
 
         fun getInstance(project: Project): ClaudePanels = project.service()

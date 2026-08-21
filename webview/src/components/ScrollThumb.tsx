@@ -2,26 +2,24 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import s from './scrollThumb.module.css'
 
 interface ScrollThumbProps {
-  /** Сам скроллящийся элемент — палец только рисует поверх него, не оборачивает. */
+  /** The scrolling element itself - the thumb only draws over it rather than wrapping it. */
   targetRef: RefObject<HTMLElement | null>
 }
 
 const MIN_THUMB_PX = 24
 
 /**
- * Палец прокрутки поверх содержимого — как в редакторе самой WebStorm: не
- * занимает ширину и не двигает контент при появлении, просто ложится сверху,
- * и виден постоянно, пока есть что прокручивать (не гаснет через паузу — это
- * тоже поведение нативного редактора, не оверлей-скроллбар macOS/Chrome).
+ * A scroll thumb over the content - as in WebStorm's own editor: it takes up no width and does not move
+ * the content when it appears, it simply lies on top, and stays visible for as long as there is anything
+ * to scroll (it does not fade after a pause - that too is the native editor's behaviour rather than the
+ * macOS/Chrome overlay scrollbar).
  *
- * `overflow: overlay` для этого не подходит — начиная с Chromium 121 браузер
- * его больше не поддерживает (проверено: JCEF этой версии IDE — Chromium 144),
- * а обычный overflow:auto всегда резервирует под скроллбар ширину. Поэтому
- * нативный скроллбар у целевого элемента спрятан в его собственном CSS
- * (::-webkit-scrollbar { display: none }), а этот компонент рисует свой поверх
- * содержимого — только позиция и размер, без изменения раскладки родителя.
- * Родителю самого targetRef нужен position:relative — иначе плавающий палец
- * позиционируется от куда-то не того.
+ * `overflow: overlay` does not suit this - since Chromium 121 the browser no longer supports it
+ * (verified: the JCEF of this IDE version is Chromium 144), while an ordinary overflow:auto always
+ * reserves width for the scrollbar. So the target element's native scrollbar is hidden in its own CSS
+ * (::-webkit-scrollbar { display: none }), and this component draws its own over the content - position
+ * and size only, without changing the parent's layout. The parent of targetRef itself needs
+ * position:relative, or the floating thumb is positioned relative to something else entirely.
  */
 export const ScrollThumb = ({ targetRef }: ScrollThumbProps) => {
   const [thumb, setThumb] = useState<{ top: number; height: number } | null>(null)
@@ -47,8 +45,8 @@ export const ScrollThumb = ({ targetRef }: ScrollThumbProps) => {
 
     update()
     el.addEventListener('scroll', update)
-    // Контент дорастает после отрисовки (диффы разворачиваются, шрифты
-    // подгружаются) — без наблюдателя палец остался бы неверного размера.
+    // The content keeps growing after the first paint (diffs expand, fonts load) - without an observer
+    // the thumb would stay the wrong size.
     const observer = new ResizeObserver(update)
     observer.observe(el)
 
@@ -58,10 +56,9 @@ export const ScrollThumb = ({ targetRef }: ScrollThumbProps) => {
     }
   }, [targetRef])
 
-  // Слушатели на window, а не только на самом пальце: если отпустить мышь за
-  // его пределами (или вовсе за пределами окна), drag обязан всё равно
-  // закончиться — иначе он залипает и потом дёргает прокрутку от следующего
-  // случайного движения мыши.
+  // The listeners live on the window rather than on the thumb alone: if the mouse is released outside it
+  // (or outside the window entirely), the drag still has to end - otherwise it sticks and later jerks the
+  // scroll on the next accidental mouse move.
   useEffect(() => {
     if (!dragging) return
 

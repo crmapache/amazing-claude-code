@@ -3,23 +3,22 @@ import type { TaskItem } from '../feed/types'
 import s from './feed.module.css'
 
 interface AgentStreamViewProps {
-  /** Агент, открытый сейчас чипом — или ничего, пока вкладка не выбрана. */
+  /** The agent currently opened by a chip - or nothing while no tab is chosen. */
   item: TaskItem | undefined
 }
 
 /**
- * Область вывода, когда выбран чип конкретного агента, а не main — просто
- * его лог, тем же простым текстом, что и обычный ответ в главной ленте. Ни
- * карточки с шапкой, ни бара прогресса в процентах: в настоящем терминальном
- * Claude Code у субагента нет вообще ничего, кроме таймера — сам процент это
- * уже расширение поверх, и он и так виден на чипе, здесь дублировать незачем.
+ * The output area when a particular agent's chip is selected rather than main - simply its log, in the
+ * same plain text as an ordinary answer in the main feed. No card with a header, no percentage progress
+ * bar: in the real terminal Claude Code a subagent has nothing at all beyond a timer - the percentage is
+ * already an extension on top, and it is visible on the chip anyway, so duplicating it here serves
+ * nothing.
  */
 export const AgentStreamView = ({ item }: AgentStreamViewProps) => {
   const body = useRef<HTMLDivElement | null>(null)
 
-  // Растущий лог живого агента липнет к низу, как основная лента — иначе
-  // наблюдение за работающим агентом означало бы вручную домотку вниз на
-  // каждый новый шаг.
+  // A live agent's growing log sticks to the bottom, like the main feed - otherwise watching a working
+  // agent would mean scrolling down by hand on every new step.
   useLayoutEffect(() => {
     const element = body.current
     if (!element) return
@@ -38,9 +37,9 @@ export const AgentStreamView = ({ item }: AgentStreamViewProps) => {
           {line.text}
         </div>
       ))}
-      {/* Тикает тем же общим tick-механизмом, что и чип этого агента в шапке
-          (см. tickDurations в feed/build.ts) — просто показываем то же самое
-          значение здесь, а не только в чипе. */}
+      {/* It ticks by the same shared tick mechanism as this agent's chip in the header (see
+          tickDurations in feed/build.ts) - we simply show the same value here rather than only on the
+          chip. */}
       {item.pending ? <div className={s.agentViewWorking}>Working · {item.duration || '0.0s'}</div> : null}
     </div>
   )

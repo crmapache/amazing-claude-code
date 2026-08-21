@@ -17,86 +17,86 @@ class ClaudeCommandHintsTest {
     }
 
     @Test
-    fun `описание в одну строку читается как есть`() {
+    fun `a one-line description is read as it is`() {
         val hint = scanWith(
             "one-line",
             """
             ---
             name: one-line
-            description: Создать pull request
-            argument-hint: "[номер]"
+            description: Open a pull request
+            argument-hint: "[number]"
             ---
 
-            # тело
+            # body
             """.trimIndent(),
         )
 
-        assertEquals("Создать pull request", hint?.description)
-        assertEquals("[номер]", hint?.argumentHint)
+        assertEquals("Open a pull request", hint?.description)
+        assertEquals("[number]", hint?.argumentHint)
     }
 
     @Test
-    fun `свёрнутый блок склеивается в одну строку, а не превращается в стрелку`() {
-        // Ровно тот случай, на котором в подсказке команд оказывался один символ ">":
-        // бралось всё, что стоит после двоеточия, а там только указатель блока.
+    fun `a folded block is joined into one line rather than turning into an arrow`() {
+        // Exactly the case where the command hint ended up holding a single ">": everything after the
+        // colon was taken, and there is nothing there but the block indicator.
         val hint = scanWith(
             "folded",
             """
             ---
             name: folded
             description: >
-              Проверить статус CI для pull request
-              и объяснить падения по-человечески.
-            argument-hint: "опц. [PR номер]"
+              Check the CI status for a pull request
+              and explain the failures in plain words.
+            argument-hint: "opt. [PR number]"
             ---
 
-            # тело
+            # body
             """.trimIndent(),
         )
 
         assertEquals(
-            "Проверить статус CI для pull request и объяснить падения по-человечески.",
+            "Check the CI status for a pull request and explain the failures in plain words.",
             hint?.description,
         )
-        assertEquals("опц. [PR номер]", hint?.argumentHint)
+        assertEquals("opt. [PR number]", hint?.argumentHint)
     }
 
     @Test
-    fun `буквальный блок сохраняет переводы строк`() {
+    fun `a literal block keeps its newlines`() {
         val hint = scanWith(
             "literal",
             """
             ---
             name: literal
             description: |
-              первая строка
-              вторая строка
+              first line
+              second line
             ---
 
-            # тело
+            # body
             """.trimIndent(),
         )
 
-        assertEquals("первая строка\nвторая строка", hint?.description)
+        assertEquals("first line\nsecond line", hint?.description)
     }
 
     @Test
-    fun `поле после блока читается, а не съедается им`() {
+    fun `a field after a block is read rather than swallowed by it`() {
         val hint = scanWith(
             "after-block",
             """
             ---
             description: >
-              длинное описание
-            argument-hint: "[цель]"
+              a long description
+            argument-hint: "[target]"
             allowed-tools: Read, Bash(git:*)
             ---
 
-            # тело
+            # body
             """.trimIndent(),
         )
 
-        assertEquals("длинное описание", hint?.description)
-        assertEquals("[цель]", hint?.argumentHint)
+        assertEquals("a long description", hint?.description)
+        assertEquals("[target]", hint?.argumentHint)
     }
 }

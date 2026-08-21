@@ -6,6 +6,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 
 class PermissionReasonTest {
@@ -18,10 +19,10 @@ class PermissionReasonTest {
         matchedAskRule: PermissionChannel.AskRule? = null,
         suggestions: JsonArray = JsonArray(emptyList()),
     ) = PermissionChannel.ToolPermission(
-        requestId = "запрос",
+        requestId = "request",
         toolName = "Bash",
         toolUseId = "toolu_1",
-        input = kotlinx.serialization.json.JsonObject(emptyMap()),
+        input = JsonObject(emptyMap()),
         requiresUserInteraction = false,
         suggestions = suggestions,
         reason = reason,
@@ -36,48 +37,49 @@ class PermissionReasonTest {
             """[${contents.joinToString(",") { """{"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"$it"}]}""" }}]""",
         ).jsonArray
 
-    // Обычный вопрос «режим требует спрашивать» объяснять нечем: режим и так
-    // подписан в карточке, а лишняя строка была бы пустым шумом.
+    // The ordinary "the mode requires asking" has nothing to explain: the mode is captioned in the card
+    // anyway, and an extra line would be empty noise.
     @Test
-    fun `про режим карточка молчит`() {
+    fun `about the mode the card stays silent`() {
         assertEquals("", PermissionReason.text(request(reasonType = "mode")))
         assertEquals("", PermissionReason.text(request()))
     }
 
-    // Про песочницу молчит и сам терминал: она подменяет решение, а не объясняет его.
+    // About the sandbox the terminal itself stays silent too: it substitutes the decision rather than
+    // explains it.
     @Test
-    fun `про песочницу карточка молчит`() {
+    fun `about the sandbox the card stays silent`() {
         assertEquals("", PermissionReason.text(request(reason = "sandbox", reasonType = "sandboxOverride")))
     }
 
-    // Именно этот вопрос человек и видит в режиме «Bypass»: опасное удаление CLI
-    // не пропускает ни в одном режиме.
+    // This is exactly the question a person sees in "Bypass" mode: a dangerous deletion the CLI lets
+    // through in no mode at all.
     @Test
-    fun `проверка безопасности показывается словами самого CLI`() {
+    fun `a safety check is shown in the CLI's own words`() {
         val warning = "Dangerous rm operation detected: '/tmp/*'"
 
         assertEquals(warning, PermissionReason.text(request(reason = warning, reasonType = "safetyCheck")))
     }
 
     @Test
-    fun `хук и классификатор подписаны, чтобы человек знал, кого спросили`() {
+    fun `a hook and a classifier are captioned, so the person knows who was asked`() {
         assertEquals(
-            "A hook asked to confirm this: PreToolUse сказал проверить",
-            PermissionReason.text(request(reason = "PreToolUse сказал проверить", reasonType = "hook")),
+            "A hook asked to confirm this: PreToolUse said to check",
+            PermissionReason.text(request(reason = "PreToolUse said to check", reasonType = "hook")),
         )
         assertEquals(
-            "The auto-mode classifier asked to confirm this: команда трогает прод",
-            PermissionReason.text(request(reason = "команда трогает прод", reasonType = "classifier")),
+            "The auto-mode classifier asked to confirm this: the command touches production",
+            PermissionReason.text(request(reason = "the command touches production", reasonType = "classifier")),
         )
     }
 
     @Test
-    fun `без текста причины подпись остаётся законченной фразой`() {
+    fun `without a reason's text the caption stays a finished sentence`() {
         assertEquals("A hook asked to confirm this.", PermissionReason.text(request(reasonType = "hook")))
     }
 
     @Test
-    fun `правило ask называет и себя, и слой настроек`() {
+    fun `an ask rule names both itself and the settings layer`() {
         val text = PermissionReason.text(
             request(
                 reasonType = "rule",
@@ -89,7 +91,7 @@ class PermissionReasonTest {
     }
 
     @Test
-    fun `правило на весь инструмент показывается без пустых скобок`() {
+    fun `a rule covering a whole tool is shown without empty brackets`() {
         val text = PermissionReason.text(
             request(reasonType = "rule", matchedAskRule = PermissionChannel.AskRule("session", "WebFetch", null)),
         )
@@ -97,33 +99,33 @@ class PermissionReasonTest {
         assertEquals("An ask rule in this session matched: WebFetch", text)
     }
 
-    // Незнакомое имя слоя (новая сборка CLI) не должно превращаться в «in null».
+    // An unfamiliar layer name (a new CLI build) must not turn into "in null".
     @Test
-    fun `неизвестный слой правила просто не называется`() {
+    fun `an unknown rule layer is simply not named`() {
         val text = PermissionReason.text(
-            request(reasonType = "rule", matchedAskRule = PermissionChannel.AskRule("новый-слой", "Bash", "ls")),
+            request(reasonType = "rule", matchedAskRule = PermissionChannel.AskRule("new-layer", "Bash", "ls")),
         )
 
         assertEquals("An ask rule matched: Bash(ls)", text)
     }
 
     @Test
-    fun `обычный вопрос предлагает запомнить решение`() {
+    fun `an ordinary question offers to remember the decision`() {
         assertTrue(PermissionReason.rememberable(request(suggestions = rule("npm test"))))
-        // MCP и WebFetch приезжают без готовых правил, но правило для них есть —
-        // сам инструмент целиком (см. PermissionChannel.rememberRules).
+        // MCP and WebFetch arrive without ready rules, but there is a rule for them - the tool itself,
+        // whole (see PermissionChannel.rememberRules).
         assertTrue(PermissionReason.rememberable(request()))
     }
 
     @Test
-    fun `запрет от самого CLI убирает предложение запомнить`() {
+    fun `a ban from the CLI itself removes the offer to remember`() {
         assertFalse(PermissionReason.rememberable(request(suppressAlwaysAllow = true)))
     }
 
-    // Опасные удаления: правило записалось бы честно, а следующий такой же вызов
-    // снова упёрся бы в вопрос.
+    // Dangerous deletions: the rule would be written honestly, and the next call just like it would run
+    // into the question again.
     @Test
-    fun `проверка, которую правило не снимает, убирает предложение запомнить`() {
+    fun `a check no rule waives removes the offer to remember`() {
         assertFalse(
             PermissionReason.rememberable(
                 request(reason = "Dangerous rm", reasonType = "safetyCheck", classifierApprovable = false),
@@ -131,10 +133,10 @@ class PermissionReasonTest {
         )
     }
 
-    // А если CLI сам предложил правило — оно сработает, и прятать кнопку не за что:
-    // так ведёт себя и терминал.
+    // And if the CLI itself offered a rule - it will work, and there is nothing to hide the button for:
+    // that is how the terminal behaves too.
     @Test
-    fun `предложенное правило оставляет кнопку на месте`() {
+    fun `an offered rule leaves the button in place`() {
         assertTrue(
             PermissionReason.rememberable(
                 request(

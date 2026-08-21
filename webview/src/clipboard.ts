@@ -2,39 +2,38 @@ import { isInsideIde, send } from './bridge'
 import type { ShellMessage } from './protocol'
 
 /**
- * Мост буфера обмена между страницей и IDE.
+ * The clipboard bridge between the page and the IDE.
  *
- * Панель — это встроенный браузер, и буфер обмена у него свой. На Linux он
- * вдобавок ни с кем не связан: браузер рисуется без собственного окна, а
- * системным буфером там владеет именно окно — не получив владения, браузер
- * молча заводит внутренний буфер и живёт с ним. Наружу это выглядит так, будто
- * копирование работает только внутри поля ввода: вырезал и вставил там же —
- * получилось, скопировал во вкладке кода и вставил в панель — пусто, и обратно
- * тоже. Ровно об этом и пришёл отзыв.
+ * The panel is an embedded browser, and its clipboard is its own. On Linux it is besides connected to
+ * nothing: the browser renders without a window of its own, while there the system clipboard is owned
+ * precisely by a window - having got no ownership, the browser silently starts an internal clipboard and
+ * lives with it. From outside that looks as though copying works only inside the input field: cut and
+ * paste in the same place and it works, copy in a code tab and paste into the panel and it is empty, and
+ * the other way round too. That is exactly what the report was about.
  *
- * Чиним не подменой всего подряд, а обходом сломанного места: настоящий буфер
- * доступен оболочке (это тот же буфер, которым пользуется вся IDE), поэтому
- * копирование дублируем туда, а вставку берём оттуда, когда браузер вернул
- * пустоту. Там, где родной путь работает (macOS, Windows), мы в него не лезем:
- * при живом буфере вставка приходит с содержимым, и мост просто молчит.
+ * We fix it not by replacing everything but by going around the broken place: the real clipboard is
+ * available to the shell (it is the same one the whole IDE uses), so a copy is duplicated into it and a
+ * paste is taken out of it when the browser returned emptiness. Where the native route works (macOS,
+ * Windows) we do not touch it: with a live clipboard a paste arrives with contents, and the bridge simply
+ * stays silent.
  */
 
-/** Содержимое системного буфера в том виде, в котором его понимает страница. */
+/** The system clipboard's contents in the shape the page understands. */
 export interface ClipboardContent {
   text: string
   html: string
-  /** Картинка как data-URL: другого пути занести байты через текстовый канал нет. */
+  /** An image as a data URL: there is no other way to carry bytes through a text channel. */
   image: string
 }
 
 const EMPTY: ClipboardContent = { text: '', html: '', image: '' }
 
 /**
- * Сколько ждём ответ оболочки, прежде чем считать буфер пустым.
+ * How long the shell's answer is waited for before the clipboard counts as empty.
  *
- * Чтение буфера на X11 — это запрос к чужому приложению-владельцу, и оно вправе
- * молчать. Вставка, которая ничего не сделала, — неприятно, но переживаемо;
- * вставка, после которой панель не отвечает на клавиши, — нет.
+ * Reading the clipboard on X11 is a request to another application that owns it, and it is free to stay
+ * silent. A paste that did nothing is unpleasant but survivable; a paste after which the panel stops
+ * answering the keyboard is not.
  */
 const READ_TIMEOUT_MS = 1500
 
@@ -42,20 +41,20 @@ let lastRequest = 0
 const pending = new Map<string, (content: ClipboardContent) => void>()
 
 /**
- * Ломается это только на Linux, поэтому и вмешиваемся только там: на остальных
- * системах родной путь умеет больше нашего (файлы из проводника, форматы, о
- * которых мы не знаем), и подменять его собой значило бы чинить одно, ломая
- * другое. Проверка ленивая — в тестах и в харнессе браузера может не быть вовсе.
+ * This breaks only on Linux, so we step in only there: on the other systems the native route can do more
+ * than ours (files from a file manager, formats we know nothing about), and replacing it with ourselves
+ * would mean fixing one thing while breaking another. The check is lazy - in tests and in the harness
+ * there may be no browser at all.
  */
 const isLinux = (): boolean => typeof navigator !== 'undefined' && /linux/i.test(navigator.userAgent)
 
-/** Мост нужен и осмыслен только внутри IDE: в харнессе буфер браузера настоящий. */
+/** The bridge is needed and meaningful only inside the IDE: in the harness the browser's clipboard is real. */
 const bridged = (): boolean => isLinux() && isInsideIde()
 
 /**
- * Положить в системный буфер IDE то, что скопировали в панели. Возвращает,
- * дошло ли дело до оболочки: тем, кто иначе не узнает об успехе (кнопка
- * «скопировать»), это единственный честный признак.
+ * Put what was copied in the panel into the IDE's system clipboard. Returns whether it got as far as the
+ * shell: for those who would otherwise not learn about success (the "copy" button), that is the only
+ * honest sign.
  */
 export const writeClipboard = (text: string, html = ''): boolean => {
   if (!bridged()) return false
@@ -65,7 +64,7 @@ export const writeClipboard = (text: string, html = ''): boolean => {
   return true
 }
 
-/** Спросить у оболочки, что сейчас лежит в системном буфере. */
+/** Ask the shell what is in the system clipboard right now. */
 export const readClipboard = (): Promise<ClipboardContent> => {
   if (!bridged()) return Promise.resolve(EMPTY)
 
@@ -86,7 +85,7 @@ export const readClipboard = (): Promise<ClipboardContent> => {
   })
 }
 
-/** Ответ оболочки на readClipboard — зовётся из общего разбора сообщений. */
+/** The shell's answer to readClipboard - called from the shared message handling. */
 export const resolveClipboard = (message: Extract<ShellMessage, { type: 'clipboard' }>): void => {
   pending.get(message.id)?.({
     text: message.text ?? '',
@@ -96,14 +95,14 @@ export const resolveClipboard = (message: Extract<ShellMessage, { type: 'clipboa
 }
 
 /**
- * Поставить мост на страницу. Возвращает снятие — подписки живут ровно столько,
- * сколько сама панель.
+ * Install the bridge on the page. Returns the teardown - the subscriptions live exactly as long as the
+ * panel does.
  */
 export const installClipboardBridge = (): (() => void) => {
   document.addEventListener('copy', onCopy)
   document.addEventListener('cut', onCopy)
-  // Перехват до всех: если браузер отдал пустоту, дальше это событие пускать
-  // нельзя — обработчик поля ввода принял бы её за «вставили ничего».
+  // Intercepted before everyone: if the browser handed over emptiness, this event must not be let
+  // through - the input field's handler would take it for "nothing was pasted".
   document.addEventListener('paste', onPaste, true)
   window.addEventListener('keydown', onKeyDown, true)
 
@@ -116,12 +115,12 @@ export const installClipboardBridge = (): (() => void) => {
 }
 
 /**
- * Копирование и вырезание дублируем в буфер IDE.
+ * Copying and cutting are duplicated into the IDE's clipboard.
  *
- * Слушаем на всплытии, то есть уже после обработчиков панели: поле ввода кладёт
- * в буфер своё (текст плюс описание вложений, см. Composer), и забрать нужно
- * именно то, что положили. Когда никто ничего не клал — копируют выделение в
- * ленте — берём его сами.
+ * We listen on the bubble phase, that is, after the panel's own handlers: the input field puts its own
+ * thing into the clipboard (the text plus a description of the attachments, see Composer), and what has
+ * to be taken is exactly what was put there. When nobody put anything - a selection in the feed is being
+ * copied - we take it ourselves.
  */
 const onCopy = (event: ClipboardEvent): void => {
   if (!bridged()) return
@@ -134,11 +133,11 @@ const onCopy = (event: ClipboardEvent): void => {
 }
 
 /**
- * Вставка, за которой браузер ничего не принёс.
+ * A paste the browser brought nothing with.
  *
- * Событие гасим целиком и вместо него посылаем такое же, но с содержимым из
- * настоящего буфера: так вся разборка вставки — картинки, вложения, простыни
- * текста — остаётся там же, где была, и второй её копии не заводится.
+ * The event is suppressed entirely and one just like it is sent instead, carrying the contents of the
+ * real clipboard: that way the whole paste handling - images, attachments, sheets of text - stays where
+ * it was, and no second copy of it is started.
  */
 const onPaste = (event: ClipboardEvent): void => {
   awaitingPaste = false
@@ -152,12 +151,11 @@ const onPaste = (event: ClipboardEvent): void => {
 }
 
 /**
- * Ждём ли вставку, которая уже нажата, но ещё не пришла событием.
+ * Whether we are waiting for a paste that has been pressed but has not arrived as an event yet.
  *
- * Нужно потому, что событие может и не прийти вовсе: браузер, не получивший
- * системный буфер, вправе счесть вставку невозможной и не будить страницу
- * совсем. Тогда за него это делаем мы — но только убедившись, что своим путём
- * она действительно не дошла.
+ * Needed because the event may not arrive at all: a browser that got no system clipboard is free to
+ * consider a paste impossible and never wake the page. Then we do it on its behalf - but only after
+ * making sure it genuinely did not arrive by its own route.
  */
 let awaitingPaste = false
 
@@ -168,8 +166,8 @@ const onKeyDown = (event: KeyboardEvent): void => {
   if (!isEditable(target)) return
 
   awaitingPaste = true
-  // Своё событие браузер разошлёт в этой же задаче, сразу за обработчиками
-  // клавиши, — поэтому проверять есть смысл уже в следующей.
+  // The browser will dispatch its own event inside this same task, right after the key handlers - so
+  // checking makes sense already in the next one.
   setTimeout(() => {
     if (!awaitingPaste) return
     awaitingPaste = false
@@ -178,7 +176,7 @@ const onKeyDown = (event: KeyboardEvent): void => {
   }, 0)
 }
 
-/** Ctrl/Cmd+V и Shift+Insert — привычка родом из Linux, там она в ходу наравне. */
+/** Ctrl/Cmd+V and Shift+Insert - a habit from Linux, where the latter is just as common. */
 const isPasteShortcut = (event: KeyboardEvent): boolean => {
   if (event.altKey) return false
   if (event.code === 'KeyV') return (event.ctrlKey || event.metaKey) && !event.shiftKey
@@ -186,12 +184,12 @@ const isPasteShortcut = (event: KeyboardEvent): boolean => {
 }
 
 /**
- * Разослать вставку заново — уже с содержимым из буфера IDE.
+ * Dispatch the paste anew - this time with the contents of the IDE's clipboard.
  *
- * Если её приняли (поле ввода гасит событие само), делать больше нечего. Если
- * никто не принял — а это обычные поля вроде адреса сервера MCP, у которых
- * своей обработки вставки нет, — вставляем текст руками: без этого они на
- * Linux остались бы теми же нерабочими, что и до моста.
+ * If it was accepted (the input field suppresses the event itself), there is nothing more to do. If
+ * nobody accepted it - and those are the ordinary fields such as an MCP server's address, which have no
+ * paste handling of their own - we insert the text by hand: without that they would stay on Linux as
+ * broken as they were before the bridge.
  */
 const deliverPaste = (target: Element | null, content: ClipboardContent): void => {
   if (!isEditable(target)) return
@@ -212,8 +210,8 @@ const deliverPaste = (target: Element | null, content: ClipboardContent): void =
 }
 
 /**
- * Есть ли в буфере хоть что-то. Проверяем и файлы: скриншот приходит именно
- * ими, а текста при нём может не быть вовсе.
+ * Whether the clipboard holds anything at all. Files are checked too: a screenshot arrives precisely as
+ * one, and there may be no text with it at all.
  */
 const hasContent = (data: DataTransfer | null): boolean => {
   if (!data) return false
@@ -230,13 +228,13 @@ const isEditable = (node: Element | null): node is HTMLElement => {
 }
 
 /**
- * Вставка руками — для полей, которые своей обработки не имеют.
+ * A paste by hand - for fields that have no handling of their own.
  *
- * Значение обычного поля правим через сеттер самого элемента, а не через
- * свойство: React подменяет свойство своим, запоминает в нём последнее
- * известное значение и по нему же решает, было ли изменение. Присваивание в
- * обход этой памяти он не заметит — поле показало бы вставленное, а состояние
- * компонента осталось бы прежним, и отправилось бы старое.
+ * An ordinary field's value is set through the element's own setter rather than through the property:
+ * React replaces the property with one of its own, remembers the last known value in it and decides by
+ * that whether a change happened. An assignment bypassing that memory it will not notice - the field
+ * would show what was pasted while the component's state stayed as it was, and the old value would be
+ * sent.
  */
 const insertText = (target: HTMLElement, text: string): void => {
   if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLTextAreaElement)) {
@@ -254,12 +252,12 @@ const insertText = (target: HTMLElement, text: string): void => {
 }
 
 /**
- * Что сейчас выделено — на случай, когда в буфер никто ничего не клал сам.
+ * What is selected right now - for the case where nobody put anything into the clipboard themselves.
  *
- * Обычные поля (адрес сервера MCP, поиск по истории) держат своё выделение
- * отдельно от выделения страницы: общий getSelection про их текст не знает
- * вообще и вернул бы пустоту — а с ней в буфер IDE уехало бы «ничего», и он
- * остался бы с прошлым содержимым, пока браузер думает, что скопировал.
+ * Ordinary fields (an MCP server's address, the history search) keep their selection apart from the
+ * page's: the shared getSelection knows nothing about their text at all and would return emptiness - and
+ * with it "nothing" would travel into the IDE's clipboard, which would then keep its previous contents
+ * while the browser thinks it has copied.
  */
 const selection = (): { text: string; html: string } => {
   const active = document.activeElement
@@ -276,7 +274,7 @@ const selection = (): { text: string; html: string } => {
   return { text: picked.toString(), html: holder.innerHTML }
 }
 
-/** Разбор data-URL: тип и байты. Вынесено отдельно, потому что легко ошибиться молча. */
+/** Parsing a data URL: the type and the bytes. Split out because it is easy to get wrong silently. */
 const decodeDataUrl = (url: string): { type: string; bytes: Uint8Array<ArrayBuffer> } | null => {
   const match = url.match(/^data:([^;,]+);base64,(.*)$/s)
   if (!match?.[1] || !match[2]) return null

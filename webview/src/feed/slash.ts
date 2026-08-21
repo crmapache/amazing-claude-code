@@ -2,14 +2,14 @@ import { BUILTIN_COMMANDS, EFFORT_OPTIONS, modelOptions, PANEL_COMMANDS, type Co
 import type { ModelInfo } from '../protocol'
 import type { Chip, UserToken } from './types'
 
-/** Только напечатанный текст, без вложений — вложение слэш-командой быть не может. */
+/** Typed text only, without attachments - an attachment cannot be a slash command. */
 export const plainText = (tokens: UserToken[]): string =>
   tokens.map((token) => (token.kind === 'text' ? token.value : '')).join('')
 
 /**
- * Добавляет вложение в конец последовательности токенов с пробелом по обе
- * стороны — той же логикой, что курсорная вставка в поле: без пробела оно
- * слипается с уже напечатанным текстом в одно нечитаемое слово.
+ * Appends an attachment to the end of a token sequence with a space on either side - by the same logic
+ * as an insertion at the caret in the field: without a space it merges with the already typed text into
+ * one unreadable word.
  */
 export const appendChip = (tokens: UserToken[], chip: Chip): UserToken[] => {
   const next = [...tokens]
@@ -25,9 +25,8 @@ export const appendChip = (tokens: UserToken[], chip: Chip): UserToken[] => {
 }
 
 /**
- * То же самое, что [appendChip], но обычным текстом — для случаев, где нужен
- * виден и копируем буквально сам текст (например, абсолютный путь), а не
- * плашка с укороченной подписью.
+ * The same as [appendChip], but as ordinary text - for cases where the text itself has to be visible and
+ * copyable literally (an absolute path, for instance) rather than a chip with a shortened caption.
  */
 export const appendText = (tokens: UserToken[], text: string): UserToken[] => {
   const next = [...tokens]
@@ -43,11 +42,10 @@ export const appendText = (tokens: UserToken[], text: string): UserToken[] => {
 }
 
 /**
- * Подсказка слэш-команд прямо в поле ввода — как в терминале.
+ * The slash command hint right inside the input field - as in a terminal.
  *
- * Отдельного окна со списком быть не должно: команду набирают, а не выбирают из
- * каталога, поэтому список сужается по мере набора и исчезает, как только строка
- * перестаёт быть командой.
+ * There must be no separate window with a list: a command is typed rather than picked out of a
+ * catalogue, so the list narrows as one types and disappears as soon as the line stops being a command.
  */
 
 export type CommandGroup = 'panel' | 'built-in' | 'project'
@@ -57,30 +55,28 @@ export interface CommandEntry extends CommandOption {
 }
 
 /**
- * Эти команды сам CLI в потоковом режиме не выполняет, а честно отвечает
- * отказом (проверено на живом агенте) — показывать их подсказкой незачем,
- * выбор всё равно кончится бесполезным ответом вместо действия.
+ * These commands the CLI does not run in streaming mode, it honestly answers with a refusal (verified
+ * against a live agent) - showing them in the hint serves nothing, the choice would end in a useless
+ * answer rather than an action.
  */
 const UNAVAILABLE_IN_STREAM_MODE = new Set(['export', 'permissions', 'status'])
 
-/** Описание и синтаксис аргумента, прочитанные из фронтматтера файла команды/скила. */
+/** The description and argument syntax read out of a command's or skill's frontmatter. */
 export interface CommandHint {
   description: string
   argumentHint: string
 }
 
 /**
- * Список слэш-команд агента приходит с сессией целиком — это тот же каталог,
- * что видит терминал, включая команды всех подключённых MCP-серверов. Свои
- * панельные и заранее описанные встроенные команды идут первыми и всегда
- * доступны, даже до первого события сессии; всё остальное из реального списка
- * добавляется следом без дублей.
+ * The agent's slash command list arrives with the session whole - it is the same catalogue the terminal
+ * sees, the commands of every connected MCP server included. Our own panel commands and the built-in
+ * ones described in advance come first and are always available, even before the session's first event;
+ * everything else out of the real list is appended after them without duplicates.
  *
- * `hints` — то, что панель нашла на диске (проектные/личные команды и скиллы,
- * команды и скиллы установленных плагинов): реальный файл всегда перевешивает
- * наш собственный жёстко забитый список — если у пользователя стоит плагин,
- * который сам определяет команду с тем же именем, что и один из наших
- * BUILTIN_COMMANDS, это его определение, а не наша догадка.
+ * `hints` is what the panel found on disk (the project's and the user's commands and skills, and those
+ * of installed plugins): a real file always outweighs our own hardcoded list - if the user has a plugin
+ * that defines a command with the same name as one of our BUILTIN_COMMANDS, that is its definition
+ * rather than our guess.
  */
 export const buildCommands = (cliCommands: string[], hints: Record<string, CommandHint> = {}): CommandEntry[] => {
   const entries: CommandEntry[] = []
@@ -109,14 +105,13 @@ export const buildCommands = (cliCommands: string[], hints: Record<string, Comma
     entries.push({ id, hint: hint?.description ?? '', argumentHint: hint?.argumentHint, group: 'project' })
   }
 
-  // Команды и скиллы, найденные на диске, но ещё не названные агентом.
+  // Commands and skills found on disk but not yet named by the agent.
   //
-  // Свой список он присылает вместе с началом разговора (system:init), то есть
-  // только после первого отправленного сообщения — до тех пор подсказка знала
-  // одни лишь встроенные команды, и собственный скилл пользователя в ней просто
-  // не находился. Файлы на диске лежат независимо от того, начат разговор или
-  // нет, поэтому берём имена и оттуда: к моменту, когда агент назовёт свои,
-  // список уже совпадёт.
+  // It sends its own list with the conversation's start (system:init), that is, only after the first
+  // message has been sent - until then the hint knew nothing but the built-in commands, and a user's own
+  // skill simply could not be found in it. Files on disk lie there whether a conversation has begun or
+  // not, so we take names from there too: by the time the agent names its own, the list already
+  // matches.
   for (const [id, hint] of Object.entries(hints)) {
     if (seen.has(id) || UNAVAILABLE_IN_STREAM_MODE.has(id)) continue
     seen.add(id)
@@ -126,33 +121,32 @@ export const buildCommands = (cliCommands: string[], hints: Record<string, Comma
   return entries
 }
 
-/** Что набрано после слэша, или null, если поле уже не про команду. */
+/** What has been typed after the slash, or null when the field is no longer about a command. */
 export const slashQuery = (draft: string): string | null => {
   if (!draft.startsWith('/')) return null
 
   const rest = draft.slice(1)
-  // Пробел означает, что команда уже названа и пошли её аргументы.
+  // A space means the command has already been named and its arguments have begun.
   return /\s/.test(rest) ? null : rest
 }
 
 /**
- * Название уже набранной целиком команды, если сразу за ней идёт пробел, а
- * дальше — ничего: слот аргумента ещё пуст, ровно как placeholder у обычного
- * инпута. $ в конце обязателен — без него хинт-подсказка формата держалась бы
- * до конца всего сообщения, а не гасла, стоило набрать первый символ аргумента.
- * В отличие от [argumentQuery] не привязана к конкретному набору команд с
- * перечислимыми значениями: годится для любого имени, включая дефисы и
- * "плагин:команда".
+ * The name of a command already typed in full, when a space follows it directly and nothing after that:
+ * the argument's slot is still empty, exactly like a placeholder in an ordinary input. The $ at the end
+ * is required - without it the format hint would hold on to the end of the whole message rather than go
+ * out as soon as the argument's first character is typed. Unlike [argumentQuery] it is not tied to a
+ * particular set of commands with enumerable values: it suits any name, hyphens and "plugin:command"
+ * included.
  */
 const COMMAND_NAME_BEFORE_ARGUMENT = /^\/(\S+)\s+$/
 
 export const commandNameBeforeArgument = (draft: string): string | null =>
   COMMAND_NAME_BEFORE_ARGUMENT.exec(draft)?.[1] ?? null
 
-/** Подсказка сама прокручивается — ограничение только против бесконечного списка, не против полного. */
+/** The hint scrolls by itself - the limit guards against an endless list rather than against a full one. */
 const MAX_SUGGESTIONS = 50
 
-/** Совпадения по началу идут первыми: их и ищут, набирая первые буквы. */
+/** Matches on the beginning come first: that is what one is looking for while typing the first letters. */
 export const matchCommands = (
   commands: CommandEntry[],
   query: string,
@@ -173,24 +167,23 @@ export const matchCommands = (
   return [...starts, ...contains].slice(0, limit)
 }
 
-/** Команда панели вместе со значением, если оно у неё есть. */
+/** A panel command together with its value, when it has one. */
 export interface LocalCommand {
   name: string
-  /** Что набрано за именем: выбор модели или усилия. У остальных пусто. */
+  /** What was typed after the name: the choice of a model or an effort. For the rest it is empty. */
   argument: string
 }
 
 /**
- * Команда, которую выполняет сама панель.
+ * A command the panel runs itself.
  *
- * Вход, выход и ветвление агенту слать бессмысленно: первые две в потоковом
- * режиме недоступны ему в принципе, а третья вообще про устройство панели.
+ * Sending the sign-in, the sign-out and branching to the agent is meaningless: the first two are
+ * unavailable to it in streaming mode in principle, and the third is about the panel's own workings.
  *
- * `/model` и `/effort` со знакомым значением — тоже наши: выбор живёт в панели,
- * достаётся новым вкладкам и переживает перезапуск IDE. Отправленные ходом, они
- * стоили бы отдельного обмена с агентом, ответ которого («только для этой
- * сессии») вдобавок неправда. Незнакомое значение остаётся агенту: вдруг он
- * знает модель, о которой не знаем мы.
+ * `/model` and `/effort` with a familiar value are ours too: the choice lives in the panel, is inherited
+ * by new tabs and outlives an IDE restart. Sent as a turn they would cost a separate exchange with the
+ * agent, whose answer ("for this session only") is untrue besides. An unfamiliar value is left to the
+ * agent: it may know a model we do not.
  */
 export const localCommand = (text: string, models: ModelInfo[] | null = null): LocalCommand | null => {
   const trimmed = text.trim()
@@ -201,54 +194,132 @@ export const localCommand = (text: string, models: ModelInfo[] | null = null): L
 
   if (PANEL_COMMANDS.some((command) => command.id === name)) return { name, argument }
 
-  // Значения берём из того же списка, что и подсказка с меню в нижней строке —
-  // расходиться этим трём было бы не на чем.
+  // The values come from the same list as the hint and the menu in the bottom line - there would be
+  // nothing for those three to drift over.
   const known = argumentOptions(name, models)?.some((option) => option.id === argument)
   return known ? { name, argument } : null
 }
 
 /**
- * Аргументы команд, у которых значения из фиксированного набора — ровно то же,
- * что показывает нативный терминал вторым шагом подсказки. Модели идут из
- * живого каталога CLI (см. modelOptions), усилие — из своего списка: у него
- * набор значений один на все версии.
+ * The arguments of commands whose values come from a fixed set - exactly what the native terminal shows
+ * as the hint's second step. The models come from the CLI's live catalogue (see modelOptions), the
+ * effort from a list of its own: its set of values is the same across versions.
  */
 const ARGUMENT_OPTIONS: Record<string, CommandOption[]> = {
   effort: EFFORT_OPTIONS.map((option) => ({ id: option.id, hint: option.sub ?? '' })),
 }
 
-/** Команда без аргумента бессмысленна — отправлять её как есть незачем и Enter'ом. */
+/** A command without its argument is meaningless - sending it as it is, Enter included, serves nothing. */
 export const requiresArgument = (id: string): boolean => id === 'model' || id in ARGUMENT_OPTIONS
 
-/** Перечислимые значения команды, если они у неё есть — для подсказки по аргументу. */
+/** A command's enumerable values, when it has any - for the argument's hint. */
 export const argumentOptions = (command: string, models: ModelInfo[] | null = null): CommandOption[] | undefined =>
   command === 'model'
     ? modelOptions(models).map((option) => ({ id: option.id, hint: option.sub ?? '' }))
     : ARGUMENT_OPTIONS[command]
 
-/** Имя команды, набранной целиком, и ровно один пробел за ней — больше в поле ничего нет. */
+/** The name of a command typed in full and exactly one space after it - the field's start up to the caret. */
 const COMPLETED_COMMAND = /^\/(\S+) $/
 
 /**
- * Момент, когда набранная руками команда становится плашкой: имя дописано и за
- * ним поставили пробел. Дальше идёт её аргумент — обычным текстом, как в
- * терминале, поэтому плашкой становится только само имя.
+ * Cuts the first `length` characters of typed text off the front - the piece the caret has already
+ * passed over - and returns everything that is left.
  *
- * Незнакомое имя не трогаем: плашка обещает, что команда существует, и обещание
- * это должно быть правдой. Возвращаем null, если превращать нечего.
+ * An attachment is indivisible: meeting one inside the piece being cut means this was not a head of
+ * plain text at all, and then nothing is touched. The same when the text runs out before the length
+ * does: what was measured is not what lies in the field.
  */
-export const captureCommand = (tokens: UserToken[], commands: CommandEntry[]): UserToken[] | null => {
-  if (tokens.some((token) => token.kind === 'chip')) return null
+const withoutTextHead = (tokens: UserToken[], length: number): UserToken[] | null => {
+  const rest: UserToken[] = []
+  let left = length
 
-  const name = COMPLETED_COMMAND.exec(plainText(tokens))?.[1]
-  if (!name || !commands.some((command) => command.id === name)) return null
+  for (const token of tokens) {
+    if (left === 0) {
+      rest.push(token)
+      continue
+    }
 
-  // Пробел за плашкой остаётся: курсору нужно, где встать, а аргументу — от чего
-  // отделиться в тексте, который уйдёт агенту.
-  return [{ kind: 'chip', chip: { kind: 'cmd', value: name } }, { kind: 'text', value: ' ' }]
+    if (token.kind !== 'text') return null
+
+    if (token.value.length <= left) {
+      left -= token.value.length
+      continue
+    }
+
+    rest.push({ kind: 'text', value: token.value.slice(left) })
+    left = 0
+  }
+
+  return left === 0 ? rest : null
 }
 
-/** Команда, уже ставшая плашкой: она всегда первая — команда с чем-то перед ней не команда. */
+/** Removes one leading space - so that the one behind a chip and the one already typed do not double up. */
+const withoutLeadingSpace = (tokens: UserToken[]): UserToken[] => {
+  const first = tokens[0]
+  if (first?.kind !== 'text' || !first.value.startsWith(' ')) return tokens
+
+  const value = first.value.slice(1)
+  return value ? [{ kind: 'text', value }, ...tokens.slice(1)] : tokens.slice(1)
+}
+
+/**
+ * Puts ready tokens in place of the command being typed, keeping everything that stands after the caret.
+ *
+ * A command is the field's beginning rather than the whole of it: one may return to the start of an
+ * already written message and put a command in front of it. Everything past the caret was typed before
+ * the command and has to survive it untouched - the text, and the attachments in it too.
+ *
+ * `head` is the field's text from its start up to the caret (see headText): it is what is replaced.
+ * Returns null when that head is not plain text - then there is nothing to replace here.
+ */
+export const replaceCommandHead = (
+  tokens: UserToken[],
+  head: string,
+  replacement: UserToken[],
+): UserToken[] | null => {
+  const rest = withoutTextHead(tokens, head.length)
+  if (rest === null) return null
+
+  // The replacement ends in a space of its own (the caret stands on it), so a space already typed right
+  // after would be the second one in a row - and it would travel to the agent that way.
+  const last = replacement.at(-1)
+  const spaced = last?.kind === 'text' && last.value.endsWith(' ')
+
+  return [...replacement, ...(spaced ? withoutLeadingSpace(rest) : rest)]
+}
+
+/**
+ * The moment a hand-typed command becomes a chip: the name is finished and a space has been put after
+ * it. What follows is its argument - as ordinary text, as in a terminal, so only the name itself becomes
+ * a chip.
+ *
+ * The name is read from `head` - the field's start up to the caret - rather than from the whole of the
+ * contents: a command typed in front of an already written message is a command just the same, and the
+ * message after it stays as it is. A head of null means there is no caret in the text at all, or an
+ * attachment stands before it: with something in front of it a slash is no longer a command.
+ *
+ * An unfamiliar name is left alone: a chip promises that the command exists, and that promise has to be
+ * true. Returns null when there is nothing to turn into one.
+ */
+export const captureCommand = (
+  tokens: UserToken[],
+  commands: CommandEntry[],
+  head: string | null,
+): UserToken[] | null => {
+  if (head === null) return null
+
+  const name = COMPLETED_COMMAND.exec(head)?.[1]
+  if (!name || !commands.some((command) => command.id === name)) return null
+
+  // The space after the chip stays: the caret needs somewhere to stand, and the argument needs something
+  // to be separated from in the text that travels to the agent.
+  return replaceCommandHead(tokens, head, [
+    { kind: 'chip', chip: { kind: 'cmd', value: name } },
+    { kind: 'text', value: ' ' },
+  ])
+}
+
+/** A command that has already become a chip: it is always first - a command with something before it is not a command. */
 export const commandChip = (tokens: UserToken[]): string | null => {
   const first = tokens[0]
   return first?.kind === 'chip' && first.chip.kind === 'cmd' ? first.chip.value : null
@@ -261,8 +332,8 @@ export interface ArgumentQuery {
 }
 
 /**
- * Название команды уже набрано и за ним ровно один пробел — дальше идёт её
- * аргумент, и если команда его поддерживает, ему тоже нужна подсказка.
+ * The command's name has been typed and exactly one space follows it - what comes next is its argument,
+ * and if the command supports one, it needs a hint too.
  */
 export const argumentQuery = (draft: string, models: ModelInfo[] | null = null): ArgumentQuery | null => {
   const match = /^\/([a-z]+) ([^\s]*)$/.exec(draft)

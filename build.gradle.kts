@@ -17,29 +17,28 @@ kotlin {
     jvmToolchain(21)
 
     compilerOptions {
-        // Интерфейсы платформы (ToolWindowFactory в первую очередь) несут готовые
-        // реализации своих необязательных методов. По умолчанию Kotlin на всякий
-        // случай штампует в нашем классе переходники к ним — и со стороны это
-        // выглядит так, будто плагин переопределяет десяток чужих методов, включая
-        // устаревшие и экспериментальные. Верификатор маркетплейса ровно об этом и
-        // сообщал: десять устаревших и шесть экспериментальных обращений, которых
-        // в исходниках нет ни одного. Переходники нужны только тем, кто собирался
-        // против старых версий этих интерфейсов; у плагина таких потребителей нет.
+        // The platform's interfaces (ToolWindowFactory first of all) carry ready implementations of
+        // their optional methods. By default Kotlin stamps bridge methods to them into our class just in
+        // case - and from the outside that looks as though the plugin overrides a dozen foreign methods,
+        // deprecated and experimental ones included. That is exactly what the marketplace's verifier
+        // reported: ten deprecated and six experimental usages, not one of which exists in the sources.
+        // Bridges are needed only by code compiled against older versions of those interfaces; the
+        // plugin has no such consumers.
         jvmDefault = org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode.NO_COMPATIBILITY
     }
 }
 
-// Стандартная библиотека Kotlin и аннотации приходят из самой IDE, причём более
-// новых версий. Свои копии в архиве плагина только спорят с платформенными и
-// добавляют лишние два мегабайта.
+// The Kotlin standard library and the annotations come from the IDE itself, and in newer versions at
+// that. Copies of our own in the plugin's archive only argue with the platform's and add two megabytes
+// for nothing.
 configurations.runtimeClasspath {
     exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
     exclude(group = "org.jetbrains", module = "annotations")
 }
 
 dependencies {
-    // Разбор потока событий агента. Версию держим той же, что бандлят другие
-    // плагины под эту платформу, чтобы не спорить с классами из IDE.
+    // Parsing the agent's event stream. We keep the version the other plugins for this platform bundle,
+    // so as not to argue with the IDE's own classes.
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 
     testImplementation(kotlin("test"))
@@ -49,10 +48,10 @@ dependencies {
             providers.gradleProperty("platformType"),
             providers.gradleProperty("platformVersion"),
         )
-        // Встроенный браузер вынесен из платформы в отдельный bundled-плагин,
-        // без этой зависимости классы JCEF не видны ни при сборке, ни в рантайме.
+        // The embedded browser was moved out of the platform into a separate bundled plugin; without
+        // this dependency the JCEF classes are visible neither at build time nor at runtime.
         bundledPlugin("com.intellij.modules.jcef")
-        // Вход в Claude Code интерактивный, поэтому идёт во встроенном терминале.
+        // Signing in to Claude Code is interactive, so it goes through the built-in terminal.
         bundledPlugin("org.jetbrains.plugins.terminal")
         testFramework(TestFrameworkType.Platform)
     }
@@ -80,8 +79,8 @@ intellijPlatform {
             <p>Same Claude Code, properly integrated into your editor.</p>
             """.trimIndent()
 
-        // Маркетплейс требует у автора рабочие адрес и почту: по ним модерация
-        // связывается с автором и по ним же пользователь ищет поддержку.
+        // The marketplace requires a working address and email from the author: moderation contacts the
+        // author by them, and users look for support by them too.
         vendor {
             name = "Maksim Zolotoi"
             email = "mzpizote@gmail.com"
@@ -89,15 +88,14 @@ intellijPlatform {
         }
 
         /**
-         * Список изменений виден в карточке плагина и в диалоге обновления, поэтому
-         * в нём должна стоять только новая версия. Раньше он лежал здесь же одним
-         * блоком, куда пункты дописывались сверху и никогда не убирались: к 0.7.4
-         * там накопилось восемь десятков пунктов за всю историю, и человек, обновив
-         * плагин, читал простыню на три экрана вместо пяти строк про эту версию.
+         * The change list is visible in the plugin's card and in the update dialog, so it must hold the
+         * new version only. It used to live right here as one block, with entries appended at the top and
+         * never removed: by 0.7.4 it had gathered eighty entries covering the whole history, and a person
+         * updating the plugin read three screens of text instead of five lines about this version.
          *
-         * Теперь пункты живут в CHANGELOG.md по версиям, а сюда попадает ровно
-         * секция собираемой версии. Нет такой секции (собираем то, что ещё не
-         * выпущено) — берётся Unreleased.
+         * Now the entries live in CHANGELOG.md by version, and exactly the section of the version being
+         * built lands here. When there is no such section (we are building what has not been released
+         * yet), Unreleased is taken.
          */
         changeNotes = providers.provider {
             with(changelog) {
@@ -112,35 +110,35 @@ intellijPlatform {
 
         ideaVersion {
             sinceBuild = providers.gradleProperty("pluginSinceBuild")
-            // Верхнюю границу не фиксируем: плагин живёт на базовом API, ломаться
-            // от минорных обновлений IDE ему нечем.
+            // We do not pin the upper bound: the plugin lives on the base API and has nothing to break
+            // over a minor IDE update.
             untilBuild = provider { null }
         }
     }
 
-    // Проверка совместимости архива с реальными сборками IDE. Маркетплейс гоняет
-    // тот же верификатор при модерации, поэтому дешевле узнать про несовместимость
-    // до загрузки, а не через отказ.
+    // Checking the archive's compatibility against real IDE builds. The marketplace runs the same
+    // verifier during moderation, so learning about an incompatibility before uploading is cheaper than
+    // learning about it through a rejection.
     pluginVerification {
         ides {
             recommended()
         }
 
-        // Что считаем провалом проверки. Список явный, потому что от умолчания он
-        // отличается в обе стороны.
+        // What counts as a failed check. The list is explicit because it differs from the default in
+        // both directions.
         //
-        // Строже: экспериментальное тоже роняет задачу. Своего экспериментального
-        // в плагине нет ни одного обращения, и держать этот счёт на нуле дешевле,
-        // чем однажды разбирать накопившийся список в карточке версии.
+        // Stricter: experimental usages fail the task too. The plugin has not a single experimental
+        // usage of its own, and keeping that count at zero is cheaper than one day sorting through an
+        // accumulated list in a version's card.
         //
-        // Мягче: устаревшее задачу не роняет. Таких мест два, оба осознанные, и
-        // поддерживаемой замены у платформы для них нет: открытие терминала для
-        // входа (ClaudeLogin) и прежняя пара методов обработчика ресурсов, без
-        // которой не грузится сама панель (WebviewResources.ResourceHandler).
+        // Softer: deprecated usages do not fail the task. There are two such places, both deliberate,
+        // and the platform offers no supported replacement for either: opening a terminal for the sign-in
+        // (ClaudeLogin) and the resource handler's previous pair of methods, without which the panel does
+        // not load at all (WebviewResources.ResourceHandler).
         //
-        // Закрытого для плагинов не осталось ни одного — и не должно появляться:
-        // маркетплейс из-за таких обращений не пропускает версию на модерации.
-        // Поэтому они роняют задачу наравне с несовместимостью.
+        // There is not a single usage of what is closed to plugins left - and none should appear: the
+        // marketplace does not let a version through moderation because of those. So they fail the task
+        // on a par with an incompatibility.
         failureLevel = listOf(
             VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
             VerifyPluginTask.FailureLevel.INTERNAL_API_USAGES,
@@ -153,9 +151,9 @@ intellijPlatform {
         )
     }
 
-    // Подпись архива. Ключ и цепочка сертификатов приходят из окружения: в
-    // репозитории им не место. Без переменных задача просто не выполняется, и
-    // публикуется неподписанный архив — маркетплейс это принимает.
+    // Signing the archive. The key and the certificate chain come from the environment: they have no
+    // place in the repository. Without those variables the task simply does not run and an unsigned
+    // archive is published - the marketplace accepts that.
     signing {
         certificateChain = providers.environmentVariable("ACC_CERTIFICATE_CHAIN")
         privateKey = providers.environmentVariable("ACC_PRIVATE_KEY")
@@ -164,43 +162,43 @@ intellijPlatform {
 
     publishing {
         token = providers.environmentVariable("ACC_PUBLISH_TOKEN")
-        // Предрелизные версии уходят в отдельный канал, чтобы не приезжать всем
-        // подряд обновлением: подписаться на него надо руками в настройках IDE.
+        // Pre-release versions go into a channel of their own, so as not to arrive as an update for
+        // everyone: subscribing to it takes a deliberate step in the IDE's settings.
         channels = providers.gradleProperty("version").map { version ->
             listOf(version.substringAfter('-', "default").substringBefore('.'))
         }
     }
 }
 
-// --- Список изменений -------------------------------------------------------
+// --- The change list --------------------------------------------------------
 
 changelog {
     version = providers.gradleProperty("version")
-    // Пункты пишутся простым списком. Делить пять строк на Added/Fixed/Changed
-    // незачем, а пустые заголовки утащило бы в карточку плагина.
+    // The entries are written as a plain list. Splitting five lines across Added/Fixed/Changed serves
+    // nothing, and empty headings would be dragged into the plugin's card.
     groups.empty()
     repositoryUrl = "https://github.com/crmapache/amazing-claude-code"
 }
 
-// --- Интерфейс на React -----------------------------------------------------
+// --- The React interface ----------------------------------------------------
 
 private val webviewDir = layout.projectDirectory.dir("webview")
 private val webviewDist = webviewDir.dir("dist")
 
 val installWebview by tasks.registering(Exec::class) {
-    description = "Ставит зависимости интерфейса"
+    description = "Installs the interface's dependencies"
     workingDir = webviewDir.asFile
     commandLine("pnpm", "install")
 
     inputs.file(webviewDir.file("package.json"))
     outputs.dir(webviewDir.dir("node_modules"))
-    // node_modules переживает clean, поэтому решение о пропуске задачи принимаем
-    // по слепку package.json, а не по факту наличия папки.
+    // node_modules outlives a clean, so the decision to skip the task is made from a snapshot of
+    // package.json rather than from the folder being there.
     outputs.cacheIf { false }
 }
 
 val buildWebview by tasks.registering(Exec::class) {
-    description = "Собирает статику интерфейса"
+    description = "Builds the interface's static assets"
     dependsOn(installWebview)
     workingDir = webviewDir.asFile
     commandLine("pnpm", "run", "build")
@@ -222,25 +220,24 @@ tasks.processResources {
     }
 }
 
-// Тестовая IDE. Передаём адрес dev-сервера, если он задан: тогда панель грузит
-// интерфейс с него и правки видны без пересборки плагина.
+// The sandbox IDE. We pass the dev server's address when it is set: the panel then loads the interface
+// from it, and edits are visible without rebuilding the plugin.
 tasks.withType<RunIdeTask>().configureEach {
     systemProperty(
         "acc.webview.devUrl",
         providers.gradleProperty("webviewDevUrl").getOrElse(""),
     )
 
-    // Панель проектная, поэтому на пустом экране приветствия её не увидеть.
-    // -PopenProject=<путь> открывает проект сразу при старте тестовой IDE.
+    // The panel belongs to a project, so it cannot be seen on the empty welcome screen.
+    // -PopenProject=<path> opens a project right as the sandbox IDE starts.
     providers.gradleProperty("openProject").orNull?.let { path -> args(path) }
 
-    // В тестовой IDE панель открывается сама: искать кнопку каждый прогон незачем.
+    // In the sandbox IDE the panel opens itself: hunting for the button every run serves nothing.
     systemProperty("acc.autoOpen", "true")
 
-    // -PjcefDebugPort=9222 открывает панель для внешнего отладчика по протоколу
-    // Chrome DevTools: к ней можно подключиться браузером или скриптом и смотреть
-    // настоящую панель в настоящей IDE, а не её копию в браузере. По умолчанию
-    // выключено — порт наружу просто так держать незачем.
+    // -PjcefDebugPort=9222 opens the panel to an external debugger over the Chrome DevTools protocol: a
+    // browser or a script can attach to it and look at the real panel in a real IDE rather than at its
+    // copy in a browser. Off by default - keeping a port open outwards for no reason serves nothing.
     providers.gradleProperty("jcefDebugPort").orNull?.let { port ->
         systemProperty("ide.browser.jcef.debug.port", port)
     }

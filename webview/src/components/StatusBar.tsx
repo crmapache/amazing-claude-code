@@ -2,12 +2,12 @@ import { EFFORT_SAMPLE, MODE_SAMPLE, MODEL_SAMPLE, modeLabel, modeShortLabel, mo
 import type { UsageWindow } from '../protocol'
 import s from './shell.module.css'
 
-export type SelectorKind = 'model' | 'effort' | 'mode' | 'composerLayout' | 'header'
+export type SelectorKind = 'model' | 'effort' | 'mode' | 'defaultMode' | 'composerLayout' | 'header'
 
 /**
- * Где стоит кнопка селектора — оба края по вертикали, а не один: меню решает
- * само, расти вверх или вниз, по тому, где реально есть место (см. Menu), и
- * ему нужны оба края независимо от того, в какую сторону оно в итоге откроется.
+ * Where a selector's button stands - both vertical edges rather than one: the menu decides for itself
+ * whether to grow up or down, by where there is genuinely room (see Menu), and it needs both edges
+ * regardless of which way it ends up opening.
  */
 export interface Anchor {
   right: number
@@ -16,24 +16,24 @@ export interface Anchor {
 }
 
 interface UsageMetersProps {
-  /** Токены за сегодня по всем проектам — то же "tok", что в терминале. */
+  /** Today's tokens across every project - the same "tok" as in a terminal. */
   todayTokens: string
-  /** Окна расхода подписки. Приходят от самого агента, поэтому бывают пустыми. */
+  /** The subscription's usage windows. They come from the agent itself, so they are sometimes empty. */
   usage: { session?: UsageWindow; week?: UsageWindow }
 }
 
 /**
- * Расход подписки: пятичасовое окно, недельное и объём работы за день.
+ * The subscription's usage: the five-hour window, the weekly one and the day's volume of work.
  *
- * Живёт в нижнем ряду самого поля ввода, а не в строке состояния под ним: туда
- * смотрят, когда решают, что писать дальше — хватит ли лимита на длинный ход, —
- * и цифры должны быть там же, где рука.
+ * It lives in the input field's own bottom row rather than in the status line under it: that is where one
+ * looks while deciding what to write next - whether the limit will stretch to a long turn - and the
+ * figures should be where the hand is.
  *
- * Кольцо рядом с цифрой, а не голая цифра: доля читается боковым зрением, не
- * складывая в уме проценты, а места кольцо занимает не больше строки.
+ * A ring beside the figure rather than a bare figure: the share is read out of the corner of the eye,
+ * without adding percentages in one's head, while the ring takes up no more room than the line.
  *
- * Заполнения контекста тут нет намеренно: оно уже нарисовано полоской над самим
- * полем (см. Composer), и вторая цифра про то же только отнимала бы место.
+ * The context fill is deliberately not here: it is already drawn as a bar above the field itself (see
+ * Composer), and a second figure about the same thing would only take up room.
  */
 export const UsageMeters = ({ todayTokens, usage }: UsageMetersProps) => (
   <div className={s.meters}>
@@ -53,25 +53,25 @@ export const UsageMeters = ({ todayTokens, usage }: UsageMetersProps) => (
   </div>
 )
 
-/** Радиус кольца в его собственных координатах и длина дуги по этому радиусу. */
+/** The ring's radius in its own coordinates, and the arc length at that radius. */
 const RING_RADIUS = 8.5
 const RING_LENGTH = 2 * Math.PI * RING_RADIUS
 
-/** Насколько дугу «недокрутить»: 0% — кольца нет вовсе, 100% — замкнуто. */
+/** How far to leave the arc "unturned": at 0% there is no ring at all, at 100% it is closed. */
 const dashFor = (percent: number): number => RING_LENGTH * (1 - Math.min(100, Math.max(0, percent)) / 100)
 
 interface MeterProps {
   percent: number
   color: string
-  /** Блёклая дуга под основной: темп, с которым сверяются. Нет — не рисуем. */
+  /** A pale arc under the main one: the pace one checks against. None means it is not drawn. */
   pace?: number | null
-  /** Подсказка при наведении; перенос строки в ней — настоящая вторая строка. */
+  /** The hover tooltip; a newline in it is a genuine second line. */
   tooltip: string
 }
 
 const Meter = ({ percent, color, pace = null, tooltip }: MeterProps) => (
   <span className={s.meter} data-tooltip={tooltip} data-tooltip-at="top left" role="img" aria-label={tooltip}>
-    {/* overflow видимый: круглые концы дуги вылезают за пределы вьюбокса. */}
+    {/* overflow is visible: the arc's round caps stick out past the viewBox. */}
     <svg className={s.meterRing} viewBox="0 0 22 22" aria-hidden="true">
       <circle className={s.meterTrack} cx="11" cy="11" r={RING_RADIUS} />
       {pace === null ? null : (
@@ -105,9 +105,9 @@ interface StatusBarProps {
 }
 
 /**
- * Нижняя строка: чем мы работаем (модель, усилие, режим). Ветка и её PR
- * отсюда переехали в шапку — одно место у любой раскладки, а не своя копия
- * под каждую (см. Header.tsx). Расход — в самом поле ввода, см. [UsageMeters].
+ * The bottom line: what we work with (the model, the effort, the mode). The branch and its PR have moved
+ * from here into the header - one place for every layout rather than a copy per layout (see Header.tsx).
+ * The usage lives in the input field itself, see [UsageMeters].
  */
 export const StatusBar = ({ model, effort, mode, onOpen }: StatusBarProps) => (
   <div className={s.status}>
@@ -124,9 +124,9 @@ interface BranchChipProps {
 }
 
 /**
- * Ветка и её PR — экспортирован по тому же принципу, что и [Selector]: Compact
- * показывает ту же плашку у себя, в ряду с задачами, а не в отдельной строке
- * статуса (см. TaskListPanel.tsx), но вид и поведение должны остаться теми же.
+ * The branch and its PR - exported on the same principle as [Selector]: compact shows the same chip in
+ * its own row beside the tasks rather than in a separate status line (see TaskListPanel.tsx), while its
+ * look and behaviour have to stay the same.
  */
 export const BranchChip = ({ gitBranch, pullRequest, onOpenPullRequest }: BranchChipProps) => {
   if (!gitBranch) return null
@@ -146,11 +146,10 @@ export const BranchChip = ({ gitBranch, pullRequest, onOpenPullRequest }: Branch
 }
 
 /**
- * Недельное окно: под яркой дугой расхода — блёклая дуга равномерного темпа,
- * то есть сколько лимита уже «положено» к сегодняшнему дню. Пока яркая короче
- * блёклой, идём по плану — это видно, не читая ни одной цифры. Раньше тот же
- * бюджет стоял вторым числом через дробь, но два процента подряд каждый раз
- * приходилось сравнивать в уме.
+ * The weekly window: under the bright usage arc lies a pale arc of the even pace, that is, how much of
+ * the limit is already "due" by today. While the bright one is shorter than the pale one, we are on plan
+ * - and that is visible without reading a single figure. That same budget used to stand as a second
+ * number after a slash, but two percentages in a row had to be compared in one's head every time.
  */
 const WeekMeter = ({ usage }: { usage: UsageWindow }) => {
   const budget = weekBudgetToday(usage.resets)
@@ -172,32 +171,32 @@ const WeekMeter = ({ usage }: { usage: UsageWindow }) => {
 interface SelectorProps {
   label: string
   value: string
-  /** Самый длинный вариант значения: по нему и отмеряется ширина — см. разметку ниже. */
+  /** The longest possible value: the width is measured by it - see the markup below. */
   sample: string
   title: string
   className?: string
   onOpen: (anchor: Anchor) => void
 }
 
-/** Кнопка одного селектора (MODEL/EFFORT/MODE). Наружу отдаётся весь ряд — см. [Selectors]. */
+/** One selector's button (MODEL/EFFORT/MODE). What is exported is the whole row - see [Selectors]. */
 const Selector = ({ label, value, sample, title, className = '', onOpen }: SelectorProps) => (
   <button
     type="button"
     className={`${s.selector} ${className}`}
     title={title}
     onClick={(event) => {
-      // Меню встаёт по месту кнопки, а не по фиксированным координатам: панель
-      // бывает любой ширины, и «примерно справа» промахивается.
+      // The menu stands by the button's place rather than by fixed coordinates: the panel comes in any
+      // width, and "roughly on the right" misses.
       const rect = event.currentTarget.getBoundingClientRect()
       onOpen({ right: window.innerWidth - rect.right, top: rect.top, bottom: rect.bottom })
     }}
   >
     <span className={s.selectorLabel}>{label}</span>
     {/*
-      Ширину держит невидимый самый длинный вариант, а само значение лежит поверх
-      него и в ширину не считается вовсе. Иначе кнопка меряется тем, что выбрано
-      прямо сейчас: «Ask» уже «Bypass», «low» уже «ultracode» — и каждое
-      переключение сдвигало бы соседей по ряду.
+      The width is held by an invisible longest option, while the value itself lies over it and does not
+      count towards the width at all. Otherwise the button is measured by whatever is chosen right now:
+      "Ask" is narrower than "Bypass", "low" than "ultracode" - and every switch would shift its
+      neighbours along the row.
     */}
     <span className={s.selectorValue}>
       <span className={s.selectorSample} aria-hidden="true">
@@ -213,15 +212,15 @@ interface SelectorsProps {
   model?: string
   effort: string
   mode: string
-  /** Ряд делит ширину поровну, а не стоит фиксированными кнопками — см. .selectorAuto. */
+  /** The row shares the width evenly rather than standing as fixed buttons - see .selectorAuto. */
   auto?: boolean
   onOpen: (kind: SelectorKind, anchor: Anchor) => void
 }
 
 /**
- * Ряд из трёх селекторов целиком. Собран здесь, а не в каждой раскладке своей
- * копией: подписи, подсказки и образцы ширины у них одни и те же, и разъехаться
- * между строкой статуса, compact и боковой рельсой они не должны.
+ * The whole row of three selectors. Assembled here rather than as a copy in every layout: their captions,
+ * tooltips and width samples are one and the same, and they must not drift apart between the status line,
+ * compact and the side rail.
  */
 export const Selectors = ({ model, effort, mode, auto = false, onOpen }: SelectorsProps) => {
   const grow = auto ? s.selectorAuto : ''
@@ -256,7 +255,7 @@ export const Selectors = ({ model, effort, mode, auto = false, onOpen }: Selecto
   )
 }
 
-/** Аккуратная галка вместо ▼: у типографского треугольника чужой вес и вид. */
+/** A tidy chevron instead of ▼: the typographic triangle has a weight and a look of its own. */
 const Chevron = () => (
   <svg className={s.selectorCaret} viewBox="0 0 10 6" aria-hidden="true">
     <path d="M1 1.4 5 5 9 1.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
@@ -269,19 +268,18 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const WEEK_DAILY_BUDGET = 14
 
 /**
- * Уровень тревоги по темпу расхода, не по голому проценту — логика взята из
- * личного ~/.claude/statusline.sh 1:1. 51% за неделю при почти прошедшем окне
- * не страшно, а тот же процент в первый день — тревожно: сравниваем реальный
- * расход с линией равномерного темпа до сброса и красим отклонение от неё.
- * Плюс абсолютный потолок сверху: у самого лимита время уже не спасает,
- * независимо от темпа.
+ * The alarm level by the pace of usage rather than by a bare percentage - the logic is taken from a
+ * personal ~/.claude/statusline.sh one to one. 51% over a week with the window almost over is not
+ * frightening, while the same percentage on the first day is alarming: we compare the real usage against
+ * the line of an even pace up to the reset and colour the deviation from it. Plus an absolute ceiling on
+ * top: right at the limit, time no longer saves anyone, whatever the pace.
  * 0 = green, 1 = yellow, 2 = orange, 3 = red.
  */
 const paceSeverity = (usedPercent: number, resets: string, windowMs: number): number => {
   const resetMs = resets ? new Date(resets).getTime() : Number.NaN
   const now = Date.now()
 
-  // Нет данных о сбросе или окно уже неактивно (сброс в прошлом) — только потолок.
+  // No reset data, or the window is no longer current (the reset is in the past) - the ceiling only.
   if (!resets || Number.isNaN(resetMs) || resetMs <= now) {
     if (usedPercent >= 96) return 3
     if (usedPercent >= 90) return 2
@@ -304,10 +302,10 @@ const paceColor = (usedPercent: number, resets: string, windowMs: number): strin
   SEVERITY_COLOR[paceSeverity(usedPercent, resets, windowMs)] ?? SEVERITY_COLOR[0]!
 
 /**
- * У контекста нет своего окна со сбросом — только голый процент, шкала своя.
- * Общая точка правды для порогов: полоска контекста в композере (см.
- * Composer.tsx) красится и светится теми же уровнями, что и эта цифра, —
- * дублировать 50/70/85 во втором месте означало бы рано или поздно их развести.
+ * The context has no window with a reset of its own - only a bare percentage, on a scale of its own. This
+ * is the shared source of truth for the thresholds: the context bar in the composer (see Composer.tsx) is
+ * coloured and lit by the same levels as this figure - duplicating 50/70/85 in a second place would mean
+ * parting them sooner or later.
  */
 type ContextLevel = 'green' | 'warn' | 'orange' | 'bad'
 
@@ -327,7 +325,7 @@ const CONTEXT_LEVEL_COLOR: Record<ContextLevel, string> = {
 
 export const contextColor = (percent: number): string => CONTEXT_LEVEL_COLOR[contextLevel(percent)]
 
-/** Та же пара интенсивностей свечения (80% + 35%), что и в самой полоске контекста. */
+/** The same pair of glow intensities (80% + 35%) as in the context bar itself. */
 const CONTEXT_LEVEL_GLOW: Record<ContextLevel, { strong: string; soft: string }> = {
   green: { strong: 'var(--acc-meter-green-80)', soft: 'var(--acc-meter-green-35)' },
   warn: { strong: 'var(--acc-warn-80)', soft: 'var(--acc-warn-35)' },
@@ -338,10 +336,10 @@ const CONTEXT_LEVEL_GLOW: Record<ContextLevel, { strong: string; soft: string }>
 export const contextGlow = (percent: number): { strong: string; soft: string } => CONTEXT_LEVEL_GLOW[contextLevel(percent)]
 
 /**
- * Сколько осталось до сброса окна: «2h 41m».
+ * How long is left until the window resets: "2h 41m".
  *
- * Именно остаток, а не время сброса: решают им один вопрос — дотерпеть или
- * начинать экономить прямо сейчас, — и в этом виде ответ не надо считать.
+ * The remainder specifically rather than the reset time: it answers one question - hold out or start
+ * saving right now - and in this shape the answer does not have to be worked out.
  */
 const timeLeft = (resets: string): string | null => {
   const resetMs = resets ? new Date(resets).getTime() : Number.NaN
@@ -355,11 +353,10 @@ const timeLeft = (resets: string): string | null => {
 }
 
 /**
- * Подсказка окна: доля и, если известно, сколько до сброса. Именно «если»: у
- * только что сброшенного окна время следующего сброса ещё никому не известно —
- * оно начнётся с первого же хода, — и строчка про сброс тогда не пишется вовсе.
- * Раньше на её месте стояло «Resets in soon», которое в этом случае значило
- * ровно обратное: не «вот-вот», а «неизвестно».
+ * A window's tooltip: the share and, when it is known, how long until the reset. "When" specifically: for
+ * a window that has just reset, nobody knows the next reset time yet - it will begin with the very first
+ * turn - and then the line about the reset is not written at all. It used to say "Resets in soon" there,
+ * which in that case meant exactly the opposite: not "any moment" but "unknown".
  */
 const windowTooltip = (title: string, usage: UsageWindow): string => {
   const left = timeLeft(usage.resets)
@@ -368,10 +365,10 @@ const windowTooltip = (title: string, usage: UsageWindow): string => {
 }
 
 /**
- * Второе число рядом с недельным расходом — не доля прошедшего времени, а
- * номер дня окна: в день сброса лимита уже доступно 14%, на следующий день —
- * 28% и так далее (100/7 округлённые до ровных 14 — та же логика, что и в
- * личном statusline.sh), чтобы не считать это в уме на каждый взгляд в статус-бар.
+ * The second figure beside the weekly usage is not the share of time elapsed but the window's day number:
+ * on the day the limit resets 14% is already available, the next day 28%, and so on (100/7 rounded to a
+ * flat 14 - the same logic as in a personal statusline.sh), so that it does not have to be worked out in
+ * one's head on every glance at the status bar.
  */
 const weekBudgetToday = (resets: string): number | null => {
   if (!resets) return null
@@ -385,7 +382,7 @@ const weekBudgetToday = (resets: string): number | null => {
   return Math.min(day * WEEK_DAILY_BUDGET, 100)
 }
 
-/** Свой акцент у каждого режима разрешений — см. .selectorPlan и соседей. */
+/** An accent of its own for every permission mode - see .selectorPlan and its neighbours. */
 const modeClass = (mode: string): string => {
   if (mode === 'plan') return s.selectorPlan ?? ''
   if (mode === 'acceptEdits') return s.selectorAccept ?? ''

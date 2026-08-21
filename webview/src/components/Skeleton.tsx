@@ -3,15 +3,15 @@ import s from './shell.module.css'
 interface SkeletonBarProps {
   width: string | number
   height?: number
-  /** Для точки статуса — кружок, а не скруглённый прямоугольник. */
+  /** For a status dot - a circle rather than a rounded rectangle. */
   round?: boolean
 }
 
 /**
- * Заглушка на месте текста/кнопки, пока данные ещё не пришли — тем же
- * дыханием (acc-pulse), что и у рабочей точки вкладки. Нужна, чтобы модалка
- * сразу занимала примерно ту же высоту, что и с настоящими данными: без неё
- * список появляется пустым и высота дёргается, когда ответ наконец приходит.
+ * A stand-in where text or a button will be while the data has not arrived - with the same breathing
+ * (acc-pulse) as a tab's working dot. It is there so that a modal takes roughly the same height at once
+ * as it will with real data: without it the list appears empty and the height jerks when the answer
+ * finally arrives.
  */
 export const SkeletonBar = ({ width, height = 11, round }: SkeletonBarProps) => (
   <span className={s.skeletonBar} style={{ width, height, borderRadius: round ? '50%' : undefined }} />

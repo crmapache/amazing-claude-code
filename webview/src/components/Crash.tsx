@@ -3,14 +3,13 @@ import { send } from '../bridge'
 import s from './shell.module.css'
 
 /**
- * Последняя преграда между сбоем в интерфейсе и пустой чёрной панелью.
+ * The last barrier between a failure in the interface and an empty black panel.
  *
- * React при необработанной ошибке сносит всё дерево — панель просто гасла, без
- * единого слова о том, что случилось, и без способа вернуться: инструменты
- * разработчика во встроенном браузере ещё надо суметь открыть. Здесь же
- * человеку остаётся кнопка перезагрузки (разговоры живут в процессах CLI и
- * переживают её), а причина уходит в лог IDE — иначе о ней не узнать вообще
- * никому.
+ * On an unhandled error React tears the whole tree down - the panel simply went dark, without a single
+ * word about what had happened and with no way back: the developer tools inside an embedded browser have
+ * to be opened first, which is a feat of its own. Here the person is left with a reload button (the
+ * conversations live in the CLI's processes and survive it), while the reason goes into the IDE's log -
+ * otherwise nobody would ever learn it.
  */
 interface CrashState {
   message: string

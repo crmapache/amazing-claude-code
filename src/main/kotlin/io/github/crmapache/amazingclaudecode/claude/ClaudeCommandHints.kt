@@ -5,37 +5,36 @@ import java.io.File
 internal data class CommandHint(val description: String, val argumentHint: String)
 
 /**
- * Описание и синтаксис аргумента слэш-команд — то же самое, что показывает
- * подсказка в терминале ("[low|medium|...] [--fix] [<target>]" сразу после
- * названия команды). Стрим-протокол `claude` отдаёт только голые имена команд
- * (проверено напрямую: `system:init`.`slash_commands` — плоский список строк,
- * без description/argument-hint), поэтому читаем те же файлы, что и сам CLI:
- * фронтматтер команд и скиллов проекта, личных и каждого установленного плагина.
+ * The description and argument syntax of slash commands - the same thing the terminal's hint shows
+ * ("[low|medium|...] [--fix] [<target>]" right after the command's name). The `claude` stream protocol
+ * hands over bare command names only (verified directly: `system:init`.`slash_commands` is a flat list
+ * of strings, without description or argument-hint), so we read the same files the CLI itself does: the
+ * frontmatter of the project's, the user's and every installed plugin's commands and skills.
  *
- * Для настоящих встроенных команд CLI (например, code-review — она зашита в
- * сам бинарник, а не файл) файла на диске нет и не будет: их синтаксис
- * захардкожен в catalog.ts (BUILTIN_COMMANDS), сверен напрямую по бинарнику.
+ * For the CLI's genuinely built-in commands (code-review, for instance - it is baked into the binary
+ * rather than a file) there is no file on disk and never will be: their syntax is hardcoded in
+ * catalog.ts (BUILTIN_COMMANDS), checked against the binary directly.
  */
 internal object ClaudeCommandHints {
 
     fun scan(workingDirectory: String?, installed: List<InstalledPlugin>): Map<String, CommandHint> {
         val hints = LinkedHashMap<String, CommandHint>()
-        val home = System.getProperty("user.home")
 
         workingDirectory?.let { base ->
             scanCommandsDir(File(base, ".claude/commands"), prefix = "", into = hints)
             scanSkillsDir(File(base, ".claude/skills"), prefix = "", into = hints)
         }
 
-        if (home != null) {
-            scanCommandsDir(File(home, ".claude/commands"), prefix = "", into = hints)
-            scanSkillsDir(File(home, ".claude/skills"), prefix = "", into = hints)
-        }
+        // The user's own commands and skills - out of the same directory the CLI reads its personal
+        // settings from, so that a moved config directory does not leave the hint half-empty.
+        val personal = HostOs.configDirectory()
+        scanCommandsDir(File(personal, "commands"), prefix = "", into = hints)
+        scanSkillsDir(File(personal, "skills"), prefix = "", into = hints)
 
         for (plugin in installed) {
             val installPath = plugin.installPath ?: continue
-            // "context7@claude-plugins-official" → "context7": так же собраны
-            // namespaced-имена в самом списке slash_commands ("vercel:deploy").
+            // "context7@claude-plugins-official" → "context7": the namespaced names in the
+            // slash_commands list itself are put together the same way ("vercel:deploy").
             val name = plugin.id.substringBefore('@')
             scanCommandsDir(File(installPath, "commands"), prefix = "$name:", into = hints)
             scanSkillsDir(File(installPath, "skills"), prefix = "$name:", into = hints)
@@ -61,7 +60,7 @@ internal object ClaudeCommandHints {
     private val FRONTMATTER = Regex("""(?s)\A---\s*\n(.*?)\n---""")
     private val FIELD = Regex("""^([A-Za-z0-9_-]+):(.*)$""")
 
-    /** Простое построчное чтение полей — без полноценного YAML, как и остальной парсинг в этом плагине. */
+    /** Plain line-by-line field reading - without full YAML, like the rest of the parsing in this plugin. */
     private fun parseFrontmatter(file: File): CommandHint? {
         if (!file.isFile) return null
         val text = runCatching { file.readText() }.getOrNull() ?: return null
@@ -75,13 +74,12 @@ internal object ClaudeCommandHints {
     }
 
     /**
-     * Значения полей фронтматтера, включая многострочные.
+     * The frontmatter's field values, multi-line ones included.
      *
-     * Длинные описания принято выносить блоком — `description: >` или `|`, а сам
-     * текст с отступом на следующих строках. Раньше бралось всё, что стоит после
-     * двоеточия, и в подсказке команд оказывался один символ `>` вместо описания.
-     * Свёрнутый блок (`>`) склеиваем пробелами, буквальный (`|`) — переводами
-     * строк, как и полагается YAML.
+     * Long descriptions are customarily put in a block - `description: >` or `|`, with the text itself
+     * indented on the following lines. This used to take everything after the colon, and the command
+     * hint ended up holding a single `>` instead of a description. A folded block (`>`) is joined with
+     * spaces, a literal one (`|`) with newlines, as YAML has it.
      */
     private fun readFields(frontmatter: String): Map<String, String> {
         val fields = mutableMapOf<String, String>()
@@ -100,7 +98,7 @@ internal object ClaudeCommandHints {
                 continue
             }
 
-            // Пустое значение тоже может быть началом блока — просто без указателя.
+            // An empty value can be the start of a block too - simply without an indicator.
             val separator = if (inline.startsWith("|")) "\n" else " "
             val block = mutableListOf<String>()
             while (index < lines.size && (lines[index].isBlank() || lines[index].startsWith(" ") || lines[index].startsWith("\t"))) {

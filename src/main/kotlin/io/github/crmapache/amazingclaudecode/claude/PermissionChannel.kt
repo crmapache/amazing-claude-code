@@ -2,6 +2,7 @@ package io.github.crmapache.amazingclaudecode.claude
 
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray
@@ -13,26 +14,26 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
 /**
- * Разрешения, которые агент спрашивает у панели сам.
+ * The permissions the agent asks the panel for itself.
  *
- * Это встречная половина управляющего канала: обычно запросы по нему шлём мы (смена
- * режима, прерывание), а здесь наоборот — CLI спрашивает и ждёт ответа, пока ход
- * стоит. Канал включается ключом ClaudeLaunch.PERMISSION_CHANNEL_FLAG; без него
- * потоковый режим считается безлюдным и инструменты, которым нужен человек, просто
- * выключены — из-за чего кнопки под планом и оказывались пустышкой.
+ * This is the other half of the control channel: usually we send the requests over it (mode changes,
+ * interrupts), here it is the reverse - the CLI asks and waits while the turn stands still. The
+ * channel is switched on by ClaudeLaunch.PERMISSION_CHANNEL_FLAG; without it the streaming mode counts
+ * as unattended and the tools that need a person are simply disabled - which is why the buttons under
+ * a plan used to be a sham.
  *
- * Разбор и ответ живут отдельно от [ClaudeSession] нарочно: это чистая работа с
- * текстом протокола, её видно тестом без единого запущенного процесса.
+ * Parsing and answering live apart from [ClaudeSession] on purpose: this is pure work with the text of
+ * a protocol, and a test can see it without a single process running.
  */
 internal object PermissionChannel {
 
     /**
-     * Вопрос агента о вызове инструмента.
+     * The agent's question about a tool call.
      *
-     * [toolUseId] — тот же идентификатор, что у вызова инструмента в ленте: по нему
-     * панель находит уже нарисованную карточку (карточку плана, например) и не
-     * показывает вторую. [requiresUserInteraction] отмечает инструменты, которые без
-     * человека не работают в принципе — ExitPlanMode как раз такой.
+     * [toolUseId] is the same identifier the tool call has in the feed: the panel finds an
+     * already-drawn card by it (a plan card, for instance) and does not show a second one.
+     * [requiresUserInteraction] marks the tools that do not work without a person at all - ExitPlanMode
+     * is exactly that.
      */
     data class ToolPermission(
         val requestId: String,
@@ -40,72 +41,70 @@ internal object PermissionChannel {
         val toolUseId: String?,
         val input: JsonObject,
         val requiresUserInteraction: Boolean,
-        /** Заполнено, только если разрешения просит инструмент внутри субагента. */
+        /** Filled in only when the permission is asked by a tool inside a subagent. */
         val agentId: String? = null,
         /**
-         * Готовые правила «больше не спрашивать», которые предлагает сам CLI, —
-         * то же, что показывает третьим пунктом терминал. Сочинять правило на своей
-         * стороне не надо: CLI разбирает команду сам и знает, какая её часть
-         * значимая, а какая — случайный аргумент этого вызова.
+         * Ready-made "do not ask again" rules the CLI offers itself - the same thing the terminal shows
+         * as its third option. There is no need to invent a rule on our side: the CLI parses the
+         * command itself and knows which part of it matters and which is an accident of this call.
          */
         val suggestions: JsonArray = JsonArray(emptyList()),
         /**
-         * Почему спросили — словами самого CLI. Есть не у всякого вопроса: при
-         * обычном «режим требует спрашивать» объяснять нечего, а вот проверка
-         * безопасности, хук и классификатор приезжают с текстом.
+         * Why it asked, in the CLI's own words. Not every question has it: with the ordinary "the mode
+         * requires asking" there is nothing to explain, while a safety check, a hook and a classifier
+         * arrive with text.
          */
         val reason: String = "",
         /**
-         * Разновидность причины: `safetyCheck`, `subcommandResults`, `hook`,
-         * `classifier`, `rule`, `mode` и прочие имена из протокола. По ней панель
-         * решает, как подать текст, — разбирать сам текст для этого не надо.
+         * The kind of reason: `safetyCheck`, `subcommandResults`, `hook`, `classifier`, `rule`, `mode`
+         * and the other names from the protocol. The panel decides how to present the text by it -
+         * parsing the text itself for that is not needed.
          */
         val reasonType: String = "",
         /**
-         * Проверка безопасности требует именно человека: правило её не отменит и
-         * классификатор `auto` её не пропустит. `null` — проверки безопасности в
-         * причине нет вовсе.
+         * A safety check demands a person specifically: no rule waives it and the `auto` classifier
+         * does not wave it through. `null` means there is no safety check in the reason at all.
          */
         val classifierApprovable: Boolean? = null,
         /**
-         * CLI прямо просит не предлагать «разрешать всегда»: правило вышло бы шире
-         * самого вопроса (разрешение всему инструменту вместо одного вызова).
+         * The CLI asks outright not to offer "always allow": the rule would come out wider than the
+         * question itself (permission for the whole tool instead of this one call).
          */
         val suppressAlwaysAllow: Boolean = false,
-        /** Правило «спрашивать», из-за которого возник вопрос, — если он от правила. */
+        /** The "ask" rule this call ran into - when the question came from a rule. */
         val matchedAskRule: AskRule? = null,
     )
 
     /**
-     * Правило `permissions.ask`, поймавшее этот вызов.
+     * The `permissions.ask` rule that caught this call.
      *
-     * [source] — имя слоя настроек из протокола (`userSettings`, `projectSettings`
-     * и т.д.), [content] — значимая часть правила: у `Bash(git push *)` это
-     * `git push *`, а у правила на весь инструмент её нет.
+     * [source] is the settings layer's name from the protocol (`userSettings`, `projectSettings` and so
+     * on), [content] is the meaningful part of the rule: for `Bash(git push *)` that is `git push *`,
+     * and a rule covering a whole tool has none.
      */
     data class AskRule(val source: String, val toolName: String, val content: String?)
 
-    /** Что за запрос пришёл: либо понятный нам вопрос, либо всё остальное. */
+    /** What kind of request arrived: either a question we understand, or everything else. */
     sealed interface Incoming {
         data class Permission(val request: ToolPermission) : Incoming
 
-        /** Чужой или новый вид запроса: ответить всё равно обязаны, иначе ход встанет. */
+        /** A foreign or new kind of request: we still have to answer, or the turn stalls. */
         data class Unsupported(val requestId: String, val subtype: String) : Incoming
     }
 
     const val CAN_USE_TOOL = "can_use_tool"
 
-    /** Вид обновления разрешений, которым добавляют правило: имя из протокола CLI. */
+    /** The kind of permission update that adds a rule: the name from the CLI's protocol. */
     private const val ADD_RULES = "addRules"
 
-    /** null — строка не про этот канал: обычное событие разговора или наш же ответ. */
+    /** null - the line is not about this channel: an ordinary conversation event, or our own answer. */
     fun parse(payload: JsonObject): Incoming? {
         if (payload["type"]?.jsonPrimitive?.contentOrNull != "control_request") return null
 
         val requestId = payload["request_id"]?.jsonPrimitive?.contentOrNull ?: return null
-        // Здесь и ниже `as?`, а не `jsonObject`: пустое место в ответе CLI — это
-        // не всегда отсутствующее поле, туда пишется и честный null, а на нём
-        // `jsonObject` бросает исключение прямо в разборе потока.
+        // Here and below `as?` rather than `jsonObject`: an empty spot in the CLI's answer is not
+        // always a missing field - an honest null gets written there too, and on that `jsonObject`
+        // throws right inside the stream's parsing.
         val request = payload["request"] as? JsonObject
         val subtype = request?.get("subtype")?.jsonPrimitive?.contentOrNull.orEmpty()
 
@@ -143,28 +142,26 @@ internal object PermissionChannel {
     }
 
     /**
-     * Текст причины приходит таким, каким его напечатал бы терминал, — то есть
-     * может нести управляющие последовательности раскраски. В панели они не
-     * раскрашивают ничего, а показались бы мусором посреди фразы, поэтому
-     * вырезаются здесь же, при разборе.
+     * The reason's text arrives the way the terminal would have printed it - that is, it may carry
+     * colouring escape sequences. In the panel they colour nothing, and would show up as rubbish in the
+     * middle of a sentence, so they are cut out right here, at parse time.
      */
     private fun plain(text: String?): String = text.orEmpty().replace(ANSI, "").trim()
 
-    /** Escape, за ним параметры и буква команды: раскраска терминала целиком. */
-    private val ANSI = Regex("\u001B\\[[0-9;?]*[ -/]*[@-~]")
+    /** Escape, then parameters, then the command letter: a terminal's colouring, whole. */
+    private val ANSI = Regex("\\u001B\\[[0-9;?]*[ -/]*[@-~]")
 
     /**
-     * Чем ответить на «Always allow»: правилом, которое CLI применит к этой же
-     * сессии сразу и заодно запишет в настройки проекта, — второй раз про такую
-     * команду он уже не спросит.
+     * What to answer "Always allow" with: a rule the CLI applies to this very session at once and
+     * writes into the project's settings along the way - it will not ask about such a command again.
      *
-     * Берём только предложения вида addRules. Остальное, что CLI кладёт рядом
-     * (открыть себе целый каталог, переключить режим на acceptEdits), — это
-     * ответы на другие вопросы, а человек нажал именно «разрешать эту команду».
+     * Only suggestions of the addRules kind are taken. The rest the CLI puts beside them (open a whole
+     * directory, switch the mode to acceptEdits) are answers to other questions, and the person pressed
+     * "allow this command" specifically.
      *
-     * Пустой список предложений бывает у инструментов без разбираемых аргументов
-     * (MCP, WebFetch): тогда правило — сам инструмент целиком, ровно как его
-     * записал бы человек руками в permissions.allow.
+     * An empty list of suggestions happens with tools whose arguments cannot be parsed (MCP, WebFetch):
+     * then the rule is the tool itself, exactly as a person would have written it into
+     * permissions.allow by hand.
      */
     fun rememberRules(request: ToolPermission): JsonArray {
         val offered = request.suggestions.filter { suggestion ->
@@ -186,11 +183,11 @@ internal object PermissionChannel {
     }
 
     /**
-     * Разрешение возвращает вызов с теми же аргументами, с какими его и задумали:
-     * поле обязательное, а менять чужой вызов за агента панель не берётся.
+     * Allowing returns the call with the very arguments it was meant to have: the field is required,
+     * and the panel does not take it upon itself to change someone else's call.
      *
-     * [rules] непусты, когда человек выбрал «разрешать всегда»: CLI применит их
-     * к текущей сессии и сам запишет в настройки — см. [rememberRules].
+     * [rules] is non-empty when the person chose "always allow": the CLI applies them to the current
+     * session and writes them into the settings itself - see [rememberRules].
      */
     fun allow(requestId: String, input: JsonObject, rules: JsonArray = JsonArray(emptyList())): String =
         answer(requestId) {
@@ -200,8 +197,8 @@ internal object PermissionChannel {
         }
 
     /**
-     * Отказ — с объяснением: для ExitPlanMode это ровно тот способ, которым план
-     * отправляют на доработку, и текст агент прочитает как замечание к плану.
+     * A refusal - with an explanation: for ExitPlanMode this is exactly how a plan is sent back for
+     * revision, and the agent reads the text as a remark about the plan.
      */
     fun deny(requestId: String, message: String): String =
         answer(requestId) {
@@ -209,12 +206,12 @@ internal object PermissionChannel {
             put("message", message.ifEmpty { "The user declined." })
         }
 
-    private fun answer(requestId: String, decision: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit): String =
+    private fun answer(requestId: String, decision: JsonObjectBuilder.() -> Unit): String =
         buildJsonObject {
             put("type", "control_response")
             putJsonObject("response") {
-                // «success» здесь про сам ответ, а не про решение: отказ — такой же
-                // полноценный ответ, как и разрешение.
+                // "success" here is about the answer itself, not about the decision: a refusal is just
+                // as complete an answer as a permission.
                 put("subtype", "success")
                 put("request_id", requestId)
                 putJsonObject("response", decision)

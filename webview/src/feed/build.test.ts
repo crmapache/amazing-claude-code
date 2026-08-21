@@ -18,8 +18,8 @@ import type {
 } from './types'
 
 /**
- * Поток записан живым прогоном агента, а не придуман: только так видно и порядок
- * событий, и типы, которых мы не ждали.
+ * The stream was recorded from a live run of the agent rather than made up: only that way are both the
+ * order of the events and the types we did not expect visible.
  */
 const streamEvents = (): AgentEvent[] =>
   readFileSync(join(import.meta.dirname, '../__fixtures__/stream.ndjson'), 'utf8')
@@ -57,7 +57,7 @@ const taskStartedEvent = (taskId: string, toolUseId: string, subagentType: strin
   task_id: taskId,
   tool_use_id: toolUseId,
   subagent_type: subagentType,
-  description: 'Демо-задача',
+  description: 'Demo task',
 })
 
 const subagentMessageEvent = (parentToolUseId: string, text: string): AgentEvent => ({
@@ -79,7 +79,7 @@ const taskProgressEvent = (taskId: string, lastToolName: string): AgentEvent => 
   last_tool_name: lastToolName,
 })
 
-/** Как это приходит с живого CLI: у субагента свой task_id, отдельный от id вызова. */
+/** How it arrives from a live CLI: a subagent has a task_id of its own, separate from the call's id. */
 const agentTaskStartedEvent = (taskId: string, toolUseId: string, subagentType: string): AgentEvent => ({
   type: 'system',
   subtype: 'task_started',
@@ -90,7 +90,7 @@ const agentTaskStartedEvent = (taskId: string, toolUseId: string, subagentType: 
   task_type: 'local_agent',
 })
 
-/** Тем же каналом CLI ведёт команды терминала — субагента в них нет вовсе. */
+/** The CLI leads terminal commands down the same channel - there is no subagent in them at all. */
 const bashTaskStartedEvent = (taskId: string, toolUseId: string, description: string): AgentEvent => ({
   type: 'system',
   subtype: 'task_started',
@@ -145,23 +145,23 @@ const subagentAskEvent = (parentToolUseId: string): AgentEvent => ({
         type: 'tool_use',
         id: 'ask-1',
         name: 'AskUserQuestion',
-        input: { questions: [{ question: 'Продолжать?', header: 'Ветка', options: [{ label: 'Да' }, { label: 'Нет' }] }] },
+      input: { questions: [{ question: 'Carry on?', header: 'Branch', options: [{ label: 'Yes' }, { label: 'No' }] }] },
       },
     ],
   },
   parent_tool_use_id: parentToolUseId,
 })
 
-/** Тексты ошибок, стоящих в ленте — в том же порядке, в каком они там стоят. */
+/** The texts of the errors standing in the feed - in the same order they stand there. */
 const errorTexts = (state: PanelState): string[] =>
   state.items.filter((item) => item.kind === 'error').map((item) => item.message)
 
-describe('ошибки в ленте', () => {
+describe('errors in the feed', () => {
   const refusal = 'Cannot set permission mode to bypassPermissions'
 
-  it('один отказ не рисует две одинаковые плашки, придя двумя дорогами', () => {
-    // Отказ CLI приходит и текстом в поток ошибок процесса, и разобранным
-    // ответом на управляющий запрос смены режима.
+  it('does not draw two identical cards for one refusal that arrived by two routes', () => {
+    // The CLI's refusal arrives both as text in the process's error stream and as a parsed answer to the
+    // control request that changes the mode.
     const state = [
       { kind: 'error', message: refusal } as const,
       { kind: 'modeApplied', mode: 'bypassPermissions', applied: false, error: refusal } as const,
@@ -170,7 +170,7 @@ describe('ошибки в ленте', () => {
     expect(errorTexts(state)).toEqual([refusal])
   })
 
-  it('разные ошибки по-прежнему показывает обе', () => {
+  it('still shows both when the errors differ', () => {
     const state = [
       { kind: 'error', message: refusal } as const,
       { kind: 'error', message: 'claude exited with code 1' } as const,
@@ -179,15 +179,15 @@ describe('ошибки в ленте', () => {
     expect(errorTexts(state)).toHaveLength(2)
   })
 
-  it('тот же отказ в новом ходе показывается снова — это уже новая неприятность', () => {
+  it('shows the same refusal again in a new turn - that is a fresh piece of trouble', () => {
     let state = reducePanel(initialPanelState, { kind: 'error', message: refusal })
-    state = reducePanel(state, { kind: 'prompt', tokens: [{ kind: 'text', value: 'ещё раз' }], quotes: [] })
+    state = reducePanel(state, { kind: 'prompt', tokens: [{ kind: 'text', value: 'once more' }], quotes: [] })
     state = reducePanel(state, { kind: 'error', message: refusal })
 
     expect(errorTexts(state)).toEqual([refusal, refusal])
   })
 
-  it('ошибка живёт в ленте, а не отдельной плашкой — и убирается по своему номеру', () => {
+  it('lives in the feed rather than as a separate card - and is dismissed by its own id', () => {
     const state = reducePanel(initialPanelState, { kind: 'error', message: refusal })
     const error = state.items.find((item) => item.kind === 'error')
     expect(error).toBeDefined()
@@ -197,11 +197,11 @@ describe('ошибки в ленте', () => {
   })
 
   /**
-   * Сорвавшийся запрос CLI говорит дважды: сперва репликой агента в потоке,
-   * следом той же строкой в stderr. В ленте от этого стояли два одинаковых
-   * абзаца подряд — обычный ответ и красная плашка под ним.
+   * A failed CLI request speaks twice: first as the agent's line in the stream, then as the same string in
+   * stderr. Because of that two identical paragraphs stood in the feed one after another - an ordinary
+   * answer and a red card under it.
    */
-  it('ошибка вытесняет свой же дубль, пришедший ответом агента', () => {
+  it('an error crowds out its own duplicate that arrived as the agent answer', () => {
     const apiError = 'API Error: 500 Internal server error. Check https://status.claude.com.'
     let state = reducePanel(initialPanelState, { kind: 'agent', event: textEvent(apiError) })
     expect(state.items.filter((item) => item.kind === 'text')).toHaveLength(1)
@@ -212,8 +212,8 @@ describe('ошибки в ленте', () => {
     expect(errorTexts(state)).toEqual([apiError])
   })
 
-  it('обычный ответ рядом с ошибкой остаётся на месте', () => {
-    let state = reducePanel(initialPanelState, { kind: 'agent', event: textEvent('Правлю сборку.') })
+  it('leaves an ordinary answer beside an error in place', () => {
+    let state = reducePanel(initialPanelState, { kind: 'agent', event: textEvent('Fixing the build.') })
     state = reducePanel(state, { kind: 'error', message: 'claude exited with code 1' })
 
     expect(state.items.filter((item) => item.kind === 'text')).toHaveLength(1)
@@ -222,14 +222,14 @@ describe('ошибки в ленте', () => {
 })
 
 
-describe('смена модели', () => {
-  it('до ответа агента показывает выбранную, а не прежнюю', () => {
+describe('changing the model', () => {
+  it('shows the chosen one rather than the previous one before the agent answers', () => {
     const state = reducePanel(initialPanelState, { kind: 'modelRequested', model: 'sonnet' })
 
     expect(state.pendingModel).toBe('sonnet')
   })
 
-  it('согласие агента делает выбранную моделью разговора — без всякого каталога', () => {
+  it('makes the chosen one the model of the conversation once the agent agrees - with no catalogue', () => {
     let state = reducePanel(initialPanelState, { kind: 'modelRequested', model: 'sonnet' })
     state = reducePanel(state, { kind: 'modelApplied', model: 'sonnet' })
 
@@ -237,7 +237,7 @@ describe('смена модели', () => {
     expect(state.model).toBe('sonnet')
   })
 
-  it('отказ возвращает прежнюю модель и объясняет причину в ленте', () => {
+  it('brings the previous model back on a refusal and explains the reason in the feed', () => {
     let state = reducePanel(initialPanelState, { kind: 'modelApplied', model: 'opus' })
     state = reducePanel(state, { kind: 'modelRequested', model: 'haiku' })
     state = reducePanel(state, {
@@ -252,21 +252,21 @@ describe('смена модели', () => {
   })
 })
 
-describe('сборка ленты из потока агента', () => {
-  it('доводит разговор до покоя и запоминает сессию', () => {
+describe('building the feed out of the agent stream', () => {
+  it('brings the conversation to rest and remembers the session', () => {
     const state = play(streamEvents())
 
     expect(state.sessionId).toBeTruthy()
     expect(state.model).toBeTruthy()
     expect(state.status).toBe('idle')
-    // Живой текст должен быть погашен готовым сообщением, иначе ответ удвоится.
+    // The live text has to be extinguished by the finished message, otherwise the answer doubles.
     expect(state.streamingText).toBe('')
     expect(errorTexts(state)).toEqual([])
   })
 
-  it('запоминает модель, на которую агент переключился сам посреди разговора', () => {
-    // Так выглядит сработавшая защита: ход уходит на другую модель, и сказать
-    // об этом может только подпись под ответом.
+  it('remembers the model the agent switched to itself mid-conversation', () => {
+    // This is what a fallback that fired looks like: the turn moves to another model, and only the caption
+    // under the answer can say so.
     let state = play([{ type: 'system', subtype: 'init', model: 'claude-opus-5[1m]' } as AgentEvent])
     expect(state.model).toBe('claude-opus-5[1m]')
 
@@ -277,9 +277,9 @@ describe('сборка ленты из потока агента', () => {
     expect(state.model).toBe('claude-opus-4-8')
   })
 
-  it('не принимает служебную пометку за модель', () => {
-    // Так CLI подписывает заглушку, которой закрывает оборванный ход: модели с
-    // таким именем не существует, и в выборе моделей ей взяться неоткуда.
+  it('does not take a service marker for a model', () => {
+    // That is how the CLI signs the stub it closes a broken turn with: no model of that name exists, and
+    // there is nowhere for it to come from in the model list.
     let state = play([{ type: 'system', subtype: 'init', model: 'claude-opus-5[1m]' } as AgentEvent])
     state = play(
       [{ type: 'assistant', message: { content: [], model: '<synthetic>' } } as AgentEvent],
@@ -289,7 +289,7 @@ describe('сборка ленты из потока агента', () => {
     expect(state.model).toBe('claude-opus-5[1m]')
   })
 
-  it('не принимает модель подагента за модель разговора', () => {
+  it('does not take a subagent model for the conversation model', () => {
     let state = play([{ type: 'system', subtype: 'init', model: 'claude-opus-5[1m]' } as AgentEvent])
     state = play(
       [
@@ -305,7 +305,7 @@ describe('сборка ленты из потока агента', () => {
     expect(state.model).toBe('claude-opus-5[1m]')
   })
 
-  it('превращает вызов инструмента в карточку с результатом', () => {
+  it('turns a tool call into a card with its result', () => {
     const state = play(streamEvents())
     const tools = state.items
       .filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
@@ -323,7 +323,7 @@ describe('сборка ленты из потока агента', () => {
     expect(read?.duration).toMatch(/s$/)
   })
 
-  it('разбирает ответ в абзацы с кодовыми вставками', () => {
+  it('parses an answer into paragraphs with code fragments', () => {
     const state = play(streamEvents())
     const texts = state.items.filter((item): item is TextItem => item.kind === 'text')
     const parts = texts.flatMap((item) => item.paragraphs.flatMap((paragraph) => paragraph.parts))
@@ -333,7 +333,7 @@ describe('сборка ленты из потока агента', () => {
     expect(parts.map((part) => part.text).join(' ')).toContain('acc-test')
   })
 
-  it('закрывает ход строкой итогов', () => {
+  it('closes a turn with a summary line', () => {
     const state = play(streamEvents())
     const meta = state.items.filter((item) => item.kind === 'meta')
 
@@ -342,19 +342,19 @@ describe('сборка ленты из потока агента', () => {
     expect(contextUsage(state.usage)).toBeGreaterThan(0)
   })
 
-  it('подписывает прерывание, если ход закрылся result-событием после Stop/Escape', () => {
+  it('marks an interruption when the turn closed with a result event after Stop/Escape', () => {
     let state = reducePanel(initialPanelState, { kind: 'stopRequested' }, 1_700_000_000_000)
     state = reducePanel(state, { kind: 'agent', event: resultEvent(400) }, 1_700_000_000_400)
 
     const meta = state.items.filter((item) => item.kind === 'meta')
     expect(meta).toHaveLength(1)
     expect(meta[0]?.stats).toEqual(['Stopped by you · 0.4s'])
-    // Запрос на остановку погашен — иначе следующий, уже обычный ход тоже
-    // ошибочно назвался бы прерванным.
+    // The stop request is extinguished - otherwise the next, ordinary turn would wrongly call itself
+    // interrupted too.
     expect(state.stopRequestedAt).toBeUndefined()
   })
 
-  it('подписывает прерывание и когда ход оборвался молча, без result-события', () => {
+  it('marks an interruption when the turn broke off silently too, with no result event', () => {
     let state = reducePanel(initialPanelState, { kind: 'stopRequested' }, 1_700_000_000_000)
     state = reducePanel(state, { kind: 'status', status: 'idle' }, 1_700_000_000_400)
 
@@ -364,10 +364,10 @@ describe('сборка ленты из потока агента', () => {
     expect(state.stopRequestedAt).toBeUndefined()
   })
 
-  it('служебный ход не обнуляет датчик контекста: он к модели не ходил вовсе', () => {
-    // Так закрывается, например, /model: CLI выполняет команду сам, без запроса
-    // к модели, и в result присылает нули — приняв их за снимок окна, датчик
-    // падал до нуля прямо посреди разговора.
+  it('does not zero the context gauge on a service turn: it never went to the model at all', () => {
+    // That is how a /model closes, for instance: the CLI runs the command itself, without a request to the
+    // model, and sends zeroes in the result - taken for a snapshot of the window, the gauge fell to zero
+    // right in the middle of a conversation.
     const filled = play(streamEvents())
     const before = contextUsage(filled.usage)
 
@@ -383,13 +383,13 @@ describe('сборка ленты из потока агента', () => {
     expect(contextUsage(after.usage)).toBe(before)
   })
 
-  it('датчик контекста растёт по ходу, не дожидаясь его конца', () => {
-    // Цифра от CLI приезжает только концом хода, и за самый долгий запрос —
-    // первый — полоска не двигалась вовсе. Считаем по usage ответа агента.
+  it('grows the context gauge during a turn without waiting for its end', () => {
+    // The number from the CLI arrives only with the turn's end, and over the longest request - the first -
+    // the bar did not move at all. We count from the usage of the agent's answer.
     const answering: AgentEvent = {
       type: 'assistant',
       message: {
-        content: [{ type: 'text', text: 'думаю' }],
+        content: [{ type: 'text', text: 'thinking' }],
         usage: { input_tokens: 10_000, cache_read_input_tokens: 30_000, cache_creation_input_tokens: 10_000 },
       },
     }
@@ -398,15 +398,15 @@ describe('сборка ленты из потока агента', () => {
     expect(contextOf(state, 200_000)).toEqual({ used: 50_000, limit: 200_000, percent: 25 })
   })
 
-  it('перепись прошлого разговора датчик контекста не двигает', () => {
-    // Открытый из истории разговор проигрывается теми же событиями, но usage в
-    // них — про давно прошедший шаг, а размер окна из переписи не узнать вовсе:
-    // разговор на «1M»-модели делился на запасные двести тысяч и выглядел
-    // переполненным. Точную цифру IDE спрашивает у CLI отдельным сообщением.
+  it('does not move the context gauge for a past conversation replay', () => {
+    // A conversation opened from the history is played back through the same events, but the usage in them
+    // is about a long-past step, while the window's size cannot be learned from a replay at all: a
+    // conversation on a "1M" model was divided by the fallback two hundred thousand and looked overflowing.
+    // The exact number the IDE asks the CLI for in a separate message.
     const answered: AgentEvent = {
       type: 'assistant',
       message: {
-        content: [{ type: 'text', text: 'отвечал час назад' }],
+        content: [{ type: 'text', text: 'answered an hour ago' }],
         usage: { input_tokens: 236_000 },
       },
     }
@@ -420,11 +420,11 @@ describe('сборка ленты из потока агента', () => {
     expect(contextOf(state, 200_000)).toEqual({ used: 236_192, limit: 1_000_000, percent: 24 })
   })
 
-  it('точная цифра от CLI вытесняет прикидку по ходу', () => {
+  it('lets the exact number from the CLI crowd out the estimate made during the turn', () => {
     const answering: AgentEvent = {
       type: 'assistant',
       message: {
-        content: [{ type: 'text', text: 'думаю' }],
+        content: [{ type: 'text', text: 'thinking' }],
         usage: { input_tokens: 50_000 },
       },
     }
@@ -435,9 +435,9 @@ describe('сборка ленты из потока агента', () => {
     expect(contextOf(state, 200_000)).toEqual({ used: 82_000, limit: 1_000_000, percent: 8 })
   })
 
-  it('прикидка считается от настоящего размера окна, а не от запасного', () => {
-    // Размер окна знает только CLI — у «1M»-моделей он впятеро больше обычного,
-    // и прикидка по ходу обязана делиться на него же, иначе она вчетверо завышена.
+  it('counts the estimate from the genuine window size rather than from the fallback', () => {
+    // Only the CLI knows the window's size - on "1M" models it is five times the ordinary one, and an
+    // estimate during a turn has to be divided by that same one, otherwise it is four times too high.
     let state = reducePanel(initialPanelState, { kind: 'context', used: 100_000, max: 1_000_000 }, 1_700_000_000_000)
     state = reducePanel(
       state,
@@ -451,7 +451,7 @@ describe('сборка ленты из потока агента', () => {
     expect(contextOf(state, 200_000)).toEqual({ used: 200_000, limit: 1_000_000, percent: 20 })
   })
 
-  it('служебный ответ без обращения к модели датчик не обнуляет', () => {
+  it('does not zero the gauge on a service answer that never reached the model', () => {
     let state = reducePanel(initialPanelState, { kind: 'context', used: 90_000, max: 200_000 }, 1_700_000_000_000)
     state = reducePanel(
       state,
@@ -471,13 +471,13 @@ describe('сборка ленты из потока агента', () => {
     expect(contextOf(state, 200_000).used).toBe(90_000)
   })
 
-  it('обычное освобождение агента ленту не трогает: останавливать было нечего', () => {
+  it('leaves the feed alone when the agent simply comes free: there was nothing to stop', () => {
     const state = reducePanel(initialPanelState, { kind: 'status', status: 'idle' }, 1_700_000_000_400)
 
     expect(state.items.filter((item) => item.kind === 'meta')).toHaveLength(0)
   })
 
-  it('не подписывает прерывание дважды: после result статус уже ничего не добавляет', () => {
+  it('does not mark an interruption twice: after a result the status adds nothing', () => {
     let state = reducePanel(initialPanelState, { kind: 'stopRequested' }, 1_700_000_000_000)
     state = reducePanel(state, { kind: 'agent', event: resultEvent(400) }, 1_700_000_000_400)
     state = reducePanel(state, { kind: 'status', status: 'idle' }, 1_700_000_000_500)
@@ -485,35 +485,35 @@ describe('сборка ленты из потока агента', () => {
     expect(state.items.filter((item) => item.kind === 'meta')).toHaveLength(1)
   })
 
-  it('обычный конец хода остаётся просто Worked, без Stop/Escape', () => {
+  it('leaves an ordinary end of a turn as a plain Worked, without Stop/Escape', () => {
     const state = reducePanel(initialPanelState, { kind: 'agent', event: resultEvent(400) }, 1_700_000_000_400)
 
     const meta = state.items.filter((item) => item.kind === 'meta')
     expect(meta[0]?.stats).toEqual(['Worked 0.4s'])
   })
 
-  // Форк поднимает процесс вместе с первым сообщением, и CLI сразу закрывает
-  // «нулевой» ход: агент к сообщению ещё не приступал. Приняв его за конец хода,
-  // панель гасила спиннер и подписывала «Worked 0.1s» — выглядело так, будто
-  // отправка не завелась.
-  it('пустой ход поднявшегося разговора не гасит спиннер и не пишет Worked', () => {
+  // A fork brings the process up together with the first message, and the CLI closes the "zero" turn at
+  // once: the agent has not started on the message yet. Taking it for the end of a turn, the panel
+  // extinguished the spinner and wrote a "Worked 0.1s" - it looked as though the send had not caught.
+
+  it('does not extinguish the spinner or write Worked for the empty turn of a conversation coming up', () => {
     let state = reducePanel(
       initialPanelState,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'hello' }], quotes: [] },
       1_700_000_000_000,
     )
-    // Процесс форка поднимается уже с отправленным сообщением: сначала init…
+    // A fork's process comes up with the message already sent: first the init...
     state = reducePanel(
       state,
       { kind: 'agent', event: { type: 'system', subtype: 'init' } as AgentEvent },
       1_700_000_000_050,
     )
-    // …а сразу за ним — тот самый «нулевой» ход.
+    // ...and right behind it the very same "zero" turn.
     state = reducePanel(
       state,
       {
         kind: 'agent',
-        event: { type: 'result', subtype: 'success', duration_ms: 73, num_turns: 0, session_id: 'новый-разговор' },
+        event: { type: 'result', subtype: 'success', duration_ms: 73, num_turns: 0, session_id: 'new-conversation' },
       },
       1_700_000_000_100,
     )
@@ -521,13 +521,13 @@ describe('сборка ленты из потока агента', () => {
     expect(state.items.filter((item) => item.kind === 'meta')).toHaveLength(0)
     expect(state.status).toBe('running')
     expect(state.turnStartedAt).toBe(1_700_000_000_000)
-    // Идентификатор форка новый, и он приезжает именно этим событием.
-    expect(state.sessionId).toBe('новый-разговор')
+    // The fork's identifier is a new one, and it arrives through precisely this event.
+    expect(state.sessionId).toBe('new-conversation')
   })
 
-  // Ошибку молчанием не проглатываем: нулевой ход бывает и с отказом, и его
-  // человек обязан увидеть.
-  it('нулевой ход с ошибкой остаётся обычным концом хода', () => {
+  // We do not swallow an error in silence: a zero turn happens with a refusal too, and the person has to
+  // see it.
+  it('leaves a zero turn with an error as an ordinary end of a turn', () => {
     let state = reducePanel(
       initialPanelState,
       { kind: 'agent', event: { type: 'system', subtype: 'init' } as AgentEvent },
@@ -553,11 +553,11 @@ describe('сборка ленты из потока агента', () => {
     expect(state.status).toBe('idle')
   })
 
-  // Неизвестную слэш-команду CLI закрывает мгновенно и без обращения к модели:
-  // ответ приезжает заглушкой от <synthetic>, ходов в итоге ноль, ошибкой это не
-  // помечено. Приняв такой итог за «нулевой» ход подъёма, панель не закрывала ход
-  // вовсе — «Claude is thinking» со счётчиком висел до конца жизни вкладки.
-  it('неизвестная команда сразу после подъёма закрывает ход', () => {
+  // An unknown slash command the CLI closes instantly and without going to the model: the answer arrives as
+  // a stub from <synthetic>, the number of turns is zero and it is not marked as an error. Taking such an
+  // outcome for a "zero" turn of a start-up, the panel did not close the turn at all - the "Claude is
+  // thinking" with its counter hung there until the tab's end of life.
+  it('closes the turn for an unknown command right after the start-up', () => {
     let state = reducePanel(
       initialPanelState,
       { kind: 'prompt', tokens: [{ kind: 'text', value: '/mcp__snakein__analyze' }], quotes: [] },
@@ -601,16 +601,16 @@ describe('сборка ленты из потока агента', () => {
     expect(state.status).toBe('idle')
     expect(state.turnStartedAt).toBeUndefined()
     expect(state.starting).toBe(false)
-    // Модель разговора заглушка не подменяет — см. realModel.
+    // A stub does not replace the conversation's model - see realModel.
     expect(state.model).toBe(initialPanelState.model)
   })
 
-  // Тот же отказ, но итог приехал без текста: закрыть ход всё равно обязан —
-  // ответ агента уже был, значит подъём кончился раньше.
-  it('заглушка без текста в итоге тоже закрывает ход', () => {
+  // The same refusal, but the outcome arrived without any text: the turn still has to be closed - the
+  // agent's answer has already been there, so the start-up ended earlier.
+  it('closes the turn for a stub without text in the outcome too', () => {
     let state = reducePanel(
       initialPanelState,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: '/что-то' }], quotes: [] },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: '/something' }], quotes: [] },
       1_700_000_000_000,
     )
     state = reducePanel(
@@ -624,7 +624,7 @@ describe('сборка ленты из потока агента', () => {
         kind: 'agent',
         event: {
           type: 'assistant',
-          message: { model: '<synthetic>', content: [{ type: 'text', text: 'Не выполняю.' }] },
+          message: { model: '<synthetic>', content: [{ type: 'text', text: 'Not running that.' }] },
         } as AgentEvent,
       },
       1_700_000_000_080,
@@ -639,12 +639,12 @@ describe('сборка ленты из потока агента', () => {
     expect(state.turnStartedAt).toBeUndefined()
   })
 
-  // Ход, который и правда кончился ничем, гасить спиннер обязан: подъёма перед
-  // ним не было, значит это настоящий итог.
-  it('нулевой ход посреди разговора остаётся концом хода', () => {
+  // A turn that genuinely ended in nothing does have to extinguish the spinner: there was no start-up
+  // before it, so this is a real outcome.
+  it('leaves a zero turn mid-conversation as an end of a turn', () => {
     let state = reducePanel(
       initialPanelState,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'hello' }], quotes: [] },
       1_700_000_000_000,
     )
     state = reducePanel(
@@ -657,17 +657,17 @@ describe('сборка ленты из потока агента', () => {
     expect(state.items.filter((item) => item.kind === 'meta')).toHaveLength(1)
   })
 
-  it('/clear во время идущего хода гасит спиннер, а не оставляет его висеть навсегда', () => {
+  it('lets a /clear during a running turn extinguish the spinner rather than leave it hanging forever', () => {
     let state = reducePanel(
       initialPanelState,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'hello' }], quotes: [] },
       1_700_000_000_000,
     )
     expect(state.status).toBe('running')
 
-    // /clear, отправленный, пока предыдущий ход ещё думает, идёт steering-путём —
-    // тем же самым, что и в 'досылка в идущий ход не стирает недописанный ответ
-    // агента' — и сам по себе не трогает status/turnStartedAt.
+    // A /clear sent while the previous turn is still thinking goes down the steering route - the very same
+    // one as in 'a follow-up into a running turn does not wipe the agent unfinished answer' - and by itself
+    // touches neither status nor turnStartedAt.
     state = reducePanel(
       state,
       { kind: 'prompt', tokens: [{ kind: 'text', value: '/clear' }], quotes: [], steering: true },
@@ -689,7 +689,7 @@ describe('сборка ленты из потока агента', () => {
     expect(state.starting).toBe(false)
   })
 
-  it('/clear во время сжатия контекста снимает флаг, а не гасит строку статуса навсегда', () => {
+  it('lets a /clear during a context compaction drop the flag rather than kill the status line forever', () => {
     let state = play([compactingStatusEvent()])
     expect(state.compacting).toBe(true)
 
@@ -698,10 +698,10 @@ describe('сборка ленты из потока агента', () => {
     expect(state.compacting).toBe(false)
   })
 
-  it('показывает свой ход сразу, не дожидаясь агента', () => {
+  it('shows your own turn at once, without waiting for the agent', () => {
     const state = reducePanel(
       initialPanelState,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'hello' }], quotes: [] },
       1_700_000_000_000,
     )
 
@@ -710,81 +710,81 @@ describe('сборка ленты из потока агента', () => {
     expect(state.items[0]?.kind).toBe('user')
   })
 
-  it('досылка в идущий ход не стирает недописанный ответ агента', () => {
+  it('a follow-up into a running turn does not wipe the agent unfinished answer', () => {
     let state = reducePanel(initialPanelState, {
       kind: 'agent',
       event: {
         type: 'stream_event',
-        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Смотрю файл' } },
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Reading the file' } },
       },
     })
 
     state = reducePanel(
       state,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'стой, не этот' }], quotes: [], steering: true },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'wait, not that one' }], quotes: [], steering: true },
       1_700_000_000_000,
     )
 
-    expect(state.streamingText).toBe('Смотрю файл')
+    expect(state.streamingText).toBe('Reading the file')
     expect(state.items.at(-1)?.kind).toBe('user')
   })
 
-  it('обычный ход начинает с чистого листа, а не продолжает прошлый поток', () => {
+  it('starts an ordinary turn from a clean sheet rather than continuing the previous stream', () => {
     let state = reducePanel(initialPanelState, {
       kind: 'agent',
       event: {
         type: 'stream_event',
-        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'обрывок' } },
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'a fragment' } },
       },
     })
 
     state = reducePanel(
       state,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'новая задача' }], quotes: [] },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'a new task' }], quotes: [] },
       1_700_000_000_000,
     )
 
     expect(state.streamingText).toBe('')
   })
 
-  it('собирает мысль по кусочкам вживую и гасит буфер готовым блоком', () => {
+  it('assembles a thought from its pieces live and extinguishes the buffer with the finished block', () => {
     let state = reducePanel(initialPanelState, {
       kind: 'agent',
       event: {
         type: 'stream_event',
-        event: { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: 'Надо ' } },
+        event: { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: 'I should ' } },
       },
     })
     state = reducePanel(state, {
       kind: 'agent',
       event: {
         type: 'stream_event',
-        event: { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: 'посмотреть файл.' } },
+        event: { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: 'look at the file.' } },
       },
     })
 
-    expect(state.streamingThinking).toBe('Надо посмотреть файл.')
+    expect(state.streamingThinking).toBe('I should look at the file.')
     expect(state.items.filter((item) => item.kind === 'think')).toHaveLength(0)
 
     state = reducePanel(state, {
       kind: 'agent',
-      event: { type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'Надо посмотреть файл.' }] } },
+      event: { type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'I should look at the file.' }] } },
     })
 
-    // Готовый блок гасит живой буфер — иначе под завершённой карточкой ещё
-    // секунду висел бы её же дублирующийся черновик.
+    // The finished block extinguishes the live buffer - otherwise its own duplicated draft would hang under
+    // the finished card for another second.
     expect(state.streamingThinking).toBe('')
     const thinks = state.items.filter((item): item is ThinkItem => item.kind === 'think')
     expect(thinks).toHaveLength(1)
     expect(thinks[0]?.pending).toBe(false)
   })
 
-  it('мысль подагента в главный буфер не течёт', () => {
+  it('does not let a subagent thought leak into the main buffer', () => {
     const state = reducePanel(initialPanelState, {
       kind: 'agent',
       event: {
         type: 'stream_event',
-        event: { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: 'чужая мысль' } },
+        event: { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: 'someone else thought' } },
         parent_tool_use_id: 'toolu_task1',
       },
     })
@@ -792,10 +792,10 @@ describe('сборка ленты из потока агента', () => {
     expect(state.streamingThinking).toBe('')
   })
 
-  it('переживает сообщение, где содержимое строкой, а не списком блоков', () => {
-    // Так приходит сводка после /compact. Раньше на ней падала вся панель:
-    // разбор сразу звал на содержимом методы массива.
-    const summary = 'Здесь была длинная переписка, вот её краткий пересказ.'
+  it('survives a message whose content is a string rather than a list of blocks', () => {
+    // That is how the summary after a /compact arrives. The whole panel used to crash on it: the parsing
+    // called array methods on the content straight away.
+    const summary = 'There was a long conversation here, and this is its short retelling.'
 
     const state = play([
       { type: 'user', message: { content: summary } } as AgentEvent,
@@ -807,7 +807,7 @@ describe('сборка ленты из потока агента', () => {
     expect(texts[0]?.paragraphs[0]?.parts[0]?.text).toBe(summary)
   })
 
-  it('не рушится на незнакомом событии', () => {
+  it('does not break on an unfamiliar event', () => {
     const state = reducePanel(initialPanelState, {
       kind: 'agent',
       event: { type: 'rate_limit_event' } as unknown as AgentEvent,
@@ -816,17 +816,17 @@ describe('сборка ленты из потока агента', () => {
     expect(state).toEqual(initialPanelState)
   })
 
-  describe('лимит подписки', () => {
+  describe('the subscription limit', () => {
     const limitEvent = (status: string, resetsAt?: number): AgentEvent => ({
       type: 'rate_limit_event',
       rate_limit_info: { status, resetsAt, rateLimitType: 'five_hour' },
     })
 
-    it('про пропущенный запрос молчит: лента не сводка о состоянии подписки', () => {
+    it('stays silent about a request that got through: the feed is not a summary of the subscription state', () => {
       expect(play([limitEvent('allowed')]).items).toEqual([])
     })
 
-    it('отказ показывает в ленте и помечает как лимит, а не поломку', () => {
+    it('shows a refusal in the feed and marks it as a limit rather than a breakage', () => {
       const items = play([limitEvent('rejected')]).items
       const error = items.find((item): item is ErrorItem => item.kind === 'error')
 
@@ -834,19 +834,19 @@ describe('сборка ленты из потока агента', () => {
       expect(error?.message).toContain('5-hour')
     })
 
-    it('повторное событие того же хода второй строкой не ложится', () => {
+    it('does not lay a repeated event of the same turn down as a second line', () => {
       const state = play([limitEvent('rejected'), limitEvent('rejected')])
 
       expect(state.items.filter((item) => item.kind === 'error')).toHaveLength(1)
     })
   })
 
-  describe('группировка вызовов инструментов', () => {
-    it('собирает подряд идущие вызовы в одну группу, даже через паузу между внутренними шагами хода', () => {
+  describe('grouping tool calls', () => {
+    it('collects consecutive calls into one group, even across a pause between a turn inner steps', () => {
       let state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })])
       state = play([toolResultEvent('t1', 'line 1')], state)
-      // t1 уже разрешился — группа на мгновение стала pending:false, но следующий
-      // вызов идёт без единого текстового блока между ними и должен лечь в ту же группу.
+      // t1 has already resolved - for an instant the group became pending:false, but the next call comes
+      // without a single text block between them and has to land in the same group.
       state = play([toolUseEvent('t2', 'Bash', { command: 'ls' })], state)
       state = play([toolResultEvent('t2', 'ok')], state)
 
@@ -857,10 +857,10 @@ describe('сборка ленты из потока агента', () => {
       expect(groups[0]?.duration).toMatch(/s$/)
     })
 
-    it('текст между вызовами открывает новую группу', () => {
+    it('opens a new group when text stands between the calls', () => {
       let state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })])
       state = play([toolResultEvent('t1', 'line 1')], state)
-      state = play([textEvent('Нашёл файл.')], state)
+      state = play([textEvent('Found the file.')], state)
       state = play([toolUseEvent('t2', 'Bash', { command: 'ls' })], state)
       state = play([toolResultEvent('t2', 'ok')], state)
 
@@ -870,9 +870,9 @@ describe('сборка ленты из потока агента', () => {
       expect(groups[1]?.tools).toHaveLength(1)
     })
 
-    it('мысль модели не попадает в группу вызовов рядом, а становится своей карточкой', () => {
+    it('keeps a model thought out of the group of calls beside it and makes it a card of its own', () => {
       let state = play([
-        { type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'Надо посмотреть файл.' }] } },
+        { type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'I should look at the file.' }] } },
       ])
       state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })], state)
       state = play([toolResultEvent('t1', 'line 1')], state)
@@ -883,50 +883,50 @@ describe('сборка ленты из потока агента', () => {
 
       const thinks = state.items.filter((item): item is ThinkItem => item.kind === 'think')
       expect(thinks).toHaveLength(1)
-      expect(thinks[0]?.thoughts).toEqual(['Надо посмотреть файл.'])
+      expect(thinks[0]?.thoughts).toEqual(['I should look at the file.'])
       expect(thinks[0]?.pending).toBe(false)
     })
 
     /**
-     * Между вызовами модель думает почти всегда, и каждая мысль своей карточкой
-     * резала ленту на ломтики — вызов, мысль, вызов, мысль.
+     * The model thinks between calls almost always, and every thought as a card of its own sliced the feed
+     * into strips - a call, a thought, a call, a thought.
      */
-    it('мысли между вызовами копятся в одну карточку, а вызовы остаются одной группой', () => {
+    it('piles the thoughts between calls into one card while the calls stay one group', () => {
       const think = (thought: string) =>
         ({ type: 'assistant', message: { content: [{ type: 'thinking', thinking: thought }] } }) as AgentEvent
 
-      let state = play([think('Сначала посмотрю файл.')])
+      let state = play([think('First I will look at the file.')])
       state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })], state)
       state = play([toolResultEvent('t1', 'line 1')], state)
-      state = play([think('Теперь поищу по проекту.')], state)
+      state = play([think('Now I will search the project.')], state)
       state = play([toolUseEvent('t2', 'Grep', { pattern: 'Session' })], state)
       state = play([toolResultEvent('t2', 'a.ts:1')], state)
-      state = play([think('Готово, можно отвечать.')], state)
+      state = play([think('Done, I can answer.')], state)
 
       const thinks = state.items.filter((item): item is ThinkItem => item.kind === 'think')
       expect(thinks).toHaveLength(1)
-      expect(thinks[0]?.thoughts).toEqual(['Сначала посмотрю файл.', 'Теперь поищу по проекту.', 'Готово, можно отвечать.'])
+      expect(thinks[0]?.thoughts).toEqual(['First I will look at the file.', 'Now I will search the project.', 'Done, I can answer.'])
 
       const groups = state.items.filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
       expect(groups).toHaveLength(1)
       expect(groups[0]?.tools.map((tool) => tool.chip)).toEqual(['READ', 'GREP'])
     })
 
-    // Сказанное вслух кончает кусок хода: дальше модель думает уже про другое.
-    it('после ответа агента мысль начинает новую карточку', () => {
+    // Something said aloud ends a piece of a turn: after it the model thinks about something else.
+    it('starts a new card for a thought after the agent answer', () => {
       let state = play([
-        { type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'Сначала посмотрю файл.' }] } },
+        { type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'First I will look at the file.' }] } },
       ])
-      state = play([{ type: 'assistant', message: { content: [{ type: 'text', text: 'Посмотрел, там пусто.' }] } }], state)
-      state = play([{ type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'Что дальше?' }] } }], state)
+      state = play([{ type: 'assistant', message: { content: [{ type: 'text', text: 'Looked, it is empty.' }] } }], state)
+      state = play([{ type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'What next?' }] } }], state)
 
       const thinks = state.items.filter((item): item is ThinkItem => item.kind === 'think')
       expect(thinks).toHaveLength(2)
-      expect(thinks[0]?.thoughts).toEqual(['Сначала посмотрю файл.'])
-      expect(thinks[1]?.thoughts).toEqual(['Что дальше?'])
+      expect(thinks[0]?.thoughts).toEqual(['First I will look at the file.'])
+      expect(thinks[1]?.thoughts).toEqual(['What next?'])
     })
 
-    it('закрывает незавершённые вызовы внутри группы при обрыве сессии', () => {
+    it('closes the unfinished calls inside a group when the session breaks off', () => {
       let state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })])
       state = play([toolResultEvent('t1', 'line 1')], state)
       state = play([toolUseEvent('t2', 'Bash', { command: 'ls' })], state)
@@ -941,10 +941,10 @@ describe('сборка ленты из потока агента', () => {
       expect(state.crashed).toBe(true)
     })
 
-    it('прерванный ход закрывает вызов, который в этот момент выполнялся', () => {
+    it('lets an interrupted turn close the call that was running at that moment', () => {
       let state = reducePanel(
         initialPanelState,
-        { kind: 'prompt', tokens: [{ kind: 'text', value: 'сделай' }], quotes: [] },
+        { kind: 'prompt', tokens: [{ kind: 'text', value: 'do it' }], quotes: [] },
         1_700_000_000_000,
       )
       state = play([toolUseEvent('t1', 'Bash', { command: 'sleep 300' })], state)
@@ -955,12 +955,12 @@ describe('сборка ленты из потока агента', () => {
       expect(groups[0]?.pending).toBe(false)
       expect(groups[0]?.tools.at(-1)?.pending).toBe(false)
       expect(groups[0]?.tools.at(-1)?.meta).toBe('· interrupted')
-      // Счётчик карточки живёт в startedAt — оставить запись значит и дальше
-      // пересчитывать длительность на каждый тик.
+      // A card's counter lives in startedAt - leaving the record means going on recomputing the duration on
+      // every tick.
       expect(state.startedAt.t1).toBeUndefined()
     })
 
-    it('итог хода закрывает вызов, чей результат до панели не дошёл', () => {
+    it('lets the end of a turn close a call whose result never reached the panel', () => {
       let state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })])
       state = reducePanel(state, { kind: 'agent', event: resultEvent(1_000) }, 1_700_000_001_000)
 
@@ -969,9 +969,9 @@ describe('сборка ленты из потока агента', () => {
       expect(groups[0]?.tools.at(-1)?.meta).toBe('· unfinished')
     })
 
-    it('фоновый субагент переживает итог хода: его конец приносит уведомление', () => {
+    it('lets a background subagent outlive the end of a turn: its end brings a notification', () => {
       let state = play([
-        toolUseEvent('a1', 'Task', { description: 'ревью', prompt: 'посмотри диф' }),
+        toolUseEvent('a1', 'Task', { description: 'review', prompt: 'look at the diff' }),
         toolResultEvent('a1', 'Async agent launched successfully. Agent id: a1'),
       ])
       state = reducePanel(state, { kind: 'agent', event: resultEvent(800) }, 1_700_000_000_800)
@@ -982,7 +982,7 @@ describe('сборка ленты из потока агента', () => {
       expect(tasks[0]?.outcome).toBeUndefined()
     })
 
-    it('вычисляет полный span группы при re-append после resolve (regression)', () => {
+    it('computes the group full span on a re-append after a resolve (regression)', () => {
       const T0 = 1_700_000_000_000
       // T0: tool1 called
       let state = reducePanel(
@@ -1028,7 +1028,7 @@ describe('сборка ленты из потока агента', () => {
       expect(groups[0]?.duration).toMatch(/5\.5+s/)
     })
 
-    it('мысль модели после закрытой группы не трогает её и не переоткрывает (regression)', () => {
+    it('does not touch or reopen a closed group when a model thought follows (regression)', () => {
       const T0 = 1_700_000_000_000
       // T0: tool1 called
       let state = reducePanel(
@@ -1036,7 +1036,7 @@ describe('сборка ленты из потока агента', () => {
         { kind: 'agent', event: toolUseEvent('t1', 'Read', { file_path: 'a.ts' }) },
         T0,
       )
-      // T0 + 1s: tool1 resolves — группа закрывается, pending: false, duration зафиксирована.
+      // T0 + 1s: tool1 resolves - the group closes, pending: false, the duration is fixed.
       state = reducePanel(state, { kind: 'agent', event: toolResultEvent('t1', 'ok') }, T0 + 1_000)
 
       let groups = state.items.filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
@@ -1045,17 +1045,17 @@ describe('сборка ленты из потока агента', () => {
       const closedDuration = groups[0]?.duration
       expect(closedDuration).toMatch(/1\.0+s/)
 
-      // T0 + 1.2s: мысль модели приходит сразу после, без текста между ними. Раньше
-      // это (по правилу непрерывности групп) ложилось в ту же группу и грозило
-      // сделать её снова pending без своего результата — теперь мысль вообще не
-      // проходит через группировку, так что до этой ветки дело больше не доходит.
+      // T0 + 1.2s: the model's thought arrives right after, with no text between them. That used to land in
+      // the same group (by the group-continuity rule) and threatened to make it pending again without a
+      // result of its own - now a thought does not go through the grouping at all, so it never gets as far
+      // as that branch any more.
       state = reducePanel(
         state,
         {
           kind: 'agent',
           event: {
             type: 'assistant',
-            message: { content: [{ type: 'thinking', thinking: 'Готово, можно отвечать.' }] },
+            message: { content: [{ type: 'thinking', thinking: 'Done, I can answer.' }] },
           },
         },
         T0 + 1_200,
@@ -1069,10 +1069,10 @@ describe('сборка ленты из потока агента', () => {
 
       const thinks = state.items.filter((item): item is ThinkItem => item.kind === 'think')
       expect(thinks).toHaveLength(1)
-      expect(thinks[0]?.thoughts).toEqual(['Готово, можно отвечать.'])
+      expect(thinks[0]?.thoughts).toEqual(['Done, I can answer.'])
     })
 
-    it('startedAt пустеет, когда все вызовы хода разрешились', () => {
+    it('empties startedAt once every call of the turn has resolved', () => {
       const T0 = 1_700_000_000_000
       let state = reducePanel(
         initialPanelState,
@@ -1088,18 +1088,18 @@ describe('сборка ленты из потока агента', () => {
   })
 })
 
-describe('лог фонового субагента', () => {
-  it('копит шаги в TaskItem.log через карту task_id↔tool_use_id, а не теряет их', () => {
+describe('a background subagent log', () => {
+  it('piles the steps into TaskItem.log through the task_id-to-tool_use_id map rather than losing them', () => {
     let state = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
-    state = play([subagentMessageEvent('toolu-parent', 'Смотрю конфиги')], state)
-    state = play([subagentMessageEvent('toolu-parent', 'Смотрю сервер')], state)
+    state = play([subagentMessageEvent('toolu-parent', 'Reading the configs')], state)
+    state = play([subagentMessageEvent('toolu-parent', 'Reading the server')], state)
 
     const task = state.items.find((item): item is TaskItem => item.kind === 'task')
     expect(task).toBeDefined()
-    expect(task?.log.map((line) => line.text)).toEqual(['Смотрю конфиги', 'Смотрю сервер'])
+    expect(task?.log.map((line) => line.text)).toEqual(['Reading the configs', 'Reading the server'])
   })
 
-  it('вызов инструмента субагента показывает цель, а не голое имя', () => {
+  it('shows the target of a subagent tool call rather than a bare name', () => {
     let state = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
     state = play(
       [subagentToolUseEvent('toolu-parent', 'sub-t1', 'Bash', { command: 'grep -rn "context" webview/src' })],
@@ -1110,7 +1110,7 @@ describe('лог фонового субагента', () => {
     expect(task?.log.map((line) => line.text)).toEqual(['Bash: grep -rn "context" webview/src'])
   })
 
-  it('вызов без более точной цели остаётся голым именем — без "Bash: Bash"', () => {
+  it('leaves a call without a more precise target as a bare name - without a "Bash: Bash"', () => {
     let state = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
     state = play([subagentToolUseEvent('toolu-parent', 'sub-t1', 'TodoWrite', {})], state)
 
@@ -1118,7 +1118,7 @@ describe('лог фонового субагента', () => {
     expect(task?.log.map((line) => line.text)).toEqual(['TodoWrite…'])
   })
 
-  it('task_progress не дублирует инструмент, уже отмеченный основным потоком субагента', () => {
+  it('does not let task_progress duplicate a tool already noted by the subagent main stream', () => {
     let state = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
     state = play([subagentToolUseEvent('toolu-parent', 'sub-t1', 'Bash', { command: 'grep -rn "context" src' })], state)
     state = play([taskProgressEvent('task-1', 'Bash')], state)
@@ -1127,7 +1127,7 @@ describe('лог фонового субагента', () => {
     expect(task?.log.map((line) => line.text)).toEqual(['Bash: grep -rn "context" src'])
   })
 
-  it('task_progress с другим инструментом всё равно добавляется', () => {
+  it('adds a task_progress with a different tool anyway', () => {
     let state = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
     state = play([subagentToolUseEvent('toolu-parent', 'sub-t1', 'Bash', { command: 'grep -rn "context" src' })], state)
     state = play([taskProgressEvent('task-1', 'Read')], state)
@@ -1136,17 +1136,17 @@ describe('лог фонового субагента', () => {
     expect(task?.log.map((line) => line.text)).toEqual(['Bash: grep -rn "context" src', '→ Read'])
   })
 
-  it('AskUserQuestion от субагента создаёт AskItem с taskId, а не теряется в логе', () => {
+  it('lets a subagent AskUserQuestion create an AskItem with a taskId rather than lose it in the log', () => {
     let state = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
     state = play([subagentAskEvent('toolu-parent')], state)
 
     const ask = state.items.find((item) => item.kind === 'ask')
     expect(ask).toBeDefined()
     expect(ask?.kind === 'ask' && ask.taskId).toBe('task-1')
-    expect(ask?.kind === 'ask' && ask.questions[0]?.title).toBe('Продолжать?')
+    expect(ask?.kind === 'ask' && ask.questions[0]?.title).toBe('Carry on?')
   })
 
-  it('AskUserQuestion без единого вопроса не создаёт карточку — закрыть её было бы нечем', () => {
+  it('creates no card for an AskUserQuestion without a single question - there would be nothing to close it with', () => {
     const state = play([
       {
         type: 'assistant',
@@ -1157,7 +1157,7 @@ describe('лог фонового субагента', () => {
     expect(state.items.some((item) => item.kind === 'ask')).toBe(false)
   })
 
-  it('AskUserQuestion от субагента без вопросов тоже не создаёт карточку', () => {
+  it('creates no card for a subagent AskUserQuestion without questions either', () => {
     let state = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
     state = play(
       [
@@ -1175,19 +1175,19 @@ describe('лог фонового субагента', () => {
     expect(state.items.some((item) => item.kind === 'ask')).toBe(false)
   })
 
-  it('обрезает лог агента после AGENT_LOG_LIMIT строк, а не растит его бесконечно', () => {
+  it('trims the agent log after AGENT_LOG_LIMIT lines rather than growing it forever', () => {
     let state = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
     for (let i = 0; i < 310; i += 1) {
-      state = play([subagentMessageEvent('toolu-parent', `шаг ${i}`)], state)
+      state = play([subagentMessageEvent('toolu-parent', `step ${i}`)], state)
     }
 
     const task = state.items.find((item) => item.kind === 'task')
     expect(task?.kind === 'task' && task.log.length).toBe(300)
     expect(task?.kind === 'task' && task.log[0]?.text).toMatch(/^…\d+ earlier steps trimmed$/)
-    expect(task?.kind === 'task' && task.log.at(-1)?.text).toBe('шаг 309')
+    expect(task?.kind === 'task' && task.log.at(-1)?.text).toBe('step 309')
   })
 
-  it('permission-действие с taskId создаёт PermItem, привязанный к агенту', () => {
+  it('lets a permission action with a taskId create a PermItem tied to the agent', () => {
     const state = reducePanel(initialPanelState, {
       kind: 'permission',
       id: 'perm-1',
@@ -1201,13 +1201,13 @@ describe('лог фонового субагента', () => {
     expect(perm?.kind === 'perm' && perm.taskId).toBe('task-1')
   })
 
-  // Режим человек выбирал подписью из меню — именем из протокола он его нигде не видел.
-  it('карточка разрешения подписана режимом так же, как он подписан в меню', () => {
+  // The person chose the mode by its caption in the menu - they never saw it under its protocol name.
+  it('signs a permission card with the mode the same way the menu signs it', () => {
     const state = reducePanel(initialPanelState, {
       kind: 'permission',
       id: 'perm-2',
       target: 'wants to run a command',
-      command: 'rm -rf сборка/*',
+      command: 'rm -rf build/*',
       mode: 'bypassPermissions',
     })
 
@@ -1215,13 +1215,13 @@ describe('лог фонового субагента', () => {
     expect(perm?.kind === 'perm' && perm.meta).toBe('Bypass mode')
   })
 
-  // Причина и запрет на «Always allow» приезжают от IDE — панель их только показывает.
-  it('причина вопроса и запрет запоминать доходят до карточки', () => {
+  // The reason and the ban on "Always allow" arrive from the IDE - the panel only shows them.
+  it('lets the question reason and the ban on remembering reach the card', () => {
     const state = reducePanel(initialPanelState, {
       kind: 'permission',
       id: 'perm-3',
       target: 'wants to run a command',
-      command: 'rm -rf сборка/*',
+      command: 'rm -rf build/*',
       mode: 'bypassPermissions',
       reason: 'Dangerous rm operation detected',
       rememberable: false,
@@ -1232,8 +1232,8 @@ describe('лог фонового субагента', () => {
     expect(perm?.kind === 'perm' && perm.rememberable).toBe(false)
   })
 
-  // Молчание — обычный вопрос: правило сработает, и кнопка на месте.
-  it('без запрета решение остаётся запоминаемым', () => {
+  // Silence means an ordinary question: the rule will fire and the button is in place.
+  it('leaves a decision rememberable without a ban', () => {
     const state = reducePanel(initialPanelState, {
       kind: 'permission',
       id: 'perm-4',
@@ -1247,18 +1247,18 @@ describe('лог фонового субагента', () => {
     expect(perm?.kind === 'perm' && perm.reason).toBeUndefined()
   })
 
-  it('игнорирует сообщение субагента без задачи в ленте, а не падает и не создаёт мусор', () => {
+  it('ignores a subagent message with no task in the feed rather than crashing or making rubbish', () => {
     const before = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
-    const after = play([subagentMessageEvent('toolu-unknown', 'Привет из ниоткуда')], before)
+    const after = play([subagentMessageEvent('toolu-unknown', 'Hello from nowhere')], before)
 
     expect(after).toEqual(before)
   })
 })
 
-describe('один субагент — одна карточка', () => {
+describe('one subagent - one card', () => {
   const tasks = (state: PanelState) => state.items.filter((item): item is TaskItem => item.kind === 'task')
 
-  it('вызов Agent и системное событие о нём не удваивают карточку', () => {
+  it('does not let an Agent call and the system event about it double the card', () => {
     const state = play([
       toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Discover files' }),
       agentTaskStartedEvent('a90aa', 'toolu-1', 'Explore'),
@@ -1268,10 +1268,10 @@ describe('один субагент — одна карточка', () => {
     expect(tasks(state)[0]?.target).toBe('Explore')
   })
 
-  it('карточка запоминает имя задачи у CLI — по нему её и прибивают', () => {
-    // Карточку завёл вызов инструмента, и знает он только свой идентификатор:
-    // настоящее имя задачи приезжает следом, системным событием. Без него
-    // крестик на чипе нечего было бы отправить.
+  it('lets the card remember the task name at the CLI - it is killed by that name', () => {
+    // The card was started by the tool call, and it knows only its own identifier: the task's genuine name
+    // arrives next, through a system event. Without it the cross on the chip would have nothing to send.
+
     const state = play([
       toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Discover files' }),
       agentTaskStartedEvent('a90aa', 'toolu-1', 'Explore'),
@@ -1281,7 +1281,7 @@ describe('один субагент — одна карточка', () => {
     expect(tasks(state)[0]?.taskId).toBe('a90aa')
   })
 
-  it('порядок наоборот — событие раньше вызова — тоже даёт одну карточку', () => {
+  it('gives one card for the reverse order too - the event before the call', () => {
     const state = play([
       agentTaskStartedEvent('a90aa', 'toolu-1', 'Explore'),
       toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Discover files' }),
@@ -1290,7 +1290,7 @@ describe('один субагент — одна карточка', () => {
     expect(tasks(state)).toHaveLength(1)
   })
 
-  it('шаги и итог по task_id доходят до карточки, заведённой вызовом', () => {
+  it('lets the steps and the outcome by task_id reach the card started by the call', () => {
     let state = play([
       toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Discover files' }),
       agentTaskStartedEvent('a90aa', 'toolu-1', 'Explore'),
@@ -1298,7 +1298,7 @@ describe('один субагент — одна карточка', () => {
     state = play([taskProgressEvent('a90aa', 'Read')], state)
     state = reducePanel(
       state,
-      { kind: 'agent', event: taskNotificationEvent('a90aa', 'completed', 'Нашёл шесть мест') },
+      { kind: 'agent', event: taskNotificationEvent('a90aa', 'completed', 'Found six places') },
       1_700_000_005_000,
     )
 
@@ -1306,10 +1306,10 @@ describe('один субагент — одна карточка', () => {
     expect(task?.pending).toBe(false)
     expect(task?.duration).toBe('5.0s')
     expect(task?.outcome).toBe('ok')
-    expect(task?.log.map((line) => line.text)).toEqual(['→ Read', 'Нашёл шесть мест'])
+    expect(task?.log.map((line) => line.text)).toEqual(['→ Read', 'Found six places'])
   })
 
-  it('подтверждение фонового запуска не закрывает карточку — ждём task_notification', () => {
+  it('does not let the background launch confirmation close the card - we wait for task_notification', () => {
     let state = play([
       toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Discover files' }),
       agentTaskStartedEvent('a90aa', 'toolu-1', 'Explore'),
@@ -1322,7 +1322,7 @@ describe('один субагент — одна карточка', () => {
 
     state = reducePanel(
       state,
-      { kind: 'agent', event: taskNotificationEvent('a90aa', 'completed', 'Нашёл шесть мест') },
+      { kind: 'agent', event: taskNotificationEvent('a90aa', 'completed', 'Found six places') },
       1_700_000_005_000,
     )
 
@@ -1331,16 +1331,16 @@ describe('один субагент — одна карточка', () => {
     expect(task?.outcome).toBe('ok')
   })
 
-  it('результат вызова закрывает карточку, заведённую системным событием', () => {
+  it('lets a call result close the card started by a system event', () => {
     let state = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
-    state = play([toolResultEvent('toolu-parent', 'Готово')], state)
+    state = play([toolResultEvent('toolu-parent', 'Done')], state)
 
     const task = tasks(state)[0]
     expect(task?.pending).toBe(false)
     expect(task?.outcome).toBe('ok')
   })
 
-  it('оборванный агент помечается остановленным, а не отработавшим', () => {
+  it('marks an agent that was cut short as stopped rather than as finished', () => {
     let state = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
     state = play([taskNotificationEvent('task-1', 'stopped')], state)
 
@@ -1350,26 +1350,26 @@ describe('один субагент — одна карточка', () => {
   })
 
   /**
-   * Так приходят субагенты, поднятые скиллом (/code-review и подобные): своего
-   * вызова в главном потоке у них нет вовсе — только системное событие о запуске,
-   * — а значит нет и ответа «Async agent launched», по которому фоновый агент
-   * узнаётся. Ход при этом отчитывается о запуске и заканчивается сам, пока они
-   * работают: закрыв их по его итогу, панель гасила чипы десятка работающих
-   * агентов ровно в тот момент, когда за ними и надо было следить.
+   * That is how the subagents raised by a skill arrive (/code-review and the like): they have no call of
+   * their own in the main stream at all - only a system event about the launch - which means there is no
+   * "Async agent launched" answer to recognise a background agent by either. The turn meanwhile reports the
+   * launch and ends by itself while they work: closing them by its outcome, the panel extinguished the chips
+   * of a dozen working agents at exactly the moment they had to be watched.
    */
-  it('агент, поднятый скиллом, переживает естественный конец хода', () => {
+
+  it('lets an agent raised by a skill outlive the natural end of a turn', () => {
     let state = play([agentTaskStartedEvent('a90aa', 'toolu-inner', 'general-purpose')])
     state = reducePanel(state, { kind: 'agent', event: resultEvent(5_000) }, 1_700_000_005_000)
 
     const task = tasks(state)[0]
     expect(task?.pending).toBe(true)
     expect(task?.outcome).toBeUndefined()
-    // Счётчик карточки продолжает идти от запуска: работа-то не кончилась.
+    // The card's counter goes on running from the launch: the work has not ended.
     expect(state.startedAt['a90aa']).toBe(1_700_000_000_000)
 
     state = reducePanel(
       state,
-      { kind: 'agent', event: taskNotificationEvent('a90aa', 'completed', 'Нашёл шесть мест') },
+      { kind: 'agent', event: taskNotificationEvent('a90aa', 'completed', 'Found six places') },
       1_700_000_010_000,
     )
 
@@ -1377,7 +1377,7 @@ describe('один субагент — одна карточка', () => {
     expect(tasks(state)[0]?.outcome).toBe('ok')
   })
 
-  it('прерванный ход такого агента всё-таки закрывает: его оборвали вместе с ходом', () => {
+  it('does close such an agent on an interrupted turn: it was cut short along with the turn', () => {
     let state = play([agentTaskStartedEvent('a90aa', 'toolu-inner', 'general-purpose')])
     state = reducePanel(state, { kind: 'stopRequested' }, 1_700_000_004_000)
     state = reducePanel(state, { kind: 'agent', event: resultEvent(5_000) }, 1_700_000_005_000)
@@ -1388,7 +1388,7 @@ describe('один субагент — одна карточка', () => {
     expect(task?.log.at(-1)?.text).toBe('Stopped before it returned.')
   })
 
-  it('фоновый агент переживает и прерванный ход: остановка хода его не касается', () => {
+  it('lets a background agent outlive an interrupted turn too: stopping the turn does not concern it', () => {
     let state = play([
       toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Discover files' }),
       agentTaskStartedEvent('a90aa', 'toolu-1', 'Explore'),
@@ -1400,7 +1400,7 @@ describe('один субагент — одна карточка', () => {
     expect(tasks(state)[0]?.pending).toBe(true)
   })
 
-  it('смерть процесса закрывает и работающих агентов: сообщать о себе им некому', () => {
+  it('closes working agents too when the process dies: they have nobody to report to', () => {
     let state = play([agentTaskStartedEvent('a90aa', 'toolu-inner', 'general-purpose')])
     state = reducePanel(state, { kind: 'processExited', exitCode: 1 }, 1_700_000_005_000)
 
@@ -1410,18 +1410,18 @@ describe('один субагент — одна карточка', () => {
   })
 })
 
-describe('фоновые команды в канале задач', () => {
+describe('background commands in the task channel', () => {
   const bashEvent = (id: string, command: string, background = false): AgentEvent =>
     toolUseEvent(id, 'Bash', { command, description: 'Start the dev server', ...(background ? { run_in_background: true } : {}) })
 
-  /** Карточка команды — она лежит внутри группы вызовов, а не в ленте напрямую. */
+  /** A command's card lies inside a group of calls rather than in the feed directly. */
   const tool = (state: PanelState, id: string) =>
     state.items
       .filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
       .flatMap((group) => group.tools)
       .find((item) => item.id === id)
 
-  it('обычная долгая команда не становится агентом', () => {
+  it('does not turn an ordinary long command into an agent', () => {
     const state = play([
       bashEvent('toolu-1', 'yarn typecheck'),
       bashTaskStartedEvent('b0eb4', 'toolu-1', 'Update the metrics test and typecheck'),
@@ -1431,7 +1431,7 @@ describe('фоновые команды в канале задач', () => {
     expect(state.background).toHaveLength(0)
   })
 
-  it('фоновая команда получает чип, но не карточку агента', () => {
+  it('gives a background command a chip but no agent card', () => {
     const state = play([
       bashEvent('toolu-1', 'yarn dev', true),
       bashTaskStartedEvent('bv7hh', 'toolu-1', 'Start the dev server'),
@@ -1439,11 +1439,11 @@ describe('фоновые команды в канале задач', () => {
 
     expect(state.items.some((item) => item.kind === 'task')).toBe(false)
     expect(state.background).toEqual([
-      { id: 'bv7hh', toolUseId: 'toolu-1', label: 'Start the dev server', duration: '0.0s' },
+      { id: 'bv7hh', toolUseId: 'toolu-1', label: 'yarn dev', description: 'Start the dev server', duration: '0.0s' },
     ])
   })
 
-  it('время фоновой команды тикает и после часа считается в часах', () => {
+  it('ticks a background command time and counts it in hours past an hour', () => {
     let state = play([
       bashEvent('toolu-1', 'yarn dev', true),
       bashTaskStartedEvent('bv7hh', 'toolu-1', 'Start the dev server'),
@@ -1453,7 +1453,7 @@ describe('фоновые команды в канале задач', () => {
     expect(state.background[0]?.duration).toBe('16h 50m 08s')
   })
 
-  it('конец фоновой команды снимает чип и подписывает её карточку', () => {
+  it('lets the end of a background command take the chip off and sign its card', () => {
     let state = play([
       bashEvent('toolu-1', 'yarn dev', true),
       bashTaskStartedEvent('bv7hh', 'toolu-1', 'Start the dev server'),
@@ -1472,7 +1472,7 @@ describe('фоновые команды в канале задач', () => {
     expect(tool(state, 'toolu-1')?.isError).toBe(false)
   })
 
-  it('упавшая фоновая команда краснеет и объясняет причину', () => {
+  it('reddens a background command that failed and explains the reason', () => {
     let state = play([
       bashEvent('toolu-1', 'yarn dev', true),
       bashTaskStartedEvent('bv7hh', 'toolu-1', 'Start the dev server'),
@@ -1494,7 +1494,7 @@ describe('фоновые команды в канале задач', () => {
     ])
   })
 
-  it('смерть процесса снимает чипы: следить за командой больше некому', () => {
+  it('takes the chips off when the process dies: there is nobody left to watch the command', () => {
     let state = play([
       bashEvent('toolu-1', 'yarn dev', true),
       bashTaskStartedEvent('bv7hh', 'toolu-1', 'Start the dev server'),
@@ -1503,212 +1503,212 @@ describe('фоновые команды в канале задач', () => {
 
     expect(state.background).toHaveLength(0)
     expect(tool(state, 'toolu-1')?.detail.map((line) => line.text)).toContain(
-      'Ran 1m 00s in the background — no longer tracked.',
+      'Ran 1m 00s in the background - no longer tracked.',
     )
   })
 })
 
-describe('список задач через TodoWrite', () => {
-  // activeForm — тот же пункт, названный происходящим сейчас делом. Приходит
-  // от модели вместе с остальными полями пункта и хранится рядом с ним.
-  it('запоминает activeForm пункта рядом с ним самим', () => {
+describe('the task list through TodoWrite', () => {
+  // activeForm is the same item named as the business happening right now. It arrives from the model along
+  // with the item's other fields and is kept beside it.
+  it('remembers an item activeForm beside the item itself', () => {
     const state = play([
       toolUseEvent('t1', 'TodoWrite', {
         todos: [
-          { content: 'Собрать проект', activeForm: 'Building the project', status: 'in_progress' },
-          { content: 'Прогнать тесты', status: 'pending' },
+          { content: 'Build the project', activeForm: 'Building the project', status: 'in_progress' },
+          { content: 'Run the tests', status: 'pending' },
         ],
       }),
     ])
 
     const todo = [...state.items].reverse().find((item): item is TodoItem => item.kind === 'todo')
     expect(todo?.todos).toEqual([
-      { id: 'todo-0', text: 'Собрать проект', state: 'active', activeForm: 'Building the project' },
-      { id: 'todo-1', text: 'Прогнать тесты', state: 'todo' },
+      { id: 'todo-0', text: 'Build the project', state: 'active', activeForm: 'Building the project' },
+      { id: 'todo-1', text: 'Run the tests', state: 'todo' },
     ])
   })
 })
 
-describe('список задач через TaskCreate/TaskUpdate', () => {
+describe('the task list through TaskCreate/TaskUpdate', () => {
   const taskCreatedResult = (id: string, n: number, subject: string): AgentEvent =>
     toolResultEvent(id, `Task #${n} created successfully: ${subject}`)
 
   const latestTodo = (state: PanelState) =>
     [...state.items].reverse().find((item): item is TodoItem => item.kind === 'todo')
 
-  it('задача появляется в списке только после ответа с присвоенным номером', () => {
-    const mid = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Собрать проект', description: '…' })])
+  it('lets a task appear in the list only after the answer with its assigned number', () => {
+    const mid = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Build the project', description: '...' })])
     expect(latestTodo(mid)).toBeUndefined()
 
-    const after = play([taskCreatedResult('t1', 1, 'Собрать проект')], mid)
-    expect(latestTodo(after)?.todos).toEqual([{ id: 'task-1', text: 'Собрать проект', state: 'todo' }])
+    const after = play([taskCreatedResult('t1', 1, 'Build the project')], mid)
+    expect(latestTodo(after)?.todos).toEqual([{ id: 'task-1', text: 'Build the project', state: 'todo' }])
   })
 
   /**
-   * activeForm — тот же пункт, названный происходящим сейчас делом. Приходит
-   * он только при создании задачи, а нужен позже — когда до неё дойдёт
-   * очередь, и правка статуса его не несёт.
+   * activeForm is the same item named as the business happening right now. It arrives only when the task is
+   * created but is needed later - when its turn comes - and a status edit does not carry it.
    */
-  it('activeForm задачи переживает правки статуса', () => {
+
+  it('lets a task activeForm outlive status edits', () => {
     let state = play([
-      toolUseEvent('t1', 'TaskCreate', { subject: 'Собрать проект', activeForm: 'Building the project' }),
+      toolUseEvent('t1', 'TaskCreate', { subject: 'Build the project', activeForm: 'Building the project' }),
     ])
-    state = play([taskCreatedResult('t1', 1, 'Собрать проект')], state)
+    state = play([taskCreatedResult('t1', 1, 'Build the project')], state)
     expect(latestTodo(state)?.todos).toEqual([
-      { id: 'task-1', text: 'Собрать проект', state: 'todo', activeForm: 'Building the project' },
+      { id: 'task-1', text: 'Build the project', state: 'todo', activeForm: 'Building the project' },
     ])
 
     state = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'in_progress' })], state)
     expect(latestTodo(state)?.todos).toEqual([
-      { id: 'task-1', text: 'Собрать проект', state: 'active', activeForm: 'Building the project' },
+      { id: 'task-1', text: 'Build the project', state: 'active', activeForm: 'Building the project' },
     ])
   })
 
-  it('TaskUpdate со своим activeForm перебивает прежний', () => {
-    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Собрать', activeForm: 'Building' })])
-    state = play([taskCreatedResult('t1', 1, 'Собрать')], state)
+  it('lets a TaskUpdate with its own activeForm override the previous one', () => {
+    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Build', activeForm: 'Building' })])
+    state = play([taskCreatedResult('t1', 1, 'Build')], state)
 
     state = play(
       [toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'in_progress', activeForm: 'Rebuilding' })],
       state,
     )
     expect(latestTodo(state)?.todos).toEqual([
-      { id: 'task-1', text: 'Собрать', state: 'active', activeForm: 'Rebuilding' },
+      { id: 'task-1', text: 'Build', state: 'active', activeForm: 'Rebuilding' },
     ])
   })
 
-  it('TaskUpdate двигает статус той же задачи по её номеру', () => {
-    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Собрать проект' })])
-    state = play([taskCreatedResult('t1', 1, 'Собрать проект')], state)
+  it('lets a TaskUpdate move the status of the same task by its number', () => {
+    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Build the project' })])
+    state = play([taskCreatedResult('t1', 1, 'Build the project')], state)
 
     state = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'in_progress' })], state)
-    expect(latestTodo(state)?.todos).toEqual([{ id: 'task-1', text: 'Собрать проект', state: 'active' }])
+    expect(latestTodo(state)?.todos).toEqual([{ id: 'task-1', text: 'Build the project', state: 'active' }])
 
     state = play([toolUseEvent('t3', 'TaskUpdate', { taskId: '1', status: 'completed' })], state)
-    expect(latestTodo(state)?.todos).toEqual([{ id: 'task-1', text: 'Собрать проект', state: 'done' }])
+    expect(latestTodo(state)?.todos).toEqual([{ id: 'task-1', text: 'Build the project', state: 'done' }])
   })
 
-  it('несколько задач держат свой номер и порядок независимо от порядка правок', () => {
+  it('lets several tasks keep their number and order regardless of the order of the edits', () => {
     let state = play([
-      toolUseEvent('t1', 'TaskCreate', { subject: 'Первая' }),
-      toolUseEvent('t2', 'TaskCreate', { subject: 'Вторая' }),
+      toolUseEvent('t1', 'TaskCreate', { subject: 'First' }),
+      toolUseEvent('t2', 'TaskCreate', { subject: 'Second' }),
     ])
-    state = play([taskCreatedResult('t1', 1, 'Первая'), taskCreatedResult('t2', 2, 'Вторая')], state)
+    state = play([taskCreatedResult('t1', 1, 'First'), taskCreatedResult('t2', 2, 'Second')], state)
 
-    // Вторую отмечают раньше первой — порядок в панели остаётся по номеру задачи.
+    // The second is marked before the first - the order in the panel stays by task number.
     state = play([toolUseEvent('t3', 'TaskUpdate', { taskId: '2', status: 'completed' })], state)
 
     expect(latestTodo(state)?.todos).toEqual([
-      { id: 'task-1', text: 'Первая', state: 'todo' },
-      { id: 'task-2', text: 'Вторая', state: 'done' },
+      { id: 'task-1', text: 'First', state: 'todo' },
+      { id: 'task-2', text: 'Second', state: 'done' },
     ])
   })
 
-  it('status: deleted убирает задачу из списка совсем', () => {
-    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Ненужная' })])
-    state = play([taskCreatedResult('t1', 1, 'Ненужная')], state)
+  it('lets status: deleted take a task out of the list entirely', () => {
+    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Not needed' })])
+    state = play([taskCreatedResult('t1', 1, 'Not needed')], state)
 
     state = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'deleted' })], state)
     expect(latestTodo(state)?.todos).toEqual([])
   })
 
-  // TaskUpdate по номеру, который панель ещё не видела (например, задача
-  // фонового агента, не связанного со списком в этой панели) — не должен
-  // ронять ленту и не должен создавать задачу из ниоткуда.
-  it('TaskUpdate на неизвестный номер задачи ничего не делает', () => {
-    const before = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Задача' })])
+  // A TaskUpdate for a number the panel has not seen (a task of a background agent unconnected to this
+  // panel's list, say) must neither bring the feed down nor create a task out of nowhere.
+
+  it('does nothing for a TaskUpdate on an unknown task number', () => {
+    const before = play([toolUseEvent('t1', 'TaskCreate', { subject: 'A task' })])
     const after = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '99', status: 'completed' })], before)
     expect(after).toEqual(before)
   })
 
-  // Ответ инструмента — единственное место, где узнаётся номер задачи; если
-  // однажды формат слов изменится, задача просто не должна появиться в
-  // списке — не с перепутанным номером и не ломая остальные задачи в нём.
-  // Панель на пустой список и так ничего не рисует (см. TaskListPanel).
-  it('нераспознанный текст ответа TaskCreate тихо пропускает задачу', () => {
-    const state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Задача' })])
-    const after = play([toolResultEvent('t1', 'Готово, задача добавлена')], state)
+  // The tool's answer is the only place a task's number is learned from; if the wording ever changes, the
+  // task simply must not appear in the list - neither with a muddled number nor breaking the other tasks in
+  // it. The panel draws nothing for an empty list anyway (see TaskListPanel).
+
+  it('quietly skips a task whose TaskCreate answer text was not recognised', () => {
+    const state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'A task' })])
+    const after = play([toolResultEvent('t1', 'Done, the task was added')], state)
     expect(latestTodo(after)?.todos).toEqual([])
   })
 
   const newPrompt = (state: PanelState, text: string): PanelState =>
     reducePanel(state, { kind: 'prompt', tokens: [{ kind: 'text', value: text }], quotes: [] }, 1_700_000_000_000)
 
-  // Список задач нового трекера сам не различает разные просьбы одного
-  // разговора — с его точки зрения это один список на весь сеанс. Границу
-  // проводит панель по новому сообщению человека, а не по тому, закрыт ли
-  // список в моменте: если бы граница была «список сейчас пуст», задачи,
-  // которые агент ведёт по одной (создал — сделал — закрыл — создал
-  // следующую), стирали бы друг друга на каждом шаге, ровно как пожаловался
-  // пользователь на живом прогоне.
-  it('новое сообщение пользователя начинает список задач заново', () => {
-    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Старая задача' })])
-    state = play([taskCreatedResult('t1', 1, 'Старая задача')], state)
+  // The new tracker's task list does not itself tell one request of a conversation from another - from its
+  // point of view this is one list for the whole session. The boundary is drawn by the panel at a new
+  // message from the person rather than by whether the list is closed at the moment: if the boundary were
+  // "the list is empty right now", the tasks the agent leads one at a time (created - did it - closed -
+  // created the next) would wipe one another at every step, exactly as the user complained on a live run.
+
+
+  it('lets a new message from the user start the task list afresh', () => {
+    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'An old task' })])
+    state = play([taskCreatedResult('t1', 1, 'An old task')], state)
     state = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'completed' })], state)
 
-    state = newPrompt(state, 'другая, не связанная просьба')
-    state = play([toolUseEvent('t3', 'TaskCreate', { subject: 'Новая задача' })], state)
-    state = play([taskCreatedResult('t3', 2, 'Новая задача')], state)
+    state = newPrompt(state, 'another, unrelated request')
+    state = play([toolUseEvent('t3', 'TaskCreate', { subject: 'A new task' })], state)
+    state = play([taskCreatedResult('t3', 2, 'A new task')], state)
 
-    expect(latestTodo(state)?.todos).toEqual([{ id: 'task-2', text: 'Новая задача', state: 'todo' }])
+    expect(latestTodo(state)?.todos).toEqual([{ id: 'task-2', text: 'A new task', state: 'todo' }])
   })
 
-  it('новое сообщение прячет незакрытый список — иначе панель держит прежнюю просьбу', () => {
-    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Старая задача' })])
-    state = play([taskCreatedResult('t1', 1, 'Старая задача')], state)
+  it('lets a new message hide an unclosed list - otherwise the panel holds the previous request', () => {
+    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'An old task' })])
+    state = play([taskCreatedResult('t1', 1, 'An old task')], state)
 
-    state = newPrompt(state, 'продолжи после лимита')
+    state = newPrompt(state, 'carry on after the limit')
     expect(latestTodo(state)?.todos).toEqual([])
 
-    // Агент пытается закрыть старые номера — их уже нет, панель не должна ожить.
+    // The agent tries to close the old numbers - they are gone, and the panel must not come back to life.
     state = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'completed' })], state)
     expect(latestTodo(state)?.todos).toEqual([])
   })
 
-  it('полностью закрытый список новым сообщением не дублирует пустым снимком', () => {
-    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Старая задача' })])
-    state = play([taskCreatedResult('t1', 1, 'Старая задача')], state)
+  it('does not duplicate a fully closed list with an empty snapshot on a new message', () => {
+    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'An old task' })])
+    state = play([taskCreatedResult('t1', 1, 'An old task')], state)
     state = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'completed' })], state)
 
     const before = latestTodo(state)
-    state = newPrompt(state, 'другая, не связанная просьба')
+    state = newPrompt(state, 'another, unrelated request')
     expect(latestTodo(state)).toEqual(before)
   })
 
-  it('задачи одной и той же просьбы копятся вместе, даже если ведутся по одной', () => {
-    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Первая' })])
-    state = play([taskCreatedResult('t1', 1, 'Первая')], state)
+  it('piles the tasks of one and the same request together, even if they are led one at a time', () => {
+    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'First' })])
+    state = play([taskCreatedResult('t1', 1, 'First')], state)
     state = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'completed' })], state)
 
-    // Первая уже закрыта, но нового сообщения не было — это тот же список,
-    // agент просто перешёл к следующему пункту той же просьбы.
-    state = play([toolUseEvent('t3', 'TaskCreate', { subject: 'Вторая' })], state)
-    state = play([taskCreatedResult('t3', 2, 'Вторая')], state)
+    // The first is closed already, but there was no new message - this is the same list, the agent simply
+    // moved on to the next item of the same request.
+    state = play([toolUseEvent('t3', 'TaskCreate', { subject: 'Second' })], state)
+    state = play([taskCreatedResult('t3', 2, 'Second')], state)
 
     expect(latestTodo(state)?.todos).toEqual([
-      { id: 'task-1', text: 'Первая', state: 'done' },
-      { id: 'task-2', text: 'Вторая', state: 'todo' },
+      { id: 'task-1', text: 'First', state: 'done' },
+      { id: 'task-2', text: 'Second', state: 'todo' },
     ])
   })
 
-  // Досылка в идущий ход — не новая просьба, а добавка к той же (см.
-  // комментарий у case 'prompt'): список задач она не трогает.
-  it('досылка в идущий ход список задач не сбрасывает', () => {
-    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'Первая' })])
-    state = play([taskCreatedResult('t1', 1, 'Первая')], state)
+  // A follow-up into a running turn is not a new request but an addition to the same one (see the comment
+  // at case 'prompt'): it does not touch the task list.
+  it('does not reset the task list on a follow-up into a running turn', () => {
+    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'First' })])
+    state = play([taskCreatedResult('t1', 1, 'First')], state)
 
     state = reducePanel(
       state,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'да, и ещё вот это' }], quotes: [], steering: true },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'yes, and this too' }], quotes: [], steering: true },
       1_700_000_000_000,
     )
 
-    expect(latestTodo(state)?.todos).toEqual([{ id: 'task-1', text: 'Первая', state: 'todo' }])
+    expect(latestTodo(state)?.todos).toEqual([{ id: 'task-1', text: 'First', state: 'todo' }])
   })
 })
 
-describe('сжатие контекста', () => {
-  it('статус "compacting" сразу заводит pending-карточку CONTEXT, не дожидаясь итога', () => {
+describe('compacting the context', () => {
+  it('lets a "compacting" status start a pending CONTEXT card at once, without waiting for the outcome', () => {
     const state = play([compactingStatusEvent()])
     const compact = state.items.find((item): item is CompactItem => item.kind === 'compact')
 
@@ -1717,7 +1717,7 @@ describe('сжатие контекста', () => {
     expect(compact?.target).toBe('Compacting conversation…')
   })
 
-  it('compact_boundary обновляет ту же карточку реальными цифрами, а не создаёт вторую', () => {
+  it('lets a compact_boundary update that same card with real numbers rather than create a second one', () => {
     let state = play([compactingStatusEvent()])
     state = play(
       [compactBoundaryEvent({ trigger: 'automatic', pre_tokens: 168000, post_tokens: 41000, duration_ms: 3200 })],
@@ -1732,7 +1732,7 @@ describe('сжатие контекста', () => {
     )
   })
 
-  it('без post_tokens/duration_ms откатывается на прежнюю формулировку', () => {
+  it('falls back to the previous wording without post_tokens/duration_ms', () => {
     const state = play([compactBoundaryEvent({ trigger: 'manual', pre_tokens: 5000 })])
     const compact = state.items.find((item): item is CompactItem => item.kind === 'compact')
 
@@ -1740,7 +1740,7 @@ describe('сжатие контекста', () => {
     expect(compact?.target).toBe('manually compacted 5.0k of context into a summary')
   })
 
-  it('compact_boundary без предварительного пинга всё равно создаёт готовую карточку', () => {
+  it('creates a finished card for a compact_boundary without a preceding ping too', () => {
     const state = play([compactBoundaryEvent({ trigger: 'automatic', pre_tokens: 90000, post_tokens: 30000 })])
     const compact = state.items.find((item): item is CompactItem => item.kind === 'compact')
 
@@ -1748,7 +1748,7 @@ describe('сжатие контекста', () => {
     expect(compact?.target).toBe('automatically compacted 90.0k of context into a 30.0k summary')
   })
 
-  it('закрывающий статус гасит флаг compacting, не трогая уже готовую карточку', () => {
+  it('lets the closing status extinguish the compacting flag without touching an already finished card', () => {
     let state = play([compactingStatusEvent()])
     state = play([compactBoundaryEvent({ trigger: 'automatic', pre_tokens: 168000 })], state)
     const before = state.items.find((item) => item.kind === 'compact')
@@ -1759,7 +1759,7 @@ describe('сжатие контекста', () => {
     expect(state.items.find((item) => item.kind === 'compact')).toEqual(before)
   })
 
-  it('нечего сжимать: pending-карточка без compact_boundary тихо убирается, а не висит вечно', () => {
+  it('quietly removes a pending card with no compact_boundary rather than leave it hanging forever', () => {
     let state = play([compactingStatusEvent()])
     expect(state.items.some((item) => item.kind === 'compact')).toBe(true)
 
@@ -1769,21 +1769,21 @@ describe('сжатие контекста', () => {
     expect(state.compacting).toBe(false)
   })
 
-  it('проваленная попытка сжатия ставит ошибку в ленту', () => {
+  it('puts an error in the feed for a failed compaction attempt', () => {
     let state = play([compactingStatusEvent()])
     state = play([compactResultEvent('failed', 'Compaction failed · conversation could not be reduced')], state)
 
     expect(errorTexts(state)).toContain('Compaction failed · conversation could not be reduced')
   })
 
-  it('граница сжатия гасит флаг сама: итог отдельным статусом может и не прийти', () => {
+  it('lets the compaction boundary extinguish the flag itself: the outcome may never come as a status', () => {
     let state = play([compactingStatusEvent()])
     state = play([compactBoundaryEvent({ trigger: 'automatic', pre_tokens: 168000 })], state)
 
     expect(state.compacting).toBe(false)
   })
 
-  it('обрыв процесса посреди сжатия снимает флаг и убирает недорисованную карточку', () => {
+  it('drops the flag and removes the half-drawn card when the process breaks off mid-compaction', () => {
     let state = play([compactingStatusEvent()])
     state = reducePanel(state, { kind: 'processExited', exitCode: 1 }, 1_700_000_000_000)
 
@@ -1791,7 +1791,7 @@ describe('сжатие контекста', () => {
     expect(state.items.some((item) => item.kind === 'compact')).toBe(false)
   })
 
-  it('ход, закрывшийся посреди сжатия, тоже снимает флаг: закрывающий статус уже не придёт', () => {
+  it('drops the flag for a turn that closed mid-compaction too: the closing status will not come now', () => {
     let state = play([compactingStatusEvent()])
     state = play([resultEvent(1200)], state)
 
@@ -1799,14 +1799,14 @@ describe('сжатие контекста', () => {
     expect(state.items.some((item) => item.kind === 'compact')).toBe(false)
   })
 
-  it('прибитый разговор снимает флаг: иначе строка статуса пропадает до конца жизни вкладки', () => {
+  it('drops the flag for a killed conversation: otherwise the status line vanishes for the tab rest of life', () => {
     let state = play([compactingStatusEvent()])
     state = reducePanel(state, { kind: 'status', status: 'idle' }, 1_700_000_000_000)
 
     expect(state.compacting).toBe(false)
   })
 
-  it('сжатие у параллельного субагента не гасит статус-строку главного потока и не заводит карточку CONTEXT в общей ленте', () => {
+  it('does not let a parallel subagent compaction kill the main stream status line or start a CONTEXT card', () => {
     let state = play([taskStartedEvent('task-1', 'toolu-parent', 'code-review')])
     state = play([compactingStatusEvent('task-1')], state)
 
@@ -1814,7 +1814,7 @@ describe('сжатие контекста', () => {
     expect(state.items.some((item) => item.kind === 'compact')).toBe(false)
   })
 
-  it('свой compact_boundary у субагента не закрывает и не путает с чужой pending-карточкой CONTEXT главного потока', () => {
+  it('does not let a subagent own compact_boundary close or muddle the main stream pending CONTEXT card', () => {
     let state = play([compactingStatusEvent()])
     state = play([taskStartedEvent('task-1', 'toolu-parent', 'code-review')], state)
     state = play([compactBoundaryEvent({ trigger: 'automatic', pre_tokens: 5000 }, 'task-1')], state)
@@ -1825,8 +1825,8 @@ describe('сжатие контекста', () => {
   })
 })
 
-describe('ветка и PR из фонового опроса', () => {
-  it('ветка приходит своим сообщением, отдельно от PR — и не стирает уже известный PR', () => {
+describe('the branch and the PR from the background polling', () => {
+  it('lets the branch arrive in its own message, apart from the PR - without wiping a known PR', () => {
     let state = reducePanel(initialPanelState, {
       kind: 'project',
       pullRequest: '42',
@@ -1839,7 +1839,7 @@ describe('ветка и PR из фонового опроса', () => {
     expect(state.project?.pullRequestUrl).toBe('https://github.com/x/y/pull/42')
   })
 
-  it('PR приходит своим сообщением, отдельно от ветки — и не стирает уже известную ветку', () => {
+  it('lets the PR arrive in its own message, apart from the branch - without wiping a known branch', () => {
     let state = reducePanel(initialPanelState, { kind: 'project', gitBranch: 'main' })
     state = reducePanel(state, { kind: 'project', pullRequest: '7', pullRequestUrl: 'https://github.com/x/y/pull/7' })
 
@@ -1847,7 +1847,7 @@ describe('ветка и PR из фонового опроса', () => {
     expect(state.project?.pullRequest).toBe('7')
   })
 
-  it('пустая строка от свежей проверки PR явно гасит старый номер, а не сохраняет его', () => {
+  it('lets an empty string from a fresh PR check explicitly clear the old number rather than keep it', () => {
     let state = reducePanel(initialPanelState, {
       kind: 'project',
       pullRequest: '42',
@@ -1860,15 +1860,15 @@ describe('ветка и PR из фонового опроса', () => {
   })
 })
 
-describe('индикатор контекста', () => {
-  it('contextUsage не делится на ноль при нулевом или отрицательном лимите', () => {
+describe('the context indicator', () => {
+  it('does not let contextUsage divide by zero on a zero or negative limit', () => {
     const usage = { input_tokens: 100, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
 
     expect(contextUsage(usage, 0)).toBe(0)
     expect(contextUsage(usage, -50)).toBe(0)
   })
 
-  it('одношаговый ход берёт верхнеуровневый usage как снимок', () => {
+  it('takes the top-level usage as a snapshot for a single-step turn', () => {
     const state = reducePanel(initialPanelState, {
       kind: 'agent',
       event: {
@@ -1882,7 +1882,7 @@ describe('индикатор контекста', () => {
     expect(state.usage.input_tokens).toBe(1_200)
   })
 
-  it('многошаговый ход с снимками в iterations берёт последний, а не сумму', () => {
+  it('takes the last one rather than the sum for a multi-step turn with snapshots in iterations', () => {
     const state = reducePanel(initialPanelState, {
       kind: 'agent',
       event: {
@@ -1890,7 +1890,7 @@ describe('индикатор контекста', () => {
         subtype: 'success',
         num_turns: 2,
         usage: {
-          input_tokens: 50_000, // сумма по всем внутренним шагам
+          input_tokens: 50_000, // the sum over every inner step
           output_tokens: 200,
           cache_read_input_tokens: 0,
           cache_creation_input_tokens: 0,
@@ -1905,7 +1905,7 @@ describe('индикатор контекста', () => {
     expect(state.usage.input_tokens).toBe(1_200)
   })
 
-  it('многошаговый ход БЕЗ снимков в iterations не завышает usage суммой (regression)', () => {
+  it('does not overstate usage with the sum for a multi-step turn WITHOUT snapshots in iterations (regression)', () => {
     let state = reducePanel(initialPanelState, {
       kind: 'agent',
       event: {
@@ -1917,10 +1917,10 @@ describe('индикатор контекста', () => {
     })
     expect(state.usage.input_tokens).toBe(500)
 
-    // Ход внутри себя вызвал несколько шагов (num_turns > 1), но снимков по
-    // шагам не пришло — верхнеуровневые поля тут точно сумма, а не снимок
-    // «сейчас». Доверять ей молча нельзя: usage должен остаться прежним, а не
-    // подскочить до суммы.
+    // The turn called several steps inside itself (num_turns > 1), but no per-step snapshots arrived - the
+    // top-level fields here are certainly a sum rather than a snapshot of "now". Trusting them silently is
+    // not an option: the usage has to stay as it was rather than jump to the sum.
+
     state = reducePanel(state, {
       kind: 'agent',
       event: {
@@ -1934,39 +1934,39 @@ describe('индикатор контекста', () => {
   })
 })
 
-describe('печатающийся ответ', () => {
+describe('a typing answer', () => {
   const deltaEvent = (text: string): AgentEvent => ({
     type: 'stream_event',
     event: { type: 'content_block_delta', delta: { type: 'text_delta', text } },
   })
 
-  it('копит кусочки и занимает номер в ленте на первом же из них', () => {
-    const state = play([deltaEvent('Смотрю, '), deltaEvent('как устроена панель.')])
+  it('piles up the pieces and takes a place in the feed on the very first of them', () => {
+    const state = play([deltaEvent('Looking at '), deltaEvent('how the panel is built.')])
 
-    expect(state.streamingText).toBe('Смотрю, как устроена панель.')
+    expect(state.streamingText).toBe('Looking at how the panel is built.')
     expect(state.streamingId).toBeTruthy()
-    // Пока карточка печатается, готовой в ленте ещё нет.
+    // While the card is typing, there is no finished one in the feed yet.
     expect(state.items).toHaveLength(0)
   })
 
-  it('отдаёт занятый номер тому же ответу, когда он приходит готовым блоком', () => {
-    const printing = play([deltaEvent('Смотрю, '), deltaEvent('как устроена панель.')])
-    const settled = play([textEvent('Смотрю, как устроена панель.')], printing)
+  it('gives the taken place to the same answer when it arrives as a finished block', () => {
+    const printing = play([deltaEvent('Looking at '), deltaEvent('how the panel is built.')])
+    const settled = play([textEvent('Looking at how the panel is built.')], printing)
 
-    // Тот же id — значит для React это тот же узел: карточка не пересоздаётся, а
-    // дорисовывает хвост, и волна проявления не рвётся на последних словах.
+    // The same id - which means that to React this is the same node: the card is not recreated but finishes
+    // its tail, and the wave of the reveal does not break on the last words.
     expect(settled.items.map((item) => item.id)).toEqual([printing.streamingId])
     expect(settled.streamingText).toBe('')
     expect(settled.streamingId).toBeUndefined()
   })
 
-  it('не отдаёт занятый номер второму текстовому блоку того же сообщения', () => {
-    const printing = play([deltaEvent('Первый ответ.')])
+  it('does not give the taken place to a second text block of the same message', () => {
+    const printing = play([deltaEvent('The first answer.')])
     const settled = play(
       [
         {
           type: 'assistant',
-          message: { content: [{ type: 'text', text: 'Первый ответ.' }, { type: 'text', text: 'Второй ответ.' }] },
+          message: { content: [{ type: 'text', text: 'The first answer.' }, { type: 'text', text: 'The second answer.' }] },
         },
       ],
       printing,
@@ -1977,8 +1977,8 @@ describe('печатающийся ответ', () => {
     expect(ids[1]).not.toBe(printing.streamingId)
   })
 
-  it('освобождает занятый номер, когда ход закончился без готового текста', () => {
-    const printing = play([deltaEvent('Оборванный ответ')])
+  it('frees the taken place when the turn ended without any finished text', () => {
+    const printing = play([deltaEvent('An answer cut short')])
     const stopped = play([resultEvent(1_000)], printing)
 
     expect(stopped.streamingText).toBe('')
@@ -1986,75 +1986,75 @@ describe('печатающийся ответ', () => {
   })
 })
 
-describe('карточка плана', () => {
+describe('the plan card', () => {
   const plan = [
-    '## Что делаем',
+    '## What we are doing',
     '',
-    '1. Вынести переменные в `config/env.ts`, **обязательно** до правки вызовов',
-    '   - сначала прочитать текущие обращения',
-    '2. Заменить обращения к process.env',
+    '1. Move the variables into `config/env.ts`, **necessarily** before editing the call sites',
+    '   - read the current usages first',
+    '2. Replace the uses of process.env',
     '',
-    'Дальше можно катить.',
+    'After that it can ship.',
   ].join('\n')
 
   const state = () => play([toolUseEvent('plan-1', 'ExitPlanMode', { plan })])
   const card = () => state().items.find((item) => item.kind === 'plan')
 
-  it('показывает план целиком, а не одни лишь пункты списка', () => {
+  it('shows the whole plan rather than the list items alone', () => {
     const paragraphs = card()?.paragraphs ?? []
 
-    // Заголовок раздела и абзац-пояснение раньше терялись: разбор оставлял
-    // только строки, начинавшиеся с маркера списка.
+    // The section's heading and the explanatory paragraph used to get lost: the parsing kept only the lines
+    // that began with a list marker.
     expect(paragraphs.some((paragraph) => paragraph.heading)).toBe(true)
     expect(paragraphs.some((paragraph) => !paragraph.bullet && !paragraph.heading)).toBe(true)
   })
 
-  it('разметка внутри пункта разбирается, а не показывается звёздочками', () => {
+  it('parses the markup inside an item rather than showing it as asterisks', () => {
     const step = card()?.paragraphs.find((paragraph) => paragraph.marker === '1.')
 
     expect(step?.parts.some((part) => part.strong)).toBe(true)
     expect(step?.parts.some((part) => part.code)).toBe(true)
-    // Путь остаётся в самом предложении: раньше его вырезали в отдельную
-    // приписку, и строка начиналась с запятой.
-    expect(step?.parts.map((part) => part.text).join('')).toContain('Вынести переменные в')
+    // The path stays in the sentence itself: it used to be cut out into a separate note, and the line began
+    // with a comma.
+    expect(step?.parts.map((part) => part.text).join('')).toContain('Move the variables into')
   })
 
-  it('вложенное уточнение не считается отдельным шагом', () => {
+  it('does not count a nested clarification as a separate step', () => {
     expect(card()?.meta).toBe('· 2 steps')
   })
 })
 
-describe('живой счётчик текущего хода (turnStartedAt)', () => {
-  it('обычный prompt отмечает начало хода — из него растёт счётчик рядом с «Claude is thinking»', () => {
+describe('the live counter of the current turn (turnStartedAt)', () => {
+  it('lets an ordinary prompt mark the turn start - the counter beside "Claude is thinking" grows from it', () => {
     const state = reducePanel(
       initialPanelState,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'hello' }], quotes: [] },
       1_700_000_000_000,
     )
 
     expect(state.turnStartedAt).toBe(1_700_000_000_000)
   })
 
-  it('досылка в идущий ход не двигает начало — досланное сообщение не новый ход, а продолжение прежнего', () => {
+  it('does not move the start on a follow-up: a follow-up message is not a new turn but the same one', () => {
     let state = reducePanel(
       initialPanelState,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'первое' }], quotes: [] },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'the first one' }], quotes: [] },
       1_700_000_000_000,
     )
 
     state = reducePanel(
       state,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'стой, не этот' }], quotes: [], steering: true },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'wait, not that one' }], quotes: [], steering: true },
       1_700_000_005_000,
     )
 
     expect(state.turnStartedAt).toBe(1_700_000_000_000)
   })
 
-  it('status idle гасит счётчик — ход кончился, считать больше нечего', () => {
+  it('lets a status idle extinguish the counter - the turn has ended, there is nothing left to count', () => {
     let state = reducePanel(
       initialPanelState,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'hello' }], quotes: [] },
       1_700_000_000_000,
     )
 
@@ -2063,33 +2063,33 @@ describe('живой счётчик текущего хода (turnStartedAt)', 
     expect(state.turnStartedAt).toBeUndefined()
   })
 
-  it('status running без своего prompt (переподключение к фоновому ходу) тоже заводит счётчик', () => {
+  it('starts the counter for a status running without a prompt of its own (reattaching to a background turn)', () => {
     const state = reducePanel(initialPanelState, { kind: 'status', status: 'running' }, 1_700_000_000_000)
     expect(state.turnStartedAt).toBe(1_700_000_000_000)
   })
 
-  it('повторный status running не откатывает уже идущий счётчик назад', () => {
+  it('does not roll a running counter back on a repeated status running', () => {
     let state = reducePanel(initialPanelState, { kind: 'status', status: 'running' }, 1_700_000_000_000)
     state = reducePanel(state, { kind: 'status', status: 'running' }, 1_700_000_005_000)
 
     expect(state.turnStartedAt).toBe(1_700_000_000_000)
   })
 
-  it('тик двигает рендер дальше даже без единого вызова инструмента — иначе счётчик стоял бы на нуле до первого вызова', () => {
+  it('lets a tick move the render on even without a single tool call - otherwise the counter would stand at zero', () => {
     const running = reducePanel(initialPanelState, { kind: 'status', status: 'running' }, 1_700_000_000_000)
     const ticked = reducePanel(running, { kind: 'tick' }, 1_700_000_001_000)
 
-    // startedAt (по вызовам инструментов) пуст — сравниваем сами объекты
-    // состояния: тик обязан вернуть новый, а не тот же самый, иначе useReducer
-    // решит, что рендерить нечего, и счётчик рядом с «Claude is thinking» не сдвинется.
+    // startedAt (by tool calls) is empty - we compare the state objects themselves: a tick has to return a
+    // new one rather than the very same one, otherwise useReducer decides there is nothing to render and
+    // the counter beside "Claude is thinking" does not move.
     expect(ticked).not.toBe(running)
     expect(ticked.turnStartedAt).toBe(1_700_000_000_000)
   })
 
-  it('result кончает ход и гасит счётчик сразу же, не дожидаясь отдельного status idle', () => {
+  it('lets a result end the turn and extinguish the counter at once, without waiting for a separate status idle', () => {
     let state = reducePanel(
       initialPanelState,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'hello' }], quotes: [] },
       1_700_000_000_000,
     )
     state = reducePanel(state, { kind: 'agent', event: resultEvent(3_000) }, 1_700_000_003_000)
@@ -2097,10 +2097,10 @@ describe('живой счётчик текущего хода (turnStartedAt)', 
     expect(state.turnStartedAt).toBeUndefined()
   })
 
-  it('обрыв процесса гасит счётчик — иначе setInterval тикал бы вхолостую до следующего сообщения', () => {
+  it('lets a broken process extinguish the counter - otherwise setInterval would tick idly until the next message', () => {
     let state = reducePanel(
       initialPanelState,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'hello' }], quotes: [] },
       1_700_000_000_000,
     )
     state = reducePanel(state, { kind: 'processExited', exitCode: 1 }, 1_700_000_005_000)
@@ -2109,11 +2109,11 @@ describe('живой счётчик текущего хода (turnStartedAt)', 
   })
 })
 
-describe('пауза счётчика на решении человека (pausedMs)', () => {
-  it('attentionStarted → attentionEnded копит время ожидания в pausedMs', () => {
+describe('pausing the counter on a decision by the person (pausedMs)', () => {
+  it('piles the waiting time into pausedMs between attentionStarted and attentionEnded', () => {
     let state = reducePanel(
       initialPanelState,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'hello' }], quotes: [] },
       1_700_000_000_000,
     )
     state = reducePanel(state, { kind: 'attentionStarted' }, 1_700_000_010_000)
@@ -2123,10 +2123,10 @@ describe('пауза счётчика на решении человека (paus
     expect(state.waitStartedAt).toBeUndefined()
   })
 
-  it('повторный attentionStarted не двигает начало паузы назад', () => {
+  it('does not move the pause start back on a repeated attentionStarted', () => {
     let state = reducePanel(
       initialPanelState,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'hello' }], quotes: [] },
       1_700_000_000_000,
     )
     state = reducePanel(state, { kind: 'attentionStarted' }, 1_700_000_010_000)
@@ -2136,15 +2136,15 @@ describe('пауза счётчика на решении человека (paus
     expect(state.pausedMs).toBe(5_000)
   })
 
-  it('attentionEnded без активной паузы — no-op', () => {
+  it('treats an attentionEnded without an active pause as a no-op', () => {
     const state = reducePanel(initialPanelState, { kind: 'attentionEnded' }, 1_700_000_000_000)
     expect(state.pausedMs).toBe(0)
   })
 
-  it('несколько пауз за один ход суммируются', () => {
+  it('sums several pauses within one turn', () => {
     let state = reducePanel(
       initialPanelState,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'привет' }], quotes: [] },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'hello' }], quotes: [] },
       1_700_000_000_000,
     )
     state = reducePanel(state, { kind: 'attentionStarted' }, 1_700_000_010_000)
@@ -2155,10 +2155,10 @@ describe('пауза счётчика на решении человека (paus
     expect(state.pausedMs).toBe(3_000 + 10_000)
   })
 
-  it('новый ход обнуляет накопленную паузу прежнего', () => {
+  it('lets a new turn zero the pause piled up by the previous one', () => {
     let state = reducePanel(
       initialPanelState,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'первое' }], quotes: [] },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'the first one' }], quotes: [] },
       1_700_000_000_000,
     )
     state = reducePanel(state, { kind: 'attentionStarted' }, 1_700_000_010_000)
@@ -2167,7 +2167,7 @@ describe('пауза счётчика на решении человека (paus
 
     state = reducePanel(
       state,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'второе' }], quotes: [] },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'the second one' }], quotes: [] },
       1_700_001_000_000,
     )
 
@@ -2177,19 +2177,19 @@ describe('пауза счётчика на решении человека (paus
 })
 
 /**
- * Вкладка, открытая из истории, — это перепись прошлого разговора: живого хода в
- * ней нет ни одного, и работать в ней нечему. Всё, что осталось в переписи
- * незаконченным, панель закрывает сама — см. applyReplayFinished.
+ * A tab opened from the history is a replay of a past conversation: there is not a single live turn in it,
+ * and there is nothing in it to work. Everything the replay left unfinished the panel closes itself - see
+ * applyReplayFinished.
  */
-describe('конец переписи прошлого разговора', () => {
+describe('the end of a past conversation replay', () => {
   const tasks = (state: PanelState) => state.items.filter((item): item is TaskItem => item.kind === 'task')
 
   const replay = (events: AgentEvent[], state = initialPanelState): PanelState =>
     events.reduce((acc, event) => reducePanel(acc, { kind: 'agent', event, replay: true }, 1_700_000_000_000), state)
 
-  it('фоновый агент из переписи перестаёт выглядеть работающим', () => {
-    // Итог фонового агента приезжает системным событием, а в переписке лежат
-    // только реплики — значит для этой карточки он не придёт никогда.
+  it('stops a background agent from a replay looking as though it were working', () => {
+    // A background agent's outcome arrives through a system event, while the conversation holds only the
+    // lines - which means for this card it will never come.
     let state = replay([
       toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Review plan: UI consistency' }),
       toolResultEvent('toolu-1', 'Async agent launched successfully. Agent ID: a90aa'),
@@ -2203,12 +2203,12 @@ describe('конец переписи прошлого разговора', () =
     expect(task?.pending).toBe(false)
     expect(task?.outcome).toBe('stopped')
     expect(task?.log.at(-1)?.text).toBe('How this one ended is not part of the saved conversation.')
-    // Счётчик карточки больше не тикает: без этого он шёл бы от момента, когда
-    // вкладку открыли, и рос, пока она открыта.
+    // The card's counter no longer ticks: without this it would run from the moment the tab was opened and
+    // grow for as long as it stays open.
     expect(state.startedAt).toEqual({})
   })
 
-  it('незакрытый вызов инструмента закрывается, но ошибкой не считается', () => {
+  it('closes an unfinished tool call but does not count it as an error', () => {
     let state = replay([toolUseEvent('toolu-1', 'Bash', { command: 'pnpm test' })])
     state = reducePanel(state, { kind: 'replayFinished' }, 1_700_000_060_000)
 
@@ -2223,14 +2223,14 @@ describe('конец переписи прошлого разговора', () =
     })
   })
 
-  it('живой ход, начатый пока перепись играла, не закрывается вместе с ней', () => {
-    // Длинный разговор проигрывается не мгновенно, и человек успевает написать
-    // раньше, чем перепись доиграет. Всё «выполняется» в этот момент — уже его
-    // ход, и объявить его законченным было бы хуже висящей карточки.
+  it('does not close a live turn started while the replay was playing along with it', () => {
+    // A long conversation is not replayed instantly, and the person manages to write before the replay is
+    // finished. Anything "running" at that moment is already their turn, and declaring it finished would be
+    // worse than a hanging card.
     let state = replay([toolUseEvent('r-1', 'Agent', { subagent_type: 'Explore' })])
     state = reducePanel(
       state,
-      { kind: 'prompt', tokens: [{ kind: 'text', value: 'продолжим' }], quotes: [] },
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'let us carry on' }], quotes: [] },
       1_700_000_030_000,
     )
     state = reducePanel(state, { kind: 'agent', event: toolUseEvent('live-1', 'Bash', { command: 'pnpm test' }) }, 1_700_000_031_000)
@@ -2240,15 +2240,15 @@ describe('конец переписи прошлого разговора', () =
   })
 
   /**
-   * Вопрос с вариантами и план — единственные карточки, которые в переписи
-   * приезжают вместе с переписью и при этом просят человека нажать: вопрос
-   * всплывал поверх поля ввода, план держал «Waiting for you» под лентой.
-   * Отвечать на них уже некому — ход, который спрашивал, кончился в прошлом.
+   * A question with options and a plan are the only cards that arrive with a replay and still ask the person
+   * to press something: the question popped up over the input field, the plan held a "Waiting for you" under
+   * the feed. There is nobody left to answer them - the turn that asked ended in the past.
    */
-  it('вопрос из переписи помечен historic — карточкой он не всплывает', () => {
+
+  it('marks a question from a replay as historic - it does not pop up as a card', () => {
     const state = replay([
       toolUseEvent('ask-1', 'AskUserQuestion', {
-        questions: [{ question: 'Какой сделать вариант?', header: 'Вариант', options: [{ label: 'Первый' }] }],
+        questions: [{ question: 'Which option shall I make?', header: 'Option', options: [{ label: 'The first' }] }],
       }),
     ])
 
@@ -2256,10 +2256,10 @@ describe('конец переписи прошлого разговора', () =
     expect(ask?.historic).toBe(true)
   })
 
-  it('вопрос живого хода historic не помечается — на него как раз и ждут ответа', () => {
+  it('does not mark a live turn question as historic - that is precisely the one awaiting an answer', () => {
     const state = play([
       toolUseEvent('ask-1', 'AskUserQuestion', {
-        questions: [{ question: 'Какой сделать вариант?', header: 'Вариант', options: [{ label: 'Первый' }] }],
+        questions: [{ question: 'Which option shall I make?', header: 'Option', options: [{ label: 'The first' }] }],
       }),
     ])
 
@@ -2267,7 +2267,7 @@ describe('конец переписи прошлого разговора', () =
     expect(ask?.historic).toBeFalsy()
   })
 
-  it('вопрос субагента из переписи тоже помечен historic', () => {
+  it('marks a subagent question from a replay as historic too', () => {
     const state = replay([
       agentTaskStartedEvent('a90aa', 'toolu-1', 'Explore'),
       subagentAskEvent('toolu-1'),
@@ -2277,19 +2277,19 @@ describe('конец переписи прошлого разговора', () =
     expect(ask?.historic).toBe(true)
   })
 
-  it('план из переписи помечен historic — решение по нему принимали в прошлом', () => {
-    const state = replay([toolUseEvent('plan-1', 'ExitPlanMode', { plan: '- Первый шаг\n- Второй шаг' })])
+  it('marks a plan from a replay as historic - the decision on it was taken in the past', () => {
+    const state = replay([toolUseEvent('plan-1', 'ExitPlanMode', { plan: '- The first step\n- The second step' })])
 
     const plan = state.items.find((item): item is PlanItem => item.kind === 'plan')
     expect(plan?.historic).toBe(true)
-    expect(play([toolUseEvent('plan-1', 'ExitPlanMode', { plan: '- Шаг' })])
+    expect(play([toolUseEvent('plan-1', 'ExitPlanMode', { plan: '- A step' })])
       .items.find((item): item is PlanItem => item.kind === 'plan')?.historic).toBeFalsy()
   })
 
-  it('уже закрытые карточки переписи не переписываются заново', () => {
+  it('does not rewrite the already closed cards of a replay', () => {
     const state = replay([
       toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Discover files' }),
-      toolResultEvent('toolu-1', 'Нашёл шесть мест'),
+      toolResultEvent('toolu-1', 'Found six places'),
     ])
     const after = reducePanel(state, { kind: 'replayFinished' }, 1_700_000_060_000)
 
@@ -2298,11 +2298,11 @@ describe('конец переписи прошлого разговора', () =
 })
 
 /**
- * Прошлый разговор, открытый из истории, должен читаться разговором: реплики
- * человека приходят в нём единственным способом — записью из переписки, потому
- * что класть их в ленту при отправке было некому.
+ * A past conversation opened from the history has to read as a conversation: the person's lines arrive in it
+ * by a single route - the record from the conversation - because there was nobody to put them into the feed
+ * when they were sent.
  */
-describe('реплики человека в переписи', () => {
+describe('the person lines in a replay', () => {
   const users = (state: PanelState) => state.items.filter((item): item is UserItem => item.kind === 'user')
 
   const userEvent = (text: string, extra: Record<string, unknown> = {}): AgentEvent =>
@@ -2311,26 +2311,26 @@ describe('реплики человека в переписи', () => {
   const replayUser = (text: string, extra: Record<string, unknown> = {}): PanelState =>
     reducePanel(initialPanelState, { kind: 'agent', event: userEvent(text, extra), replay: true }, 1_700_000_000_000)
 
-  it('реплика человека попадает в ленту со своим временем', () => {
-    const state = replayUser('Посмотри, почему падает сборка', { timestamp: '2026-08-17T09:41:07.000Z' })
+  it('lets a person line reach the feed with its own time', () => {
+    const state = replayUser('Look into why the build is failing', { timestamp: '2026-08-17T09:41:07.000Z' })
 
     expect(users(state)).toHaveLength(1)
-    expect(users(state)[0]?.tokens).toEqual([{ kind: 'text', value: 'Посмотри, почему падает сборка' }])
-    // Время из самой записи, а не «когда открыли вкладку».
+    expect(users(state)[0]?.tokens).toEqual([{ kind: 'text', value: 'Look into why the build is failing' }])
+    // The time comes from the record itself rather than from "when the tab was opened".
     expect(users(state)[0]?.time).not.toBe('')
   })
 
-  it('живой разговор реплику из потока не дублирует', () => {
+  it('does not let a live conversation duplicate a line from the stream', () => {
     const live = reducePanel(
       initialPanelState,
-      { kind: 'agent', event: userEvent('Посмотри, почему падает сборка') },
+      { kind: 'agent', event: userEvent('Look into why the build is failing') },
       1_700_000_000_000,
     )
 
     expect(users(live)).toHaveLength(0)
   })
 
-  it('слэш-команда читается командой, а не разметкой', () => {
+  it('reads a slash command as a command rather than as markup', () => {
     const state = replayUser(
       '<command-message>deploy</command-message>\n<command-name>/deploy</command-name>\n<command-args>0.7.11</command-args>',
     )
@@ -2338,13 +2338,13 @@ describe('реплики человека в переписи', () => {
     expect(users(state)[0]?.tokens).toEqual([{ kind: 'text', value: '/deploy 0.7.11' }])
   })
 
-  it('служебные записи в ленту не идут', () => {
+  it('keeps the service records out of the feed', () => {
     const skill = replayUser('Base directory for this skill: /Users/you/.claude/skills/task', { isMeta: true })
     const caveat = replayUser(
       '<local-command-caveat>Caveat: The messages below were generated by the user while running local commands.</local-command-caveat>',
     )
     const stopped = replayUser('[Request interrupted by user]')
-    const subagent = replayUser('Прочитай эти файлы', { parent_tool_use_id: 'toolu-1' })
+    const subagent = replayUser('Read these files', { parent_tool_use_id: 'toolu-1' })
 
     expect(users(skill)).toHaveLength(0)
     expect(users(caveat)).toHaveLength(0)
@@ -2352,7 +2352,7 @@ describe('реплики человека в переписи', () => {
     expect(users(subagent)).toHaveLength(0)
   })
 
-  it('результаты вызовов по-прежнему разбираются', () => {
+  it('still parses the call results', () => {
     let state = reducePanel(
       initialPanelState,
       { kind: 'agent', event: toolUseEvent('toolu-1', 'Bash', { command: 'pnpm test' }), replay: true },
@@ -2371,11 +2371,11 @@ describe('реплики человека в переписи', () => {
 })
 
 /**
- * Отказ сервера, который CLI пережидает сам: пока идут повторы, в потоке не
- * происходит ничего — ни текста, ни вызовов, — и рассказать об этом может
- * только карточка с обратным отсчётом (см. applyApiRetry).
+ * A refusal from the server that the CLI waits out itself: while the retries run nothing happens in the
+ * stream - no text, no calls - and only a card with a countdown can tell about it (see applyApiRetry).
  */
-describe('повторные запросы к API', () => {
+
+describe('repeated requests to the API', () => {
   const START = 1_700_000_000_000
 
   const retryEvent = (attempt: number, delayMs: number, status: number | null = 529): AgentEvent => ({
@@ -2403,7 +2403,7 @@ describe('повторные запросы к API', () => {
     duration_ms: 9200,
   })
 
-  it('первый отказ заводит карточку и рассказывает о нём словами терминала', () => {
+  it('lets the first refusal start a card and tell about it in the terminal words', () => {
     const state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600) }, START)
 
     expect(cards(state)).toHaveLength(1)
@@ -2412,7 +2412,7 @@ describe('повторные запросы к API', () => {
     expect(state.retry?.attempt).toBe(1)
   })
 
-  it('следующие попытки идут в ту же карточку, а не плодят новые', () => {
+  it('lets the next attempts go into the same card rather than breed new ones', () => {
     let state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600) }, START)
     state = reducePanel(state, { kind: 'agent', event: retryEvent(2, 1200) }, START + 600)
     state = reducePanel(state, { kind: 'agent', event: retryEvent(3, 2400) }, START + 1_800)
@@ -2422,10 +2422,10 @@ describe('повторные запросы к API', () => {
     expect(cards(state)[0]?.retryAt).toBe(START + 1_800 + 2_400)
   })
 
-  it('отказ зовётся тем же, чем зовёт его терминал', () => {
+  it('names a refusal the way the terminal names it', () => {
     const limited = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600, 429) }, START)
     const auth = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600, 401) }, START)
-    // Обрыв связи приходит вовсе без кода ответа — терминал и его зовёт общим словом.
+    // A dropped connection arrives with no response code at all - the terminal calls it by a general word too.
     const offline = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600, null) }, START)
 
     expect(cards(limited)[0]?.label).toBe('Rate limited')
@@ -2433,29 +2433,29 @@ describe('повторные запросы к API', () => {
     expect(cards(offline)[0]?.label).toBe('API error')
   })
 
-  it('затянувшаяся череда остаётся в ленте следом, когда запрос наконец проходит', () => {
+  it('leaves a drawn-out run in the feed as a trace when the request finally gets through', () => {
     let state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600) }, START)
     state = reducePanel(state, { kind: 'agent', event: retryEvent(2, 30_000) }, START + 600)
-    state = reducePanel(state, { kind: 'agent', event: textEvent('Готово') }, START + 41_000)
+    state = reducePanel(state, { kind: 'agent', event: textEvent('Done') }, START + 41_000)
 
     expect(state.retry).toBeUndefined()
     expect(cards(state)[0]).toMatchObject({ pending: false, outcome: 'recovered', attempt: 2 })
     expect(cards(state)[0]?.duration).toBe('41s')
   })
 
-  it('мелькнувшая череда следа не оставляет', () => {
-    // Одна попытка через полсекунды — обычная жизнь сети: живьём её видно, а в
-    // истории разговора такая карточка была бы шумом между настоящими шагами.
+  it('leaves no trace for a run that only flickered', () => {
+    // One attempt half a second later is the network's ordinary life: live it is visible, but in the
+    // conversation's history such a card would be noise between the genuine steps.
     let state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 500) }, START)
-    state = reducePanel(state, { kind: 'agent', event: textEvent('Готово') }, START + 900)
+    state = reducePanel(state, { kind: 'agent', event: textEvent('Done') }, START + 900)
 
     expect(state.retry).toBeUndefined()
     expect(cards(state)).toHaveLength(0)
   })
 
-  it('исчерпанные попытки читаются сдачей, а не удачей', () => {
-    // Ход, у которого кончились попытки, CLI закрывает не ответом модели, а
-    // своей заглушкой от <synthetic> с текстом ошибки.
+  it('reads exhausted attempts as a surrender rather than as a success', () => {
+    // A turn that ran out of attempts the CLI closes not with the model's answer but with a stub of its own
+    // from <synthetic> holding the error's text.
     let state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600) }, START)
     state = reducePanel(state, { kind: 'agent', event: retryEvent(10, 30_000) }, START + 600)
     state = reducePanel(state, { kind: 'agent', event: syntheticEvent('API Error: 529 Overloaded.') }, START + 61_000)
@@ -2463,14 +2463,14 @@ describe('повторные запросы к API', () => {
     expect(cards(state)[0]).toMatchObject({ pending: false, outcome: 'failed', attempt: 10 })
   })
 
-  it('ход, кончившийся ошибкой, закрывает череду сдачей', () => {
+  it('lets a turn that ended in an error close the run as a surrender', () => {
     let state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 20_000) }, START)
     state = reducePanel(state, { kind: 'agent', event: failedResultEvent() }, START + 21_000)
 
     expect(cards(state)[0]).toMatchObject({ pending: false, outcome: 'failed' })
   })
 
-  it('прерванный посреди паузы ход не оставляет карточку ждущей', () => {
+  it('does not leave the card waiting for a turn interrupted mid-pause', () => {
     let state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(3, 30_000) }, START)
     state = reducePanel(state, { kind: 'status', status: 'idle' }, START + 12_000)
 
@@ -2478,7 +2478,7 @@ describe('повторные запросы к API', () => {
     expect(cards(state)[0]).toMatchObject({ pending: false, outcome: 'stopped', attempt: 3 })
   })
 
-  it('умерший процесс тоже закрывает череду', () => {
+  it('lets a dead process close the run too', () => {
     let state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(2, 30_000) }, START)
     state = reducePanel(state, { kind: 'processExited', exitCode: 1 }, START + 15_000)
 
@@ -2486,9 +2486,9 @@ describe('повторные запросы к API', () => {
     expect(cards(state)[0]).toMatchObject({ pending: false, outcome: 'stopped' })
   })
 
-  it('служебные события паузу не обрывают', () => {
-    // Между попытками тем же каналом идут системные пометки — принять их за
-    // ответ значит объявить череду законченной, пока она идёт.
+  it('does not let the service events break the pause off', () => {
+    // Between the attempts system markers travel down the same channel - taking them for an answer means
+    // declaring the run finished while it is still going.
     let state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 30_000) }, START)
     state = reducePanel(
       state,

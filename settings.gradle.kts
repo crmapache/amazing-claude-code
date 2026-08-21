@@ -4,11 +4,11 @@ rootProject.name = "amazing-claude-code"
 
 pluginManagement {
     plugins {
-        // WebStorm 2026.2 несёт Kotlin с метаданными 2.4, поэтому компилятор не может
-        // быть старше платформы: иначе он не прочитает её же stdlib.
+        // WebStorm 2026.2 ships Kotlin with 2.4 metadata, so the compiler cannot be older than the
+        // platform: otherwise it will not read the platform's own stdlib.
         id("org.jetbrains.kotlin.jvm") version "2.4.10"
         id("org.jetbrains.kotlin.plugin.serialization") version "2.4.10"
-        // Собирает changeNotes из CHANGELOG.md — только секцию собираемой версии.
+        // Builds changeNotes out of CHANGELOG.md - the section of the version being built only.
         id("org.jetbrains.changelog") version "2.4.0"
     }
 }

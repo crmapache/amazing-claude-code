@@ -1,4 +1,4 @@
-<!-- Тот же знак, что в светлой теме; отличается только цветом обводки. -->
+<!-- The same mark as in the light theme; only the stroke colour differs. -->
 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
   <g stroke="#CED0D6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
     <path d="M1.8 9.6 5.2 2.0 8.6 9.6"/>
