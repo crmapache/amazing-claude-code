@@ -1,10 +1,9 @@
 /**
- * Мгновенное название вкладки из первого сообщения — эвристика-заглушка,
- * пока не пришёл настоящий заголовок от LLM (см. sessionTitle в protocol.ts),
- * и запасной вариант, если тот вызов не удался. Та же логика, что и в
- * ClaudeHistory.kt на стороне плагина (для заголовков в панели истории) —
- * держать их синхронно не обязательно дословно, но результат должен быть
- * узнаваемо тем же самым для одного и того же сообщения.
+ * An instant tab name out of the first message - a heuristic stand-in until the real title from the LLM
+ * arrives (see sessionTitle in protocol.ts), and the fallback if that call did not work out. The same
+ * logic as in ClaudeHistory.kt on the plugin's side (for the titles in the history panel) - keeping them
+ * word for word identical is not required, but the result has to be recognisably the same for one and
+ * the same message.
  */
 
 import { withoutShellText } from './bash'
@@ -24,10 +23,10 @@ const truncateAtWord = (text: string, max: number): string => {
 }
 
 /**
- * Склеивает содержательные строки первого сообщения в одну — короткая первая
- * строка («Давай») не должна становиться всем названием вкладки, если суть
- * вопроса написана строкой ниже. Вложения (`@путь`, цитата, `[Image #N]` даже
- * посреди фразы) и вывод команд bash-режима из названия вырезаются как шум.
+ * Joins the meaningful lines of the first message into one - a short first line ("Right") must not
+ * become the whole tab name when the substance of the question is written a line below. Attachments
+ * (`@path`, a quote, an `[Image #N]` even mid-sentence) and bash-mode output are cut out of the name as
+ * noise.
  */
 export const deriveSessionTitle = (text: string, max = 60): string => {
   const rawLines = withoutShellText(text)

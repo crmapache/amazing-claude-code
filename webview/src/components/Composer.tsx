@@ -11,7 +11,6 @@ import {
 import { createPortal } from 'react-dom'
 import { isBashDraft } from '../feed/bash'
 import { matchFiles } from '../feed/files'
-import { chipLabel, chipTitle } from '../feed/reference'
 import {
   argumentOptions,
   argumentQuery,
@@ -21,36 +20,60 @@ import {
   matchArguments,
   matchCommands,
   plainText,
+  replaceCommandHead,
   requiresArgument,
   slashQuery as slashQueryFromText,
   type CommandEntry,
 } from '../feed/slash'
 import { clipboardHtml, clipboardTokens, tokensText } from '../feed/tokens'
-import type { Chip, ChipKind, UserToken } from '../feed/types'
+import type { Chip, UserToken } from '../feed/types'
 import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
 import type { ModelInfo } from '../protocol'
 import { SlashSuggest } from './SlashSuggest'
+import {
+  atQueryAt,
+  caretRect,
+  charAfter,
+  charBefore,
+  chipBesideCaret,
+  chipNodeIn,
+  currentRange,
+  droppedPaths,
+  extractTokens,
+  hasFiles,
+  headText,
+  isMultiline,
+  needsLeadingSpace,
+  needsTrailingSpace,
+  padTrailingBreak,
+  placeCaretBefore,
+  placeCaretBeside,
+  rebuildDom,
+  relabelImages,
+  removeChip,
+  scrollCaretIntoView,
+  splitTokens,
+} from './composerDom'
 import { contextColor, contextGlow, Selectors, type Anchor, type SelectorKind } from './StatusBar'
 import s from './composer.module.css'
 
-/** Засечки на пятых долях — не связаны с порогами цвета, чисто масштаб шкалы. */
+/** Ticks at every fifth - unrelated to the colour thresholds, purely the scale's ruler. */
 const CONTEXT_METER_TICKS = [20, 40, 60, 80]
 
 /**
- * Полоска контекста в самом верху поля — единственное место, где видно, сколько
- * его занято: цифрой то же самое нигде не повторяется. Заполнение и цвет
- * читаются мельком, а точное число в этом решении («не пора ли сжать») ничего
- * не добавляет.
+ * The context bar at the very top of the field is the one place where how much of it is taken is visible:
+ * the same thing is repeated nowhere as a figure. The fill and the colour are read at a glance, while an
+ * exact number adds nothing to the decision at hand ("is it time to compact").
  */
 const ContextMeter = ({ percent }: { percent: number }) => {
   const color = contextColor(percent)
   const glow = contextGlow(percent)
 
   return (
-    // Своя строка над полем, а не слой поверх его верхнего отступа: отступ
-    // прокручивается вместе с текстом, и в длинном сообщении строки заезжали
-    // под шкалу — она читалась как зачёркивание. Отдельная строка физически вне
-    // прокрутки, заехать под неё нечему.
+    // A row of its own above the field rather than a layer over its top padding: the padding scrolls
+    // along with the text, and in a long message the lines slid under the bar - which read as a
+    // strikethrough. A separate row is physically outside the scrolling, and nothing can slide under
+    // it.
     <div className={s.contextMeterRow} aria-hidden="true">
       <div className={s.contextMeter}>
         <div
@@ -65,20 +88,19 @@ const ContextMeter = ({ percent }: { percent: number }) => {
   )
 }
 
-/** Сколько сегментов в вертикальной шкале — см. ContextMeterVertical. */
+/** How many segments the vertical scale has - see ContextMeterVertical. */
 const CONTEXT_METER_SEGMENTS = 5
 
 /**
- * То же самое, что ContextMeter, но вертикальной шкалой слева от поля — так
- * узкое поле (compact, left, right) экономит высоту, отдавая её textarea, а
- * не горизонтальной полоске над ним (см. Composer.layout).
+ * The same as ContextMeter, but as a vertical scale to the left of the field - that way a narrow field
+ * (compact, left, right) saves height, giving it to the textarea rather than to a horizontal bar above it
+ * (see Composer.layout).
  *
- * Сегменты зажигаются целиком, а не заливкой по проценту: с плавной заливкой,
- * обрезанной точно по percent%, самый верхний закрашенный сегмент почти
- * всегда попадал под обрез серединой — выходил на глаз короче остальных,
- * ровных. Дискретные пять делений и не обещают точности до пикселя, поэтому
- * округляем вверх — сегмент загорается, как только прогресс зашёл в его
- * долю хоть немного, тем же способом, что и стрелка индикатора заряда.
+ * The segments light up whole rather than filling by percentage: with a smooth fill cut exactly at
+ * percent%, the topmost filled segment almost always ended up cut through its middle - to the eye it came
+ * out shorter than the even ones. Five discrete divisions promise no pixel precision anyway, so we round
+ * up - a segment lights as soon as the progress has entered its share at all, the same way a battery
+ * indicator's arrow does.
  */
 const ContextMeterVertical = ({ percent }: { percent: number }) => {
   const color = contextColor(percent)
@@ -106,14 +128,13 @@ const ContextMeterVertical = ({ percent }: { percent: number }) => {
 }
 
 /**
- * Скрепка на кнопке вложений: она открывает обычный системный выбор файлов, а
- * «собака» обещала совсем другое — упоминание файла прямо в тексте, как в самом
- * Claude Code. Рисунком, а не символом из шрифта: типографская скрепка есть не
- * во всех начертаниях и в моноширинном ряду выглядит то крупнее, то мельче
- * соседей.
+ * A paperclip on the attachment button: it opens the ordinary system file chooser, while an at-sign
+ * promised something else entirely - mentioning a file right inside the text, as in Claude Code itself.
+ * As a drawing rather than a character from the font: a typographic paperclip is missing from some
+ * typefaces and in a monospaced row looks now larger, now smaller than its neighbours.
  *
- * Нарисована наискосок, а стоит вертикально: до вертикали её доворачивает стиль
- * (см. attachIcon в composer.module.css).
+ * It is drawn at an angle but stands upright: the style turns it to the vertical (see attachIcon in
+ * composer.module.css).
  */
 const Paperclip = () => (
   <svg className={s.attachIcon} viewBox="0 0 24 24" aria-hidden="true">
@@ -128,102 +149,83 @@ const Paperclip = () => (
   </svg>
 )
 
-const CHIP_STYLE: Record<ChipKind, { background: string; borderColor: string; color: string }> = {
-  file: { background: 'var(--acc-accent-12)', borderColor: 'var(--acc-accent-32)', color: 'var(--acc-accent-light)' },
-  img: { background: 'var(--acc-agent-12)', borderColor: 'var(--acc-agent-32)', color: 'var(--acc-agent-light)' },
-  dir: { background: 'var(--acc-ok-12)', borderColor: 'var(--acc-ok-32)', color: 'var(--acc-ok-light)' },
-  cmd: { background: 'var(--acc-warn-12)', borderColor: 'var(--acc-warn-32)', color: 'var(--acc-warn-light)' },
-  ref: { background: 'var(--acc-branch-12)', borderColor: 'var(--acc-branch-32)', color: 'var(--acc-branch-light)' },
-  quote: { background: 'var(--acc-quote-12)', borderColor: 'var(--acc-quote-32)', color: 'var(--acc-quote)' },
-  // Вставка из буфера — единственная плашка без своей сущности за спиной: это
-  // просто текст, который свернули. Поэтому и цвет у неё нейтральный, а не
-  // очередной цветной: она не встаёт в один ряд с файлом, картинкой и командой.
-  paste: { background: 'var(--acc-paste-12)', borderColor: 'var(--acc-paste-32)', color: 'var(--acc-paste)' },
-}
-
-/** Чей это узел: чтобы забрать байты картинки обратно, строку с DOM не парсим. */
-const chipByNode = new WeakMap<HTMLElement, Chip>()
-
-/** Подсветка плашки, до которой дошли стрелкой (см. .tokenSelected в стилях). */
+/** The highlight of a chip the arrow has reached (see .tokenSelected in the styles). */
 const SELECTED_CHIP_CLASS = s.tokenSelected ?? ''
 
-/** Клавиши, которые сами по себе ничего не набирают и ничего не двигают. */
+/** The keys that by themselves type nothing and move nothing. */
 const MODIFIER_KEYS = ['Shift', 'Meta', 'Control', 'Alt', 'CapsLock']
 
 interface ComposerProps {
-  /** Чья это вкладка — история отмены своя у каждой, а не одна на все сразу. */
+  /** Whose tab this is - each has an undo history of its own rather than one shared by all. */
   sessionId: string
-  /** Текст и вложения одной последовательностью — в том порядке, в каком их вставили. */
+  /** Text and attachments as one sequence - in the order they were inserted in. */
   tokens: UserToken[]
   streaming: boolean
   planMode: boolean
-  /** То же число, что "ctx" в строке статуса — красит полоску контекста в поле. */
+  /** The same figure as "ctx" in the status line - it colours the context bar in the field. */
   contextPercent: number
-  /** Команды панели и агента одним списком. */
+  /** The panel's and the agent's commands as one list. */
   commands: CommandEntry[]
-  /** Каталог моделей от CLI — из него подсказка значений для `/model`. */
+  /** The model catalogue from the CLI - the value hint for `/model` comes out of it. */
   models: ModelInfo[] | null
-  /** Строка расхода (ctx/5h/wk/tok) — стоит в нижнем ряду поля, см. UsageMeters. */
+  /** The usage row (ctx/5h/wk/tok) - it stands in the field's bottom row, see UsageMeters. */
   meters: ReactNode
-  /** Файлы проекта для подсказки "@" — от корня рабочей директории. */
+  /** The project's files for the "@" hint - relative to the working directory's root. */
   files: string[]
-  /** Сколько картинок уже ушло раньше в этой сессии — нумерация новых продолжает отсюда. */
+  /** How many images have already gone out in this session - the new ones are numbered on from here. */
   imageBaseCount: number
-  /** Панель просит сфокусировать поле, например после ссылки из редактора. */
+  /** The panel asks for the field to be focused, after a reference from the editor for instance. */
   focusToken: number
   onTokensChange: (tokens: UserToken[]) => void
   onAttach: () => void
-  /** Файлы и папки, брошенные в поле: плашки из них соберёт оболочка (см. protocol). */
+  /** Files and folders dropped into the field: the shell assembles the chips out of them (see protocol). */
   onDropFiles: (paths: string[]) => void
   /**
-   * Над панелью держат файл, о котором знает только оболочка: перетаскивание
-   * внутри IDE в страницу не приходит вовсе (см. fileDrag). Подсветка от него
-   * та же, что и от переноса, который поле видит само.
+   * A file is being held over the panel that only the shell knows about: dragging inside the IDE never
+   * reaches the page at all (see fileDrag). The highlight it causes is the same as for a drag the field
+   * sees itself.
    */
   fileDragOver?: boolean
   /**
-   * Отдаёт наружу вставку в место курсора — ею панель кладёт в поле то, что
-   * пришло из IDE: ссылку из редактора, выбранный диалогом файл, брошенную
-   * мышью папку. Дописывать такое в конец состояния нельзя: место курсора живёт
-   * в самом поле, и снаружи его попросту не видно.
+   * Hands an "insert at the caret" outwards - the panel puts what came from the IDE into the field with
+   * it: a reference from the editor, a file chosen in a dialog, a folder dropped with the mouse.
+   * Appending such a thing to the end of the state is not an option: the caret's place lives in the field
+   * itself and is simply invisible from outside.
    */
   registerInsert: (insert: ((token: UserToken) => void) | null) => void
-  /** Отправить сейчас: занятому агенту сообщение дойдёт на ближайшем его шаге. */
+  /** Send now: a busy agent gets the message at its next step. */
   onSubmit: () => void
-  /** Отложить: агент возьмёт это следующим, когда закончит начатое. */
+  /** Defer: the agent takes this next, once it has finished what it started. */
   onQueue: () => void
-  /** Есть ли что отправлять — текст, вложение или цитата. */
+  /** Whether there is anything to send - text, an attachment or a quote. */
   canSubmit: boolean
   onStop: () => void
-  /** Stop не подтвердился дольше разумного — предлагаем убить процесс насильно. */
+  /** Stop has gone unconfirmed longer than is reasonable - we offer to kill the process by force. */
   stopStalled: boolean
   onForceStop: () => void
   /**
-   * Где сидит поле ввода — та же раскладка, что и у всей панели (см. App.tsx).
-   * compact сжимает сам ряд: полоска контекста уходит налево вертикальной
-   * шкалой, а MODEL/EFFORT/MODE встают рядом с полем — своей строки статуса
-   * под ним в compact не бывает. left/right тоже сжимают ряд и полоску, но
-   * MODEL/EFFORT/MODE с кнопками уезжают в боковую рельсу на всю высоту
-   * панели (см. railContainer) — своей строки статуса тоже нет (см. App.tsx).
+   * Where the input field sits - the same layout as the whole panel's (see App.tsx). compact tightens the
+   * row itself: the context bar moves to the left as a vertical scale, and MODEL/EFFORT/MODE stand beside
+   * the field - compact has no status line of its own under it. left/right tighten the row and the bar
+   * too, but MODEL/EFFORT/MODE and the buttons travel into the side rail running the panel's full height
+   * (see railContainer) - there is no status line of their own there either (see App.tsx).
    */
   layout?: ComposerLayout
   /**
-   * Для compact и left/right: строки статуса под полем в этих раскладках нет
-   * (см. App.tsx), и MODEL/EFFORT/MODE переезжают в сам композер (compact)
-   * или в боковую рельсу (left/right) — тем же колбэком, что открывает и
-   * остальные меню.
+   * For compact and left/right: those layouts have no status line under the field (see App.tsx), and
+   * MODEL/EFFORT/MODE move into the composer itself (compact) or into the side rail (left/right) - by the
+   * same callback that opens the other menus.
    */
   model?: string
   effort?: string
   mode?: string
   onOpenSelector?: (kind: SelectorKind, anchor: Anchor) => void
   /**
-   * Узел боковой рельсы left/right (см. App.tsx) — MODEL/EFFORT/MODE, расход
-   * и кнопки уходят туда порталом, а не рендерятся прямо здесь: рельсе нужна
-   * вся высота панели, от верха ленты до низа поля, а сам композер стоит
-   * только рядом с полем, гораздо ниже. Состояние и обработчики при этом
-   * остаются в композере — портал переносит только разметку.
-   * null/undefined — ещё не примонтирован либо раскладка не left/right.
+   * The side rail's node in left/right (see App.tsx) - MODEL/EFFORT/MODE, the usage and the buttons
+   * travel there through a portal rather than being rendered right here: the rail needs the panel's full
+   * height, from the top of the feed to the bottom of the field, while the composer itself stands only
+   * beside the field, much lower. The state and the handlers stay in the composer - the portal carries
+   * only the markup. null/undefined means it is not mounted yet, or the layout is not left/right.
    */
   railContainer?: HTMLElement | null
 }
@@ -262,37 +264,36 @@ export const Composer = ({
   const rail = isSideComposerLayout(layout)
   const [focused, setFocused] = useState(false)
   /**
-   * Над полем висит перетаскиваемый файл — подсвечиваем, куда его бросят. Это
-   * перенос, который видит сама страница (обычный браузер, харнесс); тот, что
-   * ведёт IDE, приходит отдельным пропом (см. fileDragOver).
+   * A dragged file hangs over the field - we highlight where it will land. This is a drag the page sees
+   * itself (an ordinary browser, the harness); the one the IDE leads arrives as a separate prop (see
+   * fileDragOver).
    */
   const [dropping, setDropping] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const [highlight, setHighlight] = useState(0)
   const input = useRef<HTMLDivElement>(null)
-  /** Начало координат для наложенного хинта аргумента — сам хинт не часть поля. */
+  /** The origin for the overlaid argument hint - the hint itself is not part of the field. */
   const box = useRef<HTMLDivElement>(null)
   const [ghostRect, setGhostRect] = useState<{ left: number; top: number; height: number } | null>(null)
 
   /**
-   * Последнее, что панель сама сообщила наружу. Если входящие tokens — ровно
-   * это же значение, значит правку вызвали мы сами (обычная печать), и DOM уже
-   * верный: перестраивать его — только терять место курсора. А вот если tokens
-   * пришли снаружи (переключили вкладку, прикрепили файл через диалог IDE,
-   * выбрали слэш-команду) — DOM отстал, и его нужно перестроить.
+   * The last thing the field reported outwards itself. If the incoming tokens are exactly that value,
+   * the edit was caused by us (ordinary typing) and the DOM is already right: rebuilding it would only
+   * lose the caret's place. But if the tokens came from outside (a tab was switched, a file was attached
+   * through the IDE's dialog, a slash command was chosen) - the DOM has fallen behind and has to be
+   * rebuilt.
    */
   const lastReported = useRef<UserToken[] | null>(null)
 
   /**
-   * Плашка, до которой дошёл курсор стрелкой. Она неделима, и перешагивать её
-   * молча, как это делает браузер, нельзя: тогда единственный способ убрать
-   * вложение с клавиатуры — угадать, с какой стороны стоит курсор, и надеяться,
-   * что backspace снесёт именно её. Пока плашка выделена, backspace убирает
-   * ровно её, а следующая стрелка в ту же сторону проходит дальше — тот же
-   * жест, что и в самом Claude Code.
+   * The chip the caret has reached with an arrow. It is indivisible, and stepping over it silently, as
+   * the browser does, is not an option: then the only way to remove an attachment from the keyboard would
+   * be to guess which side the caret is on and hope backspace takes exactly that one. While a chip is
+   * highlighted, backspace removes precisely it, and the next arrow in the same direction passes on - the
+   * same gesture as in Claude Code itself.
    *
-   * Ссылка, а не состояние: плашки живут в DOM мимо React (см. renderChipNode),
-   * и перерисовывать из-за подсветки нечего — класс ставится прямо на узел.
+   * A ref rather than state: the chips live in the DOM outside React (see chipNodeIn), and there is
+   * nothing to repaint for a highlight - the class is set right on the node.
    */
   const selectedChip = useRef<HTMLElement | null>(null)
 
@@ -311,24 +312,24 @@ export const Composer = ({
     const root = input.current
     if (!root || tokens === lastReported.current) return
 
-    // Поле пересобирается целиком — выделенного узла сейчас не станет.
+    // The field is rebuilt whole - the highlighted node is about to be gone.
     clearChipSelection()
     rebuildDom(root, tokens)
-    // Черновик мог быть отложен с подписями, которые с тех пор устарели, —
-    // показываем номера по факту, а состояние догонит первой же правкой.
+    // A draft may have been set aside with captions that have gone stale since - we show the numbers as
+    // they are, and the state catches up with the first edit.
     relabelImages(root, imageBaseCount)
     lastReported.current = tokens
   }, [tokens])
 
   /**
-   * Своя история отмены: родной undo браузера чипы не видит — они вставляются
-   * напрямую через Range, а не через execCommand, и для контента с картинками
-   * native Cmd+Z попросту нечего восстанавливать. Печать коалесцируем по
-   * времени, как это делает и сам браузер, а вложения и программные правки —
-   * всегда отдельным шагом: вставил картинку, одним Cmd+Z её и вернул.
+   * An undo history of our own: the browser's native undo does not see the chips - they are inserted
+   * directly through a Range rather than through execCommand, and for content holding images the native
+   * Cmd+Z simply has nothing to restore. Typing is coalesced by time, as the browser itself does it,
+   * while attachments and programmatic edits always get a step of their own: inserted an image, took it
+   * back with one Cmd+Z.
    *
-   * Стек свой у каждой вкладки: одна и та же панель редактирует то одну
-   * сессию, то другую, и чужую историю подмешивать в Cmd+Z нельзя.
+   * The stack is per tab: one and the same panel edits now one session, now another, and mixing someone
+   * else's history into Cmd+Z is not an option.
    */
   const undoStack = useRef<UserToken[][]>([])
   const redoStack = useRef<UserToken[][]>([])
@@ -336,11 +337,10 @@ export const Composer = ({
   const sessionRef = useRef(sessionId)
 
   /**
-   * Отправленные сообщения этой вкладки — по ним ходят стрелки вверх/вниз, как
-   * в терминале. Черновик на момент начала пролистывания запоминаем отдельно:
-   * стрелка вниз после самого нового сообщения обязана вернуть именно его, а
-   * не пустое поле, если человек успел что-то напечатать перед тем как начал
-   * листать историю с середины.
+   * This tab's sent messages - the up/down arrows walk over them, as in a terminal. The draft at the
+   * moment the walking began is remembered separately: the down arrow past the newest message has to
+   * bring back exactly that draft rather than an empty field, if the person had typed something before
+   * they started walking the history from the middle.
    */
   const sentHistory = useRef<UserToken[][]>([])
   const historyIndex = useRef<number | null>(null)
@@ -360,34 +360,48 @@ export const Composer = ({
     if (focusToken > 0) input.current?.focus()
   }, [focusToken])
 
-  // Любая правка снова открывает подсказку и возвращает выбор в начало: список
-  // стал другим, и держать в нём прежнее место незачем.
+  // Any edit opens the hint again and returns the choice to the start: the list has become a different
+  // one, and holding the previous place in it serves nothing.
   useEffect(() => {
     setDismissed(false)
     setHighlight(0)
   }, [tokens])
 
   /**
-   * Команда, уже ставшая плашкой. Дальше в поле идёт только её аргумент, поэтому
-   * обе подсказки — и по значению, и по синтаксису — берут имя отсюда, а не
-   * вычитывают его из текста заново.
+   * A command that has already become a chip. What follows in the field is only its argument, so both
+   * hints - the one by value and the one by syntax - take the name from here rather than reading it out
+   * of the text afresh.
    */
   const command = commandChip(tokens)
   const argumentText = command === null ? '' : plainText(tokens.slice(1))
 
-  // Слэш-команда осмысленна, только пока в поле вообще нет вложений — команда
-  // с приложенным файлом попросту не имеет смысла.
-  const plain = useMemo(
-    () => (tokens.some((token) => token.kind === 'chip') ? null : plainText(tokens)),
-    [tokens],
-  )
+  /**
+   * The field's start up to the caret - what a slash command is read from.
+   *
+   * A command need not be the whole of the field: one may return to the start of an already written
+   * message and put a command in front of it, exactly as in a terminal. So the hints look at the piece
+   * being typed right now rather than at the whole contents, and everything past the caret stays as it
+   * is - the text, and the attachments in it too.
+   *
+   * It is read from the DOM rather than from the tokens: only the DOM knows where the caret is. And it
+   * is kept in step both with an edit (handleInput) and with a bare move of the caret - walking away
+   * from a half-typed command has to close the hint.
+   */
+  const [head, setHead] = useState<string | null>(null)
+  const syncHead = () => setHead(input.current ? headText(input.current) : null)
 
-  const query = plain === null ? null : slashQueryFromText(plain)
+  useEffect(() => {
+    syncHead()
+    document.addEventListener('selectionchange', syncHead)
+    return () => document.removeEventListener('selectionchange', syncHead)
+  }, [tokens])
+
+  const query = head === null ? null : slashQueryFromText(head)
 
   /**
-   * Набрана команда терминала, а не сообщение агенту (см. feed/bash). Поле от
-   * этого меняет вид: уходит она не туда, куда обычно, и понять это нужно до
-   * нажатия, а не по появившейся в ленте карточке.
+   * A terminal command has been typed rather than a message to the agent (see feed/bash). The field
+   * changes its look because of it: this goes somewhere other than usual, and that has to be understood
+   * before the press rather than from a card appearing in the feed.
    */
   const bash = isBashDraft(tokens)
 
@@ -396,21 +410,21 @@ export const Composer = ({
     [commands, query, dismissed],
   )
 
-  // Название команды уже набрано и дальше идёт её аргумент — второй шаг
-  // подсказки, ровно как в терминале: сперва команда, потом её значение.
+  // The command's name has been typed and its argument follows - the hint's second step, exactly as in a
+  // terminal: first the command, then its value.
   const argument = useMemo(() => {
     if (dismissed || commandMatches.length > 0) return null
 
     if (command !== null) {
       const options = argumentOptions(command, models)
       const value = argumentText.trim()
-      // Пробел внутри значения означает, что аргумент уже не одно слово из
-      // списка, а свободный текст — выбирать там нечего.
+      // A space inside the value means the argument is no longer one word from a list but free text -
+      // there is nothing to choose there.
       return options && !/\s/.test(value) ? { command, query: value, options } : null
     }
 
-    return plain === null ? null : argumentQuery(plain, models)
-  }, [plain, dismissed, commandMatches, command, argumentText, models])
+    return head === null ? null : argumentQuery(head, models)
+  }, [head, dismissed, commandMatches, command, argumentText, models])
 
   const argumentMatches = useMemo(
     () => (argument ? matchArguments(argument.options, argument.query) : []),
@@ -423,25 +437,24 @@ export const Composer = ({
       : argumentMatches.map((option) => ({ ...option, group: 'built-in' as const }))
 
   /**
-   * Синтаксис аргумента статичным текстом сразу после названия команды — тот же
-   * шаг, что и argument выше, но для команд без перечислимых значений (не
-   * model/effort, у которых есть свой список вариантов): просто напоминание
-   * формата, как в терминале, а не список для выбора.
+   * The argument's syntax as static text right after the command's name - the same step as argument
+   * above, but for commands without enumerable values (not model/effort, which have lists of options of
+   * their own): simply a reminder of the format, as in a terminal, rather than a list to choose from.
    */
   const ghostCommand = useMemo(() => {
     if (dismissed || commandMatches.length > 0 || argument) return null
 
-    // Слот аргумента ещё пуст — у плашки это пустой хвост за ней, у набранного
-    // руками текста то же самое место сразу за именем команды.
+    // The argument's slot is still empty - for a chip that is the empty tail after it, for hand-typed
+    // text the same place right after the command's name.
     const name =
       command !== null
         ? (argumentText.trim() === '' ? command : null)
-        : plain === null
+        : head === null
           ? null
-          : commandNameBeforeArgument(plain)
+          : commandNameBeforeArgument(head)
 
     return name ? (commands.find((entry) => entry.id === name) ?? null) : null
-  }, [plain, dismissed, commandMatches, argument, commands, command, argumentText])
+  }, [head, dismissed, commandMatches, argument, commands, command, argumentText])
 
   const ghostHint = ghostCommand?.argumentHint || null
 
@@ -463,9 +476,9 @@ export const Composer = ({
   }, [ghostHint, tokens])
 
   /**
-   * "@" ищет файл от места курсора, а не от начала поля целиком — в отличие от
-   * слэш-команды его можно набрать посреди предложения, как в терминале. Пока
-   * активна слэш-подсказка, своей ему не бывать: два списка сразу — это шум.
+   * "@" searches for a file from the caret's place rather than from the start of the whole field -
+   * unlike a slash command it can be typed mid-sentence, as in a terminal. While the slash hint is
+   * active it gets none of its own: two lists at once are noise.
    */
   const atQuery = matches.length > 0 || dismissed ? null : (input.current ? atQueryAt(input.current) : null)
   const fileMatches = atQuery ? matchFiles(files, atQuery.query) : []
@@ -480,7 +493,7 @@ export const Composer = ({
 
   const UNDO_COALESCE_MS = 700
 
-  /** Подряд идущую печать сливаем в один шаг отмены; всё остальное — своей границей. */
+  /** Consecutive typing is merged into one undo step; everything else gets a boundary of its own. */
   const commitHistory = (before: UserToken[], boundary: boolean) => {
     const now = Date.now()
     const coalesce = !boundary && undoStack.current.length > 0 && now - lastEditAt.current < UNDO_COALESCE_MS
@@ -489,19 +502,19 @@ export const Composer = ({
     redoStack.current = []
   }
 
-  /** DOM уже наш — сообщаем наружу и запоминаем, чтобы эффект её не перестраивал. */
+  /** The DOM is already ours - we report outwards and remember it, so the effect does not rebuild it. */
   const report = (next: UserToken[], boundary = false) => {
     commitHistory(tokens, boundary)
     lastReported.current = next
     onTokensChange(next)
-    // Любая правка может увести курсор за край поля — оно ограничено по высоте
-    // и дальше прокручивается (см. scrollCaretIntoView).
+    // Any edit may take the caret past the field's edge - it is limited in height and scrolls past that
+    // (see scrollCaretIntoView).
     if (input.current) scrollCaretIntoView(input.current)
   }
 
   /**
-   * Читает поле и заодно приводит подписи картинок в соответствие их порядку:
-   * номер в плашке обязан совпадать с [Image #N], который увидит агент.
+   * Reads the field and along the way brings the images' captions into line with their order: the number
+   * in a chip has to match the [Image #N] the agent will see.
    */
   const readTokens = (root: HTMLElement): UserToken[] => {
     relabelImages(root, imageBaseCount)
@@ -509,9 +522,9 @@ export const Composer = ({
   }
 
   /**
-   * Картинки этой сессии пересчитали (ушло сообщение, разобралась очередь) —
-   * значит и подписи в поле сдвинулись. Историю отмены таким обновлением не
-   * трогаем: человек ничего не редактировал, поменялся лишь номер.
+   * This session's images have been recounted (a message went out, the queue was worked through) - which
+   * means the captions in the field have shifted too. Such an update does not touch the undo history: the
+   * person edited nothing, only a number changed.
    */
   useEffect(() => {
     const root = input.current
@@ -522,7 +535,7 @@ export const Composer = ({
     onTokensChange(next)
   }, [imageBaseCount])
 
-  /** Программная правка всего содержимого: DOM меняем сами, а не ждём эффекта. */
+  /** A programmatic edit of the whole contents: we change the DOM ourselves rather than wait for the effect. */
   const applyTokens = (next: UserToken[]) => {
     const root = input.current
     if (!root) {
@@ -532,13 +545,13 @@ export const Composer = ({
 
     clearChipSelection()
     rebuildDom(root, next)
-    // Читаем поле обратно, а не докладываем next как есть: картинок могло стать
-    // меньше (вырезали кусок вместе с одной из них), и подписи оставшихся должны
-    // сдвинуться — иначе в поле останется «Image #2», который уйдёт агенту первым.
+    // We read the field back rather than report next as it is: there may be fewer images now (a piece was
+    // cut out along with one of them), and the remaining captions have to shift - otherwise the field
+    // keeps an "Image #2" that will travel to the agent first.
     report(readTokens(root), true)
   }
 
-  /** Восстановление шагом истории — само по себе новой границей истории не является. */
+  /** Restoring a step from the history is not itself a new boundary in that history. */
   const restoreTokens = (next: UserToken[]) => {
     const root = input.current
     if (root) {
@@ -570,47 +583,58 @@ export const Composer = ({
 
     const next = readTokens(root)
 
-    // Стерев весь текст выделением или подряд идущими backspace, Chromium
-    // оставляет одинокий <br> вместо по-настоящему пустого узла — из-за него
-    // placeholder (css :empty) не появляется. Раз токенов не осталось, а узел
-    // не пуст буквально — подчищаем сами.
+    // Having wiped every character by selection or by consecutive backspaces, Chromium leaves a lone
+    // <br> instead of a genuinely empty node - because of it the placeholder (css :empty) does not
+    // appear. Since no tokens are left while the node is not literally empty, we clean up ourselves.
     if (next.length === 0 && root.childNodes.length > 0) root.innerHTML = ''
 
-    // Дописали имя команды и поставили пробел — она становится плашкой прямо на
-    // ходу, не дожидаясь выбора из подсказки.
-    const captured = captureCommand(next, commands)
+    // The command's name has been finished and a space put after it - it becomes a chip on the spot,
+    // without waiting for a choice from the hint. Only the name goes: whatever stands past the caret was
+    // written before the command and stays where it is.
+    const captured = captureCommand(next, commands, headText(root))
     if (captured) {
       applyTokens(captured)
-      placeCaretAtEnd(root)
+      // Right behind the chip and the space after it - the argument is typed there, in front of the text
+      // that was already in the field.
+      placeCaretBefore(root, 2)
+      syncHead()
       return
     }
 
     report(next)
+    // In the same batch as the tokens, so that the hint does not lag a frame behind what has been typed.
+    syncHead()
   }
 
   /**
-   * Выбор из подсказки. Сама команда становится плашкой — как файл или картинка,
-   * и по той же причине: это не набранный текст, а выбранная сущность, и
-   * случайно испортить её половинной правкой быть не должно. Аргумент за ней
-   * остаётся обычным текстом: он у каждой команды свой.
+   * A choice from the hint. The command itself becomes a chip - like a file or an image, and for the same
+   * reason: this is a chosen entity rather than typed text, and spoiling it by half an edit by accident
+   * must not be possible. The argument after it stays ordinary text: every command has its own.
    */
   const insert = (picked: CommandEntry) => {
     const chip: UserToken = { kind: 'chip', chip: { kind: 'cmd', value: argument ? argument.command : picked.id } }
 
-    // Выбрали значение аргумента — плашка команды уже стоит, дописываем значение;
-    // выбрали саму команду — за плашкой остаётся место под её аргумент.
+    // An argument's value was chosen - the command's chip already stands there, we finish the value;
+    // the command itself was chosen - a place for its argument is left after the chip.
     const tail = argument ? ` ${picked.id}` : ' '
+    const replacement: UserToken[] = [chip, { kind: 'text', value: tail }]
 
-    applyTokens([chip, { kind: 'text', value: tail }])
+    // Only what was typed up to the caret gives way to the choice: the command may have been put in
+    // front of an already written message, and that message has to survive it. There is no head to
+    // replace when the command is already a chip - then the whole of the field is its argument.
+    const next = (head === null ? null : replaceCommandHead(tokens, head, replacement)) ?? replacement
+
+    applyTokens(next)
     setDismissed(true)
-    placeCaretAtEnd(input.current)
+    if (input.current) placeCaretBefore(input.current, replacement.length)
     input.current?.focus()
+    syncHead()
   }
 
   /**
-   * Выбор файла из подсказки "@" — набранное от "@" до курсора заменяется
-   * плашкой, а не остаётся текстом рядом с ней: то же самое вложение, что и у
-   * ссылки из редактора, просто выбранное прямо в поле, а не контекстным меню.
+   * Choosing a file from the "@" hint - what was typed from the "@" up to the caret is replaced by a chip
+   * rather than left as text beside it: the very same attachment as a link from the editor, only chosen
+   * right in the field rather than through a context menu.
    */
   const insertFileReference = (path: string) => {
     const root = input.current
@@ -627,8 +651,8 @@ export const Composer = ({
     range.setStartAfter(node)
     range.collapse(true)
 
-    // Курсору есть, где печатать дальше, не слипаясь с плашкой — как и после
-    // вложения из буфера обмена.
+    // The caret has somewhere to type on without sticking to the chip - as after an attachment from the
+    // clipboard.
     const space = document.createTextNode(' ')
     range.insertNode(space)
     range.setStartAfter(space)
@@ -641,24 +665,7 @@ export const Composer = ({
     report(readTokens(root), true)
   }
 
-  /**
-   * Курсор в поле — или конец набранного, если фокус потерян и курсора
-   * по-честному нет.
-   *
-   * Конец именно набранного, а не содержимого: последним в поле может стоять
-   * перевод строки, за которым человек как раз и собирался писать дальше.
-   * endRange поставил бы вложение ЗА него, добавив пустую строку, которой в
-   * поле не было; padTrailingBreak возвращает то самое место на пустой
-   * последней строке, где стоял бы курсор.
-   */
-  const currentRange = (root: HTMLElement): Range => {
-    const selection = window.getSelection()
-    return selection && selection.rangeCount > 0 && root.contains(selection.getRangeAt(0).startContainer)
-      ? selection.getRangeAt(0)
-      : (padTrailingBreak(root) ?? endRange(root))
-  }
-
-  /** "/" от кнопки — туда же, где курсор, не стирая уже напечатанное. */
+  /** A "/" from the button goes where the caret is, without wiping what has already been typed. */
   const insertTextAtCursor = (text: string) => {
     const root = input.current
     if (!root) return
@@ -671,8 +678,8 @@ export const Composer = ({
     range.setStartAfter(node)
     range.collapse(true)
 
-    // Вставленное могло кончаться переводом строки — скопированная из терминала
-    // строка обычно им и кончается. Курсору на этой строке нужно место.
+    // What was pasted may end in a line break - a line copied from a terminal usually does. The caret
+    // needs room on that line.
     const padded = node === root.lastChild ? padTrailingBreak(root) : null
 
     const selection = window.getSelection()
@@ -683,9 +690,9 @@ export const Composer = ({
   }
 
   /**
-   * Картинка из буфера — сюда же, где стоял курсор в момент вставки, и с
-   * пробелом по каждую сторону: без него текст перед вложением и после него
-   * слипается с ним в одно нечитаемое слово, которое видит агент.
+   * An image from the clipboard goes exactly where the caret stood at the moment of the paste, and with a
+   * space on either side: without it the text before the attachment and after it sticks to it into one
+   * unreadable word, which is what the agent sees.
    */
   const insertChipAtCursor = (chip: Chip) => {
     const root = input.current
@@ -694,8 +701,8 @@ export const Composer = ({
     const range = currentRange(root)
     range.deleteContents()
 
-    // Перед вложением — только если там уже стоит непробельный символ: пустое
-    // начало поля не нуждается в пробеле перед собой, добавлять там нечего.
+    // Before the attachment only if a non-space character already stands there: the field's empty start
+    // needs no space in front of it, there is nothing to add.
     if (needsLeadingSpace(charBefore(range))) {
       const space = document.createTextNode(' ')
       range.insertNode(space)
@@ -708,8 +715,8 @@ export const Composer = ({
     range.setStartAfter(node)
     range.collapse(true)
 
-    // После — всегда: курсору нужно на что-то встать, чтобы печатать дальше,
-    // не слипаясь с чипом, даже если картинка легла в самый конец поля.
+    // After it always: the caret needs something to stand on in order to type on without sticking to the
+    // chip, even if the image landed at the very end of the field.
     if (needsTrailingSpace(charAfter(range))) {
       const space = document.createTextNode(' ')
       range.insertNode(space)
@@ -725,12 +732,11 @@ export const Composer = ({
   }
 
   /**
-   * Возвращает в поле последовательность, скопированную из него же.
+   * Return into the field a sequence copied out of it.
    *
-   * Плашки пересобираем настоящими узлами, а не разметкой из буфера: связь
-   * «узел — вложение» живёт по идентичности узла, и у клона из буфера её нет —
-   * вставленная как разметка плашка выглядела бы как надо, но для отправки не
-   * значила бы ничего.
+   * The chips are rebuilt as genuine nodes rather than from the clipboard's markup: the "node to
+   * attachment" link lives by the node's identity, and a clone from the clipboard has none - a chip
+   * pasted as markup would look right but would mean nothing when sending.
    */
   const insertTokensAtCursor = (next: UserToken[]) => {
     const root = input.current
@@ -756,8 +762,8 @@ export const Composer = ({
       range.collapse(true)
     }
 
-    // Вернулось в конец поля и кончается переносом — курсору нужна строка, на
-    // которой он встанет (см. padTrailingBreak).
+    // It came back at the field's end and ends in a break - the caret needs a line to stand on (see
+    // padTrailingBreak).
     const padded = tail && tail === root.lastChild ? padTrailingBreak(root) : null
 
     const selection = window.getSelection()
@@ -768,14 +774,13 @@ export const Composer = ({
   }
 
   /**
-   * Копирование и вырезание из поля.
+   * Copying and cutting out of the field.
    *
-   * Отдать это браузеру нельзя: вложения тут не текст, а плашки, и он положил бы
-   * в буфер их видимую надпись вместе со значком и крестиком кнопки удаления —
-   * ровно ту бессмысленную строку, которая потом и вставлялась обратно вместо
-   * картинки. Кладём сами: читаемый текст — как его увидит агент, и рядом полное
-   * описание вложений с байтами, по которому плашка восстанавливается живой
-   * (см. feed/tokens).
+   * Handing this to the browser is not an option: the attachments here are chips rather than text, and it
+   * would put their visible caption into the clipboard along with the icon and the delete button's cross -
+   * precisely the meaningless string that then got pasted back in place of the image. We put it there
+   * ourselves: readable text as the agent will see it, and beside it a full description of the attachments
+   * with their bytes, out of which a chip is restored alive (see feed/tokens).
    */
   const copySelection = (event: ClipboardEvent<HTMLDivElement>, cut: boolean) => {
     const root = input.current
@@ -792,10 +797,9 @@ export const Composer = ({
     event.clipboardData.setData('text/plain', tokensText(picked))
     event.clipboardData.setData('text/html', clipboardHtml(picked))
 
-    // Вырезаем не через deleteContents: выделение могло начаться или кончиться
-    // внутри плашки, и браузер выпотрошил бы её, оставив половину узлов. Что
-    // остаётся — уже посчитано, поэтому просто пересобираем поле из остатка и
-    // возвращаем курсор туда, где резали.
+    // We cut not through deleteContents: the selection may have begun or ended inside a chip, and the
+    // browser would gut it, leaving half of its nodes behind. What remains has already been counted, so we
+    // simply rebuild the field out of the remainder and return the caret to where the cut was made.
     if (cut) {
       applyTokens(rest)
       placeCaretBefore(root, caret)
@@ -803,18 +807,17 @@ export const Composer = ({
   }
 
   /**
-   * Скриншот из буфера обмена вставляем как настоящую картинку прямо в позицию
-   * курсора, а не как её имя файла текстом и не в конец: агент должен увидеть
-   * вложение там же, где оно стояло в предложении, а не оторванным от контекста.
+   * A screenshot from the clipboard is pasted as a genuine image right at the caret's position rather than
+   * as its file name in text and not at the end: the agent has to see the attachment where it stood in the
+   * sentence rather than torn out of its context.
    *
-   * Обычный текст тоже перехватываем: дефолтная вставка в contentEditable тащит
-   * с собой чужую разметку. execCommand('insertText') с этим справляется не
-   * всегда — при вставке НЕСКОЛЬКИХ строк браузер может завернуть вторую и
-   * далее в свои <div>, а не оставить их символом переноса в одном текстовом
-   * узле. Разбор DOM обратно в токены понимает только простой текст и наши же
-   * чипы — такой <div> он тихо теряет целиком, и сообщение обрезается ровно по
-   * первой строке. Вставляем текстовым узлом напрямую — тем же путём, что и
-   * кнопка «/» — там такой развилки у браузера нет в принципе.
+   * Ordinary text is intercepted too: the default paste into a contentEditable drags someone else's markup
+   * along with it. execCommand('insertText') does not always cope with that - when pasting SEVERAL lines
+   * the browser may wrap the second and the rest into <div>s of its own instead of leaving them as a break
+   * character inside one text node. Parsing the DOM back into tokens understands only plain text and our
+   * own chips - such a <div> it silently loses whole, and the message is cut off exactly at the first
+   * line. We insert a text node directly - by the same route as the "/" button - where the browser has no
+   * such fork at all.
    */
   const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
     const items = Array.from(event.clipboardData?.items ?? [])
@@ -822,9 +825,9 @@ export const Composer = ({
 
     event.preventDefault()
 
-    // Своё же содержимое, скопированное из поля, возвращаем живыми плашками — с
-    // байтами картинок, а не надписью с них. Проверяем первым: скопированная
-    // плашка картинкой в буфере не лежит, и обычные ветки её не узнают.
+    // Our own contents, copied out of the field, come back as live chips - with the images' bytes rather
+    // than the caption off them. Checked first: a copied chip does not lie in the clipboard as an image,
+    // and the ordinary branches would not recognise it.
     const restored = clipboardTokens(event.clipboardData?.getData('text/html') ?? '')
     if (restored) {
       insertTokensAtCursor(restored)
@@ -835,11 +838,10 @@ export const Composer = ({
       const text = event.clipboardData?.getData('text/plain') ?? ''
       if (!text) return
 
-      // Многострочное — плашкой, как файл или картинка: вставленная простыня
-      // выталкивала из поля всё остальное, и своё же сообщение приходилось
-      // прокручивать, чтобы увидеть, что вокруг неё написано. Однострочное
-      // остаётся текстом: короткую вставку правят прямо в поле, а плашка это
-      // как раз запрещает.
+      // Multi-line goes in as a chip, like a file or an image: a pasted wall of text pushed everything
+      // else out of the field, and one's own message had to be scrolled to see what was written around
+      // it. Single-line stays text: a short paste is edited right in the field, and a chip is precisely
+      // what forbids that.
       if (isMultiline(text)) insertChipAtCursor({ kind: 'paste', value: 'pasted', text })
       else insertTextAtCursor(text)
       return
@@ -854,8 +856,8 @@ export const Composer = ({
         if (typeof reader.result !== 'string') return
 
         const root = input.current
-        // Номер по факту картинок, которые уже реально стоят в поле — а не по
-        // тому, сколько раз вставляли: одну и ту же могли уже удалить.
+        // The number goes by the images that genuinely stand in the field rather than by how many times
+        // a paste happened: one of them may have been deleted already.
         const count = (root ? extractTokens(root) : []).filter(
           (token) => token.kind === 'chip' && token.chip.kind === 'img' && Boolean(token.chip.data),
         ).length
@@ -867,19 +869,18 @@ export const Composer = ({
   }
 
   /**
-   * Вставка от панели — ссылка из редактора, файл из диалога, брошенная папка.
-   * Живёт в ссылке, а не в пропе: подписка на сообщения оболочки ставится один
-   * раз на всю жизнь панели и свежую функцию каждого рендера всё равно бы не
-   * увидела.
+   * A paste from the panel - a link from the editor, a file from a dialog, a dropped folder. It lives in a
+   * ref rather than in a prop: the subscription to the shell's messages is set once for the panel's whole
+   * life and would not see a fresh function from every render anyway.
    */
   const insertFromShell = useRef<(token: UserToken) => void>(() => {})
   insertFromShell.current = (token: UserToken) => {
     if (token.kind === 'chip') insertChipAtCursor(token.chip)
     else insertTextAtCursor(token.value)
 
-    // Фокус — сразу после вставки, а не до: курсор уже стоит за плашкой, и
-    // печатать можно не целясь мышью в поле. Раньше — сбило бы место вставки:
-    // фокус на пустом поле ставит курсор в его начало.
+    // The focus goes right after the paste rather than before it: the caret already stands past the chip
+    // and one can type without aiming at the field with a mouse. Earlier would knock the paste's place
+    // off: focusing an empty field puts the caret at its start.
     input.current?.focus()
   }
 
@@ -889,9 +890,9 @@ export const Composer = ({
   }, [registerInsert])
 
   /**
-   * Файл или папку, брошенные в поле, забираем себе: без этого встроенный
-   * браузер попросту открыл бы файл вместо страницы панели. Само содержимое
-   * нам не нужно — только путь, по нему оболочка и соберёт плашку.
+   * A file or a folder dropped into the field we take for ourselves: without that the embedded browser
+   * would simply open the file in place of the panel's page. The contents themselves we do not need - only
+   * the path, out of which the shell assembles the chip.
    */
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     if (!hasFiles(event.dataTransfer)) return
@@ -910,19 +911,18 @@ export const Composer = ({
       : 'Ask, or describe a change…'
 
   /**
-   * Курсор упёрся в плашку и остановился на ней, не перешагнув: дальше по ней
-   * работают backspace (убрать) и та же стрелка (пройти мимо).
+   * The caret has run into a chip and stopped on it rather than stepped over: from there backspace
+   * (remove) and the same arrow (pass by) work on it.
    *
-   * Отдельной веткой до всего остального в обработчике: пока плашка выделена,
-   * клавиши принадлежат ей — ровно как список подсказок забирает себе стрелки,
-   * пока открыт.
+   * A branch of its own before everything else in the handler: while a chip is highlighted the keys belong
+   * to it - exactly as the hint list takes the arrows for itself while it is open.
    */
   const handleChipKey = (event: KeyboardEvent<HTMLDivElement>): boolean => {
     const root = input.current
     if (!root) return false
 
-    // Сам по себе зажатый модификатор ещё ничего не делает — снимать из-за него
-    // выделение значило бы терять его от одного намерения набрать заглавную.
+    // A held modifier by itself does nothing yet - dropping the highlight because of it would mean losing
+    // it from the mere intent to type a capital letter.
     if (MODIFIER_KEYS.includes(event.key)) return false
 
     if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
@@ -935,15 +935,12 @@ export const Composer = ({
     if (selected) {
       if (event.key === 'Backspace' || event.key === 'Delete') {
         event.preventDefault()
-        // Курсор на место убранной плашки: продолжают печатать там же, где
-        // только что стёрли, а не в конце поля.
+        // The caret goes to the removed chip's place: typing continues right where the deletion happened
+        // rather than at the field's end.
         placeCaretBeside(selected, 'before')
         clearChipSelection()
-        // Тем же путём, что и крестик на плашке: правка поля обязана пройти
-        // через handleInput, иначе мимо пройдут и его доделки — подчистка
-        // одинокого <br> (без неё не появляется подсказка в пустом поле), и
-        // превращение дописанного имени команды в плашку.
-        onChipRemoved(root, selected)
+        // By the same route as the chip's own cross - literally the same one (see removeChip).
+        removeChip(root, selected)
         return true
       }
 
@@ -954,8 +951,8 @@ export const Composer = ({
         return true
       }
 
-      // Всё прочее (печать, Enter, Escape) выделение просто снимает и работает
-      // как обычно: удерживать его после того, как человек занялся другим, незачем.
+      // Everything else (typing, Enter, Escape) simply drops the highlight and works as usual: holding it
+      // after the person has moved on to something else serves nothing.
       clearChipSelection()
       return false
     }
@@ -973,11 +970,10 @@ export const Composer = ({
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (handleChipKey(event)) return
 
-    // JCEF не пробрасывает нативные для macOS сочетания «по строке» —
-    // Cmd+Backspace и Cmd+стрелка молчат в contentEditable, хотя Option+стрелка
-    // (по слову) работает штатно. Реализуем их сами через Selection.modify: это
-    // чисто DOM API в обход тех самых нативных key bindings, которые здесь
-    // ненадёжны.
+    // JCEF does not forward macOS's native "by line" combinations - Cmd+Backspace and Cmd+arrow stay
+    // silent in a contentEditable, although Option+arrow (by word) works as it should. We implement them
+    // ourselves through Selection.modify: that is a pure DOM API bypassing the very native key bindings
+    // that are unreliable here.
     if (event.metaKey && (event.key === 'Backspace' || event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
       event.preventDefault()
       const selection = window.getSelection()
@@ -994,11 +990,10 @@ export const Composer = ({
       return
     }
 
-    // Своя история отмены — родной Cmd+Z/Ctrl+Z браузера про наши чипы ничего
-    // не знает и восстановит их некорректно, поэтому перехватываем полностью.
-    // Ctrl нужен и на Mac: Chromium внутри JCEF откликается на Ctrl+Z своим
-    // отменённым undo независимо от хостовой ОС, и без перехвата это
-    // выглядело бы как случайный «чужой» undo поверх поля ввода.
+    // An undo history of our own - the browser's native Cmd+Z/Ctrl+Z knows nothing about our chips and
+    // would restore them wrongly, so we intercept it entirely. Ctrl is needed on a Mac too: Chromium
+    // inside JCEF answers Ctrl+Z with an undo of its own regardless of the host OS, and without the
+    // interception that would look like a stray "someone else's" undo over the input field.
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault()
       if (event.shiftKey) redo()
@@ -1012,7 +1007,7 @@ export const Composer = ({
       return
     }
 
-    // Пока открыт список команд или файлов, стрелки и ввод принадлежат ему.
+    // While the list of commands or files is open, the arrows and Enter belong to it.
     if (suggesting) {
       if (event.key === 'ArrowDown') {
         event.preventDefault()
@@ -1026,10 +1021,10 @@ export const Composer = ({
         return
       }
 
-      // Команда или аргумент уже набраны целиком — второй раз подставлять
-      // незачем, ввод должен отправлять. Но не голое имя команды с аргументом:
-      // без значения её отправлять нельзя, Enter обязан довести до подсказки
-      // по самому аргументу. У файла такого случая нет — выбор всегда явный.
+      // The command or the argument has already been typed in full - substituting a second time serves
+      // nothing, Enter has to send. But not a bare command name that takes an argument: sending it
+      // without a value is not allowed, and Enter has to bring it as far as the hint over the argument
+      // itself. A file has no such case - the choice there is always explicit.
       const exact = isFileSuggest
         ? false
         : argument
@@ -1048,17 +1043,17 @@ export const Composer = ({
 
       if (event.key === 'Escape') {
         event.preventDefault()
-        // Подсказку закрыли — этого достаточно: не даём Escape провалиться
-        // выше и заодно ещё и остановить агента (см. глобальный обработчик в App).
+        // The hint has been closed - that is enough: we do not let the Escape fall through higher and
+        // stop the agent along the way (see the global handler in App).
         event.stopPropagation()
         setDismissed(true)
         return
       }
     }
 
-    // Стрелки вверх/вниз — история отправленных сообщений, как в терминале.
-    // Вверх работает, только если поле пустое или уже листаем историю: иначе
-    // это просто движение курсора по многострочному черновику, не листание.
+    // The up/down arrows walk the history of sent messages, as in a terminal. Up works only if the field
+    // is empty or the history is already being walked: otherwise this is simply the caret moving over a
+    // multi-line draft rather than walking anything.
     if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
       const browsing = historyIndex.current !== null
       const empty = tokens.length === 0
@@ -1087,12 +1082,12 @@ export const Composer = ({
       }
     }
 
-    // isComposing: подтверждение варианта у IME тоже приходит Enter'ом — это
-    // не отправка, а часть набора текста.
+    // isComposing: confirming a candidate in an IME also arrives as an Enter - that is part of typing
+    // rather than a send.
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault()
-      // Enter — это кнопка Send, поэтому и молчит он ровно тогда же, когда она
-      // погашена: отправлять нечего.
+      // Enter is the Send button, so it stays silent at exactly the times the button is dimmed: there is
+      // nothing to send.
       if (!canSubmit) return
       if (tokens.length > 0) sentHistory.current.push(tokens)
       historyIndex.current = null
@@ -1103,28 +1098,26 @@ export const Composer = ({
 
     if (event.key === 'Enter' && event.shiftKey) {
       event.preventDefault()
-      // Перенос строки — insertLineBreak, родная команда браузера ровно для
-      // этого. Соседние варианты не годятся: insertText с '\n' расщепляет поле
-      // на отдельный <div> под вторую строку (проверено живьём), а свой
-      // текстовый узел через Range теряет курсор.
+      // A line break is insertLineBreak, the browser's own command for exactly this. The neighbouring
+      // options will not do: insertText with '\n' splits the field into a separate <div> for the second
+      // line (checked live), and a text node of our own through a Range loses the caret.
       //
-      // Курсор терялся так: перевод строки в самом конце содержимого браузер не
-      // рисует — по правилам переноса пустая последняя строка не занимает места,
-      // — и курсору на ней встать негде. Он схлопывался в конец предыдущей
-      // строки, и следующая буква печаталась ПЕРЕД переносом: первое нажатие
-      // выглядело как несработавшее, второе будто бы «наконец переносило».
+      // The caret got lost like this: a line break at the very end of the contents the browser does not
+      // draw - by the rules of wrapping an empty last line takes no space - and the caret has nowhere to
+      // stand on it. It collapsed into the end of the previous line and the next letter was typed BEFORE
+      // the break: the first press looked as though it had not worked, the second as though it had
+      // "finally broken the line".
       //
-      // insertLineBreak знает про этот случай и держит в конце поля запасной
-      // перевод строки, пока на пустой последней строке стоит курсор; первая же
-      // напечатанная буква его забирает. Дальше поле остаётся плоским текстом,
-      // каким его и читает разбор токенов.
+      // insertLineBreak knows about that case and keeps a spare line break at the field's end while the
+      // caret stands on the empty last line; the first typed letter takes it. After that the field stays
+      // flat text, which is how the token parsing reads it.
       document.execCommand('insertLineBreak')
     }
   }
 
-  /* Одна кнопка на все вложения: файл, картинка и папка выбираются одним
-     и тем же диалогом, а разницу видно по самому пути. Подсказка разворачивается
-     вверх: ряд стоит у нижнего края панели, и вниз ей некуда. */
+  /* One button for every attachment: a file, an image and a folder are chosen through one and the same
+     dialog, and the difference is visible from the path itself. The tooltip unfolds upwards: the row
+     stands at the panel's bottom edge, and downwards there is nowhere for it to go. */
   const attachButton = (
     <button
       type="button"
@@ -1138,11 +1131,11 @@ export const Composer = ({
     </button>
   )
 
-  /* Кнопка не открывает каталог, а ставит слэш в поле: дальше команду
-     набирают, и список сужается сам. Пока в поле уже что-то есть, слэш
-     посреди текста не запускает подсказку — кнопка становится disabled, чтобы
-     не звать на бесполезное нажатие. */
-  const slashDisabled = tokens.length > 0
+  /* The button does not open a catalogue but puts a slash into the field: the command is typed on from
+     there and the list narrows by itself. A slash mid-text does not start the hint - so with something
+     already in the field the button is disabled, unless the caret stands at the very start: a command in
+     front of a written message is a command just the same. */
+  const slashDisabled = tokens.length > 0 && head !== ''
   const slashButton = (
     <button
       type="button"
@@ -1151,6 +1144,9 @@ export const Composer = ({
       data-tooltip-at="top"
       aria-label="Slash commands"
       disabled={slashDisabled}
+      /* The press must not take the focus away from the field: the slash goes where the caret stands,
+         and a caret that has left the field would drop it at the end instead. */
+      onMouseDown={(event) => event.preventDefault()}
       onClick={() => {
         insertTextAtCursor('/')
         input.current?.focus()
@@ -1166,8 +1162,8 @@ export const Composer = ({
     </button>
   ) : null
 
-  // Обычный Stop честно ждёт подтверждения. Если оно не пришло дольше
-  // разумного — единственный работающий выход отсюда - убить процесс.
+  // An ordinary Stop honestly waits for a confirmation. If it has not come for longer than is reasonable,
+  // the only working way out of here is to kill the process.
   const forceStopButton = stopStalled ? (
     <button
       type="button"
@@ -1180,13 +1176,12 @@ export const Composer = ({
     </button>
   ) : null
 
-  /* Две отдельные кнопки, а не одна с двумя лицами: пока агент занят, у
-     сообщения есть выбор — дойти до него сейчас, посреди работы, или
-     дождаться своей очереди. Send работает всегда, Queue осмысленна только
-     при занятом агенте: свободному ждать нечего.
+  /* Two separate buttons rather than one with two faces: while the agent is busy, a message has a choice -
+     to reach it now, mid-work, or to wait its turn. Send always works, Queue is meaningful only with a busy
+     agent: a free one has nothing to wait for.
 
-     У команды терминала очереди не бывает вовсе: её выполняет сама панель, и
-     ждать освобождения агента ей незачем. */
+     A terminal command has no queue at all: the panel runs it itself and has no reason to wait for the
+     agent to come free. */
   const queueButton = bash ? null : (
     <button
       type="button"
@@ -1206,7 +1201,7 @@ export const Composer = ({
       className={`${s.send} ${bash ? s.sendRun : ''}`}
       onClick={onSubmit}
       disabled={!canSubmit}
-      data-tooltip={bash ? 'Run in your shell — Claude sees the output with your next message' : undefined}
+      data-tooltip={bash ? 'Run in your shell - Claude sees the output with your next message' : undefined}
       data-tooltip-at="top"
     >
       {bash ? 'Run' : 'Send'}
@@ -1214,31 +1209,27 @@ export const Composer = ({
   )
 
   /**
-   * Ряд кнопок под полем: расход, вложения, команды, отправка. Один и тот же
-   * набор детей и в обычной раскладке (своя строка `.tools` внутри box), и в
-   * compact (вторая строка колонки справа от box, см. ниже) — поведение кнопок
-   * раскладке не подчиняется, меняется лишь то, куда ряд встаёт и в каком
-   * порядке он их читает. В left/right расход стоит отдельной строкой над
-   * этим рядом, в боковой рельсе (см. .railMeters ниже) — сюда бы он полез
-   * той же кучей, что толкает Send/Queue при появлении Stop.
+   * The row of buttons under the field: usage, attachments, commands, sending. One and the same set of
+   * children both in the ordinary layout (a `.tools` row of its own inside box) and in compact (the second
+   * row of the column to the right of box, see below) - the buttons' behaviour does not obey the layout,
+   * only where the row stands and in which order it reads them changes. In left/right the usage stands in
+   * a row of its own above this one, in the side rail (see .railMeters below) - here it would climb in as
+   * the same heap that pushes Send/Queue when a Stop appears.
    *
-   * Порядок различается перестановкой самих детей в разметке, а не CSS
-   * `order`: клавиатурная табуляция идёт по порядку в DOM и не следит за
-   * визуальным `order`, так что перестановка через CSS расходилась бы с тем,
-   * что видно на экране.
+   * The order differs by rearranging the children in the markup rather than through the CSS `order`:
+   * keyboard tabbing goes by the DOM's order and does not follow the visual `order`, so a rearrangement
+   * through CSS would part ways with what is visible on the screen.
    */
   const toolsRow = compact ? (
     <>
-      {/* В compact кнопки — самое важное на строке (расход уже виден строкой
-          выше, в кольцах), поэтому Send и Queue идут первыми, а расход —
-          последним, за иконками. Send и Queue — обычные действия, поэтому
-          стоят первыми; Stop и Force stop прерывают агента, поэтому едут
-          следом за ними, а не разрывают пару Send/Queue. .spacer перед
-          расходом прижимает кнопки к левому краю: без него они висят в общей
-          группе с расходом, которую .compactToolsRow (justify-content:
-          flex-end) целиком гонит к правому краю, — и в первый миг после
-          старта плагина, пока расход ещё пустой и узкий, кнопки едут вправо
-          вместе с ним. */}
+      {/* In compact the buttons are the most important thing on the row (the usage is already visible a
+          row above, in the rings), so Send and Queue come first and the usage last, after the icons. Send
+          and Queue are ordinary actions, so they stand first; Stop and Force stop interrupt the agent, so
+          they ride behind them rather than break the Send/Queue pair apart. The .spacer before the usage
+          presses the buttons to the left edge: without it they hang in a shared group with the usage,
+          which .compactToolsRow (justify-content: flex-end) drives whole to the right edge - and in the
+          first instant after the plugin starts, while the usage is still empty and narrow, the buttons
+          ride rightwards along with it. */}
       {sendButton}
       {queueButton}
       {stopButton}
@@ -1259,9 +1250,9 @@ export const Composer = ({
     </>
   ) : (
     <>
-      {/* Расход — слева, на месте, где раньше стояли кнопки вложения и команд:
-          сюда смотрят, решая, что писать дальше, и цифры должны быть под
-          рукой, а не строкой ниже. Сами кнопки уехали вправо, к Send. */}
+      {/* The usage goes on the left, in the place where the attachment and command buttons used to stand:
+          this is where one looks while deciding what to write next, and the numbers have to be at hand
+          rather than a row below. The buttons themselves have moved right, over to Send. */}
       {meters}
       <div className={s.spacer} />
       {attachButton}
@@ -1295,12 +1286,11 @@ export const Composer = ({
       onFocus={() => setFocused(true)}
       onBlur={() => {
         setFocused(false)
-        // Подсветка обещает, что следующий backspace уберёт эту плашку, —
-        // а с ушедшим из поля фокусом она уже ничего не обещает.
+        // The highlight promises that the next backspace will remove this chip - and with the focus gone
+        // from the field it promises nothing any more.
         clearChipSelection()
       }}
-      // Курсор поставили мышью — с плашкой, до которой дошли стрелками,
-      // это никак не связано.
+      // The caret was placed with a mouse - that has nothing to do with the chip the arrows reached.
       onMouseDown={clearChipSelection}
       onPaste={handlePaste}
       onCopy={(event) => copySelection(event, false)}
@@ -1349,10 +1339,9 @@ export const Composer = ({
           </div>
 
           {/*
-           * MODEL/EFFORT/MODE и кнопки — раньше в отдельной строке статуса под
-           * полем (см. StatusBar), но у compact своей строки статуса нет: обе
-           * строки переехали сюда, в колонку рядом с полем, чтобы под ленту
-           * осталось как можно больше высоты.
+           * MODEL/EFFORT/MODE and the buttons used to live in a separate status row under the field (see
+           * StatusBar), but compact has no status row of its own: both rows moved here, into the column
+           * beside the field, so that as much height as possible is left for the feed.
            */}
           <div className={s.compactControls}>
             <div className={s.compactSelectors}>
@@ -1400,12 +1389,11 @@ export const Composer = ({
         </div>
 
         {/*
-         * MODEL/EFFORT/MODE и кнопки — своей строки статуса под полем в
-         * left/right нет: через портал уходят в боковую рельсу на всю высоту
-         * панели (см. railContainer и App.tsx). Состояние и обработчики
-         * остаются здесь, в композере, разметка лишь рисуется в другом месте
-         * DOM. Пока узел ещё не примонтирован (первый рендер), не рисуем
-         * вовсе — идти в portal(null-контейнер) React не даст.
+         * MODEL/EFFORT/MODE and the buttons: left/right has no status row of its own under the field -
+         * through a portal they travel into the side rail spanning the panel's full height (see
+         * railContainer and App.tsx). The state and the handlers stay here, in the composer, only the
+         * markup is drawn elsewhere in the DOM. While the node is not mounted yet (the first render) we
+         * draw nothing at all - React will not let anyone into a portal with a null container.
          */}
         {railContainer
           ? createPortal(
@@ -1420,9 +1408,9 @@ export const Composer = ({
                   />
                 </div>
 
-                {/* Расход — сразу под селекторами, своей строкой: ни он от
-                    появления Stop/Queue ниже, ни они от роста колец расхода
-                    после того, как придут данные, теперь не двигаются. */}
+                {/* The usage sits right under the selectors, in a row of its own: neither does it move
+                    when a Stop/Queue appears below, nor do they when the usage rings grow after the data
+                    arrives. */}
                 <div className={s.railMeters}>{meters}</div>
 
                 <div className={layout === 'left' ? `${s.railToolsRow} ${s.railToolsRowLeft}` : s.railToolsRow}>
@@ -1445,14 +1433,14 @@ export const Composer = ({
         ref={box}
         onDragOver={(event) => {
           if (!hasFiles(event.dataTransfer)) return
-          // Без preventDefault браузер считает, что бросать сюда нельзя, и до
-          // onDrop дело не доходит вовсе.
+          // Without preventDefault the browser decides that dropping here is not allowed, and it never
+          // gets as far as onDrop.
           event.preventDefault()
           event.dataTransfer.dropEffect = 'copy'
           setDropping(true)
         }}
-        // Переход между детьми поля браузер тоже считает уходом — гасим подсветку
-        // только когда курсор действительно покинул рамку.
+        // A move between the field's children the browser counts as a leave too - we dim the highlight
+        // only when the cursor has genuinely left the frame.
         onDragLeave={(event) => {
           if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
           setDropping(false)
@@ -1467,591 +1455,4 @@ export const Composer = ({
       </div>
     </div>
   )
-}
-
-// --- Перетаскивание файлов --------------------------------------------------
-
-/**
- * Тащат файл, а не кусок текста. Проверяем по типам переноса, а не по списку
- * файлов: во время перетаскивания браузер прячет сами файлы (их видно только в
- * момент броска), и списка тут ещё нет ни при каком раскладе.
- */
-const hasFiles = (transfer: DataTransfer | null): boolean =>
-  Array.from(transfer?.types ?? []).some((type) => type === 'Files' || type === 'text/uri-list')
-
-/** file:///путь → обычный путь; всё, что не путь на диске, отбрасываем. */
-const filePath = (value: string): string | null => {
-  if (value.startsWith('file://')) {
-    try {
-      return decodeURIComponent(new URL(value).pathname) || null
-    } catch {
-      return null
-    }
-  }
-
-  return value.startsWith('/') ? value : null
-}
-
-/**
- * Пути брошенного: их кладёт и системный проводник, и дерево проекта IDE —
- * списком URI, по одному на строку. Строки с решёткой в этом формате
- * комментарии, а не адреса.
- */
-const droppedPaths = (transfer: DataTransfer | null): string[] => {
-  if (!transfer) return []
-
-  const list = transfer.getData('text/uri-list') || transfer.getData('text/plain')
-
-  return list
-    .split(/[\r\n]+/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith('#'))
-    .map(filePath)
-    .filter((path): path is string => path !== null)
-}
-
-// --- DOM поля ввода: текст и вложения вперемешку, как одна лента символов ---
-
-/**
- * Экранные координаты курсора относительно origin — чтобы напечатать статичный
- * хинт аргумента ровно там же, где стоял бы следующий символ, не трогая сам DOM
- * поля: хинт наложенный слой, а не часть содержимого, и в токены не попадает.
- */
-const caretRect = (root: HTMLElement, origin: HTMLElement): { left: number; top: number; height: number } | null => {
-  const selection = window.getSelection()
-  if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) return null
-
-  const range = selection.getRangeAt(0)
-  if (!root.contains(range.startContainer)) return null
-
-  const rect = range.getBoundingClientRect()
-  // Пустой прямоугольник в (0,0) — диапазон не смог себя измерить (редкая
-  // граница между узлами); лучше промолчать, чем поставить хинт в угол поля.
-  if (rect.width === 0 && rect.height === 0 && rect.top === 0 && rect.left === 0) return null
-
-  const originRect = origin.getBoundingClientRect()
-  return { left: rect.left - originRect.left, top: rect.top - originRect.top, height: rect.height || 18 }
-}
-
-/**
- * Высота непрозрачной подложки под полоской контекста (см. .box::before в
- * стилях): верхние пиксели поля закрыты ею, и курсор, уехавший туда, человек
- * всё равно не увидит.
- */
-const FIELD_TOP_INSET_PX = 20
-
-/** Небольшой запас, чтобы строка с курсором не липла вплотную к краю поля. */
-const CARET_MARGIN_PX = 4
-
-/**
- * Держит курсор в поле зрения.
- *
- * Поле ограничено по высоте и дальше прокручивается внутри себя, а сам браузер
- * доводит до курсора не всегда: перенос строки в конце длинного сообщения
- * (Shift+Enter) оставлял новую пустую строку за нижним краем — печатать
- * приходилось вслепую, пока не прокрутишь поле рукой.
- */
-const scrollCaretIntoView = (root: HTMLElement) => {
-  const selection = window.getSelection()
-  if (!selection || selection.rangeCount === 0) return
-
-  const range = selection.getRangeAt(0)
-  if (!root.contains(range.startContainer)) return
-
-  const caret = range.getBoundingClientRect()
-  const field = root.getBoundingClientRect()
-
-  // Пустой прямоугольник — диапазон не сумел себя измерить (так бывает ровно на
-  // той самой пустой последней строке). В этот момент курсор всегда в конце
-  // содержимого, поэтому просто доводим поле до низа.
-  if (caret.height === 0 && caret.top === 0) {
-    root.scrollTop = root.scrollHeight
-    return
-  }
-
-  const below = caret.bottom - field.bottom
-  if (below > 0) {
-    root.scrollTop += below + CARET_MARGIN_PX
-    return
-  }
-
-  const above = field.top + FIELD_TOP_INSET_PX - caret.top
-  if (above > 0) root.scrollTop -= above + CARET_MARGIN_PX
-}
-
-/** Пустой диапазон в самом конце содержимого — запасной вариант, если курсора нет. */
-const endRange = (root: HTMLElement): Range => {
-  const range = document.createRange()
-  range.selectNodeContents(root)
-  range.collapse(false)
-  return range
-}
-
-/**
- * Даёт курсору место на пустой последней строке — и возвращает его туда.
- *
- * Перевод строки в самом конце поля браузер не рисует: пустая последняя строка
- * не занимает места, и встать на неё курсору негде — он схлопывается в конец
- * предыдущей, а следующий символ печатается ПЕРЕД переносом. Поэтому за таким
- * переносом держим ещё один, запасной: он и даёт ту самую строку. Ровно так же
- * поступает сам браузер, когда перенос делает insertLineBreak (Shift+Enter).
- *
- * Запасной перенос — часть разметки поля, а не сообщения: в отправленном тексте
- * его нет, пустой хвост снимает trimTrailingSpace.
- *
- * Возвращает курсор перед запасным переносом — или ничего, если поле кончается
- * не переносом и подстраховывать нечего.
- */
-/** Кончается ли узел переводом строки — текстовый; у плашки такого хвоста быть не может. */
-const endsWithBreak = (node: ChildNode | null): boolean =>
-  node?.nodeType === Node.TEXT_NODE && (node.textContent ?? '').endsWith('\n')
-
-const padTrailingBreak = (root: HTMLElement): Range | null => {
-  const last = root.lastChild
-  if (!last || last.nodeType !== Node.TEXT_NODE) return null
-
-  const value = last.textContent ?? ''
-  if (!value.endsWith('\n')) return null
-
-  // Запасной перевод строки может уже стоять — например, его только что поставил
-  // сам браузер по Shift+Enter. Второй раз добавлять его нельзя: каждый вызов
-  // отодвигал бы курсор ещё на строку вниз, и вложение вставало бы не на пустую
-  // строку под текстом, а через одну от неё. Пара переводов может лежать и в
-  // двух соседних узлах: браузер дробит текст поля как ему удобно.
-  const padded = value.endsWith('\n\n') || (value === '\n' && endsWithBreak(last.previousSibling))
-  if (!padded) last.textContent = `${value}\n`
-
-  const range = document.createRange()
-  range.setStart(last, padded ? value.length - 1 : value.length)
-  range.collapse(true)
-  return range
-}
-
-const placeCaretAtEnd = (root: HTMLElement | null) => {
-  if (!root) return
-  const selection = window.getSelection()
-  selection?.removeAllRanges()
-  selection?.addRange(padTrailingBreak(root) ?? endRange(root))
-}
-
-/** Курсор вплотную к плашке — с той стороны, куда шли стрелкой. */
-const placeCaretBeside = (node: HTMLElement, side: 'before' | 'after') => {
-  const range = document.createRange()
-  if (side === 'before') range.setStartBefore(node)
-  else range.setStartAfter(node)
-  range.collapse(true)
-
-  const selection = window.getSelection()
-  selection?.removeAllRanges()
-  selection?.addRange(range)
-}
-
-/** Плашка это или обычный узел: свои узнаём по той же таблице, что и разбор поля. */
-const chipNodeOf = (node: Node | null | undefined): HTMLElement | null =>
-  node instanceof HTMLElement && chipByNode.has(node) ? node : null
-
-/**
- * Плашка, в которую курсор упрётся следующим шагом стрелки, — или ничего, если
- * с этой стороны от него обычный символ.
- *
- * Проверяем именно край: посреди слова слева от курсора буква, а не вложение,
- * и останавливать движение там не за что.
- */
-const chipBesideCaret = (root: HTMLElement, direction: 'backward' | 'forward'): HTMLElement | null => {
-  const selection = window.getSelection()
-  if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) return null
-
-  const range = selection.getRangeAt(0)
-  const { startContainer, startOffset } = range
-  if (!root.contains(startContainer)) return null
-
-  if (startContainer.nodeType === Node.TEXT_NODE) {
-    const length = (startContainer.textContent ?? '').length
-    if (direction === 'backward' ? startOffset > 0 : startOffset < length) return null
-    return chipNodeOf(direction === 'backward' ? startContainer.previousSibling : startContainer.nextSibling)
-  }
-
-  // Курсор стоит прямо между детьми поля: смещение — номер ребёнка, а не символа.
-  if (startContainer === root) {
-    const children = Array.from(root.childNodes)
-    return chipNodeOf(children[direction === 'backward' ? startOffset - 1 : startOffset])
-  }
-
-  return null
-}
-
-/**
- * Курсор перед ребёнком с таким номером — место, где только что вырезали.
- * Оставлять его в конце поля после Cmd+X нельзя: вырезают обычно из середины и
- * продолжают печатать там же.
- */
-const placeCaretBefore = (root: HTMLElement, index: number) => {
-  const node = root.childNodes[index]
-  if (!node) {
-    placeCaretAtEnd(root)
-    return
-  }
-
-  const range = document.createRange()
-  range.setStartBefore(node)
-  range.collapse(true)
-
-  const selection = window.getSelection()
-  selection?.removeAllRanges()
-  selection?.addRange(range)
-}
-
-interface AtQuery {
-  /** Что набрано после "@" — по этому ищем файл. */
-  query: string
-  /** Текстовый узел, где стоит "@" — в нём же и курсор: посреди чипов "@" не бывает. */
-  node: Text
-  /** Смещение самого "@" в узле — начало диапазона на замену при выборе файла. */
-  start: number
-  /** Смещение курсора — конец того же диапазона. */
-  end: number
-}
-
-/** "@" от начала строки или после пробела — то же самое слово, что и курсор набирает сейчас. */
-const AT_QUERY = /(?:^|\s)@([^\s@]*)$/
-
-/**
- * "@" ищет от места курсора, а не от начала поля — в отличие от слэш-команды,
- * его можно набрать посреди предложения, как в терминале ("посмотри @файл и").
- */
-const atQueryAt = (root: HTMLElement): AtQuery | null => {
-  const selection = window.getSelection()
-  if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) return null
-
-  const range = selection.getRangeAt(0)
-  if (!root.contains(range.startContainer) || range.startContainer.nodeType !== Node.TEXT_NODE) return null
-
-  const node = range.startContainer as Text
-  const text = node.textContent ?? ''
-  const before = text.slice(0, range.startOffset)
-  const match = AT_QUERY.exec(before)
-  if (!match) return null
-
-  const start = match.index + (match[0].startsWith('@') ? 0 : 1)
-  return { query: match[1] ?? '', node, start, end: range.startOffset }
-}
-
-/** Символ прямо перед схлопнутым диапазоном — пусто, если это не текстовый узел. */
-const charBefore = (range: Range): string => {
-  const { startContainer, startOffset } = range
-  if (startContainer.nodeType !== Node.TEXT_NODE || startOffset === 0) return ''
-  return (startContainer.textContent ?? '').charAt(startOffset - 1)
-}
-
-/** Символ сразу после — та же логика, для проверки, что стоит по другую сторону вложения. */
-const charAfter = (range: Range): string => {
-  const { startContainer, startOffset } = range
-  if (startContainer.nodeType !== Node.TEXT_NODE) return ''
-  return (startContainer.textContent ?? '').charAt(startOffset)
-}
-
-/**
- * Занимает ли вставленное больше одной строки. Хвостовой перевод строки не в
- * счёт: скопированная из терминала строка почти всегда кончается им, а строкой
- * от этого не перестаёт быть.
- */
-const isMultiline = (text: string): boolean => text.trimEnd().includes('\n')
-
-/** Перед вложением пробел нужен, только если там уже стоит непробельный символ — пустое начало поля не в счёт. */
-const needsLeadingSpace = (char: string): boolean => char.length > 0 && !/\s/.test(char)
-
-/** После вложения пробел нужен всегда — курсору всегда есть, где встать; повторно не добавляем. */
-const needsTrailingSpace = (char: string): boolean => char.length === 0 || !/\s/.test(char)
-
-/**
- * Крестик на чипе живёт вне React (сам узел — обычный DOM, не JSX), поэтому
- * сообщает о своём удалении так же, как о нём узнал бы браузер: обычным
- * 'input', всплывающим до обработчика на onInput.
- */
-const onChipRemoved = (root: HTMLElement, node: HTMLElement) => {
-  node.remove()
-  root.dispatchEvent(new Event('input', { bubbles: true }))
-}
-
-/**
- * Свёрнутую вставку вернули в поле обычным текстом. Тем же путём, что и
- * удаление: подменяем узел и сообщаем полю через 'input'.
- *
- * normalize() — чтобы вставший на место плашки текст слился с соседними
- * кусками в один узел: иначе разбор поля вернул бы подряд несколько текстовых
- * токенов вместо одного, и дальнейшая правка этого места считалась бы правкой
- * разных кусков.
- */
-const onChipExpanded = (root: HTMLElement, node: HTMLElement, text: string) => {
-  node.replaceWith(document.createTextNode(text))
-  root.normalize()
-  root.dispatchEvent(new Event('input', { bubbles: true }))
-}
-
-/**
- * Плашка вместе с её кнопками, привязанная к конкретному полю: обе кнопки
- * правят его содержимое, поэтому знать это поле обязаны обе.
- */
-const chipNodeIn = (root: HTMLElement, chip: Chip): HTMLElement => {
-  const node: HTMLElement = renderChipNode(
-    chip,
-    () => onChipRemoved(root, node),
-    // Разворачивать обратно есть что только у вставки: у остальных плашек за
-    // подписью стоит путь или байты, а не текст, который набирали руками.
-    chip.kind === 'paste' ? () => onChipExpanded(root, node, chip.text ?? '') : undefined,
-  )
-  return node
-}
-
-/** Пересобирает DOM с нуля из токенов — только для программных правок, не для печати. */
-const rebuildDom = (root: HTMLElement, tokens: UserToken[]) => {
-  root.innerHTML = ''
-
-  for (const token of tokens) {
-    if (token.kind === 'text') {
-      root.appendChild(document.createTextNode(token.value))
-      continue
-    }
-
-    const node = chipNodeIn(root, token.chip)
-    root.appendChild(node)
-  }
-
-  placeCaretAtEnd(root)
-}
-
-/** Читает DOM обратно в токены — вызывается после каждой печати и правки. */
-const extractTokens = (root: HTMLElement): UserToken[] => {
-  const tokens: UserToken[] = []
-
-  for (const node of Array.from(root.childNodes)) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      const value = node.textContent ?? ''
-      if (value) tokens.push({ kind: 'text', value })
-      continue
-    }
-
-    if (node instanceof HTMLElement) {
-      const chip = chipByNode.get(node)
-      if (chip) {
-        tokens.push({ kind: 'chip', chip })
-        continue
-      }
-
-      // Молча терять целый узел нельзя — так раньше пропадала вторая строка,
-      // если браузер вопреки нашим намерениям расщеплял поле на блоки (см.
-      // handleKeyDown про Shift+Enter). Такой блок — подразумеваемый перенос
-      // строки, поэтому читаем его текст как есть, с переводом строки перед ним.
-      const value = node.textContent ?? ''
-      if (value) tokens.push({ kind: 'text', value: tokens.length > 0 ? `\n${value}` : value })
-    }
-  }
-
-  return withoutCaretLine(tokens)
-}
-
-/**
- * Убирает запасной перевод строки, на котором стоит курсор (см.
- * padTrailingBreak): он часть разметки поля, а не набранного сообщения.
- *
- * Без этого он попадал бы в состояние панели и возвращался в поле при каждом
- * восстановлении — отмена, история сообщений, переключение вкладки, — а поле
- * дописывало бы к нему запасной заново, и хвост рос бы с каждым разом.
- */
-const withoutCaretLine = (tokens: UserToken[]): UserToken[] => {
-  const last = tokens[tokens.length - 1]
-  if (!last || last.kind !== 'text' || !last.value.endsWith('\n')) return tokens
-
-  const value = last.value.slice(0, -1)
-  return value ? [...tokens.slice(0, -1), { kind: 'text', value }] : tokens.slice(0, -1)
-}
-
-/** Место границы выделения в поле: какой ребёнок и сколько символов от его начала. */
-interface Point {
-  index: number
-  offset: number
-}
-
-/**
- * Приводит границу выделения к плоским координатам поля.
- *
- * Дети поля плоские — текстовые узлы и плашки верхнего уровня, — а браузер
- * ставит границу где угодно: и в самом поле между детьми, и внутри текста, и
- * внутри плашки, попав в её значок или крестик. Плашка неделима, поэтому
- * границу внутри неё прижимаем к ближайшему краю: начало выделения — к левому,
- * конец — к правому. Иначе выделив плашку мышью, человек скопировал бы половину
- * её внутренностей.
- */
-const pointIn = (root: HTMLElement, container: Node, offset: number, side: 'start' | 'end'): Point => {
-  const children = Array.from(root.childNodes)
-
-  // Граница прямо в поле: смещение — это номер ребёнка, а не символа.
-  if (container === root) return { index: Math.min(offset, children.length), offset: 0 }
-
-  let node: Node | null = container
-  while (node && node.parentNode !== root) node = node.parentNode
-
-  const index = node ? children.indexOf(node as ChildNode) : -1
-  // Граница вообще не из этого поля — считаем, что она за его концом.
-  if (index < 0) return { index: children.length, offset: 0 }
-
-  if (node === container && container.nodeType === Node.TEXT_NODE) return { index, offset }
-
-  return side === 'start' ? { index, offset: 0 } : { index: index + 1, offset: 0 }
-}
-
-/**
- * Делит содержимое поля по выделению: что попало в него и что осталось.
- *
- * Данные плашек берём из той же таблицы по живому узлу, что и extractTokens, —
- * поэтому байты картинок переживают копирование, хотя в самом DOM их нет.
- */
-const splitTokens = (
-  root: HTMLElement,
-  range: Range,
-): { picked: UserToken[]; rest: UserToken[]; caret: number } => {
-  const start = pointIn(root, range.startContainer, range.startOffset, 'start')
-  const end = pointIn(root, range.endContainer, range.endOffset, 'end')
-
-  const picked: UserToken[] = []
-  const rest: UserToken[] = []
-  /** Сколько в остатке того, что стояло ДО выделения — туда же вернётся курсор. */
-  let caret = 0
-
-  const keep = (token: UserToken | null, before: boolean) => {
-    if (token) rest.push(token)
-    if (before) caret = rest.length
-  }
-  const asText = (value: string): UserToken | null => (value ? { kind: 'text', value } : null)
-
-  /**
-   * Не наш узел — тот самый подразумеваемый перенос строки, что и в
-   * extractTokens: читаем текстом, с переводом строки перед ним, но только если
-   * ему есть от чего отделяться.
-   */
-  const asBlock = (value: string, into: UserToken[]): UserToken | null =>
-    asText(value && into.length > 0 ? `\n${value}` : value)
-
-  Array.from(root.childNodes).forEach((node, index) => {
-    if (node instanceof HTMLElement) {
-      const chip = chipByNode.get(node)
-      const raw = node.textContent ?? ''
-
-      // Плашка занимает своё место целиком: она внутри выделения, только если
-      // выделение началось не позже её и закончилось строго после неё.
-      if (index >= start.index && index < end.index) {
-        const token = chip ? ({ kind: 'chip', chip } as UserToken) : asBlock(raw, picked)
-        if (token) picked.push(token)
-        return
-      }
-
-      keep(chip ? { kind: 'chip', chip } : asBlock(raw, rest), index < start.index)
-      return
-    }
-
-    const value = node.textContent ?? ''
-
-    if (index < start.index) {
-      keep(asText(value), true)
-      return
-    }
-    if (index > end.index) {
-      keep(asText(value), false)
-      return
-    }
-
-    const from = index === start.index ? Math.min(start.offset, value.length) : 0
-    const to = index === end.index ? Math.min(end.offset, value.length) : value.length
-
-    const inside = asText(value.slice(from, to))
-    if (inside) picked.push(inside)
-    keep(asText(value.slice(0, from)), true)
-    keep(asText(value.slice(to)), false)
-  })
-
-  return { picked, rest, caret }
-}
-
-/**
- * Приводит подписи картинок в соответствие их месту в поле.
- *
- * Номер в плашке раньше запоминался в момент вставки и потом врал: удалили
- * первую из двух картинок — вторая так и осталась «#2», хотя агенту она уйдёт
- * первой. Считаем номер по факту, как и текст сообщения, чтобы видимое и
- * отправленное сходились. Плашку пересобираем новым объектом, а не правим на
- * месте: тот же объект лежит в состоянии панели, и менять его исподтишка нельзя.
- */
-const relabelImages = (root: HTMLElement, base: number): boolean => {
-  let ordinal = base
-  let changed = false
-
-  for (const node of Array.from(root.childNodes)) {
-    if (!(node instanceof HTMLElement)) continue
-
-    const chip = chipByNode.get(node)
-    if (!chip || chip.kind !== 'img' || !chip.data) continue
-
-    ordinal += 1
-    const value = `Image #${ordinal}`
-    if (chip.value === value) continue
-
-    const next: Chip = { ...chip, value }
-    chipByNode.set(node, next)
-    node.title = value
-
-    const label = Array.from(node.childNodes).find((child) => child.nodeType === Node.TEXT_NODE)
-    if (label) label.textContent = chipLabel(next)
-    changed = true
-  }
-
-  return changed
-}
-
-/**
- * Строит плашку вложения как обычный DOM-узел, а не JSX: React не умеет мирно
- * делить содержимое contentEditable с браузером, который сам правит DOM по
- * каждой напечатанной букве — эти узлы React никогда не должен видеть.
- */
-const renderChipNode = (chip: Chip, onRemove: () => void, onExpand?: () => void): HTMLElement => {
-  const node = document.createElement('span')
-  node.className = s.token ?? ''
-  node.contentEditable = 'false'
-  node.title = chipTitle(chip)
-  Object.assign(node.style, CHIP_STYLE[chip.kind])
-
-  // Значка типа вложения тут нет намеренно: он ничего не добавлял к подписи, а
-  // место в начале плашки занимал. Тип и так виден по цвету и по самой подписи.
-  node.appendChild(document.createTextNode(chipLabel(chip)))
-
-  /**
-   * Только у свёрнутой вставки: она единственная плашка, за которой не стоит
-   * ничего кроме текста, — а значит и разворачивать обратно есть что. Знак
-   * абзаца, а не стрелка: стрелок в моноширинном шрифте панели нет, они
-   * подставляются из чужого и стоят рядом с крестиком чуть другого кегля.
-   */
-  if (onExpand) {
-    const expand = document.createElement('button')
-    expand.type = 'button'
-    expand.className = s.tokenExpand ?? ''
-    expand.textContent = '¶'
-    expand.title = 'Insert as plain text'
-    expand.addEventListener('click', (event) => {
-      event.stopPropagation()
-      onExpand()
-    })
-    node.appendChild(expand)
-  }
-
-  const remove = document.createElement('button')
-  remove.type = 'button'
-  remove.className = s.tokenRemove ?? ''
-  remove.textContent = '×'
-  remove.addEventListener('click', (event) => {
-    event.stopPropagation()
-    onRemove()
-  })
-  node.appendChild(remove)
-
-  chipByNode.set(node, chip)
-  return node
 }

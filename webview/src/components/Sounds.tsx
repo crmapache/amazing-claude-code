@@ -7,15 +7,15 @@ interface SoundsProps {
   prefs: SoundPrefs
   onToggle: (sound: SoundId) => void
   onVolume: (sound: SoundId, volume: number) => void
-  /** Проиграть звук прямо сейчас — иначе по названию не понять, что услышишь. */
+  /** Play the sound right now - by its name alone there is no telling what one will hear. */
   onPreview: (sound: SoundId) => void
   onClose: () => void
 }
 
 /**
- * Клавиши, которыми ползунок и правда двигают. Отпускание любой другой громкость
- * не меняет — и звучать ему не с чего: дойдя до списка табуляцией, человек
- * получал бы звук от одного того, что встал на ползунок.
+ * The keys a slider is genuinely moved with. Releasing any other key changes no volume - and there is
+ * nothing for it to sound about: tabbing into the list, a person would get a sound merely from landing
+ * on a slider.
  */
 const MOVING_KEYS = new Set([
   'ArrowLeft',
@@ -29,28 +29,26 @@ const MOVING_KEYS = new Set([
 ])
 
 /**
- * Какие поводы зовут звуком и насколько громко. Список короткий и весь на виду:
- * это не настройки на все случаи жизни, а шесть моментов, в которые панель ждёт
- * человека.
+ * Which occasions call with a sound and how loudly. The list is short and entirely in view: these are
+ * not settings for every occasion but the six moments where the panel waits for a person.
  */
 export const Sounds = ({ prefs, onToggle, onVolume, onPreview, onClose }: SoundsProps) => {
   /**
-   * Конец возни с ползунком ловим на самом окне, а не на нём.
+   * The end of the fiddling with a slider is caught on the window rather than on the slider itself.
    *
-   * Дотянув ползунок до края, руку уводят за его край — и отпускание мыши
-   * достаётся уже не ему. Обычный браузер довёл бы событие до того, на ком жест
-   * начался, но встроенный в IDE рисуется офскрин и такой захват до страницы не
-   * доносит: громкость на сотне оставалась единственной, которую нельзя было
-   * услышать. Слушатель на окне срабатывает, где бы руку ни отпустили (тем же
-   * способом переставляются вкладки — см. Header).
+   * Having dragged a slider to its edge, one moves the hand past that edge - and the mouse release no
+   * longer goes to it. An ordinary browser would deliver the event to whoever the gesture began on, but
+   * the IDE's embedded one renders offscreen and does not carry such a capture through to the page:
+   * full volume stayed the one setting that could not be heard. A listener on the window fires wherever
+   * the hand is released (tabs are rearranged the same way - see Header).
    */
   const release = useRef<(() => void) | null>(null)
 
   /**
-   * Слушатель ставится в начале жеста и переживает все его кадры, а громкость к
-   * концу уже другая — поэтому проигрывает он не ту обёртку, что была на старте,
-   * а сегодняшнюю. Иначе, дотянув ползунок до двадцати процентов, слышишь
-   * прежнюю сотню.
+   * The listener is set at the gesture's start and outlives every frame of it, while by the end the
+   * volume is a different one - so it plays through today's wrapper rather than the one that existed at
+   * the start. Otherwise, having dragged a slider down to twenty per cent, one hears the previous
+   * hundred.
    */
   const preview = useRef(onPreview)
   preview.current = onPreview
@@ -73,7 +71,7 @@ export const Sounds = ({ prefs, onToggle, onVolume, onPreview, onClose }: Sounds
     window.addEventListener('mouseup', onUp)
   }
 
-  // Панель закрывают и посреди жеста: висящий слушатель пережил бы её.
+  // The panel is closed mid-gesture too: a hanging listener would outlive it.
   useEffect(() => stopWatchingRelease, [])
 
   return (
@@ -118,11 +116,10 @@ export const Sounds = ({ prefs, onToggle, onVolume, onPreview, onClose }: Sounds
                 </div>
 
                 <div className={s.soundVolume}>
-                  {/* Ползунок распоряжается и галочкой: выключенный звук и
-                      нулевая громкость это одно и то же, поэтому доведённый до
-                      нуля снимает её, а поднятый обратно — возвращает. У
-                      выключенного он приглушён, но живой: включить звук можно и
-                      им, сразу задав нужную громкость. */}
+                  {/* The slider governs the checkbox too: a switched-off sound and zero volume are one
+                      and the same, so dragging it to zero clears the checkbox and raising it back
+                      restores it. For a switched-off sound the slider is dimmed but alive: the sound can
+                      be turned on with it as well, straight at the volume one wants. */}
                   <input
                     type="range"
                     className={`${s.soundSlider} ${on ? '' : s.soundSliderOff}`}
@@ -132,8 +129,8 @@ export const Sounds = ({ prefs, onToggle, onVolume, onPreview, onClose }: Sounds
                     value={volume}
                     aria-label={`${sound.label} volume`}
                     onChange={(event) => onVolume(sound.id, Number(event.target.value))}
-                    // Послушать результат сразу, а не гадать, насколько тише стало.
-                    // Только по концу жеста: на каждый процент это была бы каша.
+                    // Hear the result at once rather than guess how much quieter it has become. Only at
+                    // the gesture's end: one per cent at a time would be a mush.
                     onMouseDown={() => previewOnRelease(sound.id)}
                     onKeyUp={(event) => {
                       if (MOVING_KEYS.has(event.key)) onPreview(sound.id)

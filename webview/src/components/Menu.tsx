@@ -9,7 +9,7 @@ export interface MenuOption {
   danger?: boolean
   sub?: string
   key?: string
-  /** Виден, но не нажимается — недоступен на текущей модели/аккаунте (см. modeMenuOptions). */
+  /** Visible but not clickable - unavailable on the current model or account (see modeMenuOptions). */
   disabled?: boolean
 }
 
@@ -17,46 +17,45 @@ interface MenuProps {
   title: string
   hint: string
   width: number
-  /** Кнопка, из которой меню открыли: оно встаёт прямо над ней или под ней. */
+  /** The button the menu was opened from: it stands right above or right below it. */
   anchor: Anchor
   options: MenuOption[]
   selected: string
   onPick: (id: string) => void
   onClose: () => void
   /**
-   * Колонка под галочку слева от каждого пункта — по умолчанию есть, она
-   * нужна там, где выбор действительно один из вариантов (модель, effort,
-   * режим, раскладка). Меню бургера в шапке (история/MCP/плагины/звуки/
-   * раскладка) — список действий, а не переключатель одного значения:
-   * почти никогда ни один пункт не выбран, и пустая колонка была просто
-   * лишним отступом слева у каждой строки без всякого смысла.
+   * The column for a tick to the left of every entry - present by default, needed where the choice
+   * genuinely is one of several options (the model, the effort, the mode, the layout). The burger menu in
+   * the header (history/MCP/plugins/sounds/layout) is a list of actions rather than a switch between
+   * values: almost never is any entry selected, and the empty column was simply a pointless indent to the
+   * left of every row.
    */
   tick?: boolean
 }
 
 export const Menu = ({ title, hint, width, anchor, options, selected, onPick, onClose, tick = true }: MenuProps) => {
   /*
-   * Подсветка под мышью — своим состоянием, а не чистым CSS :hover: тот же
-   * приём, что и в SlashSuggest (см. её onMouseEnter), и по той же причине —
-   * в JCEF он срабатывает не всегда. В частности, на пункте, который окажется
-   * под уже неподвижным курсором прямо в момент открытия меню (кнопку нажали
-   * мышью, курсор с неё никуда не уехал), :hover вовсе не включится, пока
-   * мышь не шевельнётся хоть на пиксель, — так и выглядело «часто не срабатывает».
+   * The hover highlight goes through state of its own rather than plain CSS :hover: the same trick as in
+   * SlashSuggest (see its onMouseEnter), and for the same reason - in JCEF it does not always fire. In
+   * particular, on the entry that ends up under an already motionless cursor at the very moment the menu
+   * opens (the button was clicked with the mouse and the cursor never left it), :hover does not switch on
+   * at all until the mouse moves by at least a pixel - which is exactly what "often does not work" looked
+   * like.
    */
   const [hovered, setHovered] = useState<string | null>(null)
 
-  // Прижимаемся к правому краю кнопки, но не даём уехать за края панели: она в
-  // IDE бывает уже самого меню.
+  // We stick to the button's right edge but do not let it run off the panel's sides: in the IDE the panel
+  // is sometimes narrower than the menu itself.
   const actualWidth = Math.min(width, window.innerWidth - 16)
   const right = Math.min(Math.max(8, anchor.right), Math.max(8, window.innerWidth - actualWidth - 8))
 
   /*
-   * Куда расти, решает не вызывающий код, а само место: сравниваем, чего
-   * реально больше — над кнопкой или под ней. Кнопка нижней строки почти
-   * всегда открывает вверх (над ней вся лента), кнопка в шапке — вниз (сверху
-   * почти ничего нет), а боковая рельса (MODEL/EFFORT/MODE в left/right,
-   * см. Composer) сама подстраивается под то, у какого края экрана она
-   * оказалась, — без отдельной пометки под каждый вызов.
+   * Which way to grow is decided not by the calling code but by the room itself: we compare which there
+   * is genuinely more of - above the button or below it. A button in the bottom line almost always opens
+   * upwards (the whole feed is above it), a button in the header downwards (there is almost nothing
+   * above), while the side rail (MODEL/EFFORT/MODE in left/right, see Composer) adjusts itself to which
+   * edge of the screen it
+   * happens to be on - without a separate hint for every call site.
    */
   const spaceAbove = anchor.top - 14
   const spaceBelow = window.innerHeight - anchor.bottom - 14
@@ -67,19 +66,18 @@ export const Menu = ({ title, hint, width, anchor, options, selected, onPick, on
     : { bottom: `${Math.max(8, window.innerHeight - anchor.top + 6)}px` }
 
   /*
-   * Место в выбранную сторону не бесконечно: у compact, например, MODE сидит
-   * невысоко над низом панели, а вариантов в нём — на добрую сотню пикселей
-   * текста. Без своего потолка меню просто продолжало бы расти поверх экрана —
-   * заголовок и первые пункты уезжали за край, до них было не дотянуться.
-   * max-height в самой .menu (86vh) не спасает: он отмеряет от всего окна, а
-   * не от места, которое реально осталось от кнопки до края. Пола под
-   * availableHeight нет нарочно — искусственный минимум точно так же
-   * выталкивал бы меню за экран, если реального места меньше минимума; список
-   * внутри и так скроллится (см. overflow-y в .menu).
+   * The room in the chosen direction is not endless: in compact, for instance, MODE sits not far above
+   * the panel's bottom, while its options hold a good hundred pixels of text. Without a ceiling of its
+   * own the menu would simply go on growing past the screen - the title and the first entries ran off the
+   * edge, out of reach. The max-height in .menu itself (86vh) does not save it: it measures from the
+   * whole window rather than from the room genuinely left between the button and the edge. There is
+   * deliberately no floor under availableHeight - an artificial minimum would push the menu off the
+   * screen just the same when there is less real room than that minimum; the list inside scrolls anyway
+   * (see overflow-y in .menu).
    */
   const availableHeight = openDownward ? spaceBelow : spaceAbove
-  // Не шире потолка самого класса .menu (min(640px, 86vh)) — иначе инлайн-стиль
-  // молча его перебивает для любой раскладки, не только compact.
+  // No wider than the .menu class's own ceiling (min(640px, 86vh)) - otherwise the inline style silently
+  // overrides it for every layout, not only compact.
   const maxHeight = Math.min(640, window.innerHeight * 0.86, Math.max(0, availableHeight))
 
   return (

@@ -4,9 +4,9 @@ import { SkeletonBar } from './Skeleton'
 import s from './shell.module.css'
 
 interface McpProps {
-  /** null — список ещё не приходил: он загружается сам, задолго до открытия вкладки. */
+  /** null means the list has not arrived yet: it loads by itself, long before the tab is opened. */
   servers: McpServerInfo[] | null
-  /** Идёт запрос, о котором стоит сказать вслух: обновление по кнопке. */
+  /** A request worth saying out loud is under way: a refresh from the button. */
   loading: boolean
   message: { ok: boolean; text: string } | null
   onRefresh: () => void
@@ -21,9 +21,8 @@ const ADD_SERVER_KEY = 'add-server'
 const TRANSPORTS = ['stdio', 'sse', 'http'] as const
 
 /**
- * Как называется каждое состояние на экране. Слова — те же, что печатает
- * терминальный `/mcp`: панель и терминал показывают одно и то же, и разными
- * словами звать это нельзя.
+ * What each state is called on screen. The words are the ones the terminal's `/mcp` prints: the panel and
+ * the terminal show one and the same thing, and calling it by different words is not an option.
  */
 const STATUS_TEXT: Record<string, string> = {
   connected: 'connected',
@@ -42,9 +41,8 @@ const STATUS_CLASS: Record<string, string> = {
 }
 
 /**
- * Группы — те же, что в терминале, и в том же порядке: сначала то, что
- * настроено под этот проект, потом личное, потом коннекторы claude.ai, потом
- * встроенное и пришедшее с плагинами.
+ * The groups are the terminal's, in the terminal's order: first what is configured for this project, then
+ * what is personal, then the claude.ai connectors, then what is built in and what came with plugins.
  */
 const GROUPS: { scope: string; title: string; hint: string }[] = [
   { scope: 'project', title: 'PROJECT', hint: '.mcp.json of this project' },
@@ -55,13 +53,12 @@ const GROUPS: { scope: string; title: string; hint: string }[] = [
 ]
 
 /**
- * MCP-серверы: тот же экран, что `/mcp` в терминале — кто подключён, кому нужен
- * вход, кто упал и почему, — плюс добавление и удаление, которых в терминале
- * нет вовсе.
+ * MCP servers: the same screen as `/mcp` in a terminal - who is connected, who needs a sign-in, who
+ * failed and why - plus adding and removing, which the terminal does not have at all.
  *
- * Статусы и области приходят от самого CLI (см. McpServerInfo): панель ничего
- * не додумывает, она только раскладывает их по группам и рисует кнопку под то
- * действие, которое этому серверу и правда доступно.
+ * The statuses and the scopes come from the CLI itself (see McpServerInfo): the panel invents nothing, it
+ * merely lays them out into groups and draws the button for the action this server genuinely has
+ * available.
  */
 export const Mcp = ({
   servers,
@@ -78,26 +75,26 @@ export const Mcp = ({
   const [command, setCommand] = useState('')
   const [transport, setTransport] = useState('stdio')
   /**
-   * Что сейчас в работе — ключ вида "remove:name". Отклик обязан быть
-   * мгновенным: кнопка гаснет и меняет подпись сразу, не дожидаясь ответа CLI.
+   * What is currently in progress - a key of the form "remove:name". The response has to be instant: the
+   * button dims and changes its caption at once, without waiting for the CLI's answer.
    */
   const [pendingAction, setPendingAction] = useState<string | null>(null)
 
-  // Снимаем "в работе" только когда пришёл настоящий итог — иначе баннер,
-  // погасший по другой причине, разблокировал бы кнопку раньше времени.
+  // We clear "in progress" only when a real outcome has arrived - otherwise a banner that went out for
+  // another reason would unblock the button too early.
   useEffect(() => {
     if (message) setPendingAction(null)
   }, [message])
 
-  // Группы, в которых никого нет, не рисуем вовсе: пустой заголовок «PROJECT»
-  // говорил бы, что у проекта что-то настроено, хотя там пусто.
+  // Groups with nobody in them are not drawn at all: an empty "PROJECT" heading would say the project
+  // has something configured while there is nothing there.
   const groups = GROUPS.map((group) => ({
     ...group,
     servers: servers?.filter((server) => server.scope === group.scope) ?? [],
   })).filter((group) => group.servers.length > 0)
 
-  // Область, которую мы не знаем в лицо, всё равно обязана быть видна — иначе
-  // сервер просто пропал бы с экрана, хотя CLI о нём рассказал.
+  // A scope we do not recognise still has to be visible - otherwise a server would simply vanish from
+  // the screen although the CLI told us about it.
   const known = new Set(GROUPS.map((group) => group.scope))
   const rest = servers?.filter((server) => !known.has(server.scope)) ?? []
   const shown = rest.length > 0 ? [...groups, { scope: 'other', title: 'OTHER', hint: '', servers: rest }] : groups
@@ -211,9 +208,9 @@ export const Mcp = ({
 }
 
 /**
- * Строка одного сервера. Кнопки — только те, что этому серверу и правда
- * доступны: вход просят там, где его ждут; удалить можно то, что лежит в
- * конфиге, а встроенное и пришедшее с плагином — нет (его удаляет плагин).
+ * One server's row. The buttons are only the ones this server genuinely has: a sign-in is offered where
+ * one is expected; what lies in a config can be removed, while what is built in or came with a plugin
+ * cannot (the plugin removes it).
  */
 const ServerRow = ({
   server,
@@ -250,8 +247,8 @@ const ServerRow = ({
         {server.command}
       </div>
 
-      {/* Причину отказа показываем прямо здесь: без неё «failed» отправляет
-          читать логи, хотя CLI уже всё объяснил. */}
+      {/* The reason for a failure is shown right here: without it "failed" sends one off to read logs
+          although the CLI has already explained everything. */}
       {server.error ? <div className={s.mcpError}>{server.error}</div> : null}
 
       <div className={s.mcpActions}>

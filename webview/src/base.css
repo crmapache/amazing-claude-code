@@ -4,15 +4,15 @@
 * {
   box-sizing: border-box;
   /*
-   * Без лигатур — везде и всегда. Консольные шрифты (JetBrains Mono и его
-   * родня) склеивают `===`, `!==`, `->` в единый знак: в редакторе это красиво,
-   * а здесь чужой код и чужие команды, которые читают, чтобы понять, что именно
-   * выполнится, — и видеть надо ровно те символы, что написаны.
+   * No ligatures - everywhere and always. Console fonts (JetBrains Mono and its kin) glue `===`, `!==` and
+   * `->` into a single glyph: in an editor that is pretty, but here stands someone else's code and someone
+   * else's commands, read in order to understand what exactly will run - and what has to be seen is exactly
+   * the characters that are written.
    *
-   * На каждый элемент и через !important, а не одной строкой на body: половина
-   * стилей панели задаёт шрифт сокращённой записью `font: 11px …`, а она
-   * сбрасывает настройки лигатур к умолчанию шрифта. calt выключаем вместе с
-   * liga: у этих шрифтов лигатуры программ живут именно в нём.
+   * On every element and through !important rather than one line on body: half of the panel's styles set
+   * the font through the shorthand `font: 11px ...`, and that resets the ligature settings to the font's
+   * default. calt is switched off along with liga: in these fonts the programming ligatures live precisely
+   * in it.
    */
   font-variant-ligatures: none !important;
   font-feature-settings: 'liga' 0, 'calt' 0 !important;
@@ -51,9 +51,9 @@ button {
   color: inherit;
 }
 
-/* Указатель на всём, что нажимается: панель живёт внутри IDE, но ведёт себя как
-   обычный интерфейс, и курсор — первое, по чему это видно. Погашенной кнопке он
-   не положен: нажимать её нечем. */
+/* A pointer on everything that can be pressed: the panel lives inside an IDE but behaves like an ordinary
+   interface, and the cursor is the first thing that shows it. A dimmed button is not entitled to one:
+   there is nothing to press it with. */
 button {
   border: none;
   background: none;
@@ -70,18 +70,17 @@ button:disabled {
 }
 
 /*
- * Свой тултип вместо нативного title: у нативного своя задержка и вид чужой ОС,
- * а подсказка должна выглядеть так же, как у родных значков самой IDE.
+ * A tooltip of our own instead of the native title: the native one has a delay of its own and the look of
+ * someone else's OS, while a hint has to look the same as on the IDE's own icons.
  *
- * Живёт в общем доме, а не в модуле отдельной панели: подсказка нужна и кнопке в
- * шапке, и метрике в строке статуса, и кнопке у поля ввода — рисунок у всех один,
- * разное только направление, куда ей разворачиваться. Оно задаётся через
- * data-tooltip-at: по умолчанию вниз, от правого края элемента влево; `top`
- * поднимает подсказку над элементом (у нижнего края панели вниз ей некуда), а
- * `left` привязывает к левому краю (когда свободное место слева, а не справа).
+ * It lives in the shared house rather than in one panel's module: a hint is needed by a button in the
+ * header, by a meter in the status row and by a button beside the input field - the drawing is one for
+ * all, only the direction it unfolds in differs. That is set through data-tooltip-at: downwards by
+ * default, from the element's right edge leftwards; `top` lifts the hint above the element (at the panel's
+ * bottom edge there is nowhere downwards for it to go), and `left` pins it to the left edge (when the free
+ * room is on the left rather than the right).
  *
- * Перенос строки в data-tooltip остаётся переносом: в подсказке из двух строк
- * вторая поясняет первую.
+ * A line break in data-tooltip stays a line break: in a two-line hint the second explains the first.
  */
 [data-tooltip] {
   position: relative;
@@ -129,15 +128,14 @@ button:disabled {
   transform: translateY(0);
 }
 
-/* Пользователь явно попросил убрать рамку фокуса везде: раздражает больше,
-   чем помогает. Один общий сброс вместо outline:none по каждому классу. */
+/* The user explicitly asked for the focus ring to be removed everywhere: it irritates more than it helps.
+   One shared reset instead of an outline:none on every class. */
 *:focus,
 *:focus-visible {
   outline: none;
 }
 
-/* Той же ширины, что нативный скроллбар самой IDE — иначе рядом с ним наш
-   выглядит игрушечным. */
+/* The same width as the IDE's own native scrollbar - otherwise ours looks like a toy beside it. */
 ::-webkit-scrollbar {
   width: 12px;
   height: 12px;

@@ -9,9 +9,8 @@ import com.intellij.ui.content.ContentFactory
 internal class ClaudeToolWindowFactory : ToolWindowFactory, DumbAware {
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        // Всё содержимое живёт ровно столько, сколько живёт сама панель: браузер и
-        // процесс агента снимаются вместе с ней, иначе останутся висеть после
-        // закрытия проекта.
+        // Everything inside lives exactly as long as the panel does: the browser and the agent's
+        // process are taken down with it, or they would hang on after the project closes.
         val panel = ClaudePanel(project, toolWindow, toolWindow.disposable)
         val content = ContentFactory.getInstance().createContent(panel.component, null, false)
         toolWindow.contentManager.addContent(content)

@@ -7,11 +7,11 @@ interface SlashSuggestProps {
   highlight: number
   onPick: (command: CommandEntry) => void
   onHighlight: (index: number) => void
-  /** Аргумент команды показываем без слэша — это не имя команды, а её значение. */
+  /** A command's argument is shown without a slash - it is the value rather than the command's name. */
   showSlash?: boolean
 }
 
-/** Список команд над полем ввода. Выбор идёт с клавиатуры, мышь — на всякий случай. */
+/** The command list above the input field. Picking happens from the keyboard; the mouse is a fallback. */
 export const SlashSuggest = ({
   commands,
   highlight,
@@ -21,7 +21,7 @@ export const SlashSuggest = ({
 }: SlashSuggestProps) => {
   const active = useRef<HTMLButtonElement>(null)
 
-  // При ходьбе стрелками подсвеченная строка должна оставаться на виду.
+  // While walking with the arrows the highlighted row has to stay in view.
   useEffect(() => {
     active.current?.scrollIntoView({ block: 'nearest' })
   }, [highlight])
@@ -34,8 +34,8 @@ export const SlashSuggest = ({
           ref={index === highlight ? active : undefined}
           type="button"
           className={`${s.suggestItem} ${index === highlight ? s.suggestItemOn : ''}`}
-          // mousedown, а не click: click приходит после потери фокуса полем ввода,
-          // и подсказка успевает закрыться раньше выбора.
+          // mousedown rather than click: a click arrives after the input field has lost focus, and the
+          // hint manages to close before the choice is made.
           onMouseDown={(event) => {
             event.preventDefault()
             onPick(command)

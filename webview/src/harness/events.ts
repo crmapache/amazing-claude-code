@@ -12,7 +12,7 @@ export const scenario = (
 
 let checkpointCounter = 0
 
-/** Один пункт в карточке чекпоинтов: подпись + что реально произойдёт при переходе на него. */
+/** One item in the checkpoints card: a caption plus what genuinely happens on a move to it. */
 export const checkpoint = (label: string, steps: ScenarioStep[]): Checkpoint => ({
   id: `cp-${(checkpointCounter += 1)}`,
   label,
@@ -21,7 +21,7 @@ export const checkpoint = (label: string, steps: ScenarioStep[]): Checkpoint => 
 
 export const shell = (message: ShellMessage): ScenarioStep => ({ kind: 'shell', message })
 
-/** Команда bash-режима вместе с её выводом — см. ScenarioStep. */
+/** A bash-mode command together with its output - see ScenarioStep. */
 export const bash = (
   command: string,
   stdout: string,
@@ -31,18 +31,18 @@ export const agent = (event: AgentEvent): ScenarioStep => ({ kind: 'agent', even
 export const user = (text: string): ScenarioStep => ({ kind: 'user', text })
 export const wait = (ms: number): ScenarioStep => ({ kind: 'wait', ms })
 
-/** Имитирует настоящий клик по кнопке карточки плана — см. __accHarnessResolvePlan. */
+/** Imitates a genuine click on a plan card's button - see __accHarnessResolvePlan. */
 export const resolvePlan = (itemId: string, decision: 'approve' | 'keepPlanning'): ScenarioStep => ({
   kind: 'resolvePlan',
   itemId,
   decision,
 })
 
-/** Момент в будущем — время сброса окна расхода. Считается от «сейчас»: с
-    прибитой датой окна выглядели бы давно просроченными. */
+/** A moment in the future - the reset time of a usage window. Counted from "now": with a fixed date the
+    windows would look long expired. */
 const inHours = (count: number): string => new Date(Date.now() + count * 60 * 60 * 1000).toISOString()
 
-/** Вход и открытие проекта — общий старт для всех сценариев. */
+/** Signing in and opening the project - the shared start for every scenario. */
 export const bootstrap: ScenarioStep[] = [
   shell({ type: 'auth', installed: true, loggedIn: true, email: 'you@example.com', plan: 'Max' }),
   shell({
@@ -51,9 +51,9 @@ export const bootstrap: ScenarioStep[] = [
     workingDirectory: '/Users/you/demo-project',
     gitBranch: 'main',
   }),
-  // Без расхода нижний ряд поля ввода пустой, и кольца в нём не посмотреть.
-  // Неделя стоит на третьем дне окна: блёклая дуга темпа тогда обгоняет яркую,
-  // то есть видно ровно тот случай, ради которого она и рисуется.
+  // Without any usage the input field's bottom row is empty and the rings in it cannot be looked at. The
+  // week stands on the window's third day: the pale pace arc then runs ahead of the bright one, that is,
+  // exactly the case it is drawn for is visible.
   shell({
     type: 'usage',
     session: { percent: 22, resets: inHours(2 + 41 / 60) },
@@ -74,7 +74,7 @@ export const toolResult = (id: string, content: string, isError = false): Scenar
     message: { content: [{ type: 'tool_result', tool_use_id: id, content, is_error: isError }] },
   })
 
-/** Вложенный вызов/реплика субагента — та же форма, что и обычная, но с parent_tool_use_id родительского Task. */
+/** A nested subagent call or line - the same shape as an ordinary one but with the parent Task's parent_tool_use_id. */
 export const subagentText = (parentId: string, text: string): ScenarioStep =>
   agent({
     type: 'assistant',
@@ -82,7 +82,7 @@ export const subagentText = (parentId: string, text: string): ScenarioStep =>
     parent_tool_use_id: parentId,
   })
 
-/** Мысль, которая приходит сразу готовым блоком — как из проигранной истории, без стрима. */
+/** A thought that arrives as a finished block at once - as from a replayed history, without streaming. */
 export const think = (thought: string): ScenarioStep =>
   agent({
     type: 'assistant',
@@ -90,16 +90,15 @@ export const think = (thought: string): ScenarioStep =>
   })
 
 /**
- * Живой поток приходит рвано: то одно слово, то полстроки разом, то пауза, пока
- * модель думает. Ровная нарезка одинаковыми кусками через равные промежутки
- * выглядит приятнее реальности и прячет ровно ту рваность, ради которой поток и
- * сглаживается. Поэтому и размер куска, и пауза гуляют — но по заранее
- * записанным кругам, а не случайно: прогон сценария обязан быть повторимым.
+ * A live stream arrives raggedly: now one word, now half a line at once, now a pause while the model
+ * thinks. An even slicing into identical pieces at equal intervals looks nicer than reality and hides
+ * precisely the raggedness the stream is smoothed for. So both the piece's size and the pause wander - but
+ * around pre-recorded circles rather than at random: a run of a scenario has to be repeatable.
  */
 const CHUNK_SIZES = [7, 34, 13, 58, 4, 21, 42, 9, 26, 3]
 const CHUNK_PAUSES = [40, 180, 30, 55, 300, 45, 25, 120, 35, 70]
 
-/** Печатающийся ответ: несколько дельт кусками с паузами, затем готовый текстовый блок — как настоящий поток. */
+/** A typing answer: several deltas in pieces with pauses, then a finished text block - like a genuine stream. */
 export const textReply = (text: string): ScenarioStep[] => {
   const steps: ScenarioStep[] = []
 
@@ -119,7 +118,7 @@ export const textReply = (text: string): ScenarioStep[] => {
   return steps
 }
 
-/** То же самое, что textReply, но для мысли — живой стрим кусочками, потом готовый блок thinking. */
+/** The same as textReply but for a thought - a live stream in pieces, then a finished thinking block. */
 export const thinkReply = (thought: string): ScenarioStep[] => {
   const steps: ScenarioStep[] = []
 
@@ -143,9 +142,9 @@ export const thinkReply = (thought: string): ScenarioStep[] => {
 }
 
 /**
- * Сорвавшийся запрос к модели, который CLI повторит после паузы. Форма ровно
- * та, что приходит из потока: одна попытка — одно событие, а пауза до следующей
- * идёт отдельным шагом сценария, чтобы обратный отсчёт было видно живьём.
+ * A failed request to the model that the CLI will repeat after a pause. The shape is exactly the one that
+ * arrives from the stream: one attempt, one event, while the pause until the next goes as a step of the
+ * scenario of its own so that the countdown is visible live.
  */
 export const apiRetry = (attempt: number, delayMs: number, status: number | null = 529): ScenarioStep =>
   agent({
@@ -159,9 +158,9 @@ export const apiRetry = (attempt: number, delayMs: number, status: number | null
   })
 
 /**
- * Те же шаги, но как перепись прошлого разговора, открытого из истории: события
- * едут с пометкой replay, по которой панель отличает давно случившееся от живого
- * (см. protocol.ts). Паузы и всё остальное остаются как есть.
+ * The same steps but as a replay of a past conversation opened from the history: the events travel with a
+ * replay marker, by which the panel tells what happened long ago from what is live (see protocol.ts). The
+ * pauses and everything else stay as they are.
  */
 export const replayed = (steps: ScenarioStep[]): ScenarioStep[] =>
   steps.map((step) =>

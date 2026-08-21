@@ -1,13 +1,13 @@
 package io.github.crmapache.amazingclaudecode.claude
 
 /**
- * Добавление и удаление MCP-серверов — это правки конфига, а не часть разговора:
- * у них нет своего управляющего запроса в живой сессии, зато есть ровно те же
- * подкоманды `claude mcp ...`, что и в терминале. Гонять их через долгоживущий
- * процесс диалога незачем — каждый вызов самостоятельный и разовый.
+ * Adding and removing MCP servers is editing a config, not part of a conversation: there is no control
+ * request of their own inside a live session, but there are exactly the same `claude mcp ...`
+ * subcommands as in a terminal. Routing them through a long-lived dialogue process serves nothing -
+ * each call stands on its own and is used once.
  *
- * А вот статус, вход и переподключение спрашиваются у самого разговора: серверы
- * поднимает и держит его процесс, и живое их состояние знает только он (см.
+ * The status, the sign-in and the reconnect, on the other hand, are asked of the conversation itself:
+ * the servers are raised and held by its process, and only it knows their live state (see
  * ClaudeSession.requestMcpStatus).
  */
 internal object ClaudeMcp {

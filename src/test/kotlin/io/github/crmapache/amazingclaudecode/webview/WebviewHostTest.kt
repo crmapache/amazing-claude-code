@@ -10,14 +10,14 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Пачка сообщений уезжает в страницу одной строкой JavaScript — и если эта строка
- * собрана неправильно, канал молчит целиком, без единой жалобы в логе. Поэтому её
- * форма проверяется здесь.
+ * A batch of messages travels into the page as one line of JavaScript - and if that line is assembled
+ * wrongly, the channel falls silent entirely, without a single complaint in the log. So its shape is
+ * checked here.
  */
 class WebviewHostTest {
 
     @Test
-    fun `собирает пачку в массив`() {
+    fun `assembles a batch into an array`() {
         val messages = parseArgument(single(listOf("""{"type":"a"}""", """{"type":"b"}""")))
 
         assertEquals(2, messages.size)
@@ -26,25 +26,24 @@ class WebviewHostTest {
     }
 
     @Test
-    fun `одно сообщение тоже уезжает массивом`() {
+    fun `a single message travels as an array too`() {
         assertEquals(1, parseArgument(single(listOf("""{"type":"a"}"""))).size)
     }
 
     /**
-     * Ответ агента — обычный текст, в нём бывает что угодно: кавычки, переносы
-     * строк, обратные слэши из кода, юникод. Ни одно из этого не должно выходить
-     * за пределы литерала.
+     * An agent's answer is ordinary text and may hold anything: quotation marks, newlines, backslashes
+     * out of code, unicode. None of that may escape the literal.
      */
     @Test
-    fun `текст с кавычками и переносами не рвёт вызов`() {
-        val text = """{"type":"agent","text":"он сказал \"да\"\nи закрыл \\ путь"}"""
+    fun `text with quotes and newlines does not tear the call apart`() {
+        val text = """{"type":"agent","text":"he said \"yes\"\nand closed the \\ path"}"""
         val messages = parseArgument(single(listOf(text)))
 
-        assertEquals("он сказал \"да\"\nи закрыл \\ путь", messages[0].jsonObject["text"]?.jsonPrimitive?.content)
+        assertEquals("he said \"yes\"\nand closed the \\ path", messages[0].jsonObject["text"]?.jsonPrimitive?.content)
     }
 
     @Test
-    fun `зовёт приёмник страницы и бережётся его отсутствия`() {
+    fun `calls the page's receiver and guards against its absence`() {
         val call = single(listOf("""{"type":"a"}"""))
 
         assertTrue(call.startsWith("window.__accReceive && window.__accReceive("))
@@ -52,16 +51,16 @@ class WebviewHostTest {
     }
 
     /**
-     * Слишком длинная пачка в страницу одним заходом не проходит — и раньше
-     * пропадала молча вместе с итогом хода. Теперь едет частями, и склеенные
-     * части обязаны дать ровно ту же пачку.
+     * A batch too long does not get into the page in one trip - and used to vanish silently along with
+     * the turn's result. Now it travels in parts, and the glued parts have to give exactly the same
+     * batch.
      */
     @Test
-    fun `длинная пачка уезжает частями и склеивается обратно`() {
-        val big = """{"type":"agent","text":"${"я".repeat(400_000)}"}"""
+    fun `a long batch travels in parts and is glued back together`() {
+        val big = """{"type":"agent","text":"${"i".repeat(400_000)}"}"""
         val calls = receiveCalls(listOf(big, """{"type":"result"}"""))
 
-        assertTrue(calls.size > 1, "ожидалась нарезка на части, а вышел один заход")
+        assertTrue(calls.size > 1, "expected a split into parts, got a single trip")
         assertTrue(calls.dropLast(1).all { it.endsWith(", false);") })
         assertTrue(calls.last().endsWith(", true);"))
 
@@ -71,12 +70,12 @@ class WebviewHostTest {
     }
 
     /**
-     * Символ вне основной плоскости живёт в строке двумя половинками. Разрезанная
-     * пополам пара до страницы доедет заменяющим знаком, и склеенная пачка
-     * перестанет разбираться как JSON — то есть потеряется целиком.
+     * A character beyond the basic plane lives in a string as two halves. A pair cut in half would reach
+     * the page as a replacement mark, and the glued batch would stop parsing as JSON - that is, be lost
+     * entirely.
      */
     @Test
-    fun `не разрывает пару суррогатов на границе частей`() {
+    fun `does not tear a surrogate pair apart on a part's boundary`() {
         val emoji = "🙂".repeat(200_000)
         val calls = receiveCalls(listOf("""{"type":"agent","text":"$emoji"}"""))
 
@@ -85,14 +84,14 @@ class WebviewHostTest {
         assertEquals(emoji, messages[0].jsonObject["text"]?.jsonPrimitive?.content)
     }
 
-    /** Пачка, которая уехала одним заходом: так её отдают почти всегда. */
+    /** A batch that travelled in one trip: that is how it is handed over almost always. */
     private fun single(batch: List<String>): String {
         val calls = receiveCalls(batch)
-        assertEquals(1, calls.size, "короткая пачка не должна резаться на части")
+        assertEquals(1, calls.size, "a short batch should not be split into parts")
         return calls.first()
     }
 
-    /** То же, что делает мост в странице: склеивает части в исходную строку. */
+    /** The same thing the bridge in the page does: glues the parts back into the original string. */
     private fun joinParts(calls: List<String>): String = calls.joinToString("") { call ->
         Json.decodeFromString(
             String.serializer(),
@@ -100,7 +99,7 @@ class WebviewHostTest {
         )
     }
 
-    /** То же, что делает страница: достаёт литерал из вызова и разбирает его обратно. */
+    /** The same thing the page does: takes the literal out of the call and parses it back. */
     private fun parseArgument(call: String) =
         Json.parseToJsonElement(
             Json.decodeFromString(

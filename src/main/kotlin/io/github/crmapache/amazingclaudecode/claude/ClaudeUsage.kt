@@ -8,41 +8,41 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Разбор ответа CLI на `get_usage`: окна расхода подписки и размер окна
- * контекста. Не важно, отвечал живой разговор или разовый пинг — форма одна.
+ * Parsing the CLI's answer to `get_usage`: the subscription usage windows and the context window's
+ * size. It does not matter whether a live conversation or a one-off ping answered - the shape is the
+ * same.
  *
- * Отдельно от панели, потому что вся сложность здесь именно в форме ответа: у
- * только что поднятого процесса лимитов ещё нет вовсе, размер окна контекста
- * лежит в разбивке по моделям, а пустое место приходит честным null. Панели же
- * остаётся сложить готовые числа в сообщение наверх.
+ * Apart from the panel, because all the difficulty here is in that shape: a freshly raised process has
+ * no limits at all yet, the context window's size lies in a per-model breakdown, and an empty spot
+ * arrives as an honest null. The panel is left with folding ready figures into a message upwards.
  */
 internal object ClaudeUsage {
 
-    /** Одно окно расхода: доля и когда обнулится (пустая строка — CLI не сказал). */
+    /** One usage window: the share and when it resets (an empty string means the CLI did not say). */
     data class Window(val percent: Int, val resets: String) {
 
-        /** Время сброса разобранным, или null: CLI шлёт и `Z`, и `+00:00`, и ничего. */
+        /** The reset time parsed, or null: the CLI sends `Z`, and `+00:00`, and nothing at all. */
         val resetsAt: Instant? by lazy {
             if (resets.isBlank()) null else runCatching { OffsetDateTime.parse(resets).toInstant() }.getOrNull()
         }
 
-        /** Про нынешнее ли окно эта доля: сброс ещё впереди, значит окно то самое. */
+        /** Whether this share is about the present window: the reset is still ahead, so it is. */
         fun isCurrent(now: Instant): Boolean = resetsAt?.isAfter(now) == true
     }
 
     data class Snapshot(val session: Window?, val week: Window?, val contextWindow: Int?) {
         /**
-         * Приехали ли сами лимиты. Без них панель переспрашивает: обычно это
-         * значит, что процесс поднялся, но окна подписки от сервера ещё не
-         * узнал, — через пару секунд ответ будет полным.
+         * Whether the limits themselves have arrived. Without them the panel asks again: usually it
+         * means the process came up but has not yet learned the subscription windows from the server -
+         * in a couple of seconds the answer will be complete.
          */
         val hasLimits: Boolean get() = session != null || week != null
 
         /**
-         * Замер ли ответ. Окно, чьё время сброса уже прошло, значит ровно одно:
-         * отвечавший процесс не обращался к серверу с прошлого окна и повторяет
-         * долю из него. Переспрашивать его бесполезно — за свежими цифрами панель
-         * идёт к серверу (см. refreshLimits).
+         * Whether the answer is frozen. A window whose reset time has already passed means exactly one
+         * thing: the process that answered has not gone to the server since the previous window and is
+         * repeating a share out of it. Asking it again is useless - for fresh figures the panel goes to
+         * the server (see refreshLimits).
          */
         fun isStale(now: Instant = Instant.now()): Boolean =
             listOfNotNull(session, week).any { it.resetsAt != null && !it.isCurrent(now) }
@@ -59,27 +59,27 @@ internal object ClaudeUsage {
     }
 
     /**
-     * Копилка окон: приводит поток разнородных снимков к тому, что на самом деле
-     * происходит с лимитом.
+     * The windows' memory: it brings a stream of dissimilar snapshots down to what is actually
+     * happening to the limit.
      *
-     * Одну и ту же долю панель узнаёт двумя путями, и они расходятся. Живой
-     * разговор отдаёт цифру из последнего ответа сервера на запрос к модели: она
-     * самая свежая, но замирает, пока ходов нет, — процесс, работавший вчера,
-     * весь день отвечает вчерашней долей. Разовый пинг спрашивает сводку у
-     * сервера: она про сейчас, но отстаёт на минуты (за пять минут наблюдения
-     * подряд шли 3, 12, 17, 20 процентов). Показывать это как есть значит мигать
-     * процентом туда-сюда, а после сброса окна — держать на кольце долю прошлого
-     * окна: ровно так там и оказывались 99% при почти пустом окне.
+     * The panel learns one and the same share by two routes, and they disagree. A live conversation
+     * hands over the figure from the server's last answer to a model request: that is the freshest one,
+     * but it freezes while there are no turns - a process that worked yesterday answers with
+     * yesterday's share all day. A one-off ping asks the server for a summary: that one is about now,
+     * but it lags by minutes (over five minutes of watching it went 3, 12, 17, 20 per cent in a row).
+     * Showing this as it comes means flickering the percentage back and forth, and after a window reset
+     * holding the previous window's share on the ring: that is exactly how 99% ended up there on an
+     * almost empty window.
      *
-     * Поэтому окно узнаётся по времени сброса, а доля на слово не берётся:
-     * - сброс уже прошёл — снимок из окна, которого больше нет, и доля из него
-     *   ничего не говорит о нынешнем; нынешнее пусто, пока не приедут данные;
-     * - то же окно (время сброса совпало) — берём наибольшую из виденных долей:
-     *   внутри окна расход только растёт, а расхождение путей — это задержка
-     *   одного из них, а не откат расхода;
-     * - окно новее известного — начинаем считать заново, с него.
+     * So a window is recognised by its reset time, and a share is not taken at its word:
+     * - the reset has already passed - the snapshot is from a window that no longer exists, and its
+     *   share says nothing about the present one; the present one is empty until real data arrives;
+     * - the same window (the reset times match) - we take the largest share seen: within a window usage
+     *   only grows, and the disagreement between the routes is one of them lagging, not usage rolling
+     *   back;
+     * - a window newer than the known one - we start counting afresh, from it.
      *
-     * Экземпляр живёт вместе с панелью: это её память о том, что уже видели.
+     * The instance lives with the panel: this is its memory of what has already been seen.
      */
     class Tracker {
 
@@ -87,11 +87,10 @@ internal object ClaudeUsage {
         private var week: Window? = null
 
         /**
-         * Тот же снимок, но с окнами, сверенными со всем, что видели раньше.
+         * The same snapshot, but with its windows checked against everything seen before.
          *
-         * Под замком: ответы приезжают то от разговора, то от пинга — каждый в
-         * своём потоке, — и без него два одновременных снимка затирали бы память
-         * друг друга.
+         * Under a lock: answers arrive now from a conversation, now from a ping - each on its own
+         * thread - and without it two simultaneous snapshots would overwrite each other's memory.
          */
         @Synchronized
         fun merge(snapshot: Snapshot, now: Instant = Instant.now()): Snapshot {
@@ -102,48 +101,47 @@ internal object ClaudeUsage {
         }
 
         private fun fold(known: Window?, incoming: Window?, now: Instant): Window? {
-            // Известное окно, но только пока оно нынешнее: с моментом сброса его
-            // доля перестаёт что-либо значить, даже если новых данных нет.
+            // The known window, but only while it is the present one: at the moment of the reset its
+            // share stops meaning anything, even if there is no new data.
             val current = known?.takeIf { it.isCurrent(now) }
 
             val incomingAt = incoming?.resetsAt
             if (incomingAt == null) {
-                // Нуль без времени сброса — честное «окно ещё не открывалось»: так
-                // отвечает процесс, не сделавший ни одного запроса. А вот долю без
-                // окна привязать не к чему, и перебивать ей известное нельзя.
+                // A zero without a reset time is an honest "the window has not opened yet": that is how
+                // a process that has made no requests answers. A share without a window, on the other
+                // hand, has nothing to attach to, and must not override what is known.
                 return current
                     ?: incoming?.takeIf { it.percent == 0 }
-                    // Знали окно, а оно кончилось: в новом расход с нуля.
+                    // We knew a window and it has ended: in the new one usage starts from zero.
                     ?: RESET.takeIf { known != null }
             }
 
-            // Снимок из окна, которое уже сброшено: его доля — про прошлое, а про
-            // нынешнее окно она говорит ровно одно — оно началось заново. Именно
-            // так и приходит замерший ответ процесса, работавшего до сброса.
+            // A snapshot from a window that has already reset: its share is about the past, and about
+            // the present window it says exactly one thing - it has started afresh. That is precisely
+            // how a frozen answer from a process that worked before the reset arrives.
             if (!incomingAt.isAfter(now)) return current ?: RESET
 
             val currentAt = current?.resetsAt ?: return incoming
 
             return when {
-                // Одно и то же окно с точностью до минут, а не строкой: время
-                // сброса фиксировано, но пути дают его по-разному — живой разговор
-                // округляет до секунд («20:30:00.000Z»), сводка от сервера несёт
-                // микросекунды («20:30:00.464237+00:00»). Сравнение строк считало
-                // бы это разными окнами и обнуляло копилку на каждом шаге, а
-                // настоящие окна отличаются на пять часов или на неделю.
+                // One and the same window to within minutes, rather than by string: the reset time is
+                // fixed, but the routes give it differently - a live conversation rounds to seconds
+                // ("20:30:00.000Z"), the server's summary carries microseconds
+                // ("20:30:00.464237+00:00"). Comparing strings would count these as different windows
+                // and reset the memory at every step, while real windows differ by five hours or a week.
                 abs(currentAt.toEpochMilli() - incomingAt.toEpochMilli()) <= SAME_WINDOW_TOLERANCE_MS ->
                     incoming.copy(percent = maxOf(current.percent, incoming.percent))
-                // Окно новее известного — сброс случился, считаем заново с него.
+                // A window newer than the known one - the reset happened, we count afresh from it.
                 incomingAt.isAfter(currentAt) -> incoming
-                // Иначе снимок отстал на целое окно: держим то, что уже знаем.
+                // Otherwise the snapshot is a whole window behind: we keep what we already know.
                 else -> current
             }
         }
     }
 
     /**
-     * Окно сброшено, а свежих данных ещё нет: расход в новом окне нулевой, а
-     * когда оно кончится — станет известно с первым же запросом к модели.
+     * The window has reset and there is no fresh data yet: usage in the new window is zero, and when it
+     * ends will be known with the first request to the model.
      */
     private val RESET = Window(percent = 0, resets = "")
 
@@ -160,17 +158,18 @@ internal object ClaudeUsage {
     }
 
     /**
-     * Размер окна контекста зависит от модели: у больших он миллион, а не двести
-     * тысяч. Берём его из ответа, иначе доля на датчике будет втрое заниженной.
+     * The context window's size depends on the model: with the large ones it is a million rather than
+     * two hundred thousand. We take it from the answer, or the share on the meter would be three times
+     * too low.
      */
     private fun contextWindow(usage: JsonObject): Int? {
         val models = usage.child("session")?.child("model_usage") ?: return null
 
         return models.keys
             .mapNotNull { models.child(it)?.get("contextWindow")?.jsonPrimitive?.contentOrNull?.toIntOrNull() }
-            // 0 отсекаем наравне с null: на стороне вебвью его девать некуда —
-            // `?? current` не срабатывает на 0 (это не nullish), он застревает
-            // в state панели навсегда, и датчик контекста делится на ноль.
+            // 0 is cut off along with null: on the webview side there is nowhere to put it - `?? current`
+            // does not fire on 0 (it is not nullish), it sticks in the panel's state forever, and the
+            // context meter divides by zero.
             .filter { it > 0 }
             .maxOrNull()
     }

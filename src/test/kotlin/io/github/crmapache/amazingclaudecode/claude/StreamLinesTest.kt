@@ -6,35 +6,35 @@ import kotlin.test.assertEquals
 class StreamLinesTest {
 
     @Test
-    fun `собирает строку из отдельных кусков`() {
+    fun `assembles a line out of separate chunks`() {
         val lines = collect { it.append("""{"type":"sys"""); it.append("""tem"}""" + "\n") }
 
         assertEquals(listOf("""{"type":"system"}"""), lines)
     }
 
     @Test
-    fun `разбирает несколько строк из одного куска`() {
+    fun `takes several lines out of one chunk`() {
         val lines = collect { it.append("{\"a\":1}\n{\"b\":2}\n") }
 
         assertEquals(listOf("""{"a":1}""", """{"b":2}"""), lines)
     }
 
     @Test
-    fun `не отдаёт незавершённую строку`() {
+    fun `does not hand over an unfinished line`() {
         val lines = collect { it.append("{\"a\":1}\n{\"b\":") }
 
         assertEquals(listOf("""{"a":1}"""), lines)
     }
 
     @Test
-    fun `пропускает пустые строки`() {
+    fun `skips empty lines`() {
         val lines = collect { it.append("\n\n{\"a\":1}\n\n") }
 
         assertEquals(listOf("""{"a":1}"""), lines)
     }
 
     @Test
-    fun `после сброса недописанный хвост не всплывает`() {
+    fun `an unfinished tail does not resurface after a reset`() {
         val lines = collect {
             it.append("{\"a\":")
             it.reset()

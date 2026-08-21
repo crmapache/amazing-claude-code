@@ -6,36 +6,35 @@ export interface AuthState {
   loggedIn: boolean
   email?: string
   plan?: string
-  /** Путь к CLI, указанный руками, если он задан. */
+  /** The path to the CLI given by hand, when one is set. */
   executablePath?: string
-  /** Где искали исполняемый файл — приходит, только когда не нашли. */
+  /** Where the executable was looked for - arrives only when it was not found. */
   searched?: string[]
 }
 
 interface LoginGateProps {
-  /** Пусто, пока оболочка не ответила: об этом честно и говорим. */
+  /** Empty until the shell has answered: we say so honestly. */
   auth: AuthState | null
-  /** Вход уже открыт в терминале и мы ждём его окончания. */
+  /** The sign-in is already open in the terminal and we are waiting for it to finish. */
   waiting: boolean
   onLogin: () => void
   onRecheck: () => void
-  /** Показать панели файл CLI руками — когда сама она его не нашла. */
+  /** Point the panel at the CLI's file by hand - when it did not find it itself. */
   onSetExecutablePath: (path: string) => void
 }
 
 /**
- * Экран вместо панели, пока вход не подтверждён.
+ * A screen instead of the panel until the sign-in is confirmed.
  *
- * Показывать поле ввода без входа нечестно: агент ответит на любой вопрос одной
- * строкой про /login, а сама эта команда в потоковом режиме недоступна.
+ * Showing an input field without a sign-in would be dishonest: the agent answers every question with a
+ * single line about /login, while that command itself is unavailable in streaming mode.
  */
 export const LoginGate = ({ auth, waiting, onLogin, onRecheck, onSetExecutablePath }: LoginGateProps) => {
   /**
-   * В поле — то, что человек набрал, а пока он ничего не набирал — путь, уже
-   * сохранённый раньше. Своим состоянием его не завести: экран показывается
-   * ещё до первого ответа оболочки (пока ответа нет — «Checking…»), и
-   * начальное значение досталось бы пустое навсегда — а отправка нетронутого
-   * пустого поля молча стёрла бы настроенный путь.
+   * The field holds what the person typed, and while they have typed nothing - the path already saved
+   * earlier. It cannot be started as state of its own: the screen is shown before the shell's first
+   * answer ("Checking…" until it arrives), and the initial value would be empty forever - while sending
+   * an untouched empty field would silently wipe the configured path.
    */
   const [edited, setEdited] = useState<string | null>(null)
   const path = edited ?? auth?.executablePath ?? ''
@@ -49,16 +48,16 @@ export const LoginGate = ({ auth, waiting, onLogin, onRecheck, onSetExecutablePa
   }
 
   /**
-   * Файл не нашёлся — но «не нашёлся» и «не установлен» не одно и то же: CLI
-   * бывает поставлен в необычное место, а PATH у IDE не такой, как в терминале.
-   * Поэтому здесь и список проверенных мест, и поле, чтобы показать файл самому.
+   * The file was not found - but "not found" and "not installed" are not the same thing: the CLI is
+   * sometimes installed in an unusual place, and the IDE's PATH is not the terminal's. So here are both
+   * the list of places checked and a field to point at the file oneself.
    */
   if (!auth.installed) {
     return (
       <div className={s.gate}>
         <p className={s.gateTitle}>Claude Code not found</p>
         <p className={s.gateText}>
-          The panel drives the claude CLI. If it is installed, point the panel at it — the IDE does not always
+          The panel drives the claude CLI. If it is installed, point the panel at it - the IDE does not always
           see the same PATH as your terminal.
         </p>
 
@@ -109,7 +108,7 @@ export const LoginGate = ({ auth, waiting, onLogin, onRecheck, onSetExecutablePa
       </button>
 
       {waiting ? (
-        <p className={s.gateWaiting}>Finish the login in the terminal — this screen closes by itself.</p>
+        <p className={s.gateWaiting}>Finish the login in the terminal - this screen closes by itself.</p>
       ) : null}
 
       <button type="button" className={s.gateGhost} onClick={onRecheck}>

@@ -4,15 +4,16 @@ import com.intellij.openapi.application.EDT
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
 import com.intellij.openapi.wm.ToolWindowManager
+import io.github.crmapache.amazingclaudecode.toolwindow.ClaudePanels
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Открывает панель сразу при старте, если IDE запущена с `acc.autoOpen=true`.
+ * Opens the panel right at startup when the IDE is launched with `acc.autoOpen=true`.
  *
- * Нужно только для разработки: тестовая IDE поднимается уже с открытой панелью, и
- * каждый прогон не начинается с поиска кнопки. В обычной установке свойство не
- * задано, поэтому пользователю ничего не навязывается.
+ * For development only: the sandbox IDE comes up with the panel already open, so no run begins with
+ * hunting for a button. In an ordinary installation the property is unset, so nothing is imposed on the
+ * user.
  */
 internal class AutoOpenPanelActivity : ProjectActivity {
 
@@ -20,11 +21,10 @@ internal class AutoOpenPanelActivity : ProjectActivity {
         if (System.getProperty("acc.autoOpen") != "true") return
 
         withContext(Dispatchers.EDT) {
-            ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID)?.activate(null)
+            // By the same name the panel is registered under in the platform: a copy of that string
+            // here would one day drift from the real one, and the sandbox IDE would silently open
+            // without the panel.
+            ToolWindowManager.getInstance(project).getToolWindow(ClaudePanels.TOOL_WINDOW_ID)?.activate(null)
         }
-    }
-
-    private companion object {
-        const val TOOL_WINDOW_ID = "AmazingClaudeCode"
     }
 }

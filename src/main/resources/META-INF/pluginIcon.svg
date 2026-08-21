@@ -1,6 +1,6 @@
-<!-- Логотип плагина. Обводка исходного растра (assets/logo.png), поэтому пути
-     длинные и правятся не руками, а пересборкой из мастер-файла. Размер и поля
-     заданы маркетплейсом: холст 40x40, знак вписан в 36x36. -->
+<!-- The plugin's logo. A trace of the source raster (assets/logo.png), which is why the paths are long and
+     are fixed by rebuilding from the master file rather than by hand. The size and the margins are set by
+     the marketplace: a 40x40 canvas with the mark fitted into 36x36. -->
 <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="accBg" x1="1" y1="0" x2="0" y2="1">

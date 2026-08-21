@@ -5,12 +5,12 @@ import type { Scenario, ScenarioStep } from './types'
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
- * Номер команды, которую панель только что отправила «оболочке».
+ * The number of the command the panel has just sent to the "shell".
  *
- * В браузере оболочки нет, и её сторону моста играет харнесс: команду из
- * bash-режима панель отправляет по-настоящему, а ответить на неё надо тем же
- * номером — иначе карточка в ленте так и останется «running». Ставим мост один
- * раз на страницу: панель шлёт в него и до, и после пересоздания <App/>.
+ * In a browser there is no shell, and its side of the bridge is played by the harness: a bash-mode command
+ * the panel sends genuinely, and it has to be answered under the same number - otherwise the card in the
+ * feed stays "running". The bridge is installed once per page: the panel sends into it both before and
+ * after <App/> is recreated.
  */
 let lastShellRequest: { id: string; command: string } | undefined
 
@@ -32,7 +32,7 @@ const listenToPanel = () => {
   window.dispatchEvent(new Event('acc:ready'))
 }
 
-/** Ждёт, пока панель отдаст команду в мост, — и возвращает её вместе с номером. */
+/** Waits for the panel to hand a command to the bridge - and returns it together with its number. */
 const waitForShellRequest = async (realPacing: boolean): Promise<{ id: string; command: string } | undefined> => {
   for (let i = 0; i < 50; i += 1) {
     if (lastShellRequest) return lastShellRequest
@@ -44,11 +44,10 @@ const waitForShellRequest = async (realPacing: boolean): Promise<{ id: string; c
 }
 
 /**
- * После смены key у <App/> React размонтирует старый экземпляр и монтирует новый —
- * его собственный subscribe() перепишет window.__accReceive заново, но не мгновенно.
- * Ждём, пока там появится действительно НОВАЯ функция, а не та, что была до ремонта
- * (иначе на повторном клике события первые полсекунды улетали бы ещё старому,
- * уже размонтированному экземпляру).
+ * After <App/>'s key changes, React unmounts the old instance and mounts a new one - its own subscribe()
+ * rewrites window.__accReceive afresh, but not instantly. We wait until a genuinely NEW function appears
+ * there rather than the one that was there before the remount (otherwise on a repeated click the events
+ * would fly for the first half second to the old, already unmounted instance).
  */
 const waitForFreshBridge = async (previous: Window['__accReceive']): Promise<void> => {
   for (let i = 0; i < 50; i += 1) {
@@ -71,7 +70,7 @@ export class ScenarioPlayer {
     this.runId += 1
   }
 
-  /** Живое автовоспроизведение с настоящими паузами и эффектом печати. */
+  /** Live auto playback with genuine pauses and a typing effect. */
   async playAuto(scenario: Scenario, onProgress?: (progress: PlayerProgress) => void): Promise<void> {
     const myRun = (this.runId += 1)
     const previousBridge = window.__accReceive
@@ -98,10 +97,9 @@ export class ScenarioPlayer {
   }
 
   /**
-   * Пошаговый режим: мгновенно доигрывает все чекпоинты с первого по targetIndex
-   * включительно — паузы и кусочки печатающегося текста пропускаются. Работает
-   * одинаково что вперёд, что назад: «отменить» уже применённые события нельзя,
-   * поэтому <App/> всегда пересобирается заново вызывающей стороной перед этим.
+   * Step mode: it instantly plays out every checkpoint from the first through targetIndex inclusive - the
+   * pauses and the pieces of typing text are skipped. It works the same forwards and backwards: events
+   * already applied cannot be "undone", so <App/> is always rebuilt afresh by the caller beforehand.
    */
   async jumpTo(scenario: Scenario, targetIndex: number): Promise<void> {
     const myRun = (this.runId += 1)
@@ -130,8 +128,8 @@ export class ScenarioPlayer {
       return
     }
 
-    // Кусочки печатающегося текста — только эффект для автовоспроизведения:
-    // итоговый текстовый блок и без них полностью восстановит состояние ленты.
+    // The pieces of typing text are an effect for auto playback only: the final text block restores the
+    // feed's state in full without them.
     if (!realPacing && step.kind === 'agent' && step.event.type === 'stream_event') return
 
     if (step.kind === 'user') {
@@ -156,8 +154,8 @@ export class ScenarioPlayer {
   }
 
   /**
-   * Отправляет команду ровно так же, как это сделал бы человек — набрав её в
-   * поле через «!», — и отвечает на неё заготовленным выводом.
+   * Sends a command exactly as a person would - by typing it into the field through a "!" - and answers it
+   * with the prepared output.
    */
   private async runShell(
     step: Extract<ScenarioStep, { kind: 'bash' }>,
@@ -166,13 +164,13 @@ export class ScenarioPlayer {
     lastShellRequest = undefined
     window.__accHarnessSend?.(`!${step.command}`)
 
-    // Отправка идёт через мост, а он асинхронный: дожидаемся, пока панель
-    // действительно отдаст команду наружу, и только тогда узнаём её номер.
+    // The send goes through the bridge, and that is asynchronous: we wait for the panel genuinely to hand
+    // the command outwards, and only then learn its number.
     const request = await waitForShellRequest(realPacing)
     if (!request) return
 
-    // Команда идёт не мгновенно — на этой паузе в ленте и видно карточку
-    // «running», ради которой она в сценарии и стоит.
+    // A command does not run instantly - it is during this pause that the "running" card the scenario holds
+    // it for is visible in the feed.
     if (realPacing) await sleep(step.runMs ?? 900)
 
     window.__accReceive?.({

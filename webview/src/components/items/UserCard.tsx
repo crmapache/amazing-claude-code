@@ -16,7 +16,7 @@ const CHIP_CLASS: Record<ChipKind, string> = {
 
 interface UserCardProps {
   item: UserItem
-  /** Открыть ссылку из собственного сообщения в системном браузере. */
+  /** Open a link from one's own message in the system browser. */
   onOpenLink: (url: string) => void
 }
 
@@ -28,8 +28,8 @@ export const UserCard = ({ item, onOpenLink }: UserCardProps) => (
       <div className={s.spacer} />
     </div>
 
-    {/* Цитату показываем целиком прямо здесь: без неё вопрос вида «а почему?»
-        повисает в воздухе — непонятно, о чём он. */}
+    {/* The quote is shown whole right here: without it a question like "but why?" hangs in the air -
+        there is no telling what it is about. */}
     {item.quotes.map((quote, index) => (
       <blockquote key={index} className={s.userQuote}>
         {quote}
@@ -40,9 +40,8 @@ export const UserCard = ({ item, onOpenLink }: UserCardProps) => (
       {item.tokens.map((token, index) =>
         token.kind === 'text' ? (
           <TextToken key={index} value={token.value} echo={token.echo === true} onOpenLink={onOpenLink} />
-        ) : // Вставка, за которой в сообщении уже ничего нет, занимает строку
-        // целиком: место всё равно свободно, а по семи словам в узкой плашке не
-        // вспомнить, что именно отправил.
+        ) : // A paste with nothing after it in the message takes a whole line: the room is free anyway,
+        // and seven words in a narrow chip are not enough to recall what exactly was sent.
         token.chip.kind === 'paste' && index === item.tokens.length - 1 ? (
           <PasteBlock key={index} chip={token.chip} />
         ) : (
@@ -54,16 +53,14 @@ export const UserCard = ({ item, onOpenLink }: UserCardProps) => (
 )
 
 /**
- * Текст показываем ровно как набрали — без разметки и без своих переносов:
- * строки сохраняет сам .userBody (white-space: pre-wrap). Адрес в тексте
- * остаётся живой ссылкой: её кликают, а не переписывают руками.
+ * The text is shown exactly as it was typed - without markup and without rewrapping of ours: the lines
+ * are preserved by .userBody itself (white-space: pre-wrap). An address in the text stays a live link: it
+ * is clicked rather than retyped by hand.
  *
- * Приглушаем только то, что подставила сама панель, — повтор вопроса агента
- * рядом с выбранным ответом (см. UserToken.echo). Набранное человеком не
- * тускнеет никогда, чем бы оно ни заканчивалось: раньше повтор угадывался по
- * вопросительному знаку в конце строки, и в блёклое уезжал обычный вопрос
- * агенту («сам замержил?») — то есть выглядело неважным ровно то, что и было
- * всем сообщением.
+ * We dim only what the panel put in itself - the agent's question repeated beside the chosen answer (see
+ * UserToken.echo). What a person typed never fades, however it happens to end: the repeat used to be
+ * guessed by a question mark at the end of the line, and an ordinary question to the agent ("did you
+ * merge it yourself?") went pale - that is, exactly what was the whole message looked unimportant.
  */
 const TextToken = ({
   value,
@@ -80,26 +77,24 @@ const TextToken = ({
 )
 
 /**
- * Плашка вложения в отправленном сообщении.
+ * An attachment chip inside a sent message.
  *
- * Отдельным memo-компонентом ради свёрнутой вставки: её подпись и подсказка
- * считаются из самого текста, а лента перерисовывается на каждом кусочке
- * печатающегося ответа. Плашка при этом не меняется вовсе — и пересчитывать её
- * по сто раз в секунду не за чем.
+ * A memo component of its own for the sake of a collapsed paste: its caption and tooltip are computed
+ * from the text itself, while the feed repaints on every chunk of a printing answer. The chip meanwhile
+ * does not change at all - and recomputing it a hundred times a second serves nothing.
  */
 const ChipView = memo(({ chip }: { chip: Chip }) => (
   <span className={`${s.chip} ${CHIP_CLASS[chip.kind]}`} title={chipTitle(chip)}>
-    {/* Значка типа вложения нет намеренно — см. renderChipNode в Composer:
-        плашка здесь та же, что и в поле ввода, и выглядеть должна так же. */}
+    {/* There is deliberately no attachment type icon - see renderChipNode in Composer: the chip here is
+        the same one as in the input field and should look the same. */}
     {chipLabel(chip)}
   </span>
 ))
 
 /**
- * Та же плашка вставки, но во всю ширину — и с началом текста в несколько
- * строк вместо семи слов. Считается из текста вставки, как и обычная, поэтому
- * тоже memo: лента перерисовывается на каждом кусочке печатающегося ответа, а
- * отправленная вставка не меняется никогда.
+ * The same paste chip, but full width - and with the start of the text over several lines instead of
+ * seven words. It is computed from the paste's text like the ordinary one, hence memo as well: the feed
+ * repaints on every chunk of a printing answer, while a sent paste never changes.
  */
 const PasteBlock = memo(({ chip }: { chip: Chip }) => {
   const text = chip.text ?? ''

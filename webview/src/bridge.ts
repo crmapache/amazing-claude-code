@@ -2,19 +2,19 @@ import type { ShellMessage, WebviewMessage } from './protocol'
 
 declare global {
   interface Window {
-    /** Ставит оболочка, когда мост готов. */
+    /** Set by the shell once the bridge is in place. */
     __accSend?: (payload: string) => void
     /**
-     * Ставим мы: сюда оболочка складывает свои сообщения — пачкой за кадр, а из
-     * харнесса по одному.
+     * Set by us: this is where the shell puts its messages - as a batch per frame, and one at a time
+     * from the harness.
      */
     __accReceive?: (batch: ShellMessage[] | ShellMessage) => void
   }
 }
 
 /**
- * Отправка накапливается, пока оболочка не поставила мост: страница успевает
- * отрисоваться и принять первый ввод раньше, чем встанет канал.
+ * Sending accumulates until the shell has put the bridge in place: the page manages to render and take
+ * its first input before the channel is up.
  */
 const outbox: WebviewMessage[] = []
 
@@ -37,8 +37,8 @@ export const send = (message: WebviewMessage): void => {
 }
 
 export const subscribe = (handler: (message: ShellMessage) => void): (() => void) => {
-  // Вся пачка разбирается внутри одного вызова — и React сливает её в одно
-  // обновление интерфейса вместо десятка подряд.
+  // The whole batch is handled inside one call - and React merges it into a single interface update
+  // rather than a dozen in a row.
   window.__accReceive = (batch) => {
     if (!Array.isArray(batch)) {
       handler(batch)
@@ -53,5 +53,5 @@ export const subscribe = (handler: (message: ShellMessage) => void): (() => void
   }
 }
 
-/** В браузере вне IDE моста нет: об этом полезно знать при отладке интерфейса. */
+/** Outside the IDE, in a browser, there is no bridge: worth knowing while debugging the interface. */
 export const isInsideIde = (): boolean => isBridgeReady() || Boolean(window.__accReceive)

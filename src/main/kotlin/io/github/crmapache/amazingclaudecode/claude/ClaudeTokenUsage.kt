@@ -13,25 +13,24 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Сколько токенов потрачено СЕГОДНЯ по всем проектам сразу — та же цифра "tok",
- * что у пользователя в персональном ~/.claude/statusline.sh. У самого разговора
- * этого числа спросить нельзя: он знает только свой контекст, а не все проекты
- * и не историю за сегодня, поэтому — как и в statusline.sh — читаем транскрипты
- * напрямую.
+ * How many tokens were spent TODAY across every project at once - the same "tok" figure a user has in
+ * their personal ~/.claude/statusline.sh. The conversation itself cannot be asked for this number: it
+ * knows only its own context, not every project and not today's history - so, as statusline.sh does, we
+ * read the transcripts directly.
  *
- * Дедуп по (message.id, requestId): одно и то же сообщение в транскриптах
- * встречается по нескольку раз (resume, компакт, копии в подагентах) — без
- * дедупа сумма задвоилась бы.
+ * Deduplicated by (message.id, requestId): one and the same message occurs several times over in the
+ * transcripts (resumes, compactions, copies inside subagents) - without the deduplication the total
+ * would double.
  */
 internal object ClaudeTokenUsage {
 
-    // Старее двух дней файл точно не содержит событий за сегодня — совпадает с
-    // `find -mtime -2` в statusline.sh, сканировать такие незачем.
+    // A file older than two days certainly holds no events from today - the same as `find -mtime -2` in
+    // statusline.sh, no reason to scan those.
     private const val RECENT_MS = 2L * 24 * 60 * 60 * 1000
     private const val MAX_DEPTH = 8
 
     fun today(): String {
-        val root = File(System.getProperty("user.home"), ".claude/projects")
+        val root = File(HostOs.configDirectory(), "projects")
         if (!root.isDirectory) return "0.0M"
 
         val cutoff = System.currentTimeMillis() - RECENT_MS

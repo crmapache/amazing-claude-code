@@ -3,17 +3,16 @@ package io.github.crmapache.amazingclaudecode.claude
 import java.io.File
 
 /**
- * Доступен ли этому компьютеру режим «без вопросов».
+ * Whether this computer has the "no questions" mode available at all.
  *
- * Сам CLI решает это ровно двумя вещами: разрешён ли переход ключом запуска и не
- * запрещён ли режим настройками (`permissions.disableBypassPermissionsMode`).
- * Панель обязана знать ответ заранее, потому что от него зависит круг Shift+Tab:
- * запрещённый режим круг должен перешагивать молча, а не заводить человека в
- * отказ агента.
+ * The CLI decides it by exactly two things: whether the switch is allowed by a launch flag, and
+ * whether the mode is forbidden by settings (`permissions.disableBypassPermissionsMode`). The panel
+ * has to know the answer up front, because the Shift+Tab cycle depends on it: a forbidden mode the
+ * cycle must step over silently, rather than walk the person into a refusal from the agent.
  *
- * Третью причину — выключение режима на стороне Anthropic — узнать снаружи
- * нельзя вовсе. Она приходит отказом на смену режима, и его панель запоминает
- * сама (см. refusedModes в состоянии ленты).
+ * The third reason - the mode being switched off on Anthropic's side - cannot be learned from outside
+ * at all. It arrives as a refusal of the mode change, and the panel remembers that itself (see
+ * refusedModes in the feed's state).
  */
 internal object PermissionBypass {
 
@@ -30,21 +29,20 @@ internal object PermissionBypass {
         cliKnowsFlag && settings.none(::disables)
 
     /**
-     * Не запрещён ли режим настройками — без расспроса самого CLI.
+     * Whether the mode is forbidden by settings - without questioning the CLI itself.
      *
-     * Отдельно от [isAvailable] потому, что тот запускает процесс (`--help`), а
-     * спросить про запрет нужно и там, где на это нет права: разбор настроек
-     * идёт в потоке интерфейса, пока панель ещё только открывается (см.
-     * [PermissionDefaultMode]).
+     * Apart from [isAvailable] because that one starts a process (`--help`), while the question about
+     * the ban has to be asked where there is no right to do so: settings are parsed on the interface
+     * thread, while the panel is still opening (see [PermissionDefaultMode]).
      */
     fun allowedBySettings(projectDirectory: String?): Boolean =
         settingsFiles(projectDirectory).none(::disables)
 
     /**
-     * Те же файлы, что читает сам CLI: политика организации, личные настройки
-     * человека и настройки проекта. Значение `disable` отменить нельзя — обратного
-     * значения у поля просто нет, — поэтому порядок слоёв тут ни на что не влияет
-     * и достаточно найти запрет хоть в одном.
+     * The same files the CLI itself reads: the organization's policy, the person's own settings and
+     * the project's. The value `disable` cannot be undone - the field has no opposite value at all -
+     * so the order of the layers changes nothing here, and finding the ban in any one of them is
+     * enough.
      */
     fun settingsFiles(projectDirectory: String?): List<File> =
         ClaudeSettings.sources(projectDirectory).map { it.file }

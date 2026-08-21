@@ -1,11 +1,11 @@
 /**
- * Подсказка "@" в поле ввода — файлы проекта, а не команды. Список приходит
- * от оболочки один раз и обновляется сам; здесь только фильтрация по набранному.
+ * The "@" hint in the input field - the project's files rather than commands. The list arrives from the
+ * shell once and refreshes itself; only the filtering by what has been typed lives here.
  */
 
 const MAX_FILE_SUGGESTIONS = 40
 
-/** Совпадения по имени файла идут первыми — так же, как и у слэш-команд. */
+/** Matches on the file's name come first - the same as with slash commands. */
 export const matchFiles = (files: string[], query: string, limit = MAX_FILE_SUGGESTIONS): string[] => {
   const needle = query.toLowerCase()
   if (!needle) return files.slice(0, limit)

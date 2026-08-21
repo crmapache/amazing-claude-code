@@ -7,21 +7,19 @@ interface PlanCardProps {
   onApprove: () => void
   onKeepPlanning: () => void
   /**
-   * Ждёт ли кто-то ответа на самом деле. У разговора, поднятого из истории,
-   * карточка плана приезжает вместе со всей перепиской, но решать по ней нечего:
-   * ход кончился когда-то в прошлом. Кнопки там были бы обманом — нажатие не
-   * дошло бы ни до кого.
+   * Whether anyone is genuinely waiting for an answer. In a conversation raised from the history a plan's
+   * card arrives together with the whole transcript, but there is nothing to decide about it: the turn
+   * ended some time in the past. Buttons there would be a deception - a press would reach nobody.
    */
   awaiting: boolean
-  /** Ссылка внутри плана открывается снаружи, как и в ответе агента. */
+  /** A link inside a plan opens outside, as in the agent's answer. */
   onOpenLink: (url: string) => void
 }
 
 /**
- * План показывается ровно так, как агент его написал: тем же разбором markdown,
- * что и обычный ответ (см. Markdown). Своей упрощённой раскладки «номер +
- * строка» у него больше нет — она теряла заголовки разделов, вложенные пункты и
- * всю разметку внутри строки.
+ * A plan is shown exactly as the agent wrote it: by the same markdown parsing as an ordinary answer (see
+ * Markdown). It no longer has a simplified "number + line" layout of its own - that lost section
+ * headings, nested items and every bit of markup inside a line.
  */
 export const PlanCard = ({ item, onApprove, onKeepPlanning, awaiting, onOpenLink }: PlanCardProps) => (
   <div className={s.plan}>

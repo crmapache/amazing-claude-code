@@ -1,33 +1,31 @@
-<!-- id, name, version, vendor и description патчатся из build.gradle.kts,
-     чтобы у них была одна точка правды. Здесь только то, что Gradle не задаёт. -->
-<!-- require-restart: обновлять этот плагин на живой IDE нельзя, и дело не только
-     в жалобе «didn't unload fully», которую платформа показывает при попытке.
-     Панель отдаёт свой интерфейс встроенному браузеру через обработчик схемы,
-     зарегистрированный в движке браузера на весь процесс IDE (см.
-     WebviewResources): снять эту регистрацию нечем — точечного отзыва в JCEF
-     нет, а общий снёс бы заодно и обработчики других плагинов. Значит после
-     подмены на живой в памяти остаётся обработчик прежней версии, и новая
-     показывала бы старый интерфейс поверх нового кода — те самые «functionality
-     issues» из предупреждения, только уже настоящие. Живые разговоры с их
-     процессами такую подмену всё равно не переживают, так что просьба
-     перезапустить — не потеря, а честный порядок обновления. -->
+<!-- id, name, version, vendor and description are patched in from build.gradle.kts, so that they have
+     one source of truth. Only what Gradle does not set lives here. -->
+<!-- require-restart: this plugin cannot be updated on a running IDE, and not only because of the
+     "didn't unload fully" complaint the platform shows when one tries. The panel serves its interface
+     to the embedded browser through a scheme handler registered in the browser's engine for the whole
+     IDE process (see WebviewResources): there is nothing to undo that registration with - JCEF has no
+     targeted revocation, and a blanket one would take other plugins' handlers down with it. So after a
+     live swap the previous version's handler stays in memory, and the new one would show the old
+     interface over new code - the very "functionality issues" from the warning, only real this time.
+     Live conversations with their processes do not survive such a swap anyway, so asking for a restart
+     is not a loss but an honest way to update. -->
 <idea-plugin require-restart="true">
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.jcef</depends>
-    <!-- Вход в Claude Code открывает браузер и ждёт возврата кода, то есть это
-         разговор с процессом. Ведём его во встроенном терминале, а не выдумываем
-         свой экран входа. -->
+    <!-- Signing in to Claude Code opens a browser and waits for a code to come back, that is, it is a
+         dialogue with a process. We hold it in the built-in terminal rather than invent a sign-in
+         screen of our own. -->
     <depends>org.jetbrains.plugins.terminal</depends>
-    <!-- Файл, брошенный в панель из окна коммита, приезжает объектом системы
-         контроля версий, а не путём — разбирать его нечем без её классов (см.
-         WebviewFileDrop). Модуль встроен в любую JetBrains IDE. -->
+    <!-- A file dropped into the panel from the commit window arrives as a version control object rather
+         than a path - there is nothing to parse it with without that module's classes (see
+         WebviewFileDrop). The module is built into every JetBrains IDE. -->
     <depends>com.intellij.modules.vcs</depends>
 
     <resource-bundle>messages.AccBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
-        <!-- anchor задаёт только положение по умолчанию: дальше пользователь сам
-             перетаскивает кнопку между краями, и платформа помнит его выбор. -->
+        <!-- anchor sets the default position only: from then on the user drags the button between the
+             edges themselves, and the platform remembers their choice. -->
         <toolWindow
                 id="AmazingClaudeCode"
                 anchor="right"

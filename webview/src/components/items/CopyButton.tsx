@@ -2,19 +2,19 @@ import { useEffect, useState } from 'react'
 import { writeClipboard } from '../../clipboard'
 
 interface CopyButtonProps {
-  /** Что уйдёт в буфер — уже готовый простой текст, без markdown-разметки. */
+  /** What travels into the clipboard - ready plain text, without markdown. */
   text: string
   className: string
   title: string
 }
 
-/** Сколько подряд держим галочку после копирования, прежде чем вернуть иконку. */
+/** How long the tick is held after a copy before the icon returns. */
 const COPIED_FLASH_MS = 1500
 
 /**
- * Кнопка «скопировать» — одна на все места, где копируют кусок ответа: сам
- * ответ целиком, блок кода внутри него. Галочка вместо иконки — единственный
- * ответ на нажатие, который здесь возможен: в буфер нельзя заглянуть.
+ * The "copy" button - one for every place a piece of an answer is copied from: the whole answer, a code
+ * block inside it. A tick instead of the icon is the only answer to a press possible here: one cannot
+ * look into the clipboard.
  */
 export const CopyButton = ({ text, className, title }: CopyButtonProps) => {
   const [copied, setCopied] = useState(false)
@@ -31,8 +31,8 @@ export const CopyButton = ({ text, className, title }: CopyButtonProps) => {
       className={className}
       title={title}
       onClick={(event) => {
-        // Блок кода лежит внутри карточки ответа, у которой свои обработчики
-        // клика (выделение, меню) — нажатие на кнопку до них доходить не должно.
+        // A code block lies inside the answer's card, which has click handlers of its own (selection,
+        // the menu) - a press on the button must not reach them.
         event.stopPropagation()
         void copyToClipboard(text).then((ok) => {
           if (ok) setCopied(true)
@@ -44,30 +44,28 @@ export const CopyButton = ({ text, className, title }: CopyButtonProps) => {
   )
 }
 
-/** Сколько ждём современный Clipboard API, прежде чем считать его недоступным. */
+/** How long the modern Clipboard API is waited for before it counts as unavailable. */
 const CLIPBOARD_API_TIMEOUT_MS = 300
 
 /**
- * navigator.clipboard в здешнем встроенном в IDE браузере (JCEF) есть не
- * всегда — и, что хуже обычного отказа, может не отклониться с ошибкой, а
- * зависнуть без ответа насовсем (проверено живьём: обычный await так и не
- * дожидается ни успеха, ни отказа). Кнопка при этом рапортовала об успехе
- * (галочка) сразу, не дожидаясь вообще ничего. document.execCommand уже
- * используется в панели для других операций и там работает стабильно, поэтому
- * он — честный запасной путь, если современный API недоступен, упал или молчит
- * дольше разумного. «Успех» теперь значит именно успех, а не просто вызов.
+ * navigator.clipboard is not always present in the IDE's embedded browser (JCEF) - and, worse than an
+ * ordinary refusal, it may not reject with an error but hang without an answer for good (verified live:
+ * a plain await never sees either success or refusal). The button meanwhile reported success (the tick)
+ * at once, waiting for nothing at all. document.execCommand is already used in the panel for other
+ * operations and works reliably there, so it is an honest fallback when the modern API is unavailable,
+ * failed, or stays silent longer than is reasonable. "Success" now means exactly success rather than
+ * merely a call.
  */
 export const copyToClipboard = async (text: string): Promise<boolean> => {
-  // Отдельно от обоих браузерных путей: на Linux буфер встроенного браузера ни
-  // с чем не связан, и оба они кладут текст туда, откуда его уже никто не
-  // достанет — ни редактор, ни соседнее приложение (см. clipboard.ts). Мимо
-  // общего перехвата копирования эта кнопка проходит потому, что современный
-  // Clipboard API события копирования не поднимает.
+  // Apart from both browser routes: on Linux the embedded browser's clipboard is connected to nothing,
+  // and both of them put the text where nobody can reach it afterwards - neither the editor nor a
+  // neighbouring application (see clipboard.ts). This button slips past the shared copy interception
+  // because the modern Clipboard API raises no copy event.
   const bridged = writeClipboard(text)
 
   if (navigator.clipboard?.writeText) {
-    // .catch сразу на самом промисе — иначе он, отказавшись позже, чем таймаут
-    // уже выиграл гонку, всплывёт как uncaught (in promise) в консоли.
+    // .catch straight on the promise itself - otherwise, rejecting later than the timeout has already
+    // won the race, it surfaces as an uncaught (in promise) in the console.
     const write = navigator.clipboard
       .writeText(text)
       .then(() => 'done' as const)

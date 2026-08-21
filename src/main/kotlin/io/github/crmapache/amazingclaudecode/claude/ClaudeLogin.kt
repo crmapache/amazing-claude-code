@@ -6,30 +6,30 @@ import com.intellij.openapi.project.Project
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 
 /**
- * Вход выполняется во встроенном терминале IDE.
+ * Signing in happens in the IDE's built-in terminal.
  *
- * Своего экрана входа у панели быть не может: `claude auth login` открывает браузер
- * и ждёт возврата кода, то есть это полноценный диалог с процессом. Терминал IDE
- * для этого уже есть — незачем городить второй.
+ * The panel cannot have a sign-in screen of its own: `claude auth login` opens a browser and waits for
+ * a code to come back, that is, it is a full dialogue with a process. The IDE's terminal already exists
+ * for that - no reason to build a second one.
  */
 internal object ClaudeLogin {
 
     fun login(project: Project) = openTerminal(project, "login")
 
     /**
-     * Выход тоже уводим в терминал. Своими руками стирать авторизацию панель не
-     * должна: способов входа несколько, и знает о них только сам CLI.
+     * Signing out goes into the terminal too. The panel should not wipe the authorization with its own
+     * hands: there are several ways to sign in, and only the CLI knows about them.
      */
     fun logout(project: Project) = openTerminal(project, "logout")
 
     private fun openTerminal(project: Project, verb: String) {
         ApplicationManager.getApplication().invokeLater {
             runCatching {
-                // Способ открыть терминал помечен устаревшим, но замены ему у
-                // платформы нет: всё остальное в этом менеджере либо так же
-                // устарело, либо закрыто для плагинов. Нужна именно оболочка, в
-                // которую мы потом напишем, — вход, запущенный терминалом напрямую,
-                // закрыл бы вкладку вместе с собой и со всем, что успел сказать.
+                // The way to open a terminal is marked deprecated, but the platform offers no
+                // replacement: everything else in this manager is either deprecated as well or closed
+                // to plugins. What we need is a shell we can then write into - a sign-in launched by
+                // the terminal directly would close the tab along with itself and everything it had
+                // managed to say.
                 @Suppress("DEPRECATION")
                 val widget = TerminalToolWindowManager.getInstance(project)
                     .createShellWidget(project.basePath, "claude $verb", true, true)
@@ -42,8 +42,8 @@ internal object ClaudeLogin {
     }
 
     /**
-     * Полный путь, а не голое имя: терминал берёт PATH из своей оболочки, и если
-     * claude поставлен установщиком в ~/.local/bin, имени может не хватить.
+     * The full path rather than a bare name: the terminal takes PATH from its own shell, and if claude
+     * was put into ~/.local/bin by the installer, the name alone may not be enough.
      */
     private fun command(verb: String): String {
         val executable = ClaudeExecutable.find()?.absolutePath ?: "claude"

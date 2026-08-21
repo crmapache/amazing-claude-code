@@ -1,10 +1,9 @@
 /*
- * Обёртка на весь экран: тёмный «стол» с отступами от краёв, на котором лежат
- * две карточки со скруглениями — сама панель и тулбар сценариев — с зазором
- * между ними, а не впритык друг к другу и к краям окна. Панель растягивается
- * на всё оставшееся место (flex: 1), тулбар держит фиксированную ширину —
- * поэтому тулбар никогда не лежит поверх настоящих кнопок панели (Send,
- * кнопки в шапке).
+ * A full-screen wrapper: a dark "desk" with insets from the edges, on which two rounded cards lie - the
+ * panel itself and the scenario toolbar - with a gap between them rather than flush against each other and
+ * against the window's edges. The panel stretches over everything that is left (flex: 1) while the toolbar
+ * holds a fixed width - so the toolbar never lies over the panel's genuine buttons (Send, the buttons in
+ * the header).
  */
 .harnessRoot {
   display: flex;
@@ -113,7 +112,7 @@
   color: var(--acc-accent-light);
 }
 
-/* --- Карточка чекпоинтов ----------------------------------------------------- */
+/* --- The checkpoints card ---------------------------------------------------- */
 
 .checkpoints {
   flex: 0 0 260px;

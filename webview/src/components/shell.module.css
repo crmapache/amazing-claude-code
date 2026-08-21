@@ -1,8 +1,8 @@
-/* Обвязка панели: шапка, переключатель стрима, нижняя строка, меню, тост. */
+/* The panel's wrapping: the header, the stream switcher, the bottom row, the menus, the toast. */
 
-/* Кадры анимаций живут здесь, а не в общем файле: CSS-модуль переименовывает
-   имена анимаций так же, как классы, и ссылка на глобальные кадры молча ни во что
-   не превращается — анимация просто не идёт. */
+/* The animation keyframes live here rather than in a shared file: a CSS module renames animation names
+   just as it renames classes, and a reference to global keyframes silently turns into nothing - the
+   animation simply does not run. */
 
 @keyframes acc-pulse {
   0%,
@@ -25,10 +25,9 @@
   overflow: hidden;
 }
 
-/* Со стороны редактора — как у нативных тулвиндоу (терминал, проект и т.д.):
-   там, где панель граничит с редактором, у них всегда есть тонкая рамка.
-   Панель цепляется к любой стороне экрана, поэтому и рамка едет вместе с ней,
-   а не прибита раз и навсегда к одному краю. */
+/* On the editor's side it is as with the native tool windows (the terminal, the project view and so on):
+   where a panel borders the editor they always have a thin frame. The panel latches onto any side of the
+   screen, so the frame travels with it rather than being nailed once and for all to one edge. */
 .panel[data-anchor='right'] {
   border-left: 1px solid var(--acc-line-strong);
 }
@@ -46,26 +45,24 @@
 }
 
 /*
- * Лента и поле ввода (composer.dock) делят место так, как решает layout поля
- * ввода: снизу и compact — колонка, лента сверху под общей шапкой, ввод под
- * ней; .workArea тут — обычный flex-столбец, растянутый на весь остаток
- * панели под шапкой (flex: 1).
+ * The feed and the input field (composer.dock) divide the room the way the input field's layout decides:
+ * under bottom and compact it is a column, the feed on top under the shared header and the input beneath
+ * it; .workArea here is an ordinary flex column stretched over everything left of the panel under the
+ * header (flex: 1).
  *
- * left/right — иначе: шапка занимает только колонку с лентой и полем, а
- * рядом, во всю высоту ПАНЕЛИ целиком (включая место рядом с самой шапкой,
- * не только под ней) — .railColumn: MODEL/EFFORT/MODE, расход и кнопки (см.
- * её описание ниже), слева у left, справа у right, как и называется
- * раскладка. Раньше рельса тянулась только на высоту ленты+дока, а шапка
- * стояла отдельной полосой над всей панелью целиком (и лентой, и рельсой) —
- * при переносе вкладок на вторую строку шапка росла, утаскивая верх рельсы
- * вниз вместе с собой, хотя та должна была быть на всю высоту.
+ * left/right is different: the header takes only the column with the feed and the field, while beside it,
+ * over the PANEL's full height (including the room beside the header itself rather than only under it),
+ * stands .railColumn: MODEL/EFFORT/MODE, the usage and the buttons (see its description below), on the left
+ * under left and on the right under right, as the layout is called. The rail used to span only the height
+ * of the feed plus the dock while the header stood as a separate strip over the whole panel (both the feed
+ * and the rail) - when the tabs wrapped onto a second row the header grew, dragging the rail's top down
+ * with it, though the rail was supposed to span the full height.
  *
- * Грид поэтому — на .panel целиком (см. её [data-layout] ниже), а не на
- * .workArea: рельсе нужно накрыть и шапку тоже, а та стоит её соседом,
- * снаружи .workArea. Сама .workArea для left/right становится display:
- * contents — перестаёт быть отдельной коробкой и отдельным грид-контейнером,
- * и её дети (лента, рельса, док) становятся прямыми элементами грида .panel,
- * в одном ряду со своей же шапкой.
+ * The grid therefore stands on the whole .panel (see its [data-layout] below) rather than on .workArea: the
+ * rail has to cover the header too, and that stands as its neighbour, outside .workArea. For left/right
+ * .workArea itself becomes display: contents - it stops being a box of its own and a grid container of its
+ * own, and its children (the feed, the rail, the dock) become direct items of .panel's grid, in one row
+ * with their own header.
  */
 .workArea {
   flex: 1;
@@ -86,14 +83,13 @@
 }
 
 /*
- * minmax(0, 1fr), а не голое 1fr: у голого 1fr неявный минимум трека — по
- * содержимому (как у auto), а не по нулю, сколько бы min-width: 0 ни стояло
- * на самом элементе (см. .content ниже) — это отдельный, более сильный
- * минимум именно трека, и правится он только в определении трека. Без этой
- * поправки узкая панель (реальный боковой док часто уже, чем нужно рельсе
- * с MODEL/EFFORT/MODE) не могла сжать ленту меньше ширины её самой длинной
- * непереносимой строки — колонки суммарно требовали больше места, чем есть
- * у панели, и лента вылезала за правый край, наполовину невидимая.
+ * minmax(0, 1fr) rather than a bare 1fr: a bare 1fr's implicit track minimum goes by content (as auto's
+ * does) rather than by zero, however much min-width: 0 stands on the element itself (see .content below) -
+ * that is a separate, stronger minimum belonging to the track, and it is fixed only in the track's
+ * definition. Without this correction a narrow panel (a real side dock is often narrower than the rail with
+ * MODEL/EFFORT/MODE needs) could not squeeze the feed below the width of its longest unbreakable line - the
+ * columns together demanded more room than the panel has, and the feed crept past the right edge, half
+ * invisible.
  */
 .panel[data-layout='right'] {
   grid-template-columns: minmax(0, 1fr) auto;
@@ -124,22 +120,21 @@
 }
 
 /*
- * Сама колонка — пустой узел здесь же, в разметке App.tsx, а не внутри
- * Composer: тому нужна вся высота панели, а Composer стоит гораздо ниже,
- * рядом с полем ввода. Содержимое рисуют App.tsx (разрешение, вопрос, задачи,
- * очередь, цитаты) и Composer (MODEL/EFFORT/MODE и кнопки) порталами прямо
- * сюда, каждый в своём месте — так их состояние и обработчики остаются на
- * своих местах, а разметка встаёт в нужном месте DOM, друг под другом, в
- * том же порядке, что и раньше в доке над полем ввода.
+ * The column itself is an empty node right here, in App.tsx's markup, rather than inside Composer: it needs
+ * the panel's full height while Composer stands much lower, beside the input field. The contents are drawn
+ * by App.tsx (the permission, the question, the tasks, the queue, the quotes) and by Composer
+ * (MODEL/EFFORT/MODE and the buttons) through portals straight into here, each in its own place - that way
+ * their state and their handlers stay where they were while the markup lands in the right place in the DOM,
+ * one under another, in the same order as before in the dock above the input field.
  *
- * justify-content не нужен: ряд с Send/Queue сам прижимается к низу
- * (margin-top: auto, см. .railToolsRow в composer.module.css) — остальное
- * просто стоит сверху по порядку в разметке, сколько бы карточек ни пришло.
+ * justify-content is not needed: the row with Send/Queue presses itself to the bottom (margin-top: auto, see
+ * .railToolsRow in composer.module.css) - the rest simply stands on top in the markup's order, however many
+ * cards arrive.
  *
- * grid-column и рамка — зеркально по сторонам: у left рельса первая колонка
- * с рамкой справа (там она граничит с лентой и полем), у right — вторая
- * колонка с рамкой слева. span 3, не 2: строк теперь три (шапка, лента,
- * док), и рельса — на все три разом, во всю высоту панели.
+ * grid-column and the border are mirrored by side: under left the rail is the first column with a border on
+ * the right (there it borders the feed and the field), under right the second column with a border on the
+ * left. span 3 rather than 2: there are three rows now (the header, the feed, the dock), and the rail spans
+ * all three at once, over the panel's full height.
  */
 .railColumn {
   grid-row: 1 / span 3;
@@ -147,10 +142,10 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  /* Верх/низ — те же 8px, что и у .railRow (см. composer.module.css):
-     нижний край поля ввода и нижний край рельсы делят один и тот же край
-     дока, и без совпадающего отступа от него ряды Send/Queue и низ поля
-     стояли бы не на одной линии — на глаз заметно, на пиксель — тоже. */
+  /* The top and the bottom are the same 8px as .railRow's (see composer.module.css): the input field's bottom
+     edge and the rail's bottom edge share one and the same edge of the dock, and without a matching gap from
+     it the Send/Queue rows and the field's bottom would not stand on one line - noticeable to the eye, and
+     to the pixel too. */
   padding: 8px 10px;
   background: var(--acc-bg-panel);
 }
@@ -171,18 +166,15 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  /* Подстраховка к minmax(0, 1fr) у грид-трека выше: если ленте всё равно не
-     хватит места, она честно обрежется и проскроллится внутри своей колонки
-     (см. overflow-x на .feed), а не нарисуется поверх рельсы или соседней
-     панели. */
+  /* A safeguard alongside the grid track's minmax(0, 1fr) above: if the feed is short of room anyway, it
+     honestly clips and scrolls inside its own column (see overflow-x on .feed) rather than drawing over the
+     rail or the neighbouring panel. */
   overflow: hidden;
-  /* Когда карточка вопроса/задач в доке вырастает настолько, что лента
-     сжимается почти до нуля (см. AskPanel, TaskListPanel), обычный Chrome
-     перерисовывает освободившееся место как положено, а Chromium внутри
-     JCEF — нет: старый кадр ленты остаётся виден под шапкой карточки,
-     будто она сквозь неё просвечивает. Свой композитный слой заставляет
-     JCEF перерисовать эту область целиком вместо переиспользования
-     растрового кэша прошлого кадра. */
+  /* When a question or task card in the dock grows so far that the feed is squeezed almost to nothing (see
+     AskPanel, TaskListPanel), an ordinary Chrome repaints the freed room as it should, while the Chromium
+     inside JCEF does not: the feed's old frame stays visible under the card's head, as though it were
+     showing through. A compositing layer of its own forces JCEF to repaint that area whole instead of
+     reusing the previous frame's raster cache. */
   transform: translateZ(0);
 }
 
@@ -200,7 +192,7 @@
   min-width: 6px;
 }
 
-/* --- Шапка с сессиями ------------------------------------------------------ */
+/* --- The header with the sessions ------------------------------------------ */
 
 .header {
   flex: none;
@@ -212,10 +204,9 @@
 }
 
 /*
- * Compact экономит высоту всюду, где может, и шапка не исключение: ниже на
- * 2px, а её значки — на 2px мельче. Один модификатор на самой шапке, а не
- * пропы на каждой кнопке: правит один каскад здесь, а не десяток мест в
- * Header.tsx.
+ * Compact saves height wherever it can, and the header is no exception: 2px lower, and its icons 2px
+ * smaller. One modifier on the header itself rather than props on every button: it fixes one cascade here
+ * rather than a dozen places in Header.tsx.
  */
 .headerCompact {
   min-height: 32px;
@@ -226,11 +217,10 @@
   height: 32px;
 }
 
-/* Уже обычных 13px/11px на 8px с каждой стороны — тесно, но задача compact
-   не в том, чтобы вкладке было просторно, а в том, чтобы место осталось
-   ленте под ней. Меньше нельзя: при прежнем 1px подсветка крестика при
-   наведении вставала впритык к краю вкладки — тот же изъян, что и в
-   обычной раскладке (см. .tab выше), только заметнее из-за меньшего запаса. */
+/* Narrower than the ordinary 13px/11px by 8px on each side - cramped, but compact's business is not to give
+   a tab room to breathe, it is to leave room for the feed under it. Narrower is not an option: at the
+   previous 1px the cross's hover highlight stood flush against the tab's edge - the same flaw as in the
+   ordinary layout (see .tab above), only more noticeable because of the smaller margin. */
 .headerCompact .tab {
   padding: 0 5px 0 3px;
 }
@@ -240,10 +230,9 @@
   height: 26px;
 }
 
-/* 14, не 15: разница с кнопкой (26px) должна делиться на 2 без остатка,
-   иначе центрирование съезжает на пол-пикселя и браузер видимо округляет
-   иконку в сторону от истинного центра — тот же отступ 6px с каждой стороны,
-   что и у обычной шапки (см. .menuIcon выше). */
+/* 14 rather than 15: the difference from the button (26px) has to divide by 2 without a remainder,
+   otherwise the centring slips by half a pixel and the browser visibly rounds the icon away from the true
+   centre - the same 6px inset on each side as in the ordinary header (see .menuIcon above). */
 .headerCompact .menuIcon {
   width: 14px;
   height: 14px;
@@ -256,36 +245,36 @@
   min-width: 0;
 }
 
-/* Ужимаются, переносятся только когда некуда ужиматься дальше — не убегают за
-   край панели и не обрезаются молча. flex-grow:0 — важно: с ростом вкладка,
-   когда она одна, разрасталась бы до max-width и отжимала кнопку «+» на вторую
-   строку, хотя места рядом полно. Ширина — от заголовка, не от growth.
-   height — явная: без неё при переносе на несколько строк высота вкладки
-   считалась бы от содержимого (короче), а не от прежних 34px хедера. */
+/* They squeeze themselves and wrap only when there is nowhere left to squeeze - they neither run off the
+   panel's edge nor get clipped silently. flex-grow:0 matters: with growth a tab, when it is the only one,
+   would spread out to max-width and push the "+" button onto a second row though there is plenty of room
+   beside it. The width comes from the title rather than from growth. The height is explicit: without it,
+   when wrapping onto several rows, a tab's height would be counted from its contents (shorter) rather than
+   from the header's former 34px. */
 .tab {
   position: relative;
   display: flex;
   align-items: center;
   gap: 7px;
   height: 34px;
-  /* Справа — с запасом сверх ширины крестика: без него подсветка при наведении
-     на закрытие вставала впритык к краю вкладки. */
+  /* On the right, with room to spare beyond the cross's width: without it the hover highlight on the close
+     button stood flush against the tab's edge. */
   padding: 0 13px 0 11px;
   flex: 0 1 auto;
   min-width: 70px;
   max-width: 210px;
   border-bottom: 2px solid transparent;
   color: var(--acc-fg-dim);
-  /* Вкладка не кнопка (внутри неё своя — крестик), но нажимается целиком,
-     поэтому указатель ей нужен наравне с кнопками. */
+  /* A tab is not a button (it holds one of its own - the cross), but it is pressed whole, so it needs a
+     pointer just as the buttons do. */
   cursor: pointer;
-  /* Подпись вкладки — не текст для чтения и копирования, а ярлык: выделять её
-     незачем, а при перетаскивании выделение и вовсе лезло поверх жеста. */
+  /* A tab's caption is not text to read and copy but a label: there is no reason to select it, and during a
+     drag the selection climbed over the gesture outright. */
   user-select: none;
-  /* Соседи отходят, освобождая место перетаскиваемой вкладке, — плавно, иначе
-     ряд дёргается рывками и уследить за перестановкой невозможно. Тем же
-     переходом брошенная вкладка доезжает из-под руки в свой слот, а поднятый
-     вид (фон и тень) гаснет ровно за тот же путь, а не срывается разом. */
+  /* The neighbours step aside to make room for the dragged tab - smoothly, otherwise the row jerks in fits
+     and the rearrangement is impossible to follow. By the same transition a dropped tab travels from under
+     the hand into its slot, while the lifted look (the background and the shadow) fades over exactly the
+     same path rather than snapping off at once. */
   transition:
     transform 0.16s ease,
     background-color 0.16s ease,
@@ -293,8 +282,8 @@
     opacity 0.16s ease;
 }
 
-/* Полоска сверху — цвет группы: у разговора и всех его форков он один, поэтому
-   принадлежность видно, не читая подписи. */
+/* The stripe on top is the group's colour: a conversation and all its forks share one, so the belonging is
+   visible without reading the caption. */
 .tabGroupBar {
   position: absolute;
   top: 0;
@@ -308,7 +297,7 @@
   opacity: 1;
 }
 
-/* Зазор отбивает одну группу от другой: цвета мало, если вкладки слиплись. */
+/* The gap sets one group off from another: colour alone is not enough if the tabs have stuck together. */
 .tabGroupStart {
   margin-left: 6px;
 }
@@ -317,8 +306,8 @@
   margin-left: 0;
 }
 
-/* line-height общий с .tabTitle: знак ветвления — mono 11px, заголовок —
-   sans 12px, и при разных line-height значок висит выше подписи. */
+/* The line-height is shared with .tabTitle: the fork sign is mono 11px while the title is sans 12px, and
+   with different line-heights the icon hangs above the caption. */
 .tabFork {
   flex: none;
   font: 11px/15px var(--acc-mono);
@@ -334,23 +323,23 @@
   color: var(--acc-fg);
 }
 
-/* Активная и так темнее панели — второй сигнал (нижняя полоска) был лишним,
-   только сбивал с толку рядом с полоской группы сверху. Ховер держим отдельным
-   для каждой: активная темнеет сильнее неактивной, чтобы разница читалась. */
+/* The active one is darker than the panel anyway - a second signal (the bottom stripe) was superfluous and
+   only confused things beside the group's stripe on top. The hover is kept separate for each: the active one
+   darkens more than an inactive one so that the difference reads. */
 .tabActive:hover {
   background: var(--acc-bg-sunken);
 }
 
-/* Пока группу тащат, её вкладки едут за курсором (сдвиг ставит сам Header) и
-   поднимаются над соседними — видно, что именно едет и что едет вся группа
-   целиком, а не одна вкладка из неё. Курсор при этом «схватил» — оболочка
-   ставит его окну IDE сама (см. сообщение cursor в protocol).
+/* While a group is dragged, its tabs travel after the cursor (the shift is set by Header itself) and rise
+   above their neighbours - it is visible what exactly is travelling and that the whole group travels rather
+   than one tab out of it. The cursor meanwhile is a "grabbed" one - the shell sets it on the IDE's window
+   itself (see the cursor message in protocol).
 
-   Без тени вкладка на новом месте читалась бы как приклеенная к ряду; лёгкая
-   прозрачность оставляет видимым то, поверх чего она сейчас проезжает. */
+   Without the shadow a tab in its new place would read as glued to the row; the slight transparency leaves
+   visible whatever it is riding over right now. */
 .tabDragging {
-  /* Едет за рукой, поэтому без задержки: плавность здесь читалась бы как
-     запаздывание вкладки за курсором. */
+  /* It travels after the hand, hence without a delay: smoothness here would read as the tab lagging behind
+     the cursor. */
   transition: none;
   opacity: 0.9;
   cursor: grabbing;
@@ -369,8 +358,8 @@
   transition: background 0.2s ease;
 }
 
-/* Дышит только работающая вкладка: остальные состояния статичны, иначе шапка
-   рябит и перестаёт что-либо сообщать. */
+/* Only a working tab breathes: the other states are static, otherwise the header ripples and stops telling
+   anything at all. */
 .dotRunning {
   background: var(--acc-warn);
   box-shadow: 0 0 0 3px var(--acc-warn-16);
@@ -387,7 +376,7 @@
   animation: acc-pulse 1.5s ease-in-out infinite;
 }
 
-/* Не пульсирует: это не рабочий процесс, а факт — сессия оборвалась. */
+/* It does not pulse: this is not a working process but a fact - the session broke off. */
 .dotCrashed {
   background: var(--acc-bad-light);
   box-shadow: 0 0 0 3px var(--acc-bad-16);
@@ -436,14 +425,13 @@
   align-items: center;
   gap: 8px;
   padding-right: 6px;
-  /* Без него сжатие ряда упиралось бы в суммарную «естественную» ширину
-     детей (по умолчанию у флекс-элемента min-width: auto) — чип ветки внутри
-     мог сжаться сам сколько угодно (см. .statusItem), а вот весь ряд целиком
-     наружу — нет, и на самом деле сжатия бы не произошло. */
+  /* Without it the row's shrinking would run into the children's combined "natural" width (a flex item's
+     min-width is auto by default) - the branch chip inside could shrink itself as far as one likes (see
+     .statusItem), but the whole row outwards could not, and no shrinking would genuinely happen. */
   min-width: 0;
 }
 
-/* Только значок: место в шапке дорогое, а подпись переносилась на вторую строку. */
+/* The icon alone: room in the header is dear, and the caption wrapped onto a second row. */
 .historyButton {
   position: relative;
   display: grid;
@@ -477,7 +465,7 @@
   opacity: 0.5;
 }
 
-/* --- Переключатель стрима --------------------------------------------------- */
+/* --- The stream switcher --------------------------------------------------- */
 
 .streams {
   flex: none;
@@ -489,10 +477,9 @@
   overflow: hidden;
 }
 
-/* Прокрутка по колесу мыши включается в компоненте (deltaY → scrollLeft) —
-   overflow-x тут только даёт браузеру куда деть содержимое, которое не
-   поместилось. Полоса скрыта тем же приёмом, что и у .feed — нативная
-   резервировала бы высоту и двигала бы чипы при появлении. */
+/* Scrolling by the mouse wheel is switched on in the component (deltaY -> scrollLeft) - overflow-x here
+   only gives the browser somewhere to put the contents that did not fit. The bar is hidden by the same trick
+   as .feed's - a native one would reserve height and move the chips when it appeared. */
 .streamList {
   display: flex;
   align-items: center;
@@ -524,8 +511,8 @@
   border-color: var(--acc-line-hover);
 }
 
-/* Метка, а не кнопка: у фоновой команды нет своего потока, и подсветка под
-   курсором обещала бы, что по ней есть куда перейти. */
+/* A label rather than a button: a background command has no stream of its own, and a highlight under the
+   cursor would promise there is somewhere to go through it. */
 .streamStatic {
   border-style: dashed;
 }
@@ -561,13 +548,16 @@
   white-space: nowrap;
 }
 
+/* The agent's business and a background command's short caption. The width is squeezed on purpose: the
+   chips stand in one row on a narrow panel, and every extra ten pixels pushes the neighbours past the edge.
+   Whatever did not fit goes into the tooltip on hover. */
 .streamMeta {
   font: 10px var(--acc-mono);
   color: var(--acc-fg-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 160px;
+  max-width: 96px;
 }
 
 .streamDuration {
@@ -576,15 +566,15 @@
   color: var(--acc-fg-fainter);
 }
 
-/* Место крестику держим всегда, и справа его столько же, сколько у чипа сверху
-   и снизу: иначе он либо жмётся к самому краю, либо чип дёргается в ширину под
-   курсором. Отсюда и меньший правый отступ — крестик добирает его собой. */
+/* Room for the cross is always held, and on the right there is as much of it as the chip has above and
+   below: otherwise it either presses against the very edge or the chip jerks in width under the cursor.
+   Hence the smaller right inset too - the cross makes it up itself. */
 .streamStoppable {
   padding-right: 3px;
 }
 
-/* Крестик прибивает саму работу, а не чип, поэтому проявляется только под
-   курсором: постоянно видимый на каждом чипе, он читался бы как «закрыть». */
+/* The cross kills the work itself rather than the chip, so it shows up only under the cursor: visible at
+   all times on every chip, it would read as "close". */
 .streamStop {
   flex: none;
   width: 16px;
@@ -597,8 +587,8 @@
   opacity: 0;
 }
 
-/* Блочная, а не строчная: у строчной под линии остаётся щель на подстрочные
-   элементы, и рисунок съезжает вверх от середины кнопки. */
+/* Block rather than inline: an inline one leaves a gap under the line for descenders, and the drawing slips
+   upwards from the button's middle. */
 .streamStopIcon {
   display: block;
   width: 8px;
@@ -615,7 +605,7 @@
   color: var(--acc-bad);
 }
 
-/* --- Вопрос перед необратимым ---------------------------------------------- */
+/* --- The question before the irreversible ---------------------------------- */
 
 .confirm {
   position: absolute;
@@ -686,12 +676,12 @@
   outline-offset: 1px;
 }
 
-/* --- Нижняя строка --------------------------------------------------------- */
+/* --- The bottom row -------------------------------------------------------- */
 
-/* Нижняя строка: сводка текстом, как в строке состояния терминала. Метрики идут
-   отдельной строкой над кнопками — рядом с ними они рассыпаются по одной. */
-/* В строке состояния остались ветка с её PR и селекторы: расход отсюда переехал
-   в нижний ряд самого поля ввода (см. UsageMeters). */
+/* The bottom row: a summary in text, as in a terminal's status line. The meters go in a row of their own
+   above the buttons - beside them they scatter one by one. */
+/* What is left in the status row is the branch with its PR and the selectors: the usage has moved from here
+   into the input field's own bottom row (see UsageMeters). */
 .status {
   display: flex;
   flex-direction: column;
@@ -700,30 +690,29 @@
   padding: 7px 2px 8px;
 }
 
-/* Каждая метрика — единый кусок: ключ и значение не должны разъезжаться.
-   Свой кегль, не унаследованный: раньше строка ветки стояла внутри .statusLine
-   с этим же font — теперь BranchChip стоит в шапке (см. Header.tsx), в
-   интерфейсном шрифте и мельче, и без своего font тут читался бы им же. */
+/* Every meter is one whole piece: the key and the value must not drift apart. A size of its own rather than
+   an inherited one: the branch row used to stand inside .statusLine with this same font - now BranchChip
+   stands in the header (see Header.tsx), in the interface font and smaller, and without a font of its own
+   here it would read in that one. */
 .statusItem {
   display: inline-flex;
   align-items: baseline;
   gap: 4px;
   white-space: nowrap;
   font: 12.5px/1.4 var(--acc-mono);
-  /* Ширина считается от реально нужного месту имени ветки, а не жёстко — ей
-     самой отдаётся место, свободное от вкладок (см. .headerTools ниже), и
-     наоборот она сама уступает им, обрезаясь многоточием (см. .statusBranch),
-     когда места не хватает на всех. max-width — только потолок сверху: даже
-     при полностью пустой шапке одна ветка не должна забирать больше трети
-     типичной ширины панели. */
+  /* The width is counted from the room the branch name genuinely needs rather than fixed - it is given the
+     room the tabs leave free (see .headerTools below), and conversely it gives way to them itself, clipped
+     with an ellipsis (see .statusBranch), when there is not enough room for everyone. max-width is only a
+     ceiling: even with a completely empty header one branch must not take more than a third of a typical
+     panel's width. */
   flex: 0 1 auto;
   min-width: 0;
   max-width: 350px;
 }
 
-/* Обрезаем ветку ровно до реально доступного места (min-width: 0 + flex:
-   1 1 auto), а не до произвольной константы в пикселях — короткие ветки
-   показываются целиком, длинные ужимаются только когда места правда нет. */
+/* The branch is clipped to exactly the room genuinely available (min-width: 0 + flex: 1 1 auto) rather than
+   to some arbitrary constant in pixels - short branches are shown whole, long ones squeeze only when there
+   genuinely is no room. */
 .statusBranch {
   color: var(--acc-ok-light);
   min-width: 0;
@@ -751,10 +740,10 @@
   text-decoration: underline;
 }
 
-/* --- Кольца расхода в нижнем ряду поля ввода -------------------------------- */
+/* --- The usage rings in the input field's bottom row ------------------------ */
 
-/* Разрывы разные: между кольцом и его цифрой тесно (это одна метрика), между
-   метриками просторно — иначе ряд читается как одна каша из процентов. */
+/* The gaps differ: between a ring and its number it is tight (that is one meter), between the meters it is
+   roomy - otherwise the row reads as one mush of percentages. */
 .meters {
   display: flex;
   align-items: center;
@@ -772,8 +761,8 @@
   white-space: nowrap;
 }
 
-/* overflow видимый: круглый конец дуги выступает за границу вьюбокса, и без
-   этого он срезается ровно на двенадцати часах — там, где дуга замыкается. */
+/* overflow visible: the arc's round cap sticks out past the viewbox's boundary, and without this it is cut
+   off exactly at twelve o'clock - where the arc closes. */
 .meterRing {
   flex: none;
   width: 22px;
@@ -788,9 +777,9 @@
 }
 
 /*
- * Дуга рисуется штрихом длиной во всю окружность, а видимую часть задаёт
- * смещение (stroke-dashoffset) — его и анимируем. Поворот на четверть против
- * часовой стрелки: без него дуга начиналась бы справа, а не сверху.
+ * The arc is drawn as a dash the length of the whole circumference, and the visible part is set by the
+ * offset (stroke-dashoffset) - that is what is animated. A quarter turn anticlockwise: without it the arc
+ * would begin on the right rather than at the top.
  */
 .meterPace,
 .meterArc {
@@ -802,7 +791,7 @@
   transition: stroke-dashoffset 0.7s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Темп — фоном под расходом: он не событие, а линия, с которой сверяются. */
+/* The pace goes as a background under the usage: it is not an event but a line one checks against. */
 .meterPace {
   stroke: var(--acc-meter-pace);
 }
@@ -814,12 +803,12 @@
 }
 
 .meterValue {
-  /* Цифры одной ширины: иначе процент дёргает ряд при каждом обновлении. */
+  /* Digits of one width: otherwise the percentage jerks the row on every update. */
   font-variant-numeric: tabular-nums;
 }
 
-/* statusline.sh красит объём за день бирюзовым (FG_CYAN) — берём тот же цвет.
-   Кольца у него нет: у токенов за день нет ни лимита, ни доли от целого. */
+/* statusline.sh paints the day's volume in turquoise (FG_CYAN) - we take the same colour. It has no ring:
+   the day's tokens have neither a limit nor a share of a whole. */
 .meterTokens {
   position: relative;
   color: var(--acc-branch-light);
@@ -827,9 +816,9 @@
   white-space: nowrap;
 }
 
-/* Подсказка метрики единственная разворачивается в две полноценные строки —
-   ей нужны своя ширина и просторнее межстрочье, чем короткой подписи кнопки.
-   Направление (вверх и от левого края) задано атрибутом в самой разметке. */
+/* A meter's tooltip is the only one that unfolds into two full lines - it needs a width of its own and more
+   room between the lines than a button's short caption. The direction (upwards and from the left edge) is
+   set by an attribute in the markup itself. */
 .meter[data-tooltip]::after,
 .meterTokens[data-tooltip]::after {
   max-width: 190px;
@@ -843,24 +832,22 @@
   flex-wrap: wrap;
   gap: 4px;
   position: relative;
-  /* Выше скрима меню (.menuScrim, z-index 40): без этого повторный клик по
-     своей же кнопке (в нижней строке она стоит ниже header-height, там, где
-     скрим и должен ловить клики мимо меню) доставался скриму, а не кнопке.
-     Свой закрывался как «клик мимо», а переключение сразу на другой селектор
-     требовало два клика — сначала закрыть, потом открыть. Кнопка обязана
-     получать клик сама и решать сама (см. App.openSelector), как уже
-     получают его кнопки шапки (см. .history и соседей, тот же приём). */
+  /* Above the menu's scrim (.menuScrim, z-index 40): without this a second click on a button's own self (in
+     the bottom row it stands below header-height, where the scrim is supposed to catch clicks outside the
+     menu) went to the scrim rather than to the button. One's own closed as a "click outside", and switching
+     straight to another selector took two clicks - first close, then open. A button has to get the click
+     itself and decide itself (see App.openSelector), as the header's buttons already do (see .history and
+     its neighbours, the same trick). */
   z-index: 41;
   flex: none;
   max-width: 100%;
 }
 
-/* Ширина считается по самому длинному варианту значения, а не по выбранному
-   (см. .selectorSample) — иначе ряд дёргался бы при каждой смене модели или
-   режима. Раньше на это стояли фиксированные 120px: ряд стоял смирно, но самые
-   длинные подписи («Opusplan 1M», «ultracode») в них не влезали и жили
-   обрезанными. Сжаться кнопка всё же может — на совсем узкой панели место
-   важнее целой подписи, там значение уедет в многоточие. */
+/* The width is counted by the longest of the values rather than by the chosen one (see .selectorSample) -
+   otherwise the row would jerk on every change of model or mode. This used to be a fixed 120px: the row
+   stood still, but the longest captions ("Opusplan 1M", "ultracode") did not fit into them and lived
+   clipped. The button can still shrink - on a really narrow panel the room matters more than a whole
+   caption, and there the value goes off into an ellipsis. */
 .selector {
   display: flex;
   align-items: center;
@@ -879,12 +866,12 @@
 }
 
 /*
- * Каждый режим — свой акцент на фоне и рамке в покое, и тот же акцент, только
- * ярче, под курсором: без своего :hover побеждал бы общий .selector:hover
- * (та же специфичность, класс режима и так уже стоит вторым в разметке) — он
- * красил рамку в нейтральный серый, и цветной селектор на ховере линял в
- * обычный. Метка тоже красится акцентом состояния, а не остаётся нейтральной:
- * иначе "MODE" читалась отдельно от цветной капсулы вокруг неё.
+ * Every mode gets an accent of its own on its background and its border at rest, and the same accent, only
+ * brighter, under the cursor: without a :hover of its own the shared .selector:hover would win (the same
+ * specificity, and the mode's class already stands second in the markup) - it painted the border a neutral
+ * grey, and a coloured selector faded into an ordinary one on hover. The label is painted in the state's
+ * accent too rather than left neutral: otherwise the "MODE" read as separate from the coloured capsule
+ * around it.
  */
 .selectorPlan {
   background: var(--acc-accent-16);
@@ -925,8 +912,8 @@
   color: var(--acc-bad-light);
 }
 
-/* Метка и значение одного кегля и одного line-height: при разных размерах их
-   оптические центры не совпадают, и кнопка выглядит косой, как её ни центрируй. */
+/* The label and the value share a size and a line-height: at different sizes their optical centres do not
+   meet, and the button looks crooked however one centres it. */
 .selectorLabel {
   flex: none;
   font: 500 10.5px/1 var(--acc-mono);
@@ -943,18 +930,17 @@
   text-align: left;
 }
 
-/* Невидимый самый длинный вариант — он один и задаёт ширину места под значение
-   (см. Selector в StatusBar.tsx). Настоящее значение вынуто из потока и на
-   ширину не влияет, поэтому от переключения кнопка не прыгает: «Ask» занимает
-   ровно столько же, сколько занял бы «Bypass». */
+/* The invisible longest variant is what alone sets the width of the room for the value (see Selector in
+   StatusBar.tsx). The genuine value is taken out of the flow and does not affect the width, so the button
+   does not jump when it switches: an "Ask" takes exactly as much as a "Bypass" would. */
 .selectorSample {
   visibility: hidden;
   white-space: pre;
 }
 
-/* inset вместо ширины: место уже отмерено распоркой, остаётся его занять.
-   Слишком длинная подпись (модель не из известных семейств) обрежется
-   многоточием — полное имя всё равно есть в подсказке под курсором. */
+/* inset rather than a width: the room has already been measured off by the spacer, all that is left is to
+   occupy it. Too long a caption (a model outside the known families) is clipped with an ellipsis - the full
+   name is in the tooltip under the cursor anyway. */
 .selectorText {
   position: absolute;
   inset: 0;
@@ -964,19 +950,18 @@
 }
 
 /*
- * Compact держит эти же кнопки в самом поле ввода, а left/right — в боковой
- * рельсе на всю высоту панели (см. .railColumn ниже и Composer.tsx), а не в
- * строке статуса — там им незачем делить фиксированные 120px на троих:
- * соседей всего три, и делят они между собой всю ширину ряда поровну, а не
- * жмутся к правому краю с пустотой слева. Позже .selector в файле — и поэтому
- * побеждает его flex: 0 0 120px при той же специфичности.
+ * Compact keeps these same buttons in the input field itself, while left/right keeps them in the side rail
+ * spanning the panel's full height (see .railColumn below and Composer.tsx) rather than in the status row -
+ * there they have no reason to divide a fixed 120px three ways: there are only three neighbours, and they
+ * divide the row's whole width evenly among themselves rather than crowding into the right edge with
+ * emptiness on the left. It comes later than .selector in the file - and therefore wins over its
+ * flex: 0 0 120px at equal specificity.
  *
- * min-width: min-content, а не 0 — иначе flex-basis: 0 перестаёт учитывать
- * собственную ширину содержимого при подсчёте ширины ряда, и значение
- * обрезалось бы многоточием, хотя место рядом есть. С min-content ни одна
- * кнопка не сожмётся уже своей распорки (см. .selectorSample) — поровну
- * делится только то, что останется сверх неё. Меряется при этом самый длинный
- * вариант, а не выбранный, поэтому от переключения ряд не перестраивается.
+ * min-width: min-content rather than 0 - otherwise flex-basis: 0 stops taking the contents' own width into
+ * account when counting the row's width, and the value would be clipped with an ellipsis though there is
+ * room beside it. With min-content no button shrinks below its own spacer (see .selectorSample) - only what
+ * is left over it is divided evenly. What is measured meanwhile is the longest variant rather than the
+ * chosen one, so the row is not rebuilt when it switches.
  */
 .selectorAuto {
   flex: 1 1 0;
@@ -996,16 +981,15 @@
   color: var(--acc-fg-dim);
 }
 
-/* margin-left: auto прибивает капсулу к правому краю строки независимо от
-   того, поместились ли три селектора слева при любой ширине панели. */
-/* --- Выпадающее меню ------------------------------------------------------- */
+/* margin-left: auto nails the capsule to the row's right edge regardless of whether the three selectors on
+   the left fitted at any width of the panel. */
+/* --- The dropdown menu ----------------------------------------------------- */
 
 .menuScrim {
   position: absolute;
-  /* Не inset:0 — иначе перекрывает хедер, и кнопки истории/MCP/плагинов не
-     кликаются, пока открыта другая модалка: клик глотает сам скрим. Хедер
-     переменной высоты (вкладки переносятся на вторую строку) — поэтому var,
-     не число. */
+  /* Not inset:0 - otherwise it covers the header, and the history / MCP / plugins buttons are not clickable
+     while another modal is open: the scrim swallows the click. The header is of variable height (the tabs
+     wrap onto a second row) - hence a var rather than a number. */
   top: var(--header-height);
   left: 0;
   right: 0;
@@ -1057,8 +1041,8 @@
   text-align: left;
 }
 
-/* Класс вместо :hover — см. Menu.tsx, тот же приём и та же причина, что и у
-   .suggestItemOn в SlashSuggest: в JCEF псевдокласс срабатывает не всегда. */
+/* A class rather than :hover - see Menu.tsx, the same trick and the same reason as .suggestItemOn in
+   SlashSuggest: in JCEF the pseudo-class does not always fire. */
 .menuItemHover {
   background: var(--acc-bg-menu-hover);
 }
@@ -1118,7 +1102,7 @@
 }
 
 
-/* --- История разговоров ----------------------------------------------------- */
+/* --- The conversation history ----------------------------------------------- */
 
 .history {
   position: absolute;
@@ -1197,7 +1181,7 @@
   color: var(--acc-fg-faint);
 }
 
-/* --- Звуковые оповещения ----------------------------------------------------- */
+/* --- The sound alerts -------------------------------------------------------- */
 
 .sounds {
   position: absolute;
@@ -1205,8 +1189,8 @@
   top: var(--header-height);
   left: 8px;
   right: 8px;
-  /* Панель бывает и в полэкрана высотой — тогда список прокручивается, а не
-     уезжает под поле ввода. */
+  /* The panel may be half a screen tall - then the list scrolls rather than riding away under the input
+     field. */
   max-height: 72vh;
   display: flex;
   flex-direction: column;
@@ -1249,8 +1233,8 @@
   text-align: left;
 }
 
-/* Ползунок стоит под подписью, с отступом ровно под квадратик галочки: так
-   видно, что громкость относится именно к этому звуку. */
+/* The slider stands under the caption, with an indent exactly under the tick box's square: that way it is
+   visible that the volume belongs to this very sound. */
 .soundVolume {
   display: flex;
   align-items: center;
@@ -1277,14 +1261,15 @@
   appearance: none;
   width: 11px;
   height: 11px;
-  /* Половина разницы высот трека и пальца — иначе он сидит не по центру нити. */
+  /* Half the difference between the track's and the thumb's heights - otherwise it sits off the thread's
+   centre. */
   margin-top: -4px;
   border-radius: 50%;
   background: var(--acc-branch);
 }
 
-/* Выключенный звук виден и по ползунку — но тянуть его можно: этим он и
-   включается обратно. */
+/* A muted sound is visible by its slider too - but it can be dragged: that is how it is switched back
+   on. */
 .soundSliderOff::-webkit-slider-thumb {
   background: var(--acc-fg-ghost);
 }
@@ -1295,7 +1280,7 @@
   text-align: right;
   font: 10.5px var(--acc-mono);
   color: var(--acc-fg-faint);
-  /* Цифры не пляшут при перетаскивании: 7% и 70% занимают одно место. */
+  /* The digits do not dance during a drag: 7% and 70% take one and the same room. */
   font-variant-numeric: tabular-nums;
 }
 
@@ -1307,7 +1292,7 @@
   flex: none;
   width: 15px;
   height: 15px;
-  /* Полпикселя вниз: квадратик ровняется по строчным буквам подписи, а не по её строке. */
+  /* Half a pixel down: the square aligns to the caption's lowercase letters rather than to its line box. */
   margin-top: 1px;
   border: 1px solid var(--acc-line-strong);
   border-radius: var(--acc-r-xs);
@@ -1361,7 +1346,7 @@
   color: var(--acc-fg);
 }
 
-/* --- MCP-сервера ------------------------------------------------------------ */
+/* --- The MCP servers -------------------------------------------------------- */
 
 .mcp {
   position: absolute;
@@ -1409,8 +1394,8 @@
   padding: 7px 12px;
   font: 11px var(--acc-mono);
   border-bottom: 1px solid var(--acc-line);
-  /* Вывод claude mcp/plugin — многострочный (статус хода, потом итог), а не
-     одна фраза: без pre-wrap переносы строк схлопываются в один сплошной кусок. */
+  /* The output of claude mcp/plugin is multi-line (the progress, then the outcome) rather than one sentence:
+     without pre-wrap the line breaks collapse into one solid piece. */
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1475,8 +1460,8 @@
   max-width: 50%;
 }
 
-/* Цвет состояния — тот же язык, что и везде в панели: зелёное работает,
-   жёлтое ждёт человека, красное сломано. */
+/* The state's colour is the same language as everywhere in the panel: green works, yellow waits for the
+   person, red is broken. */
 .mcpStatusOk {
   color: var(--acc-ok-text);
 }
@@ -1493,7 +1478,7 @@
   color: var(--acc-fg-ghost);
 }
 
-/* Группы серверов по тому, откуда они взялись — как в терминальном /mcp. */
+/* The servers are grouped by where they came from - as in the terminal's /mcp. */
 .mcpGroup {
   margin-bottom: 6px;
 }
@@ -1505,7 +1490,7 @@
   padding: 7px 9px 3px;
 }
 
-/* Объяснение отказа от самого CLI: длинное, поэтому переносим, а не режем. */
+/* The CLI's own explanation of a refusal: long, so it is wrapped rather than cut. */
 .mcpError {
   margin: 0 0 6px 14px;
   font: 10.5px/15px var(--acc-mono);
@@ -1566,7 +1551,7 @@
   color: var(--acc-bad-text);
 }
 
-/* После вариантов: пока идёт запрос, кнопка гаснет и перестаёт откликаться. */
+/* After the variants: while a request runs the button dims and stops responding. */
 .mcpAction:disabled {
   background: var(--acc-bg-raised);
   color: var(--acc-fg-ghost);
@@ -1601,8 +1586,8 @@
   border-color: var(--acc-accent);
 }
 
-/* Не нативный <select>: его выпадающий список в JCEF не открывался по клику
-   вообще — три варианта проще и надёжнее показать кнопками. */
+/* Not a native <select>: its dropdown in JCEF did not open on a click at all - three options are simpler
+   and more reliable to show as buttons. */
 .transportToggle {
   flex: none;
   display: flex;
@@ -1627,8 +1612,8 @@
   color: var(--acc-accent-light);
 }
 
-/* Заглушка на месте текста/кнопки, пока список ещё грузится — тем же дыханием,
-   что и рабочая точка вкладки, чтобы не заводить свою анимацию ради одного. */
+/* A placeholder in the place of the text or the button while the list is still loading - with the same
+   breathing as a tab's working dot, so as not to start an animation of its own for the sake of one thing. */
 .skeletonBar {
   display: inline-block;
   border-radius: var(--acc-r-sm);
@@ -1658,10 +1643,10 @@
   color: var(--acc-fg-ghost);
 }
 
-/* --- Плагины ----------------------------------------------------------------
-   Контейнер, refresh, сообщения, dot/name/status, actions, add-форма — те же
-   классы .mcp*, что и у MCP-серверов: разметка идентична, разница только в
-   наборе вкладок и карточке из каталога маркетплейса ниже. */
+/* --- The plugins -------------------------------------------------------------
+   The container, the refresh, the messages, the dot/name/status, the actions, the add form are the same
+   .mcp* classes as the MCP servers' ones: the markup is identical, the difference lies only in the set of
+   tabs and in the marketplace catalogue's card below. */
 
 .pluginTabs {
   flex: none;
@@ -1688,10 +1673,9 @@
 }
 
 /*
- * display: flex — без него flex: 1 у самого поля (.mcpInput) ни на что не
- * действует: это свойство работает только у flex-элемента, а строка была
- * обычным блоком. Поле рисовалось дефолтной браузерной шириной инпута
- * (~20 символов) вместо того, чтобы занять всю строку.
+ * display: flex - without it the flex: 1 on the field itself (.mcpInput) has no effect at all: that property
+ * works only on a flex item, and the row was an ordinary block. The field was drawn at the browser's default
+ * input width (~20 characters) instead of taking the whole row.
  */
 .pluginSearchRow {
   flex: none;
@@ -1719,10 +1703,10 @@
   color: var(--acc-fg-ghost);
 }
 
-/* --- Меню выделения -------------------------------------------------------- */
+/* --- The selection menu ---------------------------------------------------- */
 
-/* Координаты экранные, поэтому и позиционирование от окна: внутри прокручиваемой
-   ленты меню уезжало вниз вместе с прокруткой. */
+/* The coordinates are the screen's, hence the positioning from the window: inside the scrolling feed the
+   menu rode downwards along with the scroll. */
 .selection {
   position: fixed;
   z-index: 30;
@@ -1765,11 +1749,11 @@
   background: var(--acc-line-strong);
 }
 
-/* --- Экран входа ------------------------------------------------------------ */
+/* --- The login screen ------------------------------------------------------- */
 
-/* Ровно по центру панели — и по горизонтали, и по вертикали: экран занимает её
-   целиком, и прижатый к левому краю текст читается как случайно съехавший, а не
-   как самостоятельный экран. */
+/* Exactly at the panel's centre, both horizontally and vertically: the screen fills it whole, and text
+   pressed to the left edge reads as having slipped there by accident rather than as a screen in its own
+   right. */
 .gate {
   flex: 1;
   min-height: 0;
@@ -1838,7 +1822,8 @@
   animation: acc-pulse 1.8s infinite;
 }
 
-/* Ручной путь к CLI: поле и кнопка одной строкой — ввод и подтверждение рядом. */
+/* A manual path to the CLI: the field and the button on one line - the input and its confirmation side by
+   side. */
 .gateRow {
   display: flex;
   align-items: center;
@@ -1864,8 +1849,7 @@
   border-color: var(--acc-accent);
 }
 
-/* Список проверенных мест — свёрнут: он длинный и нужен, только когда что-то
-   пошло не так. */
+/* The list of the places checked, folded up: it is long and needed only when something has gone wrong. */
 .gateDetails {
   max-width: 380px;
   text-align: left;
@@ -1885,8 +1869,7 @@
   word-break: break-all;
 }
 
-/* Закрыли последнюю вкладку — заголовок и кнопка по центру панели, как и на
-   экране входа. */
+/* The last tab was closed - the title and the button go at the panel's centre, as on the login screen. */
 .emptyState {
   flex: 1;
   min-height: 0;
@@ -1899,7 +1882,7 @@
   text-align: center;
 }
 
-/* --- Запасной вид без встроенного браузера --------------------------------- */
+/* --- The fallback view without an embedded browser -------------------------- */
 
 .unsupported {
   padding: 16px;

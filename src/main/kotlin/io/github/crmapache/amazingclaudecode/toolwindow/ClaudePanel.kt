@@ -1,11 +1,11 @@
 package io.github.crmapache.amazingclaudecode.toolwindow
 
 import com.intellij.ide.BrowserUtil
+import com.intellij.ide.ui.LafManagerListener
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationActivationListener
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
-import com.intellij.ide.ui.LafManagerListener
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.colors.EditorColorsListener
 import com.intellij.openapi.editor.colors.EditorColorsManager
@@ -14,41 +14,35 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.IdeFrame
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowAnchor
-import com.intellij.openapi.wm.WindowManager
 import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.openapi.wm.WindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.ui.JBUI
 import io.github.crmapache.amazingclaudecode.AccBundle
+import io.github.crmapache.amazingclaudecode.claude.AvailablePlugin
 import io.github.crmapache.amazingclaudecode.claude.ClaudeAuth
 import io.github.crmapache.amazingclaudecode.claude.ClaudeCommandHints
 import io.github.crmapache.amazingclaudecode.claude.ClaudeExecutable
+import io.github.crmapache.amazingclaudecode.claude.ClaudeFileSearch
 import io.github.crmapache.amazingclaudecode.claude.ClaudeHistory
-import io.github.crmapache.amazingclaudecode.claude.ClaudeLaunch
 import io.github.crmapache.amazingclaudecode.claude.ClaudeLogin
 import io.github.crmapache.amazingclaudecode.claude.ClaudeMcp
-import io.github.crmapache.amazingclaudecode.claude.AvailablePlugin
-import io.github.crmapache.amazingclaudecode.claude.ClaudeFileSearch
 import io.github.crmapache.amazingclaudecode.claude.ClaudePlugin
-import io.github.crmapache.amazingclaudecode.claude.InstalledPlugin
-import io.github.crmapache.amazingclaudecode.claude.PluginMarketplace
 import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessions
-import io.github.crmapache.amazingclaudecode.claude.ClaudeTokenUsage
-import io.github.crmapache.amazingclaudecode.claude.ClaudeUsage
-import io.github.crmapache.amazingclaudecode.claude.ClaudeControlPing
-import io.github.crmapache.amazingclaudecode.claude.child
-import io.github.crmapache.amazingclaudecode.claude.items
+import io.github.crmapache.amazingclaudecode.claude.ClaudeSessions.Companion.MAIN_SESSION
 import io.github.crmapache.amazingclaudecode.claude.ImageAttachment
+import io.github.crmapache.amazingclaudecode.claude.InstalledPlugin
 import io.github.crmapache.amazingclaudecode.claude.PermissionBypass
-import io.github.crmapache.amazingclaudecode.claude.PermissionChannel
 import io.github.crmapache.amazingclaudecode.claude.PermissionDefaultMode
 import io.github.crmapache.amazingclaudecode.claude.PermissionModes
-import io.github.crmapache.amazingclaudecode.claude.PermissionPrompt
-import io.github.crmapache.amazingclaudecode.claude.PermissionReason
+import io.github.crmapache.amazingclaudecode.claude.PluginMarketplace
 import io.github.crmapache.amazingclaudecode.claude.ShellCommand
+import io.github.crmapache.amazingclaudecode.claude.child
+import io.github.crmapache.amazingclaudecode.claude.items
 import io.github.crmapache.amazingclaudecode.editor.SelectionReference
 import io.github.crmapache.amazingclaudecode.project.ProjectFacts
 import io.github.crmapache.amazingclaudecode.sound.AlertSounds
@@ -58,14 +52,12 @@ import io.github.crmapache.amazingclaudecode.webview.WebviewClipboard
 import io.github.crmapache.amazingclaudecode.webview.WebviewFileDrop
 import io.github.crmapache.amazingclaudecode.webview.WebviewHost
 import java.awt.BorderLayout
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import javax.swing.JComponent
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
@@ -81,11 +73,16 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
 /**
- * Содержимое панели: интерфейс в браузере и разговоры с агентом под ним.
+ * The panel's contents: the interface in a browser and the conversations with the agent underneath it.
  *
- * Здесь же живёт весь разбор сообщений между ними. События агента наверх уходят
- * нетронутыми: разбирать их удобнее на стороне интерфейса, где и рисуются, а
- * дублировать модели в двух языках смысла нет.
+ * The routing of messages between the two lives here as well. The agent's events travel upwards
+ * untouched: parsing them is more convenient on the interface side, where they are drawn, and there is
+ * no sense in duplicating the models in two languages.
+ *
+ * What the panel counts (the usage windows, the model catalogue, the context) lives in [PanelUsage],
+ * and what stops a turn to wait for a person (permissions, plans, questions) in [PanelPermissions]:
+ * both have lives of their own - schedules, retries, requests outliving processes - and kept here they
+ * buried the routing under rules nobody looks for in it.
  */
 internal class ClaudePanel(
     private val project: Project,
@@ -96,9 +93,9 @@ internal class ClaudePanel(
     val component: JComponent
 
     /**
-     * Жива ли ещё панель. Тот же вопрос платформе задаётся только устаревшим
-     * способом, а проверяемый disposable отвечает на него сам: он умирает вместе
-     * с родителем и с этого мгновения честно говорит о себе «меня уже нет».
+     * Whether the panel is still alive. The platform answers that same question only in a deprecated
+     * way, while a checked disposable answers it itself: it dies with its parent and from that moment
+     * on honestly says "I am gone".
      */
     private val alive = Disposer.newCheckedDisposable(parentDisposable)
 
@@ -106,80 +103,47 @@ internal class ClaudePanel(
     private var sessions: ClaudeSessions? = null
 
     /**
-     * Пока вход не подтверждён, процессы не поднимаем: без него агент отвечает на
-     * любой вопрос одной строкой про /login, а панель показывает экран входа.
+     * Until the sign-in is confirmed we start no processes: without it the agent answers every question
+     * with a single line about /login, and the panel shows the sign-in screen.
      */
     @Volatile
     private var loggedIn = false
 
-    /** Опрос состояния входа, пока пользователь проходит его в терминале. */
+    /** Polling of the sign-in state while the user goes through it in the terminal. */
     private var loginPolling: ScheduledFuture<*>? = null
 
-    /** Какого исхода ждём от опроса: вошёл или, наоборот, вышел. */
+    /** Which outcome the polling is waiting for: signed in, or on the contrary signed out. */
     @Volatile
     private var awaitedAuth: Boolean? = null
 
-    /** Каталог моделей спрашиваем один раз за жизнь панели — см. checkAuth. */
-    private val modelsRequested = java.util.concurrent.atomic.AtomicBoolean(false)
-
-    /**
-     * Память об окнах расхода: снимки приезжают из двух путей с разной задержкой,
-     * и складывать их в одну правдивую картину — работа копилки (см.
-     * [ClaudeUsage.Tracker]), а не панели.
-     */
-    private val usageWindows = ClaudeUsage.Tracker()
-
-    /**
-     * Когда последний раз поднимали пинг за расходом. Опрос идёт каждые полминуты,
-     * но у спящей панели каждый заход стоит отдельного процесса на несколько
-     * секунд, а расход без разговоров почти не меняется — потому пингуем реже
-     * (см. [refreshLimits]).
-     */
-    private val lastUsagePing = java.util.concurrent.atomic.AtomicLong(0)
-
-    /**
-     * Запросы, на которые ждём ответа человека: отвечать надо тому разговору,
-     * который спросил, — вкладок много, и чужой ответ никого не разблокирует.
-     */
-    private val channelPermissions = ConcurrentHashMap<String, ChannelPermission>()
-
-    /**
-     * Планы, ждущие решения человека, по идентификатору вызова ExitPlanMode — то
-     * есть по идентификатору карточки плана в ленте. Отдельно от остальных
-     * разрешений: спрашивает про план не карточка разрешения, а сама карточка
-     * плана с её кнопками, которую панель уже нарисовала по вызову инструмента.
-     */
-    private val plans = ConcurrentHashMap<String, ChannelPermission>()
-
-    /**
-     * Вопросы с вариантами ответа, ждущие человека, — по идентификатору вызова
-     * AskUserQuestion, то есть по идентификатору карточки вопроса в ленте.
-     *
-     * Устроено как планы, и по той же причине: карточку рисует сам вызов
-     * инструмента, спрашивать поверх неё разрешение «можно ли задать вопрос»
-     * было бы вторым вопросом об одном и том же. Ответ возвращается тем же
-     * запросом — выбранные варианты уезжают в updatedInput (см. answerAsk).
-     */
-    private val asks = ConcurrentHashMap<String, ChannelPermission>()
-
-    private data class ChannelPermission(
-        val sessionId: String,
-        val requestId: String,
-        val toolName: String,
-        val command: String,
+    private val usage = PanelUsage(
+        workingDirectory = project.basePath,
+        sessions = { sessions },
+        isLoggedIn = { loggedIn },
+        send = { message -> webview?.send(message) },
     )
 
-    /** Когда в панель последний раз что-то бросили мышью — см. attachDropped. */
+    private val permissions = PanelPermissions(
+        sessions = { sessions },
+        send = { message -> webview?.send(message) },
+        sendPrompt = { sessionId, text ->
+            sendStatus(sessionId, "running")
+            sessions?.prompt(sessionId, text)
+        },
+        changeMode = ::changeMode,
+    )
+
+    /** When something was last dropped into the panel with the mouse - see [attachDropped]. */
     @Volatile
     private var lastDropAt = 0L
 
-    /** Держат ли сейчас над панелью файл — см. sendFileDrag. */
+    /** Whether a file is being held over the panel right now - see [sendFileDrag]. */
     @Volatile
     private var fileDragOver = false
 
     /**
-     * Разговор и срок, до которого возврат фокуса в IDE должен подтолкнуть
-     * статус MCP раньше расписания — см. watchIdeActivation и scheduleMcpRefresh.
+     * The conversation and the deadline up to which returning focus to the IDE should nudge the MCP
+     * status ahead of schedule - see [watchIdeActivation] and [scheduleMcpRefresh].
      */
     @Volatile
     private var pendingMcpRefreshSessionId: String? = null
@@ -210,22 +174,26 @@ internal class ClaudePanel(
             parentDisposable = parentDisposable,
             onEvent = { sessionId, line -> forwardAgentEvent(sessionId, line) },
             onError = { sessionId, text -> sendError(sessionId, text) },
-            // В ленту это не идёт, но про потерянный вход надо узнавать и отсюда:
-            // об этом CLI сообщает мимо потока событий, ещё до первого ответа.
+            // This does not travel into the feed, but a lost sign-in has to be noticed here too: the CLI
+            // reports it past the event stream, before the first answer.
             onDiagnostic = { _, text -> noteLoggedOut(text) },
             onFinished = { sessionId -> sendStatus(sessionId, "idle") },
             onCrashed = { sessionId, exitCode -> sendProcessExited(sessionId, exitCode) },
-            onToolPermission = { sessionId, request -> askToolPermission(sessionId, request) },
+            onToolPermission = { sessionId, request -> permissions.ask(sessionId, request) },
             onTitle = { sessionId, title -> sendSessionTitle(sessionId, title) },
-            // Второй, независимый путь к «работа кончилась»: обычно ход закрывает
-            // сам итог, приехавший в ленту, но он может до неё и не дойти — см.
-            // ClaudeSession.onTurnEnded. Статус идёт следом за событием, поэтому
-            // в обычной жизни он лишь подтверждает уже нарисованное.
+            // A second, independent route to "the work is over": usually a turn is closed by the result
+            // itself once it reaches the feed, but it may never get there - see ClaudeSession.onTurnEnded.
+            // The status follows the event, so in ordinary life it merely confirms what is already drawn.
             onTurnEnded = { sessionId -> sendStatus(sessionId, "idle") },
+            // A turn that started without a press in the panel: that is how the CLI takes up a message
+            // written into the previous turn - and by then the panel has already cleared its work on that
+            // turn's result. Without this it stands "free" for the whole of such a turn while the agent
+            // answers (see ClaudeSession.onTurnStarted).
+            onTurnStarted = { sessionId -> sendStatus(sessionId, "running") },
         )
 
-        // Перетаскивание файлов в панель: внутри IDE оно идёт мимо встроенного
-        // браузера, поэтому принимаем его здесь — см. WebviewFileDrop.
+        // Dragging files into the panel: inside the IDE that goes past the embedded browser, so we take
+        // it here - see WebviewFileDrop.
         WebviewFileDrop.install(
             component = host.component,
             parentDisposable = parentDisposable,
@@ -233,8 +201,9 @@ internal class ClaudePanel(
             onDropped = ::attachDropped,
         )
 
-        scheduleUsageUpdates(parentDisposable)
-        scheduleLimitUpdates(parentDisposable)
+        usage.scheduleUpdates(parentDisposable)
+        scheduleSlowUpdates(parentDisposable)
+        scheduleTokenUpdates(parentDisposable)
         scheduleBranchUpdates(parentDisposable)
         return host.component
     }
@@ -285,35 +254,34 @@ internal class ClaudePanel(
                 }
             }
 
-            // Команда через «!» — bash-режим панели, см. runShellCommand.
+            // A command through "!" - the panel's bash mode, see runShellCommand.
             "bash" -> runShellCommand(sessionId, field("id"), field("command"))
 
             "stop" -> {
-                // Прерываем ход, а не рубим процесс: разговор должен остаться. В idle
-                // не спешим — статус покажет настоящее result-событие, а если агент
-                // даже не подтвердит прерывание, честно скажем, что дело плохо.
+                // We interrupt the turn rather than cut down the process: the conversation must stay. We
+                // do not rush into idle - the status will be shown by a real result event, and if the
+                // agent does not even confirm the interrupt, we say honestly that things look bad.
                 sessions?.interrupt(sessionId) {
                     sendError(sessionId, "Claude didn't confirm the stop - the process may be stuck.")
                 }
             }
 
-            // Насильная остановка: пользователь уже видел, что штатный Stop не
-            // подтвердился, и явно попросил прибить процесс.
+            // A forced stop: the user has already seen that the ordinary Stop went unconfirmed and asked
+            // outright to kill the process.
             "kill" -> {
                 sessions?.stop(sessionId)
                 sendStatus(sessionId, "idle")
             }
 
-            // Крестик на чипе: прибиваем одну задачу — субагента или фоновую
-            // команду, — а ход продолжается. Своего ответа панели не нужно: о
-            // конце задачи CLI скажет обычным уведомлением, тем же, каким
-            // сообщает о её естественном конце.
+            // The cross on a chip: we kill one task - a subagent or a background command - while the turn
+            // carries on. No answer of the panel's own is needed: about the task's end the CLI reports
+            // with an ordinary notification, the same one it reports a natural end with.
             "stopTask" -> sessions?.stopTask(sessionId, field("taskId")) { error ->
                 sendError(sessionId, "Couldn't stop the task: $error")
             }
 
             "newSession" -> {
-                // Ветка наследует переписку того разговора, из которого её открыли.
+                // A branch inherits the transcript of the conversation it was opened from.
                 if (field("kind") == "branch") {
                     sessions?.branchFrom(field("parentId").ifEmpty { MAIN_SESSION }, sessionId)
                 }
@@ -328,32 +296,40 @@ internal class ClaudePanel(
                 payload["paths"]?.jsonArray.orEmpty().mapNotNull { it.jsonPrimitive.contentOrNull },
             )
 
-            "permissionDecision" -> decidePermission(field("id"), field("decision"))
+            "permissionDecision" -> permissions.decide(field("id"), field("decision"))
 
-            "planDecision" -> decidePlan(sessionId, field("id"), field("decision"), field("message"))
+            "planDecision" -> permissions.decidePlan(sessionId, field("id"), field("decision"), field("message"))
 
-            "askAnswer" -> answerAsk(
+            "askAnswer" -> permissions.answerAsk(
                 sessionId,
                 itemId = field("id"),
                 answers = payload["answers"]?.jsonObject ?: JsonObject(emptyMap()),
                 fallbackText = field("text"),
             )
 
-            "askDismiss" -> dismissAsk(field("id"))
+            "askDismiss" -> permissions.dismissAsk(field("id"))
 
             "setMode" -> changeMode(sessionId, field("mode"))
+            /**
+             * What new tabs start in - the only thing that writes the saved mode. Deliberately apart
+             * from "setMode": that one answers "how do I work in this tab right now", and a person who
+             * wants one tab out of ten in plan mode is not saying anything about the other nine.
+             *
+             * No conversation is touched here, not even the open one: changing the default is a
+             * decision about the future, and reaching into a running turn to apply it would be the very
+             * surprise this separation exists to remove.
+             */
+            "setDefaultMode" -> ClaudePreferences.mode = PermissionModes.normalize(field("mode"))
 
-            // Окно контекста у другой модели своего размера — спрашиваем его заново,
-            // не дожидаясь конца следующего хода.
+            // Another model's context window has a size of its own - we ask for it again without waiting
+            // for the next turn to end.
             "setModel" -> changeModel(sessionId, field("model"))
 
             "setEffort" -> sessions?.setEffort(sessionId, field("effort"))
 
             "setComposerLayout" -> ClaudePreferences.composerLayout = field("layout")
 
-            "setComposerWidth" -> payload["width"]?.jsonPrimitive?.intOrNull?.let { ClaudePreferences.composerWidth = it }
-
-            "refreshUsage" -> refreshUsage()
+            "refreshUsage" -> usage.refreshAll()
 
             "login" -> startLogin()
 
@@ -368,8 +344,8 @@ internal class ClaudePanel(
 
             "checkAuth" -> checkAuth()
 
-            // Панель зовёт человека. Решает она сама (только там известно, чем
-            // именно занят ход), а звучит здесь — см. AlertSounds.
+            // The panel calls the person. It decides that itself (only there is it known what exactly
+            // the turn is busy with), and the sound happens here - see AlertSounds.
             "sound" -> playAlert(
                 sound = field("sound"),
                 volume = payload["volume"]?.jsonPrimitive?.intOrNull ?: 100,
@@ -384,10 +360,10 @@ internal class ClaudePanel(
                     .toMap()
             }
 
-            // Строка из самой панели — см. protocol, сообщение trace.
+            // A line from the panel itself - see protocol, the trace message.
             "trace" -> thisLogger().info("Webview: ${field("message")}")
 
-            // Автоматический поиск промахнулся — человек показал файл сам.
+            // The automatic search missed - the person pointed at the file themselves.
             "setExecutablePath" -> {
                 ClaudePreferences.executablePath = field("path").trim()
                 checkAuth()
@@ -395,15 +371,16 @@ internal class ClaudePanel(
 
             "openDevTools" -> webview?.openDevTools()
 
-            // Курсор ставит оболочка: офскрин-браузер свой до окна IDE не доносит.
+            // The cursor is set by the shell: an offscreen browser does not carry its own as far as the
+            // IDE's window.
             "cursor" -> webview?.setCursor(field("cursor"))
 
-            // Номер PR в статус-баре — ссылка: открываем её в системном браузере,
-            // а не внутри JCEF, чтобы не заводить внутри панели полноценный веб-вьюпорт.
+            // The PR number in the status bar is a link: we open it in the system browser rather than
+            // inside JCEF, so as not to raise a full web viewport inside the panel.
             "openExternal" -> field("url").takeIf { it.isNotBlank() }?.let { BrowserUtil.browse(it) }
 
-            // Буфер обмена у встроенного браузера свой, до буфера IDE он не
-            // достаёт (см. WebviewClipboard) — ходим в настоящий за него.
+            // The embedded browser's clipboard is its own and does not reach the IDE's (see
+            // WebviewClipboard) - we go to the real one on its behalf.
             "clipboardWrite" -> writeClipboard(field("text"), field("html"))
 
             "clipboardRead" -> readClipboard(field("id"))
@@ -417,8 +394,8 @@ internal class ClaudePanel(
                 transport = field("transport").ifBlank { null },
                 onResult = { message ->
                     sendMcpActionResult(true, message)
-                    // Добавленный сервер поднимется только в новом процессе: конфиг
-                    // читается при запуске, живому разговору его не подсунуть.
+                    // An added server comes up only in a new process: the config is read at launch, a
+                    // live conversation cannot be handed it.
                     refreshMcpAfterRestart(sessionId)
                 },
                 onError = { error -> sendMcpActionResult(false, error) },
@@ -444,45 +421,13 @@ internal class ClaudePanel(
                 onError = { error -> sendPluginActionResult(false, error) },
             )
 
-            "pluginInstall" -> ClaudePlugin.install(
-                project.basePath,
-                plugin = field("plugin"),
-                onResult = { message ->
-                    sendPluginActionResult(true, message)
-                    ClaudePlugin.list(project.basePath, onResult = ::sendPlugins, onError = {})
-                },
-                onError = { error -> sendPluginActionResult(false, error) },
-            )
+            "pluginInstall" -> pluginAction(field("plugin"), ClaudePlugin::install)
 
-            "pluginUninstall" -> ClaudePlugin.uninstall(
-                project.basePath,
-                plugin = field("plugin"),
-                onResult = { message ->
-                    sendPluginActionResult(true, message)
-                    ClaudePlugin.list(project.basePath, onResult = ::sendPlugins, onError = {})
-                },
-                onError = { error -> sendPluginActionResult(false, error) },
-            )
+            "pluginUninstall" -> pluginAction(field("plugin"), ClaudePlugin::uninstall)
 
-            "pluginEnable" -> ClaudePlugin.enable(
-                project.basePath,
-                plugin = field("plugin"),
-                onResult = { message ->
-                    sendPluginActionResult(true, message)
-                    ClaudePlugin.list(project.basePath, onResult = ::sendPlugins, onError = {})
-                },
-                onError = { error -> sendPluginActionResult(false, error) },
-            )
+            "pluginEnable" -> pluginAction(field("plugin"), ClaudePlugin::enable)
 
-            "pluginDisable" -> ClaudePlugin.disable(
-                project.basePath,
-                plugin = field("plugin"),
-                onResult = { message ->
-                    sendPluginActionResult(true, message)
-                    ClaudePlugin.list(project.basePath, onResult = ::sendPlugins, onError = {})
-                },
-                onError = { error -> sendPluginActionResult(false, error) },
-            )
+            "pluginDisable" -> pluginAction(field("plugin"), ClaudePlugin::disable)
 
             "marketplaceList" -> ClaudePlugin.marketplaces(
                 project.basePath,
@@ -490,240 +435,61 @@ internal class ClaudePanel(
                 onError = { error -> sendPluginActionResult(false, error) },
             )
 
-            "marketplaceAdd" -> ClaudePlugin.addMarketplace(
-                project.basePath,
-                source = field("source"),
-                onResult = { message ->
-                    sendPluginActionResult(true, message)
-                    ClaudePlugin.marketplaces(project.basePath, onResult = ::sendMarketplaces, onError = {})
-                },
-                onError = { error -> sendPluginActionResult(false, error) },
-            )
+            "marketplaceAdd" -> marketplaceAction(field("source"), ClaudePlugin::addMarketplace)
 
-            "marketplaceRemove" -> ClaudePlugin.removeMarketplace(
-                project.basePath,
-                name = field("name"),
-                onResult = { message ->
-                    sendPluginActionResult(true, message)
-                    ClaudePlugin.marketplaces(project.basePath, onResult = ::sendMarketplaces, onError = {})
-                },
-                onError = { error -> sendPluginActionResult(false, error) },
-            )
+            "marketplaceRemove" -> marketplaceAction(field("name"), ClaudePlugin::removeMarketplace)
 
             else -> thisLogger().warn("Unknown message from webview: $message")
         }
     }
 
-    // --- Разрешения ---------------------------------------------------------
+    // --- Plugins and marketplaces ---------------------------------------------
 
     /**
-     * Агент спрашивает разрешение встречным управляющим запросом по потоку
-     * разговора (см. ClaudeLaunch.PERMISSION_CHANNEL_FLAG) — единственным путём,
-     * которым разрешения вообще доходят до панели.
-     *
-     * Часть вопросов рисовать карточкой не надо: у плана и у вопроса с вариантами
-     * карточка в ленте уже есть, её нарисовал сам вызов инструмента. Спрашивать
-     * поверх неё второй раз нечего, нужно лишь запомнить, куда отправить ответ её
-     * кнопок.
+     * Install, uninstall, enable, disable: four subcommands of the CLI that differ in nothing but their
+     * name. Each used to carry its own copy of "report the outcome, then ask for the list again", and
+     * four copies of one paragraph are four chances for them to drift.
      */
-    private fun askToolPermission(sessionId: String, request: PermissionChannel.ToolPermission) {
-        val pending = ChannelPermission(
-            sessionId = sessionId,
-            requestId = request.requestId,
-            toolName = request.toolName,
-            command = PermissionPrompt.command(request.toolName, request.input),
-        )
+    private fun pluginAction(
+        plugin: String,
+        action: (String?, String, (String) -> Unit, (String) -> Unit) -> Unit,
+    ) {
+        if (plugin.isBlank()) return
 
-        if (request.toolName == PLAN_TOOL || request.toolName == ClaudeLaunch.ASK_TOOL) {
-            val itemId = request.toolUseId
-            if (itemId == null) {
-                // Без идентификатора вызова карточку в ленте не найти, а значит и
-                // кнопкам её не ответить — честнее отказать сразу, чем молча
-                // остановить ход навсегда.
-                thisLogger().warn("${request.toolName} permission without a tool_use_id: nothing to attach it to")
-                sessions?.answerPermission(sessionId, request.requestId, allow = false, message = CARD_LOST)
-                return
-            }
-
-            // Вопрос без единого вопроса лента не рисует (сбойный вызов бывает), и
-            // ждать тогда нечего: разрешение осталось бы висеть под карточкой,
-            // которой нет, а ход — стоять до закрытия вкладки. Отказ агент
-            // переживёт: спросит то же самое обычным текстом.
-            if (request.toolName == ClaudeLaunch.ASK_TOOL && !hasQuestions(request.input)) {
-                thisLogger().warn("${request.toolName} permission without questions: the feed has no card to answer it")
-                sessions?.answerPermission(sessionId, request.requestId, allow = false, message = CARD_LOST)
-                return
-            }
-
-            if (request.toolName == PLAN_TOOL) plans[itemId] = pending else asks[itemId] = pending
-            return
-        }
-
-        channelPermissions[request.requestId] = pending
-
-        webview?.send(
-            buildJsonObject {
-                put("type", "permission")
-                put("id", request.requestId)
-                put("sessionId", sessionId.ifEmpty { MAIN_SESSION })
-                put("toolName", request.toolName)
-                put("target", PermissionPrompt.target(request.toolName, request.input))
-                put("command", pending.command)
-                put("mode", PermissionModes.resolve(ClaudePreferences.mode))
-                // Кто поднял вопрос. В «Bypass» и «Auto» вопросов не ждут вовсе, и
-                // без этой строки они выглядят приставучестью панели — см.
-                // PermissionReason.
-                PermissionReason.text(request).takeIf { it.isNotEmpty() }?.let { put("reason", it) }
-                // Правило «больше не спрашивать» тут не сработает — предлагать его
-                // значит обмануть: человек нажмёт, правило запишется, а вопрос
-                // вернётся следующим таким же вызовом.
-                if (!PermissionReason.rememberable(request)) put("rememberable", false)
-                // Спрашивает инструмент внутри субагента — карточке место в его
-                // ветке ленты, а не в общем разговоре.
-                request.agentId?.let { put("agentId", it) }
-            }.toString(),
+        action(
+            project.basePath,
+            plugin,
+            { message ->
+                sendPluginActionResult(true, message)
+                // The list has changed - we ask for it again ourselves: the CLI reports nothing about
+                // it, and the tab would go on showing what was there before the action.
+                ClaudePlugin.list(project.basePath, onResult = ::sendPlugins, onError = {})
+            },
+            { error -> sendPluginActionResult(false, error) },
         )
     }
 
-    /**
-     * Жив ли ещё вопрос, под который кладут ответ.
-     *
-     * Записи в `plans`/`asks` переживают процесс: карточка в ленте остаётся, а
-     * разговор за это время могли перезапустить (переподключение MCP, Stop с
-     * последующим ходом). Новый процесс о старом запросе не знает и ответ на него
-     * молча выбросит — карточка при этом уже переключилась в «решено», и
-     * написанное человеком пропадёт совсем. Поэтому спрашиваем разговор, ждёт ли
-     * он ещё этого ответа, и если нет — уходим тем же запасным путём, что и для
-     * карточки без записи: обычным сообщением.
-     */
-    private fun awaited(pending: ChannelPermission): Boolean =
-        sessions?.isAwaitingPermission(pending.sessionId, pending.requestId) == true
+    /** The same for the marketplaces: adding and removing differ only in which list is asked for anew. */
+    private fun marketplaceAction(
+        target: String,
+        action: (String?, String, (String) -> Unit, (String) -> Unit) -> Unit,
+    ) {
+        if (target.isBlank()) return
 
-    /**
-     * Есть ли в вызове хоть один вопрос — ровно то же условие, по которому лента
-     * решает, рисовать ли карточку (см. build.ts, AskUserQuestion). Условия должны
-     * совпадать: карточка без ожидания ответа — просто мусор в ленте, а ожидание
-     * без карточки — намертво вставший ход.
-     */
-    private fun hasQuestions(input: JsonObject): Boolean =
-        (input["questions"] as? JsonArray)?.isNotEmpty() == true
-
-    /**
-     * Ответ человека на карточку разрешения.
-     *
-     * «Всегда» уходит тем же ответом, а не записью в настройки своими руками: CLI
-     * прикладывает к вопросу готовое правило и сам решает, куда его положить —
-     * см. PermissionChannel.rememberRules. Дописывать файл настроек мимо него
-     * незачем: правило приходится сочинять по команде наугад, а сам CLI разбирает
-     * её точно и знает, какая часть значимая.
-     */
-    private fun decidePermission(id: String, decision: String) {
-        val channel = channelPermissions.remove(id) ?: run {
-            thisLogger().info("No permission waiting for a decision: $id")
-            return
-        }
-
-        sessions?.answerPermission(
-            channel.sessionId,
-            id,
-            allow = decision != "deny",
-            remember = decision == "always",
+        action(
+            project.basePath,
+            target,
+            { message ->
+                sendPluginActionResult(true, message)
+                ClaudePlugin.marketplaces(project.basePath, onResult = ::sendMarketplaces, onError = {})
+            },
+            { error -> sendPluginActionResult(false, error) },
         )
     }
 
-    /**
-     * Кнопки под планом. «Approve & run» — это разрешение на выход из режима плана:
-     * агент получает «план одобрен» и тут же продолжает работу тем же ходом. «Keep
-     * planning» — отказ с объяснением: для агента это сигнал доработать план и
-     * показать его снова.
-     *
-     * Сам по себе выход из plan возвращает CLI не во вседозволенность, а в обычное
-     * «спрашивать всегда» — тогда каждый следующий шаг одобренного плана снова
-     * упирался бы в разрешение, вопрос за вопросом, хотя человек уже согласился на
-     * план целиком. Поэтому одобрение переключает режим в bypass следом: карточка
-     * плана и была тем единственным вопросом, который стоило задать.
-     */
-    private fun decidePlan(sessionId: String, itemId: String, decision: String, message: String = "") {
-        val pending = plans.remove(itemId)?.takeIf { awaited(it) } ?: run {
-            // Карточка старше нынешнего процесса: разговор с тех пор перезапускали
-            // (или это чужая вкладка), и отвечать давно некому. Замечание к плану
-            // тогда уходит обычным сообщением — потерять написанное человеком
-            // хуже, чем ответить не тем способом. Уходит именно в ту вкладку, где
-            // его писали: разговоров много, и чужой ответ в чужой ленте — не
-            // спасение, а вторая поломка.
-            thisLogger().info("No plan waiting for a decision: $itemId")
-            if (message.isNotBlank()) {
-                sendStatus(sessionId, "running")
-                sessions?.prompt(sessionId, message)
-            }
-            return
-        }
+    // --- Sign-in ---------------------------------------------------------------
 
-        sessions?.answerPermission(
-            pending.sessionId,
-            pending.requestId,
-            allow = decision == "approve",
-            // Написанное человеком при живой карточке плана — это и есть его
-            // замечание: агент прочитает именно его, а не общее «доработай».
-            message = message.ifBlank { KEEP_PLANNING },
-        )
-
-        if (decision == "approve") changeMode(pending.sessionId, "bypassPermissions")
-    }
-
-    /**
-     * Ответ на вопрос с вариантами.
-     *
-     * Уходит тем же запросом, которым вопрос и пришёл: выбранное кладём в
-     * `answers` рядом с исходными аргументами вызова — ключом служит текст
-     * вопроса, значением подпись выбранного варианта (или свой ответ, если его
-     * напечатали). Дальше CLI сам собирает из этого результат инструмента, и ход
-     * продолжается с того же места.
-     *
-     * Вопрос мог остаться от прежнего процесса — тогда отвечать некому, и ответ
-     * уходит обычным следующим сообщением: так вёл себя панельный ответ и до
-     * того, как вопросы вообще стали доходить до агента.
-     */
-    private fun answerAsk(sessionId: String, itemId: String, answers: JsonObject, fallbackText: String) {
-        val pending = asks.remove(itemId)?.takeIf { awaited(it) }
-
-        if (pending == null) {
-            thisLogger().info("No question waiting for an answer: $itemId")
-            if (fallbackText.isNotBlank()) {
-                sendStatus(sessionId, "running")
-                sessions?.prompt(sessionId, fallbackText)
-            }
-            return
-        }
-
-        sessions?.answerPermission(
-            pending.sessionId,
-            pending.requestId,
-            allow = true,
-            extraInput = buildJsonObject { put("answers", answers) },
-        )
-    }
-
-    /**
-     * Вопрос закрыли крестиком: вариантов человек не выбрал и скажет своими
-     * словами. Агенту это уходит отказом на его вызов — так он узнаёт, что
-     * ждать выбора больше незачем, и продолжает ход. Молчание оставило бы его
-     * стоять на вопросе, которого на экране уже нет.
-     */
-    private fun dismissAsk(itemId: String) {
-        val pending = asks.remove(itemId)?.takeIf { awaited(it) } ?: return
-
-        sessions?.answerPermission(
-            pending.sessionId,
-            pending.requestId,
-            allow = false,
-            message = ASK_DISMISSED,
-        )
-    }
-
-    // --- Вход ---------------------------------------------------------------
-
-    /** Спрашиваем CLI в фоне: это запуск процесса, в потоке интерфейса ему не место. */
+    /** We ask the CLI in the background: this starts a process, which has no place on the interface thread. */
     private fun checkAuth() {
         ApplicationManager.getApplication().executeOnPooledThread {
             val status = ClaudeAuth.status()
@@ -737,21 +503,20 @@ internal class ClaudePanel(
                 loginPolling = null
             }
 
-            // Каталог моделей — только после подтверждённого входа: без него CLI
-            // ответит не списком, а «вы не вошли». И один раз: список не меняется
-            // от того, что мы лишний раз спросили, а стоит запрос запуска процесса.
+            // The model catalogue comes only after a confirmed sign-in: without one the CLI answers not
+            // with a list but with "you are not signed in".
             if (status.loggedIn) {
-                refreshLimits(urgent = true)
-                refreshTodayTokens()
-                if (modelsRequested.compareAndSet(false, true)) refreshModels()
+                usage.refreshLimits(urgent = true)
+                usage.refreshTodayTokens()
+                usage.refreshModels(MAIN_SESSION)
             }
         }
     }
 
     /**
-     * Вход идёт во встроенном терминале: там открывается браузер и ждётся возврат.
-     * Когда он закончится, нам никто не сообщит, поэтому просто переспрашиваем CLI,
-     * пока не увидим вход — или пока не надоест.
+     * The sign-in happens in the built-in terminal: a browser opens there and a return is awaited. When
+     * it finishes, nobody will tell us - so we simply ask the CLI again until we see the sign-in, or
+     * until we tire of it.
      */
     private fun startLogin() {
         ClaudeLogin.login(project)
@@ -759,31 +524,37 @@ internal class ClaudePanel(
     }
 
     /**
-     * Ждём, пока человек закончит в терминале: сообщить об этом нам некому. Ждём
-     * именно нужного исхода — после выхода опрос должен остановиться на «вышел»,
-     * а не молотить до самого предела.
+     * We wait for the person to finish in the terminal: there is nobody to tell us about it. And we wait
+     * for the outcome we need - after a sign-out the polling should stop at "signed out" rather than
+     * hammer away to the very limit.
      */
     private fun pollAuth(expected: Boolean) {
         awaitedAuth = expected
         loginPolling?.cancel(false)
-        loginPolling = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
+
+        val polling = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
             { checkAuth() },
             LOGIN_POLL_SECONDS,
             LOGIN_POLL_SECONDS,
             TimeUnit.SECONDS,
         )
+        loginPolling = polling
 
+        // We stop this polling specifically, not whatever happens to be in its place: between these two
+        // moments the person could have started a new sign-in (or a sign-out), and a limit set by the
+        // previous one would cut short someone else's freshly started polling - the panel would then not
+        // notice the sign-in at all.
         AppExecutorUtil.getAppScheduledExecutorService().schedule(
-            { loginPolling?.cancel(false) },
+            { polling.cancel(false) },
             LOGIN_POLL_LIMIT_MINUTES,
             TimeUnit.MINUTES,
         )
     }
 
     /**
-     * Разрешён ли режим «без вопросов» — от этого зависит круг Shift+Tab в панели.
-     * Ответ требует расспросить сам CLI, поэтому уходит в фон и приезжает отдельным
-     * сообщением: держать из-за него первую отрисовку панели незачем.
+     * Whether the "no questions" mode is allowed on this machine - the Shift+Tab cycle in the panel
+     * depends on it. The answer requires questioning the CLI itself, so it goes into the background and
+     * arrives as a separate message: holding the panel's first frame for it serves nothing.
      */
     private fun checkModeAvailability() {
         ApplicationManager.getApplication().executeOnPooledThread {
@@ -807,9 +578,9 @@ internal class ClaudePanel(
                 put("email", status.email)
                 put("plan", status.plan)
                 put("executablePath", ClaudePreferences.executablePath)
-                // Не нашли — показываем, где искали и что ответила сама система.
-                // По этим двум спискам видно, почему промахнулись, даже если
-                // машина чужая и посмотреть на неё нельзя.
+                // Not found - we show where we looked and what the system itself answered. Those two
+                // lists show why we missed, even when the machine is someone else's and cannot be looked
+                // at.
                 if (!status.installed) {
                     putJsonArray("searched") {
                         add(ClaudeExecutable.systemAnswer())
@@ -821,9 +592,9 @@ internal class ClaudePanel(
     }
 
     /**
-     * Агент отвечает про вход обычным текстом, а не ошибкой запуска, поэтому ловим
-     * его в потоке: иначе панель осталась бы с полем ввода, в которое бессмысленно
-     * писать.
+     * The agent answers about the sign-in with ordinary text rather than a launch error, so we catch it
+     * in the stream: otherwise the panel would be left with an input field there is no point writing
+     * into.
      */
     private fun noteLoggedOut(text: String) {
         if (!loggedIn || !text.contains(NOT_LOGGED_IN)) return
@@ -832,11 +603,15 @@ internal class ClaudePanel(
         checkAuth()
     }
 
-    // --- Режим разрешений ---------------------------------------------------
+    // --- Permission mode -------------------------------------------------------
 
     /**
-     * Панель показывает применённый режим, а не выбранный: если агент откажется,
-     * интерфейс должен вернуться к прежнему, а не врать галочкой в меню.
+     * The panel shows the applied mode, not the chosen one: if the agent refuses, the interface must
+     * return to the previous one rather than lie with a tick in the menu.
+     */
+    /**
+     * The mode of one conversation, and of no other: neither the MODE selector nor Shift+Tab nor an
+     * approved plan touches what new tabs start in. That is chosen separately - see "setDefaultMode".
      */
     private fun changeMode(sessionId: String, mode: String) {
         sessions?.setPermissionMode(sessionId, mode) { change ->
@@ -846,8 +621,8 @@ internal class ClaudePanel(
                     put("sessionId", sessionId)
                     put("mode", change.mode)
                     put("applied", change.applied)
-                    // Отказ без причины выглядит поломкой панели, хотя дело обычно
-                    // в модели: «auto» доступен не всякой.
+                    // A refusal without a reason looks like a broken panel, although the matter is
+                    // usually the model: "auto" is not available on every one.
                     if (change.error.isNotEmpty()) put("error", change.error)
                 }.toString(),
             )
@@ -855,13 +630,13 @@ internal class ClaudePanel(
     }
 
     /**
-     * Панель показывает применённую модель, а не выбранную — по той же причине,
-     * что и с режимом: отказать агент может по-настоящему (модель запрещена
-     * организацией или недоступна тарифу), и тогда интерфейс обязан вернуться к
-     * прежней и сказать почему, а не сообщать о смене, которой не было.
+     * The panel shows the applied model, not the chosen one - for the same reason as with the mode: the
+     * agent can genuinely refuse (a model forbidden by an organization or unavailable on a plan), and
+     * then the interface must return to the previous one and say why, rather than report a change that
+     * did not happen.
      *
-     * Окно контекста спрашиваем заново только у настоящей смены: у другой модели
-     * оно своего размера, и ждать конца хода ради этой цифры незачем.
+     * The context window is asked for anew only on a real change: another model's is a different size,
+     * and waiting for the turn's end for that figure serves nothing.
      */
     private fun changeModel(sessionId: String, model: String) {
         sessions?.setModel(sessionId, model) { change ->
@@ -875,13 +650,13 @@ internal class ClaudePanel(
                 }.toString(),
             )
 
-            if (change.applied) refreshContext(sessionId)
+            if (change.applied) usage.refreshContext(sessionId)
         }
     }
 
-    // --- Прошлые разговоры --------------------------------------------------
+    // --- Past conversations ----------------------------------------------------
 
-    /** Чтение папки с историей — обращение к диску, поэтому в фоне. */
+    /** Reading the history folder touches the disk, so it happens in the background. */
     private fun sendHistory() {
         ApplicationManager.getApplication().executeOnPooledThread {
             val entries = ClaudeHistory.list(project.basePath)
@@ -905,9 +680,9 @@ internal class ClaudePanel(
     }
 
     /**
-     * Открываем прошлый разговор: процесс поднимется с его переписью, а панель
-     * проигрывает сохранённые события в ленту — иначе вкладка выглядела бы пустой,
-     * хотя агент всё помнит.
+     * Opening a past conversation: the process comes up with its transcript, and the panel replays the
+     * saved events into the feed - otherwise the tab would look empty although the agent remembers
+     * everything.
      */
     private fun resumeConversation(sessionId: String, conversationId: String) {
         if (conversationId.isEmpty()) return
@@ -915,42 +690,42 @@ internal class ClaudePanel(
         sessions?.resume(sessionId, conversationId)
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            for (line in ClaudeHistory.replay(project.basePath, conversationId)) {
+            // Line by line as they are read: a long conversation's transcript is tens of megabytes, and
+            // there is no reason for any of it to sit in memory at once just to be forwarded onwards.
+            ClaudeHistory.replay(project.basePath, conversationId) { line ->
                 forwardAgentEvent(sessionId, line, replay = true)
             }
 
-            // Перепись кончилась — панель закрывает работу, которая осталась в ней
-            // незаконченной. В переписке лежат только реплики, а итог фонового
-            // субагента приезжает отдельным системным событием, так что для его
-            // карточки он не пришёл бы никогда: открытая из истории вкладка
-            // показывала прошлых агентов работающими прямо сейчас.
+            // The replay is over - the panel closes the work left unfinished inside it. The transcript
+            // holds only messages, while a background subagent's result arrives as a separate system
+            // event, so for its card it would never come at all: a tab opened from the history showed
+            // past agents as working right now.
             sendReplayFinished(sessionId)
 
-            // Занятое окно спрашиваем у самого разговора — и ради этого поднимаем
-            // его, не дожидаясь первого сообщения. Перепись этой цифры не знает
-            // вовсе: в транскрипте нет ни системного промпта с инструментами, ни
-            // размера окна модели, и разговор на «1M»-модели выглядел по ней
-            // переполненным с первой же секунды. Процесс всё равно нужен — в нём
-            // и будут продолжать разговор, — просто он готов чуть раньше.
+            // The taken context window is asked of the conversation itself - and for that we bring it up
+            // without waiting for the first message. The replay does not know this figure at all: the
+            // transcript holds neither the system prompt with its tools nor the model's window size, and
+            // a conversation on a "1M" model looked overflowing by it from the very first second. The
+            // process is needed anyway - the conversation will be continued in it - it is merely ready a
+            // little earlier.
             sessions?.wake(sessionId)
-            refreshContext(sessionId)
+            usage.refreshContext(sessionId)
         }
     }
 
-    // --- Ссылка из редактора ------------------------------------------------
+    // --- A reference from the editor -------------------------------------------
 
-    /** Кусок файла из редактора: в поле ввода он станет ссылкой, а не текстом. */
     /**
-     * Положить в поле ввода вложение по готовому пути — тем же способом, каким
-     * туда попадает файл, брошенный в панель мышью.
+     * Put an attachment with a ready path into the input field - the same way a file dropped into the
+     * panel with the mouse gets there.
      *
-     * Путь берём как есть, не укорачивая: сюда приходит «Send Absolute Path…», а
-     * там полный путь и есть весь смысл действия (см. SendSelectionAbsoluteAction).
+     * The path is taken as it is, without shortening: this is where "Send Absolute Path…" arrives, and
+     * there the full path is the whole point of the action (see SendSelectionAbsoluteAction).
      */
     fun attachPath(path: String) {
         ApplicationManager.getApplication().executeOnPooledThread {
-            // Файловую систему трогаем не из потока интерфейса: путь может вести
-            // куда угодно, вплоть до неподмонтированного диска.
+            // We do not touch the file system from the interface thread: a path may lead anywhere, up to
+            // an unmounted drive.
             val kind = FilePicker.kindOf(path) ?: return@executeOnPooledThread
 
             webview?.send(
@@ -961,12 +736,13 @@ internal class ClaudePanel(
                 }.toString(),
             )
 
-            // Действие звали из редактора или из дерева проекта — фокус остался
-            // там, и печатать в поле ввода пришлось бы после отдельного клика.
+            // The action was invoked from the editor or from the project tree - the focus stayed there,
+            // and typing into the input field would take a separate click.
             ApplicationManager.getApplication().invokeLater { webview?.focus() }
         }
     }
 
+    /** A piece of a file from the editor: in the input field it becomes a reference, not text. */
     fun sendSelection(reference: SelectionReference) {
         webview?.send(
             buildJsonObject {
@@ -981,46 +757,25 @@ internal class ClaudePanel(
         )
     }
 
-    // --- Расход по окнам ----------------------------------------------------
+    // --- Background rounds -----------------------------------------------------
 
-    /**
-     * Окна расхода — свой круг, вдвое чаще остального: их видно на кольцах у самого
-     * поля ввода, и пока агент работает, доля растёт на глазах. У живого разговора
-     * это ничего не стоит (вопрос уходит в уже поднятый процесс), а спящую панель
-     * от лишних процессов бережёт отдельный порог в [refreshLimits].
-     */
-    private fun scheduleLimitUpdates(parentDisposable: Disposable) {
-        val task = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
-            { refreshLimits() },
-            LIMITS_PERIOD_SECONDS,
-            LIMITS_PERIOD_SECONDS,
-            TimeUnit.SECONDS,
-        )
-
-        Disposer.register(parentDisposable) { task.cancel(false) }
-    }
-
-    /** Опрос не бесплатный (отдельный процесс), поэтому редкий и в фоне. */
-    private fun scheduleUsageUpdates(parentDisposable: Disposable) {
+    /** The polling is not free (a separate process), so it is rare and runs in the background. */
+    private fun scheduleSlowUpdates(parentDisposable: Disposable) {
         val task = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
             {
-                // Скан транскриптов ВСЕХ проектов ради «токенов за сегодня» — тяжёлая
-                // штука, и меняется эта цифра неспешно: она остаётся на редком круге,
-                // в отличие от самих окон расхода (см. scheduleLimitUpdates).
-                refreshTodayTokens()
-                // PR спрашивает GitHub отдельным процессом — та же редкая
-                // периодичность, что у расхода. Ветку сюда не тащим: она обновляется
-                // своим отдельным, куда более частым кругом (см. scheduleBranchUpdates).
+                // The PR is asked of GitHub by a separate process - hence the rare period. Neither the
+                // branch nor the day's tokens come here: both have rounds of their own, one far more
+                // frequent and one far rarer (see scheduleBranchUpdates and scheduleTokenUpdates).
                 refreshPullRequest()
-                // Список файлов для подсказки "@" тоже стареет — агент мог создать
-                // новые за это время, ту же редкую периодичность, что у остального.
+                // The file list for the "@" hint goes stale too - the agent may have created new ones in
+                // the meantime; the same rare period as the rest.
                 refreshFiles()
-                // Плагины и скиллы могли поставить/обновить за это время — та же
-                // периодичность, что и у остального фонового обновления.
+                // Plugins and skills may have been installed or updated in the meantime - the same period
+                // as the rest of the background refreshing.
                 refreshCommandHints()
             },
-            USAGE_PERIOD_MINUTES,
-            USAGE_PERIOD_MINUTES,
+            SLOW_PERIOD_MINUTES,
+            SLOW_PERIOD_MINUTES,
             TimeUnit.MINUTES,
         )
 
@@ -1028,10 +783,35 @@ internal class ClaudePanel(
     }
 
     /**
-     * Ветка — это просто чтение маленького файла на диске, не поход к GitHub, как
-     * у PR (см. scheduleUsageUpdates). Гонять её тем же редким кругом было ошибкой:
-     * после `git checkout` в терминале панель показывала старую ветку заметное
-     * время. Здесь круг короткий — тот же расход почти нулевой.
+     * "Today's tokens" is the most expensive thing the panel does in the background, and by a wide
+     * margin: every project's transcripts, every line of every file touched in the last two days,
+     * parsed as JSON - tens to hundreds of megabytes for an active user. All of it for one figure in
+     * the row under the input field, and every open project window runs a copy of this over the same
+     * shared directory.
+     *
+     * So it gets a round of its own rather than the shared one: the figure creeps rather than jumps, and
+     * five minutes of staleness on it costs nothing, while the file list for the "@" hint on the shared
+     * round genuinely does want a minute - the agent creates a file and one wants to mention it.
+     *
+     * The number does not wait five minutes to appear: the panel asks for it as it opens and again on a
+     * confirmed sign-in (see PanelUsage.refreshAll).
+     */
+    private fun scheduleTokenUpdates(parentDisposable: Disposable) {
+        val task = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
+            { usage.refreshTodayTokens() },
+            TOKENS_PERIOD_MINUTES,
+            TOKENS_PERIOD_MINUTES,
+            TimeUnit.MINUTES,
+        )
+
+        Disposer.register(parentDisposable) { task.cancel(false) }
+    }
+
+    /**
+     * The branch is simply a small file read from disk, not a trip to GitHub as the PR is (see
+     * scheduleSlowUpdates). Running it on the same rare round was a mistake: after a `git checkout` in
+     * the terminal the panel showed the old branch for a noticeable while. Here the round is short - the
+     * same cost is near zero.
      */
     private fun scheduleBranchUpdates(parentDisposable: Disposable) {
         val task = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
@@ -1044,7 +824,7 @@ internal class ClaudePanel(
         Disposer.register(parentDisposable) { task.cancel(false) }
     }
 
-    /** Обход диска — не мгновенный на большом репозитории, поэтому в фоне. */
+    /** Walking the disk is not instant on a big repository, so it happens in the background. */
     private fun refreshFiles() {
         AppExecutorUtil.getAppExecutorService().submit {
             sendFiles(ClaudeFileSearch.list(project.basePath))
@@ -1061,9 +841,9 @@ internal class ClaudePanel(
     }
 
     /**
-     * Описание и синтаксис аргумента слэш-команд — из фронтматтера файлов на
-     * диске (см. ClaudeCommandHints). Список установленных плагинов нужен только
-     * ради их installPath, поэтому берём лёгкий `plugin list` без `--available`.
+     * The description and argument syntax of slash commands - out of the frontmatter of files on disk
+     * (see ClaudeCommandHints). The list of installed plugins is needed only for their installPath, so
+     * we take the light `plugin list` without `--available`.
      */
     private fun refreshCommandHints() {
         ClaudePlugin.installed(
@@ -1091,277 +871,19 @@ internal class ClaudePanel(
     }
 
     /**
-     * Весь расход целиком, по просьбе самой панели: и окна подписки, и токены за
-     * день. Просит она об этом, когда открывается, — поэтому спрашиваем сразу, не
-     * оглядываясь на порог для пинга.
-     */
-    private fun refreshUsage() {
-        refreshLimits(urgent = true)
-        refreshTodayTokens()
-    }
-
-    /**
-     * Окна расхода подписки.
+     * A command from the input field typed through "!": we run it ourselves, in the project's working
+     * directory, and return its output to the panel (see [ShellCommand]).
      *
-     * Спрашиваем работающий разговор — тот, который только что закончил ход, или
-     * тот, у кого ход идёт прямо сейчас: свою долю процесс узнаёт из ответов
-     * сервера на собственные запросы, и у работающего она самая свежая из
-     * возможных. Это ещё и бесплатно: процесс уже поднят.
-     *
-     * Свободный разговор так не спросишь: он повторит цифру, приехавшую с его
-     * последним ответом, — а он мог работать вчера. За настоящей идём к серверу,
-     * разовым лёгким пингом (`--safe-mode`, без customizations) через
-     * [ClaudeControlPing].
-     *
-     * Пинг стоит запуска процесса на несколько секунд, поэтому идёт не на каждый
-     * круг, а по своему порогу: без работы расход растёт разве что от терминала
-     * или браузера — на этот случай порог и оставлен, вместо того чтобы не
-     * спрашивать вовсе. [urgent] его снимает: так спрашивают при открытии панели и
-     * при переспросе, когда цифры нужны сейчас, а не «на следующем круге».
-     */
-    private fun refreshLimits(
-        attempt: Int = 0,
-        /** Разговор, который только что работал: у него доля свежее всех. */
-        preferred: String? = null,
-        urgent: Boolean = false,
-        /** Мимо разговоров, прямо к серверу: его ответ и есть то, чем лечат замерший. */
-        viaPing: Boolean = false,
-    ) {
-        // Спрашивать расход до входа нечего: процесс поднимется только затем, чтобы
-        // ответить, что пользователь не вошёл.
-        if (!loggedIn) return
-
-        val onUsage = { usage: JsonObject -> receiveUsage(usage, attempt, preferred) }
-        // Кого спрашивать. Тот, кто только что закончил ход, знает свежайшую долю —
-        // он получил её в ответе на свой же запрос. Идёт ход прямо сейчас — то же
-        // самое, доля растёт у него на глазах. А вот свободный разговор отвечает
-        // ровно тем, что уже приезжало: его не тревожим и идём к серверу.
-        val live = when {
-            viaPing -> null
-            preferred != null && sessions?.isRunning(preferred) == true -> preferred
-            else -> sessions?.busySession()
-        }
-
-        if (live != null) {
-            sessions?.requestUsage(
-                live,
-                onUsage,
-                // Разговор мог и не ответить (у управляющего запроса свой таймаут):
-                // тогда за цифрами всё равно идём к серверу, иначе кольца замрут до
-                // конца дня на том, что панель узнала последним.
-                onFailure = { error ->
-                    thisLogger().info("Usage from live session unavailable: $error")
-                    if (attempt < USAGE_RETRY_LIMIT) refreshLimits(attempt + 1, preferred, viaPing = true)
-                },
-            )
-            return
-        }
-
-        val now = System.currentTimeMillis()
-        val since = now - lastUsagePing.get()
-        if (!urgent && since < TimeUnit.SECONDS.toMillis(LIMITS_PING_MIN_SECONDS)) return
-        lastUsagePing.set(now)
-
-        ClaudeControlPing.request(
-            project.basePath,
-            subtype = "get_usage",
-            onResult = onUsage,
-            onError = { error -> thisLogger().info("Usage ping skipped: $error") },
-        )
-    }
-
-    /**
-     * Токены за сегодня — скан транскриптов ВСЕХ проектов, а не спрос у текущего
-     * разговора: своя цена, поэтому в фоне, отдельным сообщением наверх и на своём,
-     * редком круге (см. scheduleUsageUpdates).
-     */
-    private fun refreshTodayTokens() {
-        if (!loggedIn) return
-
-        AppExecutorUtil.getAppExecutorService().submit {
-            webview?.send(
-                buildJsonObject {
-                    put("type", "usage")
-                    put("todayTokens", ClaudeTokenUsage.today())
-                }.toString(),
-            )
-        }
-    }
-
-    /**
-     * Ответ на get_usage. Только что поднятый CLI успевает ответить раньше, чем
-     * узнает окна подписки от сервера, — тогда лимитов в ответе нет вовсе, и
-     * кольца расхода в панели пусты. Ждать общего круга в этом случае незачем:
-     * переспрашиваем через несколько секунд, и кольца появляются сразу после
-     * открытия проекта, а не когда повезёт.
-     */
-    private fun receiveUsage(usage: JsonObject, attempt: Int, preferred: String?) {
-        val snapshot = sendUsage(usage)
-        if (attempt >= USAGE_RETRY_LIMIT) return
-
-        // Ответ замер: отвечал процесс, который сам не обращался к серверу с
-        // прошлого окна (в панели с открытыми вкладками такой живёт сутками). Долю
-        // из него панель уже отбросила, а взять настоящую можно только у сервера.
-        if (snapshot.isStale()) {
-            refreshLimits(attempt + 1, preferred, viaPing = true)
-            return
-        }
-
-        if (snapshot.hasLimits) return
-
-        AppExecutorUtil.getAppScheduledExecutorService().schedule(
-            // Переспрос — из тех случаев, когда цифры нужны сейчас: порог на пинг
-            // тут не к месту, иначе попытки уйдут в него, а не к CLI.
-            { refreshLimits(attempt + 1, preferred, urgent = true) },
-            USAGE_RETRY_SECONDS,
-            TimeUnit.SECONDS,
-        )
-    }
-
-    /**
-     * Каталог моделей — тот же, что показывает `/model` в терминале.
-     *
-     * Список нельзя держать у себя: какие модели доступны, решают учётная запись,
-     * провайдер и политика организации, а имена и подписи меняются с версиями CLI.
-     * Спрашиваем у живого разговора, а до первого сообщения — разовым пингом.
-     */
-    private fun refreshModels() {
-        if (!loggedIn) return
-
-        val onError = { error: String ->
-            thisLogger().info("Model catalog unavailable: $error")
-            // Осечка — не повод закрыть тему навсегда: снимаем защёлку, и следующая
-            // проверка входа спросит каталог заново. Иначе один неудачный пинг
-            // (холодный старт CLI не уложился в таймаут, процесс прибили) оставлял
-            // бы панель с зашитым списком моделей до самого закрытия проекта — вместе
-            // с моделями, которые в этой организации давно запрещены.
-            modelsRequested.set(false)
-        }
-
-        if (sessions?.isRunning(MAIN_SESSION) == true) {
-            sessions?.requestModels(MAIN_SESSION, onResult = ::sendModels, onFailure = onError)
-        } else {
-            ClaudeControlPing.request(
-                project.basePath,
-                subtype = "list_models",
-                onResult = ::sendModels,
-                onError = onError,
-            )
-        }
-    }
-
-    private fun sendModels(payload: JsonObject) {
-        val models = payload.items("models") ?: run {
-            // Ответ без списка — тот же промах, что и ошибка: каталога у нас нет,
-            // и спросить его ещё раз должно быть можно.
-            modelsRequested.set(false)
-            return
-        }
-        thisLogger().info("Model catalog from CLI: ${models.size} entries")
-
-        webview?.send(
-            buildJsonObject {
-                put("type", "models")
-                putJsonArray("models") {
-                    for (element in models) {
-                        val model = element as? JsonObject ?: continue
-                        val value = model["value"]?.jsonPrimitive?.contentOrNull ?: continue
-
-                        addJsonObject {
-                            put("value", value)
-                            put("label", model["displayName"]?.jsonPrimitive?.contentOrNull.orEmpty())
-                            put("description", model["description"]?.jsonPrimitive?.contentOrNull.orEmpty())
-                            put("resolved", model["resolvedModel"]?.jsonPrimitive?.contentOrNull.orEmpty())
-                            model["disabled"]?.jsonPrimitive?.booleanOrNull?.let { put("disabled", it) }
-                        }
-                    }
-                }
-            }.toString(),
-        )
-    }
-
-    /**
-     * Занятое окно контекста — цифрой от самого CLI (та же, что печатает
-     * `/context`), а не подсчётом по usage хода: размер окна зависит от модели —
-     * у «1M»-моделей он впятеро больше обычного, — и своя арифметика на стороне
-     * панели показывала бы «контекст полон» на почти пустом разговоре.
-     *
-     * Спрашиваем только у живого разговора: у спящего контекст пуст по
-     * определению, а разовый пинг ответил бы про свой собственный процесс.
-     */
-    private fun refreshContext(sessionId: String) {
-        sessions?.requestContextUsage(
-            sessionId,
-            onResult = { usage -> sendContext(sessionId, usage) },
-            onFailure = { error -> thisLogger().debug("Context usage unavailable: $error") },
-        )
-    }
-
-    private fun sendContext(sessionId: String, usage: JsonObject) {
-        val used = usage["totalTokens"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: return
-        val max = usage["maxTokens"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: return
-        if (max <= 0) return
-
-        webview?.send(
-            buildJsonObject {
-                put("type", "context")
-                put("sessionId", sessionId)
-                put("used", used)
-                put("max", max)
-            }.toString(),
-        )
-    }
-
-    /**
-     * Ответ get_usage наверх — не важно, от живого разговора он или от пинга.
-     * Возвращает сам разобранный ответ: по нему решают, надо ли переспрашивать
-     * (см. receiveUsage). Сообщение наверх уходит в любом случае — размер окна
-     * контекста в ответе бывает и тогда, когда окон лимитов в нём нет.
-     */
-    private fun sendUsage(usage: JsonObject): ClaudeUsage.Snapshot {
-        val snapshot = ClaudeUsage.parse(usage)
-        // Наверх идёт не сырой ответ, а сверенный с тем, что видели раньше: сам по
-        // себе снимок не говорит, про нынешнее ли он окно (см. ClaudeUsage.Tracker).
-        val merged = usageWindows.merge(snapshot)
-
-        webview?.send(
-            buildJsonObject {
-                put("type", "usage")
-                merged.session?.let { putWindow("session", it) }
-                merged.week?.let { putWindow("week", it) }
-                merged.contextWindow?.let { put("contextWindow", it) }
-            }.toString(),
-        )
-
-        // Наружу отдаём сырой ответ, а не сверенный: по нему и решают, надо ли
-        // переспрашивать (см. receiveUsage). У сверенного и «лимиты есть», и «окно
-        // нынешнее» вышли бы даже тогда, когда CLI в этот раз не сказал ничего:
-        // копилка помнит окна с прошлых заходов.
-        return snapshot
-    }
-
-    private fun JsonObjectBuilder.putWindow(name: String, window: ClaudeUsage.Window) {
-        putJsonObject(name) {
-            put("percent", window.percent)
-            put("resets", window.resets)
-        }
-    }
-
-    /**
-     * Команда из поля ввода, набранная через «!»: выполняем сами, в рабочей
-     * директории проекта, и возвращаем панели её вывод (см. [ShellCommand]).
-     *
-     * На пуле, а не в потоке интерфейса: команда может идти минуты, а панель всё
-     * это время обязана оставаться живой — карточка в ленте уже нарисована и
-     * ждёт результата.
+     * On a pool rather than the interface thread: a command may run for minutes, and the panel has to
+     * stay alive the whole time - the card in the feed is already drawn and waiting for a result.
      */
     private fun runShellCommand(sessionId: String, id: String, command: String) {
-        // Без номера отвечать некому: карточку в ленте ищут именно по нему.
+        // Without a number there is nobody to answer: the card in the feed is found by exactly that.
         if (id.isBlank()) return
 
-        // А вот на пустую команду отвечаем, а не молчим: карточка в ленте уже
-        // стоит и без ответа осталась бы «выполняется» до конца разговора —
-        // остановить или убрать её нечем.
+        // An empty command, on the other hand, gets an answer rather than silence: the card is already
+        // standing in the feed and without one would stay "running" until the end of the conversation -
+        // there is nothing to stop or remove it with.
         if (command.isBlank()) {
             sendBashResult(sessionId, id, ShellCommand.Result(exitCode = -1, stdout = "", stderr = "Empty command."))
             return
@@ -1385,9 +907,9 @@ internal class ClaudePanel(
         )
     }
 
-    // --- Прочее -------------------------------------------------------------
+    // --- The rest ---------------------------------------------------------------
 
-    /** Диалог выбора живёт в потоке интерфейса IDE, поэтому уходим туда явно. */
+    /** The chooser dialog lives on the IDE's interface thread, so we go there explicitly. */
     private fun pickAttachment() {
         ApplicationManager.getApplication().invokeLater {
             FilePicker.pick(project) { kind, path ->
@@ -1403,13 +925,13 @@ internal class ClaudePanel(
     }
 
     /**
-     * Что панель знает об MCP — то же, что показывает `/mcp` в терминале: кто
-     * подключён, кому нужен вход, кто упал и почему, откуда каждый взялся.
+     * What the panel knows about MCP - the same thing `/mcp` shows in a terminal: who is connected, who
+     * needs a sign-in, who failed and why, where each one came from.
      *
-     * Спрашиваем у разговора, а не разбираем вывод `claude mcp list`: серверы
-     * поднимает и держит именно процесс разговора, и только он знает их живое
-     * состояние. Разговор ради этого поднимается — как и в терминале, где `/mcp`
-     * спрашивают у запущенной сессии (см. ClaudeSessions.mcpStatus).
+     * We ask the conversation rather than parse the output of `claude mcp list`: the servers are raised
+     * and held by the conversation's process, and only it knows their live state. The conversation is
+     * brought up for this - as in the terminal, where `/mcp` is asked of a running session (see
+     * ClaudeSessions.mcpStatus).
      */
     private fun refreshMcp(sessionId: String) {
         sessions?.mcpStatus(
@@ -1420,8 +942,8 @@ internal class ClaudePanel(
     }
 
     /**
-     * Переподключение одного сервера. Заодно это и «попробовать ещё раз» для
-     * упавшего: CLI поднимает его заново тем же запросом.
+     * Reconnecting one server. This is also the "try again" for a failed one: the CLI raises it anew by
+     * the same request.
      */
     private fun reconnectMcp(sessionId: String, server: String) {
         if (server.isEmpty()) return
@@ -1431,8 +953,8 @@ internal class ClaudePanel(
             server,
             onResult = {
                 sendMcpActionResult(true, "Reconnecting $server…")
-                // Не сразу: рукопожатие с сервером занимает секунды, и спрошенный
-                // тут же статус показал бы прежний.
+                // Not at once: the handshake with a server takes seconds, and a status asked right away
+                // would show the previous one.
                 scheduleMcpRefresh(sessionId, MCP_RECONNECT_REFRESH_SECONDS)
             },
             onFailure = { error -> sendMcpActionResult(false, error) },
@@ -1440,13 +962,12 @@ internal class ClaudePanel(
     }
 
     /**
-     * Вход в сервер, который его требует, — то же, что «Authenticate» в
-     * терминальном `/mcp`.
+     * Signing in to a server that requires it - the same as "Authenticate" in the terminal's `/mcp`.
      *
-     * CLI отдаёт адрес, открывает его человеку панель, а код от браузера ловит
-     * сам CLI: он поднял для этого локальный обработчик в процессе разговора.
-     * Поэтому дальше остаётся только переспрашивать статус — о конце входа он
-     * отдельным событием не сообщает.
+     * The CLI hands over an address, the panel opens it for the person, and the code from the browser is
+     * caught by the CLI itself: it has raised a local handler for that inside the conversation's
+     * process. So all that is left is to ask for the status again - about the sign-in's end it sends no
+     * separate event.
      */
     private fun authenticateMcp(sessionId: String, server: String) {
         if (server.isEmpty()) return
@@ -1458,14 +979,14 @@ internal class ClaudePanel(
                 val url = response["authUrl"]?.jsonPrimitive?.contentOrNull.orEmpty()
 
                 if (url.isEmpty()) {
-                    // Вход не потребовался — сервер уже пустили, статус это и покажет.
+                    // No sign-in was needed - the server let it through, and the status will show that.
                     sendMcpActionResult(true, "$server is signed in.")
                     scheduleMcpRefresh(sessionId, MCP_AUTH_FIRST_REFRESH_SECONDS)
                     return@mcpAuthenticate
                 }
 
                 BrowserUtil.browse(url)
-                sendMcpActionResult(true, "Finish signing in to $server in the browser — the list updates itself.")
+                sendMcpActionResult(true, "Finish signing in to $server in the browser - the list updates itself.")
                 for (delay in MCP_AUTH_REFRESH_SECONDS) scheduleMcpRefresh(sessionId, delay)
             },
             onFailure = { error -> sendMcpActionResult(false, error) },
@@ -1473,9 +994,8 @@ internal class ClaudePanel(
     }
 
     /**
-     * Конфиг серверов читается при запуске процесса, поэтому добавленный или
-     * удалённый сервер виден только новому: перезапускаем разговор — переписка
-     * при этом остаётся, поднимается тот же самый.
+     * The servers' config is read at process launch, so an added or removed server is visible only to a
+     * new one: we restart the conversation - the transcript stays, the same one comes up.
      */
     private fun refreshMcpAfterRestart(sessionId: String) {
         sessions?.restart(sessionId)
@@ -1483,8 +1003,8 @@ internal class ClaudePanel(
     }
 
     private fun scheduleMcpRefresh(sessionId: String, delaySeconds: Long) {
-        // Тот же разговор и окно ожидания видит watchIdeActivation: так возврат
-        // фокуса в IDE раньше расписания подталкивает то же самое обновление.
+        // The same conversation and waiting window watchIdeActivation sees: that is how focus returning
+        // to the IDE nudges the very same refresh ahead of schedule.
         pendingMcpRefreshSessionId = sessionId
         pendingMcpRefreshUntil = System.currentTimeMillis() + delaySeconds * 1000
 
@@ -1496,11 +1016,10 @@ internal class ClaudePanel(
     }
 
     /**
-     * Над панелью держат файл — страница подсвечивает поле ввода, куда он и
-     * ляжет плашкой.
+     * A file is being held over the panel - the page highlights the input field it will land in.
      *
-     * Спрашивают об этом на каждое движение мыши, а отправка сообщения — вызов
-     * в браузер: шлём только сами переходы, а не каждый пиксель пути.
+     * This is asked on every mouse move, while sending a message is a call into the browser: we send
+     * only the transitions, not every pixel of the path.
      */
     private fun sendFileDrag(over: Boolean) {
         if (over == fileDragOver) return
@@ -1515,23 +1034,23 @@ internal class ClaudePanel(
     }
 
     /**
-     * Файлы и папки, брошенные в поле ввода. Отвечаем тем же picked, что и на
-     * диалог выбора: для панели это одно и то же вложение, разница лишь в том,
-     * каким жестом его позвали.
+     * Files and folders dropped into the input field. We answer with the same picked as for the chooser
+     * dialog: for the panel this is one and the same attachment, the difference being only in the
+     * gesture that called it.
      */
     private fun attachDropped(paths: List<String>) {
         if (paths.isEmpty()) return
 
-        // Один и тот же бросок теоретически может дойти обоими путями сразу —
-        // и от IDE, и от самой страницы. Плашки тогда задвоились бы, поэтому
-        // второй за тот же жест отбрасываем.
+        // One and the same drop can in theory arrive by both routes at once - from the IDE and from the
+        // page itself. The chips would then be doubled, so a second one for the same gesture is thrown
+        // away.
         val now = System.currentTimeMillis()
         if (now - lastDropAt < DROP_ECHO_MS) return
         lastDropAt = now
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            // Виртуальную файловую систему трогаем не из потока интерфейса: путь
-            // может указывать куда угодно, вплоть до неподмонтированного диска.
+            // We do not touch the virtual file system from the interface thread: a path may point
+            // anywhere, up to an unmounted drive.
             val attachments = paths.mapNotNull { path -> FilePicker.describe(project, path) }
 
             for ((kind, value) in attachments) {
@@ -1544,9 +1063,9 @@ internal class ClaudePanel(
                 )
             }
 
-            // Файл тащат из дерева проекта — там фокус и остаётся, и печатать в
-            // поле ввода пришлось бы после отдельного клика мышью. Возвращаем
-            // его панели сами; курсор внутри неё встаёт за плашкой (см. Composer).
+            // The file is dragged from the project tree - the focus stays there, and typing into the
+            // input field would take a separate mouse click. We return it to the panel ourselves; inside
+            // it the caret lands after the chip (see Composer).
             if (attachments.isNotEmpty()) {
                 ApplicationManager.getApplication().invokeLater { webview?.focus() }
             }
@@ -1554,11 +1073,11 @@ internal class ClaudePanel(
     }
 
     /**
-     * Положить в системный буфер то, что скопировали в панели.
+     * Put what was copied in the panel into the system clipboard.
      *
-     * Кладём из потока интерфейса: платформа держит поверх буфера свою
-     * синхронизацию и оповещает о смене содержимого тех, кто на неё подписан, —
-     * а такие оповещения ждут именно этого потока.
+     * We put it from the interface thread: the platform keeps its own synchronization over the clipboard
+     * and notifies those subscribed to content changes - and such notifications expect exactly this
+     * thread.
      */
     private fun writeClipboard(text: String, html: String) {
         if (text.isEmpty() && html.isEmpty()) return
@@ -1567,16 +1086,15 @@ internal class ClaudePanel(
     }
 
     /**
-     * Отдать панели содержимое системного буфера — ответом на её запрос.
+     * Hand the system clipboard's contents to the panel - as an answer to its request.
      *
-     * Читаем не из потока интерфейса намеренно: на X11 чтение буфера — это
-     * запрос к чужому приложению-владельцу с ожиданием ответа, и приложение это
-     * может отвечать долго или не ответить вовсе. На потоке интерфейса такое
-     * ожидание — застывшая IDE, поэтому оно уезжает в фон, а страница ждёт
-     * ответа своим таймаутом (см. clipboard.ts).
+     * We read off the interface thread on purpose: on X11, reading the clipboard is a request to another
+     * application that owns it, with a wait for its answer, and that application may answer slowly or
+     * not at all. On the interface thread such a wait is a frozen IDE, so it goes into the background,
+     * and the page waits with a timeout of its own (see clipboard.ts).
      *
-     * `id` — тот же, что прислала страница: запросов может лететь несколько
-     * подряд, и каждый ждёт именно свой ответ.
+     * `id` is the same one the page sent: several requests may fly in a row, and each waits for its own
+     * answer.
      */
     private fun readClipboard(id: String) {
         if (id.isEmpty()) return
@@ -1596,7 +1114,7 @@ internal class ClaudePanel(
         }
     }
 
-    /** Ветка для нижней строки. Дешёвое чтение файла — можно спрашивать часто. */
+    /** The branch for the bottom line. A cheap file read - it can be asked for often. */
     private fun refreshBranch() {
         ApplicationManager.getApplication().executeOnPooledThread {
             val branch = ProjectFacts.gitBranch(project) ?: return@executeOnPooledThread
@@ -1611,9 +1129,9 @@ internal class ClaudePanel(
     }
 
     /**
-     * Pull request текущей ветки для нижней строки. Шлём поле даже когда PR нет
-     * (пустой строкой), а не молчим — иначе сторона вебвью не отличит «сейчас
-     * закрыли/смержили PR» от «это сообщение вообще не про PR», см. reducePanel.
+     * The current branch's pull request for the bottom line. We send the field even when there is no PR
+     * (as an empty string) rather than stay silent - otherwise the webview side cannot tell "the PR has
+     * just been closed or merged" from "this message is not about a PR at all", see reducePanel.
      */
     private fun refreshPullRequest() {
         ApplicationManager.getApplication().executeOnPooledThread {
@@ -1630,31 +1148,29 @@ internal class ClaudePanel(
     }
 
     /**
-     * Событие агента — уже готовый JSON, поэтому вкладываем его в конверт как есть.
+     * An agent's event is ready-made JSON, so we put it into the envelope as it is.
      *
-     * [replay] отличает перепись прошлого разговора от живого хода: событие то же
-     * самое, но случилось оно давно, и всё, что панель считает «прямо сейчас»
-     * (занятое окно контекста в первую очередь), из него брать нельзя.
+     * [replay] tells a past conversation's replay from a live turn: the event is the same, but it
+     * happened long ago, and nothing the panel considers "right now" (the taken context window first of
+     * all) may be taken from it.
      */
     private fun forwardAgentEvent(sessionId: String, line: String, replay: Boolean = false) {
-        // Не событие — в конверт такое класть нечего. Живой процесс до сюда
-        // такую строку и не доводит (см. ClaudeSession.noteDiagnostic), а вот
-        // в старом транскрипте попасться может.
+        // Not an event - there is nothing to put into an envelope. A live process does not bring such a
+        // line this far (see ClaudeSession.noteDiagnostic), but an old transcript may hold one.
         if (!line.startsWith("{")) return
 
         noteLoggedOut(line)
         val replayFlag = if (replay) ""","replay":true""" else ""
         webview?.send("""{"type":"agent","sessionId":"$sessionId"$replayFlag,"event":$line}""")
 
-        // Конец хода — единственный момент, когда занятое окно контекста реально
-        // поменялось: спрашиваем свежую цифру у того же процесса, который только
-        // что закончил (см. refreshContext).
+        // The end of a turn is the only moment when the taken context window has genuinely changed: we
+        // ask the very process that has just finished for a fresh figure (see PanelUsage.refreshContext).
         if (line.contains("\"type\":\"result\"")) {
-            refreshContext(sessionId)
-            // И расход подписки за компанию: ход только что стоил лимита, а самая
-            // свежая доля — именно у этого процесса, он её и получил в ответе.
-            // Перепись прошлого разговора тут не в счёт: там всё уже случилось.
-            if (!replay) refreshLimits(preferred = sessionId)
+            usage.refreshContext(sessionId)
+            // And the subscription usage along with it: the turn has just cost some of the limit, and
+            // the freshest share is precisely at this process - it got it in the answer. A past
+            // conversation's replay does not count here: everything there has already happened.
+            if (!replay) usage.refreshLimits(preferred = sessionId)
         }
     }
 
@@ -1673,9 +1189,9 @@ internal class ClaudePanel(
     }
 
     /**
-     * Процесс разговора умер сам, а не по нашей просьбе. Панели есть что закрыть:
-     * любая карточка, которая была «выполняется» в этот момент, иначе так и
-     * останется висеть вечно — сказать честно сейчас дешевле, чем потом гадать.
+     * A conversation's process died on its own rather than at our request. The panel has something to
+     * close: any card that was "running" at that moment would otherwise hang there forever - saying so
+     * honestly now is cheaper than guessing later.
      */
     private fun sendProcessExited(sessionId: String, exitCode: Int) {
         webview?.send(
@@ -1688,10 +1204,9 @@ internal class ClaudePanel(
     }
 
     /**
-     * Ответ CLI как есть, только разложенный по полям, которые рисует панель.
-     * Свои статусы не выдумываем: их набор («connected», «needs-auth»,
-     * «failed», «pending», «disabled») задаёт сам CLI, и панель обязана звать
-     * состояние сервера тем же словом, что и терминал.
+     * The CLI's answer as it is, only laid out into the fields the panel draws. We invent no statuses of
+     * our own: their set ("connected", "needs-auth", "failed", "pending", "disabled") is set by the CLI,
+     * and the panel is obliged to call a server's state by the same word the terminal does.
      */
     private fun sendMcpServers(status: JsonObject) {
         val servers = status.items("mcpServers") ?: JsonArray(emptyList())
@@ -1718,7 +1233,7 @@ internal class ClaudePanel(
         )
     }
 
-    /** Чем сервер запускается: командой с аргументами или адресом. */
+    /** What a server is started by: a command with arguments, or an address. */
     private fun commandOf(config: JsonObject?): String {
         if (config == null) return ""
 
@@ -1797,7 +1312,7 @@ internal class ClaudePanel(
         )
     }
 
-    /** Перепись прошлого разговора доиграна до конца — см. resumeConversation. */
+    /** A past conversation's replay has been played to the end - see [resumeConversation]. */
     private fun sendReplayFinished(sessionId: String) {
         webview?.send(
             buildJsonObject {
@@ -1818,10 +1333,9 @@ internal class ClaudePanel(
     }
 
     /**
-     * Название вкладки, которое подобрала LLM по первому сообщению (см.
-     * ClaudeTitleGenerator). Пока панель ждёт этот ответ, вкладка уже носит
-     * эвристический заголовок — вебвью решает сам, применять ли этот ответ
-     * (вкладку могли успеть закрыть или очистить разговор заново).
+     * The tab's name, picked by an LLM from the first message. While the panel waits for that answer the
+     * tab already carries a heuristic title - the webview decides for itself whether to apply this
+     * answer (the tab may have been closed or the conversation cleared in the meantime).
      */
     private fun sendSessionTitle(sessionId: String, title: String) {
         webview?.send(
@@ -1834,16 +1348,16 @@ internal class ClaudePanel(
     }
 
     /**
-     * Проиграть оповещение — если человек и правда не смотрит.
+     * Play an alert - if the person genuinely is not looking.
      *
-     * `onlyIfAway` приходит от повода, случившегося в открытой вкладке: звать
-     * к тому, что и так перед глазами, незачем. Но «открытая вкладка» ещё не
-     * значит «на неё смотрят»: панель бывает свёрнута в полоску сбоку или
-     * перекрыта соседним тулвиндоу, а окно IDE — убрано за браузер или свёрнуто
-     * вовсе. Знает об этом только оболочка, поэтому последнее слово здесь.
+     * `onlyIfAway` arrives from an occasion that happened in the open tab: calling someone to what is
+     * already in front of them serves nothing. But "the open tab" does not yet mean "someone is looking
+     * at it": the panel may be collapsed into a strip at the side or covered by a neighbouring tool
+     * window, and the IDE's window put behind a browser or minimized altogether. Only the shell knows
+     * that, so the last word is here.
      *
-     * Спрашиваем в потоке интерфейса: состояние окон живёт в нём, а сообщение
-     * приезжает из встроенного браузера своим.
+     * We ask on the interface thread: the windows' state lives there, while the message arrives from the
+     * embedded browser on its own.
      */
     private fun playAlert(sound: String, volume: Int, onlyIfAway: Boolean) {
         if (!onlyIfAway) {
@@ -1851,15 +1365,14 @@ internal class ClaudePanel(
             return
         }
 
-        // Поверх IDE может стоять модальное окно — настройки, коммит, рефакторинг.
-        // Обычная очередь дождалась бы его закрытия, то есть промолчала бы ровно
-        // тогда, когда человек занят чем-то другим и звук нужнее всего, а потом
-        // выпустила бы всё накопившееся разом.
+        // A modal window may stand over the IDE - settings, a commit, a refactoring. An ordinary queue
+        // would wait for it to close, that is, stay silent exactly when the person is busy with
+        // something else and the sound is needed most, and then let everything accumulated out at once.
         ApplicationManager.getApplication().invokeLater(
             {
-                // Пока сигнал ждал очереди, проект могли закрыть, а панель —
-                // уничтожить: спрашивать у них, смотрят ли на панель, уже нельзя,
-                // да и звать больше некого.
+                // While the signal waited in the queue, the project could have been closed and the panel
+                // disposed: asking them whether anyone is looking at the panel is no longer possible,
+                // and there is nobody left to call anyway.
                 if (!project.isDisposed && !alive.isDisposed && !isPanelWatched()) {
                     AlertSounds.play(sound, volume)
                 }
@@ -1869,12 +1382,12 @@ internal class ClaudePanel(
     }
 
     /**
-     * Панель на виду, и окно IDE — то, с которым человек сейчас работает.
+     * The panel is in view, and the IDE's window is the one the person is working with right now.
      *
-     * Спрашиваем осторожно: к моменту ответа окно проекта могло начать
-     * закрываться, а тулвиндоу — уничтожиться. Ронять IDE отчётом об ошибке
-     * из-за звука нельзя; неизвестность толкуем как «не смотрят» — промолчать
-     * зря хуже, чем позвать зря.
+     * We ask carefully: by the time of the answer the project's window could have started closing and
+     * the tool window been disposed. Bringing the IDE down with an error report over a sound is out of
+     * the question; uncertainty is read as "not looking" - staying silent for nothing is worse than
+     * calling for nothing.
      */
     private fun isPanelWatched(): Boolean = runCatching {
         toolWindow.isVisible && WindowManager.getInstance().getFrame(project)?.isActive == true
@@ -1889,15 +1402,15 @@ internal class ClaudePanel(
                 put("projectName", project.name)
                 put("workingDirectory", project.basePath.orEmpty())
                 ProjectFacts.gitBranch(project)?.let { put("gitBranch", it) }
-                // Выбор модели и остального переживает перезапуск IDE: искать его
-                // заново после каждого открытия — то же, что не сохранять вовсе.
+                // The choice of model and the rest outlives an IDE restart: looking for it again after
+                // every opening is the same as not saving it at all.
                 putJsonObject("preferences") {
                     put("model", preferences.model)
                     put("effort", preferences.effort)
-                    // Тем же значением, с которым реально поднимется процесс:
-                    // селектор в панели обязан показывать правду с первой секунды.
-                    // Ни разу не выбирали — берём умолчание самого Claude Code, как
-                    // его берёт терминал (см. PermissionDefaultMode).
+                    // With the same value the process will genuinely come up with: the selector in the
+                    // panel has to tell the truth from the first second. Never chosen at all - we take
+                    // Claude Code's own default, the way the terminal takes it (see
+                    // PermissionDefaultMode).
                     put(
                         "mode",
                         PermissionModes.resolve(
@@ -1906,9 +1419,8 @@ internal class ClaudePanel(
                         ),
                     )
                     if (preferences.composerLayout.isNotEmpty()) put("composerLayout", preferences.composerLayout)
-                    if (preferences.composerWidth > 0) put("composerWidth", preferences.composerWidth)
                 }
-                // Настройка звуков — тоже выбор, который делают один раз.
+                // The sound settings are also a choice made once.
                 putJsonObject("sounds") {
                     putJsonArray("muted") {
                         ClaudePreferences.mutedSounds.filter { it in AlertSounds.ids }.forEach { add(it) }
@@ -1924,16 +1436,15 @@ internal class ClaudePanel(
     }
 
     /**
-     * Панель может быть прижата к любому краю экрана, и только сторона, что
-     * граничит с редактором, должна получить разделительную рамку — как у
-     * нативных тулвиндоу (терминал, проект и т.д.). Анкор меняется на лету,
-     * когда пользователь перетаскивает панель на другую сторону, поэтому
-     * подписываемся на смену, а не спрашиваем один раз при старте.
+     * The panel can be docked to any edge of the screen, and only the side bordering the editor should
+     * get a separating frame - as native tool windows have (the terminal, the project view and so on).
+     * The anchor changes on the fly, when the user drags the panel to another side, so we subscribe to
+     * the change rather than ask once at startup.
      */
     private fun watchDockAnchor() {
-        // Перегрузка stateChanged с ToolWindowManagerEventType помечена
-        // @ApiStatus.Internal (не пропускает Plugin Verifier) - используем
-        // публичную перегрузку без типа события и сравниваем анкор сами.
+        // The stateChanged overload taking ToolWindowManagerEventType is marked @ApiStatus.Internal (the
+        // Plugin Verifier does not let it through) - we use the public overload without the event type
+        // and compare the anchor ourselves.
         var lastAnchor = toolWindow.anchor
         project.messageBus.connect(parentDisposable).subscribe(
             ToolWindowManagerListener.TOPIC,
@@ -1958,11 +1469,10 @@ internal class ClaudePanel(
     }
 
     /**
-     * Шрифты панель не выбирает сама — их задаёт IDE, и меняются они прямо во
-     * время работы: человек правит размер консольного шрифта или переключает
-     * тему и ждёт, что панель поедет следом, как терминал рядом. Схема цветов
-     * несёт консольный шрифт, смена оформления — интерфейсный, поэтому слушаем
-     * оба события.
+     * The panel does not choose its fonts: the IDE sets them, and they change while it runs - a person
+     * edits the console font size or switches the theme and expects the panel to follow, like the
+     * terminal beside it. The colour scheme carries the console font, the look-and-feel change the
+     * interface one, so we listen to both events.
      */
     private fun watchTypography() {
         val connection = ApplicationManager.getApplication().messageBus.connect(parentDisposable)
@@ -1971,20 +1481,20 @@ internal class ClaudePanel(
     }
 
     /**
-     * Вход в MCP-сервер уходит в браузер вовне IDE — статус там же и подтягивается
-     * заново по расписанию (см. scheduleMcpRefresh), но ждать до ближайшей отметки
-     * не с руки: человек авторизовался и тут же вернулся в IDE, а список ещё
-     * старый. Как только окно снова в фокусе, подталкиваем обновление сразу же —
-     * пределы окна и разговор запоминает scheduleMcpRefresh.
+     * Signing in to an MCP server goes off into a browser outside the IDE - the status is pulled again
+     * there by schedule (see [scheduleMcpRefresh]), but waiting for the next mark is awkward: the person
+     * authorized and came straight back to the IDE while the list is still the old one. As soon as the
+     * window is in focus again, we nudge the refresh right away - the waiting window and the
+     * conversation are remembered by scheduleMcpRefresh.
      */
     private fun watchIdeActivation() {
         ApplicationManager.getApplication().messageBus.connect(parentDisposable).subscribe(
             ApplicationActivationListener.TOPIC,
             object : ApplicationActivationListener {
                 override fun applicationActivated(ideFrame: IdeFrame) {
-                    // Заодно перерисовываем панель начисто: кадр мог остаться
-                    // разорванным ещё с прошлого раза (см. repaintWhole), и
-                    // возвращаться в IDE к такому виду не дело.
+                    // And we repaint the panel afresh along the way: the frame may have been left torn
+                    // since last time (see repaintWhole), and coming back to the IDE to such a sight is
+                    // no good.
                     webview?.repaintWhole()
 
                     val sessionId = pendingMcpRefreshSessionId ?: return
@@ -2018,63 +1528,31 @@ internal class ClaudePanel(
     }
 
     private companion object {
-        const val MAIN_SESSION = "main"
-        const val USAGE_PERIOD_MINUTES = 1L
+        /** The round for everything that is expensive and changes unhurriedly - see [scheduleSlowUpdates]. */
+        const val SLOW_PERIOD_MINUTES = 1L
 
-        /**
-         * Переспрос лимитов, когда CLI ответил без них (см. receiveUsage): пары
-         * секунд ему хватает, чтобы узнать окна подписки от сервера. Попыток
-         * немного — дальше всё равно подхватит общий круг, а каждая из них у
-         * спящей панели стоит отдельного процесса.
-         */
-        const val USAGE_RETRY_SECONDS = 3L
-        const val USAGE_RETRY_LIMIT = 3
+        /** Rarer still, because it is the heaviest of the lot - see [scheduleTokenUpdates]. */
+        const val TOKENS_PERIOD_MINUTES = 5L
 
-        /**
-         * Круг для самих окон расхода — чаще общего: пока агент работает, доля
-         * растёт на глазах, а спросить её у живого разговора ничего не стоит.
-         */
-        const val LIMITS_PERIOD_SECONDS = 30L
-
-        /**
-         * А вот у спящей панели тот же вопрос стоит запуска отдельного процесса на
-         * несколько секунд, и чаще этого его не задаём: без разговоров расход растёт
-         * разве что от работы в терминале или в браузере.
-         */
-        const val LIMITS_PING_MIN_SECONDS = 60L
         const val BRANCH_PERIOD_SECONDS = 5L
         const val LOGIN_POLL_SECONDS = 3L
         const val LOGIN_POLL_LIMIT_MINUTES = 10L
 
-        /** Сколько ждём после перезапуска, прежде чем спросить статусы MCP заново. */
+        /** How long we wait after a restart before asking for the MCP statuses again. */
         const val MCP_RECONNECT_REFRESH_SECONDS = 3L
 
-        /** Сервер уже пустил без входа — статус обновится почти сразу. */
+        /** The server let us in without a sign-in - the status will update almost at once. */
         const val MCP_AUTH_FIRST_REFRESH_SECONDS = 2L
 
         /**
-         * Когда переспрашивать статус, пока человек входит в браузере. О конце
-         * входа CLI не сообщает, поэтому смотрим сами — редко и не вечно:
-         * секунд через десять вход обычно уже позади, а к минуте становится
-         * ясно, что окно просто закрыли.
+         * When to ask for the status again while the person is signing in inside a browser. The CLI does
+         * not report the sign-in's end, so we look ourselves - rarely and not forever: in ten seconds or
+         * so the sign-in is usually done, and by a minute it becomes clear the window was simply closed.
          */
         val MCP_AUTH_REFRESH_SECONDS = listOf(10L, 25L, 60L)
 
-        /** В пределах этого окна повторный бросок считаем эхом первого, а не вторым файлом. */
+        /** Within this window a repeated drop counts as an echo of the first rather than a second file. */
         const val DROP_ECHO_MS = 700L
         const val NOT_LOGGED_IN = "Not logged in"
-
-        /** Выход из режима плана: тот самый вызов, под которым в ленте кнопки. */
-        const val PLAN_TOOL = "ExitPlanMode"
-
-        /** Что агент услышит, когда вопрос закрыли, не выбрав вариантов. */
-        const val ASK_DISMISSED =
-            "The user closed the question without picking an option and will answer in their own words. " +
-                "Don't ask it again — wait for their message."
-
-        /** Что агент услышит в ответ на «Keep planning». */
-        const val KEEP_PLANNING = "The user wants to keep planning: refine the plan and show it again."
-
-        const val CARD_LOST = "The panel could not attach this request to its card."
     }
 }

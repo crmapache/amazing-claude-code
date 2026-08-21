@@ -1,27 +1,26 @@
 package io.github.crmapache.amazingclaudecode.claude
 
 /**
- * Где искать исполняемый файл Claude Code — вся логика поиска, но без единого
- * обращения к настоящей файловой системе, окружению и текущей ОС.
+ * Where to look for the Claude Code executable - the whole search, with not a single touch of the real
+ * file system, environment or current OS.
  *
- * Вынесено отдельно ровно за этим: поиск ломается там, куда разработчику не
- * дотянуться — чужая Windows, необычное место установки, PATH, который у IDE не
- * такой, как в терминале. Проверить догадку «а найдётся ли claude.cmd из npm»,
- * не имея этой машины, можно только так: подставить её окружение сюда и
- * посмотреть глазами теста.
+ * Kept apart for exactly that reason: the search breaks where a developer cannot reach - someone
+ * else's Windows, an unusual install location, a PATH the IDE sees differently from the terminal.
+ * Checking a hunch like "would claude.cmd from npm be found" without owning that machine is only
+ * possible this way: feed its environment in here and look at it through a test.
  */
 internal object ClaudeLookup {
 
-    /** Имена файла: на Windows их несколько, и какое из них лежит — зависит от установщика. */
+    /** File names: on Windows there are several, and which one is there depends on the installer. */
     fun executableNames(windows: Boolean): List<String> =
         if (windows) listOf("claude.exe", "claude.cmd", "claude.bat", "claude") else listOf("claude")
 
     /**
-     * Типовые места установки — на случай, когда в PATH пусто.
+     * The usual install locations - for when PATH holds nothing.
      *
-     * Список не выдуман: нативный установщик кладёт файл в `~/.local/bin`,
-     * прежний «локальный» способ — прямо в `~/.claude/local`, npm на Windows
-     * пишет обёртку в `%APPDATA%\npm`, а bun и volta держат свои bin-каталоги.
+     * The list is not invented: the native installer puts the file into `~/.local/bin`, the former
+     * "local" method straight into `~/.claude/local`, npm on Windows writes a wrapper into
+     * `%APPDATA%\npm`, and bun and volta keep bin directories of their own.
      */
     fun fallbackPaths(windows: Boolean, home: String, env: Map<String, String>): List<String> {
         if (windows) {
@@ -53,16 +52,16 @@ internal object ClaudeLookup {
     }
 
     /**
-     * Значение PATH. На Windows переменная зовётся `Path`, а карта окружения
-     * там регистронезависима не всегда — спрашиваем оба написания.
+     * The value of PATH. On Windows the variable is called `Path`, and the environment map there is not
+     * always case-insensitive - so we ask for both spellings.
      */
     fun pathValue(env: Map<String, String>): String? =
         env["PATH"] ?: env["Path"] ?: env["path"]
 
     /**
-     * Куда смотреть по порядку: сначала указанное человеком, затем PATH, затем
-     * типовые места. Возвращает пути-кандидаты — существуют они или нет,
-     * решает тот, кто вызывает (см. [ClaudeExecutable]).
+     * Where to look, in order: first what the person pointed at, then PATH, then the usual locations.
+     * Returns candidate paths - whether they exist is for the caller to decide (see
+     * [ClaudeExecutable]).
      */
     fun candidates(
         windows: Boolean,
@@ -77,8 +76,8 @@ internal object ClaudeLookup {
 
         val manual = expandHome(configured.trim(), home)
         if (manual.isNotEmpty()) {
-            // Принимаем и сам файл, и папку с ним: человек с равной вероятностью
-            // скопирует и то, и другое.
+            // Both the file itself and the folder holding it are accepted: a person is just as likely
+            // to copy one as the other.
             result += manual
             result += names.map { "$manual$slash$it" }
         }

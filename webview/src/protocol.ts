@@ -1,8 +1,8 @@
 /**
- * Формат общения интерфейса с оболочкой плагина.
+ * The format the interface talks to the plugin's shell in.
  *
- * События агента оболочка не разбирает, а пробрасывает как есть, поэтому их форма
- * описана здесь же: это единственное место, где живут знания о потоке Claude Code.
+ * The shell does not parse the agent's events, it forwards them as they are, so their shape is
+ * described here too: this is the one place where knowledge about the Claude Code stream lives.
  */
 
 export type SessionKind = 'main' | 'branch'
@@ -11,17 +11,17 @@ export interface SessionInfo {
   id: string
   title: string
   kind: SessionKind
-  /** Цитата, из которой выросла боковая ветка. У основной сессии пусто. */
+  /** The quote a side branch grew out of. Empty for the main session. */
   quote?: string
 }
 
-/** Одно окно расхода подписки: доля и когда обнулится. */
+/** One subscription usage window: the share and when it resets. */
 export interface UsageWindow {
   percent: number
   resets: string
 }
 
-/** Прошлый разговор: заголовком служит первая реплика человека. */
+/** A past conversation: the person's first message serves as its title. */
 export interface HistoryEntry {
   id: string
   title: string
@@ -29,28 +29,27 @@ export interface HistoryEntry {
   messages: number
 }
 
-/** Один MCP-сервер — тем же текстом, что печатает `claude mcp list` в терминале. */
 /**
- * MCP-сервер так, как его видит сам CLI (ответ mcp_status). Статусы и области
- * — его слова, а не наши: панель обязана звать состояние сервера тем же, чем
- * зовёт терминал.
+ * One MCP server the way the CLI itself sees it (the mcp_status answer). The statuses and the scopes
+ * are its words rather than ours: the panel is obliged to call a server's state what the terminal
+ * calls it.
  *
  * status: connected | needs-auth | failed | pending | disabled
- * scope: project | user | local | dynamic (плагины и встроенные) | claudeai
+ * scope: project | user | local | dynamic (plugins and built-ins) | claudeai
  */
 export interface McpServerInfo {
   name: string
   status: string
   scope: string
-  /** stdio, http, sse, claudeai-proxy — чем сервер подключается. */
+  /** stdio, http, sse, claudeai-proxy - what the server connects with. */
   transport: string
-  /** Команда с аргументами или адрес — то, чем сервер поднимается. */
+  /** A command with its arguments, or an address - what the server comes up by. */
   command: string
-  /** Заполнено только у упавшего: объяснение от самого CLI. */
+  /** Filled in only for a failed one: an explanation from the CLI itself. */
   error: string
 }
 
-/** Установленный плагин: id уже содержит маркетплейс — "name@marketplace". */
+/** An installed plugin: the id already holds the marketplace - "name@marketplace". */
 export interface InstalledPluginInfo {
   id: string
   version: string
@@ -58,7 +57,7 @@ export interface InstalledPluginInfo {
   enabled: boolean
 }
 
-/** Плагин из каталога маркетплейса, ещё не установленный — то, по чему ищем. */
+/** A plugin from a marketplace's catalogue, not installed yet - what the search runs over. */
 export interface AvailablePluginInfo {
   id: string
   name: string
@@ -67,53 +66,52 @@ export interface AvailablePluginInfo {
   installCount: number
 }
 
-/** Подключённый маркетплейс — источник каталога доступных плагинов. */
+/** A connected marketplace - the source of the available plugins catalogue. */
 export interface PluginMarketplaceInfo {
   name: string
   source: string
 }
 
 /**
- * Одна строка каталога моделей — ровно то, что показывает `/model` в терминале.
+ * One line of the model catalogue - exactly what `/model` shows in a terminal.
  *
- * Список приходит от самого CLI (управляющий запрос list_models): какие модели
- * доступны, решают учётная запись, провайдер и политика организации, а имена и
- * подписи меняются с версиями — держать свою копию значит рано или поздно
- * показывать не то, что есть на самом деле.
+ * The list comes from the CLI itself (the list_models control request): which models are available is
+ * decided by the account, the provider and the organization's policy, while names and captions change
+ * with versions - keeping a copy of our own means showing something other than what is there, sooner
+ * or later.
  */
 export interface ModelInfo {
-  /** Что уходит обратно в CLI: "default", "opus[1m]", "claude-fable-5[1m]" и т.п. */
+  /** What goes back to the CLI: "default", "opus[1m]", "claude-fable-5[1m]" and so on. */
   value: string
   label: string
   description: string
   /**
-   * Во что CLI разворачивает это значение ("claude-opus-5[1m]"). По нему нижняя
-   * строка называет модель, которая правда работает: за «Default» может стоять
-   * что угодно, и одного слова «default» на кнопке недостаточно.
+   * What the CLI expands this value into ("claude-opus-5[1m]"). The bottom line names the model that is
+   * genuinely working by it: behind "Default" there may be anything, and the single word "default" on a
+   * button is not enough.
    */
   resolved: string
-  /** Видна в списке, но выбрать нельзя — так их показывает и терминал. */
+  /** Visible in the list but not choosable - that is how the terminal shows them too. */
   disabled?: boolean
 }
 
 /**
- * Повод позвать человека звуком. Ровно эти имена знает и оболочка: у каждого
- * там свой файл (см. AlertSounds.kt).
+ * An occasion to call the person with a sound. The shell knows exactly these names: each has a file of
+ * its own there (see AlertSounds.kt).
  */
 export type SoundId = 'turnFinished' | 'permission' | 'plan' | 'question' | 'rateLimit' | 'trouble'
 
 export interface SoundSettings {
   /**
-   * Звуки, отключённые вручную. Хранится именно выключенное: по умолчанию
-   * звучит всё, и пустой список означает «как задумано» — иначе звук,
-   * добавленный в следующей версии, оказался бы выключенным у всех, кто
-   * когда-либо открывал этот список.
+   * Sounds switched off by hand. What is stored is what is off: by default everything sounds, and an
+   * empty list means "as intended" - otherwise a sound added in the next version would arrive switched
+   * off for everyone who ever opened this list.
    */
   muted: string[]
   /**
-   * Громкость в процентах, если она не полная. Держится отдельно от muted
-   * намеренно: снятая галочка не стирает настроенные проценты — вернув звук,
-   * человек ждёт свои прежние семьдесят, а не сотню.
+   * The volume in per cent, when it is not full. Kept apart from muted on purpose: clearing a checkbox
+   * does not wipe a configured percentage - turning the sound back on, a person expects their previous
+   * seventy rather than a hundred.
    */
   volumes: Record<string, number>
 }
@@ -124,27 +122,27 @@ export type ShellMessage =
       projectName: string
       workingDirectory: string
       gitBranch?: string
-      /** Выбор модели, усилия и режима: он переживает и вкладки, и перезапуск IDE. */
+      /** The choice of model, effort and mode: it outlives both tabs and IDE restarts. */
       preferences?: {
         model: string
         effort: string
         mode: string
-        /** Где сидит поле ввода. Не задано — впервые открытая панель, ведёт себя как раньше (снизу). */
+        /** Where the input field sits. Unset means a panel opened for the first time, behaving as before (at the bottom). */
         composerLayout?: string
       }
-      /** Настройка звуковых оповещений — переживает перезапуск IDE. */
+      /** The sound alert settings - they outlive an IDE restart. */
       sounds?: SoundSettings
     }
   | {
       type: 'usage'
       session?: UsageWindow
       week?: UsageWindow
-      /** Размер окна контекста текущей модели: у больших он миллион, а не двести тысяч. */
+      /** The current model's context window size: with the large ones it is a million, not two hundred thousand. */
       contextWindow?: number
       /**
-       * Токены за сегодня по всем проектам — та же цифра, что "tok" в личном
-       * statusline.sh. Считается отдельным сканом транскриптов, поэтому приходит
-       * отдельным сообщением от session/week/contextWindow, не одновременно с ними.
+       * Today's tokens across every project - the same "tok" figure as in a personal statusline.sh. It
+       * is counted by a separate scan of the transcripts, so it arrives as a message of its own rather
+       * than together with session/week/contextWindow.
        */
       todayTokens?: string
     }
@@ -157,107 +155,107 @@ export type ShellMessage =
       command: string
       mode: string
       /**
-       * Кто поднял вопрос, словами самого CLI: проверка безопасности, правило
-       * `ask`, хук, классификатор режима «Auto». Пусто — обычное «режим требует
-       * спрашивать», и объяснять нечего (см. PermissionReason на стороне IDE).
+       * Who raised the question, in the CLI's own words: a safety check, an `ask` rule, a hook, the
+       * "Auto" mode's classifier. Empty means the ordinary "the mode requires asking", with nothing to
+       * explain (see PermissionReason on the IDE side).
        */
       reason?: string
       /**
-       * Сработает ли «Always allow». Не приходит вовсе, когда сработает: не-поле
-       * значит «как обычно», и только явное `false` убирает кнопку — правило в
-       * этом случае запишется, но вопрос вернётся тем же следующим вызовом.
+       * Whether "Always allow" will work. It does not arrive at all when it will: a missing field means
+       * "as usual", and only an explicit `false` removes the button - the rule would be written in that
+       * case, but the question would come back with the very next call.
        */
       rememberable?: boolean
-      /** Заполнено, только если запрос породил вызов инструмента внутри субагента. */
+      /** Filled in only when the request was raised by a tool call inside a subagent. */
       agentId?: string
     }
-  /** Каталог моделей от самого CLI — см. ModelInfo. */
+  /** The model catalogue from the CLI itself - see ModelInfo. */
   | { type: 'models'; models: ModelInfo[] }
   /**
-   * Занятое окно контекста этого разговора — цифра от самого CLI (та же, что
-   * печатает `/context`). Считать её на своей стороне нельзя: размер окна
-   * зависит от модели, а в занятое входит и то, чего в usage хода не видно.
+   * How much of this conversation's context window is taken - a figure from the CLI itself (the same
+   * one `/context` prints). Counting it on our side is not an option: the window's size depends on the
+   * model, and what is taken includes things a turn's usage does not show.
    */
   | { type: 'context'; sessionId: string; used: number; max: number }
   /**
-   * Чем кончилась команда из bash-режима. Отдельно stdout и stderr: агенту они
-   * уходят разными полями, как это делает и сам Claude Code, — по ним видно, что
-   * команда ругалась, даже когда код возврата нулевой.
+   * How a bash-mode command ended. stdout and stderr separately: they travel to the agent as separate
+   * fields, as Claude Code itself does it - by them one can see that a command complained even when
+   * the exit code was zero.
    */
   | { type: 'bashResult'; sessionId: string; id: string; exitCode: number; stdout: string; stderr: string }
   | { type: 'sessions'; sessions: SessionInfo[]; active: string }
   | { type: 'status'; sessionId: string; state: AgentStatus }
   /**
-   * Название вкладки по первому сообщению — не сразу: пока LLM думает,
-   * вкладка уже носит эвристический заголовок (см. deriveSessionTitle), а
-   * это сообщение лишь заменяет его на более осмысленный, когда получится.
+   * The tab's name from the first message - not straight away: while the LLM thinks, the tab already
+   * carries a heuristic title (see deriveSessionTitle), and this message merely replaces it with a more
+   * meaningful one when that works out.
    */
   | { type: 'sessionTitle'; sessionId: string; title: string }
   | { type: 'error'; sessionId: string; message: string }
   /**
-   * Событие разговора. `replay` — перепись прошлого разговора, открытого из
-   * истории: события те же, но случились они давно, и всё сиюминутное (занятое
-   * окно контекста) из них брать нельзя — точную цифру пришлёт IDE отдельно.
+   * A conversation's event. `replay` marks a past conversation's replay, opened from the history: the
+   * events are the same, but they happened long ago, and nothing of the moment (the taken context
+   * window) may be read out of them - the exact figure the IDE sends separately.
    */
   | { type: 'agent'; sessionId: string; event: AgentEvent; replay?: boolean }
   /**
-   * Перепись доиграна до конца — дальше в этой вкладке только живой разговор.
-   * Панели это нужно, чтобы закрыть работу, которая в переписи так и осталась
-   * незаконченной: её результата ждать больше не от кого (см. build.ts).
+   * The replay has been played to the end - from here on this tab holds a live conversation only. The
+   * panel needs this to close the work the replay left unfinished: there is nobody left to wait for its
+   * result from (see build.ts).
    */
   | { type: 'replayFinished'; sessionId: string }
-  /** Ответ на просьбу выбрать файл, папку или картинку через диалог IDE. */
+  /** The answer to a request to pick a file, a folder or an image through the IDE's dialog. */
   | { type: 'picked'; kind: 'file' | 'dir' | 'img'; value: string }
   /**
-   * Над панелью тащат файл — из дерева проекта или из системного проводника.
-   * Внутри IDE перетаскивание идёт мимо встроенного браузера, и сама страница
-   * о нём не знает: без этого сообщения подсветить поле ввода было бы нечем.
-   * Бросить можно в любое место панели, а плашка всё равно ляжет в поле —
-   * подсвечиваем поэтому одно поле, а не всю панель.
+   * A file is being dragged over the panel - from the project tree or from the system file manager.
+   * Inside the IDE dragging goes past the embedded browser, and the page knows nothing about it:
+   * without this message there would be nothing to highlight the input field with. A drop can land
+   * anywhere in the panel while the chip still goes into the field - which is why the field is
+   * highlighted rather than the whole panel.
    */
   | { type: 'fileDrag'; over: boolean }
   /**
-   * Ветка и её pull request. Отдельно от init: номер PR спрашивают у GitHub, и
-   * ответа приходится ждать дольше, чем открывается панель.
+   * The branch and its pull request. Apart from init: the PR number is asked of GitHub, and its answer
+   * takes longer than the panel takes to open.
    */
   | { type: 'project'; gitBranch?: string; pullRequest?: string; pullRequestUrl?: string }
-  /** Прошлые разговоры этого проекта: их хранит сам Claude Code. */
+  /** This project's past conversations: Claude Code keeps them itself. */
   | { type: 'history'; conversations: HistoryEntry[] }
   /**
-   * Вход в Claude Code. Без него агент отвечает на любой вопрос строкой про
-   * /login, поэтому панель показывает не поле ввода, а кнопку входа.
+   * The Claude Code sign-in. Without it the agent answers every question with a line about /login, so
+   * the panel shows a sign-in button rather than an input field.
    */
   | {
       type: 'auth'
-      /** Ложь, если исполняемого файла нет вовсе: тогда входить некуда. */
+      /** False when there is no executable at all: then there is nowhere to sign in. */
       installed: boolean
       loggedIn: boolean
       email?: string
       plan?: string
-      /** Путь к CLI, указанный руками, если он задан. */
+      /** The path to the CLI given by hand, if one is set. */
       executablePath?: string
-      /** Где искали исполняемый файл — приходит, только когда не нашли. */
+      /** Where the executable was looked for - arrives only when it was not found. */
       searched?: string[]
     }
   /**
-   * Применённый режим разрешений: агент мог и отказать, тогда applied ложь, а в
-   * error лежит причина — например, «auto» доступен не всякой модели.
+   * The applied permission mode: the agent may have refused, and then applied is false while error
+   * holds the reason - "auto", for instance, is not available on every model.
    */
   | { type: 'mode'; sessionId: string; mode: string; applied: boolean; error?: string }
   /**
-   * Модель, которая теперь в силе — ответ на setModel. Отказать агент может
-   * по-настоящему: модель бывает запрещена организацией или недоступна тарифу.
-   * Поэтому здесь всегда действующая модель, а не та, что просили: при отказе
-   * это прежняя, и панель возвращается к ней, а причина едет в error.
+   * The model now in force - the answer to setModel. The agent can genuinely refuse: a model may be
+   * forbidden by an organization or unavailable on a plan. So this always holds the model in force
+   * rather than the one asked for: on a refusal that is the previous one, the panel returns to it, and
+   * the reason travels in error.
    */
   | { type: 'model'; sessionId: string; model: string; applied: boolean; error?: string }
   /**
-   * Разрешён ли на этом компьютере режим «без вопросов»: его умеет запретить
-   * политика организации, да и старый CLI не даёт переключиться в него на лету.
-   * От этого зависит круг Shift+Tab — запрещённый режим он перешагивает.
+   * Whether the "no questions" mode is allowed on this machine: an organization's policy can forbid it,
+   * and an old CLI does not allow switching into it on the fly either. The Shift+Tab cycle depends on
+   * it - a forbidden mode it steps over.
    */
   | { type: 'modeAvailability'; bypassPermissions: boolean }
-  /** Кусок файла, отправленный из редактора через контекстное меню. */
+  /** A piece of a file sent from the editor through the context menu. */
   | {
       type: 'selection'
       path: string
@@ -265,112 +263,110 @@ export type ShellMessage =
       startColumn: number
       endLine: number
       endColumn: number
-      /** Выделены строки целиком — тогда колонки в ссылке лишние. */
+      /** Whole lines are selected - then the columns in the reference are unnecessary. */
       wholeLines: boolean
     }
   /**
-   * Процесс разговора умер сам, не по нашей просьбе. Панель обязана закрыть
-   * всё, что было «выполняется» в этот момент — иначе оно зависнет так навсегда.
+   * A conversation's process died on its own, not at our request. The panel is obliged to close
+   * everything that was "running" at that moment - otherwise it hangs like that forever.
    */
   | { type: 'processExited'; sessionId: string; exitCode: number }
-  /** Ответ на mcpList — а также на mcpAdd/mcpRemove, чтобы список сразу обновился. */
   /**
-   * Содержимое системного буфера — ответ на clipboardRead, см. clipboard.ts.
-   * `id` тот же, что был в запросе: их может лететь несколько подряд.
+   * The system clipboard's contents - the answer to clipboardRead, see clipboard.ts. `id` is the same
+   * one the request carried: several of them may be in flight at once.
    */
   | { type: 'clipboard'; id: string; text: string; html: string; image: string }
+  /** The answer to mcpList - and to mcpAdd/mcpRemove, so that the list refreshes at once. */
   | { type: 'mcpServers'; servers: McpServerInfo[] }
-  /** Итог mcpAdd/mcpRemove — их не с чем спутать со «своим» /mcp в разговоре. */
+  /** The outcome of mcpAdd/mcpRemove - not to be mistaken for a `/mcp` inside the conversation. */
   | { type: 'mcpActionResult'; ok: boolean; message: string }
-  /** Ответ на pluginList: установленные плюс каталог доступных из маркетплейсов. */
+  /** The answer to pluginList: the installed ones plus the catalogue available from the marketplaces. */
   | { type: 'plugins'; installed: InstalledPluginInfo[]; available: AvailablePluginInfo[] }
-  /** Итог install/uninstall/enable/disable — все они прямые подкоманды CLI. */
+  /** The outcome of install/uninstall/enable/disable - all of them direct CLI subcommands. */
   | { type: 'pluginActionResult'; ok: boolean; message: string }
-  /** Ответ на marketplaceList — а также на marketplaceAdd/marketplaceRemove. */
+  /** The answer to marketplaceList - and to marketplaceAdd/marketplaceRemove. */
   | { type: 'marketplaces'; marketplaces: PluginMarketplaceInfo[] }
   /**
-   * Список файлов проекта для подсказки "@" в поле ввода — приходит сам, без
-   * запроса, при готовности панели и потом периодически: агент мог создать
-   * новые файлы, а ждать явного обновления от человека незачем.
+   * The project's file list for the "@" hint in the input field - it arrives by itself, unasked, when
+   * the panel is ready and periodically after that: the agent may have created new files, and waiting
+   * for an explicit refresh from the person serves nothing.
    */
   | { type: 'files'; files: string[] }
   /**
-   * Описание и синтаксис аргумента слэш-команд — из фронтматтера файлов на диске
-   * (проектные и личные команды/скиллы, команды/скиллы установленных плагинов).
-   * Тем же путём, что и files: приходит сама при готовности панели и периодически.
+   * The description and argument syntax of slash commands - out of the frontmatter of files on disk
+   * (the project's and the user's commands and skills, and those of installed plugins). By the same
+   * route as files: it arrives by itself when the panel is ready and periodically after that.
    */
   | { type: 'commandHints'; hints: Record<string, { description: string; argumentHint: string }> }
   /**
-   * К какому краю экрана прижата панель. Только та сторона, что граничит с
-   * редактором, рисует разделительную рамку — как у нативных тулвиндоу
-   * (терминал, проект и т.д.). Меняется на лету: пользователь может
-   * перетащить панель на другую сторону, пока она открыта.
+   * Which edge of the screen the panel is docked to. Only the side bordering the editor draws a
+   * separating frame - as native tool windows do (the terminal, the project view and so on). It changes
+   * on the fly: the user may drag the panel to another side while it is open.
    */
   | { type: 'dockAnchor'; anchor: 'left' | 'right' | 'top' | 'bottom' }
   /**
-   * Шрифты из настроек IDE. Содержимое панели рисуется консольным шрифтом — тем
-   * же, что и встроенный терминал, — а обвязка вокруг него интерфейсным.
-   * Приходит при старте и заново на каждую смену схемы цветов или оформления.
+   * The fonts from the IDE's settings. The panel's contents are drawn in the console font - the same as
+   * the built-in terminal - and what surrounds them in the interface font. It arrives at startup and
+   * again on every change of colour scheme or look and feel.
    *
-   * Размера здесь нет намеренно: страницу целиком масштабирует зум встроенного
-   * браузера (см. IdeTypography.kt на стороне плагина), поэтому вёрстка о нём
-   * ничего не знает.
+   * There is no size here on purpose: the whole page is scaled by the embedded browser's zoom (see
+   * IdeTypography.kt on the plugin's side), so the layout knows nothing about it.
    */
   | { type: 'typography'; monoFamily: string; uiFamily: string; lineHeight: number }
 
 export type WebviewMessage =
-  /** Интерфейс смонтирован и готов принимать сообщения. */
+  /** The interface is mounted and ready to receive messages. */
   | { type: 'ready' }
   | {
       type: 'prompt'
       sessionId: string
       text: string
-      /** Картинки из буфера обмена: байты, а не путь для чтения инструментом. */
+      /** Images from the clipboard: bytes rather than a path for a tool to read. */
       images?: { mediaType: string; data: string }[]
     }
   /**
-   * Команда, набранная в поле через «!»: выполняет её сама оболочка в рабочей
-   * директории проекта, а не агент. Ответ приходит одним bashResult с тем же id.
+   * A command typed into the field through "!": the shell runs it in the project's working directory,
+   * not the agent. The answer arrives as a single bashResult with the same id.
    */
   | { type: 'bash'; sessionId: string; id: string; command: string }
   | { type: 'stop'; sessionId: string }
-  /** Обычный Stop не подтвердился — пользователь явно попросил прибить процесс. */
+  /** The ordinary Stop went unconfirmed - the user asked outright to kill the process. */
   | { type: 'kill'; sessionId: string }
   /**
-   * Прибить одну задачу разговора — субагента или фоновую команду, — не трогая
-   * сам ход. Идентификатор тот же, которым CLI зовёт её в своих событиях
-   * (task_started и далее). О конце задачи CLI сообщит сам, обычным
-   * уведомлением со статусом «остановлена», — панель ничего не додумывает.
+   * Kill one of the conversation's tasks - a subagent or a background command - without touching the
+   * turn itself. The identifier is the one the CLI calls it by in its own events (task_started and the
+   * rest). About the task's end the CLI reports itself, with an ordinary notification - the panel
+   * invents nothing.
    */
   | { type: 'stopTask'; sessionId: string; taskId: string }
   | {
       type: 'newSession'
       kind: SessionKind
-      /** Идентификатор новой сессии задаёт интерфейс: он же ей и пользуется. */
+      /** The new session's identifier is set by the interface: it is the one that uses it. */
       sessionId: string
       title: string
-      /** Разговор, от которого ответвляемся. Ветка получает всю его переписку. */
+      /** The conversation we branch off. The branch gets its whole transcript. */
       parentId?: string
       quote?: string
     }
   | { type: 'closeSession'; sessionId: string }
-  /** Один диалог на все вложения: делить их по трём кнопкам незачем. */
+  /** One dialog for every attachment: splitting them across three buttons serves nothing. */
   | { type: 'pick' }
   /**
-   * Файлы и папки, брошенные в поле ввода. Пути идут в оболочку, а не превращаются
-   * в плашки на месте: файл это или папка и как его путь выглядит относительно
-   * проекта, знает только она — в самом браузере от брошенного остаётся лишь имя.
-   * Ответ приходит обычным picked, тем же, что и у диалога выбора.
+   * Files and folders dropped into the input field. The paths go into the shell rather than becoming
+   * chips on the spot: whether it is a file or a folder, and how its path looks relative to the
+   * project, only the shell knows - inside the browser all that is left of a drop is a name. The answer
+   * arrives as an ordinary picked, the same as for the chooser dialog.
    */
   | { type: 'dropped'; paths: string[] }
   | { type: 'permissionDecision'; id: string; decision: 'once' | 'always' | 'deny' }
   /**
-   * Кнопки под планом. Это тоже разрешение, просто спрошенное не карточкой
-   * разрешения, а самим планом: агент ждёт ответа на свой вызов ExitPlanMode и до
-   * него ничего не делает. «Одобряю» возвращает ему «план принят», и он продолжает
-   * тем же ходом; «ещё планируем» — отказ с объяснением, после которого он
-   * дорабатывает план и показывает снова. Идентификатор — тот же, что у карточки
-   * плана в ленте: под ним оболочка и запомнила ожидающий вопрос.
+   * The buttons under a plan. This is a permission too, only asked not by a permission card but by the
+   * plan itself: the agent is waiting for an answer to its ExitPlanMode call and does nothing until it
+   * comes. "Approve" returns "the plan is accepted" and it carries on in the same turn; "keep planning"
+   * is a refusal with an explanation, after which it reworks the plan and shows it again. The
+   * identifier is the same as the plan card's in the feed: the shell remembered the pending question
+   * under it.
    */
   | {
       type: 'planDecision'
@@ -378,118 +374,118 @@ export type WebviewMessage =
       id: string
       decision: 'approve' | 'keepPlanning'
       /**
-       * Замечание к плану: то, что человек написал в поле ввода, пока карточка
-       * плана ждала решения. Уходит агенту вместо общего «доработай план» — он
-       * ведь и спрашивал, что в плане не так.
+       * A remark about the plan: what the person wrote into the input field while the plan card was
+       * waiting for a decision. It travels to the agent instead of a generic "rework the plan" - it was
+       * asking what is wrong with it, after all.
        */
       message?: string
     }
   /**
-   * Ответ на вопрос с вариантами (AskUserQuestion). Уходит тем же запросом,
-   * которым вопрос пришёл: ключ в `answers` — текст вопроса, значение — подпись
-   * выбранного варианта или напечатанный свой ответ. `id` — идентификатор
-   * вызова инструмента, он же идентификатор карточки вопроса в ленте.
+   * An answer to a question with options (AskUserQuestion). It goes back by the same request the
+   * question came in: the key in `answers` is the question's text, the value the chosen option's label
+   * or a typed-in answer of one's own. `id` is the tool call's identifier, and also the identifier of
+   * the question's card in the feed.
    *
-   * `text` — тот же ответ обычным текстом, на случай если ждать его уже некому
-   * (разговор с тех пор перезапускали): тогда он уходит следующим сообщением.
+   * `text` is the same answer as ordinary text, in case there is nobody left waiting for it (the
+   * conversation has been restarted since): then it travels as the next message.
    */
   | { type: 'askAnswer'; sessionId: string; id: string; answers: Record<string, string>; text: string }
   /**
-   * Вопрос закрыли, не выбрав вариантов: отвечать человек будет своими словами
-   * в поле ввода. Агент получает отказ на свой вызов — молчание оставило бы ход
-   * стоять на вопросе, которого на экране уже нет.
+   * The question was closed without an option being picked: the person will answer in their own words
+   * in the input field. The agent gets a refusal of its call - silence would leave the turn standing on
+   * a question that is no longer on screen.
    */
   | { type: 'askDismiss'; sessionId: string; id: string }
   /**
-   * Проиграть звук оповещения.
+   * Play an alert sound.
    *
-   * Решает панель, а звучит оболочка: страница живёт во встроенном браузере,
-   * который рисуется офскрин и подчиняется политике автовоспроизведения — без
-   * клика мышью первый же звук там просто не прозвучал бы. Зато только здесь
-   * известно, чем именно занят ход: ждёт ли он решения по плану или дошёл до
-   * конца сам.
+   * The panel decides, the shell sounds (see protocol, the sound message): the page lives in an
+   * embedded browser that renders offscreen and obeys the autoplay policy - without a mouse click the
+   * very first sound would simply not be heard. Only here, though, is it known what exactly the turn is
+   * busy with: whether it waits for a decision about a plan or has reached its end.
    */
   | {
       type: 'sound'
       sound: SoundId
       volume: number
       /**
-       * Повод происходит в той самой вкладке, на которую человек сейчас смотрит.
-       * Тогда звук нужен, только если смотреть на неё не выходит: панель убрана
-       * с глаз или окно IDE не в фокусе — а это известно лишь оболочке. Из
-       * фоновой вкладки и по кнопке «послушать» приходит без него: там звучать
-       * надо в любом случае.
+       * The occasion happens in the very tab the person is looking at. Then the sound is needed only if
+       * looking at it is not working out: the panel is out of sight or the IDE's window is not focused -
+       * and that is known only to the shell. From a background tab and from the "listen" button it
+       * arrives without this flag: there it has to sound in any case.
        */
       onlyIfAway?: boolean
     }
-  /** Галочки и громкость звуков: их хранит оболочка вместе с моделью и режимом. */
+  /** The sound checkboxes and volumes: the shell keeps them along with the model and the mode. */
   | { type: 'soundSettings'; muted: SoundId[]; volumes: Record<string, number> }
-  /** Режим разрешений задаётся при запуске процесса, поэтому меняет его оболочка. */
+  /** The permission mode is set at process launch, so the shell is the one that changes it. */
   | { type: 'setMode'; sessionId: string; mode: string }
-  /** Модель и усилие тоже держит оболочка: их наследуют новые разговоры. */
+  /**
+   * What new tabs start in - apart from setMode, which reaches one conversation and no further.
+   * Choosing how to work in this tab says nothing about the next one, and the two used to be one
+   * message: a mode picked once became the starting mode in every project and after every restart.
+   */
+  | { type: 'setDefaultMode'; mode: string }
+  /** The model and the effort are held by the shell too: new conversations inherit them. */
   | { type: 'setModel'; sessionId: string; model: string }
   | { type: 'setEffort'; sessionId: string; effort: string }
-  /** Расположение поля ввода — тоже выбор, который переживает перезапуск IDE. */
+  /** Where the input field sits - also a choice that outlives an IDE restart. */
   | { type: 'setComposerLayout'; layout: string }
   | { type: 'refreshUsage' }
   | { type: 'openDevTools' }
   /**
-   * Какой курсор просит CSS под мышью.
+   * Which cursor the CSS under the mouse asks for.
    *
-   * Нужно потому, что встроенный браузер рисуется офскрин (платформа включает
-   * это сама, игнорируя просьбу об окне): страница живёт в отдельном процессе, и
-   * её курсор до окна IDE не доходит — там всегда стрелка, сколько ни ставь
-   * cursor в стилях. Поэтому курсор ставит оболочка, а страница только говорит,
-   * какой именно.
+   * Needed because the embedded browser renders offscreen (the platform switches that on itself,
+   * ignoring the request for a window): the page lives in a separate process, and its cursor does not
+   * reach the IDE's window - there is always an arrow there, however much cursor is set in the styles.
+   * So the shell sets the cursor and the page only says which one.
    */
   | { type: 'cursor'; cursor: string }
-  /** Ссылка (например, номер PR) — открываем в системном браузере, не в JCEF. */
+  /** A link (a PR number, for instance) - we open it in the system browser rather than in JCEF. */
   | { type: 'openExternal'; url: string }
   /**
-   * Буфер обмена через оболочку: у встроенного браузера он свой и с буфером
-   * IDE не пересекается (см. clipboard.ts). Чтение — с ответом, поэтому у него
-   * есть `id`; запись ответа не требует.
+   * The clipboard through the shell: the embedded browser's own does not meet the IDE's (see
+   * clipboard.ts). Reading comes with an answer, hence its `id`; writing needs none.
    */
   | { type: 'clipboardRead'; id: string }
   | { type: 'clipboardWrite'; text: string; html: string }
   | { type: 'history' }
-  /** Продолжить прошлый разговор в новой вкладке. */
+  /** Continue a past conversation in this tab. */
   | { type: 'resumeSession'; sessionId: string; conversationId: string }
-  /** Открыть терминал IDE с входом в Claude Code или выходом из него. */
+  /** Open the IDE's terminal with a Claude Code sign-in or sign-out. */
   | { type: 'login' }
   | { type: 'logout' }
   | { type: 'checkAuth' }
   /**
-   * Строка в лог IDE. Панель живёт во встроенном браузере, который рисуется
-   * офскрин: что там происходит на самом деле, снаружи не видно, а открывать
-   * инструменты разработчика ради одной строки — целая история. Постоянных
-   * потребителей нет: это канал для разбирательств вроде «доходят ли до вкладок
-   * события мыши», который включают точечно и на время.
+   * A line into the IDE's log. The panel lives in an embedded browser rendering offscreen: what really
+   * happens there is invisible from outside, and opening the developer tools for one line is a whole
+   * undertaking. There are no permanent users of this: it is a channel for investigations like "do
+   * mouse events reach the tabs", switched on deliberately and for a while.
    */
   | { type: 'trace'; message: string }
-  /** Путь к CLI, указанный руками, — когда автоматический поиск промахнулся. */
+  /** The path to the CLI given by hand - for when the automatic search missed. */
   | { type: 'setExecutablePath'; path: string }
   /**
-   * Статус MCP спрашивается у самого разговора — серверы держит его процесс,
-   * и только он знает, кто подключён, кому нужен вход и кто упал. Разговор для
-   * этого поднимается, как и в терминале, где `/mcp` спрашивают у сессии.
+   * The MCP status is asked of the conversation itself - the servers are held by its process, and only
+   * it knows who is connected, who needs a sign-in and who failed. The conversation is brought up for
+   * this, as in the terminal, where `/mcp` is asked of a session.
    */
   | { type: 'mcpList'; sessionId: string }
-  /** Поднять один сервер заново — им же и повторяют попытку после отказа. */
+  /** Raise one server anew - this is also how a failed one is retried. */
   | { type: 'mcpReconnect'; sessionId: string; name: string }
   /**
-   * Вход в сервер, который его требует. Адрес открывает оболочка в системном
-   * браузере, код от него ловит сам CLI — панели остаётся дождаться нового
-   * статуса.
+   * Signing in to a server that requires it. The shell opens the address in the system browser, the
+   * code from it is caught by the CLI itself - the panel is left waiting for a new status.
    */
   | { type: 'mcpAuthenticate'; sessionId: string; name: string }
-  /** Добавление и удаление — правки конфига, не часть разговора. */
+  /** Adding and removing are config edits, not part of a conversation. */
   | { type: 'mcpAdd'; sessionId: string; name: string; command: string; transport?: string }
   | { type: 'mcpRemove'; sessionId: string; name: string }
   /**
-   * Плагины и маркетплейсы — тоже правки конфига. В отличие от MCP, у
-   * install/uninstall/enable/disable есть собственные подкоманды CLI, поэтому
-   * все они идут отдельными сообщениями, а не промптом внутрь разговора.
+   * Plugins and marketplaces are config edits too. Unlike MCP, install/uninstall/enable/disable have
+   * CLI subcommands of their own, so they all travel as separate messages rather than as a prompt into
+   * the conversation.
    */
   | { type: 'pluginList' }
   | { type: 'pluginInstall'; plugin: string }
@@ -502,7 +498,7 @@ export type WebviewMessage =
 
 export type AgentStatus = 'idle' | 'running'
 
-// --- Поток событий агента ---------------------------------------------------
+// --- The agent's event stream -----------------------------------------------
 
 export interface TextBlock {
   type: 'text'
@@ -538,23 +534,21 @@ export interface AgentSystemEvent {
   cwd?: string
   permissionMode?: string
   slash_commands?: string[]
-  /** Приходит при автоматическом сжатии контекста. */
+  /** Arrives with an automatic context compaction. */
   compact_metadata?: { trigger?: string; pre_tokens?: number; post_tokens?: number; duration_ms?: number }
-  /** Отдельное событие статуса — например "compacting", пока идёт сжатие. */
+  /** A separate status event - "compacting", for instance, while a compaction is under way. */
   status?: string
-  /** Итог сжатия — приходит вместе с status:null, когда попытка закончилась. */
+  /** The compaction's outcome - arrives together with status:null, when the attempt has ended. */
   compact_result?: string
   compact_error?: string
   /**
-   * Изначально заводился только под фоновый подагент, запущенный скиллом/
-   * воркфлоу (например /code-review) — в отличие от обычного вызова
-   * инструмента Task, который, как тогда казалось, всегда приходит отдельным
-   * tool_use-блоком в потоке ассистента. На практике (проверено напрямую на
-   * CLI 2.1.220) это оказалось не так: и обычный Task тоже идёт исключительно
-   * этим же каналом — tool_use-блока для него не бывает вовсе, только эти
-   * system-события (task_started/task_progress/task_notification приходят
-   * даже раньше system:init самого хода). task_id — общий ключ для обоих
-   * случаев, что и позволяет build.ts обрабатывать их одинаково.
+   * Originally introduced only for a background subagent launched by a skill or workflow (/code-review,
+   * for instance) - unlike an ordinary Task tool call, which, as it then seemed, always arrives as a
+   * separate tool_use block in the assistant's stream. In practice (verified directly against CLI
+   * 2.1.220) that turned out not to be so: an ordinary Task travels over this very channel too - there
+   * is no tool_use block for it at all, only these system events (task_started/task_progress/
+   * task_notification arrive even before the turn's own system:init). task_id is the shared key for both
+   * cases, which is what lets build.ts handle them alike.
    */
   task_id?: string
   tool_use_id?: string
@@ -565,17 +559,16 @@ export interface AgentSystemEvent {
   last_tool_name?: string
   summary?: string
   /**
-   * Запрос к модели сорвался отказом, который CLI пережидает сам (subtype
-   * `api_retry`): номер попытки, сколько их всего и через сколько пойдёт
-   * следующая. Пока идёт эта пауза, в потоке не происходит ровным счётом
-   * ничего — панель показывает её словами, иначе разговор выглядит зависшим
-   * (см. applyApiRetry в feed/build.ts).
+   * A request to the model failed with a refusal the CLI waits out itself (subtype `api_retry`): the
+   * attempt's number, how many there are in total and how long until the next one. While that pause
+   * lasts, precisely nothing happens in the stream - the panel puts it into words, or the conversation
+   * looks stuck (see applyApiRetry in feed/build.ts).
    *
-   * error_status — код ответа сервера; у обрыва связи (таймаут, сеть отвалилась)
-   * ответа не было вовсе, и приходит null. error — тот же отказ одним словом:
-   * overloaded, rate_limit, authentication_failed, server_error, unknown. Панель
-   * читает только код: словами отказ зовётся по нему же, чем и в терминале (см.
-   * retryLabel в feed/build.ts), а слово оставлено описанием формы потока.
+   * error_status is the server's response code; a broken connection (a timeout, the network dropping)
+   * had no response at all, and null arrives. error is the same refusal in one word: overloaded,
+   * rate_limit, authentication_failed, server_error, unknown. The panel reads the code only: the refusal
+   * is named by it, the same way the terminal names it (see retryLabel in feed/build.ts), while the word
+   * is kept as a description of the stream's shape.
    */
   attempt?: number
   max_retries?: number
@@ -585,22 +578,22 @@ export interface AgentSystemEvent {
 }
 
 /**
- * Содержимое сообщения — обычно список блоков, но не всегда: часть сообщений
- * приходит с голой строкой вместо него. Так, например, устроена сводка после
- * `/compact`. Разбор обязан принимать оба вида (см. blocksOf в build.ts):
- * встретив строку там, где ждали список, панель падала целиком.
+ * A message's content - usually a list of blocks, but not always: some messages arrive with a bare
+ * string instead. The summary after `/compact` is one such. The parsing is obliged to accept both
+ * shapes (see blocksOf in build.ts): meeting a string where a list was expected, the panel used to
+ * break entirely.
  */
 export type MessageContent = ContentBlock[] | string
 
 export interface AgentAssistantEvent {
   type: 'assistant'
   /**
-   * usage тут — снимок ЭТОГО запроса к модели, а не сумма по ходу: его входная
-   * часть и есть занятое окно контекста на этот шаг. По нему датчик живёт, пока
-   * идёт ход и точной цифры от CLI ещё нет (см. liveContextUsed в build).
+   * usage here is a snapshot of THIS request to the model rather than a total over the turn: its input
+   * part is the taken context window for this step. The meter lives by it while a turn runs and the
+   * exact figure from the CLI has not arrived yet (see liveContextUsed in build).
    */
   message: { id?: string; content: MessageContent; model?: string; usage?: AgentUsage }
-  /** Не пусто у сообщений подагента: это идентификатор вызова, который его породил. */
+  /** Non-empty for a subagent's messages: it is the identifier of the call that spawned it. */
   parent_tool_use_id?: string | null
 }
 
@@ -609,13 +602,13 @@ export interface AgentUserEvent {
   message: { content: MessageContent }
   parent_tool_use_id?: string | null
   /**
-   * Оба поля есть только у записей из сохранённого разговора — в живом потоке
-   * их не бывает, и нужны они только переписи (см. build.ts).
+   * Both fields exist only in records from a saved conversation - in a live stream they do not occur,
+   * and they are needed by the replay alone (see build.ts).
    *
-   * isMeta — запись не человека, а самого CLI: инструкции скилла, подпись под
-   * приложенной картинкой и прочее, что попадает в разговор служебно.
-   * timestamp — когда это было сказано на самом деле; без него у реплик из
-   * прошлого разговора стояло бы время, когда открыли вкладку.
+   * isMeta marks a record written by the CLI rather than the person: a skill's instructions, a caption
+   * under an attached image and whatever else lands in a conversation internally. timestamp is when it
+   * was actually said; without it messages from a past conversation would carry the time the tab was
+   * opened.
    */
   isMeta?: boolean
   timestamp?: string
@@ -629,10 +622,10 @@ export interface AgentUsage {
 }
 
 /**
- * usage самого result-события — с раскладкой по внутренним шагам, если агент
- * вызвал несколько инструментов подряд прежде чем ответить (num_turns больше 1).
- * Верхнеуровневые поля тогда — СУММА по всем шагам (годится для стоимости хода),
- * а что реально лежит в окне контекста прямо сейчас — только у последнего шага.
+ * The result event's own usage - with a breakdown by internal steps, if the agent called several tools
+ * in a row before answering (num_turns greater than 1). The top-level fields are then a SUM over every
+ * step (which suits the turn's cost), while what is really in the context window right now is only in
+ * the last step.
  */
 export interface AgentResultUsage extends AgentUsage {
   iterations?: AgentUsage[]
@@ -670,8 +663,8 @@ export interface AgentStreamEvent {
 }
 
 /**
- * Описаны только события, которые панель рисует. Поток шире и со временем
- * пополняется, поэтому разбор обязан молча пропускать незнакомое.
+ * Only the events the panel draws are described. The stream is wider and grows over time, so the
+ * parsing is obliged to skip what it does not know, silently.
  */
 export type AgentEvent =
   | AgentSystemEvent
@@ -680,6 +673,6 @@ export type AgentEvent =
   | AgentResultEvent
   | AgentStreamEvent
   | AgentRateLimitEvent
-  /** Приходит от /clear — разговор начался заново, без старой истории. */
+  /** Arrives from /clear - the conversation has started afresh, without its old history. */
   | { type: 'conversation_reset'; new_conversation_id?: string }
   | { type: 'unknown' }

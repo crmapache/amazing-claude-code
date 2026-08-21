@@ -23,51 +23,49 @@ class ClaudeLaunchTest {
         allowBypassSwitch = allowBypassSwitch,
     )
 
-    // Без этого ключа CLI отказывается переключаться в «без вопросов» посреди
-    // разговора — а именно этим переключением заканчивается одобрение плана.
+    // Without this flag the CLI refuses to switch into "no questions" mid-conversation - and that switch
+    // is exactly what approving a plan ends with.
     @Test
-    fun `разрешение на переход в bypass уходит при запуске`() {
+    fun `permission to move into bypass travels at launch`() {
         assertTrue(ClaudeLaunch.ALLOW_BYPASS_FLAG in arguments(permissionMode = "plan"))
     }
 
-    // Неизвестный ключ CLI не игнорирует — он просто не стартует.
+    // An unknown flag the CLI does not ignore - it simply does not start.
     @Test
-    fun `старый CLI, не знающий ключа, получает командную строку без него`() {
+    fun `an old CLI that does not know the flag gets a command line without it`() {
         assertFalse(ClaudeLaunch.ALLOW_BYPASS_FLAG in arguments(allowBypassSwitch = false))
     }
 
-    // Сам по себе ключ ничего не разрешает: разговор поднимается в том режиме,
-    // который выбран в панели.
+    // The flag by itself allows nothing: the conversation comes up in the mode chosen in the panel.
     @Test
-    fun `режим передаётся всегда и под именем, понятным CLI`() {
+    fun `the mode is always passed, under the name the CLI understands`() {
         val plan = arguments(permissionMode = "plan")
         assertEquals("plan", plan[plan.indexOf("--permission-mode") + 1])
 
-        // «default» — как режим звала панель раньше; CLI знает его как «manual».
+        // "default" is what the panel used to call the mode; the CLI knows it as "manual".
         val ask = arguments(permissionMode = "default")
         assertEquals(PermissionModes.ASK, ask[ask.indexOf("--permission-mode") + 1])
     }
 
-    // Без этого канала CLI считает потоковый режим безлюдным и выключает
-    // ExitPlanMode: агент вызывает его вслепую, получает «нет такого инструмента»
-    // и пересказывает план текстом — а кнопки под карточкой плана оказываются
-    // пустышкой, потому что отвечать уже нечему.
+    // Without this channel the CLI counts the streaming mode as unattended and switches ExitPlanMode
+    // off: the agent calls it blind, gets "no such tool" and retells the plan as text - while the
+    // buttons under the plan card turn out to be a sham, because there is nothing left to answer.
     @Test
-    fun `канал разрешений включён — иначе выход из режима плана недоступен`() {
+    fun `the permission channel is on - otherwise leaving plan mode is unavailable`() {
         val args = arguments(permissionMode = "plan")
         assertEquals("stdio", args[args.indexOf(ClaudeLaunch.PERMISSION_CHANNEL_FLAG) + 1])
     }
 
-    // Тот же канал включает и вопрос с вариантами ответа. Раньше инструмент
-    // выключался, потому что ответ было нечем вернуть; теперь выбранные варианты
-    // уходят обратно в updatedInput — запрещать его больше незачем.
+    // The same channel also enables the question with answer options. The tool used to be switched off
+    // because there was nothing to return an answer with; now the chosen options go back in
+    // updatedInput - there is no longer any reason to forbid it.
     @Test
-    fun `вопрос с вариантами не выключается`() {
+    fun `the question with options is not switched off`() {
         assertFalse("--disallowed-tools" in arguments())
     }
 
     @Test
-    fun `поток событий запрашивается так, как того требует CLI`() {
+    fun `the event stream is requested the way the CLI demands`() {
         val args = arguments()
 
         assertTrue(args.containsAll(listOf("--print", "--verbose", "--include-partial-messages")))
@@ -76,18 +74,18 @@ class ClaudeLaunchTest {
     }
 
     @Test
-    fun `продолжение разговора и ветвление не путаются`() {
-        val resumed = arguments(conversationId = "разговор-1", forkFrom = "родитель-1")
-        assertEquals("разговор-1", resumed[resumed.indexOf("--resume") + 1])
+    fun `continuing a conversation and branching do not get mixed up`() {
+        val resumed = arguments(conversationId = "conversation-1", forkFrom = "parent-1")
+        assertEquals("conversation-1", resumed[resumed.indexOf("--resume") + 1])
         assertFalse("--fork-session" in resumed)
 
-        val forked = arguments(forkFrom = "родитель-1")
-        assertEquals("родитель-1", forked[forked.indexOf("--resume") + 1])
+        val forked = arguments(forkFrom = "parent-1")
+        assertEquals("parent-1", forked[forked.indexOf("--resume") + 1])
         assertTrue("--fork-session" in forked)
     }
 
     @Test
-    fun `модель и усилие уходят только когда они есть`() {
+    fun `the model and the effort travel only when they exist`() {
         val bare = arguments()
         assertFalse("--model" in bare)
         assertFalse("--effort" in bare)
@@ -97,12 +95,12 @@ class ClaudeLaunchTest {
         assertEquals("xhigh", full[full.indexOf("--effort") + 1])
     }
 
-    // Панель больше не подменяет разрешения своим PreToolUse-хуком: он стоял
-    // раньше всех проверок CLI и потому спрашивал даже там, где спрашивать не о
-    // чем — в «Don't ask», в «Auto», по уже разрешённому правилу. Настройки
-    // разговору теперь не подсовываются вовсе, вопросы идут только каналом.
+    // The panel no longer substitutes permissions with a PreToolUse hook of its own: it stood earlier
+    // than any of the CLI's checks and therefore asked even where there was nothing to ask about - in
+    // "Don't ask", in "Auto", about something a rule already allowed. Settings of our own are no longer
+    // slipped to the conversation at all, and questions go over the channel only.
     @Test
-    fun `свои настройки разговору не подсовываются`() {
+    fun `settings of our own are not slipped to the conversation`() {
         assertFalse("--settings" in arguments(model = "opus", effort = "xhigh"))
     }
 }

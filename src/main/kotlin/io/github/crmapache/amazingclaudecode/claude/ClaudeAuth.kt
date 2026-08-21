@@ -10,24 +10,24 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Вошёл ли пользователь в Claude Code.
+ * Whether the user is signed in to Claude Code.
  *
- * Спрашиваем сам CLI, а не читаем его файлы: способов входа несколько — подписка,
- * ключ консоли, корпоративный SSO, — и каждый хранится по-своему. Без входа агент
- * отвечает на любой вопрос одной строкой про /login, поэтому знать это нужно до
- * того, как панель покажет поле ввода.
+ * We ask the CLI itself rather than read its files: there are several ways to sign in - a subscription,
+ * a console key, corporate SSO - and each is stored in its own way. Without a sign-in the agent answers
+ * every question with a single line about /login, so this has to be known before the panel shows an
+ * input field.
  */
 internal object ClaudeAuth {
 
     data class Status(
-        /** Ложь, если исполняемого файла нет вовсе: тогда логиниться некуда. */
+        /** False when there is no executable at all: then there is nowhere to sign in. */
         val installed: Boolean,
         val loggedIn: Boolean,
         val email: String = "",
         val plan: String = "",
     )
 
-    /** Вызывать только из фонового потока: это запуск процесса. */
+    /** Call from a background thread only: this starts a process. */
     fun status(): Status {
         val executable = ClaudeExecutable.find()
             ?: return Status(installed = false, loggedIn = false)
@@ -47,9 +47,8 @@ internal object ClaudeAuth {
     }
 
     /**
-     * Разбираем оборонительно: при отказе во входе CLI волен добавить к JSON
-     * человеческую строку или ответить ненулевым кодом. Единственное, что нам
-     * действительно нужно, — поле loggedIn.
+     * We parse defensively: when the sign-in is refused the CLI is free to add a human-readable line to
+     * the JSON or answer with a non-zero code. The only thing we genuinely need is the loggedIn field.
      */
     private fun parse(stdout: String): Status {
         val json = stdout.substringAfter('{', "").substringBeforeLast('}', "")

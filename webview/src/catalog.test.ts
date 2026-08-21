@@ -18,94 +18,94 @@ import {
   withRefusedMode,
 } from './catalog'
 
-describe('режимы разрешений', () => {
-  it('старое имя приводится к тому, которым режим зовётся сейчас', () => {
-    // `default` лежит в сохранённых настройках прошлых версий и приходит от агента.
+describe('permission modes', () => {
+  it('brings an old name to the one the mode is called by now', () => {
+    // `default` lies in the saved settings of past versions and arrives from the agent.
     expect(normalizeMode('default')).toBe('manual')
   })
 
-  it('остальные режимы не трогаются', () => {
+  it('leaves the other modes alone', () => {
     for (const mode of ['acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions']) {
       expect(normalizeMode(mode)).toBe(mode)
     }
   })
 
-  it('подпись находится и по старому имени — иначе в строке состояния окажется сырое значение', () => {
+  it('finds a caption by the old name too - otherwise a raw value ends up in the status row', () => {
     expect(modeLabel('default')).toBe('Ask permissions')
     expect(modeShortLabel('default')).toBe('Ask')
     expect(modeShortLabel('manual')).toBe('Ask')
   })
 
-  it('в списке режимов нет устаревшего имени', () => {
+  it('keeps the outdated name out of the mode list', () => {
     expect(MODE_OPTIONS.map((option) => option.id)).not.toContain('default')
     expect(MODE_OPTIONS.map((option) => option.id)).toContain('manual')
   })
 })
 
-describe('цикл режимов по Shift+Tab', () => {
+describe('the Shift+Tab cycle of modes', () => {
   const nothingExtra = { bypass: false, auto: false }
 
-  it('начало круга — то же, что в терминале', () => {
+  it('starts the circle where the terminal starts it', () => {
     expect(nextMode('manual', nothingExtra)).toBe('acceptEdits')
     expect(nextMode('acceptEdits', nothingExtra)).toBe('plan')
   })
 
-  it('старое имя первого режима ведёт дальше по кругу, а не само в себя', () => {
-    // Раньше цикл знал режим под именем `default`, а панель уже звала его
-    // `manual` — и первое нажатие переключало Ask на Ask, то есть впустую.
+  it('lets the first mode old name lead on round the circle rather than back into itself', () => {
+    // The cycle used to know the mode under the name `default` while the panel already called it `manual` -
+    // and the first press switched Ask to Ask, that is, to no effect.
     expect(nextMode('default', nothingExtra)).toBe('acceptEdits')
   })
 
-  it('после плана идёт bypass, когда он разрешён сессии', () => {
+  it('goes to bypass after the plan when the session is allowed it', () => {
     expect(nextMode('plan', { bypass: true, auto: false })).toBe('bypassPermissions')
   })
 
-  it('запрещённый bypass круг перешагивает', () => {
+  it('lets the circle step over a forbidden bypass', () => {
     expect(nextMode('plan', { bypass: false, auto: true })).toBe('auto')
     expect(nextMode('plan', nothingExtra)).toBe('manual')
   })
 
-  it('после bypass идёт auto, а без него круг замыкается', () => {
+  it('goes to auto after bypass, and closes the circle without it', () => {
     expect(nextMode('bypassPermissions', { bypass: true, auto: true })).toBe('auto')
     expect(nextMode('bypassPermissions', { bypass: true, auto: false })).toBe('manual')
   })
 
-  it('режимы вне круга возвращают к началу', () => {
+  it('brings the modes outside the circle back to the start', () => {
     expect(nextMode('auto', { bypass: true, auto: true })).toBe('manual')
     expect(nextMode('dontAsk', { bypass: true, auto: true })).toBe('manual')
   })
 })
 
-describe('режимы, в которых агент отказал', () => {
-  it('отказ запоминается — второй раз в этот режим круг не заводит', () => {
+describe('the modes the agent refused', () => {
+  it('remembers a refusal - the circle does not lead into that mode a second time', () => {
     expect(withRefusedMode([], 'auto')).toEqual(['auto'])
   })
 
-  it('повторный отказ не удваивает запись', () => {
+  it('does not double the record on a repeated refusal', () => {
     expect(withRefusedMode(['auto'], 'auto')).toEqual(['auto'])
   })
 
-  it('старое имя режима приводится к нынешнему — иначе отказ не узнать', () => {
+  it('brings a mode old name to the current one - otherwise the refusal is not recognised', () => {
     expect(withRefusedMode([], 'default')).toEqual(['manual'])
   })
 })
 
-describe('доступность необязательных режимов в меню', () => {
-  it('auto и bypass видны, но помечены недоступными — как и модель, а не пропадают из списка', () => {
+describe('the availability of the optional modes in the menu', () => {
+  it('shows auto and bypass but marks them unavailable - like a model, rather than dropping them from the list', () => {
     const options = modeMenuOptions({ bypass: false, auto: false })
 
     expect(options.find((option) => option.id === 'auto')?.disabled).toBe(true)
     expect(options.find((option) => option.id === 'bypassPermissions')?.disabled).toBe(true)
   })
 
-  it('доступный режим — обычный пункт, без пометки', () => {
+  it('leaves an available mode an ordinary item, with no mark', () => {
     const options = modeMenuOptions({ bypass: true, auto: true })
 
     expect(options.find((option) => option.id === 'auto')?.disabled).toBeUndefined()
     expect(options.find((option) => option.id === 'bypassPermissions')?.disabled).toBeUndefined()
   })
 
-  it('остальные режимы недоступность auto/bypass не трогает', () => {
+  it('does not let the unavailability of auto/bypass touch the other modes', () => {
     const options = modeMenuOptions({ bypass: false, auto: false })
 
     expect(options.find((option) => option.id === 'manual')?.disabled).toBeUndefined()
@@ -115,104 +115,104 @@ describe('доступность необязательных режимов в 
   })
 })
 
-describe('каталог моделей', () => {
+describe('the model catalogue', () => {
   const models = [
     { value: 'default', label: 'Default (recommended)', description: 'Opus 5 with 1M context', resolved: 'claude-opus-5[1m]' },
     { value: 'sonnet', label: 'Sonnet', description: 'Sonnet 5', resolved: 'claude-sonnet-5' },
     { value: 'opus-legacy', label: 'Opus 4.1', description: 'legacy', resolved: 'claude-opus-4-1', disabled: true },
   ]
 
-  it('живой каталог CLI важнее встроенного списка', () => {
+  it('puts the CLI live catalogue above the built-in list', () => {
     expect(modelOptions(models).map((option) => option.id)).toEqual(['default', 'sonnet', 'opus-legacy'])
   })
 
-  it('пока каталога нет, показываем встроенный список', () => {
+  it('shows the built-in list while there is no catalogue', () => {
     expect(modelOptions(null)).toBe(MODEL_OPTIONS)
     expect(modelOptions([])).toBe(MODEL_OPTIONS)
   })
 
-  it('недоступную модель показываем, но помечаем', () => {
+  it('shows an unavailable model but marks it', () => {
     expect(modelOptions(models).find((option) => option.id === 'opus-legacy')?.tag).toBe('unavailable')
   })
 })
 
-describe('модель, на которую агент ушёл сам', () => {
+describe('the model the agent moved to itself', () => {
   const models = [
     { value: 'default', label: 'Default', description: '', resolved: 'claude-opus-5[1m]' },
     { value: 'sonnet', label: 'Sonnet', description: '', resolved: 'claude-sonnet-5' },
   ]
 
-  it('разговор на выбранной модели переключением не считается', () => {
+  it('does not count a conversation on the chosen model as a switch', () => {
     expect(switchedModel(models, 'default', 'claude-opus-5[1m]')).toBeUndefined()
     expect(switchedModel(models, 'sonnet', 'claude-sonnet-5')).toBeUndefined()
   })
 
-  it('пометка про окно контекста — не другая модель', () => {
-    // Каталог и поток пишут её вразнобой, и без этого разговор на своей же
-    // модели выглядел бы сбежавшим на чужую.
+  it('does not treat a note about the context window as a different model', () => {
+    // The catalogue and the stream write it differently, and without this a conversation on its own model
+    // would look as though it had run off to someone else's.
     expect(switchedModel(models, 'default', 'claude-opus-5')).toBeUndefined()
   })
 
-  it('уход на другую модель виден', () => {
+  it('makes a move to another model visible', () => {
     expect(switchedModel(models, 'default', 'claude-opus-4-8')).toBe('claude-opus-4-8')
   })
 
-  it('без каталога расхождение не выдумываем: во что разворачивается выбор — неизвестно', () => {
+  it('does not invent a discrepancy without a catalogue: what the choice resolves into is unknown', () => {
     expect(switchedModel(null, 'default', 'claude-opus-4-8')).toBeUndefined()
     expect(switchedModel(models, 'unknown-choice', 'claude-opus-4-8')).toBeUndefined()
   })
 
-  it('пока разговор на выбранной модели, галочка стоит на выборе', () => {
+  it('keeps the tick on the choice while the conversation is on the chosen model', () => {
     expect(modelMenu(models, 'sonnet', undefined)).toMatchObject({ selected: 'sonnet' })
     expect(modelMenu(models, '', undefined)).toMatchObject({ selected: 'default' })
   })
 
-  it('после ухода галочка переезжает на модель каталога с тем же идентификатором', () => {
+  it('moves the tick onto the catalogue model with the same identifier after a move', () => {
     expect(modelMenu(models, 'default', 'claude-sonnet-5')).toMatchObject({ selected: 'sonnet' })
   })
 
-  it('модели, которой нет в каталоге, заводится своя строка — иначе отмечать нечего', () => {
+  it('starts a row of its own for a model missing from the catalogue - otherwise there is nothing to mark', () => {
     const menu = modelMenu(models, 'default', 'claude-opus-4-8')
 
     expect(menu.selected).toBe('claude-opus-4-8')
     expect(menu.options.at(-1)).toMatchObject({ id: 'claude-opus-4-8', label: 'Opus' })
-    // Каталог при этом не трогаем: он общий на все вкладки, а ушла одна.
+    // The catalogue is left alone meanwhile: it is shared by every tab, while one of them moved.
     expect(models).toHaveLength(2)
   })
 })
 
-describe('подпись модели в нижней строке', () => {
-  it('из полного идентификатора остаётся имя семейства', () => {
+describe('the model caption in the bottom row', () => {
+  it('leaves the family name out of a full identifier', () => {
     expect(modelLabel('claude-sonnet-5')).toBe('Sonnet')
     expect(modelLabel('claude-haiku-4-5-20251001')).toBe('Haiku')
   })
 
-  it('про миллионное окно говорим отдельно — по имени семейства этого не понять', () => {
+  it('mentions a million-token window separately - the family name does not tell that', () => {
     expect(modelLabel('claude-opus-5[1m]')).toBe('Opus 1M')
   })
 
-  it('незнакомую модель показываем как есть, без префикса и суффикса', () => {
+  it('shows an unfamiliar model as it is, without a prefix or a suffix', () => {
     expect(modelLabel('claude-experimental-9')).toBe('experimental-9')
   })
 })
 
 /**
- * Кнопка отмеряет себе ширину по этим образцам, а не по тому, что выбрано
- * сейчас (см. Selector в StatusBar.tsx). Стоит образцу оказаться короче
- * настоящей подписи — и она обрежется многоточием на ровном месте.
+ * The button measures its width off these samples rather than off what is chosen right now (see Selector
+ * in StatusBar.tsx). Let a sample turn out shorter than the genuine caption and it gets clipped with an
+ * ellipsis for no reason at all.
  */
-describe('образцы ширины для селекторов', () => {
-  it('образец модели не короче любой подписи из известных семейств', () => {
+describe('the width samples for the selectors', () => {
+  it('keeps the model sample no shorter than any caption of the known families', () => {
     const labels = ['default', ...MODEL_OPTIONS.map((option) => modelLabel(option.id))]
 
     for (const label of labels) expect(label.length).toBeLessThanOrEqual(MODEL_SAMPLE.length)
   })
 
-  it('образец усилия не короче любого варианта из меню', () => {
+  it('keeps the effort sample no shorter than any option in the menu', () => {
     for (const option of EFFORT_OPTIONS) expect(option.label.length).toBeLessThanOrEqual(EFFORT_SAMPLE.length)
   })
 
-  it('образец режима не короче любой короткой подписи', () => {
+  it('keeps the mode sample no shorter than any short caption', () => {
     const labels = MODE_OPTIONS.map((option) => modeShortLabel(option.id))
 
     for (const label of labels) expect(label.length).toBeLessThanOrEqual(MODE_SAMPLE.length)

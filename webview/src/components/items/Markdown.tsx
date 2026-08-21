@@ -5,16 +5,15 @@ import { CopyButton, copyToClipboard } from './CopyButton'
 import s from '../feed.module.css'
 
 /**
- * Разобранный markdown на экране — один и тот же для ответа агента и для плана.
+ * Parsed markdown on screen - one and the same for the agent's answer and for a plan.
  *
- * Раньше план рисовался своей упрощённой раскладкой «номер + строка», и его
- * разметка терялась целиком: жирный текст показывался звёздочками, вложенные
- * пункты становились равноправными шагами с новой нумерацией, а всё, что не
- * пункт списка (заголовки разделов, абзацы-пояснения), пропадало вовсе. Здесь
- * же и там, и там показывается одно и то же — то, что агент написал.
+ * A plan used to be drawn with a simplified "number + line" layout of its own, and its markup was lost
+ * entirely: bold text showed up as asterisks, nested items became steps of equal standing with new
+ * numbering, and everything that was not a list item (section headings, explanatory paragraphs)
+ * disappeared altogether. Here both show one and the same thing - what the agent wrote.
  *
- * `reveal` включает волну проявления по словам: она нужна печатающемуся ответу
- * и мешает готовому плану, который появляется разом.
+ * `reveal` switches on the word-by-word reveal wave: a printing answer needs it, while a finished plan,
+ * which appears all at once, is only hindered by it.
  */
 interface MarkdownProps {
   paragraphs: Paragraph[]
@@ -30,7 +29,7 @@ export const Markdown = ({ paragraphs, reveal = false, onOpenLink }: MarkdownPro
   </>
 )
 
-/** Отступ одного уровня вложенности списка. */
+/** The indent of one nesting level in a list. */
 const INDENT_PX = 14
 
 const ParagraphView = ({
@@ -45,8 +44,8 @@ const ParagraphView = ({
   if (paragraph.codeBlock) {
     const code = paragraph.parts.map((part) => part.text).join('')
 
-    // Своя кнопка у каждого блока: копировать ответ целиком, чтобы забрать из
-    // него одну команду, значит потом вычищать вокруг неё весь рассказ.
+    // A button of its own on every block: copying a whole answer to take one command out of it means
+    // cleaning the whole account away around it afterwards.
     return (
       <div className={s.codeBlockWrap}>
         <Piece reveal={reveal} as="pre" className={s.codeBlock}>
@@ -72,8 +71,8 @@ const ParagraphView = ({
 
   return (
     <div className={paraClass} style={depth > 0 ? { marginLeft: depth * INDENT_PX } : undefined}>
-      {/* Нумерованный пункт остаётся нумерованным: свой номер у шага важнее
-          единообразного тире, по нему на шаг и ссылаются. */}
+      {/* A numbered item stays numbered: a step's own number matters more than a uniform dash - that is
+          what a step is referred to by. */}
       {paragraph.bullet ? <span className={s.bullet}>{paragraph.marker ?? '—'} </span> : null}
       {paragraph.parts.map((part, index) => (
         <PartView key={index} part={part} reveal={reveal} onOpenLink={onOpenLink} />
@@ -91,9 +90,9 @@ const ALIGN_CLASS: Record<Exclude<TableAlign, undefined>, string> = {
 const alignClass = (align: TableAlign): string | undefined => (align ? ALIGN_CLASS[align] : undefined)
 
 /**
- * Таблица из ответа агента — `| a | b |` и разделитель `|---|---|` следом
- * (см. parseTableAt). Ячейки разобраны тем же parseInline, что и обычный
- * текст — код, жирное и ссылки внутри таблицы работают точно так же.
+ * A table out of the agent's answer - `| a | b |` with a `|---|---|` separator after it (see
+ * parseTableAt). The cells are parsed by the same parseInline as ordinary text - code, bold and links
+ * inside a table work exactly the same.
  */
 const TableView = ({
   table,
@@ -135,8 +134,8 @@ const TableView = ({
 )
 
 /**
- * Кусок текста: с волной проявления или без. Без неё это обычный span/pre —
- * тот же класс, та же вёрстка, разница только в анимации появления.
+ * A piece of text: with the reveal wave or without it. Without it this is an ordinary span/pre - the same
+ * class, the same layout, the difference being only the appearance animation.
  */
 const Piece = ({
   reveal,
@@ -171,11 +170,11 @@ const PartView = ({
     return (
       <a
         href={href}
-        // Ссылка в заголовке остаётся и ссылкой, и жирной: одно другого не
-        // отменяет — по ней кликают, но это по-прежнему заголовок раздела.
+        // A link in a heading stays both a link and bold: one does not cancel the other - it is clicked,
+        // but it is still a section's heading.
         className={part.strong ? `${s.link} ${s.strong}` : s.link}
-        // Открываем в системном браузере через хост-IDE: обычная навигация увела бы
-        // сам вебвью панели на этот адрес вместо показа его снаружи.
+        // We open it in the system browser through the host IDE: ordinary navigation would carry the
+        // panel's own webview off to that address instead of showing it outside.
         onClick={(event) => {
           event.preventDefault()
           onOpenLink(href)
@@ -192,15 +191,15 @@ const PartView = ({
   return <Piece reveal={reveal}>{part.text}</Piece>
 }
 
-/** Сколько держим подсветку скопированного, прежде чем вернуть обычный вид. */
+/** How long the copied highlight is held before the ordinary look returns. */
 const COPIED_FLASH_MS = 900
 
 /**
- * Имя ветки, флаг, путь — то, что чаще всего и нужно из ответа, — забирается
- * кликом по нему же: своя кнопка у куска в два слова была бы больше него.
+ * A branch's name, a flag, a path - what is most often needed out of an answer - is taken by clicking it:
+ * a button of its own beside a two-word piece would be bigger than the piece.
  *
- * Клик после выделения текста игнорируем: выделение и есть намерение забрать
- * не только этот кусок, а подменять им буфер на полпути нечестно.
+ * A click after a text selection is ignored: the selection is itself the intent to take more than this
+ * one piece, and replacing the clipboard halfway through would be dishonest.
  */
 const InlineCode = ({ text, reveal }: { text: string; reveal: boolean }) => {
   const [copied, setCopied] = useState(false)

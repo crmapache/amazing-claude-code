@@ -1,10 +1,10 @@
 #!/bin/sh
 #
-# Запуск тестовой IDE с плагином.
+# Starts the sandbox IDE with the plugin.
 #
-# Это отдельная копия WebStorm со своими настройками: рабочее окно она не трогает,
-# закрыть её можно в любой момент. Предыдущий запуск гасим сами — иначе каждый
-# перезапуск плодил бы ещё одно окно поверх старого.
+# This is a separate copy of WebStorm with settings of its own: it does not touch the working window and
+# can be closed at any moment. The previous run is taken down by us - otherwise every restart would breed
+# one more window on top of the old one.
 
 set -e
 
@@ -23,8 +23,8 @@ notify() {
 
 notify "Building the plugin…"
 
-# Сборка и запуск в одном процессе: пока IDE открыта, иконка в доке активна,
-# а закрытие окна завершает и её.
+# Building and running in one process: while the IDE is open its dock icon is active, and closing the
+# window ends it too.
 if ! ./gradlew runIde -PopenProject="$SANDBOX_PROJECT" >"$LOG" 2>&1; then
   notify "Sandbox failed to start — see build/sandbox.log"
   exit 1

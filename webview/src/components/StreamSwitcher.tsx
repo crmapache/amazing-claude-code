@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback } from 'react'
 import s from './shell.module.css'
 
 export type AgentStatus = 'idle' | 'running' | 'done' | 'needs-input' | 'stopped' | 'failed'
@@ -8,21 +8,24 @@ export interface AgentTab {
   label: string
   meta: string
   status: AgentStatus
-  /** Сколько агент уже прошёл — на чип идёт как заполнение кружка, не текстом. */
+  /** How far the agent has got - it goes onto the chip as the circle's fill rather than as text. */
   percent: number
   duration: string
   /**
-   * Чем эту работу зовёт CLI, если её ещё можно прибить. Пусто у всего, что уже
-   * закончилось, и у агента, о запуске которого CLI пока не сообщил, — тогда и
-   * крестика на чипе нет: нажимать было бы не на что.
+   * What the CLI calls this work, when it can still be killed. Empty for everything already finished and
+   * for an agent whose launch the CLI has not reported yet - then the chip carries no cross either: there
+   * would be nothing to press.
    */
   stopId?: string
 }
 
-/** Работающая прямо сейчас фоновая команда: не стрим, переключать в ней нечего. */
+/** A background command running right now: not a stream, there is nothing to switch to in it. */
 export interface BackgroundChip {
   id: string
+  /** What it was launched with, in two words: `sandbox.sh`, `pnpm dev`. */
   label: string
+  /** The model's description of the command - it does not fit the chip and lives in the tooltip. */
+  description: string
   duration: string
 }
 
@@ -32,7 +35,7 @@ interface StreamSwitcherProps {
   mainStatus: AgentStatus
   active: string
   onPick: (id: string) => void
-  /** Крестик на чипе: спрашиваем подтверждение, прибивает уже App. */
+  /** The cross on the chip: we ask for confirmation, and App does the killing. */
   onStop: (task: { id: string; title: string; subject: string }) => void
 }
 
@@ -45,9 +48,20 @@ const STATUS_DOT: Partial<Record<AgentStatus, string>> = {
 }
 
 /**
- * Кружок прогресса вместо плоской точки — залит по часовой стрелке ровно на
- * percent, пустой контур при 0%, сплошной кружок при 100%. Цвет тот же, что
- * был бы у точки: заполнение отвечает за «сколько», цвет — за «что сейчас».
+ * How many pixels to travel horizontally per notch of the wheel. A wheel does not always measure its
+ * movement in pixels: with some mice and shells the event arrives in lines or pages, and then the "raw"
+ * value is 3 rather than 100, and the chip strip would barely move.
+ */
+const wheelStep = (event: WheelEvent, element: HTMLElement) => {
+  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * 16
+  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * element.clientWidth
+  return event.deltaY
+}
+
+/**
+ * A progress circle instead of a flat dot - filled clockwise by exactly percent, an empty outline at 0%,
+ * a solid circle at 100%. The colour is the one the dot would have had: the fill answers "how much", the
+ * colour "what right now".
  */
 const ProgressDot = ({ percent, color }: { percent: number; color: string }) => (
   <span
@@ -57,10 +71,9 @@ const ProgressDot = ({ percent, color }: { percent: number; color: string }) => 
 )
 
 /**
- * Крестик рисуем, а не пишем символом: у типографского «×» своя посадка в
- * шрифте — он сидит выше базовой линии и не по центру собственной строки, — и
- * в маленькой квадратной кнопке это видно на глаз. У линий центр там, где мы
- * его поставили.
+ * The cross is drawn rather than written as a character: the typographic "×" has a seat of its own in the
+ * font - it sits above the baseline and off-centre in its own line - and in a small square button that is
+ * visible to the eye. With lines the centre is where we put it.
  */
 const StopCross = () => (
   <svg className={s.streamStopIcon} viewBox="0 0 8 8" aria-hidden="true">
@@ -69,10 +82,10 @@ const StopCross = () => (
 )
 
 /**
- * Чипы вместо дропдауна: main всегда первым, дальше агенты в порядке запуска.
- * Клик переключает, что видно в области вывода — как вкладки. Появляется
- * только когда за сессию был хотя бы один агент — до этого переключать
- * нечего, а до первого запуска место в шапке лучше не занимать.
+ * Chips instead of a dropdown: main always first, then the agents in launch order. A click switches what
+ * is visible in the output area - like tabs. It appears only once there has been at least one agent in
+ * the session: before that there is nothing to switch between, and until the first launch the room in the
+ * header is better left alone.
  */
 export const StreamSwitcher = ({
   tabs,
@@ -82,19 +95,23 @@ export const StreamSwitcher = ({
   onPick,
   onStop,
 }: StreamSwitcherProps) => {
-  const listRef = useRef<HTMLDivElement | null>(null)
-
-  // Колесо мыши крутит только по вертикали — переводим deltaY в горизонтальную
-  // прокрутку сами, иначе при переполнении чипы были бы недостижимы без
-  // трекпада. preventDefault нужен настоящий, не пассивный слушатель: иначе
-  // событие ещё и укатило бы страницу вниз при каждой прокрутке чипов.
-  useEffect(() => {
-    const element = listRef.current
+  // A mouse wheel scrolls vertically only - we translate deltaY into horizontal scrolling ourselves, or
+  // on overflow the chips would be unreachable without a trackpad and without Shift. preventDefault needs
+  // a real, non-passive listener: otherwise the event would also roll the feed down on every scroll of
+  // the chips. The listener is attached in a callback ref rather than in an effect: the chip strip
+  // appears after the first render (before the first agent there is none at all), and an effect with
+  // empty dependencies would have found nothing but emptiness.
+  const attachWheel = useCallback((element: HTMLDivElement | null) => {
     if (!element) return
 
     const onWheel = (event: WheelEvent) => {
-      if (event.deltaY === 0) return
-      element.scrollLeft += event.deltaY
+      // A horizontal trackpad gesture (and a wheel with Shift) the browser handles itself - there is no
+      // need to interfere. But a horizontal one specifically, not any gesture with a hint of sideways
+      // movement: perfectly vertical swipes do not happen on a trackpad, and bowing out on the mere
+      // presence of deltaX would leave the strip standing still. What decides is whichever there is more
+      // of in the gesture.
+      if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return
+      element.scrollLeft += wheelStep(event, element)
       event.preventDefault()
     }
 
@@ -105,7 +122,7 @@ export const StreamSwitcher = ({
   if (tabs.length === 0 && background.length === 0) return null
 
   const list = (
-    <div className={s.streamList} ref={listRef}>
+    <div className={s.streamList} ref={attachWheel}>
       <button
         type="button"
         className={`${s.stream} ${active === 'main' ? s.streamActive : ''}`}
@@ -117,17 +134,20 @@ export const StreamSwitcher = ({
         <span className={s.streamLabel}>main</span>
       </button>
 
-      {/* Не кнопка, а строка с кнопками внутри: у чипа их две — сам он
-          переключает поток, крестик прибивает работу. */}
+      {/* Not a button but a row with buttons inside: a chip has two - the chip itself switches the
+          stream, the cross kills the work. */}
       {tabs.map((tab) => (
         <div
           key={tab.id}
           className={`${s.stream} ${tab.stopId ? s.streamStoppable : ''} ${tab.id === active ? s.streamActive : ''}`}
           role="button"
           tabIndex={0}
+          // The agent's occupation on the chip is cut off by width - the full text stays in the hover
+          // tooltip.
+          title={tab.meta || undefined}
           onClick={() => onPick(tab.id)}
-          // Кнопкой чип быть перестал (внутри своя, крестик), но с клавиатуры
-          // он обязан работать по-прежнему — оттого роль и обе клавиши.
+          // The chip has stopped being a button (there is one inside it, the cross), but from the
+          // keyboard it still has to work - hence the role and both keys.
           onKeyDown={(event) => {
             if (event.key !== 'Enter' && event.key !== ' ') return
             event.preventDefault()
@@ -137,6 +157,10 @@ export const StreamSwitcher = ({
           <ProgressDot percent={tab.percent} color={STATUS_DOT[tab.status] ?? 'var(--acc-fg-fainter)'} />
           <span className={s.streamLabel}>{tab.label}</span>
           {tab.duration ? <span className={s.streamDuration}>{tab.duration}</span> : null}
+          {/* What the agent is busy with right now goes as a line on the chip itself rather than only in
+              a tooltip: a tooltip does not update while it hangs there - and the occupation changes as it
+              goes - and it cannot be opened from the keyboard at all. The line would eat the whole width,
+              so it is narrow and ends in an ellipsis. */}
           {tab.meta ? <span className={s.streamMeta}>{tab.meta}</span> : null}
           {tab.stopId ? (
             <button
@@ -159,11 +183,15 @@ export const StreamSwitcher = ({
         </div>
       ))}
 
-      {/* Фоновая команда — не вкладка: своего потока у неё нет, показывать по
-          клику нечего. Это метка о том, что процесс всё ещё жив, и держится
-          она ровно столько, сколько он работает. */}
+      {/* A background command is not a tab: it has no stream of its own and there is nothing to show on
+          a click. This is a mark that the process is still alive, and it stays exactly as long as it
+          runs. */}
       {background.map((task) => (
-        <span key={task.id} className={`${s.stream} ${s.streamStatic} ${s.streamStoppable}`} title={task.label}>
+        <span
+          key={task.id}
+          className={`${s.stream} ${s.streamStatic} ${s.streamStoppable}`}
+          title={task.description || task.label}
+        >
           <span className={s.streamDot} style={{ background: 'var(--acc-accent)' }} />
           <span className={s.streamLabel}>bg</span>
           <span className={s.streamDuration}>{task.duration}</span>
@@ -173,7 +201,9 @@ export const StreamSwitcher = ({
             className={s.streamStop}
             title="Stop this command"
             aria-label={`Stop ${task.label}`}
-            onClick={() => onStop({ id: task.id, title: 'Stop this command?', subject: task.label })}
+            onClick={() =>
+              onStop({ id: task.id, title: 'Stop this command?', subject: task.description || task.label })
+            }
           >
             <StopCross />
           </button>

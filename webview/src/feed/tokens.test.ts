@@ -17,21 +17,21 @@ const text = (value: string): UserToken => ({ kind: 'text', value })
 const image = (value: string, data = PNG): UserToken => ({ kind: 'chip', chip: { kind: 'img', value, data } })
 
 describe('tokensText', () => {
-  it('нумерует картинки по месту, а не по подписи, оставшейся от вставки', () => {
-    const tokens = [image('Image #7'), text(' и '), image('Image #2')]
-    expect(tokensText(tokens)).toBe('[Image #1] и [Image #2]')
+  it('numbers the images by their place rather than by a caption left over from the paste', () => {
+    const tokens = [image('Image #7'), text(' and '), image('Image #2')]
+    expect(tokensText(tokens)).toBe('[Image #1] and [Image #2]')
   })
 
-  it('продолжает нумерацию с того, сколько картинок уже ушло в сессии', () => {
+  it('carries the numbering on from how many images have already travelled in the session', () => {
     expect(tokensText([image('Image #1')], 3)).toBe('[Image #4]')
   })
 
-  it('картинку без байтов отдаёт ссылкой на файл: в скобках агент её не прочитает', () => {
+  it('hands an image without bytes over as a file reference: in brackets the agent will not read it', () => {
     const picked: UserToken = { kind: 'chip', chip: { kind: 'img', value: 'assets/logo.png' } }
     expect(tokensText([picked])).toBe('@assets/logo.png')
   })
 
-  it('остальные вложения отдаёт так же, как их видит агент', () => {
+  it('hands the other attachments over exactly as the agent sees them', () => {
     const tokens: UserToken[] = [
       { kind: 'chip', chip: { kind: 'cmd', value: 'model' } },
       text(' '),
@@ -39,97 +39,97 @@ describe('tokensText', () => {
       text(' '),
       { kind: 'chip', chip: { kind: 'dir', value: 'src/feed/' } },
       text(' '),
-      { kind: 'chip', chip: { kind: 'quote', value: 'ref1', text: 'кусок кода' } },
+      { kind: 'chip', chip: { kind: 'quote', value: 'ref1', text: 'a piece of code' } },
     ]
-    expect(tokensText(tokens)).toBe('/model @src/App.tsx (L1-L4) @src/feed/ "кусок кода"')
+    expect(tokensText(tokens)).toBe('/model @src/App.tsx (L1-L4) @src/feed/ "a piece of code"')
   })
 })
 
 describe('trimTrailingSpace', () => {
-  it('убирает перевод строки, на котором стоял курсор: в поле его было не видно', () => {
-    expect(trimTrailingSpace([text('раз'), text('\n')])).toEqual([text('раз')])
+  it('removes the line break the caret stood on: it was invisible in the field', () => {
+    expect(trimTrailingSpace([text('one'), text('\n')])).toEqual([text('one')])
   })
 
-  it('снимает пустой хвост целиком, сколько бы токенов он ни занимал', () => {
-    expect(trimTrailingSpace([text('раз'), text('\n'), text('\n  ')])).toEqual([text('раз')])
+  it('takes the whole empty tail off, however many tokens it spans', () => {
+    expect(trimTrailingSpace([text('one'), text('\n'), text('\n  ')])).toEqual([text('one')])
   })
 
-  it('режет хвост внутри самого токена, не трогая переносы в середине', () => {
-    expect(trimTrailingSpace([text('раз\nдва\n\n')])).toEqual([text('раз\nдва')])
+  it('cuts the tail inside the token itself without touching the breaks in the middle', () => {
+    expect(trimTrailingSpace([text('one\ntwo\n\n')])).toEqual([text('one\ntwo')])
   })
 
-  it('вложение в конце оставляет как есть — оно видимое', () => {
-    const tokens = [text('смотри '), image('Image #1')]
+  it('leaves an attachment at the end as it is - it is visible', () => {
+    const tokens = [text('look at '), image('Image #1')]
     expect(trimTrailingSpace(tokens)).toEqual(tokens)
   })
 
-  it('сообщение из одних пробелов сходит на нет', () => {
+  it('lets a message of nothing but spaces come to nothing', () => {
     expect(trimTrailingSpace([text('  \n')])).toEqual([])
   })
 })
 
 describe('composePrompt', () => {
-  it('поднимает цитаты отдельными строками над самим сообщением', () => {
-    const draft = { tokens: [text('почини это')], quotes: [{ text: 'const a = 1' }] }
-    expect(composePrompt(draft, 0)).toBe('> const a = 1\nпочини это')
+  it('lifts the quotes as separate lines above the message itself', () => {
+    const draft = { tokens: [text('fix this')], quotes: [{ text: 'const a = 1' }] }
+    expect(composePrompt(draft, 0)).toBe('> const a = 1\nfix this')
   })
 
-  it('нумерация в тексте совпадает с порядком байтов, которые уйдут рядом', () => {
-    const tokens = [image('Image #1', PNG), text(' против '), image('Image #2', JPEG)]
+  it('matches the numbering in the text to the order of the bytes travelling beside it', () => {
+    const tokens = [image('Image #1', PNG), text(' versus '), image('Image #2', JPEG)]
 
-    expect(composePrompt({ tokens, quotes: [] }, 0)).toBe('[Image #1] против [Image #2]')
+    expect(composePrompt({ tokens, quotes: [] }, 0)).toBe('[Image #1] versus [Image #2]')
     expect(imageAttachments(tokens).map((item) => item.mediaType)).toEqual(['image/png', 'image/jpeg'])
   })
 })
 
 describe('imageAttachments', () => {
-  it('отдаёт тип и байты отдельно, без приставки data-url', () => {
+  it('hands the type and the bytes over separately, without the data-url prefix', () => {
     expect(imageAttachments([image('Image #1')])).toEqual([{ mediaType: 'image/png', data: 'iVBORw0KGgo=' }])
   })
 
-  it('пропускает вложения без байтов', () => {
+  it('skips the attachments without bytes', () => {
     const picked: UserToken = { kind: 'chip', chip: { kind: 'img', value: 'assets/logo.png' } }
-    expect(imageAttachments([picked, text('привет')])).toEqual([])
+    expect(imageAttachments([picked, text('hello')])).toEqual([])
   })
 })
 
-describe('буфер обмена', () => {
-  const tokens = [text('смотри '), image('Image #1'), text(' сюда')]
+describe('the clipboard', () => {
+  const tokens = [text('look '), image('Image #1'), text(' here')]
 
-  it('возвращает те же вложения вместе с байтами картинки', () => {
+  it('returns the same attachments together with the image bytes', () => {
     expect(clipboardTokens(clipboardHtml(tokens))).toEqual(tokens)
   })
 
-  it('переживает обёртку, которой браузер оборачивает вставку', () => {
+  it('survives the wrapper the browser wraps a paste in', () => {
     const wrapped = `<html><body><!--StartFragment-->${clipboardHtml(tokens)}<!--EndFragment--></body></html>`
     expect(clipboardTokens(wrapped)).toEqual(tokens)
   })
 
-  it('рядом кладёт читаемый текст — тот же, что увидит агент', () => {
-    expect(clipboardHtml(tokens)).toContain('смотри [Image #1] сюда')
+  it('puts readable text beside it - the same the agent will see', () => {
+    expect(clipboardHtml(tokens)).toContain('look [Image #1] here')
   })
 
-  it('не ломается на угловых скобках в тексте', () => {
+  it('does not break on angle brackets in the text', () => {
     const html = clipboardHtml([text('a < b > c')])
     expect(html).toContain('a &lt; b &gt; c')
     expect(clipboardTokens(html)).toEqual([text('a < b > c')])
   })
 
-  it('чужое содержимое буфера не признаёт своим', () => {
-    expect(clipboardTokens('<b>просто разметка</b>')).toBeNull()
+  it('does not recognise someone else clipboard contents as its own', () => {
+    expect(clipboardTokens('<b>just some markup</b>')).toBeNull()
     expect(clipboardTokens('')).toBeNull()
   })
 
-  it('на испорченной записи откатывается, а не подсовывает половину', () => {
-    expect(clipboardTokens(`<span ${CLIPBOARD_ATTRIBUTE}="не json"></span>`)).toBeNull()
+  it('rolls back on a corrupted record rather than slipping half of it in', () => {
+    expect(clipboardTokens(`<span ${CLIPBOARD_ATTRIBUTE}="not json"></span>`)).toBeNull()
     expect(clipboardTokens(`<span ${CLIPBOARD_ATTRIBUTE}="${encodeURIComponent('[]')}"></span>`)).toBeNull()
     expect(
       clipboardTokens(`<span ${CLIPBOARD_ATTRIBUTE}="${encodeURIComponent(JSON.stringify([{ kind: 'wat' }]))}"></span>`),
     ).toBeNull()
   })
 
-  it('картинку с неразборными байтами отвергает целиком: плашка обещала бы вложение', () => {
-    const broken = [{ kind: 'chip', chip: { kind: 'img', value: 'Image #1', data: 'мусор' } }]
+  it('rejects an image with unparsable bytes entirely: the chip would promise an attachment', () => {
+    const broken = [{ kind: 'chip', chip: { kind: 'img', value: 'Image #1', data: 'rubbish' } }]
     expect(
       clipboardTokens(`<span ${CLIPBOARD_ATTRIBUTE}="${encodeURIComponent(JSON.stringify(broken))}"></span>`),
     ).toBeNull()

@@ -6,11 +6,11 @@ import com.intellij.openapi.vfs.VirtualFile
 import java.nio.file.Path
 
 /**
- * Ссылка на кусок файла, открытого в редакторе.
+ * A reference to a piece of a file open in the editor.
  *
- * Именно ссылка, а не текст: агент прочитает файл сам и увидит его целиком, а не
- * вырванный кусок. Строки и колонки — с единицы, как их показывает сам редактор,
- * иначе пользователь сверит их со строкой состояния и не сойдётся.
+ * A reference specifically, not the text: the agent will read the file itself and see it whole rather
+ * than a torn-out piece. Lines and columns start at one, the way the editor itself shows them, or the
+ * user would compare them with the status bar and find they do not match.
  */
 internal data class SelectionReference(
     val path: String,
@@ -19,8 +19,8 @@ internal data class SelectionReference(
     val endLine: Int,
     val endColumn: Int,
     /**
-     * Выделение захватывает строки целиком. Тогда колонки в ссылке не нужны: они
-     * только зашумляют её, ничего не уточняя.
+     * The selection takes whole lines. Then the columns in the reference are unnecessary: they only add
+     * noise without adding precision.
      */
     val wholeLines: Boolean,
 ) {
@@ -35,8 +35,8 @@ internal data class SelectionReference(
             val end = if (selection.hasSelection()) selection.selectionEnd else start
 
             val startLine = document.getLineNumber(start)
-            // Выделение до начала строки заканчивать этой строкой нельзя: тройной
-            // клик забирает перевод строки, и диапазон уезжал бы на строку вперёд.
+            // A selection ending at the start of a line must not end on that line: a triple click takes
+            // the newline with it, and the range would slide a line forward.
             val rawEndLine = document.getLineNumber(end)
             val endLine = if (rawEndLine > startLine && end == document.getLineStartOffset(rawEndLine)) {
                 rawEndLine - 1
@@ -60,7 +60,7 @@ internal data class SelectionReference(
             )
         }
 
-        /** Путь от корня проекта: полный не помещается в панель и ничего не добавляет. */
+        /** The path from the project's root: a full one does not fit the panel and adds nothing. */
         private fun relativePath(project: Project, file: VirtualFile): String {
             val base = project.basePath ?: return file.path
 

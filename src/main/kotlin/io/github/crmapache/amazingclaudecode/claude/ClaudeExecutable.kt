@@ -8,47 +8,49 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Поиск исполняемого файла Claude Code.
+ * Finding the Claude Code executable.
  *
- * Просто взять PATH из окружения процесса на macOS нельзя: приложение, запущенное
- * из Dock или Toolbox, получает урезанный PATH без пользовательских папок. Поэтому
- * берём окружение так, как его видит login shell, — это же делает встроенный
- * терминал IDE.
+ * Simply taking PATH out of the process environment will not do on macOS: an application launched from
+ * the Dock or from Toolbox gets a trimmed PATH without the user's own folders. So the environment is
+ * taken the way a login shell sees it - which is what the IDE's own terminal does.
  *
- * Но и этого не всегда хватает: CLI ставят по-разному (нативный установщик, npm,
- * bun, volta, scoop), имя файла на Windows тоже разное, а PATH у оболочки IDE
- * может не совпадать с PATH терминала. Поэтому порядок такой: указанный руками
- * путь, PATH, типовые места установки — а если и там пусто, спрашиваем саму
- * систему (`where` / `command -v` в пользовательской оболочке), которая знает
- * про установки, о которых мы не догадались.
+ * And even that is not always enough: the CLI gets installed in different ways (the native installer,
+ * npm, bun, volta, scoop), the file name on Windows differs too, and the IDE shell's PATH may not
+ * match the terminal's. Hence the order: a path pointed at by hand, PATH, the usual install locations
+ * - and if all of that comes up empty, ask the system itself (`where` / `command -v` in the user's
+ * shell), which knows about installs we never guessed at.
  *
- * Сам перебор путей живёт в [ClaudeLookup] — там его видно тестом, без чужой
- * машины под рукой.
+ * The path walking itself lives in [ClaudeLookup] - there a test can see it, without someone else's
+ * machine at hand.
  */
 internal object ClaudeExecutable {
 
-    private val windows: Boolean get() = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
-
     fun find(): File? = fromCandidates() ?: fromSystem()
 
-    /** Где искали — для экрана «Claude Code не найден»: по списку сразу видно, почему промахнулись. */
+    /** Where we looked - for the "Claude Code not found" screen: the list shows why we missed. */
     fun searchedPlaces(): List<String> = candidates()
 
-    /** Что ответила сама система на вопрос «где claude» — вторая половина того же экрана. */
-    fun systemAnswer(): String = askSystem() ?: "${lookupCommand().joinToString(" ")}: не нашла"
+    /**
+     * What the system itself answered to "where is claude" - the other half of the same screen.
+     *
+     * The line goes to a person in the panel, where everything else is in English: an answer in another
+     * language in the middle of an English screen would read as debug rubbish rather than an
+     * explanation.
+     */
+    fun systemAnswer(): String = askSystem() ?: "${lookupCommand().joinToString(" ")}: not found"
 
     fun environment(): Map<String, String> = EnvironmentUtil.getEnvironmentMap()
 
     /**
-     * Знает ли найденный CLI такой ключ запуска.
+     * Whether the CLI we found knows such a launch flag.
      *
-     * Спрашиваем у самого файла, а не сверяемся с номером версии: у людей стоят
-     * разные сборки, а неизвестный ключ CLI не игнорирует — он падает на разборе
-     * аргументов, и вместо панели человек получил бы мёртвую вкладку.
+     * We ask the file itself rather than compare version numbers: people have different builds
+     * installed, and an unknown flag the CLI does not ignore - it fails while parsing its arguments,
+     * and instead of a panel the person would get a dead tab.
      *
-     * Ответ держим в памяти: `--help` стоит десятые доли секунды, но спрашивать
-     * его на каждый запуск разговора незачем. Ключ кеша учитывает и время правки
-     * файла — обновление CLI на месте не должно оставлять нас со старым ответом.
+     * The answer is kept in memory: `--help` costs tenths of a second, but asking it on every
+     * conversation launch is pointless. The cache key includes the file's modification time as well -
+     * updating the CLI in place must not leave us with a stale answer.
      */
     fun supportsFlag(executable: File, flag: String): Boolean =
         supportedFlags.getOrPut("${executable.absolutePath}|${executable.lastModified()}|$flag") {
@@ -61,15 +63,14 @@ internal object ClaudeExecutable {
     private const val LOOKUP_TIMEOUT_MS = 5_000
 
     /**
-     * Разовый запуск с настоящим пределом ожидания.
+     * A one-off launch with a timeout that actually holds.
      *
-     * Читать вывод в своём же потоке нельзя: чтение до конца ждёт, пока дочерний
-     * процесс закроет поток, и предел, поставленный после чтения, не наступает
-     * никогда. Достаточно login-профиля, который ждёт ввода или медленного
-     * сетевого диска, — и поток, спросивший «где claude», не возвращается вовсе,
-     * а панель навсегда остаётся в состоянии загрузки. Поэтому вывод собирает
-     * платформенный обработчик: он читает потоки отдельно от нас и по истечении
-     * срока сам убивает процесс.
+     * Reading the output on our own thread is not an option: reading to the end waits for the child
+     * process to close the stream, and a limit set after the read never arrives. A login profile that
+     * waits for input or a slow network drive is enough - and the thread that asked "where is claude"
+     * never comes back, while the panel stays in loading forever. So the output is collected by the
+     * platform's handler: it reads the streams apart from us and kills the process itself once the time
+     * is up.
      */
     private fun capture(command: List<String>, timeoutMs: Int): String? = runCatching {
         val commandLine = GeneralCommandLine(command)
@@ -90,7 +91,7 @@ internal object ClaudeExecutable {
     }
 
     private fun candidates(): List<String> = ClaudeLookup.candidates(
-        windows = windows,
+        windows = HostOs.isWindows,
         home = System.getProperty("user.home").orEmpty(),
         env = environment(),
         configured = ClaudePreferences.executablePath,
@@ -103,12 +104,12 @@ internal object ClaudeExecutable {
         .firstOrNull { it.isFile && it.canExecute() }
 
     /**
-     * Последнее слово — за системой: у неё спрашивают то же самое, что человек
-     * набрал бы в терминале. Так находятся установки в местах, которых нет в
-     * нашем списке: nvm, scoop, winget, чужой корпоративный образ.
+     * The last word belongs to the system: it is asked the same thing a person would have typed into a
+     * terminal. That is how installs in places absent from our list get found: nvm, scoop, winget,
+     * someone's corporate image.
      *
-     * На Unix — через login-оболочку: IDE, запущенная из Dock, видит PATH без
-     * пользовательских папок, а оболочка читает профиль и видит настоящий.
+     * On Unix through a login shell: an IDE launched from the Dock sees a PATH without the user's own
+     * folders, while a shell reads the profile and sees the real one.
      */
     private fun fromSystem(): File? {
         val path = askSystem() ?: return null
@@ -117,16 +118,16 @@ internal object ClaudeExecutable {
     }
 
     private fun lookupCommand(): List<String> =
-        if (windows) listOf("cmd.exe", "/c", "where claude") else listOf("/bin/sh", "-lc", "command -v claude")
+        if (HostOs.isWindows) listOf("cmd.exe", "/c", "where claude") else listOf("/bin/sh", "-lc", "command -v claude")
 
-    /** Ответ кешируем: это запуск процесса, а спрашивают об этом на каждом экране входа. */
+    /** The answer is cached: this starts a process, and every sign-in screen asks about it. */
     @Volatile
     private var systemPath: String? = null
 
     private fun askSystem(): String? {
         systemPath?.let { return it }
 
-        // `where` печатает все совпадения — берём первое рабочее.
+        // `where` prints every match - we take the first one that works.
         val answer = capture(lookupCommand(), LOOKUP_TIMEOUT_MS)
             ?.lineSequence()
             ?.map { it.trim() }

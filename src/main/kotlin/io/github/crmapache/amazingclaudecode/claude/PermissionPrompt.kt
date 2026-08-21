@@ -5,14 +5,14 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Как назвать человеку вызов инструмента, на который просят разрешения.
+ * How to name, for a person, the tool call permission is being asked for.
  *
- * Отдельно от [PermissionChannel]: тот разбирает протокол, а это — подписи в
- * карточке. Разные заботы, и проверяются они по-разному.
+ * Apart from [PermissionChannel]: that one parses the protocol, this one writes the card's captions.
+ * Different concerns, and they are checked in different ways.
  */
 internal object PermissionPrompt {
 
-    /** Короткая строка «что собирается сделать» — заголовок карточки. */
+    /** The short "what it is about to do" line - the card's title. */
     fun target(toolName: String, input: JsonObject?): String {
         val path = input.string("file_path").ifEmpty { input.string("notebook_path") }
         if (path.isNotEmpty()) return "wants to edit ${path.substringAfterLast('/')}"
@@ -24,7 +24,7 @@ internal object PermissionPrompt {
         }
     }
 
-    /** Сама суть вызова: команда, адрес или путь — то, по чему запоминается правило. */
+    /** The substance of the call: the command, the address or the path - what a rule is remembered by. */
     fun command(toolName: String, input: JsonObject?): String {
         if (input == null) return toolName
 

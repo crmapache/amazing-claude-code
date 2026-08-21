@@ -4,16 +4,15 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Терпимое чтение ответов CLI.
+ * Forgiving reads of the CLI's answers.
  *
- * Пустое место у него — это не только отсутствующее поле: в ответ пишется и
- * честный null. Так приходят лимиты подписки у только что поднятого процесса,
- * сводка сессии, настройки MCP-сервера. Привычные `jsonObject` и `jsonArray` на
- * таком месте бросают исключение, а лететь ему некуда: разбор идёт в том же
- * потоке, что и события разговора, — и вместе с цифрой в углу панель теряет
- * ещё не разобранный хвост вывода.
+ * An empty spot there is not only a missing field: an honest null gets written into the answer too.
+ * That is how subscription limits arrive from a freshly started process, and the session summary, and
+ * an MCP server's configuration. The familiar `jsonObject` and `jsonArray` throw on such a spot, and
+ * the exception has nowhere to fly: parsing runs on the same thread as the conversation's events - so
+ * along with a figure in the corner the panel loses the rest of the output it had not parsed yet.
  */
 internal fun JsonObject.child(name: String): JsonObject? = this[name] as? JsonObject
 
-/** То же самое для списка — см. [child]. */
+/** The same for a list - see [child]. */
 internal fun JsonObject.items(name: String): JsonArray? = this[name] as? JsonArray

@@ -15,14 +15,14 @@ export const CheckpointsCard = ({ scenario, currentIndex, onJump, onCopyLog, cop
   return (
     <div className={s.checkpoints}>
       <div className={s.checkpointsHead}>
-        <span className={s.toolbarTitle}>Чекпоинты</span>
+        <span className={s.toolbarTitle}>Checkpoints</span>
         <button type="button" className={s.copyButton} onClick={onCopyLog} disabled={!scenario}>
-          {copied ? '✓ скопировано' : 'Скопировать лог'}
+          {copied ? '✓ copied' : 'Copy the log'}
         </button>
       </div>
 
       {!scenario ? (
-        <div className={s.checkpointsEmpty}>Запусти сценарий, чтобы увидеть его чекпоинты</div>
+        <div className={s.checkpointsEmpty}>Run a scenario to see its checkpoints</div>
       ) : (
         <>
           <div className={s.checkpointsList}>

@@ -3,11 +3,11 @@ package io.github.crmapache.amazingclaudecode.claude
 import com.intellij.ide.util.PropertiesComponent
 
 /**
- * Выбранные модель, усилие и режим разрешений.
+ * The chosen model, effort and permission mode.
  *
- * Живут в настройках IDE, а не в памяти панели: выбор делают один раз, и повторять
- * его в каждой новой вкладке — и тем более после перезапуска редактора — незачем.
- * Хранилище общее на все проекты: модель выбирают под себя, а не под репозиторий.
+ * They live in the IDE's settings rather than in the panel's memory: the choice is made once, and
+ * repeating it in every new tab - let alone after an editor restart - serves nothing. The storage is
+ * shared across projects: a model is chosen to suit oneself, not the repository.
  */
 internal object ClaudePreferences {
 
@@ -16,7 +16,6 @@ internal object ClaudePreferences {
         val effort: String,
         val mode: String,
         val composerLayout: String,
-        val composerWidth: Int,
     )
 
     fun snapshot(): Snapshot = Snapshot(
@@ -24,7 +23,6 @@ internal object ClaudePreferences {
         effort = effort,
         mode = mode,
         composerLayout = composerLayout,
-        composerWidth = composerWidth,
     )
 
     var model: String
@@ -39,42 +37,39 @@ internal object ClaudePreferences {
         get() = read(MODE_KEY)
         set(value) = write(MODE_KEY, value)
 
-    /** Где сидит поле ввода: 'left' | 'bottom' | 'right' | 'compact'. Пусто — впервые открытая панель, ведёт себя как раньше. */
+    /**
+     * Where the input field sits: 'left' | 'bottom' | 'right' | 'compact'. Empty means a panel opened
+     * for the first time, which behaves as it used to.
+     */
     var composerLayout: String
         get() = read(COMPOSER_LAYOUT_KEY)
         set(value) = write(COMPOSER_LAYOUT_KEY, value)
 
-    /** Ширина панели ввода при layout left/right, в пикселях. 0 — ещё не выбирали, панель возьмёт свой дефолт. */
-    var composerWidth: Int
-        get() = read(COMPOSER_WIDTH_KEY).toIntOrNull() ?: 0
-        set(value) = write(COMPOSER_WIDTH_KEY, value.toString())
-
     /**
-     * Путь к исполняемому файлу, указанный руками. Пусто — ищем сами (см.
-     * [ClaudeExecutable]). Нужен там, где автоматический поиск промахивается:
-     * необычное место установки, PATH оболочки IDE не такой, как в терминале.
+     * The path to the executable, given by hand. Empty means we look for it ourselves (see
+     * [ClaudeExecutable]). Needed where the automatic search misses: an unusual install location, an
+     * IDE shell whose PATH is not the terminal's.
      */
     var executablePath: String
         get() = read(EXECUTABLE_KEY)
         set(value) = write(EXECUTABLE_KEY, value)
 
     /**
-     * Звуки, отключённые вручную. Хранится именно выключенное, а не включённое:
-     * по умолчанию звучит всё, и пустая настройка — это «как задумано», а не
-     * «человек снял все галочки». Иначе новый звук в следующей версии оказался
-     * бы выключенным у всех, кто хоть раз открывал этот список.
+     * Sounds switched off by hand. What is stored is what is off rather than what is on: by default
+     * everything sounds, and an empty setting means "as intended" rather than "the person cleared every
+     * checkbox". Otherwise a sound added in the next version would arrive switched off for everyone who
+     * had ever opened this list.
      */
     var mutedSounds: Set<String>
         get() = read(MUTED_SOUNDS_KEY).split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
         set(value) = write(MUTED_SOUNDS_KEY, value.joinToString(","))
 
     /**
-     * Громкость каждого звука в процентах. Записаны только те, что отличаются
-     * от полной: не названный здесь звук идёт как есть.
+     * Each sound's volume in per cent. Only those differing from full are written down: a sound not
+     * named here plays as it is.
      *
-     * Отдельно от [mutedSounds] намеренно — снятая галочка не должна стирать
-     * настроенную громкость: вернув её, человек ждёт свои прежние проценты, а
-     * не сотню.
+     * Kept apart from [mutedSounds] on purpose - clearing a checkbox must not wipe a configured volume:
+     * turning the sound back on, a person expects their previous per cent rather than a hundred.
      */
     var soundVolumes: Map<String, Int>
         get() = read(SOUND_VOLUMES_KEY)
@@ -90,8 +85,8 @@ internal object ClaudePreferences {
     private fun read(key: String): String = PropertiesComponent.getInstance().getValue(key).orEmpty()
 
     private fun write(key: String, value: String) {
-        // Пустое значение означает «как у Claude Code по умолчанию»: тогда флаг при
-        // запуске не передаётся вовсе.
+        // An empty value means "as Claude Code has it by default": then the flag is not passed at
+        // launch at all.
         PropertiesComponent.getInstance().setValue(key, value.ifEmpty { null })
     }
 
@@ -99,7 +94,6 @@ internal object ClaudePreferences {
     private const val EFFORT_KEY = "acc.effort"
     private const val MODE_KEY = "acc.mode"
     private const val COMPOSER_LAYOUT_KEY = "acc.composerLayout"
-    private const val COMPOSER_WIDTH_KEY = "acc.composerWidth"
     private const val EXECUTABLE_KEY = "acc.executable"
     private const val MUTED_SOUNDS_KEY = "acc.sounds.muted"
     private const val SOUND_VOLUMES_KEY = "acc.sounds.volumes"

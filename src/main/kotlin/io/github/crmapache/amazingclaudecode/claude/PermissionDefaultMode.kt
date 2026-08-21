@@ -1,31 +1,29 @@
 package io.github.crmapache.amazingclaudecode.claude
 
 /**
- * Режим разрешений, с которого начинает разговор впервые открытая панель.
+ * The permission mode a freshly opened panel starts a conversation in.
  *
- * Берётся оттуда же, откуда его берёт терминальный Claude Code, —
- * `permissions.defaultMode` в настройках (см. [ClaudeSettings]). Иначе панель и
- * терминал на одной машине начинают по-разному: человек однажды выбрал себе
- * умолчание, терминал его слушается, а панель молча открывалась в «Ask».
+ * Taken from where the terminal Claude Code takes it - `permissions.defaultMode` in the settings (see
+ * [ClaudeSettings]). Otherwise the panel and the terminal on one machine begin differently: a person
+ * once chose their default, the terminal obeys it, and the panel silently opened in "Ask".
  *
- * Правила повторяют CLI, и оба — не придирка:
+ * The rules repeat the CLI's, and neither is nitpicking:
  *
- * - `auto` принимается только от политики организации и личных настроек. Настройки
- *   проекта лежат в самом репозитории, и режим, в котором вопросы решает
- *   классификатор, туда мог бы положить кто угодно с правом на правку.
- * - `bypassPermissions` не принимается, если режим запрещён настройками: CLI такой
- *   умолчание всё равно отбросит, а панель осталась бы показывать режим, которого
- *   у разговора нет.
+ * - `auto` is accepted only from an organization's policy and from personal settings. A project's
+ *   settings live inside the repository, and the mode where a classifier decides the questions could
+ *   have been put there by anyone with write access.
+ * - `bypassPermissions` is not accepted when the mode is forbidden by settings: the CLI would throw
+ *   such a default away anyway, and the panel would be left showing a mode the conversation does not
+ *   have.
  *
- * Незнакомое имя (чужая сборка, опечатка) тоже отбрасывается: с ним CLI просто не
- * запустится.
+ * An unfamiliar name (a foreign build, a typo) is thrown away too: the CLI would simply not start.
  */
 internal object PermissionDefaultMode {
 
     fun of(projectDirectory: String?): String = of(
         sources = ClaudeSettings.sources(projectDirectory),
-        // Только настройки: спрашивать сам CLI тут нельзя — это запуск процесса, а
-        // умолчание нужно уже в первую отрисовку панели.
+        // Settings only: asking the CLI here is out of the question - that is starting a process, and
+        // the default is needed for the panel's very first frame.
         bypassAllowed = PermissionBypass.allowedBySettings(projectDirectory),
     )
 
@@ -46,7 +44,7 @@ internal object PermissionDefaultMode {
         }
     }
 
-    /** Кому CLI верит в вопросе про `auto` — всё, что не лежит в репозитории. */
+    /** Who the CLI trusts about `auto` - everything that does not live in the repository. */
     private val TRUSTED_WITH_AUTO = setOf(ClaudeSettings.Layer.POLICY, ClaudeSettings.Layer.USER)
 
     private const val DEFAULT_MODE = "defaultMode"

@@ -76,15 +76,14 @@ import { useSelection } from './hooks/useSelection'
 
 const MAIN_SESSION = 'main'
 
-/** Заглушка заголовка вкладки — до первого сообщения и сразу после /clear. */
+/** A tab's placeholder title - before the first message and right after /clear. */
 const defaultTitle = (sessionId: string): string => (sessionId === MAIN_SESSION ? 'main session' : 'new session')
 
 /**
- * Шрифты IDE — прямо в корень документа, а не в состояние React: их читают
- * десятки правил в стилях всех модулей, и гонять такое через пропсы значило бы
- * протащить размер шрифта через половину дерева ради того, что и так решается
- * каскадом. Значения по умолчанию остаются в tokens.css — по ним панель живёт
- * в браузере и в харнессе, где IDE рядом нет.
+ * The IDE's fonts go straight into the document's root rather than into React state: dozens of rules
+ * across every module's styles read them, and driving that through props would mean dragging a font size
+ * through half the tree for something the cascade settles anyway. The defaults stay in tokens.css - the
+ * panel lives by them in a browser and in the harness, where no IDE stands nearby.
  */
 const applyTypography = (monoFamily: string, uiFamily: string, lineHeight: number): void => {
   const root = document.documentElement.style
@@ -94,36 +93,36 @@ const applyTypography = (monoFamily: string, uiFamily: string, lineHeight: numbe
   if (lineHeight > 0) root.setProperty('--acc-leading', String(lineHeight))
 }
 
-/** Сколько ждём подтверждения Stop, прежде чем предложить убить процесс насильно. */
+/** How long a Stop's confirmation is waited for before offering to kill the process by force. */
 const STOP_GRACE_MS = 8000
 
 /**
- * Через сколько загруженный список MCP-серверов или плагинов пора освежить.
+ * After how long a loaded list of MCP servers or plugins is due for a refresh.
  *
- * Открыли вкладку, закрыли, открыли снова — спрашивать заново незачем: меняется
- * этот список редко (и правки из самой вкладки обновляют его сами), а стоит
- * запрос дорого — `claude mcp list` честно поднимает каждый сервер, каталог
- * плагинов обходит маркетплейсы, это секунды. Зато вернувшись к вкладке позже,
- * человек увидит настоящее положение дел, даже если конфиг правили из терминала.
+ * Opened a tab, closed it, opened it again - asking anew serves nothing: this list changes rarely (and
+ * edits from the tab itself update it on their own), while the request costs dearly - `claude mcp list`
+ * honestly brings up every server, the plugin catalogue walks the marketplaces, and that takes seconds.
+ * Coming back to the tab later, though, one sees the genuine state of affairs even if the config was
+ * edited from a terminal.
  */
 const LIST_STALE_MS = 60_000
 
-/** Сколько ждать конца возни с ползунком громкости, прежде чем записать выбор. */
+/** How long to wait for the fiddling with the volume slider to end before writing the choice down. */
 const SOUND_SAVE_DELAY_MS = 250
 
 /**
- * Сколько после нажатия «выйти» пропажа входа считается собственным действием, а
- * не новостью. С запасом на сам выход: он идёт через терминал IDE, где человеку
- * ещё предстоит увидеть, чем всё кончилось.
+ * For how long after pressing "sign out" a lost login counts as one's own doing rather than as news. With
+ * room to spare for the sign-out itself: it goes through the IDE's terminal, where the person has yet to
+ * see how it ended.
  */
 const SIGN_OUT_GRACE_MS = 2 * 60 * 1000
 
 /**
- * Черновик, вложения и цитаты принадлежат разговору, а не панели целиком.
+ * The draft, the attachments and the quotes belong to a conversation rather than to the panel as a whole.
  *
- * Текст и вложения — одна последовательность токенов, а не текст с отдельным
- * списком чипов сверху: так вложение остаётся ровно там, куда его вставили, а
- * не всегда перед текстом целиком.
+ * The text and the attachments are one sequence of tokens rather than text with a separate list of chips
+ * on top: that way an attachment stays exactly where it was inserted rather than always in front of the
+ * whole text.
  */
 interface Draft {
   tokens: UserToken[]
@@ -131,6 +130,9 @@ interface Draft {
 }
 
 const EMPTY_DRAFT: Draft = { tokens: [], quotes: [] }
+
+/** One reference for every tab without a queue - otherwise it would flicker through the dependencies. */
+const EMPTY_QUEUE: QueuedPrompt[] = []
 
 export const App = () => {
   const [panels, dispatchPanel] = useReducer(panelsReducer, { [MAIN_SESSION]: initialPanelState })
@@ -140,60 +142,66 @@ export const App = () => {
   const [active, setActive] = useState(MAIN_SESSION)
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
 
-  const [queue, setQueue] = useState<QueuedPrompt[]>([])
   /**
-   * Что человек успел выполнить в bash-режиме с прошлого своего сообщения — по
-   * вкладкам, у каждой свой разговор.
+   * The deferred "finish the current thing first" - kept per tab, like the draft and the command output
+   * beside it: a queue belongs to a conversation rather than to the panel as a whole.
    *
-   * Уезжает агенту приложением к следующему сообщению, как это делает и сам
-   * Claude Code: собственного хода такая команда не стоит (иначе «!git status»
-   * гонял бы модель ради двух строк), но и пропадать её вывод не должен — без
-   * него следующая просьба вроде «почини вот это» повисает в воздухе.
+   * As one shared list it travelled somewhere other than where it was put: the queue is worked through by
+   * whichever conversation comes free, and the list was one for all - switch to the neighbouring tab and
+   * its free conversation took someone else's message for itself.
+   */
+  const [queue, setQueue] = useState<Record<string, QueuedPrompt[]>>({})
+  /**
+   * What the person has run in bash mode since their last message - per tab, each with a conversation of
+   * its own.
+   *
+   * It travels to the agent as an attachment to the next message, exactly as Claude Code itself does it:
+   * such a command is not worth a turn of its own (otherwise a "!git status" would drive the model for the
+   * sake of two lines), but its output must not vanish either - without it the next request of the "fix
+   * this here" kind hangs in the air.
    */
   const [shellRuns, setShellRuns] = useState<Record<string, ShellRun[]>>({})
   /**
-   * Над панелью держат файл, брошенный из IDE или из проводника (см. fileDrag).
-   * Само перетаскивание в страницу не приходит, поэтому подсветку поля ввода
-   * зажигает оболочка своим сообщением, а не события браузера.
+   * A file dragged from the IDE or from a file manager is being held over the panel (see fileDrag). The
+   * drag itself never reaches the page, so the input field's highlight is lit by the shell's message
+   * rather than by the browser's events.
    */
   const [fileDragOver, setFileDragOver] = useState(false)
   const [menu, setMenu] = useState<{ kind: SelectorKind; anchor: Anchor } | null>(null)
   /**
-   * Выбор модели, усилия и режима. Приходит от оболочки при запуске и там же
-   * сохраняется: новая вкладка, форк и следующий запуск IDE начинаются с него.
+   * The choice of model, effort and mode. It arrives from the shell at startup and is saved there too: a
+   * new tab, a fork and the IDE's next start begin from it.
    */
   const [prefs, setPrefs] = useState({ model: '', effort: 'high', mode: 'manual' })
   const [auth, setAuth] = useState<AuthState | null>(null)
   /**
-   * Разрешён ли на этом компьютере режим «без вопросов». Оболочка выясняет это у
-   * самого CLI и отвечает отдельным сообщением, поэтому до ответа считаем, что
-   * нет: завести человека одной клавишей в режим, который тут же откажет, хуже,
-   * чем на секунду не пустить его туда вовсе.
+   * Whether the "no questions" mode is allowed on this machine. The shell finds that out from the CLI
+   * itself and answers with a message of its own, so until the answer comes we assume it is not: leading
+   * someone by one key into a mode that refuses at once is worse than not letting them in there for a
+   * second at all.
    */
   const [bypassAvailable, setBypassAvailable] = useState(false)
   /**
-   * Режимы, в которых агент уже отказал (сейчас — только bypass). Про него
-   * заранее не знает никто — ни панель, ни оболочка: доступен он или нет,
-   * решает политика организации, отвечает сам агент, и отвечает единственным
-   * способом — отказом на просьбу переключиться. Услышанный отказ помним на
-   * всю панель: дело не во вкладке, а в учётной записи.
+   * The modes the agent has already refused (at present only bypass). Nobody knows about it in advance -
+   * neither the panel nor the shell: whether it is available is decided by the organisation's policy,
+   * answered by the agent itself, and answered the only way it can - by refusing the request to switch. A
+   * refusal once heard is remembered for the whole panel: this is about the account rather than the tab.
    */
   const [refusedModes, setRefusedModes] = useState<string[]>([])
   /**
-   * Модели, на которых агент уже отказал переключить в auto. Раньше этот отказ
-   * тоже жил в refusedModes как признак «на всю панель» — но подпись самого
-   * режима у MODE_OPTIONS прямо говорит «Not on every model»: недоступность
-   * зависит от модели, а не только от машины/аккаунта, и один отказ на Haiku
-   * не должен молча гасить auto и на Sonnet. Список общий на все вкладки (та
-   * же логика, что и у refusedModes) — только со своим ключом на модель.
+   * The models on which the agent has already refused to switch to auto. This refusal used to live in
+   * refusedModes too, as a "for the whole panel" flag - but the mode's own caption in MODE_OPTIONS says
+   * plainly "Not on every model": the unavailability depends on the model rather than on the machine or
+   * the account alone, and one refusal on Haiku must not silently dim auto on Sonnet as well. The list is
+   * shared across every tab (the same logic as refusedModes) - only keyed by model.
    */
   const [autoRefusedModels, setAutoRefusedModels] = useState<string[]>([])
-  /** Сторона экрана, к которой прижата панель — определяет, где рисовать рамку к редактору. */
+  /** The screen's side the panel is pressed to - it decides where the border towards the editor is drawn. */
   const [dockAnchor, setDockAnchor] = useState<'left' | 'right' | 'top' | 'bottom'>('right')
-  /** Где сидит поле ввода. Приходит от оболочки при запуске и сохраняется там же. */
+  /** Where the input field sits. It arrives from the shell at startup and is saved there too. */
   const [composerLayout, setComposerLayoutState] = useState<ComposerLayout>('bottom')
   const [loginWaiting, setLoginWaiting] = useState(false)
-  /** Растёт, когда полю ввода нужно вернуть фокус: например после ссылки из редактора. */
+  /** Grows whenever the input field has to be given the focus back: after a link from the editor, say. */
   const [focusToken, setFocusToken] = useState(0)
   const [usage, setUsage] = useState<{
     session?: UsageWindow
@@ -202,48 +210,46 @@ export const App = () => {
     todayTokens?: string
   }>({})
   /**
-   * Какая из панелей-модалок открыта — одно значение, а не три независимых
-   * булевых. Так они взаимоисключающие по построению: открыть плагины само
-   * закрывает историю, а не оставляет её тихо висеть под новой поверх неё.
+   * Which of the modal panels is open - one value rather than three independent booleans. That way they
+   * are mutually exclusive by construction: opening the plugins closes the history by itself rather than
+   * leaving it hanging quietly under the new one on top of it.
    */
   const [openPanel, setOpenPanel] = useState<'history' | 'mcp' | 'plugins' | 'sounds' | null>(null)
-  /** Галочки и громкость звуковых оповещений — см. sounds.ts. */
+  /** The tick boxes and the volume of the sound alerts - see sounds.ts. */
   const [soundPrefs, setSoundPrefs] = useState<SoundPrefs>(NO_SOUND_PREFS)
-  /** Прошлые разговоры проекта: null — список ещё не приходил (см. стартовые запросы). */
+  /** The project's past conversations: null means the list has not arrived yet (see the startup requests). */
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
   /**
-   * Работа, которую попросили прибить крестиком на чипе, — пока без ответа на
-   * «точно?». Спрашиваем, потому что промах по крестику стоит дорого: у агента
-   * это десятки минут работы, у фоновой команды — живой процесс вроде сервера.
+   * The work someone asked to kill with the cross on a chip - still without an answer to "are you sure?".
+   * We ask because a miss on that cross costs dearly: for an agent it is tens of minutes of work, for a
+   * background command a live process such as a server.
    */
   const [stopping, setStopping] = useState<{ id: string; title: string; subject: string } | null>(null)
 
   /**
-   * Разговор, выбранный в истории, пока за него не ответили на вопрос: занять им
-   * вкладку — значит прибить процесс того разговора, что в ней сейчас, а с ним и
-   * ход, который в этот момент работает. Спрашиваем только про работающую
-   * вкладку: у свободной терять нечего, её разговор никуда не пропадает — он
-   * остаётся в той же истории, откуда открыли этот.
+   * A conversation chosen in the history, while the question about it goes unanswered: taking a tab for it
+   * means killing the process of the conversation currently in it, and with it the turn running at that
+   * moment. We ask only about a busy tab: a free one has nothing to lose, its conversation goes nowhere -
+   * it stays in the very history this one was opened from.
    */
   const [resuming, setResuming] = useState<HistoryEntry | null>(null)
   /**
-   * Завершённый агент пропадает из вкладок сам, как только на него никто не
-   * смотрит (см. эффект ниже) — а не мгновенно на глазах у того, кто как раз
-   * его и просматривает: тогда он держится до переключения на что-то другое.
-   * clearFinishedAgents ниже дополнительно прячет всех разом перед новым
-   * сообщением в main. Живёт здесь, а не в PanelState: durable-лог событий
-   * ничего не теряет, скрытие — чисто отображение.
+   * A finished agent disappears from the tabs by itself as soon as nobody is looking at it (see the effect
+   * below) - rather than instantly before the eyes of whoever is reading it right then: in that case it
+   * holds on until the switch to something else. clearFinishedAgents below additionally hides them all at
+   * once before a new message in main. It lives here rather than in PanelState: the durable event log
+   * loses nothing, and the hiding is purely a matter of display.
    */
   const [hiddenTaskIds, setHiddenTaskIds] = useState<Set<string>>(new Set())
   const [activeStream, setActiveStream] = useState('main')
   /**
-   * Списки MCP-серверов и плагинов: null — ещё ни разу не приходили, пустой
-   * массив — пришли и правда пусты. Разница видна на глаз: в первом случае
-   * вкладка показывает скелет, во втором — честное «ничего не настроено».
+   * The lists of MCP servers and plugins: null means they have never arrived, an empty array that they
+   * arrived and are genuinely empty. The difference is visible to the eye: in the first case the tab shows
+   * a skeleton, in the second an honest "nothing is configured".
    *
-   * Оба списка спрашиваем сразу при запуске, не дожидаясь, пока их вкладку
-   * откроют (см. эффект со стартовыми запросами): каждый такой запрос — это
-   * отдельный запуск claude на несколько секунд, и ждать их по клику незачем.
+   * Both lists are asked for right at startup rather than waiting for their tab to be opened (see the
+   * effect with the startup requests): every such request is a separate run of claude taking several
+   * seconds, and there is no reason to wait for them on a click.
    */
   const [mcpServers, setMcpServers] = useState<McpServerInfo[] | null>(null)
   const [mcpLoading, setMcpLoading] = useState(true)
@@ -256,14 +262,14 @@ export const App = () => {
   const [pluginsFetchedAt, setPluginsFetchedAt] = useState(0)
   const [pluginMessage, setPluginMessage] = useState<{ ok: boolean; text: string } | null>(null)
   /**
-   * Каталог моделей от самого CLI: null — ещё не приехал, тогда меню показывает
-   * встроенный список (см. modelOptions). Свой список держать нельзя — доступные
-   * модели зависят от учётной записи и политики организации.
+   * The catalogue of models from the CLI itself: null means it has not arrived yet, and then the menu shows
+   * the built-in list (see modelOptions). Keeping a list of our own is not an option - the available models
+   * depend on the account and on the organisation's policy.
    */
   const [models, setModels] = useState<ModelInfo[] | null>(null)
-  /** Файлы проекта для подсказки "@" — приходят сами, панель ничего не просит. */
+  /** The project's files for the "@" hint - they arrive by themselves, the panel asks for nothing. */
   const [files, setFiles] = useState<string[]>([])
-  /** Описание и синтаксис аргумента слэш-команд — той же природы, что и files. */
+  /** The slash commands' descriptions and argument syntax - of the same nature as files. */
   const [commandHints, setCommandHints] = useState<Record<string, { description: string; argumentHint: string }>>({})
 
   const feedRef = useRef<HTMLElement | null>(null)
@@ -271,40 +277,40 @@ export const App = () => {
   const cards = useCardState()
 
   /**
-   * Узел боковой рельсы left/right — пустой <div> в разметке ниже, куда
-   * Composer порталом рисует MODEL/EFFORT/MODE и кнопки (см.
-   * Composer.railContainer). Состояние, а не обычный ref: сам портал
-   * рисуется в эффекте после первого рендера этого узла, и React должен
-   * узнать об этом, чтобы перерисовать Composer с уже не-null контейнером.
+   * The left/right side rail's node - an empty <div> in the markup below, into which Composer draws
+   * MODEL/EFFORT/MODE and the buttons through a portal (see Composer.railContainer). State rather than an
+   * ordinary ref: the portal itself is drawn in an effect after this node's first render, and React has to
+   * learn about that in order to repaint Composer with a container that is no longer null.
    */
   const [railNode, setRailNode] = useState<HTMLDivElement | null>(null)
 
   const panel = panels[active] ?? initialPanelState
   const draft = drafts[active] ?? EMPTY_DRAFT
+  const sessionQueue = queue[active] ?? EMPTY_QUEUE
   const running = panel.status === 'running'
   /**
-   * Датчик контекста: цифра приходит от самого CLI, а расчёт по usage остаётся
-   * запасным на случай, когда её ещё нет (см. contextOf).
+   * The context gauge: the number comes from the CLI itself, and the calculation from usage stays as a
+   * fallback for when it is not there yet (see contextOf).
    */
   const context = contextOf(panel, usage.contextWindow)
-  const imageBaseCount = useMemo(() => countSessionImages(panel, queue), [panel, queue])
+  const imageBaseCount = useMemo(() => countSessionImages(panel, sessionQueue), [panel, sessionQueue])
 
-  // Stop честно ждёт подтверждения; если оно не пришло дольше разумного,
-  // предлагаем убить процесс насильно, а не стоять с крутящейся кнопкой вечно.
+  // A Stop honestly waits for a confirmation; if it has not come for longer than is reasonable, we offer
+  // to kill the process by force rather than stand with a spinning button forever.
   const stopStalled = Boolean(
     running && panel.stopRequestedAt && Date.now() - panel.stopRequestedAt > STOP_GRACE_MS,
   )
 
-  // Один источник правды на кнопку и на меню: пока агент не подтвердил смену,
-  // показываем выбранное, дальше — то, что он реально применил.
+  // One source of truth for the button and for the menu: until the agent confirms the change we show what
+  // was chosen, and after that what it genuinely applied.
   const mode = panel.pendingMode ?? panel.permissionMode ?? prefs.mode
 
-  // Какая модель работает на самом деле — см. resolvePanelModel, там же и почему
-  // она вынесена отдельной функцией.
+  // Which model is genuinely running - see resolvePanelModel, and there too why it was split out into a
+  // function of its own.
   const model = resolvePanelModel(panel, models, prefs.model)
 
-  // Что из необязательного доступно кругу Shift+Tab: разрешение на bypass приходит
-  // от оболочки, auto — своим отказом на действующей модели (см. autoRefusedModels).
+  // Which of the optional things the Shift+Tab cycle may reach: the permission for bypass arrives from
+  // the shell, auto through a refusal of its own on the current model (see autoRefusedModels).
   const availableModes = useMemo(
     () => ({
       bypass: bypassAvailable && !refusedModes.includes('bypassPermissions'),
@@ -314,8 +320,8 @@ export const App = () => {
   )
 
   /**
-   * Разговор ушёл на другую модель не по нашей воле — см. switchedModel. Живёт
-   * во вкладке, а не в общей настройке: у соседней свой разговор и своя модель.
+   * The conversation moved to another model against our will - see switchedModel. It lives in the tab
+   * rather than in the shared setting: the neighbouring one has a conversation and a model of its own.
    */
   const switched = switchedModel(models, prefs.model, panel.model)
 
@@ -330,15 +336,15 @@ export const App = () => {
   )
 
   /**
-   * Спросить списки заново. Тихо — когда на экране уже есть что показать: тогда
-   * вкладка открывается мгновенно на готовом, а свежее подъезжает само, без
-   * скелета и без «Refreshing…» на кнопке.
+   * Ask for the lists anew. Quietly when there is already something on the screen to show: then the tab
+   * opens instantly on what is ready, and the fresh data rolls in by itself, without a skeleton and
+   * without a "Refreshing..." on the button.
    */
   const loadMcp = useCallback(
     (quiet = false) => {
       if (!quiet) setMcpLoading(true)
-      // Спрашиваем у разговора: серверы держит его процесс, и живое их
-      // состояние знает только он (см. mcpList в протоколе).
+      // We ask the conversation: the servers are held by its process, and only it knows their live state
+      // (see mcpList in the protocol).
       send({ type: 'mcpList', sessionId: activeRef.current })
     },
     [],
@@ -350,9 +356,38 @@ export const App = () => {
     send({ type: 'marketplaceList' })
   }, [])
 
-  // Прошлые разговоры, MCP-серверы и плагины — сразу на старте, вместе с
-  // готовностью панели: к тому времени, как их вкладку откроют, они уже
-  // загружены.
+  /**
+   * Which pinned panel is open right now - for those who toggle it from a closure that outlived its render
+   * (see [openHistory]).
+   */
+  const openPanelRef = useRef(openPanel)
+  openPanelRef.current = openPanel
+
+  /**
+   * The history is a toggle for a pinned panel, like the neighbouring open* ones below. But it lives here
+   * rather than beside them: it is also called by the `/resume` command from the input field (see
+   * [runLocal]), and that one is declared higher up the file.
+   *
+   * It genuinely used to be declared beside its neighbours - that is, AFTER the early return to the login
+   * screen - and `/resume` did not work at all: the panel's first render always leaves through that return
+   * (the login is not confirmed by then), and `runLocal` from that same render stayed closed over a
+   * variable that render never got as far as declaring. After that React handed out exactly that one:
+   * `runLocal`'s dependencies did not change by the next render.
+   */
+  const openHistory = useCallback(() => {
+    setMenu(null)
+
+    if (openPanelRef.current === 'history') {
+      setOpenPanel(null)
+      return
+    }
+
+    setOpenPanel('history')
+    send({ type: 'history' })
+  }, [])
+
+  // Past conversations, MCP servers and plugins are asked for right at the start, together with the
+  // panel's readiness: by the time their tab is opened they are already loaded.
   useEffect(() => {
     send({ type: 'ready' })
     send({ type: 'history' })
@@ -361,15 +396,15 @@ export const App = () => {
   }, [loadMcp, loadPlugins])
 
   /**
-   * Курсор под мышью — оболочке, чтобы она поставила его окну IDE.
+   * The cursor under the mouse goes to the shell, so that it sets it on the IDE's window.
    *
-   * Своими силами страница этого не может: встроенный браузер рисуется офскрин,
-   * в отдельном процессе (см. protocol, сообщение cursor), и указатель, который
-   * просит CSS, до окна не доходит — над кнопками оставалась бы обычная стрелка.
+   * By its own means the page cannot do that: the embedded browser is drawn offscreen, in a separate
+   * process (see protocol, the cursor message), and the pointer the CSS asks for never reaches the window -
+   * over the buttons an ordinary arrow would remain.
    *
-   * По mouseover, а не по каждому движению: курсор меняется на границе
-   * элементов, а не внутри одного. Значение наследуемое, поэтому спрашиваем его
-   * у самого узла под мышью — у подписи внутри кнопки он тот же, что у кнопки.
+   * On mouseover rather than on every movement: the cursor changes at the elements' borders rather than
+   * inside one. The value is inherited, so we ask the node under the mouse itself - for a caption inside a
+   * button it is the same as for the button.
    */
   useEffect(() => {
     let last = ''
@@ -384,7 +419,7 @@ export const App = () => {
       const target = event.target instanceof Element ? event.target : null
       report(target ? getComputedStyle(target).cursor : 'default')
     }
-    // Мышь ушла из панели совсем — курсор дальше не наш.
+    // The mouse has left the panel entirely - the cursor beyond it is not ours.
     const onLeave = () => report('default')
 
     document.addEventListener('mouseover', onOver)
@@ -397,33 +432,32 @@ export const App = () => {
   }, [])
 
   /**
-   * Запущенные команды bash-режима по их номеру: ответ оболочки приносит только
-   * вывод, а агенту нужна и сама команда. Вкладку помним рядом с командой —
-   * по ней вычёркиваем всё, что не должно пережить `/clear` или закрытие
-   * разговора. Ссылка, а не состояние: от неё ничего не перерисовывается, и
-   * подписка на сообщения оболочки, живущая один раз на всю панель, свежего
-   * состояния всё равно бы не увидела.
+   * The bash-mode commands that have been started, by their number: the shell's answer brings only the
+   * output, while the agent needs the command itself too. The tab is remembered beside the command - by it
+   * we cross out everything that must not outlive a `/clear` or a closed conversation. A ref rather than
+   * state: nothing repaints because of it, and the subscription to the shell's messages, which lives once
+   * for the panel's whole life, would not see fresh state anyway.
    */
   const shellCommands = useRef<Record<string, { session: string; command: string }>>({})
 
-  /** Забыть команды вкладки, которые ещё бегут: их вывод этому разговору уже не нужен. */
+  /** Forget a tab's still-running commands: this conversation no longer needs their output. */
   const forgetShellCommands = (session: string) => {
     for (const [id, run] of Object.entries(shellCommands.current)) {
       if (run.session === session) delete shellCommands.current[id]
     }
   }
-  /** Порядковый номер запуска — от него уникальность id, см. runShell. */
+  /** A run's sequence number - the id's uniqueness comes from it, see runShell. */
   const shellSeq = useRef(0)
 
   /**
-   * Вставка в поле ввода тем, что пришло из IDE: ссылкой из редактора, файлом
-   * из диалога, брошенной мышью папкой.
+   * A paste into the input field with whatever came from the IDE: a link from the editor, a file from a
+   * dialog, a folder dropped with the mouse.
    *
-   * Кладём в место курсора, а не в конец черновика: человек мог отбить новую
-   * строку и уйти в редактор за ссылкой — она обязана встать туда, где он её
-   * ждёт. Само место живёт в поле ввода, поэтому вставляет оно (см. Composer),
-   * а панель только передаёт ему вложение. Пока поля нет вовсе — открыт ни один
-   * чат, — дописываем в конец черновика: он дождётся первой же вкладки.
+   * It goes to the caret's place rather than to the draft's end: the person may have hit a new line and
+   * gone off into the editor for the link - it has to stand where they expect it. The place itself lives in
+   * the input field, so the field is what inserts it (see Composer) and the panel only hands the attachment
+   * over. While there is no field at all - no chat is open - we append to the draft's end: it will wait for
+   * the first tab.
    */
   const insertIntoComposer = useRef<((token: UserToken) => void) | null>(null)
   const registerInsert = useCallback((insert: ((token: UserToken) => void) | null) => {
@@ -453,19 +487,17 @@ export const App = () => {
   }
 
   /**
-   * Длительность бегущих инструментов иначе стоит на месте до самого результата —
-   * рядом с готовыми карточками, которые появляются мгновенно, это читается как
-   * зависание. Ref вместо зависимости эффекта от panels: иначе каждый тик пересоздавал
-   * бы интервал.
+   * Otherwise a running tool's duration stands still right up to the result - beside finished cards that
+   * appear instantly, that reads as a hang. A ref rather than an effect dependency on panels: otherwise
+   * every tick would recreate the interval.
    */
   const panelsRef = useRef(panels)
   panelsRef.current = panels
 
   /**
-   * Та же причина, что у panelsRef: подписка на сообщения оболочки держится
-   * один раз при монтировании и своего рендера не имеет, а какая модель
-   * работает на самом деле у отказавшей вкладки (см. autoRefusedModels) —
-   * знать нужно свежую, не ту, что была на момент подписки.
+   * The same reason as panelsRef: the subscription to the shell's messages is held once at mount and has no
+   * render of its own, while which model genuinely runs in a tab that got refused (see autoRefusedModels)
+   * has to be known fresh rather than as it was at the moment of subscribing.
    */
   const modelsRef = useRef(models)
   modelsRef.current = models
@@ -473,21 +505,21 @@ export const App = () => {
   prefsRef.current = prefs
 
   /**
-   * Звуковые оповещения: что каждая вкладка успела рассказать наблюдателю.
-   * Память между кадрами, а не состояние — от неё ничего не перерисовывается.
+   * The sound alerts: what each tab has managed to tell the onlooker. Memory between frames rather than
+   * state - nothing repaints because of it.
    */
   const soundMemory = useRef<Record<string, SoundMemory>>({})
-  /** Настройку звуков читает эффект ниже, но перезапускаться из-за неё ему незачем. */
+  /** The effect below reads the sound settings, but has no reason to restart because of them. */
   const soundPrefsRef = useRef(soundPrefs)
   soundPrefsRef.current = soundPrefs
 
   /**
-   * Позвать звуком, если этот повод не выключен галочкой.
+   * Call with a sound, if this occasion is not switched off by a tick box.
    *
-   * Вкладка, из которой зовут, решает, нужен ли звук вообще: за фоновой никто
-   * не следит, а на открытую человек, скорее всего, смотрит прямо сейчас — и
-   * звать его к тому, что у него перед глазами, незачем. «Скорее всего» уточняет
-   * оболочка: панель бывает убрана с глаз, а окно IDE — свёрнуто (см. onlyIfAway).
+   * The tab the call comes from decides whether a sound is needed at all: nobody is watching a background
+   * one, while the open one the person is most likely looking at right now - and calling them to what is
+   * already before their eyes serves nothing. The "most likely" is refined by the shell: the panel may be
+   * hidden from sight and the IDE's window minimised (see onlyIfAway).
    */
   const alert = useCallback((sound: SoundId, sessionId: string) => {
     const prefs = soundPrefsRef.current
@@ -501,14 +533,14 @@ export const App = () => {
     })
   }, [])
 
-  /** Отложенная запись настройки звуков — см. changeSoundPrefs. */
+  /** The deferred write of the sound settings - see changeSoundPrefs. */
   const soundSaveTimer = useRef<number | undefined>(undefined)
 
   /**
-   * Показать новую настройку сразу, а записать чуть погодя.
+   * Show the new setting at once and write it down a little later.
    *
-   * Ползунок громкости шлёт событие на каждый процент: без задержки одно
-   * перетаскивание превратилось бы в сотню обращений к настройкам IDE.
+   * The volume slider fires an event on every percent: without the delay one drag would turn into a hundred
+   * trips to the IDE's settings.
    */
   const changeSoundPrefs = (next: SoundPrefs) => {
     setSoundPrefs(next)
@@ -521,11 +553,10 @@ export const App = () => {
   }
 
   /**
-   * Отложенную запись досылаем перед тем, как страница исчезнет.
+   * The deferred write is flushed before the page disappears.
    *
-   * Иначе последняя четверть секунды возни с ползунком пропадала бы всякий раз,
-   * когда панель перезагружают: настройка выглядела бы выставленной, а вернулась
-   * бы прежней.
+   * Otherwise the last quarter second of fiddling with the slider would be lost every time the panel is
+   * reloaded: the setting would look as though it had been set, and would come back as it was.
    */
   useEffect(() => {
     const flush = () => {
@@ -545,20 +576,19 @@ export const App = () => {
     }
   }, [])
 
-  /** Был ли вход в прошлом ответе оболочки: разлогин виден только по смене. */
+  /** Whether the shell's previous answer had a login: a sign-out is visible only through the change. */
   const wasLoggedIn = useRef<boolean | null>(null)
   /**
-   * Когда нажали «выйти»: пропажа входа сразу после этого — собственное действие,
-   * а не новость. Время, а не просто отметка: выход может и не состояться (окно
-   * терминала закрыли, опрос сдался), и вечная отметка проглотила бы потом
-   * настоящий разлогин — ровно то единственное, ради чего звук тут и нужен.
+   * When "sign out" was pressed: a login lost right after that is one's own doing rather than news. A time
+   * rather than a mere flag: the sign-out may not happen at all (the terminal window was closed, the
+   * polling gave up), and an everlasting flag would later swallow a genuine sign-out - precisely the one
+   * thing the sound is here for.
    */
   const signedOutAt = useRef(0)
 
   /**
-   * Звук зовёт человека от любой вкладки, а не только от открытой: у фоновой
-   * есть лишь точка на ярлыке, а на неё смотрят ровно тогда, когда и так знают,
-   * что там что-то происходит.
+   * The sound calls the person from any tab rather than only from the open one: a background tab has only a
+   * dot on its label, and that is looked at exactly when one already knows something is happening there.
    */
   useEffect(() => {
     for (const sessionId of Object.keys(panels)) {
@@ -566,8 +596,8 @@ export const App = () => {
       if (!panel) continue
 
       const memory = soundMemory.current[sessionId]
-      // Первый взгляд на вкладку — только знакомство: всё, что в ней уже лежит,
-      // звучать не должно (см. rememberPanel).
+      // The first look at a tab is only an introduction: nothing that already lies in it should sound
+      // (see rememberPanel).
       if (!memory) {
         soundMemory.current[sessionId] = rememberPanel(panel)
         continue
@@ -579,10 +609,9 @@ export const App = () => {
   }, [panels, alert])
 
   /**
-   * Перед тем как реально уйдёт новое сообщение в main, прячем из дропдауна всех
-   * агентов, которые к этому моменту уже закончили работу — иначе за длинную
-   * сессию там накопился бы длинный хвост ненужного. Ещё не завершённого агента
-   * не трогаем: он не должен пропадать сам по себе, только когда закончит.
+   * Before a new message genuinely leaves for main, we hide from the dropdown every agent that has finished
+   * its work by then - otherwise over a long session a long tail of the unneeded would pile up there. An
+   * agent that has not finished we leave alone: it must not disappear by itself, only when it is done.
    */
   const clearFinishedAgents = (session: string) => {
     const items = panelsRef.current[session]?.items ?? []
@@ -599,12 +628,10 @@ export const App = () => {
   }
 
   /**
-   * Фоновый агент, за которым сейчас никто не следит, прячется сразу же, как
-   * закончил — незачем ждать следующего сообщения в main, чтобы не занимал
-   * место вкладкой. Тот, что просматривается прямо сейчас (activeStream), не
-   * трогаем: работу нельзя выдёргивать из-под курсора — спрячется сам, как
-   * только просмотр переключится на что-то другое (эффект перезапустится по
-   * activeStream и подберёт его).
+   * A background agent nobody is watching right now is hidden as soon as it finishes - there is no reason to
+   * wait for the next message in main just so it stops taking up a tab. The one being read right now
+   * (activeStream) we leave alone: work must not be yanked out from under the cursor - it hides by itself
+   * as soon as the reading switches to something else (the effect restarts on activeStream and picks it up).
    */
   useEffect(() => {
     const finishedIds = panel.items
@@ -628,13 +655,12 @@ export const App = () => {
     const id = setInterval(() => {
       for (const sessionId of Object.keys(panelsRef.current)) {
         const panel = panelsRef.current[sessionId]
-        // Тикаем и пока ждём подтверждения Stop, и пока идёт ход без единого
-        // вызова инструмента (turnStartedAt тогда уже есть, а startedAt ещё
-        // пуст) — иначе «Claude is thinking» так и стояло бы с нулевым
-        // счётчиком, пока не начнётся первый вызов.
-        // panel.retry — обратный отсчёт до следующей попытки в строке
-        // состояния: он тикает и тогда, когда никакой работы в панели нет
-        // вовсе (ход мог кончиться, а повтора ждёт запрос фонового субагента).
+        // We tick both while a Stop's confirmation is awaited and while a turn runs without a single
+        // tool call (turnStartedAt exists by then, while startedAt is still empty) - otherwise the
+        // "Claude is thinking" would stand there with a zero counter until the first call began.
+        // panel.retry is the countdown to the next attempt in the status line: it ticks even when there
+        // is no work in the panel at all (the turn may have ended while a background subagent's request
+        // waits for a retry).
         if (
           Object.keys(panel.startedAt).length > 0 ||
           panel.stopRequestedAt ||
@@ -650,14 +676,12 @@ export const App = () => {
   }, [])
 
   /**
-   * Permission/ask/plan главного потока может решить только тот, кто смотрит
-   * на эту самую вкладку — карточки решения рендерятся из panel.items активной
-   * сессии (см. permission/ask чуть ниже и onPlanDecision у Feed), поэтому
-   * достаточно следить за одной активной сессией, а не гонять это по всем
-   * открытым вкладкам. Реагируем на смену awaitsYou и переносим её в panel
-   * (attentionStarted/attentionEnded — см. build.ts), чтобы streamStatus мог
-   * вычесть время ожидания из «Claude is thinking · Xm Ys», а не приписывать
-   * его агенту.
+   * The main stream's permission/ask/plan can be decided only by whoever is looking at this very tab - the
+   * decision cards are rendered out of the active session's panel.items (see permission/ask just below and
+   * Feed's onPlanDecision), so watching one active session is enough rather than driving this across every
+   * open tab. We react to a change in awaitsYou and carry it into the panel (attentionStarted /
+   * attentionEnded - see build.ts) so that streamStatus can subtract the waiting time from "Claude is
+   * thinking - Xm Ys" rather than charge it to the agent.
    */
   useEffect(() => {
     const awaiting = panel.items.some((item) => ownStream(item) && awaitsYou(item, cards))
@@ -727,10 +751,9 @@ export const App = () => {
             dispatchPanel({ session: message.sessionId, action: { kind: 'status', status: message.state } })
             break
 
-          // Ответ на генерацию заголовка (см. submit): перезаписываем только
-          // если вкладка ещё жива и с /clear её не переименовали обратно в
-          // заглушку прямо сейчас — иначе устаревший ответ вернул бы заголовок,
-          // от которого пользователь только что явно отказался.
+          // The answer to the title generation (see submit): we overwrite only if the tab is still alive
+          // and a /clear has not just renamed it back to the placeholder - otherwise a stale answer would
+          // bring back a title the user has explicitly just given up.
           case 'sessionTitle':
             setSessions((current) =>
               current.map((session) =>
@@ -750,17 +773,17 @@ export const App = () => {
               session: message.sessionId,
               action: { kind: 'agent', event: message.event, replay: message.replay },
             })
-            // Разговор стёрли: вывод команд, который не успел уехать агенту, к
-            // новому разговору отношения не имеет — вместе с лентой уходит и он.
-            // Вместе с уже собранным забываем и то, что ещё бежит: иначе вывод
-            // команды, запущенной в прошлом разговоре, приехал бы в новый и
-            // уехал агенту с первым же его сообщением.
+            // The conversation has been wiped: the command output that never made it to the agent has
+            // nothing to do with the new conversation - it leaves along with the feed. Together with what
+            // has been collected we forget what is still running too: otherwise the output of a command
+            // started in the previous conversation would arrive in the new one and travel to the agent
+            // with its very first message.
             if (message.event.type === 'conversation_reset') {
               forgetShellCommands(message.sessionId)
               setShellRuns((current) => ({ ...current, [message.sessionId]: [] }))
-              // Заголовок вкладки — тоже часть того разговора, который только что
-              // стёрли: без сброса он остался бы висеть от прежней темы, а
-              // следующее сообщение уже не переименовало бы вкладку (см. submit).
+              // The tab's title is part of the conversation that has just been wiped too: without a
+              // reset it would hang on from the previous subject, and the next message would no longer
+              // rename the tab (see submit).
               setSessions((current) =>
                 current.map((session) =>
                   session.id === message.sessionId
@@ -802,8 +825,8 @@ export const App = () => {
 
           case 'mcpActionResult':
             setMcpMessage({ ok: message.ok, text: message.message })
-            // Неудача — тоже итог: без этого не сумевший загрузиться список
-            // остался бы со скелетом и погашенной кнопкой навсегда.
+            // A failure is an outcome too: without this a list that failed to load would stay with a
+            // skeleton and a dimmed button forever.
             if (!message.ok) setMcpLoading(false)
             break
 
@@ -835,8 +858,8 @@ export const App = () => {
             break
 
           case 'bashResult': {
-            // В карточку — как в терминале, одним потоком: ошибки идут вперемешку
-            // с обычным выводом ровно там, где их напечатала сама команда.
+            // Into the card as in a terminal, as one stream: the errors are mixed in with the ordinary
+            // output exactly where the command itself printed them.
             const output = [message.stdout, message.stderr].filter((part) => part.trim().length > 0).join('\n')
 
             dispatchPanel({
@@ -844,13 +867,12 @@ export const App = () => {
               action: { kind: 'bashFinished', id: message.id, output, exitCode: message.exitCode },
             })
 
-            // Агенту — раздельно, своими тегами (см. shellText): по ним видно,
-            // что команда ругалась, даже когда код возврата нулевой.
+            // To the agent separately, under tags of their own (see shellText): by them one can see the
+            // command complained even when the return code is zero.
             //
-            // Саму команду забираем ДО setState, а не внутри него: обновляющую
-            // функцию React вызывает не ровно один раз (в строгом режиме —
-            // дважды), и вычёркивание записи оттуда съедало бы собственный
-            // результат — вывод не доезжал до агента вовсе.
+            // The command itself is taken BEFORE setState rather than inside it: React calls an updater
+            // function not exactly once (in strict mode twice), and crossing the record out from there
+            // would eat its own result - the output would not reach the agent at all.
             const ran = shellCommands.current[message.id]
             if (ran) {
               delete shellCommands.current[message.id]
@@ -883,14 +905,14 @@ export const App = () => {
             break
 
           case 'usage':
-            // Приходит двумя независимыми путями (расход разговора и отдельно
-            // скан транскриптов на todayTokens) — сливаем, а не заменяем целиком,
-            // иначе один обнулял бы то, что уже узнали через другой.
+            // It arrives by two independent routes (the conversation's usage and separately the
+            // transcript scan for todayTokens) - we merge rather than replace whole, otherwise one would
+            // zero out what the other has already learned.
             setUsage((current) => ({
               session: message.session ?? current.session,
               week: message.week ?? current.week,
-              // ?? тут не годится — 0 не nullish, застрял бы в state навсегда
-              // и датчик контекста ниже намертво делился бы на ноль.
+              // ?? will not do here - a 0 is not nullish, it would get stuck in the state forever and the
+              // context gauge below would divide by zero for good.
               contextWindow:
                 message.contextWindow && message.contextWindow > 0 ? message.contextWindow : current.contextWindow,
               todayTokens: message.todayTokens ?? current.todayTokens,
@@ -923,12 +945,11 @@ export const App = () => {
               searched: message.searched,
             })
             if (message.loggedIn) setLoginWaiting(false)
-            // Вход отвалился сам: пока не войдёшь заново, агент на любую просьбу
-            // отвечает отпиской про /login, и заметить это стоит сразу, а не
-            // через три бесполезных ответа. Про собственный выход и про самый
-            // первый ответ (когда прежнего состояния ещё нет) молчим.
-            // Про пропавший вход панель говорит и сама, целым экраном входа:
-            // тому, кто в неё смотрит, звук тут ничего не добавит.
+            // The login fell away by itself: until one signs in again the agent answers any request with
+            // a brush-off about /login, and that is worth noticing at once rather than after three useless
+            // answers. About one's own sign-out and about the very first answer (when there is no previous
+            // state yet) we stay silent. About a lost login the panel speaks by itself, with a whole login
+            // screen: for whoever is looking at it a sound adds nothing here.
             if (
               !message.loggedIn &&
               wasLoggedIn.current === true &&
@@ -945,9 +966,9 @@ export const App = () => {
             break
 
           case 'model':
-            // Настройка идёт следом за действующей моделью, а не за выбранной:
-            // отвергнутая не должна ни стоять галочкой в меню, ни уехать флагом
-            // в следующую вкладку — с ней процесс не поднимется вовсе.
+            // The setting follows the model in force rather than the one chosen: a rejected one must
+            // neither stand as a tick in the menu nor travel as a flag into the next tab - with it the
+            // process would not come up at all.
             setPrefs((current) => ({ ...current, model: message.model }))
             dispatchPanel({
               session: message.sessionId,
@@ -956,24 +977,21 @@ export const App = () => {
             break
 
           case 'mode': {
-            // auto недоступен не по вине человека и не разово — это свойство
-            // модели, узнать которое заранее неоткуда (см. ModeAvailability):
-            // единственный способ — попробовать и посмотреть на отказ. До
-            // первой попытки Shift+Tab и меню считают его доступным, поэтому
-            // самый первый отказ неизбежен для каждой новой модели. Дальше
-            // autoRefusedModels запоминает его и меню/цикл больше на auto не
-            // попадут — а этот, первый и ожидаемый, отказ не показываем
-            // красной карточкой в разговоре: это внутренняя проверка
-            // возможностей, а не что-то, что нужно прочитать и закрыть руками.
+            // auto is unavailable through nobody's fault and not just this once - it is a property of the
+            // model, and there is nowhere to learn it in advance (see ModeAvailability): the only way is to
+            // try and look at the refusal. Until the first attempt Shift+Tab and the menu consider it
+            // available, so the very first refusal is unavoidable for every new model. After that
+            // autoRefusedModels remembers it and neither the menu nor the cycle will land on auto again -
+            // and this first, expected refusal we do not show as a red card in the conversation: it is an
+            // internal check of what is possible rather than something to read and dismiss by hand.
             const routineAutoRefusal = !message.applied && normalizeMode(message.mode) === 'auto'
 
             if (!message.applied) {
               if (routineAutoRefusal) {
-                // Модель этой самой вкладки на момент отказа, а не активной
-                // (можно переключиться на другую вкладку раньше, чем придёт
-                // ответ) — см. autoRefusedModels. Разворачиваем той же
-                // формулой, что и в рендере (см. resolvePanelModel), иначе
-                // «сказал ли агент модель» решаем по-разному в двух местах.
+                // The model of this very tab at the moment of the refusal rather than the active one
+                // (one may switch to another tab before the answer comes) - see autoRefusedModels.
+                // Resolved by the same formula as in the render (see resolvePanelModel), otherwise
+                // "did the agent name a model" would be decided differently in two places.
                 const sessionPanel = panelsRef.current[message.sessionId]
                 const refusedModel = resolvePanelModel(sessionPanel ?? {}, modelsRef.current, prefsRef.current.model)
                 setAutoRefusedModels((current) => (current.includes(refusedModel) ? current : [...current, refusedModel]))
@@ -998,10 +1016,10 @@ export const App = () => {
             break
 
           case 'selection':
-            // Ссылка на кусок файла из редактора: текст не тащим, агент прочитает
-            // файл сам и увидит его целиком. Плашкой — и для пути от корня проекта,
-            // и для абсолютного: поле ввода не место сырому пути в полсотни знаков,
-            // а агенту в любом случае уезжает полный путь (см. referenceText).
+            // A reference to a piece of a file from the editor: we do not drag the text along, the agent
+            // reads the file itself and sees it whole. As a chip both for a path from the project's root
+            // and for an absolute one: the input field is no place for a raw path fifty characters long,
+            // and the full path travels to the agent either way (see referenceText).
             addToDraft({ kind: 'chip', chip: referenceChip(message) })
             setFocusToken((current) => current + 1)
             break
@@ -1011,74 +1029,106 @@ export const App = () => {
   )
 
   /**
-   * Буфер обмена встроенного браузера на Linux ни с чем не связан: скопированное
-   * во вкладке кода до панели не доходит, и наоборот. Мост чинит это через
-   * оболочку — см. clipboard.ts.
+   * The embedded browser's clipboard on Linux is connected to nothing: what was copied in a code tab never
+   * reaches the panel, and the other way round too. The bridge fixes that through the shell - see
+   * clipboard.ts.
    */
   useEffect(() => installClipboardBridge(), [])
 
   /**
-   * Подписка живёт один раз, а активная вкладка меняется — держим её в ссылке.
+   * The subscription lives once while the active tab changes - so we hold it in a ref.
    *
-   * Обновляем прямо при отрисовке, а не эффектом: эффект оповещений объявлен
-   * выше и в том же кадре сработал бы раньше — то есть решал бы, звучать ли, по
-   * той вкладке, которая была открыта до переключения.
+   * Updated right during the render rather than in an effect: the alerts effect is declared above and in
+   * the same frame would fire earlier - that is, it would decide whether to sound by the tab that was open
+   * before the switch.
    */
   const activeRef = useRef(active)
   activeRef.current = active
 
-  // Открытый стрим принадлежит той вкладке, где его открыли: у другой сессии
-  // агента с таким id почти наверняка нет. Без сброса переключение вкладки
-  // могло бы унести orphaned activeStream в чужую панель и упереться в пустой
-  // экран без дропдауна и без пути назад на main.
+  // An open stream belongs to the tab it was opened in: another session almost certainly has no agent
+  // with such an id. Without the reset a tab switch could carry an orphaned activeStream into someone
+  // else's panel and run into an empty screen with no dropdown and no way back to main.
   useEffect(() => {
     setActiveStream('main')
   }, [active])
 
-  // Очередь разбирается сама, как только агент освободился: ровно это обещает подпись.
+  /**
+   * The queue works itself through as soon as the conversation comes free: that is exactly what the caption
+   * under the button promises.
+   *
+   * Across every tab rather than the one open: a queue waits for the end of the turn it was put into, and
+   * has no reason to wait for a switch to its tab - a background conversation is precisely what one leaves
+   * in order to go and do something else.
+   *
+   * One message per pass: the next travels when the turn it began has ended, while a neighbouring tab's
+   * queue is picked up by a restart of this same effect - its own turn does not stand in the way.
+   */
   useEffect(() => {
-    if (running || queue.length === 0) return
+    const ready = Object.keys(queue).find(
+      (sessionId) => (queue[sessionId]?.length ?? 0) > 0 && panels[sessionId]?.status !== 'running',
+    )
+    if (!ready) return
 
-    const [next, ...rest] = queue
+    const next = queue[ready]?.[0]
     if (!next) return
 
-    clearFinishedAgents(active)
-    setActiveStream('main')
-    setQueue(rest)
+    clearFinishedAgents(ready)
+    // Reading a subagent belongs to the open tab: a background one has none, and there is nothing to
+    // reset there.
+    if (ready === activeRef.current) setActiveStream('main')
+    setQueue((current) => ({ ...current, [ready]: (current[ready] ?? []).slice(1) }))
     dispatchPanel({
-      session: active,
-      // Кладём в ленту то же, что набирали, а не готовую строку: иначе вложения
-      // отправленного из очереди сообщения исчезают из истории сессии, и
-      // countSessionImages перестаёт их видеть — следующая картинка снова
-      // становится первой.
+      session: ready,
+      // Into the feed goes what was typed rather than the finished string: otherwise the attachments of a
+      // message sent from the queue disappear from the session's history and countSessionImages stops
+      // seeing them - the next image becomes the first one again.
       action: { kind: 'prompt', tokens: next.tokens, quotes: [] },
     })
-    send({ type: 'prompt', sessionId: active, text: next.text, images: next.images })
-  }, [running, queue, active])
+    send({ type: 'prompt', sessionId: ready, text: next.text, images: next.images })
+  }, [panels, queue])
 
   /**
-   * Режим меняет оболочка управляющим сообщением: агент применяет его к следующим
-   * же вызовам инструментов, перезапускать разговор не нужно.
+   * The mode is changed by the shell through a control message: the agent applies it to the very next tool
+   * calls, and the conversation needs no restart.
+   */
+  /**
+   * The mode of THIS tab, and of no other. The MODE selector and Shift+Tab both come here.
+   *
+   * prefs.mode is deliberately left alone: it is what new tabs start in, and choosing to spend one tab
+   * in plan mode says nothing about the next one. The two used to be the same action, and a single pick
+   * quietly became the starting mode in every project and after every restart. Changing that is its own
+   * decision now - see [setDefaultMode].
    */
   const setMode = useCallback(
     (next: string) => {
       send({ type: 'setMode', sessionId: active, mode: next })
-      setPrefs((current) => ({ ...current, mode: next }))
       dispatchPanel({ session: active, action: { kind: 'modeRequested', mode: next } })
     },
     [active],
   )
 
   /**
-   * Действующий режим — необязательный (auto/bypass) и стал недоступен на этой
-   * же вкладке, а её никто ни о чём не спрашивал: например auto выбрали при
-   * одной модели, а потом сменили модель на ту, где агент его уже отклонял
-   * (см. autoRefusedModels). Сам он не поправится — источники mode (см. выше)
-   * не пересчитывают его назад, стоит просто последним, что запросили или
-   * унаследовали от prefs, — поэтому откатываем на Ask permissions тем же
-   * путём, каким его выбирают руками: это заодно чистит и prefs.mode, если
-   * протух именно он (см. setMode). Не трогаем, пока ответа на смену ещё
-   * ждём (pendingMode) — нашего отказа тут ещё не было, ждём настоящий.
+   * What new tabs start in - chosen from the header's menu and nowhere else, so that it never changes by
+   * itself. The open tabs are left as they are on purpose: this is a decision about the next tab rather
+   * than about the one being worked in, and reaching into a running conversation to apply it would be
+   * exactly the surprise this separation removes.
+   */
+  const setDefaultMode = useCallback((next: string) => {
+    send({ type: 'setDefaultMode', mode: next })
+    setPrefs((current) => ({ ...current, mode: next }))
+  }, [])
+
+  /**
+   * The mode in force is an optional one (auto/bypass) and has become unavailable in this very tab, while
+   * nobody asked the tab anything: auto was chosen under one model, say, and then the model was changed to
+   * one where the agent had already rejected it (see autoRefusedModels). It will not right itself - mode's
+   * sources (see above) do not recompute it backwards, it simply stands as the last thing requested or
+   * inherited from prefs - so we roll back to Ask permissions by the same route it is chosen by hand. The
+   * rollback is this tab's alone (see setMode): should the saved default itself be a mode this machine
+   * cannot do, every new tab corrects itself the same way on opening, and what to start in stays the
+   * person's own answer rather than something the panel quietly rewrote. We leave it alone while an
+   * answer to a change is still awaited (pendingMode) - our refusal has not happened yet, we wait for a
+   * real one.
    */
   useEffect(() => {
     if (panel.pendingMode) return
@@ -1086,21 +1136,20 @@ export const App = () => {
     if (stale) setMode('manual')
   }, [mode, availableModes, panel.pendingMode, setMode])
 
-  /** Расположение поля ввода — тоже выбор оболочки: новый запуск IDE начинается с него. */
+  /** The input field's placement is the shell's choice too: a new start of the IDE begins from it. */
   const setComposerLayout = useCallback((next: ComposerLayout) => {
     send({ type: 'setComposerLayout', layout: next })
     setComposerLayoutState(next)
   }, [])
 
   /**
-   * Решение по карточке плана — единая точка для обеих кнопок: помечает план
-   * решённым (карточка после этого не рисуется, см. Feed) и отвечает агенту,
-   * который на этом самом месте и стоит.
+   * The decision on a plan card - one point for both buttons: it marks the plan decided (after that the
+   * card is not drawn, see Feed) and answers the agent, which stands at this very place.
    *
-   * Режим панель здесь не выбирает сама — этим занимается оболочка (см.
-   * ClaudePanel.decidePlan): одобрение переключает разговор в bypass, чтобы
-   * дальнейшие шаги того же плана не спрашивали разрешения по одному; новый
-   * режим приезжает обычным системным событием, как и при ручном выборе.
+   * The panel does not choose the mode here itself - that is the shell's business (see
+   * ClaudePanel.decidePlan): an approval switches the conversation into bypass so that the plan's further
+   * steps do not ask for permission one by one; the new mode arrives as an ordinary system event, as it
+   * does with a manual choice.
    */
   const decidePlan = useCallback(
     (itemId: string, decision: 'approve' | 'keepPlanning', message?: string) => {
@@ -1111,10 +1160,9 @@ export const App = () => {
   )
 
   /**
-   * Всё, что уезжает в ленту, живёт одной и той же ссылкой от рендера к рендеру.
-   * Иначе карточки перерисовывались бы заново на каждый кадр печатающегося
-   * ответа: новая функция в пропсах для React — такой же повод, как новый текст
-   * (см. Feed).
+   * Everything that travels into the feed lives as one and the same reference from render to render.
+   * Otherwise the cards would be repainted anew on every frame of a typing answer: to React a new function
+   * in the props is as good a reason as new text (see Feed).
    */
   const attachFeed = useCallback((element: HTMLElement | null) => {
     feedRef.current = element
@@ -1128,10 +1176,10 @@ export const App = () => {
   )
 
   /**
-   * Вопрос закрыли, не выбрав ни одного варианта: человек скажет своими
-   * словами. Агенту это уходит отказом на его вызов — тем же путём, что и
-   * «не разрешаю» у запроса разрешения: ход продолжается, а вопрос перестаёт
-   * держать панель. Промолчать нельзя — агент так и ждал бы выбора.
+   * The question was dismissed without choosing a single option: the person will say it in their own words.
+   * To the agent that travels as a refusal to its call - by the same route as a "deny" on a permission
+   * request: the turn goes on while the question stops holding the panel. Staying silent is not an option -
+   * the agent would go on waiting for a choice.
    */
   const dismissAsk = useCallback(
     (itemId: string) => {
@@ -1142,29 +1190,27 @@ export const App = () => {
   )
 
   /**
-   * Ответ на вопрос агента возвращается тем же вызовом инструмента, который его
-   * и задал: ход стоит ровно на нём и продолжается с того же места, а не
-   * начинается заново со следующего сообщения.
+   * The answer to the agent's question returns through the very tool call that asked it: the turn stands
+   * precisely on it and carries on from the same place rather than starting anew with the next message.
    *
-   * В ленту ответ всё равно кладём репликой человека: иначе в переписке остался
-   * бы вопрос без единого следа ответа на него.
+   * Into the feed the answer still goes as the person's own line: otherwise the conversation would keep a
+   * question with not a trace of an answer to it.
    */
   const sendAnswers = useCallback(
     (itemId: string, answers: { question: string; answer: string }[]) => {
-      // Помечаем отвеченной в любом случае — иначе карточка без единого
-      // вопроса (например от пустого/сбойного вызова инструмента) не может
-      // закрыться в принципе: слать action-то нечего, а кнопка тогда
-      // навсегда ничего не делает.
+      // Marked answered either way - otherwise a card without a single question (from an empty or broken
+      // tool call, say) cannot be closed at all: there is nothing to send, and the button would then do
+      // nothing forever.
       cards.answerAsk(itemId)
 
       const answered = answers.filter((entry) => entry.answer.trim().length > 0)
       if (answered.length === 0) return
 
-      // Вопрос вместе со своим ответом, пары — через пустую строку. Одними
-      // ответами подряд эта реплика в ленте не читалась вовсе: «Только
-      // многострочной» без вопроса над ним не значит ничего, а вопросов в одном
-      // вызове бывает до шести. Тем же текстом отвечаем и агенту, если ждать
-      // ответа уже некому (см. askAnswer в protocol) — там он тоже понятнее.
+      // A question together with its answer, the pairs separated by an empty line. As answers alone in a
+      // row this line did not read in the feed at all: a "Only the multi-line one" without the question
+      // above it means nothing, and one call may hold up to six questions. The same text goes to the agent
+      // when there is nobody left to wait for the answer (see askAnswer in protocol) - it is clearer there
+      // too.
       const text = answered.map((entry) => `${entry.question}\n${entry.answer}`).join('\n\n')
 
       send({
@@ -1178,10 +1224,10 @@ export const App = () => {
         session: active,
         action: {
           kind: 'prompt',
-          // В ленту тот же текст, но по кусочкам: вопрос отдельным токеном от
-          // своего ответа. Только так карточка знает, какие строки написал
-          // человек, а какие подставила панель, и приглушает ровно повтор
-          // вопроса (см. UserToken.echo) — по самому тексту это неотличимо.
+          // The same text into the feed but in pieces: the question as a token separate from its answer.
+          // Only that way does the card know which lines the person wrote and which the panel filled in,
+          // and dims precisely the repeated question (see UserToken.echo) - from the text alone that is
+          // indistinguishable.
           tokens: answered.flatMap<UserToken>((entry, index) => [
             { kind: 'text', value: index === 0 ? entry.question : `\n\n${entry.question}`, echo: true },
             { kind: 'text', value: `\n${entry.answer}` },
@@ -1202,23 +1248,22 @@ export const App = () => {
     [active],
   )
 
-  // Shift+Tab гоняет по кругу режимов — та же привычка и тот же круг, что в терминале.
+  // Shift+Tab drives around the circle of modes - the same habit and the same circle as in a terminal.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      // Инструменты разработчика живут на клавише, а не на кнопке: место в шапке
-      // они не стоят, а без них панель не отладить.
+      // The developer tools live on a key rather than on a button: they are not worth room in the header,
+      // and without them the panel cannot be debugged.
       if (event.code === 'KeyD' && event.shiftKey && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
         send({ type: 'openDevTools' })
         return
       }
 
-      // Escape = Stop, пока агент реально работает — тот же жест, что в терминале
-      // (Ctrl+C) и та же честность про статус, что и у самой кнопки: не идле не
-      // подставляем «свободен» сами, а ждём настоящего события. Composer сам
-      // гасит это событие (stopPropagation), пока Escape занят своим — закрывает
-      // подсказку команд/файлов, — сюда оно долетает только когда сверху уже
-      // нечего закрывать.
+      // Escape = Stop while the agent genuinely works - the same gesture as in a terminal (Ctrl+C) and
+      // the same honesty about the status as the button itself: we do not put up a "free" of our own but
+      // wait for a real event. Composer dims this event itself (stopPropagation) while Escape is busy with
+      // its own business - closing the command or file hint - so it reaches here only when there is
+      // nothing left to close above.
       if (event.key === 'Escape') {
         if (!running) return
         event.preventDefault()
@@ -1238,28 +1283,28 @@ export const App = () => {
   }, [mode, availableModes, setMode, running, active])
 
   /**
-   * Форк от выделенного куска: агент получает всю переписку до этой точки, но
-   * продолжает в новом разговоре — исходный остаётся каким был. Выделенное едет с
-   * ним цитатой над полем ввода: она не редактируется и не забивает само поле.
+   * A fork from a selected piece: the agent gets the whole conversation up to this point but carries on in
+   * a new conversation - the original stays as it was. The selection travels with it as a quote above the
+   * input field: it is not editable and does not clutter the field itself.
    */
   const fork = useCallback(
     (quote = '') => {
-      // Мгновенная догадка по самой цитате — уже осмысленнее общего "fork N";
-      // первое сообщение в форке сменит её на ответ LLM (см. sessionTitle).
+      // An instant guess from the quote itself is already more meaningful than a generic "fork N"; the
+      // first message in the fork replaces it with the LLM's answer (see sessionTitle).
       const short = deriveSessionTitle(quote, 48)
       const id = `branch-${Date.now()}`
       const parent = sessions.find((session) => session.id === active)
       const parentTitle = parent?.title ?? 'main session'
 
-      // Форк остаётся в группе своего разговора — и форк форка тоже. Так вкладки
-      // одной темы держатся вместе и отличаются от чужих одним взглядом.
+      // A fork stays in its conversation's group - and a fork of a fork too. That way one subject's tabs
+      // hold together and differ from other people's at a glance.
       const groupId = parent?.groupId ?? MAIN_SESSION
       const depth = (parent?.depth ?? 0) + 1
       const inGroup = sessions.filter((session) => session.groupId === groupId).length
 
       setSessions((current) => {
         const next = [...current]
-        // Ставим сразу после последней вкладки своей группы, а не в конец списка.
+        // Placed right after its group's last tab rather than at the list's end.
         const lastOfGroup = next.map((session) => session.groupId).lastIndexOf(groupId)
         next.splice(lastOfGroup + 1, 0, {
           id,
@@ -1293,8 +1338,8 @@ export const App = () => {
   )
 
   /**
-   * Новая вкладка с нуля — и обычная, кнопкой «+», и та единственная, что
-   * встречает пользователя после того, как он закрыл вообще все.
+   * A new tab from scratch - both the ordinary one from the "+" button and the single one that greets the
+   * user after they have closed every one of them.
    */
   const startSession = useCallback((id: string) => {
     setSessions((current) => [
@@ -1305,34 +1350,31 @@ export const App = () => {
     send({ type: 'newSession', kind: 'main', sessionId: id, title: defaultTitle(id) })
   }, [])
 
-  /** Новый порядок вкладок после перетаскивания — см. moveGroup. */
+  /** The tabs' new order after a drag - see moveGroup. */
   const reorderGroups = useCallback((groupId: string, beforeGroupId: string | null) => {
     setSessions((current) => moveGroup(current, groupId, beforeGroupId))
   }, [])
 
   /**
-   * Прошлый разговор продолжается в той вкладке, из которой его выбрали: панель
-   * проиграет его переписку прямо в ней.
+   * A past conversation carries on in the tab it was chosen from: the panel replays its history right
+   * there.
    *
-   * Своей вкладки ему больше не заводим. Вкладками распоряжается человек — он их
-   * открывает, закрывает и раскладывает по порядку, — а история, подсовывая
-   * каждому открытому разговору ещё одну, набивала верх панели вкладками,
-   * которых никто не просил: заглянуть в прошлый разговор и вернуться стоило
-   * потом ещё и уборки за собой.
+   * We no longer start a tab of its own for it. The tabs are the person's to run - they open them, close
+   * them and lay them out in order - while the history, slipping one more tab in for every conversation
+   * opened, stuffed the panel's top with tabs nobody asked for: glancing into a past conversation and
+   * coming back then cost a tidy-up afterwards too.
    */
   const openResumed = useCallback(
     (entry: HistoryEntry) => {
       const title = deriveSessionTitle(entry.title, 40)
 
       setOpenPanel(null)
-      // Название уже установлено панелью истории (LLM-заголовок из кеша или
-      // эвристика) — это не заглушка, которую стоит заменить первым же
-      // следующим сообщением в этой вкладке.
+      // The title has already been set by the history panel (an LLM title from the cache or a heuristic) -
+      // it is not a placeholder worth replacing with the very next message in this tab.
       //
-      // Вкладки может не оказаться вовсе: человек закрыл все и открывает прошлый
-      // разговор из истории на пустой панели. Тогда она и заводится здесь —
-      // иначе перепись поехала бы в разговор, которого не видно ни одной
-      // вкладкой (см. пустое состояние в разметке ниже).
+      // There may be no tab at all: the person closed them all and opens a past conversation from the
+      // history on an empty panel. Then it is started right here - otherwise the replay would travel into
+      // a conversation not visible through a single tab (see the empty state in the markup below).
       setSessions((current) =>
         current.some((session) => session.id === active)
           ? current.map((session) => (session.id === active ? { ...session, title, titleSource: 'llm' } : session))
@@ -1340,15 +1382,16 @@ export const App = () => {
       )
 
       /**
-       * Всё, что панель помнила об этой вкладке, — про разговор, которого в ней
-       * больше нет: лента, чипы субагентов, вывод команд bash-режима, снимок для
-       * звуковых оповещений. Оставить хоть что-то значит подмешать это в перепись
-       * чужого разговора, которая сейчас поедет сверху.
+       * Everything the panel remembered about this tab is about a conversation no longer in it: the feed,
+       * the subagent chips, the bash-mode command output, the deferred messages, the snapshot for the
+       * sound alerts. Leaving any of it means mixing it into the replay of someone else's conversation
+       * about to arrive on top.
        */
       dispatchPanel({ session: active, closed: true })
       setActiveStream('main')
       forgetShellCommands(active)
       setShellRuns((current) => ({ ...current, [active]: [] }))
+      setQueue((current) => ({ ...current, [active]: [] }))
       delete soundMemory.current[active]
 
       send({ type: 'resumeSession', sessionId: active, conversationId: entry.id })
@@ -1358,7 +1401,7 @@ export const App = () => {
 
   const resume = useCallback(
     (entry: HistoryEntry) => {
-      // Этот разговор в этой вкладке уже открыт — переигрывать его заново незачем.
+      // This conversation is already open in this tab - replaying it anew serves nothing.
       if (panelsRef.current[active]?.sessionId === entry.id) {
         setOpenPanel(null)
         return
@@ -1375,16 +1418,16 @@ export const App = () => {
   )
 
   /**
-   * Выбор модели: и из меню в нижней строке, и командой в поле — одно и то же
-   * действие, поэтому и путь у него один. Через оболочку, а не ходом агенту:
-   * выбор достаётся новым вкладкам и переживает перезапуск IDE.
+   * Choosing a model from the menu in the bottom row and by a command in the field is one and the same
+   * action, so its route is one as well. Through the shell rather than as a turn to the agent: the choice
+   * passes on to new tabs and outlives a restart of the IDE.
    */
   const pickModel = useCallback(
     (model: string) => {
       setPrefs((current) => ({ ...current, model }))
       send({ type: 'setModel', sessionId: active, model })
-      // Пока агент не ответил, показываем выбранное — иначе выбор выглядит
-      // потерянным; ответ либо подтвердит его, либо вернёт прежнюю модель.
+      // Until the agent answers we show what was chosen - otherwise the choice looks lost; the answer
+      // either confirms it or brings the previous model back.
       dispatchPanel({ session: active, action: { kind: 'modelRequested', model } })
     },
     [active],
@@ -1417,7 +1460,7 @@ export const App = () => {
       }
 
       if (name === 'logout') {
-        // Вышли сами — тревожить этим звуком некого (см. обработку auth).
+        // We signed out ourselves - there is nobody to disturb with that sound (see the auth handling).
         signedOutAt.current = Date.now()
         send({ type: 'logout' })
         return
@@ -1433,7 +1476,7 @@ export const App = () => {
     [fork, pickModel, pickEffort],
   )
 
-  /** ⌥B из меню выделения. Клавиша нарисована в меню, значит обязана работать. */
+  /** The Alt+B from the selection menu. The key is drawn in the menu, so it has to work. */
   useEffect(() => {
     if (!selection) return
 
@@ -1450,16 +1493,15 @@ export const App = () => {
   }, [selection, fork, clearSelection])
 
   /**
-   * Команда bash-режима: её выполняет оболочка в рабочей директории проекта, а
-   * не агент (см. feed/bash). Карточку ставим в ленту сразу, ещё до вывода, —
-   * длинная команда идёт секундами, и всё это время должно быть видно, что она
-   * запущена.
+   * A bash-mode command: it is run by the shell in the project's working directory rather than by the agent
+   * (see feed/bash). The card goes into the feed at once, before any output - a long command takes seconds,
+   * and all that time it has to be visible that it is running.
    */
   const runShell = useCallback(
     (command: string) => {
-      // Счётчик, а не одно только время: две команды, запущенные в одну и ту же
-      // миллисекунду (так их проигрывает харнесс), получили бы один номер — а по
-      // нему в ленте ищут карточку и вспоминают текст команды для агента.
+      // A counter rather than the time alone: two commands started within the same millisecond (that is
+      // how the harness plays them) would get one number - and by it the feed looks the card up and
+      // recalls the command's text for the agent.
       shellSeq.current += 1
       const id = `bash-${Date.now()}-${shellSeq.current}`
       shellCommands.current[id] = { session: active, command }
@@ -1471,35 +1513,35 @@ export const App = () => {
   )
 
   /**
-   * Отправка сообщения: сразу в работу или в очередь.
+   * Sending a message: straight into the work or into the queue.
    *
-   * «Сразу» работает и во время хода: агент запущен с потоковым вводом, и
-   * дописанное в него сообщение он подхватывает на ближайшем шаге, не начиная
-   * ход заново — то же самое делает Enter в терминале. Очередь — обратное:
-   * явная просьба сначала доделать текущее, а это взять следующим.
+   * "Straight" works during a turn too: the agent is started with streaming input, and a message written
+   * into it is picked up at the nearest step without starting the turn anew - the very same thing Enter
+   * does in a terminal. The queue is the opposite: an explicit request to finish the current thing first
+   * and take this one next.
    *
-   * Исключение — сжатие контекста: /compact глотает stdin, и дописка туда
-   * пропадает. Пока оно идёт, Enter ведёт себя как Queue (см. deferFollowUpForCompact).
+   * The exception is compacting the context: /compact swallows stdin, and anything written there is lost.
+   * While it runs, Enter behaves like Queue (see deferFollowUpForCompact).
    */
   const submit = useCallback((queued: boolean, overrideText?: string) => {
-    // Команды панели агенту не уходят: вход и выход в потоковом режиме ему
-    // недоступны, а ветвление вообще про устройство панели.
-    // Цитаты и вложения команде не мешают: они останутся в поле и уедут со
-    // следующим сообщением — терять их из-за одной команды было бы обидно.
-    // Строгая проверка типом, а не просто "overrideText !== undefined": эта
-    // функция вызывается и из обработчиков клика, куда React передаёт объект
-    // события — сравнение с undefined приняло бы его за подменённый текст.
+    // The panel's commands never travel to the agent: signing in and out are out of its reach in streaming
+    // mode, and forking is about the panel's own workings altogether.
+    // Quotes and attachments do not stand in a command's way: they stay in the field and travel with the
+    // next message - losing them over one command would be a shame.
+    // A strict type check rather than a plain "overrideText !== undefined": this function is called from
+    // click handlers too, into which React passes an event object - a comparison with undefined would take
+    // it for substituted text.
     const isOverride = typeof overrideText === 'string'
-    // Пустой хвост снимаем сразу: он невидим в поле (последняя строка там не
-    // занимает места, на ней стоит разве что курсор), а в ленте показался бы
-    // лишней пустой строкой. Агенту его и так не отправляет composePrompt.
+    // The empty tail is taken off at once: it is invisible in the field (the last line there takes no
+    // space, at most the caret stands on it) while in the feed it would show as a spare empty line. To the
+    // agent composePrompt does not send it anyway.
     const tokens = isOverride
       ? [{ kind: 'text' as const, value: overrideText }]
       : trimTrailingSpace(draft.tokens)
     const quotes = isOverride ? [] : draft.quotes
 
-    // «!» в начале — команда терминала, а не сообщение агенту: выполняет её
-    // панель и показывает вывод своей карточкой (см. runShell).
+    // A "!" at the start is a terminal command rather than a message to the agent: the panel runs it and
+    // shows the output in a card of its own (see runShell).
     const command = bashCommand(tokens)
     if (command) {
       runShell(command)
@@ -1507,9 +1549,9 @@ export const App = () => {
       return
     }
 
-    // Через tokensText, а не plainText: команда в поле — плашка, и голый текст
-    // её не видит вовсе (см. captureCommand). Для агента она и так значит ровно
-    // "/имя", им же её и узнаём.
+    // Through tokensText rather than plainText: a command in the field is a chip, and plain text does not
+    // see it at all (see captureCommand). To the agent it means exactly "/name" anyway, and that is what we
+    // recognise it by.
     const local = localCommand(tokensText(tokens), models)
     if (local) {
       runLocal(local)
@@ -1520,9 +1562,9 @@ export const App = () => {
     const written = isOverride ? overrideText : composePrompt(draft, imageBaseCount)
     if (!written) return
 
-    // Первое сообщение этого захода вкладки — сразу ставим человекочитаемую
-    // догадку вместо "new session"/"fork N", не дожидаясь ответа LLM (см.
-    // sessionTitle): тот придёт следом и заменит её, если получится.
+    // The first message of this tab's run - we put a human-readable guess in place of "new session" or
+    // "fork N" at once, without waiting for the LLM's answer (see sessionTitle): that comes next and
+    // replaces it if it can.
     setSessions((current) =>
       current.map((session) =>
         session.id === active && session.titleSource === 'default'
@@ -1531,9 +1573,9 @@ export const App = () => {
       ),
     )
 
-    // Вывод команд, выполненных с прошлого сообщения, уезжает впереди этого —
-    // и уходит из накопителя: второй раз агенту он ни к чему. В ленту при этом
-    // не попадает: там он уже стоит своей карточкой, на своём месте по времени.
+    // The output of the commands run since the last message travels ahead of this one - and leaves the
+    // accumulator: the agent has no use for it twice. Into the feed it does not go: there it already
+    // stands as a card of its own, in its own place in time.
     const runs = shellRuns[active] ?? []
     const text = runs.length > 0 ? `${shellText(runs)}\n\n${written}` : written
     if (runs.length > 0) setShellRuns((current) => ({ ...current, [active]: [] }))
@@ -1541,34 +1583,36 @@ export const App = () => {
     const images = isOverride ? [] : imageAttachments(draft.tokens)
     const attachCount = isOverride ? 0 : draft.tokens.filter((token) => token.kind === 'chip').length
 
-    // В очередь — пока агент занят и человека явно попросили подождать, либо
-    // пока идёт сжатие: /compact глотает stdin и после конца эти сообщения
-    // не выполняет (см. deferFollowUpForCompact). Свободному ждать нечего.
+    // Into the queue while the agent is busy and someone explicitly asked to wait, or while compacting
+    // runs: /compact swallows stdin and does not run these messages once it ends (see
+    // deferFollowUpForCompact). A free agent has nothing to wait for.
     if ((queued && running) || deferFollowUpForCompact(panel.compacting, running, lastUserText(panel.items))) {
-      setQueue((current) => [
+      setQueue((current) => ({
         ...current,
-        {
-          id: `q-${Date.now()}`,
-          text,
-          attach: attachCount ? `${attachCount} refs` : '',
-          tokens,
-          images,
-        },
-      ])
+        [active]: [
+          ...(current[active] ?? []),
+          {
+            id: `q-${Date.now()}`,
+            text,
+            attach: attachCount ? `${attachCount} refs` : '',
+            tokens,
+            images,
+          },
+        ],
+      }))
       if (!isOverride) setDrafts((current) => ({ ...current, [active]: EMPTY_DRAFT }))
       return
     }
 
     /**
-     * Пока карточка плана ждёт решения, ход стоит ровно на ней: агент вызвал
-     * ExitPlanMode и не двинется, что ему ни пиши. Обычным сообщением такой
-     * текст просто пропадал — оно уходило в стоящий процесс, и панель выглядела
-     * зависшей: сообщение в ленте есть, «Claude is thinking» переливается, а не
-     * происходит ничего.
+     * While a plan card waits for a decision, the turn stands precisely on it: the agent called
+     * ExitPlanMode and will not budge, whatever is written to it. As an ordinary message such text simply
+     * vanished - it went into a standing process, and the panel looked hung: the message is in the feed,
+     * the "Claude is thinking" shimmers, and nothing happens.
      *
-     * Поэтому написанное при живом плане — это и есть ответ по плану: то же
-     * самое «Keep planning», только с замечанием, из-за которого план и не
-     * приняли. Ровно так это работает и в терминале.
+     * So whatever is written while a plan is alive is the answer on the plan: the very same "Keep
+     * planning", only with the remark the plan was not accepted over. That is exactly how it works in a
+     * terminal too.
      */
     const plan = pendingPlan(panel, cards.planDecisions)
     if (plan) {
@@ -1576,11 +1620,10 @@ export const App = () => {
         session: active,
         action: { kind: 'prompt', tokens, quotes: quotes.map((quote) => quote.text), steering: true },
       })
-      // Картинку ответом на разрешение не передать: туда уходит ровно одна
-      // строка (см. ClaudePanel.decidePlan). Поэтому замечание со вложениями
-      // идёт обычным сообщением следом — ход к этому моменту уже отпущен и
-      // примет его, — а плану достаётся общее «дорабатываем». Так и текст, и
-      // картинка доезжают до агента, причём каждый ровно по разу.
+      // An image cannot be carried by a permission answer: exactly one string travels there (see
+      // ClaudePanel.decidePlan). So a remark with attachments goes as an ordinary message afterwards - by
+      // then the turn has been released and will accept it - while the plan gets a generic "still
+      // planning". That way both the text and the image reach the agent, each exactly once.
       if (images.length > 0) {
         decidePlan(plan.id, 'keepPlanning')
         send({ type: 'prompt', sessionId: active, text, images })
@@ -1592,8 +1635,8 @@ export const App = () => {
       return
     }
 
-    // Досылка продолжает начатое, поэтому лента остаётся как есть: карточки
-    // субагентов этого же хода прятать не за что, они ещё в деле.
+    // A follow-up continues what was begun, so the feed stays as it is: there is nothing to hide this
+    // same turn's subagent cards for, they are still at work.
     if (!running) {
       clearFinishedAgents(active)
       setActiveStream('main')
@@ -1625,8 +1668,8 @@ export const App = () => {
   const queueNext = useCallback(() => submit(true), [submit])
 
   /**
-   * Есть ли что отправлять: текст, вложение или цитата. Пустое поле — обе
-   * кнопки погашены, и Enter тоже ничего не делает.
+   * Whether there is anything to send: text, an attachment or a quote. An empty field means both buttons
+   * are dimmed, and Enter does nothing either.
    */
   const draftReady = useMemo(() => {
     if (draft.quotes.length > 0) return true
@@ -1634,10 +1677,9 @@ export const App = () => {
     return plainText(draft.tokens).trim().length > 0
   }, [draft])
 
-  // Только для локальной страницы-харнесса (webview/src/harness) — имитирует
-  // настоящую отправку сообщения из поля ввода. Vite статически подставляет
-  // import.meta.env.DEV в false при vite build, поэтому в собранном плагине
-  // этого кода физически не будет.
+  // For the local harness page only (webview/src/harness) - it imitates a genuine send of a message from
+  // the input field. Vite statically substitutes import.meta.env.DEV with false on a vite build, so this
+  // code physically will not be in the assembled plugin.
   useEffect(() => {
     if (!import.meta.env.DEV) return
 
@@ -1647,9 +1689,9 @@ export const App = () => {
     }
   }, [submit])
 
-  // Тот же приём, что и выше: харнесс имитирует настоящий клик по кнопке
-  // карточки плана (не только реакцию бэкенда на него), чтобы пошаговая
-  // прокрутка чекпоинтов сама показывала исчезновение карточки.
+  // The same trick as above: the harness imitates a genuine click on a plan card's button (rather than
+  // only the backend's reaction to it) so that stepping through the checkpoints shows the card
+  // disappearing by itself.
   useEffect(() => {
     if (!import.meta.env.DEV) return
 
@@ -1665,16 +1707,15 @@ export const App = () => {
   )
   const mainStatus = useMemo(() => mainStatusOf(panel, cards.answeredAsks), [panel, cards.answeredAsks])
 
-  // activeStream переживает переключение сессии/`/clear` на один кадр раньше,
-  // чем эффект успевает сбросить его на 'main' (а после /clear эффект вообще
-  // не сработает — active не поменялся). Раз задача, на которую он указывает,
-  // в этой панели не найдена — считаем это main, а не рисуем пустой экран.
+  // activeStream outlives a session switch or a `/clear` by one frame more than the effect needs to reset
+  // it to 'main' (and after a /clear the effect does not fire at all - active has not changed). Since the
+  // task it points at is not found in this panel, we count it as main rather than draw an empty screen.
   const activeTask = panel.items.find((item): item is TaskItem => item.kind === 'task' && item.id === activeStream)
   const resolvedStream = activeStream === 'main' || activeTask ? activeStream : 'main'
   /**
-   * Что сейчас держит ход и ждёт человека. Обе панели считаем здесь, а не по
-   * месту: цифровые хоткеи у них общие, и решить, чьи они, можно только зная
-   * обе сразу.
+   * What is holding the turn right now and waiting for the person. Both panels are computed here rather
+   * than in place: their digit hotkeys are shared, and whose they are can be decided only by knowing both
+   * at once.
    */
   const permission = pendingPermission(panel.items, resolvedStream)
   const ask = pendingAsk(panel.items, cards.answeredAsks, resolvedStream)
@@ -1691,8 +1732,8 @@ export const App = () => {
     [sessions, panels, active, cards.planDecisions, cards.answeredAsks],
   )
 
-  // Без входа поле ввода бессмысленно: агент ответит на любой вопрос строкой про
-  // /login, а сама эта команда в потоковом режиме недоступна.
+  // Without a login the input field is meaningless: the agent answers any question with a line about
+  // /login, and that command itself is out of reach in streaming mode.
   if (!auth || !auth.loggedIn) {
     return (
       <div className={s.panel} data-anchor={dockAnchor}>
@@ -1711,31 +1752,19 @@ export const App = () => {
   }
 
   /**
-   * Вкладки сессий и кнопки истории/MCP/плагинов/звуков/раскладки — общие на
-   * всю панель, а не привязаны к одной колонке, и стоят сверху при любом
-   * layout: лента (и рядом с ней, в left/right, боковая рельса) занимает всё,
-   * что осталось ниже.
+   * The session tabs and the history / MCP / plugins / sounds / layout buttons are shared by the whole
+   * panel rather than tied to one column, and stand at the top under any layout: the feed (and beside it,
+   * in left/right, the side rail) takes everything left below.
+   *
+   * History, MCP, plugins and sounds are toggles for one and the same pinned panel (see openPanel), items
+   * of the shared menu behind the burger in the header (see Header.onOpenMenu). Each closes the menu
+   * itself - that panel and the popup menu (model / effort / mode / layout) must not stand at once: one of
+   * them would cover the other's buttons, and Escape and a click outside would then not know which to
+   * close first.
+   *
+   * A tab opens on what has been loaded in advance. We ask anew only if the previous request has already
+   * come back while what is shown has had time to go stale.
    */
-  /**
-   * История, MCP, плагины, звуки — переключатели одной и той же закреплённой
-   * панели (см. openPanel), пункты общего меню за бургером в шапке (см.
-   * Header.onOpenMenu). Каждая сама закрывает меню — эта панель и всплывающее
-   * меню (модель/effort/режим/раскладка) не должны стоять разом: одна из них
-   * закрывала бы собой кнопки другой, а Escape и клик мимо тогда не знали бы,
-   * что именно закрывать первым.
-   */
-  const openHistory = () => {
-    setMenu(null)
-    if (openPanel === 'history') {
-      setOpenPanel(null)
-      return
-    }
-    setOpenPanel('history')
-    send({ type: 'history' })
-  }
-
-  // Вкладка открывается на том, что загружено заранее. Спрашиваем заново,
-  // только если прошлый запрос уже вернулся, а показанное успело устареть.
   const openMcp = () => {
     setMenu(null)
     if (openPanel === 'mcp') {
@@ -1766,12 +1795,11 @@ export const App = () => {
   }
 
   /**
-   * Открыть селектор MODEL/EFFORT/MODE — или закрыть его повторным кликом по
-   * той же кнопке. Скрим меню нарочно не закрывает шапку и, в left/right, верх
-   * боковой рельсы, где эти кнопки и стоят (см. .menuScrim и Header.onOpenMenu —
-   * тот же приём уже стоит там): иначе кнопка не кликалась бы, пока открыт её
-   * собственный попап. Второй клик по ней самой скрим не ловит, поэтому
-   * тоглим сами, а не полагаемся на клик мимо меню.
+   * Open the MODEL/EFFORT/MODE selector - or close it with a second click on the same button. The menu's
+   * scrim deliberately does not cover the header and, in left/right, the top of the side rail, where these
+   * buttons stand (see .menuScrim and Header.onOpenMenu - the same trick already stands there): otherwise
+   * the button would not be clickable while its own popup is open. A second click on the button itself the
+   * scrim does not catch, so we toggle ourselves rather than rely on a click outside the menu.
    */
   const openSelector = (kind: SelectorKind, anchor: Anchor) => {
     if (menu?.kind === kind) {
@@ -1783,9 +1811,9 @@ export const App = () => {
   }
 
   /**
-   * Открыть PR текущей ветки в системном браузере — сама ссылка живёт в
-   * панели, наружу уходит только по клику. Ветка и её PR — в шапке (см.
-   * Header), одно и то же место у любой раскладки.
+   * Open the current branch's PR in the system browser - the link itself lives in the panel and travels
+   * outwards only on a click. The branch and its PR live in the header (see Header), one and the same place
+   * under any layout.
    */
   const openPullRequest = () => {
     const url = panels[MAIN_SESSION]?.project?.pullRequestUrl
@@ -1799,15 +1827,23 @@ export const App = () => {
         activeSession={active}
         onPickSession={setActive}
         onCloseSession={(id) => {
-          // Любая вкладка закрывается как обычная, включая последнюю — тогда
-          // показывать нечего, но хедер и его кнопки (история, MCP, плагины)
-          // остаются: они не привязаны к тому, есть ли открытый разговор.
+          // Any tab closes like an ordinary one, the last one included - then there is nothing to show,
+          // but the header and its buttons (history, MCP, plugins) stay: they are not tied to whether a
+          // conversation is open.
           send({ type: 'closeSession', sessionId: id })
           delete soundMemory.current[id]
-          // И собранный вывод, и то, что ещё бежит: без второго пришедший позже
-          // ответ оболочки завёл бы запись обратно — на разговор, которого нет.
+          // Both the collected output and what is still running: without the second, a later answer from
+          // the shell would start the record up again - for a conversation that no longer exists.
           forgetShellCommands(id)
           setShellRuns((current) => {
+            if (!(id in current)) return current
+            const next = { ...current }
+            delete next[id]
+            return next
+          })
+          // What this tab deferred leaves along with it: the conversation that was to run it no longer
+          // exists.
+          setQueue((current) => {
             if (!(id in current)) return current
             const next = { ...current }
             delete next[id]
@@ -1828,12 +1864,11 @@ export const App = () => {
   )
 
   /**
-   * Разрешение, вопрос, список задач с веткой/PR, очередь, цитаты — весь
-   * стек карточек над полем ввода. В bottom и compact стоит прямо в доке (см.
-   * ниже), а в left/right уходит порталом в боковую рельсу на всю высоту
-   * панели (см. railNode) — по тем же причинам, что и MODEL/EFFORT/MODE у
-   * Composer: полю с лентой остаётся чистая пара из двух блоков друг над
-   * другом, без вклинившихся карточек.
+   * A permission, a question, the task list with the branch and the PR, the queue, the quotes - the whole
+   * stack of cards above the input field. In bottom and compact it stands right in the dock (see below),
+   * while in left/right it travels through a portal into the side rail spanning the panel's full height
+   * (see railNode) - for the same reasons as Composer's MODEL/EFFORT/MODE: the field and the feed are left
+   * as a clean pair of two blocks one above the other, with no cards wedged in between.
    */
   const dockCards = (
     <>
@@ -1843,8 +1878,8 @@ export const App = () => {
         key={ask?.id ?? 'none'}
         item={ask}
         composerEmpty={!draftReady}
-        // Пока рядом висит неотвеченное разрешение, цифры принадлежат ему:
-        // две панели, слушающие одну и ту же клавишу, отвечали бы обе разом.
+        // While an unanswered permission hangs beside it, the digits belong to that one: two panels
+        // listening to the same key would both answer at once.
         hotkeys={!permission}
         onSubmit={sendAnswers}
         onDismiss={dismissAsk}
@@ -1853,16 +1888,21 @@ export const App = () => {
       <TaskListPanel item={latestTodo(panel.items)} layout={composerLayout} />
 
       <Queue
-        items={queue}
+        items={sessionQueue}
         onReorder={(from, to) =>
           setQueue((current) => {
-            const next = [...current]
+            const next = [...(current[active] ?? [])]
             const [moved] = next.splice(from, 1)
             if (moved) next.splice(to, 0, moved)
-            return next
+            return { ...current, [active]: next }
           })
         }
-        onRemove={(id) => setQueue((current) => current.filter((item) => item.id !== id))}
+        onRemove={(id) =>
+          setQueue((current) => ({
+            ...current,
+            [active]: (current[active] ?? []).filter((item) => item.id !== id),
+          }))
+        }
       />
 
       <Quotes
@@ -1880,9 +1920,9 @@ export const App = () => {
         <History conversations={history} onOpen={resume} onClose={() => setOpenPanel(null)} />
       ) : null}
 
-      {/* Прибиваем только по просьбе — саму работу останавливает CLI, а о том,
-          что она кончилась, он сообщит обычным уведомлением: чип уйдёт сам, и
-          подделывать его конец на своей стороне незачем. */}
+      {/* Killed only when asked - the work itself is stopped by the CLI, and it reports the end through
+          an ordinary notification: the chip leaves by itself, and faking its end on our side serves
+          nothing. */}
       {stopping ? (
         <Confirm
           title={stopping.title}
@@ -1896,9 +1936,8 @@ export const App = () => {
         />
       ) : null}
 
-      {/* Вкладка занята работой — перед тем как отдать её прошлому разговору,
-          спрашиваем: процесс с идущим ходом переживёт это не больше, чем
-          закрытие вкладки (см. resume). */}
+      {/* The tab is busy with work - before handing it over to a past conversation we ask: a process with
+          a running turn will survive this no better than a closed tab (see resume). */}
       {resuming ? (
         <Confirm
           title="This tab is still working. Open the past chat here?"
@@ -1917,9 +1956,9 @@ export const App = () => {
           prefs={soundPrefs}
           onToggle={(sound) => changeSoundPrefs(toggleSound(soundPrefs, sound))}
           onVolume={(sound, volume) => changeSoundPrefs(setVolume(soundPrefs, sound, volume))}
-          // Отключённый звук тоже проигрывается: послушать, что именно
-          // выключаешь, — ровно то, зачем на кнопку и жмут. Громкость берём
-          // ту, что стоит прямо сейчас: иначе ползунок не с чем сверять.
+          // A muted sound plays too: hearing exactly what one is switching off is precisely what the
+          // button is pressed for. The volume is taken as it stands right now: otherwise there is nothing
+          // to check the slider against.
           onPreview={(sound) => send({ type: 'sound', sound, volume: volumeOf(soundPrefs, sound) })}
           onClose={() => setOpenPanel(null)}
         />
@@ -1938,8 +1977,8 @@ export const App = () => {
             setMcpMessage(null)
             send({ type: 'mcpReconnect', sessionId: active, name })
           }}
-          // Адрес входа откроет оболочка в системном браузере, а код от него
-          // поймает сам CLI: панели остаётся дождаться нового статуса.
+          // The login address is opened by the shell in the system browser, and the code from it is caught
+          // by the CLI itself: the panel is left waiting for a new status.
           onAuthenticate={(name) => {
             setMcpMessage(null)
             send({ type: 'mcpAuthenticate', sessionId: active, name })
@@ -2027,7 +2066,6 @@ export const App = () => {
               statusStalled={panel.retry !== undefined}
               cards={cards}
               scrollRef={attachFeed}
-              onScroll={clearSelection}
               onPlanDecision={decidePlan}
               onDismissError={dismissError}
               onOpenLink={openLink}
@@ -2044,8 +2082,8 @@ export const App = () => {
                 clearSelection()
               }}
               onQuote={() => {
-                // Плашкой прямо в поле ввода — как файл или картинка, а не отдельным
-                // блоком над ним: цитата из вывода агента ничем не хуже вложения.
+                // As a chip right in the input field, like a file or an image, rather than as a separate
+                // block above it: a quote from the agent's output is no worse than an attachment.
                 const ordinal = draft.tokens.filter((token) => token.kind === 'chip' && token.chip.kind === 'quote').length + 1
                 editDraft(active, {
                   tokens: appendChip(draft.tokens, { kind: 'quote', value: `ref${ordinal}`, text: selection.text }),
@@ -2058,10 +2096,10 @@ export const App = () => {
         </div>
         </div>
 
-        {/* Пустой узел — вся разметка внутри него рисуется порталами: сам
-            dockCards (см. выше) и Composer (см. railContainer) — состояние и
-            обработчики остаются каждый на своём месте, а узел стоит здесь,
-            чтобы грид .workArea мог растянуть его на всю высоту панели. */}
+        {/* An empty node - all the markup inside it is drawn through portals: dockCards itself (see
+            above) and Composer (see railContainer) - the state and the handlers each stay in their own
+            place, while the node stands here so that the .workArea grid can stretch it over the panel's
+            full height. */}
         {isSideComposerLayout(composerLayout) ? <div className={s.railColumn} ref={setRailNode} /> : null}
         {isSideComposerLayout(composerLayout) && railNode ? createPortal(dockCards, railNode) : null}
 
@@ -2091,8 +2129,8 @@ export const App = () => {
             fileDragOver={fileDragOver}
             onTokensChange={(tokens) => editDraft(active, { tokens })}
             onAttach={() => send({ type: 'pick' })}
-            // Плашки соберёт оболочка и вернёт их обычным picked — тем же путём,
-            // что и выбор через диалог: файл это или папка, знает только она.
+            // The chips are assembled by the shell and come back as an ordinary picked - by the same route
+            // as a choice through a dialog: only it knows whether this is a file or a folder.
             onDropFiles={(paths) => send({ type: 'dropped', paths })}
             registerInsert={registerInsert}
             onSubmit={sendNow}
@@ -2100,9 +2138,9 @@ export const App = () => {
             canSubmit={draftReady}
             stopStalled={stopStalled}
             onStop={() => {
-              // В idle не спешим: статус honestly ждём от настоящего события, а не
-              // подставляем сами — иначе Stop может соврать «свободен» ровно тогда,
-              // когда агент на самом деле завис.
+              // We are in no hurry to go idle: the status is honestly awaited from a real event rather
+              // than put up by ourselves - otherwise a Stop could lie "free" at exactly the moment the
+              // agent has genuinely hung.
               send({ type: 'stop', sessionId: active })
               dispatchPanel({ session: active, action: { kind: 'stopRequested' } })
             }}
@@ -2112,10 +2150,10 @@ export const App = () => {
             }}
           />
 
-          {/* Сжатые раскладки (compact и left/right) держат MODEL/EFFORT/MODE
-              в самом поле ввода или в боковой рельсе (см. Composer) — своей
-              строки статуса под полем у них нет, высота отдана ленте. Ветка и
-              её PR — в шапке (см. Header), у любой раскладки одинаково. */}
+          {/* The tight layouts (compact and left/right) keep MODEL/EFFORT/MODE in the input field itself
+              or in the side rail (see Composer) - they have no status row of their own under the field,
+              the height is given to the feed. The branch and its PR live in the header (see Header),
+              the same under any layout. */}
           {composerLayout === 'compact' || isSideComposerLayout(composerLayout) ? null : (
             <StatusBar
               model={model}
@@ -2130,7 +2168,18 @@ export const App = () => {
 
       {menu ? (
         <Menu
-          {...menuProps(menu.kind, models, prefs.model, switched, prefs.effort, mode, composerLayout, openPanel, availableModes)}
+          {...menuProps(
+            menu.kind,
+            models,
+            prefs.model,
+            switched,
+            prefs.effort,
+            mode,
+            prefs.mode,
+            composerLayout,
+            openPanel,
+            availableModes,
+          )}
           anchor={menu.anchor}
           onClose={() => setMenu(null)}
           onPick={(id) => {
@@ -2141,14 +2190,16 @@ export const App = () => {
             if (kind === 'model') pickModel(id)
             if (kind === 'effort') pickEffort(id)
             if (kind === 'mode') setMode(id)
+            if (kind === 'defaultMode') setDefaultMode(id)
             if (kind === 'composerLayout') setComposerLayout(normalizeComposerLayout(id))
             if (kind === 'header') {
               if (id === 'history') openHistory()
               else if (id === 'mcp') openMcp()
               else if (id === 'plugins') openPlugins()
               else if (id === 'sounds') openSounds()
-              // Не действие, а вход в подменю — переоткрываем той же точкой,
-              // от которой рос сам бургер (см. Header.onOpenMenu).
+              // Not actions but ways into a submenu - reopened from the same point the burger itself
+              // grew from (see Header.onOpenMenu).
+              else if (id === 'defaultMode') setMenu({ kind: 'defaultMode', anchor })
               else if (id === 'composerLayout') setMenu({ kind: 'composerLayout', anchor })
             }
           }}
@@ -2158,13 +2209,13 @@ export const App = () => {
   )
 }
 
-// --- Состояние сессий -------------------------------------------------------
+// --- Session state ----------------------------------------------------------
 
 type PanelsState = Record<string, PanelState>
 
 /**
- * Обычное изменение разговора — или его закрытие: закрытая вкладка уходит из
- * состояния целиком, а не остаётся лежать со своей лентой.
+ * An ordinary change to a conversation - or its closing: a closed tab leaves the state entirely rather
+ * than lying about with a feed of its own.
  */
 type PanelsAction =
   | { session: string; action: Parameters<typeof reducePanel>[1] }
@@ -2172,10 +2223,10 @@ type PanelsAction =
 
 const panelsReducer = (state: PanelsState, event: PanelsAction): PanelsState => {
   /**
-   * Пока закрытая вкладка оставалась в состоянии, за неё продолжали платить: всё,
-   * что обходит разговоры (например, звуковые оповещения), видело её при каждом
-   * обновлении — то есть на каждом кусочке ответа, печатающегося в любой другой
-   * вкладке, — и заново разбиралось с лентой разговора, которого больше нет.
+   * While a closed tab stayed in the state, one went on paying for it: everything that walks the
+   * conversations (the sound alerts, say) saw it on every update - that is, on every piece of an answer
+   * being typed in any other tab - and worked through the feed of a conversation that no longer exists all
+   * over again.
    */
   if ('closed' in event) {
     if (!(event.session in state)) return state
@@ -2192,49 +2243,46 @@ const panelsReducer = (state: PanelsState, event: PanelsAction): PanelsState => 
 }
 
 /**
- * Что показывает кружок вкладки. Крах процесса важнее всего: ход прерван не по
- * своей воле, и об этом обязана сказать даже вкладка, на которую сейчас не
- * смотрят. Дальше — ожидание человека, и лишь потом обычная работа.
+ * What a tab's dot shows. A crashed process matters most: the turn was cut short against its will, and even
+ * a tab nobody is looking at has to say so. Next comes waiting for the person, and only then ordinary work.
  */
 const sessionState = (panel: PanelState | undefined, active: boolean, cards: CardState): SessionState => {
   if (!panel) return 'idle'
 
   if (panel.crashed) return 'crashed'
 
-  // Неотвеченный запрос разрешения зовёт всегда: без человека ход не сдвинется.
+  // An unanswered permission request always calls: without the person the turn will not budge.
   if (panel.items.some((item) => item.kind === 'perm' && item.decision === null)) return 'attention'
 
-  // Вопрос агента и показанный план держат ход ровно так же намертво, а сказать
-  // об этом умела до сих пор только строка статуса открытой вкладки: фоновая
-  // бесконечно крутила «работает». Смотрим лишь у идущего хода — те же карточки
-  // приезжают и с перепиской, поднятой из истории, но там решать давно нечего.
+  // The agent's question and a shown plan hold the turn just as fast, and until now only the open tab's
+  // status line could say so: a background one span "working" endlessly. We look only at a running turn -
+  // the same cards arrive with a conversation raised from the history, but there is nothing left to decide
+  // there.
   if (panel.status === 'running' && panel.items.some((item) => awaitsYou(item, cards))) return 'attention'
 
   /**
-   * Ошибка зовёт только фоновую вкладку и только пока она последнее, что
-   * случилось: на открытой вкладке человек и так видит её в ленте, а точка,
-   * которая после этого пульсирует до конца разговора, — просто шум. Итог хода
-   * (meta) не в счёт: он приходит следом за отказом и рассказывает про тот же
-   * оборванный ход.
+   * An error calls only a background tab and only while it is the last thing that happened: in the open tab
+   * the person sees it in the feed anyway, and a dot that pulses on to the conversation's end after that is
+   * simply noise. The turn's outcome (meta) does not count: it comes right after the failure and tells about
+   * the very same broken turn.
    */
   const last = [...panel.items].reverse().find((item) => item.kind !== 'meta')
   if (!active && last?.kind === 'error') return 'attention'
 
   if (panel.status === 'running') return 'running'
 
-  // Законченным считаем разговор, в котором агент хотя бы раз довёл ход до конца:
-  // отметка о ветвлении сама по себе ещё не работа.
+  // We count as finished a conversation in which the agent brought a turn to its end at least once: a fork
+  // marker by itself is not work yet.
   return panel.items.some((item) => item.kind === 'meta') ? 'done' : 'idle'
 }
 
-// --- Производные данные -----------------------------------------------------
+// --- Derived data -----------------------------------------------------------
 
 /**
- * Сколько картинок уже ушло агенту раньше в этой же сессии — отправленными
- * сообщениями и тем, что уже стоит в очереди. Продолжаем нумерацию от этого
- * числа, а не с нуля на каждом сообщении: иначе «Image #1» повторяется в
- * каждой реплике подряд, и по номеру уже не понять, о какой картинке речь,
- * если их несколько за разговор.
+ * How many images have already travelled to the agent earlier in this same session - through sent messages
+ * and through what already stands in the queue. We carry the numbering on from that number rather than from
+ * zero on every message: otherwise an "Image #1" repeats in line after line, and the number no longer tells
+ * which image is meant when there are several over a conversation.
  */
 const countSessionImages = (panel: PanelState, queue: QueuedPrompt[]): number => {
   const sent = panel.items.reduce(
@@ -2249,68 +2297,63 @@ const countSessionImages = (panel: PanelState, queue: QueuedPrompt[]): number =>
 }
 
 /**
- * Стоит ли ход на этом элементе ленты, ожидая человека. Запрос разрешения,
- * вопрос с вариантами и показанный план держат его одинаково намертво, поэтому и
- * правило у них одно: разъехавшись, оно врало бы то строкой статуса, то точкой
- * на вкладке — смотря где про какой случай забыли.
+ * Whether the turn stands on this feed item waiting for the person. A permission request, a question with
+ * options and a shown plan hold it equally fast, so their rule is one: parting ways, it would lie now
+ * through the status line, now through the tab's dot - depending on where which case was forgotten.
  */
 const awaitsYou = (item: FeedItem, cards: CardState): boolean =>
   (item.kind === 'perm' && item.decision === null) ||
   (item.kind === 'ask' && !item.historic && !cards.answeredAsks.includes(item.id)) ||
   (item.kind === 'plan' && !item.historic && cards.planDecisions[item.id] === undefined)
 
-/** Главный поток, а не отдельный субагент: у того своя вкладка и свой статус. */
+/** The main stream rather than a separate subagent: that one has a tab and a status of its own. */
 const ownStream = (item: FeedItem): boolean => !('taskId' in item) || item.taskId === undefined
 
 /**
- * Пока висит неотвеченный запрос разрешения или вопрос ГЛАВНОГО потока, ход
- * на деле не думает — он стоит и ждёт решения человека. «Claude is thinking»
- * в этот момент было бы неправдой. Решение конкретного агента сюда не
- * считается: за него отвечает статус в дропдауне и его собственная вкладка —
- * если бы главная строка статуса реагировала и на них, она бы сама стала той
- * самой нечестной подписью, ради ухода от которой затевался весь редизайн.
+ * While an unanswered permission request or a question from the MAIN stream hangs there, the turn is not
+ * genuinely thinking - it stands and waits for the person's decision. A "Claude is thinking" at that moment
+ * would be untrue. A particular agent's decision does not count here: the status in the dropdown and the
+ * agent's own tab answer for that - if the main status line reacted to them too, it would itself become the
+ * very dishonest caption the whole redesign was undertaken to get away from.
  *
- * Прошедшее время дописывается тут же, а не ждёт итога хода: «Worked Ns» под
- * готовым ответом приезжает только его концом, а до этого — сколько уже
- * прошло — было не видно совсем. Считается от turnStartedAt за вычетом
- * pausedMs — суммарного времени всех таких ожиданий за этот ход (см.
- * attentionStarted/attentionEnded в feed/build.ts и эффект в App, который их
- * шлёт): иначе после решения секунды простоя задним числом приписались бы
- * агенту, как будто он всё это время «думал». Обновляется раз в секунду тем
- * же тиком, что двигает длительность вызовов инструментов (см. tickDurations
- * в feed/build.ts).
+ * The elapsed time is written right here rather than waiting for the turn's outcome: the "Worked Ns" under a
+ * finished answer arrives only with its end, and until then how much had already passed was not visible at
+ * all. It is counted from turnStartedAt less pausedMs - the total time of every such wait over this turn
+ * (see attentionStarted/attentionEnded in feed/build.ts and the effect in App that sends them): otherwise
+ * after a decision the idle seconds would be charged to the agent retroactively, as though it had been
+ * "thinking" all that time. It is updated once a second by the same tick that moves the tool calls'
+ * durations (see tickDurations in feed/build.ts).
  */
 const streamStatus = (panel: PanelState, cards: CardState): string => {
   /**
-   * Запрос к модели сорвался и ждёт повтора: ход в этот момент не идёт вовсе —
-   * ни текста, ни вызовов, ни вопроса, — и «Claude is thinking» с бегущим
-   * счётчиком было бы прямой неправдой. Ровно из-за неё панель и выглядела
-   * зависшей: единственное, что происходило, нигде не показывалось.
+   * The request to the model failed and waits for a retry: at that moment the turn is not running at all -
+   * no text, no calls, no question - and a "Claude is thinking" with a running counter would be an outright
+   * lie. It is precisely because of it that the panel looked hung: the only thing happening was shown
+   * nowhere.
    *
-   * Раньше сжатия: сорваться может и запрос, которым контекст сжимают, и тогда
-   * рассказывать надо про отказ, а не про сжатие, которое из-за него стоит.
+   * Before compacting: the request that compacts the context can fail too, and then what has to be told
+   * about is the failure rather than the compacting standing still because of it.
    */
   if (panel.retry) {
-    // Про попытки и обратный отсчёт рассказывает карточка в ленте прямо над этой
-    // строкой (см. RetryRow) — здесь только то, чего в ней нет: сколько всё это
-    // уже тянется. Привычный вид строки при этом сохраняется — «что происходит ·
-    // сколько идёт», — меняется ровно то, что было неправдой.
+    // The attempts and the countdown are told about by the card in the feed right above this line (see
+    // RetryRow) - here goes only what is not in it: how long all of this has already dragged on. The line's
+    // familiar shape is kept - "what is happening - how long it has run" - and exactly what was untrue
+    // changes.
     return `${panel.retry.label} · waiting ${formatDuration(Date.now() - panel.retry.startedAt)}`
   }
 
-  // Про сжатие говорит его собственная карточка в ленте (CONTEXT с растущим
-  // процентом) — второй подписи о том же прямо под ней быть не должно.
+  // The compacting is spoken about by its own card in the feed (a CONTEXT with a growing percentage) -
+  // there must be no second caption about the same thing right under it.
   if (panel.compacting) return ''
 
   const awaitingDecision = panel.items.some((item) => ownStream(item) && awaitsYou(item, cards))
   if (awaitingDecision) return 'Waiting for you'
 
   /**
-   * Собственный ход главного потока мог уже закончиться (агент запустил
-   * фонового субагента и на этом сам замолчал — так делает Task-инструмент вне
-   * скилла), а субагент — ещё нет. Без этой ветки единственным следом того,
-   * что что-то всё ещё происходит, была бы точка на чипе субагента, которую
-   * сначала нужно заметить и понять, что она значит.
+   * The main stream's own turn may have ended already (the agent started a background subagent and fell
+   * silent at that - which is what the Task tool does outside a skill) while the subagent has not. Without
+   * this branch the only trace of anything still happening would be a dot on the subagent's chip, which one
+   * first has to notice and then work out what it means.
    */
   if (panel.status !== 'running') {
     const pending = panel.items.filter((item) => item.kind === 'task' && item.pending).length
@@ -2319,19 +2362,18 @@ const streamStatus = (panel: PanelState, cards: CardState): string => {
   }
 
   /**
-   * Что именно сейчас делается — уже названо карточкой в самой ленте (вызов
-   * инструмента, его команда, описание). Повторять то же самое здесь второй
-   * раз, другими словами, — не рассказ о происходящем, а дублирование того, что
-   * и так видно строкой выше. Пока ход идёт и решения от человека не ждут,
-   * здесь ровно одна честная подпись — ход думает.
+   * What exactly is being done right now has already been named by a card in the feed itself (the tool call,
+   * its command, its description). Repeating the same thing here a second time in different words is not an
+   * account of what is happening but a duplicate of what is visible a line above anyway. While the turn runs
+   * and no decision is awaited from the person, there is exactly one honest caption here - the turn is
+   * thinking.
    */
   const label = 'Claude is thinking'
   if (!panel.turnStartedAt) return label
 
-  // Решение только что приняли: awaitingDecision уже false, но эффект,
-  // который переносит waitStartedAt в pausedMs, ещё не отработал (он бьёт
-  // после этого рендера) — досчитываем текущую паузу тут же, чтобы число не
-  // дёрнулось на следующем тике.
+  // A decision has just been taken: awaitingDecision is already false, but the effect that carries
+  // waitStartedAt into pausedMs has not run yet (it fires after this render) - we count the current pause in
+  // right here so that the number does not jump on the next tick.
   const now = Date.now()
   const ongoingWait = panel.waitStartedAt ? now - panel.waitStartedAt : 0
   const elapsed = formatDuration(now - panel.turnStartedAt - panel.pausedMs - ongoingWait)
@@ -2339,12 +2381,12 @@ const streamStatus = (panel: PanelState, cards: CardState): string => {
 }
 
 /**
- * Показанный план, по которому ещё нет решения: пока он есть, ход стоит на нём.
+ * A shown plan with no decision on it yet: while it is there, the turn stands on it.
  *
- * Только у идущего хода: карточка плана остаётся в ленте навсегда, в том числе у
- * разговора, поднятого из истории, — а там решать давно нечего, ход кончился
- * когда-то в прошлом. Без этой проверки первое же сообщение в восстановленной
- * вкладке уходило бы не промптом, а замечанием к древнему плану.
+ * Only for a running turn: a plan card stays in the feed forever, including in a conversation raised from
+ * the history - and there is nothing left to decide there, the turn ended somewhere in the past. Without
+ * this check the very first message in a restored tab would travel not as a prompt but as a remark on an
+ * ancient plan.
  */
 const pendingPlan = (
   panel: PanelState,
@@ -2354,22 +2396,21 @@ const pendingPlan = (
     ? [...panel.items].reverse().find((item): item is PlanItem => item.kind === 'plan' && decisions[item.id] === undefined)
     : undefined
 
-/** Последний присланный агентом список задач — панель над полем ввода зеркалит только его. */
+/** The last task list the agent sent - the panel above the input field mirrors only that one. */
 const latestTodo = (items: FeedItem[]): TodoItem | undefined =>
   [...items].reverse().find((item): item is TodoItem => item.kind === 'todo')
 
-/** Текст последней реплики человека — чтобы понять, не сжатие ли это сейчас. */
+/** The text of the person's last line - to work out whether this is a compaction right now. */
 const lastUserText = (items: FeedItem[]): string => {
   const last = [...items].reverse().find((item): item is UserItem => item.kind === 'user')
   return last ? tokensText(last.tokens).trim() : ''
 }
 
 /**
- * Чей это, собственно, стрим. taskId без задачи, на которую он ссылается
- * (например если совпадение agent_id/task_id однажды перестанет быть верным
- * на новой версии CLI), — не повод спрятать решение насовсем: без этого оно
- * не показалось бы нигде и тихо истекло по таймауту. Считаем такое главным
- * потоком, а не отдельным несуществующим стримом.
+ * Whose stream this actually is. A taskId without the task it refers to (if the agent_id / task_id match
+ * one day stops holding on a new version of the CLI, say) is no reason to hide a decision for good: without
+ * this it would show up nowhere and quietly expire on a timeout. We count such a case as the main stream
+ * rather than as a separate stream that does not exist.
  */
 const ownerStream = (taskId: string | undefined, items: FeedItem[]): string => {
   if (taskId === undefined) return 'main'
@@ -2377,20 +2418,20 @@ const ownerStream = (taskId: string | undefined, items: FeedItem[]): string => {
   return known ? taskId : 'main'
 }
 
-/** Последний заданный агентом вопрос в текущем стриме, на который ещё не отвечено. */
+/** The last question the agent asked in the current stream that has not been answered yet. */
 const pendingAsk = (items: FeedItem[], answered: string[], stream: string): AskItem | undefined =>
   [...items]
     .reverse()
     .find(
       (item): item is AskItem =>
         item.kind === 'ask' &&
-        // Вопрос из переписи прошлого разговора карточкой не показываем — см. AskItem.historic.
+        // A question from a past conversation's replay is not shown as a card - see AskItem.historic.
         !item.historic &&
         !answered.includes(item.id) &&
         ownerStream(item.taskId, items) === stream,
     )
 
-/** Последний вызов текущего стрима, который всё ещё ждёт решения по разрешению. */
+/** The current stream's last call that is still waiting for a permission decision. */
 const pendingPermission = (items: FeedItem[], stream: string): PermItem | undefined =>
   [...items]
     .reverse()
@@ -2400,8 +2441,8 @@ const pendingPermission = (items: FeedItem[], stream: string): PermItem | undefi
     )
 
 const statusOf = (task: TaskItem, items: FeedItem[], answeredAsks: string[]): AgentStatus => {
-  // Оборванный агент — не то же самое, что отработавший: раньше и прибитый, и
-  // упавший получали тот же зелёный кружок, что и дошедший до конца.
+  // An agent cut short is not the same as one that ran its course: a killed and a crashed one used to get
+  // the same green dot as one that made it to the end.
   if (!task.pending) return task.outcome === 'failed' ? 'failed' : task.outcome === 'stopped' ? 'stopped' : 'done'
 
   const blocked = items.some(
@@ -2422,7 +2463,7 @@ const mainStatusOf = (panel: PanelState, answeredAsks: string[]): AgentStatus =>
   return panel.status === 'running' ? 'running' : 'idle'
 }
 
-/** Пачка, скрытая clearFinishedAgents, из дропдауна пропадает — сама история никуда не делась. */
+/** A batch hidden by clearFinishedAgents disappears from the dropdown - the history itself went nowhere. */
 const buildAgentTabs = (panel: PanelState, answeredAsks: string[], hiddenTaskIds: Set<string>): AgentTab[] =>
   panel.items
     .filter((item): item is TaskItem => item.kind === 'task' && !hiddenTaskIds.has(item.id))
@@ -2433,31 +2474,37 @@ const buildAgentTabs = (panel: PanelState, answeredAsks: string[], hiddenTaskIds
       status: statusOf(task, panel.items, answeredAsks),
       percent: task.percent,
       duration: task.duration,
-      // Прибивать нечего у того, кто уже закончил, и нечем — пока CLI не назвал
-      // задачу своим именем (см. TaskItem.taskId).
+      // There is nothing to kill in one that has already finished, and nothing to kill it with until the
+      // CLI has named the task (see TaskItem.taskId).
       stopId: task.pending ? task.taskId : undefined,
     }))
 
-/** Пункты меню бургера в шапке — см. Header.onOpenMenu. */
+/** The items of the burger menu in the header - see Header.onOpenMenu. */
 const HEADER_MENU_OPTIONS: MenuOption[] = [
   { id: 'history', label: 'History' },
   { id: 'mcp', label: 'MCP servers' },
   { id: 'plugins', label: 'Plugins' },
   { id: 'sounds', label: 'Sound alerts' },
+  // Not the mode of the tab being worked in - that one lives on the MODE selector by the input field.
+  // This is the answer to "what should the next tab start in", and it belongs here precisely because it
+  // is asked once in a while rather than in the middle of work.
+  { id: 'defaultMode', label: 'Default mode' },
   { id: 'composerLayout', label: 'Composer layout' },
 ]
 
 const menuProps = (
   kind: SelectorKind,
   models: ModelInfo[] | null,
-  /** Выбранное значение, а не то, во что его развернул агент: галочка обязана стоять на выбранном. */
+  /** The chosen value rather than what the agent resolved it into: the tick has to stand on the choice. */
   selectedModel: string,
-  /** Модель, на которую разговор увёл сам агент, — тогда галочка стоит на ней (см. modelMenu). */
+  /** The model the agent moved the conversation to itself - then the tick stands on it (see modelMenu). */
   switched: string | undefined,
   effort: string,
   mode: string,
+  /** What new tabs start in - the saved choice, which the open tab's mode is free to differ from. */
+  defaultMode: string,
   composerLayout: string,
-  /** Какая закреплённая панель сейчас открыта — галочка в меню бургера стоит на ней. */
+  /** Which pinned panel is open right now - the tick in the burger menu stands on it. */
   openPanel: 'history' | 'mcp' | 'plugins' | 'sounds' | null,
   availableModes: ModeAvailability,
 ): { title: string; hint: string; width: number; options: MenuOption[]; selected: string; tick?: boolean } => {
@@ -2480,13 +2527,29 @@ const menuProps = (
     }
   }
 
+  if (kind === 'defaultMode') {
+    return {
+      title: 'DEFAULT MODE',
+      hint: 'what new tabs start in',
+      // The same width as the mode selector itself: the same rows with the same captions and sub-lines,
+      // and at anything narrower they would wrap differently in the two menus for no reason.
+      width: 372,
+      // The same list, availability marks and all: a mode this machine or this model cannot do is no
+      // better a default than it is a current mode, and saying so in one menu but not the other would
+      // only puzzle.
+      options: modeMenuOptions(availableModes),
+      // The saved default rather than what the tab is in right now. They part ways the moment the tab's
+      // mode is changed, and that is the whole point of having two controls.
+      selected: normalizeMode(defaultMode),
+    }
+  }
+
   if (kind === 'composerLayout') {
     return {
       title: 'COMPOSER LAYOUT',
       hint: 'where the input sits',
-      // Заголовок и подсказка стоят в один ряд (см. Menu.menuHead) — на 220px
-      // они сталкивались и подсказка переносилась посреди слова. 300px — тот же
-      // запас, что и у EFFORT при сравнимой длине текста.
+      // The title and the hint stand in one row (see Menu.menuHead) - at 220px they collided and the hint
+      // wrapped mid-word. 300px is the same room EFFORT has at a comparable length of text.
       width: 300,
       options: COMPOSER_LAYOUT_OPTIONS,
       selected: composerLayout,
@@ -2499,20 +2562,20 @@ const menuProps = (
       hint: '',
       width: 260,
       options: HEADER_MENU_OPTIONS,
-      // Composer layout — не переключатель, а вход в своё подменю (см. onPick
-      // в App), у него самого текущего значения тут не бывает.
+      // Composer layout is not a toggle but a way into a submenu of its own (see onPick in App) - it never
+      // has a current value here.
       selected: openPanel ?? '',
-      // Список действий, а не выбор одного из вариантов — своей галочки тут
-      // не нужно (см. Menu.tick), она бы просто отступом стояла у каждой
-      // строки: почти никогда ни одна закреплённая панель не открыта.
+      // A list of actions rather than a choice among options - a tick of its own is not needed here (see
+      // Menu.tick), it would simply stand as an indent beside every row: almost never is any pinned panel
+      // open.
       tick: false,
     }
   }
 
   return {
     title: 'PERMISSION MODE',
-    // Круг тот же, что в терминале, и в него входит всё кроме «Don't ask» —
-    // недоступное он просто перешагивает (см. nextMode).
+    // The circle is the same as in a terminal, and everything but "Don't ask" is in it - the unavailable it
+    // simply steps over (see nextMode).
     hint: "shift+tab cycles every mode but Don't ask",
     width: 372,
     options: modeMenuOptions(availableModes),

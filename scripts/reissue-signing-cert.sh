@@ -1,11 +1,11 @@
 #!/bin/sh
 #
-# Перевыпуск ключа и сертификата подписи плагина для JetBrains Marketplace.
+# Reissues the plugin's signing key and certificate for the JetBrains Marketplace.
 #
-# Ничего секретное этот скрипт не печатает: ключ и сертификат уходят прямо в
-# файлы и в .env, а на экран — только безопасные метаданные (кому выдан
-# сертификат, до какого числа действует). ACC_PUBLISH_TOKEN не трогается: он
-# не был скомпрометирован и живёт своей жизнью на стороне JetBrains-аккаунта.
+# This script prints nothing secret: the key and the certificate go straight into files and into .env,
+# while the screen gets safe metadata only (who the certificate was issued to, how long it is valid).
+# ACC_PUBLISH_TOKEN is left alone: it was not compromised and lives its own life on the JetBrains account
+# side.
 
 set -e
 
@@ -15,13 +15,13 @@ WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
 if [ ! -f "$ENV_FILE" ]; then
-  echo "Не нашёл $ENV_FILE — нечего перевыпускать." >&2
+  echo "No $ENV_FILE found - nothing to reissue." >&2
   exit 1
 fi
 
 OLD_TOKEN_LINE="$(grep '^export ACC_PUBLISH_TOKEN=' "$ENV_FILE")"
 if [ -z "$OLD_TOKEN_LINE" ]; then
-  echo "Не нашёл ACC_PUBLISH_TOKEN в $ENV_FILE — файл выглядит не так, как ожидалось." >&2
+  echo "No ACC_PUBLISH_TOKEN in $ENV_FILE - the file does not look the way it was expected to." >&2
   exit 1
 fi
 
@@ -44,8 +44,8 @@ openssl pkcs8 \
   -out "$WORKDIR/private_pkcs8.pem" -passout "pass:$PASSWORD" 2>>"$WORKDIR/openssl.log"
 
 {
-  printf '%s\n' "# Секреты публикации на JetBrains Marketplace — не коммитить, в .gitignore уже добавлено."
-  printf '%s\n' "# Перед публикацией: source .env"
+  printf '%s\n' "# JetBrains Marketplace publishing secrets - do not commit; already in .gitignore."
+  printf '%s\n' "# Before publishing: source .env"
   printf '%s\n' "$OLD_TOKEN_LINE"
   printf 'export ACC_PRIVATE_KEY_PASSWORD=%s\n' "$PASSWORD"
   printf "export ACC_CERTIFICATE_CHAIN='\n"
@@ -59,5 +59,5 @@ openssl pkcs8 \
 mv "$ENV_FILE.new" "$ENV_FILE"
 chmod 600 "$ENV_FILE"
 
-echo "Готово. Новый сертификат:"
+echo "Done. The new certificate:"
 openssl x509 -in "$WORKDIR/chain.crt" -noout -subject -dates

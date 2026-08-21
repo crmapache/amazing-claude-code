@@ -14,17 +14,16 @@ import type {
 import s from '../feed.module.css'
 
 /**
- * Мысли одного куска хода — одной карточкой, снаружи последняя из них.
+ * The thoughts of one piece of a turn go into one card, with the last of them showing outside.
  *
- * Снаружи всегда одна строка (дальше многоточие): это ход мысли между делом, не
- * то, ради чего приходят в панель. Целиком мысль читается по клику — вместе со
- * всеми, что были до неё в этом же куске хода; сколько их там, говорит счётчик.
- * Пока мысль ещё стримится, плашка дышит тем же пульсом, что и CONTEXT во время
- * сжатия — тот же язык «идёт, не готово».
+ * Outside it is always one line (with an ellipsis after it): this is a train of thought along the way
+ * rather than what one comes to the panel for. The whole thought is read with a click - together with
+ * every thought that came before it in this same piece of the turn; how many there are the counter says.
+ * While a thought is still streaming the chip breathes with the same pulse as CONTEXT during a compaction
+ * - the same language of "under way, not finished".
  *
- * Модель думает тем же markdown, каким пишет ответ, а строке выделить жирным
- * нечего: звёздочки и решётки в ней ничего не значат и просто торчат посреди
- * фразы (см. plainLine).
+ * The model thinks in the same markdown it writes its answer in, while a line has nothing to make bold:
+ * asterisks and hashes in it mean nothing and merely stick out mid-sentence (see plainLine).
  */
 export const ThinkRow = ({ item, open, onToggle }: { item: ThinkItem; open: boolean; onToggle: () => void }) => {
   const last = item.thoughts.at(-1) ?? ''
@@ -34,8 +33,8 @@ export const ThinkRow = ({ item, open, onToggle }: { item: ThinkItem; open: bool
       <button type="button" className={s.thinkHead} onClick={onToggle}>
         <span className={`${s.caret} ${open ? s.caretOpen : ''}`}>▶</span>
         <span className={`${s.toolChip} ${s.chipThink} ${item.pending ? s.thinkPending : ''}`}>THINK</span>
-        {/* Раскрытая карточка называет себя числом, а не последней мыслью: сама
-            эта мысль стоит строкой ниже, и повторять её заголовком незачем. */}
+        {/* An expanded card names itself with a number rather than with the last thought: that thought
+            stands a line below, and repeating it as a heading serves nothing. */}
         <span className={s.thinkText}>
           {open ? `${item.thoughts.length} ${item.thoughts.length === 1 ? 'thought' : 'thoughts'}` : plainLine(last)}
         </span>
@@ -44,8 +43,8 @@ export const ThinkRow = ({ item, open, onToggle }: { item: ThinkItem; open: bool
 
       {open ? (
         <div className={s.thinkBody}>
-          {/* Ключ по номеру: мысли только дописываются в конец и никогда не
-              меняются местами — их порядок и есть их различие. */}
+          {/* Keyed by index: thoughts are only appended at the end and never change places - their order
+              is what tells them apart. */}
           {item.thoughts.map((thought, index) => (
             <p key={index} className={s.thinkFull}>
               {plainLine(thought)}
@@ -65,15 +64,14 @@ export const CheckpointRow = ({ item }: { item: CheckpointItem }) => (
   </div>
 )
 
-/** Как часто подрастает полоса сжатия: чаще незачем, кривая и так пологая. */
+/** How often the compaction bar grows: more often serves nothing, the curve is gentle as it is. */
 const COMPACT_TICK_MS = 500
 
 /**
- * Сколько сжатия позади — по секундомеру от первого сообщения о нём.
+ * How much of a compaction is behind - by a stopwatch from the first message about it.
  *
- * Время считается от появления карточки, а не от какой-либо отметки в событии:
- * карточка заводится тем же сообщением, которым CLI объявляет о начале сжатия,
- * так что это и есть его начало.
+ * The time is counted from the card's appearance rather than from any mark in the event: the card is
+ * created by the very message the CLI announces the compaction's start with, so that is its start.
  */
 const useCompactProgress = (pending: boolean): number => {
   const startedAt = useRef<number | null>(null)
@@ -96,14 +94,14 @@ const useCompactProgress = (pending: boolean): number => {
 }
 
 /**
- * Сжатие контекста. Пока оно идёт, за подписью стоит процент — единственный
- * рассказ о происходящем на всю панель (строка состояния под лентой в этот
- * момент молчит, чтобы не говорить то же самое дважды).
+ * A context compaction. While it runs, a percentage stands after the caption - the whole panel's only
+ * account of what is happening (the status line under the feed stays silent at that moment, so as not to
+ * say the same thing twice).
  *
- * Процент считается от прошедшего времени: сколько сжатия позади, CLI не
- * сообщает никому, включая собственный терминальный интерфейс, — тот рисует ту
- * же кривую (см. compactProgress). Цифра поэтому не обещает точной доли, а
- * показывает, что работа идёт и сколько примерно уже тянется.
+ * The percentage is computed from the time elapsed: how much of a compaction is behind the CLI tells
+ * nobody, its own terminal interface included - that one draws the same curve (see compactProgress). So
+ * the figure promises no exact share but
+ * shows that work is under way and roughly how long it has been going.
  */
 export const CompactRow = ({ item }: { item: CompactItem }) => {
   const percent = useCompactProgress(item.pending)
@@ -119,18 +117,18 @@ export const CompactRow = ({ item }: { item: CompactItem }) => {
 }
 
 /**
- * Как часто пересчитывается обратный отсчёт до следующей попытки. Чаще секунды
- * незачем: сама цифра идёт по секундам, а лишние перерисовки ленты во время
- * ответа стоят дорого.
+ * How often the countdown to the next attempt is recomputed. More often than once a second serves
+ * nothing: the figure itself moves in seconds, and extra repaints of the feed during an answer cost
+ * dearly.
  */
 const RETRY_TICK_MS = 1000
 
-/** Сколько секунд осталось до следующей попытки — никогда не меньше нуля. */
+/** How many seconds are left until the next attempt - never below zero. */
 const secondsLeft = (retryAt: number): number => Math.max(0, Math.ceil((retryAt - Date.now()) / 1000))
 
 /**
- * Обратный отсчёт до следующей попытки. Пока пауза идёт, это единственная
- * цифра во всей панели, которая говорит, что разговор не умер, а ждёт.
+ * The countdown to the next attempt. While the pause lasts, this is the one figure in the whole panel
+ * that says the conversation has not died but is waiting.
  */
 const useRetryCountdown = (item: RetryItem): number => {
   const [left, setLeft] = useState(() => secondsLeft(item.retryAt))
@@ -148,10 +146,10 @@ const useRetryCountdown = (item: RetryItem): number => {
   return left
 }
 
-/** Попытки числом: «1 attempt», но «4 attempts». */
+/** The attempts as a number: "1 attempt", but "4 attempts". */
 const attempts = (count: number): string => (count === 1 ? '1 attempt' : `${count} attempts`)
 
-/** Чем кончилась череда повторов — словами, а не цветом: цвет читается не всеми. */
+/** How a chain of retries ended - in words rather than in colour: colour is not read by everyone. */
 const retryOutcomeText = (item: RetryItem): string => {
   switch (item.outcome) {
     case 'recovered':
@@ -164,12 +162,12 @@ const retryOutcomeText = (item: RetryItem): string => {
 }
 
 /**
- * Пауза перед повторным запросом к API (см. RetryItem).
+ * The pause before a repeated API request (see RetryItem).
  *
- * Устроена как строка сжатия контекста и стоит на том же месте в ленте: это тот
- * же разговор про «сейчас ничего не происходит, и вот почему». Пока пауза идёт,
- * метка дышит, а справа тикает обратный отсчёт; когда всё кончилось, на его
- * месте остаётся, сколько заняла вся череда.
+ * It is built like the context compaction row and stands in the same place in the feed: this is the same
+ * conversation about "nothing is happening right now, and here is why". While the pause lasts the label
+ * breathes and a countdown ticks on the right; once it is all over, how long the whole chain took stays
+ * in its place.
  */
 export const RetryRow = ({ item }: { item: RetryItem }) => {
   const left = useRetryCountdown(item)
@@ -181,7 +179,7 @@ export const RetryRow = ({ item }: { item: RetryItem }) => {
       <span className={s.retryText}>
         {item.label} · {item.pending ? attemptOf : retryOutcomeText(item)}
       </span>
-      {/* Отсчёт истёк — попытка уже пошла, и ждём мы теперь не паузу, а ответ. */}
+      {/* The countdown has run out - the attempt is under way, and what we wait for now is an answer rather than a pause. */}
       <span className={s.retryCount}>
         {item.pending ? (left > 0 ? `retrying in ${left}s` : 'retrying…') : item.duration}
       </span>
@@ -190,7 +188,7 @@ export const RetryRow = ({ item }: { item: RetryItem }) => {
   )
 }
 
-/** Итог хода — включая прерванный: он отличается подписью, а не видом строки. */
+/** A turn's result - an interrupted one included: it differs by its caption rather than by the row's look. */
 export const MetaRow = ({ item }: { item: MetaItem }) => (
   <div className={s.meta}>
     {item.stats.map((stat, index) => (
@@ -199,7 +197,7 @@ export const MetaRow = ({ item }: { item: MetaItem }) => (
   </div>
 )
 
-/** Процесс умер сам — недвусмысленная пометка, а не молчаливое «idle». */
+/** The process died on its own - an unambiguous mark rather than a silent "idle". */
 export const CrashRow = ({ item }: { item: CrashItem }) => (
   <div className={s.crash}>
     <span className={s.crashLabel}>SESSION</span>
@@ -208,9 +206,9 @@ export const CrashRow = ({ item }: { item: CrashItem }) => (
 )
 
 /**
- * Отказ агента или процесса — на своём месте в хронологии (см. ErrorItem).
- * Крестик остаётся: прочитанную ошибку можно убрать сразу, не дожидаясь, пока
- * она уедет вверх сама.
+ * A refusal from the agent or the process - in its place in the chronology (see ErrorItem). The cross
+ * stays: an error that has been read can be removed at once rather than waiting for it to travel upwards
+ * by itself.
  */
 export const ErrorRow = ({
   item,
@@ -219,13 +217,13 @@ export const ErrorRow = ({
 }: {
   item: ErrorItem
   onDismiss: () => void
-  /** Открыть адрес из текста ошибки в системном браузере. */
+  /** Open an address out of an error's text in the system browser. */
   onOpenLink: (url: string) => void
 }) => (
   <p className={s.error}>
-    {/* Адрес внутри ошибки — обычно единственное, что по ней можно сделать:
-        «check https://status.claude.com» просит сходить и посмотреть. Ссылкой
-        он и остаётся, как в ответе агента (см. LinkedText). */}
+    {/* An address inside an error is usually the one thing that can be done about it: "check
+        https://status.claude.com" asks one to go and look. So it stays a link, as in the agent's answer
+        (see LinkedText). */}
     <span className={s.errorText}>
       <LinkedText text={item.message} onOpenLink={onOpenLink} />
     </span>

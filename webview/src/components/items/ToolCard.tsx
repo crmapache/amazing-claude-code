@@ -16,7 +16,7 @@ interface ToolCardProps {
   item: ToolItem
   open: boolean
   appliedHunks: string[]
-  /** Агент ещё даже не начал: стоит и ждёт, разрешишь ли ты этот вызов. */
+  /** The agent has not even begun: it stands there waiting for you to allow this call. */
   awaitingPermission: boolean
   onToggle: () => void
   onAcceptHunk: (hunkId: string) => void

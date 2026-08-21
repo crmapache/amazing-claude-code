@@ -1,9 +1,8 @@
 import { useCallback, useMemo, useState } from 'react'
 
 /**
- * Состояние карточек, которое живёт только в интерфейсе: что раскрыто, какие
- * куски правки приняты. Агент об этом ничего не знает, поэтому в общей модели
- * ленты ему не место.
+ * The cards' state that lives in the interface only: what is expanded, which pieces of an edit have been
+ * accepted. The agent knows nothing about this, so it has no place in the feed's shared model.
  */
 export interface CardState {
   isOpen: (id: string) => boolean
@@ -45,8 +44,8 @@ export const useCardState = (): CardState => {
     setAnsweredAsks((current) => (current.includes(itemId) ? current : [...current, itemId]))
   }, [])
 
-  // Собранный заново объект менялся бы на каждый кадр печатающегося ответа, а он
-  // уезжает в каждую карточку ленты — и обесценивал бы там любую мемоизацию.
+  // An object reassembled afresh would change on every frame of a printing answer, and it travels into
+  // every card of the feed - devaluing any memoization there.
   return useMemo(
     () => ({
       isOpen,

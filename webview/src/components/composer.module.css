@@ -1,8 +1,8 @@
-/* Нижняя часть панели: список задач, очередь, цитаты, поле ввода. */
+/* The panel's lower part: the task list, the queue, the quotes, the input field. */
 
-/* Кадр анимации живёт здесь же, а не в feed.module.css: CSS-модуль переименовывает
-   имена анимаций так же, как классы, и ссылка на кадры из другого модуля молча ни
-   во что не превращается — анимация просто не идёт. */
+/* The animation's keyframes live right here rather than in feed.module.css: a CSS module renames animation
+   names just as it renames classes, and a reference to another module's keyframes silently turns into
+   nothing - the animation simply does not run. */
 @keyframes acc-pulse {
   0%,
   100% {
@@ -20,7 +20,7 @@
   padding: 8px 10px 0;
 }
 
-/* Граница смотрит туда, откуда к полю ввода примыкает лента — см. App.tsx (layout). */
+/* The border faces where the feed adjoins the input field - see App.tsx (layout). */
 .dock[data-layout='bottom'],
 .dock[data-layout='compact'],
 .dock[data-layout='left'],
@@ -29,11 +29,11 @@
 }
 
 /*
- * left/right: грид стоит на .panel целиком, шапка — первая строка, лента и
- * док делят с ней одну колонку по строкам дальше — лента второй строкой,
- * док третьей (см. shell.module.css). Боковая рельса (.railColumn) занимает
- * все три строки разом, слева у left, справа у right — её собственная рамка
- * уже отделяет её на всю высоту, доку своя рамка сбоку не нужна.
+ * left/right: the grid stands on the whole .panel, the header is the first row, the feed and the dock share
+ * one column with it in the rows further on - the feed as the second row, the dock as the third (see
+ * shell.module.css). The side rail (.railColumn) takes all three rows at once, on the left under left and
+ * on the right under right - its own border already separates it over the full height, and the dock needs
+ * no border of its own on that side.
  */
 .dock[data-layout='right'] {
   grid-column: 1;
@@ -45,7 +45,7 @@
   grid-row: 3;
 }
 
-/* --- Кнопки блокирующих панелей ---------------------------------------------- */
+/* --- The blocking panels' buttons -------------------------------------------- */
 
 .primary {
   height: 25px;
@@ -91,17 +91,17 @@
   background: var(--acc-branch-active);
 }
 
-/* Одно правило на все залитые варианты: ниже вариантных :hover, поэтому
-   выигрывает у них при равной специфичности и держит вид даже под курсором. */
+/* One rule for every filled variant: it stands below the variant :hover rules, so it wins over them at
+   equal specificity and holds its look even under the cursor. */
 .primary:disabled {
   background: var(--acc-bg-control);
   color: var(--acc-fg-ghost);
 }
 
-/* Вариант «ещё нечего отправлять»: по макету это ячейка disabled у ответа на
-   вопрос — приглушённая и не отзывается на курсор, поэтому своего :hover нет.
-   Свой оттенок текста светлее общего disabled: подпись здесь ещё и подсказка,
-   что делать дальше. Второй селектор — чтобы перебить общее .primary:disabled. */
+/* The "nothing to send yet" variant: in the design this is a disabled cell of an answer to a question -
+   dimmed and unresponsive to the cursor, so it has no :hover of its own. Its shade of text is lighter than
+   the shared disabled one: the caption here is also a hint about what to do next. The second selector is
+   there to override the shared .primary:disabled. */
 .primaryOff,
 .primaryOff:disabled {
   background: var(--acc-bg-control);
@@ -148,7 +148,7 @@
   color: var(--acc-fg-ghost);
 }
 
-/* --- Разрешение --------------------------------------------------------------- */
+/* --- The permission ----------------------------------------------------------- */
 
 .perm {
   margin-bottom: 8px;
@@ -158,8 +158,8 @@
   overflow: hidden;
 }
 
-/* По базовой линии, а не по центру: метка PERMISSION — мелкий mono, а цель —
-   обычный текст, и по центру своих коробок они встают на разной высоте. */
+/* On the baseline rather than centred: the PERMISSION label is small mono while the target is ordinary
+   text, and by the centres of their own boxes they stand at different heights. */
 .permHead {
   display: flex;
   align-items: baseline;
@@ -189,8 +189,8 @@
   white-space: pre-wrap;
 }
 
-/* Причина вопроса: пояснение к команде выше, поэтому по её левому краю и тем же
-   отступом. Обычным текстом, а не mono, — это фраза, а не команда. */
+/* The question's reason: an explanation of the command above, hence along its left edge and with the same
+   padding. In ordinary text rather than mono - this is a sentence rather than a command. */
 .permReason {
   margin: 6px 11px 0;
   font-size: 11.5px;
@@ -205,10 +205,10 @@
   padding: 9px 11px;
 }
 
-/* Номер кнопки — он же её хоткей. Мелкий и приглушённый: подсказка, а не часть
-   подписи, читать кнопку он мешать не должен. Полупрозрачным цветом, а не своим:
-   кнопки тут разного вида — залитая и обведённые, — и на каждой он ложится
-   поверх её собственного фона. */
+/* A button's number is also its hotkey. Small and dimmed: a hint rather than part of the caption, it must
+   not get in the way of reading the button. In a semi-transparent colour rather than one of its own: the
+   buttons here are of different kinds - filled and outlined - and on each it lies over that button's own
+   background. */
 .actionKey {
   display: grid;
   place-items: center;
@@ -220,7 +220,7 @@
   opacity: 0.75;
 }
 
-/* --- Вопросы -------------------------------------------------------------- */
+/* --- The questions -------------------------------------------------------- */
 
 .ask {
   margin-bottom: 8px;
@@ -230,7 +230,7 @@
   overflow: hidden;
 }
 
-/* По базовой линии, а не по центру: у метки и заголовка разный кегль. */
+/* On the baseline rather than centred: the label and the title are of different sizes. */
 .askHead {
   display: flex;
   align-items: baseline;
@@ -250,8 +250,8 @@
   color: var(--acc-fg-dim);
 }
 
-/* Отпускает вопрос, а не прячет его: ход стоит, пока агент ждёт ответа, —
-   поэтому крестик виден всегда, а не только под курсором. */
+/* It releases the question rather than hides it: the turn stands while the agent waits for an answer - so
+   the cross is always visible rather than only under the cursor. */
 .askDismiss {
   align-self: center;
   flex: none;
@@ -270,9 +270,9 @@
   color: var(--acc-fg);
 }
 
-/* Шапка и кнопка отправки остаются на месте — крутится только сам список
-   вопросов. Без этого шесть вопросов в одном вызове (обычное дело) вытолкнули
-   бы поле ввода за экран: панель здесь закреплённая, а не в бесконечной ленте. */
+/* The head and the send button stay in place - only the list of questions itself spins. Without this six
+   questions in one call (an ordinary thing) would push the input field off the screen: the panel here is a
+   pinned one rather than part of an endless feed. */
 .askBody {
   display: flex;
   flex-direction: column;
@@ -354,9 +354,9 @@
   color: var(--acc-on-accent);
 }
 
-/* Цифра не у того вопроса, которому сейчас принадлежат хоткеи: номер оставляем
-   (по нему видно порядок вариантов), но гасим — нажатие уйдёт не сюда, и
-   обещать его тут нечем. */
+/* A digit that does not belong to the question the hotkeys currently belong to: the number is kept (the
+   order of the options is visible by it) but dimmed - a press will go elsewhere, and there is nothing to
+   promise here with. */
 .optionKeyIdle {
   opacity: 0.4;
 }
@@ -370,8 +370,8 @@
   display: grid;
   place-items: center;
   font: 600 9px var(--acc-mono);
-  /* Пока не выбрано, здесь стоит номер варианта — цвет тот же, что и у цифры в
-     кружке одиночного выбора. Галочка на залитом фоне перекрашивается ниже. */
+  /* Until something is chosen, the option's number stands here - the same colour as the digit in the circle
+     of a single choice. A tick on a filled background is repainted below. */
   color: var(--acc-fg-faint);
 }
 
@@ -398,8 +398,8 @@
   margin-top: 1px;
 }
 
-/* Other — такой же вариант в сетке, что и остальные (см. AskPanel.pickOther),
-   только во всю строку: свой ответ пишут не в кружке ценой соседних вариантов. */
+/* Other is the same kind of option in the grid as the rest (see AskPanel.pickOther), only across the whole
+   row: one's own answer is not written inside a circle at the cost of the neighbouring options. */
 .optionOther {
   grid-column: 1 / -1;
   align-items: center;
@@ -429,7 +429,7 @@
   color: var(--acc-fg-faint);
 }
 
-/* --- Список задач ------------------------------------------------------------ */
+/* --- The task list ------------------------------------------------------------ */
 
 .taskPanel {
   display: flex;
@@ -441,7 +441,7 @@
   overflow: hidden;
 }
 
-/* По базовой линии, а не по центру: у метки и счётчика разный кегль. */
+/* On the baseline rather than centred: the label and the counter are of different sizes. */
 .taskPanelHead {
   display: flex;
   align-items: baseline;
@@ -467,7 +467,7 @@
   padding: 4px 0;
 }
 
-/* Только пока развёрнут длинный список — не выталкивать поле ввода за экран. */
+/* Only while a long list is unfolded - so as not to push the input field off the screen. */
 .taskPanelListScroll {
   overflow-y: auto;
   max-height: 220px;
@@ -501,8 +501,8 @@
   border-color: var(--acc-accent);
 }
 
-/* Коробка чекбокса остаётся по центру строки, а текст с подписью выравнивается
-   по базовой линии: иначе мелкий mono RUNNING висит выше строки задачи. */
+/* The checkbox's box stays at the row's centre while the text with its caption aligns to the baseline:
+   otherwise the small mono RUNNING hangs above the task's line. */
 .taskPanelTextGroup {
   display: flex;
   align-items: baseline;
@@ -548,15 +548,14 @@
   background: var(--acc-bg-card);
 }
 
-/* --- Список задач: compact --------------------------------------------------- */
+/* --- The task list: compact -------------------------------------------------- */
 
 /*
- * Ряды compact идут во всю ширину панели, а не карточкой с отступами, как
- * .taskPanel выше, — вплотную к строке задач под ними стоит такая же
- * полноширинная шапка (см. .header) и такой же композер (см. .compactRow), и
- * рядом с ними инсет .dock читался бы чужеродной рамкой посередине плотной
- * колонки. Отрицательные поля возвращают инсет .dock как padding у самих
- * рядов — фон остаётся во всю ширину, текст стоит там же, где и раньше.
+ * The compact rows run across the panel's full width rather than as a card with insets, as .taskPanel does
+ * above - right against the task row below them stands an equally full-width header (see .header) and an
+ * equally full-width composer (see .compactRow), and beside them the .dock inset would read as an alien
+ * frame in the middle of a dense column. The negative margins give the .dock inset back as padding on the
+ * rows themselves - the background stays full width while the text stands where it did before.
  */
 .taskCompactBleed {
   margin: 0 -10px;
@@ -568,14 +567,14 @@
   padding: 5px 0 6px;
   background: var(--acc-bg-raised);
   border-top: 1px solid var(--acc-line);
-  /* Как .taskPanelListScroll в обычной раскладке — иначе длинный список
-     выталкивает поле ввода за нижний край короткой пристыкованной панели. */
+  /* Like .taskPanelListScroll in the ordinary layout - otherwise a long list pushes the input field past the
+     bottom edge of a short docked panel. */
   max-height: 220px;
   overflow-y: auto;
 }
 
-/* Отступ слева — до текста строки под ней, а не до чекбокса: сама задача из
-   этого списка не бежит, ей чекбокс без надобности. */
+/* The left indent goes as far as the text of the row below rather than as far as its checkbox: a task from
+   this list does not run anywhere, it has no use for a checkbox. */
 .taskCompactExpandedRow {
   display: flex;
   align-items: center;
@@ -593,8 +592,8 @@
   border-top: 1px solid var(--acc-line);
 }
 
-/* min-width: 0 пускает текст задачи в обрезку раньше, чем ряд начнёт терять
-   ветку и стрелку справа — они важнее середины длинного названия задачи. */
+/* min-width: 0 lets the task's text be clipped before the row starts losing the branch and the arrow on the
+   right - those matter more than the middle of a long task name. */
 .taskCompactCurrentText {
   display: flex;
   align-items: baseline;
@@ -624,7 +623,7 @@
   color: var(--acc-fg);
 }
 
-/* --- Очередь --------------------------------------------------------------- */
+/* --- The queue ------------------------------------------------------------- */
 
 .queue {
   display: flex;
@@ -633,7 +632,7 @@
   margin-bottom: 8px;
 }
 
-/* По базовой линии, а не по центру: у метки и счётчика разный кегль. */
+/* On the baseline rather than centred: the label and the counter are of different sizes. */
 .queueHead {
   display: flex;
   align-items: baseline;
@@ -682,8 +681,8 @@
   letter-spacing: 1px;
   line-height: 1;
   cursor: grab;
-  /* Без этого сам жест перетаскивания в некоторых браузерах (в т.ч. JCEF)
-     перехватывается под скролл/выделение текста раньше, чем доходит до нас. */
+  /* Without this the drag gesture itself is in some browsers (JCEF among them) intercepted for scrolling or
+     text selection before it reaches us. */
   touch-action: none;
   user-select: none;
 }
@@ -746,7 +745,7 @@
   opacity: 0.5;
 }
 
-/* --- Цитаты ---------------------------------------------------------------- */
+/* --- The quotes ------------------------------------------------------------ */
 
 .quotes {
   display: flex;
@@ -788,9 +787,9 @@
   color: var(--acc-fg-fainter);
 }
 
-/* --- Поле ввода ------------------------------------------------------------ */
+/* --- The input field ------------------------------------------------------- */
 
-/* Подсказка команд висит над полем, поэтому у обёртки своя система координат. */
+/* The command hint hangs above the field, so the wrapper has a coordinate system of its own. */
 .boxWrap {
   position: relative;
 }
@@ -831,7 +830,7 @@
   white-space: nowrap;
 }
 
-/* Пояснение уступает место: имя команды важнее, а панель бывает узкой. */
+/* The explanation gives way: the command's name matters more, and the panel may be narrow. */
 .suggestHintText {
   flex: 1;
   min-width: 0;
@@ -850,10 +849,10 @@
   color: var(--acc-fg-ghost);
 }
 
-/* Фон поля — через переменную, а не прямо: тем же фоном красятся засечки шкалы
-   контекста (см. .contextMeterTick), и меняться эти два места обязаны вместе.
-   Пока фон подсветки задавался мимо неё, засечки оставались прежнего цвета и
-   читались тёмными прорехами на подсвеченном поле. */
+/* The field's background goes through a variable rather than directly: the same background paints the
+   context gauge's ticks (see .contextMeterTick), and those two places have to change together. While the
+   highlight's background was set past it, the ticks stayed their previous colour and read as dark gaps in a
+   highlighted field. */
 .box {
   --acc-field-bg: var(--acc-bg);
   position: relative;
@@ -864,19 +863,19 @@
 }
 
 /*
- * Полоска контекста — деталь самого поля, а не строки статуса под ним (та не
- * трогается, цвет берёт из того же source of truth — contextColor/contextGlow
- * в StatusBar.tsx). top/left/right те же 12px, что и текстовый отступ .field:
- * шкала выглядит частью поля, а не отдельной плашкой над ним.
+ * The context bar is a detail of the field itself rather than of the status row under it (that one is left
+ * alone and takes its colour from the same source of truth - contextColor/contextGlow in StatusBar.tsx).
+ * top/left/right are the same 12px as .field's text padding: the gauge looks like part of the field rather
+ * than a separate strip above it.
  */
-/* border-radius: 999px вместо расчётного значения в пикселях — на такой тонкой
-   полосе 2px скругления почти не читается на глаз, а с этим приёмом трек,
-   заливка и засечки всегда капсулой, сколько бы ни была их толщина. */
+/* border-radius: 999px instead of a computed value in pixels - on a bar this thin a 2px rounding is barely
+   readable to the eye, while with this trick the track, the fill and the ticks are always capsules whatever
+   their thickness. */
 /*
- * Строка со шкалой — своя, над полем ввода, а не слой поверх его верхнего
- * отступа. Отступ прокручивается вместе с текстом, и в длинном сообщении строки
- * заезжали под шкалу, просвечивая сквозь неё: шкала читалась как зачёркивание.
- * Отдельная строка живёт вне прокрутки — заехать под неё нечему.
+ * The row with the gauge is one of its own, above the input field, rather than a layer over the field's top
+ * padding. That padding scrolls along with the text, and in a long message the lines drove under the gauge,
+ * showing through it: the gauge read as a strikethrough. A separate row lives outside the scroll - there is
+ * nothing to drive under it.
  */
 .contextMeterRow {
   padding: 10px 12px 0;
@@ -891,13 +890,12 @@
 }
 
 /*
- * will-change: transform — ширина меняется на каждый тик процента контекста, и
- * встроенный в IDE Chromium (офскрин-рендер) при частичной перерисовке
- * иногда не дорисовывает скруглённый угол на подвижном крае — левый статичный
- * край рисуется чисто всегда, правый бывает выглядит квадратным. transform —
- * не width: только он и opacity надёжно переводят элемент в свой композитный
- * слой, из-за чего браузер перерисовывает его целиком при каждом изменении, а
- * не только «грязный» прямоугольник вокруг нового края.
+ * will-change: transform - the width changes on every tick of the context percentage, and the Chromium
+ * embedded in the IDE (an offscreen render) sometimes fails to finish drawing the rounded corner on the
+ * moving edge during a partial repaint - the static left edge always draws cleanly, while the right one
+ * sometimes looks square. transform rather than width: only it and opacity reliably move an element into a
+ * compositing layer of its own, which makes the browser repaint it whole on every change rather than only
+ * the "dirty" rectangle around the new edge.
  */
 .contextMeterFill {
   height: 100%;
@@ -906,11 +904,11 @@
   will-change: transform;
 }
 
-/* Четыре засечки на пятых долях (20/40/60/80%) дают полоске масштаб на глаз —
-   без них заполнение читается как абстрактная полоска, а не доля от целого.
-   Цвет — фон самого поля (см. --acc-field-bg в .box): засечка не красится сама,
-   а прорезает то, что под ней, будь то пустой трек или уже закрашенная часть, —
-   и вместе с полем меняет цвет, когда над ним держат файл. */
+/* Four ticks at the fifths (20/40/60/80%) give the bar a scale to the eye - without them the fill reads as
+   an abstract stripe rather than a share of a whole. The colour is the field's own background (see
+   --acc-field-bg in .box): a tick does not paint itself but cuts through whatever is under it, be that an
+   empty track or an already painted part - and changes colour along with the field when a file is held over
+   it. */
 .contextMeterTick {
   position: absolute;
   top: -2px;
@@ -920,10 +918,9 @@
   background: var(--acc-field-bg);
 }
 
-/* Синтаксис аргумента команды сразу после её названия, как в терминале — не
-   часть содержимого поля, а слой поверх него: не мешает ни печати, ни выделению.
-   Шрифт тот же, что у поля: хинт продолжает набранную строку и с другим встал бы
-   не на своё место. */
+/* The command argument's syntax right after its name, as in a terminal - not part of the field's contents
+   but a layer over it: it gets in the way of neither typing nor selecting. The font is the field's own: the
+   hint continues the typed line and with a different one would stand in the wrong place. */
 .ghostHint {
   position: absolute;
   white-space: nowrap;
@@ -934,53 +931,50 @@
 }
 
 /*
- * box-shadow вместо смены border-color: у встроенного в IDE Chromium
- * (офскрин-рендер) бывает косяк перерисовки — после снятия и возврата фокуса
- * перекрашенный бордер на скруглённых углах может отрисоваться криво. Сам
- * border здесь никогда не меняется (см. .box) — тень той же толщины и цвета
- * ложится отдельным слоем, а не перекрашивает существующий штрих, поэтому углы
- * остаются ровными при любом числе переключений фокуса.
+ * A box-shadow instead of changing border-color: the Chromium embedded in the IDE (an offscreen render) has
+ * a repaint quirk - after the focus is taken away and returned, a repainted border may draw crookedly on
+ * rounded corners. The border itself never changes here (see .box) - a shadow of the same thickness and
+ * colour lies down as a separate layer rather than repainting the existing stroke, so the corners stay even
+ * through any number of focus switches.
  *
- * Именно НЕ inset: inset-тень рисуется внутри рамки, но под дочерними
- * элементами — а .tools (нижний ряд с кнопками) имеет свой непрозрачный фон
- * и перекрывал бы её снизу. Обычная внешняя тень рисуется за пределами
- * бордера, где дочерним элементам её накрыть физически нечем.
+ * Deliberately NOT inset: an inset shadow is drawn inside the frame but under the child elements - and
+ * .tools (the bottom row with the buttons) has an opaque background of its own and would cover it from
+ * below. An ordinary outer shadow is drawn beyond the border, where the children have physically nothing to
+ * cover it with.
  */
 .boxFocused {
   box-shadow: 0 0 0 1px var(--acc-accent);
 }
 
-/* Над полем висит перетаскиваемый файл — та же рамка, что и у фокуса, но с
-   заливкой: видно, что бросят именно сюда, а не в ленту над полем.
-   Заливка ложится ПОВЕРХ обычного фона, а не вместо него: так у поля остаётся
-   свой цвет, а засечки шкалы (они красятся тем же фоном) подсвечиваются вместе
-   с ним, а не остаются тёмными зазорами. */
+/* A dragged file hangs over the field - the same frame as the focus one, but with a fill: it is visible
+   that the drop will land right here rather than in the feed above the field. The fill lies OVER the
+   ordinary background rather than in place of it: that way the field keeps a colour of its own and the
+   gauge's ticks (painted with that same background) are lit up along with it rather than left as dark
+   gaps. */
 .boxDropping {
   --acc-field-bg: linear-gradient(var(--acc-accent-08), var(--acc-accent-08)), var(--acc-bg);
   box-shadow: 0 0 0 1px var(--acc-accent);
   background: var(--acc-field-bg);
 }
 
-/* Набрана команда терминала («!» в начале): она уходит не агенту, а в оболочку,
-   и знать это надо до нажатия. Ниже .boxFocused — рамка режима важнее рамки
-   фокуса, в поле с командой фокус и так почти всегда. */
+/* A terminal command has been typed (a "!" at the start): it travels to the shell rather than to the agent,
+   and that has to be known before the press. Below .boxFocused - the mode's frame matters more than the
+   focus one, and in a field with a command the focus is almost always there anyway. */
 .boxBash {
   box-shadow: 0 0 0 1px var(--acc-warn);
 }
 
-/* --- Поле ввода: compact ----------------------------------------------------- */
+/* --- The input field: compact ------------------------------------------------ */
 
 /*
- * Ряд из двух частей: box (шкала контекста + поле) занимает всё доступное
- * место, колонка справа (см. .compactControls) — ровно столько, сколько
- * просят её кнопки. Снаружи .box, а не внутри него, как в обычной раскладке
- * (там низ .box — это .tools, тут .tools стоит уже за его пределами): в
- * compact полю нужна не полоска снизу во всю ширину, а колонка сбоку.
+ * A row of two parts: box (the context gauge + the field) takes all the room available, the column on the
+ * right (see .compactControls) exactly as much as its buttons ask for. Outside .box rather than inside it as
+ * in the ordinary layout (there .box's bottom is .tools, here .tools stands beyond its bounds already): in
+ * compact the field needs not a full-width strip below but a column beside it.
  *
- * margin слева/справа — тот же bleed, что и у .taskCompactBleed (см. ниже):
- * без него боковой инсет .dock (10px) складывался бы с собственным паддингом
- * ряда, и композер оказывался бы на 10px уже строки задач над ним — их левые
- * края переставали совпадать.
+ * The left and right margins are the same bleed as .taskCompactBleed's (see below): without it the .dock's
+ * side inset (10px) would add up with the row's own padding, and the composer would end up 10px narrower
+ * than the task row above it - their left edges would stop matching.
  */
 .compactRow {
   display: flex;
@@ -991,13 +985,11 @@
 }
 
 /*
- * Когда перед композером в доке ничего не отрисовалось (нет ни разрешения,
- * ни вопроса, ни строки задач/ветки, ни очереди, ни цитат — см. App.tsx) —
- * верхний инсет .dock (8px, см. ниже) уже даёт нужный отступ от ленты сам.
- * Собственные 8px ряда сверху стали бы вторым отступом поверх первого — вдвое
- * толще нижнего, где .dock отступа не даёт вовсе. Когда же перед композером
- * что-то есть, эти же 8px ряда — единственный отступ ОТ этого соседа, и их
- * трогать не нужно.
+ * When nothing was drawn in the dock before the composer (no permission, no question, no task or branch row,
+ * no queue, no quotes - see App.tsx), the .dock's top inset (8px, see below) already gives the needed gap
+ * from the feed itself. The row's own 8px on top would become a second gap over the first - twice as thick
+ * as the bottom one, where .dock gives no gap at all. When there is something before the composer, though,
+ * those same 8px of the row are the only gap FROM that neighbour, and they must be left alone.
  */
 .dock[data-layout='compact'] > .boxWrap:first-child .compactRow,
 .dock[data-layout='left'] > .boxWrap:first-child .railRow,
@@ -1005,9 +997,8 @@
   padding-top: 0;
 }
 
-/* flex: 1 1 auto — сжимается первым, когда тесно: у компакт-меню и кнопок
-   своя фиксированная ширина по содержимому (см. .selectorAuto), а полю есть
-   куда уступать. */
+/* flex: 1 1 auto - it shrinks first when things get tight: the compact menu and the buttons have a fixed
+   width of their own by content (see .selectorAuto), while the field has room to give way. */
 .boxCompact {
   display: flex;
   align-items: stretch;
@@ -1018,10 +1009,9 @@
 }
 
 /*
- * Вертикальная шкала контекста — та же роль, что у горизонтальной
- * .contextMeter над полем в остальных раскладках, но занимает высоту, а не
- * ширину: compact и left/right экономят именно высоту поля, отдавая
- * освободившееся самому textarea.
+ * The vertical context gauge - the same role as the horizontal .contextMeter above the field in the other
+ * layouts, but it takes height rather than width: compact and left/right save precisely the field's height,
+ * giving what is freed to the textarea itself.
  */
 .compactMeter {
   flex: none;
@@ -1031,10 +1021,10 @@
 }
 
 /*
- * Пять сегментов снизу вверх (column-reverse — первый в разметке встаёт
- * внизу): цвет и свечение зажигаются им сразу через inline style, целиком, а
- * не заливкой по проценту (см. Composer.ContextMeterVertical) — так все
- * закрашенные сегменты одной высоты, без обрезанного по границе процента.
+ * Five segments from the bottom up (column-reverse - the first in the markup stands at the bottom): their
+ * colour and glow are lit at once through an inline style, whole, rather than as a fill by percentage (see
+ * Composer.ContextMeterVertical) - that way every painted segment is of one height, with none cut off at
+ * the percentage's boundary.
  */
 .compactMeterTrack {
   position: absolute;
@@ -1050,10 +1040,10 @@
   background: var(--acc-bg-control);
 }
 
-/* Колонка справа от box: верхний ряд — MODEL/EFFORT/MODE, нижний —
-   расход/вложения/отправка (см. .compactSelectors и .compactToolsRow). Прижата
-   к низу — так нижний ряд стоит вровень с нижним краем box независимо от
-   того, сколько строк сейчас в поле. */
+/* The column to the right of box: the top row is MODEL/EFFORT/MODE, the bottom one is
+   usage/attachments/sending (see .compactSelectors and .compactToolsRow). Pressed to the bottom - that way
+   the bottom row stands level with box's bottom edge regardless of how many lines are in the field right
+   now. */
 .compactControls {
   flex: none;
   display: flex;
@@ -1062,10 +1052,10 @@
   gap: 6px;
 }
 
-/* justify-content не нужен: кнопки сами делят ряд поровну (см. .selectorAuto
-   в shell.module.css), тесниться в его правый край им незачем.
-   position+z-index — та же причина, что у .selectors в shell.module.css: выше
-   скрима меню, иначе повторный клик по своей же кнопке достаётся скриму. */
+/* justify-content is not needed: the buttons divide the row evenly by themselves (see .selectorAuto in
+   shell.module.css), and there is no reason for them to crowd into its right edge. position+z-index are
+   there for the same reason as .selectors in shell.module.css: above the menu's scrim, otherwise a second
+   click on a button's own self goes to the scrim. */
 .compactSelectors {
   display: flex;
   align-items: center;
@@ -1074,25 +1064,25 @@
   z-index: 41;
 }
 
-/* Те же дети, что и в .tools обычной раскладки (см. Composer.toolsRow), но
-   без его фона/рамки/паддинга — те здесь ни к чему, ряд уже стоит в своей
-   колонке с собственными отступами (см. .compactRow). justify-content не
-   нужен: кнопки прижаты к левому краю самим порядком детей и .spacer перед
-   расходом (тот же приём, что и в .tools), а не выравниванием ряда. */
+/* The same children as in the ordinary layout's .tools (see Composer.toolsRow), but without its
+   background, border and padding - those are of no use here, the row already stands in a column of its own
+   with insets of its own (see .compactRow). justify-content is not needed: the buttons are pressed to the
+   left edge by the order of the children themselves and by the .spacer before the usage (the same trick as
+   in .tools) rather than by the row's alignment. */
 .compactToolsRow {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-/* --- Поле ввода: left/right (боковая рельса) --------------------------------- */
+/* --- The input field: left/right (the side rail) ----------------------------- */
 
 /*
- * Обёртка box (шкала контекста + поле) — единственный ребёнок: MODEL/EFFORT/
- * MODE и кнопки уходят порталом в боковую рельсу на всю высоту панели (см.
- * .railColumn в shell.module.css и Composer.railContainer).
+ * The box wrapper (the context gauge + the field) is the only child: MODEL/EFFORT/MODE and the buttons
+ * travel through a portal into the side rail spanning the panel's full height (see .railColumn in
+ * shell.module.css and Composer.railContainer).
  *
- * margin/padding — тот же приём, что и у .compactRow выше (см. её описание).
+ * The margin and the padding are the same trick as .compactRow's above (see its description).
  */
 .railRow {
   display: flex;
@@ -1100,9 +1090,8 @@
   padding: 8px 10px;
 }
 
-/* flex: 1 1 auto — единственный ребёнок .railRow растягивается на всю его
-   ширину, а не жмётся к ширине своего содержимого, как обычный flex-элемент
-   без явного flex-basis. */
+/* flex: 1 1 auto - the only child of .railRow stretches over its whole width rather than squeezing itself
+   to the width of its contents, as an ordinary flex item without an explicit flex-basis does. */
 .boxRail {
   display: flex;
   align-items: stretch;
@@ -1112,12 +1101,11 @@
   padding: 7px 11px 7px 9px;
 }
 
-/* Тот же приём, что и .compactSelectors выше — общий .selectorAuto делит
-   ряд поровну между тремя кнопками, а position+z-index поднимают их над
-   скримом меню (см. .compactSelectors и .selectors в shell.module.css). Тут
-   этого на глаз не видно — рельса и так стоит выше зоны скрима, — но так
-   поведение не завязано на то, что кнопки случайно оказались достаточно
-   высоко. */
+/* The same trick as .compactSelectors above - the shared .selectorAuto divides the row evenly among the
+   three buttons, while position+z-index lift them above the menu's scrim (see .compactSelectors and
+   .selectors in shell.module.css). Here that is not visible to the eye - the rail stands above the scrim's
+   zone anyway - but this way the behaviour is not tied to the buttons having happened to end up high
+   enough. */
 .railSelectors {
   display: flex;
   align-items: center;
@@ -1126,26 +1114,25 @@
   z-index: 41;
 }
 
-/* Расход — своей строкой под селекторами, а не в один ряд с кнопками (см.
-   .railToolsRow ниже): кольца приходят от CLI не сразу и тогда короче (нет
-   колец, только «…»), а Stop/ForceStop показываются и прячутся при каждом
-   ходе агента — если бы всё это делило один ряд, любое из них меняло бы
-   позицию соседей при своём появлении. Порознь — трогает только себя. */
+/* The usage goes in a row of its own under the selectors rather than in one row with the buttons (see
+   .railToolsRow below): the rings do not arrive from the CLI at once and are shorter until they do (no
+   rings, only a "..."), while Stop/ForceStop show and hide on every turn of the agent - if all of that
+   shared one row, any of them would change its neighbours' positions when it appeared. Apart, each touches
+   only itself. */
 .railMeters {
   display: flex;
 }
 
-/* Те же дети, что и в .tools обычной раскладки (см. Composer.toolsRow), но
-   без его фона/рамки/паддинга — те здесь ни к чему, ряд уже стоит в боковой
-   рельсе с собственными отступами (см. .railColumn в shell.module.css).
-   margin-top: auto — прижимает именно этот ряд к низу рельсы, сколько бы
-   карточек (разрешение, вопрос, задачи, очередь, цитаты) ни встало над ним:
-   у них самих никаких особых отступов нет, они просто идут по порядку сверху.
+/* The same children as in the ordinary layout's .tools (see Composer.toolsRow), but without its
+   background, border and padding - those are of no use here, the row already stands in the side rail with
+   insets of its own (see .railColumn in shell.module.css). margin-top: auto presses precisely this row to
+   the rail's bottom, however many cards (a permission, a question, the tasks, the queue, the quotes) stand
+   above it: they have no special insets of their own, they simply run in order from the top.
 
-   justify-content по умолчанию flex-start — Send идёт первым и всегда стоит
-   у края, что бы ни появилось и ни исчезло за ним (Stop, ForceStop, Queue).
-   У right этот край — левый, и он же граница с лентой (рельса справа от
-   ленты). См. .railToolsRowLeft ниже — у left всё зеркально. */
+   justify-content defaults to flex-start - Send comes first and always stands at the edge, whatever appears
+   or disappears behind it (Stop, ForceStop, Queue). Under right that edge is the left one, and it is also
+   the boundary with the feed (the rail is to the right of the feed). See .railToolsRowLeft below - under
+   left everything is mirrored. */
 .railToolsRow {
   display: flex;
   align-items: center;
@@ -1154,46 +1141,43 @@
 }
 
 /*
- * Зеркало .railToolsRow для left: рельса там стоит слева от ленты, и без
- * этого модификатора Send оказывался бы у внешнего края всей панели —
- * дальше всего от того, что вообще-то рядом, ленты и поля ввода. row-reverse
- * разворачивает разом и порядок, и упаковку: ряд прижимается к правому краю
- * рельсы (граница с лентой у left), и Send встаёт первым у этой границы —
- * ровно там же, где он стоит и у right относительно своей границы.
+ * The mirror of .railToolsRow for left: the rail there stands to the left of the feed, and without this
+ * modifier Send would end up at the outer edge of the whole panel - furthest of all from what is actually
+ * beside it, the feed and the input field. row-reverse turns both the order and the packing around at once:
+ * the row is pressed to the rail's right edge (the boundary with the feed under left), and Send stands
+ * first at that boundary - exactly where it stands under right relative to its own boundary.
  */
 .railToolsRowLeft {
   flex-direction: row-reverse;
 }
 
 /*
- * Обычный блочный поток, не flex: чипы — inline-flex внутри него, поэтому
- * текст и вложения переносятся вместе, ровно там, где стоят по порядку, как
- * слова и картинки в абзаце — а не двумя отдельными группами.
+ * An ordinary block flow rather than flex: the chips are inline-flex inside it, so the text and the
+ * attachments wrap together, exactly where they stand in order, like words and pictures in a paragraph -
+ * rather than as two separate groups.
  *
- * Поле высокое намеренно: в нём пишут по несколько абзацев, и тесная строчка
- * заставляет прокручивать текст, которого ещё даже не видно целиком. Дальше
- * заданного предела не растёт — внутри появляется прокрутка.
+ * The field is tall on purpose: several paragraphs are written in it, and a cramped line forces one to
+ * scroll text that is not even fully visible yet. Past the set limit it does not grow - a scroll appears
+ * inside.
  *
- * Шрифт, кегль и интерлиньяж — те же, что у отправленного сообщения в ленте
- * (feed.module.css, .userBody): что набрал, то и увидишь. Разными они разъезжались
- * заметно — одна и та же строка занимала в поле и в ленте разную ширину.
+ * The font, the size and the leading are those of a sent message in the feed (feed.module.css, .userBody):
+ * what you typed is what you see. Different ones drifted apart noticeably - one and the same line took a
+ * different width in the field and in the feed.
  *
- * Верхний отступ больше остальных: полоска контекста (.contextMeter) с её
- * засечками живёт именно в нём, и тексту нужен свой зазор под ней, а не
- * впритык — иначе шкала выглядит приклеенной к первой строке.
+ * The top padding is larger than the rest: the context bar (.contextMeter) with its ticks lives precisely in
+ * it, and the text needs a gap of its own under it rather than sitting flush - otherwise the gauge looks
+ * glued to the first line.
  */
 .field {
   padding: 7px 12px 11px;
   /*
-   * 3 строки по умолчанию, до 5 дальше прокрутка. lh — реальная вычисленная
-   * высота строки ТЕКУЩЕГО шрифта (не голое умножение font-size на
-   * line-height): моноширинный шрифт панель берёт из настроек IDE (см.
-   * applyTypography в App.tsx), и у разных шрифтов эта высота на глаз
-   * заметно отличается — калиброванное под один шрифт число пикселей на
-   * другом либо показывало бы лишнюю пустую строку, либо обрезало бы
-   * последнюю. 81px/123px ниже — запасной вариант для браузера без
-   * поддержки lh (правило целиком отбрасывается, если lh не понимает, а не
-   * применяется частично, — второе объявление просто не подхватится).
+   * 3 lines by default, up to 5 and a scroll beyond that. lh is the genuine computed line height of the
+   * CURRENT font (rather than a bare multiplication of font-size by line-height): the panel takes its
+   * monospaced font from the IDE's settings (see applyTypography in App.tsx), and across fonts that height
+   * differs noticeably to the eye - a pixel count calibrated for one font would on another either show a
+   * spare empty line or clip the last one. The 81px/123px below are the fallback for a browser without lh
+   * support (a rule is thrown out whole if it does not understand lh rather than applied in part - the
+   * second declaration simply is not picked up).
    */
   min-height: 81px;
   min-height: calc(3 * 1lh + 18px);
@@ -1210,21 +1194,19 @@
 }
 
 /*
- * Compact: своя высота вместо унаследованной от .field (79–160px) — 2 строки
- * по умолчанию, до 5 дальше прокрутка. Позже .field в файле и поэтому
- * побеждает его min-height/max-height/padding при той же специфичности (см.
- * .selectorAuto в shell.module.css — тот же приём).
+ * Compact: a height of its own instead of the one inherited from .field (79-160px) - 2 lines by default, up
+ * to 5 and a scroll beyond that. It comes later than .field in the file and therefore wins over its
+ * min-height/max-height/padding at equal specificity (see .selectorAuto in shell.module.css - the same
+ * trick).
  *
- * Прижато к верху, а не растянуто на всю высоту box: высота поля определяется
- * его собственным содержимым (2–5 строк), а не высотой соседа (вертикальной
- * шкалы контекста).
+ * Pressed to the top rather than stretched over box's full height: the field's height is decided by its own
+ * contents (2-5 lines) rather than by a neighbour's height (the vertical context gauge).
  *
- * flex: 1 1 auto — без него поле как flex-элемент сжималось по ширине
- * СОДЕРЖИМОГО (обычное поведение flex-элемента с flex-basis: auto), а не
- * растягивалось на всё, что осталось от box после шкалы контекста слева.
- * Узкое поле переносило текст по своей узкой ширине, а не по ширине box, и
- * родная полоса прокрутки рисовалась у правого края ЭТОЙ узкой области —
- * где-то посреди пустого box, а не у его настоящего правого края.
+ * flex: 1 1 auto - without it the field as a flex item shrank to the width of its CONTENTS (the ordinary
+ * behaviour of a flex item with flex-basis: auto) rather than stretching over everything box had left after
+ * the context gauge on the left. A narrow field wrapped its text by its own narrow width rather than by
+ * box's, and the native scrollbar was drawn at the right edge of THAT narrow area - somewhere in the middle
+ * of an empty box rather than at its genuine right edge.
  */
 .fieldCompact {
   align-self: flex-start;
@@ -1237,10 +1219,9 @@
 }
 
 /*
- * left/right: тот же приём, что и .fieldCompact выше, только предел ниже —
- * 4 строки (84px = 4 × 21.06px), а не 5: рельса рядом и так забирает часть
- * ширины панели, и высокое поле здесь смотрится тяжелее, чем в compact,
- * которому отдана вся ширина целиком.
+ * left/right: the same trick as .fieldCompact above, only with a lower limit - 4 lines (84px = 4 x 21.06px)
+ * rather than 5: the rail beside it takes part of the panel's width anyway, and a tall field looks heavier
+ * here than in compact, which is given the whole width.
  */
 .fieldRail {
   align-self: flex-start;
@@ -1259,13 +1240,12 @@
 }
 
 /*
- * Своих боковых отступов у плашки нет намеренно: слева и справа от неё в поле и
- * так стоит настоящий пробел — его ставит сама вставка, чтобы текст не слипался
- * с вложением в том, что уходит агенту (см. insertChipAtCursor). Отступ
- * складывался с этим пробелом, и зазор между двумя плашками подряд выходил
- * в полтора раза шире обычного словесного — соседние вложения читались
- * оторванными друг от друга, а не рядом стоящими словами. Теперь зазор ровно
- * один пробел, как между словами.
+ * A chip has no side margins of its own on purpose: to its left and right in the field a genuine space
+ * stands anyway - put there by the insertion itself so that the text does not stick to the attachment in
+ * what travels to the agent (see insertChipAtCursor). A margin added up with that space, and the gap
+ * between two chips in a row came out one and a half times wider than an ordinary word gap - neighbouring
+ * attachments read as torn apart rather than as words standing side by side. Now the gap is exactly one
+ * space, as between words.
  */
 .token {
   display: inline-flex;
@@ -1279,11 +1259,11 @@
 }
 
 /*
- * Плашка, до которой дошёл курсор стрелкой: следующий backspace уберёт именно
- * её. Обводка в currentColor, а не своя краска на каждый вид вложения: цвет у
- * плашек разный, и любой выбранный «цвет выделения» на одних читался бы, а на
- * других сливался. Так приём один на все — рамка вокруг плашки её же цветом, —
- * а brightness добавляет тот же шаг яркости поверх любой подложки.
+ * The chip the caret has reached with an arrow: the next backspace will remove precisely it. The outline is
+ * in currentColor rather than a paint of its own for each kind of attachment: the chips are of different
+ * colours, and any chosen "selection colour" would read on some and blend into others. This way the trick
+ * is one for all - a frame around a chip in the chip's own colour - while brightness adds the same step of
+ * lightness over any backing.
  */
 .tokenSelected {
   box-shadow: 0 0 0 2px currentColor;
@@ -1299,9 +1279,9 @@
   opacity: 1;
 }
 
-/* Разворачивает свёрнутую вставку обратно в обычный текст. Тише крестика: удалить
-   вложение хотят чаще, чем передумать его сворачивать, и две одинаково заметные
-   кнопки на одной плашке спорили бы за внимание. */
+/* Unfolds a collapsed paste back into ordinary text. Quieter than the cross: deleting an attachment is
+   wanted more often than changing one's mind about folding it up, and two equally noticeable buttons on one
+   chip would compete for attention. */
 .tokenExpand {
   opacity: 0.45;
   font-size: 10px;
@@ -1312,10 +1292,10 @@
 }
 
 /*
- * Нижний ряд поля: слева расход (ctx/5h/wk/tok), справа кнопки — вложение,
- * команды и отправка. Ряд не переносится: расход при нехватке места ужимается
- * сам (его метрики переносятся внутри своего блока), а кнопки остаются на
- * месте — уехавшая на вторую строку кнопка Send читается как поломка.
+ * The field's bottom row: the usage on the left (ctx/5h/wk/tok), the buttons on the right - attachments,
+ * commands and sending. The row does not wrap: when room is short the usage squeezes itself (its meters wrap
+ * inside their own block) while the buttons stay in place - a Send button that rode onto a second line reads
+ * as a breakage.
  */
 .tools {
   display: flex;
@@ -1348,11 +1328,10 @@
   color: var(--acc-fg);
 }
 
-/* Тот же рецепт, что у .send:disabled, включая приглушённость — два вида
-   погашенных кнопок в одном ряду обязаны выглядеть одной парой. Один только
-   серый фон+текст на глаз путался с обычным (ненажатым) состоянием кнопки —
-   не залитой ничем ярким, ей и так почти нечем выделяться; прозрачность
-   добавляет то самое «явно не сейчас», которого не хватало. */
+/* The same recipe as .send:disabled, the dimming included - two kinds of dimmed buttons in one row have to
+   look like one pair. A grey background and text alone got confused to the eye with a button's ordinary
+   (unpressed) state - filled with nothing bright, it has almost nothing to stand out with anyway; the
+   transparency adds the very "clearly not now" that was missing. */
 .attach:disabled {
   background: var(--acc-bg-control);
   color: var(--acc-fg-ghost);
@@ -1360,10 +1339,10 @@
 }
 
 /*
- * Скрепка стоит вертикально, а не лежит по диагонали: сама она нарисована
- * наискосок (см. Paperclip), поворот доводит её до вертикали. Кегль подобран к
- * соседнему слэшу — рисунок и глиф должны весить одинаково, а поворот делает
- * значок выше рамки, поэтому она сама чуть меньше и не обрезает его.
+ * The paperclip stands upright rather than lying diagonally: it is drawn at a slant itself (see Paperclip),
+ * and the rotation brings it to the vertical. Its size is matched to the slash beside it - a drawing and a
+ * glyph have to weigh the same, and the rotation makes the icon taller than its frame, so the frame itself
+ * is a little smaller and does not clip it.
  */
 .attachIcon {
   width: 13px;
@@ -1381,7 +1360,7 @@
   min-width: 6px;
 }
 
-/* Подсказка уступает место кнопкам: панель бывает узкой, а ряд ломаться не должен. */
+/* The hint gives way to the buttons: the panel may be narrow, and the row must not break. */
 .hint {
   font: 10.5px var(--acc-mono);
   color: var(--acc-fg-fainter);
@@ -1415,8 +1394,8 @@
   color: var(--acc-bad-text);
 }
 
-/* Обычный Stop не подтвердился — эта кнопка заметнее нарочно: залитый фон,
-   не просто контур, чтобы не потерялась рядом с остальными. */
+/* An ordinary Stop was not confirmed - this button is deliberately more noticeable: a filled background
+   rather than merely an outline, so that it does not get lost beside the rest. */
 .forceStop {
   height: 26px;
   display: flex;
@@ -1460,15 +1439,15 @@
   background: var(--acc-accent-active);
 }
 
-/* Отложить — не главное действие рядом с «отправить», поэтому кнопка
-   нейтральная, а не залитая акцентом. */
+/* Deferring is not the main action beside "send", so the button is a neutral one rather than filled with
+   the accent. */
 .sendQueued {
   background: var(--acc-bg-control);
   color: var(--acc-fg);
 }
 
-/* Свой ховер обязателен: без него срабатывал бы .send:hover и клал под светлый
-   текст светлую акцентную заливку. Нейтральная кнопка светлеет по нейтрали. */
+/* A hover of its own is a must: without it .send:hover would fire and put a light accent fill under light
+   text. A neutral button lightens along the neutral. */
 .sendQueued:hover {
   background: var(--acc-bg-control-hover);
 }
@@ -1477,9 +1456,9 @@
   background: var(--acc-bg-menu-hover);
 }
 
-/* Команда терминала уходит не агенту, а в оболочку — и цвет у кнопки тот же,
-   которым панель отмечает всё, что делается на машине по-настоящему: вызовы
-   BASH в ленте и запросы разрешений. */
+/* A terminal command travels to the shell rather than to the agent - and the button's colour is the one the
+   panel marks everything genuinely done on the machine with: the BASH calls in the feed and the permission
+   requests. */
 .sendRun {
   background: var(--acc-warn);
 }
@@ -1492,9 +1471,9 @@
   background: var(--acc-warn-active);
 }
 
-/* Ниже вариантных :hover — иначе они перебивали бы его при равной специфичности.
-   Курсор погашенной кнопки задан один раз для всех — см. base.css. Та же
-   приглушённость, что у .attach:disabled — см. комментарий там. */
+/* Below the variant :hover rules - otherwise they would override it at equal specificity. The dimmed
+   button's cursor is set once for all - see base.css. The same dimming as .attach:disabled - see the comment
+   there. */
 .send:disabled {
   background: var(--acc-bg-control);
   color: var(--acc-fg-ghost);

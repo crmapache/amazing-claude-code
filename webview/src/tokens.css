@@ -1,28 +1,27 @@
 /*
- * Тема «Moonlight» — тёмная схема панели «Amazing Claude Code» под JetBrains Dark.
+ * The "Moonlight" theme - the Amazing Claude Code panel's dark scheme for JetBrains Dark.
  *
- * Размеры, радиусы, шрифты и структура прежние — поменялись только значения
- * цветов и появился второй слой.
+ * The sizes, radii, fonts and structure are as they were - only the colour values changed and a second
+ * layer appeared.
  *
- * Два слоя нарочно:
- *   1. ПАЛИТРА (--acc-c-*, --acc-ch-*) — сырые цвета, ни к чему не привязанные.
- *      --acc-ch-* хранит каналы без alpha: только так одна и та же краска даёт
- *      и сплошной цвет, и лестницу прозрачностей, не расползаясь по файлам
- *      литералами rgb(...).
- *   2. РОЛИ (--acc-bg, --acc-fg, --acc-accent, …) — то, чем красят компоненты.
- *      Компоненты знают ТОЛЬКО про этот слой.
+ * Two layers deliberately:
+ *   1. THE PALETTE (--acc-c-*, --acc-ch-*) - raw colours tied to nothing. --acc-ch-* holds the channels
+ *      without alpha: only that way does one and the same paint give both a solid colour and a ladder of
+ *      transparencies without spreading rgb(...) literals through the files.
+ *   2. THE ROLES (--acc-bg, --acc-fg, --acc-accent, ...) - what the components paint with. The components
+ *      know ONLY about this layer.
  *
- * Светлая тема, когда до неё дойдёт дело, переопределяет второй слой целиком и
- * не трогает ни первый, ни один CSS-модуль — см. заготовку в конце файла.
+ * A light theme, when its turn comes, overrides the second layer whole and touches neither the first nor a
+ * single CSS module - see the stub at the end of the file.
  */
 
 :root {
   /* ======================================================================
-     1. ПАЛИТРА
+     1. THE PALETTE
      ====================================================================== */
 
-  /* Нейтрали с синим подтоном. Лестница яркости — та же, что у JetBrains Dark:
-     панель обязана сидеть в IDE как своя, а не как чужая вставка. */
+  /* Neutrals with a blue undertone. The ladder of brightness is the same as JetBrains Dark's: the panel
+     has to sit in the IDE as one of its own rather than as someone else's insert. */
   --acc-c-ink-01: #14171d;
   --acc-c-ink-02: #181b22;
   --acc-c-ink-03: #1c1f26;
@@ -45,56 +44,55 @@
   --acc-c-ink-20: #c8cede;
   --acc-c-ink-21: #dfe4ef;
 
-  /* Лунно-голубой — primary */
+  /* Moon blue - primary */
   --acc-c-moon-1: #559dd8;
   --acc-c-moon-2: #6fb4ef;
   --acc-c-moon-3: #8ac6f7;
   --acc-c-moon-4: #a5d4fb;
 
-  /* Аквамарин — secondary */
+  /* Aquamarine - secondary */
   --acc-c-aqua-1: #3aa89e;
   --acc-c-aqua-2: #4fc9bd;
   --acc-c-aqua-3: #6ed6cb;
   --acc-c-aqua-4: #86dbd2;
 
-  /* Ирис — tertiary, подагенты */
+  /* Iris - tertiary, subagents */
   --acc-c-iris-1: #8172c0;
   --acc-c-iris-2: #a894f2;
   --acc-c-iris-3: #c4b5f8;
 
-  /* Мята — успех */
+  /* Mint - success */
   --acc-c-mint-1: #3aa87b;
   --acc-c-mint-2: #4fc494;
   --acc-c-mint-3: #6fd2a8;
   --acc-c-mint-4: #7fd8b4;
   --acc-c-mint-5: #c4ebda;
 
-  /* Песок — предупреждения и разрешения */
+  /* Sand - warnings and permissions */
   --acc-c-sand-1: #c1954f;
   --acc-c-sand-2: #d9ad68;
   --acc-c-sand-3: #e6c089;
   --acc-c-sand-4: #ecd3a5;
 
-  /* Медь — между предупреждением и отказом */
+  /* Copper - between a warning and a refusal */
   --acc-c-copper-1: #dd8a63;
   --acc-c-copper-2: #eeae8c;
 
-  /* Роза — отказ и ошибки */
+  /* Rose - refusals and errors */
   --acc-c-rose-1: #bd555d;
   --acc-c-rose-2: #d96b73;
   --acc-c-rose-3: #e5878e;
   --acc-c-rose-4: #ea9098;
   --acc-c-rose-5: #eec3c6;
 
-  /* Орхидея — цитата из вывода агента. Единственная роль, свой цвет. */
+  /* Orchid - a quote from the agent's output. A single role, a colour of its own. */
   --acc-c-orchid: #d691c4;
 
-  /* Однозначно зелёный для индикаторов расхода: мята рядом с аквамарином
-     на глаз читается как один и тот же цвет, а «сколько осталось» должно
-     отличаться от «ветки» без раздумий. */
+  /* An unambiguous green for the usage gauges: mint beside aquamarine reads to the eye as one and the same
+     colour, while "how much is left" has to differ from "the branch" without a second thought. */
   --acc-c-green: #4dc286;
 
-  /* Каналы без alpha — основа лестницы прозрачностей */
+  /* Channels without alpha - the base of the transparency ladder */
   --acc-ch-moon: 111 180 239;
   --acc-ch-aqua: 79 201 189;
   --acc-ch-iris: 168 148 242;
@@ -109,10 +107,10 @@
   --acc-ch-shade: 8 10 16;
 
   /* ======================================================================
-     2. РОЛИ — тёмная тема
+     2. THE ROLES - the dark theme
      ====================================================================== */
 
-  /* Поверхности, от самой глубокой к самой светлой */
+  /* Surfaces, from the deepest to the lightest */
   --acc-bg-sunken: var(--acc-c-ink-01);
   --acc-bg-deep: var(--acc-c-ink-02);
   --acc-bg: var(--acc-c-ink-03);
@@ -124,13 +122,13 @@
   --acc-bg-menu-hover: var(--acc-c-ink-10);
   --acc-bg-control-hover: var(--acc-c-ink-11);
 
-  /* Границы */
+  /* Borders */
   --acc-line: var(--acc-c-ink-09);
   --acc-line-strong: var(--acc-c-ink-12);
   --acc-line-hover: var(--acc-c-ink-13);
 
-  /* Текст, от основного к самому тихому. Порядок яркости и контраст против всех
-     фонов панели те же, что были: ступени пересчитаны, а не переставлены. */
+  /* Text, from the main one to the quietest. The order of brightness and the contrast against every one of
+     the panel's backgrounds are as they were: the steps were recomputed rather than rearranged. */
   --acc-fg: var(--acc-c-ink-21);
   --acc-fg-body: var(--acc-c-ink-20);
   --acc-fg-soft: var(--acc-c-ink-19);
@@ -140,12 +138,12 @@
   --acc-fg-fainter: var(--acc-c-ink-15);
   --acc-fg-ghost: var(--acc-c-ink-14);
 
-  /* Текст и значки на залитой кнопке любого цвета. Раньше здесь стоял
-     --acc-bg-sunken: работало, но врало — это роль переднего плана, а не фона,
-     и в светлой теме она не станет самой тёмной поверхностью. */
+  /* Text and icons on a filled button of any colour. This used to be --acc-bg-sunken: it worked but lied -
+     this is a foreground role rather than a background one, and in a light theme it will not become the
+     darkest surface. */
   --acc-on-accent: #101620;
 
-  /* --- Primary: главное действие, правки файлов, план, фокус ввода --------- */
+  /* --- Primary: the main action, file edits, the plan, the input's focus ---- */
   --acc-accent: var(--acc-c-moon-2);
   --acc-accent-hover: var(--acc-c-moon-3);
   --acc-accent-active: var(--acc-c-moon-1);
@@ -156,12 +154,12 @@
   --acc-accent-20: rgb(var(--acc-ch-moon) / 20%);
   --acc-accent-32: rgb(var(--acc-ch-moon) / 32%);
   --acc-accent-40: rgb(var(--acc-ch-moon) / 40%);
-  /* Прежние имена оставлены псевдонимами: так тема ставится без правки модулей,
-     а перевод на лестницу можно делать по одному файлу. */
+  /* The previous names are kept as aliases: that way the theme is installed without editing the modules,
+     and the move onto the ladder can be done one file at a time. */
   --acc-accent-soft: var(--acc-accent-12);
   --acc-accent-line: var(--acc-accent-32);
 
-  /* --- Secondary: ветки и форки, вопросы агента, ссылка на кусок файла ----- */
+  /* --- Secondary: branches and forks, the agent's questions, a file reference */
   --acc-branch: var(--acc-c-aqua-2);
   --acc-branch-hover: var(--acc-c-aqua-3);
   --acc-branch-active: var(--acc-c-aqua-1);
@@ -177,7 +175,7 @@
   --acc-branch-soft: var(--acc-branch-10);
   --acc-branch-line: var(--acc-branch-32);
 
-  /* --- Tertiary: подагенты, параллельная работа, инлайновый код ------------ */
+  /* --- Tertiary: subagents, parallel work, inline code --------------------- */
   --acc-agent: var(--acc-c-iris-2);
   --acc-agent-light: var(--acc-c-iris-3);
   --acc-agent-dark: var(--acc-c-iris-1);
@@ -186,7 +184,7 @@
   --acc-agent-soft: var(--acc-agent-12);
   --acc-agent-line: var(--acc-agent-32);
 
-  /* --- Разрешения и предупреждения ---------------------------------------- */
+  /* --- Permissions and warnings ------------------------------------------- */
   --acc-warn: var(--acc-c-sand-2);
   --acc-warn-hover: var(--acc-c-sand-3);
   --acc-warn-active: var(--acc-c-sand-1);
@@ -201,22 +199,22 @@
   --acc-warn-soft: var(--acc-warn-12);
   --acc-warn-line: var(--acc-warn-32);
 
-  /* Темп расхода выше графика, но ещё не в красной зоне */
+  /* The burn rate is ahead of schedule but not in the red zone yet */
   --acc-orange: var(--acc-c-copper-1);
   --acc-orange-light: var(--acc-c-copper-2);
   --acc-orange-35: rgb(var(--acc-ch-copper) / 35%);
   --acc-orange-80: rgb(var(--acc-ch-copper) / 80%);
 
-  /* Индикаторы расхода ctx / 5h / wk */
+  /* The ctx / 5h / wk usage gauges */
   --acc-meter-green: var(--acc-c-green);
-  /* Незакрашенная часть кольца и полосы: та же подложка, что у контролов. */
+  /* The unpainted part of the ring and the bar: the same backing as the controls have. */
   --acc-meter-track: var(--acc-bg-control);
-  /* Дуга равномерного темпа: заметно тусклее расхода, но светлее трека. */
+  /* The even-pace arc: noticeably dimmer than the usage but lighter than the track. */
   --acc-meter-pace: var(--acc-c-ink-13);
   --acc-meter-green-35: rgb(var(--acc-ch-green) / 35%);
   --acc-meter-green-80: rgb(var(--acc-ch-green) / 80%);
 
-  /* --- Успех и добавленные строки ----------------------------------------- */
+  /* --- Success and added lines -------------------------------------------- */
   --acc-ok: var(--acc-c-mint-2);
   --acc-ok-hover: var(--acc-c-mint-3);
   --acc-ok-active: var(--acc-c-mint-1);
@@ -229,7 +227,7 @@
   --acc-ok-soft: var(--acc-ok-12);
   --acc-ok-line: var(--acc-ok-32);
 
-  /* --- Отказ и удалённые строки ------------------------------------------- */
+  /* --- Refusals and removed lines ----------------------------------------- */
   --acc-bad: var(--acc-c-rose-2);
   --acc-bad-hover: var(--acc-c-rose-3);
   --acc-bad-active: var(--acc-c-rose-1);
@@ -245,51 +243,50 @@
   --acc-bad-light-35: rgb(var(--acc-ch-rose-4) / 35%);
   --acc-bad-light-80: rgb(var(--acc-ch-rose-4) / 80%);
 
-  /* --- Цитата из вывода агента -------------------------------------------- */
+  /* --- A quote from the agent's output ------------------------------------ */
   --acc-quote: var(--acc-c-orchid);
   --acc-quote-12: rgb(var(--acc-ch-orchid) / 12%);
   --acc-quote-32: rgb(var(--acc-ch-orchid) / 32%);
 
-  /* --- Нейтральная подложка: read / grep / think / инлайновый код ---------- */
+  /* --- The neutral backing: read / grep / think / inline code -------------- */
   --acc-neutral-12: rgb(var(--acc-ch-mist) / 12%);
   --acc-neutral-16: rgb(var(--acc-ch-mist) / 16%);
   --acc-neutral-32: rgb(var(--acc-ch-mist) / 32%);
 
-  /* --- Свёрнутая вставка из буфера ----------------------------------------
-     Своего цвета у неё нет намеренно: за плашкой не стоит никакой сущности,
-     это просто текст, который свернули, — и цветная она бы обещала большее,
-     чем есть, встав в один ряд с файлом, картинкой и командой.
+  /* --- A collapsed paste from the clipboard --------------------------------
+     It has no colour of its own on purpose: no entity stands behind that chip, it is simply text that was
+     folded up - and coloured it would promise more than there is, standing in one row with a file, an
+     image and a command.
 
-     Поэтому и не свои краски, а псевдонимы нейтральных: перекрасят нейтральный
-     ряд — плашка поедет вместе с ним, а не останется одна от него в стороне. */
+     Hence not paints of its own but aliases of the neutral ones: repaint the neutral row and the chip
+     travels with it rather than being left alone off to one side. */
   --acc-paste: var(--acc-fg-mono);
   --acc-paste-12: var(--acc-neutral-12);
   --acc-paste-32: var(--acc-neutral-32);
 
-  /* Подложка футеров карточек — раньше литерал rgb(0 0 0 / 18%). Чёрный на
-     синеватых поверхностях грязнит; тень темы тоже синеватая. */
+  /* The backing of the cards' footers - formerly a literal rgb(0 0 0 / 18%). Black dirties bluish
+     surfaces; the theme's shadow is bluish too. */
   --acc-shade: rgb(var(--acc-ch-shade) / 22%);
 
-  /* Перелив строки состояния. Тёплый оранжевый был единственным тёплым пятном
-     во всей панели и выбивался; теперь волна идёт по primary. */
+  /* The status line's shimmer. The warm orange was the only warm spot in the whole panel and stood out;
+     now the wave runs over the primary. */
   --acc-stream-1: var(--acc-c-moon-4);
   --acc-stream-2: var(--acc-c-moon-2);
   --acc-stream-3: #4f8fd8;
 
-  /* --- Шрифты ------------------------------------------------------------- */
+  /* --- Fonts -------------------------------------------------------------- */
   --acc-font: 'Instrument Sans', system-ui, sans-serif;
   --acc-mono: 'JetBrains Mono', ui-monospace, monospace;
-  /* Межстрочное расстояние текста в ленте. В IDE приходит из настроек консоли —
-     панель обязана читаться так же, как терминал рядом; здесь лишь запасное
-     значение для браузера и харнесса, где спросить не у кого. */
+  /* The line height of the feed's text. In the IDE it comes from the console's settings - the panel has to
+     read the same way as the terminal beside it; here is only a fallback value for the browser and the
+     harness, where there is nobody to ask. */
   --acc-leading: 1.62;
 
-  /* Высота шапки: вкладки при нехватке места переносятся на вторую строку, и
-     шапка растёт. Значение по умолчанию — на случай, если ResizeObserver в
-     Header ещё не успел его выставить. */
+  /* The header's height: when there is not enough room the tabs wrap onto a second row and the header
+     grows. The default value is for the case where the ResizeObserver in Header has not set it yet. */
   --header-height: 34px;
 
-  /* --- Радиусы ------------------------------------------------------------ */
+  /* --- Radii -------------------------------------------------------------- */
   --acc-r-xs: 3px;
   --acc-r-sm: 4px;
   --acc-r-md: 5px;
@@ -297,18 +294,17 @@
   --acc-r-xl: 7px;
   --acc-r-2xl: 8px;
 
-  /* --- Тени всплывающих слоёв -------------------------------------------- */
+  /* --- The shadows of the floating layers --------------------------------- */
   --acc-shadow-menu: 0 18px 44px rgb(var(--acc-ch-shade) / 62%);
   --acc-shadow-card: 0 16px 42px rgb(var(--acc-ch-shade) / 55%), 0 0 0 1px rgb(var(--acc-ch-shade) / 40%);
   --acc-shadow-popover: 0 10px 26px rgb(var(--acc-ch-shade) / 60%);
 }
 
 /*
- * Заготовка светлой темы. Переопределяется ТОЛЬКО слой ролей: поверхности,
- * границы, текст, --acc-on-accent и по одной ступени у каждого акцента (на
- * светлом фоне светящийся вариант становится нечитаемым, а тёмный — основным).
- * Лестницы прозрачностей и каналы не трогаются вообще: 12% лунно-голубого
- * работает на любом фоне.
+ * The light theme's stub. ONLY the role layer is overridden: the surfaces, the borders, the text,
+ * --acc-on-accent and one step of each accent (on a light background the glowing variant becomes
+ * unreadable while the dark one becomes the main one). The transparency ladders and the channels are not
+ * touched at all: 12% of moon blue works on any background.
  *
  * [data-acc-theme='light'] {
  *   --acc-bg-sunken: #eceef3;

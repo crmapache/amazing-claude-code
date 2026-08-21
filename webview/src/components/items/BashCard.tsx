@@ -2,11 +2,11 @@ import type { BashItem } from '../../feed/types'
 import s from '../feed.module.css'
 
 /**
- * Команда, которую человек выполнил сам через «!», и её вывод.
+ * A command the person ran themselves through "!", and its output.
  *
- * Отдельная карточка, а не такая же, как у вызова инструмента: тот вызвал агент
- * и за него отвечает он, а эту команду набрали руками — и спрашивать разрешения
- * на неё было не у кого. Отсюда и знак «!» в начале, тот же, которым её набрали.
+ * A card of its own rather than the same one a tool call gets: that one was called by the agent and it
+ * answers for it, while this command was typed by hand - and there was nobody to ask permission from.
+ * Hence the "!" at the start, the same one it was typed with.
  */
 export const BashCard = ({ item }: { item: BashItem }) => {
   const failed = !item.pending && item.exitCode !== undefined && item.exitCode !== 0
@@ -18,17 +18,17 @@ export const BashCard = ({ item }: { item: BashItem }) => {
         <span className={s.bashCommand}>{item.command}</span>
         <div className={s.spacer} />
         {item.pending ? (
-          // Вместе с toolMeta: пульсирующая подпись «идёт прямо сейчас» задана
-          // составным правилом (.toolMeta.running), и в одиночку класс running
-          // не значит ничего — та же пара, что у вызовов инструментов.
+          // Together with toolMeta: the pulsing "running right now" caption is set by a compound rule
+          // (.toolMeta.running), and on its own the running class means nothing - the same pair as with
+          // tool calls.
           <span className={`${s.toolMeta} ${s.running}`}>running</span>
         ) : failed ? (
           <span className={s.bashFailed}>exit {item.exitCode}</span>
         ) : null}
       </div>
 
-      {/* Пустой вывод не прячем за многоточием, а называем словами: «команда
-          отработала и промолчала» и «вывод куда-то делся» — разные вещи. */}
+      {/* Empty output is not hidden behind an ellipsis but named in words: "the command ran and said
+          nothing" and "the output went missing" are different things. */}
       {item.pending ? null : (
         <pre className={`${s.bashOutput} ${failed ? s.bashOutputFailed : ''}`}>
           {item.output.trimEnd() || 'no output'}

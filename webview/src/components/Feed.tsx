@@ -14,12 +14,12 @@ import { UserCard } from './items/UserCard'
 import { ScrollThumb } from './ScrollThumb'
 
 /**
- * Список задач, вопрос агента и запрос разрешения в ленте не рисуются — за них
- * отвечают закреплённые панели над полем ввода (TaskListPanel/AskPanel/PermissionPanel).
+ * The task list, the agent's question and a permission request are not drawn in the feed - the pinned
+ * panels above the input field answer for them (TaskListPanel/AskPanel/PermissionPanel).
  */
 type FeedRowItem = Exclude<FeedItem, TodoItem | AskItem | PermItem | TaskItem>
 
-/** Полтора десятка пикселей запаса: в самый низ прокрутка попадает редко. */
+/** A dozen and a half pixels of slack: scrolling lands exactly at the bottom only rarely. */
 const BOTTOM_THRESHOLD_PX = 16
 
 const isAtBottom = (element: HTMLElement): boolean =>
@@ -28,26 +28,25 @@ const isAtBottom = (element: HTMLElement): boolean =>
 interface FeedProps {
   items: FeedItem[]
   streamingText: string
-  /** Номер, под которым печатающийся ответ ляжет в ленту готовым блоком — см. PanelState. */
+  /** The number the printing answer will take in the feed as a finished block - see PanelState. */
   streamingId?: string
-  /** Кусочки мысли, которые уже пришли, но ещё не собрались в готовый блок thinking. */
+  /** The chunks of a thought that have arrived but have not yet gathered into a finished thinking block. */
   streamingThinking: string
   streaming: boolean
   streamStatus: string
   /**
-   * Строка состояния говорит не про работу, а про ожидание чужой поломки —
-   * сорванный запрос к API, который ждёт повтора. Перелив по буквам означает
-   * идущую работу, а её в этот момент нет вовсе (см. streamStatus в App.tsx).
+   * The status line speaks not about work but about waiting out someone else's breakage - a failed API
+   * request awaiting a retry. The shimmer across the letters means work under way, and at that moment
+   * there is none at all (see streamStatus in App.tsx).
    */
   statusStalled: boolean
   cards: CardState
   onPlanDecision: (itemId: string, decision: 'approve' | 'keepPlanning') => void
-  /** Ошибку прочитали и убрали руками — по её номеру в ленте. */
+  /** An error has been read and removed by hand - by its number in the feed. */
   onDismissError: (id: string) => void
-  /** Открыть ссылку из ответа агента в системном браузере. */
+  /** Open a link from the agent's answer in the system browser. */
   onOpenLink: (url: string) => void
   scrollRef?: (element: HTMLElement | null) => void
-  onScroll?: () => void
 }
 
 export const Feed = ({
@@ -63,16 +62,14 @@ export const Feed = ({
   onDismissError,
   onOpenLink,
   scrollRef,
-  onScroll,
 }: FeedProps) => {
   const view = useRef<HTMLElement | null>(null)
 
   /**
-   * Список задач, вопрос агента и запрос разрешения в ленте не рисуются — за
-   * них отвечают закреплённые панели над полем ввода. Карточка агента (task)
-   * тоже сюда не попадает — у неё своя вкладка, см. AgentStreamView. Карточка
-   * плана уходит из ленты, как только по ней принято решение (в любую
-   * сторону) — она своё дело сделала, а не остаётся висеть неактивной.
+   * The task list, the agent's question and a permission request are not drawn in the feed - the pinned
+   * panels above the input field answer for them. An agent's card (task) does not get here either - it
+   * has a tab of its own, see AgentStreamView. A plan's card leaves the feed as soon as a decision about
+   * it is taken (either way) - it has done its job rather than hanging there inactive.
    */
   const settled = useMemo(
     () =>
@@ -88,25 +85,23 @@ export const Feed = ({
   )
 
   /**
-   * Ответ печатается не с той рваной скоростью, с какой приходит: куски копятся и
-   * выдаются ровным потоком, а темп сам подстраивается под подачу — оттого текст
-   * льётся, а не выпрыгивает пачками по двадцать слов. Волну проявления поверх
-   * этого потока рисует уже сама карточка (см. TextCard).
+   * The answer is printed not at the ragged speed it arrives at: the chunks accumulate and are handed out
+   * as an even stream, with the pace adjusting itself to the supply - which is why the text flows rather
+   * than jumping out in batches of twenty words. The reveal wave over that stream is drawn by the card
+   * itself (see TextCard).
    */
   const { text: pacedText } = useSmoothStream(streamingText, { done: !streaming })
 
   /**
-   * Печатающиеся мысль и ответ живут в том же списке, что и всё остальное, а не
-   * отдельными блоками под ним: карточка ответа обязана остаться для React тем же
-   * узлом, когда тот же ответ придёт готовым блоком, иначе на стыке рвётся волна
-   * проявления, а лента моргает.
+   * The printing thought and answer live in the same list as everything else rather than as separate
+   * blocks under it: to React the answer's card has to stay the same node when that same answer arrives
+   * as a finished block, or the reveal wave breaks at the seam and the feed blinks.
    */
   /**
-   * Печатающаяся мысль дописывается в ту же карточку, в которую потом ляжет
-   * готовым блоком (см. openThought в build.ts). Отдельной строкой внизу она
-   * висела бы ровно до конца стрима, а потом на глазах перепрыгивала бы в
-   * карточку выше — своя строка остаётся только у самой первой мысли куска,
-   * когда дописывать ещё некуда.
+   * A printing thought is appended to the very card it will later lie in as a finished block (see
+   * openThought in build.ts). As a separate line at the bottom it would hang there until the stream ended
+   * and then jump into the card above before one's eyes - a line of its own is left only to the very
+   * first thought of a piece, when there is nothing to append to yet.
    */
   const openThink = streamingThinking ? openThought(settled) : -1
 
@@ -132,10 +127,10 @@ export const Feed = ({
   ]
 
   /**
-   * Пока где-то в ленте открыт неотвеченный запрос разрешения ГЛАВНОГО потока
-   * (не субагента — у его решений своя вкладка, см. AgentStreamView), самая
-   * свежая «выполняется»-карточка на деле просто ждёт человека. Без этой
-   * пометки обе ситуации выглядят одинаковым спиннером.
+   * While an unanswered permission request of the MAIN stream is open somewhere in the feed (not a
+   * subagent's - its decisions have a tab of their own, see AgentStreamView), the freshest "running" card
+   * is in fact simply waiting for a person. Without this mark both situations look like the same
+   * spinner.
    */
   const lastPendingId = useMemo(() => {
     const awaitingPermission = items.some(
@@ -147,9 +142,9 @@ export const Feed = ({
       .flatMap<ToolItem>((item) => (item.kind === 'toolGroup' ? item.tools.filter((tool) => tool.pending) : []))
       .at(-1)?.id
   }, [items])
-  /** Пока пользователь не отмотал вверх сам, лента липнет к низу. */
+  /** Until the user scrolls up themselves, the feed sticks to the bottom. */
   const stick = useRef(true)
-  /** То же самое, но в состоянии — от него зависит, рисовать ли кнопку «вниз». */
+  /** The same thing, but in state - whether to draw the "down" button depends on it. */
   const [stuck, setStuck] = useState(true)
 
   const toBottom = useCallback(() => {
@@ -161,12 +156,11 @@ export const Feed = ({
       return
     }
 
-    // «Не липнет» мог выставить не человек, а гонка: пока карточка дорастала
-    // (см. ResizeObserver ниже), где-то между кадрами проскочило браузерное
-    // scroll-событие с ещё не осевшими размерами и сбросило флаг. Раз лента и
-    // без явной прокрутки уже стоит внизу — верим фактическому положению, а не
-    // застрявшему флагу: иначе кнопка «вниз» с счётчиком висит вечно, хотя
-    // прыгать уже некуда.
+    // "Not sticking" may have been set not by a person but by a race: while a card was still growing
+    // (see the ResizeObserver below), a browser scroll event slipped between frames with sizes that had
+    // not settled and cleared the flag. Since the feed already stands at the bottom without any explicit
+    // scrolling, we trust the actual position rather than a stuck flag: otherwise the "down" button with
+    // its counter hangs there forever although there is nowhere left to jump.
     if (isAtBottom(element)) {
       stick.current = true
       setStuck(true)
@@ -176,10 +170,10 @@ export const Feed = ({
   useLayoutEffect(toBottom, [items, pacedText, streamingThinking, toBottom])
 
   /**
-   * Число непрочитанных — то, что накопилось от агента, пока лента не липнет к
-   * низу. Сообщения самого пользователя не считаем: он и так их видел, он их
-   * только что написал. Пока лента липнет к низу, счётчик держим на нуле —
-   * пользователь и так видит всё по мере поступления.
+   * The unread count is what has accumulated from the agent while the feed is not sticking to the
+   * bottom. The user's own messages are not counted: they have seen them anyway, they have only just
+   * written them. While the feed sticks to the bottom the counter is held at zero - the user sees
+   * everything as it arrives.
    */
   const seenCount = useRef(0)
   const unreadCount = rows.filter((item) => item.kind !== 'user').length
@@ -200,8 +194,8 @@ export const Feed = ({
   }
 
   /**
-   * Одного эффекта мало: карточки дорастают после отрисовки — раскрывается дифф,
-   * подгружается шрифт, — и лента остаётся стоять чуть выше конца.
+   * One effect is not enough: the cards keep growing after the paint - a diff expands, a font loads - and
+   * the feed is left standing a little above the end.
    */
   useEffect(() => {
     const element = view.current
@@ -228,7 +222,6 @@ export const Feed = ({
           const atBottom = isAtBottom(event.currentTarget)
           stick.current = atBottom
           setStuck(atBottom)
-          onScroll?.()
         }}
       >
         {isEmpty ? (
@@ -252,15 +245,14 @@ export const Feed = ({
           </div>
         ))}
 
-        {/* Пустая строка статуса означает, что о происходящем уже сказано в самой
-            ленте (так во время сжатия контекста), либо сказать нечего вовсе —
-            второй случай и держит эту строку живой даже когда streaming уже
-            false: у streamStatus есть отдельная ветка про фонового субагента,
-            который остался работать после того, как сам ход завершился. */}
+        {/* An empty status line means either that what is happening has already been said in the feed
+            itself (as during a context compaction), or that there is nothing to say at all - the second
+            case is what keeps this line alive even when streaming is already false: streamStatus has a
+            branch of its own about a background subagent left working after the turn itself ended. */}
         {streamStatus ? (
           <div className={s.streaming}>
-            {/* Переливается сам текст: белая плашка поверх него на тёмном фоне
-                выглядит грязно, а градиент по буквам читается как дыхание строки. */}
+            {/* The text itself shimmers: a white slab over it on a dark background looks dirty, while a
+                gradient across the letters reads as the line breathing. */}
             <span className={`${s.streamingText} ${statusStalled ? s.streamingStalled : ''}`}>{streamStatus}</span>
           </div>
         ) : null}
@@ -269,9 +261,9 @@ export const Feed = ({
 
       <ScrollThumb targetRef={view} />
 
-      {/* Пока лента не липнет к низу, новые карточки приходят молча — эта кнопка
-          и есть тот самый сигнал «внизу что-то появилось», без которого их
-          пришлось бы искать самому, случайно долистав до конца. */}
+      {/* While the feed does not stick to the bottom, new cards arrive silently - this button is the
+          "something has appeared below" signal, without which one would have to find them oneself, by
+          accidentally scrolling to the end. */}
       {!stuck ? (
         <button type="button" className={s.jumpToBottom} onClick={jumpToBottom} title="Jump to latest">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
@@ -294,9 +286,9 @@ export const Feed = ({
 interface ItemViewProps {
   item: FeedRowItem
   cards: CardState
-  /** id вызова, который сейчас реально ждёт разрешения (или undefined, если ждать нечего). */
+  /** The id of the call genuinely awaiting permission right now (or undefined when there is none). */
   lastPendingId: string | undefined
-  /** Идёт ли ход: от этого зависит, живые ли кнопки под планом (см. PlanCard). */
+  /** Whether a turn is running: whether the buttons under a plan are alive depends on it (see PlanCard). */
   awaitingPlan: boolean
   onPlanDecision: (itemId: string, decision: 'approve' | 'keepPlanning') => void
   onDismissError: (id: string) => void
@@ -304,18 +296,17 @@ interface ItemViewProps {
 }
 
 /**
- * Осевшая карточка не меняется — и перерисовывать её незачем.
+ * A settled card does not change - and there is no reason to redraw it.
  *
- * Пока идёт ответ, лента обновляется каждый кадр: текст прибывает по паре
- * символов, и на каждую такую порцию React проходит по всему списку. Без этой
- * памяти вместе с печатающейся строкой заново собирались бы и все карточки
- * разговора — сотни узлов с разметкой, диффами и логами команд, каждый раз
- * целиком. Отсюда и провалы, из-за которых панель переставала успевать за
- * происходящим.
+ * While an answer is running, the feed updates every frame: the text arrives a couple of characters at a
+ * time, and on every such portion React walks the whole list. Without this memoization every card of the
+ * conversation would be reassembled along with the printing line - hundreds of nodes with markup, diffs
+ * and command logs, whole, every time. Hence the stalls that made the panel fall behind what was
+ * happening.
  *
- * Работает это ровно потому, что всё остальное вокруг постоянно: события
- * складываются в ленту, не пересобирая уже лежащее (см. reducePanel), состояние
- * карточек и обработчики держат свои ссылки (useCardState, App).
+ * This works precisely because everything else around it is stable: events are appended to the feed
+ * without reassembling what already lies there (see reducePanel), while the cards' state and the handlers
+ * keep their references (useCardState, App).
  */
 const ItemView = memo(({
   item,

@@ -3,50 +3,49 @@ import type { AskItem, AskQuestion } from '../feed/types'
 import { MAX_DIGIT_HOTKEYS, useDigitHotkey } from '../hooks/useDigitHotkey'
 import s from './composer.module.css'
 
-/** Печатают ли прямо сейчас в поле, которое этой панели не принадлежит. */
+/** Whether typing is happening right now in a field that does not belong to this panel. */
 const typedOutside = (target: HTMLElement | null, panel: HTMLElement | null): boolean => {
   if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return false
   return !panel?.contains(target)
 }
 
 interface AskPanelProps {
-  /** Последний заданный агентом вопрос, на который ещё не отвечено — или ничего. */
+  /** The last question the agent asked that has not been answered yet - or nothing. */
   item: AskItem | undefined
-  /** Пусто ли поле сообщения: от этого зависит, кому достаётся нажатая цифра. */
+  /** Whether the message field is empty: who gets a pressed digit depends on it. */
   composerEmpty: boolean
-  /** Ложь, когда цифры заняты панелью разрешения — она держит ход жёстче. */
+  /** False when the digits are taken by the permission panel - it holds the turn more firmly. */
   hotkeys: boolean
   /**
-   * Ответы вместе с самими вопросами: агент узнаёт свой вопрос по тексту, а не
-   * по порядку (см. protocol, сообщение askAnswer).
+   * The answers together with the questions themselves: the agent recognises its question by its text
+   * rather than by position (see protocol, the askAnswer message).
    */
   onSubmit: (itemId: string, answers: { question: string; answer: string }[]) => void
   /**
-   * Закрыть вопрос, не отвечая на варианты: человек скажет своими словами в
-   * поле ввода. Агент получит отказ на свой вызов и пойдёт дальше — иначе он
-   * так и стоял бы, ожидая выбора, которого никто не сделает.
+   * Close the question without answering its options: the person will say it in their own words in the
+   * input field. The agent gets a refusal of its call and carries on - otherwise it would stand there
+   * waiting for a choice nobody is going to make.
    */
   onDismiss: (itemId: string) => void
 }
 
 /**
- * Закреплённая панель над полем ввода — по образцу TaskListPanel/Queue.
- * Вопрос блокирует ход, поэтому не должен теряться где-то посреди ленты:
- * пропадает сразу после отправки ответа, а не остаётся висеть неактивным.
+ * A pinned panel above the input field - after the pattern of TaskListPanel/Queue. A question blocks the
+ * turn, so it must not get lost somewhere in the middle of the feed: it disappears as soon as the answer
+ * is sent rather than hanging there inactive.
  */
 export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: AskPanelProps) => {
-  /** Выбранные варианты на вопрос: у обычного — не больше одного, у multiSelect — сколько угодно. */
+  /** The options picked per question: no more than one for an ordinary question, any number for multiSelect. */
   const [picks, setPicks] = useState<Record<string, string[]>>({})
   const [custom, setCustom] = useState<Record<string, string>>({})
   /**
-   * К какому вопросу относятся цифры. В одном вызове их бывает до шести, и без
-   * этого было бы непонятно, что выбирает нажатая «2». Идёт по списку сверху
-   * вниз: обычный вопрос пропускает вперёд сам, как только на него ответили, а
-   * с несколькими вариантами (multiSelect) остаётся, пока не нажмут Enter, —
-   * иначе вторую галочку хоткеем уже не поставить.
+   * Which question the digits belong to. One call may hold up to six of them, and without this it would
+   * be unclear what a pressed "2" picks. It walks the list from top to bottom: an ordinary question lets
+   * it move on by itself as soon as it has been answered, while one with several options (multiSelect)
+   * keeps it until Enter is pressed - otherwise a second tick could no longer be set with a hotkey.
    */
   const [activeIndex, setActiveIndex] = useState(0)
-  /** Сама панель: по ней отличаем своё поле «свой ответ» от чужой формы на странице. */
+  /** The panel itself: by it we tell our own "your answer" field from someone else's form on the page. */
   const panel = useRef<HTMLDivElement>(null)
 
   const questions = item?.questions ?? []
@@ -64,10 +63,9 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
       return { ...current, [question.id]: next }
     })
 
-    // Обычный вариант — не «свой ответ»: если до этого была включена строка
-    // Other, её текст больше не имеет права быть ответом на вопрос с
-    // единственным выбором. В multiSelect Other — такая же галочка, как и
-    // остальные, поэтому уживается с обычными вариантами и не гасится.
+    // An ordinary option is not "your answer": if the Other row was switched on before, its text no
+    // longer has the right to be the answer to a single-choice question. In multiSelect, Other is a tick
+    // like any other, so it lives alongside ordinary options and is not cleared.
     if (!question.multiSelect) {
       setCustom((current) => {
         if (current[question.id] === undefined) return current
@@ -78,11 +76,10 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
     }
   }, [])
 
-  /* Other — не отдельная форма где-то сбоку, а такой же вариант в общем ряду:
-     сама панель обещает его AskUserQuestion (см. описание инструмента), поэтому
-     его добавляет панель, а не вызывающий агент. Нажатие открывает на его
-     месте поле ввода — цифра и подсветка ведут себя как у обычного варианта,
-     только вместо готовой подписи в кружке появляется свой текст. */
+  /* Other is not a separate form off to the side but an option in the same row: AskUserQuestion promises
+     it itself (see the tool's description), so the panel adds it rather than the calling agent. Pressing
+     it opens an input field in its place - the digit and the highlight behave like an ordinary option's,
+     only instead of a ready caption the circle carries one's own text. */
   const pickOther = useCallback((question: AskQuestion) => {
     setCustom((current) => (current[question.id] !== undefined ? current : { ...current, [question.id]: '' }))
     if (!question.multiSelect) {
@@ -107,7 +104,7 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
   const answers = questions.map((question) => ({ question: question.title, answer: answerFor(question) }))
   const answered = answers.length > 0 && answers.every((entry) => entry.answer.length > 0)
 
-  /** Дальше по списку — на первый вопрос, который ещё ждёт ответа. */
+  /** Further down the list - to the first question still waiting for an answer. */
   const advance = useCallback(() => {
     setActiveIndex((current) => {
       const next = questions.findIndex((question, index) => index > current && answerFor(question).length === 0)
@@ -119,9 +116,9 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
     (index: number) => {
       if (!active) return
 
-      // Other — последний по счёту вариант, на цифру после всех настоящих.
-      // Открывает поле ввода и на этом останавливается: отвечать нечем, пока
-      // не напечатан текст, — advance() увёл бы дальше на пустом ответе.
+      // Other is the last option in the count, on the digit after all the real ones. It opens an input
+      // field and stops there: there is nothing to answer with until text is typed - advance() would move
+      // on with an empty answer.
       if (index === active.options.length) {
         pickOther(active)
         return
@@ -131,7 +128,7 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
       if (!option) return
 
       toggle(active, option.id)
-      // Обычный вопрос закрыт этим же нажатием — цифры уходят к следующему.
+      // An ordinary question is closed by this very press - the digits move on to the next one.
       if (!active.multiSelect) advance()
     },
     [active, toggle, advance, pickOther],
@@ -143,12 +140,12 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
   })
 
   /**
-   * Что делать по Enter — в ссылке, а не в зависимостях эффекта ниже.
+   * What Enter does lives in a ref rather than in the dependencies of the effect below.
    *
-   * Ответы пересобираются на каждой перерисовке (их считает map по вопросам), а
-   * перерисовывается панель на каждом кусочке печатающегося ответа агента и на
-   * каждом тике секундомера. Стой они в зависимостях — слушатель окна снимался
-   * бы и вешался заново по нескольку раз в секунду впустую.
+   * The answers are reassembled on every repaint (a map over the questions computes them), and the panel
+   * repaints on every chunk of the agent's printing answer and on every tick of the stopwatch. Were they
+   * in the dependencies, the window listener would be removed and added again several times a second for
+   * nothing.
    */
   const respond = useRef(() => {})
   respond.current = () => {
@@ -158,9 +155,9 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
   }
 
   /**
-   * Enter отправляет ответы, когда отвечено всё, и переводит к следующему
-   * вопросу, пока не всё: тот же жест «готово», что и в терминале. Пока фокус в
-   * поле сообщения, Enter принадлежит ему — там он отправляет сообщение.
+   * Enter sends the answers when everything has been answered, and moves to the next question while it
+   * has not: the same "done" gesture as in a terminal. While the focus is in the message field, Enter
+   * belongs to it - there it sends the message.
    */
   useEffect(() => {
     if (!item || !hotkeys) return
@@ -169,14 +166,13 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
       if (event.key !== 'Enter' || event.shiftKey || event.metaKey || event.ctrlKey) return
 
       const target = event.target as HTMLElement | null
-      // Начатое сообщение отправляет своим Enter само поле сообщения.
+      // A started message is sent by the message field's own Enter.
       if (target?.isContentEditable && !composerEmpty) return
-      // Чужое поле ввода Enter принадлежит целиком: он подтверждает то, что в
-      // нём набрано, — адрес маркетплейса, команду MCP-сервера. Панель вопроса
-      // при этом остаётся висеть над полем и её слушатель жив, поэтому без этой
-      // проверки Enter в чужой форме отвечал бы агенту наполовину выбранным
-      // вариантом, а сама форма не срабатывала вовсе. Поле Other — исключение:
-      // оно часть этой же панели.
+      // Someone else's input field owns Enter entirely: it confirms what was typed into it - a
+      // marketplace's address, an MCP server's command. The question panel meanwhile keeps hanging over
+      // the field with its listener alive, so without this check Enter in a foreign form would answer the
+      // agent with a half-picked option while the form itself did nothing at all. The Other field is the
+      // exception: it is part of this very panel.
       if (typedOutside(target, panel.current)) return
 
       event.preventDefault()
@@ -209,8 +205,8 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
       <div className={s.askBody}>
         {item.questions.map((question, questionIndex) => {
           const selected = picks[question.id] ?? []
-          // Цифры выбирают вариант только в одном вопросе за раз — у остальных
-          // они приглушены, чтобы не обещать нажатие, которое уйдёт не сюда.
+          // The digits pick an option in one question at a time - in the rest they are dimmed, so as not
+          // to promise a press that would go elsewhere.
           const keyed = hotkeys && questionIndex === activeIndex
 
           return (
@@ -224,8 +220,8 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
               <div className={s.options}>
                 {question.options.map((option, index) => {
                   const on = selected.includes(option.id)
-                  // Десятому варианту и дальше цифры не досталось — кружок
-                  // остаётся пустым, чтобы подписи не разъехались по левому краю.
+                  // The tenth option and beyond got no digit - the circle stays empty, so that the
+                  // captions do not drift apart on the left edge.
                   const digit = index < MAX_DIGIT_HOTKEYS ? String(index + 1) : ''
 
                   return (
@@ -257,8 +253,8 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
 
                 {(() => {
                   const otherOn = custom[question.id] !== undefined
-                  // Продолжает ту же нумерацию, что и настоящие варианты выше —
-                  // Other воспринимается как ещё один из них, а не отдельная сущность.
+                  // It continues the same numbering as the real options above - Other reads as one more
+                  // of them rather than a separate thing.
                   const otherDigit = question.options.length < MAX_DIGIT_HOTKEYS ? String(question.options.length + 1) : ''
 
                   if (otherOn) {
