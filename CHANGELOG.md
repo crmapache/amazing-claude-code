@@ -9,6 +9,8 @@ commits.
 
 ## [Unreleased]
 
+## [0.7.19] - 2026-08-21
+
 - Fixed: a message sent while a turn was still running could vanish without a trace - it stood in the feed, no answer ever came, and no work started. Claude Code takes such a message into its own input, and what happens next is up to it: it may start a new turn with it once the current one ends, or hand it to the turn already running, or drop it entirely - and a dropped message leaves nothing behind, not in the stream of events and not in the conversation itself. The panel now keeps track of what it sent while a turn was running, checks the conversation once that turn ends, and sends the message again if it never arrived. If even the second attempt disappears, the panel says so instead of leaving you to guess.
 - Fixed: when Claude Code did start a turn of its own with a message you had added mid-turn, the panel stayed idle for the whole of it - no spinner, no timer - because the turn had not been started from the panel. Work that begins on its own is now reported like any other.
 
@@ -271,7 +273,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.18...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.19...HEAD
+[0.7.19]: https://github.com/crmapache/amazing-claude-code/compare/0.7.18...0.7.19
 [0.7.18]: https://github.com/crmapache/amazing-claude-code/compare/0.7.17...0.7.18
 [0.7.17]: https://github.com/crmapache/amazing-claude-code/compare/0.7.16...0.7.17
 [0.7.16]: https://github.com/crmapache/amazing-claude-code/compare/0.7.15...0.7.16
