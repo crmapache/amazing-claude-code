@@ -9,6 +9,12 @@ commits.
 
 ## [Unreleased]
 
+## [0.7.23] - 2026-08-24
+
+- Changed: the plugin's logo carries the ACC monogram now - the same three letters and the same rays the side bar button already has - in the cream of the old mark, on the plate the logo always had. What stood there before was traced along with the plate: a figure of thin lines and sparks that held together at the size it was drawn at and turned into a smudge at the size a plugin is actually seen at, twenty-four pixels in a list of installed ones. The phone client's icons are rendered from that same file, so they changed with it.
+
+- Fixed: on a phone the arrow that opens a card stood below its own row instead of beside it, and turning it moved it somewhere else again. It was the typographic ▶, centred by the head as a whole - and a head on a touchscreen is a fingertip tall while its words sit at the top edge of it, so the glyph dropped into the empty half; the shape itself came from whatever face the phone had a triangle in, off the middle of its own box, which is what made the turn swing it out on an arc. The arrow is drawn now and keeps to the head's first line: its middle and the middle of the words are one line, at any height of the head, and it turns about its own centre - open or closed, it occupies exactly the same place.
+
 ## [0.7.22] - 2026-08-24
 
 - Fixed: session tabs were named "new session", or by the first line of whatever you typed first - a whole sentence cut off mid-word. Claude Code names a session itself, but only when it runs as a terminal chat; run as a stream, which is how the panel runs it, it names nothing unless asked. The panel now asks, by your first message, and the tab gets what a name is meant to be: a few words about the subject, in the language the conversation is held in. The name is written into the conversation itself, so the history list and a paired phone show the same one, and it survives closing the panel. The instant guess from your first line is still there - as a stand-in for the second or two the real name takes. A conversation wiped with /clear is named again by whatever it starts on.
