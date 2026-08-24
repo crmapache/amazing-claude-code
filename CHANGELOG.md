@@ -17,6 +17,13 @@ commits.
 
 ## [0.7.22] - 2026-08-24
 
+- Changed: everything the menu leads to - the history, MCP servers, plugins, sounds, remote access, the default mode, where the message field sits - is a screen of its own now, sliding over the menu rather than a popup opening beside it. What forced it was the explaining line under an option: what "Accept edits" or "Don't ask" actually permits takes a sentence to say, and a dropdown carrying those sentences ran past the edge of the panel. A screen keeps the menu underneath itself, so the way back out of one is a step rather than a fresh start.
+- Fixed: the wheel crawled in the menu - a notch of it moved the list by a hair, close enough to broken that it read as broken. The IDE's browser reports a wheel in lines rather than pixels, and a line here is not the sixteen pixels one might assume; a notch now travels the distance a hand expects it to.
+- Fixed: hovering anything that should explain itself - the chip of a background command, a control in the header - showed nothing at all. A native tooltip belongs to the browser's own window, and this page is drawn offscreen for the IDE, so the tooltip never reached a screen. The panel draws its own now, and a background command's chip names the command first: that is the question such a chip raises while it sits there.
+- Fixed: the status line said Claude was thinking while it was in fact standing still, waiting for you. A permission request, a question with options and a shown plan hold a turn exactly as fast as one another, and all three now read as waiting rather than as work. A decision awaited inside one subagent still speaks through that agent's own tab, not through the main line - otherwise the line would go back to saying something untrue.
+- Changed: the volume slider plays the sound when you let go of it, so how much quieter it has become is heard rather than guessed at.
+- Changed: the panel and a paired phone word the dates of past conversations the same way - today by the clock, anything older by the date. Two lists of the same conversations disagreeing about that is the sort of small thing that makes an application feel assembled rather than made.
+
 - Fixed: session tabs were named "new session", or by the first line of whatever you typed first - a whole sentence cut off mid-word. Claude Code names a session itself, but only when it runs as a terminal chat; run as a stream, which is how the panel runs it, it names nothing unless asked. The panel now asks, by your first message, and the tab gets what a name is meant to be: a few words about the subject, in the language the conversation is held in. The name is written into the conversation itself, so the history list and a paired phone show the same one, and it survives closing the panel. The instant guess from your first line is still there - as a stand-in for the second or two the real name takes. A conversation wiped with /clear is named again by whatever it starts on.
 - Changed: the EFFORT menu now reads from the top down, strongest first: auto, then ultracode down to low. Reaching for that menu means reaching for more thinking, and what is reached for should not sit at the bottom of a list that opens at its top.
 - Fixed: hovering the entries of the MODEL, EFFORT and MODE menus highlighted every other one, and sometimes two at once - one under the cursor and one left behind. The highlight was driven by the panel itself, and the mouse events it relied on are dropped now and then inside the IDE's browser. It is the browser's own highlight now: exactly one entry, always the one under the cursor. The chosen entry keeps its own mark when you pass over it.
@@ -25,6 +32,7 @@ commits.
 ## [0.7.21] - 2026-08-23
 
 - Added: remote access - answering your agent from your phone. It is off when the plugin is installed and does nothing over the network until you turn it on, in the panel's menu → Remote access. Pairing is a QR code shown in the IDE and confirmed at the desk, with a fingerprint to compare on both screens; from then on the phone shows the same feed the panel does - the same cards, the same conversation - and can answer a permission request, accept or send back a plan, answer a question, stop a turn, send a message, or open a new conversation in any project this IDE has open or has recently had open. What travels goes through a relay server, encrypted end to end: it passes sealed envelopes between your machine and your phone and cannot read what is inside them. A paired phone deliberately cannot do a number of things the panel can - run shell commands, change permission modes, install plugins or MCP servers, open files or links on your machine - and any device can be revoked instantly, which works even if the phone is switched off. You can also point the plugin at a relay of your own. What travels and what a relay can see: https://relay.mzpizote.com/privacy
+- Fixed: a conversation opened from the history showed the subagents in it as working right now, forever. A live run hears of an agent's end through a system event, and a saved conversation keeps no events at all - only messages. Such a card is now closed by the notification the CLI itself wrote into the talk, which is the one trace of that ending a transcript does keep.
 - Fixed: a conversation opened from the history showed the CLI's own notifications about finished background work as if you had typed them - a wall of markup signed with your name and the time. Those notifications now go where they belong: the outcome of a background command or of a subagent is written into the card that launched it, so a past conversation shows how that work ended instead of a block of tags. Previously such a card was closed with "how this one ended is not part of the saved conversation" - which was not true, the answer was in the transcript all along.
 
 ## [0.7.19] - 2026-08-21
@@ -291,7 +299,10 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.19...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.23...HEAD
+[0.7.23]: https://github.com/crmapache/amazing-claude-code/compare/0.7.22...0.7.23
+[0.7.22]: https://github.com/crmapache/amazing-claude-code/compare/0.7.21...0.7.22
+[0.7.21]: https://github.com/crmapache/amazing-claude-code/compare/0.7.19...0.7.21
 [0.7.19]: https://github.com/crmapache/amazing-claude-code/compare/0.7.18...0.7.19
 [0.7.18]: https://github.com/crmapache/amazing-claude-code/compare/0.7.17...0.7.18
 [0.7.17]: https://github.com/crmapache/amazing-claude-code/compare/0.7.16...0.7.17
