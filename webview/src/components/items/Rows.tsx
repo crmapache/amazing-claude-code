@@ -56,13 +56,25 @@ export const ThinkRow = ({ item, open, onToggle }: { item: ThinkItem; open: bool
   )
 }
 
-export const CheckpointRow = ({ item }: { item: CheckpointItem }) => (
-  <div className={s.checkpoint}>
-    <span className={s.checkpointChip}>{item.chip}</span>
-    <span className={s.checkpointTarget}>{item.target}</span>
-    <div className={s.dashed} />
-  </div>
-)
+/**
+ * `onLoadEarlier` turns the mark into a button - only ever given for the EARLIER chip (see Feed.tsx), the
+ * one that names a genuine gap rather than a moment in the conversation (FORK, CLEAR). A tap fetches the
+ * next page of what came before it; the row stays a plain mark until there is something to fetch with.
+ */
+export const CheckpointRow = ({ item, onLoadEarlier }: { item: CheckpointItem; onLoadEarlier?: () => void }) =>
+  onLoadEarlier ? (
+    <button type="button" className={`${s.checkpoint} ${s.checkpointButton}`} onClick={onLoadEarlier}>
+      <span className={s.checkpointChip}>{item.chip}</span>
+      <span className={s.checkpointTarget}>tap to load more</span>
+      <div className={s.dashed} />
+    </button>
+  ) : (
+    <div className={s.checkpoint}>
+      <span className={s.checkpointChip}>{item.chip}</span>
+      <span className={s.checkpointTarget}>{item.target}</span>
+      <div className={s.dashed} />
+    </div>
+  )
 
 /** How often the compaction bar grows: more often serves nothing, the curve is gentle as it is. */
 const COMPACT_TICK_MS = 500

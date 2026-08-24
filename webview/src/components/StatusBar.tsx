@@ -2,7 +2,7 @@ import { EFFORT_SAMPLE, MODE_SAMPLE, MODEL_SAMPLE, modeLabel, modeShortLabel, mo
 import type { UsageWindow } from '../protocol'
 import s from './shell.module.css'
 
-export type SelectorKind = 'model' | 'effort' | 'mode' | 'defaultMode' | 'composerLayout' | 'header'
+export type SelectorKind = 'model' | 'effort' | 'mode'
 
 /**
  * Where a selector's button stands - both vertical edges rather than one: the menu decides for itself

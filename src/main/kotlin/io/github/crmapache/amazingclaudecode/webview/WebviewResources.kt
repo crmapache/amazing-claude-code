@@ -34,6 +34,28 @@ internal object WebviewResources {
     private const val DOMAIN = "acc-webview"
     private const val RESOURCE_ROOT = "webview"
 
+    /**
+     * The interface's own files, straight out of the plugin's archive.
+     *
+     * Read here rather than by each server that needs them: the embedded browser's scheme handler is
+     * one such reader, the local channel of phase 1 is another, and two copies of "where the assets
+     * live" would drift the first time the build's layout changed.
+     */
+    fun open(path: String): java.io.InputStream? =
+        javaClass.classLoader.getResourceAsStream("$RESOURCE_ROOT/${path.trimStart('/')}")
+
+    fun mimeTypeOf(path: String): String = when (path.substringAfterLast('.', "")) {
+        "html" -> "text/html"
+        "js", "mjs" -> "text/javascript"
+        "css" -> "text/css"
+        "json", "map" -> "application/json"
+        "svg" -> "image/svg+xml"
+        "png" -> "image/png"
+        "webp" -> "image/webp"
+        "woff2" -> "font/woff2"
+        else -> "application/octet-stream"
+    }
+
     private val registered = AtomicBoolean(false)
 
     /** The registration applies to the whole IDE process, so it is done once. */
@@ -133,7 +155,7 @@ internal object WebviewResources {
 
         private fun openResource(request: CefRequest) {
             val path = resourcePath(request.url)
-            val resource = javaClass.classLoader.getResourceAsStream("$RESOURCE_ROOT/$path")
+            val resource = open(path)
 
             if (resource == null) {
                 // The browser asks for a tab icon the panel does not have by itself: that is not an error.
@@ -177,16 +199,5 @@ internal object WebviewResources {
             return path.ifEmpty { "index.html" }
         }
 
-        private fun mimeTypeOf(path: String): String = when (path.substringAfterLast('.', "")) {
-            "html" -> "text/html"
-            "js", "mjs" -> "text/javascript"
-            "css" -> "text/css"
-            "json", "map" -> "application/json"
-            "svg" -> "image/svg+xml"
-            "png" -> "image/png"
-            "webp" -> "image/webp"
-            "woff2" -> "font/woff2"
-            else -> "application/octet-stream"
-        }
     }
 }

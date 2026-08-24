@@ -202,6 +202,15 @@ export type PanelAction =
    * applyReplayFinished).
    */
   | { kind: 'replayFinished' }
+  /**
+   * The answer being printed right now, as far as it had got when this client joined.
+   *
+   * The deltas it is made of never reach a client that was not there for them: they are not kept in the
+   * shell's journal, because the finished block repeats the same words a moment later (see
+   * SessionStream on the plugin's side). Without this the conversation would look frozen for the whole
+   * length of a long answer.
+   */
+  | { kind: 'streamPrimed'; text: string; thinking: string }
   | { kind: 'status'; status: AgentStatus }
   | { kind: 'error'; message: string }
   | { kind: 'init'; project: PanelProject }

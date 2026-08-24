@@ -54,6 +54,9 @@ internal object ClaudeLaunch {
      */
     const val PERMISSION_CHANNEL_FLAG = "--permission-prompt-tool"
 
+    /** How a line of ours joins the CLI's own system prompt instead of replacing it. */
+    const val BRIEFING_FLAG = "--append-system-prompt"
+
     /**
      * The tool for a question with answer options.
      *
@@ -68,6 +71,42 @@ internal object ClaudeLaunch {
      * answer". Now the answer gets through - see ClaudePanel.answerAsk.
      */
     const val ASK_TOOL = "AskUserQuestion"
+
+    /**
+     * What the agent is told about the place it has been launched into.
+     *
+     * The CLI judges a streaming launch to be an unattended script and puts a line of its own into the
+     * agent's context: the session is non-interactive, an MCP sign-in cannot be run here, send the
+     * person to `claude mcp` or to `/mcp` in an interactive session. In the panel that is simply untrue
+     * - the MCP screen behind the header's menu shows every server with its status, offers the sign-in
+     * button to the ones that ask for it, opens the browser from the IDE and refreshes the list by
+     * itself afterwards (see ProjectCatalog.authenticateMcp). The agent has no way of knowing any of
+     * that: it retells what it was told and sends off to a terminal a person who has the button two
+     * clicks away.
+     *
+     * So we say out loud where the conversation actually runs. The same place is where anything else
+     * the agent has to know about the panel belongs.
+     */
+    val PANEL_BRIEFING = """
+        This conversation runs inside the Amazing Claude Code panel of a JetBrains IDE. A person is
+        sitting in front of it, watching the answer as it is written, and can press a button on the
+        spot - this is not a headless script, whatever the launch mode may look like from inside.
+
+        The panel manages MCP servers itself. Its header menu has an MCP screen that lists every server
+        with its status and its error, offers a sign-in button for the servers that need
+        authentication, and can reconnect, add and remove them. The button opens the browser from the
+        IDE, the sign-in finishes there, and the list updates itself afterwards.
+
+        Because of the launch mode you may also be told that this session is non-interactive and that
+        servers needing authorization can only be signed in to from an interactive session, via
+        `claude mcp` or the `/mcp` command. That is written for unattended scripts and is wrong here.
+        Signing in works in this session; it is the person who presses the button, not you.
+
+        So the answer to "can this MCP server be signed in to now" is yes, and the way to say it is:
+        open the panel's menu, go to the MCP screen, find the server and press its sign-in button.
+        Never call a sign-in impossible here, and never send the person to a terminal, to an
+        interactive session, to `claude mcp` or to `/mcp`.
+    """.trimIndent()
 
     fun arguments(
         model: String,
@@ -85,6 +124,10 @@ internal object ClaudeLaunch {
         add("--include-partial-messages")
 
         addAll(listOf(PERMISSION_CHANNEL_FLAG, "stdio"))
+
+        // The CLI takes a streaming launch for an unattended script and tells the agent so; the panel
+        // is neither, and the agent has to hear it from us (see PANEL_BRIEFING).
+        addAll(listOf(BRIEFING_FLAG, PANEL_BRIEFING))
 
         if (model.isNotEmpty()) addAll(listOf("--model", model))
         if (effort.isNotEmpty()) addAll(listOf("--effort", effort))

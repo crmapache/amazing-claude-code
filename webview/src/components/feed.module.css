@@ -59,6 +59,8 @@
 }
 
 .jumpToBottom {
+  /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
+  min-height: var(--acc-hit);
   position: absolute;
   right: 20px;
   bottom: 16px;
@@ -75,8 +77,10 @@
   box-shadow: var(--acc-shadow-menu);
 }
 
-.jumpToBottom:hover {
-  background: var(--acc-bg-control-hover);
+@media (hover: hover) {
+  .jumpToBottom:hover {
+    background: var(--acc-bg-control-hover);
+  }
 }
 
 .jumpToBottomBadge {
@@ -94,7 +98,7 @@
 }
 
 .row {
-  padding: 0 16px;
+  padding: 0 var(--acc-feed-gutter, 16px);
 }
 
 /* --- The empty state ------------------------------------------------------- */
@@ -115,7 +119,7 @@
 }
 
 .emptyHint {
-  font: 11px var(--acc-mono);
+  font: var(--acc-fs-meta, 11px) var(--acc-mono);
   color: var(--acc-fg-fainter);
 }
 
@@ -126,7 +130,7 @@
   flex-direction: column;
   gap: 6px;
   margin: 16px 0 12px;
-  padding: 9px 11px;
+  padding: calc(9px + var(--acc-card-grow, 0px)) calc(11px + var(--acc-card-grow, 0px));
   border: 1px solid var(--acc-line);
   border-radius: var(--acc-r-xl);
   background: var(--acc-bg-card);
@@ -145,7 +149,7 @@
 }
 
 .time {
-  font: 10px var(--acc-mono);
+  font: var(--acc-fs-label, 10px) var(--acc-mono);
   color: var(--acc-fg-fainter);
 }
 
@@ -164,7 +168,7 @@
  * flex's wrapping saved us from it, and left alone it stretches the card sideways.
  */
 .userBody {
-  font-size: 13px;
+  font-size: var(--acc-fs-body, 13px);
   line-height: var(--acc-leading, 1.55);
   color: var(--acc-fg);
   white-space: pre-wrap;
@@ -188,7 +192,7 @@
   padding: 1px 7px 2px;
   border: 1px solid;
   border-radius: var(--acc-r-sm);
-  font: 11px var(--acc-mono);
+  font: var(--acc-fs-meta, 11px) var(--acc-mono);
   /* The baseline of a centred inline-flex without a text line of its own the browser synthesises from the
      box's bottom edge - the chip hangs below the line. middle is the same trick as the token in the input
      field (composer.module.css), which is where the chip comes here from. */
@@ -254,7 +258,7 @@
 }
 
 .chipPasteCount {
-  font: 10px var(--acc-mono);
+  font: var(--acc-fs-label, 10px) var(--acc-mono);
   color: var(--acc-fg-faint);
 }
 
@@ -296,15 +300,19 @@
 .text {
   position: relative;
   margin: 8px 0 10px;
-  padding: 10px 34px 10px 11px;
+  /* The right side carries the copy button, so it is the padding plus the button's own room. */
+  padding: calc(10px + var(--acc-card-grow, 0px)) calc(34px + var(--acc-card-grow, 0px))
+    calc(10px + var(--acc-card-grow, 0px)) calc(11px + var(--acc-card-grow, 0px));
   border: 1px solid var(--acc-line);
   border-radius: var(--acc-r-xl);
-  font-size: 13px;
+  font-size: var(--acc-fs-body, 13px);
   line-height: var(--acc-leading, 1.62);
   color: var(--acc-fg-body);
 }
 
 .textCopy {
+  /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
+  min-height: var(--acc-hit);
   position: absolute;
   top: 7px;
   right: 7px;
@@ -318,9 +326,11 @@
   font-size: 11px;
 }
 
-.textCopy:hover {
-  background: var(--acc-bg-control);
-  color: var(--acc-fg);
+@media (hover: hover) {
+  .textCopy:hover {
+    background: var(--acc-bg-control);
+    color: var(--acc-fg);
+  }
 }
 
 /*
@@ -372,8 +382,10 @@
   cursor: pointer;
 }
 
-.code:hover {
-  background: var(--acc-neutral-16);
+@media (hover: hover) {
+  .code:hover {
+    background: var(--acc-neutral-16);
+  }
 }
 
 /* The only answer to a click that is possible here: one cannot look into the clipboard. */
@@ -401,8 +413,10 @@
   cursor: pointer;
 }
 
-.link:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .link:hover {
+    text-decoration: underline;
+  }
 }
 
 /* The wrapper holds the block's padding and the room for the button: the pre itself scrolls horizontally,
@@ -413,6 +427,8 @@
 }
 
 .codeCopy {
+  /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
+  min-height: var(--acc-hit);
   position: absolute;
   top: 5px;
   right: 5px;
@@ -428,14 +444,23 @@
   opacity: 0;
 }
 
-.codeBlockWrap:hover .codeCopy,
+/* Focus is not hover: a keyboard can be attached to a tablet, and this half has to keep working where
+   the other one is switched off below. */
 .codeCopy:focus-visible {
   opacity: 1;
 }
 
-.codeCopy:hover {
-  background: var(--acc-bg-control);
-  color: var(--acc-fg);
+@media (hover: hover) {
+  .codeBlockWrap:hover .codeCopy {
+    opacity: 1;
+  }
+}
+
+@media (hover: hover) {
+  .codeCopy:hover {
+    background: var(--acc-bg-control);
+    color: var(--acc-fg);
+  }
 }
 
 .codeBlock {
@@ -444,7 +469,8 @@
   border: 1px solid var(--acc-line);
   border-radius: var(--acc-r-lg);
   background: var(--acc-bg-deep);
-  font: 11.5px/18px var(--acc-mono);
+  font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
+  line-height: var(--acc-code-leading, 18px);
   color: var(--acc-fg-mono);
   white-space: pre-wrap;
   overflow-x: auto;
@@ -525,6 +551,8 @@
    row's height therefore grows from its contents: with a fixed height the baseline would press the whole
    group to the top edge. */
 .toolHead {
+  /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
+  min-height: var(--acc-hit);
   display: flex;
   align-items: baseline;
   gap: 8px;
@@ -539,16 +567,28 @@
   text-align: left;
 }
 
-.toolHead:not(:disabled):hover {
-  background: var(--acc-bg-card);
+@media (hover: hover) {
+  .toolHead:not(:disabled):hover {
+    background: var(--acc-bg-card);
+  }
 }
 
 /* The arrow is an icon rather than a caption: the baseline is alien to it, so the only one in the row is
-   centred by its height. */
+   centred by its height. It never carries its own tap target - the row around it is already the whole
+   button (see ToolCard/ToolGroupCard/Rows) - so unlike the other uses of --acc-hit it must not grow on a
+   touchscreen: a fingertip-tall box centred by itself pulls the glyph well below the row's baseline text,
+   which on a phone read as the arrow floating detached under "N tools" rather than beside it. */
 .caret {
   flex: none;
   align-self: center;
   width: 9px;
+  /* The glyph is centred inside the box rather than left at its top edge. On a desktop the box is the
+     height of the glyph and the two are the same thing; on a touchscreen the box is a fingertip tall,
+     and a glyph sitting at the top of it turns about a centre 18px below itself - the arrow swung out
+     on an arc and came back instead of turning in place. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 8px;
   line-height: 1;
   color: var(--acc-fg-fainter);
@@ -614,13 +654,13 @@
 
 .toolMeta {
   flex: none;
-  font: 11px var(--acc-mono);
+  font: var(--acc-fs-meta, 11px) var(--acc-mono);
   color: var(--acc-fg-faint);
 }
 
 .toolDur {
   flex: none;
-  font: 10px var(--acc-mono);
+  font: var(--acc-fs-label, 10px) var(--acc-mono);
   color: var(--acc-fg-ghost);
 }
 
@@ -646,7 +686,8 @@
 }
 
 .detail {
-  font: 11.5px/18px var(--acc-mono);
+  font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
+  line-height: var(--acc-code-leading, 18px);
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--acc-fg-dim);
@@ -700,16 +741,18 @@
 }
 
 .hunkRange {
-  font: 11px var(--acc-mono);
+  font: var(--acc-fs-meta, 11px) var(--acc-mono);
   color: var(--acc-accent);
 }
 
 .hunkNote {
-  font: 11px var(--acc-mono);
+  font: var(--acc-fs-meta, 11px) var(--acc-mono);
   color: var(--acc-fg-faint);
 }
 
 .hunkAccept {
+  /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
+  min-height: var(--acc-hit);
   height: 19px;
   display: flex;
   align-items: center;
@@ -721,8 +764,10 @@
   color: var(--acc-ok-light);
 }
 
-.hunkAccept:hover {
-  background: var(--acc-ok-24);
+@media (hover: hover) {
+  .hunkAccept:hover {
+    background: var(--acc-ok-24);
+  }
 }
 
 .hunkAccept:active {
@@ -732,6 +777,8 @@
 }
 
 .hunkReject {
+  /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
+  min-height: var(--acc-hit);
   height: 19px;
   display: flex;
   align-items: center;
@@ -742,9 +789,11 @@
   color: var(--acc-fg-dim);
 }
 
-.hunkReject:hover {
-  border-color: var(--acc-bad);
-  color: var(--acc-bad-light);
+@media (hover: hover) {
+  .hunkReject:hover {
+    border-color: var(--acc-bad);
+    color: var(--acc-bad-light);
+  }
 }
 
 .hunkReject:active {
@@ -761,7 +810,8 @@
 
 .diffLine {
   display: flex;
-  font: 11.5px/18px var(--acc-mono);
+  font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
+  line-height: var(--acc-code-leading, 18px);
 }
 
 .diffAdd {
@@ -825,7 +875,7 @@
 }
 
 .agentViewLine {
-  font-size: 13px;
+  font-size: var(--acc-fs-body, 13px);
   line-height: var(--acc-leading, 1.62);
   color: var(--acc-fg-body);
 }
@@ -847,7 +897,7 @@
    invented style. Not composes: postcss-modules-scope resolves it only against classes declared earlier in
    the file, and .streamingText is declared below. */
 .agentViewWorking {
-  font: 11.5px var(--acc-mono);
+  font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
   background: linear-gradient(
     100deg,
     var(--acc-stream-1) 0%,
@@ -931,8 +981,10 @@
   font: 600 11.5px var(--acc-font);
 }
 
-.primary:hover {
-  background: var(--acc-accent-hover);
+@media (hover: hover) {
+  .primary:hover {
+    background: var(--acc-accent-hover);
+  }
 }
 
 .primary:active {
@@ -956,9 +1008,11 @@
   color: var(--acc-fg-soft);
 }
 
-.secondary:hover {
-  border-color: var(--acc-accent);
-  color: var(--acc-fg);
+@media (hover: hover) {
+  .secondary:hover {
+    border-color: var(--acc-accent);
+    color: var(--acc-fg);
+  }
 }
 
 .secondary:active {
@@ -979,8 +1033,10 @@
   text-decoration: underline;
 }
 
-.linkish:hover {
-  color: var(--acc-accent-light);
+@media (hover: hover) {
+  .linkish:hover {
+    color: var(--acc-accent-light);
+  }
 }
 
 .linkish:active {
@@ -1010,7 +1066,7 @@
 }
 
 .checkpointTarget {
-  font: 11px var(--acc-mono);
+  font: var(--acc-fs-meta, 11px) var(--acc-mono);
   color: var(--acc-fg-faint);
 }
 
@@ -1018,6 +1074,26 @@
   flex: 1;
   height: 1px;
   background: repeating-linear-gradient(90deg, var(--acc-line) 0 4px, transparent 4px 8px);
+}
+
+/* The EARLIER mark, turned into a button - see CheckpointRow. Reset to the plain row's own look first:
+   a <button> brings its own border, background and cursor, none of which belong here. */
+.checkpointButton {
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
+  min-height: var(--acc-hit);
+}
+
+@media (hover: hover) {
+  .checkpointButton:hover .checkpointTarget {
+    color: var(--acc-fg-dim);
+  }
 }
 
 /* Neither a border nor a backing of its own - the same flat look as the tool call card (.tool) beside it:
@@ -1035,6 +1111,8 @@
 /* The same padding as the call's head (.toolHead) - otherwise the thought's caret arrow stands a couple of
    pixels further right than the call's a row above or below, and the row reads as uneven. */
 .thinkHead {
+  /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
+  min-height: var(--acc-hit);
   display: flex;
   align-items: baseline;
   gap: 8px;
@@ -1045,8 +1123,10 @@
 
 /* The same response as the head of a group of calls: the card can be pressed, and that has to be visible
    before the press. */
-.thinkHead:hover {
-  background: var(--acc-bg-card);
+@media (hover: hover) {
+  .thinkHead:hover {
+    background: var(--acc-bg-card);
+  }
 }
 
 /* min-width: 0 - otherwise a flex item does not shrink below the width of its own text, and
@@ -1065,7 +1145,7 @@
    the last one is visible, and the number says there are more behind it. */
 .thinkCount {
   flex: none;
-  font: 10px var(--acc-mono);
+  font: var(--acc-fs-label, 10px) var(--acc-mono);
   color: var(--acc-fg-fainter);
 }
 
@@ -1116,14 +1196,14 @@
 
 .bashCommand {
   min-width: 0;
-  font: 11.5px var(--acc-mono);
+  font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
   color: var(--acc-warn-light);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 .bashFailed {
-  font: 11px var(--acc-mono);
+  font: var(--acc-fs-meta, 11px) var(--acc-mono);
   color: var(--acc-bad-light);
 }
 
@@ -1136,7 +1216,7 @@
   background: var(--acc-bg-sunken);
   max-height: 260px;
   overflow: auto;
-  font: 11.5px/1.5 var(--acc-mono);
+  font: var(--acc-fs-mono, 11.5px)/1.5 var(--acc-mono);
   color: var(--acc-fg-mono);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1280,7 +1360,7 @@
    along it. direction: alternate - the wave travels there and back rather than jerking back in a jump on
    every repeat. */
 .streamingText {
-  font: 11.5px var(--acc-mono);
+  font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
   background: linear-gradient(
     100deg,
     var(--acc-stream-1) 0%,
@@ -1337,12 +1417,25 @@
 }
 
 .errorDismiss {
+  /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
+  min-height: var(--acc-hit);
   flex: none;
   opacity: 0.6;
   font-size: 12px;
   color: var(--acc-bad-text);
 }
 
-.errorDismiss:hover {
+@media (hover: hover) {
+  .errorDismiss:hover {
+    opacity: 1;
+  }
+}
+
+/**
+ * What appears on hover has to appear some other way where there is no hover: on a touchscreen the
+ * copy buttons would otherwise be unreachable rather than merely subtle.
+ */
+[data-acc-density='touch'] .codeCopy,
+[data-acc-density='touch'] .textCopy {
   opacity: 1;
 }

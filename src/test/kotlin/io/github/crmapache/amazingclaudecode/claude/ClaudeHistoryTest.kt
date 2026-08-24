@@ -276,6 +276,69 @@ class ClaudeHistoryTest {
         assertEquals("hello", content[0].jsonObject["text"]!!.jsonPrimitive.contentOrNull)
     }
 
+    // With no boundary at all, a page is the file's own tail - the only case where that is the right
+    // answer: a conversation whose live journal has never sent anything of it yet (see ClaudeHistory.page).
+    @Test
+    fun `a page with no boundary is the file's own last page`() {
+        val all = (1..5).map { """{"type":"user","uuid":"u$it","message":{"role":"user","content":"m$it"}}""" }
+
+        val page = ClaudeHistory.pageOf(all, before = null, pageSize = 3)
+
+        assertEquals(listOf("u3", "u4", "u5"), page.lines.map { uuidIn(it) })
+        assertEquals("u3", page.cursor)
+    }
+
+    // The ordinary case: asked for what came before a message already on screen, by its uuid.
+    @Test
+    fun `a page stops right before the message it was asked for`() {
+        val all = (1..5).map { """{"type":"user","uuid":"u$it","message":{"role":"user","content":"m$it"}}""" }
+
+        val page = ClaudeHistory.pageOf(all, before = "u4", pageSize = 2)
+
+        assertEquals(listOf("u2", "u3"), page.lines.map { uuidIn(it) })
+        assertEquals("u2", page.cursor)
+    }
+
+    // Two consecutive pages must tile the file exactly - no message repeated, none skipped, which is
+    // what a phone scrolling up a page at a time relies on.
+    @Test
+    fun `consecutive pages do not repeat or skip a message`() {
+        val all = (1..5).map { """{"type":"user","uuid":"u$it","message":{"role":"user","content":"m$it"}}""" }
+
+        val first = ClaudeHistory.pageOf(all, before = "u4", pageSize = 2)
+        val second = ClaudeHistory.pageOf(all, before = first.cursor, pageSize = 2)
+
+        assertEquals(listOf("u2", "u3"), first.lines.map { uuidIn(it) })
+        assertEquals(listOf("u1"), second.lines.map { uuidIn(it) })
+        assertEquals(null, second.cursor)
+    }
+
+    // The file's very beginning has been reached - there is nothing further to ask for, and the caller
+    // is told so by a null cursor rather than an empty page indistinguishable from "try again".
+    @Test
+    fun `reaching the start of the file clears the cursor`() {
+        val all = (1..2).map { """{"type":"user","uuid":"u$it","message":{"role":"user","content":"m$it"}}""" }
+
+        val page = ClaudeHistory.pageOf(all, before = "u2", pageSize = 10)
+
+        assertEquals(listOf("u1"), page.lines.map { uuidIn(it) })
+        assertEquals(null, page.cursor)
+    }
+
+    // A boundary that does not exist in this file - a stale uuid from before a resume, say - is treated
+    // as "no boundary at all" rather than as an empty page: see the reasoning on ClaudeHistory.page.
+    @Test
+    fun `an unknown boundary falls back to the file's last page`() {
+        val all = (1..3).map { """{"type":"user","uuid":"u$it","message":{"role":"user","content":"m$it"}}""" }
+
+        val page = ClaudeHistory.pageOf(all, before = "does-not-exist", pageSize = 2)
+
+        assertEquals(listOf("u2", "u3"), page.lines.map { uuidIn(it) })
+    }
+
+    private fun uuidIn(line: String): String? =
+        Json.parseToJsonElement(line).jsonObject["uuid"]?.jsonPrimitive?.contentOrNull
+
     // The point of the whole thing: a transcript is read as it is handed over rather than gathered up
     // first. A long conversation's file runs to tens of megabytes, and gathering it costs three copies of
     // it in memory for a tab that is merely being opened - so taking one line has to cost one line.

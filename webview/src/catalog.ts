@@ -129,19 +129,24 @@ export const modelMenu = (
   }
 }
 
+/**
+ * Strongest first, and `auto` above them all - the way the list is read rather than the way the values
+ * grow. Reaching for this menu means reaching for more thinking, and what is reached for should not sit
+ * at the bottom of a list that opens at its top.
+ */
 export const EFFORT_OPTIONS: MenuOption[] = [
-  { id: 'low', label: 'low', sub: 'Minimal thinking. Mechanical edits and quick answers.' },
-  { id: 'medium', label: 'medium', sub: 'Balanced. Good default for feature work.' },
-  { id: 'high', label: 'high', tag: 'default', sub: 'Long reasoning before acting. Multi-file changes.' },
-  { id: 'xhigh', label: 'xhigh', sub: 'More of the same, for changes that span many files.' },
-  { id: 'max', label: 'max', tag: 'slow', sub: 'Everything it has. Architecture and gnarly bugs.' },
+  { id: 'auto', label: 'auto', sub: "Resets to the model's default effort for this session." },
   {
     id: 'ultracode',
     label: 'ultracode',
     tag: 'ultra',
     sub: 'xhigh reasoning plus automatic multi-agent workflows when a task calls for one.',
   },
-  { id: 'auto', label: 'auto', sub: "Resets to the model's default effort for this session." },
+  { id: 'max', label: 'max', tag: 'slow', sub: 'Everything it has. Architecture and gnarly bugs.' },
+  { id: 'xhigh', label: 'xhigh', sub: 'More of the same, for changes that span many files.' },
+  { id: 'high', label: 'high', tag: 'default', sub: 'Long reasoning before acting. Multi-file changes.' },
+  { id: 'medium', label: 'medium', sub: 'Balanced. Good default for feature work.' },
+  { id: 'low', label: 'low', sub: 'Minimal thinking. Mechanical edits and quick answers.' },
 ]
 
 export const MODE_OPTIONS: MenuOption[] = [

@@ -30,6 +30,12 @@ internal object ClaudeHistory {
         val title: String,
         val updatedAt: Long,
         val messages: Int,
+        /**
+         * The name was picked by a model rather than guessed from the first line. It matters past the
+         * list itself: a conversation carried on in a tab keeps this name, and one that is only a guess
+         * is worth replacing with a real one (see ClaudeSession.requestTitle).
+         */
+        val named: Boolean = false,
     )
 
     fun list(workingDirectory: String?, limit: Int = 40): List<Entry> =
@@ -104,6 +110,48 @@ internal object ClaudeHistory {
         return normalizedPayload.toString()
     }
 
+    /** A page of a conversation's messages, and where the next one would start - see [page]. */
+    data class Page(val lines: List<String>, val cursor: String?)
+
+    /**
+     * A page of the conversation's messages, older than [before] - the same lines [replay] would hand
+     * over, sliced by a caller that already has the tail (delivered live, through the journal's own
+     * catch-up - see ClaudeSessionHub.CatchUp) and wants what came before it.
+     *
+     * Anchored on a message's own `uuid` rather than a position: the live journal and this file agree on
+     * no shared numbering - the journal interleaves status and permission events that never touch disk at
+     * all - so a count would drift the moment the two diverge, which is on the very first status change.
+     * A uuid is unambiguous on either side of it, and Claude Code stamps every line with one.
+     *
+     * [before] of null asks for the file's own last page - right only for a conversation whose live tail
+     * was never seen. A boundary that cannot be found is treated the same way rather than as an empty
+     * page: the caller asked for "more before this", and the safer answer to "I don't know where that is"
+     * is the file's own end, not nothing.
+     */
+    fun page(workingDirectory: String?, id: String, before: String?, pageSize: Int = 60): Page {
+        val file = transcriptFile(workingDirectory, id) ?: return Page(emptyList(), null)
+
+        val all = runCatching { file.useLines { lines -> replayable(lines).toList() } }
+            .onFailure { thisLogger().warn("Failed to page conversation $id", it) }
+            .getOrDefault(emptyList())
+
+        return pageOf(all, before, pageSize)
+    }
+
+    /** The slicing itself, apart from the disk - so a test can check it without a transcript file. */
+    internal fun pageOf(all: List<String>, before: String?, pageSize: Int): Page {
+        val boundary = before?.let { uuid -> all.indexOfFirst { it.contains("\"uuid\":\"$uuid\"") } }
+        val end = if (boundary != null && boundary >= 0) boundary else all.size
+        val start = (end - pageSize).coerceAtLeast(0)
+        val slice = all.subList(start, end)
+
+        return Page(slice, if (start > 0) uuidOf(slice.first()) else null)
+    }
+
+    private fun uuidOf(line: String): String? = UUID_FIELD.find(line)?.groupValues?.get(1)
+
+    private val UUID_FIELD = Regex(""""uuid":"([^"]+)"""")
+
     /**
      * The conversations folder's name for a project path - by Claude Code's own rule exactly: anything
      * that is not a letter or a digit becomes a hyphen.
@@ -153,6 +201,7 @@ internal object ClaudeHistory {
             title = scan.aiTitle?.takeIf { it.isNotBlank() } ?: scan.title.ifEmpty { "untitled" },
             updatedAt = file.lastModified(),
             messages = scan.messages,
+            named = !scan.aiTitle.isNullOrBlank(),
         )
     }
 

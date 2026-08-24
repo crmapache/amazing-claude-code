@@ -26,6 +26,8 @@ internal class ClaudeSessions(
     private val onToolPermission: (sessionId: String, request: PermissionChannel.ToolPermission) -> Unit = { _, _ -> },
     /** An LLM picked the conversation's name by its first message - see ClaudeSession.onTitle. */
     private val onTitle: (sessionId: String, title: String) -> Unit = { _, _ -> },
+    /** Whether this conversation still needs a name of its own - see ClaudeSession.titleWanted. */
+    private val titleWanted: (sessionId: String) -> Boolean = { true },
     /** The turn ended - the panel should clear its work; see ClaudeSession.onTurnEnded. */
     private val onTurnEnded: (sessionId: String) -> Unit = {},
     /** The turn started on its own, without a send from the panel; see ClaudeSession.onTurnStarted. */
@@ -33,6 +35,15 @@ internal class ClaudeSessions(
 ) : Disposable {
 
     private val sessions = ConcurrentHashMap<String, ClaudeSession>()
+
+    /**
+     * What a conversation is to start on when it was not the settings that decided - see SessionLaunch.
+     *
+     * Written down when the tab is opened and read when its process is first raised, because those are
+     * two different moments: an empty tab starts nothing, and the choice made in the request has to
+     * survive until somebody writes into it.
+     */
+    private val launches = ConcurrentHashMap<String, SessionLaunch>()
 
     init {
         Disposer.register(parentDisposable, this)
@@ -202,6 +213,9 @@ internal class ClaudeSessions(
      */
     fun permissionMode(sessionId: String): String? = sessions[sessionId]?.permissionMode
 
+    /** The transcript this conversation is filed under, once the CLI has named one - see ClaudeHistory. */
+    fun conversationIdOf(sessionId: String): String? = sessions[sessionId]?.conversationId
+
     /**
      * The model and the effort. The choice is remembered: new conversations will start with it.
      *
@@ -223,6 +237,18 @@ internal class ClaudeSessions(
     fun setEffort(sessionId: String, effort: String) {
         ClaudePreferences.effort = effort
         session(sessionId).setEffort(effort)
+    }
+
+    /**
+     * This conversation starts on what was chosen for it rather than on what the settings hold.
+     *
+     * Only before it has begun: past that the process is up on flags already given, and the ordinary
+     * ways of changing them ([setModel], [setEffort], [setPermissionMode]) are the ones that reach it.
+     */
+    fun rememberLaunch(sessionId: String, launch: SessionLaunch) {
+        if (launch.isEmpty || sessions.containsKey(sessionId)) return
+
+        launches[sessionId] = launch
     }
 
     /**
@@ -266,6 +292,9 @@ internal class ClaudeSessions(
     }
 
     fun close(sessionId: String) {
+        // A tab closed before anything was written into it takes its unspent choice with it.
+        launches.remove(sessionId)
+
         sessions.remove(sessionId)?.let { session ->
             session.stop()
             Disposer.dispose(session)
@@ -285,30 +314,37 @@ internal class ClaudeSessions(
         sessionId: String,
         forkFrom: String?,
         resumeFrom: String? = null,
-    ): ClaudeSession = ClaudeSession(
-        workingDirectory = workingDirectory,
-        forkFrom = forkFrom,
-        resumeFrom = resumeFrom,
-        // A new conversation starts with whatever is chosen now: re-picking the model in every tab is
-        // work over nothing.
-        model = ClaudePreferences.model,
-        effort = ClaudePreferences.effort,
-        // Never chosen at all - we start in the same mode a terminal would start in this directory (see
-        // PermissionDefaultMode).
-        permissionMode = PermissionModes.resolve(
-            ClaudePreferences.mode,
-            fallback = PermissionDefaultMode.of(workingDirectory),
-        ),
-        onEvent = { line -> onEvent(sessionId, line) },
-        onError = { message -> onError(sessionId, message) },
-        onDiagnostic = { message -> onDiagnostic(sessionId, message) },
-        onFinished = { onFinished(sessionId) },
-        onCrashed = { exitCode -> onCrashed(sessionId, exitCode) },
-        onToolPermission = { request -> onToolPermission(sessionId, request) },
-        onTitle = { title -> onTitle(sessionId, title) },
-        onTurnEnded = { onTurnEnded(sessionId) },
-        onTurnStarted = { onTurnStarted(sessionId) },
-    )
+    ): ClaudeSession {
+        // Chosen for this conversation alone, or nothing at all - the usual case, in which the settings
+        // decide (see SessionLaunch).
+        val launch = launches.remove(sessionId) ?: SessionLaunch()
+
+        return ClaudeSession(
+            workingDirectory = workingDirectory,
+            forkFrom = forkFrom,
+            resumeFrom = resumeFrom,
+            // A new conversation starts with whatever is chosen now: re-picking the model in every tab is
+            // work over nothing.
+            model = launch.model.ifEmpty { ClaudePreferences.model },
+            effort = launch.effort.ifEmpty { ClaudePreferences.effort },
+            // Never chosen at all - we start in the same mode a terminal would start in this directory (see
+            // PermissionDefaultMode).
+            permissionMode = PermissionModes.resolve(
+                launch.mode.ifEmpty { ClaudePreferences.mode },
+                fallback = PermissionDefaultMode.of(workingDirectory),
+            ),
+            onEvent = { line -> onEvent(sessionId, line) },
+            onError = { message -> onError(sessionId, message) },
+            onDiagnostic = { message -> onDiagnostic(sessionId, message) },
+            onFinished = { onFinished(sessionId) },
+            onCrashed = { exitCode -> onCrashed(sessionId, exitCode) },
+            onToolPermission = { request -> onToolPermission(sessionId, request) },
+            onTitle = { title -> onTitle(sessionId, title) },
+            titleWanted = { titleWanted(sessionId) },
+            onTurnEnded = { onTurnEnded(sessionId) },
+            onTurnStarted = { onTurnStarted(sessionId) },
+        )
+    }
 
     companion object {
         /**

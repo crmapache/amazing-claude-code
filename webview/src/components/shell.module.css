@@ -431,6 +431,19 @@
   min-width: 0;
 }
 
+/* Someone else is watching this project - a browser page beside the IDE, later a phone.
+   Deliberately quiet: it is a fact worth knowing, not a thing to look at. What it must never be is
+   absent, so that a remote connection is never a silent one (see the clients message in protocol.ts). */
+.watchers {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  font-size: 11px;
+  color: var(--acc-fg-dim);
+  cursor: default;
+}
+
 /* The icon alone: room in the header is dear, and the caption wrapped onto a second row. */
 .historyButton {
   position: relative;
@@ -1013,22 +1026,35 @@
   max-height: min(640px, 86vh);
 }
 
+/*
+ * The title and its hint share a line while they fit, and the hint drops whole onto the next one when
+ * they do not. Left to wrap word by word, a long hint ("shift+tab cycles every mode but Don't ask" in a
+ * narrow panel) broke both halves across two ragged lines at once - the title itself came out as
+ * "PERMISSION" over "MODE", which reads as a layout accident rather than a heading.
+ */
 .menuHead {
   padding: 6px 9px 5px;
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: 2px 8px;
 }
 
 .menuTitle {
   font: 600 9px/1 var(--acc-mono);
   letter-spacing: 0.09em;
   color: var(--acc-fg-faint);
+  white-space: nowrap;
 }
 
 .menuHint {
   font: 10px var(--acc-mono);
   color: var(--acc-fg-ghost);
+  /* One line of its own, cut with an ellipsis only where even a line to itself is not enough. */
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .menuItem {
@@ -1043,7 +1069,11 @@
 
 /* A class rather than :hover - see Menu.tsx, the same trick and the same reason as .suggestItemOn in
    SlashSuggest: in JCEF the pseudo-class does not always fire. */
-.menuItemHover {
+/*
+ * The chosen entry keeps its accent under the cursor: it is already marked, and swapping that for the
+ * grey of a hover would read as losing the tick.
+ */
+.menuItem:hover:not(.menuItemOn):not(:disabled) {
   background: var(--acc-bg-menu-hover);
 }
 
@@ -1101,517 +1131,6 @@
   text-wrap: pretty;
 }
 
-
-/* --- The conversation history ----------------------------------------------- */
-
-.history {
-  position: absolute;
-  z-index: 41;
-  top: var(--header-height);
-  left: 8px;
-  right: 8px;
-  max-height: 60vh;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--acc-line-strong);
-  border-radius: var(--acc-r-2xl);
-  background: var(--acc-bg-panel);
-  box-shadow: var(--acc-shadow-menu);
-  overflow: hidden;
-}
-
-.historyHead {
-  flex: none;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 9px 12px 7px;
-  border-bottom: 1px solid var(--acc-line);
-}
-
-.historyLabel {
-  font: 600 9px/1 var(--acc-mono);
-  letter-spacing: 0.09em;
-  color: var(--acc-fg-faint);
-}
-
-.historyHint {
-  font: 10px var(--acc-mono);
-  color: var(--acc-fg-ghost);
-}
-
-.historyBody {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 4px;
-}
-
-.historyItem {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  width: 100%;
-  padding: 7px 9px;
-  border-radius: var(--acc-r-md);
-  text-align: left;
-}
-
-.historyItem:hover {
-  background: var(--acc-bg-menu-hover);
-}
-
-.historyTitle {
-  font-size: 12.5px;
-  color: var(--acc-fg-body);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-.historyMeta {
-  font: 10px var(--acc-mono);
-  color: var(--acc-fg-fainter);
-}
-
-.historyEmpty {
-  padding: 12px 10px;
-  font: 11.5px var(--acc-mono);
-  color: var(--acc-fg-faint);
-}
-
-/* --- The sound alerts -------------------------------------------------------- */
-
-.sounds {
-  position: absolute;
-  z-index: 41;
-  top: var(--header-height);
-  left: 8px;
-  right: 8px;
-  /* The panel may be half a screen tall - then the list scrolls rather than riding away under the input
-     field. */
-  max-height: 72vh;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--acc-line-strong);
-  border-radius: var(--acc-r-2xl);
-  background: var(--acc-bg-panel);
-  box-shadow: var(--acc-shadow-menu);
-  overflow: hidden;
-}
-
-.soundsBody {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 4px;
-}
-
-.soundRow {
-  padding-bottom: 6px;
-  border-radius: var(--acc-r-md);
-}
-
-.soundRow:hover {
-  background: var(--acc-bg-menu-hover);
-}
-
-.soundTop {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.soundToggle {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  padding: 7px 9px 5px;
-  text-align: left;
-}
-
-/* The slider stands under the caption, with an indent exactly under the tick box's square: that way it is
-   visible that the volume belongs to this very sound. */
-.soundVolume {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 9px 0 33px;
-}
-
-.soundSlider {
-  flex: 1;
-  min-width: 0;
-  height: 14px;
-  appearance: none;
-  background: transparent;
-  cursor: pointer;
-}
-
-.soundSlider::-webkit-slider-runnable-track {
-  height: 3px;
-  border-radius: 2px;
-  background: var(--acc-line-strong);
-}
-
-.soundSlider::-webkit-slider-thumb {
-  appearance: none;
-  width: 11px;
-  height: 11px;
-  /* Half the difference between the track's and the thumb's heights - otherwise it sits off the thread's
-   centre. */
-  margin-top: -4px;
-  border-radius: 50%;
-  background: var(--acc-branch);
-}
-
-/* A muted sound is visible by its slider too - but it can be dragged: that is how it is switched back
-   on. */
-.soundSliderOff::-webkit-slider-thumb {
-  background: var(--acc-fg-ghost);
-}
-
-.soundPercent {
-  flex: none;
-  width: 34px;
-  text-align: right;
-  font: 10.5px var(--acc-mono);
-  color: var(--acc-fg-faint);
-  /* The digits do not dance during a drag: 7% and 70% take one and the same room. */
-  font-variant-numeric: tabular-nums;
-}
-
-.soundPercentOff {
-  color: var(--acc-fg-ghost);
-}
-
-.soundCheck {
-  flex: none;
-  width: 15px;
-  height: 15px;
-  /* Half a pixel down: the square aligns to the caption's lowercase letters rather than to its line box. */
-  margin-top: 1px;
-  border: 1px solid var(--acc-line-strong);
-  border-radius: var(--acc-r-xs);
-  display: grid;
-  place-items: center;
-  font-size: 9px;
-  color: var(--acc-on-accent);
-}
-
-.soundCheckOn {
-  border-color: var(--acc-branch);
-  background: var(--acc-branch);
-}
-
-.soundText {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.soundLabel {
-  font-size: 12.5px;
-  color: var(--acc-fg-faint);
-}
-
-.soundLabelOn {
-  color: var(--acc-fg-body);
-}
-
-.soundHint {
-  font: 11px var(--acc-mono);
-  color: var(--acc-fg-fainter);
-  text-wrap: pretty;
-}
-
-.soundPreview {
-  flex: none;
-  width: 24px;
-  height: 24px;
-  margin-right: 5px;
-  border-radius: var(--acc-r-md);
-  display: grid;
-  place-items: center;
-  font-size: 9px;
-  color: var(--acc-fg-ghost);
-}
-
-.soundPreview:hover {
-  background: var(--acc-bg-control-hover);
-  color: var(--acc-fg);
-}
-
-/* --- The MCP servers -------------------------------------------------------- */
-
-.mcp {
-  position: absolute;
-  z-index: 41;
-  top: var(--header-height);
-  left: 8px;
-  right: 8px;
-  max-height: 72vh;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--acc-line-strong);
-  border-radius: var(--acc-r-2xl);
-  background: var(--acc-bg-panel);
-  box-shadow: var(--acc-shadow-menu);
-  overflow: hidden;
-}
-
-.mcpRefresh {
-  flex: none;
-  padding: 4px 9px;
-  border-radius: var(--acc-r-md);
-  background: var(--acc-bg-control);
-  font: 10.5px var(--acc-mono);
-  color: var(--acc-fg-dim);
-}
-
-.mcpRefresh:hover:not(:disabled) {
-  background: var(--acc-bg-control-hover);
-  color: var(--acc-fg);
-}
-
-.mcpRefresh:active:not(:disabled) {
-  background: var(--acc-bg-menu-hover);
-  color: var(--acc-fg);
-}
-
-.mcpRefresh:disabled {
-  background: var(--acc-bg-raised);
-  color: var(--acc-fg-ghost);
-}
-
-.mcpMessageOk,
-.mcpMessageError {
-  flex: none;
-  padding: 7px 12px;
-  font: 11px var(--acc-mono);
-  border-bottom: 1px solid var(--acc-line);
-  /* The output of claude mcp/plugin is multi-line (the progress, then the outcome) rather than one sentence:
-     without pre-wrap the line breaks collapse into one solid piece. */
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.mcpMessageOk {
-  color: var(--acc-ok-light);
-}
-
-.mcpMessageError {
-  color: var(--acc-bad-light);
-}
-
-.mcpBody {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 4px;
-}
-
-.mcpItem {
-  padding: 8px 9px;
-  border-radius: var(--acc-r-md);
-}
-
-.mcpItem:hover {
-  background: var(--acc-bg-menu-hover);
-}
-
-.mcpItemHead {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.mcpDot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 9px;
-}
-
-.mcpDotOn {
-  background: var(--acc-meter-green);
-}
-
-.mcpDotOff {
-  background: var(--acc-fg-ghost);
-}
-
-.mcpName {
-  font: 500 12.5px var(--acc-mono);
-  color: var(--acc-fg-body);
-}
-
-.mcpStatusText {
-  margin-left: auto;
-  font: 10.5px var(--acc-mono);
-  color: var(--acc-fg-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 50%;
-}
-
-/* The state's colour is the same language as everywhere in the panel: green works, yellow waits for the
-   person, red is broken. */
-.mcpStatusOk {
-  color: var(--acc-ok-text);
-}
-
-.mcpStatusWarn {
-  color: var(--acc-warn-light);
-}
-
-.mcpStatusBad {
-  color: var(--acc-bad-text);
-}
-
-.mcpStatusIdle {
-  color: var(--acc-fg-ghost);
-}
-
-/* The servers are grouped by where they came from - as in the terminal's /mcp. */
-.mcpGroup {
-  margin-bottom: 6px;
-}
-
-.mcpGroupHead {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  padding: 7px 9px 3px;
-}
-
-/* The CLI's own explanation of a refusal: long, so it is wrapped rather than cut. */
-.mcpError {
-  margin: 0 0 6px 14px;
-  font: 10.5px/15px var(--acc-mono);
-  color: var(--acc-bad-text);
-  word-break: break-word;
-}
-
-.mcpActionPrimary {
-  background: var(--acc-warn-12);
-  color: var(--acc-warn-light);
-}
-
-.mcpActionPrimary:hover:not(:disabled) {
-  background: var(--acc-warn-16);
-  color: var(--acc-warn-light);
-}
-
-.mcpCommand {
-  margin: 3px 0 6px 14px;
-  font: 10.5px var(--acc-mono);
-  color: var(--acc-fg-ghost);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.mcpActions {
-  display: flex;
-  gap: 6px;
-  margin-left: 14px;
-}
-
-.mcpAction {
-  padding: 3px 8px;
-  border-radius: var(--acc-r-sm);
-  background: var(--acc-bg-control);
-  font: 10.5px var(--acc-mono);
-  color: var(--acc-fg-dim);
-}
-
-.mcpAction:hover:not(:disabled) {
-  background: var(--acc-bg-control-hover);
-  color: var(--acc-fg);
-}
-
-.mcpAction:active:not(:disabled) {
-  background: var(--acc-bg-menu-hover);
-  color: var(--acc-fg);
-}
-
-.mcpActionDanger:hover:not(:disabled) {
-  background: var(--acc-bad-12);
-  color: var(--acc-bad-light);
-}
-
-.mcpActionDanger:active:not(:disabled) {
-  background: var(--acc-bad-24);
-  color: var(--acc-bad-text);
-}
-
-/* After the variants: while a request runs the button dims and stops responding. */
-.mcpAction:disabled {
-  background: var(--acc-bg-raised);
-  color: var(--acc-fg-ghost);
-}
-
-.mcpAddForm {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 9px 12px 11px;
-  border-top: 1px solid var(--acc-line);
-}
-
-.mcpAddRow {
-  display: flex;
-  gap: 6px;
-}
-
-.mcpInput {
-  flex: 1;
-  min-width: 0;
-  padding: 5px 8px;
-  border: 1px solid var(--acc-line);
-  border-radius: var(--acc-r-md);
-  background: var(--acc-bg-control);
-  font: 11.5px var(--acc-mono);
-  color: var(--acc-fg);
-}
-
-.mcpInput:focus {
-  border-color: var(--acc-accent);
-}
-
-/* Not a native <select>: its dropdown in JCEF did not open on a click at all - three options are simpler
-   and more reliable to show as buttons. */
-.transportToggle {
-  flex: none;
-  display: flex;
-  gap: 4px;
-}
-
-.transportOption {
-  padding: 5px 10px;
-  border-radius: var(--acc-r-md);
-  background: var(--acc-bg-control);
-  font: 11px var(--acc-mono);
-  color: var(--acc-fg-dim);
-}
-
-.transportOption:hover {
-  background: var(--acc-bg-control-hover);
-  color: var(--acc-fg);
-}
-
-.transportOptionActive {
-  background: var(--acc-accent-soft);
-  color: var(--acc-accent-light);
-}
-
 /* A placeholder in the place of the text or the button while the list is still loading - with the same
    breathing as a tab's working dot, so as not to start an animation of its own for the sake of one thing. */
 .skeletonBar {
@@ -1619,88 +1138,6 @@
   border-radius: var(--acc-r-sm);
   background: var(--acc-bg-control);
   animation: acc-pulse 1.5s ease-in-out infinite;
-}
-
-.mcpAddButton {
-  align-self: flex-start;
-  padding: 5px 12px;
-  border-radius: var(--acc-r-md);
-  background: var(--acc-accent);
-  font: 500 11.5px var(--acc-font);
-  color: var(--acc-on-accent);
-}
-
-.mcpAddButton:hover:not(:disabled) {
-  background: var(--acc-accent-hover);
-}
-
-.mcpAddButton:active:not(:disabled) {
-  background: var(--acc-accent-active);
-}
-
-.mcpAddButton:disabled {
-  background: var(--acc-bg-control);
-  color: var(--acc-fg-ghost);
-}
-
-/* --- The plugins -------------------------------------------------------------
-   The container, the refresh, the messages, the dot/name/status, the actions, the add form are the same
-   .mcp* classes as the MCP servers' ones: the markup is identical, the difference lies only in the set of
-   tabs and in the marketplace catalogue's card below. */
-
-.pluginTabs {
-  flex: none;
-  display: flex;
-  gap: 2px;
-  padding: 0 8px;
-  border-bottom: 1px solid var(--acc-line);
-}
-
-.pluginTab {
-  padding: 7px 9px 6px;
-  font: 10.5px var(--acc-mono);
-  color: var(--acc-fg-faint);
-  border-bottom: 2px solid transparent;
-}
-
-.pluginTab:hover {
-  color: var(--acc-fg-dim);
-}
-
-.pluginTabActive {
-  color: var(--acc-fg);
-  border-bottom-color: var(--acc-accent);
-}
-
-/*
- * display: flex - without it the flex: 1 on the field itself (.mcpInput) has no effect at all: that property
- * works only on a flex item, and the row was an ordinary block. The field was drawn at the browser's default
- * input width (~20 characters) instead of taking the whole row.
- */
-.pluginSearchRow {
-  flex: none;
-  display: flex;
-  padding: 8px 9px;
-  border-bottom: 1px solid var(--acc-line);
-}
-
-.pluginDescription {
-  margin: 3px 0 6px 0;
-  font: 11px/1.4 var(--acc-font);
-  color: var(--acc-fg-faint);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.pluginMarketplaceBadge {
-  margin-right: auto;
-  padding: 2px 7px;
-  border-radius: var(--acc-r-sm);
-  background: var(--acc-bg-control);
-  font: 10px var(--acc-mono);
-  color: var(--acc-fg-ghost);
 }
 
 /* --- The selection menu ---------------------------------------------------- */

@@ -230,6 +230,12 @@ export interface BackgroundTask {
    * does not fit on the chip - it lives in the hover tooltip.
    */
   description: string
+  /**
+   * The command itself, first line and whole. The chip's caption is two words of it, which is enough to
+   * tell one chip from another and not enough to say what is running: a waiting loop and a build look
+   * alike at that length. This is what the tooltip shows.
+   */
+  command: string
   duration: string
 }
 

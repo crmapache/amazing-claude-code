@@ -31,7 +31,6 @@ src/main/resources/webview/
 # в репозитории им не место ни в каком виде.
 .env
 secrets/
-t
 
 # Личное в настройках Claude Code: разрешения этой машины и замок планировщика.
 # Сами скиллы проекта (.claude/skills/) отслеживаются - они общие.
@@ -41,3 +40,11 @@ t
 # Рабочие заметки и планы в корне: черновики для себя, не часть проекта.
 REMOTE-ACCESS-PLAN.md
 /REPLAY-STREAMING.md
+# The phone client is built separately and served by the relay rather than shipped in the plugin.
+webview/dist-mobile
+
+# The same bundle, staged where the relay serves it from. Deliberately ignored here rather than in
+# relay/.gitignore: the deploy uploads that directory, and an ignore rule inside it would keep the
+# client out of the image as well as out of the repository (see relay/.railwayignore).
+relay/public/*
+!relay/public/.gitkeep

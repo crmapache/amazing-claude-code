@@ -82,6 +82,27 @@ internal object ClaudePreferences {
             .toMap()
         set(value) = write(SOUND_VOLUMES_KEY, value.entries.joinToString(",") { "${it.key}=${it.value}" })
 
+    /**
+     * Whether this IDE may be reached from outside at all.
+     *
+     * Off unless it has been turned on, and it stays that way: a channel that can send a message to the
+     * agent is a channel that can run commands on this machine, and nobody should acquire one by
+     * installing a plugin. It is a scalar, so it lives here beside the model and the mode rather than
+     * in a component of its own; what is not a scalar - the paired devices - is in RemoteState.
+     */
+    var remoteEnabled: Boolean
+        get() = read(REMOTE_ENABLED_KEY) == "true"
+        set(value) = write(REMOTE_ENABLED_KEY, if (value) "true" else "")
+
+    /**
+     * Which relay to use. Empty means the public one. Being able to change it is the other half of
+     * publishing the relay's source: reading the code of a server you are obliged to use is only half
+     * an answer.
+     */
+    var remoteRelayUrl: String
+        get() = read(REMOTE_RELAY_KEY)
+        set(value) = write(REMOTE_RELAY_KEY, value.trim())
+
     private fun read(key: String): String = PropertiesComponent.getInstance().getValue(key).orEmpty()
 
     private fun write(key: String, value: String) {
@@ -97,4 +118,6 @@ internal object ClaudePreferences {
     private const val EXECUTABLE_KEY = "acc.executable"
     private const val MUTED_SOUNDS_KEY = "acc.sounds.muted"
     private const val SOUND_VOLUMES_KEY = "acc.sounds.volumes"
+    private const val REMOTE_ENABLED_KEY = "acc.remote.enabled"
+    private const val REMOTE_RELAY_KEY = "acc.remote.relayUrl"
 }

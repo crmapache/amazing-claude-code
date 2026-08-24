@@ -43,6 +43,18 @@ export const shortenPath = (path: string, workingDirectory: string): string => {
 /** Preparation for a run rather than the work itself: such a start of a command only clutters the caption. */
 const SETUP_HEAD = /^(?:cd|source|export|\.)\s/
 
+/**
+ * Words that say how something runs rather than what runs.
+ *
+ * A shell loop is the case this exists for: out of `until curl … ; do sleep 10; done` the first two
+ * words are `until` and `curl`, and a chip reading "until curl" answers nothing at all - every waiting
+ * loop on the header looked the same. What is worth naming is what the loop keeps doing.
+ */
+const CONTROL_HEAD = new Set(['until', 'while', 'if', 'for', 'do', 'then', 'else', 'time', 'nohup', 'exec', 'command'])
+
+/** `sh -c '…'` and its family: what runs is inside the string, not the shell that runs it. */
+const SHELL = new Set(['sh', 'bash', 'zsh'])
+
 /** `NODE_ENV=production pnpm build` - what tells about the command is the second word, not the first. */
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
 
@@ -67,13 +79,39 @@ export const commandLabel = (command: string): string => {
       .filter(Boolean)
       .find((part) => !SETUP_HEAD.test(part)) ?? line
 
-  const words = step.split(/\s+/).filter((word) => !ASSIGNMENT.test(word))
+  // Everything up to the first word that names work: the loop keyword, the `env` assignments before it,
+  // the shell that is only there to be handed a string.
+  const words = unwrap(step.split(/\s+/).filter((word) => !ASSIGNMENT.test(word)))
+
   const head = words[0]?.split('/').pop() ?? ''
   if (!head) return ''
 
   const next = words[1]
   const takesNext = next && !next.startsWith('-') && !next.includes('/') && next.length <= 14
   return takesNext ? `${head} ${next}` : head
+}
+
+/**
+ * Step past the words that only say how, and into the string a shell was handed.
+ *
+ * Both cases end the same way - the caption is taken from what genuinely runs - and both used to end
+ * with a chip named after a keyword: "until curl", "sh -c".
+ */
+const unwrap = (words: string[]): string[] => {
+  let rest = words
+  while (rest.length > 1 && CONTROL_HEAD.has(rest[0] ?? '')) rest = rest.slice(1)
+
+  const head = rest[0]?.split('/').pop() ?? ''
+  if (!SHELL.has(head) || rest[1] !== '-c') return rest
+
+  // What was quoted, without the quotes: `sh -c 'pnpm build && node dist'` is a run of pnpm.
+  const inner = rest
+    .slice(2)
+    .join(' ')
+    .replace(/^['"]|['"]$/g, '')
+    .trim()
+
+  return inner ? unwrap(inner.split(/\s+/)) : rest
 }
 
 export const targetFor = (name: string, input: unknown, workingDirectory: string): string => {

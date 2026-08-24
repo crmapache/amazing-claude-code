@@ -1,4 +1,4 @@
-import type { AgentSystemEvent, ContentBlock, ToolUseBlock } from '../protocol'
+import type { AgentSystemEvent, ContentBlock, TextBlock, ToolUseBlock } from '../protocol'
 import type { PanelState } from './panelState'
 import { readQuestions } from './toolInput'
 import { commandLabel, detailFor, formatDuration, targetFor } from './tools'
@@ -81,7 +81,8 @@ const startBackgroundCommand = (
   // sentence and on a narrow panel pushes every other chip out. The command is taken from the very call
   // that launched it; when none is found, the description is left, if only so the chip is not nameless.
   const command = (tool?.input as { command?: unknown } | undefined)?.command
-  const label = commandLabel(typeof command === 'string' ? command : '')
+  const written = typeof command === 'string' ? command : ''
+  const label = commandLabel(written)
 
   return {
     ...state,
@@ -93,6 +94,7 @@ const startBackgroundCommand = (
         toolUseId: event.tool_use_id,
         label: label || description || 'background command',
         description,
+        command: written.split('\n')[0]?.trim() ?? '',
         duration: formatDuration(0),
       },
     ],
@@ -100,10 +102,37 @@ const startBackgroundCommand = (
 }
 
 /**
- * A background command has ended. The chip leaves the header, and the outcome is written straight into
- * its card in the feed: it has no card of its own and needs none - the one that launched it already
- * stands in the feed, and the right place for "how long it ran and how it ended" is precisely there.
+ * How a background command ended, written straight into the card that launched it: it has no card of its
+ * own and needs none - the one that launched it already stands in the feed, and the right place for "how
+ * long it ran and how it ended" is precisely there.
+ *
+ * Apart from the chip's own bookkeeping below, because a replay reaches the same end by another road: it
+ * learns the outcome from the transcript without ever having seen the command start, and has no honest
+ * duration to give (see applyReplayedTaskNotification).
  */
+const noteBackgroundEnd = (
+  items: FeedItem[],
+  toolUseId: string,
+  duration: string,
+  outcome: TaskOutcome,
+  summary: string | undefined,
+): FeedItem[] => {
+  const tone = outcome === 'failed' ? ('bad' as const) : ('dim' as const)
+  const ended = outcome === 'failed' ? 'failed' : outcome === 'stopped' ? 'was stopped' : 'finished'
+  // The CLI's text explains a failure to the point ("exit code 3"), while on an ordinary end it repeats
+  // the command's description, which already stands in the card.
+  const detail = outcome === 'failed' && summary ? detailFor(summary) : []
+  const text = duration ? `Background command ${ended} after ${duration}.` : `Background command ${ended}.`
+
+  return mapTool(items, toolUseId, (tool) => ({
+    ...tool,
+    duration: duration || tool.duration,
+    isError: tool.isError || outcome === 'failed',
+    detail: [...tool.detail, { text, tone }, ...detail],
+  }))
+}
+
+/** A background command has ended: the chip leaves the header, the outcome goes into its card. */
 const finishBackgroundCommand = (
   state: PanelState,
   task: BackgroundTask,
@@ -115,20 +144,8 @@ const finishBackgroundCommand = (
   const startedAt = { ...state.startedAt }
   delete startedAt[task.id]
 
-  const outcome = outcomeOf(event.status)
-  const tone = outcome === 'failed' ? ('bad' as const) : ('dim' as const)
-  const ended = outcome === 'failed' ? 'failed' : outcome === 'stopped' ? 'was stopped' : 'finished'
-  // The CLI's text explains a failure to the point ("exit code 3"), while on an ordinary end it repeats
-  // the command's description, which already stands in the card.
-  const detail = outcome === 'failed' && event.summary ? detailFor(event.summary) : []
-
   const items = task.toolUseId
-    ? mapTool(state.items, task.toolUseId, (tool) => ({
-        ...tool,
-        duration,
-        isError: tool.isError || outcome === 'failed',
-        detail: [...tool.detail, { text: `Background command ${ended} after ${duration}.`, tone }, ...detail],
-      }))
+    ? noteBackgroundEnd(state.items, task.toolUseId, duration, outcomeOf(event.status), event.summary)
     : state.items
 
   return { ...state, startedAt, background: state.background.filter((item) => item.id !== task.id), items }
@@ -224,23 +241,22 @@ export const applyTaskProgress = (state: PanelState, event: AgentSystemEvent): P
   }
 }
 
-export const applyTaskNotification = (state: PanelState, event: AgentSystemEvent, now: number): PanelState => {
-  const taskId = event.task_id
-  if (!taskId) return state
-
-  const running = state.background.find((task) => task.id === taskId)
-  if (running) return finishBackgroundCommand(state, running, event, now)
-
-  const card = cardFor(state, taskId)
+/** A subagent's card closed by what is known about its end - see applyTaskNotification. */
+const finishTaskCard = (
+  state: PanelState,
+  card: string,
+  outcome: TaskOutcome,
+  summary: string | undefined,
+  now: number,
+): PanelState => {
   const startedTime = state.startedAt[card]
   const duration = startedTime ? formatDuration(now - startedTime) : ''
   const startedAt = { ...state.startedAt }
   delete startedAt[card]
-  const outcome = outcomeOf(event.status)
-  const summary = event.summary ? detailFor(event.summary) : []
+  const lines = summary ? detailFor(summary) : []
   // A killed or failed agent used to look exactly like one that had finished: green circle, summary in
   // place. The mark goes on the first line - it also explains why the summary breaks off mid-way.
-  const lines = outcome === 'ok' ? summary : [{ text: endedText(outcome), tone: 'bad' as const }, ...summary]
+  const log = outcome === 'ok' ? lines : [{ text: endedText(outcome), tone: 'bad' as const }, ...lines]
 
   return {
     ...state,
@@ -253,11 +269,78 @@ export const applyTaskNotification = (state: PanelState, event: AgentSystemEvent
             percent: 100,
             duration,
             outcome,
-            log: lines.length > 0 ? appendAgentLog(item.log, lines) : item.log,
+            log: log.length > 0 ? appendAgentLog(item.log, log) : item.log,
           }
         : item,
     ),
   }
+}
+
+export const applyTaskNotification = (state: PanelState, event: AgentSystemEvent, now: number): PanelState => {
+  const taskId = event.task_id
+  if (!taskId) return state
+
+  const running = state.background.find((task) => task.id === taskId)
+  if (running) return finishBackgroundCommand(state, running, event, now)
+
+  return finishTaskCard(state, cardFor(state, taskId), outcomeOf(event.status), event.summary, now)
+}
+
+const NOTIFICATION_BLOCK = /<task-notification>[\s\S]*?<\/task-notification>/g
+const NOTIFIED_TOOL_USE = /<tool-use-id>([\s\S]*?)<\/tool-use-id>/
+const NOTIFIED_STATUS = /<status>([\s\S]*?)<\/status>/
+const NOTIFIED_SUMMARY = /<summary>([\s\S]*?)<\/summary>/
+
+const tagOf = (pattern: RegExp, text: string): string | undefined => pattern.exec(text)?.[1]?.trim() || undefined
+
+/**
+ * The very same notification, but out of a past conversation rather than out of a live run.
+ *
+ * Live, a task reports its end over the task_* channel - a system event nobody keeps: a transcript holds
+ * messages alone. What it does hold is the notification itself, because the CLI hands it to the agent as
+ * a message written in the person's own name - the whole block of markup that used to land in the feed as
+ * though the person had typed "<task-notification><task-id>…" by hand.
+ *
+ * So it is read here for what it is: the outcome of a subagent or of a background command, put into the
+ * card that launched it. Only in a replay - in a live run the same end arrives over its own channel, and
+ * reading both would write the outcome into the card twice.
+ *
+ * The card is found by tool-use-id rather than by task-id: the map from one to the other is built by
+ * task_started, and in a replay that event never came. A notification without a tool-use-id (the CLI
+ * sums up several orphaned tasks of a dead session in one) names no card at all - there is nothing to
+ * apply and nothing to show.
+ */
+export const applyReplayedTaskNotification = (
+  state: PanelState,
+  blocks: ContentBlock[],
+  now: number,
+): PanelState => {
+  const text = blocks
+    .filter((block): block is TextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n')
+
+  const notifications = text.match(NOTIFICATION_BLOCK)
+  if (!notifications) return state
+
+  return notifications.reduce((current, notification) => {
+    const toolUseId = tagOf(NOTIFIED_TOOL_USE, notification)
+    if (!toolUseId) return current
+
+    const outcome = outcomeOf(tagOf(NOTIFIED_STATUS, notification))
+    const summary = tagOf(NOTIFIED_SUMMARY, notification)
+
+    if (current.items.some((item) => item.kind === 'task' && item.id === toolUseId)) {
+      return finishTaskCard(current, toolUseId, outcome, summary, now)
+    }
+
+    // An ordinary command travels this channel too (see isBashTask), and its card was closed by its own
+    // result long ago - a "background command finished" line under it would say what never happened.
+    const tool = findTool(current.items, toolUseId)
+    if (!isBackgroundCommand(tool)) return current
+
+    return { ...current, items: noteBackgroundEnd(current.items, toolUseId, '', outcome, summary) }
+  }, state)
 }
 
 /**

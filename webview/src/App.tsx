@@ -29,14 +29,17 @@ import { History } from './components/History'
 import { LoginGate, type AuthState } from './components/LoginGate'
 import { Mcp } from './components/Mcp'
 import { Menu, type MenuOption } from './components/Menu'
+import { SideMenu, parentOf, type MenuScreen, type MenuSummary } from './components/SideMenu'
+import { ChoiceList, LayoutChoice } from './components/Choices'
 import { PermissionPanel } from './components/PermissionPanel'
 import { Plugins } from './components/Plugins'
 import { Queue, type QueuedPrompt } from './components/Queue'
 import { Quotes, type Quote } from './components/Quotes'
 import { SelectionMenu } from './components/SelectionMenu'
+import { Remote, RemoteAbout, REMOTE_STATE, type RemoteStatus } from './components/Remote'
 import { Sounds } from './components/Sounds'
 import { StatusBar, UsageMeters, type Anchor, type SelectorKind } from './components/StatusBar'
-import { StreamSwitcher, type AgentStatus, type AgentTab } from './components/StreamSwitcher'
+import { StreamSwitcher } from './components/StreamSwitcher'
 import { TaskListPanel } from './components/TaskListPanel'
 import composer from './components/composer.module.css'
 import s from './components/shell.module.css'
@@ -46,9 +49,18 @@ import { deferFollowUpForCompact } from './feed/compact'
 import { referenceChip } from './feed/reference'
 import { deriveSessionTitle } from './feed/title'
 import { appendChip, appendText, buildCommands, localCommand, plainText, type LocalCommand } from './feed/slash'
+import {
+  awaitsYou,
+  buildAgentTabs,
+  mainStatusOf,
+  ownStream,
+  pendingAsk,
+  pendingPermission,
+  pendingPlan,
+  streamStatus,
+} from './feed/streamStatus'
 import { composePrompt, imageAttachments, tokensText, trimTrailingSpace } from './feed/tokens'
-import { formatDuration } from './feed/tools'
-import type { AskItem, FeedItem, PermItem, PlanItem, TaskItem, TodoItem, UserItem, UserToken } from './feed/types'
+import type { FeedItem, TaskItem, TodoItem, UserItem, UserToken } from './feed/types'
 import type {
   AvailablePluginInfo,
   HistoryEntry,
@@ -57,10 +69,12 @@ import type {
   ModelInfo,
   PluginMarketplaceInfo,
   SoundId,
+  TitleSource,
   UsageWindow,
 } from './protocol'
 import {
   NO_SOUND_PREFS,
+  SOUNDS,
   isMuted,
   rememberPanel,
   setVolume,
@@ -214,7 +228,27 @@ export const App = () => {
    * are mutually exclusive by construction: opening the plugins closes the history by itself rather than
    * leaving it hanging quietly under the new one on top of it.
    */
-  const [openPanel, setOpenPanel] = useState<'history' | 'mcp' | 'plugins' | 'sounds' | null>(null)
+  const [watchers, setWatchers] = useState(0)
+  /**
+   * The menu behind the burger: whether it is out, and which of its screens is showing.
+   *
+   * The screen is kept while it is shut so that closing does not make the contents jump on the way out -
+   * a fresh opening resets it to the root itself (see openMenu).
+   */
+  const [sideMenu, setSideMenu] = useState<{ open: boolean; screen: MenuScreen }>({ open: false, screen: 'menu' })
+  /** The panel's own version, for the foot of the menu. Absent until the shell's `init` arrives. */
+  const [pluginVersion, setPluginVersion] = useState('')
+
+  /**
+   * Whether this IDE can be reached from outside, and how that is going. Off until someone turns it on,
+   * which is the shape the plugin ships in.
+   */
+  const [remote, setRemote] = useState<RemoteStatus>({
+    state: 'idle',
+    enabled: false,
+    relay: '',
+    agentId: '',
+  })
   /** The tick boxes and the volume of the sound alerts - see sounds.ts. */
   const [soundPrefs, setSoundPrefs] = useState<SoundPrefs>(NO_SOUND_PREFS)
   /** The project's past conversations: null means the list has not arrived yet (see the startup requests). */
@@ -357,11 +391,11 @@ export const App = () => {
   }, [])
 
   /**
-   * Which pinned panel is open right now - for those who toggle it from a closure that outlived its render
+   * What the menu is showing right now - for those who reach it from a closure that outlived its render
    * (see [openHistory]).
    */
-  const openPanelRef = useRef(openPanel)
-  openPanelRef.current = openPanel
+  const sideMenuRef = useRef(sideMenu)
+  sideMenuRef.current = sideMenu
 
   /**
    * The history is a toggle for a pinned panel, like the neighbouring open* ones below. But it lives here
@@ -377,19 +411,20 @@ export const App = () => {
   const openHistory = useCallback(() => {
     setMenu(null)
 
-    if (openPanelRef.current === 'history') {
-      setOpenPanel(null)
+    // A second `/resume` on an open history closes it, the way pressing the same button twice does.
+    if (sideMenuRef.current.open && sideMenuRef.current.screen === 'history') {
+      setSideMenu({ open: false, screen: 'history' })
       return
     }
 
-    setOpenPanel('history')
+    setSideMenu({ open: true, screen: 'history' })
     send({ type: 'history' })
   }, [])
 
   // Past conversations, MCP servers and plugins are asked for right at the start, together with the
   // panel's readiness: by the time their tab is opened they are already loaded.
   useEffect(() => {
-    send({ type: 'ready' })
+    send({ type: 'ready', since: seen.current })
     send({ type: 'history' })
     loadMcp()
     loadPlugins()
@@ -509,6 +544,30 @@ export const App = () => {
    * state - nothing repaints because of it.
    */
   const soundMemory = useRef<Record<string, SoundMemory>>({})
+
+  /**
+   * The last journal number seen in each conversation. It goes back to the shell on the next 'ready'
+   * (see the handshake below): the conversations outlive this page now, so a reload over a running turn
+   * is worth catching up on rather than starting from nothing.
+   */
+  const seen = useRef<Record<string, number>>({})
+
+  /**
+   * The feeds being restored right now, by conversation. A conversation is in here between
+   * restoreStarted and restoreFinished, and everything that arrives for it in between is collected
+   * instead of being applied - a couple of thousand entries applied one at a time is a couple of
+   * thousand renders.
+   */
+  const restoring = useRef<Record<string, Array<{ action: Parameters<typeof reducePanel>[1]; at?: number }>>>({})
+
+  /**
+   * Messages this screen sent and has already drawn. Their echo comes back from the shell (it is what
+   * a second client and a restored feed are built from) and would double the card here.
+   */
+  const ownPrompts = useRef<Set<string>>(new Set())
+
+  /** Two messages inside one millisecond are rare but possible - the counter keeps their ids apart. */
+  const promptCounter = useRef(0)
   /** The effect below reads the sound settings, but has no reason to restart because of them. */
   const soundPrefsRef = useRef(soundPrefs)
   soundPrefsRef.current = soundPrefs
@@ -691,8 +750,29 @@ export const App = () => {
   useEffect(
     () =>
       subscribe((message) => {
+        const at = message.at
+
+        /**
+         * Everything that lands in a conversation's feed goes through here rather than straight into the
+         * reducer: while a feed is being restored from the shell's journal (see restoreStarted) the
+         * entries are collected instead, to be applied in one go at the end.
+         */
+        const feed = (event: { session: string; action: Parameters<typeof reducePanel>[1] }): void => {
+          const buffered = restoring.current[event.session]
+          if (buffered) {
+            buffered.push({ action: event.action, at })
+            return
+          }
+          dispatchPanel({ ...event, at })
+        }
+
+        if (message.seq !== undefined && 'sessionId' in message && typeof message.sessionId === 'string') {
+          seen.current[message.sessionId] = message.seq
+        }
+
         switch (message.type) {
           case 'init':
+            if (message.pluginVersion) setPluginVersion(message.pluginVersion)
             if (message.sounds) {
               setSoundPrefs({
                 muted: message.sounds.muted as SoundId[],
@@ -709,7 +789,7 @@ export const App = () => {
                 setComposerLayoutState(normalizeComposerLayout(message.preferences.composerLayout))
               }
             }
-            dispatchPanel({
+            feed({
               session: MAIN_SESSION,
               action: {
                 kind: 'init',
@@ -723,7 +803,7 @@ export const App = () => {
             break
 
           case 'project':
-            dispatchPanel({
+            feed({
               session: MAIN_SESSION,
               action: {
                 kind: 'project',
@@ -734,42 +814,160 @@ export const App = () => {
             })
             break
 
-          case 'sessions':
+          /**
+           * The list of tabs as the shell keeps it - and it is the shell that owns it now. What is kept
+           * here is only what the shell has no opinion about: which tab this particular screen has open,
+           * and the dot's state, which is worked out from the feed below (see sessionState).
+           *
+           * The optimistic list this page builds on a "+" is overwritten by this one. That is the point:
+           * with two clients, one of them guessing an identifier the other already took has to see the
+           * truth rather than a tab that exists on its screen alone.
+           */
+          case 'sessions': {
+            const known = message.sessions.map((info) => info.id)
             setSessions(
               message.sessions.map((info) => ({
                 id: info.id,
                 title: info.title,
                 state: 'idle' as const,
-                groupId: info.id,
-                depth: 0,
-                titleSource: 'default' as const,
+                groupId: info.groupId,
+                depth: info.depth,
+                titleSource: info.titleSource,
               })),
             )
+            // The tab this screen had open may have been closed from another one.
+            setActive((current) => (known.includes(current) ? current : (known[0] ?? MAIN_SESSION)))
+            break
+          }
+
+          /**
+           * A feed is about to be handed over from the shell's journal. Everything up to restoreFinished
+           * is collected rather than applied (see feed above).
+           *
+           * `from` of zero means the client had nothing, so whatever stands in the tab now is not a
+           * shorter version of what is coming - it is a different conversation's remains, and it goes.
+           */
+          case 'restoreStarted':
+            restoring.current[message.sessionId] = []
+            if (message.from === 0) dispatchPanel({ session: message.sessionId, reset: true })
+            if (message.truncated) {
+              restoring.current[message.sessionId]?.push({
+                action: {
+                  kind: 'checkpoint',
+                  chip: 'EARLIER',
+                  target: 'earlier messages are no longer kept',
+                },
+              })
+            }
+            break
+
+          case 'restoreFinished': {
+            const collected = restoring.current[message.sessionId]
+            delete restoring.current[message.sessionId]
+            seen.current[message.sessionId] = message.upTo
+            if (collected && collected.length > 0) {
+              dispatchPanel({ session: message.sessionId, batch: collected })
+            }
+            break
+          }
+
+          // The answer being printed at the moment this client joined - the deltas that built it are not
+          // kept anywhere, so without this the conversation looks frozen until the answer ends.
+          case 'streamingText':
+            feed({
+              session: message.sessionId,
+              action: { kind: 'streamPrimed', text: message.text, thinking: message.thinking },
+            })
+            break
+
+          // A past conversation has been opened in this tab: what the feed held describes something else
+          // now.
+          case 'remoteState':
+            setRemote({
+              state: message.state,
+              enabled: message.enabled ?? false,
+              relay: message.relay,
+              agentId: message.agentId,
+              fingerprint: message.fingerprint,
+              keysKept: message.keysKept,
+              devices: message.devices,
+              pairing: message.pairing,
+              pending: message.pending,
+            })
+            break
+
+          case 'clients':
+            setWatchers(message.count)
+            break
+
+          case 'sessionReset':
+            dispatchPanel({ session: message.sessionId, reset: true })
+            break
+
+          /**
+           * The card has been answered - possibly on another device, possibly on this one a moment ago.
+           * Applying it twice changes nothing (the decision is already there), and that is what makes the
+           * optimistic local update safe to keep.
+           */
+          case 'permissionResolved':
+            feed({
+              session: message.sessionId,
+              action: { kind: 'permissionResolved', id: message.id, decision: message.decision },
+            })
+            break
+
+          /**
+           * A person's message, as the shell kept it. Our own we skip: it was drawn on the press, and
+           * this is the same card arriving a second time. Everyone else's - and our own after a reload -
+           * is what makes the feed a conversation rather than a monologue.
+           */
+          case 'promptEcho': {
+            if (message.id && ownPrompts.current.has(message.id)) {
+              ownPrompts.current.delete(message.id)
+              break
+            }
+            feed({
+              session: message.sessionId,
+              action: {
+                kind: 'prompt',
+                tokens: (message.tokens ?? []) as UserToken[],
+                quotes: message.quotes ?? [],
+                steering: message.steering,
+              },
+            })
+            break
+          }
+
+          case 'planResolved':
+            cards.decidePlan(message.id, message.decision === 'approve' ? 'approve' : 'keepPlanning')
+            break
+
+          case 'askResolved':
+            cards.answerAsk(message.id)
             break
 
           case 'status':
-            dispatchPanel({ session: message.sessionId, action: { kind: 'status', status: message.state } })
+            feed({ session: message.sessionId, action: { kind: 'status', status: message.state } })
             break
 
-          // The answer to the title generation (see submit): we overwrite only if the tab is still alive
-          // and a /clear has not just renamed it back to the placeholder - otherwise a stale answer would
-          // bring back a title the user has explicitly just given up.
+          // The name the model picked for the conversation - it replaces the guess made from the first
+          // message (see submit) whatever that guess was, the placeholder included: the shell asks for
+          // the name and throws away an answer about a conversation that a /clear has wiped in the
+          // meantime, so anything arriving here is about the conversation the tab is holding now.
           case 'sessionTitle':
             setSessions((current) =>
               current.map((session) =>
-                session.id === message.sessionId && session.titleSource !== 'default'
-                  ? { ...session, title: message.title, titleSource: 'llm' }
-                  : session,
+                session.id === message.sessionId ? { ...session, title: message.title, titleSource: 'llm' } : session,
               ),
             )
             break
 
           case 'error':
-            dispatchPanel({ session: message.sessionId, action: { kind: 'error', message: message.message } })
+            feed({ session: message.sessionId, action: { kind: 'error', message: message.message } })
             break
 
           case 'agent':
-            dispatchPanel({
+            feed({
               session: message.sessionId,
               action: { kind: 'agent', event: message.event, replay: message.replay },
             })
@@ -795,11 +993,11 @@ export const App = () => {
             break
 
           case 'replayFinished':
-            dispatchPanel({ session: message.sessionId, action: { kind: 'replayFinished' } })
+            feed({ session: message.sessionId, action: { kind: 'replayFinished' } })
             break
 
           case 'processExited':
-            dispatchPanel({
+            feed({
               session: message.sessionId,
               action: { kind: 'processExited', exitCode: message.exitCode },
             })
@@ -851,7 +1049,7 @@ export const App = () => {
             break
 
           case 'context':
-            dispatchPanel({
+            feed({
               session: message.sessionId,
               action: { kind: 'context', used: message.used, max: message.max },
             })
@@ -862,7 +1060,7 @@ export const App = () => {
             // output exactly where the command itself printed them.
             const output = [message.stdout, message.stderr].filter((part) => part.trim().length > 0).join('\n')
 
-            dispatchPanel({
+            feed({
               session: message.sessionId,
               action: { kind: 'bashFinished', id: message.id, output, exitCode: message.exitCode },
             })
@@ -920,7 +1118,7 @@ export const App = () => {
             break
 
           case 'permission':
-            dispatchPanel({
+            feed({
               session: message.sessionId,
               action: {
                 kind: 'permission',
@@ -970,7 +1168,7 @@ export const App = () => {
             // neither stand as a tick in the menu nor travel as a flag into the next tab - with it the
             // process would not come up at all.
             setPrefs((current) => ({ ...current, model: message.model }))
-            dispatchPanel({
+            feed({
               session: message.sessionId,
               action: { kind: 'modelApplied', model: message.model, error: message.error },
             })
@@ -999,7 +1197,7 @@ export const App = () => {
                 setRefusedModes((current) => withRefusedMode(current, message.mode))
               }
             }
-            dispatchPanel({
+            feed({
               session: message.sessionId,
               action: {
                 kind: 'modeApplied',
@@ -1353,6 +1551,8 @@ export const App = () => {
   /** The tabs' new order after a drag - see moveGroup. */
   const reorderGroups = useCallback((groupId: string, beforeGroupId: string | null) => {
     setSessions((current) => moveGroup(current, groupId, beforeGroupId))
+    // The order lives on the shell's side too: it is what a second client lists the tabs in.
+    send({ type: 'reorderGroups', groupId, ...(beforeGroupId ? { beforeGroupId } : {}) })
   }, [])
 
   /**
@@ -1368,17 +1568,20 @@ export const App = () => {
     (entry: HistoryEntry) => {
       const title = deriveSessionTitle(entry.title, 40)
 
-      setOpenPanel(null)
-      // The title has already been set by the history panel (an LLM title from the cache or a heuristic) -
-      // it is not a placeholder worth replacing with the very next message in this tab.
+      setSideMenu({ open: false, screen: 'menu' })
+      // The title has already been set by the history panel - either the model's own, and then it stays,
+      // or a guess off the conversation's first line, and then the shell is free to ask for a real one
+      // as soon as the conversation carries on here (see sessionTitle). Either way it is not the
+      // placeholder the very next message would overwrite.
       //
       // There may be no tab at all: the person closed them all and opens a past conversation from the
       // history on an empty panel. Then it is started right here - otherwise the replay would travel into
       // a conversation not visible through a single tab (see the empty state in the markup below).
+      const titleSource: TitleSource = entry.titleSource === 'heuristic' ? 'heuristic' : 'llm'
       setSessions((current) =>
         current.some((session) => session.id === active)
-          ? current.map((session) => (session.id === active ? { ...session, title, titleSource: 'llm' } : session))
-          : [...current, { id: active, title, state: 'idle', groupId: active, depth: 0, titleSource: 'llm' }],
+          ? current.map((session) => (session.id === active ? { ...session, title, titleSource } : session))
+          : [...current, { id: active, title, state: 'idle', groupId: active, depth: 0, titleSource }],
       )
 
       /**
@@ -1403,7 +1606,7 @@ export const App = () => {
     (entry: HistoryEntry) => {
       // This conversation is already open in this tab - replaying it anew serves nothing.
       if (panelsRef.current[active]?.sessionId === entry.id) {
-        setOpenPanel(null)
+        setSideMenu({ open: false, screen: 'menu' })
         return
       }
 
@@ -1572,6 +1775,11 @@ export const App = () => {
           : session,
       ),
     )
+    // And the shell is told the same guess: a second client did not see this message and would otherwise
+    // list the tab as "new session" for as long as the conversation lasts.
+    if (sessions.find((session) => session.id === active)?.titleSource === 'default') {
+      send({ type: 'renameSession', sessionId: active, title: deriveSessionTitle(written) })
+    }
 
     // The output of the commands run since the last message travels ahead of this one - and leaves the
     // accumulator: the agent has no use for it twice. Into the feed it does not go: there it already
@@ -1616,6 +1824,8 @@ export const App = () => {
      */
     const plan = pendingPlan(panel, cards.planDecisions)
     if (plan) {
+      const echoId = `p-${Date.now()}-${promptCounter.current++}`
+      ownPrompts.current.add(echoId)
       dispatchPanel({
         session: active,
         action: { kind: 'prompt', tokens, quotes: quotes.map((quote) => quote.text), steering: true },
@@ -1626,7 +1836,16 @@ export const App = () => {
       // planning". That way both the text and the image reach the agent, each exactly once.
       if (images.length > 0) {
         decidePlan(plan.id, 'keepPlanning')
-        send({ type: 'prompt', sessionId: active, text, images })
+        send({
+          type: 'prompt',
+          sessionId: active,
+          id: echoId,
+          tokens,
+          quotes: quotes.map((quote) => quote.text),
+          steering: true,
+          text,
+          images,
+        })
       } else {
         decidePlan(plan.id, 'keepPlanning', text)
       }
@@ -1642,12 +1861,25 @@ export const App = () => {
       setActiveStream('main')
     }
 
+    const promptId = `p-${Date.now()}-${promptCounter.current++}`
+    ownPrompts.current.add(promptId)
     dispatchPanel({
       session: active,
       action: { kind: 'prompt', tokens, quotes: quotes.map((quote) => quote.text), steering: running },
     })
 
-    send({ type: 'prompt', sessionId: active, text, images })
+    send({
+      type: 'prompt',
+      sessionId: active,
+      id: promptId,
+      // The pieces the card is drawn from travel with it: the shell keeps them for whoever was not here
+      // (a second client, or this same page after a reload) - see promptEcho.
+      tokens,
+      quotes: quotes.map((quote) => quote.text),
+      steering: running,
+      text,
+      images,
+    })
     if (!isOverride) setDrafts((current) => ({ ...current, [active]: EMPTY_DRAFT }))
   }, [
     draft,
@@ -1752,46 +1984,75 @@ export const App = () => {
   }
 
   /**
-   * The session tabs and the history / MCP / plugins / sounds / layout buttons are shared by the whole
-   * panel rather than tied to one column, and stand at the top under any layout: the feed (and beside it,
-   * in left/right, the side rail) takes everything left below.
+   * The session tabs and the burger are shared by the whole panel rather than tied to one column, and
+   * stand at the top under any layout: the feed (and beside it, in left/right, the side rail) takes
+   * everything left below.
    *
-   * History, MCP, plugins and sounds are toggles for one and the same pinned panel (see openPanel), items
-   * of the shared menu behind the burger in the header (see Header.onOpenMenu). Each closes the menu
-   * itself - that panel and the popup menu (model / effort / mode / layout) must not stand at once: one of
-   * them would cover the other's buttons, and Escape and a click outside would then not know which to
-   * close first.
+   * Everything the burger used to open as five separate overlays is one panel now, with a screen apiece
+   * (see SideMenu). Opening it always lands on the root: a menu that reopened wherever it was left would
+   * hide the other six entries from someone who came looking for them.
    *
-   * A tab opens on what has been loaded in advance. We ask anew only if the previous request has already
-   * come back while what is shown has had time to go stale.
+   * A screen opens on what has been loaded in advance. We ask anew only if the previous request has
+   * already come back while what is shown has had time to go stale.
    */
-  const openMcp = () => {
+  const openMenu = () => {
     setMenu(null)
-    if (openPanel === 'mcp') {
-      setOpenPanel(null)
-      return
-    }
-    setOpenPanel('mcp')
-    setMcpMessage(null)
-    if (!mcpLoading && Date.now() - mcpFetchedAt > LIST_STALE_MS) loadMcp(mcpServers !== null)
+    setSideMenu((current) => ({ open: !current.open, screen: 'menu' }))
   }
 
-  const openPlugins = () => {
-    setMenu(null)
-    if (openPanel === 'plugins') {
-      setOpenPanel(null)
-      return
+  const closeMenu = () => setSideMenu((current) => ({ ...current, open: false }))
+
+  /** A step back: out of "what travels" to remote access, out of any other screen to the root. */
+  const backMenu = () => setSideMenu((current) => ({ ...current, screen: parentOf(current.screen) }))
+
+  const openScreen = (screen: MenuScreen) => {
+    setSideMenu({ open: true, screen })
+
+    if (screen === 'history') send({ type: 'history' })
+
+    if (screen === 'mcp') {
+      setMcpMessage(null)
+      if (!mcpLoading && Date.now() - mcpFetchedAt > LIST_STALE_MS) loadMcp(mcpServers !== null)
     }
-    setOpenPanel('plugins')
-    setPluginMessage(null)
-    if (!pluginsLoading && Date.now() - pluginsFetchedAt > LIST_STALE_MS) {
-      loadPlugins(pluginsInstalled !== null)
+
+    if (screen === 'plugins') {
+      setPluginMessage(null)
+      if (!pluginsLoading && Date.now() - pluginsFetchedAt > LIST_STALE_MS) {
+        loadPlugins(pluginsInstalled !== null)
+      }
     }
   }
 
-  const openSounds = () => {
-    setMenu(null)
-    setOpenPanel(openPanel === 'sounds' ? null : 'sounds')
+  /**
+   * What every entry of the menu says without being opened.
+   *
+   * These are the answers people open the screens for - how many servers are up, which mode the next tab
+   * starts in, whether a phone can reach this IDE at all. Cheap to compute and worth the trip saved.
+   */
+  const menuSummary: MenuSummary = {
+    history: history?.length ?? null,
+    mcp: mcpServers
+      ? {
+          connected: mcpServers.filter((server) => server.status === 'connected').length,
+          total: mcpServers.length,
+        }
+      : null,
+    plugins: pluginsInstalled?.length ?? null,
+    sounds: `${SOUNDS.filter((sound) => !isMuted(soundPrefs, sound.id)).length} on`,
+    defaultMode:
+      modeMenuOptions(availableModes).find((option) => option.id === normalizeMode(prefs.mode))?.label ?? '',
+    composerLayout: COMPOSER_LAYOUT_OPTIONS.find((option) => option.id === composerLayout)?.label ?? '',
+    remote: {
+      label: REMOTE_STATE[remote.state].label,
+      // Connected and paired, the state's own sentence says nothing new - the useful line is who is on
+      // the other end and through which relay.
+      hint:
+        remote.state === 'connected' && remote.devices?.length
+          ? `${remote.devices[0]?.label} is paired · relay ${relayHost(remote.relay)}`
+          : REMOTE_STATE[remote.state].hint,
+      tone: REMOTE_STATE[remote.state].tone,
+    },
+    version: pluginVersion,
   }
 
   /**
@@ -1806,7 +2067,7 @@ export const App = () => {
       setMenu(null)
       return
     }
-    setOpenPanel(null)
+    setSideMenu((current) => ({ ...current, open: false }))
     setMenu({ kind, anchor })
   }
 
@@ -1856,7 +2117,8 @@ export const App = () => {
         }}
         onNewSession={() => startSession(`session-${Date.now()}`)}
         onReorderGroups={reorderGroups}
-        onOpenMenu={(anchor) => openSelector('header', anchor)}
+        onOpenMenu={openMenu}
+        watchers={watchers}
         gitBranch={panels[MAIN_SESSION]?.project?.gitBranch}
         pullRequest={panels[MAIN_SESSION]?.project?.pullRequest}
         onOpenPullRequest={openPullRequest}
@@ -1916,10 +2178,6 @@ export const App = () => {
     <div className={s.panel} data-anchor={dockAnchor} data-layout={composerLayout}>
       {header}
 
-      {openPanel === 'history' ? (
-        <History conversations={history} onOpen={resume} onClose={() => setOpenPanel(null)} />
-      ) : null}
-
       {/* Killed only when asked - the work itself is stopped by the CLI, and it reports the end through
           an ordinary notification: the chip leaves by itself, and faking its end on our side serves
           nothing. */}
@@ -1948,90 +2206,6 @@ export const App = () => {
             openResumed(resuming)
             setResuming(null)
           }}
-        />
-      ) : null}
-
-      {openPanel === 'sounds' ? (
-        <Sounds
-          prefs={soundPrefs}
-          onToggle={(sound) => changeSoundPrefs(toggleSound(soundPrefs, sound))}
-          onVolume={(sound, volume) => changeSoundPrefs(setVolume(soundPrefs, sound, volume))}
-          // A muted sound plays too: hearing exactly what one is switching off is precisely what the
-          // button is pressed for. The volume is taken as it stands right now: otherwise there is nothing
-          // to check the slider against.
-          onPreview={(sound) => send({ type: 'sound', sound, volume: volumeOf(soundPrefs, sound) })}
-          onClose={() => setOpenPanel(null)}
-        />
-      ) : null}
-
-      {openPanel === 'mcp' ? (
-        <Mcp
-          servers={mcpServers}
-          loading={mcpLoading}
-          message={mcpMessage}
-          onRefresh={() => {
-            setMcpMessage(null)
-            loadMcp()
-          }}
-          onReconnect={(name) => {
-            setMcpMessage(null)
-            send({ type: 'mcpReconnect', sessionId: active, name })
-          }}
-          // The login address is opened by the shell in the system browser, and the code from it is caught
-          // by the CLI itself: the panel is left waiting for a new status.
-          onAuthenticate={(name) => {
-            setMcpMessage(null)
-            send({ type: 'mcpAuthenticate', sessionId: active, name })
-          }}
-          onRemove={(name) => {
-            setMcpMessage(null)
-            send({ type: 'mcpRemove', sessionId: active, name })
-          }}
-          onAdd={(name, command, transport) => {
-            setMcpMessage(null)
-            send({ type: 'mcpAdd', sessionId: active, name, command, transport })
-          }}
-          onClose={() => setOpenPanel(null)}
-        />
-      ) : null}
-
-      {openPanel === 'plugins' ? (
-        <Plugins
-          installed={pluginsInstalled}
-          available={pluginsAvailable}
-          marketplaces={marketplaces}
-          loading={pluginsLoading}
-          message={pluginMessage}
-          onRefresh={() => {
-            setPluginMessage(null)
-            loadPlugins()
-          }}
-          onInstall={(plugin) => {
-            setPluginMessage(null)
-            send({ type: 'pluginInstall', plugin })
-          }}
-          onUninstall={(plugin) => {
-            setPluginMessage(null)
-            send({ type: 'pluginUninstall', plugin })
-          }}
-          onEnable={(plugin) => {
-            setPluginMessage(null)
-            send({ type: 'pluginEnable', plugin })
-          }}
-          onDisable={(plugin) => {
-            setPluginMessage(null)
-            send({ type: 'pluginDisable', plugin })
-          }}
-          onAddMarketplace={(source) => {
-            setPluginMessage(null)
-            send({ type: 'marketplaceAdd', source })
-          }}
-          onRemoveMarketplace={(name) => {
-            setPluginMessage(null)
-            send({ type: 'marketplaceRemove', name })
-          }}
-          onDismissMessage={() => setPluginMessage(null)}
-          onClose={() => setOpenPanel(null)}
         />
       ) : null}
 
@@ -2166,42 +2340,151 @@ export const App = () => {
         </div>
       )}
 
+      <SideMenu
+        open={sideMenu.open}
+        screen={sideMenu.screen}
+        summary={menuSummary}
+        onPick={openScreen}
+        onBack={backMenu}
+        onClose={closeMenu}
+      >
+        {/* Only what is being looked at is built: the MCP and plugin screens are whole lists, and the
+            menu is shut far more of the time than it is open. */}
+        {sideMenu.open && sideMenu.screen === 'history' ? (
+          <History conversations={history} onOpen={resume} />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'mcp' ? (
+          <Mcp
+            servers={mcpServers}
+            loading={mcpLoading}
+            message={mcpMessage}
+            onRefresh={() => {
+              setMcpMessage(null)
+              loadMcp()
+            }}
+            onReconnect={(name) => {
+              setMcpMessage(null)
+              send({ type: 'mcpReconnect', sessionId: active, name })
+            }}
+            // The login address is opened by the shell in the system browser, and the code from it is
+            // caught by the CLI itself: the panel is left waiting for a new status.
+            onAuthenticate={(name) => {
+              setMcpMessage(null)
+              send({ type: 'mcpAuthenticate', sessionId: active, name })
+            }}
+            onRemove={(name) => {
+              setMcpMessage(null)
+              send({ type: 'mcpRemove', sessionId: active, name })
+            }}
+            onAdd={(name, command, transport) => {
+              setMcpMessage(null)
+              send({ type: 'mcpAdd', sessionId: active, name, command, transport })
+            }}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'plugins' ? (
+          <Plugins
+            installed={pluginsInstalled}
+            available={pluginsAvailable}
+            marketplaces={marketplaces}
+            loading={pluginsLoading}
+            message={pluginMessage}
+            onRefresh={() => {
+              setPluginMessage(null)
+              loadPlugins()
+            }}
+            onInstall={(plugin) => {
+              setPluginMessage(null)
+              send({ type: 'pluginInstall', plugin })
+            }}
+            onUninstall={(plugin) => {
+              setPluginMessage(null)
+              send({ type: 'pluginUninstall', plugin })
+            }}
+            onEnable={(plugin) => {
+              setPluginMessage(null)
+              send({ type: 'pluginEnable', plugin })
+            }}
+            onDisable={(plugin) => {
+              setPluginMessage(null)
+              send({ type: 'pluginDisable', plugin })
+            }}
+            onAddMarketplace={(source) => {
+              setPluginMessage(null)
+              send({ type: 'marketplaceAdd', source })
+            }}
+            onRemoveMarketplace={(name) => {
+              setPluginMessage(null)
+              send({ type: 'marketplaceRemove', name })
+            }}
+            onDismissMessage={() => setPluginMessage(null)}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'sounds' ? (
+          <Sounds
+            prefs={soundPrefs}
+            onToggle={(sound) => changeSoundPrefs(toggleSound(soundPrefs, sound))}
+            onVolume={(sound, volume) => changeSoundPrefs(setVolume(soundPrefs, sound, volume))}
+            // A muted sound plays too: hearing exactly what one is switching off is precisely what the
+            // button is pressed for. The volume is taken as it stands right now: otherwise there is
+            // nothing to check the slider against.
+            onPreview={(sound) => send({ type: 'sound', sound, volume: volumeOf(soundPrefs, sound) })}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'remote' ? (
+          <Remote
+            status={remote}
+            onToggle={(enabled) => send({ type: 'setRemoteEnabled', enabled })}
+            onRelay={(url) => send({ type: 'setRelayUrl', url })}
+            onPair={() => send({ type: 'startPairing' })}
+            onCancelPairing={() => send({ type: 'cancelPairing' })}
+            onApprove={() => send({ type: 'approvePairing' })}
+            onRefuse={() => send({ type: 'refusePairing' })}
+            onRevoke={(deviceId) => send({ type: 'revokeDevice', deviceId })}
+            onAbout={() => setSideMenu({ open: true, screen: 'remoteAbout' })}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'remoteAbout' ? <RemoteAbout /> : null}
+
+        {sideMenu.open && sideMenu.screen === 'defaultMode' ? (
+          <ChoiceList
+            // The same list, availability marks and all: a mode this machine or this model cannot do is
+            // no better a default than it is a current mode, and saying so in one place but not the
+            // other would only puzzle.
+            options={modeMenuOptions(availableModes)}
+            // The saved default rather than what the tab is in right now. They part ways the moment the
+            // tab's mode is changed, and that is the whole point of having two controls.
+            selected={normalizeMode(prefs.mode)}
+            onPick={setDefaultMode}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'composerLayout' ? (
+          <LayoutChoice
+            options={COMPOSER_LAYOUT_OPTIONS}
+            selected={composerLayout}
+            onPick={(id) => setComposerLayout(normalizeComposerLayout(id))}
+          />
+        ) : null}
+      </SideMenu>
+
       {menu ? (
         <Menu
-          {...menuProps(
-            menu.kind,
-            models,
-            prefs.model,
-            switched,
-            prefs.effort,
-            mode,
-            prefs.mode,
-            composerLayout,
-            openPanel,
-            availableModes,
-          )}
+          {...menuProps(menu.kind, models, prefs.model, switched, prefs.effort, mode, availableModes)}
           anchor={menu.anchor}
           onClose={() => setMenu(null)}
           onPick={(id) => {
-            const anchor = menu.anchor
             const kind = menu.kind
             setMenu(null)
 
             if (kind === 'model') pickModel(id)
             if (kind === 'effort') pickEffort(id)
             if (kind === 'mode') setMode(id)
-            if (kind === 'defaultMode') setDefaultMode(id)
-            if (kind === 'composerLayout') setComposerLayout(normalizeComposerLayout(id))
-            if (kind === 'header') {
-              if (id === 'history') openHistory()
-              else if (id === 'mcp') openMcp()
-              else if (id === 'plugins') openPlugins()
-              else if (id === 'sounds') openSounds()
-              // Not actions but ways into a submenu - reopened from the same point the burger itself
-              // grew from (see Header.onOpenMenu).
-              else if (id === 'defaultMode') setMenu({ kind: 'defaultMode', anchor })
-              else if (id === 'composerLayout') setMenu({ kind: 'composerLayout', anchor })
-            }
           }}
         />
       ) : null}
@@ -2218,8 +2501,24 @@ type PanelsState = Record<string, PanelState>
  * than lying about with a feed of its own.
  */
 type PanelsAction =
-  | { session: string; action: Parameters<typeof reducePanel>[1] }
+  | { session: string; action: Parameters<typeof reducePanel>[1]; at?: number }
   | { session: string; closed: true }
+  /**
+   * The conversation behind the tab is gone (a past one opened in its place) - the feed starts over
+   * rather than having a second conversation appended to the first.
+   */
+  | { session: string; reset: true }
+  /**
+   * A whole restored feed at once - everything between restoreStarted and restoreFinished.
+   *
+   * Applied as one change on purpose: a couple of thousand entries dispatched one at a time is a couple
+   * of thousand renders, and this path is already the heaviest one the panel has (a long conversation
+   * replayed from disk goes through it too).
+   *
+   * `at` travels with every entry because the times are the times things genuinely happened. Without
+   * them a turn that has been running for a minute would come back as having just started.
+   */
+  | { session: string; batch: Array<{ action: Parameters<typeof reducePanel>[1]; at?: number }> }
 
 const panelsReducer = (state: PanelsState, event: PanelsAction): PanelsState => {
   /**
@@ -2236,9 +2535,23 @@ const panelsReducer = (state: PanelsState, event: PanelsAction): PanelsState => 
     return next
   }
 
+  // The project itself survives a reset: it describes the folder rather than the conversation, it
+  // arrives once at the start, and losing it would leave the status bar blank until the next restart.
+  if ('reset' in event) {
+    return { ...state, [event.session]: { ...initialPanelState, project: state[event.session]?.project } }
+  }
+
+  if ('batch' in event) {
+    const applied = event.batch.reduce(
+      (panel, entry) => reducePanel(panel, entry.action, entry.at),
+      state[event.session] ?? initialPanelState,
+    )
+    return { ...state, [event.session]: applied }
+  }
+
   return {
     ...state,
-    [event.session]: reducePanel(state[event.session] ?? initialPanelState, event.action),
+    [event.session]: reducePanel(state[event.session] ?? initialPanelState, event.action, event.at),
   }
 }
 
@@ -2296,106 +2609,6 @@ const countSessionImages = (panel: PanelState, queue: QueuedPrompt[]): number =>
   return sent + queued
 }
 
-/**
- * Whether the turn stands on this feed item waiting for the person. A permission request, a question with
- * options and a shown plan hold it equally fast, so their rule is one: parting ways, it would lie now
- * through the status line, now through the tab's dot - depending on where which case was forgotten.
- */
-const awaitsYou = (item: FeedItem, cards: CardState): boolean =>
-  (item.kind === 'perm' && item.decision === null) ||
-  (item.kind === 'ask' && !item.historic && !cards.answeredAsks.includes(item.id)) ||
-  (item.kind === 'plan' && !item.historic && cards.planDecisions[item.id] === undefined)
-
-/** The main stream rather than a separate subagent: that one has a tab and a status of its own. */
-const ownStream = (item: FeedItem): boolean => !('taskId' in item) || item.taskId === undefined
-
-/**
- * While an unanswered permission request or a question from the MAIN stream hangs there, the turn is not
- * genuinely thinking - it stands and waits for the person's decision. A "Claude is thinking" at that moment
- * would be untrue. A particular agent's decision does not count here: the status in the dropdown and the
- * agent's own tab answer for that - if the main status line reacted to them too, it would itself become the
- * very dishonest caption the whole redesign was undertaken to get away from.
- *
- * The elapsed time is written right here rather than waiting for the turn's outcome: the "Worked Ns" under a
- * finished answer arrives only with its end, and until then how much had already passed was not visible at
- * all. It is counted from turnStartedAt less pausedMs - the total time of every such wait over this turn
- * (see attentionStarted/attentionEnded in feed/build.ts and the effect in App that sends them): otherwise
- * after a decision the idle seconds would be charged to the agent retroactively, as though it had been
- * "thinking" all that time. It is updated once a second by the same tick that moves the tool calls'
- * durations (see tickDurations in feed/build.ts).
- */
-const streamStatus = (panel: PanelState, cards: CardState): string => {
-  /**
-   * The request to the model failed and waits for a retry: at that moment the turn is not running at all -
-   * no text, no calls, no question - and a "Claude is thinking" with a running counter would be an outright
-   * lie. It is precisely because of it that the panel looked hung: the only thing happening was shown
-   * nowhere.
-   *
-   * Before compacting: the request that compacts the context can fail too, and then what has to be told
-   * about is the failure rather than the compacting standing still because of it.
-   */
-  if (panel.retry) {
-    // The attempts and the countdown are told about by the card in the feed right above this line (see
-    // RetryRow) - here goes only what is not in it: how long all of this has already dragged on. The line's
-    // familiar shape is kept - "what is happening - how long it has run" - and exactly what was untrue
-    // changes.
-    return `${panel.retry.label} · waiting ${formatDuration(Date.now() - panel.retry.startedAt)}`
-  }
-
-  // The compacting is spoken about by its own card in the feed (a CONTEXT with a growing percentage) -
-  // there must be no second caption about the same thing right under it.
-  if (panel.compacting) return ''
-
-  const awaitingDecision = panel.items.some((item) => ownStream(item) && awaitsYou(item, cards))
-  if (awaitingDecision) return 'Waiting for you'
-
-  /**
-   * The main stream's own turn may have ended already (the agent started a background subagent and fell
-   * silent at that - which is what the Task tool does outside a skill) while the subagent has not. Without
-   * this branch the only trace of anything still happening would be a dot on the subagent's chip, which one
-   * first has to notice and then work out what it means.
-   */
-  if (panel.status !== 'running') {
-    const pending = panel.items.filter((item) => item.kind === 'task' && item.pending).length
-    if (pending === 0) return ''
-    return pending === 1 ? 'Waiting for subagent' : `Waiting for ${pending} subagents`
-  }
-
-  /**
-   * What exactly is being done right now has already been named by a card in the feed itself (the tool call,
-   * its command, its description). Repeating the same thing here a second time in different words is not an
-   * account of what is happening but a duplicate of what is visible a line above anyway. While the turn runs
-   * and no decision is awaited from the person, there is exactly one honest caption here - the turn is
-   * thinking.
-   */
-  const label = 'Claude is thinking'
-  if (!panel.turnStartedAt) return label
-
-  // A decision has just been taken: awaitingDecision is already false, but the effect that carries
-  // waitStartedAt into pausedMs has not run yet (it fires after this render) - we count the current pause in
-  // right here so that the number does not jump on the next tick.
-  const now = Date.now()
-  const ongoingWait = panel.waitStartedAt ? now - panel.waitStartedAt : 0
-  const elapsed = formatDuration(now - panel.turnStartedAt - panel.pausedMs - ongoingWait)
-  return `${label} · ${elapsed}`
-}
-
-/**
- * A shown plan with no decision on it yet: while it is there, the turn stands on it.
- *
- * Only for a running turn: a plan card stays in the feed forever, including in a conversation raised from
- * the history - and there is nothing left to decide there, the turn ended somewhere in the past. Without
- * this check the very first message in a restored tab would travel not as a prompt but as a remark on an
- * ancient plan.
- */
-const pendingPlan = (
-  panel: PanelState,
-  decisions: Record<string, 'approve' | 'keepPlanning'>,
-): PlanItem | undefined =>
-  panel.status === 'running'
-    ? [...panel.items].reverse().find((item): item is PlanItem => item.kind === 'plan' && decisions[item.id] === undefined)
-    : undefined
-
 /** The last task list the agent sent - the panel above the input field mirrors only that one. */
 const latestTodo = (items: FeedItem[]): TodoItem | undefined =>
   [...items].reverse().find((item): item is TodoItem => item.kind === 'todo')
@@ -2407,90 +2620,21 @@ const lastUserText = (items: FeedItem[]): string => {
 }
 
 /**
- * Whose stream this actually is. A taskId without the task it refers to (if the agent_id / task_id match
- * one day stops holding on a new version of the CLI, say) is no reason to hide a decision for good: without
- * this it would show up nowhere and quietly expire on a timeout. We count such a case as the main stream
- * rather than as a separate stream that does not exist.
+ * The relay's host alone, for the one line in the menu that mentions it.
+ *
+ * An empty address is the public relay - naming it here would be a second place to keep that name in
+ * step with the plugin's own default.
  */
-const ownerStream = (taskId: string | undefined, items: FeedItem[]): string => {
-  if (taskId === undefined) return 'main'
-  const known = items.some((item) => item.kind === 'task' && item.id === taskId)
-  return known ? taskId : 'main'
+const relayHost = (relay: string): string => {
+  if (!relay) return 'the public one'
+
+  try {
+    return new URL(relay).host
+  } catch {
+    // Half-typed addresses live in that field while a person edits it - it is not worth an error here.
+    return relay
+  }
 }
-
-/** The last question the agent asked in the current stream that has not been answered yet. */
-const pendingAsk = (items: FeedItem[], answered: string[], stream: string): AskItem | undefined =>
-  [...items]
-    .reverse()
-    .find(
-      (item): item is AskItem =>
-        item.kind === 'ask' &&
-        // A question from a past conversation's replay is not shown as a card - see AskItem.historic.
-        !item.historic &&
-        !answered.includes(item.id) &&
-        ownerStream(item.taskId, items) === stream,
-    )
-
-/** The current stream's last call that is still waiting for a permission decision. */
-const pendingPermission = (items: FeedItem[], stream: string): PermItem | undefined =>
-  [...items]
-    .reverse()
-    .find(
-      (item): item is PermItem =>
-        item.kind === 'perm' && item.decision === null && ownerStream(item.taskId, items) === stream,
-    )
-
-const statusOf = (task: TaskItem, items: FeedItem[], answeredAsks: string[]): AgentStatus => {
-  // An agent cut short is not the same as one that ran its course: a killed and a crashed one used to get
-  // the same green dot as one that made it to the end.
-  if (!task.pending) return task.outcome === 'failed' ? 'failed' : task.outcome === 'stopped' ? 'stopped' : 'done'
-
-  const blocked = items.some(
-    (item) =>
-      (item.kind === 'perm' && item.taskId === task.id && item.decision === null) ||
-      (item.kind === 'ask' && item.taskId === task.id && !item.historic && !answeredAsks.includes(item.id)),
-  )
-  return blocked ? 'needs-input' : 'running'
-}
-
-const mainStatusOf = (panel: PanelState, answeredAsks: string[]): AgentStatus => {
-  const blocked = panel.items.some(
-    (item) =>
-      (item.kind === 'perm' && item.taskId === undefined && item.decision === null) ||
-      (item.kind === 'ask' && item.taskId === undefined && !item.historic && !answeredAsks.includes(item.id)),
-  )
-  if (blocked) return 'needs-input'
-  return panel.status === 'running' ? 'running' : 'idle'
-}
-
-/** A batch hidden by clearFinishedAgents disappears from the dropdown - the history itself went nowhere. */
-const buildAgentTabs = (panel: PanelState, answeredAsks: string[], hiddenTaskIds: Set<string>): AgentTab[] =>
-  panel.items
-    .filter((item): item is TaskItem => item.kind === 'task' && !hiddenTaskIds.has(item.id))
-    .map((task) => ({
-      id: task.id,
-      label: `agent:${task.target}`,
-      meta: task.meta,
-      status: statusOf(task, panel.items, answeredAsks),
-      percent: task.percent,
-      duration: task.duration,
-      // There is nothing to kill in one that has already finished, and nothing to kill it with until the
-      // CLI has named the task (see TaskItem.taskId).
-      stopId: task.pending ? task.taskId : undefined,
-    }))
-
-/** The items of the burger menu in the header - see Header.onOpenMenu. */
-const HEADER_MENU_OPTIONS: MenuOption[] = [
-  { id: 'history', label: 'History' },
-  { id: 'mcp', label: 'MCP servers' },
-  { id: 'plugins', label: 'Plugins' },
-  { id: 'sounds', label: 'Sound alerts' },
-  // Not the mode of the tab being worked in - that one lives on the MODE selector by the input field.
-  // This is the answer to "what should the next tab start in", and it belongs here precisely because it
-  // is asked once in a while rather than in the middle of work.
-  { id: 'defaultMode', label: 'Default mode' },
-  { id: 'composerLayout', label: 'Composer layout' },
-]
 
 const menuProps = (
   kind: SelectorKind,
@@ -2501,17 +2645,11 @@ const menuProps = (
   switched: string | undefined,
   effort: string,
   mode: string,
-  /** What new tabs start in - the saved choice, which the open tab's mode is free to differ from. */
-  defaultMode: string,
-  composerLayout: string,
-  /** Which pinned panel is open right now - the tick in the burger menu stands on it. */
-  openPanel: 'history' | 'mcp' | 'plugins' | 'sounds' | null,
   availableModes: ModeAvailability,
-): { title: string; hint: string; width: number; options: MenuOption[]; selected: string; tick?: boolean } => {
+): { title: string; hint?: string; width: number; options: MenuOption[]; selected: string; tick?: boolean } => {
   if (kind === 'model') {
     return {
       title: 'MODEL',
-      hint: '/model',
       width: 344,
       ...modelMenu(models, selectedModel, switched),
     }
@@ -2520,63 +2658,18 @@ const menuProps = (
   if (kind === 'effort') {
     return {
       title: 'EFFORT',
-      hint: 'reasoning budget',
       width: 320,
       options: EFFORT_OPTIONS,
       selected: effort,
     }
   }
 
-  if (kind === 'defaultMode') {
-    return {
-      title: 'DEFAULT MODE',
-      hint: 'what new tabs start in',
-      // The same width as the mode selector itself: the same rows with the same captions and sub-lines,
-      // and at anything narrower they would wrap differently in the two menus for no reason.
-      width: 372,
-      // The same list, availability marks and all: a mode this machine or this model cannot do is no
-      // better a default than it is a current mode, and saying so in one menu but not the other would
-      // only puzzle.
-      options: modeMenuOptions(availableModes),
-      // The saved default rather than what the tab is in right now. They part ways the moment the tab's
-      // mode is changed, and that is the whole point of having two controls.
-      selected: normalizeMode(defaultMode),
-    }
-  }
-
-  if (kind === 'composerLayout') {
-    return {
-      title: 'COMPOSER LAYOUT',
-      hint: 'where the input sits',
-      // The title and the hint stand in one row (see Menu.menuHead) - at 220px they collided and the hint
-      // wrapped mid-word. 300px is the same room EFFORT has at a comparable length of text.
-      width: 300,
-      options: COMPOSER_LAYOUT_OPTIONS,
-      selected: composerLayout,
-    }
-  }
-
-  if (kind === 'header') {
-    return {
-      title: 'MENU',
-      hint: '',
-      width: 260,
-      options: HEADER_MENU_OPTIONS,
-      // Composer layout is not a toggle but a way into a submenu of its own (see onPick in App) - it never
-      // has a current value here.
-      selected: openPanel ?? '',
-      // A list of actions rather than a choice among options - a tick of its own is not needed here (see
-      // Menu.tick), it would simply stand as an indent beside every row: almost never is any pinned panel
-      // open.
-      tick: false,
-    }
-  }
-
   return {
     title: 'PERMISSION MODE',
-    // The circle is the same as in a terminal, and everything but "Don't ask" is in it - the unavailable it
-    // simply steps over (see nextMode).
-    hint: "shift+tab cycles every mode but Don't ask",
+    // The one hint left of the three: the others named what the menu already says by its own title, while
+    // this one is a key nothing on screen mentions. The circle it walks is the terminal's, and the
+    // unavailable it simply steps over (see nextMode).
+    hint: 'shift+tab',
     width: 372,
     options: modeMenuOptions(availableModes),
     selected: mode,

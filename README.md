@@ -252,6 +252,41 @@ process. The panel uses it for three things:
 Usage shares aren't in the event stream itself, and the regular status line isn't
 invoked in non-interactive mode — both were checked before settling on this path.
 
+## Remote access from your phone
+
+Off by default. When you turn it on, a paired phone can read your conversations and answer them - the
+point being the one moment a phone is genuinely better than a laptop: the agent has stopped on a
+permission and you are not at your desk.
+
+Three steps: turn it on in the panel's menu (**Remote access**), scan the QR code with your phone,
+confirm the pairing in the IDE. The confirmation shows a fingerprint - compare it with the one your
+phone shows, which catches the one case the cryptography cannot: somebody who photographed your
+screen and scanned it first.
+
+**What a phone may do:** read the feed, send messages, answer permissions, approve or send back plans,
+answer questions, stop a turn, open a new conversation.
+
+**What it may not:** run shell commands, install plugins or MCP servers, change the permission mode,
+change the path to the executable, touch your clipboard, open files or links on your machine, or pair
+and revoke devices. That list is enforced on your machine, and anything not on it - including kinds of
+message that do not exist yet - is refused rather than passed through.
+
+Approving a plan from the phone is the one exception worth knowing: it puts that conversation into
+"accept edits" rather than the full no-questions mode the same button uses at your desk. File edits go
+ahead, while shell commands and network access still ask - and those you can answer from the phone.
+
+**What the relay can see:** two random addresses, message sizes and times, your IP. Not the contents -
+those are sealed between your IDE and your phone, and the relay has no code that could read them. It
+does see when you are connected and how much is moving, which is roughly your working hours. The
+relay's source is public and you can point the plugin at your own copy; see `PRIVACY.md` and the
+relay's README.
+
+**Revoking** a device takes effect immediately and works while the phone is switched off: the IDE
+forgets its key, and from that moment nothing from it can be opened.
+
+Notes on platforms: on iOS notifications work only for the app added to the home screen, and only on
+iOS 16.4 or newer. On Android the ordinary browser is enough.
+
 ## What's missing so far
 
 - **A light theme.** The mockup describes one dark scheme only; in a light IDE the

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
-import { BranchChip, type Anchor } from './StatusBar'
+import { BranchChip } from './StatusBar'
 import s from './shell.module.css'
 
 /**
@@ -94,12 +94,12 @@ interface HeaderProps {
    */
   onReorderGroups: (groupId: string, beforeGroupId: string | null) => void
   /**
-   * The history, MCP, plugins, sounds and the composer's layout are gathered into one menu behind the
-   * burger button on the right of the header - there was no longer room in the header for a button per
-   * entry. The menu's own markup is drawn by App.tsx, the same way as MODEL/EFFORT/MODE (see
-   * SelectorKind); what arrives here is only the point it opens from.
+   * The history, MCP, plugins, sounds, remote access and the preferences are gathered into one menu
+   * behind the burger button on the right of the header - there was no longer room in the header for a
+   * button per entry. It opens down the panel's right-hand edge and is drawn by App.tsx (see SideMenu):
+   * unlike MODEL/EFFORT/MODE it does not stand next to its button, so there is no point to hand over.
    */
-  onOpenMenu: (anchor: Anchor) => void
+  onOpenMenu: () => void
   /**
    * The same layout as the whole panel's (see App.tsx) - what matters here is whether it is a tight one
    * (compact and left/right both save height with the same side rail, see isSideComposerLayout): the
@@ -117,6 +117,11 @@ interface HeaderProps {
   gitBranch?: string
   pullRequest?: string
   onOpenPullRequest?: () => void
+  /**
+   * How many others are watching this project - a browser page beside the IDE, later a phone. Zero
+   * hides the mark entirely: the ordinary case is nobody, and a permanent "0" would be noise.
+   */
+  watchers?: number
 }
 
 /** Past this offset a press stops being a click and becomes a drag. */
@@ -169,6 +174,7 @@ export const Header = ({
   onOpenMenu,
   layout,
   gitBranch,
+  watchers = 0,
   pullRequest,
   onOpenPullRequest,
 }: HeaderProps) => {
@@ -544,6 +550,15 @@ export const Header = ({
       <div className={s.spacer} />
 
       <div className={s.headerTools}>
+        {watchers > 0 && (
+          <span
+            className={s.watchers}
+            data-tooltip={`${watchers} other ${watchers === 1 ? 'client is' : 'clients are'} watching this project`}
+          >
+            ◉ {watchers}
+          </span>
+        )}
+
         <BranchChip gitBranch={gitBranch} pullRequest={pullRequest} onOpenPullRequest={onOpenPullRequest} />
 
         <button
@@ -551,10 +566,7 @@ export const Header = ({
           className={s.historyButton}
           aria-label="Menu"
           data-tooltip="Menu"
-          onClick={(event) => {
-            const rect = event.currentTarget.getBoundingClientRect()
-            onOpenMenu({ right: window.innerWidth - rect.right, top: rect.top, bottom: rect.bottom })
-          }}
+          onClick={onOpenMenu}
         >
           <HamburgerIcon />
         </button>

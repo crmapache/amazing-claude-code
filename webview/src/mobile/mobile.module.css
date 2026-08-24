@@ -1,0 +1,808 @@
+/**
+ * The phone's own layout.
+ *
+ * Only the shell is here: the screens, the header, the footer of buttons, the list. The conversation
+ * itself is drawn by the panel's own cards with the panel's own styles - what changes there is the
+ * spacing, and it changes through the density tokens rather than through a second stylesheet (see
+ * tokens.css and [data-acc-density='touch']).
+ *
+ * Two things run through all of it. Everything a thumb touches is at least 44 pixels tall, because
+ * below that a mistap here answers a question about somebody's files. And every fixed edge respects
+ * the safe area, because a button under the home indicator is a button that cannot be pressed.
+ */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  /* Dynamic rather than viewport height: Safari's toolbar slides away and 100vh is measured as though
+     it never existed, which leaves the footer of buttons below the bottom of the screen. */
+  height: 100dvh;
+  background: var(--acc-bg);
+  color: var(--acc-fg);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+  padding: calc(env(safe-area-inset-top) + var(--acc-sp-3)) var(--acc-sp-5) var(--acc-sp-3);
+  border-bottom: 1px solid var(--acc-line);
+  background: var(--acc-bg-raised);
+}
+
+.headerTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.headerMeta {
+  font-size: 11px;
+  color: var(--acc-fg-dim);
+}
+
+.headerAction {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: var(--acc-hit);
+  /* Pulled back out by as much as it is padded, so the word lands on the gutter while the target a
+     thumb has to hit stays the size of a thumb. */
+  margin: 0 calc(var(--acc-sp-2) * -1);
+  padding: 0 var(--acc-sp-2);
+  color: var(--acc-accent);
+  font-size: 15px;
+  background: none;
+}
+
+/* --- Which machines are reachable ------------------------------------------- */
+
+/*
+ * The first question this screen answers, above everything it lists: is the machine on.
+ *
+ * A dot rather than a sentence because it is read every time and read at a glance, and a word beside it
+ * whenever the answer is anything other than plain yes - a colour alone cannot say the difference
+ * between "reconnecting" and "asleep", and those are the two a person actually acts on differently.
+ */
+.agents {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--acc-sp-2) var(--acc-sp-5);
+  border-bottom: 1px solid var(--acc-line);
+  background: var(--acc-bg-raised);
+}
+
+.agent {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+  min-width: 0;
+  font-size: 12px;
+  color: var(--acc-fg-dim);
+}
+
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  /* Unlit rather than absent: the space it takes is the same whichever way the answer goes, so the row
+     does not shift under a thumb the moment a laptop wakes. */
+  background: var(--acc-fg-fainter);
+}
+
+.dotLive {
+  background: var(--acc-ok);
+  /* A faint halo, so the lit state reads as lit on a phone held at arm's length in daylight. */
+  box-shadow: 0 0 0 3px var(--acc-ok-12);
+}
+
+.agentLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agentState {
+  flex: none;
+  color: var(--acc-fg-fainter);
+}
+
+/* Small and set apart from the name it belongs to: it is worth having and not worth finding by accident. */
+.agentForget {
+  flex: none;
+  min-height: 28px;
+  margin-left: auto;
+  padding: 0 var(--acc-sp-2);
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-round);
+  color: var(--acc-fg-dim);
+  font-size: 11px;
+  background: none;
+}
+
+/*
+ * The arrow on "Back" - see the Back component for why it is drawn rather than typed.
+ *
+ * Taller than the word it stands beside, as it is on every phone: the arrow is what the eye finds, and
+ * the word is what confirms it.
+ */
+.backIcon {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  /* Pulled back so the arrow, not the space around it, lines up with the screen's left edge. */
+  margin-left: -4px;
+}
+
+/* --- The list of what is happening ----------------------------------------- */
+
+.list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  /* No pull-to-refresh: there is nothing to refresh - the feed arrives on its own - and the gesture
+     would fight the scroll at the top of every list. */
+  overscroll-behavior-y: contain;
+  padding: var(--acc-sp-3) 0 calc(env(safe-area-inset-bottom) + var(--acc-sp-3));
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  width: 100%;
+  min-height: 60px;
+  padding: var(--acc-sp-3) var(--acc-sp-5);
+  text-align: left;
+  background: none;
+  color: inherit;
+  position: relative;
+}
+
+/* The rule between rows starts where the words do rather than at the edge of the glass. A separator
+   running the full width is what makes a list look like it was poured in without a margin. */
+.row::after {
+  content: '';
+  position: absolute;
+  left: var(--acc-sp-5);
+  right: 0;
+  bottom: 0;
+  border-bottom: 1px solid var(--acc-line);
+}
+
+.row:last-child::after {
+  display: none;
+}
+
+.rowOffline {
+  opacity: 0.55;
+}
+
+.rowMain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.rowTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+
+.rowMeta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--acc-fg-dim);
+}
+
+/* A word rather than a colour alone: what the phone was picked up for should be legible without
+   knowing what a dot means. */
+.badgeWaiting,
+.badgeRunning {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.badgeWaiting {
+  background: var(--acc-accent);
+  color: var(--acc-bg);
+}
+
+.badgeRunning {
+  border: 1px solid var(--acc-line-strong);
+  color: var(--acc-fg-dim);
+}
+
+/* A statement of fact rather than an alarm: it explains the screen below it, and it goes away by
+   itself when the line comes back. */
+.reach {
+  margin: 0;
+  padding: var(--acc-sp-3) var(--acc-sp-5);
+  border-bottom: 1px solid var(--acc-line);
+  background: var(--acc-bg-raised);
+  color: var(--acc-fg-dim);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.empty {
+  padding: var(--acc-sp-6) var(--acc-sp-5);
+  color: var(--acc-fg-dim);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* --- A project and what can be started in it --------------------------------- */
+
+/*
+ * A project is a card, and the conversations in it are pills inside that card.
+ *
+ * The list used to be flat - a project's name, then its conversations, then the next project's name,
+ * all on one surface - and at a glance there was no telling which belonged to which. Nesting says it
+ * without a word: what is inside the card belongs to the card.
+ */
+.project {
+  margin: 0 var(--acc-sp-5) var(--acc-sp-3);
+  padding: var(--acc-sp-3);
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-card);
+  background: var(--acc-bg-raised);
+}
+
+/* Dimmed whole rather than per row: what is unreachable here is the machine, not one conversation. */
+.projectOffline {
+  opacity: 0.55;
+}
+
+.projectHead {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+}
+
+.projectMain {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.projectName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.projectMeta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--acc-fg-fainter);
+}
+
+/* A capsule rather than a word on its own: it is the only thing on this card that does something, and
+   at arm's length an outline is what separates "a button" from "a label". */
+.projectNew {
+  flex: none;
+  min-height: 36px;
+  padding: 0 var(--acc-sp-3);
+  border: 1px solid var(--acc-accent-line);
+  border-radius: var(--acc-r-round);
+  color: var(--acc-accent);
+  font-size: 13px;
+  background: var(--acc-accent-08);
+}
+
+.projectNew:disabled {
+  border-color: var(--acc-line);
+  color: var(--acc-fg-fainter);
+  background: none;
+}
+
+/* What was put away. Quieter than anything it stands under: it is a way back, not an invitation. */
+.projectHidden {
+  width: 100%;
+  min-height: var(--acc-hit);
+  margin-top: var(--acc-sp-1);
+  padding: 0 var(--acc-sp-3);
+  border: none;
+  border-radius: var(--acc-r-pill);
+  color: var(--acc-fg-fainter);
+  font-size: 12px;
+  background: none;
+  text-align: left;
+}
+
+/* Quieter than "New chat": going back to something is a second thought, not the first. */
+.projectHistory {
+  width: 100%;
+  min-height: var(--acc-hit);
+  margin-top: var(--acc-sp-3);
+  padding: 0 var(--acc-sp-3);
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-pill);
+  color: var(--acc-fg-dim);
+  font-size: 13px;
+  background: none;
+  text-align: left;
+}
+
+.projectHistory:disabled {
+  color: var(--acc-fg-fainter);
+}
+
+.projectQuiet {
+  margin: var(--acc-sp-3) 0 var(--acc-sp-1);
+  font-size: 13px;
+  color: var(--acc-fg-fainter);
+}
+
+.chats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--acc-sp-1);
+  margin-top: var(--acc-sp-3);
+}
+
+/*
+ * A row and the button hiding behind it.
+ *
+ * The button is not drawn on top - it sits underneath, and the row slides off it. That is why the row
+ * needs a background of its own even though the card behind it has one: with a transparent row the
+ * word "Hide" would read through it the whole time.
+ */
+.chatSlot {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--acc-r-pill);
+}
+
+.chatHide {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 88px;
+  border: none;
+  /* Square on the side the row sits against, round on the outer one: two rounded edges meeting made a
+     notch between them, and the pair read as two controls rather than as one row with a button in it. */
+  border-radius: 0 var(--acc-r-pill) var(--acc-r-pill) 0;
+  background: var(--acc-neutral-16);
+  color: var(--acc-fg-dim);
+  font-size: 13px;
+}
+
+.chat {
+  position: relative;
+  /* Follows the finger while it is down, and settles when it lifts - short enough not to feel laggy. */
+  transition: width 0.16s ease-out, border-radius 0.16s ease-out;
+  /* The list scrolls under a finger going down; a finger going across belongs to this row. */
+  touch-action: pan-y;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--acc-sp-3);
+  width: 100%;
+  min-height: var(--acc-tap);
+  padding: 0 var(--acc-sp-3);
+  border: 1px solid transparent;
+  border-radius: var(--acc-r-pill);
+  /* A step down from the card it sits in rather than up: the card is the surface, and a conversation is
+     a slot cut into it. Raising it instead made every pill look like a button waiting to be pressed. */
+  background: var(--acc-bg);
+  color: inherit;
+  text-align: left;
+}
+
+.chat:active {
+  border-color: var(--acc-line-strong);
+}
+
+/* While the button behind it is uncovered - see the note on .chatHide. */
+.chatOpen {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* A past conversation: two lines rather than one, because the date is what tells them apart - the
+   titles of a project's conversations are all about the same project. */
+.past {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-height: var(--acc-tap);
+  padding: var(--acc-sp-2) var(--acc-sp-3);
+  border: 1px solid transparent;
+  border-radius: var(--acc-r-pill);
+  background: var(--acc-bg);
+  color: inherit;
+  text-align: left;
+}
+
+.past:active {
+  border-color: var(--acc-line-strong);
+}
+
+.pastTitle {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+
+.pastMeta {
+  font-size: 11px;
+  color: var(--acc-fg-fainter);
+}
+
+.chatTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+
+/* The heading over the projects that are merely remembered. Small and quiet: it separates two kinds of
+   thing rather than announcing anything. */
+.sectionTitle {
+  margin: var(--acc-sp-3) 0 var(--acc-sp-2);
+  padding: 0 var(--acc-sp-5);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--acc-fg-fainter);
+}
+
+/* --- Choosing what a conversation starts on ---------------------------------- */
+
+/* One card holding the three choices, in the same shape a project is drawn in: on a screen this size,
+   two ways of grouping things is one too many. */
+.choices {
+  margin: 0 var(--acc-sp-5) var(--acc-sp-3);
+  padding: var(--acc-sp-3);
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-card);
+  background: var(--acc-bg-raised);
+}
+
+.choiceHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--acc-sp-3);
+  width: 100%;
+  min-height: var(--acc-tap);
+  padding: 0 var(--acc-sp-3);
+  border: 1px solid transparent;
+  border-radius: var(--acc-r-pill);
+  background: var(--acc-bg);
+  color: inherit;
+  text-align: left;
+}
+
+.choiceHeadOpen {
+  border-color: var(--acc-accent-line);
+}
+
+.choiceTitle {
+  flex: none;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--acc-fg-dim);
+}
+
+.choiceValue {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+
+/* The options of the one that is open, indented under it so that a list of six reads as belonging to
+   the row above rather than as the page carrying on. */
+.choiceOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: var(--acc-sp-1) 0 var(--acc-sp-1) var(--acc-sp-3);
+}
+
+.choiceOption {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  width: 100%;
+  min-height: var(--acc-hit);
+  padding: var(--acc-sp-2) var(--acc-sp-3);
+  border: 1px solid transparent;
+  border-radius: var(--acc-r-pill);
+  background: none;
+  color: inherit;
+  text-align: left;
+}
+
+.choiceOptionPicked {
+  border-color: var(--acc-accent-line);
+  background: var(--acc-accent-08);
+}
+
+.choiceOption:disabled {
+  opacity: 0.45;
+}
+
+.choiceDanger {
+  color: var(--acc-danger, #e06c75);
+}
+
+/* The gap between two rows of choices - enough that the open one does not run into the next. */
+.choiceGap {
+  height: var(--acc-sp-1);
+}
+
+.startError {
+  margin: 0;
+  padding: var(--acc-sp-4) var(--acc-sp-5);
+  color: var(--acc-danger, #e06c75);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* --- One conversation ------------------------------------------------------- */
+
+.thread {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* The one thing worth interrupting the reading for. It is a button rather than a banner because it
+   leads somewhere: the screen where the answer is two taps. */
+.waitingBanner {
+  width: 100%;
+  min-height: var(--acc-hit);
+  padding: var(--acc-sp-3) var(--acc-sp-5);
+  border: none;
+  background: var(--acc-accent);
+  color: var(--acc-bg);
+  font-size: 14px;
+  text-align: left;
+}
+
+/* What will fire, in order, once the run in progress ends - the phone's version of the panel's own
+   Queue (see Queue.tsx). No drag-to-reorder here: a list this short is read top to bottom in one
+   glance, and a reorder gesture would cost more thumb precision than it is worth on a small screen. */
+.queueList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--acc-sp-2) var(--acc-sp-5);
+  border-top: 1px solid var(--acc-line);
+  background: var(--acc-bg-raised);
+}
+
+.queueRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.queueText {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--acc-fg-dim);
+}
+
+.queueRemove {
+  flex: none;
+  min-height: var(--acc-hit);
+  min-width: var(--acc-hit);
+  color: var(--acc-fg-faint);
+  font-size: 18px;
+  line-height: 1;
+  background: none;
+  border: none;
+}
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: var(--acc-sp-2) var(--acc-sp-5) calc(env(safe-area-inset-bottom) + var(--acc-sp-2));
+  border-top: 1px solid var(--acc-line);
+  background: var(--acc-bg-raised);
+}
+
+.composerInput {
+  flex: 1 1 auto;
+  /* The same height as the button beside it - see --acc-tap. The field grows past this with the text
+     in it (see Thread), and the growth is bounded so a long message cannot push the feed off screen. */
+  min-height: var(--acc-tap);
+  max-height: 40vh;
+  padding: var(--acc-sp-3) var(--acc-sp-3);
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md, 8px);
+  background: var(--acc-bg);
+  color: var(--acc-fg);
+  /* Sixteen exactly: below it iOS zooms the page on focus and never zooms back. */
+  font-size: 16px;
+  font-family: inherit;
+  resize: none;
+}
+
+/* --- The decision ------------------------------------------------------------ */
+
+.decisionBody {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--acc-sp-5) var(--acc-sp-5) var(--acc-sp-6);
+}
+
+.decisionContext {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--acc-fg-dim);
+}
+
+/* Large, because this is the whole question: what is about to happen. Everything else on the screen
+   exists to save the person from having to read the conversation. */
+.decisionVerb {
+  margin: 0 0 var(--acc-sp-1);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.decisionTarget {
+  margin: 0 0 14px;
+  font-family: var(--acc-mono);
+  font-size: 15px;
+  word-break: break-all;
+  color: var(--acc-fg);
+}
+
+.decisionCommand {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  max-height: 9lh;
+  overflow: hidden;
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-raised);
+  font-family: var(--acc-mono);
+  font-size: 13px;
+  line-height: 1.45;
+  /* Along rather than wrapped: a wrapped command reads as a different command. */
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  white-space: pre;
+}
+
+.decisionCommandOpen {
+  max-height: none;
+}
+
+.decisionReason,
+.decisionDoing {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--acc-fg-dim);
+}
+
+.decisionLink {
+  min-height: var(--acc-hit);
+  padding: 0;
+  color: var(--acc-accent);
+  font-size: 14px;
+  background: none;
+}
+
+/* Fixed at the bottom, stacked, and spaced apart: reaching past a mistap here is not the same as
+   reaching past one anywhere else in this app. */
+.decisionFooter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--acc-sp-3);
+  padding: var(--acc-sp-3) var(--acc-sp-5) calc(env(safe-area-inset-bottom) + var(--acc-sp-3));
+  border-top: 1px solid var(--acc-line);
+  background: var(--acc-bg-raised);
+}
+
+.buttonPrimary,
+.buttonSecondary,
+.buttonDanger {
+  min-height: var(--acc-tap);
+  padding: 0 16px;
+  border-radius: var(--acc-r-md, 8px);
+  font-size: 16px;
+}
+
+.buttonPrimary {
+  background: var(--acc-accent);
+  color: var(--acc-bg);
+}
+
+.buttonPrimary:disabled {
+  opacity: 0.4;
+}
+
+.buttonSecondary {
+  border: 1px solid var(--acc-line-strong);
+  color: var(--acc-fg);
+  background: none;
+}
+
+.buttonDanger {
+  border: 1px solid var(--acc-line-strong);
+  color: var(--acc-danger, #e06c75);
+  background: none;
+}
+
+/* --- Pairing ------------------------------------------------------------------ */
+
+.pairingNote {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--acc-fg-dim);
+}
+
+.pairingInput {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md, 8px);
+  background: var(--acc-bg-raised);
+  color: var(--acc-fg);
+  font-family: var(--acc-mono);
+  font-size: 16px;
+  resize: none;
+}
+
+/* Big and spaced, because it exists to be read off one screen and compared with another. */
+.pairingFingerprint {
+  margin: 0 0 var(--acc-sp-4);
+  font-family: var(--acc-mono);
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  color: var(--acc-fg);
+}
+
+.pairingLink {
+  color: var(--acc-accent);
+}
+
+.pairingError {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--acc-danger, #e06c75);
+}
