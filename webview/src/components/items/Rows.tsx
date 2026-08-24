@@ -12,6 +12,7 @@ import type {
   ThinkItem,
 } from '../../feed/types'
 import s from '../feed.module.css'
+import { Caret } from './Caret'
 
 /**
  * The thoughts of one piece of a turn go into one card, with the last of them showing outside.
@@ -31,7 +32,7 @@ export const ThinkRow = ({ item, open, onToggle }: { item: ThinkItem; open: bool
   return (
     <div className={s.think}>
       <button type="button" className={s.thinkHead} onClick={onToggle}>
-        <span className={`${s.caret} ${open ? s.caretOpen : ''}`}>▶</span>
+        <Caret open={open} />
         <span className={`${s.toolChip} ${s.chipThink} ${item.pending ? s.thinkPending : ''}`}>THINK</span>
         {/* An expanded card names itself with a number rather than with the last thought: that thought
             stands a line below, and repeating it as a heading serves nothing. */}

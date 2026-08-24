@@ -1,5 +1,6 @@
 import type { DetailLine, Hunk, ToolChip, ToolItem } from '../../feed/types'
 import s from '../feed.module.css'
+import { Caret } from './Caret'
 
 export const CHIP_CLASS: Record<ToolChip, string> = {
   READ: s.chipRead ?? '',
@@ -37,7 +38,7 @@ export const ToolCard = ({
   return (
     <div className={s.tool}>
       <button type="button" className={s.toolHead} onClick={onToggle} disabled={!hasBody}>
-        {hasBody ? <span className={`${s.caret} ${open ? s.caretOpen : ''}`}>▶</span> : null}
+        {hasBody ? <Caret open={open} /> : null}
         <span className={`${s.toolChip} ${CHIP_CLASS[item.chip]}`}>{item.chip}</span>
         <span className={`${s.toolTarget} ${item.isError ? s.toolError : ''}`}>{item.target}</span>
         <span

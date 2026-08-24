@@ -294,16 +294,27 @@ iOS 16.4 or newer. On Android the ordinary browser is enough.
 
 ## Logo and icons
 
-The master file lives at `assets/logo.png` — a square raster with no padding.
-`src/main/resources/META-INF/pluginIcon.svg` is traced from it: the marketplace
-only accepts a vector logo, on a 40×40 canvas with the mark itself fit into 36×36
-so a margin is left around the edge.
+The master file is `src/main/resources/META-INF/pluginIcon.svg`. The plate - the
+pale frame and the coral field inside it - is traced from the original raster,
+which is why those two paths are long and are rebuilt rather than edited. The ACC
+monogram standing on it is drawn, in the same cream the old mark had, so it holds
+its shape at every size.
+The marketplace only accepts a vector logo, on a 40x40 canvas with the mark itself
+fit into 36x36 so a margin is left around the edge. `assets/logo.png` and
+`assets/logo-512.png` are rasters of that same file, for the places that cannot
+take a vector.
 
 The side bar button is `src/main/resources/icons/toolWindow.svg` and its dark
-counterpart. It's not the logo but a simplification of it down to a diamond with
-axes and contacts: at 20 and 16 pixels the original mark's thin traces and sparks
-blur into noise. The stroke colors (`#6C707E` and `#CED0D6`) are set by the
-platform — it relies on them for contrast when it highlights the active button.
+counterpart. It carries the same monogram in the same strokes - the logo without
+its background - because the platform wants two separate files rather than one
+shared drawing. The stroke colors (`#6C707E` and `#CED0D6`) are set by the
+platform: it relies on them for contrast when it highlights the active button.
+
+The phone client's icons are generated from the logo, never drawn by hand:
+
+```
+python3 scripts/mobile-icons.py
+```
 
 ## Publishing
 

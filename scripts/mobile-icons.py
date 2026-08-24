@@ -17,8 +17,9 @@ Two shapes come out of it, because the platforms ask for different things:
     maskable icon to whatever shape the launcher likes, so a rounded square inside it would read as a
     box in a box; iOS does not crop at all but turns transparency black, which is worse.
 
-The mark is not centred in the master canvas and does not fill it, so the scale and the offset here are
-measured from a trial render rather than guessed.
+The master centres its mark itself, but the fit is still measured from a trial render rather than
+derived: the rays reach further than the letters do, and how much of the canvas that reads as is a
+question about ink, not about coordinates.
 """
 
 import re
@@ -37,7 +38,30 @@ WORK = ROOT / 'build/icons'
 # 80%; leaving a little more room than that keeps the mark clear of an aggressive circular crop.
 INK_SHARE = 0.60
 
-CANVAS = 722.0  # the master's internal coordinate system
+CANVAS = 40.0  # the master's internal coordinate system
+
+
+def group_by_id(svg: str, name: str) -> str:
+    """The <g id="..."> element with its nesting intact. A regex cannot do this one: the mark holds two
+    groups of its own, and a lazy match stops at the first closing tag it sees - which silently dropped
+    half the rays into nothing the first time this was written that way."""
+    start = svg.find(f'<g id="{name}"')
+    if start < 0:
+        sys.exit(f'the master must carry a <g id="{name}"> - has it been redrawn?')
+
+    depth, i = 0, start
+    while i < len(svg):
+        if svg.startswith('<g', i):
+            depth += 1
+            i += 2
+        elif svg.startswith('</g>', i):
+            depth -= 1
+            i += 4
+            if depth == 0:
+                return svg[start:i]
+        else:
+            i += 1
+    sys.exit(f'the <g id="{name}"> in the master is never closed')
 
 
 def render(svg: Path, size: int, target: Path) -> None:
@@ -48,6 +72,8 @@ def render(svg: Path, size: int, target: Path) -> None:
 
 
 def maskable_svg(size: int, scale: float, dx: float, dy: float, defs: str, mark: str) -> str:
+    """Full bleed: the plate's own frame and rounded corners are dropped and the field is taken to the
+    edges. A rounded square inside an icon a launcher rounds again reads as a box in a box."""
     return f'''<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" fill="none"
      xmlns="http://www.w3.org/2000/svg">
   {defs}
@@ -60,7 +86,8 @@ def maskable_svg(size: int, scale: float, dx: float, dy: float, defs: str, mark:
 
 
 def ink_box(path: Path) -> tuple[int, int, int, int]:
-    """Where the pale mark actually sits. The coral background never reaches this far into blue."""
+    """Where the cream mark actually sits. The coral field never reaches this far into blue, and the
+    threshold sits below the mark's own darkest stop (#FFD1AA, blue 170) rather than on it."""
     image = Image.open(path).convert('RGB')
     width, height = image.size
     pixels = image.load()
@@ -68,7 +95,7 @@ def ink_box(path: Path) -> tuple[int, int, int, int]:
     left, top, right, bottom = width, height, 0, 0
     for y in range(height):
         for x in range(width):
-            if pixels[x, y][2] > 170:
+            if pixels[x, y][2] > 150:
                 left, top = min(left, x), min(top, y)
                 right, bottom = max(right, x), max(bottom, y)
 
@@ -82,12 +109,12 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
 
     svg = MASTER.read_text(encoding='utf-8')
-    defs = re.search(r'<defs>.*?</defs>', svg, re.S).group(0)
-    layers = re.findall(r'<g transform="translate\(0,722\) scale\(0\.1,-0\.1\)"[^>]*>.*?</g>', svg, re.S)
-    marks = [layer for layer in layers if 'accMark' in layer]
-    if len(marks) != 1:
-        sys.exit(f'expected one mark layer in the logo, found {len(marks)}')
-    mark = marks[0]
+
+    defs = re.search(r'<defs>.*?</defs>', svg, re.S)
+    if not defs:
+        sys.exit('the master must carry a <defs> with the accBg gradient - has it been redrawn?')
+    mark = group_by_id(svg, 'mark')
+    defs = defs.group(0)
 
     # The logo as it is, for the places that do not crop.
     render(MASTER, 192, OUT / 'icon-192.png')
@@ -103,14 +130,12 @@ def main() -> None:
     left, top, right, bottom = ink_box(WORK / 'probe.png')
 
     # Fit that ink to the wanted share of the canvas, and centre it on what was measured rather than on
-    # the canvas - the mark sits high and left in the master.
+    # the canvas: the rays are not symmetrical about the letters, so the ink's middle and the canvas's
+    # middle are two different points.
     scale = trial * (size * INK_SHARE / max(right - left, bottom - top))
     grow = scale / trial
     trial_origin = (size - CANVAS * trial) / 2
 
-    # Where the group has to start for the ink's own middle to land on the canvas's middle. Measured
-    # rather than derived: the mark sits high and left in the master, and that is not an offset worth
-    # reasoning about twice.
     dx = size / 2 - ((left + right) / 2 - trial_origin) * grow
     dy = size / 2 - ((top + bottom) / 2 - trial_origin) * grow
 

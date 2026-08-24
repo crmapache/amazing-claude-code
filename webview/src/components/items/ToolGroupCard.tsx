@@ -3,6 +3,7 @@ import type { ToolGroupItem } from '../../feed/types'
 import type { CardState } from '../../hooks/useCardState'
 import s from '../feed.module.css'
 import { CHIP_CLASS, ToolCard } from './ToolCard'
+import { Caret } from './Caret'
 
 interface ToolGroupCardProps {
   item: ToolGroupItem
@@ -55,7 +56,7 @@ export const ToolGroupCard = ({ item, cards, awaitingPermissionId }: ToolGroupCa
   return (
     <div className={s.toolGroup}>
       <button type="button" className={s.toolGroupHead} onClick={() => cards.toggle(item.id)}>
-        <span className={`${s.caret} ${open ? s.caretOpen : ''}`}>▶</span>
+        <Caret open={open} />
 
         {!collapsed ? (
           <>

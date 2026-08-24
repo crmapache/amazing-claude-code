@@ -551,6 +551,9 @@
    row's height therefore grows from its contents: with a fixed height the baseline would press the whole
    group to the top edge. */
 .toolHead {
+  /* The height of one line of the head - the chip is the tallest thing on its baseline. The caret keeps
+     to it (see .caret), and .toolHead's own floor below is built from the same number. */
+  --acc-head-line: 17px;
   /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
   min-height: var(--acc-hit);
   display: flex;
@@ -573,29 +576,35 @@
   }
 }
 
-/* The arrow is an icon rather than a caption: the baseline is alien to it, so the only one in the row is
-   centred by its height. It never carries its own tap target - the row around it is already the whole
-   button (see ToolCard/ToolGroupCard/Rows) - so unlike the other uses of --acc-hit it must not grow on a
-   touchscreen: a fingertip-tall box centred by itself pulls the glyph well below the row's baseline text,
-   which on a phone read as the arrow floating detached under "N tools" rather than beside it. */
+/* The arrow is an icon rather than a caption: it has no baseline of its own to share with the words
+   beside it, and it never carries its own tap target - the row around it is already the whole button
+   (see ToolCard/ToolGroupCard/Rows). */
 .caret {
   flex: none;
-  align-self: center;
+  /* Tied to the head's first line rather than to the middle of the head.
+     The head aligns its contents by the baseline and stands a fingertip tall on a touchscreen
+     (--acc-hit): the words therefore sit at its top edge while its box goes on for another twenty
+     pixels. An arrow centred by that box dropped into the empty half and read, on a phone, as floating
+     under "N tools" rather than beside it. A box the height of the line, at the top, puts the middle of
+     the arrow and the middle of the words in one place - at any height of the head. */
+  align-self: flex-start;
+  height: var(--acc-head-line);
   width: 9px;
-  /* The glyph is centred inside the box rather than left at its top edge. On a desktop the box is the
-     height of the glyph and the two are the same thing; on a touchscreen the box is a fingertip tall,
-     and a glyph sitting at the top of it turns about a centre 18px below itself - the arrow swung out
-     on an arc and came back instead of turning in place. */
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 8px;
-  line-height: 1;
   color: var(--acc-fg-fainter);
+}
+
+.caret svg {
+  width: 9px;
+  height: 9px;
+  /* The turn is about the middle of the square the triangle is drawn in - and the triangle is drawn
+     symmetrically about it (see Caret), so open and closed occupy exactly the same place. */
   transition: transform 0.12s ease-out;
 }
 
-.caretOpen {
+.caretOpen svg {
   transform: rotate(90deg);
 }
 
@@ -1111,6 +1120,8 @@
 /* The same padding as the call's head (.toolHead) - otherwise the thought's caret arrow stands a couple of
    pixels further right than the call's a row above or below, and the row reads as uneven. */
 .thinkHead {
+  /* One line of the head - see --acc-head-line in .toolHead. */
+  --acc-head-line: 17px;
   /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
   min-height: var(--acc-hit);
   display: flex;
