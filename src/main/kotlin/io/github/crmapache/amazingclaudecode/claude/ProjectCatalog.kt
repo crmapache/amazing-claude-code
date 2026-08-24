@@ -1,11 +1,9 @@
 package io.github.crmapache.amazingclaudecode.claude
 
 import com.intellij.ide.BrowserUtil
-import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.util.concurrency.AppExecutorUtil
@@ -24,6 +22,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * What surrounds the conversations: the project's own facts, the files and commands the input field
@@ -66,7 +65,8 @@ internal class ProjectCatalog(
                 // The panel's own version, shown at the foot of the menu. Asked of the platform rather
                 // than kept as a constant of ours: a second copy of a number that Gradle already patches
                 // into plugin.xml is a number that will one day disagree with it.
-                PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))?.version?.let { put("pluginVersion", it) }
+                //
+                pluginVersion?.let { put("pluginVersion", it) }
                 // The choice of model and the rest outlives an IDE restart: looking for it again after
                 // every opening is the same as not saving it at all.
                 putJsonObject("preferences") {
@@ -653,6 +653,36 @@ internal class ProjectCatalog(
     companion object {
         /** Ours as the platform knows us - the same string Gradle patches into plugin.xml. */
         private const val PLUGIN_ID = "io.github.crmapache.amazingclaudecode"
+
+        /**
+         * Our own version, read out of our own plugin.xml.
+         *
+         * The platform knows this number and would hand it over, but every door it offers - the plugin
+         * manager and the core behind it - is marked internal, and the marketplace's verifier turns a
+         * plugin down for knocking on one. The descriptor Gradle patched the number into travels in our
+         * own jar, and reading it needs nothing but the JDK.
+         *
+         * Every plugin and the platform itself carry a file under this name, and a class loader is free
+         * to answer with any of them, so the one that names us is picked by its id rather than by being
+         * first. Read once: it cannot change while the IDE runs, and a null is not worth retrying -
+         * whatever made the file unreadable will not have healed by the next conversation.
+         */
+        private val pluginVersion: String? by lazy {
+            val builder = DocumentBuilderFactory.newDefaultInstance().newDocumentBuilder()
+
+            ProjectCatalog::class.java.classLoader
+                .getResources("META-INF/plugin.xml")
+                .asSequence()
+                .firstNotNullOfOrNull { descriptor ->
+                    runCatching {
+                        val document = descriptor.openStream().use { builder.parse(it) }
+                        val id = document.getElementsByTagName("id").item(0)?.textContent?.trim()
+
+                        if (id != PLUGIN_ID) null
+                        else document.getElementsByTagName("version").item(0)?.textContent?.trim()
+                    }.getOrNull()?.takeIf { it.isNotEmpty() }
+                }
+        }
 
         /** The round for everything that is expensive and changes unhurriedly. */
         private const val SLOW_PERIOD_MINUTES = 1L
