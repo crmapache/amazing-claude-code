@@ -48,3 +48,7 @@ webview/dist-mobile
 # client out of the image as well as out of the repository (see relay/.railwayignore).
 relay/public/*
 !relay/public/.gitkeep
+
+# Скриншоты панели, которые делаются в корне при проверке интерфейса: они для одного разговора,
+# в репозитории им не место.
+/*.png
