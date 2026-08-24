@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- viewport-fit=cover so the layout can reach under the notch and the home indicator, which is
+         where a fixed footer of buttons has to sit to be reachable with a thumb. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1c1f26" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Amazing Claude Code</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- iOS reads this rather than the manifest for the home screen, and it must be opaque: what shows
+         through a transparent icon there is black. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/mobile/main.tsx"></script>
+  </body>
+</html>

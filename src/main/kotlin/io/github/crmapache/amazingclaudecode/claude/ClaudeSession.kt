@@ -77,6 +77,15 @@ internal class ClaudeSession(
     /** An LLM picked the conversation's name by its first message - see [rememberTitle]. */
     private val onTitle: (String) -> Unit = {},
     /**
+     * Whether this conversation still needs a name of its own - see [requestTitle].
+     *
+     * Asked rather than remembered here, because a name outlives a process: the tab keeps it across a
+     * restart, a resume and a reconnect, while this object is built anew every time. Without the
+     * question, a conversation opened again would be renamed by whatever message happened to be typed
+     * into its middle.
+     */
+    private val titleWanted: () -> Boolean = { true },
+    /**
      * The process died on its own - not because we stopped it. The conversation may have been standing
      * in the middle of a tool at that moment: the cards left "running" would hang there forever if
      * nobody is warned.
@@ -192,6 +201,22 @@ internal class ClaudeSession(
      */
     private var lastSentTitle: String? = null
 
+    /**
+     * The name has already been asked for in this conversation - see [requestTitle]. One question per
+     * conversation: the answer is written into the transcript as well, so a second one would spend a
+     * model call to arrive at a name the tab is already carrying.
+     */
+    private var titleAsked = false
+
+    /**
+     * How many conversations this process has held. Only /clear moves it: the transcript changes under
+     * the same process, and everything asked about the previous conversation stops being about anything
+     * (see [requestTitle]). Counted rather than compared by conversation id on purpose - the id of a
+     * conversation just started is not known until its first event arrives, and a question asked in
+     * that gap would be thrown away for no reason.
+     */
+    private var conversationEpoch = 0
+
     fun sendPrompt(text: String, images: List<ImageAttachment> = emptyList()) {
         sendPrompt(text, images, repeat = false)
     }
@@ -229,8 +254,59 @@ internal class ClaudeSession(
         // to the panel as an error, and repeating it blindly serves nothing.
         val sent = write(process, userMessage(text, images))
         if (!sent) delivery?.let { undelivered.stopWatching(listOf(it)) }
+        if (sent) requestTitle(text)
 
         return sent
+    }
+
+    /**
+     * Ask the CLI to name this conversation by what has just been written into it.
+     *
+     * The name has to be asked for. In the terminal the CLI names a session itself, but that lives in
+     * its interactive loop; the panel runs it as a stream (see ClaudeLaunch), and there the naming is a
+     * control request nobody was making - which is why every tab here used to be called "new session"
+     * until the interface guessed something out of the first line of the message. That guess is a
+     * stand-in and reads like one: a whole sentence, or a command with its arguments, cut at sixty
+     * characters. The model's answer is what the name is meant to be - a short noun phrase about the
+     * subject, in the language the conversation is held in.
+     *
+     * Sent after the message rather than before it: the answer takes a second or two of a small model's
+     * time, and the turn the person is waiting for should not stand behind it.
+     *
+     * `persist` writes the name into the conversation's own transcript, exactly where the CLI writes
+     * its own. That is not a detail: the history list reads names from there (see ClaudeHistory), and a
+     * name kept only in the tab would be lost the moment the panel is closed.
+     */
+    private fun requestTitle(text: String) {
+        if (titleAsked || lastSentTitle != null || !titleWanted()) return
+
+        // Nothing worth a name in this message - the next one may well be the one (see SessionTitle).
+        val description = SessionTitle.describe(text) ?: return
+
+        titleAsked = true
+        // The conversation the question was asked about. A /clear in between makes the answer describe
+        // something that no longer exists, and the tab would be renamed after a wiped conversation.
+        val asked = conversationEpoch
+
+        control(
+            "generate_session_title",
+            onResult = { response ->
+                val title = response["title"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
+                if (title.isNotEmpty() && asked == conversationEpoch) {
+                    lastSentTitle = title
+                    onTitle(title)
+                }
+            },
+            onFailure = { message ->
+                // Not asked again in this process on purpose: a CLI too old to know the request would
+                // otherwise be asked on every single message. A restart of the conversation tries once
+                // more, which is enough.
+                thisLogger().info("The conversation could not be named: $message")
+            },
+        ) {
+            put("description", description)
+            put("persist", true)
+        }
     }
 
     /**
@@ -640,6 +716,8 @@ internal class ClaudeSession(
      */
     private fun resetConversation(line: String) {
         lastSentTitle = null
+        titleAsked = false
+        conversationEpoch += 1
         undelivered.forget()
         // The turn that was asking is gone along with the conversation, so its questions are unanswerable
         // - and a card still counted as "waiting" would swallow what the person writes onto it rather

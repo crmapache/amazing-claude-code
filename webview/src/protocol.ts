@@ -10,10 +10,44 @@ export type SessionKind = 'main' | 'branch'
 export interface SessionInfo {
   id: string
   title: string
+  /**
+   * Where the name came from - it decides whether it may be overwritten. The shell keeps this now
+   * rather than the interface alone: a second client did not see the first message and cannot tell a
+   * guessed name from one the model picked.
+   */
+  titleSource: TitleSource
   kind: SessionKind
+  /** The conversation a fork grew out of. Absent for a root tab. */
+  parentId?: string
+  /** The root of the chain: forks and forks of forks carry one and the same one. */
+  groupId: string
+  /** The branching depth: 0 is a root, 1 a fork, 2 a fork of a fork. */
+  depth: number
+  status: AgentStatus
+  /**
+   * The conversation is stopped waiting for a person - a permission, a plan, a question. This is what
+   * a list of sessions is really for: a running turn is work in progress, while a stopped one will not
+   * move until you touch it.
+   */
+  awaitsYou: boolean
+  /** Its process died on its own since the last turn. */
+  crashed?: boolean
   /** The quote a side branch grew out of. Empty for the main session. */
   quote?: string
 }
+
+/** A paired device, as the IDE lists it. */
+export interface RemoteDevice {
+  id: string
+  /** What the device called itself - untrusted by definition, since it is the device that says it. */
+  label: string
+  fingerprint: string
+  pairedAt: number
+  lastSeenAt: number
+}
+
+/** Where a tab's name came from - see SessionInfo.titleSource. */
+export type TitleSource = 'default' | 'heuristic' | 'llm'
 
 /** One subscription usage window: the share and when it resets. */
 export interface UsageWindow {
@@ -27,6 +61,11 @@ export interface HistoryEntry {
   title: string
   updatedAt: number
   messages: number
+  /**
+   * Where the name came from - the model's own or a guess off the first line. A conversation carried on
+   * in a tab keeps it, and a guess is the one a fresh name may replace (see sessionTitle).
+   */
+  titleSource?: TitleSource
 }
 
 /**
@@ -116,12 +155,14 @@ export interface SoundSettings {
   volumes: Record<string, number>
 }
 
-export type ShellMessage =
+type ShellMessageBody =
   | {
       type: 'init'
       projectName: string
       workingDirectory: string
       gitBranch?: string
+      /** The panel's own version, shown at the foot of the menu (see SideMenu). */
+      pluginVersion?: string
       /** The choice of model, effort and mode: it outlives both tabs and IDE restarts. */
       preferences?: {
         model: string
@@ -183,7 +224,104 @@ export type ShellMessage =
    * the exit code was zero.
    */
   | { type: 'bashResult'; sessionId: string; id: string; exitCode: number; stdout: string; stderr: string }
-  | { type: 'sessions'; sessions: SessionInfo[]; active: string }
+  /**
+   * The tabs as the shell keeps them. It is the shell that owns this list now: the interface makes the
+   * identifiers up (a "+" has to answer instantly) but the order, the grouping and the names live on
+   * the other side, where a second client can see them too.
+   */
+  | { type: 'sessions'; sessions: SessionInfo[] }
+  /**
+   * A conversation's feed is about to be handed over from the shell's journal - everything up to
+   * restoreFinished belongs to it and is applied as one change rather than one entry at a time.
+   *
+   * `from` is the number the client said it already had. `truncated` means the journal no longer
+   * reaches that far back: part of the beginning is genuinely missing, and the feed says so rather
+   * than showing a stump in silence.
+   */
+  | { type: 'restoreStarted'; sessionId: string; from: number; truncated?: boolean }
+  | { type: 'restoreFinished'; sessionId: string; upTo: number }
+  /**
+   * The answer being printed at this very moment, as far as it has got. The deltas it is made of are
+   * not kept in the journal (they are superseded by the finished block a moment later), so a client
+   * joining mid-turn is handed the fold in one piece and carries on from the live ones.
+   */
+  | { type: 'streamingText'; sessionId: string; text: string; thinking: string }
+  /**
+   * The conversation behind this tab is gone - a past one has been opened in its place. Whatever the
+   * feed held describes something else now.
+   */
+  | { type: 'sessionReset'; sessionId: string }
+  /**
+   * Who else is watching this project right now.
+   *
+   * The panel itself is not in the list - a person needs no telling that the window in front of them is
+   * open. What matters is everyone else: a browser page beside the IDE today, a phone tomorrow. "It is
+   * always visible in the IDE that someone is connected remotely" is a requirement of the remote access
+   * plan (§3.4), not a nicety, and it is far cheaper to build now than to bolt on later.
+   */
+  | { type: 'clients'; count: number; clients: { id: string; local: boolean }[] }
+  /**
+   * Whether this IDE can be reached from outside, and how that is going.
+   *
+   * `state` is the connection's own word for itself: idle, connecting, connected, reconnecting,
+   * relay_down, refused. They are kept apart on purpose - "reconnecting" is a train tunnel and fixes
+   * itself, "relay_down" is somebody else's server, and "refused" means this plugin will never connect
+   * to that relay however long it waits. One spinner for all three would tell a person nothing about
+   * which of them to act on.
+   */
+  | {
+      type: 'remoteState'
+      state: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'relay_down' | 'refused'
+      enabled?: boolean
+      relay: string
+      agentId: string
+      /** This IDE's own key fingerprint - the one a phone shows back during pairing. */
+      fingerprint?: string
+      /**
+       * False when this IDE is set not to remember passwords: pairing would then work today and be
+       * gone tomorrow, which is worth saying rather than letting someone find out by repetition.
+       */
+      keysKept?: boolean
+      devices?: RemoteDevice[]
+      /** A pairing being offered right now: the address behind the QR code, and when it expires. */
+      pairing?: { url: string; expiresAt: number }
+      /**
+       * A device that has proved it saw the code and is waiting for a person to say yes.
+       *
+       * The proof alone is not enough, and what it misses is human rather than cryptographic: someone
+       * who photographed the screen, or saw it in a recording, and scanned it before you did. The
+       * fingerprint is shown on both screens so the two can be compared by eye.
+       */
+      pending?: { deviceId: string; label: string; fingerprint: string }
+    }
+  /**
+   * A permission has been answered - possibly on another device. With one client this said nothing new
+   * (it had drawn the decision on the click), with two it is the only way the other one learns its
+   * buttons are no longer worth pressing.
+   */
+  | { type: 'permissionResolved'; sessionId: string; id: string; decision: 'once' | 'always' | 'deny' }
+  | { type: 'planResolved'; sessionId: string; id: string; decision: string }
+  /**
+   * A person's message as it stands in the feed, echoed back by the shell.
+   *
+   * The message itself reaches the agent as plain text, and the stream says nothing about where it
+   * began - so a feed rebuilt from the shell's journal would be answers with no questions above them.
+   * The pieces travel through the shell untouched: what a chip or a quote is, is known here, and a
+   * second description of it on the other side would drift from this one.
+   *
+   * `id` is the one the sender made up. Its own echo it ignores: it drew the message on the press,
+   * long before this came back.
+   */
+  | {
+      type: 'promptEcho'
+      sessionId: string
+      id?: string
+      /** UserToken[] from feed/types - opaque to the shell, which is why it is not typed here. */
+      tokens?: unknown
+      quotes?: string[]
+      steering?: boolean
+    }
+  | { type: 'askResolved'; sessionId: string; id: string; outcome: 'answered' | 'dismissed' }
   | { type: 'status'; sessionId: string; state: AgentStatus }
   /**
    * The tab's name from the first message - not straight away: while the LLM thinks, the tab already
@@ -221,6 +359,13 @@ export type ShellMessage =
   | { type: 'project'; gitBranch?: string; pullRequest?: string; pullRequestUrl?: string }
   /** This project's past conversations: Claude Code keeps them itself. */
   | { type: 'history'; conversations: HistoryEntry[] }
+  /**
+   * A page of one conversation's messages, older than what the client already has - read off the
+   * transcript on disk rather than the journal's own catch-up, which forgets its own beginning long
+   * before the disk does (see ClaudeSessionHub.CatchUp). `cursor` absent means the transcript's
+   * beginning has been reached - there is nothing further back to ask for.
+   */
+  | { type: 'historyPage'; sessionId: string; entries: AgentEvent[]; cursor?: string }
   /**
    * The Claude Code sign-in. Without it the agent answers every question with a line about /login, so
    * the panel shows a sign-in button rather than an input field.
@@ -314,12 +459,43 @@ export type ShellMessage =
    */
   | { type: 'typography'; monoFamily: string; uiFamily: string; lineHeight: number }
 
+/**
+ * What every message about a conversation carries besides its own fields.
+ *
+ * `seq` is the entry's number in that conversation's journal on the shell side, and `at` is when it
+ * happened. Both exist so a client can be caught up after a break: it says the last number it saw and
+ * is handed only the tail. Without the time, a restored feed would count every duration from the
+ * moment of restoring - a turn that ran for a minute would come back as having just started.
+ *
+ * They are absent on messages that are not kept: the project's own facts, the deltas of an answer
+ * being printed, and answers addressed to whoever asked (the clipboard, a command's output).
+ */
+export interface JournalMarks {
+  seq?: number
+  at?: number
+}
+
+export type ShellMessage = ShellMessageBody & JournalMarks
+
 export type WebviewMessage =
-  /** The interface is mounted and ready to receive messages. */
-  | { type: 'ready' }
+  /**
+   * The interface is mounted and ready to receive messages.
+   *
+   * `since` is what it already has, by conversation - the numbers it read off the messages themselves.
+   * A page that has just opened sends nothing and is given everything; one that has merely been
+   * reloaded over a live conversation is given only the tail. The conversations outlive the page now,
+   * so that difference is worth having.
+   */
+  | { type: 'ready'; since?: Record<string, number> }
   | {
       type: 'prompt'
       sessionId: string
+      /** This message's own identifier - it comes back in promptEcho, and by it the sender knows its own. */
+      id?: string
+      /** The pieces the feed draws this message from - see promptEcho. */
+      tokens?: unknown
+      quotes?: string[]
+      steering?: boolean
       text: string
       /** Images from the clipboard: bytes rather than a path for a tool to read. */
       images?: { mediaType: string; data: string }[]
@@ -348,8 +524,51 @@ export type WebviewMessage =
       /** The conversation we branch off. The branch gets its whole transcript. */
       parentId?: string
       quote?: string
+      /**
+       * What this conversation is to start on, when the client had to be asked rather than reading the
+       * settings - which is the phone's case: the selectors it would read live at the desk.
+       *
+       * Absent means the settings decide, which is what the panel always does. It applies to this
+       * conversation alone and writes nothing down: a tab started on Opus from a phone says nothing
+       * about what the next tab opened at the keyboard starts on.
+       */
+      model?: string
+      effort?: string
+      mode?: string
     }
   | { type: 'closeSession'; sessionId: string }
+  /**
+   * The name the interface guessed from the first message (see deriveSessionTitle). The guessing stays
+   * here rather than moving to the shell: the rule already exists here, both clients have to use the
+   * same one, and a copy of it in another language would drift from this one.
+   */
+  | { type: 'renameSession'; sessionId: string; title: string }
+  /** The tabs' new order after a drag - by group, as moveGroup arranges it. */
+  | { type: 'reorderGroups'; groupId: string; beforeGroupId?: string }
+  /**
+   * Turn remote access on or off. Off is how the plugin ships and how it stays until this arrives:
+   * what it opens is a channel that can send messages to an agent with a shell on this machine, and
+   * nobody should acquire one by installing a plugin.
+   */
+  | { type: 'setRemoteEnabled'; enabled: boolean }
+  /**
+   * Which relay to use. Empty means the public one. Being able to change it is the other half of
+   * publishing the relay's source - reading the code of a server you are obliged to use is only half
+   * an answer.
+   */
+  | { type: 'setRelayUrl'; url: string }
+  /** Offer a pairing: the IDE makes a one-time code and shows it as a QR. */
+  | { type: 'startPairing' }
+  | { type: 'cancelPairing' }
+  /** The person compared the fingerprints and said yes - or no. */
+  | { type: 'approvePairing' }
+  | { type: 'refusePairing' }
+  /**
+   * Forget a device. It takes effect at once and while the phone is switched off: with the secret gone
+   * its frames simply no longer open.
+   */
+  | { type: 'revokeDevice'; deviceId: string }
+  | { type: 'revokeAllDevices' }
   /** One dialog for every attachment: splitting them across three buttons serves nothing. */
   | { type: 'pick' }
   /**
@@ -451,6 +670,8 @@ export type WebviewMessage =
   | { type: 'clipboardRead'; id: string }
   | { type: 'clipboardWrite'; text: string; html: string }
   | { type: 'history' }
+  /** A page further back than the journal's own catch-up reaches - see ShellMessageBody's historyPage. */
+  | { type: 'historyPage'; sessionId: string; before?: string }
   /** Continue a past conversation in this tab. */
   | { type: 'resumeSession'; sessionId: string; conversationId: string }
   /** Open the IDE's terminal with a Claude Code sign-in or sign-out. */

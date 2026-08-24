@@ -76,6 +76,17 @@ intellijPlatform {
               <li>Attach files, folders, and images through the IDE's own picker, or reference project
               files right as you type</li>
             </ul>
+            <p><b>Answer it from your phone.</b> Remote access is off when the plugin is installed and
+            does nothing over the network until you turn it on. Once you do, you pair a phone by
+            scanning a QR code shown in the panel - confirmed at your desk, with a fingerprint to
+            compare - and from then on you can read a conversation, answer a permission request or a
+            plan, and send a message from anywhere. What travels goes through a relay server,
+            encrypted end to end: the relay passes sealed envelopes between the two and cannot read
+            what is inside them. A paired phone cannot run shell commands on your machine, change
+            permission modes or install anything; any device can be revoked instantly, even while it
+            is switched off, and you can point the plugin at a relay of your own. What travels and
+            what the relay can see is described in the
+            <a href="https://relay.mzpizote.com/privacy">privacy policy</a>.</p>
             <p>Same Claude Code, properly integrated into your editor.</p>
             """.trimIndent()
 
@@ -131,10 +142,11 @@ intellijPlatform {
         // usage of its own, and keeping that count at zero is cheaper than one day sorting through an
         // accumulated list in a version's card.
         //
-        // Softer: deprecated usages do not fail the task. There are two such places, both deliberate,
-        // and the platform offers no supported replacement for either: opening a terminal for the sign-in
-        // (ClaudeLogin) and the resource handler's previous pair of methods, without which the panel does
-        // not load at all (WebviewResources.ResourceHandler).
+        // Softer: deprecated usages do not fail the task. Each of them is deliberate and none has a
+        // supported replacement: opening a terminal for the sign-in (ClaudeLogin), the resource handler's
+        // previous pair of methods, without which the panel does not load at all
+        // (WebviewResources.ResourceHandler), and the list of recent projects (RemoteAgent) - the one
+        // that is not deprecated lives in a class closed to plugins, which would fail this very task.
         //
         // There is not a single usage of what is closed to plugins left - and none should appear: the
         // marketplace does not let a version through moderation because of those. So they fail the task
@@ -187,10 +199,16 @@ private val webviewDist = webviewDir.dir("dist")
 
 val installWebview by tasks.registering(Exec::class) {
     description = "Installs the interface's dependencies"
-    workingDir = webviewDir.asFile
-    commandLine("pnpm", "install")
+    // From the root, and for this package alone: the repository is a pnpm workspace (see
+    // pnpm-workspace.yaml), and a plain `pnpm install` inside webview/ would install the relay's
+    // dependencies as well - a server the plugin does not ship and does not need in order to build.
+    workingDir = layout.projectDirectory.asFile
+    commandLine("pnpm", "install", "--filter", "./webview")
 
-    inputs.file(webviewDir.file("package.json"))
+    inputs.files(
+        webviewDir.file("package.json"),
+        layout.projectDirectory.file("pnpm-lock.yaml"),
+    )
     outputs.dir(webviewDir.dir("node_modules"))
     // node_modules outlives a clean, so the decision to skip the task is made from a snapshot of
     // package.json rather than from the folder being there.
@@ -207,6 +225,9 @@ val buildWebview by tasks.registering(Exec::class) {
     inputs.files(
         webviewDir.file("package.json"),
         webviewDir.file("index.html"),
+        // The second page: the same interface opened in an ordinary browser over the shell's local
+        // channel. Without it here the task would be considered up to date after a change to it.
+        webviewDir.file("remote.html"),
         webviewDir.file("vite.config.ts"),
         webviewDir.file("tsconfig.json"),
     )
@@ -234,6 +255,21 @@ tasks.withType<RunIdeTask>().configureEach {
 
     // In the sandbox IDE the panel opens itself: hunting for the button every run serves nothing.
     systemProperty("acc.autoOpen", "true")
+
+    // -PlocalBridge=true opens the project's conversations to a second client on this machine: the same
+    // interface in an ordinary browser beside the IDE (see LocalBridgeServer). The address, with its
+    // one-run token, goes into the IDE's log. Off by default - this is scaffolding for finding out what
+    // two clients do to each other, not a feature.
+    providers.gradleProperty("localBridge").orNull?.let { enabled ->
+        systemProperty("acc.localBridge", enabled)
+    }
+
+    // -PremoteRelay=ws://localhost:8080 points the sandbox at a relay running on this machine and turns
+    // remote access on for that run. It is how the whole chain - relay, agent, phone - gets exercised
+    // without clicking through the panel first; an ordinary IDE never sees it.
+    providers.gradleProperty("remoteRelay").orNull?.let { url ->
+        systemProperty("acc.remote.relay", url)
+    }
 
     // -PjcefDebugPort=9222 opens the panel to an external debugger over the Chrome DevTools protocol: a
     // browser or a script can attach to it and look at the real panel in a real IDE rather than at its

@@ -1439,7 +1439,16 @@ describe('background commands in the task channel', () => {
 
     expect(state.items.some((item) => item.kind === 'task')).toBe(false)
     expect(state.background).toEqual([
-      { id: 'bv7hh', toolUseId: 'toolu-1', label: 'yarn dev', description: 'Start the dev server', duration: '0.0s' },
+      {
+        id: 'bv7hh',
+        toolUseId: 'toolu-1',
+        label: 'yarn dev',
+        description: 'Start the dev server',
+        // The whole command, which is what the chip's tooltip shows - the caption alone cannot say what
+        // a long-running loop is waiting for.
+        command: 'yarn dev',
+        duration: '0.0s',
+      },
     ])
   })
 
@@ -2298,6 +2307,122 @@ describe('the end of a past conversation replay', () => {
 })
 
 /**
+ * A task reports its end over a channel of its own, and none of that channel is saved: a transcript holds
+ * messages alone. The notification survives in it all the same - the CLI writes it into the talk as a
+ * message in the person's own name - and a replay reads it for what it is instead of showing the markup.
+ */
+describe('a task notification out of a transcript', () => {
+  const replay = (events: AgentEvent[]): PanelState =>
+    events.reduce((acc, event) => reducePanel(acc, { kind: 'agent', event, replay: true }, 1_700_000_000_000), initialPanelState)
+
+  const notificationEvent = (body: string): AgentEvent =>
+    ({ type: 'user', message: { content: [{ type: 'text', text: body }] } }) as AgentEvent
+
+  const notification = (toolUseId: string | undefined, status: string, summary: string): string =>
+    [
+      '<task-notification>',
+      '<task-id>bo54td1ol</task-id>',
+      ...(toolUseId ? [`<tool-use-id>${toolUseId}</tool-use-id>`] : []),
+      '<output-file>/tmp/claude/tasks/bo54td1ol.output</output-file>',
+      `<status>${status}</status>`,
+      `<summary>${summary}</summary>`,
+      '</task-notification>',
+    ].join('\n')
+
+  const firstTool = (state: PanelState) =>
+    state.items.find((item): item is ToolGroupItem => item.kind === 'toolGroup')?.tools[0]
+
+  const backgroundCommand = (): AgentEvent[] => [
+    toolUseEvent('toolu-1', 'Bash', { command: 'pnpm build', run_in_background: true }),
+    toolResultEvent('toolu-1', 'Command running in background with ID: bash_1'),
+  ]
+
+  it('does not show the notification as something the person said', () => {
+    const state = replay([
+      ...backgroundCommand(),
+      notificationEvent(notification('toolu-1', 'completed', 'Background command "pnpm build" completed (exit code 0)')),
+    ])
+
+    expect(state.items.filter((item) => item.kind === 'user')).toHaveLength(0)
+  })
+
+  it('writes the end of a background command into the card that launched it', () => {
+    const state = replay([
+      ...backgroundCommand(),
+      notificationEvent(notification('toolu-1', 'completed', 'Background command "pnpm build" completed (exit code 0)')),
+    ])
+
+    // Without the duration: the command ran in another process, and the counter in this tab starts when
+    // the tab is opened - any figure here would be made up.
+    expect(firstTool(state)?.detail.at(-1)).toEqual({ text: 'Background command finished.', tone: 'dim' })
+    expect(firstTool(state)?.isError).toBe(false)
+  })
+
+  it('marks a background command that failed and keeps the CLI account of it', () => {
+    const state = replay([
+      ...backgroundCommand(),
+      notificationEvent(notification('toolu-1', 'failed', 'Background command "pnpm build" failed (exit code 1)')),
+    ])
+
+    expect(firstTool(state)?.isError).toBe(true)
+    expect(firstTool(state)?.detail.map((line) => line.text)).toContain('Background command failed.')
+    expect(firstTool(state)?.detail.at(-1)?.text).toContain('exit code 1')
+  })
+
+  it('closes a subagent card with what the transcript knows about its end', () => {
+    const state = replay([
+      toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Review plan', run_in_background: true }),
+      toolResultEvent('toolu-1', 'Async agent launched successfully. Agent ID: a90aa'),
+      notificationEvent(notification('toolu-1', 'completed', 'Agent "Review plan" finished')),
+    ])
+
+    const task = state.items.find((item): item is TaskItem => item.kind === 'task')
+    expect(task?.pending).toBe(false)
+    expect(task?.outcome).toBe('ok')
+    expect(task?.log.at(-1)?.text).toContain('Agent "Review plan" finished')
+    // The card no longer counts: the tab was opened long after this agent finished.
+    expect(state.startedAt['toolu-1']).toBeUndefined()
+  })
+
+  it('leaves an ordinary command alone - it travels the same channel and its card is closed already', () => {
+    const before = replay([
+      toolUseEvent('toolu-1', 'Bash', { command: 'pnpm build' }),
+      toolResultEvent('toolu-1', 'built in 12s'),
+    ])
+    const after = replay([
+      toolUseEvent('toolu-1', 'Bash', { command: 'pnpm build' }),
+      toolResultEvent('toolu-1', 'built in 12s'),
+      notificationEvent(notification('toolu-1', 'completed', 'Command "pnpm build" completed (exit code 0)')),
+    ])
+
+    expect(after.items).toEqual(before.items)
+  })
+
+  it('skips a notification that names no call at all', () => {
+    const state = replay([
+      ...backgroundCommand(),
+      notificationEvent(notification(undefined, 'stopped', '3 background shell command task(s) have no completion record')),
+    ])
+
+    expect(firstTool(state)?.detail.some((line) => line.text.startsWith('Background command'))).toBe(false)
+    expect(state.items.filter((item) => item.kind === 'user')).toHaveLength(0)
+  })
+
+  it('does not read the notification twice in a live run - there it arrives over its own channel', () => {
+    const state = play([
+      toolUseEvent('toolu-1', 'Bash', { command: 'pnpm build', run_in_background: true }),
+      bashTaskStartedEvent('bash-1', 'toolu-1', 'Build the app'),
+      toolResultEvent('toolu-1', 'Command running in background with ID: bash_1'),
+      taskNotificationEvent('bash-1', 'completed', 'Background command "pnpm build" completed (exit code 0)'),
+      notificationEvent(notification('toolu-1', 'completed', 'Background command "pnpm build" completed (exit code 0)')),
+    ])
+
+    const ends = firstTool(state)?.detail.filter((line) => line.text.startsWith('Background command')) ?? []
+    expect(ends).toHaveLength(1)
+  })
+})
+
+/**
  * A past conversation opened from the history has to read as a conversation: the person's lines arrive in it
  * by a single route - the record from the conversation - because there was nobody to put them into the feed
  * when they were sent.
@@ -2345,11 +2470,15 @@ describe('the person lines in a replay', () => {
     )
     const stopped = replayUser('[Request interrupted by user]')
     const subagent = replayUser('Read these files', { parent_tool_use_id: 'toolu-1' })
+    const task = replayUser(
+      '<task-notification>\n<task-id>bo54td1ol</task-id>\n<status>completed</status>\n</task-notification>',
+    )
 
     expect(users(skill)).toHaveLength(0)
     expect(users(caveat)).toHaveLength(0)
     expect(users(stopped)).toHaveLength(0)
     expect(users(subagent)).toHaveLength(0)
+    expect(users(task)).toHaveLength(0)
   })
 
   it('still parses the call results', () => {

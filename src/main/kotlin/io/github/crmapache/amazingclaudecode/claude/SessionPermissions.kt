@@ -1,14 +1,7 @@
-package io.github.crmapache.amazingclaudecode.toolwindow
+package io.github.crmapache.amazingclaudecode.claude
 
 import com.intellij.openapi.diagnostic.thisLogger
-import io.github.crmapache.amazingclaudecode.claude.ClaudeLaunch
-import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
-import io.github.crmapache.amazingclaudecode.claude.ClaudeSessions
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessions.Companion.MAIN_SESSION
-import io.github.crmapache.amazingclaudecode.claude.PermissionChannel
-import io.github.crmapache.amazingclaudecode.claude.PermissionModes
-import io.github.crmapache.amazingclaudecode.claude.PermissionPrompt
-import io.github.crmapache.amazingclaudecode.claude.PermissionReason
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -22,25 +15,14 @@ import kotlinx.serialization.json.put
  * All three are one and the same request over the control channel (see [PermissionChannel]), and all
  * three share one rule: an unanswered request is a conversation stopped until it closes. The
  * difference is only in who draws the card - the panel, or the tool call itself - and that difference
- * is exactly what lives here, apart from the panel's message routing.
+ * is exactly what lives here.
+ *
+ * It sits beside the conversations rather than inside the panel because a question outlives the window
+ * that drew it: the panel may be closed over a waiting card, and from phase 1 on the answer may come
+ * from a different device altogether. Whoever answers, the request is one, and so is the place that
+ * decides whether it is still worth answering.
  */
-internal class PanelPermissions(
-    private val sessions: () -> ClaudeSessions?,
-    private val send: (String) -> Unit,
-    /**
-     * The fallback path for an answer nobody is waiting for any more: as an ordinary message into the
-     * tab it was written in. What a person wrote is worth more than the way it gets delivered.
-     */
-    private val sendPrompt: (sessionId: String, text: String) -> Unit,
-    /**
-     * Approving a plan switches the conversation into "no questions" - see [decidePlan]. The mode
-     * change lives in the panel: the interface has to be told about its outcome, refusal included.
-     *
-     * It reaches this one conversation and no further: what new tabs start in is chosen separately, in
-     * the header's menu (see ClaudeSessions.setPermissionMode).
-     */
-    private val changeMode: (sessionId: String, mode: String) -> Unit,
-) {
+internal class SessionPermissions(private val hub: ClaudeSessionHub) {
 
     /**
      * The requests we are waiting for a person's answer on: the answer has to go to the conversation
@@ -66,6 +48,17 @@ internal class PanelPermissions(
      * updatedInput (see [answerAsk]).
      */
     private val asks = ConcurrentHashMap<String, Pending>()
+
+    /**
+     * What has just been decided, and by whom.
+     *
+     * With one client this was not needed: taking an entry out of the map above was itself the whole
+     * defence, and an answer that found nothing could only be a stale card. With two it can also be a
+     * duplicate - both devices showed the same question and both were pressed - and the difference
+     * matters: a stale card's text is worth rescuing as an ordinary message, while a duplicate's would
+     * be a stray remark thrown into the conversation.
+     */
+    private val recentlyResolved = ConcurrentHashMap<String, Long>()
 
     private data class Pending(
         val sessionId: String,
@@ -100,7 +93,7 @@ internal class PanelPermissions(
                 // cannot answer it either - refusing at once is more honest than silently stopping the
                 // turn forever.
                 thisLogger().warn("${request.toolName} permission without a tool_use_id: nothing to attach it to")
-                sessions()?.answerPermission(sessionId, request.requestId, allow = false, message = CARD_LOST)
+                hub.conversations.answerPermission(sessionId, request.requestId, allow = false, message = CARD_LOST)
                 return
             }
 
@@ -110,17 +103,19 @@ internal class PanelPermissions(
             // it will ask the same thing as ordinary text.
             if (request.toolName == ClaudeLaunch.ASK_TOOL && !hasQuestions(request.input)) {
                 thisLogger().warn("${request.toolName} permission without questions: the feed has no card to answer it")
-                sessions()?.answerPermission(sessionId, request.requestId, allow = false, message = CARD_LOST)
+                hub.conversations.answerPermission(sessionId, request.requestId, allow = false, message = CARD_LOST)
                 return
             }
 
             if (request.toolName == PLAN_TOOL) plans[itemId] = pending else asks[itemId] = pending
+            notePending(sessionId)
             return
         }
 
         channelPermissions[request.requestId] = pending
 
-        send(
+        hub.broadcast(
+            sessionId,
             buildJsonObject {
                 put("type", "permission")
                 put("id", request.requestId)
@@ -132,7 +127,10 @@ internal class PanelPermissions(
                 // allowed to disagree - an approved plan frees its own tab from questions without
                 // touching the setting (see ClaudeSessions.setPermissionMode). Taken from the setting,
                 // the caption would name a mode this tab is not in.
-                put("mode", PermissionModes.resolve(sessions()?.permissionMode(sessionId) ?: ClaudePreferences.mode))
+                put(
+                    "mode",
+                    PermissionModes.resolve(hub.conversations.permissionMode(sessionId) ?: ClaudePreferences.mode),
+                )
                 // Who raised the question. In "Bypass" and "Auto" no questions are expected at all, and
                 // without this line they look like nagging from the panel - see PermissionReason.
                 PermissionReason.text(request).takeIf { it.isNotEmpty() }?.let { put("reason", it) }
@@ -158,16 +156,23 @@ internal class PanelPermissions(
      */
     fun decide(id: String, decision: String) {
         val channel = channelPermissions.remove(id) ?: run {
+            // Two devices showed one question and both were pressed. The first press already unblocked
+            // the turn; the second must change nothing at all.
+            if (recentlyResolved.containsKey(id)) return
             thisLogger().info("No permission waiting for a decision: $id")
             return
         }
 
-        sessions()?.answerPermission(
+        remember(id)
+
+        hub.conversations.answerPermission(
             channel.sessionId,
             id,
             allow = decision != "deny",
             remember = decision == "always",
         )
+
+        resolved(channel.sessionId, id, decision)
     }
 
     /**
@@ -178,10 +183,18 @@ internal class PanelPermissions(
      * Leaving plan mode by itself returns the CLI not to a free hand but to the ordinary "always ask" -
      * and then every next step of an approved plan would run into a permission again, question after
      * question, although the person has already agreed to the plan as a whole. So approval switches the
-     * mode to bypass next: the plan card was the one question worth asking.
+     * mode on next: the plan card was the one question worth asking.
+     *
+     * Which mode it switches to depends on where the decision came from. At the desk it is the full
+     * "no questions", as it always was. From a phone that mode is not allowed at all (a channel that
+     * can send a message is a channel that can run commands on the work machine), so approval there
+     * goes to "edits without questions" instead: file edits are exactly what the plan approved, while
+     * shell commands and the network still ask - and those questions the phone can answer.
      */
-    fun decidePlan(sessionId: String, itemId: String, decision: String, message: String = "") {
+    fun decidePlan(sessionId: String, itemId: String, decision: String, message: String = "", local: Boolean = true) {
         val pending = plans.remove(itemId)?.takeIf { awaited(it) } ?: run {
+            if (recentlyResolved.containsKey(itemId)) return
+
             // The card is older than the present process: the conversation has been restarted since (or
             // this is another tab), and there has long been nobody to answer. A remark about the plan
             // then goes as an ordinary message - losing what the person wrote is worse than answering by
@@ -189,11 +202,13 @@ internal class PanelPermissions(
             // conversations, and someone else's answer in someone else's feed is not a rescue but a
             // second breakage.
             thisLogger().info("No plan waiting for a decision: $itemId")
-            if (message.isNotBlank()) sendPrompt(sessionId, message)
+            if (message.isNotBlank()) hub.prompt(sessionId, message)
             return
         }
 
-        sessions()?.answerPermission(
+        remember(itemId)
+
+        hub.conversations.answerPermission(
             pending.sessionId,
             pending.requestId,
             allow = decision == "approve",
@@ -202,7 +217,20 @@ internal class PanelPermissions(
             message = message.ifBlank { KEEP_PLANNING },
         )
 
-        if (decision == "approve") changeMode(pending.sessionId, PermissionModes.BYPASS)
+        if (decision == "approve") {
+            hub.changeMode(pending.sessionId, if (local) PermissionModes.BYPASS else PermissionModes.ACCEPT_EDITS)
+        }
+
+        notePending(pending.sessionId)
+        hub.broadcast(
+            pending.sessionId,
+            buildJsonObject {
+                put("type", "planResolved")
+                put("sessionId", pending.sessionId)
+                put("id", itemId)
+                put("decision", decision)
+            }.toString(),
+        )
     }
 
     /**
@@ -221,17 +249,24 @@ internal class PanelPermissions(
         val pending = asks.remove(itemId)?.takeIf { awaited(it) }
 
         if (pending == null) {
+            if (recentlyResolved.containsKey(itemId)) return
+
             thisLogger().info("No question waiting for an answer: $itemId")
-            if (fallbackText.isNotBlank()) sendPrompt(sessionId, fallbackText)
+            if (fallbackText.isNotBlank()) hub.prompt(sessionId, fallbackText)
             return
         }
 
-        sessions()?.answerPermission(
+        remember(itemId)
+
+        hub.conversations.answerPermission(
             pending.sessionId,
             pending.requestId,
             allow = true,
             extraInput = buildJsonObject { put("answers", answers) },
         )
+
+        notePending(pending.sessionId)
+        askResolved(pending.sessionId, itemId, "answered")
     }
 
     /**
@@ -243,12 +278,17 @@ internal class PanelPermissions(
     fun dismissAsk(itemId: String) {
         val pending = asks.remove(itemId)?.takeIf { awaited(it) } ?: return
 
-        sessions()?.answerPermission(
+        remember(itemId)
+
+        hub.conversations.answerPermission(
             pending.sessionId,
             pending.requestId,
             allow = false,
             message = ASK_DISMISSED,
         )
+
+        notePending(pending.sessionId)
+        askResolved(pending.sessionId, itemId, "dismissed")
     }
 
     /**
@@ -259,6 +299,56 @@ internal class PanelPermissions(
      * and precisely why there is no other way to see that it happened at all (see [forgetUnanswerable]).
      */
     internal fun keptCount(): Int = channelPermissions.size + plans.size + asks.size
+
+    /**
+     * The card is gone from everyone's screen, not only from the screen it was pressed on.
+     *
+     * With one client this message would be pointless - that client had already put the decision into
+     * its own feed on the click. With two it is the whole point: the other device is showing a question
+     * that has been answered, and its buttons would do nothing at best.
+     */
+    private fun resolved(sessionId: String, id: String, decision: String) {
+        hub.broadcast(
+            sessionId,
+            buildJsonObject {
+                put("type", "permissionResolved")
+                put("sessionId", sessionId)
+                put("id", id)
+                put("decision", decision)
+            }.toString(),
+        )
+    }
+
+    private fun askResolved(sessionId: String, itemId: String, outcome: String) {
+        hub.broadcast(
+            sessionId,
+            buildJsonObject {
+                put("type", "askResolved")
+                put("sessionId", sessionId)
+                put("id", itemId)
+                put("outcome", outcome)
+            }.toString(),
+        )
+    }
+
+    /**
+     * Plans and questions never travel as messages of their own - their cards are drawn by the tool
+     * call itself. So the one place that knows a conversation is stopped on one is here, and the
+     * snapshot has to be told: a list of sessions on a phone shows "waiting for you" out of it.
+     */
+    private fun notePending(sessionId: String) {
+        hub.notePending(
+            sessionId,
+            plans = plans.filterValues { it.sessionId == sessionId }.keys.toSet(),
+            asks = asks.filterValues { it.sessionId == sessionId }.keys.toSet(),
+        )
+    }
+
+    private fun remember(id: String) {
+        val now = System.currentTimeMillis()
+        recentlyResolved[id] = now
+        recentlyResolved.values.removeIf { now - it > RESOLVED_MEMORY_MS }
+    }
 
     /**
      * Throw out what nobody can answer any more.
@@ -294,7 +384,7 @@ internal class PanelPermissions(
      * as for a card without a record: an ordinary message.
      */
     private fun awaited(pending: Pending): Boolean =
-        sessions()?.isAwaitingPermission(pending.sessionId, pending.requestId) == true
+        hub.conversations.isAwaitingPermission(pending.sessionId, pending.requestId)
 
     /**
      * Whether the call holds a single question - exactly the condition by which the feed decides
@@ -317,5 +407,11 @@ internal class PanelPermissions(
         const val KEEP_PLANNING = "The user wants to keep planning: refine the plan and show it again."
 
         const val CARD_LOST = "The panel could not attach this request to its card."
+
+        /**
+         * How long a decision is remembered as "already taken". Long enough to cover two devices
+         * pressing at once and a slow network between them, short enough that the map stays small.
+         */
+        const val RESOLVED_MEMORY_MS = 60_000L
     }
 }

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { McpServerInfo } from '../protocol'
 import { SkeletonBar } from './Skeleton'
-import s from './shell.module.css'
+import s from './sideMenu.module.css'
 
 interface McpProps {
-  /** null means the list has not arrived yet: it loads by itself, long before the tab is opened. */
+  /** null means the list has not arrived yet: it loads by itself, long before the screen is opened. */
   servers: McpServerInfo[] | null
   /** A request worth saying out loud is under way: a refresh from the button. */
   loading: boolean
@@ -14,7 +14,6 @@ interface McpProps {
   onAuthenticate: (name: string) => void
   onRemove: (name: string) => void
   onAdd: (name: string, command: string, transport: string) => void
-  onClose: () => void
 }
 
 const ADD_SERVER_KEY = 'add-server'
@@ -33,11 +32,19 @@ const STATUS_TEXT: Record<string, string> = {
 }
 
 const STATUS_CLASS: Record<string, string> = {
-  connected: s.mcpStatusOk ?? '',
-  'needs-auth': s.mcpStatusWarn ?? '',
-  failed: s.mcpStatusBad ?? '',
-  pending: s.mcpStatusIdle ?? '',
-  disabled: s.mcpStatusIdle ?? '',
+  connected: s.cardStateOk ?? '',
+  'needs-auth': s.cardStateWarn ?? '',
+  failed: s.cardStateBad ?? '',
+  pending: '',
+  disabled: '',
+}
+
+const DOT_CLASS: Record<string, string> = {
+  connected: s.cardDotOn ?? '',
+  'needs-auth': s.cardDotWarn ?? '',
+  failed: s.cardDotBad ?? '',
+  pending: '',
+  disabled: '',
 }
 
 /**
@@ -69,7 +76,6 @@ export const Mcp = ({
   onAuthenticate,
   onRemove,
   onAdd,
-  onClose,
 }: McpProps) => {
   const [name, setName] = useState('')
   const [command, setCommand] = useState('')
@@ -100,110 +106,97 @@ export const Mcp = ({
   const shown = rest.length > 0 ? [...groups, { scope: 'other', title: 'OTHER', hint: '', servers: rest }] : groups
 
   return (
-    <>
-      <div className={s.menuScrim} onClick={onClose} />
-      <div className={s.mcp}>
-        <div className={s.historyHead}>
-          <span className={s.historyLabel}>MCP SERVERS</span>
-          <span className={s.historyHint}>
-            {servers === null ? 'status · sign in · reconnect' : `${servers.length} servers`}
-          </span>
-          <div className={s.spacer} />
-          <button type="button" className={s.mcpRefresh} onClick={onRefresh} disabled={loading}>
-            {loading ? 'Refreshing…' : 'Refresh'}
-          </button>
+    <div className={s.screen}>
+      {message ? (
+        <div className={message.ok ? `${s.message} ${s.messageOk}` : `${s.message} ${s.messageBad}`}>
+          {message.text}
         </div>
+      ) : null}
 
-        {message ? (
-          <div className={message.ok ? s.mcpMessageOk : s.mcpMessageError}>{message.text}</div>
-        ) : null}
-
-        <div className={s.mcpBody}>
-          {servers === null
-            ? [0, 1, 2].map((row) => (
-                <div key={row} className={s.mcpItem}>
-                  <div className={s.mcpItemHead}>
-                    <SkeletonBar width={7} height={7} round />
-                    <SkeletonBar width="34%" />
-                    <div className={s.spacer} />
-                    <SkeletonBar width="16%" height={9} />
-                  </div>
-                  <div className={s.mcpCommand}>
-                    <SkeletonBar width="58%" height={9} />
-                  </div>
-                </div>
-              ))
-            : null}
-
-          {servers?.length === 0 ? <div className={s.historyEmpty}>No MCP servers configured.</div> : null}
-
-          {shown.map((group) => (
-            <div key={group.scope} className={s.mcpGroup}>
-              <div className={s.mcpGroupHead}>
-                <span className={s.historyLabel}>{group.title}</span>
-                {group.hint ? <span className={s.historyHint}>{group.hint}</span> : null}
+      {servers === null
+        ? [0, 1, 2].map((row) => (
+            <div key={row} className={s.card}>
+              <div className={s.cardTop}>
+                <SkeletonBar width={6} height={6} round />
+                <SkeletonBar width="34%" />
               </div>
-
-              {group.servers.map((server) => (
-                <ServerRow
-                  key={server.name}
-                  server={server}
-                  pendingAction={pendingAction}
-                  onAction={setPendingAction}
-                  onReconnect={onReconnect}
-                  onAuthenticate={onAuthenticate}
-                  onRemove={onRemove}
-                />
-              ))}
+              <SkeletonBar width="58%" height={9} />
             </div>
+          ))
+        : null}
+
+      {servers?.length === 0 ? <div className={s.screenEmpty}>No MCP servers configured.</div> : null}
+
+      {shown.map((group) => (
+        <div key={group.scope} className={s.field}>
+          <div className={s.screenGroup}>
+            <span className={s.screenLabel}>{group.title}</span>
+            {group.hint ? <span className={s.screenGroupHint}>{group.hint}</span> : null}
+          </div>
+
+          {group.servers.map((server) => (
+            <ServerRow
+              key={server.name}
+              server={server}
+              pendingAction={pendingAction}
+              onAction={setPendingAction}
+              onReconnect={onReconnect}
+              onAuthenticate={onAuthenticate}
+              onRemove={onRemove}
+            />
           ))}
         </div>
+      ))}
 
-        <form
-          className={s.mcpAddForm}
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (!name.trim() || !command.trim()) return
+      <form
+        className={s.field}
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (!name.trim() || !command.trim()) return
 
-            setPendingAction(ADD_SERVER_KEY)
-            onAdd(name.trim(), command.trim(), transport)
-            setName('')
-            setCommand('')
-          }}
-        >
-          <span className={s.historyLabel}>ADD SERVER</span>
-          <div className={s.mcpAddRow}>
-            <input
-              className={s.mcpInput}
-              placeholder="name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
-            <div className={s.transportToggle}>
-              {TRANSPORTS.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  className={`${s.transportOption} ${transport === option ? s.transportOptionActive : ''}`}
-                  onClick={() => setTransport(option)}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
-          </div>
+          setPendingAction(ADD_SERVER_KEY)
+          onAdd(name.trim(), command.trim(), transport)
+          setName('')
+          setCommand('')
+        }}
+      >
+        <span className={s.screenLabel}>ADD SERVER</span>
+        <div className={s.inputRow}>
           <input
-            className={s.mcpInput}
-            placeholder="command, or URL for sse/http"
-            value={command}
-            onChange={(event) => setCommand(event.target.value)}
+            className={s.input}
+            placeholder="name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
           />
-          <button type="submit" className={s.mcpAddButton} disabled={pendingAction === ADD_SERVER_KEY}>
+          <div className={s.tabs}>
+            {TRANSPORTS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                className={`${s.tab} ${transport === option ? s.tabOn : ''}`}
+                onClick={() => setTransport(option)}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
+        <input
+          className={s.input}
+          placeholder="command, or URL for sse/http"
+          value={command}
+          onChange={(event) => setCommand(event.target.value)}
+        />
+        <div className={s.formActions}>
+          <button type="button" className={s.button} onClick={onRefresh} disabled={loading}>
+            {loading ? 'Refreshing…' : 'Refresh all'}
+          </button>
+          <button type="submit" className={`${s.button} ${s.buttonPrimary}`} disabled={pendingAction === ADD_SERVER_KEY}>
             {pendingAction === ADD_SERVER_KEY ? 'Adding…' : 'Add'}
           </button>
-        </form>
-      </div>
-    </>
+        </div>
+      </form>
+    </div>
   )
 }
 
@@ -232,30 +225,31 @@ const ServerRow = ({
   const removeKey = `remove:${server.name}`
   const busy = pendingAction === authKey || pendingAction === reconnectKey || pendingAction === removeKey
   const removable = server.scope === 'project' || server.scope === 'user' || server.scope === 'local'
+  const needsAuth = server.status === 'needs-auth'
 
   return (
-    <div className={s.mcpItem}>
-      <div className={s.mcpItemHead}>
-        <span className={`${s.mcpDot} ${server.status === 'connected' ? s.mcpDotOn : s.mcpDotOff}`} />
-        <span className={s.mcpName}>{server.name}</span>
-        <span className={`${s.mcpStatusText} ${STATUS_CLASS[server.status] ?? ''}`}>
+    <div className={`${s.card} ${needsAuth ? s.cardWarn : ''}`}>
+      <div className={s.cardTop}>
+        <span className={`${s.cardDot} ${DOT_CLASS[server.status] ?? ''}`} />
+        <span className={s.cardName}>{server.name}</span>
+        <span className={`${s.cardState} ${STATUS_CLASS[server.status] ?? ''}`}>
           {STATUS_TEXT[server.status] ?? server.status}
         </span>
       </div>
 
-      <div className={s.mcpCommand} title={server.command}>
+      <div className={s.cardCommand} title={server.command}>
         {server.command}
       </div>
 
       {/* The reason for a failure is shown right here: without it "failed" sends one off to read logs
           although the CLI has already explained everything. */}
-      {server.error ? <div className={s.mcpError}>{server.error}</div> : null}
+      {server.error ? <div className={s.cardError}>{server.error}</div> : null}
 
-      <div className={s.mcpActions}>
-        {server.status === 'needs-auth' ? (
+      <div className={s.cardActions}>
+        {needsAuth ? (
           <button
             type="button"
-            className={`${s.mcpAction} ${s.mcpActionPrimary}`}
+            className={`${s.button} ${s.buttonPrimary}`}
             disabled={busy}
             onClick={() => {
               onAction(authKey)
@@ -268,7 +262,7 @@ const ServerRow = ({
 
         <button
           type="button"
-          className={s.mcpAction}
+          className={s.button}
           disabled={busy}
           onClick={() => {
             onAction(reconnectKey)
@@ -281,7 +275,7 @@ const ServerRow = ({
         {removable ? (
           <button
             type="button"
-            className={`${s.mcpAction} ${s.mcpActionDanger}`}
+            className={`${s.button} ${s.buttonDanger}`}
             disabled={busy}
             onClick={() => {
               onAction(removeKey)

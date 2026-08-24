@@ -41,6 +41,24 @@ describe('a command short caption', () => {
 
   it('does not treat entering a directory and loading the environment as the work itself', () => {
     expect(commandLabel('cd /Users/max/project && pnpm dev')).toBe('pnpm dev')
+  })
+
+  /**
+   * A waiting loop is the shape that used to defeat this: every one of them came out as "until" plus
+   * whatever word followed, so a header full of them said nothing about any of them.
+   */
+  it('names a loop by the work inside it', () => {
+    expect(commandLabel('until curl -s https://example.com | grep -q ok; do sleep 10; done')).toBe('curl')
+    expect(commandLabel('while pgrep -f sandbox >/dev/null; do sleep 5; done')).toBe('pgrep')
+  })
+
+  it('looks inside a shell that was handed a string', () => {
+    expect(commandLabel(`sh -c 'pnpm build && node dist/index.js'`)).toBe('pnpm build')
+  })
+
+  /** A keyword on its own is still better than nothing: there is nothing else to call it. */
+  it('keeps the keyword when there is nothing behind it', () => {
+    expect(commandLabel('until')).toBe('until')
     expect(commandLabel('source .env && ./gradlew runIde')).toBe('gradlew runIde')
   })
 

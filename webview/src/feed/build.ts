@@ -15,17 +15,20 @@ import { initialPanelState, push, type PanelAction, type PanelState } from './pa
 import { applyApiRetry, closeRetry, closeRetryFor } from './retry'
 import {
   appendAgentLog,
+  applyReplayedTaskNotification,
   applyTaskNotification,
   applyTaskProgress,
   applyTaskStarted,
   mapTool,
   noteSubagent,
 } from './tasks'
+import { replayedMessage } from './replayed'
 import { readPlan, readQuestions, readTodos } from './toolInput'
 import { chipFor, detailFor, formatDuration, hunksFor, metaFor, resultToText, targetFor } from './tools'
 import type {
   DetailLine,
   FeedItem,
+  TextItem,
   ThinkItem,
   TodoEntry,
   TodoItem,
@@ -185,6 +188,20 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
       // The process is gone right in the middle of a pause before a retry - there is nobody left to
       // retry, and the card has to stop waiting along with it.
       return applyProcessExited(closeRetry(finishCompacting(state), 'stopped', now), action.exitCode, now)
+
+    case 'streamPrimed': {
+      // The same identifier the first delta would have handed out, and for the same reason: the card
+      // being printed and the finished one have to be one node to React, or the reveal animation breaks
+      // off on the answer's last words (see streamingId in panelState.ts).
+      const hasText = action.text.length > 0
+      return {
+        ...state,
+        streamingText: action.text,
+        streamingThinking: action.thinking,
+        streamingId: state.streamingId ?? (hasText ? `i-${state.seq}` : undefined),
+        seq: state.streamingId || !hasText ? state.seq : state.seq + 1,
+      }
+    }
 
     case 'replayFinished':
       return applyReplayFinished(finishCompacting(state), now)
@@ -489,8 +506,10 @@ const closeUnfinished = (
  *
  * There would have been someone to answer for such cards only in the conversation they were launched in -
  * and its process has long been gone. This is especially about background subagents: their outcome is
- * brought by a separate system event, while a transcript holds nothing but messages, so for the card it
- * would never arrive at all. A tab opened from the history showed past agents as working right now: with
+ * brought by a separate system event, and a transcript holds nothing but messages. What the transcript
+ * does keep is the notification the CLI wrote into the talk itself, and everything named in one is closed
+ * by it (see applyReplayedTaskNotification); the rest reach this point still "running". A tab opened from
+ * the history showed past agents as working right now: with
  * a running counter (it ran from the moment the tab was opened rather than from their launch), with a
  * chip in the header, with a "kill" cross - there was nothing to kill in this process - and with a
  * "Waiting for N subagents" line under the feed.
@@ -756,12 +775,16 @@ const applyAgentEvent = (
     }
 
     case 'user': {
+      const blocks = blocksOf(event.message.content)
+      // A task's own report about its end: in a replay this record is all that is left of it - the event
+      // it arrives by in a live run is not kept anywhere (see applyReplayedTaskNotification).
+      const noted = replay ? applyReplayedTaskNotification(state, blocks, now) : state
       // In a live conversation a person's message lands in the feed at the moment of sending (see
       // 'prompt'), and the same thing out of the stream would double it. In a replay there was nobody to
       // put it there: that record is the only trace that the person said anything at all, and without it
       // a past conversation's feed consisted of answers alone.
-      const withPrompt = replay ? addReplayedPrompt(state, event, now) : state
-      return applyToolResults(withPrompt, blocksOf(event.message.content), now)
+      const withPrompt = replay ? addReplayedPrompt(noted, event, now) : noted
+      return applyToolResults(withPrompt, blocks, now)
     }
 
     case 'result': {
@@ -1282,10 +1305,15 @@ const ASYNC_AGENT_LAUNCHED = /^Async agent launched successfully/
 
 /**
  * The internal things the CLI puts into a person's message in their own words: a reminder to itself, the
- * preamble about local commands and their output. In a past conversation's feed that would look like
- * something the person said.
+ * preamble about local commands and their output, the notification about a task that has ended. In a past
+ * conversation's feed that would look like something the person said - a background command reported
+ * itself in the middle of the talk with a wall of markup signed with the person's name and time.
+ *
+ * The notification is not merely dropped: before this it goes into the card of the task it speaks about
+ * (see applyReplayedTaskNotification).
  */
-const SERVICE_BLOCK = /<(system-reminder|local-command-caveat|local-command-stdout|command-message)>[\s\S]*?<\/\1>/g
+const SERVICE_BLOCK =
+  /<(system-reminder|local-command-caveat|local-command-stdout|command-message|task-notification)>[\s\S]*?<\/\1>/g
 
 /** A slash command lies in a transcript as markup rather than as the string "/deploy 0.7.11". */
 const COMMAND_NAME = /<command-name>([\s\S]*?)<\/command-name>/
@@ -1316,6 +1344,22 @@ const replayedPromptText = (blocks: ContentBlock[]): string => {
 }
 
 /**
+ * What the agent has already said in this conversation - what tells a quotation of its words from a
+ * sentence somebody merely put in quotation marks (see replayedMessage).
+ *
+ * The last few answers rather than all of them: a quote is picked up from what is on screen, which is
+ * to say from the recent part of the talk, and scanning a whole day's answers on every replayed message
+ * would be work for nothing.
+ */
+const QUOTABLE_ANSWERS = 40
+
+const agentAnswers = (state: PanelState): string[] =>
+  state.items
+    .filter((item): item is TextItem => item.kind === 'text')
+    .slice(-QUOTABLE_ANSWERS)
+    .map((item) => item.source)
+
+/**
  * A person's message out of a past conversation's replay.
  *
  * A live conversation puts it into the feed itself, when the person presses Send - in a replay this is
@@ -1339,12 +1383,17 @@ const addReplayedPrompt = (
   // whole past conversation would look like today's.
   const said = Date.parse(event.timestamp ?? '')
 
+  // Back into the pieces it was sent as - a file, an image, a quote of the agent's words - rather than
+  // as the one string a transcript keeps (see replayed.ts). Without it a conversation opened from the
+  // history read as a wall of paths and quotation marks where at the desk it had been a line of chips.
+  const { tokens, quotes } = replayedMessage(text, agentAnswers(state))
+
   return push(state, (id) => ({
     id,
     kind: 'user',
     time: formatClock(Number.isNaN(said) ? now : said),
-    tokens: [{ kind: 'text', value: text }],
-    quotes: [],
+    tokens: tokens.length > 0 ? tokens : [{ kind: 'text', value: text }],
+    quotes,
   }))
 }
 

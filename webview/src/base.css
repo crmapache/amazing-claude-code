@@ -29,7 +29,9 @@ body {
   background: var(--acc-bg);
   color: var(--acc-fg);
   font-family: var(--acc-font);
-  font-size: 13px;
+  /* Thirteen in the panel, fifteen under a thumb - see --acc-fs-body in tokens.css. Almost everything
+     in the feed inherits from here, so this single line is what the touch type scale rides on. */
+  font-size: var(--acc-fs-body, 13px);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
@@ -39,9 +41,11 @@ a {
   text-decoration: none;
 }
 
-a:hover {
-  color: var(--acc-accent-light);
-  text-decoration: underline;
+@media (hover: hover) {
+  a:hover {
+    color: var(--acc-accent-light);
+    text-decoration: underline;
+  }
 }
 
 textarea,
@@ -122,10 +126,12 @@ button:disabled {
   left: 0;
 }
 
-[data-tooltip]:hover::after {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
+@media (hover: hover) {
+  [data-tooltip]:hover::after {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
 }
 
 /* The user explicitly asked for the focus ring to be removed everywhere: it irritates more than it helps.
@@ -148,10 +154,12 @@ button:disabled {
   background-clip: content-box;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--acc-line-hover);
-  border: 2px solid transparent;
-  background-clip: content-box;
+@media (hover: hover) {
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--acc-line-hover);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
 }
 
 ::-webkit-scrollbar-track {

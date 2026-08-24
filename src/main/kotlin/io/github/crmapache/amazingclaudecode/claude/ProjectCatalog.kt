@@ -1,0 +1,678 @@
+package io.github.crmapache.amazingclaudecode.claude
+
+import com.intellij.ide.BrowserUtil
+import com.intellij.ide.plugins.PluginManagerCore
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.extensions.PluginId
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
+import com.intellij.util.concurrency.AppExecutorUtil
+import io.github.crmapache.amazingclaudecode.project.ProjectFacts
+import io.github.crmapache.amazingclaudecode.sound.AlertSounds
+import java.util.concurrent.TimeUnit
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
+
+/**
+ * What surrounds the conversations: the project's own facts, the files and commands the input field
+ * hints with, the MCP servers, the plugins and the marketplaces.
+ *
+ * All of it belongs to the project rather than to a window, and all of it costs a process to learn -
+ * `claude mcp list` and `claude plugin list` are separate runs of the CLI, and the file walk touches
+ * a whole repository. Kept in the panel, that work was redone from scratch every time the panel was
+ * re-opened, and with a second client it would be redone on every join. Here it is done once and the
+ * answer is remembered by the hub (see ClaudeSessionHub.broadcastProject).
+ */
+internal class ProjectCatalog(
+    private val project: Project,
+    private val hub: ClaudeSessionHub,
+) {
+
+    /**
+     * The conversation and the deadline up to which returning focus to the IDE should nudge the MCP
+     * status ahead of schedule - see [scheduleMcpRefresh].
+     */
+    @Volatile
+    var pendingMcpRefreshSessionId: String? = null
+        private set
+
+    @Volatile
+    var pendingMcpRefreshUntil: Long = 0L
+        private set
+
+    // --- The project's own facts ---------------------------------------------------
+
+    fun sendInit() {
+        val preferences = ClaudePreferences.snapshot()
+
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "init")
+                put("projectName", project.name)
+                put("workingDirectory", project.basePath.orEmpty())
+                ProjectFacts.gitBranch(project)?.let { put("gitBranch", it) }
+                // The panel's own version, shown at the foot of the menu. Asked of the platform rather
+                // than kept as a constant of ours: a second copy of a number that Gradle already patches
+                // into plugin.xml is a number that will one day disagree with it.
+                PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))?.version?.let { put("pluginVersion", it) }
+                // The choice of model and the rest outlives an IDE restart: looking for it again after
+                // every opening is the same as not saving it at all.
+                putJsonObject("preferences") {
+                    put("model", preferences.model)
+                    put("effort", preferences.effort)
+                    // With the same value the process will genuinely come up with: the selector in the
+                    // panel has to tell the truth from the first second. Never chosen at all - we take
+                    // Claude Code's own default, the way the terminal takes it (see
+                    // PermissionDefaultMode).
+                    put(
+                        "mode",
+                        PermissionModes.resolve(
+                            preferences.mode,
+                            fallback = PermissionDefaultMode.of(project.basePath),
+                        ),
+                    )
+                    if (preferences.composerLayout.isNotEmpty()) put("composerLayout", preferences.composerLayout)
+                }
+                // The sound settings are also a choice made once.
+                putJsonObject("sounds") {
+                    putJsonArray("muted") {
+                        ClaudePreferences.mutedSounds.filter { it in AlertSounds.ids }.forEach { add(it) }
+                    }
+                    putJsonObject("volumes") {
+                        ClaudePreferences.soundVolumes
+                            .filterKeys { it in AlertSounds.ids }
+                            .forEach { (id, volume) -> put(id, volume) }
+                    }
+                }
+            }.toString(),
+        )
+    }
+
+    fun refreshBranch() {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val branch = ProjectFacts.gitBranch(project) ?: return@executeOnPooledThread
+
+            hub.broadcastProject(
+                buildJsonObject {
+                    put("type", "project")
+                    put("gitBranch", branch)
+                }.toString(),
+            )
+        }
+    }
+
+    /**
+     * The current branch's pull request for the bottom line. We send the field even when there is no PR
+     * (as an empty string) rather than stay silent - otherwise the webview side cannot tell "the PR has
+     * just been closed or merged" from "this message is not about a PR at all", see reducePanel.
+     */
+    fun refreshPullRequest() {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val pullRequest = ProjectFacts.pullRequest(project)
+
+            hub.broadcastProject(
+                buildJsonObject {
+                    put("type", "project")
+                    put("pullRequest", pullRequest?.number.orEmpty())
+                    put("pullRequestUrl", pullRequest?.url.orEmpty())
+                }.toString(),
+            )
+        }
+    }
+
+    /** Walking the disk is not instant on a big repository, so it happens in the background. */
+    fun refreshFiles() {
+        AppExecutorUtil.getAppExecutorService().submit {
+            val files = ClaudeFileSearch.list(project.basePath)
+
+            hub.broadcastProject(
+                buildJsonObject {
+                    put("type", "files")
+                    putJsonArray("files") { files.forEach { file -> add(file) } }
+                }.toString(),
+            )
+        }
+    }
+
+    /**
+     * The description and argument syntax of slash commands - out of the frontmatter of files on disk
+     * (see ClaudeCommandHints). The list of installed plugins is needed only for their installPath, so
+     * we take the light `plugin list` without `--available`.
+     */
+    fun refreshCommandHints() {
+        ClaudePlugin.installed(
+            project.basePath,
+            onResult = { installed ->
+                AppExecutorUtil.getAppExecutorService().submit {
+                    val hints = ClaudeCommandHints.scan(project.basePath, installed)
+
+                    hub.broadcastProject(
+                        buildJsonObject {
+                            put("type", "commandHints")
+                            putJsonObject("hints") {
+                                hints.forEach { (id, hint) ->
+                                    putJsonObject(id) {
+                                        put("description", hint.description)
+                                        put("argumentHint", hint.argumentHint)
+                                    }
+                                }
+                            }
+                        }.toString(),
+                    )
+                }
+            },
+            onError = { thisLogger().warn("Couldn't list plugins for command hints: $it") },
+        )
+    }
+
+    /** Reading the history folder touches the disk, so it happens in the background. */
+    fun sendHistory(clientId: String) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val entries = ClaudeHistory.list(project.basePath)
+
+            // Addressed at whoever asked rather than broadcast: this is a dialog someone opened, and it
+            // is of no interest to anyone else watching the same project.
+            hub.emitTo(
+                clientId,
+                buildJsonObject {
+                    put("type", "history")
+                    putJsonArray("conversations") {
+                        for (entry in entries) {
+                            addJsonObject {
+                                put("id", entry.id)
+                                put("title", entry.title)
+                                put("updatedAt", entry.updatedAt)
+                                put("messages", entry.messages)
+                                // Where the name came from: a conversation opened in a tab keeps it,
+                                // and a guess is worth replacing with the model's own name once the
+                                // conversation carries on (see ClaudeSession.requestTitle).
+                                put(
+                                    "titleSource",
+                                    if (entry.named) SessionSnapshot.TITLE_LLM else SessionSnapshot.TITLE_HEURISTIC,
+                                )
+                            }
+                        }
+                    }
+                }.toString(),
+            )
+        }
+    }
+
+    /**
+     * A page of this conversation's messages older than what the client already has - read straight off
+     * the transcript Claude Code keeps for it (see ClaudeHistory.page), not off the in-memory journal:
+     * that one exists to protect the live transport and forgets its own beginning long before the disk
+     * does (see ClaudeSessionHub.CatchUp). Addressed at whoever asked, like [sendHistory] above - it is a
+     * page turned by one reader, not a change to the conversation itself.
+     */
+    fun sendHistoryPage(clientId: String, sessionId: String, before: String?) {
+        val conversationId = hub.conversations.conversationIdOf(sessionId)
+        if (conversationId == null) {
+            hub.emitTo(
+                clientId,
+                buildJsonObject {
+                    put("type", "historyPage")
+                    put("sessionId", sessionId)
+                    putJsonArray("entries") {}
+                }.toString(),
+            )
+            return
+        }
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val page = ClaudeHistory.page(project.basePath, conversationId, before)
+
+            hub.emitTo(
+                clientId,
+                buildJsonObject {
+                    put("type", "historyPage")
+                    put("sessionId", sessionId)
+                    putJsonArray("entries") {
+                        for (line in page.lines) add(Json.parseToJsonElement(line))
+                    }
+                    if (page.cursor != null) put("cursor", page.cursor)
+                }.toString(),
+            )
+        }
+    }
+
+    // --- Bash mode -----------------------------------------------------------------
+
+    /**
+     * A command from the input field typed through "!": we run it ourselves, in the project's working
+     * directory, and return its output (see [ShellCommand]).
+     *
+     * On a pool rather than the interface thread: a command may run for minutes, and the panel has to
+     * stay alive the whole time - the card in the feed is already drawn and waiting for a result.
+     */
+    fun runShellCommand(clientId: String, sessionId: String, id: String, command: String) {
+        // Without a number there is nobody to answer: the card in the feed is found by exactly that.
+        if (id.isBlank()) return
+
+        // An empty command, on the other hand, gets an answer rather than silence: the card is already
+        // standing in the feed and without one would stay "running" until the end of the conversation -
+        // there is nothing to stop or remove it with.
+        if (command.isBlank()) {
+            sendBashResult(
+                clientId,
+                sessionId,
+                id,
+                ShellCommand.Result(exitCode = -1, stdout = "", stderr = "Empty command."),
+            )
+            return
+        }
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            sendBashResult(clientId, sessionId, id, ShellCommand.run(command, project.basePath))
+        }
+    }
+
+    private fun sendBashResult(clientId: String, sessionId: String, id: String, result: ShellCommand.Result) {
+        hub.emitTo(
+            clientId,
+            buildJsonObject {
+                put("type", "bashResult")
+                put("sessionId", sessionId)
+                put("id", id)
+                put("exitCode", result.exitCode)
+                put("stdout", result.stdout)
+                put("stderr", result.stderr)
+            }.toString(),
+        )
+    }
+
+    // --- MCP -----------------------------------------------------------------------
+
+    /**
+     * What the panel knows about MCP - the same thing `/mcp` shows in a terminal: who is connected, who
+     * needs a sign-in, who failed and why, where each one came from.
+     *
+     * We ask the conversation rather than parse the output of `claude mcp list`: the servers are raised
+     * and held by the conversation's process, and only it knows their live state. The conversation is
+     * brought up for this - as in the terminal, where `/mcp` is asked of a running session (see
+     * ClaudeSessions.mcpStatus).
+     */
+    fun refreshMcp(sessionId: String) {
+        hub.conversations.mcpStatus(
+            sessionId,
+            onResult = { status -> sendMcpServers(status) },
+            onFailure = { error -> sendMcpActionResult(false, error) },
+        )
+    }
+
+    /**
+     * Reconnecting one server. This is also the "try again" for a failed one: the CLI raises it anew by
+     * the same request.
+     */
+    fun reconnectMcp(sessionId: String, server: String) {
+        if (server.isEmpty()) return
+
+        hub.conversations.mcpReconnect(
+            sessionId,
+            server,
+            onResult = {
+                sendMcpActionResult(true, "Reconnecting $server…")
+                // Not at once: the handshake with a server takes seconds, and a status asked right away
+                // would show the previous one.
+                scheduleMcpRefresh(sessionId, MCP_RECONNECT_REFRESH_SECONDS)
+            },
+            onFailure = { error -> sendMcpActionResult(false, error) },
+        )
+    }
+
+    /**
+     * Signing in to a server that requires it - the same as "Authenticate" in the terminal's `/mcp`.
+     *
+     * The CLI hands over an address, the panel opens it for the person, and the code from the browser is
+     * caught by the CLI itself: it has raised a local handler for that inside the conversation's
+     * process. So all that is left is to ask for the status again - about the sign-in's end it sends no
+     * separate event.
+     */
+    fun authenticateMcp(sessionId: String, server: String) {
+        if (server.isEmpty()) return
+
+        hub.conversations.mcpAuthenticate(
+            sessionId,
+            server,
+            onResult = { response ->
+                val url = response["authUrl"]?.jsonPrimitive?.contentOrNull.orEmpty()
+
+                if (url.isEmpty()) {
+                    // No sign-in was needed - the server let it through, and the status will show that.
+                    sendMcpActionResult(true, "$server is signed in.")
+                    scheduleMcpRefresh(sessionId, MCP_AUTH_FIRST_REFRESH_SECONDS)
+                    return@mcpAuthenticate
+                }
+
+                BrowserUtil.browse(url)
+                sendMcpActionResult(true, "Finish signing in to $server in the browser - the list updates itself.")
+                for (delay in MCP_AUTH_REFRESH_SECONDS) scheduleMcpRefresh(sessionId, delay)
+            },
+            onFailure = { error -> sendMcpActionResult(false, error) },
+        )
+    }
+
+    fun addMcp(sessionId: String, name: String, command: String, transport: String?) {
+        ClaudeMcp.add(
+            project.basePath,
+            name = name,
+            commandOrUrl = command,
+            transport = transport,
+            onResult = { message ->
+                sendMcpActionResult(true, message)
+                // An added server comes up only in a new process: the config is read at launch, a live
+                // conversation cannot be handed it.
+                refreshMcpAfterRestart(sessionId)
+            },
+            onError = { error -> sendMcpActionResult(false, error) },
+        )
+    }
+
+    fun removeMcp(sessionId: String, name: String) {
+        ClaudeMcp.remove(
+            project.basePath,
+            name = name,
+            onResult = { message ->
+                sendMcpActionResult(true, message)
+                refreshMcpAfterRestart(sessionId)
+            },
+            onError = { error -> sendMcpActionResult(false, error) },
+        )
+    }
+
+    /**
+     * The servers' config is read at process launch, so an added or removed server is visible only to a
+     * new one: we restart the conversation - the transcript stays, the same one comes up.
+     */
+    private fun refreshMcpAfterRestart(sessionId: String) {
+        hub.conversations.restart(sessionId)
+        scheduleMcpRefresh(sessionId, MCP_RECONNECT_REFRESH_SECONDS)
+    }
+
+    fun scheduleMcpRefresh(sessionId: String, delaySeconds: Long) {
+        // The same conversation and waiting window the panel's activation watch sees: that is how focus
+        // returning to the IDE nudges the very same refresh ahead of schedule.
+        pendingMcpRefreshSessionId = sessionId
+        pendingMcpRefreshUntil = System.currentTimeMillis() + delaySeconds * 1000
+
+        AppExecutorUtil.getAppScheduledExecutorService().schedule(
+            { refreshMcp(sessionId) },
+            delaySeconds,
+            TimeUnit.SECONDS,
+        )
+    }
+
+    fun clearPendingMcpRefresh() {
+        pendingMcpRefreshSessionId = null
+    }
+
+    /**
+     * The CLI's answer as it is, only laid out into the fields the panel draws. We invent no statuses of
+     * our own: their set ("connected", "needs-auth", "failed", "pending", "disabled") is set by the CLI,
+     * and the panel is obliged to call a server's state by the same word the terminal does.
+     */
+    private fun sendMcpServers(status: JsonObject) {
+        val servers = status.items("mcpServers") ?: JsonArray(emptyList())
+
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "mcpServers")
+                putJsonArray("servers") {
+                    for (element in servers) {
+                        val server = element as? JsonObject ?: continue
+                        val config = server.child("config")
+
+                        addJsonObject {
+                            put("name", server["name"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                            put("status", server["status"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                            put("scope", server["scope"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                            put("transport", config?.get("type")?.jsonPrimitive?.contentOrNull.orEmpty())
+                            put("command", commandOf(config))
+                            put("error", server["error"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                        }
+                    }
+                }
+            }.toString(),
+        )
+    }
+
+    /** What a server is started by: a command with arguments, or an address. */
+    private fun commandOf(config: JsonObject?): String {
+        if (config == null) return ""
+
+        config["url"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }?.let { return it }
+
+        val command = config["command"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val arguments = config.items("args").orEmpty()
+            .mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+            .joinToString(" ")
+
+        return listOf(command, arguments).filter { it.isNotBlank() }.joinToString(" ")
+    }
+
+    private fun sendMcpActionResult(ok: Boolean, message: String) {
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "mcpActionResult")
+                put("ok", ok)
+                put("message", message)
+            }.toString(),
+        )
+    }
+
+    // --- Plugins and marketplaces ---------------------------------------------------
+
+    fun listPlugins() {
+        ClaudePlugin.list(
+            project.basePath,
+            onResult = { installed, available -> sendPlugins(installed, available) },
+            onError = { error -> sendPluginActionResult(false, error) },
+        )
+    }
+
+    fun listMarketplaces() {
+        ClaudePlugin.marketplaces(
+            project.basePath,
+            onResult = { marketplaces -> sendMarketplaces(marketplaces) },
+            onError = { error -> sendPluginActionResult(false, error) },
+        )
+    }
+
+    /**
+     * Install, uninstall, enable, disable: four subcommands of the CLI that differ in nothing but their
+     * name. Each used to carry its own copy of "report the outcome, then ask for the list again", and
+     * four copies of one paragraph are four chances for them to drift.
+     */
+    fun pluginAction(
+        plugin: String,
+        action: (String?, String, (String) -> Unit, (String) -> Unit) -> Unit,
+    ) {
+        if (plugin.isBlank()) return
+
+        action(
+            project.basePath,
+            plugin,
+            { message ->
+                sendPluginActionResult(true, message)
+                // The list has changed - we ask for it again ourselves: the CLI reports nothing about
+                // it, and the tab would go on showing what was there before the action.
+                ClaudePlugin.list(project.basePath, onResult = ::sendPlugins, onError = {})
+            },
+            { error -> sendPluginActionResult(false, error) },
+        )
+    }
+
+    /** The same for the marketplaces: adding and removing differ only in which list is asked for anew. */
+    fun marketplaceAction(
+        argument: String,
+        action: (String?, String, (String) -> Unit, (String) -> Unit) -> Unit,
+    ) {
+        if (argument.isBlank()) return
+
+        action(
+            project.basePath,
+            argument,
+            { message ->
+                sendPluginActionResult(true, message)
+                ClaudePlugin.marketplaces(project.basePath, onResult = ::sendMarketplaces, onError = {})
+            },
+            { error -> sendPluginActionResult(false, error) },
+        )
+    }
+
+    private fun sendPlugins(installed: List<InstalledPlugin>, available: List<AvailablePlugin>) {
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "plugins")
+                putJsonArray("installed") {
+                    installed.forEach { plugin ->
+                        addJsonObject {
+                            put("id", plugin.id)
+                            put("version", plugin.version)
+                            put("scope", plugin.scope)
+                            put("enabled", plugin.enabled)
+                        }
+                    }
+                }
+                putJsonArray("available") {
+                    available.forEach { plugin ->
+                        addJsonObject {
+                            put("id", plugin.id)
+                            put("name", plugin.name)
+                            put("description", plugin.description)
+                            put("marketplace", plugin.marketplace)
+                            put("installCount", plugin.installCount)
+                        }
+                    }
+                }
+            }.toString(),
+        )
+    }
+
+    private fun sendPluginActionResult(ok: Boolean, message: String) {
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "pluginActionResult")
+                put("ok", ok)
+                put("message", message)
+            }.toString(),
+        )
+    }
+
+    private fun sendMarketplaces(marketplaces: List<PluginMarketplace>) {
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "marketplaces")
+                putJsonArray("marketplaces") {
+                    marketplaces.forEach { marketplace ->
+                        addJsonObject {
+                            put("name", marketplace.name)
+                            put("source", marketplace.source)
+                        }
+                    }
+                }
+            }.toString(),
+        )
+    }
+
+    // --- Background rounds -----------------------------------------------------------
+
+    /**
+     * The rounds that keep all of the above from going stale.
+     *
+     * They live on the hub's life rather than a window's now, because a phone watching this project
+     * needs them just as much as the panel does. But they start only while someone is watching (see
+     * [ClaudeSessionHub.hasClients]): today's tokens alone is the heaviest thing this plugin does in
+     * the background - every project's transcripts, parsed - and running it in every open project for
+     * the whole life of the IDE, with nobody looking, would be a plain waste.
+     */
+    fun scheduleUpdates(parentDisposable: Disposable, usage: ProjectUsage) {
+        val slow = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
+            {
+                if (!hub.hasClients()) return@scheduleWithFixedDelay
+                // The PR is asked of GitHub by a separate process - hence the rare period. Neither the
+                // branch nor the day's tokens come here: both have rounds of their own, one far more
+                // frequent and one far rarer.
+                refreshPullRequest()
+                // The file list for the "@" hint goes stale too - the agent may have created new ones in
+                // the meantime; the same rare period as the rest.
+                refreshFiles()
+                // Plugins and skills may have been installed or updated in the meantime - the same period
+                // as the rest of the background refreshing.
+                refreshCommandHints()
+            },
+            SLOW_PERIOD_MINUTES,
+            SLOW_PERIOD_MINUTES,
+            TimeUnit.MINUTES,
+        )
+
+        /**
+         * "Today's tokens" is the most expensive thing done in the background, and by a wide margin:
+         * every project's transcripts, every line of every file touched in the last two days, parsed as
+         * JSON. So it gets a round of its own - the figure creeps rather than jumps, and five minutes of
+         * staleness on it costs nothing.
+         */
+        val tokens = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
+            { if (hub.hasClients()) usage.refreshTodayTokens() },
+            TOKENS_PERIOD_MINUTES,
+            TOKENS_PERIOD_MINUTES,
+            TimeUnit.MINUTES,
+        )
+
+        /**
+         * The branch is simply a small file read from disk, not a trip to GitHub as the PR is. Running it
+         * on the same rare round was a mistake: after a `git checkout` in the terminal the panel showed
+         * the old branch for a noticeable while. Here the round is short - the same cost is near zero.
+         */
+        val branch = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
+            { if (hub.hasClients()) refreshBranch() },
+            BRANCH_PERIOD_SECONDS,
+            BRANCH_PERIOD_SECONDS,
+            TimeUnit.SECONDS,
+        )
+
+        Disposer.register(parentDisposable) {
+            slow.cancel(false)
+            tokens.cancel(false)
+            branch.cancel(false)
+        }
+    }
+
+    companion object {
+        /** Ours as the platform knows us - the same string Gradle patches into plugin.xml. */
+        private const val PLUGIN_ID = "io.github.crmapache.amazingclaudecode"
+
+        /** The round for everything that is expensive and changes unhurriedly. */
+        private const val SLOW_PERIOD_MINUTES = 1L
+
+        /** Rarer still, because it is the heaviest of the lot. */
+        private const val TOKENS_PERIOD_MINUTES = 5L
+
+        private const val BRANCH_PERIOD_SECONDS = 5L
+
+        /** How long we wait after a restart before asking for the MCP statuses again. */
+        const val MCP_RECONNECT_REFRESH_SECONDS = 3L
+
+        /** The server let us in without a sign-in - the status will update almost at once. */
+        private const val MCP_AUTH_FIRST_REFRESH_SECONDS = 2L
+
+        /**
+         * When to ask for the status again while the person is signing in inside a browser. The CLI does
+         * not report the sign-in's end, so we look ourselves - rarely and not forever: in ten seconds or
+         * so the sign-in is usually done, and by a minute it becomes clear the window was simply closed.
+         */
+        private val MCP_AUTH_REFRESH_SECONDS = listOf(10L, 25L, 60L)
+    }
+}

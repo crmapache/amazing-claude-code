@@ -73,6 +73,26 @@ class ClaudeLaunchTest {
         assertEquals("stream-json", args[args.indexOf("--input-format") + 1])
     }
 
+    // The CLI takes a streaming launch for an unattended script and tells the agent as much: an MCP
+    // sign-in is impossible here, send the person to a terminal. The panel signs one in with a button
+    // of its own, so the agent has to be told where it actually is - otherwise it turns a person away
+    // from a screen they already have open.
+    @Test
+    fun `the agent is told it runs in the panel, not in a script`() {
+        val args = arguments()
+        val briefing = args[args.indexOf(ClaudeLaunch.BRIEFING_FLAG) + 1]
+
+        assertTrue("MCP" in briefing)
+        assertFalse(briefing.isBlank())
+    }
+
+    // The CLI's own system prompt has to stay: replacing it would take away everything the agent knows
+    // about tools and about the project.
+    @Test
+    fun `our line joins the CLI's system prompt rather than replacing it`() {
+        assertFalse("--system-prompt" in arguments())
+    }
+
     @Test
     fun `continuing a conversation and branching do not get mixed up`() {
         val resumed = arguments(conversationId = "conversation-1", forkFrom = "parent-1")

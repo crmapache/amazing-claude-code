@@ -1,0 +1,1187 @@
+/*
+ * The menu behind the burger: one panel down the right-hand edge, with a screen of its own behind every
+ * entry.
+ *
+ * It used to be a dropdown that opened five different overlays, each with a head, a scrim and a width of
+ * its own, each covering the header it was opened from. They shared nothing but the scrim - so remote
+ * access, which has the most to say, got the same cramped popover as a list of six sounds.
+ *
+ * Here there is one surface. The root list stays where it was, a chosen entry slides its screen over it,
+ * and the head keeps the way back. What each screen holds is its own business; the frame is this file.
+ */
+
+.scrim {
+  position: absolute;
+  /* The whole panel, header included: the menu covers the tabs it was opened above rather than squeezing
+     itself under them. Nothing behind it is clickable while it is open - that is what the scrim is for. */
+  inset: 0;
+  z-index: 40;
+  background: rgb(var(--acc-ch-shade) / 55%);
+  transition: opacity 0.22s ease;
+}
+
+.scrimOpen {
+  opacity: 1;
+}
+
+/* Closed it is not merely invisible: a transparent sheet over the whole panel would swallow every click
+   on the feed. */
+.scrimShut {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sheet {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  /* In the IDE the tool window is often narrower than the menu - then it takes what there is rather than
+     hanging off the edge. */
+  width: min(350px, 100%);
+  background: var(--acc-bg-panel);
+  border-left: 1px solid var(--acc-line-strong);
+  box-shadow: -18px 0 44px rgb(var(--acc-ch-shade) / 62%);
+  transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.sheetOpen {
+  transform: translateX(0);
+}
+
+.sheetShut {
+  transform: translateX(100%);
+}
+
+/* --- The head: the way back, where one is, and the way out ------------------ */
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 6px 0 8px;
+  border-bottom: 1px solid var(--acc-line);
+}
+
+.headButton {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--acc-r-sm);
+  color: var(--acc-fg-soft);
+}
+
+.headButton:hover,
+.headButton[data-hover] {
+  background: var(--acc-bg-menu-hover);
+  color: var(--acc-fg);
+}
+
+.headClose {
+  color: var(--acc-fg-faint);
+}
+
+.headTitles {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 3px;
+}
+
+.title {
+  font: 600 9.5px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-fg-soft);
+}
+
+/* One line, always: a hint that wrapped would push the head's height about as one moved between screens. */
+.hint {
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.headSpace {
+  flex: 1;
+  min-width: 4px;
+}
+
+/* --- The two levels -------------------------------------------------------- */
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.level {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  /* The wheel stops at this panel rather than carrying on into the feed underneath it once the list
+     reaches its end. */
+  overscroll-behavior: contain;
+  transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/*
+ * The root does not leave the screen whole - it slides a little way left and stays under the detail.
+ * That is what tells the eye the screen came from here rather than from nowhere, and it is why the way
+ * back is a step rather than a fresh start.
+ */
+.levelRoot {
+  padding-bottom: 14px;
+}
+
+.levelRootHeld {
+  transform: translateX(-22%);
+  overflow-y: hidden;
+}
+
+.levelRootShown {
+  transform: translateX(0);
+}
+
+/* The detail is opaque: the root is still underneath it, and through a transparent screen the two lists
+   would read as one. */
+.levelDetail {
+  background: var(--acc-bg-panel);
+}
+
+.levelDetailShown {
+  transform: translateX(0);
+}
+
+.levelDetailHidden {
+  transform: translateX(100%);
+  overflow-y: hidden;
+}
+
+/* --- The root list --------------------------------------------------------- */
+
+.group {
+  padding: 15px 12px 5px;
+  font: 600 9px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-fg-faint);
+}
+
+.groupFirst {
+  padding-top: 13px;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  padding: 0 6px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 8px;
+  border-radius: var(--acc-r-lg);
+  text-align: left;
+  transition: background-color 80ms linear;
+}
+
+.row:hover,
+.row[data-hover] {
+  background: var(--acc-bg-menu-hover);
+}
+
+/*
+ * The icon's tint says which of the panel's worlds the screen belongs to - the same colours the feed
+ * already speaks in, rather than a fresh palette for the menu.
+ */
+.rowIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--acc-r-xl);
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-dim);
+}
+
+.rowIconHistory {
+  background: var(--acc-accent-12);
+  color: var(--acc-accent);
+}
+
+.rowIconMcp {
+  background: var(--acc-branch-12);
+  color: var(--acc-branch);
+}
+
+.rowIconPlugins {
+  background: var(--acc-agent-12);
+  color: var(--acc-agent);
+}
+
+.rowIconSounds {
+  background: var(--acc-warn-12);
+  color: var(--acc-warn);
+}
+
+.rowIconMode {
+  background: rgb(var(--acc-ch-copper) / 12%);
+  color: var(--acc-orange);
+}
+
+.rowIconLayout {
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-dim);
+}
+
+.rowText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rowLabel {
+  font: 500 12.5px var(--acc-font);
+  color: var(--acc-fg);
+}
+
+.rowSub {
+  font-size: 11px;
+  color: var(--acc-fg-faint);
+}
+
+/* What the screen would say if one opened it - the count of servers, which mode is the default. Saves the
+   trip in the cases where the answer is the whole question. */
+.rowValue {
+  flex: none;
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.rowValueOk {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--acc-ok-light);
+}
+
+.rowValueDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9px;
+  background: var(--acc-ok);
+}
+
+.rowChevron {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  color: var(--acc-fg-ghost);
+}
+
+/*
+ * Remote access is the one entry that carries a state rather than a count, and the state is the reason
+ * to open it. A card with the state's own tint says at a glance what a row of text would have to be read
+ * for.
+ */
+.rowCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  width: 100%;
+  padding: 11px 10px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-card);
+  text-align: left;
+}
+
+.rowCard:hover,
+.rowCard[data-hover] {
+  border-color: var(--acc-line-hover);
+}
+
+.rowCardText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rowCardTop {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.rowCardHint {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--acc-fg-faint);
+  text-wrap: pretty;
+}
+
+.rowCardChevron {
+  flex: none;
+  margin-top: 6px;
+  width: 13px;
+  height: 13px;
+  color: var(--acc-fg-ghost);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px 2px;
+  border-radius: 999px;
+  font: 10px var(--acc-mono);
+  background: var(--acc-neutral-12);
+}
+
+.badgeDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 9px;
+  background: currentcolor;
+}
+
+.footer {
+  margin: 16px 12px 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--acc-line);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.footerVersion {
+  color: var(--acc-line-strong);
+}
+
+/* --- What a screen is made of ---------------------------------------------- */
+
+.screen {
+  padding: 12px 12px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* A list-shaped screen keeps its own padding: rows run edge to edge and are told apart by their hover,
+   not by a gap. */
+.screenList {
+  padding: 6px 6px 20px;
+  gap: 0;
+}
+
+.screenLabel {
+  font: 600 9px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-fg-faint);
+}
+
+.screenNote {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--acc-fg-faint);
+  text-wrap: pretty;
+}
+
+.screenEmpty {
+  padding: 18px 12px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--acc-fg-ghost);
+}
+
+.screenGroup {
+  padding: 9px 6px 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.screenGroupHint {
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A line that reports how an action went - the same place on every screen, right under the head. */
+.message {
+  padding: 7px 9px;
+  border-radius: var(--acc-r-lg);
+  font-size: 11px;
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+
+.messageOk {
+  background: var(--acc-ok-12);
+  color: var(--acc-ok-text);
+}
+
+.messageBad {
+  background: var(--acc-bad-12);
+  color: var(--acc-bad-text);
+}
+
+/* --- History ---------------------------------------------------------------- */
+
+.historyRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 8px;
+  border-radius: var(--acc-r-lg);
+  text-align: left;
+  transition: background-color 80ms linear;
+}
+
+.historyRow:hover,
+.historyRow[data-hover] {
+  background: var(--acc-bg-menu-hover);
+}
+
+.historyTitle {
+  font: 500 12.5px var(--acc-font);
+  color: var(--acc-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.historyMeta {
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+/* --- A card with a name, a state and buttons: MCP servers, plugins, devices -- */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-card);
+}
+
+.cardWarn {
+  border-color: var(--acc-warn-32);
+  background: var(--acc-warn-06);
+}
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cardDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 9px;
+  background: var(--acc-fg-ghost);
+}
+
+.cardDotOn {
+  background: var(--acc-ok);
+}
+
+.cardDotWarn {
+  background: var(--acc-warn);
+}
+
+.cardDotBad {
+  background: var(--acc-bad);
+}
+
+.cardName {
+  min-width: 0;
+  font: 12.5px var(--acc-mono);
+  color: var(--acc-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardState {
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.cardStateOk {
+  color: var(--acc-ok);
+}
+
+.cardStateWarn {
+  color: var(--acc-warn);
+}
+
+.cardStateBad {
+  color: var(--acc-bad);
+}
+
+.cardMeta {
+  flex: none;
+  margin-left: auto;
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+  white-space: nowrap;
+}
+
+.cardCommand {
+  font: 11px var(--acc-mono);
+  color: var(--acc-fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardError {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--acc-bad-text);
+  text-wrap: pretty;
+}
+
+.cardActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+/* --- Buttons --------------------------------------------------------------- */
+
+.button {
+  padding: 4px 10px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-control);
+  font: 11px var(--acc-font);
+  color: var(--acc-fg-body);
+  transition: background-color 80ms linear, border-color 80ms linear, color 80ms linear;
+}
+
+.button:hover:not(:disabled),
+.button[data-hover]:not(:disabled) {
+  border-color: var(--acc-line-hover);
+  background: var(--acc-bg-hover);
+  color: var(--acc-fg);
+}
+
+.button:disabled {
+  opacity: 0.5;
+}
+
+.buttonPrimary {
+  border-color: transparent;
+  background: var(--acc-accent);
+  color: var(--acc-on-accent);
+  font-weight: 500;
+}
+
+.buttonPrimary:hover:not(:disabled),
+.buttonPrimary[data-hover]:not(:disabled) {
+  border-color: transparent;
+  background: var(--acc-accent-hover);
+  color: var(--acc-on-accent);
+}
+
+.buttonDanger:hover:not(:disabled),
+.buttonDanger[data-hover]:not(:disabled) {
+  border-color: var(--acc-bad-40);
+  background: var(--acc-bad-12);
+  color: var(--acc-bad-text);
+}
+
+.buttonWide {
+  align-self: flex-start;
+}
+
+/* A form's own button: at the right-hand edge, under the end of the field it submits. */
+.buttonEnd {
+  align-self: flex-end;
+}
+
+/* A form's row of buttons: the one that submits it last, at the right-hand edge. */
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* --- Tabs inside a screen (plugins: installed / browse / markets) ----------- */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: var(--acc-r-xl);
+  background: var(--acc-bg-deep);
+}
+
+.tab {
+  flex: 1;
+  padding: 5px 6px;
+  border-radius: var(--acc-r-md);
+  font: 11px var(--acc-font);
+  color: var(--acc-fg-faint);
+}
+
+.tab:hover,
+.tab[data-hover] {
+  color: var(--acc-fg-body);
+}
+
+.tabOn {
+  background: var(--acc-bg-control);
+  color: var(--acc-fg);
+}
+
+/* --- Fields ---------------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.input {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-raised);
+  color: var(--acc-fg);
+  font: 12px var(--acc-mono);
+}
+
+.input:focus-visible {
+  outline: none;
+  border-color: var(--acc-accent-40);
+}
+
+.inputRow {
+  display: flex;
+  gap: 6px;
+}
+
+/* --- A switch -------------------------------------------------------------- */
+
+.switchRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-card);
+  text-align: left;
+}
+
+.switchRow:hover,
+.switchRow[data-hover] {
+  border-color: var(--acc-line-hover);
+}
+
+.switchText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.switchLabel {
+  font: 500 12.5px var(--acc-font);
+  color: var(--acc-fg);
+}
+
+.switchHint {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--acc-fg-faint);
+}
+
+.switchTrack {
+  flex: none;
+  position: relative;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--acc-line-strong);
+  transition: background 0.18s ease;
+}
+
+.switchTrackOn {
+  background: var(--acc-ok);
+}
+
+.switchKnob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--acc-bg-sunken);
+  transition: left 0.18s ease;
+}
+
+.switchKnobOn {
+  left: 17px;
+}
+
+/* --- Remote access --------------------------------------------------------- */
+
+.stateCard {
+  padding: 12px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-card);
+}
+
+.stateTop {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.stateDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 9px;
+  background: currentcolor;
+  box-shadow: 0 0 0 4px var(--acc-neutral-12);
+}
+
+.stateLabel {
+  font: 600 13px var(--acc-font);
+}
+
+.stateAgent {
+  margin-left: auto;
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.stateHint {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--acc-fg-dim);
+  text-wrap: pretty;
+}
+
+/*
+ * IDE - relay - device, drawn rather than described.
+ *
+ * The relay is the part people ask about, and the drawing answers the question before it is asked: the
+ * conversation does not go to a service somewhere, it goes through one hop that only forwards.
+ */
+.path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.pathNode {
+  flex: 1;
+  text-align: center;
+  padding: 7px 4px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-lg);
+  background: var(--acc-bg-raised);
+  font: 600 9px var(--acc-mono);
+  letter-spacing: 0.08em;
+  color: var(--acc-fg-faint);
+}
+
+.pathNodeLive {
+  border-color: currentcolor;
+}
+
+.pathLink {
+  flex: none;
+  width: 26px;
+  height: 1px;
+  background: var(--acc-line-strong);
+}
+
+.qr {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.qrCode {
+  flex: none;
+  padding: 8px;
+  border-radius: var(--acc-r-lg);
+  background: #fff;
+}
+
+.qrSide {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qrUrl {
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+  overflow-wrap: anywhere;
+}
+
+.device {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-card);
+}
+
+.deviceText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.deviceLabel {
+  font: 500 12px var(--acc-font);
+  color: var(--acc-fg);
+}
+
+.deviceMeta {
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.fingerprint {
+  font: 11px var(--acc-mono);
+  color: var(--acc-fg-mono);
+  letter-spacing: 0.04em;
+}
+
+/* The way into "what travels" - a row rather than a wall of text on the screen one came to switch
+   something on. */
+.aboutLink {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-card);
+  text-align: left;
+}
+
+.aboutLink:hover,
+.aboutLink[data-hover] {
+  border-color: var(--acc-line-hover);
+}
+
+.aboutIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--acc-neutral-12);
+  font: 600 11px var(--acc-mono);
+  color: var(--acc-fg-dim);
+}
+
+.aboutProse {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--acc-fg-dim);
+  text-wrap: pretty;
+}
+
+.aboutList {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 11px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-card);
+}
+
+.aboutItem {
+  display: flex;
+  gap: 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--acc-fg-body);
+  text-wrap: pretty;
+}
+
+.aboutMarkOk {
+  flex: none;
+  color: var(--acc-ok);
+}
+
+.aboutMarkNo {
+  flex: none;
+  color: var(--acc-bad);
+}
+
+/* --- Sound alerts ---------------------------------------------------------- */
+
+.soundCard {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-card);
+}
+
+.soundTop {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.soundSwitch {
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+
+/* The sounds switch on in the primary colour rather than the green of remote access: green here would
+   read as "connected", which is a different kind of statement altogether. */
+.switchTrackAccent {
+  background: var(--acc-accent);
+}
+
+.soundText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.soundLabel {
+  font: 500 12.5px var(--acc-font);
+  color: var(--acc-fg-faint);
+}
+
+.soundLabelOn {
+  color: var(--acc-fg);
+}
+
+.soundHint {
+  font-size: 11px;
+  color: var(--acc-fg-faint);
+}
+
+.soundPercent {
+  flex: none;
+  padding: 1px 6px 2px;
+  border-radius: var(--acc-r-sm);
+  font: 10px var(--acc-mono);
+  background: var(--acc-accent-12);
+  color: var(--acc-accent);
+}
+
+.soundPercentOff {
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-ghost);
+}
+
+.soundPlay {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--acc-r-sm);
+  font-size: 9px;
+  color: var(--acc-fg-faint);
+}
+
+.soundPlay:hover,
+.soundPlay[data-hover] {
+  background: var(--acc-bg-menu-hover);
+  color: var(--acc-fg);
+}
+
+.soundSlider {
+  width: 100%;
+  height: 14px;
+  appearance: none;
+  background: none;
+  cursor: pointer;
+}
+
+.soundSlider::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 3px;
+  background: var(--acc-bg-control);
+}
+
+.soundSlider::-webkit-slider-thumb {
+  appearance: none;
+  margin-top: -4.5px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--acc-accent);
+}
+
+.soundSliderOff::-webkit-slider-thumb {
+  background: var(--acc-line-strong);
+}
+
+/* --- A choice out of several: the default mode ------------------------------ */
+
+.choice {
+  display: flex;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 8px;
+  border-radius: var(--acc-r-lg);
+  text-align: left;
+  transition: background-color 80ms linear;
+}
+
+.choice:hover:not(:disabled),
+.choice[data-hover]:not(:disabled) {
+  background: var(--acc-bg-menu-hover);
+}
+
+.choiceOn {
+  background: var(--acc-accent-08);
+}
+
+.choice:disabled {
+  opacity: 0.45;
+}
+
+.choiceTick {
+  flex: none;
+  width: 12px;
+  font-size: 11px;
+  color: var(--acc-accent);
+}
+
+.choiceBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.choiceTop {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.choiceLabel {
+  font: 500 12.5px var(--acc-font);
+  color: var(--acc-fg-body);
+}
+
+.choiceLabelOn {
+  color: var(--acc-fg);
+}
+
+.choiceTag {
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.choiceTagDanger {
+  color: var(--acc-bad);
+}
+
+.choiceSub {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--acc-fg-faint);
+  text-wrap: pretty;
+}
+
+/* --- Composer layout: four little drawings rather than four words ----------- */
+
+.layoutGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.layoutCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-card);
+  text-align: left;
+}
+
+.layoutCard:hover,
+.layoutCard[data-hover] {
+  border-color: var(--acc-line-hover);
+}
+
+.layoutCardOn {
+  border-color: var(--acc-accent-40);
+  background: var(--acc-accent-08);
+}
+
+.layoutName {
+  font: 500 12px var(--acc-font);
+  color: var(--acc-fg-body);
+}
+
+.layoutNameOn {
+  color: var(--acc-fg);
+}

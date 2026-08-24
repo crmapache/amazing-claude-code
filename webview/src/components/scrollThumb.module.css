@@ -12,9 +12,11 @@
   transition: opacity 0.15s ease, background 0.15s ease;
 }
 
-.thumb:hover {
-  background: var(--acc-line-hover);
-  opacity: 1;
+@media (hover: hover) {
+  .thumb:hover {
+    background: var(--acc-line-hover);
+    opacity: 1;
+  }
 }
 
 .thumbDragging {

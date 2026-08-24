@@ -300,6 +300,82 @@
   --acc-shadow-popover: 0 10px 26px rgb(var(--acc-ch-shade) / 60%);
 }
 
+/**
+ * The metrics layer: spacing, hit sizes and the type scale.
+ *
+ * A third group of roles beside the surfaces and the text, and it exists for the same reason as the
+ * light theme's stub below - so that a different kind of screen is served by overriding roles rather
+ * than by a second copy of every stylesheet.
+ *
+ * The phone client sets data-acc-density="touch" on the root and gets the block underneath. The panel
+ * never sets it and renders exactly as before: the defaults here are the values already written into
+ * the modules.
+ */
+:root {
+  --acc-sp-1: 4px;
+  --acc-sp-2: 6px;
+  --acc-sp-3: 8px;
+  --acc-sp-4: 10px;
+  --acc-sp-5: 14px;
+  --acc-sp-6: 18px;
+
+  /* On a desktop a control is as big as its content; on a touchscreen it is as big as a fingertip. */
+  --acc-hit: auto;
+
+  /* The gutter down each side of the feed. Narrower under a thumb, not wider: sixteen pixels either
+     side of a 390px screen is a tenth of it spent on margin, while against a tool window the width of a
+     monitor the same sixteen are free. */
+  --acc-feed-gutter: 16px;
+
+  /* How much bigger the padding inside a card gets under a thumb.
+     A growth rather than an absolute size, for two reasons. The cards differ from one another by a
+     pixel or two on purpose, and an absolute token would flatten that rhythm. And it makes the desktop
+     provably unchanged rather than carefully checked: every value below reads calc(n + 0px). */
+  --acc-card-grow: 0px;
+
+  --acc-fs-body: 13px;
+  --acc-fs-mono: 11.5px;
+  --acc-fs-meta: 11px;
+  --acc-fs-label: 10px;
+
+  /* Code and diff lines are leaded by a fixed number rather than a ratio: the lines have to sit on one
+     grid, and a ratio of a fractional size lands between pixels. */
+  --acc-code-leading: 18px;
+}
+
+/**
+ * A screen operated by a thumb.
+ *
+ * Only the metrics change. The colours, the cards, the markup and the components stay the panel's own -
+ * a phone showing a conversation that reads differently from the one on the desk would be worse than a
+ * phone showing nothing.
+ */
+[data-acc-density='touch'] {
+  --acc-sp-1: 6px;
+  --acc-sp-2: 8px;
+  --acc-sp-3: 12px;
+  --acc-sp-4: 14px;
+  --acc-sp-5: 18px;
+  --acc-sp-6: 24px;
+
+  /* Forty-four: the smallest target most people hit reliably, and the size below which a mistap here
+     answers a question about somebody's files. */
+  --acc-hit: 44px;
+
+  /* The same gutter the phone's own shell uses, so the header, the list and the cards share one left
+     edge. Two nearly-equal insets a few pixels apart is the thing that reads as sloppy rather than as
+     dense. */
+  --acc-feed-gutter: var(--acc-sp-5);
+  --acc-card-grow: 4px;
+
+  --acc-fs-body: 15px;
+  --acc-fs-mono: 13px;
+  --acc-fs-meta: 12px;
+  --acc-fs-label: 11px;
+
+  --acc-code-leading: 20px;
+}
+
 /*
  * The light theme's stub. ONLY the role layer is overridden: the surfaces, the borders, the text,
  * --acc-on-accent and one step of each accent (on a light background the glowing variant becomes

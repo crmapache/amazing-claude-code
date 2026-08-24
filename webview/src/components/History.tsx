@@ -1,52 +1,64 @@
+import { describeWhen } from '../feed/when'
 import type { HistoryEntry } from '../protocol'
-import s from './shell.module.css'
+import s from './sideMenu.module.css'
 
 interface HistoryProps {
-  /** null means the list has not arrived yet: it is read from disk by itself, before the modal opens. */
+  /** null means the list has not arrived yet: it is read from disk by itself, before the menu opens. */
   conversations: HistoryEntry[] | null
   onOpen: (entry: HistoryEntry) => void
-  onClose: () => void
 }
 
 /**
  * The project's past conversations. Claude Code keeps the list itself, so what was started in a terminal
  * is visible here too - the panel stores nothing of its own.
+ *
+ * Today's are split off from the rest because that is the cut people actually look for: "the one I was
+ * in an hour ago" is a different question from "the one from that week", and a single flat list makes
+ * the first question as much work as the second.
  */
-export const History = ({ conversations, onOpen, onClose }: HistoryProps) => (
-  <>
-    <div className={s.menuScrim} onClick={onClose} />
-    <div className={s.history}>
-      <div className={s.historyHead}>
-        <span className={s.historyLabel}>HISTORY</span>
-        <span className={s.historyHint}>conversations in this project</span>
-      </div>
+export const History = ({ conversations, onOpen }: HistoryProps) => {
+  const startOfToday = new Date().setHours(0, 0, 0, 0)
+  const today = conversations?.filter((entry) => entry.updatedAt >= startOfToday) ?? []
+  const earlier = conversations?.filter((entry) => entry.updatedAt < startOfToday) ?? []
 
-      <div className={s.historyBody}>
-        {conversations === null ? <div className={s.historyEmpty}>Loading…</div> : null}
+  return (
+    <div className={`${s.screen} ${s.screenList}`}>
+      {conversations === null ? <div className={s.screenEmpty}>Loading…</div> : null}
 
-        {conversations?.length === 0 ? (
-          <div className={s.historyEmpty}>No past conversations here yet.</div>
-        ) : null}
+      {conversations?.length === 0 ? (
+        <div className={s.screenEmpty}>No past conversations here yet.</div>
+      ) : null}
 
-        {conversations?.map((entry) => (
-          <button key={entry.id} type="button" className={s.historyItem} onClick={() => onOpen(entry)}>
-            <span className={s.historyTitle}>{entry.title}</span>
-            <span className={s.historyMeta}>
-              {when(entry.updatedAt)} · {entry.messages} {entry.messages === 1 ? 'message' : 'messages'} · {entry.id}
-            </span>
-          </button>
-        ))}
-      </div>
+      {today.length > 0 ? (
+        <>
+          <div className={s.screenGroup}>
+            <span className={s.screenLabel}>TODAY</span>
+          </div>
+          {today.map((entry) => (
+            <Entry key={entry.id} entry={entry} onOpen={onOpen} />
+          ))}
+        </>
+      ) : null}
+
+      {earlier.length > 0 ? (
+        <>
+          <div className={s.screenGroup}>
+            <span className={s.screenLabel}>EARLIER</span>
+          </div>
+          {earlier.map((entry) => (
+            <Entry key={entry.id} entry={entry} onOpen={onOpen} />
+          ))}
+        </>
+      ) : null}
     </div>
-  </>
-)
-
-/** Recent conversations are labelled by time, older ones by date: that makes them easier to recognise. */
-const when = (updatedAt: number): string => {
-  const date = new Date(updatedAt)
-  const sameDay = new Date().toDateString() === date.toDateString()
-
-  return sameDay
-    ? `today ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-    : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+  )
 }
+
+const Entry = ({ entry, onOpen }: { entry: HistoryEntry; onOpen: (entry: HistoryEntry) => void }) => (
+  <button type="button" className={s.historyRow} onClick={() => onOpen(entry)} title={entry.id}>
+    <span className={s.historyTitle}>{entry.title}</span>
+    <span className={s.historyMeta}>
+      {describeWhen(entry.updatedAt)} · {entry.messages} {entry.messages === 1 ? 'message' : 'messages'}
+    </span>
+  </button>
+)

@@ -34,6 +34,11 @@
 
         <postStartupActivity
                 implementation="io.github.crmapache.amazingclaudecode.startup.AutoOpenPanelActivity"/>
+
+        <!-- Tells the remote agent a project has opened. With remote access off - the default, and how
+             it stays unless the user turns it on - this returns immediately and opens nothing. -->
+        <postStartupActivity
+                implementation="io.github.crmapache.amazingclaudecode.startup.RemoteAccessActivity"/>
     </extensions>
 
     <actions>

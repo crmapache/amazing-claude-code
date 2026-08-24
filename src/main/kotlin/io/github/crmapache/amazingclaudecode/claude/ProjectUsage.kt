@@ -1,14 +1,9 @@
-package io.github.crmapache.amazingclaudecode.toolwindow
+package io.github.crmapache.amazingclaudecode.claude
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Disposer
 import com.intellij.util.concurrency.AppExecutorUtil
-import io.github.crmapache.amazingclaudecode.claude.ClaudeControlPing
-import io.github.crmapache.amazingclaudecode.claude.ClaudeSessions
-import io.github.crmapache.amazingclaudecode.claude.ClaudeTokenUsage
-import io.github.crmapache.amazingclaudecode.claude.ClaudeUsage
-import io.github.crmapache.amazingclaudecode.claude.items
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -36,16 +31,17 @@ import kotlinx.serialization.json.putJsonObject
  * functions, because both change during the panel's life - the conversations appear only with the
  * browser, and there is no channel at all until the page is ready.
  */
-internal class PanelUsage(
+internal class ProjectUsage(
     private val workingDirectory: String?,
-    private val sessions: () -> ClaudeSessions?,
+    private val hub: ClaudeSessionHub,
     /**
      * Without a sign-in there is nothing to ask: a process would come up only to answer that the user
      * is not signed in.
      */
     private val isLoggedIn: () -> Boolean,
-    private val send: (String) -> Unit,
 ) {
+
+    private val sessions: ClaudeSessions get() = hub.conversations
 
     /**
      * The memory of the usage windows: snapshots arrive by two routes with different lags, and folding
@@ -125,12 +121,12 @@ internal class PanelUsage(
         // we leave it alone and go to the server.
         val live = when {
             viaPing -> null
-            preferred != null && sessions()?.isRunning(preferred) == true -> preferred
-            else -> sessions()?.busySession()
+            preferred != null && sessions.isRunning(preferred) -> preferred
+            else -> sessions.busySession()
         }
 
         if (live != null) {
-            sessions()?.requestUsage(
+            sessions.requestUsage(
                 live,
                 onUsage,
                 // The conversation may not answer at all (a control request has a timeout of its own):
@@ -166,7 +162,7 @@ internal class PanelUsage(
         if (!isLoggedIn()) return
 
         AppExecutorUtil.getAppExecutorService().submit {
-            send(
+            hub.broadcastProject(
                 buildJsonObject {
                     put("type", "usage")
                     put("todayTokens", ClaudeTokenUsage.today())
@@ -221,7 +217,7 @@ internal class PanelUsage(
         // own a snapshot does not say whether it is about the present window (see ClaudeUsage.Tracker).
         val merged = windows.merge(snapshot)
 
-        send(
+        hub.broadcastProject(
             buildJsonObject {
                 put("type", "usage")
                 merged.session?.let { putWindow("session", it) }
@@ -267,8 +263,8 @@ internal class PanelUsage(
             modelsRequested.set(false)
         }
 
-        if (sessions()?.isRunning(mainSession) == true) {
-            sessions()?.requestModels(mainSession, onResult = ::sendModels, onFailure = onError)
+        if (sessions.isRunning(mainSession)) {
+            sessions.requestModels(mainSession, onResult = ::sendModels, onFailure = onError)
         } else {
             ClaudeControlPing.request(
                 workingDirectory,
@@ -288,7 +284,7 @@ internal class PanelUsage(
         }
         thisLogger().info("Model catalogue from CLI: ${models.size} entries")
 
-        send(
+        hub.broadcastProject(
             buildJsonObject {
                 put("type", "models")
                 putJsonArray("models") {
@@ -319,7 +315,7 @@ internal class PanelUsage(
      * one-off ping would answer about its own process.
      */
     fun refreshContext(sessionId: String) {
-        sessions()?.requestContextUsage(
+        sessions.requestContextUsage(
             sessionId,
             onResult = { usage -> sendContext(sessionId, usage) },
             onFailure = { error -> thisLogger().debug("Context usage unavailable: $error") },
@@ -331,7 +327,8 @@ internal class PanelUsage(
         val max = usage["maxTokens"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: return
         if (max <= 0) return
 
-        send(
+        hub.broadcast(
+            sessionId,
             buildJsonObject {
                 put("type", "context")
                 put("sessionId", sessionId)

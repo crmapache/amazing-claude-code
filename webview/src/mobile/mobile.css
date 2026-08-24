@@ -1,0 +1,57 @@
+/**
+ * What the phone needs on top of the panel's own base.
+ *
+ * Small on purpose: everything about how a conversation looks belongs to the shared cards, and the
+ * only things here are the ones a desktop never has to think about.
+ */
+
+:root {
+  /*
+   * The height of everything a thumb presses in this app's own shell: the buttons and the field they
+   * stand beside.
+   *
+   * Bigger than --acc-hit, which is the floor below which a target is missed rather than the size a
+   * control should be. It is one token rather than a number written in each place because the two are
+   * only right together: a field 44 tall next to a button 52 tall is the kind of mismatch the eye
+   * catches immediately, without being able to say what is wrong.
+   */
+  --acc-tap: 52px;
+
+  /*
+   * The phone's own corners, which are rounder than the panel's on purpose.
+   *
+   * The panel's radii (--acc-r-*) run from three to eight pixels: they belong to a dense tool window
+   * where a card is one line of a feed. Here a card is the size of a hand's reach, and at that size the
+   * same three pixels read as an accident rather than as a shape.
+   */
+  --acc-r-card: 16px;
+  --acc-r-pill: 12px;
+  --acc-r-round: 999px;
+}
+
+html {
+  /* A tap should not paint a grey box over a card the moment a finger lands on it. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  /* The screens manage their own scrolling; the document itself never moves, which keeps a fixed
+     footer of buttons fixed while the keyboard opens and closes. */
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/*
+ * Hover states belong to a pointer that can rest somewhere without pressing: on a touchscreen they fire
+ * on tap and stay, which is the "stuck hover" that makes a mobile web app feel wrong.
+ *
+ * There used to be a blanket rule here - `*:hover { background-color: inherit }` under
+ * `@media (hover: none)` - and it was worse than the problem. `inherit` does not mean "keep what you
+ * had", it means "take the parent's", so every ancestor of whatever was last tapped lost its own
+ * background: html, body, #root and the screen itself all went transparent, and the whole app turned
+ * white behind its cards. It only showed on a real touchscreen, which is why it survived a browser at
+ * a phone's size.
+ *
+ * The hover rules are scoped where they are written instead - `@media (hover: hover)` in
+ * feed.module.css, scrollThumb.module.css and base.css. Nothing to neutralise from here.
+ */

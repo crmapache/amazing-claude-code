@@ -26,6 +26,8 @@ export interface BackgroundChip {
   label: string
   /** The model's description of the command - it does not fit the chip and lives in the tooltip. */
   description: string
+  /** And the command itself, which is what the tooltip is actually for. */
+  command?: string
   duration: string
 }
 
@@ -190,7 +192,13 @@ export const StreamSwitcher = ({
         <span
           key={task.id}
           className={`${s.stream} ${s.streamStatic} ${s.streamStoppable}`}
-          title={task.description || task.label}
+          // The panel's own tooltip rather than the browser's: this page renders offscreen, and a
+          // native title never reaches the IDE's window - hovering a chip showed nothing at all.
+          //
+          // The command first, because that is the question a chip raises ("what is this that keeps
+          // running"), and the model's description under it when there is one.
+          data-tooltip={[task.command, task.description].filter(Boolean).join('\n') || task.label}
+          data-tooltip-at="top"
         >
           <span className={s.streamDot} style={{ background: 'var(--acc-accent)' }} />
           <span className={s.streamLabel}>bg</span>

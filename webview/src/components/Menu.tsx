@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import type { Anchor } from './StatusBar'
 import s from './shell.module.css'
 
@@ -15,7 +14,8 @@ export interface MenuOption {
 
 interface MenuProps {
   title: string
-  hint: string
+  /** A word about the menu past its title - a key, mostly. Nothing to add is the ordinary case. */
+  hint?: string
   width: number
   /** The button the menu was opened from: it stands right above or right below it. */
   anchor: Anchor
@@ -23,26 +23,18 @@ interface MenuProps {
   selected: string
   onPick: (id: string) => void
   onClose: () => void
-  /**
-   * The column for a tick to the left of every entry - present by default, needed where the choice
-   * genuinely is one of several options (the model, the effort, the mode, the layout). The burger menu in
-   * the header (history/MCP/plugins/sounds/layout) is a list of actions rather than a switch between
-   * values: almost never is any entry selected, and the empty column was simply a pointless indent to the
-   * left of every row.
-   */
-  tick?: boolean
 }
 
-export const Menu = ({ title, hint, width, anchor, options, selected, onPick, onClose, tick = true }: MenuProps) => {
+export const Menu = ({ title, hint, width, anchor, options, selected, onPick, onClose }: MenuProps) => {
   /*
-   * The hover highlight goes through state of its own rather than plain CSS :hover: the same trick as in
-   * SlashSuggest (see its onMouseEnter), and for the same reason - in JCEF it does not always fire. In
-   * particular, on the entry that ends up under an already motionless cursor at the very moment the menu
-   * opens (the button was clicked with the mouse and the cursor never left it), :hover does not switch on
-   * at all until the mouse moves by at least a pixel - which is exactly what "often does not work" looked
-   * like.
+   * The hover highlight is plain CSS :hover and nothing else.
+   *
+   * It used to be React state fed by mouseenter, because :hover was thought unreliable in JCEF. The
+   * state is the unreliable half: JCEF drops a mouseenter often enough that the highlight lit up every
+   * other entry, and running both at once was worse still - the browser highlighted the entry under the
+   * cursor while the state went on highlighting the one before it, two lit entries at a time. One source
+   * of truth, and it is the one that always knows where the cursor is.
    */
-  const [hovered, setHovered] = useState<string | null>(null)
 
   // We stick to the button's right edge but do not let it run off the panel's sides: in the IDE the panel
   // is sometimes narrower than the menu itself.
@@ -94,7 +86,7 @@ export const Menu = ({ title, hint, width, anchor, options, selected, onPick, on
       >
         <div className={s.menuHead}>
           <span className={s.menuTitle}>{title}</span>
-          <span className={s.menuHint}>{hint}</span>
+          {hint ? <span className={s.menuHint}>{hint}</span> : null}
         </div>
 
         {options.map((option) => {
@@ -104,14 +96,10 @@ export const Menu = ({ title, hint, width, anchor, options, selected, onPick, on
               key={option.id}
               type="button"
               disabled={option.disabled}
-              className={[s.menuItem, on && s.menuItemOn, !option.disabled && hovered === option.id && s.menuItemHover]
-                .filter(Boolean)
-                .join(' ')}
+              className={[s.menuItem, on && s.menuItemOn].filter(Boolean).join(' ')}
               onClick={() => onPick(option.id)}
-              onMouseEnter={() => setHovered(option.disabled ? null : option.id)}
-              onMouseLeave={() => setHovered((current) => (current === option.id ? null : current))}
             >
-              {tick ? <span className={s.menuTick}>{on ? '✓' : ''}</span> : null}
+              <span className={s.menuTick}>{on ? '✓' : ''}</span>
               <div className={s.menuBody}>
                 <div className={s.menuRow}>
                   <span className={`${s.menuLabel} ${on ? s.menuLabelOn : ''}`}>{option.label}</span>

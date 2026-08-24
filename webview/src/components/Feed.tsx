@@ -46,6 +46,13 @@ interface FeedProps {
   onDismissError: (id: string) => void
   /** Open a link from the agent's answer in the system browser. */
   onOpenLink: (url: string) => void
+  /**
+   * A page of this conversation further back than the EARLIER placeholder - see feed/streamStatus and
+   * mobile/feed.ts. Undefined leaves the placeholder as a plain, unclickable mark, which is what a
+   * desktop panel wants: it already gets the journal's full reach (see ClaudeSessionHub.CatchUp) and
+   * hits this case rarely enough that a button here would be a control with almost nothing to press.
+   */
+  onLoadEarlier?: () => void
   scrollRef?: (element: HTMLElement | null) => void
 }
 
@@ -61,6 +68,7 @@ export const Feed = ({
   onPlanDecision,
   onDismissError,
   onOpenLink,
+  onLoadEarlier,
   scrollRef,
 }: FeedProps) => {
   const view = useRef<HTMLElement | null>(null)
@@ -241,6 +249,7 @@ export const Feed = ({
               onPlanDecision={onPlanDecision}
               onDismissError={onDismissError}
               onOpenLink={onOpenLink}
+              onLoadEarlier={onLoadEarlier}
             />
           </div>
         ))}
@@ -293,6 +302,7 @@ interface ItemViewProps {
   onPlanDecision: (itemId: string, decision: 'approve' | 'keepPlanning') => void
   onDismissError: (id: string) => void
   onOpenLink: (url: string) => void
+  onLoadEarlier?: () => void
 }
 
 /**
@@ -316,6 +326,7 @@ const ItemView = memo(({
   onPlanDecision,
   onDismissError,
   onOpenLink,
+  onLoadEarlier,
 }: ItemViewProps) => {
   switch (item.kind) {
     case 'user':
@@ -345,7 +356,7 @@ const ItemView = memo(({
       )
 
     case 'checkpoint':
-      return <CheckpointRow item={item} />
+      return <CheckpointRow item={item} onLoadEarlier={item.chip === 'EARLIER' ? onLoadEarlier : undefined} />
 
     case 'compact':
       return <CompactRow item={item} />
