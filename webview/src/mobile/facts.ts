@@ -27,9 +27,15 @@ export interface ProjectFacts {
   /** The project's paths, for the "@" hint. Trimmed on the way out - see RemoteFeed.forPhone. */
   files: string[]
   hints: Record<string, CommandHint>
+  /**
+   * The names of the commands the agent knows, as the IDE last heard them (see the `commands` message).
+   * A phone never sees a conversation start, so this is the only route by which the MCP servers'
+   * commands - which live in no file and so have no hint of their own - reach the field at all.
+   */
+  commands: string[]
 }
 
-export const emptyFacts = (): ProjectFacts => ({ files: [], hints: {} })
+export const emptyFacts = (): ProjectFacts => ({ files: [], hints: {}, commands: [] })
 
 /**
  * Whether this is one of the project's facts rather than a line of somebody's conversation.
@@ -41,7 +47,8 @@ export const isFact = (message: ShellMessage): boolean =>
   message.type === 'usage' ||
   message.type === 'project' ||
   message.type === 'files' ||
-  message.type === 'commandHints'
+  message.type === 'commandHints' ||
+  message.type === 'commands'
 
 /**
  * One fact folded into what is already known.
@@ -82,6 +89,9 @@ export const applyFact = (facts: ProjectFacts, message: ShellMessage): ProjectFa
     case 'commandHints':
       return { ...facts, hints: message.hints }
 
+    case 'commands':
+      return { ...facts, commands: message.commands }
+
     default:
       return facts
   }
@@ -100,4 +110,4 @@ export const applyFact = (facts: ProjectFacts, message: ShellMessage): ProjectFa
  * project rather than from the field.
  */
 export const phoneCommands = (facts: ProjectFacts): CommandEntry[] =>
-  buildCommands([], facts.hints).filter((command) => command.group !== 'panel')
+  buildCommands(facts.commands, facts.hints).filter((command) => command.group !== 'panel')

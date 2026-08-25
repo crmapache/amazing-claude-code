@@ -5,11 +5,12 @@ import { applyFact, emptyFacts, isFact, phoneCommands } from './facts'
 const window = (percent: number) => ({ percent, resets: '' })
 
 describe('isFact', () => {
-  it('takes the four the composer is drawn from', () => {
+  it('takes the ones the composer is drawn from', () => {
     expect(isFact({ type: 'usage' } as ShellMessage)).toBe(true)
     expect(isFact({ type: 'project' } as ShellMessage)).toBe(true)
     expect(isFact({ type: 'files', files: [] } as ShellMessage)).toBe(true)
     expect(isFact({ type: 'commandHints', hints: {} } as ShellMessage)).toBe(true)
+    expect(isFact({ type: 'commands', commands: [] } as ShellMessage)).toBe(true)
   })
 
   /**
@@ -99,6 +100,20 @@ describe('phoneCommands', () => {
     expect(ids).not.toContain('fork')
     expect(ids).not.toContain('login')
     expect(ids).not.toContain('logout')
+  })
+
+  /**
+   * A phone never sees a conversation start, so the agent's own list reaches it only as a project fact.
+   * Without it the MCP servers' commands - which have no file and therefore no hint - could not be
+   * offered on the small screen at all.
+   */
+  it('offers the commands the agent named, files or no files', () => {
+    const facts = applyFact(emptyFacts(), {
+      type: 'commands',
+      commands: ['mcp__snakein__analyze'],
+    } as ShellMessage)
+
+    expect(phoneCommands(facts).map((command) => command.id)).toContain('mcp__snakein__analyze')
   })
 
   it('keeps the built-in ones and adds whatever the project keeps on disk', () => {

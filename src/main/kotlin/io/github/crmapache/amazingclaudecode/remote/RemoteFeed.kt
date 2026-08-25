@@ -86,11 +86,11 @@ internal object RemoteFeed {
         PROJECT_FACTS.firstOrNull { type -> message.startsWith("{\"type\":\"$type\"") }
 
     /**
-     * The branch and its pull request, the subscription's usage windows, the descriptions of the slash
-     * commands and the project's file list - what the composer on the phone is drawn from and nothing
-     * besides.
+     * The branch and its pull request, the subscription's usage windows, the slash commands with their
+     * descriptions and the project's file list - what the composer on the phone is drawn from and
+     * nothing besides.
      */
-    private val PROJECT_FACTS = listOf("project", "usage", "commandHints", FILES)
+    private val PROJECT_FACTS = listOf("project", "usage", "commandHints", "commands", FILES)
 
     /**
      * A line of a past conversation being replayed into a tab.

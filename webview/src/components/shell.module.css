@@ -1028,9 +1028,14 @@
  * the three controls the turn runs on, and a fourth capsule with a word in it would read as a fourth
  * setting.
  *
- * The frame is the selectors' own - 23px, the same border and background - so that it sits in their row as
- * a neighbour rather than as an insert. In the side rail it takes the attachment button's shape instead
- * (see .thanksRail): there its neighbours are the buttons, not the selectors.
+ * A square of 26px in every layout - the same square as the attachment button and the slash beside it (see
+ * .attach in composer.module.css). It used to take the selectors' 23px in the status row, to sit there as a
+ * neighbour rather than as an insert, and at that size a bordered box holding a 12px heart read as a squat
+ * little rectangle rather than as a button. It stands at the far end of the row past a wide gap, so being
+ * three pixels taller than the selectors costs nothing - looking cramped did.
+ *
+ * aspect-ratio beside the two sides on purpose: the height is what a row is free to squash, and a heart in
+ * a flattened box is exactly the complaint this size answers.
  *
  * position + z-index for the same reason as .selectors above: the menu's scrim covers everything below the
  * header, and without this a second click on the heart's own self would go to the scrim - the menu would
@@ -1044,8 +1049,9 @@
   position: relative;
   z-index: 41;
   flex: none;
-  width: 23px;
-  height: 23px;
+  width: 26px;
+  height: 26px;
+  aspect-ratio: 1;
   border: 1px solid var(--acc-line-strong);
   border-radius: var(--acc-r-md);
   background: var(--acc-bg-control);
@@ -1062,12 +1068,9 @@
   border-color: var(--acc-heart-40);
 }
 
-/* The rail's variant: the same square as the attachment and the slash beside it (see .attach in
-   composer.module.css), only with the heart's paint - a bordered capsule in a row of borderless buttons
-   would read as a different kind of thing. */
+/* The rail's variant: the same square, only without the frame - in a row of borderless buttons a bordered
+   capsule would read as a different kind of thing. */
 .thanksRail {
-  width: 26px;
-  height: 26px;
   border: none;
   background: var(--acc-neutral-12);
 }
@@ -1077,15 +1080,10 @@
   background: var(--acc-heart-16);
 }
 
+/* Level with the paperclip and the slash beside it, in the rail and in the status row alike. */
 .thanksIcon {
   flex: none;
   display: block;
-  width: 12px;
-  height: 12px;
-}
-
-/* Level with the paperclip and the slash beside it rather than with the selectors' 12px. */
-.thanksRail .thanksIcon {
   width: 13px;
   height: 13px;
 }

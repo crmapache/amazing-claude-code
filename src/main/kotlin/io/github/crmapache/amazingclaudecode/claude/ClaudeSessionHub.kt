@@ -309,6 +309,9 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             "the available modes" to { auth.checkModeAvailability() },
             "the file list" to { catalog.refreshFiles() },
             "the command hints" to { catalog.refreshCommandHints() },
+            // The catalogue the agent named last time round: without it a panel just opened hints at
+            // nothing but what lies on disk (see ProjectCatalog.sendCommands).
+            "the commands" to { catalog.sendCommands() },
             "the remote state" to { broadcastRemoteState() },
         )) {
             runCatching(collect).onFailure { thisLogger().warn("Could not collect $what", it) }
@@ -503,6 +506,12 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // Not an event at all - there is nothing to put into an envelope. A live process does not bring
         // such a line this far (see ClaudeSession.noteDiagnostic), but an old transcript may hold one.
         if (!line.startsWith("{")) return
+
+        // A process reporting what it came up with names every command it knows, the MCP servers' ones
+        // included - the one place they can be learned from at all (see ProjectCatalog.noteCommands).
+        // Not from a replay: an old transcript holds no such event, and a line read off disk says
+        // nothing about what is connected right now.
+        if (!replay) catalog.noteCommands(line)
 
         rawListeners.forEach { it(sessionId, line, replay) }
 
@@ -1034,6 +1043,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             "usage",
             "files",
             "commandHints",
+            "commands",
             "clients",
             "remoteState",
             "mcpServers",

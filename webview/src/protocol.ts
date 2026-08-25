@@ -444,6 +444,18 @@ type ShellMessageBody =
    */
   | { type: 'commandHints'; hints: Record<string, { description: string; argumentHint: string }> }
   /**
+   * The names of the slash commands the agent itself knows - the catalogue it named the last time a
+   * conversation's process came up in this project (see ClaudeCommandNames on the plugin's side).
+   *
+   * The commands that live in files the panel finds by itself, but an MCP server's ones
+   * (`/mcp__server__prompt`) exist nowhere on disk: they are asked of the servers at start-up and named
+   * in `system:init`, that is, only after the first message has been sent. This message is what the
+   * hint offers them from before that - the panel just opened would otherwise answer a command typed
+   * from memory with "Unknown command". The live list of the conversation itself (panel.slashCommands)
+   * outranks it as soon as it arrives.
+   */
+  | { type: 'commands'; commands: string[] }
+  /**
    * Which edge of the screen the panel is docked to. Only the side bordering the editor draws a
    * separating frame - as native tool windows do (the terminal, the project view and so on). It changes
    * on the fly: the user may drag the panel to another side while it is open.

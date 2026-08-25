@@ -321,6 +321,13 @@ export const App = () => {
   const [files, setFiles] = useState<string[]>([])
   /** The slash commands' descriptions and argument syntax - of the same nature as files. */
   const [commandHints, setCommandHints] = useState<Record<string, { description: string; argumentHint: string }>>({})
+  /**
+   * The names of the commands the agent knows, as it named them last time round (see the `commands`
+   * message). Stands in for the conversation's own list until the first message of the tab brings it:
+   * an MCP server's commands exist in no file, so without this they could not be hinted at all before
+   * the process came up.
+   */
+  const [knownCommands, setKnownCommands] = useState<string[]>([])
 
   const feedRef = useRef<HTMLElement | null>(null)
   const [selection, clearSelection] = useSelection(feedRef)
@@ -1111,6 +1118,10 @@ export const App = () => {
 
           case 'commandHints':
             setCommandHints(message.hints)
+            break
+
+          case 'commands':
+            setKnownCommands(message.commands)
             break
 
           case 'dockAnchor':
@@ -1975,8 +1986,11 @@ export const App = () => {
   const permission = pendingPermission(panel.items, resolvedStream)
   const ask = pendingAsk(panel.items, cards.answeredAsks, resolvedStream)
   const commands = useMemo(
-    () => buildCommands(panel.slashCommands, commandHints),
-    [panel.slashCommands, commandHints],
+    // The tab's own catalogue while it has one, and the project's remembered one until then: this tab's
+    // process may not have come up yet, and the two disagree only about a server switched on or off
+    // since - where the live one is the truth.
+    () => buildCommands(panel.slashCommands.length > 0 ? panel.slashCommands : knownCommands, commandHints),
+    [panel.slashCommands, knownCommands, commandHints],
   )
   const tabs = useMemo(
     () =>

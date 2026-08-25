@@ -11,9 +11,9 @@ import s from './shell.module.css'
  * permission to write to their repositories. Trading that for a star is a bad bargain, so the button
  * honestly opens the page and the star is pressed there.
  *
- * Where the button stands is decided by the layout, not by this file: in bottom and compact it stands in
- * the selectors' row and repeats their frame, in left/right it stands in the rail's row of buttons and
- * repeats the attachment button beside it (see .thanks / .thanksRail and Composer.tsx).
+ * Where the button stands is decided by the layout, not by this file: in bottom and compact it stands at
+ * the end of the selectors' row, in left/right it stands in the rail's row of buttons. The same square
+ * either way, framed in the row and borderless in the rail (see .thanks / .thanksRail and Composer.tsx).
  */
 
 /** The addresses themselves - the menu carries only ids, the shell opens the address (see App.openThanks). */
@@ -53,7 +53,7 @@ export const THANKS_MENU: { title: string; width: number; options: MenuOption[];
 }
 
 interface ThanksButtonProps {
-  /** The side rail's variant: no frame of its own, the same square as the attachment button next to it. */
+  /** The side rail's variant: no frame of its own - it stands among borderless buttons rather than capsules. */
   rail?: boolean
   onOpen: (anchor: Anchor) => void
 }
@@ -72,7 +72,7 @@ export const ThanksButton = ({ rail = false, onOpen }: ThanksButtonProps) => (
   </button>
 )
 
-/** A solid heart: an outline one at 12px reads as a smudge rather than as a heart. */
+/** A solid heart: an outline one at this size reads as a smudge rather than as a heart. */
 const Heart = () => (
   <svg className={s.thanksIcon} viewBox="0 0 16 16" aria-hidden="true">
     <path

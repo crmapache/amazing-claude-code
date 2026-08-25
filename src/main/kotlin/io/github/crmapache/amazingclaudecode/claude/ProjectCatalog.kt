@@ -1,6 +1,7 @@
 package io.github.crmapache.amazingclaudecode.claude
 
 import com.intellij.ide.BrowserUtil
+import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
@@ -174,6 +175,54 @@ internal class ProjectCatalog(
                 }
             },
             onError = { thisLogger().warn("Couldn't list plugins for command hints: $it") },
+        )
+    }
+
+    /**
+     * The names of the slash commands themselves, as the agent last named them.
+     *
+     * The catalogue lives in the process rather than on disk: the MCP servers' commands
+     * (`/mcp__server__prompt`) are asked of the servers at start-up and named only in `system:init`,
+     * that is, after the first message of a conversation has been sent. Until then the hint knew
+     * nothing about them, and a panel just opened answered a command typed from memory with "Unknown
+     * command" - the very thing the hint exists to prevent.
+     *
+     * So the list heard once is kept with the project (in its workspace file, next to the rest of what
+     * belongs to this checkout rather than to the user) and handed to the panel the moment it opens.
+     * A stale entry is possible - an MCP server switched off since - and it costs one refusal at worst,
+     * while it is corrected by the very next start-up (see [noteCommands]). An empty hint costs a
+     * refusal every time.
+     */
+    fun sendCommands() {
+        val remembered = PropertiesComponent.getInstance(project).getList(COMMANDS_KEY).orEmpty()
+        if (remembered.isEmpty()) return
+
+        broadcastCommands(remembered)
+    }
+
+    /**
+     * A line of a conversation's stream: if it is a process reporting what it came up with, the command
+     * catalogue in it is worth keeping (see [sendCommands]). Everything else passes through untouched -
+     * the check inside is a substring search, because this runs on every line of every stream.
+     */
+    fun noteCommands(line: String) {
+        val names = ClaudeCommandNames.of(line) ?: return
+
+        val store = PropertiesComponent.getInstance(project)
+        if (store.getList(COMMANDS_KEY).orEmpty() == names) return
+
+        store.setList(COMMANDS_KEY, names)
+        // Said out loud rather than left for the next opening: the conversation that has just started
+        // knows the list from its own event, the tab beside it and a phone across the city do not.
+        broadcastCommands(names)
+    }
+
+    private fun broadcastCommands(names: List<String>) {
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "commands")
+                putJsonArray("commands") { names.forEach { add(it) } }
+            }.toString(),
         )
     }
 
@@ -653,6 +702,13 @@ internal class ProjectCatalog(
     companion object {
         /** Ours as the platform knows us - the same string Gradle patches into plugin.xml. */
         private const val PLUGIN_ID = "io.github.crmapache.amazingclaudecode"
+
+        /**
+         * Where the agent's own command catalogue is kept (see [sendCommands]). Per project rather than
+         * shared: the MCP servers of one checkout are not those of another, and a list borrowed from a
+         * neighbour would hint at commands this project has never had.
+         */
+        private const val COMMANDS_KEY = "acc.slashCommands"
 
         /**
          * Our own version, read out of our own plugin.xml.

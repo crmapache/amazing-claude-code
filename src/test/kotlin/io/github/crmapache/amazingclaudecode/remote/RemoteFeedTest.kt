@@ -86,6 +86,7 @@ class RemoteFeedTest {
         assertEquals("project", RemoteFeed.projectFact("""{"type":"project","gitBranch":"main"}"""))
         assertEquals("usage", RemoteFeed.projectFact("""{"type":"usage","session":{"percent":12}}"""))
         assertEquals("commandHints", RemoteFeed.projectFact("""{"type":"commandHints","hints":{}}"""))
+        assertEquals("commands", RemoteFeed.projectFact("""{"type":"commands","commands":["mcp__snakein__analyze"]}"""))
         assertEquals("files", RemoteFeed.projectFact("""{"type":"files","files":["src/main.kt"]}"""))
     }
 
