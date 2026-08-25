@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.7.26] - 2026-08-25
+
+- Fixed: the commands your MCP servers add - the long "/mcp__server__prompt" ones - were missing from the field's hint until you had sent a message, so a panel just opened answered one typed from memory with "Unknown command" and only started suggesting it from the second try. Commands that live in files the panel finds by itself, but an MCP server's ones exist in no file at all: the agent asks every connected server for them when its process comes up, and that process only comes up with your first message. The panel now remembers the list the agent named last time and offers it from the moment it opens, correcting it against the real one as soon as a conversation starts. A phone gets the same list, where those commands could not be offered at all before. The first ever conversation in a project is still the exception - there is nothing remembered yet to offer.
+- Changed: the heart at the end of the model/effort/mode row is a proper square now, the size of the paperclip and the slash beside the message field, with a slightly larger heart in it. At the selectors' height it read as a squat little rectangle rather than as a button.
+
 ## [0.7.25] - 2026-08-25
 
 - Fixed: a tab opened with "+" stayed called "new session" for the whole conversation, however much was said in it. The panel handed the shell that stand-in as if it were a name, and a tab that already carries a name is never renamed afterwards - neither by the guess made from your first message nor by the real name the model picks a second later. Only the tab the panel starts with was spared, since nobody ever named that one. A tab now opens with no name at all, which is what the phone has always done, and gets one from its first message like any other.
@@ -319,7 +324,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.25...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.26...HEAD
+[0.7.26]: https://github.com/crmapache/amazing-claude-code/compare/0.7.25...0.7.26
 [0.7.25]: https://github.com/crmapache/amazing-claude-code/compare/0.7.24...0.7.25
 [0.7.24]: https://github.com/crmapache/amazing-claude-code/compare/0.7.23...0.7.24
 [0.7.23]: https://github.com/crmapache/amazing-claude-code/compare/0.7.22...0.7.23
