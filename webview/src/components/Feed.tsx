@@ -7,7 +7,7 @@ import type { CardState } from '../hooks/useCardState'
 import s from './feed.module.css'
 import { BashCard } from './items/BashCard'
 import { PlanCard } from './items/PlanCard'
-import { CheckpointRow, CompactRow, CrashRow, ErrorRow, MetaRow, RetryRow, ThinkRow } from './items/Rows'
+import { CheckpointRow, CompactRow, CrashRow, ErrorRow, MetaRow, ModelSwitchRow, RetryRow, ThinkRow } from './items/Rows'
 import { TextCard } from './items/TextCard'
 import { ToolGroupCard } from './items/ToolGroupCard'
 import { UserCard } from './items/UserCard'
@@ -363,6 +363,9 @@ const ItemView = memo(({
 
     case 'retry':
       return <RetryRow item={item} />
+
+    case 'model':
+      return <ModelSwitchRow item={item} onOpenLink={onOpenLink} />
 
     case 'meta':
       return <MetaRow item={item} />

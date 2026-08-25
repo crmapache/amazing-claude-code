@@ -82,7 +82,7 @@ export interface Paragraph {
 }
 
 /** The chip category of a tool call. It sets both the caption and the colour. */
-export type ToolChip = 'READ' | 'GREP' | 'EDIT' | 'WRITE' | 'BASH' | 'WEB' | 'MCP' | 'TOOL'
+export type ToolChip = 'READ' | 'GREP' | 'EDIT' | 'WRITE' | 'BASH' | 'WEB' | 'MCP' | 'SKILL' | 'TOOL'
 
 export interface DiffLine {
   n: number | null
@@ -405,6 +405,30 @@ export interface RetryItem {
   outcome?: RetryOutcome
 }
 
+/**
+ * The conversation moved to another model not by the person's doing - the CLI swapped it itself.
+ *
+ * It happens for reasons that have nothing to do with the panel: the chosen model's safeguards flagged
+ * the message (a security audit reads as "cyber" to them), or the model needs credits that have not been
+ * paid for. From that moment the answers are signed by the other model, the bottom line names it, and
+ * without this card the only visible trace of the whole story is a selector that has "switched itself"
+ * behind the person's back.
+ *
+ * So the card says three things at once: which model the conversation was on, which one it is on now,
+ * and why - in the CLI's own words, the same ones the terminal shows (see AgentSystemEvent.content).
+ * The reason is empty when the swap was noticed by the signature under an answer rather than announced
+ * by an event of its own: nobody said why, and inventing a reason would be worse than saying nothing.
+ */
+export interface ModelSwitchItem {
+  id: string
+  kind: 'model'
+  /** The model that was working until now - empty when the conversation opens straight on the new one. */
+  from?: string
+  to: string
+  /** The CLI's explanation, as it stands; empty when the swap was noticed rather than announced. */
+  reason: string
+}
+
 /** The conversation's process died on its own - a separate, unambiguous mark in the feed. */
 export interface CrashItem {
   id: string
@@ -448,5 +472,6 @@ export type FeedItem =
   | CompactItem
   | MetaItem
   | RetryItem
+  | ModelSwitchItem
   | CrashItem
   | ErrorItem

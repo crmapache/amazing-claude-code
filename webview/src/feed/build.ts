@@ -9,7 +9,7 @@ import type {
   ToolResultBlock,
   ToolUseBlock,
 } from '../protocol'
-import { modeShortLabel, normalizeMode } from '../catalog'
+import { modeShortLabel, normalizeMode, sameModel } from '../catalog'
 import { parseParagraphs } from './markdown'
 import { initialPanelState, push, type PanelAction, type PanelState } from './panelState'
 import { applyApiRetry, closeRetry, closeRetryFor } from './retry'
@@ -338,7 +338,15 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
     // build without a model list (or if the request for it never arrived) there would be nothing to
     // expand the choice with, and the caption under the panel would go on naming the previous model.
     case 'modelApplied': {
-      const applied: PanelState = { ...state, pendingModel: undefined, model: action.model }
+      // streamModel is dropped along with it: the count of "what the stream last named" starts anew from
+      // a choice of the person's own, or the first answer after the change would be taken for a swap
+      // behind their back (see noteStreamModel).
+      const applied: PanelState = {
+        ...state,
+        pendingModel: undefined,
+        model: action.model,
+        streamModel: undefined,
+      }
       return action.error ? addError(applied, action.error) : applied
     }
 
@@ -654,6 +662,31 @@ const rateLimitMessage = (info: NonNullable<AgentRateLimitEvent['rate_limit_info
 const realModel = (model: string | undefined): string | undefined =>
   model && !model.startsWith('<') ? model : undefined
 
+/**
+ * The stream has named a model - remember it, and if it is not the one that was working, say so in the
+ * feed.
+ *
+ * Comparison against the previous signature rather than against [PanelState.model]: that one holds a
+ * choice ("fable", "default") until the agent has answered, and any first answer would look like a swap.
+ * The first signature of all, then, changes nothing - there is nothing to compare it with, and the model
+ * that a conversation simply starts on is not news.
+ *
+ * [reason] is the CLI's explanation when the swap arrived as an event of its own (see applyModelFallback)
+ * and empty when it was noticed by the signature alone: in a past conversation's replay, for instance,
+ * where only the messages are kept and the system event that explained the swap is not.
+ */
+const noteStreamModel = (state: PanelState, named: string, reason = ''): PanelState => {
+  const previous = state.streamModel
+  const moved = { ...state, model: named, streamModel: named }
+
+  // sameModel rather than a string comparison: one model is signed differently from one answer to the
+  // next - with a build date, with or without the window mark - and every such difference would otherwise
+  // be announced as a swap (see modelKey in catalog.ts).
+  if (!previous || sameModel(previous, named)) return moved
+
+  return push(moved, (id) => ({ id, kind: 'model', from: previous, to: named, reason }))
+}
+
 const applyAgentEvent = (
   incoming: PanelState,
   event: AgentEvent,
@@ -746,10 +779,12 @@ const applyAgentEvent = (
       /**
        * The model is taken from every answer rather than only from the system event at the session's
        * start: the agent can change it mid-conversation itself - that is how the guard that moves a turn
-       * to another model fires. Nothing in the stream reports such a switch except the signature under
-       * the answer: besides it, that is the only trace that what is working is no longer what was chosen.
+       * to another model fires. The signature under an answer is the one trace of such a swap that never
+       * goes missing: the event announcing it is not kept in a transcript, so in a replay this is all
+       * there is (see noteStreamModel - it is the one that puts the mark into the feed).
        */
-      const model = realModel(event.message.model) ?? state.model
+      const named = realModel(event.message.model)
+      const signed = named ? noteStreamModel(state, named) : state
       // The window taken at this step - until the exact figure from the CLI arrives (see
       // liveContextUsed). Only for the main conversation: a subagent has gone off into its own branch
       // above, and its context has nothing to do with this window.
@@ -759,15 +794,15 @@ const applyAgentEvent = (
       // divided by the ordinary two hundred thousand, and a conversation opened from the history looked
       // overflowing. The exact figure the IDE asks the CLI for separately (see PanelUsage.refreshContext).
       const liveContextUsed = replay
-        ? state.liveContextUsed
-        : contextUsedOf(event.message.usage) ?? state.liveContextUsed
+        ? signed.liveContextUsed
+        : contextUsedOf(event.message.usage) ?? signed.liveContextUsed
       // The conversation has been answered - the start-up is over, and the next result closes a turn,
       // whatever it turns out to be (see starting and the "zero" turn above). The number of turns is no
       // measure here: placeholders from <synthetic> - a refusal about an unknown command, an answer
       // instead of a turn forbidden by a hook - arrive as a message in the feed, while the turn count
       // stays at zero.
       return applyAssistant(
-        { ...state, model, liveContextUsed, starting: false },
+        { ...signed, liveContextUsed, starting: false },
         blocksOf(event.message.content),
         now,
         replay,
@@ -900,37 +935,78 @@ const applyAgentEvent = (
   }
 }
 
+/**
+ * The system events by which the CLI announces that it has moved the conversation to another model on its
+ * own: safeguards that flagged the message (`model_refusal_fallback`) and a model that needs credits or a
+ * consent nobody gave (`model_consent_fallback`). Both hold the swap for the whole session, not for one
+ * request.
+ */
+const MODEL_FALLBACK_SUBTYPES = ['model_refusal_fallback', 'model_consent_fallback']
+
+/**
+ * The swap, announced by the CLI itself - with the reason, in its own words.
+ *
+ * It is the same card the signature under an answer would produce a moment later (see noteStreamModel);
+ * putting it here is worth it for the one thing the signature cannot carry - why. Being first, it also
+ * takes the swap off the signature's hands: from here on the new model is the one the stream last named,
+ * and the answers that follow add nothing.
+ *
+ * Without the model it moved to there is nothing to draw at all: the state is left as it was, and the
+ * swap is noticed by the next answer's signature - a card that names no model explains less than none.
+ */
+const applyModelFallback = (state: PanelState, event: AgentSystemEvent): PanelState => {
+  const to = realModel(event.fallbackModel)
+  if (!to) return state
+
+  const from = realModel(event.originalModel) ?? state.streamModel
+  const moved: PanelState = { ...state, model: to, streamModel: to }
+  if (from === to) return moved
+
+  return push(moved, (id) => ({ id, kind: 'model', from, to, reason: (event.content ?? '').trim() }))
+}
+
 const applySystem = (
   state: PanelState,
   event: AgentSystemEvent,
   now: number,
 ): PanelState => {
+  const isMainStreamEvent = event.task_id === undefined
+
+  // Only the main stream's events speak about the conversation's model: a subagent comes up with a model
+  // of its own, and its start-up used to be enough to rewrite the name in the bottom line - the panel then
+  // named someone else's model as the one the talk was running on.
+  const named = isMainStreamEvent ? realModel(event.model) : undefined
+  const signed = named ? noteStreamModel(state, named) : state
+
   const base: PanelState = {
-    ...state,
-    sessionId: event.session_id ?? state.sessionId,
-    model: realModel(event.model) ?? state.model,
-    permissionMode: event.permissionMode ? normalizeMode(event.permissionMode) : state.permissionMode,
-    slashCommands: event.slash_commands ?? state.slashCommands,
+    ...signed,
+    sessionId: event.session_id ?? signed.sessionId,
+    permissionMode: event.permissionMode ? normalizeMode(event.permissionMode) : signed.permissionMode,
+    slashCommands: event.slash_commands ?? signed.slashCommands,
     // The working directory the agent reports itself; without it the paths in the cards stay full and do
     // not fit the panel.
     project: event.cwd
-      ? { name: state.project?.name ?? '', ...state.project, workingDirectory: event.cwd }
-      : state.project,
+      ? { name: signed.project?.name ?? '', ...signed.project, workingDirectory: event.cwd }
+      : signed.project,
     // A task_id means a particular subagent is compacting rather than the main stream; its own timer in
     // the agent's tab (see AgentStreamView) ticks honestly through the whole compaction without this
     // flag, while the main status line must not go dark because of what is happening in someone else's,
     // parallel stream.
-    compacting: event.status === 'compacting' && event.task_id === undefined ? true : state.compacting,
+    compacting: event.status === 'compacting' && isMainStreamEvent ? true : signed.compacting,
     // The process has come up: the "zero" turn result that follows is about the start-up itself rather
     // than about the agent's work (see case 'result').
-    starting: event.subtype === 'init' ? true : state.starting,
+    starting: event.subtype === 'init' ? true : signed.starting,
   }
 
   // The request failed and will go again after a pause - the only thing happening in the conversation
   // while that pause lasts (see applyApiRetry).
   if (event.subtype === 'api_retry') return applyApiRetry(base, event, now)
 
-  const isMainStreamEvent = event.task_id === undefined
+  // The CLI moved the conversation to another model by itself - the one event that says so out loud, and
+  // with a reason (see applyModelFallback).
+  if (isMainStreamEvent && MODEL_FALLBACK_SUBTYPES.includes(event.subtype)) {
+    return applyModelFallback(base, event)
+  }
 
   // The CONTEXT card itself has to be visible before the finished result - otherwise the only trace that
   // anything is happening is the shimmering status line, which does not stay in the history (see the

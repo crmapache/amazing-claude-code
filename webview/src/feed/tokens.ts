@@ -57,6 +57,26 @@ export const tokensText = (tokens: UserToken[], offset = 0): string => {
 }
 
 /**
+ * How many images have already travelled to the agent earlier in this same session - through sent
+ * messages and through what already stands in the queue. The numbering carries on from that number
+ * rather than starting at zero on every message: otherwise an "Image #1" repeats in line after line,
+ * and the number no longer tells which image is meant when there are several over a conversation.
+ *
+ * Here rather than in the panel because both screens number them now: what is sent from a phone and
+ * what is sent from the desk go into the same conversation, and two counters would each start from
+ * their own idea of "the first".
+ */
+export const countSessionImages = (items: { kind: string; tokens?: UserToken[] }[], queued = 0): number => {
+  const sent = items.reduce(
+    (sum, item) =>
+      item.kind === 'user' ? sum + (item.tokens ?? []).filter(isImage).length : sum,
+    0,
+  )
+
+  return sent + queued
+}
+
+/**
  * Trims an empty tail - spaces and newlines - off the end of a sequence.
  *
  * Needed because the input field does not show its last line: a newline at the very end takes up no

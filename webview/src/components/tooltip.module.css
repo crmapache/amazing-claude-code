@@ -1,0 +1,53 @@
+/*
+ * The one hint element for the whole panel - see Tooltips.tsx for why it is one and lives in the body.
+ *
+ * The look is the same as the old per-element drawing had: the hint has to look like the IDE's own, and
+ * the IDE was the reference for these colours and sizes.
+ *
+ * A line break in the text stays a line break: in a two-line hint the second explains the first.
+ */
+.tip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: max-content;
+  max-width: 220px;
+  padding: 4px 8px;
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-deep);
+  border: 1px solid var(--acc-line-strong);
+  box-shadow: var(--acc-shadow-menu);
+  color: var(--acc-fg);
+  font: 11px/1.3 var(--acc-font);
+  white-space: pre-line;
+  opacity: 0;
+  visibility: hidden;
+  /* It slides the couple of pixels towards its place - from above when it stands below the element, and
+     the other way around. Only these two travel: left and top must jump, or the hint would be seen
+     crossing the panel on its way from one button to the next. */
+  transform: translateY(-2px);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+  pointer-events: none;
+  z-index: 60;
+}
+
+.tip[data-side='top'] {
+  transform: translateY(2px);
+}
+
+.tip[data-open] {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+/* A meter's hint is the only one that unfolds into two full lines - it needs a width of its own and more
+   room between the lines than a button's short caption. The meter marks itself with data-tooltip-kind
+   (see StatusBar), and the mark is carried over here. */
+.tip[data-kind='meter'] {
+  max-width: 190px;
+  padding: 5px 9px;
+  font: 11px/1.45 var(--acc-font);
+}

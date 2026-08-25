@@ -16,10 +16,19 @@ import { useEffect, type RefObject } from 'react'
  * loses nothing. The mark is put on directly rather than through React state: this fires on every pointer
  * move across the panel, and a re-render of the whole menu per move is a price with nothing to show for
  * it (the dropdown menu keeps its own highlight in state for the same reason - see Menu).
+ *
+ * The container comes either as a ref (the node is already in place by the time the effect runs - see
+ * SideMenu) or as the node itself, held in state by whoever renders it. The second shape is for a
+ * container that appears later than the first render: a ref filled after the fact never reaches the
+ * effect, because the ref object it depends on has not changed (see App and its panel, which is not
+ * rendered at all until the login has been checked).
  */
-export const useHoverTarget = (container: RefObject<HTMLElement | null>, selector = 'button') => {
+export const useHoverTarget = (
+  container: RefObject<HTMLElement | null> | HTMLElement | null,
+  selector = 'button',
+) => {
   useEffect(() => {
-    const element = container.current
+    const element = container instanceof HTMLElement ? container : container?.current
     if (!element) return
 
     let marked: Element | null = null

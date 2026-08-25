@@ -287,4 +287,112 @@ export const scenariosSystem: Scenario[] = [
       turnResult(2400),
     ]),
   ]),
+
+  /**
+   * The CLI moves the conversation to another model by itself - the guard that fires when a model's
+   * safeguards flag the message (a security audit reads as "cyber" to them). Recorded from a live run:
+   * both models, the wording of the reason and the order of the events are the CLI's own.
+   *
+   * The point of the scenario is that the swap becomes visible. It used to be silent: the selector simply
+   * started naming another model, and the agent - which does not see this event at all and knows only what
+   * its system prompt tells it - went on insisting it was working as Fable. What is worth looking at is
+   * the MODEL card in the feed and the MODEL button under the panel: the accent on it and its tooltip.
+   */
+  scenario('model-fallback', 'The CLI swaps the model itself', 'system', [
+    checkpoint('The conversation runs on the chosen Fable', [
+      shell({
+        type: 'init',
+        projectName: 'amazing-claude-code',
+        workingDirectory: '/Users/max/Documents/Projects/amazing-claude-code',
+        preferences: { model: 'fable', effort: 'xhigh', mode: 'bypassPermissions' },
+      }),
+      // Without the catalogue there is nothing to compare the choice against: "fable" alone does not say
+      // which identifier it expands into, and the button has no right to call anything a swap (see
+      // switchedModel in catalog.ts).
+      shell({
+        type: 'models',
+        models: [
+          { value: 'default', label: 'Default (recommended)', description: 'Use the model this session starts with.', resolved: 'claude-fable-5' },
+          { value: 'fable', label: 'Fable', description: 'Fable 5 · Fast and capable', resolved: 'claude-fable-5' },
+          { value: 'opus', label: 'Opus', description: 'Opus 5 · Best for everyday, complex tasks', resolved: 'claude-opus-5' },
+        ],
+      }),
+      agent({ type: 'system', subtype: 'init', model: 'claude-fable-5' }),
+      user('Audit the remote-access chain: the relay, the crypto, the mobile client'),
+      wait(500),
+    ]),
+    checkpoint('Fable starts the work', [
+      agent({
+        type: 'assistant',
+        message: {
+          model: 'claude-fable-5',
+          content: [{ type: 'text', text: 'Taking the whole chain: the session core, the relay and the crypto. Starting with the structure.' }],
+        },
+      }),
+      wait(900),
+    ]),
+    checkpoint('The safeguards fire - the CLI swaps the model', [
+      agent({
+        type: 'system',
+        subtype: 'model_refusal_fallback',
+        originalModel: 'claude-fable-5',
+        fallbackModel: 'claude-opus-4-8',
+        content:
+          "Fable 5's safeguards flagged this message. Our intentionally broad safeguards allow us to deliver more capabilities faster, but can sometimes flag legitimate coding, cybersecurity, and biology tasks. Switched to Opus 4.8. Send feedback with /feedback or learn more: https://support.claude.com/en/articles/15363606",
+      }),
+      wait(700),
+    ]),
+    checkpoint('The work carries on, on the other model', [
+      agent({
+        type: 'assistant',
+        message: {
+          model: 'claude-opus-4-8',
+          content: [{ type: 'text', text: 'Found the whole chain. Reading the crypto core - it is the most critical part.' }],
+        },
+      }),
+      turnResult(46800),
+    ]),
+  ]),
+
+  /**
+   * A 1M model chosen by hand, and the answers that come back signed without that mark - the CLI writes
+   * the window into a choice ("opus[1m]") but not into the signature under an answer ("claude-opus-5").
+   *
+   * The point of the scenario is that nothing moves: the MODEL button says "Opus 5 1M" from the choice
+   * onwards and stays that way when the answers start arriving. It used to drop to a bare "Opus" a few
+   * seconds in - a model that stands in no menu at all - and that read as the panel resetting the choice
+   * by itself.
+   */
+  scenario('model-1m-stays', 'A 1M choice stays put', 'system', [
+    checkpoint('The 1M model is chosen', [
+      shell({
+        type: 'init',
+        projectName: 'amazing-claude-code',
+        workingDirectory: '/Users/max/Documents/Projects/amazing-claude-code',
+        preferences: { model: 'opus[1m]', effort: 'high', mode: 'acceptEdits' },
+      }),
+      shell({
+        type: 'models',
+        models: [
+          { value: 'default', label: 'Default (recommended)', description: 'Use the model this session starts with.', resolved: 'claude-opus-5' },
+          { value: 'opus', label: 'Opus', description: 'Opus 5 · Best for everyday, complex tasks', resolved: 'claude-opus-5' },
+          { value: 'opus[1m]', label: 'Opus (1M context)', description: 'Opus 5 with 1M context', resolved: 'claude-opus-5[1m]' },
+          { value: 'fable', label: 'Fable', description: 'Fable 5 · Fast and capable', resolved: 'claude-fable-5' },
+        ],
+      }),
+      agent({ type: 'system', subtype: 'init', model: 'claude-opus-5' }),
+      user('Walk through the whole feed builder and tell me what is worth simplifying'),
+      wait(600),
+    ]),
+    checkpoint('The answer arrives signed without the window mark', [
+      agent({
+        type: 'assistant',
+        message: {
+          model: 'claude-opus-5',
+          content: [{ type: 'text', text: 'Read the builder whole. Three places are worth simplifying - starting with the first.' }],
+        },
+      }),
+      turnResult(9400),
+    ]),
+  ]),
 ]

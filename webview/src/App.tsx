@@ -36,9 +36,12 @@ import { Plugins } from './components/Plugins'
 import { Queue, type QueuedPrompt } from './components/Queue'
 import { Quotes, type Quote } from './components/Quotes'
 import { SelectionMenu } from './components/SelectionMenu'
+import { Tooltips } from './components/Tooltips'
 import { Remote, RemoteAbout, REMOTE_STATE, type RemoteStatus } from './components/Remote'
 import { Sounds } from './components/Sounds'
 import { StatusBar, UsageMeters, type Anchor, type SelectorKind } from './components/StatusBar'
+import { THANKS_MENU, thanksUrl } from './components/Thanks'
+import { useHoverTarget } from './hooks/useHoverTarget'
 import { StreamSwitcher } from './components/StreamSwitcher'
 import { TaskListPanel } from './components/TaskListPanel'
 import composer from './components/composer.module.css'
@@ -59,7 +62,7 @@ import {
   pendingPlan,
   streamStatus,
 } from './feed/streamStatus'
-import { composePrompt, imageAttachments, tokensText, trimTrailingSpace } from './feed/tokens'
+import { composePrompt, countSessionImages, imageAttachments, tokensText, trimTrailingSpace } from './feed/tokens'
 import type { FeedItem, TaskItem, TodoItem, UserItem, UserToken } from './feed/types'
 import type {
   AvailablePluginInfo,
@@ -181,7 +184,20 @@ export const App = () => {
    * rather than by the browser's events.
    */
   const [fileDragOver, setFileDragOver] = useState(false)
-  const [menu, setMenu] = useState<{ kind: SelectorKind; anchor: Anchor } | null>(null)
+  /* One popup for every button of the bottom row: the three selectors and the heart beside them (see
+     Thanks.tsx). One state rather than one per button - two open menus at once is not a state the row can
+     be in, and separate flags would have to be taught that about each other. */
+  /*
+   * The panel's own node, and the hover mark over the whole of it (see useHoverTarget): inside the IDE
+   * the browser draws offscreen, and there :hover alone loses the moment the cursor crosses from one
+   * button straight into its neighbour - the selectors' row and the buttons beside it are exactly such a
+   * run of neighbours. Kept in state rather than in a ref: the panel is not rendered until the login has
+   * been checked, and a ref filled later never reaches the effect.
+   */
+  const [panelNode, setPanelNode] = useState<HTMLElement | null>(null)
+  useHoverTarget(panelNode)
+
+  const [menu, setMenu] = useState<{ kind: SelectorKind | 'thanks'; anchor: Anchor } | null>(null)
   /**
    * The choice of model, effort and mode. It arrives from the shell at startup and is saved there too: a
    * new tab, a fork and the IDE's next start begin from it.
@@ -327,7 +343,10 @@ export const App = () => {
    * fallback for when it is not there yet (see contextOf).
    */
   const context = contextOf(panel, usage.contextWindow)
-  const imageBaseCount = useMemo(() => countSessionImages(panel, sessionQueue), [panel, sessionQueue])
+  const imageBaseCount = useMemo(
+    () => countSessionImages(panel.items, sessionQueue.reduce((sum, item) => sum + item.images.length, 0)),
+    [panel, sessionQueue],
+  )
 
   // A Stop honestly waits for a confirmation; if it has not come for longer than is reasonable, we offer
   // to kill the process by force rather than stand with a spinning button forever.
@@ -2071,6 +2090,16 @@ export const App = () => {
     setMenu({ kind, anchor })
   }
 
+  /** The same toggle for the heart at the row's far end, and for the same reason (see [openSelector]). */
+  const openThanks = (anchor: Anchor) => {
+    if (menu?.kind === 'thanks') {
+      setMenu(null)
+      return
+    }
+    setSideMenu((current) => ({ ...current, open: false }))
+    setMenu({ kind: 'thanks', anchor })
+  }
+
   /**
    * Open the current branch's PR in the system browser - the link itself lives in the panel and travels
    * outwards only on a click. The branch and its PR live in the header (see Header), one and the same place
@@ -2175,7 +2204,11 @@ export const App = () => {
   )
 
   return (
-    <div className={s.panel} data-anchor={dockAnchor} data-layout={composerLayout}>
+    <div className={s.panel} ref={setPanelNode} data-anchor={dockAnchor} data-layout={composerLayout}>
+      {/* The hover hints of every marked control at once - drawn into the body, so its place in this
+          tree carries no meaning beyond being mounted with the panel. */}
+      <Tooltips />
+
       {header}
 
       {/* Killed only when asked - the work itself is stopped by the CLI, and it reports the end through
@@ -2296,9 +2329,11 @@ export const App = () => {
             focusToken={focusToken}
             layout={composerLayout}
             model={model}
+            switchedFrom={switched ? prefs.model : undefined}
             effort={prefs.effort}
             mode={mode}
             onOpenSelector={openSelector}
+            onOpenThanks={openThanks}
             railContainer={railNode}
             fileDragOver={fileDragOver}
             onTokensChange={(tokens) => editDraft(active, { tokens })}
@@ -2331,9 +2366,11 @@ export const App = () => {
           {composerLayout === 'compact' || isSideComposerLayout(composerLayout) ? null : (
             <StatusBar
               model={model}
+              switchedFrom={switched ? prefs.model : undefined}
               effort={prefs.effort}
               mode={mode}
               onOpen={openSelector}
+              onOpenThanks={openThanks}
             />
           )}
         </div>
@@ -2475,7 +2512,9 @@ export const App = () => {
 
       {menu ? (
         <Menu
-          {...menuProps(menu.kind, models, prefs.model, switched, prefs.effort, mode, availableModes)}
+          {...(menu.kind === 'thanks'
+            ? THANKS_MENU
+            : menuProps(menu.kind, models, prefs.model, switched, prefs.effort, mode, availableModes))}
           anchor={menu.anchor}
           onClose={() => setMenu(null)}
           onPick={(id) => {
@@ -2485,6 +2524,12 @@ export const App = () => {
             if (kind === 'model') pickModel(id)
             if (kind === 'effort') pickEffort(id)
             if (kind === 'mode') setMode(id)
+            // The page has no browser of its own to open anything with: the address goes out to the shell,
+            // and the IDE opens it in the system browser - the same route the PR link takes.
+            if (kind === 'thanks') {
+              const url = thanksUrl(id)
+              if (url) send({ type: 'openExternal', url })
+            }
           }}
         />
       ) : null}
@@ -2590,24 +2635,6 @@ const sessionState = (panel: PanelState | undefined, active: boolean, cards: Car
 }
 
 // --- Derived data -----------------------------------------------------------
-
-/**
- * How many images have already travelled to the agent earlier in this same session - through sent messages
- * and through what already stands in the queue. We carry the numbering on from that number rather than from
- * zero on every message: otherwise an "Image #1" repeats in line after line, and the number no longer tells
- * which image is meant when there are several over a conversation.
- */
-const countSessionImages = (panel: PanelState, queue: QueuedPrompt[]): number => {
-  const sent = panel.items.reduce(
-    (sum, item) =>
-      item.kind === 'user'
-        ? sum + item.tokens.filter((token) => token.kind === 'chip' && token.chip.kind === 'img' && Boolean(token.chip.data)).length
-        : sum,
-    0,
-  )
-  const queued = queue.reduce((sum, item) => sum + item.images.length, 0)
-  return sent + queued
-}
 
 /** The last task list the agent sent - the panel above the input field mirrors only that one. */
 const latestTodo = (items: FeedItem[]): TodoItem | undefined =>

@@ -40,6 +40,23 @@ const REVEAL = {
 } as const
 
 /**
+ * The same wave on a phone, without the blur.
+ *
+ * A blur is the one part of this animation a device pays real money for: it is a filter on every word
+ * separately, that is, a layer of its own per word, redrawn for as long as that word is appearing. A
+ * desktop GPU does not notice; a phone, printing an answer word by word, turns it into a stutter - which
+ * is exactly what the wave was there to avoid.
+ *
+ * Opacity and the stagger carry the whole effect anyway: the text still comes through as a wave rather
+ * than in batches. The phone client is recognised by the density attribute it sets before the first paint
+ * (see mobile/main.tsx and tokens.css) - the same one that makes the cards thumb-sized.
+ */
+const REVEAL_TOUCH = { ...REVEAL, blurPx: 0 } as const
+
+const isTouchDensity = (): boolean =>
+  typeof document !== 'undefined' && document.documentElement.dataset.accDensity === 'touch'
+
+/**
  * A capsule rather than bare text running on with the rest of the feed: it shows at a glance where the
  * technical logs (thoughts, tool calls) ended and the real answer began - the same trick as with a user's
  * message, only from the other side.
@@ -66,7 +83,7 @@ export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
       {/* One wave for the whole card: otherwise every paragraph would start the reveal afresh and the
           text would light up in steps rather than in one motion. */}
       {reveal ? (
-        <RevealProvider resetKey={item.id} {...REVEAL}>
+        <RevealProvider resetKey={item.id} {...(isTouchDensity() ? REVEAL_TOUCH : REVEAL)}>
           <Markdown paragraphs={item.paragraphs} reveal onOpenLink={onOpenLink} />
         </RevealProvider>
       ) : (

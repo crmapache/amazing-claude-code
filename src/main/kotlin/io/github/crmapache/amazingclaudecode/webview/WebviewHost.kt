@@ -12,6 +12,8 @@ import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
 import com.intellij.util.Alarm
 import java.awt.Cursor
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import java.net.URI
 import javax.swing.JComponent
 import kotlinx.serialization.builtins.serializer
@@ -96,6 +98,9 @@ private const val HEAL_PERIOD_MS = 1000L
 /** How long after the last batch we ask for a full frame once more - this time on a clean slate. */
 private const val HEAL_SETTLE_MS = 250
 
+/** How long after the mouse has stopped we ask for a frame - see [WebviewHost.scheduleHoverFrame]. */
+private const val HOVER_SETTLE_MS = 80
+
 /**
  * The embedded browser plus the message channel between the interface and the shell.
  *
@@ -133,6 +138,7 @@ internal class WebviewHost(
     // in the disposable tree.
     private val flushAlarm: Alarm
     private val healAlarm: Alarm
+    private val hoverAlarm: Alarm
 
     /** When a whole frame was last asked to be redrawn - see [heal]. */
     @Volatile
@@ -156,6 +162,20 @@ internal class WebviewHost(
 
         flushAlarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, this)
         healAlarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, this)
+        // An alarm of its own rather than healAlarm's: they cancel each other's requests, and a mouse
+        // moving over a panel that is streaming events would keep pushing the settled frame away.
+        hoverAlarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, this)
+
+        // Both listeners are the same object: moving over the panel lights something up, leaving it puts
+        // that something out, and each of those is a frame that has to reach the IDE (see
+        // scheduleHoverFrame).
+        val mouse = object : MouseAdapter() {
+            override fun mouseMoved(event: MouseEvent) = scheduleHoverFrame()
+            override fun mouseDragged(event: MouseEvent) = scheduleHoverFrame()
+            override fun mouseExited(event: MouseEvent) = scheduleHoverFrame()
+        }
+        browser.component.addMouseMotionListener(mouse)
+        browser.component.addMouseListener(mouse)
 
         fromWebview.addHandler { payload: String ->
             onMessage(payload)
@@ -443,6 +463,29 @@ internal class WebviewHost(
 
         healAlarm.cancelAllRequests()
         healAlarm.addRequest(::repaintWhole, HEAL_SETTLE_MS)
+    }
+
+    /**
+     * A frame right after the mouse has stopped.
+     *
+     * What is hovered the page decides itself and instantly - but seeing it means a new frame, and the
+     * panel renders offscreen: the frame is drawn in another process and travels to the IDE, which puts
+     * up whatever last reached it. While the mouse moves, frames come one after another and the
+     * highlight follows the cursor. Stop over an entry, and the last frame - the one where that entry is
+     * lit - can be the one still on its way: the panel goes quiet, nothing asks for a redraw, and the
+     * highlight appears only when the mouse is nudged again. A menu is exactly where one stops: the
+     * cursor comes to rest over an entry while the eyes read it.
+     *
+     * So after the mouse has settled we ask for the frame ourselves, once. Nothing here decides what is
+     * hovered or redraws the highlight - it is already drawn, this only fetches the picture of it. The
+     * mouse leaving the panel counts as settling too: otherwise the last frame keeps an entry lit under
+     * a cursor that is long gone.
+     */
+    private fun scheduleHoverFrame() {
+        if (disposed) return
+
+        hoverAlarm.cancelAllRequests()
+        hoverAlarm.addRequest(::repaintWhole, HOVER_SETTLE_MS)
     }
 
     /**

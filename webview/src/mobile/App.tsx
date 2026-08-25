@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { unbase64url } from '../core/crypto'
 import { deriveSessionTitle } from '../feed/title'
 import type { HistoryEntry, ShellMessage } from '../protocol'
+import { applyFact, emptyFacts, isFact, type ProjectFacts } from './facts'
 import { applyMessage, emptyFeed, type MobileFeed } from './feed'
 import { Link, type LinkState, type SessionLaunch } from './link'
 import { buildProjects, chatKey, type Inventory } from './projects'
@@ -11,6 +12,7 @@ import { NewSession } from './screens/NewSession'
 import { Pairing, type PairingOffer } from './screens/Pairing'
 import { Sessions, type AgentEntry, type ProjectEntry, type SessionEntry } from './screens/Sessions'
 import { Thread } from './screens/Thread'
+import type { OutgoingPrompt } from './screens/Composer'
 import { forgetAgent, listAgents, readSetting, writeSetting, type PairedAgent } from './storage'
 import m from './mobile.module.css'
 
@@ -57,6 +59,18 @@ export const App = () => {
    * it is asked for again on opening anyway.
    */
   const [histories, setHistories] = useState<Record<string, HistoryEntry[]>>({})
+
+  /**
+   * What each project itself is like, by `agentId:projectKey`: the branch and its pull request, the
+   * subscription's windows, the slash commands, the files. The composer is drawn from all four (see
+   * mobile/facts).
+   *
+   * Beside the conversations rather than inside the feed, because that is what they are: they outlive
+   * the screen. Walking out of a chat and back into it must not empty the limit rings and blank the
+   * branch until the IDE gets round to saying them again - it says them when they change, not when
+   * somebody looks.
+   */
+  const [facts, setFacts] = useState<Record<string, ProjectFacts>>({})
 
   /**
    * The conversations this phone has put away, by `agentId:sessionId`.
@@ -138,6 +152,14 @@ export const App = () => {
     // conversations, not a feed.
     if (message.type === 'history') {
       setHistories((current) => ({ ...current, [`${agentId}:${projectKey}`]: message.conversations }))
+      return
+    }
+
+    // The project's own facts, which belong to no conversation at all and so must be taken before the
+    // guard below turns everything without a matching sessionId away.
+    if (isFact(message)) {
+      const key = `${agentId}:${projectKey}`
+      setFacts((current) => ({ ...current, [key]: applyFact(current[key] ?? emptyFacts(), message) }))
       return
     }
 
@@ -575,9 +597,10 @@ export const App = () => {
         feed={feed.state}
         title={entry?.title ?? NEW_SESSION_TITLE}
         project={entry?.projectName ?? ''}
+        facts={facts[`${screen.agentId}:${screen.projectKey}`] ?? emptyFacts()}
         connected={states[screen.agentId] === 'connected'}
         loading={!feed.loaded}
-        onSend={(text: string) => {
+        onSend={(prompt: OutgoingPrompt) => {
           // The first message names the tab, with the panel's own rule and the panel's own function -
           // otherwise a conversation begun from a phone stays "new session" at the desk for as long as
           // it lasts. The better name from the model replaces this one when it arrives.
@@ -585,19 +608,22 @@ export const App = () => {
             command(screen.agentId, screen.projectKey, {
               type: 'renameSession',
               sessionId: screen.sessionId,
-              title: deriveSessionTitle(text),
+              title: deriveSessionTitle(prompt.text),
             })
           }
 
           command(screen.agentId, screen.projectKey, {
             type: 'prompt',
             sessionId: screen.sessionId,
-            text,
+            text: prompt.text,
             // The pieces the card is drawn from travel with the message: the shell keeps them and
             // echoes them back, which is how this screen - and the panel at the desk - shows what was
             // asked rather than only what was answered.
-            tokens: [{ kind: 'text', value: text }],
+            tokens: prompt.tokens,
             quotes: [],
+            // Photos from the phone travel as bytes: there is no path on this device the agent could
+            // read (see prompt.images in protocol.ts).
+            images: prompt.images,
           })
         }}
         onStop={() =>

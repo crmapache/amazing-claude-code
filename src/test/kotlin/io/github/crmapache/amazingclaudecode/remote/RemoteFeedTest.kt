@@ -75,4 +75,38 @@ class RemoteFeedTest {
 
         assertEquals(listOf("main"), RemoteFeed.replayed(messages, listOf("main", "main")))
     }
+
+    /**
+     * The composer on the phone draws the branch, the limits, the commands and the file list, and every
+     * one of them belongs to the project rather than to a conversation. Without this they were dropped
+     * for having no sessionId to match, and the phone had a feed and nothing around it.
+     */
+    @Test
+    fun `the project's own facts a phone draws its composer from are forwarded`() {
+        assertEquals("project", RemoteFeed.projectFact("""{"type":"project","gitBranch":"main"}"""))
+        assertEquals("usage", RemoteFeed.projectFact("""{"type":"usage","session":{"percent":12}}"""))
+        assertEquals("commandHints", RemoteFeed.projectFact("""{"type":"commandHints","hints":{}}"""))
+        assertEquals("files", RemoteFeed.projectFact("""{"type":"files","files":["src/main.kt"]}"""))
+    }
+
+    /**
+     * `init` carries this machine's working directory, and the path is the one thing that never leaves
+     * it. The list is of what may go rather than of what may not, precisely so that a message nobody
+     * thought about stays where it is.
+     */
+    @Test
+    fun `everything else stays on this machine`() {
+        assertEquals(null, RemoteFeed.projectFact("""{"type":"init","workingDirectory":"/Users/max/work"}"""))
+        assertEquals(null, RemoteFeed.projectFact("""{"type":"clients","clients":[]}"""))
+        assertEquals(null, RemoteFeed.projectFact("""{"type":"remoteState","enabled":true}"""))
+    }
+
+    /**
+     * By the message's beginning rather than by a search inside it: a tool call that mentions the word
+     * is a line of somebody's conversation, not a fact about the project.
+     */
+    @Test
+    fun `a conversation line that merely mentions one is not a fact`() {
+        assertEquals(null, RemoteFeed.projectFact(agentLine("main").replace("assistant", "files")))
+    }
 }

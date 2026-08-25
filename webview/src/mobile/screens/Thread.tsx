@@ -1,25 +1,36 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AgentStreamView } from '../../components/AgentStreamView'
 import { Feed } from '../../components/Feed'
 import { StreamSwitcher } from '../../components/StreamSwitcher'
 import { useCardState } from '../../hooks/useCardState'
+import { contextOf } from '../../feed/build'
 import type { PanelState } from '../../feed/panelState'
 import { buildAgentTabs, mainStatusOf, streamStatus } from '../../feed/streamStatus'
+import { countSessionImages } from '../../feed/tokens'
 import type { TaskItem } from '../../feed/types'
+import type { ProjectFacts } from '../facts'
 import { Back } from './Back'
+import { Composer, type OutgoingPrompt } from './Composer'
 import m from '../mobile.module.css'
 
 /** Mobile has no "clear finished agents" action, so every task the session ever ran stays on the strip. */
 const NO_HIDDEN_TASKS: ReadonlySet<string> = new Set()
 
+/** One message waiting its turn - the phone's own copy of the panel's Queue. */
+interface Queued extends OutgoingPrompt {
+  id: string
+}
+
 interface ThreadProps {
   feed: PanelState
   title: string
   project: string
+  /** What this phone knows about the project the conversation is in - see mobile/facts. */
+  facts: ProjectFacts
   connected: boolean
   /** Nothing about this conversation has arrived yet - see MobileFeed.loaded. */
   loading: boolean
-  onSend: (text: string) => void
+  onSend: (prompt: OutgoingPrompt) => void
   onStop: () => void
   onStopTask: (taskId: string) => void
   /** A page further back than the EARLIER placeholder reaches - absent once there is nothing further. */
@@ -35,14 +46,14 @@ interface ThreadProps {
  * The plainest reason is the best one: a phone showing a conversation that reads differently from the
  * one on the desk is worse than a phone showing nothing at all.
  *
- * The input is a textarea rather than the panel's editable field. Everything the editable one buys -
- * chips woven into the text that the caret steps over - is an affordance of a keyboard with arrow keys,
- * and a phone has neither.
+ * Everything below the feed lives in Composer, which is where the difference between the two screens
+ * genuinely is - a thumb, no hover, and a keyboard that owns the bottom third of the screen.
  */
 export const Thread = ({
   feed,
   title,
   project,
+  facts,
   connected,
   loading,
   onSend,
@@ -52,12 +63,9 @@ export const Thread = ({
   onDecide,
   onBack,
 }: ThreadProps) => {
-  const [draft, setDraft] = useState('')
   const [loadingEarlier, setLoadingEarlier] = useState(false)
   const [activeStream, setActiveStream] = useState('main')
-  const [queue, setQueue] = useState<{ id: string; text: string }[]>([])
-  const bottom = useRef<HTMLDivElement>(null)
-  const field = useRef<HTMLTextAreaElement>(null)
+  const [queue, setQueue] = useState<Queued[]>([])
 
   /**
    * The queue works itself through the same way the panel's does: one message at a time, each one only
@@ -66,51 +74,34 @@ export const Thread = ({
    * that takes a moment to flip back to "running" would let this effect fire again on the next render and
    * hand over a second message before the first has even begun.
    */
-  const sent = useRef(false)
+  const [sent, setSent] = useState(false)
   useEffect(() => {
     if (feed.status === 'running') {
-      sent.current = false
+      if (sent) setSent(false)
       return
     }
-    if (sent.current || queue.length === 0) return
+    if (sent || queue.length === 0) return
 
-    sent.current = true
+    setSent(true)
     setQueue((current) => current.slice(1))
-    onSend(queue[0]!.text)
-  }, [feed.status, queue, onSend])
+    onSend(queue[0]!)
+  }, [feed.status, queue, sent, onSend])
 
-  /**
-   * The field grows with what is in it.
-   *
-   * A textarea does not do this by itself: `rows` is a starting height and nothing more, so a second
-   * line was written into a box the size of one and the first line scrolled out of sight - a person
-   * typing could not see the beginning of their own message. Measured before the paint rather than
-   * after it, or the wrong height is on screen for a frame on every keystroke.
-   */
-  useLayoutEffect(() => {
-    const node = field.current
-    if (!node) return
-
-    // Back to nothing first: scrollHeight of an element already tall enough for its text is that
-    // height, so without this the field could only ever grow.
-    node.style.height = 'auto'
-    node.style.height = `${node.scrollHeight}px`
-  }, [draft])
-
-  // A page just loaded further up the conversation counts as an items-length change too, and jumping to
-  // the bottom over it would undo the very thing tapping the placeholder was for - reading what came
-  // before. This runs in the same commit as the scroll effect below, on its same trigger, and clears the
-  // flag before that effect's own guard is read on the render after this one.
+  // The page asked for has arrived - the placeholder can be tapped again.
   useEffect(() => {
     if (loadingEarlier) setLoadingEarlier(false)
   }, [feed.items.length])
 
-  // Following the answer as it arrives is the ordinary case on a phone: it is being watched rather than
-  // worked in.
-  useEffect(() => {
-    if (loadingEarlier) return
-    bottom.current?.scrollIntoView({ block: 'end' })
-  }, [feed.items.length, feed.streamingText])
+  /*
+   * Following the answer as it arrives is the feed's own business here, exactly as it is in the panel
+   * (see Feed.tsx): it holds the bottom until the person scrolls up and lets go of it the moment they do.
+   *
+   * This screen used to do the following itself, with a scrollIntoView on every chunk of the arriving
+   * text - and that is what made a phone impossible to read on while an answer was printing: a finger
+   * moving up was overruled within a fraction of a second, and the two scrollers - this screen's and the
+   * feed's own - shuddered against each other the whole time. Scrolling belongs to one of them, and the
+   * one that knows whether the person is still at the bottom is the feed.
+   */
 
   /** The panel's own card state - what is expanded, which plans have been answered on this screen. */
   const cards = useCardState()
@@ -130,6 +121,22 @@ export const Thread = ({
   const mainStatus = useMemo(() => mainStatusOf(feed, cards.answeredAsks), [feed, cards.answeredAsks])
   const activeTask = feed.items.find((item): item is TaskItem => item.kind === 'task' && item.id === activeStream)
   const resolvedStream = activeStream === 'main' || activeTask ? activeStream : 'main'
+
+  /**
+   * The context this conversation has taken, by the panel's own arithmetic: the figure the CLI reports
+   * when it has one, and the fallback of the model's window size when it does not (see contextOf).
+   */
+  const context = useMemo(() => contextOf(feed, facts.contextWindow), [feed, facts.contextWindow])
+
+  /**
+   * How many images have already gone into this conversation - from this phone, from another, from the
+   * desk. The numbering of the next one carries on from it, so "[Image #2]" in the text means the same
+   * picture whichever screen sent it.
+   */
+  const imageBase = useMemo(
+    () => countSessionImages(feed.items, queue.reduce((sum, item) => sum + item.images.length, 0)),
+    [feed.items, queue],
+  )
 
   return (
     <>
@@ -188,72 +195,45 @@ export const Thread = ({
             }
           />
         )}
-        <div ref={bottom} />
       </div>
 
-      {/* Above the field, like the panel's own Queue - what will fire, in order, once the run in
-          progress ends. */}
-      {queue.length > 0 && (
-        <div className={m.queueList}>
-          {queue.map((item) => (
-            <div key={item.id} className={m.queueRow}>
-              <span className={m.queueText}>{item.text}</span>
-              <button
-                type="button"
-                className={m.queueRemove}
-                aria-label="Remove from the queue"
-                onClick={() => setQueue((current) => current.filter((one) => one.id !== item.id))}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
       <footer className={m.composer}>
-        <textarea
-          ref={field}
-          className={m.composerInput}
-          value={draft}
-          rows={1}
-          placeholder={connected ? 'Say something…' : 'Reconnecting…'}
-          enterKeyHint="send"
-          onChange={(event) => setDraft(event.target.value)}
-        />
-
-        {feed.status === 'running' ? (
-          <>
-            {/* Send itself stays for the current turn alone - steering it mid-run from a phone is not
-                offered, only waiting a turn out or stopping it. */}
-            <button
-              type="button"
-              className={m.buttonPrimary}
-              disabled={!draft.trim() || !connected}
-              onClick={() => {
-                setQueue((current) => [...current, { id: `q-${Date.now()}`, text: draft.trim() }])
-                setDraft('')
-              }}
-            >
-              Queue
-            </button>
-            <button type="button" className={m.buttonSecondary} onClick={onStop}>
-              Stop
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            className={m.buttonPrimary}
-            disabled={!draft.trim() || !connected}
-            onClick={() => {
-              onSend(draft.trim())
-              setDraft('')
-            }}
-          >
-            Send
-          </button>
+        {/* Above the field, like the panel's own Queue - what will fire, in order, once the run in
+            progress ends. */}
+        {queue.length > 0 && (
+          <div className={m.queueList}>
+            {queue.map((item, index) => (
+              <div key={item.id} className={m.queueRow}>
+                <span className={m.queueBadge}>{index + 1}</span>
+                <span className={m.queueText}>{item.text}</span>
+                <button
+                  type="button"
+                  className={m.queueRemove}
+                  aria-label="Remove from the queue"
+                  onClick={() => setQueue((current) => current.filter((one) => one.id !== item.id))}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
         )}
+
+        <Composer
+          facts={facts}
+          context={context}
+          running={feed.status === 'running'}
+          connected={connected}
+          imageBase={imageBase}
+          onSend={onSend}
+          onQueue={(prompt) =>
+            setQueue((current) => [
+              ...current,
+              { ...prompt, id: `q-${Date.now().toString(36)}-${current.length}` },
+            ])
+          }
+          onStop={onStop}
+        />
       </footer>
     </>
   )

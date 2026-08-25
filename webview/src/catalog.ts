@@ -46,17 +46,42 @@ export const modelOptions = (models: ModelInfo[] | null): MenuOption[] =>
       }))
 
 /**
- * A model's identifier without the context window mark: "opus[1m]" and "opus" are one and the same
- * model, merely loaded differently. Comparing the chosen one with the one in force has to work exactly
- * this way: the catalogue and the event stream write that mark inconsistently, and without dropping it a
- * conversation on its own model would look as though it had run off to someone else's.
+ * One and the same model, whatever it is called this time.
+ *
+ * The same model reaches the panel under three different names at once, and they have to be brought
+ * together before anything can be compared: a choice ("opus[1m]"), what the catalogue expands it into
+ * ("claude-opus-5[1m]") and the signature under an answer ("claude-opus-5", and for some families with a
+ * build date on the end - "claude-haiku-4-5-20251001"). What genuinely tells models apart is the family
+ * and the generation; the window mark and the date say nothing about which model this is.
+ *
+ * Compared as strings, those names disagree with one another constantly, and every disagreement read as
+ * "the conversation has moved to another model" - which is precisely what made the selector, five seconds
+ * after a choice of "Opus (1M context)", start naming a bare "Opus" that stands in no menu.
  */
-const modelFamily = (model: string): string => model.toLowerCase().replace(/\[.*\]$/, '')
+const modelKey = (model: string): string => {
+  const bare = model.toLowerCase().replace(/\[.*\]$/, '')
+  const family = MODEL_FAMILIES.find((option) => bare.includes(option.id))?.id ?? bare.replace(/^claude-/, '')
+  const version = modelVersion(bare)
+
+  return version ? `${family}-${version}` : family
+}
+
+/** Two names for one and the same model - see modelKey. */
+export const sameModel = (one: string, other: string): boolean => modelKey(one) === modelKey(other)
+
+/** A choice turned into the identifier behind it, when the catalogue knows one; otherwise as it is. */
+const expandModel = (models: ModelInfo[] | null, model: string): string =>
+  models?.find((option) => option.value === model)?.resolved || model
 
 /**
- * Which model a given tab is genuinely working on - the same formula as the `model` variable in App:
- * until the agent has confirmed a change we show what was chosen; after that, what it named itself; and
- * if it has not said a word yet, we expand the choice through the catalogue.
+ * Which model a given tab is genuinely working on - the same formula as the `model` variable in App.
+ *
+ * The choice, expanded through the catalogue, is the caption while the conversation runs on it: it is the
+ * fullest of the names for one model - the signature under an answer loses the window mark, and by that
+ * signature alone "Opus (1M context)" turned into a plain "Opus" a few seconds after being chosen, as if
+ * the panel had reset the choice by itself. The stream's own name takes over only when it means another
+ * model altogether - the CLI does swap them on its own (see ModelSwitchItem), and then the caption must
+ * name what is genuinely at work.
  *
  * A function of its own rather than only inline in App: the subscription to the shell's messages is set
  * up once at mount (see App, the useEffect with subscribe) and has no render of its own - models and
@@ -67,10 +92,14 @@ export const resolvePanelModel = (
   panel: { pendingModel?: string; model?: string },
   models: ModelInfo[] | null,
   prefsModel: string,
-): string =>
-  panel.pendingModel ??
-  panel.model ??
-  (models?.find((option) => option.value === (prefsModel || DEFAULT_MODEL))?.resolved || prefsModel)
+): string => {
+  const chosen = expandModel(models, prefsModel || DEFAULT_MODEL)
+  const running = panel.pendingModel ?? panel.model
+  if (!running) return chosen
+
+  const actual = expandModel(models, running)
+  return sameModel(chosen, actual) ? chosen : actual
+}
 
 /**
  * The model a conversation moved to not by our doing.
@@ -93,7 +122,8 @@ export const switchedModel = (
   const resolved = models?.find((option) => option.value === (selected || DEFAULT_MODEL))?.resolved
   if (!resolved) return undefined
 
-  return modelFamily(resolved) === modelFamily(actual) ? undefined : actual
+  const running = expandModel(models, actual)
+  return sameModel(resolved, running) ? undefined : running
 }
 
 /**
@@ -341,15 +371,40 @@ const MODEL_FAMILIES: { id: string; label: string }[] = [
 ]
 
 /**
+ * The generation out of a full identifier: "claude-opus-4-8" is 4.8, "claude-haiku-4-5-20251001" is 4.5.
+ *
+ * The dated tail is dropped - a build's date says nothing to anyone reading the bottom line, and it would
+ * take up the whole button. Everything up to it is the version, dots instead of the dashes the identifier
+ * writes it with.
+ *
+ * A choice rather than an identifier ("opus", "default", "opusplan") has no version at all, and there is
+ * nothing to add to its caption.
+ */
+const modelVersion = (model: string): string => {
+  const parts = model.toLowerCase().replace(/\[.*\]$/, '').split('-')
+  const numbers = parts.filter((part) => /^\d+$/.test(part) && part.length < 5)
+  return numbers.join('.')
+}
+
+/**
  * The model arrives as a full identifier - in the line we show an understandable name. About "1M" we say
  * so with a separate mark: such a model's context window is five times larger, and the family's name
  * alone does not tell one that.
+ *
+ * The generation stands in the caption too - "Opus 4.8" rather than a bare "Opus". The family alone was
+ * enough while the panel only ever named the chosen model; it stopped being enough the moment the CLI
+ * started moving conversations to another model by itself (see ModelSwitchItem): the guard's Opus 4.8 was
+ * shown as plain "Opus", indistinguishable from the Opus that was chosen, and the swap read as the panel
+ * fiddling with the selector behind one's back.
  */
 export const modelLabel = (model?: string): string => {
   if (!model) return DEFAULT_MODEL_LABEL
 
   const known = MODEL_FAMILIES.find((family) => model.toLowerCase().includes(family.id))
-  const base = known?.label ?? model.replace(/^claude-/, '').replace(/\[.*\]$/, '')
+  const named = known?.label ?? model.replace(/^claude-/, '').replace(/\[.*\]$/, '')
+  const version = known ? modelVersion(model) : ''
+  const base = version ? `${named} ${version}` : named
+
   return /\[1m\]/i.test(model) ? `${base} 1M` : base
 }
 
@@ -379,7 +434,14 @@ const widestLabel = (labels: string[]): string =>
  */
 export const MODEL_SAMPLE = widestLabel([
   DEFAULT_MODEL_LABEL,
-  ...MODEL_FAMILIES.flatMap((family) => [family.label, `${family.label} 1M`]),
+  // The generation and the "1M" mark are counted in as well (see modelLabel): the widest real caption is
+  // a family with both of them, and measuring by the bare family name would leave every such caption
+  // clipped. Opusplan is the exception - it is a mode of work rather than a model, and no version or
+  // window mark ever stands beside it; counting it in with them would widen the button for a caption
+  // that cannot occur.
+  ...MODEL_FAMILIES.flatMap((family) =>
+    family.id === 'opusplan' ? [family.label] : [family.label, `${family.label} 4.5 1M`],
+  ),
 ])
 
 export const EFFORT_SAMPLE = widestLabel(EFFORT_OPTIONS.map((option) => option.label))

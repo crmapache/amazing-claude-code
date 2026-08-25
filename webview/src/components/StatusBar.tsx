@@ -1,6 +1,17 @@
 import { EFFORT_SAMPLE, MODE_SAMPLE, MODEL_SAMPLE, modeLabel, modeShortLabel, modelLabel } from '../catalog'
+import {
+  FIVE_HOUR_MS,
+  paceColor,
+  RING_LENGTH,
+  RING_RADIUS,
+  ringDash,
+  timeLeft,
+  WEEK_MS,
+  weekBudgetToday,
+} from '../feed/usage'
 import type { UsageWindow } from '../protocol'
 import s from './shell.module.css'
+import { ThanksButton } from './Thanks'
 
 export type SelectorKind = 'model' | 'effort' | 'mode'
 
@@ -13,6 +24,17 @@ export interface Anchor {
   right: number
   top: number
   bottom: number
+}
+
+/**
+ * A button's place on the screen, in the shape the menu wants it. Measured from the button itself rather
+ * than counted from fixed coordinates: the panel comes in any width, and "roughly on the right" misses.
+ * Shared by everyone who opens a menu from a button of their own - the selectors here and the heart beside
+ * them (see Thanks.tsx).
+ */
+export const anchorFrom = (button: HTMLElement): Anchor => {
+  const rect = button.getBoundingClientRect()
+  return { right: window.innerWidth - rect.right, top: rect.top, bottom: rect.bottom }
 }
 
 interface UsageMetersProps {
@@ -47,50 +69,78 @@ export const UsageMeters = ({ todayTokens, usage }: UsageMetersProps) => (
 
     {usage.week ? <WeekMeter usage={usage.week} /> : null}
 
-    <span className={s.meterTokens} data-tooltip="Tokens spent today, across all projects" data-tooltip-at="top left">
+    <span
+      className={s.meterTokens}
+      data-tooltip="Tokens spent today, across all projects"
+      data-tooltip-at="top left"
+      data-tooltip-kind="meter"
+    >
       {todayTokens}
     </span>
   </div>
 )
 
-/** The ring's radius in its own coordinates, and the arc length at that radius. */
-const RING_RADIUS = 8.5
-const RING_LENGTH = 2 * Math.PI * RING_RADIUS
-
-/** How far to leave the arc "unturned": at 0% there is no ring at all, at 100% it is closed. */
-const dashFor = (percent: number): number => RING_LENGTH * (1 - Math.min(100, Math.max(0, percent)) / 100)
-
-interface MeterProps {
+export interface RingProps {
   percent: number
   color: string
   /** A pale arc under the main one: the pace one checks against. None means it is not drawn. */
   pace?: number | null
+  /** In pixels, when the ring is not the status line's own 22 - the phone's is bigger. */
+  size?: number
+}
+
+interface MeterProps extends RingProps {
   /** The hover tooltip; a newline in it is a genuine second line. */
   tooltip: string
 }
 
-const Meter = ({ percent, color, pace = null, tooltip }: MeterProps) => (
-  <span className={s.meter} data-tooltip={tooltip} data-tooltip-at="top left" role="img" aria-label={tooltip}>
-    {/* overflow is visible: the arc's round caps stick out past the viewBox. */}
-    <svg className={s.meterRing} viewBox="0 0 22 22" aria-hidden="true">
-      <circle className={s.meterTrack} cx="11" cy="11" r={RING_RADIUS} />
-      {pace === null ? null : (
-        <circle
-          className={s.meterPace}
-          cx="11"
-          cy="11"
-          r={RING_RADIUS}
-          style={{ strokeDasharray: RING_LENGTH, strokeDashoffset: dashFor(pace) }}
-        />
-      )}
+/**
+ * The ring alone, without the figure beside it or the tooltip over it.
+ *
+ * Exported because the phone draws exactly this one, only bigger and in a layout of its own (see
+ * mobile/screens/Composer): the geometry - the radius, the stroke, which way the arc turns - is the
+ * kind of thing that is copied once and then quietly drifts.
+ */
+export const Ring = ({ percent, color, pace = null, size }: RingProps) => (
+  // overflow is visible: the arc's round caps stick out past the viewBox.
+  <svg
+    className={s.meterRing}
+    viewBox="0 0 22 22"
+    style={size === undefined ? undefined : { width: size, height: size }}
+    aria-hidden="true"
+  >
+    <circle className={s.meterTrack} cx="11" cy="11" r={RING_RADIUS} />
+    {pace === null ? null : (
       <circle
-        className={s.meterArc}
+        className={s.meterPace}
         cx="11"
         cy="11"
         r={RING_RADIUS}
-        style={{ stroke: color, strokeDasharray: RING_LENGTH, strokeDashoffset: dashFor(percent) }}
+        style={{ strokeDasharray: RING_LENGTH, strokeDashoffset: ringDash(pace) }}
       />
-    </svg>
+    )}
+    <circle
+      className={s.meterArc}
+      cx="11"
+      cy="11"
+      r={RING_RADIUS}
+      style={{ stroke: color, strokeDasharray: RING_LENGTH, strokeDashoffset: ringDash(percent) }}
+    />
+  </svg>
+)
+
+const Meter = ({ percent, color, pace = null, tooltip }: MeterProps) => (
+  <span
+    className={s.meter}
+    data-tooltip={tooltip}
+    data-tooltip-at="top left"
+    // The two-full-lines drawing rather than a button caption's - Tooltips carries the mark over onto
+    // the shared element (see tooltip.module.css).
+    data-tooltip-kind="meter"
+    role="img"
+    aria-label={tooltip}
+  >
+    <Ring percent={percent} color={color} pace={pace} />
     <span className={s.meterValue} style={{ color }}>
       {percent}%
     </span>
@@ -99,21 +149,36 @@ const Meter = ({ percent, color, pace = null, tooltip }: MeterProps) => (
 
 interface StatusBarProps {
   model?: string
+  /**
+   * The model the person chose, when the conversation is running on another one - see Selectors. Empty
+   * whenever the two agree, which is nearly always.
+   */
+  switchedFrom?: string
   effort: string
   mode: string
   onOpen: (kind: SelectorKind, anchor: Anchor) => void
+  onOpenThanks: (anchor: Anchor) => void
 }
 
 /**
- * The bottom line: what we work with (the model, the effort, the mode). The branch and its PR have moved
- * from here into the header - one place for every layout rather than a copy per layout (see Header.tsx).
- * The usage lives in the input field itself, see [UsageMeters].
+ * The bottom line: what we work with (the model, the effort, the mode), and at the row's far end the heart
+ * (see Thanks.tsx). The branch and its PR have moved from here into the header - one place for every
+ * layout rather than a copy per layout (see Header.tsx). The usage lives in the input field itself, see
+ * [UsageMeters].
+ *
+ * The heart is pinned to the opposite edge by a spacer rather than by the row's alignment: the selectors
+ * keep the width they need, the heart keeps the far end, and the gap between them is whatever is left -
+ * so nothing moves when the model or the mode changes.
  */
-export const StatusBar = ({ model, effort, mode, onOpen }: StatusBarProps) => (
+export const StatusBar = ({ model, switchedFrom, effort, mode, onOpen, onOpenThanks }: StatusBarProps) => (
   <div className={s.status}>
     <div className={s.selectors}>
-      <Selectors model={model} effort={effort} mode={mode} onOpen={onOpen} />
+      <Selectors model={model} switchedFrom={switchedFrom} effort={effort} mode={mode} onOpen={onOpen} />
     </div>
+
+    <div className={s.spacer} />
+
+    <ThanksButton onOpen={onOpenThanks} />
   </div>
 )
 
@@ -184,12 +249,7 @@ const Selector = ({ label, value, sample, title, className = '', onOpen }: Selec
     type="button"
     className={`${s.selector} ${className}`}
     title={title}
-    onClick={(event) => {
-      // The menu stands by the button's place rather than by fixed coordinates: the panel comes in any
-      // width, and "roughly on the right" misses.
-      const rect = event.currentTarget.getBoundingClientRect()
-      onOpen({ right: window.innerWidth - rect.right, top: rect.top, bottom: rect.bottom })
-    }}
+    onClick={(event) => onOpen(anchorFrom(event.currentTarget))}
   >
     <span className={s.selectorLabel}>{label}</span>
     {/*
@@ -210,6 +270,13 @@ const Selector = ({ label, value, sample, title, className = '', onOpen }: Selec
 
 interface SelectorsProps {
   model?: string
+  /**
+   * The model the person chose, given only when the conversation is running on a different one: the CLI
+   * moved it there by itself (see ModelSwitchItem). Then the MODEL button wears an accent and says in its
+   * tooltip whose doing this was - otherwise the selector looks as though it had wandered off on its own,
+   * and the panel as though it changed the choice behind one's back.
+   */
+  switchedFrom?: string
   effort: string
   mode: string
   /** The row shares the width evenly rather than standing as fixed buttons - see .selectorAuto. */
@@ -222,7 +289,7 @@ interface SelectorsProps {
  * tooltips and width samples are one and the same, and they must not drift apart between the status line,
  * compact and the side rail.
  */
-export const Selectors = ({ model, effort, mode, auto = false, onOpen }: SelectorsProps) => {
+export const Selectors = ({ model, switchedFrom, effort, mode, auto = false, onOpen }: SelectorsProps) => {
   const grow = auto ? s.selectorAuto : ''
 
   return (
@@ -231,8 +298,12 @@ export const Selectors = ({ model, effort, mode, auto = false, onOpen }: Selecto
         label="MODEL"
         value={modelLabel(model)}
         sample={MODEL_SAMPLE}
-        title={`Model: ${modelLabel(model)}`}
-        className={grow}
+        title={
+          switchedFrom
+            ? `Model: ${modelLabel(model)} - Claude Code switched to it on its own; your choice is ${modelLabel(switchedFrom)}`
+            : `Model: ${modelLabel(model)}`
+        }
+        className={`${grow} ${switchedFrom ? s.selectorSwitched ?? '' : ''}`}
         onOpen={(anchor) => onOpen('model', anchor)}
       />
       <Selector
@@ -262,96 +333,6 @@ const Chevron = () => (
   </svg>
 )
 
-const FIVE_HOUR_MS = 5 * 60 * 60 * 1000
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000
-const DAY_MS = 24 * 60 * 60 * 1000
-const WEEK_DAILY_BUDGET = 14
-
-/**
- * The alarm level by the pace of usage rather than by a bare percentage - the logic is taken from a
- * personal ~/.claude/statusline.sh one to one. 51% over a week with the window almost over is not
- * frightening, while the same percentage on the first day is alarming: we compare the real usage against
- * the line of an even pace up to the reset and colour the deviation from it. Plus an absolute ceiling on
- * top: right at the limit, time no longer saves anyone, whatever the pace.
- * 0 = green, 1 = yellow, 2 = orange, 3 = red.
- */
-const paceSeverity = (usedPercent: number, resets: string, windowMs: number): number => {
-  const resetMs = resets ? new Date(resets).getTime() : Number.NaN
-  const now = Date.now()
-
-  // No reset data, or the window is no longer current (the reset is in the past) - the ceiling only.
-  if (!resets || Number.isNaN(resetMs) || resetMs <= now) {
-    if (usedPercent >= 96) return 3
-    if (usedPercent >= 90) return 2
-    return 0
-  }
-
-  const elapsedFraction = Math.min(1, Math.max(0, (now - (resetMs - windowMs)) / windowMs))
-  const over = usedPercent - elapsedFraction * 100
-
-  let severity = over <= 0 ? 0 : over <= 15 ? 1 : over <= 35 ? 2 : 3
-  if (usedPercent >= 96) severity = Math.max(severity, 3)
-  else if (usedPercent >= 90) severity = Math.max(severity, 2)
-
-  return severity
-}
-
-const SEVERITY_COLOR = ['var(--acc-meter-green)', 'var(--acc-warn)', 'var(--acc-orange)', 'var(--acc-bad-light)']
-
-const paceColor = (usedPercent: number, resets: string, windowMs: number): string =>
-  SEVERITY_COLOR[paceSeverity(usedPercent, resets, windowMs)] ?? SEVERITY_COLOR[0]!
-
-/**
- * The context has no window with a reset of its own - only a bare percentage, on a scale of its own. This
- * is the shared source of truth for the thresholds: the context bar in the composer (see Composer.tsx) is
- * coloured and lit by the same levels as this figure - duplicating 50/70/85 in a second place would mean
- * parting them sooner or later.
- */
-type ContextLevel = 'green' | 'warn' | 'orange' | 'bad'
-
-const contextLevel = (percent: number): ContextLevel => {
-  if (percent < 50) return 'green'
-  if (percent < 70) return 'warn'
-  if (percent < 85) return 'orange'
-  return 'bad'
-}
-
-const CONTEXT_LEVEL_COLOR: Record<ContextLevel, string> = {
-  green: 'var(--acc-meter-green)',
-  warn: 'var(--acc-warn)',
-  orange: 'var(--acc-orange)',
-  bad: 'var(--acc-bad-light)',
-}
-
-export const contextColor = (percent: number): string => CONTEXT_LEVEL_COLOR[contextLevel(percent)]
-
-/** The same pair of glow intensities (80% + 35%) as in the context bar itself. */
-const CONTEXT_LEVEL_GLOW: Record<ContextLevel, { strong: string; soft: string }> = {
-  green: { strong: 'var(--acc-meter-green-80)', soft: 'var(--acc-meter-green-35)' },
-  warn: { strong: 'var(--acc-warn-80)', soft: 'var(--acc-warn-35)' },
-  orange: { strong: 'var(--acc-orange-80)', soft: 'var(--acc-orange-35)' },
-  bad: { strong: 'var(--acc-bad-light-80)', soft: 'var(--acc-bad-light-35)' },
-}
-
-export const contextGlow = (percent: number): { strong: string; soft: string } => CONTEXT_LEVEL_GLOW[contextLevel(percent)]
-
-/**
- * How long is left until the window resets: "2h 41m".
- *
- * The remainder specifically rather than the reset time: it answers one question - hold out or start
- * saving right now - and in this shape the answer does not have to be worked out.
- */
-const timeLeft = (resets: string): string | null => {
-  const resetMs = resets ? new Date(resets).getTime() : Number.NaN
-  if (Number.isNaN(resetMs)) return null
-
-  const minutes = Math.round((resetMs - Date.now()) / 60_000)
-  if (minutes <= 0) return null
-
-  const hours = Math.floor(minutes / 60)
-  return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`
-}
-
 /**
  * A window's tooltip: the share and, when it is known, how long until the reset. "When" specifically: for
  * a window that has just reset, nobody knows the next reset time yet - it will begin with the very first
@@ -362,24 +343,6 @@ const windowTooltip = (title: string, usage: UsageWindow): string => {
   const left = timeLeft(usage.resets)
 
   return left === null ? `${title}: ${usage.percent}% used` : `${title}: ${usage.percent}% used\nResets in ${left}`
-}
-
-/**
- * The second figure beside the weekly usage is not the share of time elapsed but the window's day number:
- * on the day the limit resets 14% is already available, the next day 28%, and so on (100/7 rounded to a
- * flat 14 - the same logic as in a personal statusline.sh), so that it does not have to be worked out in
- * one's head on every glance at the status bar.
- */
-const weekBudgetToday = (resets: string): number | null => {
-  if (!resets) return null
-
-  const resetMs = new Date(resets).getTime()
-  if (Number.isNaN(resetMs)) return null
-
-  const start = resetMs - WEEK_MS
-  const elapsed = Math.max(0, Date.now() - start)
-  const day = Math.floor(elapsed / DAY_MS) + 1
-  return Math.min(day * WEEK_DAILY_BUDGET, 100)
 }
 
 /** An accent of its own for every permission mode - see .selectorPlan and its neighbours. */

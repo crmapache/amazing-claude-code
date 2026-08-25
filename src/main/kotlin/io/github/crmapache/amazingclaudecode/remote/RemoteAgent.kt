@@ -1108,6 +1108,25 @@ internal class RemoteAgent : Disposable {
          */
         private val catchingUp = ThreadLocal.withInitial { false }
 
+        /**
+         * A fingerprint of the last of each project fact that genuinely went out, per device.
+         *
+         * The file list is refreshed once a minute and is four thousand paths long; the branch is
+         * re-read as often and changes on the days one switches it. Sending either again unchanged is
+         * a hundred and sixty kilobytes of somebody's mobile data per minute for no news at all.
+         *
+         * Per device rather than per project, which is what this was first and which was wrong in the
+         * only case that matters: the facts reach a phone when it opens a conversation, so a second
+         * phone joining after the first would have found them all "already sent" and drawn a composer
+         * with no branch, no limits and no files.
+         *
+         * A fingerprint rather than the message: keeping four thousand paths per device per project
+         * costs megabytes to save the same megabytes. Length together with the hash, so that two
+         * different lists collide only by accident of both at once - and a collision costs a minute of
+         * a stale branch, not a wrong one.
+         */
+        private val sentFacts = ConcurrentHashMap<String, Long>()
+
         override fun deliver(messages: List<String>) {
             if (link == null) return
 
@@ -1121,10 +1140,15 @@ internal class RemoteAgent : Disposable {
             // phone is handed the result (see below).
             val sendable = if (live) messages.filterNot(RemoteFeed::isReplayLine) else messages
 
+            val facts = sendable.mapNotNull { message ->
+                RemoteFeed.projectFact(message)?.let { type -> type to message }
+            }
+
             for ((address, subscription) in subscriptions) {
                 if (subscription.projectKey != projectKey) continue
 
-                val wanted = sendable.filter { RemoteFeed.wantedBy(it, subscription.sessionId) }
+                val wanted = newFacts(address, facts) +
+                    sendable.filter { RemoteFeed.wantedBy(it, subscription.sessionId) }
                 if (wanted.isEmpty()) continue
 
                 queue(address, wanted)
@@ -1134,6 +1158,23 @@ internal class RemoteAgent : Disposable {
 
             if (live) handOverReplayed(messages)
         }
+
+        /**
+         * Which of the project's facts this device has not already been sent unchanged.
+         *
+         * They go to every device watching something in this project rather than to whoever asked:
+         * nobody asked - they arrive by themselves, exactly as they do for the panel, and a phone
+         * cannot draw its composer without them.
+         */
+        private fun newFacts(address: String, facts: List<Pair<String, String>>): List<String> =
+            facts.mapNotNull { (type, message) ->
+                val fingerprint = message.length.toLong() shl 32 or (message.hashCode().toLong() and 0xffffffffL)
+                if (sentFacts.put("$address\u0000$type", fingerprint) == fingerprint) {
+                    null
+                } else {
+                    RemoteFeed.forPhone(type, message)
+                }
+            }
 
         /**
          * An answer goes to every paired device rather than to whoever is watching what.

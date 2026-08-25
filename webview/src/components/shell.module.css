@@ -693,13 +693,13 @@
 
 /* The bottom row: a summary in text, as in a terminal's status line. The meters go in a row of their own
    above the buttons - beside them they scatter one by one. */
-/* What is left in the status row is the branch with its PR and the selectors: the usage has moved from here
-   into the input field's own bottom row (see UsageMeters). */
+/* What is left in the status row is the selectors and, at its far end, the heart (see Thanks.tsx): the
+   branch with its PR has moved into the header, the usage into the input field's own bottom row (see
+   UsageMeters). One row rather than a column of them - there is one thing left on each side. */
 .status {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 7px;
+  align-items: center;
+  gap: 10px;
   padding: 7px 2px 8px;
 }
 
@@ -829,16 +829,6 @@
   white-space: nowrap;
 }
 
-/* A meter's tooltip is the only one that unfolds into two full lines - it needs a width of its own and more
-   room between the lines than a button's short caption. The direction (upwards and from the left edge) is
-   set by an attribute in the markup itself. */
-.meter[data-tooltip]::after,
-.meterTokens[data-tooltip]::after {
-  max-width: 190px;
-  padding: 5px 9px;
-  font: 11px/1.45 var(--acc-font);
-}
-
 .selectors {
   display: flex;
   align-items: center;
@@ -852,7 +842,13 @@
      itself and decide itself (see App.openSelector), as the header's buttons already do (see .history and
      its neighbours, the same trick). */
   z-index: 41;
-  flex: none;
+  /* Not flex: none - the heart stands in the same row now (see .thanks and StatusBar.tsx), and a block that
+     cannot shrink would push it out past the panel's right edge on a narrow panel. It does not grow either:
+     the row's free width belongs to the spacer between them rather than to the selectors. What shrinks
+     inside is the selectors themselves - each of them ends its value with an ellipsis (see .selectorText)
+     rather than being cut off by the panel's edge. */
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 100%;
 }
 
@@ -872,9 +868,18 @@
   border: 1px solid var(--acc-line-strong);
   border-radius: var(--acc-r-md);
   background: var(--acc-bg-control);
+  /* The same 80ms as the side menu's rows, and for the same reason: this browser draws offscreen and
+     repaints when something asks it to, and an instant colour swap asks exactly once - a request that can
+     be missed, leaving the button under the cursor unlit. A transition asks over several frames. */
+  transition:
+    background-color 80ms linear,
+    border-color 80ms linear;
 }
 
-.selector:hover {
+/* [data-hover] beside every :hover here - the mark useHoverTarget puts on the button under the cursor
+   (see App). In the IDE :hover alone skips the crossing from one selector straight into the next. */
+.selector:hover,
+.selector[data-hover] {
   border-color: var(--acc-line-hover);
 }
 
@@ -891,7 +896,8 @@
   border-color: var(--acc-accent-40);
 }
 
-.selectorPlan:hover {
+.selectorPlan:hover,
+.selectorPlan[data-hover] {
   border-color: var(--acc-accent);
 }
 
@@ -904,7 +910,8 @@
   border-color: var(--acc-ok-32);
 }
 
-.selectorAccept:hover {
+.selectorAccept:hover,
+.selectorAccept[data-hover] {
   border-color: var(--acc-ok);
 }
 
@@ -917,12 +924,31 @@
   border-color: var(--acc-bad-40);
 }
 
-.selectorDanger:hover {
+.selectorDanger:hover,
+.selectorDanger[data-hover] {
   border-color: var(--acc-bad);
 }
 
 .selectorDanger .selectorLabel {
   color: var(--acc-bad-light);
+}
+
+/* The conversation is running on a model nobody here chose - the CLI moved it there itself (see
+   ModelSwitchItem). The same warn accent the CONTEXT label and the model card in the feed wear: not a
+   breakage, but not the state of things one asked for either. Built like the mode accents above, and for
+   the same reason it needs a :hover of its own. */
+.selectorSwitched {
+  background: var(--acc-warn-12);
+  border-color: var(--acc-warn-32);
+}
+
+.selectorSwitched:hover,
+.selectorSwitched[data-hover] {
+  border-color: var(--acc-warn);
+}
+
+.selectorSwitched .selectorLabel {
+  color: var(--acc-warn-light);
 }
 
 /* The label and the value share a size and a line-height: at different sizes their optical centres do not
@@ -990,12 +1016,80 @@
   transition: color 0.12s ease;
 }
 
-.selector:hover .selectorCaret {
+.selector:hover .selectorCaret,
+.selector[data-hover] .selectorCaret {
   color: var(--acc-fg-dim);
 }
 
-/* margin-left: auto nails the capsule to the row's right edge regardless of whether the three selectors on
-   the left fitted at any width of the panel. */
+/* --- Saying thanks --------------------------------------------------------- */
+
+/*
+ * The heart at the far end of the selectors' row (see Thanks.tsx). An icon and no caption: it is not one of
+ * the three controls the turn runs on, and a fourth capsule with a word in it would read as a fourth
+ * setting.
+ *
+ * The frame is the selectors' own - 23px, the same border and background - so that it sits in their row as
+ * a neighbour rather than as an insert. In the side rail it takes the attachment button's shape instead
+ * (see .thanksRail): there its neighbours are the buttons, not the selectors.
+ *
+ * position + z-index for the same reason as .selectors above: the menu's scrim covers everything below the
+ * header, and without this a second click on the heart's own self would go to the scrim - the menu would
+ * close as a "click outside" and open again from the same press.
+ */
+.thanks {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 41;
+  flex: none;
+  width: 23px;
+  height: 23px;
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-control);
+  color: var(--acc-heart);
+  /* A transition rather than an instant swap - the same reason as .selector's above. */
+  transition:
+    background-color 80ms linear,
+    border-color 80ms linear;
+}
+
+.thanks:hover,
+.thanks[data-hover] {
+  background: var(--acc-heart-16);
+  border-color: var(--acc-heart-40);
+}
+
+/* The rail's variant: the same square as the attachment and the slash beside it (see .attach in
+   composer.module.css), only with the heart's paint - a bordered capsule in a row of borderless buttons
+   would read as a different kind of thing. */
+.thanksRail {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: var(--acc-neutral-12);
+}
+
+.thanksRail:hover,
+.thanksRail[data-hover] {
+  background: var(--acc-heart-16);
+}
+
+.thanksIcon {
+  flex: none;
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+
+/* Level with the paperclip and the slash beside it rather than with the selectors' 12px. */
+.thanksRail .thanksIcon {
+  width: 13px;
+  height: 13px;
+}
+
 /* --- The dropdown menu ----------------------------------------------------- */
 
 .menuScrim {
@@ -1065,15 +1159,17 @@
   padding: 6px 9px;
   border-radius: var(--acc-r-md);
   text-align: left;
+  /* Knowing which entry is under the cursor is only half of it (that half lives in Menu.tsx): the colour
+     has to reach the screen too, and an instant swap asks this browser for a repaint once - see .selector
+     above for the whole story. */
+  transition: background-color 80ms linear;
 }
 
 /* A class rather than :hover - see Menu.tsx, the same trick and the same reason as .suggestItemOn in
-   SlashSuggest: in JCEF the pseudo-class does not always fire. */
-/*
- * The chosen entry keeps its accent under the cursor: it is already marked, and swapping that for the
- * grey of a hover would read as losing the tick.
- */
-.menuItem:hover:not(.menuItemOn):not(:disabled) {
+   SlashSuggest: in the IDE's offscreen browser the pseudo-class does not always fire when the cursor
+   crosses from one entry straight into the next. Which entry wears the class is decided in Menu.tsx: the
+   chosen one is never given it, so its accent survives the cursor passing over. */
+.menuItemHot {
   background: var(--acc-bg-menu-hover);
 }
 
@@ -1092,6 +1188,12 @@
   font-size: 11px;
   line-height: 1.5;
   color: var(--acc-accent);
+}
+
+/* A star is golden rather than blue: the accent is the panel's own colour of "chosen", and here nothing is
+   chosen - it is GitHub's own star (see Thanks.tsx). */
+.menuIconWarn {
+  color: var(--acc-warn);
 }
 
 .menuBody {

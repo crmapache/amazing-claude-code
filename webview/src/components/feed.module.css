@@ -30,6 +30,11 @@
 .feedWrap {
   flex: 1 1 0;
   min-width: 0;
+  /* On a phone this wrapper is a row in a column (see .thread in mobile.module.css), and a flex item is
+     not allowed to shrink below its contents unless told so: without this the feed would grow the column
+     instead of scrolling inside it, and the end of the conversation would sit below the edge of the
+     screen with nothing able to reach it. */
+  min-height: 0;
   display: flex;
   position: relative;
 }
@@ -39,6 +44,11 @@
   min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  /* The one scroller of the conversation, on a phone as much as at the desk (see .thread in
+     mobile.module.css). A pull past the end stays here rather than travelling on to the page behind it:
+     on a touchscreen that is what turns the end of a feed into a bounce of the whole screen. */
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 14px 0 18px;
   position: relative;
   /* A floating thumb of our own is drawn by ScrollThumb - the native scrollbar is not wanted here even as
@@ -647,7 +657,8 @@
 }
 
 .chipWeb,
-.chipMcp {
+.chipMcp,
+.chipSkill {
   background: var(--acc-branch-12);
   color: var(--acc-branch-light);
 }
@@ -757,64 +768,6 @@
 .hunkNote {
   font: var(--acc-fs-meta, 11px) var(--acc-mono);
   color: var(--acc-fg-faint);
-}
-
-.hunkAccept {
-  /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
-  min-height: var(--acc-hit);
-  height: 19px;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  border: 1px solid var(--acc-ok-line);
-  border-radius: var(--acc-r-sm);
-  background: var(--acc-ok-soft);
-  font: 500 10.5px var(--acc-mono);
-  color: var(--acc-ok-light);
-}
-
-@media (hover: hover) {
-  .hunkAccept:hover {
-    background: var(--acc-ok-24);
-  }
-}
-
-.hunkAccept:active {
-  border-color: var(--acc-ok);
-  background: var(--acc-ok-24);
-  color: var(--acc-ok-text);
-}
-
-.hunkReject {
-  /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
-  min-height: var(--acc-hit);
-  height: 19px;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  border: 1px solid var(--acc-line-strong);
-  border-radius: var(--acc-r-sm);
-  font: 500 10.5px var(--acc-mono);
-  color: var(--acc-fg-dim);
-}
-
-@media (hover: hover) {
-  .hunkReject:hover {
-    border-color: var(--acc-bad);
-    color: var(--acc-bad-light);
-  }
-}
-
-.hunkReject:active {
-  border-color: var(--acc-bad-active);
-  background: var(--acc-bad-12);
-  color: var(--acc-bad-text);
-}
-
-.hunkReject:disabled {
-  border-color: var(--acc-line);
-  background: none;
-  color: var(--acc-fg-ghost);
 }
 
 .diffLine {
@@ -1334,6 +1287,72 @@
   color: var(--acc-fg-dim);
   /* Digits of one width: otherwise the countdown jerks the row on every second. */
   font-variant-numeric: tabular-nums;
+}
+
+/* --- The model swapped by the CLI itself ----------------------------------- */
+
+/* Built like .compact and .retry - the same conversation about the conversation itself - but two-storey:
+   the swap on the first line, the CLI's explanation under it. Warn rather than bad on purpose: nothing
+   has broken, the work goes on, merely on another model. */
+.modelSwitch {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin: 12px 0;
+  padding: 6px 9px;
+  border: 1px solid var(--acc-warn-32);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-raised);
+}
+
+.modelSwitchLabel {
+  flex: none;
+  font: 600 9px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-warn);
+}
+
+.modelSwitchBody {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Wraps rather than clips: on a narrow panel the note about who did the switching moves to a line of its
+   own, and it is the note that makes the whole row worth reading. */
+.modelSwitchLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font: var(--acc-fs-meta, 11px) var(--acc-mono);
+  color: var(--acc-fg-dim);
+}
+
+.modelSwitchFrom {
+  color: var(--acc-fg-faint);
+  text-decoration: line-through;
+}
+
+.modelSwitchArrow {
+  color: var(--acc-fg-fainter);
+}
+
+.modelSwitchTo {
+  color: var(--acc-fg);
+}
+
+.modelSwitchNote {
+  color: var(--acc-fg-faint);
+}
+
+.modelSwitchReason {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--acc-fg-dim);
+  white-space: pre-wrap;
 }
 
 .crash {

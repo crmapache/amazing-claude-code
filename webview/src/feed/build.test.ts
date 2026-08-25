@@ -252,6 +252,100 @@ describe('changing the model', () => {
   })
 })
 
+/** An answer signed by a model, the way a live stream signs every one of them. */
+const signedTextEvent = (model: string, text: string): AgentEvent => ({
+  type: 'assistant',
+  message: { content: [{ type: 'text', text }], model },
+})
+
+const initEvent = (model: string): AgentEvent => ({ type: 'system', subtype: 'init', model })
+
+/**
+ * The CLI moved the conversation to another model itself - recorded from a live run (CLI 2.1.238), field
+ * for field: that is where the wording of the reason and the names of both models come from.
+ */
+const modelFallbackEvent = (originalModel: string, fallbackModel: string, content: string): AgentEvent => ({
+  type: 'system',
+  subtype: 'model_refusal_fallback',
+  originalModel,
+  fallbackModel,
+  content,
+})
+
+const modelSwitches = (state: PanelState) => state.items.filter((item) => item.kind === 'model')
+
+describe('the model swapped by the CLI itself', () => {
+  const reason = "Fable 5's safeguards flagged this message. Switched to Opus 4.8."
+
+  it("names the swap in the feed, with the reason in the CLI's own words", () => {
+    const state = play([
+      initEvent('claude-fable-5'),
+      signedTextEvent('claude-fable-5', 'Looking at the relay.'),
+      modelFallbackEvent('claude-fable-5', 'claude-opus-4-8', reason),
+    ])
+
+    expect(state.model).toBe('claude-opus-4-8')
+    expect(modelSwitches(state)).toEqual([
+      { id: expect.any(String), kind: 'model', from: 'claude-fable-5', to: 'claude-opus-4-8', reason },
+    ])
+  })
+
+  it('does not repeat the card when the answers start arriving signed by the new model', () => {
+    const state = play([
+      initEvent('claude-fable-5'),
+      modelFallbackEvent('claude-fable-5', 'claude-opus-4-8', reason),
+      signedTextEvent('claude-opus-4-8', 'Carrying on.'),
+      signedTextEvent('claude-opus-4-8', 'Still here.'),
+    ])
+
+    expect(modelSwitches(state)).toHaveLength(1)
+  })
+
+  /**
+   * A transcript keeps the messages alone - the event that explained the swap is not among them (see
+   * ClaudeHistory.replayable). The signature under an answer is then the only trace of it left.
+   */
+  it('notices a swap by the signature alone, and says nothing about a reason it does not know', () => {
+    const state = play([
+      initEvent('claude-fable-5'),
+      signedTextEvent('claude-fable-5', 'Looking at the relay.'),
+      signedTextEvent('claude-opus-4-8', 'Carrying on.'),
+    ])
+
+    expect(state.model).toBe('claude-opus-4-8')
+    expect(modelSwitches(state)).toEqual([
+      { id: expect.any(String), kind: 'model', from: 'claude-fable-5', to: 'claude-opus-4-8', reason: '' },
+    ])
+  })
+
+  it('says nothing about the model a conversation simply starts on', () => {
+    const state = play([initEvent('claude-fable-5'), signedTextEvent('claude-fable-5', 'Hello.')])
+
+    expect(modelSwitches(state)).toEqual([])
+  })
+
+  it('keeps quiet about a change the person asked for themselves', () => {
+    let state = play([initEvent('claude-fable-5'), signedTextEvent('claude-fable-5', 'Hello.')])
+    state = reducePanel(state, { kind: 'modelRequested', model: 'opus' })
+    state = reducePanel(state, { kind: 'modelApplied', model: 'opus' })
+    state = play([signedTextEvent('claude-opus-5', 'On Opus now.')], state)
+
+    expect(state.model).toBe('claude-opus-5')
+    expect(modelSwitches(state)).toEqual([])
+  })
+
+  it("leaves the conversation's model alone when it is a subagent that is being started", () => {
+    const state = play([
+      initEvent('claude-fable-5'),
+      { type: 'system', subtype: 'init', model: 'claude-haiku-4-5-20251001', task_id: 'task-1' },
+      subagentMessageEvent('toolu-1', 'Read three files.'),
+    ])
+
+    expect(state.model).toBe('claude-fable-5')
+    expect(modelSwitches(state)).toEqual([])
+  })
+})
+
 describe('building the feed out of the agent stream', () => {
   it('brings the conversation to rest and remembers the session', () => {
     const state = play(streamEvents())

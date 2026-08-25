@@ -27,6 +27,11 @@ const listenToPanel = () => {
     })()
 
     if (message?.type === 'bash') lastShellRequest = { id: message.id, command: message.command }
+
+    // In the IDE an external address is opened by the shell in the system browser; here the browser is
+    // the harness's own, so a link (the PR in the header, the thanks menu) genuinely opens instead of
+    // quietly going nowhere.
+    if (message?.type === 'openExternal') window.open(message.url, '_blank', 'noopener')
   }
 
   window.dispatchEvent(new Event('acc:ready'))

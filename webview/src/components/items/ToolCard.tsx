@@ -10,29 +10,19 @@ export const CHIP_CLASS: Record<ToolChip, string> = {
   BASH: s.chipBash ?? '',
   WEB: s.chipWeb ?? '',
   MCP: s.chipMcp ?? '',
+  SKILL: s.chipSkill ?? '',
   TOOL: s.chipTool ?? '',
 }
 
 interface ToolCardProps {
   item: ToolItem
   open: boolean
-  appliedHunks: string[]
   /** The agent has not even begun: it stands there waiting for you to allow this call. */
   awaitingPermission: boolean
   onToggle: () => void
-  onAcceptHunk: (hunkId: string) => void
-  onRejectHunk: (hunkId: string) => void
 }
 
-export const ToolCard = ({
-  item,
-  open,
-  appliedHunks,
-  awaitingPermission,
-  onToggle,
-  onAcceptHunk,
-  onRejectHunk,
-}: ToolCardProps) => {
+export const ToolCard = ({ item, open, awaitingPermission, onToggle }: ToolCardProps) => {
   const hasBody = item.detail.length > 0 || item.hunks.length > 0
 
   return (
@@ -59,13 +49,7 @@ export const ToolCard = ({
           {item.hunks.length > 0 ? (
             <div className={s.hunks}>
               {item.hunks.map((hunk) => (
-                <HunkView
-                  key={hunk.id}
-                  hunk={hunk}
-                  applied={appliedHunks.includes(hunk.id)}
-                  onAccept={() => onAcceptHunk(hunk.id)}
-                  onReject={() => onRejectHunk(hunk.id)}
-                />
+                <HunkView key={hunk.id} hunk={hunk} />
               ))}
             </div>
           ) : null}
@@ -83,25 +67,22 @@ const DetailRow = ({ line }: { line: DetailLine }) => (
   </div>
 )
 
-interface HunkViewProps {
-  hunk: Hunk
-  applied: boolean
-  onAccept: () => void
-  onReject: () => void
-}
-
-const HunkView = ({ hunk, applied, onAccept, onReject }: HunkViewProps) => (
+/**
+ * One piece of an edit, as a diff and nothing more.
+ *
+ * There used to be "accept" and "reject" beside it, and neither did anything: the first wrote a tick into
+ * the interface's own memory, the second wiped it. Nothing reached the agent or the IDE - and there was
+ * nothing for them to do about it anyway, since a card like this appears after the edit has been written
+ * to the file. A button offering to reject what has already happened is worse than no button at all.
+ *
+ * The place where an edit genuinely can be turned down is before it runs, and the panel has that: a call
+ * awaiting permission (see PermissionPanel), which is where "allow" and "deny" mean what they say.
+ */
+const HunkView = ({ hunk }: { hunk: Hunk }) => (
   <div className={s.hunk}>
     <div className={s.hunkHead}>
       <span className={s.hunkRange}>{hunk.range}</span>
       <span className={s.hunkNote}>{hunk.note}</span>
-      <div className={s.spacer} />
-      <button type="button" className={s.hunkAccept} onClick={onAccept}>
-        {applied ? '✓ applied' : 'accept'}
-      </button>
-      <button type="button" className={s.hunkReject} onClick={onReject}>
-        reject
-      </button>
     </div>
 
     {hunk.lines.map((line, index) => (

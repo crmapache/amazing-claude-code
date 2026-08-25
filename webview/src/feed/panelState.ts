@@ -66,6 +66,20 @@ export interface PanelState {
    * arrive instantly, and it can genuinely refuse.
    */
   pendingModel?: string
+  /**
+   * The model the stream itself has named last - the full identifier out of an answer's signature
+   * ("claude-fable-5"), never a choice ("fable", "default").
+   *
+   * It is kept apart from [model] precisely because [model] holds both kinds: a choice until the agent
+   * has answered, an identifier afterwards. Comparing those two against each other would call every
+   * ordinary first answer a switch ("opus" is not "claude-opus-5"), while comparing one signature with
+   * the previous signature answers exactly the question asked: has the conversation moved to another
+   * model without anyone choosing it (see ModelSwitchItem).
+   *
+   * A choice of the person's own resets it: from that moment the count starts anew, and the first
+   * signature after it is the answer to the request rather than a swap behind one's back.
+   */
+  streamModel?: string
   project?: PanelProject
   usage: Required<AgentUsage>
   /**

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { LinkedText } from './LinkedText'
+import { modelLabel } from '../../catalog'
 import { compactProgress } from '../../feed/compact'
 import { plainLine } from '../../feed/markdown'
 import type {
@@ -8,6 +9,7 @@ import type {
   CrashItem,
   ErrorItem,
   MetaItem,
+  ModelSwitchItem,
   RetryItem,
   ThinkItem,
 } from '../../feed/types'
@@ -207,6 +209,47 @@ export const MetaRow = ({ item }: { item: MetaItem }) => (
     {item.stats.map((stat, index) => (
       <span key={index}>{stat}</span>
     ))}
+  </div>
+)
+
+/**
+ * The conversation was moved to another model by the CLI itself (see ModelSwitchItem).
+ *
+ * The row is built like the compaction and the retry ones - the same conversation about something that
+ * happened to the conversation rather than in it - and it is deliberately not red: nothing has broken,
+ * the work goes on, merely on a different model.
+ *
+ * The reason stands in the CLI's own words, with its link left alive: that link is the one thing that can
+ * be done about it (the article explains what the safeguards flagged and how to send feedback). Without a
+ * reason - a swap noticed by the signature under an answer rather than announced - the row says only what
+ * it honestly knows: the model has changed, and the person did not do it.
+ */
+export const ModelSwitchRow = ({
+  item,
+  onOpenLink,
+}: {
+  item: ModelSwitchItem
+  onOpenLink: (url: string) => void
+}) => (
+  <div className={s.modelSwitch}>
+    <span className={s.modelSwitchLabel}>MODEL</span>
+    <div className={s.modelSwitchBody}>
+      <p className={s.modelSwitchLine}>
+        {item.from ? (
+          <>
+            <span className={s.modelSwitchFrom}>{modelLabel(item.from)}</span>
+            <span className={s.modelSwitchArrow}>→</span>
+          </>
+        ) : null}
+        <span className={s.modelSwitchTo}>{modelLabel(item.to)}</span>
+        <span className={s.modelSwitchNote}>switched by Claude Code, not by you</span>
+      </p>
+      {item.reason ? (
+        <p className={s.modelSwitchReason}>
+          <LinkedText text={item.reason} onOpenLink={onOpenLink} />
+        </p>
+      ) : null}
+    </div>
   </div>
 )
 

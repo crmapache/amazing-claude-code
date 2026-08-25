@@ -696,6 +696,12 @@ export const scenariosCards: Scenario[] = [
    */
   scenario('background-subagent', 'Subagents from a skill: the turn ended, they work on', 'cards', [
     checkpoint('The user runs /code-review', [user('/code-review'), wait(500)]),
+    checkpoint('The skill launch: the head names the skill itself', [
+      toolUse('Skill', { skill: 'code-review', args: 'ultra' }, 'c11-skill'),
+      wait(400),
+      toolResult('c11-skill', 'Launching skill: code-review'),
+      wait(600),
+    ]),
     checkpoint('The skill raised three subagents itself - there is no call in the stream', [
       agent({
         type: 'system',

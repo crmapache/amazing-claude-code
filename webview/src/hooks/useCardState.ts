@@ -1,15 +1,13 @@
 import { useCallback, useMemo, useState } from 'react'
 
 /**
- * The cards' state that lives in the interface only: what is expanded, which pieces of an edit have been
- * accepted. The agent knows nothing about this, so it has no place in the feed's shared model.
+ * The cards' state that lives in the interface only: what is expanded, which plans have been answered,
+ * which questions have been closed. The agent knows nothing about this, so it has no place in the feed's
+ * shared model.
  */
 export interface CardState {
   isOpen: (id: string) => boolean
   toggle: (id: string) => void
-  appliedHunks: string[]
-  applyHunk: (hunkId: string) => void
-  rejectHunk: (hunkId: string) => void
   planDecisions: Record<string, 'approve' | 'keepPlanning'>
   decidePlan: (itemId: string, decision: 'approve' | 'keepPlanning') => void
   answeredAsks: string[]
@@ -18,7 +16,6 @@ export interface CardState {
 
 export const useCardState = (): CardState => {
   const [open, setOpen] = useState<Record<string, boolean>>({})
-  const [hunks, setHunks] = useState<string[]>([])
   const [planDecisions, setPlanDecisions] = useState<Record<string, 'approve' | 'keepPlanning'>>({})
   const [answeredAsks, setAnsweredAsks] = useState<string[]>([])
 
@@ -27,14 +24,6 @@ export const useCardState = (): CardState => {
   }, [])
 
   const isOpen = useCallback((id: string) => open[id] === true, [open])
-
-  const applyHunk = useCallback((hunkId: string) => {
-    setHunks((current) => (current.includes(hunkId) ? current : [...current, hunkId]))
-  }, [])
-
-  const rejectHunk = useCallback((hunkId: string) => {
-    setHunks((current) => current.filter((id) => id !== hunkId))
-  }, [])
 
   const decidePlan = useCallback((itemId: string, decision: 'approve' | 'keepPlanning') => {
     setPlanDecisions((current) => ({ ...current, [itemId]: decision }))
@@ -50,14 +39,11 @@ export const useCardState = (): CardState => {
     () => ({
       isOpen,
       toggle,
-      appliedHunks: hunks,
-      applyHunk,
-      rejectHunk,
       planDecisions,
       decidePlan,
       answeredAsks,
       answerAsk,
     }),
-    [isOpen, toggle, hunks, applyHunk, rejectHunk, planDecisions, decidePlan, answeredAsks, answerAsk],
+    [isOpen, toggle, planDecisions, decidePlan, answeredAsks, answerAsk],
   )
 }

@@ -40,11 +40,8 @@ export const ToolGroupCard = ({ item, cards, awaitingPermissionId }: ToolGroupCa
       <ToolCard
         item={tool}
         open={cards.isOpen(tool.id)}
-        appliedHunks={cards.appliedHunks}
         awaitingPermission={tool.id === awaitingPermissionId}
         onToggle={() => cards.toggle(tool.id)}
-        onAcceptHunk={cards.applyHunk}
-        onRejectHunk={cards.rejectHunk}
       />
     )
   }
@@ -84,11 +81,8 @@ export const ToolGroupCard = ({ item, cards, awaitingPermissionId }: ToolGroupCa
               key={tool.id}
               item={tool}
               open={cards.isOpen(tool.id)}
-              appliedHunks={cards.appliedHunks}
               awaitingPermission={tool.id === awaitingPermissionId}
               onToggle={() => cards.toggle(tool.id)}
-              onAcceptHunk={cards.applyHunk}
-              onRejectHunk={cards.rejectHunk}
             />
           ))}
         </div>

@@ -11,6 +11,7 @@ import {
   modelLabel,
   modelMenu,
   modelOptions,
+  resolvePanelModel,
   switchedModel,
   modeShortLabel,
   nextMode,
@@ -175,20 +176,76 @@ describe('the model the agent moved to itself', () => {
     const menu = modelMenu(models, 'default', 'claude-opus-4-8')
 
     expect(menu.selected).toBe('claude-opus-4-8')
-    expect(menu.options.at(-1)).toMatchObject({ id: 'claude-opus-4-8', label: 'Opus' })
+    expect(menu.options.at(-1)).toMatchObject({ id: 'claude-opus-4-8', label: 'Opus 4.8' })
     // The catalogue is left alone meanwhile: it is shared by every tab, while one of them moved.
     expect(models).toHaveLength(2)
   })
 })
 
+describe('the caption of the model a tab works on', () => {
+  const models = [
+    { value: 'default', label: 'Default', description: '', resolved: 'claude-opus-5' },
+    { value: 'opus[1m]', label: 'Opus (1M context)', description: '', resolved: 'claude-opus-5[1m]' },
+    { value: 'haiku', label: 'Haiku', description: '', resolved: 'claude-haiku-4-5' },
+    { value: 'fable', label: 'Fable', description: '', resolved: 'claude-fable-5' },
+  ]
+
+  it('expands the choice through the catalogue before the agent has said a word', () => {
+    expect(resolvePanelModel({}, models, 'opus[1m]')).toBe('claude-opus-5[1m]')
+    expect(resolvePanelModel({}, models, '')).toBe('claude-opus-5')
+  })
+
+  /**
+   * The complaint this was written for: five to thirty seconds after choosing "Opus (1M context)" the
+   * button started naming a bare "Opus" - a model that stands in no menu. The signature under an answer
+   * simply has no window mark in it, and taken literally it looked like a model of its own.
+   */
+  it('keeps the window mark when the answers come signed without it', () => {
+    expect(resolvePanelModel({ model: 'claude-opus-5' }, models, 'opus[1m]')).toBe('claude-opus-5[1m]')
+    expect(resolvePanelModel({ model: 'opus[1m]' }, models, 'opus[1m]')).toBe('claude-opus-5[1m]')
+    expect(switchedModel(models, 'opus[1m]', 'claude-opus-5')).toBeUndefined()
+  })
+
+  it('does not take a build date for another model', () => {
+    expect(resolvePanelModel({ model: 'claude-haiku-4-5-20251001' }, models, 'haiku')).toBe('claude-haiku-4-5')
+    expect(switchedModel(models, 'haiku', 'claude-haiku-4-5-20251001')).toBeUndefined()
+  })
+
+  it('names what is genuinely at work once the CLI has swapped the model itself', () => {
+    expect(resolvePanelModel({ model: 'claude-opus-4-8' }, models, 'fable')).toBe('claude-opus-4-8')
+    expect(switchedModel(models, 'fable', 'claude-opus-4-8')).toBe('claude-opus-4-8')
+  })
+
+  it('shows a choice not yet confirmed by the agent - expanded the same way', () => {
+    expect(resolvePanelModel({ pendingModel: 'haiku', model: 'claude-fable-5' }, models, 'fable')).toBe(
+      'claude-haiku-4-5',
+    )
+  })
+})
+
 describe('the model caption in the bottom row', () => {
-  it('leaves the family name out of a full identifier', () => {
-    expect(modelLabel('claude-sonnet-5')).toBe('Sonnet')
-    expect(modelLabel('claude-haiku-4-5-20251001')).toBe('Haiku')
+  it('names the family and the generation out of a full identifier, without the build date', () => {
+    expect(modelLabel('claude-sonnet-5')).toBe('Sonnet 5')
+    expect(modelLabel('claude-haiku-4-5-20251001')).toBe('Haiku 4.5')
+  })
+
+  /**
+   * The whole point of the generation being there: the model the CLI swaps a conversation to on its own
+   * must not read as the one that was chosen (see ModelSwitchItem).
+   */
+  it("tells the guard's Opus from the chosen one", () => {
+    expect(modelLabel('claude-opus-4-8')).toBe('Opus 4.8')
+    expect(modelLabel('claude-opus-5')).toBe('Opus 5')
+  })
+
+  it('leaves a bare choice as it is - there is no generation in it', () => {
+    expect(modelLabel('opus')).toBe('Opus')
+    expect(modelLabel('opusplan')).toBe('Opusplan')
+    expect(modelLabel('')).toBe('default')
   })
 
   it('mentions a million-token window separately - the family name does not tell that', () => {
-    expect(modelLabel('claude-opus-5[1m]')).toBe('Opus 1M')
+    expect(modelLabel('claude-opus-5[1m]')).toBe('Opus 5 1M')
   })
 
   it('shows an unfamiliar model as it is, without a prefix or a suffix', () => {

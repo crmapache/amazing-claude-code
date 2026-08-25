@@ -1316,9 +1316,16 @@
   border-radius: var(--acc-r-md);
   background: var(--acc-neutral-12);
   color: var(--acc-fg-dim);
+  /* The colours travel rather than switch, and [data-hover] stands beside :hover - the whole reason is
+     written out at .selector in shell.module.css: offscreen, an instant swap asks for one repaint, and
+     one request is the one that gets lost between two neighbouring buttons. */
+  transition:
+    background-color 80ms linear,
+    color 80ms linear;
 }
 
-.attach:hover {
+.attach:hover,
+.attach[data-hover] {
   background: var(--acc-neutral-16);
   color: var(--acc-fg);
 }
@@ -1381,9 +1388,13 @@
   border-radius: var(--acc-r-lg);
   font: 500 11.5px var(--acc-font);
   color: var(--acc-bad-light);
+  transition:
+    background-color 80ms linear,
+    border-color 80ms linear;
 }
 
-.stop:hover {
+.stop:hover,
+.stop[data-hover] {
   background: var(--acc-bad-16);
   border-color: var(--acc-bad);
 }
@@ -1407,9 +1418,11 @@
   background: var(--acc-bad-16);
   font: 600 11.5px var(--acc-font);
   color: var(--acc-bad-light);
+  transition: background-color 80ms linear;
 }
 
-.forceStop:hover {
+.forceStop:hover,
+.forceStop[data-hover] {
   background: var(--acc-bad-24);
 }
 
@@ -1429,9 +1442,11 @@
   background: var(--acc-accent);
   color: var(--acc-on-accent);
   font: 600 11.5px var(--acc-font);
+  transition: background-color 80ms linear;
 }
 
-.send:hover {
+.send:hover,
+.send[data-hover] {
   background: var(--acc-accent-hover);
 }
 
@@ -1448,7 +1463,8 @@
 
 /* A hover of its own is a must: without it .send:hover would fire and put a light accent fill under light
    text. A neutral button lightens along the neutral. */
-.sendQueued:hover {
+.sendQueued:hover,
+.sendQueued[data-hover] {
   background: var(--acc-bg-control-hover);
 }
 

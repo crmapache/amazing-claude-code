@@ -763,6 +763,24 @@ export interface AgentSystemEvent {
   compact_result?: string
   compact_error?: string
   /**
+   * The CLI moved the conversation to another model by itself, without asking anyone - the subtypes
+   * `model_refusal_fallback` (the chosen model's safeguards flagged the message: a security audit, say,
+   * counts as "cyber" for them) and `model_consent_fallback` (the chosen one needs credits or a consent
+   * that has not been given).
+   *
+   * [content] is the CLI's own explanation, word for word as the terminal shows it - with the reason and
+   * a link to the support article. The panel repeats it rather than inventing a wording of its own: the
+   * reason for the swap is the whole point of the message, and only the CLI knows it.
+   *
+   * The swap holds for the session (scope `session`), not for one request: from here on the answers are
+   * signed by the fallback model, and the bottom line must name it. Without this event the change is
+   * silent - the selector simply starts naming another model, and that looks like the panel switching
+   * things around behind one's back (which is exactly the complaint this was written for).
+   */
+  content?: string
+  originalModel?: string
+  fallbackModel?: string
+  /**
    * Originally introduced only for a background subagent launched by a skill or workflow (/code-review,
    * for instance) - unlike an ordinary Task tool call, which, as it then seemed, always arrives as a
    * separate tool_use block in the assistant's stream. In practice (verified directly against CLI

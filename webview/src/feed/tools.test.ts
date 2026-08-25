@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { commandLabel, formatDuration } from './tools'
+import { chipFor, commandLabel, formatDuration, targetFor } from './tools'
 
 describe('a call duration', () => {
   it('leaves the fractions of a second on fast calls', () => {
@@ -73,5 +73,22 @@ describe('a command short caption', () => {
   it('gives an empty command an empty caption, so the chip has something to replace it with', () => {
     expect(commandLabel('')).toBe('')
     expect(commandLabel('   ')).toBe('')
+  })
+})
+
+describe('a skill call', () => {
+  /** The head is the only place seen without opening the card - the name of the skill belongs there. */
+  it('is captioned by the skill being launched', () => {
+    expect(targetFor('Skill', { skill: 'infra' }, '')).toBe('infra')
+    expect(chipFor('Skill')).toBe('SKILL')
+  })
+
+  it('keeps the arguments after the name, where the clipping cannot eat it', () => {
+    expect(targetFor('Skill', { skill: 'code-review', args: 'ultra' }, '')).toBe('code-review ultra')
+    expect(targetFor('Skill', { skill: 'deploy', args: ' patch \n more' }, '')).toBe('deploy patch')
+  })
+
+  it('falls back to the tool name when there is no skill in the call', () => {
+    expect(targetFor('Skill', {}, '')).toBe('Skill')
   })
 })

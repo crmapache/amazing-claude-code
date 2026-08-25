@@ -30,6 +30,7 @@ import type { Chip, UserToken } from '../feed/types'
 import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
 import type { ModelInfo } from '../protocol'
 import { SlashSuggest } from './SlashSuggest'
+import { contextColor, contextGlow } from '../feed/usage'
 import {
   atQueryAt,
   caretRect,
@@ -54,7 +55,8 @@ import {
   scrollCaretIntoView,
   splitTokens,
 } from './composerDom'
-import { contextColor, contextGlow, Selectors, type Anchor, type SelectorKind } from './StatusBar'
+import { Selectors, type Anchor, type SelectorKind } from './StatusBar'
+import { ThanksButton } from './Thanks'
 import s from './composer.module.css'
 
 /** Ticks at every fifth - unrelated to the colour thresholds, purely the scale's ruler. */
@@ -217,9 +219,16 @@ interface ComposerProps {
    * same callback that opens the other menus.
    */
   model?: string
+  /** The choice the conversation has been moved away from, when that happened - see Selectors. */
+  switchedFrom?: string
   effort?: string
   mode?: string
   onOpenSelector?: (kind: SelectorKind, anchor: Anchor) => void
+  /**
+   * The heart's menu - the same story as the selectors above: compact and left/right have no status line
+   * of their own, so the heart travels here with them (see Thanks.tsx and StatusBar.tsx).
+   */
+  onOpenThanks?: (anchor: Anchor) => void
   /**
    * The side rail's node in left/right (see App.tsx) - MODEL/EFFORT/MODE, the usage and the buttons
    * travel there through a portal rather than being rendered right here: the rail needs the panel's full
@@ -255,9 +264,11 @@ export const Composer = ({
   onForceStop,
   layout = 'bottom',
   model,
+  switchedFrom,
   effort,
   mode,
   onOpenSelector,
+  onOpenThanks,
   railContainer,
 }: ComposerProps) => {
   const compact = layout === 'compact'
@@ -1156,6 +1167,11 @@ export const Composer = ({
     </button>
   )
 
+  /* Only the rail's variant is built here: in compact the heart stands in the selectors' row rather than
+     among the buttons (see below), and in the ordinary layout it stands in the status line under the field
+     (see StatusBar). */
+  const thanksButton = <ThanksButton rail onOpen={(anchor) => onOpenThanks?.(anchor)} />
+
   const stopButton = streaming ? (
     <button type="button" className={s.stop} onClick={onStop}>
       ■ Stop
@@ -1247,6 +1263,11 @@ export const Composer = ({
       {forceStopButton}
       {attachButton}
       {slashButton}
+      {/* The heart goes to the row's far end, opposite Send - under left the row is mirrored whole (see
+          .railToolsRowLeft), so the end here is always the rail's outer edge rather than its boundary
+          with the feed. */}
+      <div className={s.spacer} />
+      {thanksButton}
     </>
   ) : (
     <>
@@ -1347,11 +1368,16 @@ export const Composer = ({
             <div className={s.compactSelectors}>
               <Selectors
                 model={model}
+                switchedFrom={switchedFrom}
                 effort={effort ?? ''}
                 mode={mode ?? ''}
                 auto
                 onOpen={(kind, anchor) => onOpenSelector?.(kind, anchor)}
               />
+
+              {/* Right after MODE rather than past a spacer: unlike the status line, this row is divided
+                  evenly among the three selectors (see .selectorAuto), so its end is wherever they end. */}
+              <ThanksButton onOpen={(anchor) => onOpenThanks?.(anchor)} />
             </div>
 
             <div className={s.compactToolsRow}>{toolsRow}</div>
@@ -1401,6 +1427,7 @@ export const Composer = ({
                 <div className={s.railSelectors}>
                   <Selectors
                     model={model}
+                    switchedFrom={switchedFrom}
                     effort={effort ?? ''}
                     mode={mode ?? ''}
                     auto

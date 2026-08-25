@@ -243,6 +243,15 @@
   --acc-bad-light-35: rgb(var(--acc-ch-rose-4) / 35%);
   --acc-bad-light-80: rgb(var(--acc-ch-rose-4) / 80%);
 
+  /* --- Saying thanks ------------------------------------------------------
+     The heart at the end of the selectors' row (see Thanks.tsx). The paint is the same rose as a refusal's,
+     but the role is its own rather than a reuse of --acc-bad: there the colour means "something went
+     wrong", here it means "thank you", and a theme that decides to repaint refusals must not drag the
+     heart along with them. */
+  --acc-heart: var(--acc-c-rose-2);
+  --acc-heart-16: rgb(var(--acc-ch-rose) / 16%);
+  --acc-heart-40: rgb(var(--acc-ch-rose) / 40%);
+
   /* --- A quote from the agent's output ------------------------------------ */
   --acc-quote: var(--acc-c-orchid);
   --acc-quote-12: rgb(var(--acc-ch-orchid) / 12%);

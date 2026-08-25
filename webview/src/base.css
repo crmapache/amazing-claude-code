@@ -74,65 +74,11 @@ button:disabled {
 }
 
 /*
- * A tooltip of our own instead of the native title: the native one has a delay of its own and the look of
- * someone else's OS, while a hint has to look the same as on the IDE's own icons.
- *
- * It lives in the shared house rather than in one panel's module: a hint is needed by a button in the
- * header, by a meter in the status row and by a button beside the input field - the drawing is one for
- * all, only the direction it unfolds in differs. That is set through data-tooltip-at: downwards by
- * default, from the element's right edge leftwards; `top` lifts the hint above the element (at the panel's
- * bottom edge there is nowhere downwards for it to go), and `left` pins it to the left edge (when the free
- * room is on the left rather than the right).
- *
- * A line break in data-tooltip stays a line break: in a two-line hint the second explains the first.
+ * The hover hints are not drawn here any more: a ::after grown out of the marked element could not know
+ * where the window ends, and at the panel's edges it unfolded off the screen. The `data-tooltip` and
+ * `data-tooltip-at` marks in the markup are the same as they were, but they are read by one shared
+ * element that measures itself against the window - see components/Tooltips.tsx.
  */
-[data-tooltip] {
-  position: relative;
-}
-
-[data-tooltip]::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  top: calc(100% + 7px);
-  right: 0;
-  width: max-content;
-  max-width: 220px;
-  padding: 4px 8px;
-  border-radius: var(--acc-r-sm);
-  background: var(--acc-bg-deep);
-  border: 1px solid var(--acc-line-strong);
-  box-shadow: var(--acc-shadow-menu);
-  color: var(--acc-fg);
-  font: 11px/1.3 var(--acc-font);
-  white-space: pre-line;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-2px);
-  transition:
-    opacity 0.12s ease,
-    transform 0.12s ease;
-  pointer-events: none;
-  z-index: 60;
-}
-
-[data-tooltip-at~='top']::after {
-  top: auto;
-  bottom: calc(100% + 7px);
-  transform: translateY(2px);
-}
-
-[data-tooltip-at~='left']::after {
-  right: auto;
-  left: 0;
-}
-
-@media (hover: hover) {
-  [data-tooltip]:hover::after {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(0);
-  }
-}
 
 /* The user explicitly asked for the focus ring to be removed everywhere: it irritates more than it helps.
    One shared reset instead of an outline:none on every class. */

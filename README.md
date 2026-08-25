@@ -27,9 +27,8 @@ the network for typography.
 ## What the panel already renders from the live stream
 
 The feed turns agent events into the mockup's cards: messages, formatted replies,
-tool calls with duration and expansion, edit diffs with hunk acceptance, todo
-lists, plans, questions with options, subagents, context compaction, and turn
-summaries with cost.
+tool calls with duration and expansion, edit diffs, todo lists, plans, questions
+with options, subagents, context compaction, and turn summaries with cost.
 
 The bottom line is the same summary as a terminal status line: the branch and its
 pull request, context usage, the five-hour and weekly subscription windows (the

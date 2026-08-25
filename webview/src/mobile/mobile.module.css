@@ -573,12 +573,25 @@
 
 /* --- One conversation ------------------------------------------------------- */
 
+/*
+ * The conversation's room on the screen - and deliberately not a scroller itself.
+ *
+ * It used to scroll, and so did the feed inside it (see .feed in feed.module.css): two scrollers one
+ * inside the other, with the phone screen keeping itself at the bottom by a scrollIntoView of its own on
+ * every chunk of the arriving answer. Anything read further up was dragged back down within a fraction of
+ * a second, and the two scrollers fought each other into a shudder while the text was printing.
+ *
+ * A column that merely gives its height away leaves exactly one scroller - the feed's own, the panel's,
+ * with everything that comes with it: it sticks to the bottom until the person scrolls up, stops following
+ * the answer the moment they do, and offers the button back down. The very same behaviour as at the desk,
+ * from the very same code.
+ */
 .thread {
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* The one thing worth interrupting the reading for. It is a button rather than a banner because it
@@ -632,30 +645,605 @@
   border: none;
 }
 
+/*
+ * The composer: three rows, and the division between them is the whole idea. What is read never
+ * moves, and what is pressed is never where a thumb might brush it by accident.
+ */
 .composer {
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  padding: var(--acc-sp-2) var(--acc-sp-5) calc(env(safe-area-inset-bottom) + var(--acc-sp-2));
+  flex-direction: column;
   border-top: 1px solid var(--acc-line);
   background: var(--acc-bg-raised);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* --- Row one: the windows, the branch, the pull request ---------------------- */
+
+/*
+ * Everything here is looked at rather than pressed - except the rings, which open what the panel keeps
+ * in a tooltip (see Limits), and the PR, which opens in this phone's own browser.
+ */
+.strip {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  height: 38px;
+  padding: 0 var(--acc-sp-5);
+  border-bottom: 1px solid var(--acc-line);
+}
+
+.meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 38px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: var(--acc-fs-meta, 12px) / 1.4 var(--acc-mono);
+  white-space: nowrap;
+}
+
+.meter:disabled {
+  opacity: 0.5;
+}
+
+.meterLabel {
+  font: 500 10.5px/1 var(--acc-mono);
+  letter-spacing: 0.04em;
+  color: var(--acc-fg-fainter);
+}
+
+.meterValue {
+  /* Digits of one width: otherwise the row twitches on every update. */
+  font-variant-numeric: tabular-nums;
+}
+
+.stripRule {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  background: var(--acc-line);
+}
+
+.branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1 1 auto;
+  min-width: 0;
+  font: var(--acc-fs-meta, 12px) / 1.4 var(--acc-mono);
+  color: var(--acc-ok-light);
+}
+
+.branch svg {
+  flex: none;
+  width: 12px;
+  height: 12px;
+}
+
+/* The branch gives way rather than pushing the PR off the row: which branch one is on is usually
+   readable from its first few characters, while "PR #12" is unreadable a character short. */
+.branchName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr {
+  flex: none;
+  height: 38px;
+  padding: 0 0 0 var(--acc-sp-2);
+  border: none;
+  background: none;
+  font: var(--acc-fs-meta, 12px) / 1.4 var(--acc-mono);
+  color: var(--acc-branch-light);
+}
+
+.prNone {
+  flex: none;
+  padding-left: var(--acc-sp-2);
+  font: var(--acc-fs-meta, 12px) / 1.4 var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+/* --- The photos waiting to go with the message ------------------------------- */
+
+.attachRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--acc-sp-2);
+  padding: var(--acc-sp-2) var(--acc-sp-5) 0;
+}
+
+/* The same chip as the panel's, in the same iris as an image attachment there (see CHIP_STYLE in
+   composerDom.ts) - only bigger, because the field beside it is bigger. */
+.attachChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 6px 4px 4px;
+  border: 1px solid rgb(168 148 242 / 32%);
+  border-radius: var(--acc-r-sm);
+  background: rgb(168 148 242 / 12%);
+  color: var(--acc-agent-light);
+  font: 12px var(--acc-mono);
+  overflow: hidden;
+}
+
+.attachThumb {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--acc-r-xs);
+  object-fit: cover;
+}
+
+.attachRemove {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: inherit;
+  opacity: 0.7;
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* A photo too big to travel is the one failure here a person cannot see coming - the relay drops an
+   oversized frame whole rather than shortening it, so silence would look like a message that was sent. */
+.attachError {
+  margin: var(--acc-sp-2) var(--acc-sp-5) 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--acc-warn);
+}
+
+/* --- Row two: the field, full width ------------------------------------------ */
+
+.boxWrap {
+  padding: var(--acc-sp-2) var(--acc-sp-5) 0;
+}
+
+/* The field's background goes through a variable rather than directly: the same background paints the
+   context gauge's ticks (see .ctxTick), and those two have to change together. */
+.box {
+  --acc-field-bg: var(--acc-bg);
+  position: relative;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-pill);
+  background: var(--acc-field-bg);
+  overflow: hidden;
+}
+
+.boxFocused {
+  box-shadow: 0 0 0 1px var(--acc-accent);
+}
+
+/*
+ * The context bar is a detail of the field itself, exactly as in the panel: a row of its own above the
+ * text rather than a layer over its top padding, because that padding scrolls with the text and long
+ * messages drove under the gauge - which read as a strikethrough.
+ */
+.ctxRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px 0;
+  pointer-events: none;
+}
+
+.ctxMeter {
+  position: relative;
+  flex: 1 1 auto;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--acc-meter-track);
+}
+
+.ctxFill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.2s;
+}
+
+/* A tick does not paint itself but cuts through whatever is under it, be that an empty track or an
+   already painted part - hence the field's own background rather than a colour of its own. */
+.ctxTick {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 4px;
+  border-radius: 999px;
+  background: var(--acc-field-bg);
+}
+
+.ctxLabel {
+  flex: none;
+  font: 10px/1 var(--acc-mono);
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
 }
 
 .composerInput {
-  flex: 1 1 auto;
-  /* The same height as the button beside it - see --acc-tap. The field grows past this with the text
-     in it (see Thread), and the growth is bounded so a long message cannot push the feed off screen. */
-  min-height: var(--acc-tap);
+  display: block;
+  width: 100%;
+  min-height: 66px;
+  /* Bounded so that a long message cannot push the feed off the screen. */
   max-height: 40vh;
-  padding: var(--acc-sp-3) var(--acc-sp-3);
-  border: 1px solid var(--acc-line);
-  border-radius: var(--acc-r-md, 8px);
-  background: var(--acc-bg);
+  padding: 8px 12px 12px;
+  border: none;
+  outline: none;
+  resize: none;
+  background: none;
   color: var(--acc-fg);
+  font-family: var(--acc-mono);
   /* Sixteen exactly: below it iOS zooms the page on focus and never zooms back. */
   font-size: 16px;
-  font-family: inherit;
-  resize: none;
+  line-height: 1.5;
+}
+
+.composerInput::placeholder {
+  color: var(--acc-fg-ghost);
+}
+
+/* --- Row three: the actions --------------------------------------------------- */
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+  padding: var(--acc-sp-2) var(--acc-sp-5) var(--acc-sp-4);
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.iconBtn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--acc-hit);
+  height: var(--acc-hit);
+  border: none;
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-dim);
+}
+
+.iconBtnOn {
+  background: var(--acc-accent-16);
+  color: var(--acc-accent-light);
+}
+
+.iconSlash {
+  font: 500 17px/1 var(--acc-mono);
+}
+
+.iconClip {
+  width: 17px;
+  height: 17px;
+  overflow: visible;
+  /* Drawn at an angle and stood upright, as in the panel. */
+  transform: rotate(-45deg);
+}
+
+/* The system's own file chooser is what this opens; the input itself is never seen. */
+.picker {
+  display: none;
+}
+
+.send {
+  flex: none;
+  height: var(--acc-hit);
+  padding: 0 20px;
+  border: none;
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-accent);
+  color: var(--acc-on-accent);
+  font: 600 15px var(--acc-font);
+}
+
+.send:disabled {
+  opacity: 0.4;
+}
+
+/*
+ * Queue and Stop stand beside Send rather than in place of it. While the agent works there are three
+ * different things one might mean - reach the turn now, wait it out, end it - and the phone used to
+ * offer only the middle one.
+ */
+.queue {
+  flex: none;
+  height: var(--acc-hit);
+  padding: 0 16px;
+  border: none;
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-control);
+  color: var(--acc-fg);
+  font: 500 15px var(--acc-font);
+}
+
+.queue:disabled {
+  opacity: 0.4;
+}
+
+.stop {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--acc-hit);
+  height: var(--acc-hit);
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-2xl);
+  background: none;
+  color: var(--acc-bad-light);
+}
+
+/* A third of the button, which is the proportion the panel's own "■ Stop" has at the desk. */
+.stop svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* --- The two hints, and the sheet they share ---------------------------------- */
+
+/*
+ * The command list and the file list live in the composer's own flow rather than floating over it: on
+ * a phone the keyboard owns the bottom of the screen, and a list anchored to the field would open
+ * underneath it. In flow the feed gives way instead - which is what a phone's own autocomplete does.
+ */
+.suggest {
+  display: flex;
+  flex-direction: column;
+  max-height: 42vh;
+  border-bottom: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-card) var(--acc-r-card) 0 0;
+  background: var(--acc-bg-panel);
+  box-shadow: 0 -14px 34px rgb(var(--acc-ch-shade) / 46%);
+}
+
+.sheetGrab {
+  flex: none;
+  width: 36px;
+  height: 4px;
+  margin: 8px auto 4px;
+  border-radius: 999px;
+  background: var(--acc-line-strong);
+}
+
+.sheetHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px var(--acc-sp-2) 4px var(--acc-sp-5);
+}
+
+.sheetTitle {
+  font: 600 13px var(--acc-font);
+  color: var(--acc-fg);
+}
+
+.sheetCount {
+  flex: 1 1 auto;
+  font: 11px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.sheetClose {
+  flex: none;
+  width: var(--acc-hit);
+  height: var(--acc-hit);
+  border: none;
+  background: none;
+  color: var(--acc-fg-faint);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.sheetBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--acc-sp-2) var(--acc-sp-3);
+}
+
+/*
+ * Two lines per row rather than the panel's one. At 390 points a name, its explanation and its group
+ * on a single line leave the explanation about nine characters - and the explanation is the whole
+ * reason the list is worth reading.
+ */
+.suggestItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--acc-hit);
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--acc-r-2xl);
+  background: none;
+  text-align: left;
+}
+
+.suggestText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.suggestName {
+  font: 500 14px/1.25 var(--acc-mono);
+  color: var(--acc-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestHint {
+  font: 11.5px/1.35 var(--acc-font);
+  color: var(--acc-fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The folder is what tells two files of the same name apart, so it is the second line rather than a
+   part of the first that would be clipped away. */
+.suggestPath {
+  font: 11.5px/1.35 var(--acc-mono);
+  color: var(--acc-fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestGroup {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: var(--acc-r-xs);
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-ghost);
+  font: 9.5px/13px var(--acc-mono);
+  letter-spacing: 0.04em;
+}
+
+/* --- The limits sheet --------------------------------------------------------- */
+
+.sheetScrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgb(var(--acc-ch-shade) / 46%);
+}
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+  max-height: 82%;
+  padding-bottom: env(safe-area-inset-bottom);
+  border-top: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-card) var(--acc-r-card) 0 0;
+  background: var(--acc-bg-panel);
+  box-shadow: 0 -18px 44px rgb(var(--acc-ch-shade) / 62%);
+}
+
+.limBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: var(--acc-sp-3);
+}
+
+.limRow {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-4);
+  padding: 15px var(--acc-sp-5);
+}
+
+.limText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.limName {
+  font: 500 14px var(--acc-font);
+  color: var(--acc-fg);
+}
+
+.limMeta {
+  font: 11.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.limValue {
+  flex: none;
+  font: 600 20px var(--acc-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.limDivider {
+  height: 1px;
+  margin: 0 var(--acc-sp-5);
+  background: var(--acc-line);
+}
+
+.limBlock {
+  padding: 15px var(--acc-sp-5);
+}
+
+.limHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.limHead .limName {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.limHead .limValue {
+  font-size: 16px;
+}
+
+.limBar {
+  position: relative;
+  height: 6px;
+  margin-top: 12px;
+  border-radius: 999px;
+  background: var(--acc-meter-track);
+}
+
+.limBarFill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+/* The dim arc is the one thing on either ring that cannot be guessed from looking at it. */
+.limNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0;
+  padding: 0 var(--acc-sp-5) 15px;
+  font: 11.5px/1.5 var(--acc-font);
+  color: var(--acc-fg-faint);
+}
+
+.limSwatch {
+  flex: none;
+  width: 14px;
+  height: 3px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--acc-meter-pace);
+}
+
+.limEmpty {
+  margin: 0;
+  padding: var(--acc-sp-5);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--acc-fg-faint);
 }
 
 /* --- The decision ------------------------------------------------------------ */

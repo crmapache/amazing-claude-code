@@ -17,6 +17,7 @@ const CHIPS: Record<string, ToolChip> = {
   KillShell: 'BASH',
   WebFetch: 'WEB',
   WebSearch: 'WEB',
+  Skill: 'SKILL',
 }
 
 export const chipFor = (name: string): ToolChip => {
@@ -116,6 +117,19 @@ const unwrap = (words: string[]): string[] => {
 
 export const targetFor = (name: string, input: unknown, workingDirectory: string): string => {
   const data = asInput(input)
+
+  /**
+   * Which skill is being run is the whole of the news about such a call, and it stood in the body: the
+   * head read "Skill" and to learn whether this was `infra` or `deploy` the card had to be opened. The
+   * arguments follow the name - the caption is clipped by the head's width, so the name is always seen.
+   */
+  if (name === 'Skill') {
+    const skill = str(data.skill)
+    if (skill) {
+      const args = str(data.args).split('\n')[0]?.trim() ?? ''
+      return args ? `${skill} ${args}` : skill
+    }
+  }
 
   const filePath = str(data.file_path) || str(data.notebook_path) || str(data.path)
   if (filePath) return shortenPath(filePath, workingDirectory)
