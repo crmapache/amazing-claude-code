@@ -9,6 +9,13 @@ commits.
 
 ## [Unreleased]
 
+## [0.7.25] - 2026-08-25
+
+- Fixed: a tab opened with "+" stayed called "new session" for the whole conversation, however much was said in it. The panel handed the shell that stand-in as if it were a name, and a tab that already carries a name is never renamed afterwards - neither by the guess made from your first message nor by the real name the model picks a second later. Only the tab the panel starts with was spared, since nobody ever named that one. A tab now opens with no name at all, which is what the phone has always done, and gets one from its first message like any other.
+- Fixed: starting a tab with a skill or a command - "/code-review", "/deploy" - left it unnamed even so. The rule about which message is worth naming a conversation by threw away every command that carried no arguments, on the grounds that it was housekeeping like /clear or /compact. Now only the genuine housekeeping is skipped - clearing, compacting, signing in and out, the settings - and a command that is the work itself names the tab it runs in. Housekeeping is skipped whatever arguments it carries, too: a conversation should not be named after the instructions given to /compact.
+- Fixed: the outcome of /code-review arrived in the feed as a wall of raw JSON in which neither the number of findings nor a single file could be seen without scrolling through the whole thing. That command is carried out by Claude Code itself rather than by the model, and in the terminal a screen of its own catches its output and draws it; the panel had nothing to catch it with. Findings now come as a card: how many at the top, then a row per finding with the file, the line and what kind of thing it is, the claim itself in one sentence under it, and the evidence behind a click. What the review said around the findings stays in the feed as the answer it was. The phone shows the same card - it draws the same feed.
+- Fixed: a past conversation opened from the history lost the output of every command Claude Code ran by itself: /code-review, /cost and their like stood in the conversation with nothing after them, as though they had never run. Live, that output arrives as an ordinary answer, but the transcript on disk files it away as an internal entry the feed did not draw. It is drawn now, so the findings of a review read the same whether the conversation is the one in front of you or one you came back to.
+
 ## [0.7.24] - 2026-08-25
 
 - Added: the message field on a phone now carries what the panel keeps around its own. The five-hour and the weekly window stand as rings above it, the branch you are on with its pull request beside them, and how full this conversation's context is on the field's own top edge. A tap on either ring opens what the desk keeps in a tooltip - how much is spent, when the window resets, and the even pace to check the week against - because a touchscreen has no hover to put a tooltip under. The pull request opens in the phone's own browser rather than on the machine with the IDE.
@@ -312,7 +319,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.24...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.25...HEAD
+[0.7.25]: https://github.com/crmapache/amazing-claude-code/compare/0.7.24...0.7.25
 [0.7.24]: https://github.com/crmapache/amazing-claude-code/compare/0.7.23...0.7.24
 [0.7.23]: https://github.com/crmapache/amazing-claude-code/compare/0.7.22...0.7.23
 [0.7.22]: https://github.com/crmapache/amazing-claude-code/compare/0.7.21...0.7.22
