@@ -6,6 +6,7 @@ import type { AskItem, FeedItem, PermItem, TaskItem, TodoItem, ToolItem } from '
 import type { CardState } from '../hooks/useCardState'
 import s from './feed.module.css'
 import { BashCard } from './items/BashCard'
+import { FindingsCard } from './items/FindingsCard'
 import { PlanCard } from './items/PlanCard'
 import { CheckpointRow, CompactRow, CrashRow, ErrorRow, MetaRow, ModelSwitchRow, RetryRow, ThinkRow } from './items/Rows'
 import { TextCard } from './items/TextCard'
@@ -343,6 +344,11 @@ const ItemView = memo(({
 
     case 'toolGroup':
       return <ToolGroupCard item={item} cards={cards} awaitingPermissionId={lastPendingId} />
+
+    case 'findings':
+      return (
+        <FindingsCard item={item} isOpen={cards.isOpen} onToggle={cards.toggle} onOpenLink={onOpenLink} />
+      )
 
     case 'plan':
       return (

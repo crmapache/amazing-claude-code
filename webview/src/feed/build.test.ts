@@ -7,6 +7,7 @@ import type {
   AskItem,
   CompactItem,
   ErrorItem,
+  FindingsItem,
   PlanItem,
   RetryItem,
   TaskItem,
@@ -2721,5 +2722,42 @@ describe('repeated requests to the API', () => {
 
     expect(state.retry?.attempt).toBe(1)
     expect(cards(state)[0]?.pending).toBe(true)
+  })
+})
+
+/**
+ * `/code-review` is run by the CLI itself, and its whole outcome comes back as one ordinary answer with
+ * the findings as raw JSON inside it. Shown as text, that was a screen and a half of braces in the middle
+ * of the conversation - see readReview.
+ */
+describe('a code review', () => {
+  const finding = {
+    file: 'lib/sync/metrics.ts',
+    line: 66,
+    summary: 'The metric is not selectable on this report.',
+    failure_scenario: 'Every account-level request is rejected and the container lands unread.',
+  }
+
+  const answer = (findings: unknown): string =>
+    `I've completed the review. Here are the findings.\n\n\`\`\`json\n${JSON.stringify(findings)}\n\`\`\``
+
+  it('becomes a card of findings with the preamble above it', () => {
+    const state = play([textEvent(answer([finding, { ...finding, file: 'lib/sync/other.ts' }]))])
+
+    const text = state.items.find((item): item is TextItem => item.kind === 'text')
+    const findings = state.items.find((item): item is FindingsItem => item.kind === 'findings')
+
+    expect(text?.source).toBe("I've completed the review. Here are the findings.")
+    expect(findings?.findings).toHaveLength(2)
+    expect(findings?.findings[0]?.failureScenario).toBe(finding.failure_scenario)
+    // The raw block itself is nowhere in the feed any more.
+    expect(state.items.some((item) => item.kind === 'text' && item.source.includes('```'))).toBe(false)
+  })
+
+  it('leaves an answer that merely holds a json block alone', () => {
+    const state = play([textEvent('Here is the config:\n\n```json\n[{"port": 8080}]\n```')])
+
+    expect(state.items.some((item) => item.kind === 'findings')).toBe(false)
+    expect(state.items.some((item) => item.kind === 'text')).toBe(true)
   })
 })

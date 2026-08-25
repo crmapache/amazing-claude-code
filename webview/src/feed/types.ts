@@ -282,6 +282,41 @@ export interface PlanItem {
   historic?: boolean
 }
 
+/**
+ * One finding of a code review, exactly as the review tool reports it (see ReportFindings) - a place, a
+ * claim about it, and the way it goes wrong.
+ *
+ * `failureScenario` is the whole of the evidence: concrete input and state on one side, the wrong output
+ * on the other. It is what tells a real defect from a guess, and it is also the longest field of the
+ * three - hence the row that opens rather than a list of paragraphs standing open in the feed.
+ */
+export interface Finding {
+  file: string
+  line?: number
+  summary: string
+  failureScenario: string
+  /** A compressed label for the row's head, when the review sent one shorter than the summary. */
+  shortSummary?: string
+  /** The kind of the finding in one word: `correctness`, `simplification`, `efficiency`. */
+  category?: string
+  /** Set when the review ran a verify pass; absent on a review that only looked once. */
+  verdict?: 'CONFIRMED' | 'PLAUSIBLE'
+  /** What happened to the finding afterwards - only in a report re-sent after the fixes were applied. */
+  outcome?: 'fixed' | 'skipped' | 'no_change_needed'
+}
+
+/**
+ * A code review's findings as a card rather than as the raw JSON they arrive in - see readReview.
+ *
+ * They come from an ordinary answer rather than from a tool call: `/code-review` is run by the CLI
+ * itself, and in streaming mode it hands the whole outcome back as text with a fenced block inside.
+ */
+export interface FindingsItem {
+  id: string
+  kind: 'findings'
+  findings: Finding[]
+}
+
 export interface PermItem {
   id: string
   kind: 'perm'
@@ -466,6 +501,7 @@ export type FeedItem =
   | TaskItem
   | TodoItem
   | PlanItem
+  | FindingsItem
   | PermItem
   | AskItem
   | CheckpointItem

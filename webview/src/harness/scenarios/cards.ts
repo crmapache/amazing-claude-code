@@ -15,6 +15,9 @@ import {
 } from '../events'
 import type { Scenario } from '../types'
 
+/** What `/code-review` answers with in streaming mode - a line of preamble and a fenced json block. */
+const REVIEW_REPORT = "I've completed the review. Here are the findings.\n\n```json\n[\n  {\n    \"file\": \"lib/providers/google-ads/sync/entity-daily-metrics.ts\",\n    \"line\": 66,\n    \"category\": \"correctness\",\n    \"verdict\": \"CONFIRMED\",\n    \"short_summary\": \"`metrics.phone_calls` is not selectable on `customer`\",\n    \"summary\": \"`metrics.phone_calls` is not selectable on the `customer` report, so every account-level request fails and no account-level action can be measured.\",\n    \"failure_scenario\": \"The SDK's field metadata lists `metrics.phone_calls` under `CampaignMetric` and `AdGroupMetric` but not under `CustomerMetric`. The account report therefore asks Google for a field it does not have, the query is rejected, every container lands in `unread`, and the only symptom is one line in the console.\"\n  },\n  {\n    \"file\": \"lib/analysis/action-impact/metric.ts\",\n    \"line\": 84,\n    \"category\": \"correctness\",\n    \"verdict\": \"PLAUSIBLE\",\n    \"summary\": \"An account that never populates `metrics.phone_calls` reads as a 0% change rather than as unmeasurable.\",\n    \"failure_scenario\": \"An advertiser without call reporting gets 0 on every day both before and after the change. Both bands collapse to zero, the comparison calls them touching, and the journal states \\u201cwe looked and nothing moved\\u201d about a phone number whose effect was never observable.\"\n  },\n  {\n    \"file\": \"supabase/migrations/20260825230000_call_rate_metric.sql\",\n    \"line\": 29,\n    \"category\": \"correctness\",\n    \"summary\": \"The migration drops the constraint by a name the declarative schema does not give it.\",\n    \"failure_scenario\": \"A database built from the declarative file carries the auto-generated name, so `drop constraint` without `if exists` aborts the whole run.\"\n  },\n  {\n    \"file\": \"lib/analysis/change-clustering/dispositions.ts\",\n    \"line\": 201,\n    \"category\": \"simplification\",\n    \"outcome\": \"fixed\",\n    \"summary\": \"The helper meant to end the copies of this expression left the third copy in place.\",\n    \"failure_scenario\": \"`index.ts:162` still reads the role out of the link name itself, character for character. Any change to how a role is read applies to two of the three call sites.\"\n  }\n]\n```"
+
 export const scenariosCards: Scenario[] = [
   scenario('todo-list', 'The task list', 'cards', [
     checkpoint('The user asks to break the work into steps', [
@@ -959,6 +962,19 @@ export const scenariosCards: Scenario[] = [
         command: 'npm test',
         mode: 'default',
       }),
+    ]),
+  ]),
+
+  scenario('code-review', 'The findings of a code review', 'cards', [
+    checkpoint('The user runs the review command', [user('/code-review'), wait(600)]),
+    /**
+     * `/code-review` is run by the CLI itself rather than by the model, and its whole outcome arrives as
+     * one ordinary answer with the findings as raw JSON inside it - which is why there is no streaming
+     * here: nothing types this text out, it simply appears whole (see readReview).
+     */
+    checkpoint('The review answers with its findings', [
+      agent({ type: 'assistant', message: { content: [{ type: 'text', text: REVIEW_REPORT }] } }),
+      turnResult(659000),
     ]),
   ]),
 ]

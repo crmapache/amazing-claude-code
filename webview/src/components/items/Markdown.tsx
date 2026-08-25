@@ -1,5 +1,6 @@
 import { Reveal } from 'smooth-stream-text/react'
 import { createElement, useEffect, useState } from 'react'
+import { parseInline } from '../../feed/markdown'
 import type { Paragraph, TableAlign, TableData, TextPart } from '../../feed/types'
 import { CopyButton, copyToClipboard } from './CopyButton'
 import s from '../feed.module.css'
@@ -155,6 +156,20 @@ const Piece = ({
   ) : (
     createElement(as ?? 'span', { className }, children)
   )
+
+/**
+ * One line of an answer's markup inside a card that is not an answer itself - a finding's summary, for
+ * instance. Such a line is written in the same markdown as everything else the agent says (a path or an
+ * identifier in backticks above all), and it has to read the same way there: through the same parsing and
+ * the same pieces, without the paragraph layout a whole answer needs.
+ */
+export const Inline = ({ text, onOpenLink }: { text: string; onOpenLink: (url: string) => void }) => (
+  <>
+    {parseInline(text).map((part, index) => (
+      <PartView key={index} part={part} reveal={false} onOpenLink={onOpenLink} />
+    ))}
+  </>
+)
 
 const PartView = ({
   part,

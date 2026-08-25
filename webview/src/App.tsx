@@ -1564,7 +1564,11 @@ export const App = () => {
       { id, title: defaultTitle(id), state: 'idle', groupId: id, depth: 0, titleSource: 'default' },
     ])
     setActive(id)
-    send({ type: 'newSession', kind: 'main', sessionId: id, title: defaultTitle(id) })
+    // Without a name rather than with the stand-in this screen draws: a non-empty title is what the shell
+    // reads as "somebody has already named this tab" (see SessionRegistry.open), and a tab marked as named
+    // is never renamed by its first message afterwards - neither by the guess made here nor by the model's
+    // own answer. The phone has always sent an empty one for exactly this reason (see mobile/App.tsx).
+    send({ type: 'newSession', kind: 'main', sessionId: id, title: '' })
   }, [])
 
   /** The tabs' new order after a drag - see moveGroup. */

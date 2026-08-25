@@ -24,6 +24,7 @@ import {
 } from './tasks'
 import { replayedMessage } from './replayed'
 import { readPlan, readQuestions, readTodos } from './toolInput'
+import { readReview } from './findings'
 import { chipFor, detailFor, formatDuration, hunksFor, metaFor, resultToText, targetFor } from './tools'
 import type {
   DetailLine,
@@ -1082,6 +1083,21 @@ const alreadyShownAsError = (state: PanelState, text: string): boolean => {
     .some((item) => item.kind === 'error' && item.message.trim() === message)
 }
 
+/**
+ * The agent's answer as a card in the feed.
+ *
+ * `id` is the number the printing card had already taken: the same answer, only whole, keeps it rather
+ * than appearing beside itself. Nothing was printing (a local command's output, for instance, appears at
+ * once and whole) - the card takes the next number like any other.
+ */
+const addAnswer = (state: PanelState, id: string | undefined, text: string): PanelState => {
+  const paragraphs = parseParagraphs(text)
+
+  return id
+    ? { ...state, items: [...state.items, { id, kind: 'text', paragraphs, source: text }] }
+    : push(state, (itemId) => ({ id: itemId, kind: 'text', paragraphs, source: text }))
+}
+
 const applyAssistant = (
   state: PanelState,
   blocks: ContentBlock[],
@@ -1109,13 +1125,23 @@ const applyAssistant = (
       // and as the agent's message, word for word.
       if (alreadyShownAsError(next, block.text)) continue
 
-      const paragraphs = parseParagraphs(block.text)
+      /**
+       * A code review's findings are a card of their own rather than the wall of JSON they arrive in:
+       * `/code-review` is run by the CLI itself, and in streaming mode its whole outcome comes back as an
+       * ordinary answer with a fenced block inside (see readReview). Whatever was said around the block
+       * stays the answer it was, and stands above the card.
+       */
+      const review = readReview(block.text)
       const id = reserved
       reserved = undefined
 
-      next = id
-        ? { ...next, items: [...next.items, { id, kind: 'text', paragraphs, source: block.text }] }
-        : push(next, (itemId) => ({ id: itemId, kind: 'text', paragraphs, source: block.text }))
+      if (review) {
+        if (review.intro) next = addAnswer(next, id, review.intro)
+        next = push(next, (itemId) => ({ id: itemId, kind: 'findings', findings: review.findings }))
+        continue
+      }
+
+      next = addAnswer(next, id, block.text)
       continue
     }
 

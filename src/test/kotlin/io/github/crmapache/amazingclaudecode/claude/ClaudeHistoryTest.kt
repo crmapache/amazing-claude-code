@@ -7,6 +7,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ClaudeHistoryTest {
@@ -260,8 +261,8 @@ class ClaudeHistoryTest {
         val replayed = ClaudeHistory.replayable(lines).toList()
 
         assertEquals(2, replayed.size)
-        assertTrue(replayed[0]!!.contains("fix the tests"))
-        assertTrue(replayed[1]!!.contains("done"))
+        assertTrue(replayed[0].contains("fix the tests"))
+        assertTrue(replayed[1].contains("done"))
     }
 
     // The lines come out in the shape the live stream hands them over, not the shape the disk keeps them
@@ -274,6 +275,58 @@ class ClaudeHistoryTest {
             .jsonObject["message"]!!.jsonObject["content"]!!.jsonArray
 
         assertEquals("hello", content[0].jsonObject["text"]!!.jsonPrimitive.contentOrNull)
+    }
+
+    // A slash command the CLI carries out itself (`/code-review`, `/cost`) reaches the panel live as an
+    // ordinary answer, while the transcript files the same output away as a system entry. Without turning
+    // it back, a conversation opened from the history showed the command with nothing after it - the
+    // review's findings above all (see ClaudeHistory.commandOutput).
+    @Test
+    fun `the output of a command the CLI ran itself comes back as an answer`() {
+        val lines = sequenceOf(
+            """{"type":"user","message":{"role":"user","content":"/code-review"}}""",
+            """{"type":"system","subtype":"local_command","content":"<local-command-stdout>3 findings</local-command-stdout>"}""",
+        )
+
+        val replayed = ClaudeHistory.replayable(lines).toList()
+
+        assertEquals(2, replayed.size)
+        val answer = Json.parseToJsonElement(replayed[1]).jsonObject
+        assertEquals("assistant", answer["type"]!!.jsonPrimitive.contentOrNull)
+        assertEquals(
+            "3 findings",
+            answer["message"]!!.jsonObject["content"]!!.jsonArray[0].jsonObject["text"]!!.jsonPrimitive.contentOrNull,
+        )
+    }
+
+    // Older CLIs filed that same output as the person's own message with the output in a tag - and the
+    // feed, which cuts such tags out of a message, was left with an empty one.
+    @Test
+    fun `the same output filed as the person's message comes back as an answer too`() {
+        val lines = sequenceOf(
+            """{"type":"user","message":{"role":"user","content":"<local-command-stdout>done</local-command-stdout>"}}""",
+        )
+
+        val answer = Json.parseToJsonElement(ClaudeHistory.replayable(lines).first()).jsonObject
+
+        assertEquals("assistant", answer["type"]!!.jsonPrimitive.contentOrNull)
+    }
+
+    // A command that printed nothing has nothing to show, and an entry that holds more than the output
+    // is not merely output - reducing it to the part inside the wrapping would throw the rest away.
+    @Test
+    fun `only what a command actually printed is turned into an answer`() {
+        assertNull(
+            ClaudeHistory.commandOutput(
+                """{"type":"system","subtype":"local_command","content":"<local-command-stdout></local-command-stdout>"}""",
+            ),
+        )
+        assertNull(
+            ClaudeHistory.commandOutput(
+                """{"type":"user","message":{"role":"user","content":"and now <local-command-stdout>done</local-command-stdout>"}}""",
+            ),
+        )
+        assertNull(ClaudeHistory.commandOutput("""{"type":"assistant","message":{"content":[]}}"""))
     }
 
     // With no boundary at all, a page is the file's own tail - the only case where that is the right

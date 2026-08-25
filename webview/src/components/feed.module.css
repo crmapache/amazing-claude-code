@@ -1469,3 +1469,127 @@
 [data-acc-density='touch'] .textCopy {
   opacity: 1;
 }
+
+/* --- A code review's findings ---------------------------------------------- */
+
+/* Framed like the plan, in the warning's colour rather than the accent's: a plan is an offer waiting for
+   an answer, while findings are a list of things wrong - and the two must not look alike at a glance. */
+.findings {
+  margin: 10px 0;
+  border: 1px solid var(--acc-warn-32);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-warn-06);
+  overflow: hidden;
+}
+
+.findingsHead {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--acc-warn-32);
+}
+
+.findingsLabel {
+  font: 600 9.5px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-warn);
+}
+
+.findingsCount {
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.findingsBody {
+  padding: 4px 0;
+}
+
+/* A hairline between the findings rather than a frame around each: a dozen framed boxes inside one frame
+   read as a table of contents of something else. The first one does without it - the head above is the
+   line already. */
+.finding + .finding {
+  border-top: 1px solid var(--acc-line);
+}
+
+.finding {
+  padding: 5px 11px 7px;
+}
+
+/* The row's own head: where it is, and what kind of thing it is. On the baseline like every other head in
+   the feed - the place is 11.5px mono, the tags 9.5px, and a shared centre would put them at two heights. */
+.findingHead {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  width: 100%;
+  /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
+  min-height: var(--acc-hit);
+  text-align: left;
+}
+
+.findingPlace {
+  font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
+  color: var(--acc-fg-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.findingTag {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: var(--acc-r-xs);
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-faint);
+  font: 600 9.5px/13px var(--acc-mono);
+  letter-spacing: 0.05em;
+}
+
+.findingFixed {
+  background: var(--acc-ok-12);
+  color: var(--acc-ok-light);
+}
+
+.findingSkipped {
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-ghost);
+}
+
+/* Not a tag but a word of warning: the check could not confirm this one, and it must not be read as
+   settled fact. */
+.findingMaybe {
+  flex: none;
+  font: var(--acc-fs-label, 10px) var(--acc-mono);
+  color: var(--acc-warn);
+}
+
+/* The claim itself - the one line always visible, in the body font rather than mono: it is a sentence,
+   and the paths inside it are already set apart by their own backticks. The indent lines it up with the
+   head's text past the caret. */
+.findingSummary {
+  padding-left: 16px;
+  font-size: var(--acc-fs-body, 13px);
+  line-height: var(--acc-leading, 1.62);
+  color: var(--acc-fg-body);
+}
+
+.findingBody {
+  margin: 6px 0 2px 16px;
+  border-left: 2px solid var(--acc-warn-32);
+  padding-left: 10px;
+}
+
+.findingFile {
+  font: var(--acc-fs-meta, 11px) var(--acc-mono);
+  color: var(--acc-fg-faint);
+  word-break: break-all;
+}
+
+.findingText {
+  margin: 5px 0 0;
+  font-size: var(--acc-fs-body, 13px);
+  line-height: var(--acc-leading, 1.62);
+  color: var(--acc-fg-dim);
+}

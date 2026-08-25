@@ -28,11 +28,28 @@ class SessionTitleTest {
     }
 
     // "/compact" says what was done to the conversation, not what it is about - and the question may
-    // only be asked once, so it goes to the next message instead.
+    // only be asked once, so it goes to the next message instead. With arguments too: "/compact keep the
+    // API decisions" is still housekeeping, however much it says.
     @Test
-    fun `a bare command names nothing`() {
+    fun `a housekeeping command names nothing`() {
         assertNull(SessionTitle.describe("/compact"))
         assertNull(SessionTitle.describe("  /clear  "))
+        assertNull(SessionTitle.describe("/compact keep the API decisions"))
+    }
+
+    // A skill or a command is what the person came to do - and a tab opened on one used to stay "new
+    // session" for the whole run, because it carries no arguments to be recognised by.
+    @Test
+    fun `a command of its own names the conversation`() {
+        assertEquals("the /code-review command", SessionTitle.describe("/code-review"))
+        assertEquals("the /cp command", SessionTitle.describe("  /cp  "))
+    }
+
+    // A plugin's own command is that plugin's work, whatever the CLI calls its own command of the same
+    // name.
+    @Test
+    fun `a plugin command is not the CLI command it shares a name with`() {
+        assertEquals("the /acme:status command", SessionTitle.describe("/acme:status"))
     }
 
     // A command with arguments does say what is going on, and waiting for a further message would leave

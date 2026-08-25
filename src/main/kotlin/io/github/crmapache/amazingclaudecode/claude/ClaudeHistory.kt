@@ -7,11 +7,13 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 
 /**
  * This project's past conversations.
@@ -86,10 +88,64 @@ internal object ClaudeHistory {
      */
     internal fun replayable(lines: Sequence<String>): Sequence<String> =
         lines
-            .filter { line ->
-                line.startsWith("{") && (line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\""))
+            .filter { line -> line.startsWith("{") && REPLAYABLE.any { mark -> line.contains(mark) } }
+            .mapNotNull { line ->
+                commandOutput(line) ?: line.takeIf { it.contains(MESSAGE) || it.contains(REPLY) }?.let(::normalizeContent)
             }
-            .map(::normalizeContent)
+
+    private const val MESSAGE = "\"type\":\"user\""
+    private const val REPLY = "\"type\":\"assistant\""
+    private const val COMMAND = "\"subtype\":\"local_command\""
+
+    private val REPLAYABLE = listOf(MESSAGE, REPLY, COMMAND)
+
+    /** What a command the CLI ran itself printed - the wrapping the transcript keeps it in. */
+    private val STDOUT = Regex("<local-command-stdout>([\\s\\S]*?)</local-command-stdout>")
+
+    /** The CLI's own preamble beside that output - internal, and never a part of what was printed. */
+    private val CAVEAT = Regex("<local-command-caveat>[\\s\\S]*?</local-command-caveat>")
+
+    /**
+     * The output of a command the CLI ran by itself, turned back into what the panel saw when it ran.
+     *
+     * A slash command is not always a message to the model: `/code-review`, `/cost` and their like the CLI
+     * carries out on its own and hands the whole outcome back through the stream as an ordinary answer -
+     * which is what the feed drew at the time (a review's findings among them, see readReview). On disk
+     * that same output is filed differently: as a `local_command` system entry, or - in transcripts of
+     * older CLIs - as the person's own message with the output wrapped in a tag. Neither is a shape the
+     * feed draws, so a conversation opened from the history lost every such answer: the command stood in
+     * it with nothing after it, as though it had never run.
+     *
+     * null means this line is not that: an ordinary message, or a command that printed nothing. Anything
+     * standing outside the wrapping means the entry is not merely output - it is left alone rather than
+     * silently reduced to the part inside.
+     */
+    internal fun commandOutput(line: String): String? {
+        val payload = runCatching { Json.parseToJsonElement(line).jsonObject }.getOrNull() ?: return null
+
+        val content = when (payload["type"]?.jsonPrimitive?.contentOrNull) {
+            "system" ->
+                payload["content"]
+                    ?.jsonPrimitive
+                    ?.contentOrNull
+                    .takeIf { payload["subtype"]?.jsonPrimitive?.contentOrNull == "local_command" }
+
+            "user" -> (payload["message"]?.jsonObject?.get("content") as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+            else -> null
+        } ?: return null
+
+        val printed = STDOUT.find(content)?.groupValues?.get(1)?.trim().orEmpty()
+        if (printed.isEmpty()) return null
+        if (content.replace(STDOUT, "").replace(CAVEAT, "").isNotBlank()) return null
+
+        return buildJsonObject {
+            put("type", "assistant")
+            putJsonObject("message") {
+                put("content", buildJsonArray { addJsonObject { put("type", "text"); put("text", printed) } })
+            }
+        }.toString()
+    }
 
     /**
      * On disk a person's bare text message is a string in message.content, not an array of blocks: that
