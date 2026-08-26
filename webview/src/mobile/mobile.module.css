@@ -795,16 +795,25 @@
   border-bottom: 1px solid var(--acc-line);
 }
 
-/* A ring and the room around it to hit: the mark is twenty pixels, the target is a thumb's worth of
-   height, and there is nothing else inside to space out (the words and figures went to Limits). */
+/* A ring, its percentage and the room around the pair to hit: the mark is twenty pixels, the target is a
+   thumb's worth of height. The wording - which window, when it resets - is still a tap away in Limits. */
 .meter {
   display: inline-flex;
   align-items: center;
+  gap: 5px;
   flex: none;
   height: 38px;
   padding: 0 var(--acc-sp-1);
   border: none;
   background: none;
+}
+
+/* The paint comes from the ring it belongs to, inline (see MeterValue) - it is the pace colour, and it
+   changes with the share. Digits of one width: otherwise every update jerks the branch along the row. */
+.meterValue {
+  flex: none;
+  font: var(--acc-fs-meta, 12px) / 1 var(--acc-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .meter:disabled {

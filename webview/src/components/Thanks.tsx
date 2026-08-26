@@ -12,8 +12,8 @@ import s from './shell.module.css'
  * honestly opens the page and the star is pressed there.
  *
  * Where the button stands is decided by the layout, not by this file: in bottom and compact it stands at
- * the end of the selectors' row, in left/right it stands in the rail's row of buttons. The same square
- * either way, framed in the row and borderless in the rail (see .thanks / .thanksRail and Composer.tsx).
+ * the end of the selectors' row, in left/right it stands in the rail's row of buttons. The same box either
+ * way, framed in the row and borderless in the rail (see .thanks / .thanksRail and Composer.tsx).
  */
 
 /** The addresses themselves - the menu carries only ids, the shell opens the address (see App.openThanks). */

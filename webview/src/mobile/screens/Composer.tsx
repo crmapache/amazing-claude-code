@@ -4,6 +4,7 @@ import { atQueryInText, matchFiles } from '../../feed/files'
 import { appendChip, matchCommands, slashQuery, type CommandEntry } from '../../feed/slash'
 import { composePrompt, imageAttachments, trimTrailingSpace } from '../../feed/tokens'
 import type { UserToken } from '../../feed/types'
+import type { UsageWindow } from '../../protocol'
 import {
   contextColor,
   contextGlow,
@@ -40,6 +41,48 @@ interface ComposerProps {
 
 /** Ticks at every fifth - unrelated to the colour thresholds, purely the scale's ruler. */
 const CONTEXT_TICKS = [20, 40, 60, 80]
+
+/** One of the two rings in the top row: how full, in what paint, and what stands beside it. */
+interface RingFacts {
+  percent: number
+  color: string
+  /** The percentage as it is written out, or empty when a figure would say nothing - see [windowRing]. */
+  caption: string
+  flame: boolean
+}
+
+/** The window being paid past: closed, in the extra usage's own paint, alight and without a figure. */
+const BURNING_RING: RingFacts = {
+  percent: 100,
+  color: 'var(--acc-extra)',
+  caption: '',
+  flame: true,
+}
+
+/**
+ * A window's ring, or the empty track that stands in for one nothing is known about yet.
+ *
+ * `span` is the length of the window the pace colour is judged against (see paceColor): a five-hour
+ * window and a weekly one climb at very different speeds, and the same share means different things in
+ * the two.
+ */
+const windowRing = (usage: UsageWindow | undefined, span: number): RingFacts =>
+  usage
+    ? {
+        percent: usage.percent,
+        color: paceColor(usage.percent, usage.resets, span),
+        caption: `${usage.percent}%`,
+        flame: false,
+      }
+    : { percent: 0, color: 'var(--acc-fg-ghost)', caption: '', flame: false }
+
+/** The figure beside a ring, in the ring's own paint. Nothing at all when there is no figure to show. */
+const MeterValue = ({ ring }: { ring: RingFacts }) =>
+  ring.caption ? (
+    <span className={m.meterValue} style={{ color: ring.color }}>
+      {ring.caption}
+    </span>
+  ) : null
 
 /**
  * The phone's composer.
@@ -119,6 +162,17 @@ export const Composer = ({
 
   /** Which ring burns, when one does: the window being paid past, not always the five-hour one. */
   const burning = facts.extra?.active ? limitWindowRing(facts.extra.window) : null
+
+  /**
+   * What each of the two rings is, figure and all - the same three answers as in the panel (see
+   * UsageMeters), gathered here rather than spelled out twice inside the markup below.
+   *
+   * The figure is left out in the two cases where it would say nothing: a burning ring is stuck at a
+   * hundred and what matters about it is that the work is being paid for, and a window nothing is known
+   * about yet gets an empty track rather than an honest-looking "0%".
+   */
+  const sessionRing = burning === 'session' ? BURNING_RING : windowRing(facts.session, FIVE_HOUR_MS)
+  const weekRing = burning === 'week' ? BURNING_RING : windowRing(facts.week, WEEK_MS)
 
   /**
    * The field's start up to the caret - what a slash command is read from.
@@ -319,12 +373,13 @@ export const Composer = ({
       )}
 
       {/* What is read: the two windows, the branch and its pull request. A tap on either ring opens the
-          figures - the panel keeps them in a tooltip, and a phone has no hover to put one under.
+          rest of the figures - which window this is, when it resets - because the panel keeps those in a
+          tooltip and a phone has no hover to put one under.
 
-          The rings carry no caption and no percentage of their own. Four small numbers over a text field
-          read as a dashboard, and this row is not what anybody opened the app for; the shape of a ring
-          says "filling up" at a glance, and the exact figure is one tap away in Limits, where the window
-          it belongs to is spelled out in words. */}
+          Each ring carries its percentage beside it, as in the panel: the shape of a ring says "filling
+          up", but "how much" is what one actually looks down at the row for, and having to tap to see a
+          figure that fits in three characters was a tap for nothing. What stays behind the tap is the
+          wording - which limit, how long until it resets. */}
       <div className={m.strip}>
         <button
           type="button"
@@ -338,17 +393,12 @@ export const Composer = ({
               own paint and burns - but only on the ring whose window actually ran out (the same
               substitution as in the panel - see UsageMeters). */}
           <Ring
-            percent={burning === 'session' ? 100 : (facts.session?.percent ?? 0)}
-            color={
-              burning === 'session'
-                ? 'var(--acc-extra)'
-                : facts.session
-                  ? paceColor(facts.session.percent, facts.session.resets, FIVE_HOUR_MS)
-                  : 'var(--acc-fg-ghost)'
-            }
-            flame={burning === 'session'}
+            percent={sessionRing.percent}
+            color={sessionRing.color}
+            flame={sessionRing.flame}
             size={20}
           />
+          <MeterValue ring={sessionRing} />
         </button>
 
         <button
@@ -359,18 +409,13 @@ export const Composer = ({
           onClick={() => setLimitsOpen(true)}
         >
           <Ring
-            percent={burning === 'week' ? 100 : (facts.week?.percent ?? 0)}
-            color={
-              burning === 'week'
-                ? 'var(--acc-extra)'
-                : facts.week
-                  ? paceColor(facts.week.percent, facts.week.resets, WEEK_MS)
-                  : 'var(--acc-fg-ghost)'
-            }
+            percent={weekRing.percent}
+            color={weekRing.color}
             pace={burning === 'week' || !facts.week ? undefined : weekBudgetToday(facts.week.resets)}
-            flame={burning === 'week'}
+            flame={weekRing.flame}
             size={20}
           />
+          <MeterValue ring={weekRing} />
         </button>
 
         {facts.gitBranch ? (
