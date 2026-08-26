@@ -25,7 +25,37 @@ internal object ClaudeAuth {
         val loggedIn: Boolean,
         val email: String = "",
         val plan: String = "",
-    )
+        /**
+         * The organization the sign-in belongs to, and the way it was made. Neither is shown anywhere -
+         * they are here to tell one account from another: an email alone is not enough (one person's
+         * address stands behind both a personal account and a workspace that invited it).
+         */
+        val orgId: String = "",
+        val method: String = "",
+    ) {
+        /**
+         * Who is signed in, as one string. Empty means the CLI named nobody: either there is no sign-in,
+         * or the answer did not survive the parsing - and about a change of account such an answer says
+         * nothing (see [switchedAccount]).
+         */
+        val identity: String
+            get() = if (!loggedIn) "" else listOf(email, orgId, method).filter { it.isNotEmpty() }.joinToString("|")
+    }
+
+    /**
+     * Whether the sign-in has moved to another account than the one already known.
+     *
+     * Everything the panel shows about the subscription - the usage rings above all - belongs to the
+     * account it was asked about, and after a switch it is somebody else's (see ProjectUsage.forget).
+     *
+     * Compared against the last account actually named rather than against the previous answer: asking
+     * the CLI is starting a process, and a process that failed to answer in time comes back as "not
+     * signed in". Read as a switch, such a miss would wipe the figures and send the panel for fresh ones
+     * on every hiccup; read as nothing at all, it costs nothing - the account behind the miss has not
+     * gone anywhere, and if it has, the very next answer says so.
+     */
+    fun switchedAccount(known: String, next: Status): Boolean =
+        known.isNotEmpty() && next.identity.isNotEmpty() && known != next.identity
 
     /** Call from a background thread only: this starts a process. */
     fun status(): Status {
@@ -65,6 +95,8 @@ internal object ClaudeAuth {
             loggedIn = payload["loggedIn"]?.jsonPrimitive?.booleanOrNull == true,
             email = field("email"),
             plan = field("subscriptionType").ifEmpty { field("authMethod") },
+            orgId = field("orgId"),
+            method = field("authMethod"),
         )
     }
 

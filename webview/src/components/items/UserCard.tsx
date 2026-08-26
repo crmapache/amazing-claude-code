@@ -84,7 +84,7 @@ const TextToken = ({
  * does not change at all - and recomputing it a hundred times a second serves nothing.
  */
 const ChipView = memo(({ chip }: { chip: Chip }) => (
-  <span className={`${s.chip} ${CHIP_CLASS[chip.kind]}`} title={chipTitle(chip)}>
+  <span className={`${s.chip} ${CHIP_CLASS[chip.kind]}`} data-tooltip={chipTitle(chip)}>
     {/* There is deliberately no attachment type icon - see renderChipNode in Composer: the chip here is
         the same one as in the input field and should look the same. */}
     {chipLabel(chip)}
@@ -101,7 +101,7 @@ const PasteBlock = memo(({ chip }: { chip: Chip }) => {
   const lines = pasteLineCount(text)
 
   return (
-    <span className={`${s.chip} ${s.chipPaste} ${s.chipPasteBlock}`} title={chipTitle(chip)}>
+    <span className={`${s.chip} ${s.chipPaste} ${s.chipPasteBlock}`} data-tooltip={chipTitle(chip)}>
       <span className={s.chipPasteCount}>
         {lines} {lines === 1 ? 'line' : 'lines'} pasted
       </span>

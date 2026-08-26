@@ -122,7 +122,24 @@ interface HeaderProps {
    * hides the mark entirely: the ordinary case is nobody, and a permanent "0" would be noise.
    */
   watchers?: number
+  /**
+   * The statistics tab: a tab of its own in the strip, after the conversations and before the "+".
+   *
+   * Not a session and not in the sessions list on purpose: the shell owns that list and overwrites it
+   * whole, while this tab is this screen's alone - it holds no conversation, has no group to be dragged
+   * with, and closing it kills nothing. `open` is whether it is in the strip at all; `active` whether it
+   * is the one being looked at.
+   */
+  statistics?: { open: boolean; active: boolean }
+  onPickStatistics?: () => void
+  onCloseStatistics?: () => void
 }
+
+/**
+ * The stripe over the statistics tab. A colour of its own out of the same cool arc the groups draw
+ * from, but fixed rather than hashed: the tab is always the same tab, and it should always look it.
+ */
+const STATISTICS_COLOR = 'hsl(220, 62%, 70%)'
 
 /** Past this offset a press stops being a click and becomes a drag. */
 const DRAG_THRESHOLD_PX = 4
@@ -177,6 +194,9 @@ export const Header = ({
   watchers = 0,
   pullRequest,
   onOpenPullRequest,
+  statistics,
+  onPickStatistics,
+  onCloseStatistics,
 }: HeaderProps) => {
   const compact = layout === 'compact' || isSideComposerLayout(layout)
   const header = useRef<HTMLElement>(null)
@@ -484,7 +504,10 @@ export const Header = ({
 
   return (
     <header className={`${s.header} ${compact ? s.headerCompact : ''}`} ref={header}>
-      <div className={s.tabs} ref={tabs}>
+      {/* A strip of tabs, and said to be one: without it a screen reader announces a row of nameless
+          boxes, and nothing in here could be reached by keyboard at all - neither a conversation nor the
+          statistics beside them. */}
+      <div className={s.tabs} ref={tabs} role="tablist" aria-label="Conversations">
         {sessions.map((session, index) => {
           const color = colorForGroup(session.groupId)
           // A group is set off from its neighbour by a gap: colour is not enough when the tabs are stuck together.
@@ -494,6 +517,9 @@ export const Header = ({
             <div
               key={session.id}
               data-group={session.groupId}
+              role="tab"
+              tabIndex={0}
+              aria-selected={session.id === activeSession}
               className={[
                 s.tab,
                 session.id === activeSession ? s.tabActive : '',
@@ -519,9 +545,15 @@ export const Header = ({
                 if (dragged.current) return
                 onPickSession(session.id)
               }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return
+                // Space scrolls the strip otherwise, and the tab under the finger never opens.
+                event.preventDefault()
+                onPickSession(session.id)
+              }}
             >
               <span className={s.tabGroupBar} style={{ background: color }} />
-              <span className={`${s.dot} ${DOT_CLASS[session.state]}`} title={DOT_TITLE[session.state]} />
+              <span className={`${s.dot} ${DOT_CLASS[session.state]}`} data-tooltip={DOT_TITLE[session.state]} />
               {session.depth > 0 ? (
                 <span className={s.tabFork} style={{ color }}>
                   ⑂
@@ -531,6 +563,7 @@ export const Header = ({
               <button
                 type="button"
                 className={s.tabClose}
+                aria-label={`Close ${session.title}`}
                 onClick={(event) => {
                   event.stopPropagation()
                   onCloseSession(session.id)
@@ -542,7 +575,46 @@ export const Header = ({
           )
         })}
 
-        <button type="button" className={s.tabAdd} title="New session" onClick={onNewSession}>
+        {statistics?.open ? (
+          // No data-group and no drag handler: the strip's drag arithmetic walks [data-group] alone, and
+          // a tab that belongs to no conversation has no place in a rearrangement of conversations.
+          <div
+            role="tab"
+            tabIndex={0}
+            aria-selected={statistics.active}
+            className={[
+              s.tab,
+              s.tabStatistics,
+              statistics.active ? s.tabActive : '',
+              sessions.length > 0 ? s.tabGroupStart : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            onClick={onPickStatistics}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return
+              event.preventDefault()
+              onPickStatistics?.()
+            }}
+          >
+            <span className={s.tabGroupBar} style={{ background: STATISTICS_COLOR }} />
+            <span className={s.dot} data-tooltip="Statistics" />
+            <span className={s.tabTitle}>Statistics</span>
+            <button
+              type="button"
+              className={s.tabClose}
+              aria-label="Close statistics"
+              onClick={(event) => {
+                event.stopPropagation()
+                onCloseStatistics?.()
+              }}
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
+
+        <button type="button" className={s.tabAdd} data-tooltip="New session" onClick={onNewSession}>
           +
         </button>
       </div>

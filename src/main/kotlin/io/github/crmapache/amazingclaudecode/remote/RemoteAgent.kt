@@ -16,6 +16,7 @@ import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.claude.SessionClient
 import io.github.crmapache.amazingclaudecode.claude.SessionLaunch
+import io.github.crmapache.amazingclaudecode.stats.StatsLedger
 import java.net.http.HttpClient
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
@@ -627,6 +628,9 @@ internal class RemoteAgent : Disposable {
 
         awaitingApproval = null
         offer = null
+
+        // A phone paired is an achievement of its own - the one thing here the statistics count.
+        runCatching { StatsLedger.getInstance().notePaired() }
 
         // Written out now rather than at the next shutdown. The platform would save it eventually, but
         // "eventually" includes crashing first - and a pairing lost that way is a person scanning a QR

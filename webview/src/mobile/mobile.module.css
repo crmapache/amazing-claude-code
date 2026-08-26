@@ -816,6 +816,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The two windows are one reading, so they stand nearer each other than to the branch beside them - the
+   same twelve pixels the panel's own pair keeps (see .meters in shell.module.css). Each meter's padding is
+   the hit area's and stays; what is taken back is the strip's gap between them. */
+.meter + .meter {
+  margin-left: calc(-1 * var(--acc-sp-3));
+}
+
 .meter:disabled {
   opacity: 0.5;
 }
@@ -1331,24 +1338,13 @@
   border-radius: 999px;
 }
 
-/* The dim arc is the one thing on either ring that cannot be guessed from looking at it. */
+/* The dim arc is the one thing on either ring that cannot be guessed from looking at it. Said in full
+   width rather than beside a swatch: the sentence names the arc, so a colour chip only shortened it. */
 .limNote {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
   margin: 0;
   padding: 0 var(--acc-sp-5) 15px;
   font: 11.5px/1.5 var(--acc-font);
   color: var(--acc-fg-faint);
-}
-
-.limSwatch {
-  flex: none;
-  width: 14px;
-  height: 3px;
-  margin-top: 6px;
-  border-radius: 999px;
-  background: var(--acc-meter-pace);
 }
 
 .limEmpty {
@@ -1466,6 +1462,33 @@
   border: 1px solid var(--acc-line-strong);
   color: var(--acc-danger, #e06c75);
   background: none;
+}
+
+/* An answer to a question with options: the label and, under it, the line that says what choosing it
+   means. Two lines rather than one, because that second line is the whole substance of the choice - a
+   phone that showed only the labels made a person open the conversation to find out what they were
+   picking between, which is exactly the trip this screen exists to save. */
+.buttonOption {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: var(--acc-tap);
+  padding: 10px 16px;
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-md, 8px);
+  background: none;
+  text-align: left;
+}
+
+.buttonOptionLabel {
+  font-size: 16px;
+  color: var(--acc-fg);
+}
+
+.buttonOptionHint {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--acc-fg-dim);
 }
 
 /* --- Pairing ------------------------------------------------------------------ */

@@ -296,7 +296,7 @@ export const Plugins = ({
                 <div className={s.cardTop}>
                   <span className={s.cardName}>{marketplace.name}</span>
                 </div>
-                <div className={s.cardCommand} title={marketplace.source}>
+                <div className={s.cardCommand} data-tooltip={marketplace.source}>
                   {marketplace.source}
                 </div>
                 <div className={s.cardActions}>

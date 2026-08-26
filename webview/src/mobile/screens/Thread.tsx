@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { AgentStreamView } from '../../components/AgentStreamView'
 import { Feed } from '../../components/Feed'
 import { StreamSwitcher } from '../../components/StreamSwitcher'
-import { useCardState } from '../../hooks/useCardState'
+import type { CardState } from '../../hooks/useCardState'
 import { useNow } from '../../hooks/useNow'
 import { contextOf } from '../../feed/build'
 import type { PanelState } from '../../feed/panelState'
-import { buildAgentTabs, mainStatusOf, streamStatus } from '../../feed/streamStatus'
+import { awaiting, buildAgentTabs, mainStatusOf, streamStatus } from '../../feed/streamStatus'
 import { countSessionImages } from '../../feed/tokens'
 import type { TaskItem } from '../../feed/types'
 import type { ProjectFacts } from '../facts'
@@ -17,13 +17,30 @@ import m from '../mobile.module.css'
 /** Mobile has no "clear finished agents" action, so every task the session ever ran stays on the strip. */
 const NO_HIDDEN_TASKS: ReadonlySet<string> = new Set()
 
-/** One message waiting its turn - the phone's own copy of the panel's Queue. */
-interface Queued extends OutgoingPrompt {
-  id: string
-}
+/**
+ * What the strip above the feed says, by what is actually holding the turn.
+ *
+ * Named rather than left as one line for all three: the three cost different things to answer - a
+ * permission is one tap, a plan is a page to read - and someone glancing at a phone decides whether to
+ * stop what they are doing by this line alone.
+ */
+const WAITING_FOR = {
+  perm: 'Permission needed - answer it',
+  ask: 'A question is waiting - answer it',
+  plan: 'A plan is waiting - decide',
+} as const
+
+/**
+ * How long to wait for a page of earlier messages before letting the placeholder be tapped again.
+ * Generous on purpose: the request goes to a machine across the city and back, and unlocking early
+ * invites a second request for a page that is already on its way.
+ */
+const EARLIER_TIMEOUT_MS = 15_000
 
 interface ThreadProps {
   feed: PanelState
+  /** Which plans have been decided and which questions answered - kept by the application, see mobile/App. */
+  cards: CardState
   title: string
   project: string
   /** What this phone knows about the project the conversation is in - see mobile/facts. */
@@ -32,10 +49,16 @@ interface ThreadProps {
   /** Nothing about this conversation has arrived yet - see MobileFeed.loaded. */
   loading: boolean
   onSend: (prompt: OutgoingPrompt) => void
+  /** Said when the agent comes free. It waits in the IDE, not here - see SessionQueue.kt. */
+  onQueue: (prompt: OutgoingPrompt) => void
+  /** The cross on a queued message. */
+  onUnqueue: (id: string) => void
   onStop: () => void
   onStopTask: (taskId: string) => void
   /** A page further back than the EARLIER placeholder reaches - absent once there is nothing further. */
   onLoadEarlier?: () => void
+  /** How many answers about earlier pages have arrived - see MobileFeed.earlierPages. */
+  earlierPages: number
   onDecide: () => void
   onBack: () => void
 }
@@ -52,15 +75,19 @@ interface ThreadProps {
  */
 export const Thread = ({
   feed,
+  cards,
   title,
   project,
   facts,
   connected,
   loading,
   onSend,
+  onQueue,
+  onUnqueue,
   onStop,
   onStopTask,
   onLoadEarlier,
+  earlierPages,
   onDecide,
   onBack,
 }: ThreadProps) => {
@@ -72,32 +99,38 @@ export const Thread = ({
 
   const [loadingEarlier, setLoadingEarlier] = useState(false)
   const [activeStream, setActiveStream] = useState('main')
-  const [queue, setQueue] = useState<Queued[]>([])
 
   /**
-   * The queue works itself through the same way the panel's does: one message at a time, each one only
-   * once the turn before it has genuinely ended. `sent` marks that this screen has already handed the
-   * front of the queue to onSend and is waiting for the run to confirm it started - without it, a status
-   * that takes a moment to flip back to "running" would let this effect fire again on the next render and
-   * hand over a second message before the first has even begun.
+   * What this conversation is waiting to say, held by the IDE and fired by it when the turn ends.
+   *
+   * It used to be a piece of this screen's own state, worked through by an effect here. On a phone that
+   * quietly does not work: leaving the screen took the queue with it, and a page in a pocket is thrown
+   * out by the browser without warning - so a message put in the queue was neither sent nor waiting
+   * anywhere, and the conversation simply stopped after the last turn (see SessionQueue.kt).
    */
-  const [sent, setSent] = useState(false)
-  useEffect(() => {
-    if (feed.status === 'running') {
-      if (sent) setSent(false)
-      return
-    }
-    if (sent || queue.length === 0) return
+  const queue = feed.queue
 
-    setSent(true)
-    setQueue((current) => current.slice(1))
-    onSend(queue[0]!)
-  }, [feed.status, queue, sent, onSend])
-
-  // The page asked for has arrived - the placeholder can be tapped again.
+  /*
+   * The answer has arrived - the placeholder can be tapped again.
+   *
+   * By the answer rather than by the feed having grown: an answer that adds nothing is an answer all the
+   * same (the conversation's beginning was reached, or the page did not answer the boundary on screen),
+   * and waiting for cards that are never coming left the button dead for the rest of the session.
+   */
   useEffect(() => {
     if (loadingEarlier) setLoadingEarlier(false)
-  }, [feed.items.length])
+  }, [earlierPages])
+
+  /*
+   * And a way out when no answer arrives at all. A page travels in one frame, and a frame over the size
+   * limit is dropped between here and the IDE without a word to either end (see ClaudeHistory.pageOf,
+   * which is what keeps pages under it). Left alone, the first such miss would lock the button for good.
+   */
+  useEffect(() => {
+    if (!loadingEarlier) return
+    const timeout = setTimeout(() => setLoadingEarlier(false), EARLIER_TIMEOUT_MS)
+    return () => clearTimeout(timeout)
+  }, [loadingEarlier])
 
   /*
    * Following the answer as it arrives is the feed's own business here, exactly as it is in the panel
@@ -110,10 +143,17 @@ export const Thread = ({
    * one that knows whether the person is still at the bottom is the feed.
    */
 
-  /** The panel's own card state - what is expanded, which plans have been answered on this screen. */
-  const cards = useCardState()
-
-  const waiting = feed.items.some((item) => item.kind === 'perm' && item.decision === null)
+  /**
+   * Whether the turn stands on something only a person can settle - by the shared rule rather than a
+   * second one written here (see awaitsYou).
+   *
+   * It used to ask about permission requests alone, so a question with options and a plan raised nothing:
+   * the line above the feed said "Waiting for you" - it goes by the very same rule - while the one way in
+   * to the screen where the answer is given stayed hidden. A question is not drawn in the feed either
+   * (the panel pins it over the input field instead), which left it invisible and unanswerable from a
+   * phone: the conversation simply stopped.
+   */
+  const waiting = awaiting(feed.items, cards)
 
   /**
    * The same chip strip as the panel's - which subagents and background commands are alive right now,
@@ -141,7 +181,7 @@ export const Thread = ({
    * picture whichever screen sent it.
    */
   const imageBase = useMemo(
-    () => countSessionImages(feed.items, queue.reduce((sum, item) => sum + item.images.length, 0)),
+    () => countSessionImages(feed.items, queue.reduce((sum, item) => sum + item.images, 0)),
     [feed.items, queue],
   )
 
@@ -155,7 +195,7 @@ export const Thread = ({
 
       {waiting && (
         <button type="button" className={m.waitingBanner} onClick={onDecide}>
-          Waiting for you - answer it
+          {WAITING_FOR[waiting.kind]}
         </button>
       )}
 
@@ -217,7 +257,7 @@ export const Thread = ({
                   type="button"
                   className={m.queueRemove}
                   aria-label="Remove from the queue"
-                  onClick={() => setQueue((current) => current.filter((one) => one.id !== item.id))}
+                  onClick={() => onUnqueue(item.id)}
                 >
                   ×
                 </button>
@@ -233,12 +273,7 @@ export const Thread = ({
           connected={connected}
           imageBase={imageBase}
           onSend={onSend}
-          onQueue={(prompt) =>
-            setQueue((current) => [
-              ...current,
-              { ...prompt, id: `q-${Date.now().toString(36)}-${current.length}` },
-            ])
-          }
+          onQueue={onQueue}
           onStop={onStop}
         />
       </footer>

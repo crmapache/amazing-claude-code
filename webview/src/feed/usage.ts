@@ -1,6 +1,8 @@
+import type { ExtraUsage, ShellMessage, UsageWindow } from '../protocol'
+
 /**
- * How the usage gauges are read: the ring's geometry, the colour of a window by its pace, and the
- * colour of the context by its fill.
+ * How the usage gauges are read: what the figures themselves add up to, the ring's geometry, the colour
+ * of a window by its pace, and the colour of the context by its fill.
  *
  * Apart from the components because two screens draw them now - the status line at the desk (see
  * StatusBar) and the composer on the phone (see mobile/screens/Composer). A phone showing 61% in
@@ -9,6 +11,49 @@
  *
  * The thresholds themselves are taken from a personal ~/.claude/statusline.sh one to one.
  */
+
+/** What both screens know about the subscription's usage - see [mergeUsage]. */
+export interface UsageFacts {
+  session?: UsageWindow
+  week?: UsageWindow
+  /** Whether the plan's limit is being passed for money right now - see ExtraUsage. */
+  extra?: ExtraUsage
+  /** The current model's context window: with the large ones it is a million, not two hundred thousand. */
+  contextWindow?: number
+  /** Today's tokens across every project - the same "tok" as in a terminal. */
+  todayTokens?: string
+}
+
+type UsageMessage = Extract<ShellMessage, { type: 'usage' }>
+
+/**
+ * One `usage` message folded into what is already known.
+ *
+ * Merged rather than taken whole: the figures arrive by two independent routes - the windows out of the
+ * CLI's own answer and, separately, the scan of the transcripts that counts today's tokens - and the
+ * last message entire would let each of them zero out what the other has just learned.
+ *
+ * `reset` is the exception, and the reason this lives in one place instead of a copy per screen: when
+ * the sign-in moves to another account the previous account's shares have to go, and by the rule above
+ * they never would - a window the new account has not opened yet is not mentioned in the answer at all
+ * (see ProjectUsage.forget). What survives a reset is what does not belong to a subscription: the
+ * context window's size and the day's tokens.
+ */
+export const mergeUsage = (current: UsageFacts, message: UsageMessage): UsageFacts =>
+  message.reset
+    ? { contextWindow: current.contextWindow, todayTokens: current.todayTokens }
+    : {
+        session: message.session ?? current.session,
+        week: message.week ?? current.week,
+        // Extra usage arrives whole or not at all: its two halves are put together on the plugin's side
+        // (see ProjectUsage.putExtra), and merging them field by field here would only take them apart.
+        extra: message.extra ?? current.extra,
+        // ?? will not do here - a 0 is not nullish, it would stick in the state forever and the context
+        // gauge below would divide by zero for good.
+        contextWindow:
+          message.contextWindow && message.contextWindow > 0 ? message.contextWindow : current.contextWindow,
+        todayTokens: message.todayTokens ?? current.todayTokens,
+      }
 
 /**
  * Which window a limit event is about, in the words a person uses - the CLI's own names for them, not a

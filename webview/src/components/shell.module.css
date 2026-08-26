@@ -346,6 +346,12 @@
   opacity: 1;
 }
 
+/* The statistics tab holds no conversation and takes no fork's indent: its padding is the plain one,
+   whatever the depth arithmetic would have said. */
+.tabStatistics {
+  padding-left: 11px;
+}
+
 /* The gap sets one group off from another: colour alone is not enough if the tabs have stuck together. */
 .tabGroupStart {
   margin-left: 6px;

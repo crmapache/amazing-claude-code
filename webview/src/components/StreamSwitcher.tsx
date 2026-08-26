@@ -146,7 +146,7 @@ export const StreamSwitcher = ({
           tabIndex={0}
           // The agent's occupation on the chip is cut off by width - the full text stays in the hover
           // tooltip.
-          title={tab.meta || undefined}
+          data-tooltip={tab.meta || undefined}
           onClick={() => onPick(tab.id)}
           // The chip has stopped being a button (there is one inside it, the cross), but from the
           // keyboard it still has to work - hence the role and both keys.
@@ -168,7 +168,7 @@ export const StreamSwitcher = ({
             <button
               type="button"
               className={s.streamStop}
-              title="Stop this agent"
+              data-tooltip="Stop this agent"
               aria-label={`Stop ${tab.label}`}
               onClick={(event) => {
                 event.stopPropagation()
@@ -207,7 +207,7 @@ export const StreamSwitcher = ({
           <button
             type="button"
             className={s.streamStop}
-            title="Stop this command"
+            data-tooltip="Stop this command"
             aria-label={`Stop ${task.label}`}
             onClick={() =>
               onStop({ id: task.id, title: 'Stop this command?', subject: task.description || task.label })

@@ -18,6 +18,27 @@ export const awaitsYou = (item: FeedItem, cards: CardState): boolean =>
 export const ownStream = (item: FeedItem): boolean => !('taskId' in item) || item.taskId === undefined
 
 /**
+ * The one thing the main stream is standing on, or nothing at all.
+ *
+ * A permission before a plan before a question: a permission holds a call that is happening this second,
+ * while a plan and a question hold a turn that is prepared to wait. Within a kind, the most recent - the
+ * older ones are answered, replayed, or belong to a conversation that has since restarted.
+ *
+ * One function rather than the same three lines written wherever it is needed. A phone asks it twice -
+ * once for the strip that says something is waiting, once for the screen that shows what - and when
+ * those two were written separately the strip went by permissions alone: a question then held the
+ * conversation with nothing on screen offering to answer it, since a question is not drawn in the feed
+ * either (the panel pins it over the input field instead).
+ */
+export const awaiting = (items: FeedItem[], cards: CardState): PermItem | PlanItem | AskItem | undefined => {
+  const pending = items.filter((item) => ownStream(item) && awaitsYou(item, cards))
+  const latest = <T extends FeedItem>(kind: FeedItem['kind']) =>
+    [...pending].reverse().find((item): item is T => item.kind === kind)
+
+  return latest<PermItem>('perm') ?? latest<PlanItem>('plan') ?? latest<AskItem>('ask')
+}
+
+/**
  * While an unanswered permission request or a question from the MAIN stream hangs there, the turn is not
  * genuinely thinking - it stands and waits for the person's decision. A "Claude is thinking" at that moment
  * would be untrue. A particular agent's decision does not count here: the status in the dropdown and the

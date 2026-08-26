@@ -82,6 +82,12 @@ internal class ProjectUsage(
     private val modelsRequested = AtomicBoolean(false)
 
     /**
+     * When the sign-in last moved to another account - see [forget]. Everything a process raised before
+     * that moment says about the usage is about the previous account.
+     */
+    private val accountChangedAt = AtomicLong(0)
+
+    /**
      * The usage windows get a round of their own, twice as often as the rest: they are visible on the
      * rings right by the input field, and while the agent works the share grows before one's eyes. With
      * a live conversation this costs nothing (the question goes into a process already up), and a
@@ -135,7 +141,15 @@ internal class ProjectUsage(
     ) {
         if (!isLoggedIn()) return
 
-        val onUsage = { usage: JsonObject -> receiveUsage(usage, attempt, preferred) }
+        // Which account this question is being asked on behalf of. An answer takes seconds to come back,
+        // and the sign-in can move to another account in the meantime: what returns then describes the
+        // previous account's shares - the very figures forget() has just thrown away - and letting them
+        // through puts them straight back on the rings, where they sit until their window resets, which
+        // is precisely what the forgetting exists to prevent.
+        val askedFor = accountChangedAt.get()
+        val onUsage = { usage: JsonObject ->
+            if (accountChangedAt.get() == askedFor) receiveUsage(usage, attempt, preferred)
+        }
         // Who to ask. The one that has just finished a turn knows the freshest share - it got it in the
         // answer to its own request. A turn running right now is the same thing, the share growing
         // before its eyes. An idle conversation, though, answers with exactly what has already arrived:
@@ -144,7 +158,7 @@ internal class ProjectUsage(
             viaPing -> null
             preferred != null && sessions.isRunning(preferred) -> preferred
             else -> sessions.busySession()
-        }
+        }?.takeIf { fromThisAccount(it) }
 
         if (live != null) {
             sessions.requestUsage(
@@ -172,6 +186,55 @@ internal class ProjectUsage(
             onResult = onUsage,
             onError = { error -> thisLogger().info("Usage ping skipped: $error") },
         )
+    }
+
+    /**
+     * Whether this conversation may be believed about the usage at all.
+     *
+     * The CLI reads the credentials when it starts: a process raised before the account switched goes on
+     * working as the previous account and answers with its shares - the very figures that have just been
+     * thrown away. Such a conversation is left alone and the question goes to the server by a ping, which
+     * starts a process of its own and so asks under the credentials in force now.
+     */
+    private fun fromThisAccount(sessionId: String): Boolean =
+        sessions.startedAt(sessionId) >= accountChangedAt.get()
+
+    /**
+     * The sign-in has moved to another account: everything counted here was about the previous one.
+     *
+     * Thrown away rather than left to be overwritten by the next answer, because it would not be. A
+     * weekly window the new account has not opened yet arrives with no reset time at all, and the memory
+     * of the windows - rightly, for its usual job - keeps the known share in that case (see
+     * [ClaudeUsage.Tracker]). That is exactly how the panel came to show a five-hour window of one
+     * account beside a weekly window of another.
+     */
+    fun forget() {
+        windows.forget()
+        extraKnown = null
+        extraActive.set(false)
+        extraWindow = ""
+        accountChangedAt.set(System.currentTimeMillis())
+        // The threshold on the ping means "nothing can have changed since we last asked", and an account
+        // switch is the opposite of that.
+        lastPing.set(0)
+        // The catalogue belongs to the account as well - a plan without Opus does not offer it. Only the
+        // latch is released here: the sign-in check asks for the list itself once the new account is
+        // confirmed (see ClaudeSessionHub, onSignedIn).
+        modelsRequested.set(false)
+
+        // The interface is told to forget too, and told separately: its own state is merged field by
+        // field (see mergeUsage in feed/usage.ts), so silence about a window means "nothing new", not
+        // "that window is nobody's now".
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "usage")
+                put("reset", true)
+            }.toString(),
+        )
+
+        // Past the conversations, straight to the server: the processes already up are the previous
+        // account's, and the rings would be filled from them again.
+        refreshLimits(urgent = true, viaPing = true)
     }
 
     /**

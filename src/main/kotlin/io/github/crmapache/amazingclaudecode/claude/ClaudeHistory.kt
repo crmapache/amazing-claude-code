@@ -141,6 +141,12 @@ internal object ClaudeHistory {
 
         return buildJsonObject {
             put("type", "assistant")
+            // The transcript's own name for this line travels with it. A phone asks for the page above
+            // what it already has by naming its topmost line (see pageOf), and rebuilt without a name such
+            // a line matched nothing in the file - the request was then answered with the end of the
+            // conversation, which is exactly what was already on the screen. The tap did nothing, twice
+            // over: the anchor was unusable, and the page that came back was the wrong one.
+            payload["uuid"]?.let { put("uuid", it) }
             putJsonObject("message") {
                 put("content", buildJsonArray { addJsonObject { put("type", "text"); put("text", printed) } })
             }
@@ -187,22 +193,64 @@ internal object ClaudeHistory {
     fun page(workingDirectory: String?, id: String, before: String?, pageSize: Int = 60): Page {
         val file = transcriptFile(workingDirectory, id) ?: return Page(emptyList(), null)
 
-        val all = runCatching { file.useLines { lines -> replayable(lines).toList() } }
+        // Shortened exactly as the live journal shortens what goes through it (see JournalTrim): a single
+        // tool result can weigh a megabyte on disk, and this page is on its way to a phone, where a
+        // message over the size limit is not shortened but dropped whole and in silence.
+        val all = runCatching { file.useLines { lines -> replayable(lines).map(JournalTrim::trim).toList() } }
             .onFailure { thisLogger().warn("Failed to page conversation $id", it) }
             .getOrDefault(emptyList())
 
         return pageOf(all, before, pageSize)
     }
 
-    /** The slicing itself, apart from the disk - so a test can check it without a transcript file. */
-    internal fun pageOf(all: List<String>, before: String?, pageSize: Int): Page {
+    /**
+     * The slicing itself, apart from the disk - so a test can check it without a transcript file.
+     *
+     * Two limits rather than one, and the second is the one that matters. A page is counted in messages
+     * because that is what a person scrolls, but it travels to a phone in a single frame capped at 256 KB
+     * (see RelayLink.MAX_FRAME_BYTES), and a frame over the cap is dropped by the relay with a line in its
+     * log and nothing else: the tap on "load more" simply did nothing, again and again. Sixty messages of
+     * an ordinary conversation are a few tens of kilobytes; sixty messages of a working day full of file
+     * reads were two megabytes.
+     *
+     * At least one message is always returned, even an outsized one on its own: a page that comes back
+     * empty because its first message did not fit would leave the cursor where it was and the button
+     * dead - which is the very thing this exists to stop.
+     */
+    internal fun pageOf(all: List<String>, before: String?, pageSize: Int, maxChars: Int = MAX_PAGE_CHARS): Page {
         val boundary = before?.let { uuid -> all.indexOfFirst { it.contains("\"uuid\":\"$uuid\"") } }
         val end = if (boundary != null && boundary >= 0) boundary else all.size
-        val start = (end - pageSize).coerceAtLeast(0)
+        val floor = (end - pageSize).coerceAtLeast(0)
+
+        // Backwards from the newest of the page: what has to survive a tight budget is the end of the
+        // conversation, the part that stands right above what is already on screen.
+        var start = end
+        var spent = 0
+        while (start > floor) {
+            val length = all[start - 1].length
+            if (start < end && spent + length > maxChars) break
+            spent += length
+            start--
+        }
+
+        // A page has to begin on a line the next request can name. A line with no name of its own would be
+        // handed over as "there is nothing further back", the button to load more would disappear, and the
+        // rest of the conversation above it would become unreachable - over a budget, so the boundary can
+        // fall anywhere. Such a line is taken along with the page instead: a few characters over the
+        // budget cost far less than a page nobody can ask for.
+        while (start in 1 until end && uuidOf(all[start]) == null) start--
+
         val slice = all.subList(start, end)
 
         return Page(slice, if (start > 0) uuidOf(slice.first()) else null)
     }
+
+    /**
+     * How much of a page may travel at once. Half the frame's own cap: the JSON around the lines, the
+     * seal's overhead and the base64 of the transport all come on top, and being wrong here costs the
+     * whole page rather than its tail.
+     */
+    internal const val MAX_PAGE_CHARS = 128 * 1024
 
     private fun uuidOf(line: String): String? = UUID_FIELD.find(line)?.groupValues?.get(1)
 

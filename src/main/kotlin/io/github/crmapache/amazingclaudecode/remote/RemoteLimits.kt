@@ -79,6 +79,9 @@ internal class RemoteLimits {
          */
         val PER_MINUTE = mapOf(
             "prompt" to 10,
+            // Queuing a message is sending one, only later - so it is counted the same. Taking one back
+            // out and reordering the list cost nothing and are left to the default.
+            "queuePrompt" to 10,
             // Opening a conversation is a process, so this is not free - but it is also how a phone
             // reads its past ones: each one opened from the history is a tab of its own, and at five a
             // minute someone going through yesterday's work ran out in half a minute. What that looked

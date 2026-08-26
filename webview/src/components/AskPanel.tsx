@@ -194,7 +194,7 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
         <button
           type="button"
           className={s.askDismiss}
-          title="Close and answer in your own words"
+          data-tooltip="Close and answer in your own words"
           aria-label="Close the question"
           onClick={() => onDismiss(item.id)}
         >

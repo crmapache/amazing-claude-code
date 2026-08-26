@@ -285,7 +285,13 @@ export const Feed = ({
           "something has appeared below" signal, without which one would have to find them oneself, by
           accidentally scrolling to the end. */}
       {!stuck ? (
-        <button type="button" className={s.jumpToBottom} onClick={jumpToBottom} title="Jump to latest">
+        <button
+          type="button"
+          className={s.jumpToBottom}
+          onClick={jumpToBottom}
+          data-tooltip="Jump to latest"
+          data-tooltip-at="top right"
+        >
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
             <path
               d="M8 2.5v9M4 8l4 4 4-4"

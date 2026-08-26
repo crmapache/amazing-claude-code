@@ -178,6 +178,13 @@ internal class ClaudeSessions(
     fun isRunning(sessionId: String): Boolean = sessions[sessionId]?.isRunning == true
 
     /**
+     * When this conversation's process came up, or 0 when there is none. Asked about after an account
+     * switch: a process older than the switch still belongs to the previous account (see
+     * ClaudeSession.startedAt).
+     */
+    fun startedAt(sessionId: String): Long = sessions[sessionId]?.startedAt ?: 0
+
+    /**
      * A conversation with a turn running right now - any of the tabs.
      *
      * This is for the subscription usage: it is shared across the whole account, and any process will

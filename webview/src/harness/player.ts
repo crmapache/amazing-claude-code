@@ -147,6 +147,11 @@ export class ScenarioPlayer {
       return
     }
 
+    if (step.kind === 'openStatistics') {
+      window.__accHarnessOpenStatistics?.(step.view ?? 'overview')
+      return
+    }
+
     if (step.kind === 'bash') {
       await this.runShell(step, realPacing)
       return

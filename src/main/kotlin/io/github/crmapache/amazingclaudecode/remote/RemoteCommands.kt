@@ -24,6 +24,17 @@ internal object RemoteCommands {
         // Being caught up on joining. Without it a remote client is a blank screen.
         "ready",
         "prompt",
+        /**
+         * The same door as "prompt" above and nothing wider: a message said when the agent comes free
+         * rather than this second, and taking one back or putting the list in another order.
+         *
+         * The queue is exactly what a phone needs to be trusted with. A message queued from a sofa used
+         * to wait inside that page, and a page in a pocket is thrown out by the browser without warning -
+         * so the one thing the button promised was the one thing it could not do (see SessionQueue).
+         */
+        "queuePrompt",
+        "unqueuePrompt",
+        "reorderQueue",
         "permissionDecision",
         "planDecision",
         "askAnswer",
@@ -131,6 +142,11 @@ internal object RemoteCommands {
         "marketplaceList",
         "marketplaceAdd",
         "marketplaceRemove",
+        // The statistics are about the whole machine - every project by name, the phones paired, the
+        // hours kept - and the tab that shows them lives in the panel alone. A phone neither reads the
+        // book nor writes into it: what it does is counted on this side, where it is seen arriving.
+        "statistics",
+        "stat",
     )
 
     /**

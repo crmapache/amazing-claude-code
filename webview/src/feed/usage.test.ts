@@ -5,11 +5,51 @@ import {
   FIVE_HOUR_MS,
   limitWindowName,
   limitWindowRing,
+  mergeUsage,
   paceColor,
   RING_LENGTH,
   ringDash,
   timeLeft,
+  type UsageFacts,
 } from './usage'
+
+describe('mergeUsage', () => {
+  const known: UsageFacts = {
+    session: { percent: 10, resets: '2026-08-26T22:00:00Z' },
+    week: { percent: 18, resets: '2026-08-30T10:00:00Z' },
+    extra: { active: false, enabled: true, percent: 23 },
+    contextWindow: 1_000_000,
+    todayTokens: '657.8M',
+  }
+
+  it('keeps what a partial message says nothing about', () => {
+    expect(mergeUsage(known, { type: 'usage', todayTokens: '700M' })).toEqual({ ...known, todayTokens: '700M' })
+  })
+
+  it('does not let a zero context window stick in the state', () => {
+    expect(mergeUsage(known, { type: 'usage', contextWindow: 0 }).contextWindow).toBe(1_000_000)
+  })
+
+  /**
+   * The account has changed, and the previous one's shares are nobody's (see ProjectUsage.forget). The
+   * ordinary merging cannot arrive at this by itself: a weekly window the new account has not opened yet
+   * is not mentioned in the answer at all, so silence about it would keep the old percentage.
+   */
+  it('throws the subscription away on a reset and keeps what does not belong to it', () => {
+    expect(mergeUsage(known, { type: 'usage', reset: true })).toEqual({
+      contextWindow: 1_000_000,
+      todayTokens: '657.8M',
+    })
+  })
+
+  it('fills up again from the answers that follow the reset', () => {
+    const empty = mergeUsage(known, { type: 'usage', reset: true })
+    const filled = mergeUsage(empty, { type: 'usage', session: { percent: 3, resets: '2026-08-26T23:00:00Z' } })
+
+    expect(filled.session).toEqual({ percent: 3, resets: '2026-08-26T23:00:00Z' })
+    expect(filled.week).toBeUndefined()
+  })
+})
 
 describe('contextColor', () => {
   it('paints by the same thresholds as the context bar in the composer', () => {

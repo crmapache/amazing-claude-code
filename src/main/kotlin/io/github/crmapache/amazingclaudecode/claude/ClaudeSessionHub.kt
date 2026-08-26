@@ -11,6 +11,7 @@ import io.github.crmapache.amazingclaudecode.remote.NotificationReasons
 import io.github.crmapache.amazingclaudecode.remote.RemoteAgent
 import io.github.crmapache.amazingclaudecode.remote.RemoteKeys
 import io.github.crmapache.amazingclaudecode.remote.RemoteState
+import io.github.crmapache.amazingclaudecode.stats.StatsCollector
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.serialization.json.JsonObject
@@ -78,11 +79,17 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      */
     val usage: ProjectUsage = ProjectUsage(project.basePath, this, isLoggedIn = { auth.loggedIn })
 
-    val auth: ProjectAuth = ProjectAuth(project, this, onSignedIn = {
-        usage.refreshLimits(urgent = true)
-        usage.refreshTodayTokens()
-        usage.refreshModels(ClaudeSessions.MAIN_SESSION)
-    })
+    val auth: ProjectAuth = ProjectAuth(
+        project,
+        this,
+        onSignedIn = {
+            usage.refreshLimits(urgent = true)
+            usage.refreshTodayTokens()
+            usage.refreshModels(ClaudeSessions.MAIN_SESSION)
+        },
+        // The figures on the rings belong to the account they were asked about - see ProjectUsage.forget.
+        onAccountChanged = { usage.forget() },
+    )
 
     val catalog: ProjectCatalog = ProjectCatalog(project, this)
 
@@ -92,11 +99,25 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     /** The single entrance every request about a conversation comes through. */
     val commands: SessionCommands = SessionCommands(this)
 
+    /**
+     * What this project contributes to the statistics tab. It is told about everything below - the
+     * stream, the messages, the tabs, the decisions - and writes it into the machine-wide ledger.
+     */
+    val stats: StatsCollector = StatsCollector(
+        projectKey = StatsCollector.keyOf(project.basePath ?: project.name),
+        projectName = project.name,
+        workingDirectory = project.basePath,
+        parentDisposable = this,
+    )
+
     private val clients = ConcurrentHashMap<String, SessionClient>()
 
     private val journals = ConcurrentHashMap<String, SessionJournal>()
     private val snapshots = ConcurrentHashMap<String, AtomicReference<SessionSnapshot>>()
     private val streams = ConcurrentHashMap<String, SessionStream>()
+
+    /** What each conversation is waiting to say once the turn in progress ends - see [SessionQueue]. */
+    private val queued = SessionQueue()
 
     /**
      * One lock per conversation rather than one for the hub. Numbering under a shared lock would make
@@ -140,12 +161,18 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     init {
         catalog.scheduleUpdates(this, usage)
         usage.scheduleUpdates(this)
+        auth.scheduleUpdates(this)
         openLocalBridge()
         onPermissionRequest { sessionId, request -> permissions.ask(sessionId, request) }
         // A lost sign-in is reported past the event stream, before the first answer.
         onDiagnostic { _, text -> auth.noteLoggedOut(text) }
         onRawLine { sessionId, line, replay ->
             auth.noteLoggedOut(line)
+
+            // The statistics count what happens, not what happened: a past conversation's replay is
+            // work already done and already counted, if it was ever ours to count.
+            if (!replay) runCatching { stats.noteLine(sessionId, line) }
+                .onFailure { thisLogger().warn("The statistics could not read a line", it) }
 
             // The end of a turn is the only moment the taken context window has genuinely changed: we
             // ask the very process that has just finished for a fresh figure.
@@ -236,6 +263,12 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             }
 
             batch += restoreFinished(sessionId, upTo = journal.lastSeq())
+
+            // What this conversation is waiting to say. Not in the journal (see sendQueue), so a client
+            // that was not listening when the list last changed has no other way to learn it - and one
+            // that opens the panel over a queue put there from a phone would otherwise show none of it.
+            val waiting = queued.of(sessionId)
+            if (waiting.isNotEmpty()) batch += queueMessage(sessionId, waiting)
         }
 
         client.deliver(batch)
@@ -401,6 +434,8 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         }
         val watchers = local
 
+        stats.noteWatchers(watchers.size + remoteWatchers.get())
+
         broadcastProject(
             buildJsonObject {
                 put("type", "clients")
@@ -545,6 +580,8 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     }
 
     fun sendStatus(sessionId: String, state: String) {
+        stats.noteStatus(sessionId, running = state == SessionSnapshot.STATUS_RUNNING)
+
         broadcast(
             sessionId,
             buildJsonObject {
@@ -553,6 +590,11 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
                 put("state", state)
             }.toString(),
         )
+
+        // The turn is over - whatever was written while it ran gets said now. After the status has gone
+        // out rather than before it: what a client sees is the conversation coming free and the queued
+        // message starting the next turn, in that order.
+        if (state != SessionSnapshot.STATUS_RUNNING) runQueued(sessionId)
     }
 
     fun sendError(sessionId: String, text: String) {
@@ -635,6 +677,11 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
 
         if (opened && parentId != null) conversations.branchFrom(parentId, id)
 
+        if (opened) {
+            val tab = tabs.tabs().firstOrNull { it.id == id }
+            stats.noteSessionOpened(id, parentId, groupId = tab?.groupId ?: id, depth = tab?.depth ?: 0)
+        }
+
         // Sent even when the identifier was refused: whoever guessed a taken one has to see the truth
         // rather than a tab that exists only on their screen.
         broadcastSessions()
@@ -643,6 +690,9 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
 
     fun closeSession(id: String) {
         conversations.close(id)
+        stats.noteSessionClosed(id)
+        // What this conversation was waiting to say goes with it: there is nothing left to say it to.
+        queued.clear(id)
         journals.remove(id)
         snapshots.remove(id)
         streams.remove(id)
@@ -722,8 +772,12 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
          * message reaches the agent as plain text, and nothing in the stream says where it began.
          */
         echo: JsonObject? = null,
+        /** The message came from a paired phone rather than from the desk - the statistics tell the two apart. */
+        remote: Boolean = false,
     ) {
         if (text.isBlank()) return
+
+        stats.notePrompt(sessionId, text, images = images.size, remote = remote)
 
         // A message into a conversation nobody opened a tab for.
         //
@@ -754,6 +808,86 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         sendStatus(sessionId, SessionSnapshot.STATUS_RUNNING)
         conversations.prompt(sessionId, text, images)
     }
+
+    /**
+     * A message written while the agent was busy, to be said when it is free.
+     *
+     * It waits here rather than in the window it was typed in - see [SessionQueue] for why that matters
+     * on a phone. The list travels to every client, so the panel at the desk shows what was queued from
+     * the sofa and either of them can take it out again.
+     *
+     * A turn that ended while this was travelling is the ordinary case rather than an edge: the person
+     * pressed Queue against what their screen showed a moment ago. It is sent straight away then - the
+     * queue is a request to wait for the agent, not for a round trip.
+     */
+    fun queuePrompt(
+        sessionId: String,
+        id: String,
+        text: String,
+        attach: String = "",
+        images: List<ImageAttachment> = emptyList(),
+        echo: JsonObject? = null,
+        remote: Boolean = false,
+    ) {
+        if (text.isBlank()) return
+
+        sendQueue(sessionId, queued.add(sessionId, SessionQueue.Entry(id, text, attach, images, echo, remote)))
+        runQueued(sessionId)
+    }
+
+    /** The cross on a queued message: it is not going to be said after all. */
+    fun unqueuePrompt(sessionId: String, id: String) {
+        sendQueue(sessionId, queued.remove(sessionId, id))
+    }
+
+    /** The queue dragged into another order - see [SessionQueue.reorder]. */
+    fun reorderQueue(sessionId: String, ids: List<String>) {
+        sendQueue(sessionId, queued.reorder(sessionId, ids))
+    }
+
+    /**
+     * The conversation came free - say the next thing that was waiting.
+     *
+     * One message at a time: the one after it waits for the turn this one starts, exactly as it does at
+     * the desk. A conversation that is running is left alone, and that single check is also what keeps a
+     * queued message out of a compaction - `/compact` is a turn like any other, and a message written
+     * into a running one is taken by the CLI and, more often than not, silently dropped (see
+     * PromptDelivery).
+     */
+    private fun runQueued(sessionId: String) {
+        if (snapshot(sessionId).get().status == SessionSnapshot.STATUS_RUNNING) return
+
+        val (entry, rest) = queued.take(sessionId) ?: return
+        sendQueue(sessionId, rest)
+        prompt(sessionId, entry.text, entry.images, entry.echo, entry.remote)
+    }
+
+    private fun sendQueue(sessionId: String, items: List<SessionQueue.Entry>) {
+        // Live rather than into the journal: this is what a conversation is about to say, not something
+        // it has said. Journalled, every add and every removal would sit in a feed's history forever,
+        // crowding out the messages a phone is handed (see CatchUp) to describe a list that a single
+        // later message makes wrong. A client joining is given the list as it stands - see [attach].
+        emitLive(queueMessage(sessionId, items))
+    }
+
+    private fun queueMessage(sessionId: String, items: List<SessionQueue.Entry>): String =
+        buildJsonObject {
+            put("type", "queue")
+            put("sessionId", sessionId)
+            putJsonArray("items") {
+                items.forEach { entry ->
+                    addJsonObject {
+                        put("id", entry.id)
+                        put("text", entry.text)
+                        put("attach", entry.attach)
+                        // The count rather than the bytes: a photo from a phone is measured in hundreds
+                        // of kilobytes, the frame that would carry it back to every client has a limit of
+                        // 256, and all a queued row needs of it is that there is one.
+                        put("images", entry.images.size)
+                    }
+                }
+            }
+        }.toString()
 
     /**
      * We interrupt the turn rather than cut down the process: the conversation must stay. We do not
@@ -838,6 +972,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     fun resumeConversation(sessionId: String, conversationId: String) {
         if (conversationId.isEmpty()) return
 
+        stats.noteResumed(sessionId, conversationId)
         conversations.resume(sessionId, conversationId)
         // The feed that was there described a different conversation: every client is told to drop it
         // rather than left showing something that no longer exists.
@@ -886,6 +1021,9 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         synchronized(lock(sessionId)) { journal(sessionId).reset() }
         streams[sessionId]?.clear()
         snapshots[sessionId]?.set(SessionSnapshot())
+        // The tab now holds a different conversation: what was queued was meant for the one it replaced,
+        // and saying it into this one would be answering a question nobody here asked.
+        if (queued.clear(sessionId)) sendQueue(sessionId, emptyList())
 
         deliver(
             buildJsonObject {

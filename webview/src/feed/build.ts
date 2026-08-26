@@ -344,9 +344,17 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         pendingModel: undefined,
         model: action.model,
         streamModel: undefined,
+        // Whatever the agent had swapped before is answered by a choice of the person's own: the accent
+        // on the button says "you did not pick this", and now they have (see PanelState.switchedFrom).
+        switchedFrom: undefined,
       }
       return action.error ? addError(applied, action.error) : applied
     }
+
+    // The whole list rather than a change to it: the IDE holds the queue, either window may have been
+    // the one that changed it, and what arrives is how it stands now (see SessionQueue.kt).
+    case 'queue':
+      return { ...state, queue: action.items }
 
     case 'agent':
       return applyAgentEvent(state, action.event, now, action.replay === true)
@@ -694,7 +702,7 @@ const realModel = (model: string | undefined): string | undefined =>
  * and empty when it was noticed by the signature alone: in a past conversation's replay, for instance,
  * where only the messages are kept and the system event that explained the swap is not.
  */
-const noteStreamModel = (state: PanelState, named: string, reason = ''): PanelState => {
+const noteStreamModel = (state: PanelState, named: string, reason = '', replay = false): PanelState => {
   const previous = state.streamModel
   const moved = { ...state, model: named, streamModel: named }
 
@@ -703,8 +711,18 @@ const noteStreamModel = (state: PanelState, named: string, reason = ''): PanelSt
   // be announced as a swap (see modelKey in catalog.ts).
   if (!previous || sameModel(previous, named)) return moved
 
-  return push(moved, (id) => ({ id, kind: 'model', from: previous, to: named, reason }))
+  return push(swapNoted(moved, previous, replay), (id) => ({ id, kind: 'model', from: previous, to: named, reason }))
 }
+
+/**
+ * The swap remembered on the tab, so that the bottom line can wear its accent (see PanelState.switchedFrom).
+ *
+ * Not in a replay: there the swap is a page of a conversation's history rather than news, and the model
+ * it ended on is simply the model this tab now works on. Marking it would light the accent on every
+ * opening of any old chat where the agent once fell back.
+ */
+const swapNoted = (state: PanelState, previous: string, replay: boolean): PanelState =>
+  replay ? state : { ...state, switchedFrom: previous }
 
 const applyAgentEvent = (
   incoming: PanelState,
@@ -719,7 +737,7 @@ const applyAgentEvent = (
 
   switch (event.type) {
     case 'system':
-      return applySystem(state, event, now)
+      return applySystem(state, event, now, replay)
 
     /**
      * The subscription limit. The event arrives in ordinary life too - with a "let through" status - and
@@ -822,7 +840,7 @@ const applyAgentEvent = (
        * there is (see noteStreamModel - it is the one that puts the mark into the feed).
        */
       const named = realModel(event.message.model)
-      const signed = named ? noteStreamModel(state, named) : state
+      const signed = named ? noteStreamModel(state, named, '', replay) : state
       // The window taken at this step - until the exact figure from the CLI arrives (see
       // liveContextUsed). Only for the main conversation: a subagent has gone off into its own branch
       // above, and its context has nothing to do with this window.
@@ -992,7 +1010,7 @@ const MODEL_FALLBACK_SUBTYPES = ['model_refusal_fallback', 'model_consent_fallba
  * Without the model it moved to there is nothing to draw at all: the state is left as it was, and the
  * swap is noticed by the next answer's signature - a card that names no model explains less than none.
  */
-const applyModelFallback = (state: PanelState, event: AgentSystemEvent): PanelState => {
+const applyModelFallback = (state: PanelState, event: AgentSystemEvent, replay: boolean): PanelState => {
   const to = realModel(event.fallbackModel)
   if (!to) return state
 
@@ -1000,13 +1018,21 @@ const applyModelFallback = (state: PanelState, event: AgentSystemEvent): PanelSt
   const moved: PanelState = { ...state, model: to, streamModel: to }
   if (from === to) return moved
 
-  return push(moved, (id) => ({ id, kind: 'model', from, to, reason: (event.content ?? '').trim() }))
+  return push(from ? swapNoted(moved, from, replay) : moved, (id) => ({
+    id,
+    kind: 'model',
+    from,
+    to,
+    reason: (event.content ?? '').trim(),
+  }))
 }
 
 const applySystem = (
   state: PanelState,
   event: AgentSystemEvent,
   now: number,
+  /** A past conversation's replay rather than a live turn - see applyAgentEvent. */
+  replay = false,
 ): PanelState => {
   const isMainStreamEvent = event.task_id === undefined
 
@@ -1014,7 +1040,7 @@ const applySystem = (
   // of its own, and its start-up used to be enough to rewrite the name in the bottom line - the panel then
   // named someone else's model as the one the talk was running on.
   const named = isMainStreamEvent ? realModel(event.model) : undefined
-  const signed = named ? noteStreamModel(state, named) : state
+  const signed = named ? noteStreamModel(state, named, '', replay) : state
 
   const base: PanelState = {
     ...signed,
@@ -1043,7 +1069,7 @@ const applySystem = (
   // The CLI moved the conversation to another model by itself - the one event that says so out loud, and
   // with a reason (see applyModelFallback).
   if (isMainStreamEvent && MODEL_FALLBACK_SUBTYPES.includes(event.subtype)) {
-    return applyModelFallback(base, event)
+    return applyModelFallback(base, event, replay)
   }
 
   // The CONTEXT card itself has to be visible before the finished result - otherwise the only trace that

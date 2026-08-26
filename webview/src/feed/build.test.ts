@@ -335,6 +335,67 @@ describe('the model swapped by the CLI itself', () => {
     expect(modelSwitches(state)).toEqual([])
   })
 
+  /**
+   * The accent on the MODEL button is drawn by this and by nothing else - see PanelState.switchedFrom.
+   * It used to be worked out by comparing the running model against the setting, which is one for every
+   * tab: a tab left on the model chosen in it earlier wore the accent for no reason at all.
+   */
+  it('remembers whose doing the swap was, so the bottom line can say it', () => {
+    const state = play([
+      initEvent('claude-fable-5'),
+      signedTextEvent('claude-fable-5', 'Looking at the relay.'),
+      modelFallbackEvent('claude-fable-5', 'claude-opus-4-8', reason),
+    ])
+
+    expect(state.switchedFrom).toBe('claude-fable-5')
+  })
+
+  it('remembers it just the same when the swap was noticed by the signature alone', () => {
+    const state = play([
+      initEvent('claude-fable-5'),
+      signedTextEvent('claude-fable-5', 'Looking at the relay.'),
+      signedTextEvent('claude-opus-4-8', 'Carrying on.'),
+    ])
+
+    expect(state.switchedFrom).toBe('claude-fable-5')
+  })
+
+  it('remembers nothing about a conversation that simply starts on a model', () => {
+    const state = play([initEvent('claude-fable-5'), signedTextEvent('claude-fable-5', 'Hello.')])
+
+    expect(state.switchedFrom).toBeUndefined()
+  })
+
+  // A swap inside a chat opened from the history is a page of its past, not news about today: the tab
+  // works on the model that conversation ended on, and nobody has moved anything behind one's back.
+  it('does not light the accent for a swap replayed out of a past conversation', () => {
+    const events = [
+      initEvent('claude-fable-5'),
+      signedTextEvent('claude-fable-5', 'Looking at the relay.'),
+      modelFallbackEvent('claude-fable-5', 'claude-opus-4-8', reason),
+      signedTextEvent('claude-opus-4-8', 'Carrying on.'),
+    ]
+    const state = events.reduce(
+      (acc, event) => reducePanel(acc, { kind: 'agent', event, replay: true }, 1_700_000_000_000),
+      initialPanelState,
+    )
+
+    expect(state.model).toBe('claude-opus-4-8')
+    expect(state.switchedFrom).toBeUndefined()
+  })
+
+  it('forgets the swap once the person chooses a model for this tab themselves', () => {
+    let state = play([
+      initEvent('claude-fable-5'),
+      modelFallbackEvent('claude-fable-5', 'claude-opus-4-8', reason),
+    ])
+    expect(state.switchedFrom).toBe('claude-fable-5')
+
+    state = reducePanel(state, { kind: 'modelApplied', model: 'opus' })
+
+    expect(state.switchedFrom).toBeUndefined()
+  })
+
   it("leaves the conversation's model alone when it is a subagent that is being started", () => {
     const state = play([
       initEvent('claude-fable-5'),

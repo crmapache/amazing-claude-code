@@ -228,6 +228,33 @@ class ClaudeUsageTrackerTest {
         assertEquals(52, merged.week?.percent)
     }
 
+    /**
+     * The account has been switched, and this is the shape the panel used to get it wrong in: the new
+     * account's weekly window has not opened yet, so its answer names no weekly window at all - and the
+     * rule that saves a known window from a silent answer kept the previous account's percentage beside
+     * the new account's five-hour one.
+     */
+    @Test
+    fun `after a switch of account nothing of the previous one is left on the rings`() {
+        val tracker = ClaudeUsage.Tracker()
+
+        tracker.merge(
+            snapshot(
+                session = window(10, "2026-08-20T14:00:00Z"),
+                week = window(18, "2026-08-25T03:00:00Z"),
+            ),
+            now,
+        )
+
+        tracker.forget()
+
+        // The new account: a five-hour window of its own, and not a word about the week.
+        val merged = tracker.merge(snapshot(session = window(3, "2026-08-20T16:00:00Z")), now)
+
+        assertEquals(3, merged.session?.percent)
+        assertNull(merged.week)
+    }
+
     // Time passes without new data too: the window has ended, and the share is no longer about now.
     @Test
     fun `a known window stops being shown once its reset time has passed`() {

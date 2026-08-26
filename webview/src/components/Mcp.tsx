@@ -237,7 +237,7 @@ const ServerRow = ({
         </span>
       </div>
 
-      <div className={s.cardCommand} title={server.command}>
+      <div className={s.cardCommand} data-tooltip={server.command}>
         {server.command}
       </div>
 

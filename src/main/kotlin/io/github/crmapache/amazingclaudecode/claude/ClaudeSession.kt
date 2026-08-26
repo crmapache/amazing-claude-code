@@ -118,6 +118,18 @@ internal class ClaudeSession(
     private var handler: OSProcessHandler? = null
 
     /**
+     * When the process behind this conversation came up.
+     *
+     * The CLI reads the credentials once, at its start: a process raised before an account switch goes
+     * on working - and answering about the usage - as the previous account. Its figures have no business
+     * on the rings afterwards, and telling such a process from a fresh one is possible by nothing but
+     * this (see ProjectUsage.refreshLimits).
+     */
+    @Volatile
+    var startedAt: Long = 0
+        private set
+
+    /**
      * The person's turn is running: a message was sent, there has been no result yet.
      *
      * Needed not for the feed but for the session's own decisions: while a turn runs, a preference
@@ -1111,6 +1123,7 @@ internal class ClaudeSession(
         )
 
         process.startNotify()
+        startedAt = System.currentTimeMillis()
         handler = process
         return process
     }

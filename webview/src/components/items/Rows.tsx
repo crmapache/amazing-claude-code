@@ -68,16 +68,20 @@ export const ThinkRow = ({ item, open, onToggle }: { item: ThinkItem; open: bool
  */
 export const CheckpointRow = ({ item, onLoadEarlier }: { item: CheckpointItem; onLoadEarlier?: () => void }) =>
   onLoadEarlier ? (
-    <button type="button" className={`${s.checkpoint} ${s.checkpointButton}`} onClick={onLoadEarlier}>
-      <span className={s.checkpointChip}>{item.chip}</span>
-      <span className={s.checkpointTarget}>tap to load more</span>
-      <div className={s.dashed} />
+    // The row sits inside the button rather than being it: a fingertip's worth of height belongs to the
+    // target, and the mark itself has to stand in the middle of that height, not at its top.
+    <button type="button" className={s.checkpointButton} onClick={onLoadEarlier}>
+      <span className={s.checkpoint}>
+        <span className={s.checkpointChip}>{item.chip}</span>
+        <span className={s.checkpointTarget}>tap to load more</span>
+        <span className={s.dashed} />
+      </span>
     </button>
   ) : (
     <div className={s.checkpoint}>
       <span className={s.checkpointChip}>{item.chip}</span>
       <span className={s.checkpointTarget}>{item.target}</span>
-      <div className={s.dashed} />
+      <span className={s.dashed} />
     </div>
   )
 

@@ -223,6 +223,12 @@
   color: var(--acc-accent);
 }
 
+/* The statistics wear the mint of "done": they are about what got finished. */
+.rowIconStatistics {
+  background: var(--acc-ok-12);
+  color: var(--acc-ok);
+}
+
 .rowIconMcp {
   background: var(--acc-branch-12);
   color: var(--acc-branch);

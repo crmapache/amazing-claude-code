@@ -78,11 +78,8 @@ export const Limits = ({ facts, context, onClose }: LimitsProps) => {
               />
               {budget === null ? null : (
                 <p className={m.limNote}>
-                  <span className={m.limSwatch} />
-                  <span>
-                    The dim arc is an even pace: {budget}% of the week is already “due” by today. While the
-                    bright arc is shorter than it, the week is on plan.
-                  </span>
+                  The dim arc is an even pace: {budget}% of the week is already “due” by today. While the
+                  bright arc is shorter than it, the week is on plan.
                 </p>
               )}
             </>

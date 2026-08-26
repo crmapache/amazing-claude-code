@@ -9,7 +9,7 @@ import {
   type ModeAvailability,
   nextMode,
   resolvePanelModel,
-  switchedModel,
+  modelInForce,
   normalizeMode,
   withRefusedMode,
 } from './catalog'
@@ -30,10 +30,12 @@ import { LoginGate, type AuthState } from './components/LoginGate'
 import { Mcp } from './components/Mcp'
 import { Menu, type MenuOption } from './components/Menu'
 import { SideMenu, parentOf, type MenuScreen, type MenuSummary } from './components/SideMenu'
+import { StatisticsTab, type StatisticsView } from './components/stats/StatisticsTab'
+import { dressAll, summarize } from './stats/achievements'
 import { ChoiceList, LayoutChoice } from './components/Choices'
 import { PermissionPanel } from './components/PermissionPanel'
 import { Plugins } from './components/Plugins'
-import { Queue, type QueuedPrompt } from './components/Queue'
+import { Queue } from './components/Queue'
 import { Quotes, type Quote } from './components/Quotes'
 import { SelectionMenu } from './components/SelectionMenu'
 import { Tooltips } from './components/Tooltips'
@@ -72,17 +74,17 @@ import {
 } from './feed/streamStatus'
 import { composePrompt, countSessionImages, imageAttachments, tokensText, trimTrailingSpace } from './feed/tokens'
 import type { FeedItem, TaskItem, TodoItem, UserItem, UserToken } from './feed/types'
+import { mergeUsage, type UsageFacts } from './feed/usage'
 import type {
   AvailablePluginInfo,
-  ExtraUsage,
   HistoryEntry,
   InstalledPluginInfo,
   McpServerInfo,
   ModelInfo,
   PluginMarketplaceInfo,
   SoundId,
+  StatisticsData,
   TitleSource,
-  UsageWindow,
 } from './protocol'
 import {
   NO_SOUND_PREFS,
@@ -133,6 +135,47 @@ const STOP_GRACE_MS = 8000
  */
 const LIST_STALE_MS = 60_000
 
+/**
+ * The statistics tab's place in `active`: an id no conversation will ever carry. It is a tab of the strip
+ * without being a session (see Header.statistics), and `active` is the one thing that decides what the
+ * body shows.
+ */
+const STATS_TAB = '__statistics__'
+
+/** How often the figures are asked for again while the statistics tab is being looked at. */
+const STATISTICS_REFRESH_MS = 30_000
+
+/** How often at most a hand on the keyboard is reported - the ledger counts by the minute anyway. */
+const ACTIVITY_REPORT_MS = 30_000
+
+/** "27/50" - the achievements earned, for the menu's row. */
+const achievementsCount = (data: StatisticsData): string => {
+  const summary = summarize(dressAll(data.achievements))
+  return `${summary.earned}/${summary.total}`
+}
+
+/**
+ * What a message went out with, for the statistics: the files and folders attached, and the selections
+ * carried in - a quote of the agent's words or a reference from the editor. Only the page knows what a
+ * chip is; the IDE counts the rest (see the stat message in protocol.ts).
+ *
+ * Images are the IDE's to count, not this page's, and that is the whole rule of the split: a picture
+ * travels with the message as bytes, so the IDE sees it and counts it there. Counted here as well, one
+ * screenshot went into the book as two - the achievement for attachments came at half its price and the
+ * figure on the tab was simply wrong. A file or a folder reaches the agent as text in the message and
+ * the IDE cannot tell it from any other word, which is why those two stay here.
+ */
+const reportChips = (tokens: UserToken[], quotesBeside: number): void => {
+  let attachments = 0
+  let quotes = quotesBeside
+  for (const token of tokens) {
+    if (token.kind !== 'chip') continue
+    if (token.chip.kind === 'file' || token.chip.kind === 'dir') attachments++
+    if (token.chip.kind === 'quote' || token.chip.kind === 'ref') quotes++
+  }
+  if (attachments > 0 || quotes > 0) send({ type: 'stat', kind: 'prompt', attachments, quotes })
+}
+
 /** How long to wait for the fiddling with the volume slider to end before writing the choice down. */
 const SOUND_SAVE_DELAY_MS = 250
 
@@ -157,9 +200,6 @@ interface Draft {
 
 const EMPTY_DRAFT: Draft = { tokens: [], quotes: [] }
 
-/** One reference for every tab without a queue - otherwise it would flicker through the dependencies. */
-const EMPTY_QUEUE: QueuedPrompt[] = []
-
 export const App = () => {
   const [panels, dispatchPanel] = useReducer(panelsReducer, { [MAIN_SESSION]: initialPanelState })
   const [sessions, setSessions] = useState<Session[]>([
@@ -168,15 +208,6 @@ export const App = () => {
   const [active, setActive] = useState(MAIN_SESSION)
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
 
-  /**
-   * The deferred "finish the current thing first" - kept per tab, like the draft and the command output
-   * beside it: a queue belongs to a conversation rather than to the panel as a whole.
-   *
-   * As one shared list it travelled somewhere other than where it was put: the queue is worked through by
-   * whichever conversation comes free, and the list was one for all - switch to the neighbouring tab and
-   * its free conversation took someone else's message for itself.
-   */
-  const [queue, setQueue] = useState<Record<string, QueuedPrompt[]>>({})
   /**
    * What the person has run in bash mode since their last message - per tab, each with a conversation of
    * its own.
@@ -242,13 +273,7 @@ export const App = () => {
   const [loginWaiting, setLoginWaiting] = useState(false)
   /** Grows whenever the input field has to be given the focus back: after a link from the editor, say. */
   const [focusToken, setFocusToken] = useState(0)
-  const [usage, setUsage] = useState<{
-    session?: UsageWindow
-    week?: UsageWindow
-    contextWindow?: number
-    todayTokens?: string
-    extra?: ExtraUsage
-  }>({})
+  const [usage, setUsage] = useState<UsageFacts>({})
   /**
    * Which of the modal panels is open - one value rather than three independent booleans. That way they
    * are mutually exclusive by construction: opening the plugins closes the history by itself rather than
@@ -279,6 +304,18 @@ export const App = () => {
   const [soundPrefs, setSoundPrefs] = useState<SoundPrefs>(NO_SOUND_PREFS)
   /** The project's past conversations: null means the list has not arrived yet (see the startup requests). */
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
+  /**
+   * The statistics tab's figures: null until the IDE answers the first request. Asked for at startup
+   * (the menu's row shows the achievements' count without the tab being opened), again whenever the tab
+   * is opened, and every half-minute while it is being looked at (see the effect below).
+   */
+  const [statistics, setStatistics] = useState<StatisticsData | null>(null)
+  /**
+   * The statistics tab itself: whether it stands in the strip, and which of its two screens is showing.
+   * Kept apart from `sessions` on purpose - that list is the shell's and is overwritten whole (see the
+   * `sessions` message), while this tab is this screen's alone and holds no conversation.
+   */
+  const [statsTab, setStatsTab] = useState<{ open: boolean; view: StatisticsView }>({ open: false, view: 'overview' })
   /**
    * The work someone asked to kill with the cross on a chip - still without an answer to "are you sure?".
    * We ask because a miss on that cross costs dearly: for an agent it is tens of minutes of work, for a
@@ -353,7 +390,7 @@ export const App = () => {
 
   const panel = panels[active] ?? initialPanelState
   const draft = drafts[active] ?? EMPTY_DRAFT
-  const sessionQueue = queue[active] ?? EMPTY_QUEUE
+  const sessionQueue = panel.queue
   const running = panel.status === 'running'
   /**
    * The context gauge: the number comes from the CLI itself, and the calculation from usage stays as a
@@ -361,7 +398,7 @@ export const App = () => {
    */
   const context = contextOf(panel, usage.contextWindow)
   const imageBaseCount = useMemo(
-    () => countSessionImages(panel.items, sessionQueue.reduce((sum, item) => sum + item.images.length, 0)),
+    () => countSessionImages(panel.items, sessionQueue.reduce((sum, item) => sum + item.images, 0)),
     [panel, sessionQueue],
   )
 
@@ -390,10 +427,11 @@ export const App = () => {
   )
 
   /**
-   * The conversation moved to another model against our will - see switchedModel. It lives in the tab
-   * rather than in the shared setting: the neighbouring one has a conversation and a model of its own.
+   * The model this tab genuinely works on, when it is not the one the setting names - the menu ticks it
+   * (see modelInForce). It lives in the tab rather than in the shared setting: the neighbouring one has a
+   * conversation and a model of its own.
    */
-  const switched = switchedModel(models, prefs.model, panel.model)
+  const tickedModel = modelInForce(models, prefs.model, panel.model)
 
   const editDraft = useCallback(
     (session: string, change: Partial<Draft>) => {
@@ -462,9 +500,51 @@ export const App = () => {
   useEffect(() => {
     send({ type: 'ready', since: seen.current })
     send({ type: 'history' })
+    // The menu's row names the achievements' count before the tab is ever opened - so the figures are
+    // asked for here, once, along with everything else the menu shows.
+    send({ type: 'statistics' })
     loadMcp()
     loadPlugins()
   }, [loadMcp, loadPlugins])
+
+  /**
+   * The statistics tab is looked at and the figures grow under it: a turn ends, a minute passes. Asked
+   * for again every half-minute while it is the active tab - the ticker on the IDE's side marks minutes
+   * at the same pace, so asking more often would show nothing new.
+   */
+  useEffect(() => {
+    if (active !== STATS_TAB) return
+
+    send({ type: 'statistics' })
+    const timer = setInterval(() => send({ type: 'statistics' }), STATISTICS_REFRESH_MS)
+    return () => clearInterval(timer)
+  }, [active])
+
+  /**
+   * A hand on the keyboard or the wheel counts as time in the panel - the IDE cannot see that by itself,
+   * so the page says so, once in a while rather than on every keystroke: the ledger counts by the minute
+   * and hears nothing new in between (see StatsCollector on the IDE's side).
+   */
+  useEffect(() => {
+    let lastReported = 0
+
+    const onActivity = () => {
+      const now = Date.now()
+      if (now - lastReported < ACTIVITY_REPORT_MS) return
+      lastReported = now
+      const sessionId = activeRef.current
+      send({ type: 'stat', kind: 'activity', ...(sessionId === STATS_TAB ? {} : { sessionId }) })
+    }
+
+    window.addEventListener('keydown', onActivity, true)
+    window.addEventListener('mousedown', onActivity, true)
+    window.addEventListener('wheel', onActivity, { capture: true, passive: true })
+    return () => {
+      window.removeEventListener('keydown', onActivity, true)
+      window.removeEventListener('mousedown', onActivity, true)
+      window.removeEventListener('wheel', onActivity, { capture: true })
+    }
+  }, [])
 
   /**
    * The cursor under the mouse goes to the shell, so that it sets it on the IDE's window.
@@ -871,8 +951,11 @@ export const App = () => {
                 titleSource: info.titleSource,
               })),
             )
-            // The tab this screen had open may have been closed from another one.
-            setActive((current) => (known.includes(current) ? current : (known[0] ?? MAIN_SESSION)))
+            // The tab this screen had open may have been closed from another one. The statistics tab is
+            // not on the shell's list and never will be - it stays put.
+            setActive((current) =>
+              current === STATS_TAB || known.includes(current) ? current : (known[0] ?? MAIN_SESSION),
+            )
             break
           }
 
@@ -962,6 +1045,17 @@ export const App = () => {
               ownPrompts.current.delete(message.id)
               break
             }
+            // A message this window did not send: one fired out of the queue, or written from a phone or a
+            // second panel. It begins a turn all the same, so the chips of the agents that finished in the
+            // last one are cleared exactly as they are for a message typed here (see submit).
+            //
+            // Not while a feed is being restored: the journal hands over the very same messages as
+            // history, and every one of them would hide the agents of the turn it began - a panel merely
+            // reloaded would come back with an empty strip of chips.
+            if (!restoring.current[message.sessionId]) {
+              clearFinishedAgents(message.sessionId)
+              if (message.sessionId === activeRef.current) setActiveStream('main')
+            }
             feed({
               session: message.sessionId,
               action: {
@@ -973,6 +1067,11 @@ export const App = () => {
             })
             break
           }
+
+          // What this conversation is waiting to say, as the IDE holds it - see SessionQueue.kt.
+          case 'queue':
+            feed({ session: message.sessionId, action: { kind: 'queue', items: message.items } })
+            break
 
           case 'planResolved':
             cards.decidePlan(message.id, message.decision === 'approve' ? 'approve' : 'keepPlanning')
@@ -1142,23 +1241,15 @@ export const App = () => {
             applyTypography(message.monoFamily, message.uiFamily, message.lineHeight)
             break
 
+          case 'statistics': {
+            const { type: _type, seq: _seq, at: _at, ...figures } = message
+            setStatistics(figures)
+            break
+          }
+
           case 'usage':
-            // It arrives by two independent routes (the conversation's usage and separately the
-            // transcript scan for todayTokens) - we merge rather than replace whole, otherwise one would
-            // zero out what the other has already learned.
-            setUsage((current) => ({
-              session: message.session ?? current.session,
-              week: message.week ?? current.week,
-              // Extra usage arrives whole or not at all: its two halves are put together on the plugin's
-              // side (see ProjectUsage.putExtra), and merging field by field here would only be able to
-              // take them apart again.
-              extra: message.extra ?? current.extra,
-              // ?? will not do here - a 0 is not nullish, it would get stuck in the state forever and the
-              // context gauge below would divide by zero for good.
-              contextWindow:
-                message.contextWindow && message.contextWindow > 0 ? message.contextWindow : current.contextWindow,
-              todayTokens: message.todayTokens ?? current.todayTokens,
-            }))
+            // Folded rather than replaced whole, and by the same rules as on the phone - see mergeUsage.
+            setUsage((current) => mergeUsage(current, message))
             break
 
           case 'permission':
@@ -1293,41 +1384,6 @@ export const App = () => {
   useEffect(() => {
     setActiveStream('main')
   }, [active])
-
-  /**
-   * The queue works itself through as soon as the conversation comes free: that is exactly what the caption
-   * under the button promises.
-   *
-   * Across every tab rather than the one open: a queue waits for the end of the turn it was put into, and
-   * has no reason to wait for a switch to its tab - a background conversation is precisely what one leaves
-   * in order to go and do something else.
-   *
-   * One message per pass: the next travels when the turn it began has ended, while a neighbouring tab's
-   * queue is picked up by a restart of this same effect - its own turn does not stand in the way.
-   */
-  useEffect(() => {
-    const ready = Object.keys(queue).find(
-      (sessionId) => (queue[sessionId]?.length ?? 0) > 0 && panels[sessionId]?.status !== 'running',
-    )
-    if (!ready) return
-
-    const next = queue[ready]?.[0]
-    if (!next) return
-
-    clearFinishedAgents(ready)
-    // Reading a subagent belongs to the open tab: a background one has none, and there is nothing to
-    // reset there.
-    if (ready === activeRef.current) setActiveStream('main')
-    setQueue((current) => ({ ...current, [ready]: (current[ready] ?? []).slice(1) }))
-    dispatchPanel({
-      session: ready,
-      // Into the feed goes what was typed rather than the finished string: otherwise the attachments of a
-      // message sent from the queue disappear from the session's history and countSessionImages stops
-      // seeing them - the next image becomes the first one again.
-      action: { kind: 'prompt', tokens: next.tokens, quotes: [] },
-    })
-    send({ type: 'prompt', sessionId: ready, text: next.text, images: next.images })
-  }, [panels, queue])
 
   /**
    * The mode is changed by the shell through a control message: the agent applies it to the very next tool
@@ -1642,7 +1698,6 @@ export const App = () => {
       setActiveStream('main')
       forgetShellCommands(active)
       setShellRuns((current) => ({ ...current, [active]: [] }))
-      setQueue((current) => ({ ...current, [active]: [] }))
       delete soundMemory.current[active]
 
       send({ type: 'resumeSession', sessionId: active, conversationId: entry.id })
@@ -1856,19 +1911,18 @@ export const App = () => {
     // runs: /compact swallows stdin and does not run these messages once it ends (see
     // deferFollowUpForCompact). A free agent has nothing to wait for.
     if ((queued && running) || deferFollowUpForCompact(panel.compacting, running, lastUserText(panel.items))) {
-      setQueue((current) => ({
-        ...current,
-        [active]: [
-          ...(current[active] ?? []),
-          {
-            id: `q-${Date.now()}`,
-            text,
-            attach: attachCount ? `${attachCount} refs` : '',
-            tokens,
-            images,
-          },
-        ],
-      }))
+      send({
+        type: 'queuePrompt',
+        sessionId: active,
+        id: `q-${Date.now()}-${promptCounter.current++}`,
+        text,
+        attach: attachCount ? `${attachCount} refs` : '',
+        // The pieces the card will be drawn from travel with it, exactly as they do with a message sent
+        // outright: what fires out of the queue arrives back here as an ordinary echo (see promptEcho).
+        tokens,
+        quotes: quotes.map((quote) => quote.text),
+        images,
+      })
       if (!isOverride) setDrafts((current) => ({ ...current, [active]: EMPTY_DRAFT }))
       return
     }
@@ -1941,6 +1995,7 @@ export const App = () => {
       text,
       images,
     })
+    reportChips(tokens, quotes.length)
     if (!isOverride) setDrafts((current) => ({ ...current, [active]: EMPTY_DRAFT }))
   }, [
     draft,
@@ -1995,6 +2050,22 @@ export const App = () => {
     }
   }, [decidePlan])
 
+  // The harness opens the statistics tab the way the menu's row does - dev builds only, like the hooks
+  // above. Here, before the sign-in gate below, so the count of hooks does not change when it opens.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+
+    window.__accHarnessOpenStatistics = (view) => {
+      setSideMenu((current) => ({ ...current, open: false }))
+      setMenu(null)
+      setStatsTab({ open: true, view })
+      setActive(STATS_TAB)
+    }
+    return () => {
+      window.__accHarnessOpenStatistics = undefined
+    }
+  }, [])
+
   const agentTabs = useMemo(
     () => buildAgentTabs(panel, cards.answeredAsks, hiddenTaskIds),
     [panel, cards.answeredAsks, hiddenTaskIds],
@@ -2021,6 +2092,19 @@ export const App = () => {
       })),
     [sessions, panels, active, cards.planDecisions, cards.answeredAsks],
   )
+
+  /**
+   * "27/51" for the menu's row.
+   *
+   * Remembered until the figures themselves change, because arriving at those five characters means
+   * building the whole catalogue of achievements - every group, every one of them dressed in its words -
+   * and then folding it. Nothing in it moves between one statistics message and the next, while the panel
+   * repaints dozens of times a second with an answer printing, over a menu that is usually shut.
+   *
+   * Above the login gate rather than beside its own use further down: everything before that gate runs on
+   * every render, and a hook after it would not (see the rules of hooks).
+   */
+  const achievementsEarned = useMemo(() => (statistics ? achievementsCount(statistics) : ''), [statistics])
 
   // Without a login the input field is meaningless: the agent answers any question with a line about
   // /login, and that command itself is out of reach in streaming mode.
@@ -2063,6 +2147,22 @@ export const App = () => {
   /** A step back: out of "what travels" to remote access, out of any other screen to the root. */
   const backMenu = () => setSideMenu((current) => ({ ...current, screen: parentOf(current.screen) }))
 
+  /**
+   * The statistics as a tab of the strip rather than a screen of the menu: a chart of a month wants the
+   * whole panel, not 350 pixels of a sheet. Opened from the menu's row - the menu closes behind it.
+   */
+  const openStatistics = () => {
+    setSideMenu((current) => ({ ...current, open: false }))
+    setMenu(null)
+    setStatsTab((current) => ({ ...current, open: true }))
+    setActive(STATS_TAB)
+  }
+
+  const closeStatistics = () => {
+    setStatsTab({ open: false, view: 'overview' })
+    if (active === STATS_TAB) setActive(sessions[0]?.id ?? MAIN_SESSION)
+  }
+
   const openScreen = (screen: MenuScreen) => {
     setSideMenu({ open: true, screen })
 
@@ -2089,6 +2189,7 @@ export const App = () => {
    */
   const menuSummary: MenuSummary = {
     history: history?.length ?? null,
+    statistics: achievementsEarned,
     mcp: mcpServers
       ? {
           connected: mcpServers.filter((server) => server.status === 'connected').length,
@@ -2170,14 +2271,6 @@ export const App = () => {
             delete next[id]
             return next
           })
-          // What this tab deferred leaves along with it: the conversation that was to run it no longer
-          // exists.
-          setQueue((current) => {
-            if (!(id in current)) return current
-            const next = { ...current }
-            delete next[id]
-            return next
-          })
           dispatchPanel({ session: id, closed: true })
           const next = sessions.filter((session) => session.id !== id)
           setSessions(next)
@@ -2186,6 +2279,9 @@ export const App = () => {
         onNewSession={() => startSession(`session-${Date.now()}`)}
         onReorderGroups={reorderGroups}
         onOpenMenu={openMenu}
+        statistics={statsTab.open ? { open: true, active: active === STATS_TAB } : undefined}
+        onPickStatistics={() => setActive(STATS_TAB)}
+        onCloseStatistics={closeStatistics}
         watchers={watchers}
         gitBranch={panels[MAIN_SESSION]?.project?.gitBranch}
         pullRequest={panels[MAIN_SESSION]?.project?.pullRequest}
@@ -2219,20 +2315,13 @@ export const App = () => {
 
       <Queue
         items={sessionQueue}
-        onReorder={(from, to) =>
-          setQueue((current) => {
-            const next = [...(current[active] ?? [])]
-            const [moved] = next.splice(from, 1)
-            if (moved) next.splice(to, 0, moved)
-            return { ...current, [active]: next }
-          })
-        }
-        onRemove={(id) =>
-          setQueue((current) => ({
-            ...current,
-            [active]: (current[active] ?? []).filter((item) => item.id !== id),
-          }))
-        }
+        onReorder={(from, to) => {
+          const next = [...sessionQueue]
+          const [moved] = next.splice(from, 1)
+          if (moved) next.splice(to, 0, moved)
+          send({ type: 'reorderQueue', sessionId: active, ids: next.map((item) => item.id) })
+        }}
+        onRemove={(id) => send({ type: 'unqueuePrompt', sessionId: active, id })}
       />
 
       <Quotes
@@ -2281,7 +2370,13 @@ export const App = () => {
         />
       ) : null}
 
-      {sessions.length === 0 ? (
+      {active === STATS_TAB && statsTab.open ? (
+        <StatisticsTab
+          data={statistics}
+          view={statsTab.view}
+          onView={(view) => setStatsTab((current) => ({ ...current, view }))}
+        />
+      ) : sessions.length === 0 ? (
         <div className={s.emptyState}>
           <p className={s.gateTitle}>No open chats</p>
           <button type="button" className={s.gateButton} onClick={() => startSession(MAIN_SESSION)}>
@@ -2368,7 +2463,7 @@ export const App = () => {
             focusToken={focusToken}
             layout={composerLayout}
             model={model}
-            switchedFrom={switched ? prefs.model : undefined}
+            switchedFrom={panel.switchedFrom}
             effort={prefs.effort}
             mode={mode}
             onOpenSelector={openSelector}
@@ -2405,7 +2500,7 @@ export const App = () => {
           {composerLayout === 'compact' || isSideComposerLayout(composerLayout) ? null : (
             <StatusBar
               model={model}
-              switchedFrom={switched ? prefs.model : undefined}
+              switchedFrom={panel.switchedFrom}
               effort={prefs.effort}
               mode={mode}
               onOpen={openSelector}
@@ -2421,6 +2516,7 @@ export const App = () => {
         screen={sideMenu.screen}
         summary={menuSummary}
         onPick={openScreen}
+        onOpenStatistics={openStatistics}
         onBack={backMenu}
         onClose={closeMenu}
       >
@@ -2553,7 +2649,7 @@ export const App = () => {
         <Menu
           {...(menu.kind === 'thanks'
             ? THANKS_MENU
-            : menuProps(menu.kind, models, prefs.model, switched, prefs.effort, mode, availableModes))}
+            : menuProps(menu.kind, models, prefs.model, tickedModel, prefs.effort, mode, availableModes))}
           anchor={menu.anchor}
           onClose={() => setMenu(null)}
           onPick={(id) => {
@@ -2567,7 +2663,11 @@ export const App = () => {
             // and the IDE opens it in the system browser - the same route the PR link takes.
             if (kind === 'thanks') {
               const url = thanksUrl(id)
-              if (url) send({ type: 'openExternal', url })
+              if (url) {
+                send({ type: 'openExternal', url })
+                // The heart pressed is the one thing here the statistics count - and only the page sees it.
+                send({ type: 'stat', kind: 'thanks' })
+              }
             }
           }}
         />

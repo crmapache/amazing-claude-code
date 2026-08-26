@@ -223,6 +223,35 @@ export const scenariosSystem: Scenario[] = [
     ]),
   ]),
 
+  /**
+   * The person signs in as another account. The whole point is the second checkpoint: what the previous
+   * account spent stops being shown at once rather than lingering on the ring - a weekly window the new
+   * account has not opened yet is not named in its answers at all, and the panel used to keep somebody
+   * else's percentage there for as long as the old reset time was ahead (see ProjectUsage.forget).
+   */
+  scenario('account-switch', 'The account is switched', 'system', [
+    checkpoint('The first account, with its windows well under way', [
+      shell({ type: 'auth', installed: true, loggedIn: true, email: 'first@example.com', plan: 'Max' }),
+      shell({
+        type: 'usage',
+        session: { percent: 41, resets: inHours(2) },
+        week: { percent: 18, resets: inHours(4 * 24) },
+      }),
+      wait(600),
+    ]),
+    checkpoint('Another account: the rings empty at once', [
+      shell({ type: 'auth', installed: true, loggedIn: true, email: 'second@example.com', plan: 'Pro' }),
+      shell({ type: 'usage', reset: true }),
+      wait(700),
+    ]),
+    // Only the five-hour window comes back: the new account's week has not started, and an empty ring is
+    // the honest answer for it.
+    checkpoint('The new account answers - and only about what it has spent', [
+      shell({ type: 'usage', session: { percent: 10, resets: inHours(4.5) } }),
+      wait(600),
+    ]),
+  ]),
+
   scenario('clear-conversation', '/clear wipes the conversation', 'system', [
     checkpoint('The user asks about the history', [user('Tell me what we have already discussed'), wait(500)]),
     checkpoint('The finished answer', [
@@ -385,9 +414,9 @@ export const scenariosSystem: Scenario[] = [
         workingDirectory: '/Users/max/Documents/Projects/amazing-claude-code',
         preferences: { model: 'fable', effort: 'xhigh', mode: 'bypassPermissions' },
       }),
-      // Without the catalogue there is nothing to compare the choice against: "fable" alone does not say
-      // which identifier it expands into, and the button has no right to call anything a swap (see
-      // switchedModel in catalog.ts).
+      // Without the catalogue the choice cannot be expanded: "fable" alone does not say which identifier
+      // it stands for, and the caption under the panel would go on naming the previous model (see
+      // modelInForce in catalog.ts).
       shell({
         type: 'models',
         models: [

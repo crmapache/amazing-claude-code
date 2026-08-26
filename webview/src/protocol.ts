@@ -155,6 +155,22 @@ export interface ModelInfo {
 }
 
 /**
+ * One message waiting for the turn in progress to end, as every client sees it.
+ *
+ * A row's worth and no more. What the message is actually made of - the chips it was typed with, the
+ * bytes of a photo taken on a phone - stays in the IDE, which is what will send it (see SessionQueue.kt):
+ * a queued photo is measured in hundreds of kilobytes and the frame to a phone has a limit of 256.
+ */
+export interface QueuedMessage {
+  id: string
+  text: string
+  /** What the row shows beside the text - "3 refs". Empty when the message carried no attachments. */
+  attach: string
+  /** How many images travel with it - the numbering of the next one carries on past them. */
+  images: number
+}
+
+/**
  * An occasion to call the person with a sound. The shell knows exactly these names: each has a file of
  * its own there (see AlertSounds.kt).
  */
@@ -198,6 +214,14 @@ type ShellMessageBody =
       type: 'usage'
       session?: UsageWindow
       week?: UsageWindow
+      /**
+       * Everything known about the subscription is somebody else's now: the sign-in has moved to another
+       * account (see ProjectUsage.forget). Said out loud because the message is merged field by field -
+       * silence about a window means "nothing new about it", and a window the new account has not opened
+       * yet is never mentioned at all, so without this the previous account's percentage would stay on
+       * the ring for as long as its old reset time is ahead.
+       */
+      reset?: boolean
       /** Whether the plan's limit is being passed for money right now - see ExtraUsage. */
       extra?: ExtraUsage
       /** The current model's context window size: with the large ones it is a million, not two hundred thousand. */
@@ -240,6 +264,14 @@ type ShellMessageBody =
    * model, and what is taken includes things a turn's usage does not show.
    */
   | { type: 'context'; sessionId: string; used: number; max: number }
+  /**
+   * What this conversation is waiting to say once the turn in progress ends, in the order it will say it.
+   *
+   * The whole list every time rather than what changed: it is short, both clients draw it, and either of
+   * them may have been the one to change it. The bytes of a queued photo stay in the IDE - a row needs to
+   * know that there is one, not what is in it.
+   */
+  | { type: 'queue'; sessionId: string; items: QueuedMessage[] }
   /**
    * How a bash-mode command ended. stdout and stderr separately: they travel to the agent as separate
    * fields, as Claude Code itself does it - by them one can see that a command complained even when
@@ -387,7 +419,18 @@ type ShellMessageBody =
    * before the disk does (see ClaudeSessionHub.CatchUp). `cursor` absent means the transcript's
    * beginning has been reached - there is nothing further back to ask for.
    */
-  | { type: 'historyPage'; sessionId: string; entries: AgentEvent[]; cursor?: string }
+  | {
+      type: 'historyPage'
+      sessionId: string
+      entries: AgentEvent[]
+      cursor?: string
+      /**
+       * The boundary this page answers - the `before` of the request, echoed back. A phone applies a page
+       * only when it answers the boundary currently on screen: two taps on a lost frame would otherwise
+       * be answered twice and the same messages would arrive twice.
+       */
+      before?: string
+    }
   /**
    * The Claude Code sign-in. Without it the agent answers every question with a line about /login, so
    * the panel shows a sign-in button rather than an input field.
@@ -492,6 +535,99 @@ type ShellMessageBody =
    * IdeTypography.kt on the plugin's side), so the layout knows nothing about it.
    */
   | { type: 'typography'; monoFamily: string; uiFamily: string; lineHeight: number }
+  /**
+   * The statistics tab's figures - the answer to the `statistics` request. Every project's minutes by
+   * day, this project's days in full, and the achievements as they stand: the range shown (a week, a
+   * month, all time) is chosen here, out of the days, rather than asked for (see stats/compute.ts).
+   */
+  | ({ type: 'statistics' } & StatisticsData)
+
+/**
+ * One day of one project, as the IDE kept it (see DayRecord on the plugin's side). Counts, sums and
+ * high-water marks only: a figure absent from the message is a zero, which is why almost all of them
+ * are optional.
+ */
+export interface StatisticsDay {
+  /** "2026-08-26" - the calendar day in the IDE's own time zone. */
+  date: string
+  /** Minutes with something going on in the panel, and how they fall by hour of the day. */
+  minutes: number
+  hours: number[]
+  turns?: number
+  prompts?: number
+  sessions?: number
+  forks?: number
+  phonePrompts?: number
+  earlyPrompts?: number
+  latePrompts?: number
+  turnMillis?: number
+  longestTurnMillis?: number
+  quickTurns?: number
+  longTurns?: number
+  maxTurnsInHour?: number
+  tools?: Record<string, number>
+  edits?: number
+  linesAdded?: number
+  linesRemoved?: number
+  biggestEdit?: number
+  singleLineEdits?: number
+  maxFilesInTurn?: number
+  testTurns?: number
+  filesTouched?: number
+  permissionsAsked?: number
+  permissionsAllowed?: number
+  permissionsDenied?: number
+  editsRefused?: number
+  plansApproved?: number
+  todosDone?: number
+  attachments?: number
+  quotes?: number
+  thanks?: number
+  historian?: number
+  watched?: number
+  tokensIn?: number
+  tokensOut?: number
+  tokensCacheRead?: number
+  tokensCacheWrite?: number
+  cost?: number
+  /** Turns by the model's family: Sonnet, Opus and so on. */
+  models?: Record<string, number>
+  mcpConnected?: number
+  plugins?: number
+  longestSession?: number
+  longestStretch?: number
+  maxForksInTree?: number
+  maxDepth?: number
+}
+
+/** One achievement as the IDE evaluated it - the words and the paint for it live in stats/catalogue.ts. */
+export interface AchievementState {
+  id: string
+  /** 0 is locked; 1 to 5 the tier reached. */
+  tier: number
+  /** The figure behind it, in the achievement's own unit. */
+  value: number
+  /** The next line to cross, absent when the top tier is reached. */
+  target?: number
+  /** When each tier was reached, by tier number - the source of "earned lately". */
+  earned: Record<string, number>
+}
+
+export interface StatisticsData {
+  /** The IDE's clock at the moment of building - the panel's own may disagree by a little. */
+  now: number
+  /** When counting began on this machine. */
+  since: number
+  /** Today by the IDE's calendar - the day the ranges are counted back from. */
+  today: string
+  devicesPaired: number
+  project: { key: string; name: string }
+  /** Every project the ledger knows, this one included: its name and its minutes by day. */
+  projects: { key: string; name: string; minutes: Record<string, number> }[]
+  /** This project's days, in full. */
+  days: StatisticsDay[]
+  achievements: AchievementState[]
+}
 
 /**
  * What every message about a conversation carries besides its own fields.
@@ -534,6 +670,30 @@ export type WebviewMessage =
       /** Images from the clipboard: bytes rather than a path for a tool to read. */
       images?: { mediaType: string; data: string }[]
     }
+  /**
+   * The same message, to be said when the agent comes free rather than now.
+   *
+   * It waits in the IDE rather than in the window that typed it. That is what makes the button mean
+   * anything on a phone: a page in a pocket is thrown out by the browser without warning, and what it
+   * was holding used to go with it - the message was neither sent nor queued, and the conversation
+   * simply stopped after the last turn.
+   */
+  | {
+      type: 'queuePrompt'
+      sessionId: string
+      /** Made up by the sender, and the name it takes the message back out of the queue by. */
+      id: string
+      text: string
+      /** What the row shows beside the text - "3 refs". Worked out here; the IDE only carries it. */
+      attach?: string
+      tokens?: unknown
+      quotes?: string[]
+      images?: { mediaType: string; data: string }[]
+    }
+  /** The cross on a queued message: it is not going to be said after all. */
+  | { type: 'unqueuePrompt'; sessionId: string; id: string }
+  /** The queue dragged into another order - the identifiers, in the order they are to fire. */
+  | { type: 'reorderQueue'; sessionId: string; ids: string[] }
   /**
    * A command typed into the field through "!": the shell runs it in the project's working directory,
    * not the agent. The answer arrives as a single bashResult with the same id.
@@ -750,6 +910,17 @@ export type WebviewMessage =
   | { type: 'marketplaceList' }
   | { type: 'marketplaceAdd'; source: string }
   | { type: 'marketplaceRemove'; name: string }
+  /** The statistics tab's figures - answered with a `statistics` message. */
+  | { type: 'statistics' }
+  /**
+   * Something only the interface can count, reported for the statistics: a hand on the keyboard or the
+   * wheel (`activity`, sent once in a while rather than on every keystroke), the chips a message went
+   * out with (`prompt` - what a chip is, is the interface's business and the shell does not look
+   * inside), the heart pressed (`thanks`). The shell counts everything else itself, where it sees it.
+   */
+  | { type: 'stat'; kind: 'activity'; sessionId?: string }
+  | { type: 'stat'; kind: 'prompt'; attachments: number; quotes: number }
+  | { type: 'stat'; kind: 'thanks' }
 
 export type AgentStatus = 'idle' | 'running'
 
@@ -784,6 +955,12 @@ export type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResult
 export interface AgentSystemEvent {
   type: 'system'
   subtype: string
+  /**
+   * The mark Claude Code stamps every line of its stream with. Only the lines the transcript keeps can
+   * be asked for a page older than themselves, and a system event is generally not one of them - which
+   * is exactly what a phone has to be able to tell (see keptOnDisk in mobile/feed.ts).
+   */
+  uuid?: string
   session_id?: string
   model?: string
   cwd?: string
@@ -861,6 +1038,11 @@ export type MessageContent = ContentBlock[] | string
 export interface AgentAssistantEvent {
   type: 'assistant'
   /**
+   * The mark Claude Code stamps every line of its stream with. What a phone anchors a request for an
+   * earlier page on - see keptOnDisk in mobile/feed.ts.
+   */
+  uuid?: string
+  /**
    * usage here is a snapshot of THIS request to the model rather than a total over the turn: its input
    * part is the taken context window for this step. The meter lives by it while a turn runs and the
    * exact figure from the CLI has not arrived yet (see liveContextUsed in build).
@@ -872,6 +1054,11 @@ export interface AgentAssistantEvent {
 
 export interface AgentUserEvent {
   type: 'user'
+  /**
+   * The mark Claude Code stamps every line of its stream with. What a phone anchors a request for an
+   * earlier page on - see keptOnDisk in mobile/feed.ts.
+   */
+  uuid?: string
   message: { content: MessageContent }
   parent_tool_use_id?: string | null
   /**

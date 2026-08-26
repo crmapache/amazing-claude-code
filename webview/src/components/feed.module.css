@@ -69,8 +69,10 @@
 }
 
 .jumpToBottom {
-  /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
-  min-height: var(--acc-hit);
+  /* One figure for both sides, and only then the fingertip: raising the height alone to --acc-hit while
+     the width stayed at thirty-four turned the circle into an egg on the phone (see tokens.css - on a
+     touchscreen --acc-hit is 44, on a desktop it is auto and the button keeps its own size). */
+  --acc-jump-size: 34px;
   position: absolute;
   right: 20px;
   bottom: 16px;
@@ -78,13 +80,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: var(--acc-jump-size);
+  height: var(--acc-jump-size);
+  flex: none;
   border-radius: 999px;
   background: var(--acc-bg-control);
   border: 1px solid var(--acc-line-strong);
   color: var(--acc-fg);
   box-shadow: var(--acc-shadow-menu);
+}
+
+/* Under a thumb the same circle, grown to a fingertip - see --acc-hit. */
+[data-acc-density='touch'] .jumpToBottom {
+  --acc-jump-size: var(--acc-hit);
 }
 
 @media (hover: hover) {
@@ -1032,8 +1040,12 @@
   color: var(--acc-fg-faint);
 }
 
+/* Centred rather than left on the baseline like the words beside it: a rule has no baseline of its own, so
+   the browser makes one up out of its bottom edge and the line comes out under the text as an underline.
+   The middle of the row's line box is where a rule between words belongs. */
 .dashed {
   flex: 1;
+  align-self: center;
   height: 1px;
   background: repeating-linear-gradient(90deg, var(--acc-line) 0 4px, transparent 4px 8px);
 }
@@ -1041,6 +1053,10 @@
 /* The EARLIER mark, turned into a button - see CheckpointRow. Reset to the plain row's own look first:
    a <button> brings its own border, background and cursor, none of which belong here. */
 .checkpointButton {
+  display: flex;
+  /* The mark stands in the middle of the target, not at its top: baseline alignment inside the row lines
+     the chip up with the words, but the row as a whole then has to be centred in the taller button. */
+  align-items: center;
   width: 100%;
   padding: 0;
   border: none;
@@ -1050,6 +1066,13 @@
   cursor: pointer;
   /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
   min-height: var(--acc-hit);
+}
+
+/* The row gives the button its whole width - otherwise it shrinks to the words and the rule has nothing
+   left to run along. */
+.checkpointButton .checkpoint {
+  flex: 1;
+  min-width: 0;
 }
 
 @media (hover: hover) {

@@ -1,6 +1,7 @@
 import type { CommandEntry, CommandHint } from '../feed/slash'
 import { buildCommands } from '../feed/slash'
-import type { ExtraUsage, ShellMessage, UsageWindow } from '../protocol'
+import { mergeUsage, type UsageFacts } from '../feed/usage'
+import type { ShellMessage } from '../protocol'
 
 /**
  * What a phone knows about a project rather than about one conversation in it.
@@ -14,15 +15,7 @@ import type { ExtraUsage, ShellMessage, UsageWindow } from '../protocol'
  * they outlive the screen. Walking out of a chat and back into it must not empty the limit rings and
  * blank the branch while the IDE gets round to saying them again.
  */
-export interface ProjectFacts {
-  session?: UsageWindow
-  week?: UsageWindow
-  /** Whether the plan's limit is being passed for money right now - see ExtraUsage. */
-  extra?: ExtraUsage
-  /** The current model's context window: with the large ones it is a million, not two hundred thousand. */
-  contextWindow?: number
-  /** Today's tokens across every project - the same "tok" as in a terminal. */
-  todayTokens?: string
+export interface ProjectFacts extends UsageFacts {
   gitBranch?: string
   pullRequest?: string
   pullRequestUrl?: string
@@ -55,27 +48,14 @@ export const isFact = (message: ShellMessage): boolean =>
 /**
  * One fact folded into what is already known.
  *
- * Merged rather than replaced whole, which matters for the usage above all: it arrives by two
- * independent routes - the conversation's own windows, and separately the scan of the transcripts that
- * counts today's tokens - and taking the last one entire would let each zero out what the other had
- * just learned.
+ * The usage is folded by the shared rules rather than by a copy of them here (see mergeUsage): the same
+ * message reaches the panel at the desk, and the two screens disagreeing about what a percentage means
+ * would be worse than either of them saying nothing.
  */
 export const applyFact = (facts: ProjectFacts, message: ShellMessage): ProjectFacts => {
   switch (message.type) {
     case 'usage':
-      return {
-        ...facts,
-        session: message.session ?? facts.session,
-        week: message.week ?? facts.week,
-        // Whole or not at all: the two halves of extra usage are put together on the IDE's side, and
-        // merging them field by field here would only take them apart again.
-        extra: message.extra ?? facts.extra,
-        // ?? will not do here: a 0 is not nullish, it would stick in the state for good and the context
-        // gauge would divide by zero ever after.
-        contextWindow:
-          message.contextWindow && message.contextWindow > 0 ? message.contextWindow : facts.contextWindow,
-        todayTokens: message.todayTokens ?? facts.todayTokens,
-      }
+      return { ...facts, ...mergeUsage(facts, message) }
 
     case 'project':
       // Replaced rather than merged, unlike the usage: this one message is the whole answer about the

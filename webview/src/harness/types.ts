@@ -12,6 +12,11 @@ export type ScenarioStep =
    * advance - the player peeks at it in what the panel sent to the shell (see ScenarioPlayer).
    */
   | { kind: 'bash'; command: string; stdout: string; stderr?: string; exitCode?: number; runMs?: number }
+  /**
+   * Open the statistics tab - and, if asked, its achievements screen - the way the menu's row would.
+   * The figures themselves arrive as an ordinary shell message (see the statistics scenario).
+   */
+  | { kind: 'openStatistics'; view?: 'overview' | 'achievements' }
 
 /**
  * One meaningful moment of a scenario with a caption for the checkpoints card. In auto playback its steps
@@ -46,5 +51,7 @@ declare global {
      * planning") without touching the button itself.
      */
     __accHarnessResolvePlan?: (itemId: string, decision: 'approve' | 'keepPlanning') => void
+    /** And the same for the statistics tab: opens it as the menu's row does, on the screen asked for. */
+    __accHarnessOpenStatistics?: (view: 'overview' | 'achievements') => void
   }
 }

@@ -12,7 +12,7 @@ import {
   modelMenu,
   modelOptions,
   resolvePanelModel,
-  switchedModel,
+  modelInForce,
   modeShortLabel,
   nextMode,
   normalizeMode,
@@ -144,23 +144,23 @@ describe('the model the agent moved to itself', () => {
   ]
 
   it('does not count a conversation on the chosen model as a switch', () => {
-    expect(switchedModel(models, 'default', 'claude-opus-5[1m]')).toBeUndefined()
-    expect(switchedModel(models, 'sonnet', 'claude-sonnet-5')).toBeUndefined()
+    expect(modelInForce(models, 'default', 'claude-opus-5[1m]')).toBeUndefined()
+    expect(modelInForce(models, 'sonnet', 'claude-sonnet-5')).toBeUndefined()
   })
 
   it('does not treat a note about the context window as a different model', () => {
     // The catalogue and the stream write it differently, and without this a conversation on its own model
     // would look as though it had run off to someone else's.
-    expect(switchedModel(models, 'default', 'claude-opus-5')).toBeUndefined()
+    expect(modelInForce(models, 'default', 'claude-opus-5')).toBeUndefined()
   })
 
   it('makes a move to another model visible', () => {
-    expect(switchedModel(models, 'default', 'claude-opus-4-8')).toBe('claude-opus-4-8')
+    expect(modelInForce(models, 'default', 'claude-opus-4-8')).toBe('claude-opus-4-8')
   })
 
   it('does not invent a discrepancy without a catalogue: what the choice resolves into is unknown', () => {
-    expect(switchedModel(null, 'default', 'claude-opus-4-8')).toBeUndefined()
-    expect(switchedModel(models, 'unknown-choice', 'claude-opus-4-8')).toBeUndefined()
+    expect(modelInForce(null, 'default', 'claude-opus-4-8')).toBeUndefined()
+    expect(modelInForce(models, 'unknown-choice', 'claude-opus-4-8')).toBeUndefined()
   })
 
   it('keeps the tick on the choice while the conversation is on the chosen model', () => {
@@ -203,17 +203,17 @@ describe('the caption of the model a tab works on', () => {
   it('keeps the window mark when the answers come signed without it', () => {
     expect(resolvePanelModel({ model: 'claude-opus-5' }, models, 'opus[1m]')).toBe('claude-opus-5[1m]')
     expect(resolvePanelModel({ model: 'opus[1m]' }, models, 'opus[1m]')).toBe('claude-opus-5[1m]')
-    expect(switchedModel(models, 'opus[1m]', 'claude-opus-5')).toBeUndefined()
+    expect(modelInForce(models, 'opus[1m]', 'claude-opus-5')).toBeUndefined()
   })
 
   it('does not take a build date for another model', () => {
     expect(resolvePanelModel({ model: 'claude-haiku-4-5-20251001' }, models, 'haiku')).toBe('claude-haiku-4-5')
-    expect(switchedModel(models, 'haiku', 'claude-haiku-4-5-20251001')).toBeUndefined()
+    expect(modelInForce(models, 'haiku', 'claude-haiku-4-5-20251001')).toBeUndefined()
   })
 
   it('names what is genuinely at work once the CLI has swapped the model itself', () => {
     expect(resolvePanelModel({ model: 'claude-opus-4-8' }, models, 'fable')).toBe('claude-opus-4-8')
-    expect(switchedModel(models, 'fable', 'claude-opus-4-8')).toBe('claude-opus-4-8')
+    expect(modelInForce(models, 'fable', 'claude-opus-4-8')).toBe('claude-opus-4-8')
   })
 
   it('shows a choice not yet confirmed by the agent - expanded the same way', () => {

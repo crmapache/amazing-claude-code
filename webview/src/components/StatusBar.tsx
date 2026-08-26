@@ -309,10 +309,7 @@ const Meter = ({ percent, color, pace = null, tooltip, value, flame = false }: M
 
 interface StatusBarProps {
   model?: string
-  /**
-   * The model the person chose, when the conversation is running on another one - see Selectors. Empty
-   * whenever the two agree, which is nearly always.
-   */
+  /** The model the agent moved this conversation off by itself, when it did - see Selectors. */
   switchedFrom?: string
   effort: string
   mode: string
@@ -360,7 +357,13 @@ export const BranchChip = ({ gitBranch, pullRequest, onOpenPullRequest }: Branch
     <span className={s.statusItem}>
       <span className={s.statusBranch}>{gitBranch}</span>
       {pullRequest ? (
-        <button type="button" className={s.statusPrLink} onClick={onOpenPullRequest} title="Open pull request in browser">
+        <button
+        type="button"
+        className={s.statusPrLink}
+        onClick={onOpenPullRequest}
+        data-tooltip="Open pull request in browser"
+        data-tooltip-at="top left"
+      >
           PR #{pullRequest}
         </button>
       ) : (
@@ -398,17 +401,21 @@ interface SelectorProps {
   value: string
   /** The longest possible value: the width is measured by it - see the markup below. */
   sample: string
-  title: string
+  hint: string
   className?: string
   onOpen: (anchor: Anchor) => void
 }
 
 /** One selector's button (MODEL/EFFORT/MODE). What is exported is the whole row - see [Selectors]. */
-const Selector = ({ label, value, sample, title, className = '', onOpen }: SelectorProps) => (
+const Selector = ({ label, value, sample, hint, className = '', onOpen }: SelectorProps) => (
   <button
     type="button"
     className={`${s.selector} ${className}`}
-    title={title}
+    /* The panel's own hint rather than the native title: the native one does not unfold in the IDE's
+       browser at all, and on this button in particular there is something to read - a MODEL wearing the
+       accent explains by nothing else why it does (see Selectors below and Tooltips). */
+    data-tooltip={hint}
+    data-tooltip-at="top left"
     onClick={(event) => onOpen(anchorFrom(event.currentTarget))}
   >
     <span className={s.selectorLabel}>{label}</span>
@@ -431,10 +438,10 @@ const Selector = ({ label, value, sample, title, className = '', onOpen }: Selec
 interface SelectorsProps {
   model?: string
   /**
-   * The model the person chose, given only when the conversation is running on a different one: the CLI
-   * moved it there by itself (see ModelSwitchItem). Then the MODEL button wears an accent and says in its
-   * tooltip whose doing this was - otherwise the selector looks as though it had wandered off on its own,
-   * and the panel as though it changed the choice behind one's back.
+   * The model the agent moved this conversation OFF by itself, given only when it did (see
+   * PanelState.switchedFrom). Then the MODEL button wears an accent and says in its hint whose doing this
+   * was - otherwise the selector looks as though it had wandered off on its own, and the panel as though
+   * it changed the choice behind one's back.
    */
   switchedFrom?: string
   effort: string
@@ -458,9 +465,9 @@ export const Selectors = ({ model, switchedFrom, effort, mode, auto = false, onO
         label="MODEL"
         value={modelLabel(model)}
         sample={MODEL_SAMPLE}
-        title={
+        hint={
           switchedFrom
-            ? `Model: ${modelLabel(model)} - Claude Code switched to it on its own; your choice is ${modelLabel(switchedFrom)}`
+            ? `Model: ${modelLabel(model)} - Claude Code switched to it on its own, off ${modelLabel(switchedFrom)}`
             : `Model: ${modelLabel(model)}`
         }
         className={`${grow} ${switchedFrom ? s.selectorSwitched ?? '' : ''}`}
@@ -470,7 +477,7 @@ export const Selectors = ({ model, switchedFrom, effort, mode, auto = false, onO
         label="EFFORT"
         value={effort}
         sample={EFFORT_SAMPLE}
-        title={`Reasoning effort: ${effort}`}
+        hint={`Reasoning effort: ${effort}`}
         className={grow}
         onOpen={(anchor) => onOpen('effort', anchor)}
       />
@@ -478,7 +485,7 @@ export const Selectors = ({ model, switchedFrom, effort, mode, auto = false, onO
         label="MODE"
         value={modeShortLabel(mode)}
         sample={MODE_SAMPLE}
-        title={`Permission mode: ${modeLabel(mode)}`}
+        hint={`Permission mode: ${modeLabel(mode)}`}
         className={`${grow} ${modeClass(mode)}`}
         onOpen={(anchor) => onOpen('mode', anchor)}
       />

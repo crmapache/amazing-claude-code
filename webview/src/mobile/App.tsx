@@ -3,6 +3,7 @@ import { unbase64url } from '../core/crypto'
 import { deriveSessionTitle } from '../feed/title'
 import type { HistoryEntry, ShellMessage } from '../protocol'
 import { ClockContext } from '../hooks/useNow'
+import { useCardState } from '../hooks/useCardState'
 import { applyFact, emptyFacts, isFact, type ProjectFacts } from './facts'
 import { RemoteClock } from './clock'
 import { applyMessage, emptyFeed, feedTicks, tickFeed, type MobileFeed } from './feed'
@@ -52,6 +53,17 @@ export const App = () => {
   const [states, setStates] = useState<Record<string, LinkState>>({})
   const [feed, setFeed] = useState<MobileFeed>(emptyFeed())
   const [opening, setOpening] = useState<Opening | null>(null)
+
+  /**
+   * Which plans have been decided and which questions answered - here rather than inside the screen that
+   * draws them, because two screens need the same answer and neither of them owns it.
+   *
+   * The conversation and the decision about it are on separate screens on a phone (see Decision): the
+   * thread has to know that something is waiting, the decision screen has to know what. Kept in one
+   * place, they cannot disagree - and a decision taken at the desk, which arrives here as a message of
+   * its own, takes both of them off the hook at once.
+   */
+  const cards = useCardState()
 
   /**
    * The past conversations of each project, by the project they belong to.
@@ -106,6 +118,9 @@ export const App = () => {
 
   /** Whether the IDE being watched was reachable a moment ago - what makes "it came back" a moment. */
   const wasLive = useRef(false)
+
+  /** Numbers the messages this device queues, so two put in the same millisecond are still two. */
+  const queueCounter = useRef(0)
 
   /** Which conversation the feed on screen belongs to - a late message from another one is dropped. */
   const watching = useRef<{ agentId: string; projectKey: string; sessionId: string } | null>(null)
@@ -228,19 +243,31 @@ export const App = () => {
       return
     }
 
+    // A plan decided or a question answered - here rather than in the feed, exactly as at the desk: the
+    // agent knows nothing about which cards a screen still counts as open, so it has no place in the
+    // conversation's own state. Either device may have been the one that answered, and the other has to
+    // stop saying that something is waiting for a person who has already dealt with it.
+    if (message.type === 'planResolved') {
+      cards.decidePlan(message.id, message.decision === 'approve' ? 'approve' : 'keepPlanning')
+    }
+    if (message.type === 'askResolved') cards.answerAsk(message.id)
+
     setFeed((previous) => applyMessage(previous, message, clockOf(agentId).now()))
-  }, [clockOf])
+  }, [clockOf, cards])
 
   /** Watch a conversation from the beginning and show it. */
   const enter = useCallback((agentId: string, projectKey: string, sessionId: string, decide: boolean) => {
     watching.current = { agentId, projectKey, sessionId }
     setFeed(emptyFeed())
+    // A different conversation numbers its cards from the beginning again, so what was answered in the
+    // one just left would otherwise be counted as answered here too (see CardState.reset).
+    cards.reset()
 
     // From nothing: this screen has no feed for that conversation yet, so the whole of it is wanted.
     links.current[agentId]?.watch(projectKey, sessionId, 0)
 
     setScreen({ at: decide ? 'decide' : 'thread', agentId, projectKey, sessionId })
-  }, [])
+  }, [cards])
 
   /** How a request to open a closed project ended - see [startSession]. */
   const projectOpened = useCallback(
@@ -619,6 +646,7 @@ export const App = () => {
         <ClockContext.Provider value={clockOf(screen.agentId).now}>
           <Decision
             feed={feed.state}
+            cards={cards}
             title={entry?.title ?? 'A conversation'}
             project={entry?.projectName ?? ''}
             onDecide={(id, decision) =>
@@ -654,6 +682,7 @@ export const App = () => {
       <ClockContext.Provider value={clockOf(screen.agentId).now}>
         <Thread
           feed={feed.state}
+          cards={cards}
           title={entry?.title ?? NEW_SESSION_TITLE}
           project={entry?.projectName ?? ''}
           facts={facts[`${screen.agentId}:${screen.projectKey}`] ?? emptyFacts()}
@@ -685,14 +714,35 @@ export const App = () => {
               images: prompt.images,
             })
           }}
+          // Queued in the IDE rather than on this device: the page holding it is thrown out while the
+          // phone sits in a pocket, and that is exactly when a queued message matters (see SessionQueue).
+          onQueue={(prompt: OutgoingPrompt) => {
+            command(screen.agentId, screen.projectKey, {
+              type: 'queuePrompt',
+              sessionId: screen.sessionId,
+              id: `q-${Date.now().toString(36)}-${queueCounter.current++}`,
+              text: prompt.text,
+              tokens: prompt.tokens,
+              quotes: [],
+              images: prompt.images,
+            })
+          }}
+          onUnqueue={(id: string) =>
+            command(screen.agentId, screen.projectKey, {
+              type: 'unqueuePrompt',
+              sessionId: screen.sessionId,
+              id,
+            })
+          }
           onStop={() =>
             command(screen.agentId, screen.projectKey, { type: 'stop', sessionId: screen.sessionId })
           }
           onStopTask={(taskId) =>
             command(screen.agentId, screen.projectKey, { type: 'stopTask', sessionId: screen.sessionId, taskId })
           }
+          earlierPages={feed.earlierPages}
           onLoadEarlier={
-            feed.oldestEventUuid
+            feed.oldestEventUuid && !feed.reachedStart
               ? () =>
                   command(screen.agentId, screen.projectKey, {
                     type: 'historyPage',

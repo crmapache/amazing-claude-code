@@ -1,0 +1,447 @@
+import { useMemo, useRef, useState } from 'react'
+import { useHoverTarget } from '../../hooks/useHoverTarget'
+import { useWheelScroll } from '../../hooks/useWheelScroll'
+import type { StatisticsData } from '../../protocol'
+import { closest, dressAll, recentlyEarned, summarize, type DressedGroup } from '../../stats/achievements'
+import { ROMAN } from '../../stats/catalogue'
+import {
+  daysTile,
+  factsTile,
+  filesTile,
+  heatMap,
+  hoursSeries,
+  outputTile,
+  projectCount,
+  projectRows,
+  rangeOf,
+  timeTile,
+  toolRows,
+  type RangeKey,
+  type ToolRow,
+} from '../../stats/compute'
+import {
+  compactNumber,
+  duration,
+  durationDelta,
+  groupThousands,
+  longDate,
+  money,
+  shortDate,
+  turnLength,
+} from '../../stats/format'
+import { AchievementChip, tierStyle } from './AchievementChip'
+import { AchievementFilterSwitch, Achievements, achievementsHint, useAchievementFilter } from './Achievements'
+import { Heatmap } from './Heatmap'
+import { HoursChart } from './HoursChart'
+import s from './stats.module.css'
+
+/**
+ * The statistics tab: this project against every project, for the last week, the last month or all
+ * time - and behind it the achievements screen.
+ *
+ * Everything on it is arithmetic over the days the IDE keeps (see stats/compute.ts): the range switches
+ * here, without a round trip. The figures arrive as one message and are asked for again while the tab
+ * is open (see App), so a turn finishing shows up on the tiles within the minute.
+ */
+
+export type StatisticsView = 'overview' | 'achievements'
+
+interface StatisticsTabProps {
+  data: StatisticsData | null
+  view: StatisticsView
+  onView: (view: StatisticsView) => void
+}
+
+const RANGES: { key: RangeKey; label: string }[] = [
+  { key: '7d', label: '7 days' },
+  { key: '30d', label: '30 days' },
+  { key: 'all', label: 'All time' },
+]
+
+export const StatisticsTab = ({ data, view, onView }: StatisticsTabProps) => {
+  const root = useRef<HTMLDivElement>(null)
+  const body = useRef<HTMLDivElement>(null)
+  const [range, setRange] = useState<RangeKey>('30d')
+  const [filter, setFilter] = useAchievementFilter()
+
+  // The highlight under the pointer and the wheel both need a hand in the IDE's embedded browser - see
+  // the two hooks for why.
+  useHoverTarget(root)
+  useWheelScroll(body)
+
+  const groups = useMemo(() => (data ? dressAll(data.achievements) : null), [data])
+
+  return (
+    <div className={s.root} ref={root}>
+      {view === 'achievements' && groups ? (
+        <div className={s.head}>
+          <button type="button" className={s.headBack} aria-label="Back to statistics" onClick={() => onView('overview')}>
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+              <path
+                d="M9.5 3.5L5 8l4.5 4.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <div className={s.headTitles}>
+            <span className={s.title}>ACHIEVEMENTS</span>
+            <span className={s.hint}>{achievementsHint(groups)}</span>
+          </div>
+          <div className={s.headSpace} />
+          <AchievementFilterSwitch filter={filter} onFilter={setFilter} />
+        </div>
+      ) : (
+        <div className={s.head}>
+          <div className={s.headTitles}>
+            <span className={s.title}>STATISTICS</span>
+            <span className={s.hint}>{data ? overviewHint(data, range) : 'counting up…'}</span>
+          </div>
+          <div className={s.headSpace} />
+          <div className={s.segments}>
+            {RANGES.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                className={`${s.segment} ${range === option.key ? s.segmentOn : ''}`}
+                onClick={() => setRange(option.key)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className={s.body} ref={body}>
+        {!data || !groups ? (
+          <div className={s.empty}>Counting up… the figures arrive from the IDE in a moment.</div>
+        ) : view === 'achievements' ? (
+          <Achievements groups={groups} filter={filter} />
+        ) : (
+          <Overview data={data} range={range} groups={groups} onAchievements={() => onView('achievements')} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+const overviewHint = (data: StatisticsData, key: RangeKey): string => {
+  const range = rangeOf(data, key)
+  const projects = projectCount(data)
+  const compared =
+    projects <= 1 ? 'the only project so far' : `compared with all ${projects} projects`
+  return `${data.project.name || 'this project'} · ${range.label} · ${compared}`
+}
+
+// --- The overview -----------------------------------------------------------------------------
+
+interface OverviewProps {
+  data: StatisticsData
+  range: RangeKey
+  groups: DressedGroup[]
+  onAchievements: () => void
+}
+
+const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) => {
+  const range = useMemo(() => rangeOf(data, key), [data, key])
+  const time = useMemo(() => timeTile(data, range), [data, range])
+  const days = useMemo(() => daysTile(data, range), [data, range])
+  const output = useMemo(() => outputTile(data, range), [data, range])
+  const series = useMemo(() => hoursSeries(data, range), [data, range])
+  const heat = useMemo(() => heatMap(data), [data])
+  const tools = useMemo(() => toolRows(data, range), [data, range])
+  const projects = useMemo(() => projectRows(data, range), [data, range])
+  const files = useMemo(() => filesTile(data, range), [data, range])
+  const facts = useMemo(() => factsTile(data, range), [data, range])
+  const summary = useMemo(() => summarize(groups), [groups])
+  const nearest = useMemo(() => closest(groups), [groups])
+  const recent = useMemo(() => recentlyEarned(groups), [groups])
+
+  const activeDots = days.dots.filter((dot) => dot.active).length
+
+  return (
+    <>
+      <div className={s.tiles}>
+        <div className={s.tile}>
+          <span className={`${s.label} ${s.labelAccent}`}>TIME IN THE PANEL · {range.tag}</span>
+          <span className={s.figureRow}>
+            <span className={s.figure}>{duration(time.minutes)}</span>
+            {time.delta === null ? null : (
+              <span className={`${s.figureNote} ${time.delta >= 0 ? s.figureNoteOk : s.figureNoteBad}`}>
+                {durationDelta(time.delta)} vs prev
+              </span>
+            )}
+          </span>
+          <span className={s.foot}>
+            {duration(time.allMinutes)} across every project · {duration(time.perDay)} a day
+          </span>
+        </div>
+
+        <div className={s.tile}>
+          <span className={`${s.label} ${s.labelOk}`}>DAYS AT WORK</span>
+          <span className={s.figureRow}>
+            <span className={s.figure}>
+              {days.active}
+              <span className={s.figureDim}>/{days.total}</span>
+            </span>
+            <span className={s.figureNote}>
+              streak {days.streak}d · best {days.best}
+            </span>
+          </span>
+          <div className={s.dots} data-tooltip={`${activeDots} of the last ${days.dots.length} days`}>
+            {days.dots.map((dot, index) => (
+              <span
+                key={dot.date}
+                className={`${s.dot} ${dot.active ? s.dotOn : ''}`}
+                style={dot.active ? ({ '--dot-alpha': `${46 + index * 4}%` } as React.CSSProperties) : undefined}
+                data-tooltip={`${shortDate(dot.date)} · ${dot.active ? 'worked' : 'quiet'}`}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className={s.tile}>
+          <span className={`${s.label} ${s.labelBranch}`}>WHAT CAME OUT OF IT</span>
+          <span className={s.figureRow}>
+            <span className={s.figure}>{groupThousands(output.turns)}</span>
+            <span className={s.figureNote}>
+              turns · {output.sessions} {output.sessions === 1 ? 'session' : 'sessions'}
+            </span>
+          </span>
+          <span className={s.foot}>
+            {groupThousands(output.filesTouched)} files touched · {output.forks} {output.forks === 1 ? 'fork' : 'forks'} along the way
+          </span>
+        </div>
+
+        <div className={s.tile}>
+          <span className={`${s.label} ${s.labelAgent}`}>ACHIEVEMENTS</span>
+          <span className={s.figureRow}>
+            <span className={s.figure}>
+              {summary.earned}
+              <span className={s.figureDim}>/{summary.total}</span>
+            </span>
+            <span className={s.figureNote}>
+              <button type="button" className={s.link} onClick={onAchievements}>
+                see all
+              </button>
+            </span>
+          </span>
+          <span className={s.foot}>
+            {nearest ? (
+              <>
+                Next: <span className={s.footStrong}>{nearest.item.name}</span> - {nearest.remaining}
+              </>
+            ) : (
+              'Every line crossed - nothing left to reach for.'
+            )}
+          </span>
+        </div>
+      </div>
+
+      <div className={s.chartCard}>
+        <div className={s.labelRow}>
+          <span className={s.label}>HOURS A DAY IN THE PANEL</span>
+          <span className={s.labelNote}>
+            {series.longest
+              ? `longest day ${duration(series.longest.minutes)} on ${shortDate(series.longest.date)}`
+              : 'no day at work in this range yet'}
+          </span>
+          <span className={s.labelSpace} />
+          <span className={s.legend}>
+            <span className={s.legendLine} style={{ background: 'var(--acc-accent)' }} />
+            this project
+          </span>
+          <span className={`${s.legend} ${s.legendDim}`}>
+            <span className={s.legendLine} style={{ background: 'rgb(var(--acc-ch-aqua) / 55%)' }} />
+            every project
+          </span>
+        </div>
+        <HoursChart series={series} />
+      </div>
+
+      <div className={s.card}>
+        <div className={s.labelRow}>
+          <span className={s.label}>WHEN YOU WORK</span>
+          <span className={s.labelNote}>minutes a day · as far back as the panel is wide</span>
+          <span className={s.labelSpace} />
+          <span className={s.heatLegend}>
+            <span>quiet</span>
+            <span className={s.heatSwatch} style={{ background: 'rgb(var(--acc-ch-mist) / 10%)' }} />
+            <span className={s.heatSwatch} style={{ background: 'rgb(var(--acc-ch-moon) / 22%)' }} />
+            <span className={s.heatSwatch} style={{ background: 'rgb(var(--acc-ch-moon) / 42%)' }} />
+            <span className={s.heatSwatch} style={{ background: 'rgb(var(--acc-ch-moon) / 68%)' }} />
+            <span className={s.heatSwatch} style={{ background: 'var(--acc-c-moon-3)' }} />
+            <span>busy</span>
+          </span>
+        </div>
+        <Heatmap heat={heat} />
+      </div>
+
+      <div className={s.tiles}>
+        <div className={s.tile} style={{ gap: 9 }}>
+          <span className={s.label}>WHAT THE AGENT DID</span>
+          {tools.length === 0 ? <span className={s.foot}>No tool calls in this range.</span> : null}
+          {tools.map((tool) => (
+            <span key={tool.name} className={s.row}>
+              <span className={s.rowName} data-tooltip={tool.name}>
+                {tool.name}
+              </span>
+              <span className={s.bar}>
+                <span className={s.barFill} style={{ width: `${Math.round(tool.share * 100)}%`, background: toolPaint(tool) }} />
+              </span>
+              <span className={s.rowValue}>{groupThousands(tool.count)}</span>
+            </span>
+          ))}
+        </div>
+
+        <div className={s.tile} style={{ gap: 9 }}>
+          <span className={s.label}>WHERE THE HOURS WENT</span>
+          {projects.length === 0 ? <span className={s.foot}>No hours in this range yet.</span> : null}
+          {projects.map((project, index) => (
+            <span key={project.key} className={s.stack}>
+              <span className={s.stackTop}>
+                <span
+                  className={`${s.stackName} ${project.current ? s.stackNameCurrent : index >= 3 ? s.stackNameDim : ''}`}
+                  data-tooltip={project.name}
+                >
+                  {project.name}
+                </span>
+                <span className={s.stackValue}>{duration(project.minutes)}</span>
+              </span>
+              <span
+                className={s.stackBar}
+                style={{
+                  width: `${Math.round(project.share * 100)}%`,
+                  background: `rgb(var(--acc-ch-moon) / ${[85, 58, 42, 30, 20][index] ?? 20}%)`,
+                }}
+              />
+            </span>
+          ))}
+        </div>
+
+        <div className={s.tile} style={{ gap: 10 }}>
+          <span className={s.label}>FILES</span>
+          <span className={s.pair}>
+            <span className={s.pairAdded}>+{groupThousands(files.added)}</span>
+            <span className={s.pairRemoved}>−{groupThousands(files.removed)}</span>
+          </span>
+          <span className={s.barSplit}>
+            <span style={{ width: `${addedShare(files.added, files.removed)}%`, background: 'rgb(var(--acc-ch-mint) / 55%)' }} />
+            <span style={{ width: `${100 - addedShare(files.added, files.removed)}%`, background: 'rgb(var(--acc-ch-rose-4) / 45%)' }} />
+          </span>
+          <span className={s.foot}>
+            {groupThousands(files.touched)} files touched · {files.refused} {files.refused === 1 ? 'edit' : 'edits'} you turned down · biggest edit{' '}
+            {groupThousands(files.biggest)} lines
+          </span>
+          <span className={s.spaceAbove}>
+            <span className={s.percent}>{files.acceptRate === null ? '–' : `${files.acceptRate}%`}</span>
+            <span className={s.foot}>
+              {files.acceptRate === null ? 'no permission asked yet' : `of permission asks accepted · ${files.denied} denied`}
+            </span>
+          </span>
+        </div>
+
+        <div className={s.tile} style={{ gap: 10 }}>
+          <span className={s.label}>SESSIONS · MODELS · FORKS</span>
+          <div className={s.facts}>
+            <Fact label="Sessions" value={groupThousands(facts.sessions)} />
+            <Fact label="Turns" value={groupThousands(facts.turns)} />
+            <Fact label="Average turn" value={facts.averageTurnMs === null ? '–' : turnLength(facts.averageTurnMs)} />
+            <Fact label="Longest session" value={duration(facts.longestSessionMinutes)} />
+            <Fact label="Forks" value={groupThousands(facts.forks)} />
+            <Fact label="Deepest chain" value={String(facts.deepestChain)} />
+          </div>
+          <span className={s.barSplit}>
+            {facts.models.map((model, index) => (
+              <span
+                key={model.name}
+                style={{
+                  width: `${Math.round(model.share * 100)}%`,
+                  background: `rgb(${MODEL_PAINT[index % MODEL_PAINT.length]} / 60%)`,
+                }}
+              />
+            ))}
+          </span>
+          <span className={s.sentence}>
+            {facts.models.length === 0
+              ? 'no turns in this range'
+              : `${facts.models
+                  .slice(0, 3)
+                  .map((model) => `${model.name} ${Math.round(model.share * 100)}%`)
+                  .join(' · ')} · ${compactNumber(facts.tokens)} tokens, ${money(facts.cost)} on API prices`}
+          </span>
+        </div>
+      </div>
+
+      <div className={s.card} style={{ padding: '11px 14px 12px' }}>
+        <div className={s.labelRow}>
+          <span className={s.label}>EARNED LATELY</span>
+          <span className={s.labelSpace} />
+          <button type="button" className={`${s.link} ${s.labelNote}`} onClick={onAchievements}>
+            all {summary.total} achievements →
+          </button>
+        </div>
+        {recent.length === 0 ? (
+          <span className={s.foot}>Nothing yet - the first tiers come with the first hour and the first edit. Counting since {longDate(data.today >= dayOfSince(data) ? dayOfSince(data) : data.today)}.</span>
+        ) : (
+          <div className={s.recent}>
+            {recent.map((earned) => (
+              <span key={`${earned.item.id}-${earned.tier}`} className={s.recentCard} style={tierStyle(earned.tier)}>
+                <AchievementChip id={earned.item.id} />
+                <span className={s.recentText}>
+                  <span className={s.recentName}>
+                    {earned.item.name}
+                    {earned.item.spec.milestone ? '' : ` · ${ROMAN[earned.tier]}`}
+                  </span>
+                  <span className={s.recentNote} data-tooltip={earned.note}>
+                    {earned.note}
+                  </span>
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+const dayOfSince = (data: StatisticsData): string => {
+  const date = new Date(data.since)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+const addedShare = (added: number, removed: number): number => {
+  const total = added + removed
+  if (total === 0) return 50
+  return Math.round((added / total) * 100)
+}
+
+const MODEL_PAINT = ['var(--acc-ch-aqua)', 'var(--acc-ch-iris)', 'var(--acc-ch-moon)', 'var(--acc-ch-sand)']
+
+const toolPaint = (tool: ToolRow): string => {
+  switch (tool.tone) {
+    case 'edit':
+      return tool.name === 'Write' ? 'rgb(var(--acc-ch-moon) / 45%)' : 'rgb(var(--acc-ch-moon) / 70%)'
+    case 'command':
+      return 'rgb(var(--acc-ch-sand) / 65%)'
+    case 'agent':
+      return 'rgb(var(--acc-ch-iris) / 60%)'
+    case 'mcp':
+      return 'rgb(var(--acc-ch-aqua) / 60%)'
+    default:
+      return tool.name === 'Read' ? 'rgb(var(--acc-ch-mist) / 45%)' : 'rgb(var(--acc-ch-mist) / 38%)'
+  }
+}
+
+const Fact = ({ label, value }: { label: string; value: string }) => (
+  <span className={s.fact}>
+    <span className={s.factLabel}>{label}</span>
+    <span className={s.factValue}>{value}</span>
+  </span>
+)

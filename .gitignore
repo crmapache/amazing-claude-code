@@ -40,6 +40,13 @@ secrets/
 # Рабочие заметки и планы в корне: черновики для себя, не часть проекта.
 REMOTE-ACCESS-PLAN.md
 /REPLAY-STREAMING.md
+# Аудит безопасности удалённого доступа: живой документ с ещё не закрытыми дырами - где они в коде
+# и как ими воспользоваться. Репозиторий публичный, так что один `git add -A` превратил бы его в
+# опубликованную инструкцию по уже выпущенным сборкам. Лежит в корне и остаётся на виду, но попасть
+# в коммит не может.
+/SECURITY-REMOTE-CONTROL.md
+# Выгрузки ревью (`/code-review`, `/pr-review`) - рабочий список на один разговор.
+/REVIEW-*.md
 # The phone client is built separately and served by the relay rather than shipped in the plugin.
 webview/dist-mobile
 

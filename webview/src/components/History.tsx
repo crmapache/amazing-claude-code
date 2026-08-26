@@ -55,7 +55,7 @@ export const History = ({ conversations, onOpen }: HistoryProps) => {
 }
 
 const Entry = ({ entry, onOpen }: { entry: HistoryEntry; onOpen: (entry: HistoryEntry) => void }) => (
-  <button type="button" className={s.historyRow} onClick={() => onOpen(entry)} title={entry.id}>
+  <button type="button" className={s.historyRow} onClick={() => onOpen(entry)} data-tooltip={entry.id}>
     <span className={s.historyTitle}>{entry.title}</span>
     <span className={s.historyMeta}>
       {describeWhen(entry.updatedAt)} · {entry.messages} {entry.messages === 1 ? 'message' : 'messages'}

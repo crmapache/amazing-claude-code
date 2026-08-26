@@ -29,7 +29,7 @@ export const CopyButton = ({ text, className, title }: CopyButtonProps) => {
     <button
       type="button"
       className={className}
-      title={title}
+      data-tooltip={title}
       onClick={(event) => {
         // A code block lies inside the answer's card, which has click handlers of its own (selection,
         // the menu) - a press on the button must not reach them.

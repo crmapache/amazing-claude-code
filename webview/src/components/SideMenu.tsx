@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { useHoverTarget } from '../hooks/useHoverTarget'
 import { useWheelScroll } from '../hooks/useWheelScroll'
+import { STATISTICS_ICON } from '../stats/icons'
 import s from './sideMenu.module.css'
 
 /**
@@ -31,6 +32,8 @@ export interface RemoteSummary {
  */
 export interface MenuSummary {
   history: number | null
+  /** Achievements earned against all of them - "27/50". Empty until the figures arrive. */
+  statistics: string
   mcp: { connected: number; total: number } | null
   plugins: number | null
   sounds: string
@@ -45,6 +48,12 @@ interface SideMenuProps {
   screen: MenuScreen
   summary: MenuSummary
   onPick: (screen: MenuScreen) => void
+  /**
+   * The statistics are not a screen of the menu but a tab of the strip (see Header): the row here opens
+   * that tab and the menu closes behind it. A screen inside the menu would be 350 pixels wide, and a
+   * chart of a month wants the whole panel.
+   */
+  onOpenStatistics: () => void
   onBack: () => void
   onClose: () => void
   /** The screen itself, built by the caller - the frame knows nothing about what is inside. */
@@ -95,6 +104,11 @@ const Chevron = ({ className }: { className: string }) => (
 )
 
 const ICONS: Record<string, ReactNode> = {
+  statistics: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d={STATISTICS_ICON} />
+    </svg>
+  ),
   history: (
     <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="8" cy="8" r="5.6" />
@@ -157,7 +171,7 @@ const ICONS: Record<string, ReactNode> = {
  * The frame stays mounted while the panel is shut - that is what lets it slide rather than appear. What
  * costs something to render (the screens themselves) the caller withholds until there is a reason.
  */
-export const SideMenu = ({ open, screen, summary, onPick, onBack, onClose, children }: SideMenuProps) => {
+export const SideMenu = ({ open, screen, summary, onPick, onOpenStatistics, onBack, onClose, children }: SideMenuProps) => {
   const sheet = useRef<HTMLElement>(null)
   const root = useRef<HTMLDivElement>(null)
   const detail = useRef<HTMLDivElement>(null)
@@ -258,6 +272,14 @@ export const SideMenu = ({ open, screen, summary, onPick, onBack, onClose, child
                 sub="Past conversations of this project"
                 value={summary.history === null ? '' : String(summary.history)}
                 onClick={() => onPick('history')}
+              />
+              <Row
+                icon="statistics"
+                iconClass={s.rowIconStatistics}
+                label="Statistics"
+                sub="Hours, habits, achievements"
+                value={summary.statistics}
+                onClick={onOpenStatistics}
               />
               <Row
                 icon="mcp"

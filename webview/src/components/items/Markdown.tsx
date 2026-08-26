@@ -228,7 +228,7 @@ const InlineCode = ({ text, reveal }: { text: string; reveal: boolean }) => {
   return (
     <span
       className={copied ? `${s.code} ${s.codeCopied}` : s.code}
-      title={copied ? 'Copied' : 'Click to copy'}
+      data-tooltip={copied ? 'Copied' : 'Click to copy'}
       onClick={() => {
         if (window.getSelection()?.isCollapsed === false) return
         void copyToClipboard(text).then((ok) => {

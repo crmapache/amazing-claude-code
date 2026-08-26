@@ -34,10 +34,29 @@ export interface MobileFeed {
    * The uuid of the oldest message on screen - Claude Code's own transcript stamps every line with one,
    * and it is what a request for an earlier page is anchored on (see historyPage below): the journal's
    * catch-up and the transcript on disk share no numbering of their own, so a position would drift the
-   * moment the two diverge, which is on the very first status message. Null until the first agent event
-   * has arrived - there is nothing to anchor on before that.
+   * moment the two diverge, which is on the very first status message. Null until the first message the
+   * transcript actually keeps has arrived - there is nothing to anchor on before that.
    */
   oldestEventUuid: string | null
+  /**
+   * Whether the conversation's own beginning has been reached - there is nothing further back to ask for.
+   *
+   * Kept apart from [oldestEventUuid] rather than read off it. The guard against applying a page twice
+   * compares the answer with the boundary standing on screen, and that boundary moves with every page
+   * applied - except the last one, where there is no new boundary to move to. It then stopped
+   * discriminating: a person who taps "load earlier", loses the frame, taps again and receives both
+   * answers saw the first messages of the conversation appear twice. Nor can the boundary simply be
+   * cleared instead, because an empty one means "nothing has arrived yet", and the next live message
+   * would take it for itself - offering to load what is already on screen.
+   */
+  reachedStart: boolean
+  /**
+   * How many answers about earlier pages have arrived. The screen unlocks its "load more" by this rather
+   * than by the feed growing (see Thread): a page that came back empty - the conversation's beginning
+   * reached, a boundary that answered nothing - is an answer too, and leaving the button dead after it
+   * looked exactly like the request being ignored.
+   */
+  earlierPages: number
 }
 
 export const emptyFeed = (): MobileFeed => ({
@@ -47,6 +66,8 @@ export const emptyFeed = (): MobileFeed => ({
   loaded: false,
   pending: [],
   oldestEventUuid: null,
+  reachedStart: false,
+  earlierPages: 0,
 })
 
 /**
@@ -91,6 +112,18 @@ export const tickFeed = (feed: MobileFeed, now: number): MobileFeed => {
  * measured in the IDE's time, and a single moment let in off the local clock is a duration counted
  * across two of them.
  */
+/**
+ * Whether Claude Code's transcript keeps this event, and so whether its uuid can be asked for a page
+ * older than it (see ClaudeHistory.replayable).
+ *
+ * The stream carries far more than the transcript does - hook reports, status changes, the permission
+ * traffic - and anchoring on one of those meant asking for "everything before a line that is not in the
+ * file". The IDE answers that with the file's own last page, which is what the phone already had: a tap
+ * on "load more" brought back the same messages a second time.
+ */
+const keptOnDisk = (event: { type?: string; subtype?: string }): boolean =>
+  event.type === 'user' || event.type === 'assistant' || event.subtype === 'local_command'
+
 export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: number = Date.now()): MobileFeed => {
   const at = message.at ?? now
   const seq = message.seq ?? feed.seq
@@ -137,25 +170,35 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
 
     case 'agent': {
       const applied = collect({ kind: 'agent', event: message.event, replay: message.replay })
-      // The very first agent event this feed has ever seen is, at that moment, the oldest one there is -
-      // set once and left alone from then on: everything arriving after it, live, is by definition newer,
-      // and only a historyPage response (see below) is allowed to push the boundary further back.
+      // The very first event this feed has ever seen is, at that moment, the oldest one there is - set
+      // once and left alone from then on: everything arriving after it, live, is by definition newer, and
+      // only a historyPage response (see below) is allowed to push the boundary further back.
       if (applied.oldestEventUuid !== null) return applied
+      if (!keptOnDisk(message.event)) return applied
       const uuid = (message.event as { uuid?: unknown }).uuid
       return typeof uuid === 'string' ? { ...applied, oldestEventUuid: uuid } : applied
     }
 
     case 'historyPage': {
-      let pageState = initialPanelState
+      // The answer arrived, whatever is in it - the button unlocks on this alone (see MobileFeed.earlierPages).
+      const answered = { ...feed, earlierPages: feed.earlierPages + 1 }
+
+      // A page answers the boundary it was asked for, and only the boundary standing on screen right now
+      // is worth applying: when a frame goes missing and the person taps again, both answers can arrive,
+      // and the second one would put the same messages in a second time.
+      if (message.before !== undefined && message.before !== feed.oldestEventUuid) return answered
+
+      // The beginning has already been reached, so this answer is a second copy of the page that reached
+      // it: the boundary above stopped moving there and cannot tell the two apart (see reachedStart).
+      if (feed.reachedStart) return answered
+
+      // Numbered on from what is on screen rather than from zero: the identifiers are positions in a feed
+      // (see push in panelState), so a page built in a state of its own comes back with the very same
+      // ones the screen is already using - and two cards under one key is a page that half disappears.
+      let pageState: PanelState = { ...initialPanelState, seq: feed.state.seq }
       for (const event of message.entries) {
         pageState = reducePanel(pageState, { kind: 'agent', event, replay: true }, at)
       }
-
-      // Defensive rather than expected: the uuid boundary this page was fetched with should not overlap
-      // what is already on screen, but a stale request racing a fresher one is cheaper to filter here
-      // than to reason your way out of.
-      const existingIds = new Set(feed.state.items.map((item) => item.id))
-      const older = pageState.items.filter((item) => !existingIds.has(item.id))
 
       // The placeholder is rebuilt rather than kept: it has to move to stand above whatever was just
       // loaded, and it disappears the moment there is nothing further back to fetch (no cursor).
@@ -165,9 +208,10 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
         : []
 
       return {
-        ...feed,
+        ...answered,
         oldestEventUuid: message.cursor ?? feed.oldestEventUuid,
-        state: { ...feed.state, items: [...checkpoint, ...older, ...rest] },
+        reachedStart: !message.cursor,
+        state: { ...feed.state, seq: pageState.seq, items: [...checkpoint, ...pageState.items, ...rest] },
       }
     }
 
@@ -199,6 +243,19 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
 
     case 'permissionResolved':
       return collect({ kind: 'permissionResolved', id: message.id, decision: message.decision })
+
+    // A model chosen by hand - at the desk, or as the model a conversation of one's own is started on.
+    // The phone has no model button, so there is nothing here for it to show; what it needs is to know
+    // that the change was somebody's doing. Without this the tab's memory of what the stream last named
+    // stays on the old model, and the first answer signed with the new one is announced in the feed as a
+    // swap made behind one's back (see noteStreamModel).
+    case 'model':
+      return collect({ kind: 'modelApplied', model: message.model, error: message.error })
+
+    // What this conversation is waiting to say. Held and fired by the IDE, so both screens show the same
+    // list and a phone put back in a pocket does not take it along (see SessionQueue.kt).
+    case 'queue':
+      return collect({ kind: 'queue', items: message.items })
 
     case 'context':
       return collect({ kind: 'context', used: message.used, max: message.max })

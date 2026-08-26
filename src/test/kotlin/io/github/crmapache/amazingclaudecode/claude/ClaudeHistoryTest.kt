@@ -378,6 +378,62 @@ class ClaudeHistoryTest {
         assertEquals(null, page.cursor)
     }
 
+    /**
+     * The limit that decides whether a phone sees anything at all. A page travels in one frame capped at
+     * 256 KB, and an oversized frame is dropped by the relay with a line in its log and nothing else - so
+     * a working day's worth of file reads made "load more" a button that did nothing, every time.
+     */
+    @Test
+    fun `a page stops at the size limit rather than at the message count`() {
+        val heavy = (1..10).map {
+            """{"type":"user","uuid":"u$it","message":{"role":"user","content":"${"x".repeat(400)}"}}"""
+        }
+
+        // Room for three of them exactly, out of ten.
+        val budget = heavy.takeLast(3).sumOf { it.length }
+        val page = ClaudeHistory.pageOf(heavy, before = null, pageSize = 10, maxChars = budget)
+
+        // The end of the conversation is what survives a tight budget - it is the part standing right
+        // above what is already on screen.
+        assertEquals(listOf("u8", "u9", "u10"), page.lines.map { uuidIn(it) })
+        // And there is more behind it, said out loud - otherwise the placeholder would disappear as
+        // though the conversation began here.
+        assertEquals("u8", page.cursor)
+    }
+
+    // One message on its own may be over any budget - a file read whole. Returning nothing at all in that
+    // case would leave the cursor where it was and the button dead, which is the very thing the budget is
+    // there to prevent.
+    @Test
+    fun `a single outsized message is still handed over`() {
+        val lines = listOf(
+            """{"type":"user","uuid":"u1","message":{"role":"user","content":"small"}}""",
+            """{"type":"user","uuid":"u2","message":{"role":"user","content":"${"x".repeat(5000)}"}}""",
+        )
+
+        val page = ClaudeHistory.pageOf(lines, before = null, pageSize = 10, maxChars = 100)
+
+        assertEquals(listOf("u2"), page.lines.map { uuidIn(it) })
+        assertEquals("u2", page.cursor)
+    }
+
+    // Consecutive pages must still tile exactly when it is the budget rather than the count that ends
+    // them: a phone scrolling up relies on the cursor picking up precisely where the page stopped.
+    @Test
+    fun `pages cut by the size limit tile without a gap`() {
+        val heavy = (1..6).map {
+            """{"type":"user","uuid":"u$it","message":{"role":"user","content":"${"x".repeat(400)}"}}"""
+        }
+
+        val budget = heavy.first().length * 3
+        val first = ClaudeHistory.pageOf(heavy, before = null, pageSize = 10, maxChars = budget)
+        val second = ClaudeHistory.pageOf(heavy, before = first.cursor, pageSize = 10, maxChars = budget)
+
+        assertEquals(listOf("u4", "u5", "u6"), first.lines.map { uuidIn(it) })
+        assertEquals(listOf("u1", "u2", "u3"), second.lines.map { uuidIn(it) })
+        assertNull(second.cursor)
+    }
+
     // A boundary that does not exist in this file - a stale uuid from before a resume, say - is treated
     // as "no boundary at all" rather than as an empty page: see the reasoning on ClaudeHistory.page.
     @Test
@@ -387,6 +443,54 @@ class ClaudeHistoryTest {
         val page = ClaudeHistory.pageOf(all, before = "does-not-exist", pageSize = 2)
 
         assertEquals(listOf("u2", "u3"), page.lines.map { uuidIn(it) })
+    }
+
+    /**
+     * The rebuilt line has to keep the transcript's own name for it. A phone asks for the page above what
+     * it already has by naming its topmost line, and an anchor that matches nothing in the file was
+     * answered with the end of the conversation - what was on the screen already.
+     */
+    @Test
+    fun `a command's output keeps the name the transcript gave the line`() {
+        val lines = sequenceOf(
+            """{"type":"system","subtype":"local_command","uuid":"sys-7","content":"<local-command-stdout>3 findings</local-command-stdout>"}""",
+        )
+
+        assertEquals("sys-7", uuidIn(ClaudeHistory.replayable(lines).first()))
+    }
+
+    /**
+     * A page has to begin on a line the next request can name. One that could not be named was handed
+     * over as "there is nothing further back": the button disappeared, and everything above it in a long
+     * conversation became unreachable. The boundary falls where the budget puts it, so any line could be
+     * the one.
+     */
+    @Test
+    fun `a page reaches past a line that has no name of its own`() {
+        val all = listOf(
+            """{"type":"user","uuid":"u0","message":{"role":"user","content":"m0"}}""",
+            """{"type":"user","uuid":"u1","message":{"role":"user","content":"m1"}}""",
+            """{"type":"assistant","message":{"content":[{"type":"text","text":"nameless"}]}}""",
+            """{"type":"user","uuid":"u3","message":{"role":"user","content":"m3"}}""",
+            """{"type":"user","uuid":"u4","message":{"role":"user","content":"m4"}}""",
+        )
+
+        val page = ClaudeHistory.pageOf(all, before = "u4", pageSize = 2)
+
+        // The nameless line comes along rather than standing at the head of the page, so the cursor is a
+        // real one and there is still a page above this to ask for.
+        assertEquals("u1", page.cursor)
+        assertEquals(3, page.lines.size)
+    }
+
+    @Test
+    fun `a page that reaches the beginning still says there is nothing further back`() {
+        val all = listOf(
+            """{"type":"assistant","message":{"content":[{"type":"text","text":"nameless"}]}}""",
+            """{"type":"user","uuid":"u2","message":{"role":"user","content":"m2"}}""",
+        )
+
+        assertNull(ClaudeHistory.pageOf(all, before = "u2", pageSize = 5).cursor)
     }
 
     private fun uuidIn(line: String): String? =

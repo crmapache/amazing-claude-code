@@ -1,5 +1,6 @@
 package io.github.crmapache.amazingclaudecode.claude
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessions.Companion.MAIN_SESSION
 import io.github.crmapache.amazingclaudecode.remote.RemoteAgent
@@ -76,7 +77,43 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
              */
             "ready" -> hub.attach(clientId, seen(payload))
 
-            "prompt" -> hub.prompt(sessionId, field("text"), images(payload), echo = echo(payload))
+            "prompt" -> hub.prompt(sessionId, field("text"), images(payload), echo = echo(payload), remote = !local)
+
+            /**
+             * A message written while the agent was busy. It waits beside the conversation rather than
+             * in the window that typed it, so a phone put back in a pocket does not take it along (see
+             * SessionQueue).
+             */
+            "queuePrompt" -> hub.queuePrompt(
+                sessionId,
+                id = field("id"),
+                text = field("text"),
+                attach = field("attach"),
+                images = images(payload),
+                echo = echo(payload),
+                remote = !local,
+            )
+
+            "unqueuePrompt" -> hub.unqueuePrompt(sessionId, field("id"))
+
+            "reorderQueue" -> hub.reorderQueue(
+                sessionId,
+                payload["ids"]?.jsonArray.orEmpty().mapNotNull { it.jsonPrimitive.contentOrNull },
+            )
+
+            /**
+             * The statistics tab's figures - an answer to whoever asked, like the history: they are about
+             * the machine rather than about any one conversation, so a subscription has nowhere to put
+             * them. Built off the interface thread: a year of days is a fair amount of JSON.
+             */
+            "statistics" -> ApplicationManager.getApplication().executeOnPooledThread {
+                runCatching { hub.emitTo(clientId, hub.stats.payload()) }
+                    .onFailure { thisLogger().warn("Could not build the statistics", it) }
+            }
+
+            // What only the interface can count - a hand on the keyboard, the chips in a message, the
+            // heart pressed - reported by it (see the stat message in protocol.ts).
+            "stat" -> hub.stats.noteClientEvent(payload)
 
             // A command through "!" - the panel's bash mode.
             "bash" -> hub.catalog.runShellCommand(clientId, sessionId, field("id"), field("command"))

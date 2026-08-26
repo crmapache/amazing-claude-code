@@ -102,17 +102,22 @@ export const resolvePanelModel = (
 }
 
 /**
- * The model a conversation moved to not by our doing.
+ * The model a conversation is genuinely working on, when it is not the one the setting names.
  *
- * The agent can change it itself, mid-turn: that is how the guard that moves a turn to another model
- * fires ("Switched to Opus 4.8"). From then on it works on that one, and the panel is obliged to say so
- * - otherwise it insists the conversation runs on one model while it runs on another.
+ * The setting is one for every tab and project, while a model applies to the tab it was chosen in (see
+ * ClaudeSessionHub.changeModel), and the agent may move a tab to another model itself mid-turn. Either
+ * way the menu is obliged to tick what this conversation is actually busy with rather than what the
+ * setting says (see modelMenu).
+ *
+ * It answers about the model alone and says nothing about whose doing the discrepancy is: the accent on
+ * the MODEL button is drawn by the tab's own memory of a swap instead (see PanelState.switchedFrom) -
+ * asking this question for it named a model chosen by hand in a neighbouring tab as the agent's doing.
  *
  * Empty when the model in force matches the chosen one or there is nothing to compare against: without
  * the catalogue it is unknown what the choice itself expands into ("default" - which one is that?), and
  * any discrepancy would be an invention.
  */
-export const switchedModel = (
+export const modelInForce = (
   models: ModelInfo[] | null,
   selected: string,
   actual: string | undefined,

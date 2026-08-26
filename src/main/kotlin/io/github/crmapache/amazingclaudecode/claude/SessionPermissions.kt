@@ -172,6 +172,7 @@ internal class SessionPermissions(private val hub: ClaudeSessionHub) {
             remember = decision == "always",
         )
 
+        hub.stats.notePermission(channel.toolName, decision)
         resolved(channel.sessionId, id, decision)
     }
 
@@ -221,6 +222,7 @@ internal class SessionPermissions(private val hub: ClaudeSessionHub) {
             hub.changeMode(pending.sessionId, if (local) PermissionModes.BYPASS else PermissionModes.ACCEPT_EDITS)
         }
 
+        hub.stats.notePlan(decision)
         notePending(pending.sessionId)
         hub.broadcast(
             pending.sessionId,

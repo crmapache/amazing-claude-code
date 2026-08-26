@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentStatus, AgentUsage } from '../protocol'
+import type { AgentEvent, AgentStatus, AgentUsage, QueuedMessage } from '../protocol'
 import type { BackgroundTask, FeedItem, TodoEntry, UserToken } from './types'
 
 /**
@@ -66,6 +66,21 @@ export interface PanelState {
    * arrive instantly, and it can genuinely refuse.
    */
   pendingModel?: string
+
+  /**
+   * The model the agent moved this conversation OFF by itself, when it did - and nothing while nobody
+   * has moved it.
+   *
+   * This is what the accent on the MODEL button is drawn by (see Selectors). It used to be worked out by
+   * comparing the running model against the chosen one, and that comparison answers a different
+   * question: the choice is one setting for every tab and project (see ClaudePreferences), while a model
+   * applies to the tab it was chosen in. Two tabs on two models - an ordinary thing - and the one whose
+   * model was not chosen last wore the accent, as though the agent had wandered off on its own.
+   *
+   * Cleared as soon as the person chooses a model for this tab themselves: whatever the agent did before
+   * that has been answered.
+   */
+  switchedFrom?: string
   /**
    * The model the stream itself has named last - the full identifier out of an answer's signature
    * ("claude-fable-5"), never a choice ("fable", "default").
@@ -122,6 +137,15 @@ export interface PanelState {
   pausedMs: number
   /** When the current wait for a person's decision began - undefined when we are not waiting. */
   waitStartedAt?: number
+  /**
+   * What was written while the agent was busy and will be said the moment it comes free, in order.
+   *
+   * Part of the conversation rather than of the window that typed it: the IDE holds the queue and fires
+   * it, and every client is told the list as it stands (see SessionQueue.kt). Here rather than beside
+   * the draft for the same reason the feed is here - two screens show it, and a second copy of it would
+   * disagree with the first the moment either of them changed anything.
+   */
+  queue: QueuedMessage[]
   /**
    * A subagent's card by the tool_use_id of the Task/Agent call that spawned it - out of the task_started
    * system event. The subagent's own messages carry only a tool_use_id in parent_tool_use_id, while the
@@ -251,6 +275,8 @@ export type PanelAction =
   | { kind: 'modelRequested'; model: string }
   /** The model now in force: on the agent's refusal the previous one rather than the chosen one. */
   | { kind: 'modelApplied'; model: string; error?: string }
+  /** The queue as the IDE now holds it - the whole list, from whichever window last changed it. */
+  | { kind: 'queue'; items: QueuedMessage[] }
   /** A mark from the panel in the feed: that this conversation was branched off another, for instance. */
   | { kind: 'checkpoint'; chip: string; target: string }
   /** Once a second it pulls up the duration of the calls that have not finished. */
@@ -297,6 +323,7 @@ export const initialPanelState: PanelState = {
   tasks: {},
   pendingTasks: {},
   pausedMs: 0,
+  queue: [],
 }
 
 /** A new item in the feed, with the next number of its own. */

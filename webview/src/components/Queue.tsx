@@ -1,26 +1,15 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { withoutShellText } from '../feed/bash'
-import type { UserToken } from '../feed/types'
+import type { QueuedMessage } from '../protocol'
 import s from './composer.module.css'
 
-export interface QueuedPrompt {
-  id: string
-  text: string
-  attach: string
-  /**
-   * The field's contents as they were typed. The text above is already a finished string for the agent,
-   * and the attachments cannot be recovered from it: the panel counts by them how many images have gone
-   * out in this session, and without them the numbering of the next ones would start afresh as soon as a
-   * message went out through the queue. The same text carries bash-mode output the person never typed
-   * into the field - it has no place on screen in the queue's row (see withoutShellText).
-   */
-  tokens: UserToken[]
-  /** Images from the clipboard that will travel along with the text when it is sent. */
-  images: { mediaType: string; data: string }[]
-}
-
 interface QueueProps {
-  items: QueuedPrompt[]
+  /**
+   * The list as the IDE holds it - see QueuedMessage. What the message was typed with and the bytes of
+   * anything attached to it stay there: this is a row, and a row needs the text, the count beside it, and
+   * a name to take it back out by.
+   */
+  items: QueuedMessage[]
   onReorder: (from: number, to: number) => void
   onRemove: (id: string) => void
 }

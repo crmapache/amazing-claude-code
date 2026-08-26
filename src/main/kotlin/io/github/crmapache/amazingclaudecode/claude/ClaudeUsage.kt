@@ -111,6 +111,20 @@ internal object ClaudeUsage {
             return snapshot.copy(session = session, week = week)
         }
 
+        /**
+         * Everything seen is thrown away: the shares belonged to an account that is no longer signed in.
+         *
+         * Without this the memory works exactly against us after a switch. A weekly window the new
+         * account has not opened yet arrives with no reset time at all, and the rule that saves a frozen
+         * answer from wiping a known window - "a share without a window does not override" - keeps the
+         * previous account's percentage on the ring for as long as its old reset time is still ahead.
+         */
+        @Synchronized
+        fun forget() {
+            session = null
+            week = null
+        }
+
         private fun fold(known: Window?, incoming: Window?, now: Instant): Window? {
             // The known window, but only while it is the present one: at the moment of the reset its
             // share stops meaning anything, even if there is no new data.

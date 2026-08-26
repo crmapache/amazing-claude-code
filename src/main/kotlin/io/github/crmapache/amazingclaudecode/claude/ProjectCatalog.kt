@@ -275,6 +275,9 @@ internal class ProjectCatalog(
                     put("type", "historyPage")
                     put("sessionId", sessionId)
                     putJsonArray("entries") {}
+                    // The boundary is echoed even here: the reader tells one page from another by it, and
+                    // an answer that names none looks to it like an answer to somebody else's question.
+                    if (before != null) put("before", before)
                 }.toString(),
             )
             return
@@ -292,6 +295,7 @@ internal class ProjectCatalog(
                         for (line in page.lines) add(Json.parseToJsonElement(line))
                     }
                     if (page.cursor != null) put("cursor", page.cursor)
+                    if (before != null) put("before", before)
                 }.toString(),
             )
         }
@@ -475,6 +479,10 @@ internal class ProjectCatalog(
     private fun sendMcpServers(status: JsonObject) {
         val servers = status.items("mcpServers") ?: JsonArray(emptyList())
 
+        hub.stats.noteMcp(
+            servers.count { (it as? JsonObject)?.get("status")?.jsonPrimitive?.contentOrNull == "connected" },
+        )
+
         hub.broadcastProject(
             buildJsonObject {
                 put("type", "mcpServers")
@@ -582,6 +590,8 @@ internal class ProjectCatalog(
     }
 
     private fun sendPlugins(installed: List<InstalledPlugin>, available: List<AvailablePlugin>) {
+        hub.stats.notePlugins(installed.count { it.enabled })
+
         hub.broadcastProject(
             buildJsonObject {
                 put("type", "plugins")

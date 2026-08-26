@@ -1,11 +1,15 @@
 import { useState } from 'react'
+import type { CardState } from '../../hooks/useCardState'
 import type { PanelState } from '../../feed/panelState'
-import type { AskItem, FeedItem, PermItem, PlanItem, TextItem } from '../../feed/types'
+import { awaiting } from '../../feed/streamStatus'
+import type { AskItem, AskQuestion, FeedItem, PermItem, PlanItem, TextItem } from '../../feed/types'
 import { Back } from './Back'
 import m from '../mobile.module.css'
 
 interface DecisionProps {
   feed: PanelState
+  /** Which plans have been decided and which questions answered - kept by the application, see mobile/App. */
+  cards: CardState
   title: string
   project: string
   onDecide: (id: string, decision: 'once' | 'deny') => void
@@ -28,16 +32,55 @@ interface DecisionProps {
  * granting that from a sofa is a different act from unblocking one step - the plugin refuses it over
  * the wire as well (see RemoteCommands.soften).
  */
-export const Decision = ({ feed, title, project, onDecide, onPlan, onAsk, onOpenThread, onBack }: DecisionProps) => {
+export const Decision = ({
+  feed,
+  cards,
+  title,
+  project,
+  onDecide,
+  onPlan,
+  onAsk,
+  onOpenThread,
+  onBack,
+}: DecisionProps) => {
   const [expanded, setExpanded] = useState(false)
 
-  const permission = [...feed.items].reverse().find(
-    (item): item is PermItem => item.kind === 'perm' && item.decision === null,
-  )
-  const plan = [...feed.items].reverse().find((item): item is PlanItem => item.kind === 'plan')
-  const ask = [...feed.items].reverse().find((item): item is AskItem => item.kind === 'ask')
+  /**
+   * The answers gathered so far, by the question they answer.
+   *
+   * A call may carry several questions, and they are answered one after another rather than all at once:
+   * a phone has room for one question's options at thumb size and no more. The answer travels only when
+   * the last of them has been picked - the agent is given one reply to its call, exactly as at the desk.
+   */
+  const [answers, setAnswers] = useState<Record<string, string>>({})
+
+  /**
+   * What is holding the turn, by the shared rule rather than "the last one of its kind in the feed".
+   *
+   * Taken from the pending items alone: a plan decided half an hour ago, or a question already answered,
+   * stays in the feed forever, and picking by kind meant that the first plan a conversation ever showed
+   * masked every question that came after it - this screen offered "Approve & run" over a plan nobody
+   * was being asked about, and the live question could not be reached at all.
+   */
+  const waiting = awaiting(feed.items, cards)
+  const permission: PermItem | undefined = waiting?.kind === 'perm' ? waiting : undefined
+  const plan: PlanItem | undefined = waiting?.kind === 'plan' ? waiting : undefined
+  const ask: AskItem | undefined = waiting?.kind === 'ask' ? waiting : undefined
+
+  const question: AskQuestion | undefined = ask?.questions.find((one) => answers[one.title] === undefined)
 
   const doing = lastWords(feed.items)
+
+  /** One question answered. The whole call is answered once nothing is left unanswered. */
+  const pick = (item: AskItem, one: AskQuestion, label: string) => {
+    const gathered = { ...answers, [one.title]: label }
+    setAnswers(gathered)
+
+    if (item.questions.some((other) => gathered[other.title] === undefined)) return
+
+    cards.answerAsk(item.id)
+    onAsk(item.id, gathered, Object.values(gathered).join(', '))
+  }
 
   return (
     <>
@@ -67,10 +110,25 @@ export const Decision = ({ feed, title, project, onDecide, onPlan, onAsk, onOpen
           </>
         )}
 
-        {!permission && plan && <h1 className={m.decisionVerb}>A plan is waiting</h1>}
-        {!permission && !plan && ask && <h1 className={m.decisionVerb}>{ask.questions[0]?.title}</h1>}
+        {plan && <h1 className={m.decisionVerb}>A plan is waiting</h1>}
 
-        {!permission && !plan && !ask && (
+        {/* The question in full rather than its heading alone: what an option means is in the line under
+            it, and choosing between two labels without them is guessing. When a call asks several, the
+            count says how far along this is - the footer only ever holds one question's options. */}
+        {ask && question && (
+          <>
+            <h1 className={m.decisionVerb}>{question.title}</h1>
+            {question.hint && <p className={m.decisionTarget}>{question.hint}</p>}
+            {ask.questions.length > 1 && (
+              <p className={m.decisionContext}>
+                Question {ask.questions.findIndex((one) => one.title === question.title) + 1} of{' '}
+                {ask.questions.length}
+              </p>
+            )}
+          </>
+        )}
+
+        {!waiting && (
           <p className={m.empty}>Nothing is waiting for you here any more.</p>
         )}
 
@@ -95,7 +153,7 @@ export const Decision = ({ feed, title, project, onDecide, onPlan, onAsk, onOpen
           </>
         )}
 
-        {!permission && plan && (
+        {plan && (
           <>
             <button type="button" className={m.buttonPrimary} onClick={() => onPlan(plan.id, 'approve')}>
               Approve &amp; run
@@ -106,18 +164,17 @@ export const Decision = ({ feed, title, project, onDecide, onPlan, onAsk, onOpen
           </>
         )}
 
-        {!permission && !plan && ask && (
+        {ask && question && (
           <>
-            {(ask.questions[0]?.options ?? []).map((option) => (
+            {question.options.map((option) => (
               <button
                 key={option.label}
                 type="button"
-                className={m.buttonPrimary}
-                onClick={() =>
-                  onAsk(ask.id, { [ask.questions[0]?.title ?? '']: option.label }, option.label)
-                }
+                className={m.buttonOption}
+                onClick={() => pick(ask, question, option.label)}
               >
-                {option.label}
+                <span className={m.buttonOptionLabel}>{option.label}</span>
+                {option.sub && <span className={m.buttonOptionHint}>{option.sub}</span>}
               </button>
             ))}
           </>

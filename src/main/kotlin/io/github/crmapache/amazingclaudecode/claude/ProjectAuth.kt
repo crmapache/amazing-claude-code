@@ -1,7 +1,9 @@
 package io.github.crmapache.amazingclaudecode.claude
 
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
 import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
@@ -23,6 +25,12 @@ internal class ProjectAuth(
     private val hub: ClaudeSessionHub,
     /** What to do once a sign-in is confirmed - the usage and the model catalogue wait on it. */
     private val onSignedIn: () -> Unit,
+    /**
+     * The sign-in has moved to another account. Everything counted about the subscription was about the
+     * previous one and has to be thrown away rather than merged with what the new one says (see
+     * ProjectUsage.forget).
+     */
+    private val onAccountChanged: () -> Unit = {},
 ) {
 
     /**
@@ -36,6 +44,14 @@ internal class ProjectAuth(
     /** Polling of the sign-in state while the user goes through it in the terminal. */
     private var polling: ScheduledFuture<*>? = null
 
+    /**
+     * The account last named by the CLI - what a fresh answer is compared against (see
+     * [ClaudeAuth.switchedAccount]). Kept here rather than in the usage itself: the sign-in is asked
+     * about in one place, and the figures are only one of the things that belong to an account.
+     */
+    @Volatile
+    private var account = ""
+
     /** Which outcome the polling is waiting for: signed in, or on the contrary signed out. */
     @Volatile
     private var awaited: Boolean? = null
@@ -45,8 +61,16 @@ internal class ProjectAuth(
         ApplicationManager.getApplication().executeOnPooledThread {
             val status = ClaudeAuth.status()
 
+            val before = loggedIn
             loggedIn = status.loggedIn
             send(status)
+
+            // Before anything is asked of the new account: what is told about the switch clears the
+            // memory of the previous one, and a fresh answer arriving into an uncleared memory would be
+            // merged with somebody else's figures instead of replacing them.
+            val switched = ClaudeAuth.switchedAccount(account, status)
+            if (status.identity.isNotEmpty()) account = status.identity
+            if (switched) onAccountChanged()
 
             if (status.loggedIn == awaited) {
                 awaited = null
@@ -56,7 +80,13 @@ internal class ProjectAuth(
 
             // The model catalogue comes only after a confirmed sign-in: without one the CLI answers not
             // with a list but with "you are not signed in".
-            if (status.loggedIn) onSignedIn()
+            //
+            // On the transition rather than on the state, because what hangs on this is a one-off start:
+            // the limits asked for past their own threshold, and every transcript on disk read again to
+            // count the day's tokens. The round below watches for an account switched in a terminal and
+            // asks this same question every few minutes - answering "signed in" each time set the whole
+            // start going again, for every open project, for as long as the panel stayed open.
+            if (status.loggedIn && (!before || switched)) onSignedIn()
         }
     }
 
@@ -77,6 +107,27 @@ internal class ProjectAuth(
 
     fun stopPolling() {
         polling?.cancel(false)
+    }
+
+    /**
+     * The round that notices an account switched past the panel.
+     *
+     * Signing in and out from the panel is watched by [poll] - there the answer is awaited within
+     * seconds. But the same switch can be made in a terminal, and then nobody tells the panel at all:
+     * until now it went on showing the previous account's usage rings for the rest of the day.
+     *
+     * The round is rare and only while someone is watching: each turn of it starts a CLI process, and
+     * without a person in front of the panel there is nothing for the answer to change.
+     */
+    fun scheduleUpdates(parentDisposable: Disposable) {
+        val watch = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
+            { if (hub.hasClients()) check() },
+            ACCOUNT_PERIOD_MINUTES,
+            ACCOUNT_PERIOD_MINUTES,
+            TimeUnit.MINUTES,
+        )
+
+        Disposer.register(parentDisposable) { watch.cancel(false) }
     }
 
     /**
@@ -165,5 +216,8 @@ internal class ProjectAuth(
 
         const val POLL_SECONDS = 3L
         const val POLL_LIMIT_MINUTES = 10L
+
+        /** How often the sign-in is re-checked by itself - see [scheduleUpdates]. */
+        const val ACCOUNT_PERIOD_MINUTES = 5L
     }
 }
