@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.7.28] - 2026-08-26
+
+- Changed: on a phone each of the two limit rings carries its percentage beside it, exactly as the panel's own rings do. A ring says "filling up" at a glance, but "how much" is what one looks down at that row for, and the figure used to be a tap away in the limits sheet - a tap to read three characters. It stands in the ring's own pace colour, in digits of one width so an update cannot jerk the branch along the row. The two rings that have nothing to say keep no figure: one burning because the work is being billed past the plan is stuck at a hundred, and a window nothing is known about yet keeps its empty track rather than an honest-looking "0%". Behind the tap stays what a phone has no hover to show - which limit this is, and how long until it resets.
+- Changed: the heart at the end of the model/effort/mode row is a little wider than it is tall. As a square its frame sat too close to the heart's own outline for the two to read as separate things.
+
 ## [0.7.27] - 2026-08-26
 
 - Fixed: the panel put up a red "your 5-hour limit is used up" while the agent carried on working without a pause, so the one alarm that should be trusted read as noise. A used-up limit is not the same as a halt, and Claude Code knows three ways it is not: with extra usage the requests go through and are billed on top of the plan, during the grace period the step under way is allowed to finish, and a signal whose window has already reset describes a window that no longer exists. The panel read none of that and called every one of them a breakage. Now each is what it is. Work being paid for past the plan says so, quietly, and stays out of the way. A genuine stop is not an error either - nothing is broken and there is nothing to fix - so it reads as waiting and says until when, with the time counting down, and takes itself off the moment the window resets. The sound and the phone's notification are kept for that last case alone.
