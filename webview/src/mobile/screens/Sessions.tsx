@@ -13,6 +13,9 @@ export interface SessionEntry {
   titleSource: string
   status: string
   awaitsYou: boolean
+  /** Work in this one has been finished at least once, and its process died under it - see ChatRow. */
+  worked: boolean
+  crashed: boolean
   seq: number
   online: boolean
 }
@@ -118,6 +121,11 @@ export const Sessions = ({
   return (
     <>
       <header className={m.header}>
+        {/* The mark the app is opened by, on the one screen that has room for it: a phone client served
+            off a bare relay address needs to say whose it is somewhere, and the home screen is where
+            somebody arriving from a link looks. The same asset the installed icon is made of - one
+            logo, no second copy to keep in step (see scripts/mobile-icons.py). */}
+        <img className={m.headerLogo} src="/icon-192.png" alt="" />
         <span className={m.headerTitle}>Amazing Claude Code</span>
         <button type="button" className={m.headerAction} onClick={onPair}>
           Pair
@@ -171,17 +179,6 @@ export const Sessions = ({
                   <span className={m.projectName}>{project.name}</span>
                   {manyAgents && <span className={m.projectMeta}>{project.agentLabel}</span>}
                 </span>
-
-                {/* Starting something is the other half of what this app is for, and on a project that
-                    is closed it is the only thing there is to do - the tap opens the project as well. */}
-                <button
-                  type="button"
-                  className={m.projectNew}
-                  disabled={!project.online}
-                  onClick={() => onNew(project)}
-                >
-                  New chat
-                </button>
               </div>
 
               {project.sessions.length > 0 ? (
@@ -209,19 +206,40 @@ export const Sessions = ({
                 </button>
               )}
 
-              {/* The conversations this project has had before, which is where a phone often wants to go:
-                  the thing worth answering is as likely to be yesterday's conversation as today's tab.
-                  Claude Code keeps that list itself, so what was started in a terminal is on it too. */}
-              {!project.closed && (
+              {/* Both ways out of this card, on one row at its foot: back into something (which is where
+                  a phone often wants to go - the thing worth answering is as likely to be yesterday's
+                  conversation as today's tab; Claude Code keeps that list itself, so what was started in
+                  a terminal is on it too) and forward into something new.
+
+                  The new one is a square with a plus rather than the words "New chat" up in the heading.
+                  Up there it was the loudest thing on a card whose point is the list below it, and read
+                  as the card's own title bar; down here the two live where a hand already is, and which
+                  is which is said by shape rather than by a capsule. */}
+              <div className={m.projectFoot}>
+                {!project.closed && (
+                  <button
+                    type="button"
+                    className={m.projectHistory}
+                    disabled={!project.online}
+                    onClick={() => onHistory(project)}
+                  >
+                    Past conversations
+                  </button>
+                )}
+
+                {/* On a closed project this is the only thing there is to do - and the tap opens the
+                    project as well - so there it keeps its words and the whole width: a bare plus on a
+                    card that says "not open right now" explains nothing. */}
                 <button
                   type="button"
-                  className={m.projectHistory}
+                  className={project.closed ? m.projectOpen : m.projectNew}
                   disabled={!project.online}
-                  onClick={() => onHistory(project)}
+                  aria-label={project.closed ? undefined : 'New chat'}
+                  onClick={() => onNew(project)}
                 >
-                  Past conversations
+                  {project.closed ? 'New chat' : null}
                 </button>
-              )}
+              </div>
             </section>
           </div>
         ))}

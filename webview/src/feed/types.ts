@@ -484,12 +484,32 @@ export interface ErrorItem {
   id: string
   kind: 'error'
   message: string
-  /**
-   * The turn was stopped by an exhausted subscription limit rather than by a breakage. A separate mark,
-   * because it is not the same thing: there is nothing to fix, one has to wait for the window to reset -
-   * and a sound of its own calls about it.
-   */
-  limit?: boolean
+}
+
+/**
+ * The subscription limit, in the feed rather than as a red refusal.
+ *
+ * The panel used to lay every "rejected" from the CLI down as an error, on the reading that a used-up
+ * limit stops the work. It does not always: with extra usage the requests go through and are billed on
+ * top of the plan, so the work carries on without a pause - the sound, the cross and the red were a
+ * false alarm about work that never stopped. And when it does stop, an error is still the wrong word:
+ * nothing is broken and there is nothing to fix, one waits for the window - so the row says when.
+ *
+ * Hence two kinds rather than one:
+ * - `extra` - the limit is used up, the work goes on for money. It stays in the feed: this is the mark
+ *   of the moment the money started, and the ring in the composer's row is painted for as long as it
+ *   lasts (see UsageMeters).
+ * - `waiting` - the work has genuinely stopped until [resetsAt]. It goes away by itself at that moment:
+ *   a row saying "waiting until noon" at half past noon is worse than no row at all.
+ */
+export interface LimitItem {
+  id: string
+  kind: 'limit'
+  state: 'extra' | 'waiting'
+  /** Which window ran out, in words: "5-hour", "weekly". Empty when the CLI did not say. */
+  window: string
+  /** When the window resets, in milliseconds; absent when the CLI did not say. */
+  resetsAt?: number
 }
 
 export type FeedItem =
@@ -511,3 +531,4 @@ export type FeedItem =
   | ModelSwitchItem
   | CrashItem
   | ErrorItem
+  | LimitItem

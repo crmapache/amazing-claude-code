@@ -891,6 +891,20 @@ internal class RemoteAgent : Disposable {
         val body = buildJsonObject {
             put("p", PROTOCOL_VERSION)
             put("k", "inventory")
+            // What time it is on this machine, so a phone can count a running turn against this clock
+            // rather than against its own.
+            //
+            // Everything the feed measures time from is stamped here (see JournalMarks in the panel's
+            // protocol), and the two clocks disagree by however much they disagree: a phone subtracting
+            // one from the other showed a turn that had just begun as having begun in the future, and
+            // wrote the seconds under "Claude is thinking" with a minus in front of them.
+            //
+            // The inventory carries it rather than the journal's own entries, because those say when
+            // something happened rather than what time it is now: a conversation caught up from its
+            // journal is a pile of moments hours old, and a clock set by them would be hours slow. This
+            // one is written as it is sent - and it is sent whenever a conversation's state changes and
+            // every half minute regardless (see the phone's probe), so it is never stale for long.
+            put("at", System.currentTimeMillis())
             // The catalogue of models, so a conversation started from a phone can be started on a
             // chosen one. It belongs to the machine rather than to a project - it is what this
             // installation of the CLI offers, bans by an organization included - so it is asked of
@@ -925,6 +939,12 @@ internal class RemoteAgent : Disposable {
                                     put("titleSource", tab.titleSource)
                                     put("status", snapshot.status)
                                     put("awaitsYou", snapshot.awaitsYou)
+                                    // The other two states the panel's own dot has, so that one mark
+                                    // means the same thing on both screens: work that is done, and a
+                                    // conversation whose process died under it. Neither can be worked
+                                    // out from status and awaitsYou - see SessionSnapshot.worked.
+                                    put("worked", snapshot.worked)
+                                    put("crashed", snapshot.crashed)
                                     put("q", attachment.hub.lastSeq(tab.id))
                                 }
                             }

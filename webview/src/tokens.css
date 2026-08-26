@@ -252,6 +252,17 @@
   --acc-heart-16: rgb(var(--acc-ch-rose) / 16%);
   --acc-heart-40: rgb(var(--acc-ch-rose) / 40%);
 
+  /* --- Extra usage: the work past the plan's limit -------------------------
+     A colour of its own rather than a warning's: the limit being passed is neither trouble nor a mistake -
+     it is the plan's ceiling behind us and the meter running. Its own role rather than a reuse of
+     --acc-agent (the same iris paint) because the two mean unrelated things: a theme repainting subagents
+     must not repaint the money. */
+  --acc-extra: var(--acc-c-iris-2);
+  /* The tongues of the flame around a burning ring: the hotter, lighter tone of the same paint. */
+  --acc-extra-light: var(--acc-c-iris-3);
+  --acc-extra-12: rgb(var(--acc-ch-iris) / 12%);
+  --acc-extra-32: rgb(var(--acc-ch-iris) / 32%);
+
   /* --- A quote from the agent's output ------------------------------------ */
   --acc-quote: var(--acc-c-orchid);
   --acc-quote-12: rgb(var(--acc-ch-orchid) / 12%);

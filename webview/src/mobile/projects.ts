@@ -1,5 +1,5 @@
 import type { LinkState, SessionLaunch } from './link'
-import type { ProjectEntry } from './screens/Sessions'
+import type { ProjectEntry, SessionEntry } from './screens/Sessions'
 import type { ModelInfo } from '../protocol'
 
 /**
@@ -19,12 +19,42 @@ export interface Inventory {
       titleSource?: string
       status: string
       awaitsYou: boolean
+      /** A turn in this one has been carried through to its end - see SessionSnapshot.worked. */
+      worked?: boolean
+      /** Its process died under it. */
+      crashed?: boolean
       q: number
     }>
   }>
+  /**
+   * What time it was on that machine when this was sent - the one live reading of the IDE's clock a
+   * phone gets (see mobile/clock.ts). Absent from an IDE older than this field.
+   */
+  at?: number
   recents?: Array<{ key: string; name: string }>
   models?: ModelInfo[]
   prefs?: SessionLaunch
+}
+
+/** What a conversation's mark says about it - the panel's own five states (see sessionState there). */
+export type ChatState = 'crashed' | 'attention' | 'running' | 'done' | 'idle'
+
+/**
+ * Which of the five a conversation is in, in the order that decides between them.
+ *
+ * A dead process comes first: the turn was cut short against its will, and that is worth knowing before
+ * anything else. Then what is stopped waiting for a person - the reason a phone gets picked up at all -
+ * then work in progress, and last the difference between work already finished and a conversation that
+ * has never done anything.
+ *
+ * Apart from the row that draws it because this order is the part that is easy to get subtly wrong, and
+ * checking it should not need a running IDE and a phone.
+ */
+export const chatState = (session: SessionEntry): ChatState => {
+  if (session.crashed) return 'crashed'
+  if (session.awaitsYou) return 'attention'
+  if (session.status === 'running') return 'running'
+  return session.worked ? 'done' : 'idle'
 }
 
 export interface PairedFacts {
@@ -85,6 +115,10 @@ export const buildProjects = (
         titleSource: session.titleSource ?? 'default',
         status: session.status,
         awaitsYou: session.awaitsYou,
+        // Absent on an IDE too old to send them - and absent means the quiet state, which is what a
+        // conversation looked like on this screen before either existed.
+        worked: session.worked === true,
+        crashed: session.crashed === true,
         seq: session.q,
         online,
       }))

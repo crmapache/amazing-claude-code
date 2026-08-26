@@ -52,6 +52,20 @@ class NotificationReasonsTest {
         assertEquals("trouble", NotificationReasons.of("""{"type":"processExited","exitCode":1}""", quiet, quiet))
     }
 
+    // A limit event, and only the kind that means everything has stopped: the same event arrives while a
+    // used-up window is being paid for, and a phone buzzing then would be calling someone to work that
+    // never paused (see ClaudeRateLimit).
+    @Test
+    fun `a limit that stopped the work calls, one that is being paid for does not`() {
+        val stopped =
+            """{"type":"agent","sessionId":"main","event":{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":4102444800}}}"""
+        assertEquals("rateLimit", NotificationReasons.of(stopped, quiet, quiet))
+
+        val paid =
+            """{"type":"agent","sessionId":"main","event":{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","isUsingOverage":true}}}"""
+        assertNull(NotificationReasons.of(paid, quiet, quiet))
+    }
+
     @Test
     fun `an ordinary error is trouble and a limit is a limit`() {
         assertEquals("trouble", NotificationReasons.of("""{"type":"error","message":"broke"}""", quiet, quiet))

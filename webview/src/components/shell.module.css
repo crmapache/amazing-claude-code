@@ -15,6 +15,55 @@
   }
 }
 
+/* The ring smoking with sparks - see Flames in StatusBar.tsx. */
+
+/* One spark: it lifts off the ring and goes straight up, turning as it goes, and comes apart before it
+   gets far. --acc-rise is this spark's own height, set per spark by the component. Borrowed from the
+   readiness gauge in the gym app, where the same four-pointed stars rise off a bar at peak form - smaller
+   here, because the whole ring is twenty-two pixels across. */
+@keyframes acc-spark-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(0.5px) scale(0.35) rotate(-14deg);
+  }
+
+  /* Faint while it is still against the metal: at full strength there it merges into the ring's own paint,
+     and what one sees is a lumpy ring rather than something coming off it. The spark brightens once it is
+     clear of the edge - which is also how a spark actually behaves. */
+  25% {
+    opacity: 0.38;
+  }
+
+  60% {
+    opacity: 0.72;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(var(--acc-rise, -5px)) scale(1) rotate(34deg);
+  }
+}
+
+/* The heat under the sparks: it swells and gives way, and stays dim throughout - the ring itself has to
+   remain the thing one reads. */
+@keyframes acc-flame-heat {
+  0%,
+  100% {
+    opacity: 0.16;
+    transform: scale(1);
+  }
+
+  40% {
+    opacity: 0.34;
+    transform: scale(1.08);
+  }
+
+  70% {
+    opacity: 0.22;
+    transform: scale(1.03);
+  }
+}
+
 .panel {
   display: flex;
   flex-direction: column;
@@ -813,6 +862,66 @@
   transition:
     stroke-dashoffset 0.7s cubic-bezier(0.4, 0, 0.2, 1),
     stroke 0.3s ease;
+}
+
+/* --- The burning ring: extra usage ---------------------------------------------
+   Nine sparks lifting off the ring, each on a rhythm of its own (the periods come from the component -
+   see Flames), over a wide blurred circle that breathes: that one is the heat, and it is what makes the
+   sparks look lit.
+
+   Only transforms and opacity move - both go on the compositor, without laying the page out again. And
+   all of it burns solely while the money is running. */
+.flameHeat {
+  fill: none;
+  stroke: var(--acc-extra);
+  stroke-width: 2.6;
+  transform-origin: 11px 11px;
+  animation: acc-flame-heat 2.4s ease-in-out infinite;
+}
+
+/* The star grows and turns about its own middle: fill-box is the box of the star inside this group, which
+   is exactly the shape being scaled. The sparks all move the same way - straight up - so the group needs
+   no place of its own; where each one starts is set by the inner group's transform (see Flames). */
+.flameSpark {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation-name: acc-spark-rise;
+  animation-iteration-count: infinite;
+  animation-timing-function: cubic-bezier(0.3, 0, 0.55, 1);
+}
+
+.flameSparkStar {
+  fill: var(--acc-extra-light);
+}
+
+/* The halo under a spark: the same star, wider and blurred. Scaled about its own middle, so the two stay
+   concentric however big the ring itself is drawn. */
+.flameSparkGlow {
+  fill: var(--acc-extra);
+  opacity: 0.6;
+  transform: scale(1.45);
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+/*
+ * Somebody who has asked the system for less movement gets the ring without the burning: the paint and
+ * the heat stay, the sparks simply do not fly. Something flickering in the corner of the eye is precisely
+ * the kind of thing that setting exists for.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .flameHeat,
+  .flameSpark {
+    animation: none;
+  }
+
+  .flameHeat {
+    opacity: 0.3;
+  }
+
+  .flameSpark {
+    opacity: 0.55;
+  }
 }
 
 .meterValue {

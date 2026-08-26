@@ -286,9 +286,17 @@ const countLines = (value: string): number => {
  * "1010m 08s" - a number the eye does not convert into hours. The seconds, meanwhile, tick with exactly
  * what shows that time is passing rather than standing still: without them a long turn looks frozen for
  * a whole minute.
+ *
+ * A negative span is shown as none at all rather than as a minus. Time does not run backwards, so a
+ * negative one always means the two ends of it were read off two different clocks - which is a thing
+ * that genuinely happens on the phone, where the start of a turn comes from the machine with the IDE
+ * and "now" from the device in someone's hand (see mobile/clock.ts, where that difference is measured
+ * and taken out). This is the floor under that measurement rather than a substitute for it: an estimate
+ * can be off by a fraction of a second, and a caption reading "-0.2s" is worse than one reading "0.0s"
+ * however small the error behind it.
  */
 export const formatDuration = (ms: number): string => {
-  if (ms < 1000) return `${(ms / 1000).toFixed(1)}s`
+  if (ms < 1000) return `${(Math.max(0, ms) / 1000).toFixed(1)}s`
   if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
 
   // We carry the seconds' rounding up into the minutes ourselves: otherwise 59.6 seconds comes out as

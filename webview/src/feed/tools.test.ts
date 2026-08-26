@@ -27,6 +27,17 @@ describe('a call duration', () => {
     expect(formatDuration(3_600_000 + 5_000)).toBe('1h 00m 05s')
     expect(formatDuration(3_600_000 + 70_000)).toBe('1h 01m 10s')
   })
+
+  /**
+   * Time does not run backwards, so a negative span always means its two ends were read off two
+   * different clocks - which is a thing that genuinely happens on the phone (see mobile/clock.ts). The
+   * clocks are reconciled there; this is only the floor under the last fraction of a second of error,
+   * because "-0.2s" under a turn is worse than "0.0s" however small the mistake behind it.
+   */
+  it('shows a span that came out negative as no time at all', () => {
+    expect(formatDuration(-200)).toBe('0.0s')
+    expect(formatDuration(-9_000)).toBe('0.0s')
+  })
 })
 
 describe('a command short caption', () => {

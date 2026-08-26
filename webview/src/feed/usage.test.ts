@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { contextColor, contextGlow, FIVE_HOUR_MS, paceColor, RING_LENGTH, ringDash, timeLeft } from './usage'
+import {
+  contextColor,
+  contextGlow,
+  FIVE_HOUR_MS,
+  limitWindowName,
+  limitWindowRing,
+  paceColor,
+  RING_LENGTH,
+  ringDash,
+  timeLeft,
+} from './usage'
 
 describe('contextColor', () => {
   it('paints by the same thresholds as the context bar in the composer', () => {
@@ -67,5 +77,29 @@ describe('ringDash', () => {
   it('clamps rather than drawing an arc that runs backwards', () => {
     expect(ringDash(-10)).toBeCloseTo(RING_LENGTH)
     expect(ringDash(140)).toBeCloseTo(0)
+  })
+})
+
+describe('the limit windows', () => {
+  it('names them the way the CLI does', () => {
+    expect(limitWindowName('five_hour')).toBe('5-hour')
+    expect(limitWindowName('seven_day')).toBe('weekly')
+    expect(limitWindowName('seven_day_opus')).toBe('weekly Opus')
+  })
+
+  // A bucket that appears in a later CLI must not turn into "your seven_day_whatever limit" in the panel.
+  it('says nothing about a window it does not know', () => {
+    expect(limitWindowName('seven_day_whatever')).toBe('')
+    expect(limitWindowName(undefined)).toBe('')
+  })
+
+  it('sends every weekly window to the weekly ring, and everything else to the five-hour one', () => {
+    expect(limitWindowRing('seven_day')).toBe('week')
+    expect(limitWindowRing('seven_day_opus')).toBe('week')
+    expect(limitWindowRing('seven_day_overage_included')).toBe('week')
+    expect(limitWindowRing('five_hour')).toBe('session')
+    // The five-hour window runs out several times a day and is nearly always the one meant.
+    expect(limitWindowRing(undefined)).toBe('session')
+    expect(limitWindowRing('brand_new_bucket')).toBe('session')
   })
 })

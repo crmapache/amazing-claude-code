@@ -8,7 +8,17 @@ import s from './feed.module.css'
 import { BashCard } from './items/BashCard'
 import { FindingsCard } from './items/FindingsCard'
 import { PlanCard } from './items/PlanCard'
-import { CheckpointRow, CompactRow, CrashRow, ErrorRow, MetaRow, ModelSwitchRow, RetryRow, ThinkRow } from './items/Rows'
+import {
+  CheckpointRow,
+  CompactRow,
+  CrashRow,
+  ErrorRow,
+  LimitRow,
+  MetaRow,
+  ModelSwitchRow,
+  RetryRow,
+  ThinkRow,
+} from './items/Rows'
 import { TextCard } from './items/TextCard'
 import { ToolGroupCard } from './items/ToolGroupCard'
 import { UserCard } from './items/UserCard'
@@ -381,6 +391,9 @@ const ItemView = memo(({
 
     case 'error':
       return <ErrorRow item={item} onDismiss={() => onDismissError(item.id)} onOpenLink={onOpenLink} />
+
+    case 'limit':
+      return <LimitRow item={item} />
   }
 })
 

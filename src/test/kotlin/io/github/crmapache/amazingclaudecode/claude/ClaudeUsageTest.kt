@@ -44,6 +44,28 @@ class ClaudeUsageTest {
         assertFalse(snapshot.hasLimits)
     }
 
+    @Test
+    fun `the extra usage settings are read off the same answer`() {
+        val snapshot = parse(
+            """
+            {"rate_limits":{
+               "five_hour":{"utilization":100,"resets_at":"2026-08-16T01:39:59+00:00"},
+               "extra_usage":{"is_enabled":true,"monthly_limit":50,"used_credits":11.5,"utilization":23}}}
+            """.trimIndent(),
+        )
+
+        assertEquals(true, snapshot.extra?.enabled)
+        assertEquals(23, snapshot.extra?.percent)
+    }
+
+    // An account that knows nothing of extra usage is not the same as one with it allowed and untouched:
+    // the ring must not be painted for money nobody is spending.
+    @Test
+    fun `no extra usage block means nothing is known about it`() {
+        assertNull(parse("""{"rate_limits":{"five_hour":{"utilization":7}}}""").extra)
+        assertNull(parse("""{"rate_limits":{"five_hour":{"utilization":7},"extra_usage":null}}""").extra)
+    }
+
     // The subscription windows have a truth of their own: the weekly one may arrive before the five-hour one.
     @Test
     fun `an empty window does not get in the neighbour's way`() {

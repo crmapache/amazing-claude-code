@@ -15,6 +15,7 @@ import {
   argumentOptions,
   argumentQuery,
   captureCommand,
+  captureWrittenCommand,
   commandChip,
   commandNameBeforeArgument,
   matchArguments,
@@ -47,6 +48,7 @@ import {
   needsLeadingSpace,
   needsTrailingSpace,
   padTrailingBreak,
+  placeCaretAtEnd,
   placeCaretBefore,
   placeCaretBeside,
   rebuildDom,
@@ -507,8 +509,12 @@ export const Composer = ({
   /** Consecutive typing is merged into one undo step; everything else gets a boundary of its own. */
   const commitHistory = (before: UserToken[], boundary: boolean) => {
     const now = Date.now()
+    // One edit sometimes reports itself in two goes - a paste that turns out to be a command reads the
+    // field back and rebuilds it (see [pasteText]). Both goes carry the same snapshot of what was there
+    // before, and a second copy of it in the history costs a Cmd+Z that changes nothing on the screen.
+    const duplicate = undoStack.current.at(-1) === before
     const coalesce = !boundary && undoStack.current.length > 0 && now - lastEditAt.current < UNDO_COALESCE_MS
-    if (!coalesce) undoStack.current.push(before)
+    if (!duplicate && !coalesce) undoStack.current.push(before)
     lastEditAt.current = now
     redoStack.current = []
   }
@@ -588,6 +594,28 @@ export const Composer = ({
     restoreTokens(next)
   }
 
+  /**
+   * Whether what stands in the field has just become a finished command - then it is already a chip and
+   * there is nothing left to report.
+   *
+   * Apart from [handleInput] because typing is not the only way a command gets into the field: pasted from
+   * the clipboard it arrives whole, without a single keystroke to catch it on (see [pasteText]).
+   */
+  const captureTypedCommand = (next: UserToken[]): boolean => {
+    const root = input.current
+    if (!root) return false
+
+    const captured = captureCommand(next, commands, headText(root))
+    if (!captured) return false
+
+    applyTokens(captured)
+    // Right behind the chip and the space after it - the argument is typed there, in front of the text
+    // that was already in the field.
+    placeCaretBefore(root, 2)
+    syncHead()
+    return true
+  }
+
   const handleInput = () => {
     const root = input.current
     if (!root) return
@@ -602,15 +630,7 @@ export const Composer = ({
     // The command's name has been finished and a space put after it - it becomes a chip on the spot,
     // without waiting for a choice from the hint. Only the name goes: whatever stands past the caret was
     // written before the command and stays where it is.
-    const captured = captureCommand(next, commands, headText(root))
-    if (captured) {
-      applyTokens(captured)
-      // Right behind the chip and the space after it - the argument is typed there, in front of the text
-      // that was already in the field.
-      placeCaretBefore(root, 2)
-      syncHead()
-      return
-    }
+    if (captureTypedCommand(next)) return
 
     report(next)
     // In the same batch as the tokens, so that the hint does not lag a frame behind what has been typed.
@@ -698,6 +718,36 @@ export const Composer = ({
     selection?.addRange(padded ?? range)
 
     report(readTokens(root), true)
+  }
+
+  /**
+   * Text from the clipboard, and a command in it recognised the same way as a typed one.
+   *
+   * A command copied whole (out of one's own message in the feed, for instance) passes no keystroke the
+   * field could catch it on, so it stayed plain text where the very same characters typed by hand became a
+   * chip. Since [captureTypedCommand] reads the field itself, the paste goes in first and is looked at
+   * afterwards.
+   */
+  const pasteText = (text: string) => {
+    insertTextAtCursor(text)
+    const root = input.current
+    if (!root) return
+
+    const next = readTokens(root)
+    // A pasted command's name cannot be half-finished - unlike a typed one it arrives whole, with no
+    // keystroke ahead to complete it - so it becomes a chip without waiting for a space (see
+    // captureWrittenCommand). Only when the paste landed at the field's very end, though: rebuilding the
+    // field moves the caret to it, and one pasted into the middle of a sentence has to stay where the
+    // person put it.
+    const written = headText(root) === tokensText(next) ? captureWrittenCommand(next, commands) : null
+    if (!written) {
+      captureTypedCommand(next)
+      return
+    }
+
+    applyTokens(written)
+    placeCaretAtEnd(root)
+    syncHead()
   }
 
   /**
@@ -854,7 +904,7 @@ export const Composer = ({
       // it. Single-line stays text: a short paste is edited right in the field, and a chip is precisely
       // what forbids that.
       if (isMultiline(text)) insertChipAtCursor({ kind: 'paste', value: 'pasted', text })
-      else insertTextAtCursor(text)
+      else pasteText(text)
       return
     }
 

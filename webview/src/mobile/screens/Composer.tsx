@@ -8,6 +8,7 @@ import {
   contextColor,
   contextGlow,
   FIVE_HOUR_MS,
+  limitWindowRing,
   paceColor,
   WEEK_MS,
   weekBudgetToday,
@@ -115,6 +116,9 @@ export const Composer = ({
   }, [draft])
 
   const commands = useMemo(() => phoneCommands(facts), [facts])
+
+  /** Which ring burns, when one does: the window being paid past, not always the five-hour one. */
+  const burning = facts.extra?.active ? limitWindowRing(facts.extra.window) : null
 
   /**
    * The field's start up to the caret - what a slash command is read from.
@@ -314,62 +318,59 @@ export const Composer = ({
         </div>
       )}
 
-      {/* What is read: the two windows, the branch and its pull request. A tap on either ring opens
-          what the panel keeps in a tooltip - a phone has no hover to put it under. */}
+      {/* What is read: the two windows, the branch and its pull request. A tap on either ring opens the
+          figures - the panel keeps them in a tooltip, and a phone has no hover to put one under.
+
+          The rings carry no caption and no percentage of their own. Four small numbers over a text field
+          read as a dashboard, and this row is not what anybody opened the app for; the shape of a ring
+          says "filling up" at a glance, and the exact figure is one tap away in Limits, where the window
+          it belongs to is spelled out in words. */}
       <div className={m.strip}>
         <button
           type="button"
           className={m.meter}
           aria-label="Usage limits"
-          disabled={!facts.session && !facts.week}
+          disabled={!facts.session && !facts.week && !facts.extra?.active}
           onClick={() => setLimitsOpen(true)}
         >
-          {facts.session ? (
-            <>
-              <Ring
-                percent={facts.session.percent}
-                color={paceColor(facts.session.percent, facts.session.resets, FIVE_HOUR_MS)}
-                size={20}
-              />
-              <span className={m.meterLabel}>5h</span>
-              <span
-                className={m.meterValue}
-                style={{ color: paceColor(facts.session.percent, facts.session.resets, FIVE_HOUR_MS) }}
-              >
-                {facts.session.percent}%
-              </span>
-            </>
-          ) : (
-            <span className={m.meterLabel}>5h —</span>
-          )}
+          {/* Nothing known yet - an empty track rather than a dash: the row keeps its shape, and the
+              button stays dead until there is something to open. Extra usage closes the ring, takes its
+              own paint and burns - but only on the ring whose window actually ran out (the same
+              substitution as in the panel - see UsageMeters). */}
+          <Ring
+            percent={burning === 'session' ? 100 : (facts.session?.percent ?? 0)}
+            color={
+              burning === 'session'
+                ? 'var(--acc-extra)'
+                : facts.session
+                  ? paceColor(facts.session.percent, facts.session.resets, FIVE_HOUR_MS)
+                  : 'var(--acc-fg-ghost)'
+            }
+            flame={burning === 'session'}
+            size={20}
+          />
         </button>
 
         <button
           type="button"
           className={m.meter}
           aria-label="Usage limits"
-          disabled={!facts.session && !facts.week}
+          disabled={!facts.session && !facts.week && !facts.extra?.active}
           onClick={() => setLimitsOpen(true)}
         >
-          {facts.week ? (
-            <>
-              <Ring
-                percent={facts.week.percent}
-                color={paceColor(facts.week.percent, facts.week.resets, WEEK_MS)}
-                pace={weekBudgetToday(facts.week.resets)}
-                size={20}
-              />
-              <span className={m.meterLabel}>wk</span>
-              <span
-                className={m.meterValue}
-                style={{ color: paceColor(facts.week.percent, facts.week.resets, WEEK_MS) }}
-              >
-                {facts.week.percent}%
-              </span>
-            </>
-          ) : (
-            <span className={m.meterLabel}>wk —</span>
-          )}
+          <Ring
+            percent={burning === 'week' ? 100 : (facts.week?.percent ?? 0)}
+            color={
+              burning === 'week'
+                ? 'var(--acc-extra)'
+                : facts.week
+                  ? paceColor(facts.week.percent, facts.week.resets, WEEK_MS)
+                  : 'var(--acc-fg-ghost)'
+            }
+            pace={burning === 'week' || !facts.week ? undefined : weekBudgetToday(facts.week.resets)}
+            flame={burning === 'week'}
+            size={20}
+          />
         </button>
 
         {facts.gitBranch ? (
@@ -436,15 +437,6 @@ export const Composer = ({
                 <span key={tick} className={m.ctxTick} style={{ left: `${tick}%` }} />
               ))}
             </div>
-            {/*
-              The panel writes no figure here - the bar is beside a status line that already carries
-              one, and the colour alone answers "is it time to compact". On a phone there is no such
-              line and no tooltip either, so a three-pixel stripe would be a decoration nobody could
-              read. The figure is the smallest thing that makes it mean something.
-            */}
-            <span className={m.ctxLabel} style={{ color: contextColor(context.percent) }}>
-              ctx {context.percent}%
-            </span>
           </div>
 
           <textarea

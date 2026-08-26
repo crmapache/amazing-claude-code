@@ -31,8 +31,13 @@ export const ownStream = (item: FeedItem): boolean => !('taskId' in item) || ite
  * after a decision the idle seconds would be charged to the agent retroactively, as though it had been
  * "thinking" all that time. It is updated once a second by the same tick that moves the tool calls'
  * durations (see tickDurations in feed/build.ts).
+ *
+ * `now` is a parameter because the two clients do not share a clock. The panel counts against its own
+ * Date.now() and everything in the state was written by that same clock, so it passes nothing. The
+ * phone's state, though, was built out of moments stamped by the machine with the IDE, and answering
+ * against the phone's own clock subtracts one machine's time from another's - see mobile/clock.ts.
  */
-export const streamStatus = (panel: PanelState, cards: CardState): string => {
+export const streamStatus = (panel: PanelState, cards: CardState, now: number = Date.now()): string => {
   /**
    * The request to the model failed and waits for a retry: at that moment the turn is not running at all -
    * no text, no calls, no question - and a "Claude is thinking" with a running counter would be an outright
@@ -47,7 +52,7 @@ export const streamStatus = (panel: PanelState, cards: CardState): string => {
     // RetryRow) - here goes only what is not in it: how long all of this has already dragged on. The line's
     // familiar shape is kept - "what is happening - how long it has run" - and exactly what was untrue
     // changes.
-    return `${panel.retry.label} · waiting ${formatDuration(Date.now() - panel.retry.startedAt)}`
+    return `${panel.retry.label} · waiting ${formatDuration(now - panel.retry.startedAt)}`
   }
 
   // The compacting is spoken about by its own card in the feed (a CONTEXT with a growing percentage) -
@@ -82,7 +87,6 @@ export const streamStatus = (panel: PanelState, cards: CardState): string => {
   // A decision has just been taken: awaitingDecision is already false, but the effect that carries
   // waitStartedAt into pausedMs has not run yet (it fires after this render) - we count the current pause in
   // right here so that the number does not jump on the next tick.
-  const now = Date.now()
   const ongoingWait = panel.waitStartedAt ? now - panel.waitStartedAt : 0
   const elapsed = formatDuration(now - panel.turnStartedAt - panel.pausedMs - ongoingWait)
   return `${label} · ${elapsed}`

@@ -55,6 +55,26 @@ export interface UsageWindow {
   resets: string
 }
 
+/**
+ * Extra usage: the work an exhausted limit no longer covers, paid for on top of the plan.
+ *
+ * `active` is the whole point of it - the work is going past the limit RIGHT NOW - and it is learned
+ * from the agent's own limit events rather than from a question (see ClaudeRateLimit on the plugin's
+ * side). The rest is the account's settings, which merely explain what is happening: whether extra
+ * usage is allowed at all and how much of its monthly budget has gone.
+ */
+export interface ExtraUsage {
+  active: boolean
+  /**
+   * Which window is being paid past, in the CLI's words: `five_hour`, `seven_day`, `seven_day_opus` and
+   * so on. It decides which of the two rings burns and what the window is called in words (see
+   * limitWindowName and limitWindowRing in feed/usage.ts). Absent when the CLI did not say.
+   */
+  window?: string
+  enabled?: boolean
+  percent?: number
+}
+
 /** A past conversation: the person's first message serves as its title. */
 export interface HistoryEntry {
   id: string
@@ -178,6 +198,8 @@ type ShellMessageBody =
       type: 'usage'
       session?: UsageWindow
       week?: UsageWindow
+      /** Whether the plan's limit is being passed for money right now - see ExtraUsage. */
+      extra?: ExtraUsage
       /** The current model's context window size: with the large ones it is a million, not two hundred thousand. */
       contextWindow?: number
       /**
@@ -894,12 +916,28 @@ export interface AgentResultEvent {
   usage?: AgentResultUsage
 }
 
+/**
+ * The subscription limit changed state. The event arrives in ordinary life too, and its "rejected" is
+ * not the same as "the work has stopped" - see rate_limit_event in feed/build.ts for what each field
+ * turns out to mean.
+ */
 export interface AgentRateLimitEvent {
   type: 'rate_limit_event'
   rate_limit_info?: {
+    /** allowed | allowed_warning | rejected - the CLI's own three. */
     status?: string
+    /** When the window resets, in seconds, as is customary in the CLI itself. */
     resetsAt?: number
+    /** five_hour | seven_day | seven_day_opus | seven_day_sonnet | seven_day_overage_included | overage */
     rateLimitType?: string
+    /**
+     * The requests are going through past the limit, billed on top of the plan. Two names for one and
+     * the same thing - which of them arrives depends on the CLI's version.
+     */
+    isUsingOverage?: boolean
+    overageInUse?: boolean
+    /** The limit is over but the current step is allowed to finish: the work has not stopped either. */
+    rateLimitGraceActive?: boolean
   }
 }
 

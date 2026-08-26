@@ -3,6 +3,7 @@ import { AgentStreamView } from '../../components/AgentStreamView'
 import { Feed } from '../../components/Feed'
 import { StreamSwitcher } from '../../components/StreamSwitcher'
 import { useCardState } from '../../hooks/useCardState'
+import { useNow } from '../../hooks/useNow'
 import { contextOf } from '../../feed/build'
 import type { PanelState } from '../../feed/panelState'
 import { buildAgentTabs, mainStatusOf, streamStatus } from '../../feed/streamStatus'
@@ -63,6 +64,12 @@ export const Thread = ({
   onDecide,
   onBack,
 }: ThreadProps) => {
+  /**
+   * The IDE's clock rather than this device's - the counter beside "Claude is thinking" counts from a
+   * moment that machine stamped (see mobile/clock.ts and hooks/useNow).
+   */
+  const now = useNow()
+
   const [loadingEarlier, setLoadingEarlier] = useState(false)
   const [activeStream, setActiveStream] = useState('main')
   const [queue, setQueue] = useState<Queued[]>([])
@@ -175,7 +182,7 @@ export const Thread = ({
             streamingId={feed.streamingId}
             streamingThinking={feed.streamingThinking}
             streaming={feed.status === 'running'}
-            streamStatus={streamStatus(feed, cards)}
+            streamStatus={streamStatus(feed, cards, now())}
             statusStalled={feed.retry !== undefined}
             cards={cards}
             // Answering a plan happens on the decision screen, where the buttons are the size of a thumb.

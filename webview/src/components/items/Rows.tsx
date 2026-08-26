@@ -3,11 +3,13 @@ import { LinkedText } from './LinkedText'
 import { modelLabel } from '../../catalog'
 import { compactProgress } from '../../feed/compact'
 import { plainLine } from '../../feed/markdown'
+import { useNow } from '../../hooks/useNow'
 import type {
   CheckpointItem,
   CompactItem,
   CrashItem,
   ErrorItem,
+  LimitItem,
   MetaItem,
   ModelSwitchItem,
   RetryItem,
@@ -138,25 +140,32 @@ export const CompactRow = ({ item }: { item: CompactItem }) => {
  */
 const RETRY_TICK_MS = 1000
 
-/** How many seconds are left until the next attempt - never below zero. */
-const secondsLeft = (retryAt: number): number => Math.max(0, Math.ceil((retryAt - Date.now()) / 1000))
+/**
+ * How many seconds are left until the next attempt - never below zero.
+ *
+ * `now` comes from the clock the moment of the attempt was written by rather than from this device's
+ * (see hooks/useNow): on a phone those are two different machines, and the countdown read against the
+ * wrong one is off by however much the two disagree.
+ */
+const secondsLeft = (retryAt: number, now: number): number => Math.max(0, Math.ceil((retryAt - now) / 1000))
 
 /**
  * The countdown to the next attempt. While the pause lasts, this is the one figure in the whole panel
  * that says the conversation has not died but is waiting.
  */
 const useRetryCountdown = (item: RetryItem): number => {
-  const [left, setLeft] = useState(() => secondsLeft(item.retryAt))
+  const now = useNow()
+  const [left, setLeft] = useState(() => secondsLeft(item.retryAt, now()))
 
   useEffect(() => {
     if (!item.pending) return
 
-    const tick = () => setLeft(secondsLeft(item.retryAt))
+    const tick = () => setLeft(secondsLeft(item.retryAt, now()))
     tick()
 
     const timer = window.setInterval(tick, RETRY_TICK_MS)
     return () => window.clearInterval(timer)
-  }, [item.pending, item.retryAt])
+  }, [item.pending, item.retryAt, now])
 
   return left
 }
@@ -252,6 +261,66 @@ export const ModelSwitchRow = ({
     </div>
   </div>
 )
+
+/** How often the waiting row checks whether the window has reset: to the minute is close enough. */
+const LIMIT_TICK_MS = 10_000
+
+/** How long is left until the reset, in words. Null once the moment has passed. */
+const untilReset = (resetsAt: number | undefined, now: number): string | null => {
+  if (resetsAt === undefined) return null
+
+  const minutes = Math.ceil((resetsAt - now) / 60_000)
+  if (minutes <= 0) return null
+  if (minutes < 60) return `${minutes}m`
+
+  const hours = Math.floor(minutes / 60)
+  return `${hours}h ${minutes % 60}m`
+}
+
+/** The reset time as a clock reading: what one compares against one's own day. */
+const resetClock = (resetsAt: number): string =>
+  new Date(resetsAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+
+/**
+ * The subscription limit ran out (see LimitItem). Deliberately not red: nothing has broken.
+ *
+ * `extra` says the work goes on for money - the row is the mark of the moment that started, and it stays
+ * in the feed for good. `waiting` says the work has stopped until the window resets, and that row
+ * removes itself the moment it does: what it promised has happened, and standing there afterwards it
+ * would be claiming the opposite of the truth.
+ */
+export const LimitRow = ({ item }: { item: LimitItem }) => {
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (item.state !== 'waiting' || item.resetsAt === undefined) return
+
+    const timer = window.setInterval(() => setNow(Date.now()), LIMIT_TICK_MS)
+    return () => window.clearInterval(timer)
+  }, [item.state, item.resetsAt])
+
+  const left = untilReset(item.resetsAt, now)
+  if (item.state === 'waiting' && item.resetsAt !== undefined && left === null) return null
+
+  const window_ = item.window ? `${item.window} limit` : 'usage limit'
+
+  return (
+    <div className={`${s.limit} ${item.state === 'extra' ? s.limitExtra : ''}`}>
+      <span className={s.limitLabel}>{item.state === 'extra' ? 'EXTRA USAGE' : 'LIMIT'}</span>
+      <span className={s.limitText}>
+        {item.state === 'extra'
+          ? `The ${window_} is used up - the work goes on as extra usage, billed on top of the plan`
+          : `The ${window_} is used up - waiting for it to reset`}
+      </span>
+      {item.state === 'waiting' && item.resetsAt !== undefined ? (
+        <span className={s.limitWhen}>
+          {resetClock(item.resetsAt)} · in {left}
+        </span>
+      ) : null}
+      <div className={s.spacer} />
+    </div>
+  )
+}
 
 /** The process died on its own - an unambiguous mark rather than a silent "idle". */
 export const CrashRow = ({ item }: { item: CrashItem }) => (

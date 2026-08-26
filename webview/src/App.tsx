@@ -51,7 +51,15 @@ import { contextOf, initialPanelState, reducePanel, type PanelState } from './fe
 import { deferFollowUpForCompact } from './feed/compact'
 import { referenceChip } from './feed/reference'
 import { deriveSessionTitle } from './feed/title'
-import { appendChip, appendText, buildCommands, localCommand, plainText, type LocalCommand } from './feed/slash'
+import {
+  appendChip,
+  appendText,
+  buildCommands,
+  captureWrittenCommand,
+  localCommand,
+  plainText,
+  type LocalCommand,
+} from './feed/slash'
 import {
   awaitsYou,
   buildAgentTabs,
@@ -66,6 +74,7 @@ import { composePrompt, countSessionImages, imageAttachments, tokensText, trimTr
 import type { FeedItem, TaskItem, TodoItem, UserItem, UserToken } from './feed/types'
 import type {
   AvailablePluginInfo,
+  ExtraUsage,
   HistoryEntry,
   InstalledPluginInfo,
   McpServerInfo,
@@ -238,6 +247,7 @@ export const App = () => {
     week?: UsageWindow
     contextWindow?: number
     todayTokens?: string
+    extra?: ExtraUsage
   }>({})
   /**
    * Which of the modal panels is open - one value rather than three independent booleans. That way they
@@ -1139,6 +1149,10 @@ export const App = () => {
             setUsage((current) => ({
               session: message.session ?? current.session,
               week: message.week ?? current.week,
+              // Extra usage arrives whole or not at all: its two halves are put together on the plugin's
+              // side (see ProjectUsage.putExtra), and merging field by field here would only be able to
+              // take them apart again.
+              extra: message.extra ?? current.extra,
               // ?? will not do here - a 0 is not nullish, it would get stuck in the state forever and the
               // context gauge below would divide by zero for good.
               contextWindow:
@@ -1760,6 +1774,14 @@ export const App = () => {
    * The exception is compacting the context: /compact swallows stdin, and anything written there is lost.
    * While it runs, Enter behaves like Queue (see deferFollowUpForCompact).
    */
+  const commands = useMemo(
+    // The tab's own catalogue while it has one, and the project's remembered one until then: this tab's
+    // process may not have come up yet, and the two disagree only about a server switched on or off
+    // since - where the live one is the truth.
+    () => buildCommands(panel.slashCommands.length > 0 ? panel.slashCommands : knownCommands, commandHints),
+    [panel.slashCommands, knownCommands, commandHints],
+  )
+
   const submit = useCallback((queued: boolean, overrideText?: string) => {
     // The panel's commands never travel to the agent: signing in and out are out of its reach in streaming
     // mode, and forking is about the panel's own workings altogether.
@@ -1772,14 +1794,14 @@ export const App = () => {
     // The empty tail is taken off at once: it is invisible in the field (the last line there takes no
     // space, at most the caret stands on it) while in the feed it would show as a spare empty line. To the
     // agent composePrompt does not send it anyway.
-    const tokens = isOverride
+    const typed = isOverride
       ? [{ kind: 'text' as const, value: overrideText }]
       : trimTrailingSpace(draft.tokens)
     const quotes = isOverride ? [] : draft.quotes
 
     // A "!" at the start is a terminal command rather than a message to the agent: the panel runs it and
     // shows the output in a card of its own (see runShell).
-    const command = bashCommand(tokens)
+    const command = bashCommand(typed)
     if (command) {
       runShell(command)
       if (!isOverride) editDraft(active, { tokens: [] })
@@ -1789,12 +1811,17 @@ export const App = () => {
     // Through tokensText rather than plainText: a command in the field is a chip, and plain text does not
     // see it at all (see captureCommand). To the agent it means exactly "/name" anyway, and that is what we
     // recognise it by.
-    const local = localCommand(tokensText(tokens), models)
+    const local = localCommand(tokensText(typed), models)
     if (local) {
       runLocal(local)
       if (!isOverride) editDraft(active, { tokens: [] })
       return
     }
+
+    // A command that stayed plain text - pasted from the clipboard, or sent with Enter right after its own
+    // name - becomes a chip before it travels anywhere: the card in the feed, the echo for a second client
+    // and the phone are all drawn out of these very tokens (see captureWrittenCommand).
+    const tokens = captureWrittenCommand(typed, commands) ?? typed
 
     const written = isOverride ? overrideText : composePrompt(draft, imageBaseCount)
     if (!written) return
@@ -1928,6 +1955,7 @@ export const App = () => {
     cards.planDecisions,
     decidePlan,
     shellRuns,
+    commands,
   ])
 
   const sendNow = useCallback(() => submit(false), [submit])
@@ -1985,13 +2013,6 @@ export const App = () => {
    */
   const permission = pendingPermission(panel.items, resolvedStream)
   const ask = pendingAsk(panel.items, cards.answeredAsks, resolvedStream)
-  const commands = useMemo(
-    // The tab's own catalogue while it has one, and the project's remembered one until then: this tab's
-    // process may not have come up yet, and the two disagree only about a server switched on or off
-    // since - where the live one is the truth.
-    () => buildCommands(panel.slashCommands.length > 0 ? panel.slashCommands : knownCommands, commandHints),
-    [panel.slashCommands, knownCommands, commandHints],
-  )
   const tabs = useMemo(
     () =>
       sessions.map((session) => ({

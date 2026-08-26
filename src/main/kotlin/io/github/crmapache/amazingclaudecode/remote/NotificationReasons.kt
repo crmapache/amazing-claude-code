@@ -1,5 +1,6 @@
 package io.github.crmapache.amazingclaudecode.remote
 
+import io.github.crmapache.amazingclaudecode.claude.ClaudeRateLimit
 import io.github.crmapache.amazingclaudecode.claude.SessionSnapshot
 
 /**
@@ -76,7 +77,10 @@ internal object NotificationReasons {
         if (after.pendingAsks.size > before.pendingAsks.size) return "question"
         if (after.pendingPlans.size > before.pendingPlans.size) return "plan"
 
-        if (message.contains("\"type\":\"agent\"") && message.contains("\"type\":\"rate_limit\"")) {
+        // A limit signal, and only when it means the work has genuinely stopped: the same event arrives
+        // when a used-up window is being paid for past the plan and nothing has halted at all, and
+        // waking someone for that is worse than silence (see ClaudeRateLimit).
+        if (message.contains("\"type\":\"agent\"") && ClaudeRateLimit.of(message)?.stopped == true) {
             return "rateLimit"
         }
 

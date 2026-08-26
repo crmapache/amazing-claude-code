@@ -3,12 +3,14 @@ import {
   contextColor,
   contextGlow,
   FIVE_HOUR_MS,
+  limitWindowName,
+  limitWindowRing,
   paceColor,
   timeLeft,
   WEEK_MS,
   weekBudgetToday,
 } from '../../feed/usage'
-import type { UsageWindow } from '../../protocol'
+import type { ExtraUsage, UsageWindow } from '../../protocol'
 import type { ProjectFacts } from '../facts'
 import m from '../mobile.module.css'
 
@@ -30,6 +32,8 @@ interface LimitsProps {
  */
 export const Limits = ({ facts, context, onClose }: LimitsProps) => {
   const budget = facts.week ? weekBudgetToday(facts.week.resets) : null
+  /** Which window is being paid past, when one is - it takes that window's own row below. */
+  const burning = facts.extra?.active ? limitWindowRing(facts.extra.window) : null
 
   return (
     <div className={m.sheetScrim} onClick={onClose}>
@@ -44,7 +48,13 @@ export const Limits = ({ facts, context, onClose }: LimitsProps) => {
         </div>
 
         <div className={m.limBody}>
-          {facts.session ? (
+          {/* Extra usage stands instead of the window that ran out - that window's percentage cannot move
+              any more, and what is worth knowing is that the work is being billed (the same substitution
+              as on the rings - see UsageMeters). Which window it replaces is said by the event, so an
+              exhausted week does not report itself in the five-hour row. */}
+          {burning === 'session' ? (
+            <ExtraWindow extra={facts.extra!} />
+          ) : facts.session ? (
             <Window
               name="Five-hour window"
               usage={facts.session}
@@ -52,7 +62,12 @@ export const Limits = ({ facts, context, onClose }: LimitsProps) => {
             />
           ) : null}
 
-          {facts.week ? (
+          {burning === 'week' ? (
+            <>
+              <div className={m.limDivider} />
+              <ExtraWindow extra={facts.extra!} />
+            </>
+          ) : facts.week ? (
             <>
               <div className={m.limDivider} />
               <Window
@@ -112,13 +127,35 @@ export const Limits = ({ facts, context, onClose }: LimitsProps) => {
             </>
           ) : null}
 
-          {!facts.session && !facts.week ? (
+          {!facts.session && !facts.week && !facts.extra?.active ? (
             // The windows come from the agent itself and are sometimes simply not there yet - a freshly
             // started IDE has asked nobody anything. Saying so beats an empty sheet.
             <p className={m.limEmpty}>The IDE has not reported the subscription windows yet.</p>
           ) : null}
         </div>
       </div>
+    </div>
+  )
+}
+
+/** The window that ran out and is now being paid for: the burning ring, and how much of the doubling has gone. */
+const ExtraWindow = ({ extra }: { extra: ExtraUsage }) => {
+  const window = limitWindowName(extra.window)
+
+  return (
+    <div className={m.limRow}>
+      <Ring percent={100} color="var(--acc-extra)" flame size={44} />
+      <span className={m.limText}>
+        <span className={m.limName}>Extra usage</span>
+        <span className={m.limMeta}>
+          {window ? `the ${window} limit is used up` : 'the limit is used up'}, billed on top of the plan
+        </span>
+      </span>
+      {extra.percent === undefined ? null : (
+        <span className={m.limValue} style={{ color: 'var(--acc-extra)' }}>
+          {extra.percent}%
+        </span>
+      )}
     </div>
   )
 }

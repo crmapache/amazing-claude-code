@@ -1,6 +1,6 @@
 import type { CommandEntry, CommandHint } from '../feed/slash'
 import { buildCommands } from '../feed/slash'
-import type { ShellMessage, UsageWindow } from '../protocol'
+import type { ExtraUsage, ShellMessage, UsageWindow } from '../protocol'
 
 /**
  * What a phone knows about a project rather than about one conversation in it.
@@ -17,6 +17,8 @@ import type { ShellMessage, UsageWindow } from '../protocol'
 export interface ProjectFacts {
   session?: UsageWindow
   week?: UsageWindow
+  /** Whether the plan's limit is being passed for money right now - see ExtraUsage. */
+  extra?: ExtraUsage
   /** The current model's context window: with the large ones it is a million, not two hundred thousand. */
   contextWindow?: number
   /** Today's tokens across every project - the same "tok" as in a terminal. */
@@ -65,6 +67,9 @@ export const applyFact = (facts: ProjectFacts, message: ShellMessage): ProjectFa
         ...facts,
         session: message.session ?? facts.session,
         week: message.week ?? facts.week,
+        // Whole or not at all: the two halves of extra usage are put together on the IDE's side, and
+        // merging them field by field here would only take them apart again.
+        extra: message.extra ?? facts.extra,
         // ?? will not do here: a 0 is not nullish, it would stick in the state for good and the context
         // gauge would divide by zero ever after.
         contextWindow:

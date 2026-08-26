@@ -57,6 +57,46 @@ class SessionSnapshotTest {
         assertEquals(200000, snapshot.contextMax)
     }
 
+    // The one state a client cannot work out for itself: "nothing is happening here" and "the work is
+    // done" are both idle, and only this tells them apart (see SessionSnapshot.worked).
+    @Test
+    fun `a turn that ran and ended counts as work done`() {
+        val running = apply("""{"type":"status","sessionId":"main","state":"running"}""")
+        assertFalse(running.worked)
+
+        val ended = SessionSnapshots.apply(running, """{"type":"status","sessionId":"main","state":"idle"}""")
+        assertTrue(ended.worked)
+    }
+
+    @Test
+    fun `a conversation that has never run has no work behind it`() {
+        assertFalse(apply("""{"type":"status","sessionId":"main","state":"idle"}""").worked)
+    }
+
+    // A crash is not work done, and it arrives as its own message rather than as a status - so the two
+    // cannot be confused for one another.
+    @Test
+    fun `a process dying mid-turn is not work done`() {
+        val snapshot = apply(
+            """{"type":"status","sessionId":"main","state":"running"}""",
+            """{"type":"processExited","sessionId":"main","exitCode":1}""",
+        )
+
+        assertFalse(snapshot.worked)
+    }
+
+    // What was finished stays finished: a new turn on top of it does not erase the fact.
+    @Test
+    fun `work done survives the turns that follow it`() {
+        val snapshot = apply(
+            """{"type":"status","sessionId":"main","state":"running"}""",
+            """{"type":"status","sessionId":"main","state":"idle"}""",
+            """{"type":"status","sessionId":"main","state":"running"}""",
+        )
+
+        assertTrue(snapshot.worked)
+    }
+
     @Test
     fun `a permission puts the conversation into waiting and an answer takes it out`() {
         val asked = apply("""{"type":"permission","id":"req-1","sessionId":"main","toolName":"Write"}""")

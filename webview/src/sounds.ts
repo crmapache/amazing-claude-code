@@ -103,11 +103,11 @@ const PRIORITY: SoundId[] = ['trouble', 'rateLimit', 'permission', 'question', '
 /**
  * A limit refusal recognised by its text.
  *
- * The main route is different: the limit event arrives separately and is parsed in the feed into a mark
- * (see ErrorItem.limit) - that is what we lean on, because it does not depend on wording. But a limit
- * also arrives as a plain turn refusal, in the CLI's words, and then there is nothing else to recognise
- * it by. Being wrong here is cheap: a miss means the ordinary breakage signal sounds rather than
- * silence.
+ * The main route is different: the limit event arrives separately and becomes a row of its own in the
+ * feed (see LimitItem), which is what the case below it leans on - that route does not depend on
+ * wording. But a limit also arrives as a plain turn refusal, in the CLI's words, and then there is
+ * nothing else to recognise it by. Being wrong here is cheap: a miss means the ordinary breakage signal
+ * sounds rather than silence.
  */
 const LIMIT_PATTERN = /(rate|usage|quota)[ -]?limit|limit (reached|exceeded|is used up)|out of (usage|credits)/i
 
@@ -207,7 +207,13 @@ const soundFor = (item: FeedItem, live: boolean): SoundId | null => {
       return 'plan'
 
     case 'error':
-      return item.limit || LIMIT_PATTERN.test(item.message) ? 'rateLimit' : 'trouble'
+      return LIMIT_PATTERN.test(item.message) ? 'rateLimit' : 'trouble'
+
+    // The limit's own row (see LimitItem). Only a stop calls: extra usage means the work carries on, and
+    // being called away from the desk for work that never paused is the false alarm this whole
+    // distinction exists to remove.
+    case 'limit':
+      return item.state === 'waiting' ? 'rateLimit' : null
 
     // A turn's result is its end - but only if the agent finished the turn itself. One interrupted by
     // the person is marked right here, and calling someone who pressed "stop" a minute ago serves

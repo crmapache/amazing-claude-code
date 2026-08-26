@@ -513,6 +513,11 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // nothing about what is connected right now.
         if (!replay) catalog.noteCommands(line)
 
+        // The limit picture changes on its own, without anyone asking: extra usage begins the moment a
+        // window runs out. Not from a replay for the same reason - an old transcript says nothing about
+        // the state of the subscription right now.
+        if (!replay) usage.noteRateLimit(line)
+
         rawListeners.forEach { it(sessionId, line, replay) }
 
         val replayFlag = if (replay) ""","replay":true""" else ""

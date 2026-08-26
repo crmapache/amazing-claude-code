@@ -319,6 +319,36 @@ export const captureCommand = (
   ])
 }
 
+/**
+ * The command at a message's very start as a chip - for one that came into the field ready-made rather
+ * than character by character.
+ *
+ * Typing turns a command into a chip at one exact moment: the space after a finished name (see
+ * [captureCommand]). A command pasted from the clipboard never passes through that moment, and neither
+ * does one sent with Enter right after its own name - there the hint has nothing left to substitute, so
+ * Enter sends. The agent reads "/name" either way, but in the feed one of them stood as a chip and the
+ * other as bare text: the same command looked like a different thing depending on how it had been
+ * written.
+ *
+ * The name has to be a known one, as everywhere else: a chip promises that the command exists.
+ */
+export const captureWrittenCommand = (tokens: UserToken[], commands: CommandEntry[]): UserToken[] | null => {
+  const first = tokens[0]
+  // Only the field's start: a slash with anything in front of it is not a command (see [commandChip]).
+  if (first?.kind !== 'text') return null
+
+  const name = /^\/(\S+)/.exec(first.value)?.[1]
+  if (!name || !commands.some((command) => command.id === name)) return null
+
+  const head = `/${name}`
+  const chip: UserToken = { kind: 'chip', chip: { kind: 'cmd', value: name } }
+  // The space only where nothing follows the name: an argument brings its own separator, and a second one
+  // would travel to the agent inside the message.
+  const replacement = first.value.length > head.length ? [chip] : [chip, { kind: 'text' as const, value: ' ' }]
+
+  return replaceCommandHead(tokens, head, replacement)
+}
+
 /** A command that has already become a chip: it is always first - a command with something before it is not a command. */
 export const commandChip = (tokens: UserToken[]): string | null => {
   const first = tokens[0]

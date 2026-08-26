@@ -1,6 +1,23 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ShellMessage } from '../protocol'
-import { applyMessage, emptyFeed } from './feed'
+import { streamStatus } from '../feed/streamStatus'
+import type { CardState } from '../hooks/useCardState'
+import { RemoteClock } from './clock'
+import { applyMessage, emptyFeed, feedTicks, tickFeed } from './feed'
+
+/** Nothing expanded and nothing answered - the little of a card's state that streamStatus reads. */
+const emptyCards: CardState = {
+  isOpen: () => false,
+  toggle: () => {},
+  planDecisions: {},
+  decidePlan: () => {},
+  answeredAsks: [],
+  answerAsk: () => {},
+}
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 /**
  * The phone builds a conversation out of the same messages the panel does, with the same reducer.
@@ -14,7 +31,9 @@ import { applyMessage, emptyFeed } from './feed'
 
 const message = (body: Partial<ShellMessage> & { type: string }): ShellMessage => body as ShellMessage
 
-const apply = (messages: ShellMessage[]) => messages.reduce(applyMessage, emptyFeed())
+// Never `reduce(applyMessage, ...)` directly: reduce hands the index along as a third argument, and
+// applyMessage's third argument is the time it stands the clockless messages at.
+const apply = (messages: ShellMessage[]) => messages.reduce((feed, one) => applyMessage(feed, one), emptyFeed())
 
 const assistant = (text: string, uuid?: string): ShellMessage =>
   message({
@@ -64,7 +83,7 @@ describe('the phone building a conversation', () => {
       message({ type: 'restoreStarted', sessionId: 'main', from: 0 }),
     )
 
-    const collecting = [assistant('one'), assistant('two')].reduce(applyMessage, started)
+    const collecting = [assistant('one'), assistant('two')].reduce((feed, one) => applyMessage(feed, one), started)
 
     expect(collecting.restoring).toBe(true)
     expect(collecting.state.items).toHaveLength(0)
@@ -239,5 +258,69 @@ describe('the phone building a conversation', () => {
     const after = applyMessage(before, message({ type: 'plugins', installed: [], available: [] }))
 
     expect(after).toBe(before)
+  })
+
+  /**
+   * The counters, and the two clocks they are caught between.
+   *
+   * Everything in this state is measured in the IDE's time, because that is what the messages are
+   * stamped with. Answering "how long has this been running" against the device's own clock subtracts
+   * one machine's time from another's - and that is how a turn came to open at a negative number on a
+   * phone whose clock ran ahead of the machine's.
+   */
+  describe('counting time', () => {
+    /** The IDE thinks it is this moment; the phone in the hand is five seconds behind it. */
+    const THERE = 1_700_000_000_000
+    const HERE = THERE - 5000
+
+    const running = () =>
+      applyMessage(
+        emptyFeed(),
+        message({ type: 'status', sessionId: 'main', state: 'running', seq: 1, at: THERE }),
+        THERE,
+      )
+
+    it('starts a turn on the clock the messages are stamped with', () => {
+      expect(running().state.turnStartedAt).toBe(THERE)
+    })
+
+    it('counts against the IDE clock rather than the phone own', () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(HERE)
+
+      const feed = running()
+      const clock = new RemoteClock()
+      clock.observe(THERE)
+
+      expect(streamStatus(feed.state, emptyCards, clock.now())).toBe('Claude is thinking · 0.0s')
+
+      // Three seconds later by either clock. Read off the phone's own, the turn is still five seconds
+      // short of having begun - which is the negative number people were seeing, and which the floor in
+      // formatDuration now flattens into a counter stuck at zero. Neither is the time this turn has run.
+      vi.setSystemTime(HERE + 3000)
+      expect(streamStatus(feed.state, emptyCards, Date.now())).toBe('Claude is thinking · 0.0s')
+      expect(streamStatus(feed.state, emptyCards, clock.now())).toBe('Claude is thinking · 3.0s')
+    })
+
+    it('moves the counters once asked to, without a message arriving', () => {
+      const feed = running()
+      expect(feedTicks(feed)).toBe(true)
+
+      const ticked = tickFeed(feed, THERE + 4000)
+      expect(ticked).not.toBe(feed)
+      expect(streamStatus(ticked.state, emptyCards, THERE + 4000)).toContain('4.0s')
+    })
+
+    /** A finished conversation has nothing to move - and a phone must not wake its screen for nothing. */
+    it('does not tick over a conversation that has finished', () => {
+      const idle = applyMessage(
+        running(),
+        message({ type: 'status', sessionId: 'main', state: 'idle', seq: 2, at: THERE + 1000 }),
+        THERE + 1000,
+      )
+
+      expect(feedTicks(idle)).toBe(false)
+      expect(tickFeed(idle, THERE + 9000)).toBe(idle)
+    })
   })
 })

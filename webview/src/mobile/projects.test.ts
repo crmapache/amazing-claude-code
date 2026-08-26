@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { LinkState } from './link'
-import { buildProjects, type Inventory } from './projects'
+import { buildProjects, chatState, type Inventory } from './projects'
 
 /**
  * The first screen's order.
@@ -138,5 +138,60 @@ describe('the list of projects on a phone', () => {
   /** An IDE that has not sent its list yet contributes nothing rather than an empty machine. */
   it('says nothing about an IDE that has not reported', () => {
     expect(buildProjects([agent], {}, { a1: 'connecting' })).toEqual([])
+  })
+
+  /** An IDE too old to send them says nothing about either, and nothing means the quiet state. */
+  it('takes a conversation with no word about its work as quiet', () => {
+    const projects = build({ projects: [{ key: 'one', name: 'one', sessions: [session('main')] }] })
+
+    expect(projects[0]?.sessions[0]?.worked).toBe(false)
+    expect(projects[0]?.sessions[0]?.crashed).toBe(false)
+  })
+})
+
+/**
+ * What a row's mark says, and in which order the states outrank each other.
+ *
+ * The order is the point: every state past the first is also true of the ones below it - a crashed
+ * conversation is idle too, one waiting for a person may have worked before - so a mark that picks the
+ * wrong one is a screen that quietly stops mentioning the thing worth acting on.
+ */
+describe("a conversation's mark", () => {
+  const row = (extra: Partial<ReturnType<typeof plain>> = {}) => ({ ...plain(), ...extra })
+
+  const plain = () => ({
+    agentId: 'a1',
+    agentLabel: 'WebStorm on desk',
+    projectKey: 'one',
+    projectName: 'one',
+    sessionId: 'main',
+    title: 'main',
+    titleSource: 'default',
+    status: 'idle',
+    awaitsYou: false,
+    worked: false,
+    crashed: false,
+    seq: 0,
+    online: true,
+  })
+
+  it('is unlit for a conversation that has never done anything', () => {
+    expect(chatState(row())).toBe('idle')
+  })
+
+  it('is green once a turn has been carried through', () => {
+    expect(chatState(row({ worked: true }))).toBe('done')
+  })
+
+  it('shows work in progress over work already done', () => {
+    expect(chatState(row({ status: 'running', worked: true }))).toBe('running')
+  })
+
+  it('shows what waits for a person over anything that is merely running', () => {
+    expect(chatState(row({ status: 'running', awaitsYou: true }))).toBe('attention')
+  })
+
+  it('shows a dead process above all of it', () => {
+    expect(chatState(row({ crashed: true, awaitsYou: true, status: 'running', worked: true }))).toBe('crashed')
   })
 })

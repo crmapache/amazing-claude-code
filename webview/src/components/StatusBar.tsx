@@ -1,6 +1,8 @@
 import { EFFORT_SAMPLE, MODE_SAMPLE, MODEL_SAMPLE, modeLabel, modeShortLabel, modelLabel } from '../catalog'
 import {
   FIVE_HOUR_MS,
+  limitWindowName,
+  limitWindowRing,
   paceColor,
   RING_LENGTH,
   RING_RADIUS,
@@ -9,7 +11,7 @@ import {
   WEEK_MS,
   weekBudgetToday,
 } from '../feed/usage'
-import type { UsageWindow } from '../protocol'
+import type { ExtraUsage, UsageWindow } from '../protocol'
 import s from './shell.module.css'
 import { ThanksButton } from './Thanks'
 
@@ -41,7 +43,7 @@ interface UsageMetersProps {
   /** Today's tokens across every project - the same "tok" as in a terminal. */
   todayTokens: string
   /** The subscription's usage windows. They come from the agent itself, so they are sometimes empty. */
-  usage: { session?: UsageWindow; week?: UsageWindow }
+  usage: { session?: UsageWindow; week?: UsageWindow; extra?: ExtraUsage }
 }
 
 /**
@@ -57,28 +59,56 @@ interface UsageMetersProps {
  * The context fill is deliberately not here: it is already drawn as a bar above the field itself (see
  * Composer), and a second figure about the same thing would only take up room.
  */
-export const UsageMeters = ({ todayTokens, usage }: UsageMetersProps) => (
-  <div className={s.meters}>
-    {usage.session ? (
-      <Meter
-        percent={usage.session.percent}
-        color={paceColor(usage.session.percent, usage.session.resets, FIVE_HOUR_MS)}
-        tooltip={windowTooltip('5-hour limit', usage.session)}
-      />
-    ) : null}
+export const UsageMeters = ({ todayTokens, usage }: UsageMetersProps) => {
+  /**
+   * Which ring burns, when one does. The window that ran out is the one being paid past, and a five-hour
+   * one and a weekly one are two different rings: painting the five-hour ring for an exhausted week would
+   * point at a window that is fine.
+   */
+  const burning = usage.extra?.active ? limitWindowRing(usage.extra.window) : null
 
-    {usage.week ? <WeekMeter usage={usage.week} /> : null}
+  return (
+    <div className={s.meters}>
+      {/* The burning ring stands instead of the window's share rather than beside it: that window is used
+          up, its percentage is stuck at a hundred, and a figure that cannot change any more says nothing.
+          What matters now is that the work is being paid for - so the ring is closed, painted its own
+          colour, left without a number and set alight, and the tooltip says the rest. */}
+      {burning === 'session' ? (
+        <Meter percent={100} color="var(--acc-extra)" value="" flame tooltip={extraTooltip(usage.extra!)} />
+      ) : usage.session ? (
+        <Meter
+          percent={usage.session.percent}
+          color={paceColor(usage.session.percent, usage.session.resets, FIVE_HOUR_MS)}
+          tooltip={windowTooltip('5-hour limit', usage.session)}
+        />
+      ) : null}
 
-    <span
-      className={s.meterTokens}
-      data-tooltip="Tokens spent today, across all projects"
-      data-tooltip-at="top left"
-      data-tooltip-kind="meter"
-    >
-      {todayTokens}
-    </span>
-  </div>
-)
+      {burning === 'week' ? (
+        <Meter percent={100} color="var(--acc-extra)" value="" flame tooltip={extraTooltip(usage.extra!)} />
+      ) : usage.week ? (
+        <WeekMeter usage={usage.week} />
+      ) : null}
+
+      <span
+        className={s.meterTokens}
+        data-tooltip="Tokens spent today, across all projects"
+        data-tooltip-at="top left"
+        data-tooltip-kind="meter"
+      >
+        {todayTokens}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * The id of the blur the heat is drawn with. One for the whole page on purpose: the filter is the same for
+ * every burning ring, and two rings burn at once at most (the composer's row and the phone's sheet).
+ */
+const FLAME_HEAT = 'acc-flame-heat'
+
+/** The tighter blur that gives each spark its halo - see .flameSparkGlow. */
+const FLAME_GLOW = 'acc-flame-glow'
 
 export interface RingProps {
   percent: number
@@ -87,11 +117,18 @@ export interface RingProps {
   pace?: number | null
   /** In pixels, when the ring is not the status line's own 22 - the phone's is bigger. */
   size?: number
+  /** The ring burns: the plan's ceiling is behind and the meter is running (see FlameRing). */
+  flame?: boolean
 }
 
 interface MeterProps extends RingProps {
   /** The hover tooltip; a newline in it is a genuine second line. */
   tooltip: string
+  /**
+   * What stands beside the ring, when it is not the percentage: an empty string leaves the ring alone
+   * (see the extra usage ring in UsageMeters).
+   */
+  value?: string
 }
 
 /**
@@ -101,7 +138,7 @@ interface MeterProps extends RingProps {
  * mobile/screens/Composer): the geometry - the radius, the stroke, which way the arc turns - is the
  * kind of thing that is copied once and then quietly drifts.
  */
-export const Ring = ({ percent, color, pace = null, size }: RingProps) => (
+export const Ring = ({ percent, color, pace = null, size, flame = false }: RingProps) => (
   // overflow is visible: the arc's round caps stick out past the viewBox.
   <svg
     className={s.meterRing}
@@ -110,6 +147,7 @@ export const Ring = ({ percent, color, pace = null, size }: RingProps) => (
     aria-hidden="true"
   >
     <circle className={s.meterTrack} cx="11" cy="11" r={RING_RADIUS} />
+    {flame ? <Flames /> : null}
     {pace === null ? null : (
       <circle
         className={s.meterPace}
@@ -129,23 +167,145 @@ export const Ring = ({ percent, color, pace = null, size }: RingProps) => (
   </svg>
 )
 
-const Meter = ({ percent, color, pace = null, tooltip }: MeterProps) => (
-  <span
-    className={s.meter}
-    data-tooltip={tooltip}
-    data-tooltip-at="top left"
-    // The two-full-lines drawing rather than a button caption's - Tooltips carries the mark over onto
-    // the shared element (see tooltip.module.css).
-    data-tooltip-kind="meter"
-    role="img"
-    aria-label={tooltip}
-  >
-    <Ring percent={percent} color={color} pace={pace} />
-    <span className={s.meterValue} style={{ color }}>
-      {percent}%
-    </span>
-  </span>
+/**
+ * The sparks, and where each leaves the ring.
+ *
+ * `angle` is a place on the ring, in degrees from the top - all the way round, because the ring smokes
+ * from wherever it happens to, not out of its crown. Spaced unevenly on purpose: two close together, then
+ * a gap. `size`, `rise` and the period are all slightly different from spark to spark - in step they would
+ * beat like an indicator rather than smoke - and the negative delay starts each one part-way up instead of
+ * all of them at rest.
+ */
+const SPARKS = [
+  { angle: 14, size: 1.1, rise: 1.15, seconds: 1.9, delay: 0 },
+  { angle: 63, size: 0.9, rise: 0.95, seconds: 1.45, delay: 0.7 },
+  { angle: 112, size: 1.05, rise: 1.1, seconds: 1.75, delay: 1.25 },
+  { angle: 158, size: 0.85, rise: 0.85, seconds: 1.5, delay: 0.4 },
+  { angle: 204, size: 1, rise: 1, seconds: 2, delay: 1 },
+  { angle: 253, size: 1.1, rise: 1.05, seconds: 1.6, delay: 0.25 },
+  { angle: 299, size: 0.95, rise: 0.9, seconds: 1.8, delay: 0.85 },
+  { angle: 337, size: 1.05, rise: 1.2, seconds: 1.35, delay: 1.45 },
+]
+
+/** The four-pointed spark, drawn in a box of its own twelve by twelve - see SPARK_SCALE. */
+const SPARK_PATH = 'M6 0L7.1 4.9L12 6L7.1 7.1L6 12L4.9 7.1L0 6L4.9 4.9Z'
+
+/**
+ * How much of that box is left. Set by the smallest ring rather than the biggest: on the composer's own
+ * twenty-two pixels anything finer than about five of them across simply is not seen, and the sheet's
+ * forty-four-pixel ring scales it up along with everything else.
+ */
+const SPARK_SCALE = 0.52
+
+/** How far up a spark gets before it is gone, in the drawing's units - times its own share (see [rise]). */
+const SPARK_RISE = 6.4
+
+/** The outer edge of the ring: half the stroke past its radius, which is where the metal actually ends. */
+const RING_EDGE = RING_RADIUS + 1.9
+
+/** A spark's starting point on that edge, at the given angle from the top. */
+const sparkAt = (angle: number): { x: number; y: number } => {
+  const radians = (angle * Math.PI) / 180
+
+  return { x: 11 + RING_EDGE * Math.sin(radians), y: 11 - RING_EDGE * Math.cos(radians) }
+}
+
+/**
+ * How far a spark rises: the whole way when it leaves the top of the ring, a fifth of it at the bottom.
+ *
+ * Not a flourish but the way round a real problem. Everything rises straight up, so a spark from below has
+ * the ring's own metal above it - given the full height it would sail through the hole in the middle, and
+ * a star crossing the inside of the ring reads as something loose rather than as smoke. Cut short, it
+ * fades while still against the metal, exactly as a wisp of smoke does with something in its way.
+ */
+const sparkRise = (angle: number): number => {
+  const upwards = (1 + Math.cos((angle * Math.PI) / 180)) / 2
+
+  return 0.2 + 0.8 * upwards
+}
+
+/**
+ * The ring smoking with sparks - the extra usage one, and nothing else.
+ *
+ * Sparks rather than a glow: a glow around a ring is a ring, and the thing worth noticing out of the
+ * corner of an eye is that this one is *burning*. So eight little stars lift off it and go straight up, the
+ * way smoke does - each from its own place anywhere along the ring's edge, at its own size, to its own
+ * height, on its own period, turning as it goes and coming apart into nothing. Nothing shares a rhythm
+ * with anything else, so the smoke never comes back into step while somebody is watching.
+ *
+ * The ones from below rise barely at all, and that is deliberate - see sparkRise.
+ *
+ * Under them lies the heat: one dim blurred circle that swells and gives way. It is what makes the sparks
+ * look lit rather than drawn, and it stays faint, because the ring is what has to be read.
+ *
+ * Two groups per spark rather than one, because each does a job the other would overwrite: the outer one
+ * is what the animation moves, the inner one holds the star's own place, size and centring.
+ *
+ * The blur is an SVG filter rather than the CSS one: this ring is drawn at twenty pixels and at forty-four
+ * (see the phone's Limits sheet), and a blur in screen pixels would be twice as soft on the small one.
+ * Everything that moves is a transform or an opacity - the two the browser animates on the compositor,
+ * without laying the page out again.
+ */
+const Flames = () => (
+  <>
+    <defs>
+      <filter id={FLAME_HEAT} x="-70%" y="-70%" width="240%" height="240%">
+        <feGaussianBlur stdDeviation="1.1" />
+      </filter>
+      <filter id={FLAME_GLOW} x="-120%" y="-120%" width="340%" height="340%">
+        <feGaussianBlur stdDeviation="0.7" />
+      </filter>
+    </defs>
+
+    <circle className={s.flameHeat} cx="11" cy="11" r={RING_RADIUS + 0.6} filter={`url(#${FLAME_HEAT})`} />
+
+    {SPARKS.map((spark) => (
+      <g
+        key={spark.angle}
+        className={s.flameSpark}
+        style={{
+          animationDuration: `${spark.seconds}s`,
+          animationDelay: `-${spark.delay}s`,
+          ['--acc-rise' as string]: `${-SPARK_RISE * spark.rise * sparkRise(spark.angle)}px`,
+        }}
+      >
+        <g
+          transform={`translate(${sparkAt(spark.angle).x} ${sparkAt(spark.angle).y}) scale(${SPARK_SCALE * spark.size}) translate(-6 -6)`}
+        >
+          {/* The same star twice: a blurred, wider copy under a sharp one. At this size the halo is what
+              makes a spark visible at all - a five-pixel shape with no light around it reads as a speck of
+              dust on the screen. */}
+          <path className={s.flameSparkGlow} d={SPARK_PATH} filter={`url(#${FLAME_GLOW})`} />
+          <path className={s.flameSparkStar} d={SPARK_PATH} />
+        </g>
+      </g>
+    ))}
+  </>
 )
+
+const Meter = ({ percent, color, pace = null, tooltip, value, flame = false }: MeterProps) => {
+  const caption = value ?? `${percent}%`
+
+  return (
+    <span
+      className={s.meter}
+      data-tooltip={tooltip}
+      data-tooltip-at="top left"
+      // The two-full-lines drawing rather than a button caption's - Tooltips carries the mark over onto
+      // the shared element (see tooltip.module.css).
+      data-tooltip-kind="meter"
+      role="img"
+      aria-label={tooltip}
+    >
+      <Ring percent={percent} color={color} pace={pace} flame={flame} />
+      {caption ? (
+        <span className={s.meterValue} style={{ color }}>
+          {caption}
+        </span>
+      ) : null}
+    </span>
+  )
+}
 
 interface StatusBarProps {
   model?: string
@@ -343,6 +503,19 @@ const windowTooltip = (title: string, usage: UsageWindow): string => {
   const left = timeLeft(usage.resets)
 
   return left === null ? `${title}: ${usage.percent}% used` : `${title}: ${usage.percent}% used\nResets in ${left}`
+}
+
+/**
+ * The extra usage tooltip: what the unnumbered ring means, and how much of the month's budget for it has
+ * gone when the account says. Without that share it still says the main thing - the plan's limit is
+ * behind us and the work is being billed.
+ */
+const extraTooltip = (extra: ExtraUsage): string => {
+  const window = limitWindowName(extra.window)
+  const named = window ? `the ${window} limit` : 'the limit'
+  const spent = extra.percent === undefined ? '' : `\n${extra.percent}% of the monthly extra usage spent`
+
+  return `Extra usage: ${named} is used up, the work is billed on top of the plan${spent}`
 }
 
 /** An accent of its own for every permission mode - see .selectorPlan and its neighbours. */

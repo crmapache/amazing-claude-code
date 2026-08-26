@@ -40,7 +40,7 @@ export const resolvePlan = (itemId: string, decision: 'approve' | 'keepPlanning'
 
 /** A moment in the future - the reset time of a usage window. Counted from "now": with a fixed date the
     windows would look long expired. */
-const inHours = (count: number): string => new Date(Date.now() + count * 60 * 60 * 1000).toISOString()
+export const inHours = (count: number): string => new Date(Date.now() + count * 60 * 60 * 1000).toISOString()
 
 /** Signing in and opening the project - the shared start for every scenario. */
 export const bootstrap: ScenarioStep[] = [
@@ -61,6 +61,33 @@ export const bootstrap: ScenarioStep[] = [
     todayTokens: '445.5M',
   }),
 ]
+
+/**
+ * A limit event, the way the CLI sends them: the reset time in seconds and counted from "now", or a
+ * window fixed in the past would look like a signal about a window that has long since gone - which the
+ * feed throws away, exactly as the CLI does.
+ */
+export const rateLimit = (info: {
+  status: string
+  resetsInSeconds?: number
+  isUsingOverage?: boolean
+  overageInUse?: boolean
+  rateLimitGraceActive?: boolean
+  rateLimitType?: string
+}): ScenarioStep =>
+  agent({
+    type: 'rate_limit_event',
+    rate_limit_info: {
+      status: info.status,
+      rateLimitType: info.rateLimitType ?? 'five_hour',
+      ...(info.resetsInSeconds === undefined
+        ? {}
+        : { resetsAt: Math.round(Date.now() / 1000) + info.resetsInSeconds }),
+      ...(info.isUsingOverage ? { isUsingOverage: true } : {}),
+      ...(info.overageInUse ? { overageInUse: true } : {}),
+      ...(info.rateLimitGraceActive ? { rateLimitGraceActive: true } : {}),
+    },
+  })
 
 export const toolUse = (name: string, input: unknown, id: string): ScenarioStep =>
   agent({

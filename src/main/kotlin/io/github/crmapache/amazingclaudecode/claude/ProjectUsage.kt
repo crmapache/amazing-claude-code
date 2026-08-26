@@ -51,6 +51,27 @@ internal class ProjectUsage(
     private val windows = ClaudeUsage.Tracker()
 
     /**
+     * Extra usage - the work that goes on past an exhausted limit, paid for on top of the plan.
+     *
+     * It is put together out of two different routes, because neither one alone knows the whole of it:
+     * the stream's limit events say whether it is being spent right now (see [noteRateLimit]), the
+     * answer to `get_usage` how much of the month's budget for it has already gone. Kept here rather
+     * than sent onwards as it comes, so that a message about one of the two does not wipe the other.
+     */
+    private val extraActive = AtomicBoolean(false)
+
+    /**
+     * Which window the extra usage is spent past, in the CLI's words. The panel decides by it which of
+     * its rings burns: a used-up five-hour window and a used-up weekly one arrive as the same event and
+     * are two different rings on the screen.
+     */
+    @Volatile
+    private var extraWindow = ""
+
+    @Volatile
+    private var extraKnown: ClaudeUsage.Extra? = null
+
+    /**
      * When a ping for the usage was last raised. The polling goes every half-minute, but for a sleeping
      * panel every round costs a separate process for a few seconds, while usage barely moves without
      * conversations - so we ping less often (see [refreshLimits]).
@@ -154,6 +175,32 @@ internal class ProjectUsage(
     }
 
     /**
+     * A line from a conversation's stream, in case it is a limit event: extra usage starts and ends
+     * without any question from us, and the rings must not wait for the next round of polling to learn
+     * of it (the whole point of the paint is that the limit has been passed right now).
+     *
+     * Only the change is said out loud: the CLI repeats the event on every turn while the state holds,
+     * and repeating a message that says the same thing would be noise on the wire - a phone across the
+     * city is on the other end of it.
+     */
+    fun noteRateLimit(line: String) {
+        val verdict = ClaudeRateLimit.of(line) ?: return
+        val active = verdict.extraUsage
+        val window = if (active) verdict.window else ""
+        val changed = extraActive.getAndSet(active) != active || extraWindow != window
+
+        extraWindow = window
+        if (!changed) return
+
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "usage")
+                putExtra()
+            }.toString(),
+        )
+    }
+
+    /**
      * Today's tokens - a scan of EVERY project's transcripts rather than a question to the current
      * conversation: it has a cost of its own, so it runs in the background, goes upwards as a separate
      * message and lives on the rarest round of them all (see ClaudePanel.scheduleTokenUpdates).
@@ -217,12 +264,18 @@ internal class ProjectUsage(
         // own a snapshot does not say whether it is about the present window (see ClaudeUsage.Tracker).
         val merged = windows.merge(snapshot)
 
+        // A one-off ping answers about extra usage as fully as a live conversation does, while an answer
+        // from a process that has not yet learned the account's settings carries no such block at all -
+        // and silence is not "extra usage went away".
+        snapshot.extra?.let { extraKnown = it }
+
         hub.broadcastProject(
             buildJsonObject {
                 put("type", "usage")
                 merged.session?.let { putWindow("session", it) }
                 merged.week?.let { putWindow("week", it) }
                 merged.contextWindow?.let { put("contextWindow", it) }
+                putExtra()
             }.toString(),
         )
 
@@ -231,6 +284,25 @@ internal class ProjectUsage(
         // limits" and "the window is the present one" even when the CLI said nothing this time: the
         // memory holds windows from previous rounds.
         return snapshot
+    }
+
+    /**
+     * Extra usage upwards: whether it is being spent right now and how much of its monthly budget has
+     * gone. Always as a whole rather than field by field - the two halves come from different routes,
+     * and half a picture on the wire would mean the ring goes back to a percentage the moment the other
+     * half arrives.
+     */
+    private fun JsonObjectBuilder.putExtra() {
+        val known = extraKnown
+        val active = extraActive.get()
+        if (known == null && !active) return
+
+        putJsonObject("extra") {
+            put("active", active)
+            if (active && extraWindow.isNotEmpty()) put("window", extraWindow)
+            known?.let { put("enabled", it.enabled) }
+            known?.percent?.let { put("percent", it) }
+        }
     }
 
     private fun JsonObjectBuilder.putWindow(name: String, window: ClaudeUsage.Window) {

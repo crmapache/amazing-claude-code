@@ -10,6 +10,41 @@
  * The thresholds themselves are taken from a personal ~/.claude/statusline.sh one to one.
  */
 
+/**
+ * Which window a limit event is about, in the words a person uses - the CLI's own names for them, not a
+ * guess.
+ *
+ * The weekly ones come per model as well as in general: an exhausted Opus week with the shared one still
+ * half full is an ordinary state of affairs, and "your weekly limit is used up" would then be a lie about
+ * the whole subscription. An unfamiliar name gives an empty string rather than itself: a new bucket in a
+ * later CLI must not turn into "your seven_day_whatever limit" in the panel.
+ *
+ * Here rather than in the feed because two things read it: the row in the feed (see rate_limit_event in
+ * build.ts) and the tooltip on the burning ring (see UsageMeters).
+ */
+const LIMIT_WINDOW_NAME: Record<string, string> = {
+  five_hour: '5-hour',
+  seven_day: 'weekly',
+  seven_day_opus: 'weekly Opus',
+  seven_day_sonnet: 'weekly Sonnet',
+  seven_day_oauth_apps: 'weekly apps',
+  seven_day_overage_included: 'weekly, extra usage included',
+  overage: 'extra usage',
+}
+
+export const limitWindowName = (window: string | undefined): string => LIMIT_WINDOW_NAME[window ?? ''] ?? ''
+
+/**
+ * Which of the two rings the window belongs to: the five-hour one or the weekly one.
+ *
+ * It decides which ring burns while extra usage is being spent. Everything weekly - the shared window and
+ * the per-model ones alike - belongs to the weekly ring; anything else, an unfamiliar name included, goes
+ * to the five-hour one, because that is the window that runs out several times a day and is nearly always
+ * the one meant.
+ */
+export const limitWindowRing = (window: string | undefined): 'session' | 'week' =>
+  window?.startsWith('seven_day') ? 'week' : 'session'
+
 /** The ring's radius in its own coordinates, and the arc length at that radius. */
 export const RING_RADIUS = 8.5
 

@@ -34,6 +34,21 @@ internal data class SessionSnapshot(
     val contextMax: Int = 0,
     /** The process died on its own since the last turn - see ClaudePanel.sendProcessExited. */
     val crashed: Boolean = false,
+    /**
+     * Whether a turn in this conversation has ever been carried through to its end.
+     *
+     * It is the difference between "nothing is happening here" and "the work is done" - the same one the
+     * panel draws as a green dot against an unlit one (see sessionState in App.tsx), and the only one of
+     * the five states a client cannot work out for itself from status and awaitsYou alone.
+     *
+     * Kept here rather than counted off the journal for the reason everything else here is: a phone
+     * drawing a list of conversations would otherwise have to replay every one of them to colour a dot.
+     *
+     * A conversation raised from the history starts without it, exactly as the panel's own tab does: a
+     * transcript holds no record of a turn ending (see ClaudeHistory.replayable), so what this says is
+     * "work finished while this tab was alive" rather than "this conversation has ever done anything".
+     */
+    val worked: Boolean = false,
     /** Permission cards this conversation is stopped on, by request id. */
     val pendingPermissions: Set<String> = emptySet(),
     /** Plans awaiting a decision, by the id of the card in the feed. */
@@ -86,7 +101,19 @@ internal object SessionSnapshots {
         val text = { name: String -> payload[name]?.jsonPrimitive?.contentOrNull.orEmpty() }
 
         return when (text("type")) {
-            "status" -> snapshot.copy(status = text("state").ifEmpty { snapshot.status })
+            "status" -> {
+                val state = text("state").ifEmpty { snapshot.status }
+                snapshot.copy(
+                    status = state,
+                    // A turn that was running and is not any more is a turn that ended - whether the agent
+                    // finished it or the person stopped it, both leave work behind them. A process that
+                    // died mid-turn does not come through here (see "processExited" below), so a crash
+                    // cannot be mistaken for work done.
+                    worked = snapshot.worked ||
+                        (snapshot.status == SessionSnapshot.STATUS_RUNNING &&
+                            state == SessionSnapshot.STATUS_IDLE),
+                )
+            }
 
             "sessionTitle" -> text("title").takeIf { it.isNotBlank() }
                 ?.let { snapshot.copy(title = it, titleSource = SessionSnapshot.TITLE_LLM) }

@@ -1,13 +1,13 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { AgentEvent } from '../protocol'
+import type { AgentEvent, AgentRateLimitEvent } from '../protocol'
 import { contextOf, contextUsage, initialPanelState, reducePanel, type PanelState } from './build'
 import type {
   AskItem,
   CompactItem,
-  ErrorItem,
   FindingsItem,
+  LimitItem,
   PlanItem,
   RetryItem,
   TaskItem,
@@ -912,27 +912,87 @@ describe('building the feed out of the agent stream', () => {
   })
 
   describe('the subscription limit', () => {
-    const limitEvent = (status: string, resetsAt?: number): AgentEvent => ({
+    /** An hour past the moment `play` calls "now" - a window that has not reset yet. */
+    const AHEAD = 1_700_003_600
+    /** An hour before it: the same event, arriving about a window that has already gone. */
+    const BEHIND = 1_699_996_400
+
+    const limitEvent = (
+      info: Partial<NonNullable<AgentRateLimitEvent['rate_limit_info']>>,
+    ): AgentEvent => ({
       type: 'rate_limit_event',
-      rate_limit_info: { status, resetsAt, rateLimitType: 'five_hour' },
+      rate_limit_info: { rateLimitType: 'five_hour', resetsAt: AHEAD, ...info },
     })
+
+    const limits = (state: PanelState): LimitItem[] =>
+      state.items.filter((item): item is LimitItem => item.kind === 'limit')
 
     it('stays silent about a request that got through: the feed is not a summary of the subscription state', () => {
-      expect(play([limitEvent('allowed')]).items).toEqual([])
+      expect(play([limitEvent({ status: 'allowed' })]).items).toEqual([])
     })
 
-    it('shows a refusal in the feed and marks it as a limit rather than a breakage', () => {
-      const items = play([limitEvent('rejected')]).items
-      const error = items.find((item): item is ErrorItem => item.kind === 'error')
+    it('says the work has stopped, and until when - as a limit rather than as a breakage', () => {
+      const [row] = limits(play([limitEvent({ status: 'rejected' })]))
 
-      expect(error?.limit).toBe(true)
-      expect(error?.message).toContain('5-hour')
+      expect(row?.state).toBe('waiting')
+      expect(row?.window).toBe('5-hour')
+      expect(row?.resetsAt).toBe(AHEAD * 1000)
+      // Not an error: nothing is broken, there is nothing to fix and nothing to close with a cross.
+      expect(play([limitEvent({ status: 'rejected' })]).items.some((item) => item.kind === 'error')).toBe(false)
     })
 
-    it('does not lay a repeated event of the same turn down as a second line', () => {
-      const state = play([limitEvent('rejected'), limitEvent('rejected')])
+    it('calls a used-up limit that is being paid for extra usage rather than a stop', () => {
+      const [row] = limits(play([limitEvent({ status: 'rejected', isUsingOverage: true })]))
 
-      expect(state.items.filter((item) => item.kind === 'error')).toHaveLength(1)
+      expect(row?.state).toBe('extra')
+    })
+
+    it('takes the older flag for the same thing: which of the two arrives depends on the CLI', () => {
+      const [row] = limits(play([limitEvent({ status: 'rejected', overageInUse: true })]))
+
+      expect(row?.state).toBe('extra')
+    })
+
+    it('stays silent during the grace period: the limit is over but the step is allowed to finish', () => {
+      expect(play([limitEvent({ status: 'rejected', rateLimitGraceActive: true })]).items).toEqual([])
+    })
+
+    it('throws away a signal about a window that has already reset', () => {
+      expect(play([limitEvent({ status: 'rejected', resetsAt: BEHIND })]).items).toEqual([])
+    })
+
+    it('does not lay a repeated event down as a second row', () => {
+      const state = play([limitEvent({ status: 'rejected' }), limitEvent({ status: 'rejected' })])
+
+      expect(limits(state)).toHaveLength(1)
+    })
+
+    it('says a limit used up in the next window again: the first row has gone by then', () => {
+      const state = play([
+        limitEvent({ status: 'rejected' }),
+        limitEvent({ status: 'rejected', resetsAt: AHEAD + 18_000 }),
+      ])
+
+      expect(limits(state).map((row) => row.resetsAt)).toEqual([AHEAD * 1000, (AHEAD + 18_000) * 1000])
+    })
+
+    it('says it when the state changes: a wait that turned into paid work is news', () => {
+      const state = play([
+        limitEvent({ status: 'rejected' }),
+        limitEvent({ status: 'rejected', isUsingOverage: true }),
+      ])
+
+      expect(limits(state).map((row) => row.state)).toEqual(['waiting', 'extra'])
+    })
+
+    it('names the weekly windows the way the CLI does, and stays quiet about ones it does not know', () => {
+      const named = (rateLimitType: string): string | undefined =>
+        limits(play([limitEvent({ status: 'rejected', rateLimitType })]))[0]?.window
+
+      expect(named('seven_day')).toBe('weekly')
+      expect(named('seven_day_opus')).toBe('weekly Opus')
+      // A bucket that appears in a later CLI must not turn into "your seven_day_whatever limit".
+      expect(named('seven_day_whatever')).toBe('')
     })
   })
 

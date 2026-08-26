@@ -11,6 +11,7 @@ import type {
 } from '../protocol'
 import { modeShortLabel, normalizeMode, sameModel } from '../catalog'
 import { parseParagraphs } from './markdown'
+import { limitWindowName } from './usage'
 import { initialPanelState, push, type PanelAction, type PanelState } from './panelState'
 import { applyApiRetry, closeRetry, closeRetryFor } from './retry'
 import {
@@ -29,6 +30,7 @@ import { chipFor, detailFor, formatDuration, hunksFor, metaFor, resultToText, ta
 import type {
   DetailLine,
   FeedItem,
+  LimitItem,
   TextItem,
   ThinkItem,
   TodoEntry,
@@ -63,7 +65,7 @@ export { initialPanelState } from './panelState'
  * the person's last message: the same refusal an hour later is a fresh piece of trouble, and staying
  * silent about it would be worse than repeating oneself.
  */
-const addError = (state: PanelState, message: string, limit = false): PanelState => {
+const addError = (state: PanelState, message: string): PanelState => {
   const turnStart = state.items.map((item) => item.kind).lastIndexOf('user') + 1
   const alreadyShown = state.items
     .slice(turnStart)
@@ -86,12 +88,7 @@ const addError = (state: PanelState, message: string, limit = false): PanelState
     (item, index) => !(index >= turnStart && item.kind === 'text' && item.source.trim() === said),
   )
 
-  return push({ ...state, items: withoutEcho }, (id) => ({
-    id,
-    kind: 'error',
-    message,
-    ...(limit ? { limit: true } : {}),
-  }))
+  return push({ ...state, items: withoutEcho }, (id) => ({ id, kind: 'error', message }))
 }
 
 export const reducePanel = (state: PanelState, action: PanelAction, now = Date.now()): PanelState => {
@@ -642,14 +639,35 @@ const blocksOf = (content: MessageContent | undefined): ContentBlock[] => {
  */
 const ALLOWED_RATE_LIMIT = new Set(['allowed', 'allowed_warning', 'ok'])
 
-/** A limit refusal in words: what matters here is when work is possible again. */
-const rateLimitMessage = (info: NonNullable<AgentRateLimitEvent['rate_limit_info']>): string => {
-  const window = info.rateLimitType === 'five_hour' ? '5-hour' : info.rateLimitType === 'weekly' ? 'weekly' : ''
-  const limit = window ? `Your ${window} limit is used up.` : 'Your usage limit is used up.'
+/**
+ * What a limit event actually amounts to.
+ *
+ * A "rejected" status alone is not a stop, and reading it as one is what used to put a red error over
+ * work that never paused (see LimitItem):
+ *
+ * - extra usage - the requests go through past the limit and are billed on top of the plan; the CLI
+ *   itself checks these very flags before deciding that anything has halted;
+ * - the grace period - the window is over, but the step under way is allowed to finish;
+ * - a stale signal - its reset time has already passed, so it describes a window that no longer exists;
+ *   the CLI throws such a one away, and a panel that does not would announce a limit that has reset.
+ *
+ * Whatever survives all three is a genuine stop until the window resets.
+ *
+ * The same three rules live once more on the plugin's side, where the usage rings and the phone's
+ * notifications need them (see ClaudeRateLimit.kt): what is doubled is a rule of the CLI's, not of ours,
+ * and neither side can read the other's language.
+ */
+const rateLimitState = (
+  info: NonNullable<AgentRateLimitEvent['rate_limit_info']>,
+  now: number,
+): 'extra' | 'waiting' | null => {
+  if (!info.status || ALLOWED_RATE_LIMIT.has(info.status.toLowerCase())) return null
+  if (info.isUsingOverage || info.overageInUse) return 'extra'
+  if (info.rateLimitGraceActive) return null
   // resetsAt arrives in seconds, as is customary in the CLI itself.
-  const resets = info.resetsAt ? ` Resets at ${new Date(info.resetsAt * 1000).toLocaleString()}.` : ''
+  if (info.resetsAt && info.resetsAt * 1000 <= now) return null
 
-  return `${limit}${resets}`
+  return 'waiting'
 }
 
 /**
@@ -704,16 +722,35 @@ const applyAgentEvent = (
       return applySystem(state, event, now)
 
     /**
-     * The subscription limit. The event arrives in ordinary life too - with a "let through" status - so
-     * only a refusal lands in the feed: the turn is stopped, and nothing will move until the window
-     * resets. This used to be learnable only from the refusal's text, if the CLI sent one; the signal
-     * itself the parsing skipped.
+     * The subscription limit. The event arrives in ordinary life too - with a "let through" status - and
+     * even a refusal does not always mean the work has stopped, so what lands in the feed is decided by
+     * rateLimitState rather than by the status alone.
+     *
+     * One row per state per window: the CLI repeats the event on every turn while the state holds, and a
+     * fresh "the limit is used up" under every answer would say nothing new. Two things do get a row of
+     * their own, because both are news: a change of state (extra usage after a wait), and the same state
+     * in the next window - the reset time tells them apart. Without that second check a limit used up
+     * twice in one conversation would be announced once: the first row has taken itself away by then
+     * (see LimitItem), and silence would be all that is left of the second.
      */
     case 'rate_limit_event': {
       const info = event.rate_limit_info
-      if (!info?.status || ALLOWED_RATE_LIMIT.has(info.status.toLowerCase())) return state
+      if (!info) return state
 
-      return addError(state, rateLimitMessage(info), true)
+      const limitState = rateLimitState(info, now)
+      if (!limitState) return state
+
+      const resetsAt = info.resetsAt ? info.resetsAt * 1000 : undefined
+      const last = state.items.filter((item): item is LimitItem => item.kind === 'limit').at(-1)
+      if (last?.state === limitState && last.resetsAt === resetsAt) return state
+
+      return push(state, (id) => ({
+        id,
+        kind: 'limit',
+        state: limitState,
+        window: limitWindowName(info.rateLimitType),
+        ...(resetsAt ? { resetsAt } : {}),
+      }))
     }
 
     // Along with the feed, everything describing the conversation that has gone is reset: the taken

@@ -50,13 +50,49 @@ export const emptyFeed = (): MobileFeed => ({
 })
 
 /**
+ * Whether anything in this feed is measured against the clock and so has to be moved once a second.
+ *
+ * The same question the panel asks before its own tick (see the interval in App.tsx): a turn under way,
+ * calls still running, a chain of retries counting down to the next attempt. Asked at all because the
+ * answer is usually "no" - a phone spends most of its time looking at a conversation that has finished,
+ * and a timer waking a React tree every second over a still picture is a battery bill for nothing.
+ */
+export const feedTicks = (feed: MobileFeed): boolean =>
+  !feed.restoring &&
+  (feed.state.turnStartedAt !== undefined ||
+    feed.state.retry !== undefined ||
+    Object.keys(feed.state.startedAt).length > 0)
+
+/**
+ * Move every running counter to `now`.
+ *
+ * Without this the phone had no tick at all: the durations of the calls and the counter beside "Claude
+ * is thinking" only ever moved when the next message happened to arrive, so a long call sat at the
+ * figure it had when it started and a quiet turn looked frozen. `now` is the IDE's time rather than the
+ * device's - everything being counted from was stamped by that machine (see clock.ts).
+ *
+ * Returns the same feed when nothing moved, so a screen renders only on the seconds that changed
+ * something.
+ */
+export const tickFeed = (feed: MobileFeed, now: number): MobileFeed => {
+  const state = reducePanel(feed.state, { kind: 'tick' }, now)
+  return state === feed.state ? feed : { ...feed, state }
+}
+
+/**
  * Apply one message from the shell.
  *
  * Returns the same feed when nothing changed, so a screen can skip a render on the many messages that
  * are about other conversations or about the project rather than the feed.
+ *
+ * `now` is what the IDE's clock is thought to say at this moment (see clock.ts) and stands in for the
+ * messages that carry no time of their own - the answer being printed, a page of older messages fetched
+ * on request. It matters that it is the IDE's rather than the device's: the whole of this state is
+ * measured in the IDE's time, and a single moment let in off the local clock is a duration counted
+ * across two of them.
  */
-export const applyMessage = (feed: MobileFeed, message: ShellMessage): MobileFeed => {
-  const at = message.at
+export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: number = Date.now()): MobileFeed => {
+  const at = message.at ?? now
   const seq = message.seq ?? feed.seq
 
   const collect = (action: PanelAction): MobileFeed => {
@@ -92,7 +128,7 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage): MobileFee
 
     case 'restoreFinished': {
       const state = feed.pending.reduce(
-        (panel, entry) => reducePanel(panel, entry.action, entry.at),
+        (panel, entry) => reducePanel(panel, entry.action, entry.at ?? now),
         feed.state,
       )
 
@@ -112,7 +148,7 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage): MobileFee
     case 'historyPage': {
       let pageState = initialPanelState
       for (const event of message.entries) {
-        pageState = reducePanel(pageState, { kind: 'agent', event, replay: true }, message.at)
+        pageState = reducePanel(pageState, { kind: 'agent', event, replay: true }, at)
       }
 
       // Defensive rather than expected: the uuid boundary this page was fetched with should not overlap

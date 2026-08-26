@@ -18,14 +18,18 @@
   --acc-tap: 52px;
 
   /*
-   * The phone's own corners, which are rounder than the panel's on purpose.
+   * The phone's own corners: a step rounder than the panel's, and no further.
    *
-   * The panel's radii (--acc-r-*) run from three to eight pixels: they belong to a dense tool window
-   * where a card is one line of a feed. Here a card is the size of a hand's reach, and at that size the
-   * same three pixels read as an accident rather than as a shape.
+   * The panel's radii (--acc-r-*) run from three to eight pixels - they belong to a dense tool window
+   * where a card is one line of a feed, and at a hand's reach that same three pixels reads as an
+   * accident rather than as a shape. Sixteen was the other extreme: a card, the pills inside it and
+   * every control on it were all capsules, and a screen of capsules has no edges left to tell one
+   * surface from another.
    */
-  --acc-r-card: 16px;
-  --acc-r-pill: 12px;
+  --acc-r-card: 10px;
+  --acc-r-pill: 8px;
+
+  /* Only what is genuinely a circle: the status dots and the avatars. Nothing rectangular. */
   --acc-r-round: 999px;
 }
 

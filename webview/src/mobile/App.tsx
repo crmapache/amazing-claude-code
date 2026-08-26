@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { unbase64url } from '../core/crypto'
 import { deriveSessionTitle } from '../feed/title'
 import type { HistoryEntry, ShellMessage } from '../protocol'
+import { ClockContext } from '../hooks/useNow'
 import { applyFact, emptyFacts, isFact, type ProjectFacts } from './facts'
-import { applyMessage, emptyFeed, type MobileFeed } from './feed'
+import { RemoteClock } from './clock'
+import { applyMessage, emptyFeed, feedTicks, tickFeed, type MobileFeed } from './feed'
 import { Link, type LinkState, type SessionLaunch } from './link'
 import { buildProjects, chatKey, type Inventory } from './projects'
 import { Decision } from './screens/Decision'
@@ -82,6 +84,26 @@ export const App = () => {
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set())
   const links = useRef<Record<string, Link>>({})
 
+  /**
+   * One reading of each paired IDE's clock, by agent - see clock.ts for why a phone needs one at all.
+   *
+   * Per IDE because that is what a clock belongs to: two paired machines disagree with this phone by
+   * two different amounts, and with each other. Beside the connections rather than inside the feed
+   * because it outlives a screen: walking out of a conversation and into another one on the same
+   * machine must not throw away what is already known about its clock and start the next turn back at a
+   * guess of zero - which is precisely the window the wrong number used to show up in.
+   */
+  const clocks = useRef<Record<string, RemoteClock>>({})
+
+  const clockOf = useCallback((agentId: string): RemoteClock => {
+    const known = clocks.current[agentId]
+    if (known) return known
+
+    const made = new RemoteClock()
+    clocks.current[agentId] = made
+    return made
+  }, [])
+
   /** Whether the IDE being watched was reachable a moment ago - what makes "it came back" a moment. */
   const wasLive = useRef(false)
 
@@ -128,6 +150,35 @@ export const App = () => {
   useEffect(() => {
     seen.current = feed.seq
   }, [feed.seq])
+
+  /**
+   * Move the running counters once a second - the panel has had this from the start (see the interval in
+   * App.tsx at the desk), and the phone had nothing of the kind.
+   *
+   * Without it every duration on this screen only ever moved when the next message happened to arrive:
+   * a call that takes a minute sat at "0.0s" for the whole of it, and a turn thinking quietly looked
+   * stopped. Which is worse on a phone than at a desk - it is the screen someone picks up precisely to
+   * find out whether the machine at home is still working.
+   *
+   * Counted in the IDE's time rather than this device's, for the reason the whole of clock.ts exists.
+   *
+   * Only while a conversation is actually on screen: the feed outlives the screen showing it, and a
+   * phone left on the list of conversations would otherwise re-render the whole application once a
+   * second over counters nobody is looking at.
+   */
+  const showingFeed = screen.at === 'thread' || screen.at === 'decide'
+  const ticking = feedTicks(feed) && showingFeed
+  useEffect(() => {
+    if (!ticking) return
+
+    const id = window.setInterval(() => {
+      const current = watching.current
+      if (!current) return
+      setFeed((previous) => tickFeed(previous, clockOf(current.agentId).now()))
+    }, 1000)
+
+    return () => window.clearInterval(id)
+  }, [ticking, clockOf])
 
   /**
    * The IDE threw away what it had queued for this phone and asked it to come back for it.
@@ -177,8 +228,8 @@ export const App = () => {
       return
     }
 
-    setFeed((previous) => applyMessage(previous, message))
-  }, [])
+    setFeed((previous) => applyMessage(previous, message, clockOf(agentId).now()))
+  }, [clockOf])
 
   /** Watch a conversation from the beginning and show it. */
   const enter = useCallback((agentId: string, projectKey: string, sessionId: string, decide: boolean) => {
@@ -216,7 +267,12 @@ export const App = () => {
       const link = new Link(agent, {
         onMessage: (message, projectKey) => receive(agent.agentId, message as ShellMessage, projectKey),
         onInventory: (inventory) => {
-          setInventories((current) => ({ ...current, [agent.agentId]: inventory as Inventory }))
+          const list = inventory as Inventory
+          // The inventory is also how this phone reads that machine's clock - it is the one thing the
+          // IDE sends that says what time it is there now rather than when something happened, and it
+          // arrives whenever a conversation changes state and every half minute besides (see clock.ts).
+          if (list.at !== undefined) clockOf(agent.agentId).observe(list.at)
+          setInventories((current) => ({ ...current, [agent.agentId]: list }))
         },
         onState: (state) => setStates((current) => ({ ...current, [agent.agentId]: state })),
         onProjectOpened: (result) => projectOpened(agent.agentId, result),
@@ -226,7 +282,7 @@ export const App = () => {
       links.current[agent.agentId] = link
       void link.connect()
     }
-  }, [agents, receive, projectOpened, resync])
+  }, [agents, receive, projectOpened, resync, clockOf])
 
   /**
    * A pairing code scanned while this app was already open.
@@ -560,91 +616,95 @@ export const App = () => {
   if (screen.at === 'decide') {
     return (
       <div className={m.screen}>
-        <Decision
-          feed={feed.state}
-          title={entry?.title ?? 'A conversation'}
-          project={entry?.projectName ?? ''}
-          onDecide={(id, decision) =>
-            command(screen.agentId, screen.projectKey, { type: 'permissionDecision', id, decision })
-          }
-          onPlan={(id, decision) =>
-            command(screen.agentId, screen.projectKey, {
-              type: 'planDecision',
-              sessionId: screen.sessionId,
-              id,
-              decision,
-            })
-          }
-          onAsk={(id, answers, text) =>
-            command(screen.agentId, screen.projectKey, {
-              type: 'askAnswer',
-              sessionId: screen.sessionId,
-              id,
-              answers,
-              text,
-            })
-          }
-          onOpenThread={() => setScreen({ ...screen, at: 'thread' })}
-          onBack={back}
-        />
+        <ClockContext.Provider value={clockOf(screen.agentId).now}>
+          <Decision
+            feed={feed.state}
+            title={entry?.title ?? 'A conversation'}
+            project={entry?.projectName ?? ''}
+            onDecide={(id, decision) =>
+              command(screen.agentId, screen.projectKey, { type: 'permissionDecision', id, decision })
+            }
+            onPlan={(id, decision) =>
+              command(screen.agentId, screen.projectKey, {
+                type: 'planDecision',
+                sessionId: screen.sessionId,
+                id,
+                decision,
+              })
+            }
+            onAsk={(id, answers, text) =>
+              command(screen.agentId, screen.projectKey, {
+                type: 'askAnswer',
+                sessionId: screen.sessionId,
+                id,
+                answers,
+                text,
+              })
+            }
+            onOpenThread={() => setScreen({ ...screen, at: 'thread' })}
+            onBack={back}
+          />
+        </ClockContext.Provider>
       </div>
     )
   }
 
   return (
     <div className={m.screen}>
-      <Thread
-        feed={feed.state}
-        title={entry?.title ?? NEW_SESSION_TITLE}
-        project={entry?.projectName ?? ''}
-        facts={facts[`${screen.agentId}:${screen.projectKey}`] ?? emptyFacts()}
-        connected={states[screen.agentId] === 'connected'}
-        loading={!feed.loaded}
-        onSend={(prompt: OutgoingPrompt) => {
-          // The first message names the tab, with the panel's own rule and the panel's own function -
-          // otherwise a conversation begun from a phone stays "new session" at the desk for as long as
-          // it lasts. The better name from the model replaces this one when it arrives.
-          if (!entry || entry.titleSource === 'default') {
-            command(screen.agentId, screen.projectKey, {
-              type: 'renameSession',
-              sessionId: screen.sessionId,
-              title: deriveSessionTitle(prompt.text),
-            })
-          }
+      <ClockContext.Provider value={clockOf(screen.agentId).now}>
+        <Thread
+          feed={feed.state}
+          title={entry?.title ?? NEW_SESSION_TITLE}
+          project={entry?.projectName ?? ''}
+          facts={facts[`${screen.agentId}:${screen.projectKey}`] ?? emptyFacts()}
+          connected={states[screen.agentId] === 'connected'}
+          loading={!feed.loaded}
+          onSend={(prompt: OutgoingPrompt) => {
+            // The first message names the tab, with the panel's own rule and the panel's own function -
+            // otherwise a conversation begun from a phone stays "new session" at the desk for as long as
+            // it lasts. The better name from the model replaces this one when it arrives.
+            if (!entry || entry.titleSource === 'default') {
+              command(screen.agentId, screen.projectKey, {
+                type: 'renameSession',
+                sessionId: screen.sessionId,
+                title: deriveSessionTitle(prompt.text),
+              })
+            }
 
-          command(screen.agentId, screen.projectKey, {
-            type: 'prompt',
-            sessionId: screen.sessionId,
-            text: prompt.text,
-            // The pieces the card is drawn from travel with the message: the shell keeps them and
-            // echoes them back, which is how this screen - and the panel at the desk - shows what was
-            // asked rather than only what was answered.
-            tokens: prompt.tokens,
-            quotes: [],
-            // Photos from the phone travel as bytes: there is no path on this device the agent could
-            // read (see prompt.images in protocol.ts).
-            images: prompt.images,
-          })
-        }}
-        onStop={() =>
-          command(screen.agentId, screen.projectKey, { type: 'stop', sessionId: screen.sessionId })
-        }
-        onStopTask={(taskId) =>
-          command(screen.agentId, screen.projectKey, { type: 'stopTask', sessionId: screen.sessionId, taskId })
-        }
-        onLoadEarlier={
-          feed.oldestEventUuid
-            ? () =>
-                command(screen.agentId, screen.projectKey, {
-                  type: 'historyPage',
-                  sessionId: screen.sessionId,
-                  before: feed.oldestEventUuid ?? undefined,
-                })
-            : undefined
-        }
-        onDecide={() => setScreen({ ...screen, at: 'decide' })}
-        onBack={back}
-      />
+            command(screen.agentId, screen.projectKey, {
+              type: 'prompt',
+              sessionId: screen.sessionId,
+              text: prompt.text,
+              // The pieces the card is drawn from travel with the message: the shell keeps them and
+              // echoes them back, which is how this screen - and the panel at the desk - shows what was
+              // asked rather than only what was answered.
+              tokens: prompt.tokens,
+              quotes: [],
+              // Photos from the phone travel as bytes: there is no path on this device the agent could
+              // read (see prompt.images in protocol.ts).
+              images: prompt.images,
+            })
+          }}
+          onStop={() =>
+            command(screen.agentId, screen.projectKey, { type: 'stop', sessionId: screen.sessionId })
+          }
+          onStopTask={(taskId) =>
+            command(screen.agentId, screen.projectKey, { type: 'stopTask', sessionId: screen.sessionId, taskId })
+          }
+          onLoadEarlier={
+            feed.oldestEventUuid
+              ? () =>
+                  command(screen.agentId, screen.projectKey, {
+                    type: 'historyPage',
+                    sessionId: screen.sessionId,
+                    before: feed.oldestEventUuid ?? undefined,
+                  })
+              : undefined
+          }
+          onDecide={() => setScreen({ ...screen, at: 'decide' })}
+          onBack={back}
+        />
+      </ClockContext.Provider>
     </div>
   )
 }

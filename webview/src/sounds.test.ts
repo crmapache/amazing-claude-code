@@ -35,6 +35,8 @@ const crash = (id: string): FeedItem => ({ id, kind: 'crash', message: 'exit 1' 
 
 const text = (id: string): FeedItem => ({ id, kind: 'text', paragraphs: [], source: '' })
 
+const limit = (id: string, state: 'extra' | 'waiting'): FeedItem => ({ id, kind: 'limit', state, window: '5-hour' })
+
 const panel = (items: FeedItem[], status: AgentStatus = 'running'): PanelView => ({ items, status })
 
 /** A tab that has already been watched: only what appeared after that sounds. */
@@ -78,6 +80,15 @@ describe('soundForPanel', () => {
 
     const broken = watching([text('t1')])
     expect(soundForPanel(panel([text('t1'), error('e2', 'API error')]), broken.memory)).toBe('trouble')
+  })
+
+  it('calls when a limit stopped the work, and stays quiet when it is merely being paid for', () => {
+    const stopped = watching([text('t1')])
+    expect(soundForPanel(panel([text('t1'), limit('l1', 'waiting')]), stopped.memory)).toBe('rateLimit')
+
+    // Extra usage means the work carries on: calling someone to the desk for it would be a false alarm.
+    const paid = watching([text('t1')])
+    expect(soundForPanel(panel([text('t1'), limit('l2', 'extra')]), paid.memory)).toBeNull()
   })
 
   it('picks the main one out of several occasions at once', () => {

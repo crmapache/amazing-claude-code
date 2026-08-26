@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { chatState, type ChatState } from '../projects'
 import type { SessionEntry } from './Sessions'
 import m from '../mobile.module.css'
 
@@ -16,6 +17,15 @@ const CATCH = REVEAL / 2
 
 /** Enough movement to call it a swipe rather than a tap that wandered. */
 const SLOP = 8
+
+/** Idle has no class of its own: the base .chatDot is already the unlit one. */
+const DOT: Record<ChatState, string> = {
+  crashed: m.dotCrashed ?? '',
+  attention: m.dotAttention ?? '',
+  running: m.dotRunning ?? '',
+  done: m.dotDone ?? '',
+  idle: '',
+}
 
 /**
  * One conversation in the list, with the swipe that puts it away.
@@ -132,15 +142,22 @@ export const ChatRow = ({ session, onOpen, onHide }: ChatRowProps) => {
           onOpen()
         }}
       >
-        <span className={m.chatTitle}>{session.title}</span>
+        {/*
+            The same mark the panel's tabs carry, in the same colours and in the same order of precedence
+            (see sessionState in App.tsx): a dead process first, then what is waiting for a person, then
+            work in progress, then work that is done, and unlit for a conversation that has never done
+            anything yet.
 
-        {/* One word rather than a colour alone: "waiting" is the reason the phone was picked up, and it
-            should be legible without knowing what a dot means. */}
-        {session.awaitsYou ? (
-          <span className={m.badgeWaiting}>waiting</span>
-        ) : session.status === 'running' ? (
-          <span className={m.badgeRunning}>working</span>
-        ) : null}
+            It used to be a word on the right - "waiting", "working" - and a word is what the eye reads
+            last on a list of titles; whether anything on this screen needs answering is a question of
+            colour, answered before a single title is read.
+
+            Unlit is drawn rather than left out, so a title starts at the same place on every row: a list
+            whose text steps left and right by nine pixels reads as broken.
+        */}
+        <span className={`${m.chatDot} ${DOT[chatState(session)]}`} />
+
+        <span className={m.chatTitle}>{session.title}</span>
       </button>
     </div>
   )

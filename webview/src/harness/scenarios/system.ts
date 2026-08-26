@@ -1,4 +1,21 @@
-import { agent, apiRetry, bash, checkpoint, replayed, scenario, shell, SESSION, textReply, toolResult, toolUse, turnResult, user, wait } from '../events'
+import {
+  agent,
+  apiRetry,
+  bash,
+  checkpoint,
+  inHours,
+  rateLimit,
+  replayed,
+  scenario,
+  shell,
+  SESSION,
+  textReply,
+  toolResult,
+  toolUse,
+  turnResult,
+  user,
+  wait,
+} from '../events'
 import type { Scenario } from '../types'
 
 export const scenariosSystem: Scenario[] = [
@@ -141,6 +158,68 @@ export const scenariosSystem: Scenario[] = [
         result: 'API Error: 529 Overloaded. This is a server-side issue, usually temporary — try again in a moment.',
         duration_ms: 9200,
       }),
+    ]),
+  ]),
+
+  /**
+   * The subscription limit, in all three of its guises - the reason this scenario exists is that they
+   * look alike in the stream and mean opposite things (see rate_limit_event in feed/build.ts).
+   *
+   * The reset time is deliberately a minute away: that is the whole story of the real case this came
+   * from - the limit ran out at the very end of its window, and by the time anyone read the red slab the
+   * work was long since going again.
+   */
+  scenario('usage-limit', 'The subscription limit runs out', 'system', [
+    checkpoint('The user asks for a redesign', [user('Give the mobile home screen a redesign'), wait(500)]),
+    checkpoint('The limit is used up: the work waits for the window', [
+      toolUse('Bash', { command: 'unzip -o ~/Downloads/redesign.zip -d /tmp/redesign' }, 's-lim-1'),
+      wait(400),
+      toolResult('s-lim-1', 'inflating: Mobile Home.dc.html'),
+      rateLimit({ status: 'rejected', resetsInSeconds: 90 }),
+      wait(600),
+    ]),
+    // The same event again, and nothing appears: while the state holds the CLI repeats it on every turn.
+    checkpoint('The event repeats - the feed says nothing new', [
+      rateLimit({ status: 'rejected', resetsInSeconds: 90 }),
+      wait(400),
+    ]),
+    checkpoint('Extra usage: the work goes on for money', [
+      rateLimit({ status: 'rejected', resetsInSeconds: 90, isUsingOverage: true }),
+      shell({
+        type: 'usage',
+        session: { percent: 100, resets: inHours(1 / 40) },
+        extra: { active: true, enabled: true, percent: 23, window: 'five_hour' },
+      }),
+      wait(600),
+      ...textReply('The limit is behind us - carrying on with the redesign.'),
+      turnResult(4200),
+    ]),
+    // The weekly window, whose whole point is that it is a different ring: an exhausted week must not be
+    // reported on the five-hour one, which at that moment is perfectly fine.
+    checkpoint('The weekly window runs out instead: the other ring burns', [
+      rateLimit({
+        status: 'rejected',
+        rateLimitType: 'seven_day',
+        resetsInSeconds: 3 * 24 * 60 * 60,
+        isUsingOverage: true,
+      }),
+      shell({
+        type: 'usage',
+        session: { percent: 18, resets: inHours(3) },
+        week: { percent: 100, resets: inHours(72) },
+        extra: { active: true, enabled: true, percent: 41, window: 'seven_day' },
+      }),
+      wait(600),
+    ]),
+    checkpoint('The window resets: the ring goes back to a percentage', [
+      rateLimit({ status: 'allowed', resetsInSeconds: 18_000 }),
+      shell({
+        type: 'usage',
+        session: { percent: 4, resets: inHours(5) },
+        week: { percent: 31, resets: inHours(4.5 * 24) },
+        extra: { active: false, enabled: true, percent: 23 },
+      }),
+      wait(400),
     ]),
   ]),
 

@@ -4,6 +4,7 @@ import java.time.Instant
 import java.time.OffsetDateTime
 import kotlin.math.abs
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -30,7 +31,16 @@ internal object ClaudeUsage {
         fun isCurrent(now: Instant): Boolean = resetsAt?.isAfter(now) == true
     }
 
-    data class Snapshot(val session: Window?, val week: Window?, val contextWindow: Int?) {
+    /**
+     * Extra usage: the work the plan's limits no longer cover, paid for on top of the subscription.
+     *
+     * Only the share is kept - how much of the month's own budget for it has gone. Whether it is being
+     * spent at this very moment the answer to `get_usage` does not say: that arrives with the limit
+     * events of the stream (see ClaudeRateLimit), and the two are put together by [ProjectUsage].
+     */
+    data class Extra(val enabled: Boolean, val percent: Int?)
+
+    data class Snapshot(val session: Window?, val week: Window?, val contextWindow: Int?, val extra: Extra? = null) {
         /**
          * Whether the limits themselves have arrived. Without them the panel asks again: usually it
          * means the process came up but has not yet learned the subscription windows from the server -
@@ -55,6 +65,7 @@ internal object ClaudeUsage {
             session = limits?.let { window(it, "five_hour") },
             week = limits?.let { window(it, "seven_day") },
             contextWindow = contextWindow(usage),
+            extra = limits?.let { extra(it) },
         )
     }
 
@@ -154,6 +165,20 @@ internal object ClaudeUsage {
         return Window(
             percent = percent.toInt(),
             resets = window["resets_at"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+        )
+    }
+
+    /**
+     * The extra usage settings out of the same answer: whether it is allowed at all and how much of its
+     * monthly budget has gone. An absent block means the account knows nothing of extra usage - not the
+     * same as "allowed but untouched", so null rather than a zero.
+     */
+    private fun extra(limits: JsonObject): Extra? {
+        val extra = limits.child("extra_usage") ?: return null
+
+        return Extra(
+            enabled = extra["is_enabled"]?.jsonPrimitive?.booleanOrNull == true,
+            percent = extra["utilization"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()?.toInt(),
         )
     }
 

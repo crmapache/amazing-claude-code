@@ -11,6 +11,21 @@
  * the safe area, because a button under the home indicator is a button that cannot be pressed.
  */
 
+/* The keyframes live in every module that uses them: a CSS module renames animation names just as it
+   renames classes, so a reference to another file's keyframes silently turns into nothing and the
+   animation never runs at all (same note as in shell.module.css). */
+
+@keyframes acc-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
 .screen {
   display: flex;
   flex-direction: column;
@@ -28,6 +43,17 @@
   padding: calc(env(safe-area-inset-top) + var(--acc-sp-3)) var(--acc-sp-5) var(--acc-sp-3);
   border-bottom: 1px solid var(--acc-line);
   background: var(--acc-bg-raised);
+}
+
+/* The mark, at the size of the line it stands in rather than of a heading: this screen's subject is the
+   list under it, and an icon big enough to be noticed twice would be one more thing to look past. */
+.headerLogo {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  /* The asset carries its own rounded corners; the radius is here for the day it stops doing that. */
+  border-radius: 7px;
+  display: block;
 }
 
 .headerTitle {
@@ -121,7 +147,7 @@
   margin-left: auto;
   padding: 0 var(--acc-sp-2);
   border: 1px solid var(--acc-line);
-  border-radius: var(--acc-r-round);
+  border-radius: var(--acc-r-pill);
   color: var(--acc-fg-dim);
   font-size: 11px;
   background: none;
@@ -207,24 +233,15 @@
   color: var(--acc-fg-dim);
 }
 
-/* A word rather than a colour alone: what the phone was picked up for should be legible without
-   knowing what a dot means. */
-.badgeWaiting,
+/* A word where a word is the whole point: the tag on one of the choices in a list (see NewSession). A
+   conversation's own state is a mark rather than a word - see .chatDot. */
 .badgeRunning {
   flex: none;
   padding: 3px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-}
-
-.badgeWaiting {
-  background: var(--acc-accent);
-  color: var(--acc-bg);
-}
-
-.badgeRunning {
   border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-pill);
   color: var(--acc-fg-dim);
+  font-size: 11px;
 }
 
 /* A statement of fact rather than an alarm: it explains the screen below it, and it goes away by
@@ -298,23 +315,80 @@
   color: var(--acc-fg-fainter);
 }
 
-/* A capsule rather than a word on its own: it is the only thing on this card that does something, and
-   at arm's length an outline is what separates "a button" from "a label". */
-.projectNew {
-  flex: none;
-  min-height: 36px;
-  padding: 0 var(--acc-sp-3);
-  border: 1px solid var(--acc-accent-line);
-  border-radius: var(--acc-r-round);
-  color: var(--acc-accent);
-  font-size: 13px;
-  background: var(--acc-accent-08);
+/*
+ * The two ways out of a card, side by side at its foot.
+ *
+ * Going back to something is a sentence, starting something is a square: the wide one has to say which
+ * conversations it means, and the other needs no word at all once it is the only mark on the row. They
+ * are the same height because they stand next to each other - one target 44 tall beside one 52 tall is
+ * the kind of mismatch a hand notices before an eye does.
+ */
+.projectFoot {
+  display: grid;
+  grid-template-columns: 1fr var(--acc-tap);
+  gap: var(--acc-sp-2);
+  margin-top: var(--acc-sp-3);
 }
 
-.projectNew:disabled {
+.projectNew {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--acc-tap);
+  height: var(--acc-tap);
+  border: 1px solid var(--acc-accent-line);
+  border-radius: var(--acc-r-pill);
+  background: var(--acc-accent-12);
+}
+
+/*
+ * The plus, drawn as two lines rather than typed as a character.
+ *
+ * A glyph sits on a font's baseline, so "+" in a box this size stands a pixel or two above the middle
+ * of it and no amount of line-height puts it back honestly - and the fonts a phone falls back to draw
+ * it at different weights besides.
+ */
+.projectNew::before,
+.projectNew::after {
+  content: '';
+  position: absolute;
+  border-radius: 1px;
+  background: var(--acc-accent);
+}
+
+.projectNew::before {
+  width: 17px;
+  height: 1.5px;
+}
+
+.projectNew::after {
+  width: 1.5px;
+  height: 17px;
+}
+
+/* A closed project's only way in, so it keeps its words and the whole row: a bare plus over "not open
+   in the IDE right now" says nothing about the tap opening the project too. */
+.projectOpen {
+  grid-column: 1 / -1;
+  min-height: var(--acc-tap);
+  padding: 0 var(--acc-sp-3);
+  border: 1px solid var(--acc-accent-line);
+  border-radius: var(--acc-r-pill);
+  color: var(--acc-accent);
+  font-size: 13px;
+  background: var(--acc-accent-12);
+}
+
+.projectNew:disabled,
+.projectOpen:disabled {
   border-color: var(--acc-line);
   color: var(--acc-fg-fainter);
   background: none;
+}
+
+.projectNew:disabled::before,
+.projectNew:disabled::after {
+  background: var(--acc-fg-fainter);
 }
 
 /* What was put away. Quieter than anything it stands under: it is a way back, not an invitation. */
@@ -331,17 +405,18 @@
   text-align: left;
 }
 
-/* Quieter than "New chat": going back to something is a second thought, not the first. */
+/* Quieter than the plus beside it: going back to something is a second thought, not the first. */
 .projectHistory {
-  width: 100%;
-  min-height: var(--acc-hit);
-  margin-top: var(--acc-sp-3);
-  padding: 0 var(--acc-sp-3);
-  border: 1px solid var(--acc-line);
+  min-width: 0;
+  height: var(--acc-tap);
+  padding: 0 var(--acc-sp-4);
+  border: 1px solid var(--acc-line-strong);
   border-radius: var(--acc-r-pill);
   color: var(--acc-fg-dim);
   font-size: 13px;
-  background: none;
+  /* The same surface as the conversations above it: on this card everything that can be tapped stands
+     one step up from it, and only the plus beside this one is tinted (see .projectNew). */
+  background: var(--acc-bg-card);
   text-align: left;
 }
 
@@ -398,16 +473,21 @@
   touch-action: pan-y;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--acc-sp-3);
   width: 100%;
   min-height: var(--acc-tap);
   padding: 0 var(--acc-sp-3);
-  border: 1px solid transparent;
+  border: 1px solid var(--acc-line-strong);
   border-radius: var(--acc-r-pill);
-  /* A step down from the card it sits in rather than up: the card is the surface, and a conversation is
-     a slot cut into it. Raising it instead made every pill look like a button waiting to be pressed. */
-  background: var(--acc-bg);
+  /*
+   * A step up from the card it sits in, not down.
+   *
+   * Sunk into the card, the rows and the card were one grey slab with lines drawn on it: the darkest
+   * surface on the screen is the page, and a conversation - the thing this whole screen exists to be
+   * tapped - was painted in it. Raised and outlined, it reads as what it is: something to press,
+   * standing on the card that groups it.
+   */
+  background: var(--acc-bg-card);
   color: inherit;
   text-align: left;
 }
@@ -432,9 +512,10 @@
   width: 100%;
   min-height: var(--acc-tap);
   padding: var(--acc-sp-2) var(--acc-sp-3);
-  border: 1px solid transparent;
+  border: 1px solid var(--acc-line-strong);
   border-radius: var(--acc-r-pill);
-  background: var(--acc-bg);
+  /* The same surface a live conversation stands on - it is the same kind of thing to tap (see .chat). */
+  background: var(--acc-bg-card);
   color: inherit;
   text-align: left;
 }
@@ -454,6 +535,48 @@
 .pastMeta {
   font-size: 11px;
   color: var(--acc-fg-fainter);
+}
+
+/*
+ * A conversation's state, in the panel's own marks and colours (see .dotRunning and friends in
+ * shell.module.css): the row is read from the left, and this is what it should say first.
+ *
+ * Larger than the panel's seven pixels: that one is read at a keyboard's distance on a lit screen, this
+ * one at arm's length, often outdoors.
+ */
+.chatDot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: var(--acc-r-round);
+  /* Unlit rather than absent, so every title on the list starts at the same place. */
+  background: var(--acc-fg-ghost);
+  transition: background 0.2s ease;
+}
+
+/* Only these two breathe, and only because each is a thing in progress: a still list with one moving
+   mark on it points at the row that wants something. */
+.dotRunning {
+  background: var(--acc-warn);
+  box-shadow: 0 0 0 3px var(--acc-warn-16);
+  animation: acc-pulse 1.5s ease-in-out infinite;
+}
+
+.dotAttention {
+  background: var(--acc-accent);
+  box-shadow: 0 0 0 3px var(--acc-accent-16);
+  animation: acc-pulse 1.5s ease-in-out infinite;
+}
+
+/* Still, both of them: one is work that is over, the other a fact about a process that is gone. Neither
+   is going to change on its own, and a mark that moves says the opposite. */
+.dotDone {
+  background: var(--acc-ok);
+}
+
+.dotCrashed {
+  background: var(--acc-bad-light);
+  box-shadow: 0 0 0 3px var(--acc-bad-16);
 }
 
 .chatTitle {
@@ -672,32 +795,20 @@
   border-bottom: 1px solid var(--acc-line);
 }
 
+/* A ring and the room around it to hit: the mark is twenty pixels, the target is a thumb's worth of
+   height, and there is nothing else inside to space out (the words and figures went to Limits). */
 .meter {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   flex: none;
   height: 38px;
-  padding: 0;
+  padding: 0 var(--acc-sp-1);
   border: none;
   background: none;
-  font: var(--acc-fs-meta, 12px) / 1.4 var(--acc-mono);
-  white-space: nowrap;
 }
 
 .meter:disabled {
   opacity: 0.5;
-}
-
-.meterLabel {
-  font: 500 10.5px/1 var(--acc-mono);
-  letter-spacing: 0.04em;
-  color: var(--acc-fg-fainter);
-}
-
-.meterValue {
-  /* Digits of one width: otherwise the row twitches on every update. */
-  font-variant-numeric: tabular-nums;
 }
 
 .stripRule {
@@ -831,7 +942,6 @@
 .ctxRow {
   display: flex;
   align-items: center;
-  gap: 8px;
   padding: 9px 11px 0;
   pointer-events: none;
 }
@@ -861,12 +971,6 @@
   background: var(--acc-field-bg);
 }
 
-.ctxLabel {
-  flex: none;
-  font: 10px/1 var(--acc-mono);
-  letter-spacing: 0.03em;
-  font-variant-numeric: tabular-nums;
-}
 
 .composerInput {
   display: block;

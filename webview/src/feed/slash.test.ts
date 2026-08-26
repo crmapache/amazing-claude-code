@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCommands,
   captureCommand,
+  captureWrittenCommand,
   commandChip,
   commandNameBeforeArgument,
   localCommand,
@@ -184,6 +185,43 @@ describe('captureCommand', () => {
   it('keeps the message readable when the command lands in front of it', () => {
     const captured = captureCommand(text('/review let us look at this'), commands, '/review ') ?? []
     expect(tokensText(captured)).toBe('/review let us look at this')
+  })
+})
+
+describe('captureWrittenCommand', () => {
+  const commands = project('review', 'pr-create')
+  const text = (value: string): UserToken[] => [{ kind: 'text', value }]
+  const cmd: UserToken = { kind: 'chip', chip: { kind: 'cmd', value: 'review' } }
+
+  it('makes a chip of a command sent right after its own name - typing never put a space there', () => {
+    expect(captureWrittenCommand(text('/review'), commands)).toEqual([cmd, { kind: 'text', value: ' ' }])
+  })
+
+  it('keeps the argument as text and does not double the space in front of it', () => {
+    const captured = captureWrittenCommand(text('/review src/App.tsx'), commands) ?? []
+
+    expect(captured).toEqual([cmd, { kind: 'text', value: ' src/App.tsx' }])
+    expect(tokensText(captured)).toBe('/review src/App.tsx')
+  })
+
+  it('leaves the message word for word - the agent sees the same thing either way', () => {
+    expect(tokensText(captureWrittenCommand(text('/review '), commands) ?? [])).toBe('/review ')
+  })
+
+  it('leaves an unfamiliar name alone: a chip promises the command exists', () => {
+    expect(captureWrittenCommand(text('/reviewer'), commands)).toBeNull()
+    expect(captureWrittenCommand(text('/'), commands)).toBeNull()
+  })
+
+  it('is not a command with anything in front of it', () => {
+    expect(captureWrittenCommand(text('look /review'), commands)).toBeNull()
+    expect(
+      captureWrittenCommand([{ kind: 'chip', chip: { kind: 'file', value: 'a.ts' } }, { kind: 'text', value: '/review' }], commands),
+    ).toBeNull()
+  })
+
+  it('does nothing to a command that is already a chip', () => {
+    expect(captureWrittenCommand([cmd, { kind: 'text', value: ' ' }], commands)).toBeNull()
   })
 })
 

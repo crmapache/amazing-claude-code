@@ -1289,6 +1289,57 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* --- The subscription limit ------------------------------------------------ */
+
+/* Built like .retry and .compact - one more line about what happened to the conversation rather than in
+   it - and deliberately not red: a used-up limit is not a breakage. Waiting wears the warn paint, extra
+   usage its own (see --acc-extra in tokens.css), the same one the ring in the composer's row takes: one
+   colour for one state, wherever it shows. */
+.limit {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin: 12px 0;
+  padding: 6px 9px;
+  border: 1px solid var(--acc-warn-line);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-warn-soft);
+}
+
+.limit.limitExtra {
+  border-color: var(--acc-extra-32);
+  background: var(--acc-extra-12);
+}
+
+.limitLabel {
+  flex: none;
+  font: 600 9px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-warn-light);
+}
+
+.limitExtra .limitLabel {
+  color: var(--acc-extra);
+}
+
+.limitText {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
+  color: var(--acc-fg-dim);
+}
+
+.limitWhen {
+  flex: none;
+  font: 9.5px/1 var(--acc-mono);
+  color: var(--acc-fg-dim);
+  /* Digits of one width: otherwise the countdown jerks the row on every tick. */
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- The model swapped by the CLI itself ----------------------------------- */
 
 /* Built like .compact and .retry - the same conversation about the conversation itself - but two-storey:
