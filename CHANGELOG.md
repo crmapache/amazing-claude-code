@@ -356,7 +356,7 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.7.29...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.8.0...HEAD
 [0.8.0]: https://github.com/crmapache/amazing-claude-code/compare/0.7.28...0.8.0
 [0.7.28]: https://github.com/crmapache/amazing-claude-code/compare/0.7.27...0.7.28
 [0.7.27]: https://github.com/crmapache/amazing-claude-code/compare/0.7.26...0.7.27
