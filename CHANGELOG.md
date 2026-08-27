@@ -9,6 +9,13 @@ commits.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-26
+
+- Added: the statistics tab opens on today. The shortest range it had was a week, and the question most often asked of it - what has this day come to so far - could only be answered by squinting at the last point of a chart drawn for thirty. Today is now a range of its own and the one the tab starts on, with the change measured against yesterday, and the tiles that say nothing about a single day say something else instead: the days at work become the run of days in a row, and the average hours a day become the busiest hour of it.
+- Added: for a single day the chart shows the hours of that day - a bar an hour, midnight on the left, the height the minutes spent in the panel, with the whole hour as the top of the scale and the busiest one picked out. A line of days has nothing to draw with one point in it, while the hours of the day say when the work actually happened.
+- Added: a button on the statistics tab saves the screen as a picture to share - the whole of it, including what one has to scroll for, with the plugin's mark, its version and the IDE it was counted in along the bottom. Both screens can be saved, the tab itself and the achievements behind it. The file lands in the downloads folder and the IDE says where it went, since a panel inside the IDE has no downloads of its own to hand it to.
+- Changed: the files tile no longer carries the share of permissions accepted. Whether nine questions in ten were answered yes says nothing about the work that got done, and the tile is about what landed in the files.
+
 ## [0.8.0] - 2026-08-26
 
 - Fixed: signing into another account could leave the previous one's percentages on the limit rings. Everything known about the limits is deliberately forgotten at the moment of the switch - but a question sent a moment before it was not, and its answer, arriving a second later, put the old figures quietly back where they had just been wiped. There they stayed until the window reset. An answer now belongs to the account it was asked on behalf of, and one about an account you have left is dropped.
@@ -356,7 +363,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.8.0...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.8.1...HEAD
+[0.8.1]: https://github.com/crmapache/amazing-claude-code/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/crmapache/amazing-claude-code/compare/0.7.28...0.8.0
 [0.7.28]: https://github.com/crmapache/amazing-claude-code/compare/0.7.27...0.7.28
 [0.7.27]: https://github.com/crmapache/amazing-claude-code/compare/0.7.26...0.7.27
