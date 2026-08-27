@@ -11,6 +11,18 @@ import type { PlaybackMode, Scenario } from './types'
 
 const player = new ScenarioPlayer()
 
+/**
+ * Shot mode: `?shot=<scenario id>` (and an optional `&cp=<index>`) plays one checkpoint of one scenario,
+ * hides the harness's own furniture and hands the whole window to the panel.
+ *
+ * It exists for the pictures of the listing and for anything else that photographs the panel: a frame
+ * has to be the panel alone, at a size chosen from outside, with nothing of the sandbox in it. The
+ * scenarios it plays are ordinary ones (see scenarios/showcase.ts) - the mode changes what is around the
+ * panel, never the panel itself.
+ */
+const shotParams = new URLSearchParams(window.location.search)
+const shotId = shotParams.get('shot')
+
 const Harness = () => {
   const [runId, setRunId] = useState(0)
   const [activeScenario, setActiveScenario] = useState<Scenario | null>(null)
@@ -48,6 +60,31 @@ const Harness = () => {
     [mode, jumpToCheckpoint],
   )
 
+  // The frame is played once, on the way in. `__accShotReady` is what the camera outside waits for: the
+  // events are applied through the bridge asynchronously, so a screenshot taken on load would catch a
+  // half-built feed.
+  useEffect(() => {
+    if (!shotId) return
+
+    const target = scenarios.find((item) => item.id === shotId)
+    if (!target) {
+      console.warn(`[harness] no scenario called "${shotId}"`)
+      return
+    }
+
+    const asked = Number(shotParams.get('cp'))
+    const index = Number.isFinite(asked) && shotParams.has('cp') ? asked : target.checkpoints.length - 1
+    const clamped = Math.max(0, Math.min(index, target.checkpoints.length - 1))
+
+    player.cancel()
+    setActiveScenario(target)
+    setCheckpointIndex(clamped)
+    setRunId((id) => id + 1)
+    void player.jumpTo(target, clamped).then(() => {
+      window.__accShotReady = true
+    })
+  }, [])
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const { activeScenario: scenario, checkpointIndex: index } = stateRef.current
@@ -83,6 +120,16 @@ const Harness = () => {
       setTimeout(() => setCopied(false), 1500)
     })
   }, [activeScenario, checkpointIndex, mode])
+
+  if (shotId) {
+    return (
+      <div className={`${styles.harnessRoot} ${styles.shotRoot}`}>
+        <div className={`${styles.stageCard} ${styles.shotStage}`}>
+          <App key={runId} />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={styles.harnessRoot}>

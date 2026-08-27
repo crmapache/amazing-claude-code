@@ -32,7 +32,7 @@ export interface Checkpoint {
 export interface Scenario {
   id: string
   title: string
-  category: 'grouping' | 'cards' | 'system' | 'combined'
+  category: 'grouping' | 'cards' | 'system' | 'combined' | 'showcase'
   checkpoints: Checkpoint[]
 }
 
@@ -53,5 +53,11 @@ declare global {
     __accHarnessResolvePlan?: (itemId: string, decision: 'approve' | 'keepPlanning') => void
     /** And the same for the statistics tab: opens it as the menu's row does, on the screen asked for. */
     __accHarnessOpenStatistics?: (view: 'overview' | 'achievements') => void
+    /**
+     * Shot mode only: the frame has been played out in full. Whatever photographs the panel waits for
+     * this rather than for the page's load - the events reach the feed through the bridge, a moment
+     * later than the page itself is ready.
+     */
+    __accShotReady?: boolean
   }
 }

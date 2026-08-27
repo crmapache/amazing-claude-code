@@ -115,13 +115,13 @@ const day = (offset: number): StatisticsDay | null => {
 const days = Array.from({ length: DAYS }, (_, offset) => day(offset)).filter((entry): entry is StatisticsDay => entry !== null)
 
 const OTHER_PROJECTS = [
-  { key: 'p-relay', name: 'relay', share: 0.55 },
-  { key: 'p-sandbox', name: 'sandbox-project', share: 0.33 },
-  { key: 'p-gym', name: 'gym-app', share: 0.22 },
-  { key: 'p-dotfiles', name: 'dotfiles', share: 0.09 },
-  { key: 'p-notes', name: 'notes', share: 0.05 },
-  { key: 'p-blog', name: 'blog', share: 0.04 },
-  { key: 'p-bot', name: 'telegram-bot', share: 0.03 },
+  { key: 'p-api', name: 'nimbus-api', share: 0.55 },
+  { key: 'p-mobile', name: 'nimbus-mobile', share: 0.33 },
+  { key: 'p-tokens', name: 'design-tokens', share: 0.22 },
+  { key: 'p-infra', name: 'infra-terraform', share: 0.09 },
+  { key: 'p-docs', name: 'docs-site', share: 0.05 },
+  { key: 'p-dotfiles', name: 'dotfiles', share: 0.04 },
+  { key: 'p-game', name: 'weekend-game', share: 0.03 },
   { key: 'p-scripts', name: 'scripts', share: 0.02 },
 ]
 
@@ -136,7 +136,7 @@ const OTHER_PROJECTS = [
 const projects = [
   {
     key: 'p-this',
-    name: 'amazing-claude-code',
+    name: 'nimbus-checkout',
     minutes: Object.fromEntries(days.map((entry, offset) => [entry.date, Math.round(entry.minutes * (0.45 + noise(offset + 211) * 0.35))])),
   },
   ...OTHER_PROJECTS.map((project, index) => ({
@@ -235,14 +235,15 @@ const achievements: AchievementState[] = ACHIEVEMENTS.map((spec, index) => {
   }
 })
 
-const figures: ScenarioStep = shell({
+/** Exported as well: the showcase frames stand on the very same figures (see showcase.ts). */
+export const statisticsFigures: ScenarioStep = shell({
   type: 'statistics',
   now: Date.now(),
   since: Date.now() - DAYS * 24 * 60 * 60 * 1000,
   today,
   ide: 'WebStorm',
   devicesPaired: 1,
-  project: { key: 'p-this', name: 'amazing-claude-code' },
+  project: { key: 'p-this', name: 'nimbus-checkout' },
   projects,
   days,
   achievements,
@@ -256,8 +257,8 @@ const fresh: ScenarioStep = shell({
   today,
   ide: 'WebStorm',
   devicesPaired: 0,
-  project: { key: 'p-this', name: 'amazing-claude-code' },
-  projects: [{ key: 'p-this', name: 'amazing-claude-code', minutes: { [today]: 42, [addDays(today, -1)]: 18 } }],
+  project: { key: 'p-this', name: 'nimbus-checkout' },
+  projects: [{ key: 'p-this', name: 'nimbus-checkout', minutes: { [today]: 42, [addDays(today, -1)]: 18 } }],
   days: [
     {
       date: addDays(today, -1),
@@ -321,7 +322,7 @@ const fresh: ScenarioStep = shell({
 
 export const scenariosStatistics: Scenario[] = [
   scenario('statistics-summer', 'Statistics: a summer of work', 'system', [
-    checkpoint('The figures arrive and the tab opens', [...bootstrap, figures, { kind: 'openStatistics' }]),
+    checkpoint('The figures arrive and the tab opens', [...bootstrap, statisticsFigures, { kind: 'openStatistics' }]),
     checkpoint('The achievements screen', [{ kind: 'openStatistics', view: 'achievements' }]),
   ]),
   scenario('statistics-fresh', 'Statistics: the second day', 'system', [

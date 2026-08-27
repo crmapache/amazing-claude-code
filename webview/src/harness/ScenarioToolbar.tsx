@@ -16,9 +16,10 @@ const CATEGORY_LABEL: Record<Scenario['category'], string> = {
   cards: 'The other cards',
   system: 'Service states',
   combined: 'Combined',
+  showcase: 'Frames for the listing',
 }
 
-const CATEGORY_ORDER: Scenario['category'][] = ['grouping', 'cards', 'system', 'combined']
+const CATEGORY_ORDER: Scenario['category'][] = ['grouping', 'cards', 'system', 'combined', 'showcase']
 
 export const ScenarioToolbar = ({
   scenarios,

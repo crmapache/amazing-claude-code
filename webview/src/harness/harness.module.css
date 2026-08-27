@@ -21,6 +21,17 @@
   box-shadow: 0 0 0 1px var(--acc-line);
 }
 
+/* Shot mode: the panel alone, edge to edge - see harness.tsx. */
+.shotRoot {
+  padding: 0;
+  gap: 0;
+}
+
+.shotStage {
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .toolbar {
   flex: 0 0 260px;
   overflow-y: auto;

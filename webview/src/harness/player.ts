@@ -1,5 +1,6 @@
 import type { ShellMessage, WebviewMessage } from '../protocol'
 import { bootstrap, SESSION } from './events'
+import { SHOWCASE_HISTORY } from './scenarios/showcase'
 import type { Scenario, ScenarioStep } from './types'
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
@@ -182,6 +183,13 @@ const listenToPanel = () => {
     // The picture of the statistics screen: in the IDE the shell writes it into the downloads folder,
     // here the browser has downloads of its own and does it itself - so the button can be tried out.
     if (message?.type === 'saveImage') download(message.name, message.data)
+
+    // The history screen asks the shell for this project's past conversations. In the IDE they are read
+    // off Claude Code's own folder; here they are the showcase's invented ones, so the screen can be
+    // looked at - and photographed - without an IDE.
+    if (message?.type === 'history') {
+      setTimeout(() => window.__accReceive?.({ type: 'history', conversations: SHOWCASE_HISTORY }), 200)
+    }
 
     if (message) answerFeedback(message)
     if (message) answerHistoryPage(message)
