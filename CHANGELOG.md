@@ -9,6 +9,15 @@ commits.
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-08-27
+
+- Added: from 24 December to 3 January the panel dresses up for the turn of the year - a garland strung under the header, snow falling behind the feed, and the Send button frozen over with ice. There is nothing to switch on and nothing to set: it appears on the evening of the 24th, including in a panel that has been open since the day before, and it is gone again on the 4th. The orange Run button and the queue button keep their own colours, because that colour says where what you typed is going rather than decorating anything.
+- Added: a third way to say thanks - **Share with friends**, in the menu behind the heart. It copies a plain line about the plugin with the link to it, written the way a person writes to a person rather than the way an advertisement would, ready to paste into a chat with whoever you think would like it. The achievement about thanks still asks for two of the three ways: saying it twice is thanks enough, and asking for every last one is begging.
+- Fixed: a tab opened and never written in counted as a conversation. A "+" pressed while looking for a clean sheet went into the day's figures the moment it appeared, and half of those tabs are closed again without a word being said. Worse, because a hand on the keyboard marks the minutes of whichever tab is in front, an empty tab left open beside the statistics went on collecting time in a chat with nothing in it - which is what "the longest single chat" was quietly being won with. A conversation is now counted at its first sign of life - a message, a turn, an answer - whichever tab it happens in, and the keyboard lengthens a chat that is already alive rather than starting one.
+- Fixed: the busiest hour of the day was named as a single hour when several were tied for it. An hour spent in the panel end to end holds sixty minutes and there is no sixty-first, so a working day ties at the top over and over - the chart lit every hour that reached the figure while the line underneath named the earliest of them, so three bars glowed and the note said one. All of the tied hours are named now, up to three of them by name and counted after that, and hovering a bar says what its light means.
+- Fixed: the **Thanks** card stood at "1/2" over an empty bar, so saying thanks one way of the two looked like nothing done at all. The bar fills the distance between the line already crossed and the next one, and on a ladder that climbs one at a time there is nothing between 1 and 2 to fill; a ladder like that is measured against the whole instead.
+- Fixed: when feedback could not be sent, the IDE's log said "could not be sent: null" and no more - and the most ordinary failure of all, an address that will not resolve, is exactly the one that arrives with nothing to say for itself. The line now names the whole chain of what went wrong, so a machine with no network can be told apart from a service answering nonsense.
+
 ## [0.8.2] - 2026-08-27
 
 - Fixed: the statistics tab counted a day of work twice over, and disagreed with itself about it. The big figure was the time in the project you happened to have open, while the line under it added every project's minutes together - so the tile said thirty-four minutes and the list of projects beneath it said four and a half hours, about the same day. And the sum itself was wrong: two agents working through the same minute in two projects had that minute counted twice, so a day of four hours in the panel read as six and a half. The whole tab is now about your day rather than about whichever window is in front - the time, the days in a row, the calendar, the tools, the files, the turns, all of it counting every project together - and the minutes are joined rather than added, which is what they were kept minute by minute for in the first place. Where the hours went by project stays as the one list that breaks a day up; its rows can add up to more than the day itself, and that is what a day with two agents running actually looks like. The chart lost its second line for the same reason: one figure told twice is what the disagreement was made of.
@@ -395,7 +404,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.8.2...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.8.3...HEAD
+[0.8.3]: https://github.com/crmapache/amazing-claude-code/compare/0.8.2...0.8.3
 [0.8.2]: https://github.com/crmapache/amazing-claude-code/compare/0.8.1...0.8.2
 [0.8.1]: https://github.com/crmapache/amazing-claude-code/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/crmapache/amazing-claude-code/compare/0.7.28...0.8.0
