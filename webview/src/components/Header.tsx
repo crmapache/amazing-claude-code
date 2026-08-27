@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
+import { STATISTICS_GROUP } from '../tabs'
 import { BranchChip } from './StatusBar'
 import s from './shell.module.css'
 
@@ -91,6 +92,9 @@ interface HeaderProps {
    * What moves is the whole group - a conversation together with its forks. They cannot be dragged apart
    * one by one and someone else's tab cannot be inserted inside: a group is one topic, and a tab in the
    * middle of someone else's topic would mean nothing but confusion.
+   *
+   * The statistics travels through here too, as a group of one under STATISTICS_GROUP: the strip knows a
+   * single kind of rearrangement, and whoever is above sorts out what of it the shell should hear.
    */
   onReorderGroups: (groupId: string, beforeGroupId: string | null) => void
   /**
@@ -123,14 +127,15 @@ interface HeaderProps {
    */
   watchers?: number
   /**
-   * The statistics tab: a tab of its own in the strip, after the conversations and before the "+".
+   * The statistics tab: a tab of its own in the strip, standing wherever it was last dragged to.
    *
    * Not a session and not in the sessions list on purpose: the shell owns that list and overwrites it
-   * whole, while this tab is this screen's alone - it holds no conversation, has no group to be dragged
-   * with, and closing it kills nothing. `open` is whether it is in the strip at all; `active` whether it
-   * is the one being looked at.
+   * whole, while this tab is this screen's alone - it holds no conversation, and closing it kills
+   * nothing. Dragged it is all the same, as a group of one (see STATISTICS_GROUP): `at` is how many
+   * conversation groups stand to its left, `active` whether it is the one being looked at. Absent
+   * entirely when the tab is not in the strip.
    */
-  statistics?: { open: boolean; active: boolean }
+  statistics?: { at: number; active: boolean }
   onPickStatistics?: () => void
   onCloseStatistics?: () => void
 }
@@ -502,117 +507,151 @@ export const Header = ({
     return () => observer.disconnect()
   }, [])
 
+  /**
+   * How far a tab stands from its place in the layout while a gesture lasts: the group under the hand
+   * travels with it, the rest step aside to make room (see shifts). One and the same for a conversation
+   * and for the statistics - as far as the strip is concerned they are the same kind of thing.
+   */
+  const dragStyle = (groupId: string) => {
+    if (dragging === groupId) return { transform: `translateX(${offset}px)` }
+    const shift = shifts[groupId]
+    return shift ? { transform: `translateX(${shift}px)` } : {}
+  }
+
+  /**
+   * The strip block by block: a conversation with its forks, and the statistics standing wherever it was
+   * left. Drawn from one list rather than from "the sessions, and then the statistics after them" -
+   * otherwise that tab could be dragged anywhere and would still snap back to the end.
+   */
+  const groups: { groupId: string; tabs: Session[] }[] = []
+  for (const session of sessions) {
+    const last = groups.at(-1)
+    if (last?.groupId === session.groupId) last.tabs.push(session)
+    else groups.push({ groupId: session.groupId, tabs: [session] })
+  }
+  const statsAt = statistics ? Math.min(Math.max(statistics.at, 0), groups.length) : -1
+
+  const sessionTab = (session: Session, startsGroup: boolean) => {
+    const color = colorForGroup(session.groupId)
+
+    return (
+      <div
+        key={session.id}
+        data-group={session.groupId}
+        role="tab"
+        tabIndex={0}
+        aria-selected={session.id === activeSession}
+        className={[
+          s.tab,
+          session.id === activeSession ? s.tabActive : '',
+          startsGroup ? s.tabGroupStart : '',
+          dragging === session.groupId ? s.tabDragging : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        style={{
+          paddingLeft: 11 + session.depth * 9,
+          // The whole group travels at once: a conversation with its forks is one thing.
+          ...dragStyle(session.groupId),
+        }}
+        onMouseDown={(event) => startDrag(event, session.groupId)}
+        onClick={() => {
+          // The drag's tail rather than a tab being chosen - see startDrag, where the flag is also
+          // cleared by the next press.
+          if (dragged.current) return
+          onPickSession(session.id)
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          // Space scrolls the strip otherwise, and the tab under the finger never opens.
+          event.preventDefault()
+          onPickSession(session.id)
+        }}
+      >
+        <span className={s.tabGroupBar} style={{ background: color }} />
+        <span className={`${s.dot} ${DOT_CLASS[session.state]}`} data-tooltip={DOT_TITLE[session.state]} />
+        {session.depth > 0 ? (
+          <span className={s.tabFork} style={{ color }}>
+            ⑂
+          </span>
+        ) : null}
+        <span className={s.tabTitle}>{session.title}</span>
+        <button
+          type="button"
+          className={s.tabClose}
+          aria-label={`Close ${session.title}`}
+          onClick={(event) => {
+            event.stopPropagation()
+            onCloseSession(session.id)
+          }}
+        >
+          ×
+        </button>
+      </div>
+    )
+  }
+
+  // A data-group of its own and the same press handler as the rest: the strip's drag arithmetic walks
+  // [data-group], and this tab is a group of one in it (see STATISTICS_GROUP).
+  const statisticsTab = statistics ? (
+    <div
+      data-group={STATISTICS_GROUP}
+      role="tab"
+      tabIndex={0}
+      aria-selected={statistics.active}
+      className={[
+        s.tab,
+        s.tabStatistics,
+        s.tabGroupStart,
+        statistics.active ? s.tabActive : '',
+        dragging === STATISTICS_GROUP ? s.tabDragging : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      style={dragStyle(STATISTICS_GROUP)}
+      onMouseDown={(event) => startDrag(event, STATISTICS_GROUP)}
+      onClick={() => {
+        if (dragged.current) return
+        onPickStatistics?.()
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        onPickStatistics?.()
+      }}
+    >
+      <span className={s.tabGroupBar} style={{ background: STATISTICS_COLOR }} />
+      <span className={s.dot} data-tooltip="Statistics" />
+      <span className={s.tabTitle}>Statistics</span>
+      <button
+        type="button"
+        className={s.tabClose}
+        aria-label="Close statistics"
+        onClick={(event) => {
+          event.stopPropagation()
+          onCloseStatistics?.()
+        }}
+      >
+        ×
+      </button>
+    </div>
+  ) : null
+
   return (
     <header className={`${s.header} ${compact ? s.headerCompact : ''}`} ref={header}>
       {/* A strip of tabs, and said to be one: without it a screen reader announces a row of nameless
           boxes, and nothing in here could be reached by keyboard at all - neither a conversation nor the
           statistics beside them. */}
       <div className={s.tabs} ref={tabs} role="tablist" aria-label="Conversations">
-        {sessions.map((session, index) => {
-          const color = colorForGroup(session.groupId)
-          // A group is set off from its neighbour by a gap: colour is not enough when the tabs are stuck together.
-          const startsGroup = index === 0 || sessions[index - 1]?.groupId !== session.groupId
-
-          return (
-            <div
-              key={session.id}
-              data-group={session.groupId}
-              role="tab"
-              tabIndex={0}
-              aria-selected={session.id === activeSession}
-              className={[
-                s.tab,
-                session.id === activeSession ? s.tabActive : '',
-                startsGroup ? s.tabGroupStart : '',
-                dragging === session.groupId ? s.tabDragging : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              style={{
-                paddingLeft: 11 + session.depth * 9,
-                // The whole group travels at once: a conversation with its forks is one thing. The rest
-                // step aside to make room for it (see shifts).
-                ...(dragging === session.groupId
-                  ? { transform: `translateX(${offset}px)` }
-                  : shifts[session.groupId]
-                    ? { transform: `translateX(${shifts[session.groupId]}px)` }
-                    : {}),
-              }}
-              onMouseDown={(event) => startDrag(event, session.groupId)}
-              onClick={() => {
-                // The drag's tail rather than a tab being chosen - see startDrag, where the flag is also
-                // cleared by the next press.
-                if (dragged.current) return
-                onPickSession(session.id)
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== 'Enter' && event.key !== ' ') return
-                // Space scrolls the strip otherwise, and the tab under the finger never opens.
-                event.preventDefault()
-                onPickSession(session.id)
-              }}
-            >
-              <span className={s.tabGroupBar} style={{ background: color }} />
-              <span className={`${s.dot} ${DOT_CLASS[session.state]}`} data-tooltip={DOT_TITLE[session.state]} />
-              {session.depth > 0 ? (
-                <span className={s.tabFork} style={{ color }}>
-                  ⑂
-                </span>
-              ) : null}
-              <span className={s.tabTitle}>{session.title}</span>
-              <button
-                type="button"
-                className={s.tabClose}
-                aria-label={`Close ${session.title}`}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onCloseSession(session.id)
-                }}
-              >
-                ×
-              </button>
-            </div>
-          )
-        })}
-
-        {statistics?.open ? (
-          // No data-group and no drag handler: the strip's drag arithmetic walks [data-group] alone, and
-          // a tab that belongs to no conversation has no place in a rearrangement of conversations.
-          <div
-            role="tab"
-            tabIndex={0}
-            aria-selected={statistics.active}
-            className={[
-              s.tab,
-              s.tabStatistics,
-              statistics.active ? s.tabActive : '',
-              sessions.length > 0 ? s.tabGroupStart : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            onClick={onPickStatistics}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' && event.key !== ' ') return
-              event.preventDefault()
-              onPickStatistics?.()
-            }}
-          >
-            <span className={s.tabGroupBar} style={{ background: STATISTICS_COLOR }} />
-            <span className={s.dot} data-tooltip="Statistics" />
-            <span className={s.tabTitle}>Statistics</span>
-            <button
-              type="button"
-              className={s.tabClose}
-              aria-label="Close statistics"
-              onClick={(event) => {
-                event.stopPropagation()
-                onCloseStatistics?.()
-              }}
-            >
-              ×
-            </button>
-          </div>
-        ) : null}
+        {groups.map((group, index) => (
+          <Fragment key={group.groupId}>
+            {index === statsAt ? statisticsTab : null}
+            {/* A group is set off from its neighbour by a gap: colour is not enough when the tabs are
+                stuck together. The first tab of the strip gets no gap - the styles see to that. */}
+            {group.tabs.map((session, place) => sessionTab(session, place === 0))}
+          </Fragment>
+        ))}
+        {statsAt >= groups.length ? statisticsTab : null}
 
         <button type="button" className={s.tabAdd} data-tooltip="New session" onClick={onNewSession}>
           +

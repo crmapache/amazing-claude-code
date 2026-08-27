@@ -136,8 +136,9 @@ internal class SessionRegistry {
 
     /**
      * The tabs' new order after a drag. The unit is a group - a conversation together with its forks:
-     * they cannot be pulled apart, and someone else's tab cannot be dropped inside (see moveGroup in
-     * tabs.ts, which this mirrors).
+     * they cannot be pulled apart, and someone else's tab cannot be dropped inside (see moveTab in
+     * tabs.ts, which this mirrors - minus the statistics tab, which the panel drags on its own and never
+     * reports here).
      */
     @Synchronized
     fun moveGroup(groupId: String, beforeGroupId: String?): Boolean {

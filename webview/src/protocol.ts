@@ -737,7 +737,7 @@ export type WebviewMessage =
    * same one, and a copy of it in another language would drift from this one.
    */
   | { type: 'renameSession'; sessionId: string; title: string }
-  /** The tabs' new order after a drag - by group, as moveGroup arranges it. */
+  /** The tabs' new order after a drag - by group, as moveTab arranges it. The statistics tab is the panel's own and is never reported here. */
   | { type: 'reorderGroups'; groupId: string; beforeGroupId?: string }
   /**
    * Turn remote access on or off. Off is how the plugin ships and how it stays until this arrives:

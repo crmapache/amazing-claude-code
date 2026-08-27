@@ -99,7 +99,7 @@ import {
   type SoundPrefs,
 } from './sounds'
 import { useCardState, type CardState } from './hooks/useCardState'
-import { moveGroup } from './tabs'
+import { groupOrder, moveTab, placeAtEnd, placeIn, STATISTICS_GROUP, type TabPlace } from './tabs'
 import { useSelection } from './hooks/useSelection'
 
 const MAIN_SESSION = 'main'
@@ -134,13 +134,6 @@ const STOP_GRACE_MS = 8000
  * edited from a terminal.
  */
 const LIST_STALE_MS = 60_000
-
-/**
- * The statistics tab's place in `active`: an id no conversation will ever carry. It is a tab of the strip
- * without being a session (see Header.statistics), and `active` is the one thing that decides what the
- * body shows.
- */
-const STATS_TAB = '__statistics__'
 
 /** How often the figures are asked for again while the statistics tab is being looked at. */
 const STATISTICS_REFRESH_MS = 30_000
@@ -311,11 +304,18 @@ export const App = () => {
    */
   const [statistics, setStatistics] = useState<StatisticsData | null>(null)
   /**
-   * The statistics tab itself: whether it stands in the strip, and which of its two screens is showing.
-   * Kept apart from `sessions` on purpose - that list is the shell's and is overwritten whole (see the
-   * `sessions` message), while this tab is this screen's alone and holds no conversation.
+   * The statistics tab itself: whether it stands in the strip, where in it, and which of its two screens
+   * is showing. Kept apart from `sessions` on purpose - that list is the shell's and is overwritten whole
+   * (see the `sessions` message), while this tab is this screen's alone and holds no conversation.
+   *
+   * Its place is dragged like any other tab's, and is kept as neighbours rather than as a number so that
+   * a conversation closing beside it does not shove it along - see TabPlace.
    */
-  const [statsTab, setStatsTab] = useState<{ open: boolean; view: StatisticsView }>({ open: false, view: 'overview' })
+  const [statsTab, setStatsTab] = useState<{ open: boolean; view: StatisticsView; place: TabPlace }>({
+    open: false,
+    view: 'overview',
+    place: { at: 0, among: [] },
+  })
   /**
    * The work someone asked to kill with the cross on a chip - still without an answer to "are you sure?".
    * We ask because a miss on that cross costs dearly: for an agent it is tens of minutes of work, for a
@@ -513,7 +513,7 @@ export const App = () => {
    * at the same pace, so asking more often would show nothing new.
    */
   useEffect(() => {
-    if (active !== STATS_TAB) return
+    if (active !== STATISTICS_GROUP) return
 
     send({ type: 'statistics' })
     const timer = setInterval(() => send({ type: 'statistics' }), STATISTICS_REFRESH_MS)
@@ -533,7 +533,7 @@ export const App = () => {
       if (now - lastReported < ACTIVITY_REPORT_MS) return
       lastReported = now
       const sessionId = activeRef.current
-      send({ type: 'stat', kind: 'activity', ...(sessionId === STATS_TAB ? {} : { sessionId }) })
+      send({ type: 'stat', kind: 'activity', ...(sessionId === STATISTICS_GROUP ? {} : { sessionId }) })
     }
 
     window.addEventListener('keydown', onActivity, true)
@@ -954,7 +954,7 @@ export const App = () => {
             // The tab this screen had open may have been closed from another one. The statistics tab is
             // not on the shell's list and never will be - it stays put.
             setActive((current) =>
-              current === STATS_TAB || known.includes(current) ? current : (known[0] ?? MAIN_SESSION),
+              current === STATISTICS_GROUP || known.includes(current) ? current : (known[0] ?? MAIN_SESSION),
             )
             break
           }
@@ -1652,12 +1652,34 @@ export const App = () => {
     send({ type: 'newSession', kind: 'main', sessionId: id, title: '' })
   }, [])
 
-  /** The tabs' new order after a drag - see moveGroup. */
-  const reorderGroups = useCallback((groupId: string, beforeGroupId: string | null) => {
-    setSessions((current) => moveGroup(current, groupId, beforeGroupId))
-    // The order lives on the shell's side too: it is what a second client lists the tabs in.
-    send({ type: 'reorderGroups', groupId, ...(beforeGroupId ? { beforeGroupId } : {}) })
-  }, [])
+  /**
+   * The strip's new order after a drag - see moveTab, which decides it for conversations and for the
+   * statistics alike.
+   *
+   * The shell hears only about the conversations, and only when their order really changed: it keeps that
+   * list and nothing else, while the statistics standing before or after a neighbour is this screen's own
+   * business (there is one panel per IDE window, and the tab is a tab of that panel).
+   */
+  const reorderGroups = useCallback(
+    (groupId: string, beforeGroupId: string | null) => {
+      const moved = moveTab(sessions, statsTab.open ? statsTab.place : null, groupId, beforeGroupId)
+
+      setSessions(moved.sessions)
+
+      const place = moved.statistics
+      if (place) setStatsTab((current) => ({ ...current, place }))
+
+      if (moved.shell) {
+        // The order lives on the shell's side too: it is what a second client lists the tabs in.
+        send({
+          type: 'reorderGroups',
+          groupId: moved.shell.groupId,
+          ...(moved.shell.beforeGroupId ? { beforeGroupId: moved.shell.beforeGroupId } : {}),
+        })
+      }
+    },
+    [sessions, statsTab.open, statsTab.place],
+  )
 
   /**
    * A past conversation carries on in the tab it was chosen from: the panel replays its history right
@@ -2058,13 +2080,17 @@ export const App = () => {
     window.__accHarnessOpenStatistics = (view) => {
       setSideMenu((current) => ({ ...current, open: false }))
       setMenu(null)
-      setStatsTab({ open: true, view })
-      setActive(STATS_TAB)
+      setStatsTab((current) =>
+        current.open
+          ? { ...current, view }
+          : { open: true, view, place: placeAtEnd(groupOrder(sessions)) },
+      )
+      setActive(STATISTICS_GROUP)
     }
     return () => {
       window.__accHarnessOpenStatistics = undefined
     }
-  }, [])
+  }, [sessions])
 
   const agentTabs = useMemo(
     () => buildAgentTabs(panel, cards.answeredAsks, hiddenTaskIds),
@@ -2150,17 +2176,21 @@ export const App = () => {
   /**
    * The statistics as a tab of the strip rather than a screen of the menu: a chart of a month wants the
    * whole panel, not 350 pixels of a sheet. Opened from the menu's row - the menu closes behind it.
+   *
+   * A tab already in the strip keeps the place it was dragged to; a fresh one opens at the end.
    */
   const openStatistics = () => {
     setSideMenu((current) => ({ ...current, open: false }))
     setMenu(null)
-    setStatsTab((current) => ({ ...current, open: true }))
-    setActive(STATS_TAB)
+    setStatsTab((current) =>
+      current.open ? current : { ...current, open: true, place: placeAtEnd(groupOrder(sessions)) },
+    )
+    setActive(STATISTICS_GROUP)
   }
 
   const closeStatistics = () => {
-    setStatsTab({ open: false, view: 'overview' })
-    if (active === STATS_TAB) setActive(sessions[0]?.id ?? MAIN_SESSION)
+    setStatsTab({ open: false, view: 'overview', place: { at: 0, among: [] } })
+    if (active === STATISTICS_GROUP) setActive(sessions[0]?.id ?? MAIN_SESSION)
   }
 
   const openScreen = (screen: MenuScreen) => {
@@ -2279,8 +2309,15 @@ export const App = () => {
         onNewSession={() => startSession(`session-${Date.now()}`)}
         onReorderGroups={reorderGroups}
         onOpenMenu={openMenu}
-        statistics={statsTab.open ? { open: true, active: active === STATS_TAB } : undefined}
-        onPickStatistics={() => setActive(STATS_TAB)}
+        statistics={
+          statsTab.open
+            ? {
+                at: placeIn(statsTab.place, groupOrder(sessions)),
+                active: active === STATISTICS_GROUP,
+              }
+            : undefined
+        }
+        onPickStatistics={() => setActive(STATISTICS_GROUP)}
         onCloseStatistics={closeStatistics}
         watchers={watchers}
         gitBranch={panels[MAIN_SESSION]?.project?.gitBranch}
@@ -2370,7 +2407,7 @@ export const App = () => {
         />
       ) : null}
 
-      {active === STATS_TAB && statsTab.open ? (
+      {active === STATISTICS_GROUP && statsTab.open ? (
         <StatisticsTab
           data={statistics}
           view={statsTab.view}
