@@ -620,6 +620,8 @@ export interface StatisticsData {
   since: number
   /** Today by the IDE's calendar - the day the ranges are counted back from. */
   today: string
+  /** The IDE this is counted in - "WebStorm", "IntelliJ IDEA" - for the line under a shared picture. */
+  ide: string
   devicesPaired: number
   project: { key: string; name: string }
   /** Every project the ledger knows, this one included: its name and its minutes by day. */
@@ -857,6 +859,14 @@ export type WebviewMessage =
   | { type: 'cursor'; cursor: string }
   /** A link (a PR number, for instance) - we open it in the system browser rather than in JCEF. */
   | { type: 'openExternal'; url: string }
+  /**
+   * A picture the panel drew of itself - the statistics as an image to share (see stats/poster.ts).
+   *
+   * The embedded browser has no downloads of its own: a link with `download` on it quietly does nothing
+   * inside JCEF, so the bytes go to the IDE and it writes the file where downloads belong. `name` is a
+   * file name and nothing more - the shell keeps its own folder and takes no path from here.
+   */
+  | { type: 'saveImage'; name: string; data: string }
   /**
    * The clipboard through the shell: the embedded browser's own does not meet the IDE's (see
    * clipboard.ts). Reading comes with an answer, hence its `id`; writing needs none.

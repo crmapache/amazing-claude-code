@@ -1,10 +1,12 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { send } from '../../bridge'
 import { useHoverTarget } from '../../hooks/useHoverTarget'
 import { useWheelScroll } from '../../hooks/useWheelScroll'
 import type { StatisticsData } from '../../protocol'
 import { closest, dressAll, recentlyEarned, summarize, type DressedGroup } from '../../stats/achievements'
 import { ROMAN } from '../../stats/catalogue'
 import {
+  dayHours,
   daysTile,
   factsTile,
   filesTile,
@@ -16,10 +18,12 @@ import {
   rangeOf,
   timeTile,
   toolRows,
+  type DayHours,
   type RangeKey,
   type ToolRow,
 } from '../../stats/compute'
 import {
+  clock,
   compactNumber,
   duration,
   durationDelta,
@@ -29,15 +33,17 @@ import {
   shortDate,
   turnLength,
 } from '../../stats/format'
+import { drawPoster, posterName, SKIP } from '../../stats/poster'
 import { AchievementChip, tierStyle } from './AchievementChip'
 import { AchievementFilterSwitch, Achievements, achievementsHint, useAchievementFilter } from './Achievements'
+import { DayChart } from './DayChart'
 import { Heatmap } from './Heatmap'
 import { HoursChart } from './HoursChart'
 import s from './stats.module.css'
 
 /**
- * The statistics tab: this project against every project, for the last week, the last month or all
- * time - and behind it the achievements screen.
+ * The statistics tab: this project against every project, for today, the last week, the last month or
+ * all time - and behind it the achievements screen.
  *
  * Everything on it is arithmetic over the days the IDE keeps (see stats/compute.ts): the range switches
  * here, without a round trip. The figures arrive as one message and are asked for again while the tab
@@ -50,18 +56,89 @@ interface StatisticsTabProps {
   data: StatisticsData | null
   view: StatisticsView
   onView: (view: StatisticsView) => void
+  /** The plugin's own version - it stands under a shared picture, see stats/poster.ts. */
+  version: string
+}
+
+/**
+ * The share button: whatever screen is open, drawn into a PNG and handed to the IDE, which writes it out
+ * (see the saveImage message and stats/poster.ts).
+ *
+ * Drawing takes a moment - a screen a thousand pixels tall goes through a canvas - so the button says what
+ * it is doing and then that it is done, rather than looking untouched while the file is being made.
+ */
+const ShareButton = ({
+  screen,
+  data,
+  view,
+  version,
+}: {
+  screen: RefObject<HTMLDivElement | null>
+  data: StatisticsData
+  view: StatisticsView
+  version: string
+}) => {
+  const [state, setState] = useState<'idle' | 'drawing' | 'done'>('idle')
+
+  useEffect(() => {
+    if (state !== 'done') return
+    const timer = setTimeout(() => setState('idle'), 2200)
+    return () => clearTimeout(timer)
+  }, [state])
+
+  const share = async () => {
+    const node = screen.current
+    if (!node || state === 'drawing') return
+    setState('drawing')
+    try {
+      const picture = await drawPoster(node, { ide: data.ide, version, date: data.today })
+      send({ type: 'saveImage', name: posterName(view === 'achievements' ? 'achievements' : 'statistics', data.today), data: picture })
+      setState('done')
+    } catch (error) {
+      send({ type: 'trace', message: `The statistics picture could not be drawn: ${String(error)}` })
+      setState('idle')
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className={s.share}
+      onClick={share}
+      disabled={state === 'drawing'}
+      aria-label="Save this screen as a picture"
+      data-tooltip={state === 'done' ? 'Saved to your downloads' : 'Save this screen as a picture'}
+      {...{ [SKIP]: '' }}
+    >
+      {state === 'done' ? (
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+          <path d="M3.5 8.5L6.5 11.5L12.5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+          <g fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 10.5V2.5" />
+            <path d="M5 5.5L8 2.5L11 5.5" />
+            <path d="M3.5 9.5v3a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-3" />
+          </g>
+        </svg>
+      )}
+    </button>
+  )
 }
 
 const RANGES: { key: RangeKey; label: string }[] = [
+  { key: '1d', label: 'Today' },
   { key: '7d', label: '7 days' },
   { key: '30d', label: '30 days' },
   { key: 'all', label: 'All time' },
 ]
 
-export const StatisticsTab = ({ data, view, onView }: StatisticsTabProps) => {
+export const StatisticsTab = ({ data, view, onView, version }: StatisticsTabProps) => {
   const root = useRef<HTMLDivElement>(null)
   const body = useRef<HTMLDivElement>(null)
-  const [range, setRange] = useState<RangeKey>('30d')
+  // Today first: the figure most often looked for is the one for the day being worked.
+  const [range, setRange] = useState<RangeKey>('1d')
   const [filter, setFilter] = useAchievementFilter()
 
   // The highlight under the pointer and the wheel both need a hand in the IDE's embedded browser - see
@@ -75,7 +152,13 @@ export const StatisticsTab = ({ data, view, onView }: StatisticsTabProps) => {
     <div className={s.root} ref={root}>
       {view === 'achievements' && groups ? (
         <div className={s.head}>
-          <button type="button" className={s.headBack} aria-label="Back to statistics" onClick={() => onView('overview')}>
+          <button
+            type="button"
+            className={s.headBack}
+            aria-label="Back to statistics"
+            onClick={() => onView('overview')}
+            {...{ [SKIP]: '' }}
+          >
             <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
               <path
                 d="M9.5 3.5L5 8l4.5 4.5"
@@ -92,6 +175,7 @@ export const StatisticsTab = ({ data, view, onView }: StatisticsTabProps) => {
             <span className={s.hint}>{achievementsHint(groups)}</span>
           </div>
           <div className={s.headSpace} />
+          {data ? <ShareButton screen={root} data={data} view={view} version={version} /> : null}
           <AchievementFilterSwitch filter={filter} onFilter={setFilter} />
         </div>
       ) : (
@@ -101,6 +185,7 @@ export const StatisticsTab = ({ data, view, onView }: StatisticsTabProps) => {
             <span className={s.hint}>{data ? overviewHint(data, range) : 'counting up…'}</span>
           </div>
           <div className={s.headSpace} />
+          {data ? <ShareButton screen={root} data={data} view={view} version={version} /> : null}
           <div className={s.segments}>
             {RANGES.map((option) => (
               <button
@@ -152,6 +237,7 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
   const days = useMemo(() => daysTile(data, range), [data, range])
   const output = useMemo(() => outputTile(data, range), [data, range])
   const series = useMemo(() => hoursSeries(data, range), [data, range])
+  const hours = useMemo(() => dayHours(data, range), [data, range])
   const heat = useMemo(() => heatMap(data), [data])
   const tools = useMemo(() => toolRows(data, range), [data, range])
   const projects = useMemo(() => projectRows(data, range), [data, range])
@@ -162,6 +248,12 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
   const recent = useMemo(() => recentlyEarned(groups), [groups])
 
   const activeDots = days.dots.filter((dot) => dot.active).length
+  // A single day is read differently: "a day" says nothing about one day, "1/1" says nothing about the
+  // days at work, and a line chart one point wide draws nothing at all. The delta keeps the same short
+  // "vs prev" as every other range - the previous stretch of one day is yesterday, and a longer word is
+  // cut off by the tile anyway (see .figureNote).
+  const oneDay = key === '1d'
+  const scope = oneDay ? 'today' : 'in this range'
 
   return (
     <>
@@ -177,19 +269,24 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
             )}
           </span>
           <span className={s.foot}>
-            {duration(time.allMinutes)} across every project · {duration(time.perDay)} a day
+            {duration(time.allMinutes)} across every project ·{' '}
+            {oneDay
+              ? hours.peak
+                ? `busiest hour ${clock(hours.peak.hour)}`
+                : 'nothing in the panel yet'
+              : `${duration(time.perDay)} a day`}
           </span>
         </div>
 
         <div className={s.tile}>
-          <span className={`${s.label} ${s.labelOk}`}>DAYS AT WORK</span>
+          <span className={`${s.label} ${s.labelOk}`}>{oneDay ? 'DAYS IN A ROW' : 'DAYS AT WORK'}</span>
           <span className={s.figureRow}>
             <span className={s.figure}>
-              {days.active}
-              <span className={s.figureDim}>/{days.total}</span>
+              {oneDay ? days.streak : days.active}
+              <span className={s.figureDim}>{oneDay ? 'd' : `/${days.total}`}</span>
             </span>
             <span className={s.figureNote}>
-              streak {days.streak}d · best {days.best}
+              {oneDay ? `best ${days.best}` : `streak ${days.streak}d · best ${days.best}`}
             </span>
           </span>
           <div className={s.dots} data-tooltip={`${activeDots} of the last ${days.dots.length} days`}>
@@ -242,26 +339,36 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
         </div>
       </div>
 
-      <div className={s.chartCard}>
-        <div className={s.labelRow}>
-          <span className={s.label}>HOURS A DAY IN THE PANEL</span>
-          <span className={s.labelNote}>
-            {series.longest
-              ? `longest day ${duration(series.longest.minutes)} on ${shortDate(series.longest.date)}`
-              : 'no day at work in this range yet'}
-          </span>
-          <span className={s.labelSpace} />
-          <span className={s.legend}>
-            <span className={s.legendLine} style={{ background: 'var(--acc-accent)' }} />
-            this project
-          </span>
-          <span className={`${s.legend} ${s.legendDim}`}>
-            <span className={s.legendLine} style={{ background: 'rgb(var(--acc-ch-aqua) / 55%)' }} />
-            every project
-          </span>
+      {oneDay ? (
+        <div className={s.chartCard}>
+          <div className={s.labelRow}>
+            <span className={s.label}>THE HOURS OF TODAY</span>
+            <span className={s.labelNote}>{dayNote(hours)}</span>
+          </div>
+          <DayChart hours={hours} />
         </div>
-        <HoursChart series={series} />
-      </div>
+      ) : (
+        <div className={s.chartCard}>
+          <div className={s.labelRow}>
+            <span className={s.label}>HOURS A DAY IN THE PANEL</span>
+            <span className={s.labelNote}>
+              {series.longest
+                ? `longest day ${duration(series.longest.minutes)} on ${shortDate(series.longest.date)}`
+                : 'no day at work in this range yet'}
+            </span>
+            <span className={s.labelSpace} />
+            <span className={s.legend}>
+              <span className={s.legendLine} style={{ background: 'var(--acc-accent)' }} />
+              this project
+            </span>
+            <span className={`${s.legend} ${s.legendDim}`}>
+              <span className={s.legendLine} style={{ background: 'rgb(var(--acc-ch-aqua) / 55%)' }} />
+              every project
+            </span>
+          </div>
+          <HoursChart series={series} />
+        </div>
+      )}
 
       <div className={s.card}>
         <div className={s.labelRow}>
@@ -284,7 +391,7 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
       <div className={s.tiles}>
         <div className={s.tile} style={{ gap: 9 }}>
           <span className={s.label}>WHAT THE AGENT DID</span>
-          {tools.length === 0 ? <span className={s.foot}>No tool calls in this range.</span> : null}
+          {tools.length === 0 ? <span className={s.foot}>No tool calls {scope}.</span> : null}
           {tools.map((tool) => (
             <span key={tool.name} className={s.row}>
               <span className={s.rowName} data-tooltip={tool.name}>
@@ -300,7 +407,7 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
 
         <div className={s.tile} style={{ gap: 9 }}>
           <span className={s.label}>WHERE THE HOURS WENT</span>
-          {projects.length === 0 ? <span className={s.foot}>No hours in this range yet.</span> : null}
+          {projects.length === 0 ? <span className={s.foot}>No hours {scope} yet.</span> : null}
           {projects.map((project, index) => (
             <span key={project.key} className={s.stack}>
               <span className={s.stackTop}>
@@ -337,12 +444,6 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
             {groupThousands(files.touched)} files touched · {files.refused} {files.refused === 1 ? 'edit' : 'edits'} you turned down · biggest edit{' '}
             {groupThousands(files.biggest)} lines
           </span>
-          <span className={s.spaceAbove}>
-            <span className={s.percent}>{files.acceptRate === null ? '–' : `${files.acceptRate}%`}</span>
-            <span className={s.foot}>
-              {files.acceptRate === null ? 'no permission asked yet' : `of permission asks accepted · ${files.denied} denied`}
-            </span>
-          </span>
         </div>
 
         <div className={s.tile} style={{ gap: 10 }}>
@@ -368,7 +469,7 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
           </span>
           <span className={s.sentence}>
             {facts.models.length === 0
-              ? 'no turns in this range'
+              ? `no turns ${scope}`
               : `${facts.models
                   .slice(0, 3)
                   .map((model) => `${model.name} ${Math.round(model.share * 100)}%`)
@@ -382,7 +483,7 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
           <span className={s.label}>EARNED LATELY</span>
           <span className={s.labelSpace} />
           <button type="button" className={`${s.link} ${s.labelNote}`} onClick={onAchievements}>
-            all {summary.total} achievements →
+            All
           </button>
         </div>
         {recent.length === 0 ? (
@@ -408,6 +509,13 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
       </div>
     </>
   )
+}
+
+/** "09:00 to 21:00 · busiest 17:00 with 42m" - what the hours of the day add up to. */
+const dayNote = (hours: DayHours): string => {
+  if (hours.peak === null || hours.first === null || hours.last === null) return 'nothing in the panel today yet'
+  const span = `${clock(hours.first)} to ${clock(hours.last + 1)}`
+  return `${span} · busiest ${clock(hours.peak.hour)} with ${duration(hours.peak.minutes)}`
 }
 
 const dayOfSince = (data: StatisticsData): string => {

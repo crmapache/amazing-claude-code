@@ -3,6 +3,7 @@ import type { StatisticsData, StatisticsDay } from '../protocol'
 import {
   bestStreak,
   currentStreak,
+  dayHours,
   daysTile,
   factsTile,
   filesTile,
@@ -39,6 +40,7 @@ const data = (days: StatisticsDay[], others: { key: string; name: string; minute
   now: Date.parse(`${TODAY}T12:00:00Z`),
   since: Date.parse('2026-06-01T00:00:00Z'),
   today: TODAY,
+  ide: 'WebStorm',
   devicesPaired: 0,
   project: { key: 'p-this', name: 'amazing-claude-code' },
   projects: [
@@ -54,6 +56,12 @@ describe('the ranges', () => {
     const empty = data([])
     expect(rangeOf(empty, '7d')).toMatchObject({ from: '2026-08-20', to: TODAY, days: 7, tag: '7D' })
     expect(rangeOf(empty, '30d')).toMatchObject({ from: '2026-07-28', to: TODAY, days: 30, tag: '30D' })
+  })
+
+  it('is today alone for a single day, and says so rather than "last 1 days"', () => {
+    const range = rangeOf(data([]), '1d')
+    expect(range).toMatchObject({ from: TODAY, to: TODAY, days: 1, tag: 'TODAY' })
+    expect(range.label).toBe('today')
   })
 
   it('starts all time at the first recorded day of any project', () => {
@@ -131,6 +139,26 @@ describe('hours a day', () => {
   })
 })
 
+describe('the hours of one day', () => {
+  it('adds the minutes up by hour, keeping the quiet hours in place', () => {
+    const set = data([busy(TODAY, 90, [9, 10, 17]), busy('2026-08-25', 60, [11])])
+    const hours = dayHours(set, rangeOf(set, '1d'))
+
+    expect(hours.bars).toHaveLength(24)
+    expect(hours.minutes).toBe(90)
+    expect(hours.bars[9]).toEqual({ hour: 9, minutes: 30 })
+    expect(hours.bars[11]).toEqual({ hour: 11, minutes: 0 })
+    expect(hours.first).toBe(9)
+    expect(hours.last).toBe(17)
+    expect(hours.peak).toEqual({ hour: 9, minutes: 30 })
+  })
+
+  it('has no peak and no edges on a day with nothing in it', () => {
+    const set = data([busy('2026-08-25', 60)])
+    expect(dayHours(set, rangeOf(set, '1d'))).toMatchObject({ minutes: 0, peak: null, first: null, last: null })
+  })
+})
+
 describe('when you work', () => {
   it('paints the busiest day darkest and the quiet ones by their share of it', () => {
     expect(heatLevel(0, 100)).toBe(0)
@@ -199,7 +227,7 @@ describe('where the hours went', () => {
 })
 
 describe('files', () => {
-  it('adds the lines and takes the share of permissions accepted', () => {
+  it('adds the lines up and keeps the biggest edit of the range', () => {
     const set = data([
       busy('2026-08-25', 10, [9], {
         linesAdded: 100,
@@ -207,25 +235,16 @@ describe('files', () => {
         filesTouched: 3,
         editsRefused: 1,
         biggestEdit: 80,
-        permissionsAsked: 10,
-        permissionsAllowed: 9,
-        permissionsDenied: 1,
       }),
+      busy('2026-08-24', 10, [9], { linesAdded: 20, biggestEdit: 30 }),
     ])
     expect(filesTile(set, rangeOf(set, '30d'))).toEqual({
-      added: 100,
+      added: 120,
       removed: 40,
       touched: 3,
       refused: 1,
       biggest: 80,
-      acceptRate: 90,
-      denied: 1,
     })
-  })
-
-  it('has no rate before a single question', () => {
-    const set = data([busy('2026-08-25', 10)])
-    expect(filesTile(set, rangeOf(set, '30d')).acceptRate).toBeNull()
   })
 })
 

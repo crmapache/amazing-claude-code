@@ -2412,6 +2412,7 @@ export const App = () => {
           data={statistics}
           view={statsTab.view}
           onView={(view) => setStatsTab((current) => ({ ...current, view }))}
+          version={pluginVersion}
         />
       ) : sessions.length === 0 ? (
         <div className={s.emptyState}>

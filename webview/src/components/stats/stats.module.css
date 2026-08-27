@@ -70,6 +70,35 @@
 }
 
 /* The segmented switch: the menu's own tabs (see sideMenu.module.css), only not stretched. */
+/* The share button sits beside the range switch and is cut out of the picture it makes - see poster.ts. */
+.share {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 6px;
+  border-radius: var(--acc-r-sm);
+  color: var(--acc-fg-faint);
+}
+
+.share:hover,
+.share[data-hover] {
+  background: var(--acc-bg-menu-hover);
+  color: var(--acc-fg);
+}
+
+.share:disabled {
+  color: var(--acc-fg-ghost);
+  animation: sharePulse 1.1s ease-in-out infinite;
+}
+
+@keyframes sharePulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
 .segments {
   flex: none;
   display: flex;
@@ -425,18 +454,6 @@
   color: var(--acc-bad-light);
 }
 
-.spaceAbove {
-  margin-top: auto;
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-}
-
-.percent {
-  font: 600 13px/1 var(--acc-mono);
-  color: var(--acc-fg);
-}
-
 .legend {
   display: inline-flex;
   align-items: center;
@@ -526,6 +543,90 @@
 
 .chartTipWho {
   color: var(--acc-fg-faint);
+}
+
+/* --- The hours of one day -------------------------------------------------------------- */
+
+.day {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dayPlot {
+  position: relative;
+  height: 150px;
+}
+
+.dayLine {
+  position: absolute;
+  left: 28px;
+  right: 0;
+  height: 1px;
+  background: rgb(var(--acc-ch-mist) / 7%);
+}
+
+.dayFloor {
+  background: rgb(var(--acc-ch-mist) / 18%);
+}
+
+.dayScale {
+  position: absolute;
+  right: calc(100% + 6px);
+  top: -5px;
+  font: 9px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.dayBars {
+  position: absolute;
+  inset: 0 0 0 28px;
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  gap: 3px;
+  align-items: end;
+}
+
+.dayBar {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+}
+
+.dayBarFill {
+  width: 100%;
+  border-radius: 2px 2px 0 0;
+  background: rgb(var(--acc-ch-moon) / 55%);
+}
+
+.dayBarFill[data-peak] {
+  background: var(--acc-c-moon-3);
+}
+
+.dayBar:hover .dayBarFill {
+  background: rgb(var(--acc-ch-moon) / 85%);
+}
+
+.dayBarEmpty {
+  height: 2px;
+  border-radius: 1px;
+  background: rgb(var(--acc-ch-mist) / 10%);
+}
+
+.dayBar:hover .dayBarEmpty {
+  background: rgb(var(--acc-ch-mist) / 22%);
+}
+
+.dayTicks {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  margin-left: 28px;
+  font: 9px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.dayTick {
+  white-space: nowrap;
 }
 
 .heatLegend {

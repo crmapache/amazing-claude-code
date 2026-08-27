@@ -50,6 +50,9 @@ export const bootstrap: ScenarioStep[] = [
     projectName: 'demo-project',
     workingDirectory: '/Users/you/demo-project',
     gitBranch: 'main',
+    // The version stands at the foot of the menu and under a shared picture of the statistics - without
+    // one here both would be looked at empty.
+    pluginVersion: '0.8.0',
   }),
   // Without any usage the input field's bottom row is empty and the rings in it cannot be looked at. The
   // week stands on the window's third day: the pale pace arc then runs ahead of the bright one, that is,

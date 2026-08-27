@@ -1,5 +1,6 @@
 package io.github.crmapache.amazingclaudecode.stats
 
+import com.intellij.openapi.application.ApplicationNamesInfo
 import java.time.LocalDate
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
@@ -19,6 +20,14 @@ import kotlinx.serialization.json.putJsonObject
  */
 internal object StatsPayload {
 
+    /**
+     * The IDE the book is kept in - "WebStorm", "IntelliJ IDEA". It stands under a shared picture of the
+     * tab, and nowhere else; asked for through runCatching because the payload is also built in tests,
+     * where no application stands behind the name.
+     */
+    private fun ideName(): String =
+        runCatching { ApplicationNamesInfo.getInstance().fullProductName }.getOrDefault("JetBrains IDE")
+
     fun build(ledger: StatsLedger, projectKey: String, now: Long = System.currentTimeMillis()): String {
         val today = LocalDate.now()
         // Evaluated before the read rather than inside it: the evaluation takes the lock itself, and it is
@@ -31,6 +40,7 @@ internal object StatsPayload {
                 put("now", now)
                 put("since", snapshot.since)
                 put("today", today.toString())
+                put("ide", ideName())
                 put("devicesPaired", snapshot.devicesPaired)
 
                 putJsonObject("project") {

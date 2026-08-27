@@ -24,6 +24,10 @@
     <resource-bundle>messages.AccBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
+        <!-- Where the panel says something to the IDE rather than to the person in front of it: a picture
+             of the statistics written into the downloads folder, for instance. -->
+        <notificationGroup id="Amazing Claude Code" displayType="BALLOON"/>
+
         <!-- anchor sets the default position only: from then on the user drags the button between the
              edges themselves, and the platform remembers their choice. -->
         <toolWindow

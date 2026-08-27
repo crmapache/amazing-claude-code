@@ -14,6 +14,14 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  */
 let lastShellRequest: { id: string; command: string } | undefined
 
+/** A file the panel produced, handed to the browser the way the shell hands it to the IDE. */
+const download = (name: string, base64: string): void => {
+  const link = document.createElement('a')
+  link.href = `data:image/png;base64,${base64}`
+  link.download = name
+  link.click()
+}
+
 const listenToPanel = () => {
   if (window.__accSend) return
 
@@ -32,6 +40,10 @@ const listenToPanel = () => {
     // the harness's own, so a link (the PR in the header, the thanks menu) genuinely opens instead of
     // quietly going nowhere.
     if (message?.type === 'openExternal') window.open(message.url, '_blank', 'noopener')
+
+    // The picture of the statistics screen: in the IDE the shell writes it into the downloads folder,
+    // here the browser has downloads of its own and does it itself - so the button can be tried out.
+    if (message?.type === 'saveImage') download(message.name, message.data)
   }
 
   window.dispatchEvent(new Event('acc:ready'))

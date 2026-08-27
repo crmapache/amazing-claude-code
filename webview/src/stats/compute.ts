@@ -10,7 +10,7 @@ import { WEEKDAYS, clock, longDate } from './format'
  * can be checked in a test. The words go in the components; here are the numbers.
  */
 
-export type RangeKey = '7d' | '30d' | 'all'
+export type RangeKey = '1d' | '7d' | '30d' | 'all'
 
 export interface Range {
   key: RangeKey
@@ -19,13 +19,13 @@ export interface Range {
   to: string
   /** How many calendar days that is. */
   days: number
-  /** "last 30 days", "since Aug 26, 2026". */
+  /** "today", "last 30 days", "since Aug 26, 2026". */
   label: string
-  /** "30D", "7D", "ALL" - the tag on the first tile. */
+  /** "TODAY", "30D", "7D", "ALL" - the tag on the first tile. */
   tag: string
 }
 
-const RANGE_DAYS: Record<RangeKey, number> = { '7d': 7, '30d': 30, all: 0 }
+const RANGE_DAYS: Record<RangeKey, number> = { '1d': 1, '7d': 7, '30d': 30, all: 0 }
 
 /** The first day anything at all was recorded, across every project - where "all time" begins. */
 export const firstRecordedDay = (data: StatisticsData): string | null => {
@@ -42,7 +42,15 @@ export const rangeOf = (data: StatisticsData, key: RangeKey): Range => {
   const to = data.today
   if (key !== 'all') {
     const days = RANGE_DAYS[key]
-    return { key, from: addDays(to, -(days - 1)), to, days, label: `last ${days} days`, tag: `${days}D` }
+    return {
+      key,
+      from: addDays(to, -(days - 1)),
+      to,
+      days,
+      // A single day is today itself, and reads as such rather than as "last 1 days".
+      label: days === 1 ? 'today' : `last ${days} days`,
+      tag: days === 1 ? 'TODAY' : `${days}D`,
+    }
   }
 
   const first = firstRecordedDay(data) ?? to
@@ -225,6 +233,51 @@ export const hoursSeries = (data: StatisticsData, range: Range): HoursSeries => 
   }
 
   return { dates, project, all, longest }
+}
+
+// --- The hours of one day ---------------------------------------------------------------
+
+export interface HourBar {
+  hour: number
+  minutes: number
+}
+
+export interface DayHours {
+  /** All 24 hours, midnight first - the quiet ones included, so the day keeps its shape. */
+  bars: HourBar[]
+  minutes: number
+  /** The busiest hour, and the first and the last hour with anything in them. Absent on a quiet day. */
+  peak: HourBar | null
+  first: number | null
+  last: number | null
+}
+
+/**
+ * Minutes by hour of the day, added up over the days of the range.
+ *
+ * This is what the chart shows when the range is a single day: a line of dots one day wide says
+ * nothing, whereas the hours of that day say when the work happened.
+ */
+export const dayHours = (data: StatisticsData, range: Range): DayHours => {
+  const minutes = Array.from({ length: 24 }, () => 0)
+  for (const day of daysIn(data, range)) {
+    ;(day.hours ?? []).forEach((value, hour) => {
+      if (hour < 24) minutes[hour] = (minutes[hour] ?? 0) + value
+    })
+  }
+
+  const bars = minutes.map((value, hour) => ({ hour, minutes: value }))
+  const worked = bars.filter((bar) => bar.minutes > 0)
+  let peak: HourBar | null = null
+  for (const bar of worked) if (peak === null || bar.minutes > peak.minutes) peak = bar
+
+  return {
+    bars,
+    minutes: minutes.reduce((total, value) => total + value, 0),
+    peak,
+    first: worked[0]?.hour ?? null,
+    last: worked[worked.length - 1]?.hour ?? null,
+  }
 }
 
 // --- When you work ----------------------------------------------------------------------
@@ -428,15 +481,10 @@ export interface FilesTile {
   touched: number
   refused: number
   biggest: number
-  /** Permissions answered "yes", as a share of the ones asked - null when none were asked. */
-  acceptRate: number | null
-  denied: number
 }
 
 export const filesTile = (data: StatisticsData, range: Range): FilesTile => {
   const days = daysIn(data, range)
-  const asked = sum(days, (day) => day.permissionsAsked)
-  const allowed = sum(days, (day) => day.permissionsAllowed)
 
   return {
     added: sum(days, (day) => day.linesAdded),
@@ -444,8 +492,6 @@ export const filesTile = (data: StatisticsData, range: Range): FilesTile => {
     touched: sum(days, (day) => day.filesTouched),
     refused: sum(days, (day) => day.editsRefused),
     biggest: max(days, (day) => day.biggestEdit),
-    acceptRate: asked > 0 ? Math.round((allowed / asked) * 100) : null,
-    denied: sum(days, (day) => day.permissionsDenied),
   }
 }
 

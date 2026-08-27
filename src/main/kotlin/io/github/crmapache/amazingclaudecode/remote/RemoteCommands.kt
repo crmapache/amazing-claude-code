@@ -129,6 +129,10 @@ internal object RemoteCommands {
         "cursor",
         "clipboardRead",
         "clipboardWrite",
+        // Writing a file onto the machine at the asking of whoever is on the line. The picture itself is
+        // harmless; a message that makes the IDE write files is not, and the statistics tab it comes from
+        // is the panel's alone anyway.
+        "saveImage",
         "mcpList",
         "mcpAdd",
         "mcpRemove",

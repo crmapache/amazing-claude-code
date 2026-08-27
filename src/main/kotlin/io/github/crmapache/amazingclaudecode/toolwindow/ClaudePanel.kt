@@ -28,6 +28,7 @@ import io.github.crmapache.amazingclaudecode.editor.SelectionReference
 import io.github.crmapache.amazingclaudecode.sound.AlertSounds
 import io.github.crmapache.amazingclaudecode.webview.FilePicker
 import io.github.crmapache.amazingclaudecode.webview.IdeTypography
+import io.github.crmapache.amazingclaudecode.webview.ImageDownloads
 import io.github.crmapache.amazingclaudecode.webview.WebviewClipboard
 import io.github.crmapache.amazingclaudecode.webview.WebviewFileDrop
 import io.github.crmapache.amazingclaudecode.webview.WebviewHost
@@ -212,6 +213,10 @@ internal class ClaudePanel(
             "clipboardWrite" -> writeClipboard(field("text"), field("html"))
 
             "clipboardRead" -> readClipboard(field("id"))
+
+            // The statistics screen as a picture to share: JCEF has no downloads of its own, so the bytes
+            // come here and the file is written where downloads belong (see ImageDownloads).
+            "saveImage" -> ImageDownloads.save(project, field("name"), field("data"))
 
             else -> if (!hub.commands.handle(client.id, payload)) {
                 thisLogger().warn("Unknown message from webview: $message")
