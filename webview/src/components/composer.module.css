@@ -1487,6 +1487,66 @@
   background: var(--acc-warn-active);
 }
 
+/*
+ * The holiday layer's third ornament: the Send button freezes over (see holiday.ts).
+ *
+ * The one control the eye already goes to, so the season lands on the thing being looked at anyway. The
+ * ice is the button's own fill rather than something laid over it - the whole 26px still take the click,
+ * and nothing decorative sits above a tap target.
+ *
+ * Three exclusions, and none of them is cosmetic. `Run` is orange because the draft is a shell command
+ * and the panel marks everything genuinely done on the machine that colour - that is meaning, not
+ * decoration. The queue button shares this class and is deliberately the neutral one beside `Send`. And a
+ * disabled button has its own dimmed look, which the rule below would otherwise outrank at higher
+ * specificity.
+ */
+[data-holiday] .send:not(.sendRun):not(.sendQueued):not(:disabled) {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--acc-ice-line);
+  background: var(--acc-ice);
+  /* Lit from above and settled at the bottom, then the button's own drop onto the row beneath. */
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 85%),
+    inset 0 -1px 0 rgb(18 58 88 / 30%),
+    0 1px 3px rgb(var(--acc-ch-shade) / 45%);
+  color: var(--acc-ice-ink);
+  text-shadow: 0 1px 0 rgb(255 255 255 / 45%);
+}
+
+/* The glaze along the top edge, and one slanted shine across the face. Pseudo-elements rather than nodes:
+   the button's markup is one word of text, and the ice has no business in Composer.tsx. */
+[data-holiday] .send:not(.sendRun):not(.sendQueued):not(:disabled)::before {
+  content: '';
+  position: absolute;
+  inset: 1px 2px auto;
+  height: 9px;
+  border-radius: 5px 5px 9px 9px;
+  background: linear-gradient(180deg, rgb(255 255 255 / 60%), rgb(255 255 255 / 0%));
+  pointer-events: none;
+}
+
+[data-holiday] .send:not(.sendRun):not(.sendQueued):not(:disabled)::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 38%;
+  width: 7px;
+  transform: skewX(-22deg);
+  background: rgb(255 255 255 / 22%);
+  pointer-events: none;
+}
+
+[data-holiday] .send:not(.sendRun):not(.sendQueued):not(:disabled):hover,
+[data-holiday] .send:not(.sendRun):not(.sendQueued):not(:disabled)[data-hover] {
+  background: var(--acc-ice-hover);
+}
+
+[data-holiday] .send:not(.sendRun):not(.sendQueued):not(:disabled):active {
+  background: var(--acc-ice-active);
+}
+
 /* Below the variant :hover rules - otherwise they would override it at equal specificity. The dimmed
    button's cursor is set once for all - see base.css. The same dimming as .attach:disabled - see the comment
    there. */

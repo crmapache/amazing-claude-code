@@ -2,7 +2,8 @@ import { Reveal } from 'smooth-stream-text/react'
 import { createElement, useEffect, useState } from 'react'
 import { parseInline } from '../../feed/markdown'
 import type { Paragraph, TableAlign, TableData, TextPart } from '../../feed/types'
-import { CopyButton, copyToClipboard } from './CopyButton'
+import { copyToClipboard } from '../../clipboard'
+import { CopyButton } from './CopyButton'
 import s from '../feed.module.css'
 
 /**

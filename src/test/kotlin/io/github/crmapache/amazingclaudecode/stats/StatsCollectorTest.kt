@@ -48,6 +48,14 @@ class StatsCollectorTest {
     private fun toolResult(id: String, error: Boolean = false): String =
         """{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"$id","is_error":$error,"content":"ok"}]}}"""
 
+    /** What the panel sends for a hand on the keyboard, naming the tab that is in front. */
+    private fun activity(sessionId: String) =
+        buildJsonObject {
+            put("type", "stat")
+            put("kind", "activity")
+            put("sessionId", sessionId)
+        }
+
     private fun result(durationMs: Long, cost: Double = 0.0): String =
         """{"type":"result","subtype":"success","duration_ms":$durationMs,"total_cost_usd":$cost,"usage":{"input_tokens":100,"output_tokens":20,"cache_read_input_tokens":300,"cache_creation_input_tokens":5}}"""
 
@@ -181,16 +189,39 @@ class StatsCollectorTest {
     }
 
     @Test
-    fun `tabs, forks and their depth are written down as they open`() {
+    fun `forks and their depth are written down as they open`() {
         collector.noteSessionOpened("main", parentId = null, groupId = "main", depth = 0)
         collector.noteSessionOpened("f1", parentId = "main", groupId = "main", depth = 1)
         collector.noteSessionOpened("f2", parentId = "f1", groupId = "main", depth = 2)
 
         val day = today()
-        assertEquals(3, day.sessions)
         assertEquals(2, day.forks)
         assertEquals(2, day.maxForksInTree)
         assertEquals(2, day.maxDepth)
+    }
+
+    @Test
+    fun `a tab opened and never written in is not a conversation`() {
+        // Three tabs and a hand on the keyboard in the empty one: nothing was said in any of them.
+        collector.noteSessionOpened("t1", parentId = null, groupId = "t1", depth = 0)
+        collector.noteSessionOpened("t2", parentId = null, groupId = "t2", depth = 0)
+        collector.noteClientEvent(activity("t2"))
+        collector.noteClientEvent(activity("t2"))
+
+        val day = today()
+        assertEquals(0, day.sessions)
+        assertEquals(0, day.longestSession)
+    }
+
+    @Test
+    fun `a hand on the keyboard lengthens a chat that is alive and starts none`() {
+        collector.noteLine("alive", result(durationMs = 1_000))
+        collector.noteClientEvent(activity("alive"))
+        collector.noteClientEvent(activity("empty"))
+
+        val day = today()
+        assertEquals(1, day.sessions)
+        assertTrue(day.longestSession >= 1)
     }
 
     @Test

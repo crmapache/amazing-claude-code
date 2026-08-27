@@ -36,6 +36,10 @@ const busy = (date: string, minutes: number, hours: number[] = [10, 11, 12], ove
   return day(date, { minutes, hours: perHour, turns: 1, ...overrides })
 }
 
+/** The twenty-four hours of a day, with the named ones filled in - for a day that is not spread evenly. */
+const hoursOf = (minutes: Record<number, number>): number[] =>
+  Array.from({ length: 24 }, (_, hour) => minutes[hour] ?? 0)
+
 const data = (days: StatisticsDay[], others: { key: string; name: string; minutes: Record<string, number> }[] = []): StatisticsData => ({
   now: Date.parse(`${TODAY}T12:00:00Z`),
   since: Date.parse('2026-06-01T00:00:00Z'),
@@ -159,9 +163,24 @@ describe('the hours of one day', () => {
     expect(hours.peak).toEqual({ hour: 9, minutes: 30 })
   })
 
+  it('names every hour that ties for the top, not the earliest of them', () => {
+    // Three hours of thirty minutes each: the chart lights all three, so all three are here.
+    const set = data([busy(TODAY, 90, [9, 10, 17])])
+
+    expect(dayHours(set, rangeOf(set, '1d')).peaks).toEqual([9, 10, 17])
+  })
+
+  it('holds one hour when one hour is genuinely the busiest', () => {
+    const set = data([day(TODAY, { minutes: 70, hours: hoursOf({ 9: 10, 14: 60 }), turns: 1 })])
+    const hours = dayHours(set, rangeOf(set, '1d'))
+
+    expect(hours.peak).toEqual({ hour: 14, minutes: 60 })
+    expect(hours.peaks).toEqual([14])
+  })
+
   it('has no peak and no edges on a day with nothing in it', () => {
     const set = data([busy('2026-08-25', 60)])
-    expect(dayHours(set, rangeOf(set, '1d'))).toMatchObject({ minutes: 0, peak: null, first: null, last: null })
+    expect(dayHours(set, rangeOf(set, '1d'))).toMatchObject({ minutes: 0, peak: null, peaks: [], first: null, last: null })
   })
 })
 

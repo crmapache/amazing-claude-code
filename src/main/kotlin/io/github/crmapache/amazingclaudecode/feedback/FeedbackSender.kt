@@ -46,7 +46,7 @@ internal object FeedbackSender {
     ) {
         AppExecutorUtil.getAppExecutorService().submit {
             val outcome = runCatching { post(kind, text, email, environment, report, files) }.getOrElse { failure ->
-                thisLogger().info("The feedback could not be sent: ${failure.message}")
+                thisLogger().info("The feedback could not be sent: ${describe(failure)}")
                 Outcome(false, "No answer from the feedback service. Check the network and try again.")
             }
 
@@ -175,16 +175,38 @@ internal object FeedbackSender {
             val provider = com.intellij.util.net.JdkProxyProvider.getInstance()
             builder.proxy(provider.proxySelector)
             builder.authenticator(provider.authenticator)
-        }.onFailure { thisLogger().info("The IDE's proxy settings were not available: ${it.message}") }
+        }.onFailure { thisLogger().info("The IDE's proxy settings were not available: ${describe(it)}") }
 
         runCatching {
             builder.sslContext(com.intellij.util.net.ssl.CertificateManager.getInstance().sslContext)
-        }.onFailure { thisLogger().info("The IDE's certificate store was not available: ${it.message}") }
+        }.onFailure { thisLogger().info("The IDE's certificate store was not available: ${describe(it)}") }
 
         builder.build()
     }
 
     private fun client(): HttpClient = cached
+
+    /**
+     * A line for the log out of a failure that frequently has nothing to say for itself.
+     *
+     * The most ordinary failure here is a name that will not resolve - no network, a proxy that eats DNS,
+     * an address whose record has not spread yet - and it is precisely the one that arrives mute: the
+     * JDK's client wraps it in a ConnectException with no message, whose cause is another one with no
+     * message, and only at the bottom of that chain is there an UnresolvedAddressException, which carries
+     * nothing but its own name either. Logging the message alone wrote "could not be sent: null" and left
+     * no way to tell a machine with no network from a service answering nonsense - the two failures worth
+     * telling apart when somebody says the button does nothing.
+     *
+     * So the chain is walked: the names of everything in it, and the first thing any of them thought to
+     * say. Names only, never a stack - this goes to the IDE's log, which the person may well be reading.
+     */
+    internal fun describe(failure: Throwable): String {
+        val chain = generateSequence(failure) { it.cause.takeIf { cause -> cause !== it } }.take(CAUSE_DEPTH).toList()
+        val names = chain.joinToString(" <- ") { it.javaClass.simpleName }
+        val said = chain.firstNotNullOfOrNull { it.message?.trim()?.ifEmpty { null } }
+
+        return if (said == null) names else "$names: $said"
+    }
 
     /**
      * Where it goes. Overridable by a system property for the same reason the relay's address is: the
@@ -212,4 +234,7 @@ internal object FeedbackSender {
     private const val REQUEST_TIMEOUT_SECONDS = 120L
 
     private const val MAX_REASON = 160
+
+    /** Far enough down a chain of causes for the one that means something; a guard against a cycle too. */
+    private const val CAUSE_DEPTH = 6
 }

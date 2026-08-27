@@ -288,6 +288,25 @@
      surfaces; the theme's shadow is bluish too. */
   --acc-shade: rgb(var(--acc-ch-shade) / 22%);
 
+  /* --- The holiday layer: 24 Dec - 3 Jan ----------------------------------
+     Two things the panel has no paint for the rest of the year: snow, and the ice the Send button
+     freezes over with (see holiday.ts, Holiday.tsx and the [data-holiday] rules in composer.module.css).
+     Everything else the layer needs - the garland's bulbs - reuses the accents above, so the wire cannot
+     clash with the theme.
+
+     Written out rather than derived from the palette: this is a lit surface with a highlight along its
+     top edge, and the steps of it are one gradient's worth of light rather than roles anything else
+     shares. Ink is dark on purpose - the ice is a light fill, and --acc-on-accent is for the dark one. */
+  --acc-snow: #e6ecf8;
+  --acc-ice-line: #d9f1fb;
+  --acc-ice-ink: #0c3b55;
+  /* The fill itself is a token rather than three loose stops, in the manner of --acc-shadow-menu below:
+     what the button is given is one lit surface, and the light in it is not three roles anything else
+     would ever ask for one at a time. */
+  --acc-ice: linear-gradient(180deg, #a9e2f4 0%, #74c9ea 46%, #46a6d3 100%);
+  --acc-ice-hover: linear-gradient(180deg, #c1ecf9 0%, #8ad6f1 46%, #55b5de 100%);
+  --acc-ice-active: linear-gradient(180deg, #8fd3ea 0%, #5eb6dc 46%, #3892c1 100%);
+
   /* The status line's shimmer. The warm orange was the only warm spot in the whole panel and stood out;
      now the wave runs over the primary. */
   --acc-stream-1: var(--acc-c-moon-4);

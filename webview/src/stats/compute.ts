@@ -240,6 +240,16 @@ export interface DayHours {
   minutes: number
   /** The busiest hour, and the first and the last hour with anything in them. Absent on a quiet day. */
   peak: HourBar | null
+  /**
+   * Every hour that reaches that same figure, not just the first of them.
+   *
+   * The bar chart lights the busiest hour up, and a day of real work ties for it constantly: the scale is
+   * a whole hour, so every hour spent end to end sits at sixty and they are all the busiest there was.
+   * Lighting the earliest of them and leaving its twins dark says the light means something about that
+   * one hour, when the truth is that they are equal - so all of them are lit, and the note names all of
+   * them too.
+   */
+  peaks: number[]
   first: number | null
   last: number | null
 }
@@ -267,6 +277,7 @@ export const dayHours = (data: StatisticsData, range: Range): DayHours => {
     bars,
     minutes: minutes.reduce((total, value) => total + value, 0),
     peak,
+    peaks: peak === null ? [] : worked.filter((bar) => bar.minutes === peak.minutes).map((bar) => bar.hour),
     first: worked[0]?.hour ?? null,
     last: worked[worked.length - 1]?.hour ?? null,
   }

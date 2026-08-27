@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AchievementState } from '../protocol'
-import { closest, dress, dressAll, filterGroups, recentlyEarned, summarize } from './achievements'
+import { closest, dress, dressAll, filterGroups, progressOf, recentlyEarned, summarize } from './achievements'
 import { ACHIEVEMENTS, ACHIEVEMENT_COUNT, ACHIEVEMENT_GROUPS, achievementValue } from './catalogue'
 
 const state = (
@@ -70,6 +70,17 @@ describe('dressing', () => {
     expect(half.steps).toBe(2)
     expect(half.tierMark).toBe('I')
     expect(half.value).toBe('1/2')
+  })
+
+  it('fills the bar of a ladder that climbs one at a time by the figure itself', () => {
+    // From the line below there is nothing to fill between 1 and 2, and an empty bar under "1/2" reads
+    // as nothing done at all - which is how one way of two came to look like none.
+    expect(progressOf(1, 2, 1)).toBe(0.5)
+    expect(progressOf(3, 4, 3)).toBe(0.75)
+    // Where the lines stand apart, the climb is still measured from the one below.
+    expect(progressOf(50, 100, 40)).toBeCloseTo(1 / 6)
+    expect(progressOf(0, 30)).toBe(0)
+    expect(progressOf(5, undefined)).toBe(1)
   })
 
   it('takes the step count from the catalogue when an older IDE does not send one', () => {

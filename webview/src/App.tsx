@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { send, subscribe } from './bridge'
-import { installClipboardBridge, resolveClipboard } from './clipboard'
+import { copyToClipboard, installClipboardBridge, resolveClipboard } from './clipboard'
 import {
   EFFORT_OPTIONS,
   modeMenuOptions,
@@ -34,6 +34,7 @@ import {
 } from './components/Feedback'
 import { Header, type Session, type SessionState } from './components/Header'
 import { History } from './components/History'
+import { Garland, Snowfall } from './components/Holiday'
 import { LoginGate, type AuthState } from './components/LoginGate'
 import { Mcp } from './components/Mcp'
 import { Menu, type MenuOption } from './components/Menu'
@@ -50,7 +51,8 @@ import { Tooltips } from './components/Tooltips'
 import { Remote, RemoteAbout, REMOTE_STATE, type RemoteStatus } from './components/Remote'
 import { Sounds } from './components/Sounds'
 import { StatusBar, UsageMeters, type Anchor, type SelectorKind } from './components/StatusBar'
-import { THANKS_MENU, thanksUrl } from './components/Thanks'
+import { SHARE, SHARE_TEXT, thanksMenu, thanksUrl } from './components/Thanks'
+import { useHoliday } from './hooks/useHoliday'
 import { useHoverTarget } from './hooks/useHoverTarget'
 import { StreamSwitcher } from './components/StreamSwitcher'
 import { TaskListPanel } from './components/TaskListPanel'
@@ -239,6 +241,8 @@ export const App = () => {
   useHoverTarget(panelNode)
 
   const [menu, setMenu] = useState<{ kind: SelectorKind | 'thanks'; anchor: Anchor } | null>(null)
+  /** Whether the line about the plugin is in the clipboard - the thanks menu's only way of saying so. */
+  const [shared, setShared] = useState(false)
   /**
    * The choice of model, effort and mode. It arrives from the shell at startup and is saved there too: a
    * new tab, a fork and the IDE's next start begin from it.
@@ -271,6 +275,8 @@ export const App = () => {
   const [dockAnchor, setDockAnchor] = useState<'left' | 'right' | 'top' | 'bottom'>('right')
   /** Where the input field sits. It arrives from the shell at startup and is saved there too. */
   const [composerLayout, setComposerLayoutState] = useState<ComposerLayout>('bottom')
+  /** The turn of the year: the garland, the snow and the frozen Send button - see holiday.ts. */
+  const holiday = useHoliday()
   const [loginWaiting, setLoginWaiting] = useState(false)
   /** Grows whenever the input field has to be given the focus back: after a link from the editor, say. */
   const [focusToken, setFocusToken] = useState(0)
@@ -2397,6 +2403,8 @@ export const App = () => {
       return
     }
     setSideMenu((current) => ({ ...current, open: false }))
+    // The tick on "share" belongs to the menu that is open, not to the panel: opened again, it asks again.
+    setShared(false)
     setMenu({ kind: 'thanks', anchor })
   }
 
@@ -2499,7 +2507,16 @@ export const App = () => {
   )
 
   return (
-    <div className={s.panel} ref={setPanelNode} data-anchor={dockAnchor} data-layout={composerLayout}>
+    <div
+      className={s.panel}
+      ref={setPanelNode}
+      data-anchor={dockAnchor}
+      data-layout={composerLayout}
+      /* One attribute for the whole holiday layer, in the manner of data-layout beside it: what it
+         switches on is the Send button's ice, which is that button's own fill rather than a node
+         anyone could render here (see composer.module.css). */
+      data-holiday={holiday ? '' : undefined}
+    >
       {/* The hover hints of every marked control at once - drawn into the body, so its place in this
           tree carries no meaning beyond being mounted with the panel. */}
       <Tooltips />
@@ -2554,6 +2571,11 @@ export const App = () => {
       ) : (
         <div className={s.workArea} data-layout={composerLayout}>
         <div className={s.content}>
+        {/* One line directly under the header, where it reads as a shelf ornament rather than as UI.
+            Inside .content rather than over .panel: under the left/right layouts the panel is a grid
+            whose rail spans its whole height, and a strip drawn across it would cross the chips. */}
+        {holiday ? <Garland /> : null}
+
         <StreamSwitcher
           tabs={agentTabs}
           background={panel.background}
@@ -2564,6 +2586,10 @@ export const App = () => {
         />
 
         <div className={s.body}>
+          {/* The flakes take the room behind the feed - .body is already the positioned box that paints
+              the feed's background, so the layer covers the feed and nothing above or below it. */}
+          {holiday ? <Snowfall /> : null}
+
           {resolvedStream === 'main' ? (
             /*
              * A feed of its own per tab, rather than one feed shown a different conversation.
@@ -2870,13 +2896,15 @@ export const App = () => {
       {menu ? (
         <Menu
           {...(menu.kind === 'thanks'
-            ? THANKS_MENU
+            ? thanksMenu(shared)
             : menuProps(menu.kind, models, prefs.model, tickedModel, prefs.effort, mode, availableModes))}
           anchor={menu.anchor}
           onClose={() => setMenu(null)}
           onPick={(id) => {
             const kind = menu.kind
-            setMenu(null)
+            // Every entry but "share" is done with once it is pressed; that one answers inside the menu,
+            // so the menu has to still be there to answer in.
+            if (kind !== 'thanks' || id !== SHARE) setMenu(null)
 
             if (kind === 'model') pickModel(id)
             if (kind === 'effort') pickEffort(id)
@@ -2885,12 +2913,11 @@ export const App = () => {
             // and the IDE opens it in the system browser - the same route the PR link takes.
             if (kind === 'thanks') {
               const url = thanksUrl(id)
-              if (url) {
-                send({ type: 'openExternal', url })
-                // Which way was taken, not that the menu was opened: there are two ways to say thanks and
-                // the achievement has a line for each of them (see Achievements.kt, "thanks").
-                send({ type: 'stat', kind: 'thanks', way: id })
-              }
+              if (url) send({ type: 'openExternal', url })
+              if (id === SHARE) void copyToClipboard(SHARE_TEXT).then((ok) => setShared(ok))
+              // Which way was taken, not that the menu was opened: there are three ways to say thanks and
+              // the achievement counts the different ones (see Achievements.kt, "thanks").
+              if (url || id === SHARE) send({ type: 'stat', kind: 'thanks', way: id })
             }
           }}
         />

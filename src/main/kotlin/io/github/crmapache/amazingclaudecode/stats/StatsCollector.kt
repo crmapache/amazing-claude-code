@@ -119,10 +119,14 @@ internal class StatsCollector(
      * The day each conversation was last counted under - what makes the count of conversations the number
      * of conversations there were.
      *
-     * The panel's first tab is nobody's request: it stands there before anything is asked for (see
-     * SessionRegistry), and only a request was ever counted - so a day worked in the tab that was already
-     * open counted six turns and no conversations at all. Counted at the first sign of life instead, and
-     * remembered by the day rather than for good: an IDE left open over midnight begins a new day's count
+     * Every tab is counted at its first sign of life, and none of them at the moment it appeared. Opening
+     * used to be the moment for tabs somebody asked for, which had it both ways and neither way right:
+     * the panel's first tab is nobody's request - it stands there before anything is asked for (see
+     * SessionRegistry) - so a day worked in the tab that was already open counted six turns and no
+     * conversations at all, while a "+" pressed and thought better of counted a conversation that never
+     * happened. Life is the same event for all of them.
+     *
+     * Remembered by the day rather than for good: an IDE left open over midnight begins a new day's count
      * with the same tab.
      */
     private val countedSessions = ConcurrentHashMap<String, String>()
@@ -386,8 +390,8 @@ internal class StatsCollector(
         when (payload.string("kind")) {
             "activity" -> {
                 markMinute()
-                val sessionId = payload.string("sessionId")
-                if (sessionId.isNotEmpty()) markConversation(sessionId, clock())
+                // The minute is the person's wherever they are in the panel; the chat's only if it is one.
+                markConversation(payload.string("sessionId"), clock(), born = false)
             }
             "prompt" -> {
                 val attachments = payload["attachments"]?.jsonPrimitive?.longOrNull?.toInt() ?: 0
@@ -398,23 +402,34 @@ internal class StatsCollector(
                     day.quotes += quotes.coerceAtLeast(0)
                 }
             }
-            // Which of the two ways was taken - a star on GitHub, or a review on the plugin's page. The
-            // panel names it; an unnamed one is nothing to write down, since the ladder is made of the two.
+            // Which way was taken - a star on GitHub, a review on the plugin's page, or the line about it
+            // copied for a friend. The panel names it; an unnamed one is nothing to write down, since what
+            // the ladder counts is the different ways rather than the presses.
             "thanks" -> payload.string("way").takeIf { it.isNotEmpty() }?.let { way ->
                 update { it.thanksWays.add(way) }
             }
         }
     }
 
-    /** A tab opened: an ordinary one, or a fork of another. */
+    /**
+     * A tab opened: an ordinary one, or a fork of another.
+     *
+     * Opening one is not yet a conversation, and it is not counted as one here. A tab opened and never
+     * written in is an empty tab - it is the "+" pressed by somebody looking for a clean sheet, and half
+     * of those are closed again without a word being said. Counted at the moment it appeared, such a tab
+     * put a conversation in the day's figures that never happened, and - because a hand on the keyboard
+     * marks the minutes of whichever tab is in front - went on collecting time in a chat with nothing in
+     * it, which is what "the most time spent in a single chat" was quietly being won with.
+     *
+     * So the conversation is counted at its first sign of life instead, wherever the tab came from (see
+     * [markConversation]). The fork is written down here, because forking is a thing somebody did whether
+     * or not the new tab is ever used, and so is the minute - the person is in the panel.
+     */
     fun noteSessionOpened(sessionId: String, parentId: String?, groupId: String, depth: Int) {
         val inTree = if (parentId != null) forksByGroup.merge(groupId, 1, Int::plus) ?: 1 else 0
 
-        countedSessions[sessionId] = localDate().toString()
-
         ledger.update { snapshot ->
             val day = today(snapshot)
-            day.sessions++
             if (parentId != null) {
                 day.forks++
                 day.maxForksInTree = maxOf(day.maxForksInTree, inTree)
@@ -422,8 +437,6 @@ internal class StatsCollector(
             }
             day.minutes.mark(minuteOfDay())
         }
-
-        markConversation(sessionId, clock())
     }
 
     fun noteSessionClosed(sessionId: String) {
@@ -547,11 +560,20 @@ internal class StatsCollector(
     /**
      * This minute counts for one conversation too - and with it the conversation's total and its longest
      * unbroken stretch, which are written down as the day's high-water marks.
+     *
+     * [born] is what tells a conversation from a tab. Everything the agent and the person do in a chat -
+     * a prompt, a turn beginning, a turn ending - brings one into being; a hand on the keyboard does not,
+     * because the panel reports that for whichever tab is in front, and an empty tab in front of somebody
+     * reading the statistics beside it would otherwise grow a conversation of its own, minute by minute,
+     * and hold the record for the longest one. So the keyboard extends a chat that is already alive and
+     * starts nothing.
      */
-    private fun markConversation(sessionId: String, now: Long) {
+    private fun markConversation(sessionId: String, now: Long, born: Boolean = true) {
+        if (sessionId.isEmpty()) return
+
+        val conversation = (if (born) conversations.getOrPut(sessionId) { Conversation() } else conversations[sessionId]) ?: return
         countSession(sessionId)
 
-        val conversation = conversations.getOrPut(sessionId) { Conversation() }
         val total: Int
         val stretch: Int
 

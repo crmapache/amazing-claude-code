@@ -91,8 +91,16 @@ export const progressOf = (value: number, target: number | undefined, line: numb
   if (target === undefined || target <= 0) return 1
 
   const from = line !== undefined && line > 0 && line < target ? line : 0
+  /*
+   * Unless the next line is the very next number, in which case there is nothing between them to fill.
+   * Measured from the line below, such a bar can only be empty or full - and empty is what it is for the
+   * whole of the tier, so "1/2" for the thanks said one way of two stood under a bar that looked as
+   * though nothing had been done at all. Against the whole instead: on a ladder that climbs one at a
+   * time the figure and the target are the honest fraction anyway.
+   */
+  const climb = target - from
 
-  return Math.max(0, Math.min(1, (value - from) / (target - from)))
+  return Math.max(0, Math.min(1, climb <= 1 ? value / target : (value - from) / climb))
 }
 
 export const dress = (state: AchievementState): DressedAchievement | null => {

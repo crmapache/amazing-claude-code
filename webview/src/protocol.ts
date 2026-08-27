@@ -647,8 +647,8 @@ export interface AchievementState {
    * How many lines this achievement has in all: the card draws a pip for each of them.
    *
    * Five for most, and the ones that differ differ for a reason - a milestone has a single line to cross,
-   * and there are exactly two ways to say thanks in this plugin. Absent from an older IDE, and five is
-   * what it meant then.
+   * and saying thanks two ways of the three is thanks enough. Absent from an older IDE, and five is what
+   * it meant then.
    */
   steps?: number
   /** The figure behind it, in the achievement's own unit. */
@@ -996,7 +996,7 @@ export type WebviewMessage =
    */
   | { type: 'stat'; kind: 'activity'; sessionId?: string }
   | { type: 'stat'; kind: 'prompt'; attachments: number; quotes: number }
-  /** Which way of saying thanks was taken: the star or the review - see THANKS_LINKS. */
+  /** Which way of saying thanks was taken: the star, the review, or the line copied - see Thanks.tsx. */
   | { type: 'stat'; kind: 'thanks'; way: string }
   /**
    * Feedback: a message to the plugin's author, with files and a debug report beside it.

@@ -319,7 +319,7 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
             </span>
             <span className={s.figureNote}>
               <button type="button" className={s.link} onClick={onAchievements}>
-                See all
+                See All
               </button>
             </span>
           </span>
@@ -470,7 +470,7 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
           <span className={s.label}>EARNED LATELY</span>
           <span className={s.labelSpace} />
           <button type="button" className={`${s.link} ${s.labelNote}`} onClick={onAchievements}>
-            All
+            See All
           </button>
         </div>
         {recent.length === 0 ? (
@@ -511,7 +511,10 @@ const timeFoot = (time: TimeTile, hours: DayHours, oneDay: boolean): string => {
 
   const when = oneDay
     ? hours.peak
-      ? `busiest hour ${clock(hours.peak.hour)}`
+      ? // As on the chart, the top is often shared: naming the first of several says the day had one.
+        hours.peaks.length > 1
+        ? `${hours.peaks.length} hours at ${duration(hours.peak.minutes)}`
+        : `busiest hour ${clock(hours.peak.hour)}`
       : 'the hours of it are not marked'
     : `${duration(time.perDay)} a day`
   const where = time.projects <= 1 ? 'in one project' : `across ${time.projects} projects`
@@ -519,12 +522,33 @@ const timeFoot = (time: TimeTile, hours: DayHours, oneDay: boolean): string => {
   return `${when} · ${where}`
 }
 
-/** "09:00 to 21:00 · busiest 17:00 with 42m" - what the hours of the day add up to. */
+/**
+ * "09:00 to 21:00 · busiest 17:00 with 42m" - what the hours of the day add up to.
+ *
+ * The busiest hour is rarely alone. An hour spent in the panel end to end holds sixty minutes and there
+ * is no sixty-first, so a working day ties for the top over and over - and the chart lights every hour
+ * that reaches it. Naming one of them here while three glowed there was the whole of the puzzle: the note
+ * says which they are, and up to three of them it says so by name.
+ */
 const dayNote = (hours: DayHours): string => {
   if (hours.peak === null || hours.first === null || hours.last === null) return 'nothing in the panel today yet'
+
   const span = `${clock(hours.first)} to ${clock(hours.last + 1)}`
-  return `${span} · busiest ${clock(hours.peak.hour)} with ${duration(hours.peak.minutes)}`
+  const spent = duration(hours.peak.minutes)
+  const top =
+    hours.peaks.length > NAMED_PEAKS
+      ? `busiest ${hours.peaks.length} hours with ${spent} each`
+      : `busiest ${listOf(hours.peaks.map(clock))} with ${spent}${hours.peaks.length > 1 ? ' each' : ''}`
+
+  return `${span} · ${top}`
 }
+
+/** How many hours the note is willing to name before it counts them instead. */
+const NAMED_PEAKS = 3
+
+/** "09:00, 10:00 and 13:00" - an English list, for a note read as a sentence. */
+const listOf = (items: string[]): string =>
+  items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
 
 const dayOfSince = (data: StatisticsData): string => {
   const date = new Date(data.since)

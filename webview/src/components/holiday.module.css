@@ -1,0 +1,123 @@
+/*
+ * The holiday layer: the garland and the snow (see Holiday.tsx). The frozen Send button lives in
+ * composer.module.css instead - it is that button's own fill, not a node of its own.
+ *
+ * A module of its own rather than a few more rules in shell.module.css, for two reasons. The keyframes
+ * have to sit in the same module as the classes that name them (a CSS module renames animation names
+ * along with classes - the comment at the top of shell.module.css tells the whole story). And a seasonal
+ * layer that comes off in one file is a layer nobody has to disentangle next December.
+ */
+
+/* Only opacity moves, and the glow rides along with it: opacity applies to the element whole, shadow
+   included, so a bulb dims and its halo dims with it. Animating the box-shadow itself would have looked
+   the same and repainted twenty-four elements every frame. */
+@keyframes acc-xmas-bulb {
+  0%,
+  100% {
+    opacity: 0.28;
+  }
+
+  45% {
+    opacity: 1;
+  }
+}
+
+/* Fading in at the top and out at the bottom, so a flake is never seen to appear or to stop. 100vh is
+   the fall: the panel is the whole viewport of this page, so the flake is always past the bottom of
+   the feed by the end of it, whatever the feed's height. */
+@keyframes acc-xmas-fall {
+  0% {
+    transform: translate3d(0, -12px, 0);
+    opacity: 0;
+  }
+
+  12% {
+    opacity: 0.55;
+  }
+
+  88% {
+    opacity: 0.45;
+  }
+
+  100% {
+    transform: translate3d(14px, 100vh, 0);
+    opacity: 0;
+  }
+}
+
+/* --- The garland ----------------------------------------------------------- */
+
+/* In the flow, right under the header, rather than absolute over the panel: under the left/right
+   layouts .panel is a grid whose rail spans the panel's full height, and a strip drawn across it would
+   run over the model/effort/mode chips. Inside .content it is under the header in all four layouts. */
+.garland {
+  position: relative;
+  flex: none;
+  height: 15px;
+  overflow: hidden;
+  background: var(--acc-bg);
+  pointer-events: none;
+}
+
+.wire {
+  display: block;
+}
+
+.bulb {
+  position: absolute;
+  top: 7px;
+  width: 5px;
+  height: 5px;
+  border-radius: 9px;
+  /* The colour is set on the element so that currentcolor carries it into the glow as well. */
+  background: currentcolor;
+  box-shadow: 0 0 4px currentcolor;
+  animation: acc-xmas-bulb 1.6s ease-in-out infinite;
+}
+
+/* --- The snow -------------------------------------------------------------- */
+
+/*
+ * Above the feed's text but below everything one reaches for: jump-to-bottom sits at 20, the selection
+ * menu at 30, the menu scrim at 40. pointer-events are off on the whole layer: the feed is selectable
+ * text, and a layer of dots over it would break selection wherever a dot happened to be.
+ *
+ * The flakes fall past the bottom of the feed and are gone. A drift heaping up on that bottom edge was
+ * tried and taken out again: snow that stays covers the conversation, and a decoration that has to be
+ * read around stops being one.
+ */
+.snow {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.flake {
+  position: absolute;
+  top: 0;
+  border-radius: 9px;
+  background: var(--acc-snow);
+  animation-name: acc-xmas-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/*
+ * Motion turned down: the ornaments stay, the movement goes.
+ *
+ * The lights hold at full brightness - an unlit garland is a broken one. The snow is removed outright
+ * rather than frozen: a flake stopped mid-air is not a quieter decoration, it is a speck of dust.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .bulb {
+    animation: none;
+    opacity: 1;
+  }
+
+  .snow {
+    display: none;
+  }
+}

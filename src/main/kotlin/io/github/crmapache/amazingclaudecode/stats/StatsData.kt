@@ -45,9 +45,10 @@ internal class DayRecord {
     var prompts = 0
 
     /**
-     * Conversations begun: a tab opened, a fork made, or a tab that stood there coming to life. Once a day
-     * each, however much moves through it - reopening a past conversation in a tab is that tab reading,
-     * not a conversation starting (see StatsCollector.countSession).
+     * Conversations begun: a tab that came to life - a message, a turn, an answer. Once a day each, however
+     * much moves through it, and never for the opening alone: a tab opened and never written in is an empty
+     * tab, not a conversation. Reopening a past conversation in a tab is that tab reading, not a
+     * conversation starting (see StatsCollector.countSession).
      */
     var sessions = 0
 
@@ -120,10 +121,12 @@ internal class DayRecord {
     var quotes = 0
 
     /**
-     * The ways of saying thanks that were used: "github" for the star, "rate" for the review.
+     * The ways of saying thanks that were used: "github" for the star, "rate" for the review, "share" for
+     * the line copied to pass on.
      *
-     * A set rather than a count, because there are two ways and doing one of them twice is thanking once
-     * (see Thanks.tsx for the two, and Achievements for the ladder of two lines they make).
+     * A set rather than a count, because doing one of them twice is thanking once - and pressing "share"
+     * is a press, not a friend told (see Thanks.tsx for the three, and Achievements for the two lines they
+     * are measured against).
      */
     val thanksWays = LinkedHashSet<String>()
 

@@ -37,7 +37,7 @@ interface AchievementsProps {
 }
 
 const FILTERS: { id: AchievementFilter; label: string }[] = [
-  { id: 'all', label: 'See all' },
+  { id: 'all', label: 'See All' },
   { id: 'earned', label: 'Earned' },
   { id: 'progress', label: 'In progress' },
 ]

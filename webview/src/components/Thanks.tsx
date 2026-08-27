@@ -4,7 +4,8 @@ import s from './shell.module.css'
 
 /**
  * Saying thanks: a heart at the far end of the row opposite MODEL/EFFORT/MODE, and behind it the panel's
- * own dropdown with the two ways to do it - a star on GitHub or a review on the plugin's page.
+ * own dropdown with the three ways to do it - a star on GitHub, a review on the plugin's page, or a word
+ * to somebody who has not heard of it.
  *
  * A link rather than a real star in one press: GitHub has no address that stars a repository by being
  * opened - it is a write to the account, and to do it from here the plugin would have to ask a person for
@@ -29,7 +30,27 @@ export type ThanksLink = keyof typeof THANKS_LINKS
 /** Whatever the menu hands back is checked rather than trusted: an id from nowhere opens nothing. */
 export const thanksUrl = (id: string): string | undefined => THANKS_LINKS[id as ThanksLink]
 
-export const THANKS_MENU: { title: string; width: number; options: MenuOption[]; selected: string } = {
+/** The id of the entry that copies rather than opens - the one errand here with no address of its own. */
+export const SHARE = 'share'
+
+/**
+ * What lands in the clipboard, ready to be pasted into a chat with somebody.
+ *
+ * Written as a person would write it rather than as a plugin would advertise itself - it goes out under
+ * somebody's own name, in their own conversation, and a line of marketing pasted there embarrasses the
+ * person who pasted it. The address is the plugin's front page rather than the reviews tab: whoever reads
+ * this has not seen the thing yet, and the first thing they should meet is what it is.
+ */
+export const SHARE_TEXT =
+  'Check out Amazing Claude Code - Claude Code as a proper panel inside JetBrains IDEs: ' +
+  'https://plugins.jetbrains.com/plugin/33255-amazing-claude-code'
+
+/**
+ * The menu behind the heart. [copied] is the answer to a press on the last entry: the clipboard cannot be
+ * looked into, and a menu that simply closed on a press would leave "did that do anything?" hanging - the
+ * other two entries answer for themselves by a browser window opening.
+ */
+export const thanksMenu = (copied: boolean): { title: string; width: number; options: MenuOption[]; selected: string } => ({
   title: 'SAY THANKS',
   width: 266,
   options: [
@@ -46,11 +67,18 @@ export const THANKS_MENU: { title: string; width: number; options: MenuOption[];
       sub: 'A review in the JetBrains Marketplace',
       icon: '✎',
     },
+    {
+      id: SHARE,
+      label: 'Share with friends',
+      sub: copied ? 'Copied - paste it wherever you like' : 'Copies a line about it and the link',
+      // An arrow leaving the corner: the two above lead somewhere, this one hands something over.
+      icon: '↗',
+    },
   ],
-  // Nothing is chosen here and nothing ever will be: both entries are errands rather than a state, and the
+  // Nothing is chosen here and nothing ever will be: the entries are errands rather than a state, and the
   // tick's column is taken up by their icons.
   selected: '',
-}
+})
 
 interface ThanksButtonProps {
   /** The side rail's variant: no frame of its own - it stands among borderless buttons rather than capsules. */
