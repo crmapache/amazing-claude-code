@@ -1,0 +1,24 @@
+name: Notify on new star
+
+on:
+  watch:
+    types: [started]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Telegram message
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          STARGAZER: ${{ github.event.sender.login }}
+          STARGAZER_URL: ${{ github.event.sender.html_url }}
+          REPO: ${{ github.event.repository.full_name }}
+          REPO_URL: ${{ github.event.repository.html_url }}
+          STARS: ${{ github.event.repository.stargazers_count }}
+        run: |
+          TEXT="⭐ <a href=\"${STARGAZER_URL}\">${STARGAZER}</a> starred <a href=\"${REPO_URL}\">${REPO}</a> — ${STARS} stars now"
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg chat_id "$TELEGRAM_CHAT_ID" --arg text "$TEXT" '{chat_id: $chat_id, text: $text, parse_mode: "HTML", disable_web_page_preview: true}')"

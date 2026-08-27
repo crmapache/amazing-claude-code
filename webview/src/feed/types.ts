@@ -491,14 +491,15 @@ export interface ErrorItem {
  *
  * The panel used to lay every "rejected" from the CLI down as an error, on the reading that a used-up
  * limit stops the work. It does not always: with extra usage the requests go through and are billed on
- * top of the plan, so the work carries on without a pause - the sound, the cross and the red were a
- * false alarm about work that never stopped. And when it does stop, an error is still the wrong word:
- * nothing is broken and there is nothing to fix, one waits for the window - so the row says when.
+ * top of the plan, so the work carries on without a pause - the breakage sound, the cross and the red
+ * were a false alarm about work that never stopped. And when it does stop, an error is still the wrong
+ * word: nothing is broken and there is nothing to fix, one waits for the window - so the row says when.
  *
  * Hence two kinds rather than one:
  * - `extra` - the limit is used up, the work goes on for money. It stays in the feed: this is the mark
  *   of the moment the money started, and the ring in the composer's row is painted for as long as it
- *   lasts (see UsageMeters).
+ *   lasts (see UsageMeters). The moment itself gets a sound of its own - not an alarm about a halt, but
+ *   the one notice that the spending has begun (see sounds.ts).
  * - `waiting` - the work has genuinely stopped until [resetsAt]. It goes away by itself at that moment:
  *   a row saying "waiting until noon" at half past noon is worse than no row at all.
  */

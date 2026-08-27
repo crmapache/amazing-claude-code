@@ -151,12 +151,13 @@ semicolon in it can't tack a second command onto the line.
 
 The panel calls you out loud when it stops needing the keyboard and starts
 needing you: a turn that finished, a tool call waiting for approval, a question,
-a plan asking to be accepted, a subscription limit that stopped the turn, and
-trouble (an error, a process that died on its own, a session that got signed
-out). The "♪" button in the header lists all six with a checkbox, a volume
-slider and a play button each. Zero volume unchecks the sound — silence and
-"off" are the same thing — and a sound turned off keeps its volume for when it
-comes back.
+a plan asking to be accepted, a subscription limit that stopped the turn, the
+moment an exhausted limit turns into extra usage and the work starts being billed
+on top of the plan, and trouble (an error, a process that died on its own, a
+session that got signed out). The "♪" button in the header lists all seven with
+a checkbox, a volume slider and a play button each. Zero volume unchecks the
+sound — silence and "off" are the same thing — and a sound turned off keeps its
+volume for when it comes back.
 
 A sound only plays when you're not already looking at what it's about. Anything
 from a background tab always rings; from the tab that's open it rings only when
@@ -285,6 +286,23 @@ forgets its key, and from that moment nothing from it can be opened.
 
 Notes on platforms: on iOS notifications work only for the app added to the home screen, and only on
 iOS 16.4 or newer. On Android the ordinary browser is enough.
+
+## Telling the author something
+
+The speech bubble beside the heart opens a form: a bug, an idea, or nothing in particular, with an
+optional address to answer to, up to ten files, and a debug report attached unless you switch it off.
+The same screen is in the menu, as **Send feedback**.
+
+The report is technical only - the plugin's version, the IDE and its build, the operating system, the
+version of Claude Code, and an outline of what the open tab did: which tool ran, how many bytes went in
+and came back, what failed and when. No messages, no answers, no file contents, no commands, no paths,
+no project name; file names appear as short hashes, so the same file reads as the same file without
+saying which one. The screen names the tab it describes, and **see exactly what gets attached** shows
+the whole string that will travel - there is no fuller version kept back for the wire.
+
+It goes to a small service beside the relay (`feedback-service/` in this repository), which forwards it
+to the author's Telegram and stores nothing. This is the one thing the plugin sends without remote
+access being on, and only ever on a press of Send; `PRIVACY.md` has the whole account of it.
 
 ## What's missing so far
 

@@ -7,6 +7,8 @@ import java.time.ZoneId
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -192,14 +194,67 @@ class StatsCollectorTest {
     }
 
     @Test
+    fun `the tab that was already open counts as a conversation on its first sign of life`() {
+        // Nobody opens the panel's first tab - it stands there before anything is asked for (see
+        // SessionRegistry), and a day worked in it counted turns against no conversations at all.
+        collector.noteLine("main", result(durationMs = 1_000))
+        collector.noteLine("main", result(durationMs = 1_000))
+        collector.notePrompt("main", "one more", images = 0, remote = false)
+
+        assertEquals(1, today().sessions)
+        assertEquals(2, today().turns)
+    }
+
+    @Test
+    fun `a tab counted when it opened is not counted again by its work`() {
+        collector.noteSessionOpened("f1", parentId = "main", groupId = "main", depth = 1)
+        collector.noteLine("f1", result(durationMs = 1_000))
+
+        assertEquals(1, today().sessions)
+    }
+
+    @Test
+    fun `a tab that reads a past conversation is still the one tab it was`() {
+        // The conversation arrives in the tab the person is already in: one tab, one conversation today.
+        collector.noteLine("main", result(durationMs = 1_000))
+        collector.noteResumed("main", "past-one")
+        collector.noteResumed("main", "past-two")
+
+        assertEquals(1, today().sessions)
+    }
+
+    @Test
+    fun `a tab whose first act is to read a past conversation counts once`() {
+        collector.noteResumed("fresh", "past-one")
+
+        assertEquals(1, today().sessions)
+    }
+
+    @Test
+    fun `the folded days are kept between passes and follow the book when it changes`() {
+        collector.noteLine("main", result(durationMs = 1_000))
+
+        val first = ledger.read { it.daysTogether() }
+        val again = ledger.read { it.daysTogether() }
+        // The same work, not done twice: every fold builds a record through reflection.
+        assertSame(first, again)
+        assertEquals(1, first["2026-08-26"]?.turns)
+
+        collector.noteLine("main", result(durationMs = 1_000))
+
+        assertEquals(2, ledger.read { it.daysTogether() }["2026-08-26"]?.turns)
+    }
+
+    @Test
     fun `the panel's own counts land where they belong`() {
         collector.noteClientEvent(buildJsonObject { put("type", "stat"); put("kind", "prompt"); put("attachments", 3); put("quotes", 2) })
-        collector.noteClientEvent(buildJsonObject { put("type", "stat"); put("kind", "thanks") })
+        collector.noteClientEvent(buildJsonObject { put("type", "stat"); put("kind", "thanks"); put("way", "github") })
+        // The same way again is the same thanks: what is written down is which ways were taken.
+        collector.noteClientEvent(buildJsonObject { put("type", "stat"); put("kind", "thanks"); put("way", "github") })
+        collector.noteClientEvent(buildJsonObject { put("type", "stat"); put("kind", "thanks"); put("way", "rate") })
         collector.noteClientEvent(buildJsonObject { put("type", "stat"); put("kind", "activity"); put("sessionId", "main") })
         collector.noteWatchers(1)
         collector.noteWatchers(2)
-        collector.noteWatchers(0)
-        collector.noteWatchers(1)
         collector.noteMcp(3)
         collector.noteMcp(1)
         collector.notePlugins(4)
@@ -207,11 +262,29 @@ class StatsCollectorTest {
         val day = today()
         assertEquals(3, day.attachments)
         assertEquals(2, day.quotes)
-        assertEquals(1, day.thanks)
-        assertEquals(2, day.watched)
+        assertEquals(setOf("github", "rate"), day.thanksWays)
+        assertEquals(1, day.watched)
         assertEquals(3, day.mcpConnected)
         assertEquals(4, day.plugins)
         assertEquals(1, day.minutes.count())
+    }
+
+    @Test
+    fun `a phone that keeps dropping the line is one visit, not twenty`() {
+        collector.noteWatchers(1)
+        // The line goes and comes back, the way a phone in a pocket does.
+        repeat(5) {
+            collector.noteWatchers(0)
+            now += 20_000
+            collector.noteWatchers(1)
+        }
+        assertEquals(1, today().watched)
+
+        // Gone for the afternoon and back: that is somebody looking in again.
+        collector.noteWatchers(0)
+        now += 2 * 60 * 60_000
+        collector.noteWatchers(1)
+        assertEquals(2, today().watched)
     }
 
     @Test
@@ -274,8 +347,38 @@ class StatsCollectorTest {
 
         assertTrue(payload.contains("\"type\":\"statistics\""))
         assertTrue(payload.contains("\"key\":\"p-test\""))
-        assertTrue(payload.contains("\"id\":\"first-hour\""))
+        assertTrue(payload.contains("\"id\":\"hours-in-panel\""))
         assertTrue(payload.contains("\"date\":\"2026-08-26\""))
+    }
+
+    @Test
+    fun `a move of the achievement lines forgets the tiers it moved and keeps the rest`() {
+        val file = directory.resolve("older-book.json")
+        Files.writeString(
+            file,
+            """{"version":1,"since":1,"earned":{"reader":{"1":10,"2":20},"steady-hand":{"1":30}}}""",
+        )
+
+        val older = StatsLedger(file)
+        try {
+            older.read { book ->
+                // "Reader" is measured against lines that have moved: its moments go, to be earned again.
+                assertNull(book.earned["reader"])
+                // "Steady hand" is days in a row - the same days it always was.
+                assertEquals<Set<Int>?>(setOf(1), book.earned["steady-hand"]?.keys)
+                assertEquals(Achievements.RULES_VERSION, book.rulesVersion)
+            }
+        } finally {
+            Disposer.dispose(older)
+        }
+
+        // And the version now stands in the file, so the next start forgets nothing.
+        val again = StatsLedger(file)
+        try {
+            again.read { book -> assertEquals(Achievements.RULES_VERSION, book.rulesVersion) }
+        } finally {
+            Disposer.dispose(again)
+        }
     }
 
     @Test
@@ -301,5 +404,22 @@ class StatsCollectorTest {
         assertEquals("model", StatsCollector.slashCommandOf("/model"))
         assertEquals(null, StatsCollector.slashCommandOf("say /compact later"))
         assertEquals(null, StatsCollector.slashCommandOf("/"))
+    }
+
+    @Test
+    fun `a turn the CLI closed with its own words stays with the model that worked`() {
+        collector.noteLine("main", toolUse("t1", "Read", """{"file_path":"src/app.ts"}"""))
+        collector.noteLine("main", toolResult("t1"))
+        // Interrupted: the last word of the turn is the CLI's own, and it is signed "<synthetic>".
+        collector.noteLine(
+            "main",
+            """{"type":"assistant","message":{"model":"<synthetic>","content":[{"type":"text","text":"Request interrupted by user"}]}}""",
+        )
+        collector.noteLine("main", result(durationMs = 3_000))
+
+        val day = today()
+        assertEquals(1, day.models["Sonnet"])
+        assertNull(day.models["<synthetic>"])
+        assertEquals(setOf("Sonnet"), day.models.keys)
     }
 }

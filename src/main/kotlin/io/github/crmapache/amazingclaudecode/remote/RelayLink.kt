@@ -2,6 +2,7 @@ package io.github.crmapache.amazingclaudecode.remote
 
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.util.concurrency.AppExecutorUtil
+import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.WebSocket
@@ -185,6 +186,9 @@ internal class RelayLink(
     private fun move(next: State) {
         if (state == next) return
         state = next
+        // Kept for a debug report as well (see DiagnosticsLog): "the phone stopped seeing this IDE" is
+        // almost always a story about this line changing, and only the order of the changes tells it.
+        DiagnosticsLog.note(DiagnosticsLog.RELAY, next.name.lowercase())
         onState(next)
     }
 

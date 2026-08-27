@@ -57,7 +57,7 @@ interface ThreadProps {
   onStopTask: (taskId: string) => void
   /** A page further back than the EARLIER placeholder reaches - absent once there is nothing further. */
   onLoadEarlier?: () => void
-  /** How many answers about earlier pages have arrived - see MobileFeed.earlierPages. */
+  /** How many answers about earlier pages have arrived - see PanelState.earlierPages. */
   earlierPages: number
   onDecide: () => void
   onBack: () => void
@@ -232,6 +232,7 @@ export const Thread = ({
             // that machine to open a URL is a small primitive of remote control, and it is refused over
             // the wire anyway (see RemoteCommands).
             onOpenLink={(url) => window.open(url, '_blank', 'noopener,noreferrer')}
+            earlierPages={earlierPages}
             onLoadEarlier={
               onLoadEarlier && !loadingEarlier
                 ? () => {

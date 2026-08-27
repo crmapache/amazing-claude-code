@@ -1,7 +1,7 @@
 import { compactNumber, duration, durationTight, groupThousands } from './format'
 
 /**
- * The fifty-one achievements as a person reads them: the name, the hint under it, the group it sits in and
+ * The fifty-two achievements as a person reads them: the name, the hint under it, the group it sits in and
  * how its figure is put into words.
  *
  * The rules - which figure, and where the five lines are - live on the IDE's side (see Achievements.kt),
@@ -23,8 +23,20 @@ export interface AchievementSpec {
   done?: (value: number) => string
   /** The words for "earned lately": what the tier was earned for, in a short line. */
   note: (value: number) => string
-  /** A milestone: one line to cross, all five tiers lit at once. Drawn as "done" rather than as a tier. */
+  /**
+   * A milestone: one line to cross rather than five. Drawn as a single bar and as "done" rather than as a
+   * tier - a first fork is not a thing that comes in fifths, and five pips promised four steps behind it
+   * that do not exist.
+   */
   milestone?: boolean
+  /**
+   * How many lines the ladder has, when it is not five.
+   *
+   * The lines themselves live on the IDE's side and travel with each achievement (see
+   * AchievementState.steps); this is what the harness draws from and what an older IDE's silence falls
+   * back to. A test reads the rules file and fails if the two disagree.
+   */
+  steps?: number
 }
 
 export interface AchievementGroup {
@@ -33,6 +45,22 @@ export interface AchievementGroup {
   note: string
   items: AchievementSpec[]
 }
+
+/*
+ * A name is a name, and a hint is what is measured. Neither says the line it is measured against.
+ *
+ * The card carries that line already - the figure against its target underneath ("2/30", "7h52/8h") and the
+ * tier beside the name - so a hint that repeated it said the same thing twice ("30 active days without a
+ * gap" over "2/30"), and a name that was the line itself read as a claim that had not come true: "10 hours"
+ * over "7h52/8h" is the fifth line standing above the third. The chains measuring one and the same figure -
+ * the hours in the panel, the lines written - are told apart by a title of their own rather than by the
+ * number they end at.
+ *
+ * Where a figure does belong in a hint it says what the measure means rather than what it wants - "Replies
+ * before 8:00", "Replies that ran past 10 minutes". Such a figure is written out in full, with a no-break
+ * space between the groups of three (see groupThousands in format.ts), because a hint wraps to two lines
+ * inside a card and "1" on one line over "000 000" on the next reads as two figures.
+ */
 
 const times = (value: number): string => (value === 1 ? 'once' : `${value} times`)
 
@@ -47,7 +75,7 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'steady-hand',
         name: 'Steady hand',
-        hint: 'Days in a row. Tier V wants 60.',
+        hint: 'The longest run of days in a row.',
         unit: 'days',
         done: (value) => `${value} days`,
         note: (value) => `${value} days in a row`,
@@ -55,15 +83,15 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'month-straight',
         name: 'Month straight',
-        hint: '30 active days without a gap.',
+        hint: 'Thirty days in a row, without missing one.',
         unit: 'days',
         milestone: true,
-        note: () => 'thirty days without a gap',
+        note: () => '30 days without a gap',
       },
       {
         id: 'quarter',
         name: 'Quarter',
-        hint: '90 days with the panel open.',
+        hint: 'Days you worked in the panel.',
         unit: 'days',
         done: (value) => `${value} days`,
         note: (value) => `${value} days at work`,
@@ -71,7 +99,7 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'weekend-crew',
         name: 'Weekend crew',
-        hint: 'Saturdays and Sundays worked.',
+        hint: 'Saturdays and Sundays you worked.',
         unit: 'days',
         done: (value) => `${value} days`,
         note: (value) => plural(value, 'weekend day', 'weekend days'),
@@ -79,21 +107,21 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'early-riser',
         name: 'Early riser',
-        hint: 'Turns started before 8:00.',
+        hint: 'Messages you sent before 8:00.',
         unit: 'count',
-        note: (value) => `${value} turns before 8:00`,
+        note: (value) => `${value} replies before 8:00`,
       },
       {
         id: 'night-shift',
         name: 'Night shift',
-        hint: 'Turns after midnight.',
+        hint: 'Messages you sent after midnight.',
         unit: 'count',
-        note: (value) => `${value} turns after midnight`,
+        note: (value) => `${value} replies after midnight`,
       },
       {
         id: 'full-week',
         name: 'Full week',
-        hint: 'All seven days of one week.',
+        hint: 'Weeks where you worked all seven days.',
         unit: 'count',
         done: (value) => plural(value, 'week', 'weeks'),
         note: (value) => plural(value, 'full week', 'full weeks'),
@@ -101,25 +129,25 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'second-wind',
         name: 'Second wind',
-        hint: 'Came back after a week away.',
+        hint: 'Times you came back after a week away.',
         unit: 'count',
         done: times,
         note: () => 'came back after a week off',
       },
       {
         id: 'two-hundred',
-        name: 'Two hundred',
-        hint: 'Sessions started, ever.',
+        name: 'Sessions',
+        hint: 'Conversations you have opened.',
         unit: 'count',
         note: (value) => `${value} sessions started`,
       },
       {
         id: 'a-year-in',
         name: 'A year in',
-        hint: 'Calendar days since the first turn.',
+        hint: 'Days since your very first message here.',
         unit: 'days',
         done: (value) => `${value} days`,
-        note: (value) => `${value} days since the first turn`,
+        note: (value) => `${value} days since the first reply`,
       },
       {
         id: 'home-for-the-holidays',
@@ -137,79 +165,55 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
     note: 'time the agent carried instead of you',
     items: [
       {
-        id: 'first-hour',
-        name: 'First hour',
-        hint: 'One hour in the panel.',
-        unit: 'minutes',
-        done: () => 'done',
-        note: () => 'an hour in the panel',
-      },
-      {
-        id: 'ten-hours',
-        name: 'Ten hours',
-        hint: 'Ten hours in the panel.',
+        id: 'hours-in-panel',
+        name: 'Old timer',
+        hint: 'Time in the panel, up to 10\u00a0000 hours.',
         unit: 'minutes',
         done: () => 'done',
         note: (value) => `${duration(value)} in the panel`,
       },
       {
-        id: 'hundred-hours',
-        name: 'Hundred hours',
-        hint: 'A hundred hours, all projects.',
-        unit: 'minutes',
-        done: () => 'done',
-        note: (value) => `${duration(value)} across every project`,
-      },
-      {
-        id: 'five-hundred',
-        name: 'Five hundred',
-        hint: 'Five hundred hours, all projects.',
-        unit: 'minutes',
-        done: () => 'done',
-        note: (value) => `${duration(value)} across every project`,
-      },
-      {
         id: 'deep-work',
         name: 'Deep work',
-        hint: 'Two hours without leaving a tab.',
+        hint: 'The longest unbroken stretch in one chat.',
         unit: 'minutes',
         note: (value) => `${duration(value)} without leaving a tab`,
       },
       {
         id: 'marathon',
         name: 'Marathon',
-        hint: 'A four-hour single session.',
+        hint: 'The most time spent in a single chat.',
         unit: 'minutes',
         note: (value) => `a ${durationTight(value)} single session`,
       },
       {
         id: 'full-day',
         name: 'Full day',
-        hint: 'Eight hours in one calendar day.',
+        hint: 'The most time in the panel in one day.',
         unit: 'minutes',
         note: (value) => `${duration(value)} in one day`,
       },
       {
         id: 'sprint',
         name: 'Sprint',
-        hint: 'Twenty turns inside one hour.',
+        hint: 'The most answers finished within one hour.',
         unit: 'count',
         done: (value) => `${value} in an hour`,
-        note: (value) => `${value} turns inside one hour`,
+        note: (value) => `${value} replies inside one hour`,
       },
       {
         id: 'quick-turn',
-        name: 'Quick turn',
-        hint: 'Turns done in under 30 seconds.',
+        name: 'Quick reply',
+        hint: 'Answers that took under 30 seconds.',
         unit: 'count',
-        note: (value) => `${value} turns under thirty seconds`,
+        note: (value) => `${value} replies under 30 seconds`,
       },
       {
         id: 'long-haul',
         name: 'Long haul',
-        hint: 'Turns that ran past ten minutes.',
+        hint: 'Answers that took more than 10 minutes.',
         unit: 'count',
-        note: (value) => plural(value, 'turn past ten minutes', 'turns past ten minutes'),
+        note: (value) => plural(value, 'reply past 10 minutes', 'replies past 10 minutes'),
       },
     ],
   },
@@ -221,31 +225,15 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'first-diff',
         name: 'First diff',
-        hint: 'One edit accepted.',
+        hint: 'Your first change to a file.',
         unit: 'count',
         milestone: true,
         note: () => 'the first edit landed',
       },
       {
-        id: 'thousand-lines',
-        name: 'Thousand lines',
-        hint: 'A thousand lines written.',
-        unit: 'lines',
-        done: () => 'done',
-        note: (value) => `${compactNumber(value)} lines written`,
-      },
-      {
-        id: 'ten-thousand',
-        name: 'Ten thousand',
-        hint: 'Ten thousand lines written.',
-        unit: 'lines',
-        done: () => 'done',
-        note: (value) => `${compactNumber(value)} lines written`,
-      },
-      {
-        id: 'hundred-thousand',
-        name: 'Hundred thousand',
-        hint: 'Six figures of written lines.',
+        id: 'lines-written',
+        name: 'Library',
+        hint: 'Lines the agent wrote, up to 100\u00a0000\u00a0000.',
         unit: 'lines',
         done: () => 'done',
         note: (value) => `${compactNumber(value)} lines written`,
@@ -253,7 +241,7 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'big-diff',
         name: 'Big diff',
-        hint: 'A 900-line edit accepted whole.',
+        hint: 'The most lines changed in one edit.',
         unit: 'lines',
         done: (value) => groupThousands(value),
         note: (value) => `${groupThousands(value)} lines accepted whole`,
@@ -261,36 +249,36 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'surgeon',
         name: 'Surgeon',
-        hint: 'Single-line fixes accepted.',
+        hint: 'Edits that changed one line only.',
         unit: 'count',
         note: (value) => `${value} single-line fixes`,
       },
       {
         id: 'refactor',
         name: 'Refactor',
-        hint: 'Ten files inside one turn.',
+        hint: 'The most files changed in one answer.',
         unit: 'count',
         done: (value) => `${value} files`,
-        note: (value) => `${value} files inside one turn`,
+        note: (value) => `${value} files inside one reply`,
       },
       {
         id: 'housekeeper',
         name: 'Housekeeper',
-        hint: 'Lines deleted, not added.',
+        hint: 'Lines the agent deleted.',
         unit: 'lines',
         note: (value) => `${compactNumber(value)} lines deleted`,
       },
       {
         id: 'test-first',
         name: 'Test first',
-        hint: 'Turns that touched a test file.',
+        hint: 'Answers that changed a test file.',
         unit: 'count',
-        note: (value) => `${value} turns touched a test`,
+        note: (value) => `${value} replies touched a test`,
       },
       {
         id: 'rollback',
         name: 'Rollback',
-        hint: 'Edits you turned down at the door.',
+        hint: 'Edits you refused when asked for permission.',
         unit: 'count',
         note: (value) => `${value} edits turned down`,
       },
@@ -311,42 +299,42 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'grep-hound',
         name: 'Grep hound',
-        hint: 'Searches across the tree.',
+        hint: 'Searches the agent ran through the files.',
         unit: 'count',
         note: (value) => `${groupThousands(value)} searches`,
       },
       {
         id: 'shell',
         name: 'Shell',
-        hint: 'Commands run from a turn.',
+        hint: 'Shell commands the agent ran.',
         unit: 'count',
         note: (value) => `${groupThousands(value)} commands run`,
       },
       {
         id: 'writer',
         name: 'Writer',
-        hint: 'Files created from nothing.',
+        hint: 'New files the agent created.',
         unit: 'count',
         note: (value) => `${groupThousands(value)} files created`,
       },
       {
         id: 'todo-keeper',
         name: 'Todo keeper',
-        hint: 'Task lists carried to the end.',
+        hint: 'Task lists the agent finished to the last item.',
         unit: 'count',
         note: (value) => `${value} task lists carried to the end`,
       },
       {
         id: 'planner',
         name: 'Planner',
-        hint: 'Plans accepted as written.',
+        hint: 'Plans you approved without changes.',
         unit: 'count',
         note: (value) => plural(value, 'plan approved', 'plans approved'),
       },
       {
         id: 'mcp',
         name: 'MCP',
-        hint: 'Servers connected at once.',
+        hint: 'MCP servers connected at the same time.',
         unit: 'count',
         done: (value) => `${value} at once`,
         note: (value) => plural(value, 'server connected at once', 'servers connected at once'),
@@ -354,21 +342,21 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'plugin-shelf',
         name: 'Plugin shelf',
-        hint: 'Plugins installed.',
+        hint: 'Plugins you have installed.',
         unit: 'count',
         note: (value) => plural(value, 'plugin installed', 'plugins installed'),
       },
       {
         id: 'slash',
         name: 'Slash',
-        hint: 'Built-in commands used at least once.',
+        hint: 'Different built-in commands you have tried.',
         unit: 'count',
         note: (value) => `${value} built-in commands tried`,
       },
       {
         id: 'attachment',
         name: 'Attachment',
-        hint: 'Files and images dropped in.',
+        hint: 'Files and images you added to a message.',
         unit: 'count',
         note: (value) => `${value} files and images dropped in`,
       },
@@ -382,7 +370,7 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'forked',
         name: 'Forked',
-        hint: 'Your first branch of a reply.',
+        hint: 'Your first fork of a conversation.',
         unit: 'count',
         milestone: true,
         note: () => 'the first fork of a reply',
@@ -390,14 +378,14 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'fork-master',
         name: 'Fork master',
-        hint: 'Forks in one conversation tree.',
+        hint: 'The most forks in one conversation.',
         unit: 'count',
         note: (value) => `${value} forks in one tree`,
       },
       {
         id: 'deep-tree',
         name: 'Deep tree',
-        hint: 'A fork of a fork of a fork.',
+        hint: 'The deepest chain of forks.',
         unit: 'count',
         done: (value) => `depth ${value}`,
         note: (value) => `a fork ${value} deep`,
@@ -405,14 +393,14 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'quoted',
         name: 'Quoted',
-        hint: 'Selections carried into a message.',
+        hint: 'Quotes you carried into a message.',
         unit: 'count',
         note: (value) => `${value} selections carried in`,
       },
       {
         id: 'historian',
         name: 'Historian',
-        hint: 'Reopened a month-old conversation.',
+        hint: 'Conversations you reopened a month later.',
         unit: 'count',
         done: times,
         note: () => 'reopened a month-old thread',
@@ -420,7 +408,7 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'remote',
         name: 'Remote',
-        hint: 'A phone paired with the panel.',
+        hint: 'A phone paired with this IDE.',
         unit: 'count',
         milestone: true,
         note: () => 'a phone paired with the panel',
@@ -428,14 +416,14 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'on-the-road',
         name: 'On the road',
-        hint: 'Turns answered from the phone.',
+        hint: 'Messages you sent from a phone.',
         unit: 'count',
-        note: (value) => `${value} turns from the phone`,
+        note: (value) => `${value} replies from the phone`,
       },
       {
         id: 'watched',
         name: 'Watched',
-        hint: 'Someone else looked in on a project.',
+        hint: 'Times a phone connected to watch the work.',
         unit: 'count',
         done: times,
         note: () => 'someone looked in on a project',
@@ -443,7 +431,7 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'ceiling',
         name: 'Ceiling',
-        hint: 'Five-hour window run to the end.',
+        hint: 'Times the five-hour limit ran out.',
         unit: 'count',
         done: times,
         note: (value) => `the five-hour window run out ${times(value)}`,
@@ -451,10 +439,12 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'thanks',
         name: 'Thanks',
-        hint: 'Times you pressed the heart.',
+        hint: 'A star on GitHub, a review on the plugin page.',
         unit: 'count',
-        done: times,
-        note: (value) => `the heart pressed ${times(value)}`,
+        // Two ways to say it, so two lines - see the ladder of the same name in Achievements.kt.
+        steps: 2,
+        done: () => 'done',
+        note: (value) => (value >= 2 ? 'said thanks both ways' : 'said thanks'),
       },
     ],
   },

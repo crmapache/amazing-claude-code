@@ -76,7 +76,7 @@ describe('the ranges', () => {
 })
 
 describe('time in the panel', () => {
-  it('sums this project against the previous stretch and against every project', () => {
+  it('sums the days of the range against the stretch before it, and names how many projects they were', () => {
     const days = [busy('2026-08-25', 60), busy('2026-08-20', 30), busy('2026-08-10', 45)]
     const others = [{ key: 'p-other', name: 'relay', minutes: { '2026-08-25': 100, '2026-07-01': 500 } }]
     const tile = timeTile(data(days, others), rangeOf(data(days, others), '7d'))
@@ -84,8 +84,14 @@ describe('time in the panel', () => {
     expect(tile.minutes).toBe(90)
     // The previous week held the 45 minutes of Aug 10 - wait, Aug 10 lies before Aug 13; so nothing.
     expect(tile.delta).toBe(90)
-    expect(tile.allMinutes).toBe(190)
     expect(tile.perDay).toBeCloseTo(90 / 7)
+    // Both projects worked inside the week; the one that only ever worked in July does not count.
+    expect(tile.projects).toBe(2)
+  })
+
+  it('counts no project when the range holds no minutes', () => {
+    const set = data([], [{ key: 'p-other', name: 'relay', minutes: { '2026-01-01': 30 } }])
+    expect(timeTile(set, rangeOf(set, '7d'))).toMatchObject({ minutes: 0, projects: 0 })
   })
 
   it('has no delta for all time - there is no stretch before the beginning', () => {
@@ -127,14 +133,14 @@ describe('what came out of it', () => {
 })
 
 describe('hours a day', () => {
-  it('gives one point per day of the range, in hours, for both lines', () => {
+  it('gives one point per day of the range, in hours', () => {
     const set = data([busy('2026-08-25', 90)], [{ key: 'p-other', name: 'relay', minutes: { '2026-08-25': 30 } }])
     const series = hoursSeries(set, rangeOf(set, '7d'))
 
     expect(series.dates).toHaveLength(7)
-    expect(series.project[5]).toBeCloseTo(1.5)
-    expect(series.all[5]).toBeCloseTo(2)
-    expect(series.project[6]).toBe(0)
+    expect(series.hours).toHaveLength(7)
+    expect(series.hours[5]).toBeCloseTo(1.5)
+    expect(series.hours[6]).toBe(0)
     expect(series.longest).toEqual({ date: '2026-08-25', minutes: 90 })
   })
 })

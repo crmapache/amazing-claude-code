@@ -6,6 +6,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
@@ -58,7 +59,16 @@ internal class ProjectUsage(
      * answer to `get_usage` how much of the month's budget for it has already gone. Kept here rather
      * than sent onwards as it comes, so that a message about one of the two does not wipe the other.
      */
-    private val extraActive = AtomicBoolean(false)
+    /**
+     * Null until the first limit event arrives - "we do not know yet" rather than "no".
+     *
+     * The difference matters exactly once per launch, and it is the whole of a bug: the CLI repeats the
+     * event on every turn while the state holds, so the first one after a restart says "money is being
+     * spent" about a state that began hours ago. Read as a change from "no", that fires a notification to
+     * every paired phone - and once per open project, so three projects and one restart meant three
+     * buzzes about one morning's spending.
+     */
+    private val extraActive = AtomicReference<Boolean?>(null)
 
     /**
      * Which window the extra usage is spent past, in the CLI's words. The panel decides by it which of
@@ -211,7 +221,7 @@ internal class ProjectUsage(
     fun forget() {
         windows.forget()
         extraKnown = null
-        extraActive.set(false)
+        extraActive.set(null)
         extraWindow = ""
         accountChangedAt.set(System.currentTimeMillis())
         // The threshold on the ping means "nothing can have changed since we last asked", and an account
@@ -245,15 +255,25 @@ internal class ProjectUsage(
      * Only the change is said out loud: the CLI repeats the event on every turn while the state holds,
      * and repeating a message that says the same thing would be noise on the wire - a phone across the
      * city is on the other end of it.
+     *
+     * Returns whether the spending has just started - the switch from the plan's own window to money on
+     * top of it. Only this side can tell that moment from the state that follows it, and it is the one
+     * occasion a person away from the desk is called about that is not in any message (see
+     * NotificationReasons.EXTRA_USAGE). Only the switch on, not a change of window while it lasts: a
+     * second window running out changes nothing about the fact that the money is already going.
+     *
+     * And never on the first event after a launch, whatever it says: see [extraActive]. Nor twice for one
+     * window, however many projects are open to see it - see [ExtraUsageAnnouncements].
      */
-    fun noteRateLimit(line: String) {
-        val verdict = ClaudeRateLimit.of(line) ?: return
+    fun noteRateLimit(line: String): Boolean {
+        val verdict = ClaudeRateLimit.of(line) ?: return false
         val active = verdict.extraUsage
         val window = if (active) verdict.window else ""
-        val changed = extraActive.getAndSet(active) != active || extraWindow != window
+        val wasActive = extraActive.getAndSet(active)
+        val changed = wasActive != active || extraWindow != window
 
         extraWindow = window
-        if (!changed) return
+        if (!changed) return false
 
         hub.broadcastProject(
             buildJsonObject {
@@ -261,6 +281,19 @@ internal class ProjectUsage(
                 putExtra()
             }.toString(),
         )
+
+        /*
+         * A crossing seen from a state we knew about: it was off, it is on now.
+         *
+         * "Was false" rather than "was not true": the first event after a launch has nothing before it
+         * (see [extraActive]), and it is a reading rather than a crossing - told to the panel, which has
+         * to paint the rings, and not to a phone, which would be woken about nothing.
+         *
+         * Claimed rather than simply reported: the limit is the account's, and every open project sees
+         * the same crossing in its own agent's stream (see ExtraUsageAnnouncements).
+         */
+        return active && wasActive == false &&
+            ExtraUsageAnnouncements.getInstance().claim(verdict.window, verdict.resetsAt)
     }
 
     /**
@@ -357,7 +390,7 @@ internal class ProjectUsage(
      */
     private fun JsonObjectBuilder.putExtra() {
         val known = extraKnown
-        val active = extraActive.get()
+        val active = extraActive.get() == true
         if (known == null && !active) return
 
         putJsonObject("extra") {

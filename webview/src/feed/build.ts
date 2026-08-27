@@ -202,7 +202,7 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
     }
 
     case 'replayFinished':
-      return applyReplayFinished(finishCompacting(state), now)
+      return withEarlier(applyReplayFinished(finishCompacting(state), now), action.cursor)
 
     case 'prompt': {
       const message: UserItem = {
@@ -357,9 +357,103 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
       return { ...state, queue: action.items }
 
     case 'agent':
-      return applyAgentEvent(state, action.event, now, action.replay === true)
+      return noteOldest(applyAgentEvent(state, action.event, now, action.replay === true), action.event)
+
+    /**
+     * A page of older messages, put above everything on screen.
+     *
+     * The one place a conversation grows upwards. Numbered on from the state's own counter rather than
+     * from zero: the identifiers are positions in a feed (see push), so a page built in a state of its
+     * own comes back carrying the very numbers the screen already uses - and two cards under one key is a
+     * page that half disappears.
+     */
+    case 'historyPage': {
+      // The answer arrived, whatever is in it - a screen unlocks its control on this alone (see
+      // PanelState.earlierPages).
+      const answered = { ...state, earlierPages: state.earlierPages + 1 }
+
+      // A page answers the boundary it was asked for, and only the boundary standing on screen right now
+      // is worth applying: when a frame goes missing and the person asks again, both answers can arrive,
+      // and the second would put the same messages in a second time.
+      if (action.before !== undefined && action.before !== state.oldestEventUuid) return answered
+
+      // The beginning has already been reached, so this is a second copy of the page that reached it: the
+      // boundary above stopped moving there and cannot tell the two apart (see reachedStart).
+      if (state.reachedStart) return answered
+
+      let page: PanelState = { ...initialPanelState, seq: answered.seq }
+      for (const event of action.entries) {
+        page = reducePanel(page, { kind: 'agent', event, replay: true }, now)
+      }
+
+      // The page goes in first and the mark is rebuilt over the result: that way it stands above what has
+      // just been loaded rather than where the previous one stood, in the middle of the feed.
+      const merged = { ...answered, seq: page.seq, items: [...page.items, ...answered.items] }
+
+      return withEarlier(merged, action.cursor ?? null)
+    }
   }
 }
+
+/**
+ * Whether Claude Code's transcript keeps this event, and so whether its identifier can be asked for a
+ * page older than it (see ClaudeHistory.replayable).
+ *
+ * The stream carries far more than the transcript does - hook reports, status changes, the permission
+ * traffic - and anchoring on one of those meant asking for "everything before a line that is not in the
+ * file". The IDE answers that with the file's own last page, which is what the screen already had: the
+ * request to load more brought back the same messages a second time.
+ */
+const keptOnDisk = (event: { type?: string; subtype?: string }): boolean =>
+  event.type === 'user' || event.type === 'assistant' || event.subtype === 'local_command'
+
+/**
+ * The first event a feed ever sees is, at that moment, the oldest one it has - remembered once and left
+ * alone from then on: everything arriving after it, live, is newer by definition, and only a page off the
+ * disk is allowed to push the boundary further back.
+ */
+const noteOldest = (state: PanelState, event: AgentEvent): PanelState => {
+  if (state.oldestEventUuid !== undefined || !keptOnDisk(event)) return state
+
+  const uuid = (event as { uuid?: unknown }).uuid
+
+  return typeof uuid === 'string' ? { ...state, oldestEventUuid: uuid } : state
+}
+
+/**
+ * The boundary between what is drawn and what is still on disk, and the mark that stands for it over the
+ * feed.
+ *
+ * `cursor` of undefined means nothing was said about the boundary and it is left as it stands - that is a
+ * phone, which is handed the end of a conversation rather than its replay and keeps a boundary of its own
+ * (see RemoteFeed.isReplayLine). Null means the conversation's beginning is on screen: the mark goes, and
+ * with it the offer to load what is already there.
+ *
+ * The mark is rebuilt rather than moved: it has to stand above whatever has just been loaded, and there
+ * must never be two of them.
+ */
+const withEarlier = (state: PanelState, cursor: string | null | undefined): PanelState => {
+  if (cursor === undefined) return state
+
+  const rest = state.items.filter((item) => !(item.kind === 'checkpoint' && item.chip === EARLIER_CHIP))
+  const mark: FeedItem[] = cursor
+    ? [{ id: 'earlier', kind: 'checkpoint', chip: EARLIER_CHIP, target: EARLIER_TARGET }]
+    : []
+
+  return {
+    ...state,
+    items: [...mark, ...rest],
+    oldestEventUuid: cursor ?? state.oldestEventUuid,
+    reachedStart: cursor === null,
+  }
+}
+
+/** The mark over a feed that begins mid-conversation - a button wherever there is something to fetch. */
+const EARLIER_CHIP = 'EARLIER'
+
+/** What it says when there is nothing to press - a screen with a button of its own overrides this. */
+const EARLIER_TARGET = 'earlier messages'
+
 
 /**
  * While a tool or a subtask runs, its duration otherwise appears only together with the result - the

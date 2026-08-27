@@ -25,6 +25,8 @@ import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.claude.SessionClient
 import io.github.crmapache.amazingclaudecode.editor.SelectionReference
+import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
+import io.github.crmapache.amazingclaudecode.feedback.FeedbackDesk
 import io.github.crmapache.amazingclaudecode.sound.AlertSounds
 import io.github.crmapache.amazingclaudecode.webview.FilePicker
 import io.github.crmapache.amazingclaudecode.webview.IdeTypography
@@ -94,6 +96,13 @@ internal class ClaudePanel(
             for (message in messages) host.send(message)
         }
     }
+
+    /**
+     * The feedback screen's side of the house: the files picked for it, the debug report, and the one
+     * request the plugin makes of the internet on its own (see FeedbackDesk). It answers through this
+     * window rather than through the hub - what it does belongs to no conversation.
+     */
+    private val feedback = FeedbackDesk(project, hub) { message -> webview?.send(message) }
 
     /** When something was last dropped into the panel with the mouse - see [attachDropped]. */
     @Volatile
@@ -195,8 +204,17 @@ internal class ClaudePanel(
                     .toMap()
             }
 
-            // A line from the panel itself - see protocol, the trace message.
-            "trace" -> thisLogger().info("Webview: ${field("message")}")
+            /*
+             * A line from the panel itself - see protocol, the trace message. Uncaught errors and the
+             * panel's own crashes arrive this way (see main.tsx and Crash.tsx), which makes this the one
+             * place where "the interface broke" can be recorded at all - so it is kept for a report as
+             * well as logged.
+             */
+            "trace" -> {
+                val line = field("message")
+                thisLogger().info("Webview: $line")
+                DiagnosticsLog.note(DiagnosticsLog.PANEL, line)
+            }
 
             "openDevTools" -> webview?.openDevTools()
 
@@ -218,8 +236,52 @@ internal class ClaudePanel(
             // come here and the file is written where downloads belong (see ImageDownloads).
             "saveImage" -> ImageDownloads.save(project, field("name"), field("data"))
 
+            // Feedback. Handled here rather than by the conversation's commands on purpose: this is the
+            // one place a remote client cannot reach (see FeedbackDesk), and these messages read files
+            // off this machine and post them outwards.
+            "feedbackOpen" -> feedback.opened()
+
+            "feedbackReport" -> feedback.report(field("sessionId"))
+
+            "feedbackAttach" -> feedback.attach()
+
+            "feedbackDetach" -> feedback.detach(field("id"))
+
+            "feedbackSend" -> feedback.send(
+                kind = field("kind"),
+                sessionId = field("sessionId"),
+                text = field("text"),
+                email = field("email"),
+                logs = payload["logs"]?.jsonPrimitive?.booleanOrNull == true,
+            )
+
+            /**
+             * A batch travelled into the page in pieces and did not survive the trip - see the bridge in
+             * WebviewHost.
+             *
+             * Written down rather than acted upon. There is nothing sensible to do about it here: the page
+             * has already lost those messages, and asking for them again would need a second road into it -
+             * the very road that has just proved unreliable. What was missing until now is any trace at
+             * all: a whole conversation could fail to draw itself with the log saying nothing, which is
+             * exactly how "opening a chat from the history shows an empty feed" arrived as a bug report
+             * with nothing to go on.
+             */
+            "channelLoss" -> {
+                val reason = field("reason")
+                val expected = payload["expected"]?.jsonPrimitive?.intOrNull ?: -1
+                val got = payload["got"]?.jsonPrimitive?.intOrNull ?: -1
+                thisLogger().warn("A batch did not reach the page whole: $reason (expected $expected, got $got)")
+                DiagnosticsLog.note(DiagnosticsLog.PANEL, "lost a batch into the page: $reason $expected/$got")
+            }
+
             else -> if (!hub.commands.handle(client.id, payload)) {
                 thisLogger().warn("Unknown message from webview: $message")
+                /*
+                 * The type and how big it was, never the message. The line above carries the whole JSON,
+                 * which includes the text a person typed - and this buffer is attached to reports that
+                 * leave the machine (see DiagnosticsLog).
+                 */
+                DiagnosticsLog.note(DiagnosticsLog.PANEL, "unknown message ${field("type")} (${message.length} chars)")
             }
         }
     }

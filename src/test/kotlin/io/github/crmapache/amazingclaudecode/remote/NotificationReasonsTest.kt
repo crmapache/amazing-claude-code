@@ -9,8 +9,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The same six occasions the panel already calls a person about, recognised on this side without a
- * feed to read them from.
+ * The same occasions the panel already calls a person about, recognised on this side without a feed to
+ * read them from - all but one, which is not a message but a change of state (see EXTRA_USAGE).
  *
  * The order of importance now lives in three places - this file, the panel's sounds.ts, and the sound
  * files in AlertSounds - and all three are checked against each other here. Drifting apart would break
@@ -52,11 +52,12 @@ class NotificationReasonsTest {
         assertEquals("trouble", NotificationReasons.of("""{"type":"processExited","exitCode":1}""", quiet, quiet))
     }
 
-    // A limit event, and only the kind that means everything has stopped: the same event arrives while a
-    // used-up window is being paid for, and a phone buzzing then would be calling someone to work that
-    // never paused (see ClaudeRateLimit).
+    // A limit event, and only the kind that means everything has stopped. The same event arrives while a
+    // used-up window is being paid for, and that is an occasion of its own rather than this one: it is
+    // announced from where the previous state is remembered, because the event repeats on every turn
+    // while it holds (see ProjectUsage.noteRateLimit).
     @Test
-    fun `a limit that stopped the work calls, one that is being paid for does not`() {
+    fun `a limit that stopped the work calls, one that is being paid for is announced elsewhere`() {
         val stopped =
             """{"type":"agent","sessionId":"main","event":{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":4102444800}}}"""
         assertEquals("rateLimit", NotificationReasons.of(stopped, quiet, quiet))
@@ -152,9 +153,19 @@ class NotificationReasonsTest {
         assertTrue("permission" in NotificationReasons.DEFAULT_ON)
     }
 
+    /** Money starting to go out is the kind of thing one wants to hear about away from the desk. */
+    @Test
+    fun `extra usage beginning is on by default`() {
+        assertTrue(NotificationReasons.EXTRA_USAGE in NotificationReasons.DEFAULT_ON)
+    }
+
     @Test
     fun `what a notification says names the thing rather than the event`() {
         assertEquals("Permission: src/auth.ts", NotificationReasons.title("permission", "demo", "src/auth.ts"))
         assertEquals("Something broke in demo", NotificationReasons.title("trouble", "demo", ""))
+        assertEquals(
+            "The plan is used up - the work is now billed",
+            NotificationReasons.title(NotificationReasons.EXTRA_USAGE, "demo", ""),
+        )
     }
 }

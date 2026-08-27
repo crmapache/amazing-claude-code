@@ -6,6 +6,11 @@ import { WEEKDAYS, clock, longDate } from './format'
  * The arithmetic behind the statistics tab: out of the day records the IDE keeps, everything the tiles,
  * the chart, the calendar and the lists show - for whichever range is chosen.
  *
+ * The days are the machine's, not one project's: they arrive already folded together (see
+ * StatsSnapshot.daysTogether on the plugin's side), so every figure here is about the person's work
+ * wherever it was done. The one thing counted by project is where the hours went, and it reads the
+ * minutes the projects carry alongside the days.
+ *
  * Pure functions over the message, so the range switches without a trip to the IDE and the whole of it
  * can be checked in a test. The words go in the components; here are the numbers.
  */
@@ -75,31 +80,26 @@ const max = (days: StatisticsDay[], pick: (day: StatisticsDay) => number | undef
 
 const isActive = (day: StatisticsDay): boolean => day.minutes > 0 || (day.turns ?? 0) > 0 || (day.prompts ?? 0) > 0
 
-/** The days of this project inside the range. */
+/** The days inside the range. */
 export const daysIn = (data: StatisticsData, range: Range): StatisticsDay[] =>
   data.days.filter((day) => within(day.date, range.from, range.to))
 
 // --- Time in the panel -----------------------------------------------------------------
 
 export interface TimeTile {
-  /** This project's minutes in the range, and the change against the stretch of equal length before it. */
+  /** The minutes in the range, and the change against the stretch of equal length before it. */
   minutes: number
   delta: number | null
-  /** Every project's minutes in the range, and this project's minutes per calendar day of the range. */
-  allMinutes: number
+  /** Minutes per calendar day of the range, and how many projects those minutes were spent in. */
   perDay: number
+  projects: number
 }
 
-/** Every project's minutes between two days, this one included. */
-const allProjectMinutes = (data: StatisticsData, from: string, to: string): number => {
-  let total = 0
-  for (const project of data.projects) {
-    for (const [day, minutes] of Object.entries(project.minutes)) {
-      if (within(day, from, to)) total += minutes
-    }
-  }
-  return total
-}
+/** How many projects hold a minute inside the range - "across four projects" under the figure. */
+const projectsWorked = (data: StatisticsData, from: string, to: string): number =>
+  data.projects.filter((project) =>
+    Object.entries(project.minutes).some(([day, minutes]) => minutes > 0 && within(day, from, to)),
+  ).length
 
 export const timeTile = (data: StatisticsData, range: Range): TimeTile => {
   const days = daysIn(data, range)
@@ -119,8 +119,8 @@ export const timeTile = (data: StatisticsData, range: Range): TimeTile => {
   return {
     minutes,
     delta,
-    allMinutes: allProjectMinutes(data, range.from, range.to),
     perDay: minutes / Math.max(1, range.days),
+    projects: projectsWorked(data, range.from, range.to),
   }
 }
 
@@ -129,7 +129,7 @@ export const timeTile = (data: StatisticsData, range: Range): TimeTile => {
 export interface DaysTile {
   active: number
   total: number
-  /** The run of days reaching today or yesterday, and the longest run ever - this project's. */
+  /** The run of days reaching today or yesterday, and the longest run ever. */
   streak: number
   best: number
   /** The last fortnight, oldest first: whether each day was worked. */
@@ -208,10 +208,9 @@ export const outputTile = (data: StatisticsData, range: Range): OutputTile => {
 
 export interface HoursSeries {
   dates: string[]
-  /** Hours a day: this project, and every project together. */
-  project: number[]
-  all: number[]
-  /** The longest day of this project in the range, if there was one. */
+  /** Hours in the panel, one point a day. */
+  hours: number[]
+  /** The longest day in the range, if there was one. */
   longest: { date: string; minutes: number } | null
 }
 
@@ -219,20 +218,13 @@ export const hoursSeries = (data: StatisticsData, range: Range): HoursSeries => 
   const dates = daysBetween(range.from, range.to)
   const byDate = new Map(data.days.map((day) => [day.date, day]))
 
-  const project = dates.map((date) => (byDate.get(date)?.minutes ?? 0) / 60)
-  const all = dates.map((date) => {
-    let minutes = 0
-    for (const other of data.projects) minutes += other.minutes[date] ?? 0
-    return minutes / 60
-  })
-
   let longest: { date: string; minutes: number } | null = null
   for (const date of dates) {
     const minutes = byDate.get(date)?.minutes ?? 0
     if (minutes > 0 && (longest === null || minutes > longest.minutes)) longest = { date, minutes }
   }
 
-  return { dates, project, all, longest }
+  return { dates, hours: dates.map((date) => (byDate.get(date)?.minutes ?? 0) / 60), longest }
 }
 
 // --- The hours of one day ---------------------------------------------------------------
@@ -298,8 +290,14 @@ export interface HeatMap {
   sentence: string
 }
 
-/** How many weeks the calendar is ready to show - the panel decides how many of them fit. */
+/**
+ * How many weeks the calendar shows at the narrowest: a year of them. Past that the panel asks for as many
+ * as fit its width (see Heatmap), so the columns reach the right-hand edge however wide it is pulled - a
+ * calendar that stops halfway across the card reads as "there is nothing further back", which is not what
+ * a fixed column count means. The ceiling only keeps an absurd width from asking for a century.
+ */
 export const HEAT_WEEKS = 53
+export const HEAT_WEEKS_MAX = 53 * 10
 
 /** The busiest quarter of days is the top level; the rest are spread evenly below it. */
 export const heatLevel = (minutes: number, busiest: number): number => {
@@ -311,12 +309,13 @@ export const heatLevel = (minutes: number, busiest: number): number => {
   return 4
 }
 
-export const heatMap = (data: StatisticsData): HeatMap => {
+export const heatMap = (data: StatisticsData, weeks: number = HEAT_WEEKS): HeatMap => {
+  const columns = Math.min(HEAT_WEEKS_MAX, Math.max(1, Math.round(weeks)))
   const byDate = new Map(data.days.map((day) => [day.date, day]))
   const today = data.today
   // The newest week ends on the coming Sunday, so today always sits in the last column.
   const end = addDays(today, 6 - weekday(today))
-  const start = addDays(end, -(HEAT_WEEKS * 7 - 1))
+  const start = addDays(end, -(columns * 7 - 1))
   const dates = daysBetween(start, end)
 
   const busiest = max(
@@ -329,10 +328,10 @@ export const heatMap = (data: StatisticsData): HeatMap => {
     return { date, minutes, level: heatLevel(minutes, busiest), ahead: date > today }
   })
 
-  const weeks: HeatCell[][] = []
-  for (let index = 0; index < cells.length; index += 7) weeks.push(cells.slice(index, index + 7))
+  const grid: HeatCell[][] = []
+  for (let index = 0; index < cells.length; index += 7) grid.push(cells.slice(index, index + 7))
 
-  return { weeks: weeks.reverse(), sentence: workSentence(data.days) }
+  return { weeks: grid.reverse(), sentence: workSentence(data.days) }
 }
 
 /**
@@ -470,7 +469,7 @@ export const projectRows = (data: StatisticsData, range: Range, limit = PROJECT_
   return rows.map((row) => ({ ...row, share: top > 0 ? row.minutes / top : 0 }))
 }
 
-/** How many projects the ledger knows at all - what this project is compared with. */
+/** How many projects the ledger knows at all - what the tab says it is counting together. */
 export const projectCount = (data: StatisticsData): number => data.projects.length
 
 // --- Files -----------------------------------------------------------------------------------

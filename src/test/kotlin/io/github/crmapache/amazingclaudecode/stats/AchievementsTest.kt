@@ -2,6 +2,7 @@ package io.github.crmapache.amazingclaudecode.stats
 
 import java.io.File
 import java.time.LocalDate
+import java.util.TreeMap
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -18,13 +19,13 @@ class AchievementsTest {
         StatsSnapshot().apply { days.forEach { (date, record) -> project(project, "x").days[date] = record } }
 
     @Test
-    fun `there are fifty-one of them, ids unique`() {
-        assertEquals(51, Achievements.ALL.size)
-        assertEquals(51, Achievements.IDS.toSet().size)
+    fun `there are forty-six of them, ids unique`() {
+        assertEquals(46, Achievements.ALL.size)
+        assertEquals(46, Achievements.IDS.toSet().size)
     }
 
     @Test
-    fun `the interface names the same fifty-one in the same order`() {
+    fun `the interface names the same forty-six in the same order`() {
         // The words live in the interface, the rules here; the ids are what ties the two together.
         val catalogue = File("webview/src/stats/catalogue.ts").readText()
         // An achievement's id sits two levels in; a group's, one level in - the indent tells them apart.
@@ -39,9 +40,11 @@ class AchievementsTest {
 
         assertEquals(0, steady.tierOf(2))
         assertEquals(3, steady.tierOf(23))
-        assertEquals(30, steady.targetOf(23))
+        // The next line is named for the tier standing, not for the figure: the two part company only
+        // when a tier is held up by having once been earned (see the floor in evaluate).
+        assertEquals(30L, steady.targetOf(steady.tierOf(23)))
         assertEquals(5, steady.tierOf(60))
-        assertNull(steady.targetOf(75))
+        assertNull(steady.targetOf(steady.tierOf(75)))
     }
 
     @Test
@@ -50,9 +53,9 @@ class AchievementsTest {
 
         assertTrue(forked.isMilestone)
         assertEquals(0, forked.tierOf(0))
-        assertEquals(1, forked.targetOf(0))
+        assertEquals(1L, forked.targetOf(0))
         assertEquals(Achievements.TIERS, forked.tierOf(1))
-        assertNull(forked.targetOf(1))
+        assertNull(forked.targetOf(Achievements.TIERS))
     }
 
     @Test
@@ -132,19 +135,43 @@ class AchievementsTest {
     }
 
     @Test
+    fun `a tier already written down is not taken back by a smaller figure`() {
+        val book = StatsSnapshot().apply {
+            project("p-1", "one").days["2026-08-26"] = DayRecord().apply { repeat(130) { minutes.mark(it) } }
+            // Ten thousand hours were once counted here, and every tier of the panel's hours written down.
+            earned["hours-in-panel"] = TreeMap((1..5).associateWith { 1_000L })
+        }
+
+        val states = Achievements.evaluate(
+            book,
+            LocalDate.parse("2026-08-26"),
+            earned = book.earned.mapValues { (_, tiers) -> tiers.keys.max() },
+        )
+
+        val hours = states.first { it.id == "hours-in-panel" }
+        assertEquals(5, hours.tier)
+        // The figure beside it is the truth as it stands, and there is no line left above the fifth.
+        assertEquals(130, hours.value)
+        assertNull(hours.target)
+
+        // Without the floor the same book stands where the figure puts it: two hours in, ten to go.
+        val bare = Achievements.evaluate(book, LocalDate.parse("2026-08-26")).first { it.id == "hours-in-panel" }
+        assertEquals(1, bare.tier)
+        assertEquals(600, bare.target)
+    }
+
+    @Test
     fun `the evaluation hands back every achievement with its tier and target`() {
         val book = book(day("2026-08-26") { linesAdded = 18_430; edits = 1 })
 
         val states = Achievements.evaluate(book, LocalDate.parse("2026-08-26"))
 
-        assertEquals(51, states.size)
-        val lines = states.first { it.id == "hundred-thousand" }
+        assertEquals(46, states.size)
+        // Eighteen thousand lines is a good start and no more: the first line stands at fifty thousand.
+        val lines = states.first { it.id == "lines-written" }
         assertEquals(0, lines.tier)
         assertEquals(18_430, lines.value)
-        assertEquals(20_000, lines.target)
-        val tenThousand = states.first { it.id == "ten-thousand" }
-        assertEquals(5, tenThousand.tier)
-        assertNull(tenThousand.target)
+        assertEquals(50_000, lines.target)
         assertEquals(5, states.first { it.id == "first-diff" }.tier)
     }
 }

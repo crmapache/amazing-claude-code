@@ -22,6 +22,144 @@ const download = (name: string, base64: string): void => {
   link.click()
 }
 
+/*
+ * The IDE's half of the feedback screen, played by the harness.
+ *
+ * The screen is the one place in the panel that asks the shell for things it cannot make up itself - the
+ * address kept from last time, the files a native dialog picked, the debug report - so without an answer
+ * here it would sit empty and none of it could be looked at. The files are invented; the report is a
+ * sample of the real shape (see FeedbackReport on the plugin's side).
+ *
+ * Sending fails every third time on purpose. The failed path has its own banner and leaves the draft
+ * where it was, and that is precisely the state one never reaches by accident when checking by hand.
+ */
+let feedbackFiles: { id: string; name: string; bytes: number }[] = []
+let feedbackSends = 0
+
+const SAMPLE_FILES = [
+  { name: 'screenshot.png', bytes: 184_320 },
+  { name: 'idea.md', bytes: 2_140 },
+  { name: 'crash-report.txt', bytes: 51_200 },
+]
+
+const SAMPLE_REPORT = [
+  'Amazing Claude Code 0.8.1',
+  'WebStorm 2026.2 (WS-262.19173.4)',
+  'macOS 26.6 - aarch64',
+  'Claude Code 2.1.4',
+  '',
+  '--- this conversation, in outline ---',
+  '',
+  '+0.0s  turn started',
+  '+0.4s  Read  ok    4.1 KB  f:9f2ac4',
+  '+1.9s  Edit  ok    96 B    f:9f2ac4',
+  '+2.3s  Bash  fail  exit 1',
+  '+4.8s  turn ended  4.8s  3 tools',
+  '',
+  '--- what the plugin ran into ---',
+  '',
+  '11:04:22 session  claude exited (code 1)',
+  '11:04:22 stderr   ERR_STREAM_PREMATURE_CLOSE',
+  '11:04:23 panel    uncaught TypeError',
+].join('\n')
+
+const answerFeedback = (message: WebviewMessage): void => {
+  const state = (note?: string): void => {
+    window.__accReceive?.({
+      type: 'feedbackState',
+      email: 'you@example.com',
+      attachments: feedbackFiles,
+      ...(note ? { note } : {}),
+    })
+  }
+
+  if (message.type === 'feedbackOpen') state()
+
+  if (message.type === 'feedbackReport') {
+    window.__accReceive?.({ type: 'feedbackLog', text: SAMPLE_REPORT })
+  }
+
+  if (message.type === 'feedbackAttach') {
+    const next = SAMPLE_FILES[feedbackFiles.length % SAMPLE_FILES.length]
+    if (next) {
+      feedbackFiles = [...feedbackFiles, { id: `f${feedbackFiles.length + 1}`, ...next }]
+      state(feedbackFiles.length >= 3 ? 'One of them was skipped: it is bigger than 10 MB.' : undefined)
+    }
+  }
+
+  if (message.type === 'feedbackDetach') {
+    feedbackFiles = feedbackFiles.filter((file) => file.id !== message.id)
+    state()
+  }
+
+  if (message.type === 'feedbackSend') {
+    feedbackSends += 1
+    const ok = feedbackSends % 3 !== 0
+    if (ok) feedbackFiles = []
+
+    setTimeout(() => {
+      window.__accReceive?.(
+        ok
+          ? { type: 'feedbackSent', ok: true }
+          : { type: 'feedbackSent', ok: false, error: 'The feedback service did not answer. Try again.' },
+      )
+    }, 700)
+  }
+}
+
+/**
+ * Pages of a conversation older than what is on screen.
+ *
+ * In the IDE these are read off Claude Code's transcript (see ClaudeHistory.page); here they are made up,
+ * so that the mark above the feed is a working button rather than a caption: a tab opens a past
+ * conversation with its end, and the way back through it is worth being able to try without an IDE.
+ *
+ * The third answer comes back without a cursor - the conversation's beginning, where the mark has to
+ * disappear.
+ */
+let earlierPages = 0
+
+const answerHistoryPage = (message: WebviewMessage): void => {
+  if (message.type !== 'historyPage') return
+
+  earlierPages += 1
+  const page = earlierPages
+  const last = page >= 3
+  const uuid = (line: number): string => `h${page}-${line}`
+
+  const entries = [
+    {
+      type: 'user',
+      uuid: uuid(1),
+      message: { role: 'user', content: [{ type: 'text', text: `And what did we settle on back then? (page ${page})` }] },
+    },
+    {
+      type: 'assistant',
+      uuid: uuid(2),
+      message: {
+        content: [
+          {
+            type: 'text',
+            text: last
+              ? 'That is where this conversation begins - there is nothing above it.'
+              : 'On leaving the order of the sections alone and only fixing the look.',
+          },
+        ],
+      },
+    },
+  ]
+
+  setTimeout(() => {
+    window.__accReceive?.({
+      type: 'historyPage',
+      sessionId: message.sessionId,
+      entries: entries as never,
+      before: message.before,
+      ...(last ? {} : { cursor: uuid(1) }),
+    })
+  }, 400)
+}
+
 const listenToPanel = () => {
   if (window.__accSend) return
 
@@ -44,6 +182,9 @@ const listenToPanel = () => {
     // The picture of the statistics screen: in the IDE the shell writes it into the downloads folder,
     // here the browser has downloads of its own and does it itself - so the button can be tried out.
     if (message?.type === 'saveImage') download(message.name, message.data)
+
+    if (message) answerFeedback(message)
+    if (message) answerHistoryPage(message)
   }
 
   window.dispatchEvent(new Event('acc:ready'))

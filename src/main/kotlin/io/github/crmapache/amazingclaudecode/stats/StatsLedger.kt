@@ -7,6 +7,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.util.concurrency.AppExecutorUtil
+import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -69,6 +70,33 @@ internal class StatsLedger(private val file: Path) : Disposable {
             snapshot.since = System.currentTimeMillis()
             dirty = true
         }
+        if (recalibrate(snapshot)) dirty = true
+    }
+
+    /**
+     * The lines of some achievements have moved since this book was last measured - so what was written
+     * down against the old ones is forgotten, once, and earned again against the new (see
+     * Achievements.RECALIBRATED).
+     *
+     * Only the ones that moved, and only their moments: nothing about the work itself is touched, and
+     * whatever is still deserved is written down again within seconds of the panel opening. The other way
+     * round - keeping a fifth tier awarded against a line that no longer exists - is the one thing the
+     * screen must not do, because then it is not saying anything about the work at all.
+     */
+    private fun recalibrate(snapshot: StatsSnapshot): Boolean {
+        if (snapshot.rulesVersion >= Achievements.RULES_VERSION) return false
+
+        // Only what moved since this book was last measured (see Achievements.forgottenSince) - a book
+        // with nothing in it has nothing to forget, and one already measured against the version before
+        // does not lose what it has since earned back.
+        val moved = Achievements.forgottenSince(snapshot.rulesVersion)
+        val forgotten = snapshot.earned.keys.count { it in moved }
+        snapshot.earned.keys.removeAll(moved)
+        snapshot.rulesVersion = Achievements.RULES_VERSION
+        if (forgotten > 0) {
+            thisLogger().info("The achievement lines moved: $forgotten of them are to be earned again")
+        }
+        return true
     }
 
     /** Read something out of the book. The block runs under the lock: do not keep what it hands over. */
@@ -83,6 +111,8 @@ internal class StatsLedger(private val file: Path) : Disposable {
         val result = synchronized(lock) {
             val out = block(snapshot)
             dirty = true
+            // Whatever the block did, it did it to a day - and the days folded together are made of those.
+            snapshot.daysChanged()
             out
         }
         scheduleSave()
@@ -115,7 +145,10 @@ internal class StatsLedger(private val file: Path) : Disposable {
         var changed = false
 
         val states = synchronized(lock) {
-            val evaluated = Achievements.evaluate(snapshot, today)
+            // The highest tier each achievement has ever been written down at - a floor under the answer,
+            // so that a figure counted more honestly than it once was cannot take a tier back.
+            val floors = snapshot.earned.mapValues { (_, tiers) -> tiers.keys.maxOrNull() ?: 0 }
+            val evaluated = Achievements.evaluate(snapshot, today, floors)
 
             for (state in evaluated) {
                 if (state.tier == 0) continue
@@ -200,6 +233,17 @@ internal class StatsLedger(private val file: Path) : Disposable {
             }
         }.onFailure {
             thisLogger().warn("Could not write the statistics to $file", it)
+            /*
+             * The kind of failure, not its words. A file error's message *is* the path - and this path
+             * names the IDE's configuration directory, which names the person. The buffer scrubs paths on
+             * the way in (see DiagnosticsLog), but here the leak is total and predictable, so it is
+             * removed at the source rather than left to a pattern: "AccessDeniedException" says everything
+             * worth knowing about why the statistics did not get written.
+             */
+            DiagnosticsLog.note(
+                DiagnosticsLog.STATS,
+                "the statistics could not be written (${it::class.simpleName ?: "unknown failure"})",
+            )
             synchronized(lock) { dirty = true }
         }
     }

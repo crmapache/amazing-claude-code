@@ -9,6 +9,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Key
 import com.intellij.util.concurrency.AppExecutorUtil
+import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -1032,6 +1033,10 @@ internal class ClaudeSession(
         if (line.isEmpty()) return
 
         thisLogger().info("claude said: $line")
+        // Kept for a debug report too (see DiagnosticsLog): when the process does die, these lines are
+        // the only account of why, and they are worth standing in the same column as everything else that
+        // happened around them.
+        DiagnosticsLog.note(DiagnosticsLog.STDERR, line)
         onDiagnostic(line)
 
         synchronized(diagnostics) {
@@ -1054,6 +1059,7 @@ internal class ClaudeSession(
         val executable = ClaudeExecutable.find()
 
         if (executable == null) {
+            DiagnosticsLog.note(DiagnosticsLog.AGENT, "the claude executable was not found")
             onError("CLAUDE_NOT_FOUND")
             return null
         }
@@ -1079,6 +1085,7 @@ internal class ClaudeSession(
         val process = runCatching { OSProcessHandler(commandLine) }
             .onFailure {
                 thisLogger().warn("Failed to start claude", it)
+                DiagnosticsLog.note(DiagnosticsLog.AGENT, "claude would not start: ${it.message}")
                 onError("Failed to start claude: ${it.message}")
             }
             .getOrNull() ?: return null
@@ -1115,6 +1122,7 @@ internal class ClaudeSession(
                         // Now everything the process said past the stream has become an error: the
                         // conversation is gone, and there is nothing else left to explain it with.
                         diagnosticsTail().takeIf { it.isNotEmpty() }?.let(onError)
+                        DiagnosticsLog.note(DiagnosticsLog.AGENT, "claude exited on its own (code ${event.exitCode})")
                         onCrashed(event.exitCode)
                     }
                     onFinished()

@@ -71,6 +71,44 @@
 
 /* The segmented switch: the menu's own tabs (see sideMenu.module.css), only not stretched. */
 /* The share button sits beside the range switch and is cut out of the picture it makes - see poster.ts. */
+/*
+ * The share button on a single achievement: a place of its own in the top row, held open whether or not
+ * the button can be seen.
+ *
+ * It keeps its place rather than being laid over the tier's mark, so that the tier is still there in the
+ * picture the button makes - and rather than appearing out of nowhere, which would shift the name sideways
+ * every time the pointer crossed a card. Out of the picture itself, of course (see SKIP).
+ */
+.cardShare {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin: -4px -3px -4px 2px;
+  border-radius: var(--acc-r-sm);
+  color: var(--acc-fg-faint);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.achievement:hover .cardShare,
+.achievement[data-hover] .cardShare,
+.cardShare:focus-visible,
+.cardShareDone {
+  opacity: 1;
+}
+
+.cardShare:hover,
+.cardShare[data-hover] {
+  background: var(--acc-bg-menu-hover);
+  color: var(--acc-fg);
+}
+
+.cardShare:disabled {
+  animation: sharePulse 1.1s ease-in-out infinite;
+}
+
 .share {
   flex: none;
   display: grid;
@@ -297,17 +335,24 @@
 
 /* --- Bars ------------------------------------------------------------------------ */
 
+/*
+ * Every bar on the tab is the same bar: one height and one radius, set here once. Two cards whose bars
+ * differ by a pixel read as two different kinds of figure, and they are not - they are all "how much of
+ * this against the rest".
+ */
+.bar,
+.barSplit,
+.stackBar,
+.spreadBar {
+  height: 6px;
+  border-radius: 3px;
+}
+
 .bar {
   flex: 1;
   min-width: 0;
-  height: 6px;
-  border-radius: 3px;
   background: rgb(var(--acc-ch-mist) / 10%);
   overflow: hidden;
-}
-
-.barHair {
-  height: 4px;
 }
 
 .barFill {
@@ -320,8 +365,6 @@
 /* Two parts of one bar: added against removed, one model against another. */
 .barSplit {
   display: flex;
-  height: 6px;
-  border-radius: 3px;
   overflow: hidden;
   background: rgb(var(--acc-ch-mist) / 10%);
 }
@@ -404,8 +447,6 @@
 }
 
 .stackBar {
-  height: 4px;
-  border-radius: 2px;
   transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -452,25 +493,6 @@
 .pairRemoved {
   font: 600 15px/1 var(--acc-mono);
   color: var(--acc-bad-light);
-}
-
-.legend {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font: 10px var(--acc-mono);
-  color: var(--acc-fg-mono);
-  white-space: nowrap;
-}
-
-.legendDim {
-  color: var(--acc-fg-ghost);
-}
-
-.legendLine {
-  width: 14px;
-  height: 1.5px;
-  border-radius: 1px;
 }
 
 /* --- The chart ----------------------------------------------------------------------- */
@@ -539,10 +561,6 @@
   gap: 8px;
   font: 10.5px var(--acc-mono);
   color: var(--acc-fg);
-}
-
-.chartTipWho {
-  color: var(--acc-fg-faint);
 }
 
 /* --- The hours of one day -------------------------------------------------------------- */
@@ -820,8 +838,6 @@
 .spreadBar {
   flex: 1;
   display: flex;
-  height: 7px;
-  border-radius: 4px;
   overflow: hidden;
   background: rgb(var(--acc-ch-mist) / 10%);
 }

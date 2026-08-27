@@ -220,6 +220,37 @@ export interface PanelState {
    * answer's text ("Task #3 created…"), and learning it is impossible before that answer arrives.
    */
   pendingTasks: Record<string, { subject: string; activeForm?: string }>
+  /**
+   * The identifier of the oldest message on screen, and what a page of older ones is asked for by.
+   *
+   * A tab is opened with the end of a conversation rather than the whole of it (see
+   * ClaudeHistory.opening), so this is the seam between what is drawn and what is still on disk. It is a
+   * uuid out of Claude Code's own transcript rather than a position, because the live journal and that
+   * file share no numbering: the journal interleaves status and permission events that never touch disk
+   * at all, and a count would drift on the very first status change.
+   *
+   * Set once from the first event the transcript keeps and moved further back only by a page that
+   * arrives - everything coming in live afterwards is by definition newer.
+   */
+  oldestEventUuid?: string
+  /**
+   * Whether the conversation's own beginning is on screen - there is nothing further back to ask for.
+   *
+   * Kept apart from [oldestEventUuid] rather than read off it. The guard against applying a page twice
+   * compares the answer with the boundary standing on screen, and that boundary moves with every page
+   * applied - except the last one, where there is no new boundary to move to. It then stopped
+   * discriminating: whoever asked twice over a lost frame saw the conversation's first messages appear
+   * twice. Nor can the boundary be cleared instead: an empty one means "nothing has arrived yet", and the
+   * next live message would take it for itself, offering to load what is already on screen.
+   */
+  reachedStart: boolean
+  /**
+   * How many answers about earlier pages have arrived. A screen unlocks its own "load more" by this
+   * rather than by the feed growing: a page that came back empty - the beginning reached, a boundary that
+   * answered nothing - is an answer too, and leaving the control dead after it looks exactly like the
+   * request being ignored.
+   */
+  earlierPages: number
 }
 
 export type PanelAction =
@@ -239,7 +270,26 @@ export type PanelAction =
    * left unfinished is closed here: there is nobody left to wait for its result from (see
    * applyReplayFinished).
    */
-  | { kind: 'replayFinished' }
+  | {
+      kind: 'replayFinished'
+      /**
+       * The boundary of what was replayed, when the conversation goes on above it - see
+       * PanelState.oldestEventUuid.
+       *
+       * Three answers rather than two, hence the null: a uuid is the seam, null says the conversation's
+       * beginning is on screen, and undefined says nothing about the boundary at all and leaves it as it
+       * stands (see withEarlier in build.ts). Undefined is what a phone sends: the replay was never
+       * forwarded there, so its boundary is not the phone's to take - it is handed the end of the result
+       * instead (see RemoteFeed.isReplayLine).
+       */
+      cursor?: string | null
+    }
+  /**
+   * A page of messages older than what is on screen, read off the transcript on disk (see
+   * ClaudeHistory.page). It is put ABOVE everything the feed holds, which is the one place in the reducer
+   * where that happens: everywhere else a conversation only grows downwards.
+   */
+  | { kind: 'historyPage'; entries: AgentEvent[]; cursor?: string; before?: string }
   /**
    * The answer being printed right now, as far as it had got when this client joined.
    *
@@ -324,6 +374,8 @@ export const initialPanelState: PanelState = {
   pendingTasks: {},
   pausedMs: 0,
   queue: [],
+  reachedStart: false,
+  earlierPages: 0,
 }
 
 /** A new item in the feed, with the next number of its own. */

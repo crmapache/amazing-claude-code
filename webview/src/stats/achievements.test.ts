@@ -3,19 +3,27 @@ import type { AchievementState } from '../protocol'
 import { closest, dress, dressAll, filterGroups, recentlyEarned, summarize } from './achievements'
 import { ACHIEVEMENTS, ACHIEVEMENT_COUNT, ACHIEVEMENT_GROUPS, achievementValue } from './catalogue'
 
-const state = (id: string, tier: number, value: number, target?: number, earned: Record<string, number> = {}): AchievementState => ({
+const state = (
+  id: string,
+  tier: number,
+  value: number,
+  target?: number,
+  earned: Record<string, number> = {},
+  steps?: number,
+): AchievementState => ({
   id,
   tier,
   value,
+  ...(steps === undefined ? {} : { steps }),
   ...(target === undefined ? {} : { target }),
   earned,
 })
 
 describe('the catalogue', () => {
-  it('holds fifty-one achievements in five groups, every id unique', () => {
-    expect(ACHIEVEMENT_COUNT).toBe(51)
-    expect(ACHIEVEMENT_GROUPS.map((group) => group.items.length)).toEqual([11, 10, 10, 10, 10])
-    expect(new Set(ACHIEVEMENTS.map((spec) => spec.id)).size).toBe(51)
+  it('holds forty-six achievements in five groups, every id unique', () => {
+    expect(ACHIEVEMENT_COUNT).toBe(46)
+    expect(ACHIEVEMENT_GROUPS.map((group) => group.items.length)).toEqual([11, 7, 8, 10, 10])
+    expect(new Set(ACHIEVEMENTS.map((spec) => spec.id)).size).toBe(46)
   })
 
   it('writes a figure against its target in the unit it is measured in', () => {
@@ -24,9 +32,9 @@ describe('the catalogue', () => {
     expect(achievementValue(steady, 60, undefined)).toBe('60 days')
 
     const marathon = ACHIEVEMENTS.find((spec) => spec.id === 'marathon')!
-    expect(achievementValue(marathon, 171, 240)).toBe('2h51/4h')
+    expect(achievementValue(marathon, 171, 240)).toBe('2.9h/4h')
 
-    const lines = ACHIEVEMENTS.find((spec) => spec.id === 'hundred-thousand')!
+    const lines = ACHIEVEMENTS.find((spec) => spec.id === 'lines-written')!
     expect(achievementValue(lines, 18_430, 100_000)).toBe('18.4k/100k')
     expect(achievementValue(lines, 100_000, undefined)).toBe('done')
 
@@ -44,11 +52,29 @@ describe('dressing', () => {
     expect(dressed.value).toBe('918/900')
   })
 
-  it('draws a milestone reached as the top tier, with "done" for its figure', () => {
+  it('draws a milestone with no tier mark at all, and "done" for its figure', () => {
     const reached = dress(state('remote', 5, 1))!
-    expect(reached.tierMark).toBe('V')
+    expect(reached.tierMark).toBe('')
     expect(reached.value).toBe('done')
     expect(dress(state('remote', 0, 0, 1))!.tierMark).toBe('locked')
+  })
+
+  it('gives a ladder of two lines two steps, and stops the tier at the last of them', () => {
+    // Two ways to say thanks, so two lines - and a card that draws two pips rather than five.
+    const both = dress(state('thanks', 2, 2, undefined, {}, 2))!
+    expect(both.steps).toBe(2)
+    expect(both.tierMark).toBe('II')
+    expect(both.value).toBe('done')
+
+    const half = dress(state('thanks', 1, 1, 2, {}, 2))!
+    expect(half.steps).toBe(2)
+    expect(half.tierMark).toBe('I')
+    expect(half.value).toBe('1/2')
+  })
+
+  it('takes the step count from the catalogue when an older IDE does not send one', () => {
+    expect(dress(state('thanks', 1, 1, 2))!.steps).toBe(2)
+    expect(dress(state('reader', 2, 300, 1000))!.steps).toBe(5)
   })
 
   it('drops an id it does not know - a newer IDE may have more', () => {
@@ -58,7 +84,7 @@ describe('dressing', () => {
   it('lists every achievement of the catalogue, locked when the IDE said nothing', () => {
     const groups = dressAll([state('reader', 2, 300, 1000)])
     const all = groups.flatMap((group) => group.items)
-    expect(all).toHaveLength(51)
+    expect(all).toHaveLength(46)
     expect(all.find((item) => item.id === 'reader')!.tier).toBe(2)
     expect(all.find((item) => item.id === 'shell')!.tierMark).toBe('locked')
   })
@@ -69,10 +95,15 @@ describe('the summary', () => {
     const groups = dressAll([state('reader', 2, 300, 1000), state('forked', 5, 1), state('shell', 0, 3, 25)])
     const summary = summarize(groups)
     expect(summary.earned).toBe(2)
-    expect(summary.total).toBe(51)
-    expect(summary.tiers).toBe(7)
-    expect(summary.tiersTotal).toBe(255)
-    expect(summary.spread[0]).toBe(49)
+    // Finished, not merely started: forked is a milestone and its one line is crossed; reader stands on
+    // the second of five.
+    expect(summary.completed).toBe(1)
+    expect(summary.total).toBe(46)
+    // As many steps as each has: reader's two, forked's one, nothing for shell - against 41 ladders of
+    // five, four milestones of one and the two lines of thanks.
+    expect(summary.tiers).toBe(3)
+    expect(summary.tiersTotal).toBe(211)
+    expect(summary.spread[0]).toBe(44)
     expect(summary.spread[2]).toBe(1)
     expect(summary.spread[5]).toBe(1)
   })
@@ -111,7 +142,7 @@ describe('the closest one', () => {
   it('picks the achievement furthest along its next line, and says what is left', () => {
     const groups = dressAll([
       state('steady-hand', 3, 23, 30),
-      state('hundred-thousand', 0, 18_430, 100_000),
+      state('lines-written', 0, 18_430, 100_000),
       state('marathon', 2, 100, 120),
     ])
     const nearest = closest(groups)!

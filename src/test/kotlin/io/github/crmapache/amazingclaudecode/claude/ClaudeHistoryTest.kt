@@ -7,6 +7,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -491,6 +492,97 @@ class ClaudeHistoryTest {
         )
 
         assertNull(ClaudeHistory.pageOf(all, before = "u2", pageSize = 5).cursor)
+    }
+
+    /**
+     * The window a page is cut out of. Read in one pass and never wider than a page, because a tab
+     * opening a conversation from the history goes through this: the whole file used to be gathered into
+     * a list first, which is tens of megabytes for the sake of the forty messages at its end.
+     */
+    @Test
+    fun `the window is the end of the conversation, and says the rest is above it`() {
+        val all = (1..50).map { """{"type":"user","uuid":"u$it","message":{"role":"user","content":"m$it"}}""" }
+
+        val window = ClaudeHistory.windowOf(all.asSequence(), before = null, pageSize = 5)
+
+        assertTrue(window.moreAbove)
+        assertEquals("u50", uuidIn(window.lines.last()))
+        assertTrue(window.lines.size <= 5 + 8, "the window held ${window.lines.size} lines for a page of 5")
+    }
+
+    @Test
+    fun `the window stops right before the message it was asked for`() {
+        val all = (1..10).map { """{"type":"user","uuid":"u$it","message":{"role":"user","content":"m$it"}}""" }
+
+        val window = ClaudeHistory.windowOf(all.asSequence(), before = "u7", pageSize = 3)
+
+        assertEquals("u6", uuidIn(window.lines.last()))
+    }
+
+    /** A short conversation fits whole, and then there is genuinely nothing above it. */
+    @Test
+    fun `a conversation shorter than a page has nothing above it`() {
+        val all = (1..3).map { """{"type":"user","uuid":"u$it","message":{"role":"user","content":"m$it"}}""" }
+
+        val window = ClaudeHistory.windowOf(all.asSequence(), before = null, pageSize = 10)
+
+        assertFalse(window.moreAbove)
+        assertEquals(3, window.lines.size)
+    }
+
+    /**
+     * A window that dropped lines has to begin on one the next request can name. A nameless line at its
+     * head would come back as a page with no cursor - "the conversation begins here" - and everything
+     * genuinely above it would become unreachable.
+     */
+    @Test
+    fun `a window that dropped lines begins on a line with a name`() {
+        // Long enough that the window genuinely has to drop its head, with a nameless line falling exactly
+        // where the head ends up.
+        val all = (1..15).map { number ->
+            if (number == 6) {
+                """{"type":"assistant","message":{"content":[{"type":"text","text":"nameless"}]}}"""
+            } else {
+                """{"type":"user","uuid":"u$number","message":{"role":"user","content":"m$number"}}"""
+            }
+        }
+
+        val window = ClaudeHistory.windowOf(all.asSequence(), before = null, pageSize = 2)
+
+        assertTrue(window.moreAbove)
+        assertEquals("u7", uuidIn(window.lines.first()))
+    }
+
+    /**
+     * The window is read line by line rather than gathered up first - the same claim as for [replayable]
+     * below, and the reason this exists at all.
+     */
+    @Test
+    fun `the window holds a page's worth of lines, not the file's`() {
+        var read = 0
+        val long = generateSequence(1) { if (it < 20_000) it + 1 else null }.map { number ->
+            read += 1
+            """{"type":"user","uuid":"u$number","message":{"role":"user","content":"${"x".repeat(200)}"}}"""
+        }
+
+        val window = ClaudeHistory.windowOf(long, before = null, pageSize = 10)
+
+        assertEquals(20_000, read, "the file has to be walked to reach its end")
+        assertTrue(window.lines.size <= 18, "the window kept ${window.lines.size} lines out of 20000")
+    }
+
+    /**
+     * A page cut out of a window is not the conversation's beginning just because it reached the window's
+     * first line: without this the mark over the feed would vanish on the very first page, and the rest of
+     * the conversation with it.
+     */
+    @Test
+    fun `a page out of a window keeps a cursor for what lies above the window`() {
+        val all = (1..3).map { """{"type":"user","uuid":"u$it","message":{"role":"user","content":"m$it"}}""" }
+
+        val page = ClaudeHistory.pageOf(all, before = null, pageSize = 10, moreAbove = true)
+
+        assertEquals("u1", page.cursor)
     }
 
     private fun uuidIn(line: String): String? =

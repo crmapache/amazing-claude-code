@@ -48,6 +48,13 @@ internal object ClaudeRateLimit {
          * different rings on the screen.
          */
         val window: String,
+        /**
+         * When the window resets, in milliseconds, or null when the event did not say.
+         *
+         * Passed on because it is what tells one window from the next one after it: "the five-hour
+         * window" is the name of a kind, not of an occasion (see ExtraUsageAnnouncements).
+         */
+        val resetsAt: Long?,
     )
 
     /**
@@ -80,6 +87,7 @@ internal object ClaudeRateLimit {
             extraUsage = extraUsage,
             stopped = refused && !extraUsage && !flag("rateLimitGraceActive") && !stale,
             window = info["rateLimitType"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+            resetsAt = resetsAt,
         )
     }
 }

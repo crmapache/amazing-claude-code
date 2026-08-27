@@ -254,6 +254,13 @@
   color: var(--acc-fg-dim);
 }
 
+/* The same rose as the heart in the status row: both entries lead to the same person, and the colour is
+   what says so without a word of explanation. */
+.rowIconFeedback {
+  background: var(--acc-heart-16);
+  color: var(--acc-heart);
+}
+
 .rowText {
   flex: 1;
   min-width: 0;
@@ -700,6 +707,151 @@
   gap: 6px;
 }
 
+/*
+ * The message field of the feedback screen (see Feedback.tsx). Borrowed from .input in everything but the
+ * font and the shape: the address above it is a machine's string and reads better in mono, while this one
+ * is a person writing sentences and reads better in the interface font.
+ *
+ * No resize handle and no inner scrollbar: the field grows to whatever is typed (see Grower), and a box
+ * that both grows by itself and offers to be dragged gives two answers to the same question.
+ */
+.textarea {
+  width: 100%;
+  min-height: 76px;
+  max-height: 320px;
+  padding: 8px 9px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-raised);
+  color: var(--acc-fg);
+  font: var(--acc-fs-body) / 1.5 var(--acc-font);
+  resize: none;
+  overflow-y: auto;
+}
+
+.textarea:focus-visible {
+  outline: none;
+  border-color: var(--acc-accent-40);
+}
+
+.textarea::placeholder {
+  color: var(--acc-fg-ghost);
+}
+
+/* The conversation the report will describe, beside the switch's own label: dimmer than the label and in
+   the mono font, so it reads as a name being quoted rather than as more of the sentence. */
+.switchTab {
+  font: var(--acc-fs-meta) var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+/* Something to hang a hint on over a control that cannot report being hovered - a disabled button fires
+   no pointer events, so the tooltip has to live on a box around it (see Feedback). inline-flex rather than
+   display:contents: a box with no geometry of its own receives no pointer events either. */
+.tooltipHost {
+  display: inline-flex;
+}
+
+/* --- Attachments on the feedback screen ------------------------------------ */
+
+/* A row rather than a .card: a file here is a name and a size, and a card's padding around two words
+   turns a list of five into a screenful. */
+.attachRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 9px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-raised);
+}
+
+.attachName {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--acc-fg-body);
+  /* The cut itself is made in TypeScript, in the middle of the name (see shortName): CSS can only take
+     the end off, and the end of a file name is the part one is checking. */
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.attachSize {
+  flex: none;
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.attachDrop {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--acc-r-xs);
+  font-size: 13px;
+  line-height: 1;
+  color: var(--acc-fg-faint);
+  transition: background-color 80ms linear, color 80ms linear;
+}
+
+.attachDrop:hover,
+.attachDrop[data-hover] {
+  background: var(--acc-bad-12);
+  color: var(--acc-bad-text);
+}
+
+.attachNote {
+  color: var(--acc-warn);
+}
+
+.attachFoot {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.attachTotal {
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.attachTotalBad {
+  color: var(--acc-bad-text);
+}
+
+/* A line that opens a further screen and looks like the sentence it is - a button here would compete with
+   the one that sends the whole form. */
+.linkRow {
+  align-self: flex-start;
+  padding: 0;
+  font-size: 11px;
+  color: var(--acc-accent-light);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.linkRow:hover,
+.linkRow[data-hover] {
+  color: var(--acc-accent-hover);
+}
+
+/* The debug report, as text. Wrapped rather than scrolled sideways: a line that runs off the right edge of
+   a 350px panel is a line nobody checked. */
+.logText {
+  margin: 0;
+  padding: 9px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-deep);
+  font: var(--acc-fs-mono) / 1.5 var(--acc-mono);
+  color: var(--acc-fg-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* --- A switch -------------------------------------------------------------- */
 
 .switchRow {
@@ -765,6 +917,17 @@
 
 .switchKnobOn {
   left: 17px;
+}
+
+/* The switch on a kind of message the report has nothing to say about: dimmed and unclickable, but still
+   there, because the row carries the promise about what the report contains (see Feedback). */
+.switchRowMoot {
+  opacity: 0.5;
+}
+
+.switchRowMoot:hover,
+.switchRowMoot[data-hover] {
+  border-color: var(--acc-line);
 }
 
 /* --- Remote access --------------------------------------------------------- */

@@ -24,6 +24,14 @@ import {
 } from './composerLayout'
 import { Confirm } from './components/Confirm'
 import { Feed } from './components/Feed'
+import {
+  Feedback,
+  FeedbackLog,
+  emptyFeedback,
+  feedbackLogs,
+  feedbackProblem,
+  type FeedbackDraft,
+} from './components/Feedback'
 import { Header, type Session, type SessionState } from './components/Header'
 import { History } from './components/History'
 import { LoginGate, type AuthState } from './components/LoginGate'
@@ -358,6 +366,13 @@ export const App = () => {
   const [pluginsLoading, setPluginsLoading] = useState(true)
   const [pluginsFetchedAt, setPluginsFetchedAt] = useState(0)
   const [pluginMessage, setPluginMessage] = useState<{ ok: boolean; text: string } | null>(null)
+  /**
+   * The feedback screen's draft. It lives here rather than inside the screen because the screen is
+   * unmounted the moment one steps into the report's preview beside it (see the SideMenu block below) -
+   * and a half-written message that vanishes for looking at what it would attach is worse than no
+   * preview at all.
+   */
+  const [feedback, setFeedback] = useState<FeedbackDraft>(emptyFeedback)
   /**
    * The catalogue of models from the CLI itself: null means it has not arrived yet, and then the menu shows
    * the built-in list (see modelOptions). Keeping a list of our own is not an option - the available models
@@ -1127,8 +1142,30 @@ export const App = () => {
             }
             break
 
+          /**
+           * A tab is opened with the end of a past conversation, and the cursor is the seam: the rest of it
+           * is asked for by pressing the mark above the feed (see loadEarlier). Null rather than nothing
+           * when the cursor is absent - that is the answer "the beginning is on screen", which is not the
+           * same as saying nothing about the boundary at all (see withEarlier in build.ts).
+           */
           case 'replayFinished':
-            feed({ session: message.sessionId, action: { kind: 'replayFinished' } })
+            feed({
+              session: message.sessionId,
+              action: { kind: 'replayFinished', cursor: message.cursor ?? null },
+            })
+            break
+
+          /** A page of messages older than what this tab holds - read off the transcript on disk. */
+          case 'historyPage':
+            feed({
+              session: message.sessionId,
+              action: {
+                kind: 'historyPage',
+                entries: message.entries,
+                cursor: message.cursor,
+                before: message.before,
+              },
+            })
             break
 
           case 'processExited':
@@ -1250,6 +1287,54 @@ export const App = () => {
           case 'usage':
             // Folded rather than replaced whole, and by the same rules as on the phone - see mergeUsage.
             setUsage((current) => mergeUsage(current, message))
+            break
+
+          /*
+           * The feedback screen's three answers. The address and the files come from the IDE, which is
+           * where they are kept; the note beside them is what it has to say about the last pick - a file
+           * too big, one too many - and it is cleared by the next one rather than by a timer.
+           */
+          case 'feedbackState':
+            setFeedback((current) => ({
+              ...current,
+              // Whatever the person has done to the field wins - including emptying it. An empty field
+              // is not "nothing typed yet": see emailTouched in Feedback.
+              email: current.emailTouched ? current.email : message.email,
+              attachments: message.attachments,
+              note: message.note ?? null,
+            }))
+            break
+
+          case 'feedbackLog':
+            setFeedback((current) => ({ ...current, report: message.text }))
+            break
+
+          case 'feedbackSent':
+            setFeedback((current) =>
+              message.ok
+                ? // Sent: the draft goes, the address stays. Somebody who writes once often writes twice,
+                  // and asking for it again would read as if the first one had not counted.
+                  {
+                    ...emptyFeedback(),
+                    email: current.email,
+                    message: {
+                      // Not "ok" when something was left behind: it went, but not all of it, and the one
+                      // thing worse than a failure here is a thank-you that hides one.
+                      ok: !message.note,
+                      text: message.note
+                        ? `Sent, but not everything. ${message.note}`
+                        : 'Sent. Thank you ❤️ - it goes straight to me.',
+                    },
+                  }
+                : {
+                    ...current,
+                    sending: false,
+                    message: {
+                      ok: false,
+                      text: message.error || 'It could not be sent. Nothing was lost - try again.',
+                    },
+                  },
+            )
             break
 
           case 'permission':
@@ -1746,6 +1831,22 @@ export const App = () => {
   )
 
   /**
+   * The conversation above what this tab holds - asked for by pressing the mark over the feed.
+   *
+   * A tab opens a past conversation with its end rather than the whole of it (see ClaudeHistory.opening),
+   * and this is how the rest of it arrives, a page at a time. Undefined while there is nothing to fetch,
+   * which leaves the mark a plain caption rather than a button: either the beginning is already on screen,
+   * or nothing has arrived yet for the request to anchor on.
+   */
+  const loadEarlier = useMemo(
+    () =>
+      panel.oldestEventUuid !== undefined && !panel.reachedStart
+        ? () => send({ type: 'historyPage', sessionId: active, before: panel.oldestEventUuid })
+        : undefined,
+    [active, panel.oldestEventUuid, panel.reachedStart],
+  )
+
+  /**
    * Choosing a model from the menu in the bottom row and by a command in the field is one and the same
    * action, so its route is one as well. Through the shell rather than as a turn to the agent: the choice
    * passes on to new tabs and outlives a restart of the IDE.
@@ -2193,6 +2294,15 @@ export const App = () => {
     if (active === STATISTICS_GROUP) setActive(sessions[0]?.id ?? MAIN_SESSION)
   }
 
+  /**
+   * Which conversation a debug report would be about: the tab open right now.
+   *
+   * The statistics are a tab of the strip too but not a conversation, so from there the report falls back
+   * to the first one in the list. Either way the screen names the tab it means out loud rather than
+   * leaving it to be guessed (see Feedback).
+   */
+  const reportedSession = () => sessions.find((session) => session.id === active) ?? sessions[0]
+
   const openScreen = (screen: MenuScreen) => {
     setSideMenu({ open: true, screen })
 
@@ -2209,6 +2319,26 @@ export const App = () => {
         loadPlugins(pluginsInstalled !== null)
       }
     }
+
+    // The address to answer to, and the files still picked from an earlier visit, are kept by the IDE
+    // rather than by the page: the panel is reloaded far more often than a person changes their mind.
+    if (screen === 'feedback') {
+      setFeedback((current) => ({ ...current, message: null, note: null }))
+      send({ type: 'feedbackOpen' })
+    }
+
+    // Built afresh every time it is opened, never remembered: a report from ten minutes ago would be
+    // shown as if it described what just went wrong.
+    if (screen === 'feedbackLog') {
+      setFeedback((current) => ({ ...current, report: null }))
+      send({ type: 'feedbackReport', sessionId: reportedSession()?.id ?? active })
+    }
+  }
+
+  /** The bubble beside the heart opens the very same screen the menu's own row does. */
+  const openFeedback = () => {
+    setMenu(null)
+    openScreen('feedback')
   }
 
   /**
@@ -2435,7 +2565,18 @@ export const App = () => {
 
         <div className={s.body}>
           {resolvedStream === 'main' ? (
+            /*
+             * A feed of its own per tab, rather than one feed shown a different conversation.
+             *
+             * What it remembers between renders is about a particular chat and its geometry - where the
+             * reading was, how tall the feed stood, how many pages of earlier messages have gone in. Kept
+             * across a switch of tabs, those measurements described one conversation and were applied to
+             * another: a tab where earlier messages had been loaded made the next tab restore a position
+             * worked out from a chat it knew nothing about, and it opened neither at the end nor where it
+             * was left. Told apart by the tab's own identity, each starts clean and ends at the bottom.
+             */
             <Feed
+              key={active}
               items={panel.items}
               streamingText={panel.streamingText}
               streamingId={panel.streamingId}
@@ -2448,6 +2589,8 @@ export const App = () => {
               onPlanDecision={decidePlan}
               onDismissError={dismissError}
               onOpenLink={openLink}
+              onLoadEarlier={loadEarlier}
+              earlierPages={panel.earlierPages}
             />
           ) : (
             <AgentStreamView item={activeTask} />
@@ -2506,6 +2649,7 @@ export const App = () => {
             mode={mode}
             onOpenSelector={openSelector}
             onOpenThanks={openThanks}
+            onOpenFeedback={openFeedback}
             railContainer={railNode}
             fileDragOver={fileDragOver}
             onTokensChange={(tokens) => editDraft(active, { tokens })}
@@ -2543,6 +2687,7 @@ export const App = () => {
               mode={mode}
               onOpen={openSelector}
               onOpenThanks={openThanks}
+              onOpenFeedback={openFeedback}
             />
           )}
         </div>
@@ -2681,6 +2826,45 @@ export const App = () => {
             onPick={(id) => setComposerLayout(normalizeComposerLayout(id))}
           />
         ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'feedback' ? (
+          <Feedback
+            draft={feedback}
+            conversation={reportedSession()?.title ?? ''}
+            onChange={(change) => setFeedback((current) => ({ ...current, ...change }))}
+            onAttach={() => {
+              setFeedback((current) => ({ ...current, note: null }))
+              send({ type: 'feedbackAttach' })
+            }}
+            onDetach={(id) => send({ type: 'feedbackDetach', id })}
+            onPreview={() => openScreen('feedbackLog')}
+            onSend={() => {
+              // The same check the button obeys, once more before anything travels: the button can be
+              // reached by keyboard while it is disabled in some browsers, and this one is cheap.
+              if (feedbackProblem(feedback)) return
+
+              setFeedback((current) => ({ ...current, sending: true, message: null }))
+              send({
+                type: 'feedbackSend',
+                kind: feedback.kind,
+                sessionId: reportedSession()?.id ?? active,
+                text: feedback.text.trim(),
+                email: feedback.email.trim(),
+                logs: feedbackLogs(feedback),
+              })
+            }}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'feedbackLog' ? (
+          <FeedbackLog
+            text={feedback.report}
+            conversation={reportedSession()?.title ?? ''}
+            onCopy={() => {
+              if (feedback.report) send({ type: 'clipboardWrite', text: feedback.report, html: '' })
+            }}
+          />
+        ) : null}
       </SideMenu>
 
       {menu ? (
@@ -2703,8 +2887,9 @@ export const App = () => {
               const url = thanksUrl(id)
               if (url) {
                 send({ type: 'openExternal', url })
-                // The heart pressed is the one thing here the statistics count - and only the page sees it.
-                send({ type: 'stat', kind: 'thanks' })
+                // Which way was taken, not that the menu was opened: there are two ways to say thanks and
+                // the achievement has a line for each of them (see Achievements.kt, "thanks").
+                send({ type: 'stat', kind: 'thanks', way: id })
               }
             }
           }}
@@ -2805,6 +2990,11 @@ const sessionState = (panel: PanelState | undefined, active: boolean, cards: Car
   if (!active && last?.kind === 'error') return 'attention'
 
   if (panel.status === 'running') return 'running'
+
+  // The main turn can end while a skill's background subagent (launched outside the ordinary turn cycle,
+  // e.g. by /code-review) keeps going - streamStatus already knows to say "Waiting for N subagents" for the
+  // same reason. The dot has to agree, or it calls a conversation done while work is still visibly running.
+  if (panel.items.some((item) => item.kind === 'task' && item.pending)) return 'running'
 
   // We count as finished a conversation in which the agent brought a turn to its end at least once: a fork
   // marker by itself is not work yet.

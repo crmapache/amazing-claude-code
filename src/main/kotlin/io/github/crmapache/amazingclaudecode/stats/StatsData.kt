@@ -27,7 +27,11 @@ import kotlinx.serialization.json.put
  *
  * Every field grows or stays: a count, a sum, a high-water mark. That is what lets two records of the
  * same day be merged by taking the larger of each (see [StatsSnapshot.mergedWith]) when two IDEs turn
- * out to have been writing the same file - and what makes an achievement, once earned, stay earned.
+ * out to have been writing the same file.
+ *
+ * Two records of the same day in different projects are put together the other way - counts added, marks
+ * kept at the higher, minutes joined (see [foldedWith]) - and that is what the tab counts over: the day
+ * of a person rather than of a project.
  */
 internal class DayRecord {
 
@@ -40,7 +44,11 @@ internal class DayRecord {
     /** Messages a person sent - turns started, as opposed to finished. */
     var prompts = 0
 
-    /** Conversations opened: a new tab, a fork, a past conversation reopened. */
+    /**
+     * Conversations begun: a tab opened, a fork made, or a tab that stood there coming to life. Once a day
+     * each, however much moves through it - reopening a past conversation in a tab is that tab reading,
+     * not a conversation starting (see StatsCollector.countSession).
+     */
     var sessions = 0
 
     var forks = 0
@@ -111,8 +119,13 @@ internal class DayRecord {
     /** Selections carried into a message: a quote of the agent's words, a reference from the editor. */
     var quotes = 0
 
-    /** The heart at the end of the selectors' row, pressed. */
-    var thanks = 0
+    /**
+     * The ways of saying thanks that were used: "github" for the star, "rate" for the review.
+     *
+     * A set rather than a count, because there are two ways and doing one of them twice is thanking once
+     * (see Thanks.tsx for the two, and Achievements for the ladder of two lines they make).
+     */
+    val thanksWays = LinkedHashSet<String>()
 
     /** Past conversations reopened after a month or more. */
     var historian = 0
@@ -192,6 +205,8 @@ internal class DayRecord {
         merged.files += other.files
         merged.slash += slash
         merged.slash += other.slash
+        merged.thanksWays += thanksWays
+        merged.thanksWays += other.thanksWays
         merged.ranOutWindows += ranOutWindows
         merged.ranOutWindows += other.ranOutWindows
         // Counted off the windows themselves rather than by the larger of two counts: the count is the
@@ -209,9 +224,66 @@ internal class DayRecord {
         return merged
     }
 
-    /** Every count, sum and high-water mark, by the name it is written under. */
+    /**
+     * This day and the same day of another project, put together - one day of the machine rather than of
+     * a project.
+     *
+     * This is the other way of folding two records, and the opposite of [mergedWith] on purpose: there
+     * the two are copies of one day and the answer is the larger of each, here they are two different
+     * days' worth of work and the counts add up. What does not add up is the minutes: the panel cannot
+     * be open twice in the same minute, so they are joined as sets. Adding them is exactly what made an
+     * afternoon of two hours in two projects at once read as four (see [MinuteSet.union]).
+     *
+     * Two things are floors rather than answers, and both for the same reason - a day keeps the mark and
+     * not what stands behind it. The busiest hour's turns can only be the larger of two projects', never
+     * their sum; and the same holds for the longest conversation, which belongs to one project anyway.
+     */
+    fun foldedWith(other: DayRecord): DayRecord {
+        val folded = DayRecord()
+
+        folded.minutes = minutes.union(other.minutes)
+
+        for (field in SUM_INT_FIELDS) field.set(folded, field.get(this) + field.get(other))
+        for (field in MAX_INT_FIELDS) field.set(folded, maxOf(field.get(this), field.get(other)))
+        for (field in SUM_LONG_FIELDS) field.set(folded, field.get(this) + field.get(other))
+        for (field in MAX_LONG_FIELDS) field.set(folded, maxOf(field.get(this), field.get(other)))
+        folded.cost = cost + other.cost
+
+        folded.files += files
+        folded.files += other.files
+        folded.slash += slash
+        folded.slash += other.slash
+        folded.thanksWays += thanksWays
+        folded.thanksWays += other.thanksWays
+        folded.ranOutWindows += ranOutWindows
+        folded.ranOutWindows += other.ranOutWindows
+        // The five-hour window belongs to the account, not to a project: one window that ran out while
+        // three projects were working ran out once, and the set of windows is what says so.
+        folded.ranOutFiveHour = folded.ranOutWindows.size
+
+        for (name in tools.keys + other.tools.keys) {
+            folded.tools[name] = (tools[name] ?: 0) + (other.tools[name] ?: 0)
+        }
+        for (name in models.keys + other.models.keys) {
+            folded.models[name] = (models[name] ?: 0) + (other.models[name] ?: 0)
+        }
+
+        folded.updatedAt = maxOf(updatedAt, other.updatedAt)
+        return folded
+    }
+
+    /**
+     * Every count, sum and high-water mark, by the name it is written under - and which of the two kinds
+     * it is.
+     *
+     * The kinds matter when two records are put together. Two copies of the same day take the larger of
+     * everything ([mergedWith]); two projects' days add their counts and take the larger of their marks
+     * ([foldedWith]). Both walk these lists, so a field added to the class is either a count or a mark
+     * and is answered for in one place.
+     */
     companion object {
-        val INT_FIELDS: List<KMutableProperty1<DayRecord, Int>> = listOf(
+        /** Counts and sums: two projects' turns are two lots of turns. */
+        val SUM_INT_FIELDS: List<KMutableProperty1<DayRecord, Int>> = listOf(
             DayRecord::turns,
             DayRecord::prompts,
             DayRecord::sessions,
@@ -221,13 +293,10 @@ internal class DayRecord {
             DayRecord::latePrompts,
             DayRecord::quickTurns,
             DayRecord::longTurns,
-            DayRecord::maxTurnsInHour,
             DayRecord::edits,
             DayRecord::linesAdded,
             DayRecord::linesRemoved,
-            DayRecord::biggestEdit,
             DayRecord::singleLineEdits,
-            DayRecord::maxFilesInTurn,
             DayRecord::testTurns,
             DayRecord::permissionsAsked,
             DayRecord::permissionsAllowed,
@@ -237,10 +306,16 @@ internal class DayRecord {
             DayRecord::todosDone,
             DayRecord::attachments,
             DayRecord::quotes,
-            DayRecord::thanks,
             DayRecord::historian,
             DayRecord::watched,
             DayRecord::ranOutFiveHour,
+        )
+
+        /** High-water marks: the biggest edit of two days is the bigger of the two, not their sum. */
+        val MAX_INT_FIELDS: List<KMutableProperty1<DayRecord, Int>> = listOf(
+            DayRecord::maxTurnsInHour,
+            DayRecord::biggestEdit,
+            DayRecord::maxFilesInTurn,
             DayRecord::mcpConnected,
             DayRecord::plugins,
             DayRecord::longestSession,
@@ -249,14 +324,21 @@ internal class DayRecord {
             DayRecord::maxDepth,
         )
 
-        val LONG_FIELDS: List<KMutableProperty1<DayRecord, Long>> = listOf(
+        val INT_FIELDS: List<KMutableProperty1<DayRecord, Int>> = SUM_INT_FIELDS + MAX_INT_FIELDS
+
+        val SUM_LONG_FIELDS: List<KMutableProperty1<DayRecord, Long>> = listOf(
             DayRecord::turnMillis,
-            DayRecord::longestTurnMillis,
             DayRecord::tokensIn,
             DayRecord::tokensOut,
             DayRecord::tokensCacheRead,
             DayRecord::tokensCacheWrite,
         )
+
+        val MAX_LONG_FIELDS: List<KMutableProperty1<DayRecord, Long>> = listOf(
+            DayRecord::longestTurnMillis,
+        )
+
+        val LONG_FIELDS: List<KMutableProperty1<DayRecord, Long>> = SUM_LONG_FIELDS + MAX_LONG_FIELDS
     }
 }
 
@@ -283,11 +365,61 @@ internal class StatsSnapshot {
     /** Phones paired with this IDE, ever. Not about any one project. */
     var devicesPaired = 0
 
+    /**
+     * Which set of achievement lines the moments in [earned] were written against - see
+     * Achievements.RULES_VERSION. Zero in a file written before the lines had a version at all.
+     */
+    var rulesVersion = 0
+
     fun project(key: String, name: String): ProjectRecord {
         val record = projects.getOrPut(key) { ProjectRecord(name) }
         if (name.isNotBlank()) record.name = name
         return record
     }
+
+    /**
+     * Every project's days folded together by date - the machine's own days, which is what the tab counts.
+     *
+     * The statistics are about a person's day, not a project's: a day at work is a day at work whichever
+     * project it was spent in, and a figure that changes when another window is in front is not a figure
+     * about the person. Where the hours went by project is still shown - out of the minutes each project
+     * keeps (see StatsPayload), and that list is the one place the tab breaks the day up.
+     *
+     * Records of their own, never the book's own: a day only one project knows is folded with an empty one
+     * rather than handed over, so nothing that reads this can write into the book by accident.
+     *
+     * Worked out once and kept until the book changes (see [daysChanged]). Every fold builds a record
+     * field by field through reflection, so a year across a few projects is a thousand records and tens of
+     * thousands of property reads - and this used to run afresh on every pass: the achievements are
+     * re-read a couple of seconds after any change, the tab's payload asks for the same thing again right
+     * after, and all of it happens under the ledger's lock, which is the lock the thread reading the
+     * agent's output wants at that same moment.
+     */
+    fun daysTogether(): TreeMap<String, DayRecord> {
+        folded?.let { return it }
+
+        val out = TreeMap<String, DayRecord>()
+        for (project in projects.values) {
+            for ((day, record) in project.days) {
+                out[day] = out[day]?.foldedWith(record) ?: record.foldedWith(DayRecord())
+            }
+        }
+
+        folded = out
+        return out
+    }
+
+    /**
+     * Something in the book changed, so the folded days are no longer what it says.
+     *
+     * Called from the one door every change goes through (see StatsLedger.update). A day record handed out
+     * by [day] is written to directly afterwards, so there is no telling from here that it happened.
+     */
+    fun daysChanged() {
+        folded = null
+    }
+
+    private var folded: TreeMap<String, DayRecord>? = null
 
     /**
      * This and another copy of the same file, folded into one.
@@ -312,6 +444,7 @@ internal class StatsSnapshot {
             else -> minOf(since, other.since)
         }
         merged.devicesPaired = maxOf(devicesPaired, other.devicesPaired)
+        merged.rulesVersion = maxOf(rulesVersion, other.rulesVersion)
 
         for (key in projects.keys + other.projects.keys) {
             val mine = projects[key]
@@ -331,13 +464,30 @@ internal class StatsSnapshot {
         }
 
         for (id in earned.keys + other.earned.keys) {
-            val tiers = merged.earned.getOrPut(id) { TreeMap() }
-            for (source in listOfNotNull(earned[id], other.earned[id])) {
-                for ((tier, at) in source) {
+            val tiers = TreeMap<Int, Long>()
+            for ((source, version) in listOf(earned to rulesVersion, other.earned to other.rulesVersion)) {
+                /*
+                 * The half measured against older lines does not get to bring back what the other half has
+                 * already forgotten.
+                 *
+                 * The forgetting is a once-only thing at startup (see StatsLedger.recalibrate) and the file
+                 * is shared with every JetBrains IDE on the machine, so the one next door - still running
+                 * the plugin whose lines these were - writes them again the moment it saves. Merged in,
+                 * they would stand a fifth tier against a ladder that no longer ends there, and the version
+                 * on the merged whole is the newer of the two, so nothing would ever run the forgetting
+                 * again.
+                 *
+                 * Against the merged version rather than against the current rules: two halves equally old
+                 * agree with each other, and the book they make is forgotten in the ordinary way the next
+                 * time it is loaded.
+                 */
+                if (id in Achievements.forgottenSince(version) && version < merged.rulesVersion) continue
+                for ((tier, at) in source[id] ?: continue) {
                     val known = tiers[tier]
                     tiers[tier] = if (known == null) at else minOf(known, at)
                 }
             }
+            if (tiers.isNotEmpty()) merged.earned[id] = tiers
         }
 
         return merged
@@ -357,6 +507,7 @@ internal object StatsJson {
         put("version", VERSION)
         put("since", snapshot.since)
         put("devicesPaired", snapshot.devicesPaired)
+        put("rules", snapshot.rulesVersion)
         put(
             "projects",
             buildJsonObject {
@@ -402,6 +553,7 @@ internal object StatsJson {
         if (record.models.isNotEmpty()) put("models", counts(record.models))
         if (record.files.isNotEmpty()) put("files", strings(record.files))
         if (record.slash.isNotEmpty()) put("slash", strings(record.slash))
+        if (record.thanksWays.isNotEmpty()) put("thanksWays", strings(record.thanksWays))
         if (record.ranOutWindows.isNotEmpty()) put("ranOutWindows", strings(record.ranOutWindows))
         put("updatedAt", record.updatedAt)
     }
@@ -412,6 +564,7 @@ internal object StatsJson {
 
         snapshot.since = root["since"]?.jsonPrimitive?.longOrNull ?: 0L
         snapshot.devicesPaired = root["devicesPaired"]?.jsonPrimitive?.intOrNull ?: 0
+        snapshot.rulesVersion = root["rules"]?.jsonPrimitive?.intOrNull ?: 0
 
         val projects = root["projects"] as? JsonObject ?: JsonObject(emptyMap())
         for ((key, element) in projects) {
@@ -450,8 +603,14 @@ internal object StatsJson {
         record.cost = day["cost"]?.jsonPrimitive?.doubleOrNull ?: 0.0
         readCounts(day["tools"], record.tools)
         readCounts(day["models"], record.models)
+        // A book written before the CLI's own marks were told apart from models holds rows like
+        // "<synthetic>" (see StatsCollector.isRealModel). They are dropped as the file is read rather
+        // than once at startup: this file is shared with the other JetBrains IDEs on the machine, and one
+        // of them running an older plugin would write them again.
+        record.models.keys.removeAll { !StatsCollector.isRealModel(it) }
         readStrings(day["files"], record.files)
         readStrings(day["slash"], record.slash)
+        readStrings(day["thanksWays"], record.thanksWays)
         readStrings(day["ranOutWindows"], record.ranOutWindows)
         record.updatedAt = day["updatedAt"]?.jsonPrimitive?.longOrNull ?: 0L
         return record

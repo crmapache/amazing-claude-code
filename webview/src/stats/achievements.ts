@@ -18,9 +18,11 @@ export interface DressedAchievement {
   id: string
   name: string
   hint: string
-  /** 0 is locked; 1 to 5 the tier reached. */
+  /** 0 is locked; the tier reached otherwise, up to [steps]. */
   tier: number
-  /** "III", "V" - or "locked". */
+  /** How many lines this one has in all - as many pips as there are steps (see AchievementState.steps). */
+  steps: number
+  /** "III", "V" - or "locked". Empty for a ladder of one line, which has no tier worth naming. */
   tierMark: string
   earned: boolean
   /** How far along the next line the figure stands: 0 to 1. Full when there is no line left. */
@@ -30,6 +32,8 @@ export interface DressedAchievement {
   /** The raw figure and the next line, for whoever formats them differently. */
   rawValue: number
   target: number | undefined
+  /** The line the standing tier was earned for - what it was given for, rather than where the figure is now. */
+  line: number | undefined
   /** When each tier was reached, by tier. */
   earnedAt: Record<string, number>
 }
@@ -64,28 +68,46 @@ export const TIER_TEXT = [
 const clampTier = (tier: number): number => Math.max(0, Math.min(TIER_COUNT, Math.round(tier)))
 
 /**
- * How far the figure stands along the next line: from nothing to the line itself.
+ * Which of the five paints a step wears, given how many steps its achievement has.
  *
- * From nothing rather than from the line already crossed, which would read better on a ladder halfway
- * up - and is the one thing that cannot be drawn from here. A message carries the next threshold and no
- * other, and the thresholds themselves live on the plugin's side (see Achievements.kt), so the panel has
- * nowhere to look the previous one up. This used to be written as two branches that returned the same
- * expression, with a note beside the second describing the rule that is not there: anyone changing the
- * bar would have edited a branch that decides nothing and seen no difference at all.
+ * The paints run from the first tier's to the top one's, and a ladder shorter than five stretches across
+ * the same range rather than stopping in the middle of it: the last line of a ladder of two is the top of
+ * that ladder, and standing on it should look as done as standing on any other top. Used for the pips and
+ * the card's own paint, and for where a card sits in the tier spread - the three would otherwise disagree
+ * about the same card.
  */
-export const progressOf = (value: number, target: number | undefined): number => {
+export const paintOf = (tier: number, steps: number): number =>
+  tier <= 0 ? 0 : steps >= TIER_COUNT ? tier : Math.max(1, Math.min(TIER_COUNT, Math.round((tier / steps) * TIER_COUNT)))
+
+/**
+ * How far the figure stands between the line already crossed and the next one.
+ *
+ * From the line crossed rather than from nothing: on a ladder halfway up, a bar filled from zero is all
+ * but full at every tier and says nothing about the climb left. Both lines come from the plugin's side
+ * with the achievement (see Achievements.kt) - a message used to carry the next one only, which is why
+ * this counted from zero. Without a line under it - nothing earned yet - zero is the line.
+ */
+export const progressOf = (value: number, target: number | undefined, line: number | undefined = 0): number => {
   if (target === undefined || target <= 0) return 1
 
-  return Math.max(0, Math.min(1, value / target))
+  const from = line !== undefined && line > 0 && line < target ? line : 0
+
+  return Math.max(0, Math.min(1, (value - from) / (target - from)))
 }
 
 export const dress = (state: AchievementState): DressedAchievement | null => {
   const spec = ACHIEVEMENT_BY_ID[state.id]
   if (!spec) return null
 
-  const tier = clampTier(state.tier)
+  // How many lines this one has: what the IDE says, or five, which is what an older one meant by saying
+  // nothing. A milestone has one line whatever arrives - being a milestone is what makes it one.
+  const steps = spec.milestone
+    ? 1
+    : Math.max(1, Math.min(TIER_COUNT, Math.round(state.steps ?? spec.steps ?? TIER_COUNT)))
+  const tier = Math.min(clampTier(state.tier), steps)
   const earned = tier > 0
   const target = state.target === undefined || state.target <= 0 ? undefined : state.target
+  const line = state.line === undefined || state.line <= 0 ? undefined : state.line
 
   return {
     spec,
@@ -93,13 +115,16 @@ export const dress = (state: AchievementState): DressedAchievement | null => {
     name: spec.name,
     hint: spec.hint,
     tier,
-    // A milestone reached wears the top tier's mark like everything else; only its figure says "done".
-    tierMark: !earned ? 'locked' : (ROMAN[tier] ?? ''),
+    steps,
+    // A ladder of a single line wears no tier mark: "I of I" says nothing the full bar does not, and the
+    // figure below it says "done" once it is crossed.
+    tierMark: !earned ? 'locked' : steps === 1 ? '' : (ROMAN[tier] ?? ''),
     earned,
-    progress: progressOf(state.value, target),
+    progress: progressOf(state.value, target, line),
     value: achievementValue(spec, state.value, target),
     rawValue: state.value,
     target,
+    line,
     earnedAt: state.earned ?? {},
   }
 }
@@ -127,12 +152,14 @@ const locked = (spec: AchievementSpec): DressedAchievement => ({
   name: spec.name,
   hint: spec.hint,
   tier: 0,
+  steps: spec.milestone ? 1 : (spec.steps ?? TIER_COUNT),
   tierMark: 'locked',
   earned: false,
   progress: 0,
   value: '',
   rawValue: 0,
   target: undefined,
+  line: undefined,
   earnedAt: {},
 })
 
@@ -149,15 +176,23 @@ export const filterGroups = (groups: DressedGroup[], filter: AchievementFilter):
     .map((group) => ({
       ...group,
       items: group.items.filter((item) =>
-        filter === 'all' ? true : filter === 'earned' ? item.earned : item.rawValue > 0 && item.tier < TIER_COUNT,
+        filter === 'all' ? true : filter === 'earned' ? item.earned : item.rawValue > 0 && item.tier < item.steps,
       ),
     }))
     .filter((group) => group.items.length > 0)
 
 export interface AchievementSummary {
+  /** Achievements with at least one line crossed. */
   earned: number
+  /**
+   * Achievements with every line crossed - the count the screen leads with.
+   *
+   * "Earned" counts a card that has moved at all, which on a screen of ladders is nearly all of them
+   * within a month and says less every week; what is worth knowing is how many are finished.
+   */
+  completed: number
   total: number
-  /** Tiers reached, summed over every achievement, against five per achievement. */
+  /** Steps climbed, summed over every achievement, against however many each of them has. */
   tiers: number
   tiersTotal: number
   /** How many achievements stand on each tier: index 1 to 5; index 0 is the locked ones. */
@@ -168,17 +203,25 @@ export const summarize = (groups: DressedGroup[]): AchievementSummary => {
   const items = groups.flatMap((group) => group.items)
   const spread = Array.from({ length: TIER_COUNT + 1 }, () => 0)
   let tiers = 0
+  let tiersTotal = 0
 
   for (const item of items) {
-    spread[item.tier] = (spread[item.tier] ?? 0) + 1
+    // Where the card sits is where it looks: a ladder of two, finished, is a card in the top tier's paint
+    // and belongs in that column rather than in the second (see paintOf).
+    const column = paintOf(item.tier, item.steps)
+    spread[column] = (spread[column] ?? 0) + 1
+    // Steps rather than five apiece: a milestone is one of one and the ladder of thanks is two of two,
+    // and counting every card as five put steps into the total that nobody can climb.
     tiers += item.tier
+    tiersTotal += item.steps
   }
 
   return {
     earned: items.filter((item) => item.earned).length,
+    completed: items.filter((item) => item.tier >= item.steps).length,
     total: ACHIEVEMENT_COUNT,
     tiers,
-    tiersTotal: ACHIEVEMENT_COUNT * TIER_COUNT,
+    tiersTotal,
     spread,
   }
 }
@@ -188,7 +231,11 @@ export interface EarnedTier {
   item: DressedAchievement
   tier: number
   at: number
-  /** What it was earned for, in the achievement's words. */
+  /**
+   * What it was earned for, in the achievement's words - the line the tier stands on rather than the
+   * figure as it stands now. The two are not the same thing: a third tier earned at six hours read as
+   * "7h 23m" says nothing about what was crossed to earn it (see Achievements.Definition.lineOf).
+   */
   note: string
 }
 
@@ -206,7 +253,7 @@ export const recentlyEarned = (groups: DressedGroup[], limit = 4): EarnedTier[] 
       if (!Number.isFinite(tier) || tier < 1 || tier > TIER_COUNT) continue
       if (latest === null || at > latest.at || (at === latest.at && tier > latest.tier)) latest = { tier, at }
     }
-    if (latest) out.push({ item, tier: latest.tier, at: latest.at, note: item.spec.note(item.rawValue) })
+    if (latest) out.push({ item, tier: latest.tier, at: latest.at, note: item.spec.note(item.line ?? item.rawValue) })
   }
 
   return out.sort((a, b) => b.at - a.at || b.tier - a.tier).slice(0, limit)

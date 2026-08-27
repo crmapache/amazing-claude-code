@@ -18,6 +18,8 @@ export type MenuScreen =
   | 'remoteAbout'
   | 'defaultMode'
   | 'composerLayout'
+  | 'feedback'
+  | 'feedbackLog'
 
 /** The state of remote access as the root row shows it - the colour and the words come from the caller. */
 export interface RemoteSummary {
@@ -60,8 +62,16 @@ interface SideMenuProps {
   children: ReactNode
 }
 
-/** Where a step back leads from each screen. Only "what travels" goes anywhere but the root. */
-export const parentOf = (screen: MenuScreen): MenuScreen => (screen === 'remoteAbout' ? 'remote' : 'menu')
+/**
+ * Where a step back leads from each screen. Two of them stand one level deeper than the rest: "what
+ * travels" belongs to remote access, and the report's preview belongs to the feedback form it is about -
+ * coming back from either to the root list would lose the screen that was being filled in.
+ */
+export const parentOf = (screen: MenuScreen): MenuScreen => {
+  if (screen === 'remoteAbout') return 'remote'
+  if (screen === 'feedbackLog') return 'feedback'
+  return 'menu'
+}
 
 const TITLES: Record<MenuScreen, { title: string; hint: string }> = {
   menu: { title: 'MENU', hint: 'everything the panel keeps out of the way' },
@@ -73,6 +83,8 @@ const TITLES: Record<MenuScreen, { title: string; hint: string }> = {
   remoteAbout: { title: 'WHAT TRAVELS', hint: 'read this before you turn it on' },
   defaultMode: { title: 'DEFAULT MODE', hint: 'what new tabs start in' },
   composerLayout: { title: 'COMPOSER LAYOUT', hint: 'where the input sits' },
+  feedback: { title: 'FEEDBACK', hint: 'a bug, an idea, or just hello' },
+  feedbackLog: { title: 'WHAT GETS ATTACHED', hint: 'the whole report, before it goes' },
 }
 
 const TONE_CLASS: Record<RemoteSummary['tone'], string> = {
@@ -156,6 +168,11 @@ const ICONS: Record<string, ReactNode> = {
     <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
       <rect x="2.4" y="3.2" width="11.2" height="9.6" rx="1.4" />
       <path d="M2.4 10h11.2" />
+    </svg>
+  ),
+  feedback: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
+      <path d="M3.2 3.2h9.6a1.6 1.6 0 0 1 1.6 1.6v4.8a1.6 1.6 0 0 1-1.6 1.6H6.6l-2.7 2.2v-2.2h-.7A1.6 1.6 0 0 1 1.6 9.6V4.8a1.6 1.6 0 0 1 1.6-1.6z" />
     </svg>
   ),
 }
@@ -355,6 +372,20 @@ export const SideMenu = ({ open, screen, summary, onPick, onOpenStatistics, onBa
                 sub="Where the input sits"
                 value={summary.composerLayout}
                 onClick={() => onPick('composerLayout')}
+              />
+            </div>
+
+            {/* The plugin itself, rather than the work done in it - which is why it stands apart from the
+                three groups above and right against the version in the footer. */}
+            <div className={s.group}>THE PLUGIN</div>
+            <div className={s.rows}>
+              <Row
+                icon="feedback"
+                iconClass={s.rowIconFeedback}
+                label="Send feedback"
+                sub="A bug, an idea, or just hello"
+                value=""
+                onClick={() => onPick('feedback')}
               />
             </div>
 

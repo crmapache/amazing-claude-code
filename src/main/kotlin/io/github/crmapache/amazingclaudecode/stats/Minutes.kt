@@ -57,9 +57,12 @@ internal class MinuteSet private constructor(private val bits: BitSet) {
     /**
      * Every minute either of the two was active in.
      *
-     * The one figure in a day that two IDEs can genuinely add up without counting anything twice: a
-     * minute is active or it is not, and a minute both of them marked is still one minute (see
-     * StatsSnapshot.mergedWith, where the rest of the day has to make do with the larger of two).
+     * The one figure in a day that two records can genuinely be put together on without counting anything
+     * twice: a minute is active or it is not, and a minute both of them marked is still one minute. Which
+     * is why both ways of folding a day go through here - two IDEs' copies of it (StatsSnapshot.mergedWith,
+     * where the rest of the day has to make do with the larger of two) and two projects' days of it
+     * (DayRecord.foldedWith, where the rest of it adds up). Adding the minutes up instead is what made an
+     * hour with two agents running read as two hours.
      */
     fun union(other: MinuteSet): MinuteSet {
         val joined = bits.clone() as BitSet

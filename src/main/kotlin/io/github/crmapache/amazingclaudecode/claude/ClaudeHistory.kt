@@ -59,25 +59,48 @@ internal object ClaudeHistory {
             .firstOrNull { it.isFile }
 
     /**
-     * The conversation's lines the panel knows how to draw - messages and replies - handed over one at a
-     * time as they are read.
+     * The end of a conversation, as the panel opens it from the history - the same lines [page] hands
+     * over, with the budget a tab at the desk can take rather than a phone's.
      *
-     * A line at a time rather than a list of them all, because a long conversation's file runs to tens of
-     * megabytes: read whole it was three lists of it in memory at once (the file, the lines kept, the
-     * lines normalized) for a tab that is merely being opened. [onLine] is called in the file's own
-     * order, and the caller is free to treat the moment it returns as "the replay is over" - that is what
-     * closes the cards left unfinished inside it (see ClaudePanel.resumeConversation).
+     * The whole transcript used to travel here instead, line by line, and that is what made opening an
+     * old conversation from the history come up empty: a working day's file is tens of megabytes, and it
+     * left the plugin as a few dozen batches of about a megabyte each, all of them within a millisecond
+     * of one another. A batch that size does not fit into a single trip into the page, so each was cut
+     * into pieces and glued back together there - and a piece that failed to arrive took its whole batch
+     * of two hundred messages with it, silently, JSON.parse choking on the join (see WebviewHost). At the
+     * desk on macOS it went through; on Windows, whose channel into the page is narrower, the feed came
+     * up empty while the list of conversations beside it was perfectly fine.
      *
-     * A file that breaks off mid-read leaves what was already handed over in the feed rather than
-     * throwing the conversation away whole. That is the better of the two: the agent remembers the whole
-     * talk either way, and a tab showing most of it beats a tab showing none of it.
+     * So the tab is handed the end of the conversation and asks for the rest itself, page by page - the
+     * route the phone has taken all along (see ProjectCatalog.sendHistoryPage). The agent's own memory
+     * has nothing to do with this: it is resumed from its transcript whole either way.
      */
-    fun replay(workingDirectory: String?, id: String, onLine: (String) -> Unit) {
-        val file = transcriptFile(workingDirectory, id) ?: return
+    fun opening(workingDirectory: String?, id: String): Page =
+        page(workingDirectory, id, before = null, pageSize = OPENING_PAGE_SIZE, maxChars = OPENING_PAGE_CHARS)
 
-        runCatching { file.useLines { lines -> replayable(lines).forEach(onLine) } }
-            .onFailure { thisLogger().warn("Failed to replay conversation $id", it) }
-    }
+    /**
+     * A page further back than [before], sized for whoever asked.
+     *
+     * [local] means the IDE's own panel: its channel into the page is ours to manage, while a phone's
+     * page has to survive a relay frame capped at 256 KB, and a frame over the cap is dropped whole and
+     * in silence (see [MAX_PAGE_CHARS]). One page for both would have to be the smaller of the two, and
+     * that turns reading back through a long conversation at the desk into a row of taps.
+     */
+    fun earlier(workingDirectory: String?, id: String, before: String?, local: Boolean): Page =
+        if (local) {
+            page(workingDirectory, id, before, pageSize = OPENING_PAGE_SIZE, maxChars = OPENING_PAGE_CHARS)
+        } else {
+            page(workingDirectory, id, before)
+        }
+
+    /** How much of a conversation a tab opens with - see [opening]. */
+    internal const val OPENING_PAGE_SIZE = 200
+
+    /**
+     * And its budget in characters. Four times a phone's page: nothing here has to survive a relay's
+     * frame, and a conversation of ordinary length is then on screen whole, without a single tap.
+     */
+    internal const val OPENING_PAGE_CHARS = 512 * 1024
 
     /**
      * Which of the conversation's lines the feed can draw, and in the shape it expects them - apart from
@@ -190,18 +213,70 @@ internal object ClaudeHistory {
      * page: the caller asked for "more before this", and the safer answer to "I don't know where that is"
      * is the file's own end, not nothing.
      */
-    fun page(workingDirectory: String?, id: String, before: String?, pageSize: Int = 60): Page {
+    private fun page(
+        workingDirectory: String?,
+        id: String,
+        before: String?,
+        pageSize: Int = 60,
+        maxChars: Int = MAX_PAGE_CHARS,
+    ): Page {
         val file = transcriptFile(workingDirectory, id) ?: return Page(emptyList(), null)
 
         // Shortened exactly as the live journal shortens what goes through it (see JournalTrim): a single
         // tool result can weigh a megabyte on disk, and this page is on its way to a phone, where a
         // message over the size limit is not shortened but dropped whole and in silence.
-        val all = runCatching { file.useLines { lines -> replayable(lines).map(JournalTrim::trim).toList() } }
+        val window = runCatching { file.useLines { lines -> windowOf(replayable(lines).map(JournalTrim::trim), before, pageSize) } }
             .onFailure { thisLogger().warn("Failed to page conversation $id", it) }
-            .getOrDefault(emptyList())
+            .getOrDefault(Window(emptyList(), moreAbove = false))
 
-        return pageOf(all, before, pageSize)
+        // The boundary has already done its work inside the window, so the slicing is asked for the
+        // window's own end rather than for it a second time.
+        return pageOf(window.lines, before = null, pageSize = pageSize, maxChars = maxChars, moreAbove = window.moreAbove)
     }
+
+    /** The stretch of a transcript one page can be cut out of - see [windowOf]. */
+    internal data class Window(val lines: List<String>, val moreAbove: Boolean)
+
+    /**
+     * The lines a page may come out of, and whether the conversation goes on above them.
+     *
+     * Read in one pass with only a page's worth of lines held at a time. A transcript of a working day
+     * is tens of megabytes, and it used to be turned into a list whole - three copies of it in memory
+     * (the file, the lines kept, the lines shortened) for the sake of the forty messages at its end. It
+     * is the end that is wanted here, always: a page is asked for either from the conversation's tail or
+     * from a boundary somewhere above it, and in both cases everything before the boundary is read only
+     * to be thrown away.
+     *
+     * The window is a few lines longer than a page on purpose: the slicing may have to step further back
+     * to begin on a line the next request can name (see [pageOf]), and a window cut exactly to size would
+     * leave it nowhere to step.
+     *
+     * A window that had to drop lines starts on a line with a uuid of its own - that is what the cursor
+     * out of this page is built from, and without one the rest of the conversation above would become
+     * unreachable.
+     */
+    internal fun windowOf(lines: Sequence<String>, before: String?, pageSize: Int): Window {
+        val limit = pageSize + WINDOW_SLACK
+        val kept = ArrayDeque<String>()
+        var dropped = false
+
+        for (line in lines) {
+            if (before != null && uuidOf(line) == before) break
+
+            kept.addLast(line)
+            while (kept.size > limit) {
+                kept.removeFirst()
+                dropped = true
+            }
+        }
+
+        while (dropped && kept.isNotEmpty() && uuidOf(kept.first()) == null) kept.removeFirst()
+
+        return Window(kept.toList(), dropped)
+    }
+
+    /** How much room past a page the window leaves for the slicing to step back into. */
+    private const val WINDOW_SLACK = 8
 
     /**
      * The slicing itself, apart from the disk - so a test can check it without a transcript file.
@@ -217,7 +292,13 @@ internal object ClaudeHistory {
      * empty because its first message did not fit would leave the cursor where it was and the button
      * dead - which is the very thing this exists to stop.
      */
-    internal fun pageOf(all: List<String>, before: String?, pageSize: Int, maxChars: Int = MAX_PAGE_CHARS): Page {
+    internal fun pageOf(
+        all: List<String>,
+        before: String?,
+        pageSize: Int,
+        maxChars: Int = MAX_PAGE_CHARS,
+        moreAbove: Boolean = false,
+    ): Page {
         val boundary = before?.let { uuid -> all.indexOfFirst { it.contains("\"uuid\":\"$uuid\"") } }
         val end = if (boundary != null && boundary >= 0) boundary else all.size
         val floor = (end - pageSize).coerceAtLeast(0)
@@ -242,7 +323,10 @@ internal object ClaudeHistory {
 
         val slice = all.subList(start, end)
 
-        return Page(slice, if (start > 0) uuidOf(slice.first()) else null)
+        // [moreAbove] says the list itself begins mid-conversation (see windowOf), so a page reaching its
+        // first line is not the conversation's beginning: without this the button to load more would
+        // disappear on the very first page, and everything above it with the button.
+        return Page(slice, if (start > 0 || moreAbove) slice.firstOrNull()?.let(::uuidOf) else null)
     }
 
     /**

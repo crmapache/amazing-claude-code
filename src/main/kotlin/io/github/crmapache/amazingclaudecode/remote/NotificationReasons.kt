@@ -11,10 +11,12 @@ import io.github.crmapache.amazingclaudecode.claude.SessionSnapshot
  * no feed - it has a journal and a snapshot - and gaining one would mean carrying sixteen hundred lines
  * of TypeScript into Kotlin.
  *
- * So the question is answered from what this side does have. All six occasions turn out to be visible
- * without a feed: three are simply "is the conversation stopped waiting for a person", and the other
- * three are recognisable in the raw stream. The one thing that must not drift is the order of
- * importance, which is why it is stated here as a list and checked against the panel's copy by a test.
+ * So the question is answered from what this side does have. Six of the seven occasions turn out to be
+ * visible without a feed: three are simply "is the conversation stopped waiting for a person", and the
+ * other three are recognisable in the raw stream. The seventh - extra usage beginning - is not a
+ * message at all but a change of state, and is announced by the side that keeps that state (see
+ * [EXTRA_USAGE]). The one thing that must not drift is the order of importance, which is why it is
+ * stated here as a list and checked against the panel's copy by a test.
  *
  * The decision belongs on this side rather than the phone's because the phone is asleep - that is the
  * entire point of a notification - and because the text is sealed here (see phase 5 in the plan): a
@@ -28,7 +30,18 @@ internal object NotificationReasons {
      * When several land in one moment - a turn that ends with an error, say - the more important one
      * speaks and the other stays quiet. Two overlaid signals say less than one.
      */
-    val PRIORITY = listOf("trouble", "rateLimit", "permission", "question", "plan", "turnFinished")
+    val PRIORITY = listOf("trouble", "rateLimit", "extraUsage", "permission", "question", "plan", "turnFinished")
+
+    /**
+     * The one occasion that is not read off a message here.
+     *
+     * Extra usage starting is a fact about the account rather than about a conversation, and the side
+     * that already knows the moment it begins is the one that keeps the usage rings: the same event
+     * repeats on every turn while the state holds, so "it has just begun" exists only against a
+     * remembered previous state (see ProjectUsage.noteRateLimit). It is named here because the list
+     * above is what the phone's importance order is, and the name has to be the panel's own.
+     */
+    const val EXTRA_USAGE = "extraUsage"
 
     /**
      * By default everything calls except the end of a turn.
@@ -37,7 +50,7 @@ internal object NotificationReasons {
      * one of them is a phone with notifications switched off by the end of the week - including the
      * ones that mattered.
      */
-    val DEFAULT_ON = setOf("trouble", "rateLimit", "permission", "question", "plan")
+    val DEFAULT_ON = setOf("trouble", "rateLimit", EXTRA_USAGE, "permission", "question", "plan")
 
     /**
      * A limit refusal recognised by its wording.
@@ -78,8 +91,10 @@ internal object NotificationReasons {
         if (after.pendingPlans.size > before.pendingPlans.size) return "plan"
 
         // A limit signal, and only when it means the work has genuinely stopped: the same event arrives
-        // when a used-up window is being paid for past the plan and nothing has halted at all, and
-        // waking someone for that is worse than silence (see ClaudeRateLimit).
+        // when a used-up window is being paid for past the plan and nothing has halted at all (see
+        // ClaudeRateLimit). That case is worth a word of its own rather than this one, and it is said
+        // elsewhere - here it would be said again on every turn while the state holds (see
+        // [EXTRA_USAGE]).
         if (message.contains("\"type\":\"agent\"") && ClaudeRateLimit.of(message)?.stopped == true) {
             return "rateLimit"
         }
@@ -112,6 +127,7 @@ internal object NotificationReasons {
         "question" -> "Claude is asking you something"
         "plan" -> "A plan is ready for you"
         "rateLimit" -> "You have hit a limit"
+        EXTRA_USAGE -> "The plan is used up - the work is now billed"
         "trouble" -> "Something broke in $project"
         else -> "The turn is finished"
     }

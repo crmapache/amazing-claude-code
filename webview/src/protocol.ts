@@ -174,7 +174,14 @@ export interface QueuedMessage {
  * An occasion to call the person with a sound. The shell knows exactly these names: each has a file of
  * its own there (see AlertSounds.kt).
  */
-export type SoundId = 'turnFinished' | 'permission' | 'plan' | 'question' | 'rateLimit' | 'trouble'
+export type SoundId =
+  | 'turnFinished'
+  | 'permission'
+  | 'plan'
+  | 'question'
+  | 'rateLimit'
+  | 'extraUsage'
+  | 'trouble'
 
 export interface SoundSettings {
   /**
@@ -395,7 +402,19 @@ type ShellMessageBody =
    * panel needs this to close the work the replay left unfinished: there is nobody left to wait for its
    * result from (see build.ts).
    */
-  | { type: 'replayFinished'; sessionId: string }
+  | {
+      type: 'replayFinished'
+      sessionId: string
+      /**
+       * The boundary of what was replayed: the identifier of its topmost message, when the conversation
+       * goes on above it. A tab is opened with the end of a conversation rather than the whole of it (see
+       * ClaudeHistory.opening), so this is both the answer to "is there more above" - the mark over the
+       * feed is drawn by it - and the `before` of the next historyPage request.
+       *
+       * Absent means the beginning is on screen: there is nothing further back to ask for.
+       */
+      cursor?: string
+    }
   /** The answer to a request to pick a file, a folder or an image through the IDE's dialog. */
   | { type: 'picked'; kind: 'file' | 'dir' | 'img'; value: string }
   /**
@@ -536,16 +555,35 @@ type ShellMessageBody =
    */
   | { type: 'typography'; monoFamily: string; uiFamily: string; lineHeight: number }
   /**
-   * The statistics tab's figures - the answer to the `statistics` request. Every project's minutes by
-   * day, this project's days in full, and the achievements as they stand: the range shown (a week, a
+   * The statistics tab's figures - the answer to the `statistics` request. The machine's days in full,
+   * every project's minutes by day, and the achievements as they stand: the range shown (a week, a
    * month, all time) is chosen here, out of the days, rather than asked for (see stats/compute.ts).
    */
   | ({ type: 'statistics' } & StatisticsData)
+  /**
+   * The feedback screen's own state: the address a person left last time, and the files they have picked
+   * for this one. The files are named by an id rather than by a path - the path stays in the IDE (see
+   * FeedbackAttachments on the plugin's side), so the panel cannot name a file the person did not pick,
+   * and a path cannot leak out of a screen that sends things to a stranger's server.
+   */
+  | { type: 'feedbackState'; email: string; attachments: FeedbackAttachment[]; note?: string }
+  /**
+   * The debug report, as text, in answer to `feedbackReport`. This is the whole of what the "attach
+   * debug logs" switch attaches - what is shown here and what is sent are the same string, which is the
+   * only way "nothing private travels" can be checked rather than believed.
+   */
+  | { type: 'feedbackLog'; text: string }
+  /**
+   * How the sending went. `error` is a sentence for a person, not a status code; `note` is what went with
+   * it but should not have gone silently - a file that grew past the limit between being picked and being
+   * sent, which is precisely the file a bug report is usually about.
+   */
+  | { type: 'feedbackSent'; ok: boolean; error?: string; note?: string }
 
 /**
- * One day of one project, as the IDE kept it (see DayRecord on the plugin's side). Counts, sums and
- * high-water marks only: a figure absent from the message is a zero, which is why almost all of them
- * are optional.
+ * One day of work, as the IDE kept it (see DayRecord on the plugin's side) - every project's day of that
+ * date folded into one. Counts, sums and high-water marks only: a figure absent from the message is a
+ * zero, which is why almost all of them are optional.
  */
 export interface StatisticsDay {
   /** "2026-08-26" - the calendar day in the IDE's own time zone. */
@@ -603,12 +641,25 @@ export interface StatisticsDay {
 /** One achievement as the IDE evaluated it - the words and the paint for it live in stats/catalogue.ts. */
 export interface AchievementState {
   id: string
-  /** 0 is locked; 1 to 5 the tier reached. */
+  /** 0 is locked; the tier reached otherwise - up to [steps]. */
   tier: number
+  /**
+   * How many lines this achievement has in all: the card draws a pip for each of them.
+   *
+   * Five for most, and the ones that differ differ for a reason - a milestone has a single line to cross,
+   * and there are exactly two ways to say thanks in this plugin. Absent from an older IDE, and five is
+   * what it meant then.
+   */
+  steps?: number
   /** The figure behind it, in the achievement's own unit. */
   value: number
   /** The next line to cross, absent when the top tier is reached. */
   target?: number
+  /**
+   * The line the standing tier was earned for - absent while nothing is earned. What "earned lately"
+   * says a tier was given for, and where the progress bar starts filling from (see Achievements.kt).
+   */
+  line?: number
   /** When each tier was reached, by tier number - the source of "earned lately". */
   earned: Record<string, number>
 }
@@ -626,7 +677,13 @@ export interface StatisticsData {
   project: { key: string; name: string }
   /** Every project the ledger knows, this one included: its name and its minutes by day. */
   projects: { key: string; name: string; minutes: Record<string, number> }[]
-  /** This project's days, in full. */
+  /**
+   * The days, in full, with every project's own day of that date folded into one.
+   *
+   * The minutes are joined rather than added: two projects working through the same minute spent one
+   * minute of a person's life, not two. So the projects above can add up to more than a day here holds,
+   * and that is the truth about a day with two agents running - not a figure that disagrees with itself.
+   */
   days: StatisticsDay[]
   achievements: AchievementState[]
 }
@@ -873,6 +930,15 @@ export type WebviewMessage =
    */
   | { type: 'clipboardRead'; id: string }
   | { type: 'clipboardWrite'; text: string; html: string }
+  /**
+   * A batch of messages did not reach the page whole - the pieces it was cut into arrived out of order,
+   * or the join of them stopped being JSON (see the bridge in WebviewHost).
+   *
+   * Sent by the bridge itself rather than by the interface, and only so that the loss leaves a trace: the
+   * messages are already gone, and the IDE writes the fact into its diagnostics buffer. Before this a
+   * whole feed could fail to draw itself with nothing anywhere to say why.
+   */
+  | { type: 'channelLoss'; reason: 'order' | 'parse'; expected: number; got: number }
   | { type: 'history' }
   /** A page further back than the journal's own catch-up reaches - see ShellMessageBody's historyPage. */
   | { type: 'historyPage'; sessionId: string; before?: string }
@@ -930,7 +996,50 @@ export type WebviewMessage =
    */
   | { type: 'stat'; kind: 'activity'; sessionId?: string }
   | { type: 'stat'; kind: 'prompt'; attachments: number; quotes: number }
-  | { type: 'stat'; kind: 'thanks' }
+  /** Which way of saying thanks was taken: the star or the review - see THANKS_LINKS. */
+  | { type: 'stat'; kind: 'thanks'; way: string }
+  /**
+   * Feedback: a message to the plugin's author, with files and a debug report beside it.
+   *
+   * All of it is handled by the panel's own window rather than by the conversation's commands (see
+   * ClaudePanel on the plugin's side): it belongs to no conversation, and a message that makes the IDE
+   * read files off the disk and post them to a server is exactly the kind a remote client must never be
+   * able to send. It is refused for them twice over - by the list in RemoteCommands, and by never
+   * reaching the place that handles it.
+   */
+  | { type: 'feedbackOpen' }
+  /**
+   * Build the debug report and answer with `feedbackLog` - asked for when the preview is opened. The
+   * conversation is named because the report describes one: the tab being looked at is the one the
+   * complaint is about, and the IDE has several open.
+   */
+  | { type: 'feedbackReport'; sessionId: string }
+  /** Open the IDE's file dialog and add whatever is chosen; answered with a fresh `feedbackState`. */
+  | { type: 'feedbackAttach' }
+  | { type: 'feedbackDetach'; id: string }
+  | {
+      type: 'feedbackSend'
+      kind: FeedbackKind
+      sessionId: string
+      text: string
+      /** May be empty: an answer is offered, not required. */
+      email: string
+      /** Whether the report goes with it. The panel sends the flag; the text itself is built here. */
+      logs: boolean
+    }
+
+/** What a piece of feedback is about. The words on the screen differ; these are what travel. */
+export type FeedbackKind = 'bug' | 'idea' | 'hello'
+
+/**
+ * A file picked for a piece of feedback, as the panel is allowed to know it: enough to draw a row and
+ * to take it back off the list, and nothing that says where on the disk it came from.
+ */
+export interface FeedbackAttachment {
+  id: string
+  name: string
+  bytes: number
+}
 
 export type AgentStatus = 'idle' | 'running'
 

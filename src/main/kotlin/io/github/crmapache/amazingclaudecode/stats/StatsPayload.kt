@@ -10,13 +10,19 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
 /**
- * What the statistics tab is handed: this project's days in full, every project's minutes by day, and
- * the achievements as they stand.
+ * What the statistics tab is handed: the machine's days in full, every project's minutes by day, and the
+ * achievements as they stand.
+ *
+ * The days travel folded together rather than one project at a time (see StatsSnapshot.daysTogether).
+ * The tab is about a person's work, and the same person's hour does not become two hours because two
+ * windows were open - which is what "this project's days, and everybody else's minutes underneath" made
+ * of it: the big figure was one project's while the line under it added the others up, and the two
+ * disagreed about the same afternoon. The one place the day is still broken up by project is the list of
+ * where the hours went, and its minutes are what the projects carry here.
  *
  * The interface does the arithmetic of a range - the last week, the last month, all time - out of the
- * days themselves, so switching the range never comes back here. Only this project's days travel whole:
- * the other projects are there to be compared against, and for that their minutes are enough. Nothing
- * here names a path: a project is its name and an opaque key (see StatsCollector.keyOf).
+ * days themselves, so switching the range never comes back here. Nothing here names a path: a project is
+ * its name and an opaque key (see StatsCollector.keyOf).
  */
 internal object StatsPayload {
 
@@ -64,8 +70,7 @@ internal object StatsPayload {
                 }
 
                 putJsonArray("days") {
-                    val project = snapshot.projects[projectKey]
-                    for ((day, record) in project?.days ?: emptyMap()) {
+                    for ((day, record) in snapshot.daysTogether()) {
                         addJsonObject {
                             put("date", day)
                             put("minutes", record.minutes.count())
@@ -95,8 +100,12 @@ internal object StatsPayload {
                         addJsonObject {
                             put("id", state.id)
                             put("tier", state.tier)
+                            // How many lines this one has in all: the card draws a pip for each of them,
+                            // and most but not all of them have five (see Achievements.Definition.steps).
+                            put("steps", state.steps)
                             put("value", state.value)
                             state.target?.let { put("target", it) }
+                            state.line?.let { put("line", it) }
                             putJsonObject("earned") {
                                 for ((tier, at) in ledger.earnedAt(snapshot, state.id)) put(tier.toString(), at)
                             }

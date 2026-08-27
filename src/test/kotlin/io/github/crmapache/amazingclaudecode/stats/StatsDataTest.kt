@@ -154,6 +154,104 @@ class StatsDataTest {
     }
 
     @Test
+    fun `two projects of one day add their counts and join their minutes`() {
+        val one = DayRecord().apply {
+            minutes.mark(600)
+            minutes.mark(601)
+            turns = 6
+            prompts = 2
+            sessions = 1
+            turnMillis = 90_000
+            longestTurnMillis = 60_000
+            biggestEdit = 12
+            maxTurnsInHour = 6
+            longestSession = 40
+            cost = 1.5
+            tools["Read"] = 30
+            models["Opus"] = 6
+            files.add("aaa")
+            slash.add("compact")
+            ranOutWindows.add("five_hour:1")
+            ranOutFiveHour = 1
+            updatedAt = 100
+        }
+        val other = DayRecord().apply {
+            minutes.mark(601)
+            minutes.mark(602)
+            turns = 8
+            prompts = 11
+            sessions = 4
+            turnMillis = 30_000
+            longestTurnMillis = 20_000
+            biggestEdit = 90
+            maxTurnsInHour = 4
+            longestSession = 251
+            cost = 0.25
+            tools["Read"] = 1
+            tools["Bash"] = 7
+            models["Sonnet"] = 8
+            files.add("bbb")
+            slash.add("model")
+            // The same five-hour window: the limit belongs to the account, not to either project.
+            ranOutWindows.add("five_hour:1")
+            ranOutFiveHour = 1
+            updatedAt = 900
+        }
+
+        val folded = one.foldedWith(other)
+
+        // Three minutes, not four: the minute both projects worked through was one minute of a life.
+        assertEquals(3, folded.minutes.count())
+        assertEquals(14, folded.turns)
+        assertEquals(13, folded.prompts)
+        assertEquals(5, folded.sessions)
+        assertEquals(120_000, folded.turnMillis)
+        assertEquals(1.75, folded.cost)
+        assertEquals(31, folded.tools["Read"])
+        assertEquals(7, folded.tools["Bash"])
+        assertEquals(6, folded.models["Opus"])
+        assertEquals(8, folded.models["Sonnet"])
+        assertEquals(setOf("aaa", "bbb"), folded.files)
+        assertEquals(setOf("compact", "model"), folded.slash)
+        // The marks stand at the higher of the two rather than adding up.
+        assertEquals(60_000, folded.longestTurnMillis)
+        assertEquals(90, folded.biggestEdit)
+        assertEquals(6, folded.maxTurnsInHour)
+        assertEquals(251, folded.longestSession)
+        assertEquals(1, folded.ranOutFiveHour)
+        assertEquals(900, folded.updatedAt)
+    }
+
+    @Test
+    fun `the days of every project come back as the days of the machine`() {
+        val book = snapshot {
+            project("p-1", "one").days["2026-08-26"] = DayRecord().apply {
+                minutes.mark(600)
+                minutes.mark(601)
+                turns = 3
+            }
+            project("p-2", "two").days["2026-08-26"] = DayRecord().apply {
+                minutes.mark(601)
+                turns = 5
+            }
+            project("p-2", "two").days["2026-08-25"] = DayRecord().apply {
+                minutes.mark(60)
+                turns = 1
+            }
+        }
+
+        val together = book.daysTogether()
+
+        assertEquals(listOf("2026-08-25", "2026-08-26"), together.keys.toList())
+        assertEquals(2, together["2026-08-26"]!!.minutes.count())
+        assertEquals(8, together["2026-08-26"]!!.turns)
+        assertEquals(1, together["2026-08-25"]!!.turns)
+        // What comes back is a copy: the book's own record is not handed to whoever counts over it.
+        together["2026-08-25"]!!.turns = 99
+        assertEquals(1, book.projects["p-2"]!!.days["2026-08-25"]!!.turns)
+    }
+
+    @Test
     fun `a tier is earned at the earlier of two moments`() {
         val mine = snapshot { earned["reader"] = TreeMap(mapOf(1 to 500L, 2 to 900L)) }
         val theirs = snapshot { earned["reader"] = TreeMap(mapOf(1 to 300L, 3 to 1200L)) }
@@ -167,5 +265,43 @@ class StatsDataTest {
     fun `a since of zero means never, not the beginning of time`() {
         assertEquals(700, snapshot { since = 0 }.mergedWith(snapshot { since = 700 }).since)
         assertEquals(700, snapshot { since = 700 }.mergedWith(snapshot { since = 0 }).since)
+    }
+
+    @Test
+    fun `a book written before the CLI's marks were known loses them as it is read`() {
+        val original = snapshot {
+            val day = project("p-1", "amazing").days.getOrPut("2026-08-26") { DayRecord() }
+            day.models["Opus"] = 9
+            day.models["<synthetic>"] = 2
+        }
+
+        val decoded = StatsJson.decode(StatsJson.encode(original))
+        assertNotNull(decoded)
+        val day = decoded.projects["p-1"]?.days?.get("2026-08-26")
+        assertNotNull(day)
+        assertEquals(9, day.models["Opus"])
+        assertEquals(setOf("Opus"), day.models.keys)
+    }
+
+    @Test
+    fun `a book measured against older lines does not bring its forgotten tiers back`() {
+        // What the newest version of the rules moved, and something it did not touch.
+        val since = Achievements.RULES_VERSION - 1
+        val moved = Achievements.forgottenSince(since).first()
+        val untouched = Achievements.IDS.first { it !in Achievements.forgottenSince(since) }
+
+        val mine = snapshot { rulesVersion = Achievements.RULES_VERSION }
+        // The IDE next door, still on the plugin whose lines these were, saving what it has.
+        val theirs = snapshot {
+            rulesVersion = since
+            earned[moved] = TreeMap(mapOf(5 to 100L))
+            earned[untouched] = TreeMap(mapOf(2 to 200L))
+        }
+
+        val merged = mine.mergedWith(theirs)
+
+        assertNull(merged.earned[moved])
+        assertEquals<Map<Int, Long>?>(mapOf(2 to 200L), merged.earned[untouched])
+        assertEquals(Achievements.RULES_VERSION, merged.rulesVersion)
     }
 }

@@ -1206,6 +1206,86 @@
   height: 13px;
 }
 
+/* The pair at the far end of the status row - the bubble and the heart. Their own spacing, taken from the
+   selectors opposite them (.selectors), rather than the row's wide one: two icon buttons ten pixels apart
+   read as two separate things rather than as a pair. */
+.endPair {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 4px;
+}
+
+/*
+ * The speech bubble beside the heart (see Feedback.tsx) - the way to say something back rather than only
+ * to say thanks.
+ *
+ * The same box as the heart's in every measurement, deliberately: the two stand side by side, and a
+ * button half a pixel off from its neighbour reads as a mistake rather than as a difference. What does
+ * differ is the colour. The heart is the one warm thing in this row and should stay the only one, so the
+ * bubble sits in the row's ordinary dim grey and only warms up under the pointer.
+ */
+.feedback {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 41;
+  flex: none;
+  width: 32px;
+  height: 26px;
+  min-height: 26px;
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-control);
+  color: var(--acc-fg-dim);
+  transition:
+    background-color 80ms linear,
+    border-color 80ms linear,
+    color 80ms linear;
+}
+
+/* [data-hover] beside :hover throughout: the embedded browser drops the real :hover when the pointer
+   leaves the IDE's window, and the panel puts the attribute on itself (see useHoverTarget). */
+.feedback:hover,
+.feedback[data-hover] {
+  background: var(--acc-accent-12);
+  border-color: var(--acc-accent-40);
+  color: var(--acc-accent-light);
+}
+
+.feedbackRail {
+  border: none;
+  background: var(--acc-neutral-12);
+}
+
+.feedbackRail:hover,
+.feedbackRail[data-hover] {
+  background: var(--acc-accent-12);
+}
+
+/* Compact's variant: square and 26px, the same box as the paperclip it stands beside (see .attach in
+   composer.module.css) rather than the heart's wider capsule a row above. */
+.feedbackTight {
+  width: 26px;
+  border: none;
+  background: var(--acc-neutral-12);
+}
+
+.feedbackTight:hover,
+.feedbackTight[data-hover] {
+  background: var(--acc-accent-12);
+}
+
+/* Level with the heart, the paperclip and the slash. */
+.feedbackIcon {
+  flex: none;
+  display: block;
+  width: 13px;
+  height: 13px;
+}
+
 /* --- The dropdown menu ----------------------------------------------------- */
 
 .menuScrim {

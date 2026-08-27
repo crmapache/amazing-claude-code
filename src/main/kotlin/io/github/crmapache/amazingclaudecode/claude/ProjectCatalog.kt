@@ -284,7 +284,7 @@ internal class ProjectCatalog(
         }
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            val page = ClaudeHistory.page(project.basePath, conversationId, before)
+            val page = ClaudeHistory.earlier(project.basePath, conversationId, before, hub.isLocal(clientId))
 
             hub.emitTo(
                 clientId,
@@ -733,7 +733,7 @@ internal class ProjectCatalog(
          * first. Read once: it cannot change while the IDE runs, and a null is not worth retrying -
          * whatever made the file unreadable will not have healed by the next conversation.
          */
-        private val pluginVersion: String? by lazy {
+        internal val pluginVersion: String? by lazy {
             val builder = DocumentBuilderFactory.newDefaultInstance().newDocumentBuilder()
 
             ProjectCatalog::class.java.classLoader

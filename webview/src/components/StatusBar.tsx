@@ -12,6 +12,7 @@ import {
   weekBudgetToday,
 } from '../feed/usage'
 import type { ExtraUsage, UsageWindow } from '../protocol'
+import { FeedbackButton } from './Feedback'
 import s from './shell.module.css'
 import { ThanksButton } from './Thanks'
 
@@ -315,6 +316,7 @@ interface StatusBarProps {
   mode: string
   onOpen: (kind: SelectorKind, anchor: Anchor) => void
   onOpenThanks: (anchor: Anchor) => void
+  onOpenFeedback: () => void
 }
 
 /**
@@ -327,7 +329,7 @@ interface StatusBarProps {
  * keep the width they need, the heart keeps the far end, and the gap between them is whatever is left -
  * so nothing moves when the model or the mode changes.
  */
-export const StatusBar = ({ model, switchedFrom, effort, mode, onOpen, onOpenThanks }: StatusBarProps) => (
+export const StatusBar = ({ model, switchedFrom, effort, mode, onOpen, onOpenThanks, onOpenFeedback }: StatusBarProps) => (
   <div className={s.status}>
     <div className={s.selectors}>
       <Selectors model={model} switchedFrom={switchedFrom} effort={effort} mode={mode} onOpen={onOpen} />
@@ -335,7 +337,12 @@ export const StatusBar = ({ model, switchedFrom, effort, mode, onOpen, onOpenTha
 
     <div className={s.spacer} />
 
-    <ThanksButton onOpen={onOpenThanks} />
+    {/* The two of them as one group: this row spaces its parts widely (the selectors on one side, the
+        buttons on the other), while these two belong together and sit at the selectors' own spacing. */}
+    <div className={s.endPair}>
+      <FeedbackButton onOpen={onOpenFeedback} />
+      <ThanksButton onOpen={onOpenThanks} />
+    </div>
   </div>
 )
 

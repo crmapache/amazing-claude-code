@@ -6,6 +6,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
+import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import io.github.crmapache.amazingclaudecode.remote.LocalBridgeServer
 import io.github.crmapache.amazingclaudecode.remote.NotificationReasons
 import io.github.crmapache.amazingclaudecode.remote.RemoteAgent
@@ -453,10 +454,19 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     }
 
     /**
-     * Whether this client sits on this machine. What is decided from a phone differs from what is
-     * decided at the desk - approving a plan most of all (see SessionPermissions.decidePlan).
+     * Whether this client sits on this machine.
+     *
+     * What is decided from a phone differs from what is decided at the desk - approving a plan most of
+     * all (see SessionPermissions.decidePlan) - and so does the size of what is answered, because a
+     * phone's frame is capped and ours is not (see ClaudeHistory.earlier).
+     *
+     * A client nobody knows is not this IDE. It used to be, on this road, and not on the other one - two
+     * ways of asking the same question that answered a vanished client the opposite way, so a page of
+     * history for one and the same departed client came out phone-sized or desk-sized depending on which
+     * of the two was asked. Being this IDE is what grants the right to ask for anything at all
+     * (see SessionCommands.handle); a client that is not in the room does not inherit it.
      */
-    fun isLocal(clientId: String): Boolean = clients[clientId]?.isLocal ?: true
+    fun isLocal(clientId: String): Boolean = clients[clientId]?.isLocal ?: false
 
     /** Someone is watching right now - see the schedules that are pointless without one. */
     fun hasClients(): Boolean = clients.isNotEmpty()
@@ -551,7 +561,14 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // The limit picture changes on its own, without anyone asking: extra usage begins the moment a
         // window runs out. Not from a replay for the same reason - an old transcript says nothing about
         // the state of the subscription right now.
-        if (!replay) usage.noteRateLimit(line)
+        //
+        // The moment it begins is also worth a phone: from it on the work is paid for on top of the
+        // plan. It is announced from here rather than from the notification rules, because "it has just
+        // begun" is a change of state and the state lives there - the event itself repeats on every
+        // turn while it holds (see NotificationReasons.EXTRA_USAGE).
+        if (!replay && usage.noteRateLimit(line)) {
+            notificationListener?.invoke(sessionId, NotificationReasons.EXTRA_USAGE, "")
+        }
 
         rawListeners.forEach { it(sessionId, line, replay) }
 
@@ -981,21 +998,38 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         broadcastSessions()
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            // Line by line as they are read: a long conversation's transcript is tens of megabytes, and
-            // there is no reason for any of it to sit in memory at once just to be forwarded onwards.
-            ClaudeHistory.replay(project.basePath, conversationId) { line ->
-                onAgentLine(sessionId, line, replay = true)
-            }
+            // The end of the conversation rather than the whole of it: what comes before is asked for by
+            // whoever is looking, page by page (see ClaudeHistory.opening for why the whole of it never
+            // arrived at all on Windows).
+            val page = ClaudeHistory.opening(project.basePath, conversationId)
+            page.lines.forEach { line -> onAgentLine(sessionId, line, replay = true) }
+
+            // How much of the conversation went to the feed, and whether more of it is waiting above. The
+            // count and the weight, never a line of it: this buffer travels in bug reports (see
+            // DiagnosticsLog). It is here because the alternative was what actually happened - a feed that
+            // came up empty on somebody else's machine with nothing anywhere to say whether the transcript
+            // had been read at all.
+            DiagnosticsLog.note(
+                DiagnosticsLog.PANEL,
+                "opened a past conversation: ${page.lines.size} messages, " +
+                    "${page.lines.sumOf { it.length }} chars, more above: ${page.cursor != null}",
+            )
 
             // The replay is over - the panel closes the work left unfinished inside it. The transcript
             // holds only messages, while a background subagent's result arrives as a separate system
             // event, so for its card it would never come at all: a tab opened from the history showed
             // past agents as working right now.
+            //
+            // The cursor travels along: it is both the answer to "is there anything above this" - the mark
+            // over the feed is drawn by it - and the boundary the next page is asked for by. Worked out
+            // here rather than guessed from the lines on screen, because the topmost of them may well be
+            // one the transcript keeps no name for.
             broadcast(
                 sessionId,
                 buildJsonObject {
                     put("type", "replayFinished")
                     put("sessionId", sessionId)
+                    page.cursor?.let { put("cursor", it) }
                 }.toString(),
             )
 
@@ -1046,6 +1080,18 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
 
     /** What a client should come back with after a break - see [attach]. */
     fun lastSeq(sessionId: String): Long = journal(sessionId).lastSeq()
+
+    /**
+     * The tail of one conversation's journal, for the debug report a person may attach to their feedback.
+     *
+     * The journal is the conversation itself - every message, every answer, the contents of every file
+     * that was read - and none of that leaves this machine. What reads this takes each entry apart for
+     * its shape alone and writes a line of its own from it (see FeedbackReport). The budget is small
+     * because what is worth looking at is the last few minutes: a report nobody can read through is a
+     * report whose promise nobody can check.
+     */
+    fun journalTail(sessionId: String, maxEntries: Int, maxChars: Long): List<SessionJournal.Entry> =
+        synchronized(lock(sessionId)) { journal(sessionId).since(0, maxEntries, maxChars) }
 
     /**
      * Permission cards are the one part of the snapshot that cannot be read off the messages: plans and

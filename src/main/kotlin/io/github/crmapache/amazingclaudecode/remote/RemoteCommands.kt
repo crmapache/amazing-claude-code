@@ -129,10 +129,31 @@ internal object RemoteCommands {
         "cursor",
         "clipboardRead",
         "clipboardWrite",
+        // A report that a batch did not survive the trip into an embedded browser. It describes the road
+        // between this IDE and its own panel, and a device across the network has no such road to speak
+        // about - it is handled by the window itself in any case (see ClaudePanel).
+        "channelLoss",
         // Writing a file onto the machine at the asking of whoever is on the line. The picture itself is
         // harmless; a message that makes the IDE write files is not, and the statistics tab it comes from
         // is the panel's alone anyway.
         "saveImage",
+        /*
+         * Feedback. Every one of these is refused, and for a different reason each:
+         *
+         * - feedbackAttach opens a file dialog on the work machine and reads what is chosen;
+         * - feedbackSend posts those files, and a report about this machine, to a server;
+         * - feedbackReport builds that report out of a conversation's journal, which is the conversation;
+         * - feedbackOpen and feedbackDetach are harmless on their own and are refused with the rest, so
+         *   that the screen is one thing rather than a screen with a reachable edge.
+         *
+         * They are handled by the panel's own window in any case (see ClaudePanel), which a remote client
+         * never reaches - this list says so out loud rather than relying on that.
+         */
+        "feedbackOpen",
+        "feedbackReport",
+        "feedbackAttach",
+        "feedbackDetach",
+        "feedbackSend",
         "mcpList",
         "mcpAdd",
         "mcpRemove",

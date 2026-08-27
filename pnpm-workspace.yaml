@@ -1,10 +1,14 @@
-# The two JavaScript halves of this repository. They are deliberately separate packages rather than one:
+# The JavaScript parts of this repository. They are deliberately separate packages rather than one:
 #
-#   webview - the panel's interface, the phone client and the harness. Elastic-2.0, like the plugin.
-#   relay   - the little server that introduces an IDE to a phone. Apache-2.0, and meant to become a
-#             repository of its own (see relay/README.md): the plugin's licence forbids offering the
-#             software to others as a hosted service, and a component whose whole purpose is to be
-#             hosted cannot ship under it.
+#   webview          - the panel's interface, the phone client and the harness. Elastic-2.0, like the plugin.
+#   relay            - the little server that introduces an IDE to a phone. Apache-2.0, and meant to become
+#                      a repository of its own (see relay/README.md): the plugin's licence forbids offering
+#                      the software to others as a hosted service, and a component whose whole purpose is
+#                      to be hosted cannot ship under it.
+#   feedback-service - the other little server: it takes a message from the panel's feedback screen and
+#                      hands it to the author's Telegram. Elastic-2.0, unlike the relay, and for the
+#                      mirror-image reason - nobody else has any use for a service that forwards to one
+#                      specific chat, so there is nothing here to run yourself.
 #
 # A workspace rather than two unrelated folders so that one `pnpm install` at the root sets up both, and
 # `pnpm -r build` / `pnpm -r test` cover the whole repository - the state a person cloning this expects.
@@ -13,3 +17,4 @@
 packages:
   - webview
   - relay
+  - feedback-service

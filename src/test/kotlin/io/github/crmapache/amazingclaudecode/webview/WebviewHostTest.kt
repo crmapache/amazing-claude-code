@@ -61,8 +61,7 @@ class WebviewHostTest {
         val calls = receiveCalls(listOf(big, """{"type":"result"}"""))
 
         assertTrue(calls.size > 1, "expected a split into parts, got a single trip")
-        assertTrue(calls.dropLast(1).all { it.endsWith(", false);") })
-        assertTrue(calls.last().endsWith(", true);"))
+        calls.forEachIndexed { index, call -> assertTrue(call.endsWith(", $index, ${calls.size});"), call.takeLast(40)) }
 
         val messages = Json.parseToJsonElement(joinParts(calls)).jsonArray
         assertEquals(2, messages.size)
@@ -84,6 +83,47 @@ class WebviewHostTest {
         assertEquals(emoji, messages[0].jsonObject["text"]?.jsonPrimitive?.content)
     }
 
+    /**
+     * The reason a batch is bounded by weight at all: a conversation opened from the history used to
+     * leave the plugin as batches of about a megabyte, each of them cut into pieces inside the page - and
+     * one piece gone took its whole batch with it, silently.
+     */
+    @Test
+    fun `a batch stops at its weight rather than at its message count`() {
+        val outbox = ArrayDeque((1..50).map { """{"type":"agent","text":"${"x".repeat(4_000)}"}""" })
+
+        val batch = batchOf(outbox)
+
+        assertTrue(batch.size in 2..40, "expected a batch bounded by weight, got ${batch.size} messages")
+        assertTrue(batch.sumOf { it.length } <= 64 * 1024 + 4_100)
+        assertEquals(1, receiveCalls(batch).size, "a batch of this weight should travel in one trip")
+        assertTrue(outbox.isNotEmpty(), "the rest of the queue should still be waiting")
+    }
+
+    /**
+     * A single message over the whole budget - a file read whole, a build log. It travels alone rather
+     * than not at all: refused, it would sit at the head of the queue forever with the channel silent
+     * behind it.
+     */
+    @Test
+    fun `an outsized message travels on its own`() {
+        val outbox = ArrayDeque(listOf("""{"type":"agent","text":"${"x".repeat(200_000)}"}""", """{"type":"result"}"""))
+
+        val batch = batchOf(outbox)
+
+        assertEquals(1, batch.size)
+        assertEquals(1, outbox.size)
+    }
+
+    /** Ordinary live work: small messages, and the whole queue goes in one trip. */
+    @Test
+    fun `small messages travel together`() {
+        val outbox = ArrayDeque((1..30).map { """{"type":"status","state":"running"}""" })
+
+        assertEquals(30, batchOf(outbox).size)
+        assertTrue(outbox.isEmpty())
+    }
+
     /** A batch that travelled in one trip: that is how it is handed over almost always. */
     private fun single(batch: List<String>): String {
         val calls = receiveCalls(batch)
@@ -95,7 +135,10 @@ class WebviewHostTest {
     private fun joinParts(calls: List<String>): String = calls.joinToString("") { call ->
         Json.decodeFromString(
             String.serializer(),
-            call.substringAfter("window.__accChunk && window.__accChunk(").substringBeforeLast(", "),
+            call
+                .substringAfter("window.__accChunk && window.__accChunk(")
+                .substringBeforeLast(", ")
+                .substringBeforeLast(", "),
         )
     }
 

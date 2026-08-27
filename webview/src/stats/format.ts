@@ -41,14 +41,18 @@ export const duration = (minutes: number): string => {
   return `${hours}h ${String(rest).padStart(2, '0')}m`
 }
 
-/** The same, tighter, for a value against its target: "2h51/4h". */
+/**
+ * The same, tighter, for a value against its target: "45m", "2.9h", "4h/8h".
+ *
+ * Hours and a tenth of an hour rather than hours and minutes: written tight, with no room for a space,
+ * "4h13" reads as one number run into another - and beside its target, "4h13/8h" is four figures in a row
+ * with two different meanings between them. A tenth is as fine as this line needs to be; the exact minutes
+ * are what [duration] is for.
+ */
 export const durationTight = (minutes: number): string => {
   const whole = Math.max(0, Math.round(minutes))
-  const hours = Math.floor(whole / 60)
-  const rest = whole % 60
-  if (hours === 0) return `${rest}m`
-  if (rest === 0) return `${hours}h`
-  return `${hours}h${String(rest).padStart(2, '0')}`
+  if (whole < 60) return `${whole}m`
+  return `${trimZero((whole / 60).toFixed(1))}h`
 }
 
 /** "+6h", "-45m", "±0m" - a change against the previous stretch of the same length. */

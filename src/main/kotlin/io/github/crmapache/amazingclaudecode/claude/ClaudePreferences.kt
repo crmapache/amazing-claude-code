@@ -103,6 +103,17 @@ internal object ClaudePreferences {
         get() = read(REMOTE_RELAY_KEY)
         set(value) = write(REMOTE_RELAY_KEY, value.trim())
 
+    /**
+     * The address a person left on the feedback screen last time, so they need not type it again.
+     *
+     * Kept in the ordinary settings rather than in the password safe: it is what somebody chose to give
+     * out in order to be answered, not a secret. It is theirs alone - nothing is ever sent to it from
+     * here, and it travels only inside a message they pressed Send on.
+     */
+    var feedbackEmail: String
+        get() = read(FEEDBACK_EMAIL_KEY)
+        set(value) = write(FEEDBACK_EMAIL_KEY, value.trim())
+
     private fun read(key: String): String = PropertiesComponent.getInstance().getValue(key).orEmpty()
 
     private fun write(key: String, value: String) {
@@ -120,4 +131,5 @@ internal object ClaudePreferences {
     private const val SOUND_VOLUMES_KEY = "acc.sounds.volumes"
     private const val REMOTE_ENABLED_KEY = "acc.remote.enabled"
     private const val REMOTE_RELAY_KEY = "acc.remote.relayUrl"
+    private const val FEEDBACK_EMAIL_KEY = "acc.feedback.email"
 }

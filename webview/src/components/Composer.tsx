@@ -57,6 +57,7 @@ import {
   scrollCaretIntoView,
   splitTokens,
 } from './composerDom'
+import { FeedbackButton } from './Feedback'
 import { Selectors, type Anchor, type SelectorKind } from './StatusBar'
 import { ThanksButton } from './Thanks'
 import s from './composer.module.css'
@@ -231,6 +232,7 @@ interface ComposerProps {
    * of their own, so the heart travels here with them (see Thanks.tsx and StatusBar.tsx).
    */
   onOpenThanks?: (anchor: Anchor) => void
+  onOpenFeedback?: () => void
   /**
    * The side rail's node in left/right (see App.tsx) - MODEL/EFFORT/MODE, the usage and the buttons
    * travel there through a portal rather than being rendered right here: the rail needs the panel's full
@@ -271,6 +273,7 @@ export const Composer = ({
   mode,
   onOpenSelector,
   onOpenThanks,
+  onOpenFeedback,
   railContainer,
 }: ComposerProps) => {
   const compact = layout === 'compact'
@@ -1221,6 +1224,7 @@ export const Composer = ({
      among the buttons (see below), and in the ordinary layout it stands in the status line under the field
      (see StatusBar). */
   const thanksButton = <ThanksButton rail onOpen={(anchor) => onOpenThanks?.(anchor)} />
+  const feedbackButton = <FeedbackButton rail onOpen={() => onOpenFeedback?.()} />
 
   const stopButton = streaming ? (
     <button type="button" className={s.stop} onClick={onStop}>
@@ -1302,6 +1306,8 @@ export const Composer = ({
       {forceStopButton}
       {attachButton}
       {slashButton}
+      {/* Level with the two beside it rather than beside the heart a row above - see FeedbackButton.tight. */}
+      <FeedbackButton tight onOpen={() => onOpenFeedback?.()} />
       <div className={s.spacer} />
       {meters}
     </>
@@ -1317,6 +1323,7 @@ export const Composer = ({
           .railToolsRowLeft), so the end here is always the rail's outer edge rather than its boundary
           with the feed. */}
       <div className={s.spacer} />
+      {feedbackButton}
       {thanksButton}
     </>
   ) : (
@@ -1426,7 +1433,9 @@ export const Composer = ({
               />
 
               {/* Right after MODE rather than past a spacer: unlike the status line, this row is divided
-                  evenly among the three selectors (see .selectorAuto), so its end is wherever they end. */}
+                  evenly among the three selectors (see .selectorAuto), so its end is wherever they end.
+                  The bubble is not here but among the buttons below - this row has no width to spare, and
+                  why that matters is written out at FeedbackButton.tight. */}
               <ThanksButton onOpen={(anchor) => onOpenThanks?.(anchor)} />
             </div>
 

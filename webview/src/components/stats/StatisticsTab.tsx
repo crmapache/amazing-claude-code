@@ -10,7 +10,6 @@ import {
   daysTile,
   factsTile,
   filesTile,
-  heatMap,
   hoursSeries,
   outputTile,
   projectCount,
@@ -20,6 +19,7 @@ import {
   toolRows,
   type DayHours,
   type RangeKey,
+  type TimeTile,
   type ToolRow,
 } from '../../stats/compute'
 import {
@@ -42,8 +42,8 @@ import { HoursChart } from './HoursChart'
 import s from './stats.module.css'
 
 /**
- * The statistics tab: this project against every project, for today, the last week, the last month or
- * all time - and behind it the achievements screen.
+ * The statistics tab: every project together, for today, the last week, the last month or all time - and
+ * behind it the achievements screen.
  *
  * Everything on it is arithmetic over the days the IDE keeps (see stats/compute.ts): the range switches
  * here, without a round trip. The figures arrive as one message and are asked for again while the tab
@@ -205,7 +205,11 @@ export const StatisticsTab = ({ data, view, onView, version }: StatisticsTabProp
         {!data || !groups ? (
           <div className={s.empty}>Counting up… the figures arrive from the IDE in a moment.</div>
         ) : view === 'achievements' ? (
-          <Achievements groups={groups} filter={filter} />
+          <Achievements
+            groups={groups}
+            filter={filter}
+            poster={{ ide: data.ide, version, date: data.today }}
+          />
         ) : (
           <Overview data={data} range={range} groups={groups} onAchievements={() => onView('achievements')} />
         )}
@@ -217,9 +221,8 @@ export const StatisticsTab = ({ data, view, onView, version }: StatisticsTabProp
 const overviewHint = (data: StatisticsData, key: RangeKey): string => {
   const range = rangeOf(data, key)
   const projects = projectCount(data)
-  const compared =
-    projects <= 1 ? 'the only project so far' : `compared with all ${projects} projects`
-  return `${data.project.name || 'this project'} · ${range.label} · ${compared}`
+  const scope = projects <= 1 ? 'one project' : `all ${projects} projects together`
+  return `${scope} · ${range.label}`
 }
 
 // --- The overview -----------------------------------------------------------------------------
@@ -238,7 +241,6 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
   const output = useMemo(() => outputTile(data, range), [data, range])
   const series = useMemo(() => hoursSeries(data, range), [data, range])
   const hours = useMemo(() => dayHours(data, range), [data, range])
-  const heat = useMemo(() => heatMap(data), [data])
   const tools = useMemo(() => toolRows(data, range), [data, range])
   const projects = useMemo(() => projectRows(data, range), [data, range])
   const files = useMemo(() => filesTile(data, range), [data, range])
@@ -268,14 +270,7 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
               </span>
             )}
           </span>
-          <span className={s.foot}>
-            {duration(time.allMinutes)} across every project ·{' '}
-            {oneDay
-              ? hours.peak
-                ? `busiest hour ${clock(hours.peak.hour)}`
-                : 'nothing in the panel yet'
-              : `${duration(time.perDay)} a day`}
-          </span>
+          <span className={s.foot}>{timeFoot(time, hours, oneDay)}</span>
         </div>
 
         <div className={s.tile}>
@@ -306,7 +301,7 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
           <span className={s.figureRow}>
             <span className={s.figure}>{groupThousands(output.turns)}</span>
             <span className={s.figureNote}>
-              turns · {output.sessions} {output.sessions === 1 ? 'session' : 'sessions'}
+              {output.turns === 1 ? 'reply' : 'replies'} · {output.sessions} {output.sessions === 1 ? 'session' : 'sessions'}
             </span>
           </span>
           <span className={s.foot}>
@@ -317,13 +312,14 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
         <div className={s.tile}>
           <span className={`${s.label} ${s.labelAgent}`}>ACHIEVEMENTS</span>
           <span className={s.figureRow}>
+            {/* The same figure the achievements screen leads with: how many are finished. */}
             <span className={s.figure}>
-              {summary.earned}
+              {summary.completed}
               <span className={s.figureDim}>/{summary.total}</span>
             </span>
             <span className={s.figureNote}>
               <button type="button" className={s.link} onClick={onAchievements}>
-                see all
+                See all
               </button>
             </span>
           </span>
@@ -356,15 +352,6 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
                 ? `longest day ${duration(series.longest.minutes)} on ${shortDate(series.longest.date)}`
                 : 'no day at work in this range yet'}
             </span>
-            <span className={s.labelSpace} />
-            <span className={s.legend}>
-              <span className={s.legendLine} style={{ background: 'var(--acc-accent)' }} />
-              this project
-            </span>
-            <span className={`${s.legend} ${s.legendDim}`}>
-              <span className={s.legendLine} style={{ background: 'rgb(var(--acc-ch-aqua) / 55%)' }} />
-              every project
-            </span>
           </div>
           <HoursChart series={series} />
         </div>
@@ -385,7 +372,7 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
             <span>busy</span>
           </span>
         </div>
-        <Heatmap heat={heat} />
+        <Heatmap data={data} />
       </div>
 
       <div className={s.tiles}>
@@ -450,8 +437,8 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
           <span className={s.label}>SESSIONS · MODELS · FORKS</span>
           <div className={s.facts}>
             <Fact label="Sessions" value={groupThousands(facts.sessions)} />
-            <Fact label="Turns" value={groupThousands(facts.turns)} />
-            <Fact label="Average turn" value={facts.averageTurnMs === null ? '–' : turnLength(facts.averageTurnMs)} />
+            <Fact label="Replies" value={groupThousands(facts.turns)} />
+            <Fact label="Average reply" value={facts.averageTurnMs === null ? '–' : turnLength(facts.averageTurnMs)} />
             <Fact label="Longest session" value={duration(facts.longestSessionMinutes)} />
             <Fact label="Forks" value={groupThousands(facts.forks)} />
             <Fact label="Deepest chain" value={String(facts.deepestChain)} />
@@ -469,7 +456,7 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
           </span>
           <span className={s.sentence}>
             {facts.models.length === 0
-              ? `no turns ${scope}`
+              ? `no replies ${scope}`
               : `${facts.models
                   .slice(0, 3)
                   .map((model) => `${model.name} ${Math.round(model.share * 100)}%`)
@@ -509,6 +496,27 @@ const Overview = ({ data, range: key, groups, onAchievements }: OverviewProps) =
       </div>
     </>
   )
+}
+
+/**
+ * "busiest hour 08:00 · across 4 projects", "2h 41m a day · in one project" - what stands under the
+ * figure of time in the panel.
+ *
+ * The projects are named as a count rather than added up as minutes. Their minutes overlap whenever two
+ * agents run at once, and the sum of them was the figure that made a day of two hours read as four; what
+ * the day really holds is above, and how it was spread is in the list of where the hours went.
+ */
+const timeFoot = (time: TimeTile, hours: DayHours, oneDay: boolean): string => {
+  if (time.minutes === 0) return oneDay ? 'nothing in the panel yet' : 'nothing in the panel in this range'
+
+  const when = oneDay
+    ? hours.peak
+      ? `busiest hour ${clock(hours.peak.hour)}`
+      : 'the hours of it are not marked'
+    : `${duration(time.perDay)} a day`
+  const where = time.projects <= 1 ? 'in one project' : `across ${time.projects} projects`
+
+  return `${when} · ${where}`
 }
 
 /** "09:00 to 21:00 · busiest 17:00 with 42m" - what the hours of the day add up to. */

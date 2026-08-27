@@ -20,6 +20,9 @@ export const SKIP = 'data-poster-skip'
 
 /** Wide enough for the tiles to stand four across, the way the tab is meant to be seen. */
 const PICTURE_MIN = 900
+
+/** What one achievement is laid out at: the width of a card in a comfortable panel, and no wider. */
+export const CARD_WIDTH = 420
 const PICTURE_MAX = 1400
 const PADDING = 18
 /** Two device pixels per CSS pixel - a screenshot of a dark panel is read on bright screens. */
@@ -34,6 +37,20 @@ export interface PosterOptions {
   version: string
   /** Today by the IDE's calendar, for the line under the mark. */
   date: string
+  /**
+   * How wide to lay the clone out, when the screen's own width is not what the picture wants.
+   *
+   * A whole screen wants room for four tiles across (see PICTURE_MIN); one achievement wants to be the
+   * size of one achievement, and stretched to nine hundred pixels it reads as a mistake.
+   */
+  width?: number
+  /**
+   * A line above the picture, said in the first person - "Look what I got".
+   *
+   * Present for a single card, which is shared to show something off and needs to say so; absent for the
+   * whole screen, which says what it is by being the whole screen.
+   */
+  heading?: string
 }
 
 /** "amazing-claude-code-statistics-2026-08-26.png" - what the file is called once it is saved. */
@@ -142,6 +159,49 @@ const LOGO = `
   </g>
 </svg>`
 
+/**
+ * The line above a card's picture: the mark, the plugin's name, and what the person wants to say with it.
+ *
+ * Only for a single card. The whole screen is recognisable on its own and carries the mark underneath;
+ * a lone card floating in a chat is not, so the picture opens by saying whose card it is.
+ */
+const header = (options: PosterOptions): HTMLElement => {
+  const top = document.createElement('div')
+  top.setAttribute('style', 'margin-bottom:12px')
+
+  const mark = document.createElement('div')
+  mark.setAttribute('style', 'display:flex;align-items:center;gap:9px;font:11px var(--acc-mono)')
+  mark.innerHTML =
+    `<span style="display:flex">${LOGO}</span>` +
+    '<span style="color:var(--acc-fg);font-weight:600;letter-spacing:0.02em">Amazing Claude Code</span>' +
+    `<span style="color:var(--acc-fg-ghost)">plugin for ${options.ide || 'JetBrains IDEs'}</span>`
+
+  const line = document.createElement('div')
+  line.setAttribute(
+    'style',
+    'margin-top:10px;color:var(--acc-fg-soft);font:13px var(--acc-mono);letter-spacing:0.01em',
+  )
+  line.textContent = options.heading ?? ''
+
+  top.append(mark)
+  if (options.heading) top.append(line)
+  return top
+}
+
+/** The small print under a card: the version and the day, and nothing the header has said already. */
+const footnote = (options: PosterOptions): HTMLElement => {
+  const line = document.createElement('div')
+  line.setAttribute(
+    'style',
+    'display:flex;justify-content:flex-end;gap:8px;margin-top:12px;color:var(--acc-fg-ghost);' +
+      'font:10px var(--acc-mono);white-space:nowrap',
+  )
+  line.innerHTML =
+    (options.version ? `<span>${options.version}</span>` : '') + `<span>${options.date}</span>`
+
+  return line
+}
+
 /** The line under the picture: the mark, the name, and the IDE the hours were spent in. */
 const signature = (options: PosterOptions): HTMLElement => {
   const mark = document.createElement('div')
@@ -164,9 +224,14 @@ const signature = (options: PosterOptions): HTMLElement => {
 /**
  * Draw the given screen as a PNG and hand it back as base64, without the data-URL prefix - which is what
  * travels to the shell (see the saveImage message).
+ *
+ * The same road for a whole screen and for one card: the difference between them is the width it is laid
+ * out at and whether a heading stands above it (see [PosterOptions]).
  */
 export const drawPoster = async (screen: HTMLElement, options: PosterOptions): Promise<string> => {
-  const width = Math.round(Math.min(PICTURE_MAX, Math.max(PICTURE_MIN, screen.clientWidth)))
+  const width = options.width
+    ? Math.round(options.width)
+    : Math.round(Math.min(PICTURE_MAX, Math.max(PICTURE_MIN, screen.clientWidth)))
 
   // Two boxes: the outer one parks the clone off screen, the inner one is what ends up in the picture and
   // therefore carries nothing but the picture's own layout.
@@ -180,9 +245,20 @@ export const drawPoster = async (screen: HTMLElement, options: PosterOptions): P
   const clone = screen.cloneNode(true) as HTMLElement
   clone.style.height = 'auto'
   for (const skipped of Array.from(clone.querySelectorAll(`[${SKIP}]`))) skipped.remove()
+  // The pointer is on the card that was just clicked, and the panel marks what is under it (see
+  // useHoverTarget) - a picture taken then would keep whatever the hover state changes.
+  clone.removeAttribute('data-hover')
+  for (const hovered of Array.from(clone.querySelectorAll('[data-hover]'))) hovered.removeAttribute('data-hover')
   unfold(screen, clone)
 
-  stage.append(clone, signature(options))
+  // A card opens with the mark and closes with nothing but the version and the day; a screen carries the
+  // mark at its foot instead, where it does not stand between the reader and the figures. Saying it twice
+  // on a picture the size of one card would leave the card itself the smallest thing in it.
+  if (options.heading) {
+    stage.append(header(options), clone, footnote(options))
+  } else {
+    stage.append(clone, signature(options))
+  }
   holder.append(stage)
   document.body.append(holder)
 

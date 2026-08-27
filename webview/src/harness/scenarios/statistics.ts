@@ -125,8 +125,20 @@ const OTHER_PROJECTS = [
   { key: 'p-scripts', name: 'scripts', share: 0.02 },
 ]
 
+/**
+ * Where the hours went, project by project - shares of the day the tab counts as a whole.
+ *
+ * A share rather than the whole of it, this project included: a day of two hours with two agents running
+ * is two hours of a person's life and rather more than two hours of project time, so these add up to
+ * more than the days do. That is the shape of the real thing (see StatisticsData.days) and worth having in
+ * the sandbox, because it is the shape the tab used to get wrong.
+ */
 const projects = [
-  { key: 'p-this', name: 'amazing-claude-code', minutes: Object.fromEntries(days.map((entry) => [entry.date, entry.minutes])) },
+  {
+    key: 'p-this',
+    name: 'amazing-claude-code',
+    minutes: Object.fromEntries(days.map((entry, offset) => [entry.date, Math.round(entry.minutes * (0.45 + noise(offset + 211) * 0.35))])),
+  },
   ...OTHER_PROJECTS.map((project, index) => ({
     key: project.key,
     name: project.name,
@@ -151,10 +163,7 @@ const PICTURE: Record<string, [number, number, number | undefined]> = {
   'two-hundred': [3, 96, 200],
   'a-year-in': [4, 341, 365],
   'home-for-the-holidays': [2, 2, 5],
-  'first-hour': [5, 60, undefined],
-  'ten-hours': [5, 600, undefined],
-  'hundred-hours': [5, 6765, undefined],
-  'five-hundred': [1, 6765, 12000],
+  'hours-in-panel': [2, 6765, 60000],
   'deep-work': [4, 105, 120],
   marathon: [3, 171, 240],
   'full-day': [3, 260, 360],
@@ -162,9 +171,7 @@ const PICTURE: Record<string, [number, number, number | undefined]> = {
   'quick-turn': [3, 210, 250],
   'long-haul': [3, 14, 25],
   'first-diff': [5, 1, undefined],
-  'thousand-lines': [5, 1000, undefined],
-  'ten-thousand': [5, 10000, undefined],
-  'hundred-thousand': [0, 18430, 20000],
+  'lines-written': [0, 18430, 50000],
   'big-diff': [5, 918, undefined],
   surgeon: [3, 34, 50],
   refactor: [3, 7, 8],
@@ -190,11 +197,24 @@ const PICTURE: Record<string, [number, number, number | undefined]> = {
   'on-the-road': [2, 21, 25],
   watched: [2, 3, 5],
   ceiling: [2, 2, 5],
-  thanks: [3, 7, 10],
+  // One of the two ways taken: the star pressed, the review not yet written.
+  thanks: [1, 1, 2],
+}
+
+/**
+ * The line a standing tier was earned for. The real ones live in the IDE (Achievements.kt) and travel with
+ * each achievement; the player has no ladder to look them up in, so it puts half of the next line under the
+ * tier - most of the ladders roughly double at every step. It is what "earned lately" reads, and where the
+ * progress bar starts filling from.
+ */
+const lineFor = (tier: number, value: number, target: number | undefined): number | undefined => {
+  if (tier <= 0) return undefined
+  return target === undefined ? value : Math.round(target / 2)
 }
 
 const achievements: AchievementState[] = ACHIEVEMENTS.map((spec, index) => {
   const [tier, value, target] = PICTURE[spec.id] ?? [0, 0, 1]
+  const line = lineFor(tier, value, target)
   const earned: Record<string, number> = {}
   if (spec.milestone) {
     if (tier > 0) earned['5'] = Date.now() - (index + 1) * 36 * 60 * 60 * 1000
@@ -203,7 +223,16 @@ const achievements: AchievementState[] = ACHIEVEMENTS.map((spec, index) => {
       earned[String(step)] = Date.now() - (tier - step + 1) * (index + 2) * 9 * 60 * 60 * 1000
     }
   }
-  return { id: spec.id, tier, value, ...(target === undefined ? {} : { target }), earned }
+  const steps = spec.milestone ? 1 : (spec.steps ?? 5)
+  return {
+    id: spec.id,
+    tier,
+    steps,
+    value,
+    ...(target === undefined ? {} : { target }),
+    ...(line === undefined ? {} : { line }),
+    earned,
+  }
 })
 
 const figures: ScenarioStep = shell({
@@ -277,11 +306,16 @@ const fresh: ScenarioStep = shell({
     },
   ],
   achievements: ACHIEVEMENTS.map((spec): AchievementState => {
-    const done = spec.id === 'first-hour' ? [5, 60, undefined] : spec.id === 'first-diff' ? [5, 1, undefined] : null
-    if (done) return { id: spec.id, tier: 5, value: done[1] as number, earned: { '5': Date.now() - 3_600_000 } }
-    if (spec.id === 'reader') return { id: spec.id, tier: 0, value: 42, target: 50, earned: {} }
-    if (spec.id === 'shell') return { id: spec.id, tier: 0, value: 9, target: 25, earned: {} }
-    return { id: spec.id, tier: 0, value: 0, target: 1, earned: {} }
+    const steps = spec.milestone ? 1 : (spec.steps ?? 5)
+    const done = spec.id === 'first-diff' ? [5, 1, undefined] : null
+    if (done) {
+      return { id: spec.id, tier: steps, steps, value: done[1] as number, line: done[1] as number, earned: { '5': Date.now() - 3_600_000 } }
+    }
+    // A day and a half in: the first hour is behind, the second line is a long way off.
+    if (spec.id === 'hours-in-panel') return { id: spec.id, tier: 1, steps, value: 96, line: 60, target: 600, earned: { '1': Date.now() - 86_400_000 } }
+    if (spec.id === 'reader') return { id: spec.id, tier: 0, steps, value: 42, target: 50, earned: {} }
+    if (spec.id === 'shell') return { id: spec.id, tier: 0, steps, value: 9, target: 25, earned: {} }
+    return { id: spec.id, tier: 0, steps, value: 0, target: 1, earned: {} }
   }),
 })
 

@@ -8,7 +8,7 @@ import java.time.temporal.ChronoUnit
 import java.time.temporal.WeekFields
 
 /**
- * The fifty-one achievements, five tiers each, and the figures they are measured by.
+ * The fifty-two achievements, five tiers each, and the figures they are measured by.
  *
  * The rules live here, on the IDE's side, rather than in the interface: a tier is earned at the moment
  * the figure crosses the line, and that moment has to be written down whether or not a panel happens to
@@ -16,9 +16,11 @@ import java.time.temporal.WeekFields
  * the icons and the paint live in the interface (see webview/src/stats/catalogue.ts), keyed by the same
  * ids; a test on either side fails if the two lists drift apart.
  *
- * Every figure is a count, a sum or a high-water mark over the day records (see [Metrics]) - none of
- * them can go down, so no tier is ever taken back. A ladder names five lines to cross; a milestone names
- * one and lights all five at once - "your first fork" is not a thing that comes in fifths.
+ * Every figure is a count, a sum or a high-water mark over the day records (see [Metrics]), so none of
+ * them goes down as the work goes on - and a tier once earned is not taken back even when the counting
+ * itself changes under it, which is a rule of [evaluate] rather than a happy consequence of the figures.
+ * A ladder names five lines to cross; a milestone names one and lights all five at once - "your first
+ * fork" is not a thing that comes in fifths.
  */
 internal object Achievements {
 
@@ -32,21 +34,52 @@ internal object Achievements {
     ) {
         val isMilestone: Boolean get() = milestone != null
 
+        /**
+         * How many lines there are to cross in all: a ladder's own length, and one for a milestone.
+         *
+         * Told to the panel with the rest (see [State]) because it is what the card is drawn from - as
+         * many pips as there are steps, and the top step painted as the top. Most ladders have five, and
+         * the ones that do not have a reason: there are two ways to say thanks in this plugin, so the
+         * achievement about saying it has two.
+         */
+        val steps: Int get() = ladder?.size ?: 1
+
         /** How many tiers this value has crossed: 0..5. */
         fun tierOf(value: Long): Int = when {
             milestone != null -> if (value >= milestone) TIERS else 0
             else -> ladder!!.count { value >= it }
         }
 
-        /** The next line to cross, or null when there is none left. */
-        fun targetOf(value: Long): Long? = when {
-            milestone != null -> if (value >= milestone) null else milestone
-            else -> ladder!!.firstOrNull { value < it }
+        /** The next line to cross above a tier already standing, or null when there is none left. */
+        fun targetOf(tier: Int): Long? = when {
+            milestone != null -> if (tier > 0) null else milestone
+            else -> ladder!!.getOrNull(tier)
+        }
+
+        /**
+         * The line the standing tier was earned for, or null when nothing is earned yet.
+         *
+         * The panel is handed this beside the next one because a tier and a figure alone say nothing
+         * about what was crossed: a third tier standing at six hours, read as "7h 23m", leaves the tier
+         * unexplained. It is also what lets the progress bar fill from the line already crossed rather
+         * than from zero.
+         */
+        fun lineOf(tier: Int): Long? = when {
+            milestone != null -> if (tier > 0) milestone else null
+            else -> if (tier > 0) ladder!!.getOrNull(tier - 1) else null
         }
     }
 
     /** One achievement as it stands right now. */
-    class State(val id: String, val tier: Int, val value: Long, val target: Long?)
+    class State(
+        val id: String,
+        val tier: Int,
+        val value: Long,
+        val target: Long?,
+        val line: Long?,
+        /** How many lines this one has in all - see [Definition.steps]. */
+        val steps: Int,
+    )
 
     const val TIERS = 5
 
@@ -56,14 +89,24 @@ internal object Achievements {
     private fun milestone(threshold: Long, metric: (Metrics) -> Long) =
         { id: String -> Definition(id, null, threshold, metric) }
 
+    /**
+     * How far the fifth tier stands: about a year of steady heavy work, and the tiers below it spaced so
+     * that the first comes in the first days.
+     *
+     * The lines were first drawn for a person typing, and a person does not write four thousand lines or
+     * run a thousand commands in a day - an agent does. Against that rate a thousand lines, ten files in
+     * one turn, five servers at once and a four-hour conversation were all a Tuesday, so half the screen
+     * lit up in two days and there was nothing left to reach for. The habit ladders were never wrong that
+     * way and are untouched: a week of days in a row takes a week however fast the agent writes.
+     */
     private val CATALOGUE: List<Pair<String, (String) -> Definition>> = listOf(
         // --- Habit: coming back is the whole trick ---
         "steady-hand" to ladder(3, 7, 14, 30, 60) { it.bestStreak },
         "month-straight" to milestone(30) { it.bestStreak },
         "quarter" to ladder(7, 21, 45, 70, 90) { it.activeDays },
         "weekend-crew" to ladder(1, 5, 10, 25, 50) { it.weekendDays },
-        "early-riser" to ladder(5, 20, 50, 100, 250) { it.earlyPrompts },
-        "night-shift" to ladder(5, 20, 50, 100, 250) { it.latePrompts },
+        "early-riser" to ladder(10, 50, 150, 500, 1200) { it.earlyPrompts },
+        "night-shift" to ladder(10, 50, 150, 500, 1200) { it.latePrompts },
         "full-week" to ladder(1, 2, 4, 8, 16) { it.fullWeeks },
         "second-wind" to ladder(1, 2, 3, 5, 10) { it.returns },
         "two-hundred" to ladder(5, 25, 50, 100, 200) { it.sessions },
@@ -71,52 +114,123 @@ internal object Achievements {
         // The one achievement earned by staying away: Christmas Eve to New Year's Day with the panel shut.
         "home-for-the-holidays" to ladder(1, 2, 5, 9, 18) { it.holidayDaysOff },
         // --- Hours: time the agent carried instead of you ---
-        "first-hour" to ladder(10, 20, 30, 45, 60) { it.minutes },
-        "ten-hours" to ladder(120, 240, 360, 480, 600) { it.minutes },
-        "hundred-hours" to ladder(1200, 2400, 3600, 4800, 6000) { it.minutes },
-        "five-hundred" to ladder(6000, 12000, 18000, 24000, 30000) { it.minutes },
-        "deep-work" to ladder(15, 30, 60, 90, 120) { it.longestStretch },
-        "marathon" to ladder(30, 60, 120, 180, 240) { it.longestSession },
-        "full-day" to ladder(60, 120, 240, 360, 480) { it.longestDay },
-        "sprint" to ladder(3, 6, 10, 15, 20) { it.maxTurnsInHour },
-        "quick-turn" to ladder(10, 50, 100, 250, 500) { it.quickTurns },
-        "long-haul" to ladder(1, 3, 10, 25, 50) { it.longTurns },
+        /*
+         * The time spent in the panel: one card, five lines, each ten times the one below it - an hour,
+         * ten hours, a hundred, a thousand, ten thousand.
+         *
+         * Four cards for one figure asked a person to work out what told them apart, exactly as the lines
+         * written did. The first line still comes on the first day, and the last is the ten thousand hours
+         * that are supposed to make a master of anybody - years of it, which is what a top tier is for.
+         * In minutes, because that is what a day record counts.
+         */
+        "hours-in-panel" to ladder(60, 600, 6_000, 60_000, 600_000) { it.minutes },
+        "deep-work" to ladder(15, 30, 60, 120, 240) { it.longestStretch },
+        "marathon" to ladder(30, 60, 120, 240, 480) { it.longestSession },
+        "full-day" to ladder(60, 120, 240, 480, 720) { it.longestDay },
+        "sprint" to ladder(5, 10, 20, 35, 60) { it.maxTurnsInHour },
+        "quick-turn" to ladder(25, 150, 600, 1500, 3000) { it.quickTurns },
+        "long-haul" to ladder(5, 50, 250, 800, 2000) { it.longTurns },
         // --- Code: what actually landed in the files ---
         "first-diff" to milestone(1) { it.edits },
-        "thousand-lines" to ladder(200, 400, 600, 800, 1000) { it.linesAdded },
-        "ten-thousand" to ladder(2000, 4000, 6000, 8000, 10000) { it.linesAdded },
-        "hundred-thousand" to ladder(20000, 40000, 60000, 80000, 100000) { it.linesAdded },
-        "big-diff" to ladder(100, 250, 500, 750, 900) { it.biggestEdit },
-        "surgeon" to ladder(5, 15, 30, 50, 100) { it.singleLineEdits },
-        "refactor" to ladder(2, 4, 6, 8, 10) { it.maxFilesInTurn },
-        "housekeeper" to ladder(100, 500, 1000, 5000, 10000) { it.linesRemoved },
-        "test-first" to ladder(5, 20, 50, 100, 200) { it.testTurns },
-        "rollback" to ladder(1, 5, 10, 25, 50) { it.editsRefused },
+        /*
+         * The lines the agent has written: one card, five lines, each about seven times the one below it.
+         *
+         * It used to be four cards and then three, which is four and three ways of saying the same thing -
+         * the figure is one figure, and cutting it into chains only asked a person to work out what told
+         * one card from the next. One ladder says it plainly, and the steps are spaced for the pace an
+         * agent actually writes at: fifty thousand comes in a couple of weeks, and a hundred million is
+         * the work of years rather than of a season.
+         */
+        "lines-written" to ladder(50_000, 350_000, 2_500_000, 15_000_000, 100_000_000) { it.linesAdded },
+        "big-diff" to ladder(150, 400, 900, 1600, 2500) { it.biggestEdit },
+        "surgeon" to ladder(10, 50, 150, 400, 1000) { it.singleLineEdits },
+        "refactor" to ladder(3, 8, 16, 30, 50) { it.maxFilesInTurn },
+        "housekeeper" to ladder(500, 2500, 10000, 40000, 100000) { it.linesRemoved },
+        "test-first" to ladder(10, 50, 150, 400, 1000) { it.testTurns },
+        "rollback" to ladder(1, 10, 40, 100, 250) { it.editsRefused },
         // --- Tools: the panel has more of them than one remembers ---
-        "reader" to ladder(50, 250, 1000, 2500, 5000) { it.reads },
-        "grep-hound" to ladder(25, 100, 500, 1000, 2500) { it.searches },
-        "shell" to ladder(25, 100, 500, 1000, 2500) { it.commands },
-        "writer" to ladder(5, 25, 100, 250, 500) { it.writes },
-        "todo-keeper" to ladder(5, 15, 30, 50, 100) { it.todosDone },
-        "planner" to ladder(1, 5, 10, 25, 50) { it.plansApproved },
-        "mcp" to ladder(1, 2, 3, 4, 5) { it.mcpConnected },
-        "plugin-shelf" to ladder(1, 2, 4, 6, 10) { it.plugins },
-        "slash" to ladder(1, 2, 3, 5, 7) { it.slashCommands },
-        "attachment" to ladder(5, 15, 30, 60, 100) { it.attachments },
+        "reader" to ladder(100, 1000, 5000, 15000, 40000) { it.reads },
+        "grep-hound" to ladder(50, 500, 2500, 8000, 25000) { it.searches },
+        "shell" to ladder(100, 1000, 6000, 25000, 100000) { it.commands },
+        "writer" to ladder(10, 100, 500, 2000, 7500) { it.writes },
+        "todo-keeper" to ladder(5, 25, 75, 200, 500) { it.todosDone },
+        "planner" to ladder(1, 10, 30, 80, 200) { it.plansApproved },
+        "mcp" to ladder(1, 3, 6, 10, 15) { it.mcpConnected },
+        "plugin-shelf" to ladder(1, 3, 6, 12, 20) { it.plugins },
+        "slash" to ladder(1, 3, 7, 12, 20) { it.slashCommands },
+        "attachment" to ladder(10, 100, 400, 1200, 4000) { it.attachments },
         // --- Around the panel: forks, history, the phone, the ceiling ---
         "forked" to milestone(1) { it.forks },
         "fork-master" to ladder(2, 5, 10, 25, 50) { it.maxForksInTree },
         "deep-tree" to ladder(1, 2, 3, 4, 5) { it.maxDepth },
-        "quoted" to ladder(5, 15, 30, 60, 100) { it.quotes },
-        "historian" to ladder(1, 3, 6, 10, 20) { it.historian },
+        "quoted" to ladder(10, 50, 150, 400, 1000) { it.quotes },
+        "historian" to ladder(1, 5, 15, 40, 100) { it.historian },
         "remote" to milestone(1) { it.devicesPaired },
-        "on-the-road" to ladder(5, 15, 25, 50, 100) { it.phonePrompts },
-        "watched" to ladder(1, 3, 5, 10, 25) { it.watched },
-        "ceiling" to ladder(1, 2, 5, 10, 20) { it.ranOutFiveHour },
-        "thanks" to ladder(1, 3, 5, 10, 25) { it.thanks },
+        "on-the-road" to ladder(5, 50, 150, 400, 1000) { it.phonePrompts },
+        "watched" to ladder(1, 5, 15, 40, 100) { it.watched },
+        "ceiling" to ladder(1, 5, 20, 60, 150) { it.ranOutFiveHour },
+        // Two ways to say it and no more - a star on GitHub, a review on the plugin's page - so the
+        // achievement is two lines rather than five (see StatsCollector, "thanks").
+        "thanks" to ladder(1, 2) { it.thanks },
     )
 
     val ALL: List<Definition> = CATALOGUE.map { (id, make) -> make(id) }
+
+    /**
+     * Which set of lines the book was last measured against - see [RECALIBRATED] and StatsLedger.load.
+     *
+     * Raised whenever a threshold moves. Nothing else in the book is versioned, and nothing else needs to
+     * be: every other figure means the same thing it always did.
+     */
+    const val RULES_VERSION = 4
+
+    /**
+     * What [RULES_VERSION] 2 forgets, once: the achievements whose lines moved, and the ones whose figure
+     * itself now means something else.
+     *
+     * A tier is not taken back when the counting is merely corrected - that is the floor in [evaluate],
+     * and it is there for every recount to come. This release is both cases at once, though: the lines of
+     * half the ladders moved, and the hours themselves were being added up across projects, so an hour
+     * with two agents running counted as two. A fifth tier standing against a line that no longer exists,
+     * or against twice the hours anybody spent, says nothing true - and the four hour ladders are the ones
+     * that were most flattered by it. Everything not named here keeps its moments.
+     */
+    val RECALIBRATED: Set<String> = setOf(
+        "first-hour", "ten-hours", "hundred-hours", "five-hundred",
+        "early-riser", "night-shift", "deep-work", "marathon", "full-day", "sprint", "quick-turn",
+        "long-haul", "big-diff", "surgeon", "refactor", "housekeeper", "test-first", "rollback", "reader",
+        "grep-hound", "shell", "writer", "todo-keeper", "planner", "mcp", "plugin-shelf", "slash",
+        "attachment", "quoted", "historian", "on-the-road", "watched", "ceiling", "thanks",
+    )
+
+    /**
+     * What each version of the rules forgot, by the version that did it - see [forgottenSince].
+     *
+     * By version rather than in one heap, because a book only has to forget what moved after it was last
+     * measured. Version 3 moved a single ladder; a book already measured against 2 has earned the other
+     * thirty-odd back by honest work, and taking them away a second time would be the screen lying in the
+     * other direction.
+     */
+    private val RECALIBRATIONS: Map<Int, Set<String>> = mapOf(
+        2 to RECALIBRATED,
+        // "thanks" is no longer counted in presses at all: there are two ways to say it and the ladder now
+        // has one line for each, so a hundred and fifty presses of the heart say nothing about either.
+        3 to setOf("thanks"),
+        /*
+         * Both figures that were kept in chains are single ladders now, and the eight ids the chains were
+         * written under are gone: the lines the agent writes end at a hundred million rather than a
+         * million, and the hours in the panel at ten thousand rather than five hundred. What stood against
+         * the old ids goes with them.
+         */
+        4 to setOf(
+            "thousand-lines", "ten-thousand", "hundred-thousand", "million-lines",
+            "first-hour", "ten-hours", "hundred-hours", "five-hundred",
+        ),
+    )
+
+    /** The achievements whose lines have moved since a book was last measured, at [version]. */
+    fun forgottenSince(version: Int): Set<String> =
+        if (version >= RULES_VERSION) emptySet() else RECALIBRATIONS.filterKeys { it > version }.values.flatten().toSet()
 
     val IDS: List<String> = ALL.map { it.id }
 
@@ -130,11 +244,30 @@ internal object Achievements {
         "hooks", "agents", "skills", "rewind", "export", "stats", "todos", "bug", "login", "logout",
     )
 
-    fun evaluate(snapshot: StatsSnapshot, today: LocalDate): List<State> {
+    /**
+     * Where every achievement stands, given the book - and given the tiers already earned, which are a
+     * floor under the answer.
+     *
+     * The floor is what keeps the promise on this class when the counting changes rather than the work.
+     * The hours in the panel used to be every project's minutes added up, which counted an hour with two
+     * agents running as two hours; counting them honestly makes an old figure smaller, and a tier that
+     * was crossed and celebrated would have quietly gone out again. The moments are already written down
+     * (see StatsLedger.achievements) - so what was earned stays earned, and the figure beside it tells
+     * the truth as it stands now.
+     */
+    fun evaluate(snapshot: StatsSnapshot, today: LocalDate, earned: Map<String, Int> = emptyMap()): List<State> {
         val metrics = Metrics.of(snapshot, today)
         return ALL.map { definition ->
             val value = definition.metric(metrics)
-            State(definition.id, definition.tierOf(value), value, definition.targetOf(value))
+            val tier = maxOf(definition.tierOf(value), earned[definition.id] ?: 0)
+            State(
+                definition.id,
+                tier,
+                value,
+                definition.targetOf(tier),
+                definition.lineOf(tier),
+                definition.steps,
+            )
         }
     }
 
@@ -193,57 +326,59 @@ internal object Achievements {
             fun of(snapshot: StatsSnapshot, today: LocalDate): Metrics {
                 val metrics = Metrics()
                 val activeDates = sortedSetOf<LocalDate>()
-                val minutesByDay = HashMap<LocalDate, Int>()
                 val slash = HashSet<String>()
+                val thanks = HashSet<String>()
 
-                for (project in snapshot.projects.values) {
-                    for ((day, record) in project.days) {
-                        val date = runCatching { LocalDate.parse(day) }.getOrNull() ?: continue
-                        if (record.isActive()) activeDates.add(date)
-                        minutesByDay[date] = (minutesByDay[date] ?: 0) + record.minutes.count()
+                // The machine's days rather than each project's own: an hour with two projects working at
+                // once is an hour of a person's life, and the ladders of hours are about the person. See
+                // StatsSnapshot.daysTogether - the minutes are joined there rather than added.
+                for ((day, record) in snapshot.daysTogether()) {
+                    val date = runCatching { LocalDate.parse(day) }.getOrNull() ?: continue
+                    if (record.isActive()) activeDates.add(date)
+                    metrics.longestDay = maxOf(metrics.longestDay, record.minutes.count().toLong())
 
-                        metrics.earlyPrompts += record.earlyPrompts
-                        metrics.latePrompts += record.latePrompts
-                        metrics.sessions += record.sessions
-                        metrics.minutes += record.minutes.count()
-                        metrics.longestStretch = maxOf(metrics.longestStretch, record.longestStretch.toLong())
-                        metrics.longestSession = maxOf(metrics.longestSession, record.longestSession.toLong())
-                        metrics.maxTurnsInHour = maxOf(metrics.maxTurnsInHour, record.maxTurnsInHour.toLong())
-                        metrics.quickTurns += record.quickTurns
-                        metrics.longTurns += record.longTurns
-                        metrics.edits += record.edits
-                        metrics.linesAdded += record.linesAdded
-                        metrics.linesRemoved += record.linesRemoved
-                        metrics.biggestEdit = maxOf(metrics.biggestEdit, record.biggestEdit.toLong())
-                        metrics.singleLineEdits += record.singleLineEdits
-                        metrics.maxFilesInTurn = maxOf(metrics.maxFilesInTurn, record.maxFilesInTurn.toLong())
-                        metrics.testTurns += record.testTurns
-                        metrics.editsRefused += record.editsRefused
-                        metrics.reads += record.tools[READ] ?: 0
-                        metrics.searches += (record.tools[GREP] ?: 0) + (record.tools[GLOB] ?: 0)
-                        metrics.commands += record.tools[BASH] ?: 0
-                        metrics.writes += record.tools[WRITE] ?: 0
-                        metrics.todosDone += record.todosDone
-                        metrics.plansApproved += record.plansApproved
-                        metrics.mcpConnected = maxOf(metrics.mcpConnected, record.mcpConnected.toLong())
-                        metrics.plugins = maxOf(metrics.plugins, record.plugins.toLong())
-                        slash.addAll(record.slash.filter { it in BUILT_IN_COMMANDS })
-                        metrics.attachments += record.attachments
-                        metrics.forks += record.forks
-                        metrics.maxForksInTree = maxOf(metrics.maxForksInTree, record.maxForksInTree.toLong())
-                        metrics.maxDepth = maxOf(metrics.maxDepth, record.maxDepth.toLong())
-                        metrics.quotes += record.quotes
-                        metrics.historian += record.historian
-                        metrics.phonePrompts += record.phonePrompts
-                        metrics.watched += record.watched
-                        metrics.ranOutFiveHour += record.ranOutFiveHour
-                        metrics.thanks += record.thanks
-                    }
+                    metrics.earlyPrompts += record.earlyPrompts
+                    metrics.latePrompts += record.latePrompts
+                    metrics.sessions += record.sessions
+                    metrics.minutes += record.minutes.count()
+                    metrics.longestStretch = maxOf(metrics.longestStretch, record.longestStretch.toLong())
+                    metrics.longestSession = maxOf(metrics.longestSession, record.longestSession.toLong())
+                    metrics.maxTurnsInHour = maxOf(metrics.maxTurnsInHour, record.maxTurnsInHour.toLong())
+                    metrics.quickTurns += record.quickTurns
+                    metrics.longTurns += record.longTurns
+                    metrics.edits += record.edits
+                    metrics.linesAdded += record.linesAdded
+                    metrics.linesRemoved += record.linesRemoved
+                    metrics.biggestEdit = maxOf(metrics.biggestEdit, record.biggestEdit.toLong())
+                    metrics.singleLineEdits += record.singleLineEdits
+                    metrics.maxFilesInTurn = maxOf(metrics.maxFilesInTurn, record.maxFilesInTurn.toLong())
+                    metrics.testTurns += record.testTurns
+                    metrics.editsRefused += record.editsRefused
+                    metrics.reads += record.tools[READ] ?: 0
+                    metrics.searches += (record.tools[GREP] ?: 0) + (record.tools[GLOB] ?: 0)
+                    metrics.commands += record.tools[BASH] ?: 0
+                    metrics.writes += record.tools[WRITE] ?: 0
+                    metrics.todosDone += record.todosDone
+                    metrics.plansApproved += record.plansApproved
+                    metrics.mcpConnected = maxOf(metrics.mcpConnected, record.mcpConnected.toLong())
+                    metrics.plugins = maxOf(metrics.plugins, record.plugins.toLong())
+                    slash.addAll(record.slash.filter { it in BUILT_IN_COMMANDS })
+                    thanks.addAll(record.thanksWays)
+                    metrics.attachments += record.attachments
+                    metrics.forks += record.forks
+                    metrics.maxForksInTree = maxOf(metrics.maxForksInTree, record.maxForksInTree.toLong())
+                    metrics.maxDepth = maxOf(metrics.maxDepth, record.maxDepth.toLong())
+                    metrics.quotes += record.quotes
+                    metrics.historian += record.historian
+                    metrics.phonePrompts += record.phonePrompts
+                    metrics.watched += record.watched
+                    metrics.ranOutFiveHour += record.ranOutFiveHour
                 }
 
                 metrics.slashCommands = slash.size.toLong()
+                // The ways, not the presses: pressing the same one twice is thanking once.
+                metrics.thanks = thanks.size.toLong()
                 metrics.devicesPaired = snapshot.devicesPaired.toLong()
-                metrics.longestDay = (minutesByDay.values.maxOrNull() ?: 0).toLong()
                 metrics.activeDays = activeDates.size.toLong()
                 metrics.weekendDays = activeDates.count { it.dayOfWeek == DayOfWeek.SATURDAY || it.dayOfWeek == DayOfWeek.SUNDAY }.toLong()
                 metrics.bestStreak = bestStreak(activeDates).toLong()

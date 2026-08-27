@@ -740,14 +740,14 @@ export const App = () => {
           onStopTask={(taskId) =>
             command(screen.agentId, screen.projectKey, { type: 'stopTask', sessionId: screen.sessionId, taskId })
           }
-          earlierPages={feed.earlierPages}
+          earlierPages={feed.state.earlierPages}
           onLoadEarlier={
-            feed.oldestEventUuid && !feed.reachedStart
+            feed.state.oldestEventUuid !== undefined && !feed.state.reachedStart
               ? () =>
                   command(screen.agentId, screen.projectKey, {
                     type: 'historyPage',
                     sessionId: screen.sessionId,
-                    before: feed.oldestEventUuid ?? undefined,
+                    before: feed.state.oldestEventUuid,
                   })
               : undefined
           }

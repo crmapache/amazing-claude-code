@@ -37,6 +37,17 @@ const text = (id: string): FeedItem => ({ id, kind: 'text', paragraphs: [], sour
 
 const limit = (id: string, state: 'extra' | 'waiting'): FeedItem => ({ id, kind: 'limit', state, window: '5-hour' })
 
+const task = (id: string, pending: boolean): FeedItem => ({
+  id,
+  kind: 'task',
+  target: 'Explore',
+  meta: '',
+  duration: '',
+  percent: 0,
+  log: [],
+  pending,
+})
+
 const panel = (items: FeedItem[], status: AgentStatus = 'running'): PanelView => ({ items, status })
 
 /** A tab that has already been watched: only what appeared after that sounds. */
@@ -82,13 +93,29 @@ describe('soundForPanel', () => {
     expect(soundForPanel(panel([text('t1'), error('e2', 'API error')]), broken.memory)).toBe('trouble')
   })
 
-  it('calls when a limit stopped the work, and stays quiet when it is merely being paid for', () => {
+  it('tells a limit that stopped the work from one that is being paid for', () => {
     const stopped = watching([text('t1')])
     expect(soundForPanel(panel([text('t1'), limit('l1', 'waiting')]), stopped.memory)).toBe('rateLimit')
 
-    // Extra usage means the work carries on: calling someone to the desk for it would be a false alarm.
+    // The work carries on - but from this moment it is billed on top of the plan, which is a different
+    // occasion and a sound of its own.
     const paid = watching([text('t1')])
-    expect(soundForPanel(panel([text('t1'), limit('l2', 'extra')]), paid.memory)).toBeNull()
+    expect(soundForPanel(panel([text('t1'), limit('l2', 'extra')]), paid.memory)).toBe('extraUsage')
+  })
+
+  /** The row appears once per window that runs out, so the sound does too (see rate_limit_event). */
+  it('does not repeat the extra usage sound while the state holds', () => {
+    const { memory } = watching([text('t1')])
+    const paid = panel([text('t1'), limit('l1', 'extra')])
+
+    expect(soundForPanel(paid, memory)).toBe('extraUsage')
+    expect(soundForPanel(paid, memory)).toBeNull()
+  })
+
+  /** A conversation raised from the history holds limits that ran out long ago. */
+  it('stays silent about extra usage in a replayed conversation', () => {
+    const { memory } = watching([], 'idle')
+    expect(soundForPanel(panel([limit('l1', 'extra')], 'idle'), memory)).toBeNull()
   })
 
   it('picks the main one out of several occasions at once', () => {
@@ -122,6 +149,29 @@ describe('soundForPanel', () => {
     // The outcome arrives through the same update in which the turn came free: by the time of the check the
     // status is already 'idle', and the only thing to lean on is the previous one.
     expect(soundForPanel(panel([text('t1'), meta('m1')], 'idle'), memory)).toBe('turnFinished')
+  })
+
+  /**
+   * A skill's own background subagent (/code-review, say) keeps the main stream's turn ending and
+   * restarting for as long as it reports back - each restart brings its own meta card. Chiming on every
+   * one of them would mean one chime per subagent notification instead of one for the whole review.
+   */
+  it('stays silent about a turn ending while a background subagent has not reported back yet', () => {
+    const { memory } = watching([text('t1'), task('task-1', true)])
+    const stillRunning = panel([text('t1'), task('task-1', true), meta('m1')], 'idle')
+    expect(soundForPanel(stillRunning, memory)).toBeNull()
+  })
+
+  it('calls once the last background subagent has reported back', () => {
+    const { memory } = watching([text('t1'), task('task-1', true)])
+    const done = panel([text('t1'), task('task-1', false), meta('m1')], 'idle')
+    expect(soundForPanel(done, memory)).toBe('turnFinished')
+  })
+
+  it('does not let one still-pending subagent silence a turn about an unrelated occasion', () => {
+    const { memory } = watching([text('t1'), task('task-1', true)])
+    const asked = panel([text('t1'), task('task-1', true), ask('a1')], 'running')
+    expect(soundForPanel(asked, memory)).toBe('question')
   })
 })
 

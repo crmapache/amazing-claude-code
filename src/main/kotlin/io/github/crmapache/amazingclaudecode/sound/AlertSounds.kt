@@ -35,6 +35,7 @@ internal object AlertSounds {
     internal val FILES = mapOf(
         "trouble" to "trouble.wav",
         "rateLimit" to "rate-limit.wav",
+        "extraUsage" to "extra-usage.wav",
         "permission" to "permission.wav",
         "question" to "question.wav",
         "plan" to "plan.wav",

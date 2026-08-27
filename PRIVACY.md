@@ -1,14 +1,17 @@
 # Privacy
 
-_Last updated: 23 August 2026_
+_Last updated: 27 August 2026_
 
-Amazing Claude Code is a panel for Claude Code inside JetBrains IDEs. With one exception, described
-below, it sends nothing anywhere: the agent runs on your machine, the conversation stays on your
-machine, and the plugin has no analytics, no telemetry and no account of any kind.
+Amazing Claude Code is a panel for Claude Code inside JetBrains IDEs. With two exceptions, both
+described below, it sends nothing anywhere: the agent runs on your machine, the conversation stays on
+your machine, and the plugin has no analytics, no telemetry and no account of any kind.
 
-The exception is **remote access**, which lets you answer your agent from your phone. It is off when
-the plugin is installed and stays off until you turn it on. This page is about what happens when you
-do.
+The first exception is **remote access**, which lets you answer your agent from your phone. It is off
+when the plugin is installed and stays off until you turn it on. Most of this page is about what
+happens when you do.
+
+The second is **feedback** - the form behind the speech bubble beside the heart. Nothing travels from
+it unless you write something and press Send; see "Feedback" at the end of this page.
 
 ## What travels, and where
 
@@ -100,9 +103,44 @@ address. If you do, everything on this page becomes "logs on your own server" in
 See the relay's README for how to deploy it - by Docker, by Node, or on any host that can run a
 small Node service.
 
+## Feedback
+
+The panel has a form for telling the plugin's author something - a bug, an idea, or nothing in
+particular. It sends only when you press Send, and it sends only these things:
+
+- **What you wrote**, and which of the three kinds you picked.
+- **Your email address, if you filled it in.** It is optional, it is kept on your machine so you need
+  not type it twice, and it is used to answer you and for nothing else. Nothing is ever sent to it by
+  the plugin itself.
+- **The files you attached**, if you attached any.
+- **A debug report**, if you left that switch on. It is offered with a bug report only - on an idea or
+  a hello the switch is off and cannot be turned on, because there is nothing for the report to describe.
+
+The debug report is the part worth being exact about. It contains: the plugin's version, your IDE and
+its build, your operating system and processor architecture, the version of Claude Code, an outline of
+what the current conversation did, anything that failed, and a few counts of what the plugin did on its
+own - how many messages a conversation was opened with, for instance, or that a batch of them did not
+reach the panel.
+
+The outline is a list of shapes rather than contents - "a Read call, 118 bytes in, 4 kilobytes back, at
+this many seconds". It does **not** contain your messages, the agent's answers, the contents of any
+file, the commands it ran, the paths on your disk, the names of your files, your project's name, or
+your Claude account. File names appear only as twelve characters of a hash, so that the same file reads
+as the same file without saying which one it is.
+
+You can read the whole report before sending it: the form has "See exactly what gets attached", and
+what it shows is the entire string that travels. There is no fuller version kept back for the wire.
+
+It goes to `feedback.mzpizote.com`, a small service run by the plugin's author on the same server as
+the relay, which forwards it to the author's Telegram and keeps nothing itself. Its logs record that a
+message arrived, roughly how big it was and when - never what was in it. Once forwarded, the message
+lives in that Telegram chat for as long as the author keeps it.
+
 ## Your choices
 
 - Remote access is off by default; the plugin does nothing over the network until you turn it on.
+- Feedback is sent only when you press Send, and only what the form lists - with the debug report shown
+  to you in full beforehand, and switchable off.
 - You can revoke any paired device at any time, from the panel: menu → Remote access.
 - You can reset this IDE's identity entirely, which drops every pairing at once.
 - You can run your own relay.

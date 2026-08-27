@@ -17,7 +17,7 @@ class AlertSoundsTest {
     @Test
     fun `every occasion has a sound of its own`() {
         assertEquals(
-            setOf("turnFinished", "permission", "plan", "question", "rateLimit", "trouble"),
+            setOf("turnFinished", "permission", "plan", "question", "rateLimit", "extraUsage", "trouble"),
             AlertSounds.ids,
         )
     }
@@ -49,7 +49,10 @@ class AlertSoundsTest {
 
     @Test
     fun `the order of the sounds sets their importance`() {
-        assertEquals(listOf("trouble", "rateLimit", "permission", "question", "plan", "turnFinished"), AlertSounds.ids.toList())
+        assertEquals(
+            listOf("trouble", "rateLimit", "extraUsage", "permission", "question", "plan", "turnFinished"),
+            AlertSounds.ids.toList(),
+        )
     }
 }
 
@@ -57,7 +60,7 @@ class AlertThrottleTest {
 
     /** The ranks are the same as in AlertSounds: the smaller, the more alarming. */
     private val trouble = 0
-    private val turnFinished = 5
+    private val turnFinished = 6
 
     @Test
     fun `the first signal always passes`() {

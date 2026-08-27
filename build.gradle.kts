@@ -251,7 +251,12 @@ tasks.withType<RunIdeTask>().configureEach {
 
     // The panel belongs to a project, so it cannot be seen on the empty welcome screen.
     // -PopenProject=<path> opens a project right as the sandbox IDE starts.
-    providers.gradleProperty("openProject").orNull?.let { path -> args(path) }
+    //
+    // Made absolute here rather than trusted as given: a relative path is resolved against the IDE
+    // process's own working directory, not this one, so the IDE does not find it - and instead of saying
+    // so it starts in LightEdit mode, where there are no projects and therefore no panel at all. The
+    // failure looks like the plugin not loading, which is a long way from "the path was relative".
+    providers.gradleProperty("openProject").orNull?.let { path -> args(file(path).absolutePath) }
 
     // In the sandbox IDE the panel opens itself: hunting for the button every run serves nothing.
     systemProperty("acc.autoOpen", "true")
@@ -269,6 +274,18 @@ tasks.withType<RunIdeTask>().configureEach {
     // without clicking through the panel first; an ordinary IDE never sees it.
     providers.gradleProperty("remoteRelay").orNull?.let { url ->
         systemProperty("acc.remote.relay", url)
+    }
+
+    // -PfeedbackUrl=http://localhost:8081 points the feedback screen at a receiver running on this
+    // machine instead of the published one, and -PfeedbackKey overrides the shared secret it sends with
+    // it. The whole chain - screen, report, service, Telegram - has to be checkable end to end, and the
+    // address people's real reports go to is not the thing to test against.
+    providers.gradleProperty("feedbackUrl").orNull?.let { url ->
+        systemProperty("acc.feedback.url", url)
+    }
+
+    providers.gradleProperty("feedbackKey").orNull?.let { key ->
+        systemProperty("acc.feedback.key", key)
     }
 
     // -PjcefDebugPort=9222 opens the panel to an external debugger over the Chrome DevTools protocol: a

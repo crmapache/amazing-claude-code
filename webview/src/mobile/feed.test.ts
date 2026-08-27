@@ -241,13 +241,13 @@ describe('the phone building a conversation', () => {
     it('is taken from the first agent event', () => {
       const feed = apply([assistant('one', 'u1'), assistant('two', 'u2')])
 
-      expect(feed.oldestEventUuid).toEqual('u1')
+      expect(feed.state.oldestEventUuid).toEqual('u1')
     })
 
-    it('is null until an agent event with a uuid has arrived', () => {
+    it('is unset until an agent event with a uuid has arrived', () => {
       const feed = apply([message({ type: 'status', sessionId: 'main', state: 'running' })])
 
-      expect(feed.oldestEventUuid).toBeNull()
+      expect(feed.state.oldestEventUuid).toBeUndefined()
     })
 
     /**
@@ -265,7 +265,7 @@ describe('the phone building a conversation', () => {
 
       const feed = apply([hook, assistant('one', 'u1')])
 
-      expect(feed.oldestEventUuid).toEqual('u1')
+      expect(feed.state.oldestEventUuid).toEqual('u1')
     })
 
     it('prepends an earlier page and moves the anchor back to it', () => {
@@ -274,7 +274,7 @@ describe('the phone building a conversation', () => {
         assistant('two', 'u2'),
         message({ type: 'restoreFinished', sessionId: 'main', upTo: 5 }),
       ])
-      expect(feed.oldestEventUuid).toEqual('u2')
+      expect(feed.state.oldestEventUuid).toEqual('u2')
 
       const paged = applyMessage(
         feed,
@@ -286,7 +286,7 @@ describe('the phone building a conversation', () => {
         }),
       )
 
-      expect(paged.oldestEventUuid).toEqual('u1')
+      expect(paged.state.oldestEventUuid).toEqual('u1')
       // The checkpoint stays, now above what was just loaded, because a cursor came back: there is more.
       expect(paged.state.items.map((item) => item.kind)).toEqual(['checkpoint', 'text', 'text'])
     })
@@ -351,7 +351,7 @@ describe('the phone building a conversation', () => {
 
       expect(once.state.items.filter((item) => item.kind === 'text')).toHaveLength(2)
       expect(twice.state.items.filter((item) => item.kind === 'text')).toHaveLength(2)
-      expect(twice.reachedStart).toBe(true)
+      expect(twice.state.reachedStart).toBe(true)
     })
 
     it('ignores a page that answers a boundary no longer on screen', () => {
@@ -373,9 +373,9 @@ describe('the phone building a conversation', () => {
       )
 
       expect(stale.state.items.filter((item) => item.kind === 'text')).toHaveLength(1)
-      expect(stale.oldestEventUuid).toEqual('u2')
+      expect(stale.state.oldestEventUuid).toEqual('u2')
       // Counted all the same: the request was answered, and the screen unlocks its button by this.
-      expect(stale.earlierPages).toEqual(1)
+      expect(stale.state.earlierPages).toEqual(1)
     })
 
     it('counts an answer that brought nothing, so the placeholder can be tapped again', () => {
@@ -383,7 +383,7 @@ describe('the phone building a conversation', () => {
 
       const paged = applyMessage(feed, message({ type: 'historyPage', sessionId: 'main', before: 'u2', entries: [] }))
 
-      expect(paged.earlierPages).toEqual(1)
+      expect(paged.state.earlierPages).toEqual(1)
     })
 
     it('drops the placeholder once a page comes back with nothing further to load', () => {

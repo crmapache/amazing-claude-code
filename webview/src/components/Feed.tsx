@@ -58,12 +58,23 @@ interface FeedProps {
   /** Open a link from the agent's answer in the system browser. */
   onOpenLink: (url: string) => void
   /**
-   * A page of this conversation further back than the EARLIER placeholder - see feed/streamStatus and
-   * mobile/feed.ts. Undefined leaves the placeholder as a plain, unclickable mark, which is what a
-   * desktop panel wants: it already gets the journal's full reach (see ClaudeSessionHub.CatchUp) and
-   * hits this case rarely enough that a button here would be a control with almost nothing to press.
+   * A page of this conversation further back than the EARLIER mark - see historyPage in feed/build.ts.
+   * Both screens want it: a tab opens a past conversation with its end rather than the whole of it (see
+   * ClaudeHistory.opening), and a phone is handed the end of a live one. Undefined leaves the mark a
+   * plain, unclickable caption - the beginning is on screen, or there is nothing to anchor a request on.
    */
   onLoadEarlier?: () => void
+  /**
+   * How many pages of earlier messages have been applied to this feed (see PanelState.earlierPages) - the
+   * signal to hold the reading position when one arrives.
+   *
+   * A page goes in ABOVE everything on screen, and a browser keeps the scroll offset as a number: the lines
+   * being read jump down the screen by the height of what has just been loaded, which reads as the feed
+   * throwing the reader somewhere else. The count is the signal rather than the feed growing, because the
+   * mark above the feed keeps its own identity across a page and growth alone cannot tell "loaded above"
+   * from "an answer arrived below".
+   */
+  earlierPages?: number
   scrollRef?: (element: HTMLElement | null) => void
 }
 
@@ -80,6 +91,7 @@ export const Feed = ({
   onDismissError,
   onOpenLink,
   onLoadEarlier,
+  earlierPages,
   scrollRef,
 }: FeedProps) => {
   const view = useRef<HTMLElement | null>(null)
@@ -189,19 +201,57 @@ export const Feed = ({
   useLayoutEffect(toBottom, [items, pacedText, streamingThinking, toBottom])
 
   /**
+   * Keep the reading position when a page of earlier messages arrives - see [FeedProps.earlierPages].
+   *
+   * The measurements describe the feed as it stood before the page went in: the offset is then put back
+   * where it was, plus however much taller the feed became above it. Not while the feed sticks to the
+   * bottom: there the bottom is the position worth holding, and the effect above has already gone there.
+   *
+   * They are taken both here and on every scroll (see onScroll below), and the second of those is the one
+   * that matters: scrolling on its own does not render, so a chat being read - which is exactly a chat
+   * opened from history, with no agent printing into it - kept the offset of whenever it last happened to
+   * render. Reading up to the top and asking for more then landed the reader near the bottom of the chat,
+   * which is the very thing this is here to prevent.
+   */
+  const measured = useRef({ pages: earlierPages ?? 0, height: 0, top: 0 })
+
+  useLayoutEffect(() => {
+    const element = view.current
+    if (!element) return
+
+    const pages = earlierPages ?? 0
+    if (pages !== measured.current.pages && !stick.current) {
+      element.scrollTop = measured.current.top + (element.scrollHeight - measured.current.height)
+    }
+
+    measured.current = { pages, height: element.scrollHeight, top: element.scrollTop }
+  })
+
+  /**
    * The unread count is what has accumulated from the agent while the feed is not sticking to the
    * bottom. The user's own messages are not counted: they have seen them anyway, they have only just
    * written them. While the feed sticks to the bottom the counter is held at zero - the user sees
    * everything as it arrives.
+   *
+   * Counted from the last row seen rather than from how many rows there are: a page of earlier messages
+   * goes in ABOVE everything on screen (see earlierPages), and by count alone that is the same event as
+   * that many answers arriving below - the button would offer to jump down to messages that are in fact
+   * older than the ones being read. The anchor is a settled row rather than whatever stands last: a
+   * printing thought or answer is folded into the card above it when it finishes, and an anchor on one of
+   * those would vanish from under the counter mid-stream.
    */
-  const seenCount = useRef(0)
-  const unreadCount = rows.filter((item) => item.kind !== 'user').length
+  const seenId = useRef<string | undefined>(undefined)
+  const settledTailId = settled.at(-1)?.id
 
   useEffect(() => {
-    if (stuck) seenCount.current = unreadCount
-  }, [stuck, unreadCount])
+    if (stuck) seenId.current = settledTailId
+  }, [stuck, settledTailId])
 
-  const unread = Math.max(0, unreadCount - seenCount.current)
+  const anchor = seenId.current
+  const seenAt = anchor === undefined ? -1 : rows.findIndex((row) => row.id === anchor)
+  /** The anchor is gone from the feed (a plan card decided, an error dismissed): claim nothing unread. */
+  const unread =
+    anchor !== undefined && seenAt < 0 ? 0 : rows.slice(seenAt + 1).filter((item) => item.kind !== 'user').length
 
   const jumpToBottom = () => {
     const element = view.current
@@ -238,9 +288,14 @@ export const Feed = ({
           scrollRef?.(element)
         }}
         onScroll={(event) => {
-          const atBottom = isAtBottom(event.currentTarget)
+          const element = event.currentTarget
+          const atBottom = isAtBottom(element)
           stick.current = atBottom
           setStuck(atBottom)
+          // Where the reading is, measured when it moves rather than when React happens to look: setStuck
+          // bails out once the answer stops changing, and every scroll after the first would leave the
+          // remembered offset behind (see the effect above). The reads are the ones isAtBottom just made.
+          measured.current = { ...measured.current, height: element.scrollHeight, top: element.scrollTop }
         }}
       >
         {isEmpty ? (

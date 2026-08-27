@@ -4,8 +4,11 @@ import { duration, shortDate } from '../../stats/format'
 import s from './stats.module.css'
 
 /**
- * Hours a day in the panel: this project against every project, as two soft lines with a wash of colour
- * under each.
+ * Hours a day in the panel, as one soft line with a wash of colour under it.
+ *
+ * One line rather than two: the tab counts every project together, and a second line for the project in
+ * front was the same figure told two ways - which is exactly what the tiles above used to disagree
+ * about. Where the hours went by project is a list of its own, further down the tab.
  *
  * Drawn by hand into an SVG rather than by a charting library: the panel loads nothing off the network,
  * and a library for one line chart would be the heaviest thing in it. The width comes from the box the
@@ -114,7 +117,7 @@ export const HoursChart = ({ series }: HoursChartProps) => {
   }, [])
 
   const count = series.dates.length
-  const top = scaleTop([...series.project, ...series.all])
+  const top = scaleTop(series.hours)
   const step = tickStep(top)
   const plotWidth = Math.max(0, width - PAD_LEFT - PAD_RIGHT)
   const plotHeight = HEIGHT - PAD_TOP - PAD_BOTTOM
@@ -122,9 +125,7 @@ export const HoursChart = ({ series }: HoursChartProps) => {
   const yOf = (hours: number): number => PAD_TOP + plotHeight - (Math.min(top, Math.max(0, hours)) / top) * plotHeight
   const floor = PAD_TOP + plotHeight
 
-  const toPoints = (values: number[]) => values.map((value, index) => ({ x: round(xOf(index)), y: round(yOf(value)) }))
-  const projectPoints = toPoints(series.project)
-  const allPoints = toPoints(series.all)
+  const points = series.hours.map((value, index) => ({ x: round(xOf(index)), y: round(yOf(value)) }))
 
   const area = (points: { x: number; y: number }[]): string => {
     if (points.length === 0) return ''
@@ -165,11 +166,7 @@ export const HoursChart = ({ series }: HoursChartProps) => {
           aria-label="Hours a day in the panel"
         >
           <defs>
-            <linearGradient id="acc-stats-all" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="rgb(var(--acc-ch-aqua) / 10%)" />
-              <stop offset="1" stopColor="rgb(var(--acc-ch-aqua) / 0%)" />
-            </linearGradient>
-            <linearGradient id="acc-stats-project" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id="acc-stats-hours" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0" stopColor="rgb(var(--acc-ch-moon) / 22%)" />
               <stop offset="1" stopColor="rgb(var(--acc-ch-moon) / 0%)" />
             </linearGradient>
@@ -200,25 +197,17 @@ export const HoursChart = ({ series }: HoursChartProps) => {
             ) : null,
           )}
 
-          <path d={area(allPoints)} fill="url(#acc-stats-all)" />
-          <path d={monotonePath(allPoints)} fill="none" stroke="rgb(var(--acc-ch-aqua) / 50%)" strokeWidth="1" />
-          <path d={area(projectPoints)} fill="url(#acc-stats-project)" />
-          <path d={monotonePath(projectPoints)} fill="none" stroke="rgb(var(--acc-ch-moon) / 90%)" strokeWidth="1.4" />
+          <path d={area(points)} fill="url(#acc-stats-hours)" />
+          <path d={monotonePath(points)} fill="none" stroke="rgb(var(--acc-ch-moon) / 90%)" strokeWidth="1.4" />
 
-          {projectPoints.length > 0 ? (
-            <circle
-              cx={projectPoints[projectPoints.length - 1]!.x}
-              cy={projectPoints[projectPoints.length - 1]!.y}
-              r="2.6"
-              fill="var(--acc-c-moon-4)"
-            />
+          {points.length > 0 ? (
+            <circle cx={points[points.length - 1]!.x} cy={points[points.length - 1]!.y} r="2.6" fill="var(--acc-c-moon-4)" />
           ) : null}
 
           {hover !== null ? (
             <g>
               <line className={s.chartGuide} x1={xOf(hover)} x2={xOf(hover)} y1={PAD_TOP} y2={floor} />
-              <circle cx={xOf(hover)} cy={yOf(series.all[hover] ?? 0)} r="3" fill="rgb(var(--acc-ch-aqua) / 85%)" />
-              <circle cx={xOf(hover)} cy={yOf(series.project[hover] ?? 0)} r="3.4" fill="var(--acc-c-moon-4)" />
+              <circle cx={xOf(hover)} cy={yOf(series.hours[hover] ?? 0)} r="3.4" fill="var(--acc-c-moon-4)" />
             </g>
           ) : null}
         </svg>
@@ -230,14 +219,7 @@ export const HoursChart = ({ series }: HoursChartProps) => {
           style={tipOnLeft ? { right: width - tipLeft + 10 } : { left: tipLeft + 10 }}
         >
           <span className={s.chartTipTitle}>{shortDate(hovered)}</span>
-          <span className={s.chartTipLine}>
-            <span className={s.chartTipWho}>project</span>
-            {duration((series.project[hover] ?? 0) * 60)}
-          </span>
-          <span className={s.chartTipLine}>
-            <span className={s.chartTipWho}>all</span>
-            {duration((series.all[hover] ?? 0) * 60)}
-          </span>
+          <span className={s.chartTipLine}>{duration((series.hours[hover] ?? 0) * 60)}</span>
         </div>
       ) : null}
     </div>

@@ -1,0 +1,23 @@
+{
+  "name": "amazing-claude-code-feedback",
+  "version": "0.1.0",
+  "description": "A tiny service that takes a piece of feedback from the plugin's panel and hands it to the author's Telegram.",
+  "private": true,
+  "license": "Elastic-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "node --experimental-strip-types src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.10"
+  }
+}

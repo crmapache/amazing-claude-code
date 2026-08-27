@@ -73,7 +73,7 @@ export const CheckpointRow = ({ item, onLoadEarlier }: { item: CheckpointItem; o
     <button type="button" className={s.checkpointButton} onClick={onLoadEarlier}>
       <span className={s.checkpoint}>
         <span className={s.checkpointChip}>{item.chip}</span>
-        <span className={s.checkpointTarget}>tap to load more</span>
+        <span className={s.checkpointTarget}>load earlier messages</span>
         <span className={s.dashed} />
       </span>
     </button>

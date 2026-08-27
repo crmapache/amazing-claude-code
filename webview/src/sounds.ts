@@ -87,6 +87,7 @@ export const SOUNDS: SoundInfo[] = [
   { id: 'question', label: 'Question asked', hint: 'Claude asked you to pick an answer' },
   { id: 'plan', label: 'Plan ready', hint: 'a plan is waiting for your approval' },
   { id: 'rateLimit', label: 'Limit reached', hint: 'the subscription limit stopped the turn' },
+  { id: 'extraUsage', label: 'Extra usage started', hint: 'the plan is used up - the work is now billed on top' },
   { id: 'trouble', label: 'Something broke', hint: 'an error, a dead process or a signed-out session' },
 ]
 
@@ -98,7 +99,15 @@ export const SOUNDS: SoundInfo[] = [
  * The shell knows the same order: there it decides whose signal outlives the other when several tabs
  * call at once (see AlertSounds.kt).
  */
-const PRIORITY: SoundId[] = ['trouble', 'rateLimit', 'permission', 'question', 'plan', 'turnFinished']
+const PRIORITY: SoundId[] = [
+  'trouble',
+  'rateLimit',
+  'extraUsage',
+  'permission',
+  'question',
+  'plan',
+  'turnFinished',
+]
 
 /**
  * A limit refusal recognised by its text.
@@ -155,9 +164,15 @@ export const soundForPanel = (panel: PanelView, memory: SoundMemory): SoundId | 
 
   if (fresh.length === 0) return null
 
+  // A background subagent (a skill's own, or one the Task tool ran outside the ordinary turn cycle) keeps
+  // the panel busy even once the main stream's own turn has ended - see streamStatus.ts for the same
+  // reading of pending task cards. Chiming on every such intermediate "result" would mean one chime per
+  // subagent notification rather than one for the work as a whole.
+  const stillWorking = panel.items.some((item) => item.kind === 'task' && item.pending)
+
   const sounds = new Set(
     fresh
-      .map((item) => soundFor(item, wasRunning || panel.status === 'running'))
+      .map((item) => soundFor(item, wasRunning || panel.status === 'running', stillWorking))
       .filter((sound): sound is SoundId => sound !== null),
   )
 
@@ -191,8 +206,11 @@ const freshItems = (items: FeedItem[], seen: Set<string>): FeedItem[] => {
  * refusals: a transcript arrives as the same events a live one does and looks no different. A process
  * crash is the exception: it comes not as an agent's event but as a message from the shell itself, so it
  * cannot occur in a raised transcript, while it can happen in silence, with no turn running at all.
+ *
+ * `stillWorking` only matters to a `meta` card: it says a background subagent has not reported back yet,
+ * so this particular turn's end is not the work's end.
  */
-const soundFor = (item: FeedItem, live: boolean): SoundId | null => {
+const soundFor = (item: FeedItem, live: boolean, stillWorking: boolean): SoundId | null => {
   if (item.kind === 'crash') return 'trouble'
   if (!live) return null
 
@@ -209,17 +227,20 @@ const soundFor = (item: FeedItem, live: boolean): SoundId | null => {
     case 'error':
       return LIMIT_PATTERN.test(item.message) ? 'rateLimit' : 'trouble'
 
-    // The limit's own row (see LimitItem). Only a stop calls: extra usage means the work carries on, and
-    // being called away from the desk for work that never paused is the false alarm this whole
-    // distinction exists to remove.
+    // The limit's own row (see LimitItem). The two states are opposite occasions and get a sound each: a
+    // stop is work that will not move until the window resets, extra usage is work that carries on -
+    // for money. The second one calls not because anything has halted but because from this moment the
+    // spending is one's own, and the row saying so appears exactly once per window that runs out (the
+    // CLI repeats the event on every turn while the state holds - see rate_limit_event in feed/build.ts).
     case 'limit':
-      return item.state === 'waiting' ? 'rateLimit' : null
+      return item.state === 'waiting' ? 'rateLimit' : 'extraUsage'
 
     // A turn's result is its end - but only if the agent finished the turn itself. One interrupted by
     // the person is marked right here, and calling someone who pressed "stop" a minute ago serves
     // nothing.
     case 'meta':
-      return item.stats.some((stat) => stat.startsWith(STOPPED_BY_YOU)) ? null : 'turnFinished'
+      if (item.stats.some((stat) => stat.startsWith(STOPPED_BY_YOU))) return null
+      return stillWorking ? null : 'turnFinished'
 
     default:
       return null

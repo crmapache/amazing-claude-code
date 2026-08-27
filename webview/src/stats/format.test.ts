@@ -21,8 +21,12 @@ describe('figures', () => {
     expect(duration(0)).toBe('0m')
     expect(duration(45)).toBe('45m')
     expect(duration(2290)).toBe('38h 10m')
-    expect(durationTight(171)).toBe('2h51')
+    // Tenths of an hour above the hour, and plain minutes below it: "4h13/8h" ran two figures together.
+    expect(durationTight(171)).toBe('2.9h')
     expect(durationTight(240)).toBe('4h')
+    expect(durationTight(253)).toBe('4.2h')
+    expect(durationTight(59)).toBe('59m')
+    expect(durationTight(6765)).toBe('112.8h')
     expect(durationDelta(360)).toBe('+6h')
     expect(durationDelta(-45)).toBe('-45m')
     expect(durationDelta(0)).toBe('±0m')

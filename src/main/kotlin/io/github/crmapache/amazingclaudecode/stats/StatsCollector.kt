@@ -115,6 +115,18 @@ internal class StatsCollector(
     /** The tabs whose turn is running right now - what the ticker marks minutes for. */
     private val running: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
+    /**
+     * The day each conversation was last counted under - what makes the count of conversations the number
+     * of conversations there were.
+     *
+     * The panel's first tab is nobody's request: it stands there before anything is asked for (see
+     * SessionRegistry), and only a request was ever counted - so a day worked in the tab that was already
+     * open counted six turns and no conversations at all. Counted at the first sign of life instead, and
+     * remembered by the day rather than for good: an IDE left open over midnight begins a new day's count
+     * with the same tab.
+     */
+    private val countedSessions = ConcurrentHashMap<String, String>()
+
     /** When the last turns ended - the last hour's worth, for "twenty turns inside one hour". */
     private val turnEnds = ArrayDeque<Long>()
 
@@ -123,6 +135,13 @@ internal class StatsCollector(
 
     @Volatile
     private var watchers = 0
+
+    /**
+     * When the last watcher left - what tells somebody looking in from a phone that keeps dropping the
+     * line, see [noteWatchers].
+     */
+    @Volatile
+    private var watchersLeftAt = 0L
 
     init {
         val ticker = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
@@ -155,7 +174,7 @@ internal class StatsCollector(
 
     private fun noteAssistant(conversation: Conversation, event: JsonObject) {
         val message = event["message"] as? JsonObject ?: return
-        message.string("model").takeIf { it.isNotEmpty() }?.let { conversation.lastModel = it }
+        message.string("model").takeIf { isRealModel(it) }?.let { conversation.lastModel = it }
 
         val blocks = message["content"] as? JsonArray ?: return
         for (element in blocks) {
@@ -379,13 +398,19 @@ internal class StatsCollector(
                     day.quotes += quotes.coerceAtLeast(0)
                 }
             }
-            "thanks" -> update { it.thanks++ }
+            // Which of the two ways was taken - a star on GitHub, or a review on the plugin's page. The
+            // panel names it; an unnamed one is nothing to write down, since the ladder is made of the two.
+            "thanks" -> payload.string("way").takeIf { it.isNotEmpty() }?.let { way ->
+                update { it.thanksWays.add(way) }
+            }
         }
     }
 
     /** A tab opened: an ordinary one, or a fork of another. */
     fun noteSessionOpened(sessionId: String, parentId: String?, groupId: String, depth: Int) {
         val inTree = if (parentId != null) forksByGroup.merge(groupId, 1, Int::plus) ?: 1 else 0
+
+        countedSessions[sessionId] = localDate().toString()
 
         ledger.update { snapshot ->
             val day = today(snapshot)
@@ -404,19 +429,29 @@ internal class StatsCollector(
     fun noteSessionClosed(sessionId: String) {
         conversations.remove(sessionId)
         running.remove(sessionId)
+        // Identifiers are not handed out twice, so what was counted under this one will never be asked
+        // about again - and a day of branching conversations leaves a good many of them behind.
+        countedSessions.remove(sessionId)
     }
 
-    /** A past conversation reopened in a tab - and if it is a month old, a historian's find. */
+    /**
+     * A past conversation reopened in a tab - and if it is a month old, a historian's find.
+     *
+     * Through [countSession] rather than counting one straight off: the conversation arrives in the tab
+     * the person is already in (see ClaudeSessionHub.resumeConversation), and a tab counted this morning
+     * counted twice for it - once for its own work and once for what it was asked to read. Reopening is
+     * not starting anyway: the conversation being read was begun on the day it was begun.
+     */
     fun noteResumed(sessionId: String, conversationId: String) {
         val file = ClaudeHistory.transcriptFile(workingDirectory, conversationId)
         val age = file?.lastModified()?.let { clock() - it } ?: 0L
         val old = age >= HISTORIAN_AGE_MS
 
         conversations.remove(sessionId)
+        countSession(sessionId)
 
         ledger.update { snapshot ->
             val day = today(snapshot)
-            day.sessions++
             if (old) day.historian++
             day.minutes.mark(minuteOfDay())
         }
@@ -452,11 +487,26 @@ internal class StatsCollector(
         update { day -> day.plugins = maxOf(day.plugins, installed) }
     }
 
-    /** Somebody else began watching - counted on the moment the count leaves zero. */
+    /**
+     * Somebody else began watching - counted on the moment the count leaves zero, and not again while the
+     * same visit is merely reconnecting.
+     *
+     * A phone in a pocket takes the line and drops it all day long, and every return of it used to be a
+     * new person looking in: two days of that came to twenty-seven of them, which is not a figure about
+     * anybody watching anything. A gap shorter than [WATCH_GAP_MS] is the same visit carrying on.
+     */
     fun noteWatchers(count: Int) {
         val before = watchers
         watchers = count
-        if (before == 0 && count > 0) update { it.watched++ }
+
+        if (before > 0 && count == 0) {
+            watchersLeftAt = clock()
+            return
+        }
+        if (before > 0 || count == 0) return
+        if (watchersLeftAt != 0L && clock() - watchersLeftAt < WATCH_GAP_MS) return
+
+        update { it.watched++ }
     }
 
     /** A turn began or ended in a tab - the ticker follows this set. */
@@ -479,6 +529,16 @@ internal class StatsCollector(
         for (sessionId in running) markConversation(sessionId, now)
     }
 
+    /**
+     * One more conversation, unless this one was already counted today - see [countedSessions].
+     */
+    private fun countSession(sessionId: String) {
+        if (sessionId.isEmpty()) return
+        val date = localDate().toString()
+        if (countedSessions.put(sessionId, date) == date) return
+        update { it.sessions++ }
+    }
+
     /** This minute counts, for this project. */
     private fun markMinute() {
         update { day -> day.minutes.mark(minuteOfDay()) }
@@ -489,6 +549,8 @@ internal class StatsCollector(
      * unbroken stretch, which are written down as the day's high-water marks.
      */
     private fun markConversation(sessionId: String, now: Long) {
+        countSession(sessionId)
+
         val conversation = conversations.getOrPut(sessionId) { Conversation() }
         val total: Int
         val stretch: Int
@@ -516,7 +578,10 @@ internal class StatsCollector(
     }
 
     private fun today(snapshot: StatsSnapshot): DayRecord =
-        ledger.day(snapshot, projectKey, projectName, LocalDate.ofInstant(Instant.ofEpochMilli(clock()), ZoneId.systemDefault()))
+        ledger.day(snapshot, projectKey, projectName, localDate())
+
+    /** Today by the machine's own calendar - the day everything written down belongs to. */
+    private fun localDate(): LocalDate = LocalDate.ofInstant(Instant.ofEpochMilli(clock()), ZoneId.systemDefault())
 
     private fun minuteOfDay(now: Long = clock()): Int {
         val local = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalTime()
@@ -538,6 +603,9 @@ internal class StatsCollector(
         const val QUICK_TURN_MS = 30_000L
 
         const val LONG_TURN_MS = 10L * MINUTE_MS
+
+        /** A line taken again this soon after it dropped is the same visit, not a new one. */
+        const val WATCH_GAP_MS = 30L * 60_000L
 
         /** A pause this long between two minutes still belongs to one stretch of work. */
         const val STRETCH_BRIDGE_MINUTES = 5
@@ -571,6 +639,18 @@ internal class StatsCollector(
             val name = trimmed.drop(1).takeWhile { !it.isWhitespace() }.lowercase()
             return name.takeIf { it.isNotEmpty() }
         }
+
+        /**
+         * A real model - not one of the CLI's own marks.
+         *
+         * Some answers are signed not with a model but with a name in angle brackets: "<synthetic>" is
+         * what the CLI closes a turn with when the words are its own - a turn the person interrupted, an
+         * unknown command, the text of an API error. No model of that name exists, and taking it for one
+         * gets two things wrong at once: the models card grows a row for something nobody ran, and the
+         * turn is taken away from the model that did the work up to that point. The panel's feed drops
+         * the same marks for the same reason (realModel in feed/build.ts).
+         */
+        fun isRealModel(model: String): Boolean = model.isNotEmpty() && !model.startsWith("<")
 
         /** The model's family in one word: "claude-sonnet-5" -> "Sonnet". */
         fun familyOf(model: String): String {

@@ -46,10 +46,39 @@ internal fun receiveCalls(batch: List<String>): List<String> {
 
     val parts = splitKeepingPairs(array, MAX_CHUNK_CHARS)
 
+    // Numbered rather than merely marked as last: the page glues the parts in arrival order, and a part
+    // that never arrived used to be noticed by nobody - the join then parsed as nothing, and the whole
+    // batch was gone without a word anywhere (see the bridge in installBridge).
     return parts.mapIndexed { index, part ->
-        val last = index == parts.size - 1
-        "window.__accChunk && window.__accChunk(${literal(part)}, $last);"
+        "window.__accChunk && window.__accChunk(${literal(part)}, $index, ${parts.size});"
     }
+}
+
+/**
+ * As much of the queue as one trip into the page should carry - taken out of it.
+ *
+ * Bounded by weight first and by message count second. The count alone used to be the whole of it, and
+ * for live work it is enough: messages there are small and arrive one at a time. A conversation opened
+ * from the history is the opposite - two hundred of its messages came to about a megabyte, which does
+ * not fit into a single trip and had to be cut into pieces and glued back together inside the page, a
+ * route where one piece gone loses all two hundred at once (see [receiveCalls]).
+ *
+ * A message heavier than the whole budget travels alone rather than not at all: refusing it would leave
+ * it at the head of the queue forever and the channel silent behind it.
+ */
+internal fun batchOf(outbox: ArrayDeque<String>): List<String> {
+    val batch = mutableListOf<String>()
+    var chars = 0
+
+    while (outbox.isNotEmpty() && batch.size < MAX_BATCH) {
+        val next = outbox.first()
+        if (batch.isNotEmpty() && chars + next.length > MAX_BATCH_CHARS) break
+        outbox.removeFirst()
+        batch.add(next)
+        chars += next.length
+    }
+
+    return batch
 }
 
 /** A string as a JavaScript literal: the escaping comes from the serializer rather than from us. */
@@ -85,6 +114,13 @@ private const val FLUSH_DELAY_MS = 16
 
 /** The limit on one batch by message count - see flush. */
 private const val MAX_BATCH = 200
+
+/**
+ * And the limit on its weight, which is the one that matters - see take. Well inside a single trip into
+ * the page, so that the batch travels whole and the gluing of parts stays the rare exception it was
+ * meant to be.
+ */
+private const val MAX_BATCH_CHARS = 64 * 1024
 
 /**
  * How many characters are carried into the page at once - see receiveCalls. A quarter of a megabyte
@@ -340,11 +376,28 @@ internal class WebviewHost(
         val component = browser.component
         val predefined = Cursor.getPredefinedCursor(type)
         ApplicationManager.getApplication().invokeLater {
+            // The page's message and this call are a whole event apart: by now the panel may have been
+            // closed with its tab, or the project closed along with it, and there is no one left to dress
+            // up.
+            if (disposed) return@invokeLater
+
             component.cursor = predefined
             // By the same trick the platform's own ThreeComponentsSplitter divider uses: component.cursor
             // alone is not always enough over the window's glass pane - that pane is what answers for
             // what is seen above a component while the mouse moves across it.
-            IdeGlassPaneUtil.find(component).setCursor(predefined, this)
+            //
+            // Asked for through IdeGlassPaneUtil, and the failure caught rather than avoided. It answers
+            // a component outside a window by throwing ("Component must be visible in order to find glass
+            // pane for it"), and outside a window is a perfectly ordinary state here: the panel is hidden,
+            // moved elsewhere in the interface or closed altogether while the page's last cursor message
+            // is still on its way. That exception is worth swallowing, not routing around - looking the
+            // pane up by hand instead ("component.rootPane?.glassPane as? IdeGlassPane") found nothing in
+            // the ordinary case as well, and the hand over every button in the panel disappeared with it.
+            //
+            // No pane means there is nothing to ask, and the cursor set on the component itself above is
+            // enough until the panel is visible again.
+            val pane = runCatching { IdeGlassPaneUtil.find(component) }.getOrNull() ?: return@invokeLater
+            pane.setCursor(predefined, this)
         }
     }
 
@@ -396,12 +449,42 @@ internal class WebviewHost(
             window.__accSend = function (payload) {
                 ${fromWebview.inject("payload")}
             };
-            window.__accChunk = function (part, last) {
-                window.__accParts = (window.__accParts || []).concat(part);
-                if (!last) return;
-                var joined = window.__accParts.join('');
-                window.__accParts = [];
-                if (window.__accReceive) window.__accReceive(JSON.parse(joined));
+            window.__accLost = function (reason, expected, got) {
+                window.__accParts = null;
+                // One broken batch, one word about it. Every part after the one that went missing arrives
+                // to a buffer that is no longer there and would say so again - three warnings in the log
+                // and three lines in the ring buffer for a single mishap, pushing out the very context the
+                // buffer is kept for. The next batch to begin at its first part says its own piece.
+                if (window.__accLostSaid) return;
+                window.__accLostSaid = true;
+                if (window.__accSend) {
+                    window.__accSend(JSON.stringify({
+                        type: 'channelLoss', reason: reason, expected: expected, got: got
+                    }));
+                }
+            };
+            window.__accChunk = function (part, index, total) {
+                if (index === 0) {
+                    window.__accParts = [];
+                    window.__accLostSaid = false;
+                }
+                var parts = window.__accParts;
+                if (!parts || parts.length !== index) {
+                    window.__accLost('order', parts ? parts.length : -1, index);
+                    return;
+                }
+                parts.push(part);
+                if (index + 1 < total) return;
+                window.__accParts = null;
+                var joined = parts.join('');
+                var batch;
+                try {
+                    batch = JSON.parse(joined);
+                } catch (error) {
+                    window.__accLost('parse', total, joined.length);
+                    return;
+                }
+                if (window.__accReceive) window.__accReceive(batch);
             };
             window.dispatchEvent(new Event('acc:ready'));
         """.trimIndent()
@@ -426,7 +509,7 @@ internal class WebviewHost(
                 val batch = synchronized(outbox) {
                     flushScheduled = false
                     if (!pageReady || outbox.isEmpty()) return
-                    List(minOf(outbox.size, MAX_BATCH)) { outbox.removeFirst() }
+                    batchOf(outbox)
                 }
                 deliver(batch)
             }

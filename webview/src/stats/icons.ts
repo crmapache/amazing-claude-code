@@ -18,10 +18,7 @@ export const ACHIEVEMENT_ICONS: Record<string, string> = {
   'a-year-in': 'M13.6 8a5.6 5.6 0 11-11.2 0 5.6 5.6 0 0111.2 0 M8 4.6V8l2.6 1.6',
   // A fir tree: three tiers of branches and a stump.
   'home-for-the-holidays': 'M8 2.2l3.2 4.6H9.8l2.6 3.8h-1.6l2 3.2H3.2l2-3.2H3.6l2.6-3.8H4.8z M8 13.8v1.2',
-  'first-hour': 'M13.4 8a5.4 5.4 0 11-10.8 0 5.4 5.4 0 0110.8 0 M8 5.2V8l2 1.2',
-  'ten-hours': 'M4 2.6h8 M4 13.4h8 M4.4 2.6c0 3 3.6 3.8 3.6 5.4s-3.6 2.4-3.6 5.4 M11.6 2.6c0 3-3.6 3.8-3.6 5.4s3.6 2.4 3.6 5.4',
-  'hundred-hours': 'M8 3.4a5 5 0 105 5 M8 3.4V1.8 M6.4 1.8h3.2 M12.2 4.4l1.2-1.2 M8 5.8V8h2.2',
-  'five-hundred': 'M5.4 2.4h5.2v11.2H5.4z M5.4 9.4h5.2 M3.4 4.6h1 M3.4 11.4h1',
+  'hours-in-panel': 'M5.4 2.4h5.2v11.2H5.4z M5.4 9.4h5.2 M3.4 4.6h1 M3.4 11.4h1',
   'deep-work': 'M2.6 2.6h10.8v10.8H2.6z M5.4 5.4h5.2v5.2H5.4z',
   marathon: 'M4 13.4V2.6 M4 3.2h7.6l-1.6 2.4 1.6 2.4H4',
   'full-day':
@@ -30,9 +27,8 @@ export const ACHIEVEMENT_ICONS: Record<string, string> = {
   'quick-turn': 'M3 4l4 4-4 4 M9 4l4 4-4 4',
   'long-haul': 'M2.4 8h11.2 M10.4 4.8L13.6 8l-3.2 3.2',
   'first-diff': 'M4 2.6h5l3 3v7.8H4z M9 2.6v3h3 M6.4 9.4h3.2 M8 7.8v3.2',
-  'thousand-lines': 'M3 4.4h10 M3 8h10 M3 11.6h6',
-  'ten-thousand': 'M3 4h8 M3 6.6h8 M3 9.2h8 M3 11.8h5 M13.4 3.4v9',
-  'hundred-thousand': 'M2 12.4l4-6 3 3.6 2.4-3.6 2.6 6z',
+  // A range beyond the last hill: two peaks and the sun over them.
+  'lines-written': 'M1.6 12.6l3.4-5.2 2.4 3 2-3 4.6 5.2z M11.4 4.2a1.4 1.4 0 11-2.8 0 1.4 1.4 0 012.8 0',
   'big-diff': 'M2.6 2.6h10.8v10.8H2.6z M8 5.4v5.2 M5.4 8h5.2',
   surgeon: 'M3 13l7.6-7.6 M9.6 4.4l2-2 2 2-2 2z M4.4 11.6l1.2 1.2',
   refactor: 'M3 5.4h8l-2-2 M13 10.6H5l2 2',

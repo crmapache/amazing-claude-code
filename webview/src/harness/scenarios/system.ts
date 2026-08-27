@@ -360,7 +360,14 @@ export const scenariosSystem: Scenario[] = [
         turnResult(2600),
       ]),
     ]),
-    checkpoint('The replay has finished', [shell({ type: 'replayFinished', sessionId: SESSION })]),
+    /**
+     * A tab is opened with the end of a past conversation rather than the whole of it, so the reading
+     * finishes on a boundary: the mark above the feed stands for everything still on disk, and pressing it
+     * asks for the next page (answered here by the harness itself - see player.ts).
+     */
+    checkpoint('The replay has finished, with more of the conversation above it', [
+      shell({ type: 'replayFinished', sessionId: SESSION, cursor: 'r-top' }),
+    ]),
   ]),
 
   scenario('rich-markdown', 'An answer with markdown', 'system', [

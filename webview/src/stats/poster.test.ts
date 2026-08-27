@@ -6,4 +6,8 @@ describe('the shared picture', () => {
     expect(posterName('statistics', '2026-08-26')).toBe('amazing-claude-code-statistics-2026-08-26.png')
     expect(posterName('achievements', '2026-08-26')).toBe('amazing-claude-code-achievements-2026-08-26.png')
   })
+
+  it('names a single achievement by its id, so two of them are two files', () => {
+    expect(posterName('achievement-big-diff', '2026-08-26')).toBe('amazing-claude-code-achievement-big-diff-2026-08-26.png')
+  })
 })
