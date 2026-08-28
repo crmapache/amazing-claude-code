@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-08-28
+
+- Fixed: on Windows a conversation opened from the history came up as a stranger - the panel drew the whole chat back, while the agent behind it remembered none of it and answered as though you had just met; the model, the effort and the permission mode picked in the panel were quietly ignored along with it. Everything the panel says at launch is passed on the command line, and on Windows Claude Code is installed as a batch file that the command shell runs line by line: the first line break in the middle of that line ended the command there, and the whole tail of it - the request to continue that very conversation among the rest - never reached Claude Code at all, silently and without an error from anyone. Nothing the panel passes at launch runs over more than one line now, and if a process ever does come up as a new conversation when it was asked to continue an old one, the debug report says so.
+- Fixed: copying a whole answer gave back a sheet of run-together text. Numbered steps lost their numbers, so "do step 3" pointed at nothing; nested items lost the indent that said which was a clarification of which; a code block ran into the prose around it; and a table came out as an empty line, its text disappearing altogether. Blocks keep their shape in the clipboard now - the numbering, the nesting, the fences around code, the table as a table, and a blank line between paragraphs - so pasting it anywhere that understands markdown gives the answer back rather than one long block. Bold and code spans still lose their markup, since in plain text they single nothing out.
+
 ## [0.8.3] - 2026-08-27
 
 - Added: from 24 December to 3 January the panel dresses up for the turn of the year - a garland strung under the header, snow falling behind the feed, and the Send button frozen over with ice. There is nothing to switch on and nothing to set: it appears on the evening of the 24th, including in a panel that has been open since the day before, and it is gone again on the 4th. The orange Run button and the queue button keep their own colours, because that colour says where what you typed is going rather than decorating anything.
@@ -404,7 +409,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.8.3...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.8.4...HEAD
+[0.8.4]: https://github.com/crmapache/amazing-claude-code/compare/0.8.3...0.8.4
 [0.8.3]: https://github.com/crmapache/amazing-claude-code/compare/0.8.2...0.8.3
 [0.8.2]: https://github.com/crmapache/amazing-claude-code/compare/0.8.1...0.8.2
 [0.8.1]: https://github.com/crmapache/amazing-claude-code/compare/0.8.0...0.8.1
