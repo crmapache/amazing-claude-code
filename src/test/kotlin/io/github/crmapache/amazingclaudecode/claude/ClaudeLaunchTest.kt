@@ -86,6 +86,33 @@ class ClaudeLaunchTest {
         assertFalse(briefing.isBlank())
     }
 
+    // The panel does not always launch the CLI itself: npm on Windows installs it as a batch file, the
+    // platform runs that through cmd.exe, and the batch hands on what it got with %*. Both are
+    // line-oriented - a line feed inside an argument ends the command there, and the whole tail of the
+    // command line is dropped without a word from anyone. That is how the briefing, a multi-line
+    // argument standing in the middle, used to take --resume down with it: a conversation opened from
+    // the history came up empty, with the panel's replay in the feed and an agent behind it that
+    // remembered nothing. A quotation mark ends the quoted run in the same way, so it is out too.
+    @Test
+    fun `no argument can be cut short by a shell we did not ask for`() {
+        val args = arguments(
+            model = "opus[1m]",
+            effort = "high",
+            permissionMode = "bypassPermissions",
+            conversationId = "conversation-1",
+        )
+
+        for (argument in args) {
+            assertFalse('\n' in argument, "a line feed in an argument: $argument")
+            assertFalse('\r' in argument, "a carriage return in an argument: $argument")
+            assertFalse('"' in argument, "a quotation mark in an argument: $argument")
+        }
+
+        // The point of it all: whatever stands behind the briefing has to be there to be passed on.
+        assertEquals("conversation-1", args[args.indexOf("--resume") + 1])
+        assertTrue(args.indexOf("--resume") > args.indexOf(ClaudeLaunch.BRIEFING_FLAG))
+    }
+
     // The CLI's own system prompt has to stay: replacing it would take away everything the agent knows
     // about tools and about the project.
     @Test

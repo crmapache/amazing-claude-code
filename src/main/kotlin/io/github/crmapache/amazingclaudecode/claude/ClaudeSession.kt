@@ -1053,6 +1053,9 @@ internal class ClaudeSession(
     private fun start(): OSProcessHandler? {
         stopRequested = false
         suppressingPreferenceReply = false
+        // What this launch is asking to continue - checked against what actually comes up (see
+        // [rememberConversation]).
+        continuing = conversationId
         // The previous process may have said things of its own before dying - that has nothing to do
         // with the new one, and explaining its future crash with someone else's words is dishonest.
         synchronized(diagnostics) { diagnostics.clear() }
@@ -1141,14 +1144,43 @@ internal class ClaudeSession(
         private set
 
     /**
+     * The conversation this process was asked to continue, until it has said which one it came up with.
+     *
+     * Only a plain continuation is watched: a branch is asked to fork off its parent and is supposed to
+     * come back with an identifier of its own (see [rememberConversation]).
+     */
+    @Volatile
+    private var continuing: String? = null
+
+    /**
      * The agent sends the conversation's identifier in a system event. Parsing the whole stream for one
      * field is pointless - noticing it in the line is enough.
+     *
+     * The identifier it comes up with is also the only place the panel can catch a continuation that did
+     * not happen. Asked to resume, the CLI either continues that very conversation or refuses to start
+     * at all - so a process that comes up under a different identifier means the request never reached
+     * it, whatever ate it on the way (a launch through a Windows batch wrapper did once, see
+     * ClaudeLaunch.oneLine). Nothing about that is visible from the panel: the feed holds the replay it
+     * drew itself, and only the agent knows it remembers none of it. So it is said out loud at least
+     * into the diagnostics, which travel in a bug report.
      */
     private fun rememberConversation(line: String) {
         if (conversationId != null && !line.contains("\"subtype\":\"init\"")) return
 
         val match = SESSION_ID.find(line) ?: return
-        conversationId = match.groupValues[1]
+        val started = match.groupValues[1]
+
+        // Said once per process: the identifier arrives in every event, and the answer will not change.
+        continuing?.takeIf { it != started }?.let {
+            DiagnosticsLog.note(
+                DiagnosticsLog.AGENT,
+                "asked to continue a past conversation, but the CLI came up with a new one: " +
+                    "its context is gone even though the feed shows it",
+            )
+        }
+        continuing = null
+
+        conversationId = started
     }
 
     private fun userMessage(text: String, images: List<ImageAttachment>): String = buildJsonObject {

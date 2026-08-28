@@ -86,6 +86,9 @@ internal object ClaudeLaunch {
      *
      * So we say out loud where the conversation actually runs. The same place is where anything else
      * the agent has to know about the panel belongs.
+     *
+     * Written as paragraphs here and sent as one line - see [oneLine]. Quotation marks are avoided in
+     * the wording itself for the same reason, and the test holds both.
      */
     val PANEL_BRIEFING = """
         This conversation runs inside the Amazing Claude Code panel of a JetBrains IDE. A person is
@@ -102,11 +105,37 @@ internal object ClaudeLaunch {
         `claude mcp` or the `/mcp` command. That is written for unattended scripts and is wrong here.
         Signing in works in this session; it is the person who presses the button, not you.
 
-        So the answer to "can this MCP server be signed in to now" is yes, and the way to say it is:
-        open the panel's menu, go to the MCP screen, find the server and press its sign-in button.
-        Never call a sign-in impossible here, and never send the person to a terminal, to an
-        interactive session, to `claude mcp` or to `/mcp`.
+        So when asked whether an MCP server can be signed in to right now, the answer is yes, and the
+        way to say it is: open the panel's menu, go to the MCP screen, find the server and press its
+        sign-in button. Never call a sign-in impossible here, and never send the person to a terminal,
+        to an interactive session, to `claude mcp` or to `/mcp`.
     """.trimIndent()
+
+    /**
+     * A launch argument as a Windows shell will still recognise it: one line, whitespace collapsed.
+     *
+     * The panel does not launch the CLI itself everywhere. On Windows npm installs it as `claude.cmd`
+     * - a batch file - and a batch file is not a program: the platform runs it through
+     * `cmd.exe /c`, and the batch forwards what it got to the real executable with `%*`. Both of those
+     * are line-oriented. A line feed inside an argument ends the command there, and everything written
+     * after it in the command line never reaches the CLI at all - silently, without an error from
+     * anyone, because from cmd's point of view nothing went wrong.
+     *
+     * The briefing was the only multi-line argument, and it stands in the middle of the command line.
+     * Everything behind it - the model, the effort, the permission mode and, worst of all, `--resume` -
+     * was cut off on every launch made through the npm wrapper. A conversation opened from the history
+     * came up as a brand new one: its feed was replayed by the panel and looked right, while the agent
+     * behind it remembered nothing and wrote into a transcript of its own. Nothing about it was visible
+     * from a Mac, and even on Windows it hid well - the lost mode and effort happened to match what the
+     * person had in their own settings.
+     *
+     * Hence the rule this function exists for: what the panel passes at launch must survive a shell it
+     * did not ask for. No line feeds, and no quotation marks either - a quote inside an argument ends
+     * the quoted run for cmd, and the rest of the text falls apart into whatever it happens to contain.
+     */
+    private fun oneLine(text: String): String = text.split(WHITESPACE).filter(String::isNotEmpty).joinToString(" ")
+
+    private val WHITESPACE = Regex("\\s+")
 
     fun arguments(
         model: String,
@@ -127,7 +156,7 @@ internal object ClaudeLaunch {
 
         // The CLI takes a streaming launch for an unattended script and tells the agent so; the panel
         // is neither, and the agent has to hear it from us (see PANEL_BRIEFING).
-        addAll(listOf(BRIEFING_FLAG, PANEL_BRIEFING))
+        addAll(listOf(BRIEFING_FLAG, oneLine(PANEL_BRIEFING)))
 
         if (model.isNotEmpty()) addAll(listOf("--model", model))
         if (effort.isNotEmpty()) addAll(listOf("--effort", effort))
