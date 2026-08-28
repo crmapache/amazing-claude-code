@@ -60,7 +60,7 @@ dependencies {
 intellijPlatform {
     pluginConfiguration {
         id = "io.github.crmapache.amazingclaudecode"
-        name = "Amazing Claude Code"
+        name = "Amazing Claude Code GUI"
         version = providers.gradleProperty("version")
         description =
             """
