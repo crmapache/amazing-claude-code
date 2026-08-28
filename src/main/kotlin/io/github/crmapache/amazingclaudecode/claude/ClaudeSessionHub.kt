@@ -6,6 +6,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
+import io.github.crmapache.amazingclaudecode.editor.UnsavedEdits
 import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import io.github.crmapache.amazingclaudecode.remote.LocalBridgeServer
 import io.github.crmapache.amazingclaudecode.remote.NotificationReasons
@@ -823,6 +824,12 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         }
 
         sendStatus(sessionId, SessionSnapshot.STATUS_RUNNING)
+
+        // The person's last edit may still be in an editor rather than on disk, and the agent only ever
+        // sees the disk - see [UnsavedEdits]. This is the single door every turn goes through: the
+        // panel, a phone, a queued message and an answer to a question all arrive here, so saving in
+        // this one place covers the lot.
+        UnsavedEdits.flush(project)
         conversations.prompt(sessionId, text, images)
     }
 
