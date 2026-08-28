@@ -317,3 +317,64 @@ const plainParagraph = (paragraph: Paragraph): string => {
 
   return paragraph.marker ? `${paragraph.marker} ${text}`.trim() : text
 }
+
+/**
+ * The paragraphs back into text - what travels into the clipboard when a whole answer is copied.
+ *
+ * The rule is one: the block structure survives, the inline decoration does not. Bold and code spans
+ * lose their asterisks and backticks - in the clipboard they single nothing out and merely stick out as
+ * rubbish mid-sentence. A list, a quote, a code block and a table have no plain-text spelling at all:
+ * strip their markup and a numbered step loses the number it is referred to by, a snippet merges with
+ * the prose around it, and a table disappears altogether - its text lives in cells rather than in
+ * `parts`, so joining the pieces of the paragraph gave an empty line where the table was.
+ */
+export const paragraphsText = (paragraphs: Paragraph[]): string => {
+  const lines: string[] = []
+
+  paragraphs.forEach((paragraph, index) => {
+    // An empty line between the blocks, and only the items of one list stand shoulder to shoulder. On a
+    // single newline everything ran together into one sheet: paste it back anywhere that understands
+    // markdown and two paragraphs became one, while the text above stuck to the head of a table.
+    const previous = paragraphs[index - 1]
+    const sameList = Boolean(previous?.bullet && paragraph.bullet)
+    if (index > 0 && !sameList) lines.push('')
+    lines.push(...blockLines(paragraph))
+  })
+
+  return lines.join('\n')
+}
+
+const blockLines = (paragraph: Paragraph): string[] => {
+  const text = paragraph.parts.map((part) => part.text).join('')
+
+  if (paragraph.table) return tableLines(paragraph.table)
+  if (paragraph.codeBlock) return ['```' + (paragraph.language ?? ''), text, '```']
+  if (paragraph.quote) return [`> ${text}`]
+
+  if (paragraph.bullet) {
+    // The number and the nesting are the meaning of an enumeration rather than its styling: a dash for
+    // every item turned "do step 3" into a text with no third step in it, and a flat list lost which
+    // item was a clarification of which.
+    const indent = '  '.repeat(paragraph.depth ?? 0)
+    return [`${indent}${paragraph.marker ?? '-'} ${text}`]
+  }
+
+  return [text]
+}
+
+/** A table as it was written: the head, the separator with the alignment, the rows. */
+const tableLines = (table: TableData): string[] => {
+  const row = (cells: TextPart[][]): string =>
+    `| ${cells.map((cell) => cell.map((part) => part.text).join('').trim()).join(' | ')} |`
+
+  const separator = table.header.map((_, index) => SEPARATOR_SPEC[table.align[index] ?? 'none'])
+
+  return [row(table.header), `| ${separator.join(' | ')} |`, ...table.rows.map(row)]
+}
+
+const SEPARATOR_SPEC: Record<'left' | 'center' | 'right' | 'none', string> = {
+  left: ':---',
+  center: ':---:',
+  right: '---:',
+  none: '---',
+}

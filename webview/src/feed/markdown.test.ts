@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { linkify, parseInline, parseParagraphs, plainLine } from './markdown'
+import { linkify, paragraphsText, parseInline, parseParagraphs, plainLine } from './markdown'
 
 describe('parseInline', () => {
   it('turns a bare URL into a link', () => {
@@ -237,5 +237,65 @@ describe('plainLine', () => {
   it('leaves empty text empty', () => {
     expect(plainLine('')).toBe('')
     expect(plainLine('\n\n')).toBe('')
+  })
+})
+
+/** What the "copy the whole reply" button puts in the clipboard. */
+describe('paragraphsText', () => {
+  const copied = (source: string): string => paragraphsText(parseParagraphs(source))
+
+  // The whole point of the fix: the table's text lives in its cells, and a copy built out of the
+  // paragraph's parts left an empty line in its place - the table was simply lost.
+  it('writes a table out as a table rather than dropping it', () => {
+    const source = ['| model | price |', '|---|---|', '| Haiku | $1.90 |', '| Opus | $15 |'].join('\n')
+
+    expect(copied(source)).toBe(
+      ['| model | price |', '| --- | --- |', '| Haiku | $1.90 |', '| Opus | $15 |'].join('\n'),
+    )
+  })
+
+  it('keeps the column alignment and strips the decoration inside the cells', () => {
+    const source = ['| file | status |', '|:---|---:|', '| `a.ts` | **done** |'].join('\n')
+
+    expect(copied(source)).toBe(
+      ['| file | status |', '| :--- | ---: |', '| a.ts | done |'].join('\n'),
+    )
+  })
+
+  it('separates a table from the text around it with an empty line', () => {
+    const source = ['Measurements:', '| a | b |', '|---|---|', '| 1 | 2 |', 'and that is all'].join('\n')
+
+    expect(copied(source)).toBe(
+      ['Measurements:', '', '| a | b |', '| --- | --- |', '| 1 | 2 |', '', 'and that is all'].join('\n'),
+    )
+  })
+
+  it('keeps a code block inside its fences - otherwise it merges with the prose', () => {
+    const source = ['Run this:', '```bash', 'pnpm test', '```', 'and look at the output'].join('\n')
+
+    expect(copied(source)).toBe(
+      ['Run this:', '', '```bash', 'pnpm test', '```', '', 'and look at the output'].join('\n'),
+    )
+  })
+
+  // A step is referred to by its number, so a dash in place of it makes the text unreadable.
+  it('keeps the numbers and the nesting of a list, and the items of one list stand together', () => {
+    const source = ['Steps:', '1. the first', '2. the second', '   - a clarification'].join('\n')
+
+    expect(copied(source)).toBe(
+      ['Steps:', '', '1. the first', '2. the second', '  - a clarification'].join('\n'),
+    )
+  })
+
+  // On a single newline two paragraphs became one wherever the copied text is read as markdown.
+  it('separates the paragraphs with an empty line', () => {
+    expect(copied(['First I will look at the file.', '', 'Then I will fix it.'].join('\n'))).toBe(
+      'First I will look at the file.\n\nThen I will fix it.',
+    )
+  })
+
+  it('keeps a quote a quote and leaves ordinary text as it is', () => {
+    expect(copied(['> he said so', 'and I checked'].join('\n'))).toBe('> he said so\n\nand I checked')
+    expect(copied('fixing `build.ts` and **that is all**')).toBe('fixing build.ts and that is all')
   })
 })

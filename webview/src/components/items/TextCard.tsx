@@ -1,4 +1,5 @@
 import { RevealProvider } from 'smooth-stream-text/react'
+import { paragraphsText } from '../../feed/markdown'
 import type { TextItem } from '../../feed/types'
 import { CopyButton } from './CopyButton'
 import { Markdown } from './Markdown'
@@ -78,7 +79,7 @@ export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
 
   return (
     <div className={s.text} data-copyable>
-      <CopyButton text={plainText(item)} className={s.textCopy} title="Copy the whole reply" />
+      <CopyButton text={paragraphsText(item.paragraphs)} className={s.textCopy} title="Copy the whole reply" />
 
       {/* One wave for the whole card: otherwise every paragraph would start the reveal afresh and the
           text would light up in steps rather than in one motion. */}
@@ -92,15 +93,4 @@ export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
     </div>
   )
 }
-
-/** What genuinely travels into the clipboard - without markdown, as plain text. */
-const plainText = (item: TextItem): string =>
-  item.paragraphs
-    .map((paragraph) => {
-      const text = paragraph.parts.map((part) => part.text).join('')
-      if (paragraph.bullet) return `- ${text}`
-      if (paragraph.quote) return `> ${text}`
-      return text
-    })
-    .join('\n')
 
