@@ -9,6 +9,7 @@ import { RemoteClock } from './clock'
 import { applyMessage, emptyFeed, feedTicks, tickFeed, type MobileFeed } from './feed'
 import { Link, type LinkState, type SessionLaunch } from './link'
 import { buildProjects, chatKey, type Inventory } from './projects'
+import { useEarlierPages } from '../hooks/useEarlierPages'
 import { Decision } from './screens/Decision'
 import { History } from './screens/History'
 import { NewSession } from './screens/NewSession'
@@ -544,6 +545,26 @@ export const App = () => {
     [command, enter],
   )
 
+  /**
+   * The conversation above what this phone holds - the same hook the panel uses (see useEarlierPages).
+   *
+   * Stated up here, before the screens branch off, because a hook cannot hang off which screen is open;
+   * off a thread there is simply nothing to anchor a request on, and the mark is a plain caption anyway.
+   */
+  const thread = screen.at === 'thread' ? screen : undefined
+  const { loadEarlier } = useEarlierPages(
+    feed.state,
+    thread ? chatKey(thread.agentId, thread.projectKey, thread.sessionId) : '',
+    (before) => {
+      if (!thread) return
+      command(thread.agentId, thread.projectKey, {
+        type: 'historyPage',
+        sessionId: thread.sessionId,
+        before,
+      })
+    },
+  )
+
   const back = useCallback(() => {
     watching.current = null
     setOpening(null)
@@ -741,16 +762,7 @@ export const App = () => {
             command(screen.agentId, screen.projectKey, { type: 'stopTask', sessionId: screen.sessionId, taskId })
           }
           earlierPages={feed.state.earlierPages}
-          onLoadEarlier={
-            feed.state.oldestEventUuid !== undefined && !feed.state.reachedStart
-              ? () =>
-                  command(screen.agentId, screen.projectKey, {
-                    type: 'historyPage',
-                    sessionId: screen.sessionId,
-                    before: feed.state.oldestEventUuid,
-                  })
-              : undefined
-          }
+          onLoadEarlier={loadEarlier}
           onDecide={() => setScreen({ ...screen, at: 'decide' })}
           onBack={back}
         />

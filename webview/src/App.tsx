@@ -111,6 +111,7 @@ import {
   type SoundPrefs,
 } from './sounds'
 import { planDecisionOf, useCardState, type CardState } from './hooks/useCardState'
+import { useEarlierPages } from './hooks/useEarlierPages'
 import { groupOrder, moveTab, placeAtEnd, placeIn, STATISTICS_GROUP, type TabPlace } from './tabs'
 import { useSelection } from './hooks/useSelection'
 
@@ -1856,16 +1857,11 @@ export const App = () => {
    * The conversation above what this tab holds - asked for by pressing the mark over the feed.
    *
    * A tab opens a past conversation with its end rather than the whole of it (see ClaudeHistory.opening),
-   * and this is how the rest of it arrives, a page at a time. Undefined while there is nothing to fetch,
-   * which leaves the mark a plain caption rather than a button: either the beginning is already on screen,
-   * or nothing has arrived yet for the request to anchor on.
+   * and this is how the rest of it arrives, a page at a time. The same hook serves the phone: what a
+   * press is worth and when it is over is one behaviour, not two (see useEarlierPages).
    */
-  const loadEarlier = useMemo(
-    () =>
-      panel.oldestEventUuid !== undefined && !panel.reachedStart
-        ? () => send({ type: 'historyPage', sessionId: active, before: panel.oldestEventUuid })
-        : undefined,
-    [active, panel.oldestEventUuid, panel.reachedStart],
+  const { loadEarlier } = useEarlierPages(panel, active, (before) =>
+    send({ type: 'historyPage', sessionId: active, before }),
   )
 
   /**
