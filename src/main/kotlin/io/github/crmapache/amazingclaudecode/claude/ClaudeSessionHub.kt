@@ -6,6 +6,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
+import io.github.crmapache.amazingclaudecode.editor.DiskRefresh
 import io.github.crmapache.amazingclaudecode.editor.UnsavedEdits
 import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import io.github.crmapache.amazingclaudecode.remote.LocalBridgeServer
@@ -102,6 +103,12 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     val commands: SessionCommands = SessionCommands(this)
 
     /**
+     * What the agent changes on disk, read back into the IDE - the other half of [UnsavedEdits]. One
+     * takes the editor's text to the agent, the other brings the agent's text to the editor.
+     */
+    private val disk: DiskRefresh = DiskRefresh(project.basePath, this)
+
+    /**
      * What this project contributes to the statistics tab. It is told about everything below - the
      * stream, the messages, the tabs, the decisions - and writes it into the machine-wide ledger.
      */
@@ -170,6 +177,12 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         onDiagnostic { _, text -> auth.noteLoggedOut(text) }
         onRawLine { sessionId, line, replay ->
             auth.noteLoggedOut(line)
+
+            // A file the agent has just rewritten is still the old one as far as the IDE is concerned
+            // until somebody asks it to look again (see DiskRefresh). Not from a replay: that disk
+            // caught up months ago.
+            if (!replay) runCatching { disk.noteLine(line) }
+                .onFailure { thisLogger().warn("The disk refresh could not read a line", it) }
 
             // The statistics count what happens, not what happened: a past conversation's replay is
             // work already done and already counted, if it was ever ours to count.
