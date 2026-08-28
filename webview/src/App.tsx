@@ -39,6 +39,7 @@ import { Garland, Snowfall } from './components/Holiday'
 import { LoginGate, type AuthState } from './components/LoginGate'
 import { Mcp } from './components/Mcp'
 import { Menu, type MenuOption } from './components/Menu'
+import { ImprovePrompt } from './components/ImprovePrompt'
 import { SideMenu, parentOf, type MenuScreen, type MenuSummary } from './components/SideMenu'
 import { StatisticsTab, type StatisticsView } from './components/stats/StatisticsTab'
 import { dressAll, summarize } from './stats/achievements'
@@ -84,6 +85,7 @@ import {
   pendingPlan,
   streamStatus,
 } from './feed/streamStatus'
+import { improveResult, type ImproveRequest } from './feed/improve'
 import { composePrompt, countSessionImages, imageAttachments, tokensText, trimTrailingSpace } from './feed/tokens'
 import type { FeedItem, TaskItem, TodoItem, UserItem, UserToken } from './feed/types'
 import { mergeUsage, type UsageFacts } from './feed/usage'
@@ -205,6 +207,13 @@ interface Draft {
 }
 
 const EMPTY_DRAFT: Draft = { tokens: [], quotes: [] }
+
+/**
+ * How many turned-down rewrites travel with the next press of the improve button (see App.improveSources).
+ * They are short, but somebody leaning on that button would otherwise grow the request without bound - and
+ * the older an attempt is, the less it says about what is wanted now, so it is the oldest that go.
+ */
+const IMPROVE_ATTEMPTS_KEPT = 4
 
 export const App = () => {
   const [panels, dispatchPanel] = useReducer(panelsReducer, { [MAIN_SESSION]: initialPanelState })
@@ -419,6 +428,59 @@ export const App = () => {
    */
   const [railNode, setRailNode] = useState<HTMLDivElement | null>(null)
 
+  /**
+   * A rewrite of the draft under way (see feed/improve.ts): which press it is, whose tab it belongs to,
+   * the request the answer will be read back against, and the field exactly as it stood at the press.
+   *
+   * The field is kept because the answer arrives seconds later and nothing is frozen in the meantime: a
+   * rewrite applied over a message that has since been sent would put that sent message back into an empty
+   * field, and over one edited by hand would throw the editing away. One slot only - the button refuses a
+   * second press while this one is full.
+   */
+  const [improving, setImproving] = useState<
+    { id: string; sessionId: string; request: ImproveRequest; tokens: UserToken[] } | null
+  >(null)
+  const improvingRef = useRef(improving)
+  improvingRef.current = improving
+
+  /** Why the last rewrite came to nothing - one line above the input field, cleared by the next edit. */
+  const [improveError, setImproveError] = useState('')
+
+  /**
+   * What a tab's rewrite started from, kept for as long as the field still holds that rewrite untouched.
+   *
+   * Without it a second press would rewrite the rewrite, and a rewrite of a rewrite drifts: every pass adds
+   * a little of its own, and by the third the message is about something else. So a second press is another
+   * attempt at the same original rather than a second pass over the answer - which is what pressing a
+   * button again means when the first answer was not liked.
+   *
+   * It is dropped the moment a hand touches the field (see onTokensChange below): an edited rewrite is a
+   * draft of one's own again, and reaching back behind it would throw that editing away.
+   *
+   * `attempts` are the answers this source has already produced, oldest first. A press past one of them is
+   * the person saying it was not what they wanted, so they travel with the next request as things to avoid
+   * (see the rejected field in protocol.ts) - without that, the second press rolls the same dice against
+   * the same words and can hand back very nearly the same sentence, which reads as a button that did
+   * nothing.
+   */
+  const [improveSources, setImproveSources] = useState<
+    Record<string, { source: ImproveRequest; attempts: string[] }>
+  >({})
+
+
+  /**
+   * A rewrite is being put into the field by us right now. The field reports that edit outwards exactly as
+   * it reports a keystroke, and the two have to be told apart: one means the person has moved on from what
+   * they wrote, the other is the answer to their asking not to.
+   */
+  const applyingImprove = useRef(false)
+
+  /**
+   * What the improve button asks by: the person's own text, and the built-in one it falls back to. Both
+   * arrive with init and are shown on the screen behind the menu (see ImprovePrompt).
+   */
+  const [improveInstructions, setImproveInstructions] = useState({ instructions: '', builtIn: '' })
+
   const panel = panels[active] ?? initialPanelState
   const draft = drafts[active] ?? EMPTY_DRAFT
   const sessionQueue = panel.queue
@@ -473,6 +535,26 @@ export const App = () => {
     },
     [],
   )
+
+  /**
+   * The drafts as they stand right now, for the shell's messages: that subscription is set up once for the
+   * panel's whole life and never sees a fresh render's state (see the message handler below).
+   */
+  const draftsRef = useRef(drafts)
+  draftsRef.current = drafts
+
+  /**
+   * "Replace the whole field", handed over by the composer (see Composer.registerApply). A rewritten draft
+   * goes in through it rather than through the drafts above, so that it becomes one step of the field's own
+   * undo history: pressing the sparkle and disliking the answer must be one Cmd+Z away.
+   */
+  const applyToComposer = useRef<((tokens: UserToken[]) => void) | null>(null)
+  const registerApply = useCallback((apply: ((tokens: UserToken[]) => void) | null) => {
+    applyToComposer.current = apply
+  }, [])
+
+  /** A press of the sparkle is told from the previous one by this - two in one millisecond otherwise share a number. */
+  const improveSeq = useRef(0)
 
   /**
    * Ask for the lists anew. Quietly when there is already something on the screen to show: then the tab
@@ -936,6 +1018,7 @@ export const App = () => {
                 setComposerLayoutState(normalizeComposerLayout(message.preferences.composerLayout))
               }
             }
+            if (message.improve) setImproveInstructions(message.improve)
             feed({
               session: MAIN_SESSION,
               action: {
@@ -1127,6 +1210,62 @@ export const App = () => {
               ),
             )
             break
+
+          /**
+           * The draft, rewritten (see feed/improve.ts). Everything here is a reason not to apply it: the
+           * whole point of the button is that it replaces what somebody wrote, and replacing the wrong
+           * thing is worse than not replacing anything.
+           */
+          case 'promptImproved': {
+            const pending = improvingRef.current
+            // An answer to a press this panel is no longer waiting on - one from before a reload, or a
+            // neighbouring window's.
+            if (!pending || pending.id !== message.id) break
+
+            setImproving(null)
+
+            const rewritten = message.error ? null : improveResult(pending.request, message.text ?? '')
+            if (!rewritten) {
+              setImproveError(message.error || 'Claude Code answered with nothing to put in the field.')
+              break
+            }
+
+            const current = draftsRef.current[pending.sessionId] ?? EMPTY_DRAFT
+            if (current.tokens !== pending.tokens) {
+              setImproveError('The draft changed while it was being rewritten, so it was left alone.')
+              break
+            }
+
+            const apply = applyToComposer.current
+            // Through the field itself while it is the one on screen - that is what makes this a step in
+            // its undo history. A tab switched away from in the meantime has no field to speak of, and its
+            // draft is simply replaced.
+            //
+            // The flag is up for exactly the length of that call: the field reports the change straight
+            // back out, and without it our own writing would read as the person editing and would throw
+            // away what this rewrite started from (see improveSources).
+            if (apply && pending.sessionId === activeRef.current) {
+              applyingImprove.current = true
+              try {
+                apply(rewritten)
+              } finally {
+                applyingImprove.current = false
+              }
+            } else {
+              editDraft(pending.sessionId, { tokens: rewritten })
+            }
+
+            // What was just shown joins what this source has produced: it is not turned down yet, but the
+            // next press is exactly the person saying it was (see improveSources).
+            setImproveSources((current) => {
+              const entry = current[pending.sessionId]
+              if (!entry) return current
+
+              const attempts = [...entry.attempts, message.text ?? ''].slice(-IMPROVE_ATTEMPTS_KEPT)
+              return { ...current, [pending.sessionId]: { ...entry, attempts } }
+            })
+            break
+          }
 
           case 'error':
             feed({ session: message.sessionId, action: { kind: 'error', message: message.message } })
@@ -1960,6 +2099,45 @@ export const App = () => {
   )
 
   /**
+   * The sparkle beside the paperclip: the draft goes off to be rewritten and comes back through
+   * [applyToComposer] (see the promptImproved case above).
+   *
+   * The chips never leave the panel - what travels is the text with a marker where each one stands, plus a
+   * line saying what each marker is (see feed/improve.ts). An image's bytes in particular stay here: they
+   * have nothing to do with how a sentence should be worded.
+   */
+  const improvePrompt = (request: ImproveRequest) => {
+    // One at a time. The state has a single slot, and a second press would orphan the first answer - which
+    // would then arrive and be dropped as unrecognised, looking to the person like nothing happened.
+    if (improving) return
+
+    improveSeq.current += 1
+    const id = `improve-${Date.now()}-${improveSeq.current}`
+
+    // What stands in the field is a rewrite nobody has touched since - so this press is another attempt at
+    // what was written originally rather than a pass over the answer (see improveSources), and everything
+    // that source has produced so far is something the person has now pressed past.
+    const previous = improveSources[active]
+    const source = previous?.source ?? request
+    const rejected = previous?.attempts ?? []
+
+    setImproveError('')
+    setImproveSources((current) => ({ ...current, [active]: { source, attempts: rejected } }))
+    setImproving({ id, sessionId: active, request: source, tokens: draft.tokens })
+    send({
+      type: 'improvePrompt',
+      sessionId: active,
+      id,
+      draft: source.draft,
+      attachments: source.attachments,
+      rejected,
+    })
+  }
+
+  /** A complaint about one tab's draft has nothing to say about the next tab's. */
+  useEffect(() => setImproveError(''), [active])
+
+  /**
    * Sending a message: straight into the work or into the queue.
    *
    * "Straight" works during a turn too: the agent is started with streaming input, and a message written
@@ -1987,6 +2165,15 @@ export const App = () => {
     // click handlers too, into which React passes an event object - a comparison with undefined would take
     // it for substituted text.
     const isOverride = typeof overrideText === 'string'
+    // A message on its way out is a draft nobody is going to rewrite again: what it started from has
+    // nothing left to be compared against (see improveSources). The field is emptied further down by
+    // several different paths, and this stands ahead of all of them.
+    if (!isOverride && improveSources[active]) {
+      setImproveSources((current) => {
+        const { [active]: _dropped, ...rest } = current
+        return rest
+      })
+    }
     // The empty tail is taken off at once: it is invisible in the field (the last line there takes no
     // space, at most the caret stands on it) while in the feed it would show as a spare empty line. To the
     // agent composePrompt does not send it anyway.
@@ -2152,6 +2339,7 @@ export const App = () => {
     decidePlan,
     shellRuns,
     commands,
+    improveSources,
   ])
 
   const sendNow = useCallback(() => submit(false), [submit])
@@ -2379,6 +2567,7 @@ export const App = () => {
     defaultMode:
       modeMenuOptions(availableModes).find((option) => option.id === normalizeMode(prefs.mode))?.label ?? '',
     composerLayout: COMPOSER_LAYOUT_OPTIONS.find((option) => option.id === chosenLayout)?.label ?? '',
+    improvePrompt: improveInstructions.instructions.trim() ? 'Custom' : 'Default',
     remote: {
       label: REMOTE_STATE[remote.state].label,
       // Connected and paired, the state's own sentence says nothing new - the useful line is who is on
@@ -2690,12 +2879,29 @@ export const App = () => {
             onOpenFeedback={openFeedback}
             railContainer={railNode}
             fileDragOver={fileDragOver}
-            onTokensChange={(tokens) => editDraft(active, { tokens })}
+            onTokensChange={(tokens) => {
+              // A complaint about a draft that has since been rewritten by hand is noise.
+              setImproveError('')
+              // A hand on the keyboard makes this a draft of one's own again: the next press of the sparkle
+              // starts from what is in the field rather than from what stood before the last rewrite.
+              if (!applyingImprove.current && improveSources[active]) {
+                setImproveSources((current) => {
+                  const { [active]: _dropped, ...rest } = current
+                  return rest
+                })
+              }
+              editDraft(active, { tokens })
+            }}
             onAttach={() => send({ type: 'pick' })}
             // The chips are assembled by the shell and come back as an ordinary picked - by the same route
             // as a choice through a dialog: only it knows whether this is a file or a folder.
             onDropFiles={(paths) => send({ type: 'dropped', paths })}
             registerInsert={registerInsert}
+            registerApply={registerApply}
+            onImprove={improvePrompt}
+            improving={improving !== null}
+            improveRetry={improveSources[active] !== undefined}
+            improveError={improveError}
             onSubmit={sendNow}
             onQueue={queueNext}
             canSubmit={draftReady}
@@ -2869,6 +3075,19 @@ export const App = () => {
             onPick={(id) => {
               setComposerLayout(normalizeComposerLayout(id))
               closeMenu()
+            }}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'improvePrompt' ? (
+          <ImprovePrompt
+            instructions={improveInstructions.instructions}
+            builtIn={improveInstructions.builtIn}
+            onChange={(text) => {
+              // Kept here as well as sent: the IDE does not answer this with a fresh init, and the screen
+              // would otherwise snap back to the old text the moment it is reopened.
+              setImproveInstructions((current) => ({ ...current, instructions: text }))
+              send({ type: 'setImproveInstructions', text })
             }}
           />
         ) : null}

@@ -1362,6 +1362,92 @@
   font: 13px/1 var(--acc-mono);
 }
 
+/* The sparkle of the improve button. A pixel wider than the paperclip and the slash rather than equal to
+   them: a four-pointed star is mostly the air between its points, so at the same box it read as the lightest
+   of the three. The eye matches ink, not frames. */
+.sparkleIcon {
+  width: 14px;
+  height: 14px;
+}
+
+/*
+ * The button while the rewrite is running. Nothing is added beside the icon: the row is tight, and a button
+ * that grew a spinner would shift the paperclip and the slash sideways for the three seconds it takes.
+ *
+ * The colour is the model's own (the same accent the agent's own cards carry), so that "this is being
+ * thought about right now" is legible without reading the shape - and it is the disabled button that is
+ * lit, which is otherwise a contradiction the eye notices.
+ */
+.attachBusy:disabled {
+  background: var(--acc-agent-12);
+  color: var(--acc-agent-light);
+  opacity: 1;
+}
+
+/*
+ * The two stars twinkle out of step instead of the whole icon turning.
+ *
+ * Turning was the first attempt and it was wrong twice over: a four-pointed star spinning about its own
+ * centre reads as a loading spinner that someone drew badly, and the small star swinging round the big one
+ * made the whole thing wobble. A twinkle is what a sparkle does - each star brightens and swells in its own
+ * time, the icon never leaves its place, and at fourteen pixels that is the only motion that stays legible.
+ *
+ * Each star scales about ITS OWN centre rather than the icon's - that is what fill-box buys; without it
+ * both would swell towards the top-left corner of the frame.
+ */
+.sparkleBig,
+.sparkleSmall {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.attachBusy .sparkleBig {
+  animation: acc-sparkle-twinkle 1.15s ease-in-out infinite;
+}
+
+/* Half a period behind, so the pair breathes in turn rather than pulsing as one lump. */
+.attachBusy .sparkleSmall {
+  animation: acc-sparkle-twinkle 1.15s ease-in-out infinite;
+  animation-delay: 0.57s;
+}
+
+@keyframes acc-sparkle-twinkle {
+  0%,
+  100% {
+    transform: scale(0.72);
+    opacity: 0.4;
+  }
+
+  50% {
+    transform: scale(1.14);
+    opacity: 1;
+  }
+}
+
+/* Why a rewrite came to nothing - one line above the field (see Composer.improveNoteNode). It stands in the
+   flow rather than over the field: an explanation that covers what is being written is worse than none. */
+.improveNote {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--acc-bad-32);
+  border-radius: var(--acc-r-lg);
+  background: var(--acc-bad-10);
+  color: var(--acc-bad-light);
+}
+
+.improveNote .sparkleIcon {
+  flex: none;
+}
+
+.improveNoteText {
+  font: 11px var(--acc-font);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .spacer {
   flex: 1;
   min-width: 6px;

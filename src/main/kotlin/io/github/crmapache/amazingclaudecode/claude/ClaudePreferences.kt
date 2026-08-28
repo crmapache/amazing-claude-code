@@ -16,6 +16,7 @@ internal object ClaudePreferences {
         val effort: String,
         val mode: String,
         val composerLayout: String,
+        val improveInstructions: String,
     )
 
     fun snapshot(): Snapshot = Snapshot(
@@ -23,6 +24,7 @@ internal object ClaudePreferences {
         effort = effort,
         mode = mode,
         composerLayout = composerLayout,
+        improveInstructions = improveInstructions,
     )
 
     var model: String
@@ -44,6 +46,18 @@ internal object ClaudePreferences {
     var composerLayout: String
         get() = read(COMPOSER_LAYOUT_KEY)
         set(value) = write(COMPOSER_LAYOUT_KEY, value)
+
+    /**
+     * What the improve button asks for, in the person's own words. Empty means the built-in text (see
+     * PromptImprover.BUILT_IN_INSTRUCTIONS), which is also what the screen shows while it is empty - a
+     * setting whose default is invisible is a setting nobody edits.
+     *
+     * Machine-wide like the model and the mode above it: what a good prompt looks like is a habit of the
+     * person, not a property of the repository.
+     */
+    var improveInstructions: String
+        get() = read(IMPROVE_INSTRUCTIONS_KEY)
+        set(value) = write(IMPROVE_INSTRUCTIONS_KEY, value.trim())
 
     /**
      * The path to the executable, given by hand. Empty means we look for it ourselves (see
@@ -126,6 +140,7 @@ internal object ClaudePreferences {
     private const val EFFORT_KEY = "acc.effort"
     private const val MODE_KEY = "acc.mode"
     private const val COMPOSER_LAYOUT_KEY = "acc.composerLayout"
+    private const val IMPROVE_INSTRUCTIONS_KEY = "acc.improve.instructions"
     private const val EXECUTABLE_KEY = "acc.executable"
     private const val MUTED_SOUNDS_KEY = "acc.sounds.muted"
     private const val SOUND_VOLUMES_KEY = "acc.sounds.volumes"

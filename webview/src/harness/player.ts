@@ -108,6 +108,61 @@ const answerFeedback = (message: WebviewMessage): void => {
   }
 }
 
+/*
+ * The improve button, played by the harness.
+ *
+ * In the IDE this is a `claude -p` run of its own (see PromptImprover); here the answer is made up, but it
+ * is made up the way the real one comes back - with the [[n]] markers moved rather than left where they
+ * were. That is the half of the feature worth looking at without an IDE: the attachments have to come back
+ * as chips, in their new place, and none of them may go missing.
+ *
+ * Every third press fails, as with the feedback screen above: the strip that explains a failed rewrite is
+ * otherwise a piece of interface nobody ever sees.
+ */
+let improveRuns = 0
+
+const answerImprove = (message: WebviewMessage): void => {
+  if (message.type !== 'improvePrompt') return
+
+  improveRuns += 1
+  const failing = improveRuns % 3 === 0
+
+  const markers = message.draft.match(/\[\[\d+\]\]/g) ?? []
+  const words = message.draft.replace(/\[\[\d+\]\]/g, ' ').replace(/\s+/g, ' ').trim()
+  // A press past an answer says that answer was not wanted, and the real rewriter is given every one of
+  // them to steer away from (see PromptImprover). Here that is played by counting them: each take opens
+  // differently, so pressing again visibly produces something else rather than the same words back.
+  const takes = message.rejected?.length ?? 0
+  const openings = [
+    markers.length > 0 ? `Working in ${markers.join(' and ')}:` : 'In this repository:',
+    'Here is what needs doing:',
+    'The task, put another way:',
+    'Shortest version:',
+  ]
+  const rewritten = [
+    openings[takes % openings.length],
+    '',
+    `${words.charAt(0).toUpperCase()}${words.slice(1)}.`,
+    '',
+    takes === 0
+      ? 'Say what you changed and why. If anything above is ambiguous, ask before you start.'
+      : `Ask before you start if anything is unclear. (Take ${takes + 1}.)`,
+  ].join('\n')
+
+  setTimeout(() => {
+    window.__accReceive?.(
+      failing
+        ? {
+            type: 'promptImproved',
+            sessionId: message.sessionId,
+            id: message.id,
+            error: 'Claude Code exited with code 1: not logged in.',
+          }
+        : { type: 'promptImproved', sessionId: message.sessionId, id: message.id, text: rewritten },
+    )
+  }, 1200)
+}
+
 /**
  * Pages of a conversation older than what is on screen.
  *
@@ -240,6 +295,7 @@ const listenToPanel = () => {
 
     if (message) answerFeedback(message)
     if (message) answerHistoryPage(message)
+    if (message) answerImprove(message)
   }
 
   window.dispatchEvent(new Event('acc:ready'))

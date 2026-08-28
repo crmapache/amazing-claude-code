@@ -115,6 +115,31 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
             // heart pressed - reported by it (see the stat message in protocol.ts).
             "stat" -> hub.stats.noteClientEvent(payload)
 
+            /**
+             * The sparkle button beside the paperclip: the draft in the input field, rewritten.
+             *
+             * It runs a `claude -p` of its own rather than a turn in this conversation - the reasons are
+             * written out in PromptImprover - and the answer goes back to whoever pressed the button.
+             */
+            "improvePrompt" -> hub.catalog.improvePrompt(
+                clientId,
+                sessionId,
+                id = field("id"),
+                draft = field("draft"),
+                attachments = strings(payload, "attachments"),
+                rejected = strings(payload, "rejected"),
+            )
+
+            /**
+             * What that button asks for, in the person's own words. Empty puts the built-in text back in
+             * force (see PromptImprover.instructions).
+             *
+             * Another window of the same project keeps showing the text it was opened with until it is
+             * reloaded - what is in force is read here, at the moment of the press, so every window
+             * rewrites by the new text at once even while one of them still displays the old.
+             */
+            "setImproveInstructions" -> ClaudePreferences.improveInstructions = field("text")
+
             // A command through "!" - the panel's bash mode.
             "bash" -> hub.catalog.runShellCommand(clientId, sessionId, field("id"), field("command"))
 
@@ -312,6 +337,10 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
         payload["since"]?.jsonObject.orEmpty()
             .mapNotNull { (sessionId, value) -> value.jsonPrimitive.longOrNull?.let { sessionId to it } }
             .toMap()
+
+    /** A plain list of strings out of the request - the markers' legend, for one (see improvePrompt). */
+    private fun strings(payload: JsonObject, name: String): List<String> =
+        payload[name]?.jsonArray.orEmpty().mapNotNull { it.jsonPrimitive.contentOrNull }
 
     private fun images(payload: JsonObject): List<ImageAttachment> =
         payload["images"]?.jsonArray.orEmpty().mapNotNull { element ->

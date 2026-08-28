@@ -256,6 +256,11 @@
 
 /* The same rose as the heart in the status row: both entries lead to the same person, and the colour is
    what says so without a word of explanation. */
+.rowIconImprove {
+  background: var(--acc-agent-12);
+  color: var(--acc-agent-light);
+}
+
 .rowIconFeedback {
   background: var(--acc-heart-16);
   color: var(--acc-heart);
@@ -440,6 +445,35 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/*
+ * The instructions the improve button asks by (see ImprovePrompt.tsx). Mono, like the relay address above
+ * and unlike the feedback message: this is a text a model reads, and it is written with the care one gives
+ * a configuration rather than the ease one gives a sentence.
+ *
+ * A fixed window with a scroll rather than a box that grows: the built-in text alone is a screenful, and a
+ * field that grew to fit it would push the buttons under it off the bottom of the panel.
+ */
+.instructions {
+  width: 100%;
+  height: 300px;
+  padding: 8px 9px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-raised);
+  color: var(--acc-fg);
+  font: 11.5px/1.55 var(--acc-mono);
+  resize: vertical;
+}
+
+.instructions:focus-visible {
+  outline: none;
+  border-color: var(--acc-accent-40);
+}
+
+.instructions::placeholder {
+  color: var(--acc-fg-faint);
 }
 
 /* A line that reports how an action went - the same place on every screen, right under the head. */
