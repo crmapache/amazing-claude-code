@@ -1649,6 +1649,13 @@ export const App = () => {
   // Shift+Tab drives around the circle of modes - the same habit and the same circle as in a terminal.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // A key an input method is assembling a character out of belongs to it rather than to the panel:
+      // Escape throws the half-typed character away and Tab walks the candidate list, and neither is a
+      // "stop the agent" or a "change the mode". The field dims its own Escape (see Composer), but Tab it
+      // never sees - this handler is the only guard for it. Reads the flag off the event, so nothing here
+      // can stay raised after a composition that ended with the focus elsewhere.
+      if (event.isComposing) return
+
       // The developer tools live on a key rather than on a button: they are not worth room in the header,
       // and without them the panel cannot be debugged.
       if (event.code === 'KeyD' && event.shiftKey && (event.metaKey || event.ctrlKey)) {
@@ -2858,7 +2865,15 @@ export const App = () => {
           <LayoutChoice
             options={COMPOSER_LAYOUT_OPTIONS}
             selected={chosenLayout}
-            onPick={(id) => setComposerLayout(normalizeComposerLayout(id))}
+            // The menu steps aside on the choice, unlike the lists beside it. What is chosen here is the
+            // shape of the panel itself, and the menu covers exactly the place that changes: staying open
+            // would mean picking a layout and then having to dismiss the menu to find out whether it was
+            // the one wanted. A sound or a default mode has nothing to look at underneath, so those lists
+            // stay where they are.
+            onPick={(id) => {
+              setComposerLayout(normalizeComposerLayout(id))
+              closeMenu()
+            }}
           />
         ) : null}
 

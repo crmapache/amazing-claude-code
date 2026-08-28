@@ -47,6 +47,10 @@ export const useDigitHotkey = (
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
+      // In Chinese and Japanese the digits pick a candidate out of the input method's own list, and on a
+      // Mac they pick an accented letter out of the press-and-hold menu. Whichever list is open, the digit
+      // belongs to it rather than to the card.
+      if (event.isComposing) return
       if (typedInto(event.target, composerEmpty)) return
 
       const index = DIGITS.indexOf(event.key)

@@ -83,13 +83,15 @@ export const thanksMenu = (copied: boolean): { title: string; width: number; opt
 interface ThanksButtonProps {
   /** The side rail's variant: no frame of its own - it stands among borderless buttons rather than capsules. */
   rail?: boolean
+  /** Compact: the heart shares a row with MODEL/EFFORT/MODE and takes their height (see .thanksLevel). */
+  withSelectors?: boolean
   onOpen: (anchor: Anchor) => void
 }
 
-export const ThanksButton = ({ rail = false, onOpen }: ThanksButtonProps) => (
+export const ThanksButton = ({ rail = false, withSelectors = false, onOpen }: ThanksButtonProps) => (
   <button
     type="button"
-    className={`${s.thanks} ${rail ? s.thanksRail : ''}`}
+    className={`${s.thanks} ${rail ? s.thanksRail : ''} ${withSelectors ? s.thanksLevel : ''}`}
     /* A title rather than the panel's own data-tooltip, as the selectors beside it have: this hint would
        unfold upwards, into the very place the menu opens into, and cover it. */
     title="Enjoying the plugin? Say thanks"
