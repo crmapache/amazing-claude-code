@@ -19,6 +19,7 @@ import { Composer } from './components/Composer'
 import {
   COMPOSER_LAYOUT_OPTIONS,
   isSideComposerLayout,
+  layoutForRoom,
   normalizeComposerLayout,
   type ComposerLayout,
 } from './composerLayout'
@@ -54,6 +55,7 @@ import { StatusBar, UsageMeters, type Anchor, type SelectorKind } from './compon
 import { SHARE, SHARE_TEXT, thanksMenu, thanksUrl } from './components/Thanks'
 import { useHoliday } from './hooks/useHoliday'
 import { useHoverTarget } from './hooks/useHoverTarget'
+import { useLowPanel } from './hooks/useLowPanel'
 import { StreamSwitcher } from './components/StreamSwitcher'
 import { TaskListPanel } from './components/TaskListPanel'
 import composer from './components/composer.module.css'
@@ -273,8 +275,15 @@ export const App = () => {
   const [autoRefusedModels, setAutoRefusedModels] = useState<string[]>([])
   /** The screen's side the panel is pressed to - it decides where the border towards the editor is drawn. */
   const [dockAnchor, setDockAnchor] = useState<'left' | 'right' | 'top' | 'bottom'>('right')
-  /** Where the input field sits. It arrives from the shell at startup and is saved there too. */
-  const [composerLayout, setComposerLayoutState] = useState<ComposerLayout>('bottom')
+  /** Where the input field sits, as the person chose it. It arrives from the shell at startup and is saved there too. */
+  const [chosenLayout, setComposerLayoutState] = useState<ComposerLayout>('bottom')
+  /**
+   * And what the panel is drawn with: a panel dragged down to a strip has no height for the default
+   * layout, and compact is what exists for that room (see layoutForRoom). The choice above is what the
+   * menu shows and what the shell keeps - this is only how it is rendered right now.
+   */
+  const lowPanel = useLowPanel()
+  const composerLayout = layoutForRoom(chosenLayout, lowPanel)
   /** The turn of the year: the garland, the snow and the frozen Send button - see holiday.ts. */
   const holiday = useHoliday()
   const [loginWaiting, setLoginWaiting] = useState(false)
@@ -2366,7 +2375,7 @@ export const App = () => {
     sounds: `${SOUNDS.filter((sound) => !isMuted(soundPrefs, sound.id)).length} on`,
     defaultMode:
       modeMenuOptions(availableModes).find((option) => option.id === normalizeMode(prefs.mode))?.label ?? '',
-    composerLayout: COMPOSER_LAYOUT_OPTIONS.find((option) => option.id === composerLayout)?.label ?? '',
+    composerLayout: COMPOSER_LAYOUT_OPTIONS.find((option) => option.id === chosenLayout)?.label ?? '',
     remote: {
       label: REMOTE_STATE[remote.state].label,
       // Connected and paired, the state's own sentence says nothing new - the useful line is who is on
@@ -2848,7 +2857,7 @@ export const App = () => {
         {sideMenu.open && sideMenu.screen === 'composerLayout' ? (
           <LayoutChoice
             options={COMPOSER_LAYOUT_OPTIONS}
-            selected={composerLayout}
+            selected={chosenLayout}
             onPick={(id) => setComposerLayout(normalizeComposerLayout(id))}
           />
         ) : null}
