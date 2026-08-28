@@ -164,6 +164,11 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Enter' || event.shiftKey || event.metaKey || event.ctrlKey) return
+      // An input method confirms its candidate with the same Enter, and that is not an answer to anything.
+      // Today the draft below usually holds this back on its own (a half-typed word is a draft, and a
+      // draft owns Enter), but only for as long as the field keeps reporting the unfinished characters -
+      // too thin a thread to hang the agent's answer on.
+      if (event.isComposing) return
 
       const target = event.target as HTMLElement | null
       // A started message is sent by the message field's own Enter.

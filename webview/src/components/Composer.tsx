@@ -5,6 +5,7 @@ import {
   useState,
   type ClipboardEvent,
   type DragEvent,
+  type FormEvent,
   type KeyboardEvent,
   type ReactNode,
 } from 'react'
@@ -159,6 +160,14 @@ const SELECTED_CHIP_CLASS = s.tokenSelected ?? ''
 
 /** The keys that by themselves type nothing and move nothing. */
 const MODIFIER_KEYS = ['Shift', 'Meta', 'Control', 'Alt', 'CapsLock']
+
+/**
+ * An edit an input method made halfway through a character.
+ *
+ * A chip removed by its own cross reports itself through a plain Event (see removeChip), which carries no
+ * such flag at all - and honestly counts as no composition.
+ */
+const isComposingEvent = (event: Event): boolean => event instanceof InputEvent && event.isComposing
 
 interface ComposerProps {
   /** Whose tab this is - each has an undo history of its own rather than one shared by all. */
@@ -497,7 +506,15 @@ export const Composer = ({
    * active it gets none of its own: two lists at once are noise.
    */
   const atQuery = matches.length > 0 || dismissed ? null : (input.current ? atQueryAt(input.current) : null)
-  const fileMatches = atQuery ? matchFiles(files, atQuery.query) : []
+  /**
+   * The search itself is remembered by what was typed after the "@", not redone on every repaint. Finding
+   * the caret is cheap, going through the project's paths is not: the shell sends up to a few thousand of
+   * them, and each is lowercased and split on the way. Composer repaints on every chunk of the agent's
+   * answer too, so without this the list was searched afresh while nobody was typing at all - about a
+   * millisecond a time, out of the sixteen a frame has.
+   */
+  const atText = atQuery?.query ?? null
+  const fileMatches = useMemo(() => (atText === null ? [] : matchFiles(files, atText)), [files, atText])
   const isFileSuggest = matches.length === 0 && fileMatches.length > 0
 
   const suggestionItems: CommandEntry[] = isFileSuggest
@@ -619,25 +636,63 @@ export const Composer = ({
     return true
   }
 
-  const handleInput = () => {
-    const root = input.current
-    if (!root) return
-
+  /**
+   * The field has been edited: we read it back and report it outwards.
+   *
+   * While an input method is still assembling a character the field is not ours to rebuild - the browser
+   * holds the unfinished character in a node of its own, and replacing that node tears the character out
+   * of the person's hands together with the candidate window. So both rebuilds wait: the emptied field's
+   * cleanup and turning a finished command into a chip.
+   *
+   * What does NOT wait is the report outwards. The half-typed characters keep travelling into the panel's
+   * state, and that is deliberate: "is there a draft" is what tells the question card and the digit
+   * hotkeys to keep their hands off the keyboard (see composerEmpty in App). A field that reported itself
+   * empty for the whole of an Asian word would hand those keys away exactly when they belong to the input
+   * method.
+   */
+  const applyEdit = (root: HTMLElement, composing: boolean) => {
     const next = readTokens(root)
 
-    // Having wiped every character by selection or by consecutive backspaces, Chromium leaves a lone
-    // <br> instead of a genuinely empty node - because of it the placeholder (css :empty) does not
-    // appear. Since no tokens are left while the node is not literally empty, we clean up ourselves.
-    if (next.length === 0 && root.childNodes.length > 0) root.innerHTML = ''
+    if (!composing) {
+      // Having wiped every character by selection or by consecutive backspaces, Chromium leaves a lone
+      // <br> instead of a genuinely empty node - because of it the placeholder (css :empty) does not
+      // appear. Since no tokens are left while the node is not literally empty, we clean up ourselves.
+      if (next.length === 0 && root.childNodes.length > 0) root.innerHTML = ''
 
-    // The command's name has been finished and a space put after it - it becomes a chip on the spot,
-    // without waiting for a choice from the hint. Only the name goes: whatever stands past the caret was
-    // written before the command and stays where it is.
-    if (captureTypedCommand(next)) return
+      // The command's name has been finished and a space put after it - it becomes a chip on the spot,
+      // without waiting for a choice from the hint. Only the name goes: whatever stands past the caret was
+      // written before the command and stays where it is.
+      if (captureTypedCommand(next)) return
+    }
 
     report(next)
     // In the same batch as the tokens, so that the hint does not lag a frame behind what has been typed.
     syncHead()
+  }
+
+  /**
+   * Composition is read off the event rather than remembered: one that ends with the focus leaving the
+   * field reports no end at all, and a remembered "still composing" would then silence the field for good.
+   * A chip's own removal arrives here as a plain Event, which carries no such flag - and rightly counts as
+   * no composition (see removeChip).
+   */
+  const handleInput = (event: FormEvent<HTMLDivElement>) => {
+    const root = input.current
+    if (root) applyEdit(root, isComposingEvent(event.nativeEvent))
+  }
+
+  /**
+   * The character is finished - what the input above put off now happens.
+   *
+   * There is no ordinary input event left to do it on: Chromium sends the last one WHILE the composition
+   * is still on (insertCompositionText with the flag raised) and closes with compositionend, silently. So
+   * the finishing touches are taken here and synchronously: a person who confirms a candidate with Enter
+   * sends the message with the very next one, and a deferred pass would let that Enter land on a draft the
+   * panel still counts as empty.
+   */
+  const handleCompositionEnd = () => {
+    const root = input.current
+    if (root) applyEdit(root, false)
   }
 
   /**
@@ -1031,7 +1086,33 @@ export const Composer = ({
     return true
   }
 
+  /**
+   * While an input method is assembling a character, the keyboard is not ours.
+   *
+   * Enter confirms a candidate, Tab and the arrows walk the candidate list, the digits pick from it,
+   * Escape throws the half-typed character away - the very keys the field otherwise takes for sending, for
+   * the hint, for the history and for stopping the agent. Taken by us, they answer the hint with a file
+   * instead of a word (checked live: a chip landed in the field mid-word), or stop the turn on a plain
+   * "no, not that character".
+   *
+   * So the whole handler steps aside for the duration - the chip navigation and the Cmd combinations
+   * first of all: they edit the field through execCommand and Selection.modify, which break the
+   * composition in the engine rather than merely in our logic.
+   *
+   * The flag comes off the event rather than out of a remembered state on purpose. A composition that
+   * ends with the focus leaving the field sends no end event, and a remembered one would stay raised - a
+   * field that never sends again and an Escape that never stops the agent, with nothing but a reload to
+   * cure it.
+   */
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.nativeEvent.isComposing) {
+      // Escape is thrown away rather than acted upon: cancelling a half-typed character must not travel
+      // up to the panel's own Escape and stop the turn (see the window handler in App). The browser still
+      // gets it - that is what cancels the composition.
+      if (event.key === 'Escape') event.stopPropagation()
+      return
+    }
+
     if (handleChipKey(event)) return
 
     // JCEF does not forward macOS's native "by line" combinations - Cmd+Backspace and Cmd+arrow stay
@@ -1146,9 +1227,7 @@ export const Composer = ({
       }
     }
 
-    // isComposing: confirming a candidate in an IME also arrives as an Enter - that is part of typing
-    // rather than a send.
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       // Enter is the Send button, so it stays silent at exactly the times the button is dimmed: there is
       // nothing to send.
@@ -1361,6 +1440,8 @@ export const Composer = ({
       suppressContentEditableWarning
       data-placeholder={placeholder}
       onInput={handleInput}
+      // The finishing touches the input above put off while the character was still being assembled.
+      onCompositionEnd={handleCompositionEnd}
       onFocus={() => setFocused(true)}
       onBlur={() => {
         setFocused(false)
@@ -1436,7 +1517,7 @@ export const Composer = ({
                   evenly among the three selectors (see .selectorAuto), so its end is wherever they end.
                   The bubble is not here but among the buttons below - this row has no width to spare, and
                   why that matters is written out at FeedbackButton.tight. */}
-              <ThanksButton onOpen={(anchor) => onOpenThanks?.(anchor)} />
+              <ThanksButton withSelectors onOpen={(anchor) => onOpenThanks?.(anchor)} />
             </div>
 
             <div className={s.compactToolsRow}>{toolsRow}</div>

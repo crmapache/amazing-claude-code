@@ -1186,6 +1186,18 @@
   border-color: var(--acc-heart-40);
 }
 
+/*
+ * Compact: the heart shares its row with MODEL/EFFORT/MODE, so it takes their 23px instead of the 26 above.
+ *
+ * The three pixels the status line can afford this row cannot. There the heart stands past a wide gap from
+ * everything else and reads as its own thing; here it butts up against MODE four pixels away, and two
+ * capsules of different heights side by side read as one of them being slightly broken.
+ */
+.thanksLevel {
+  height: 23px;
+  min-height: 23px;
+}
+
 /* The rail's variant: the same box, only without the frame - in a row of borderless buttons a bordered
    capsule would read as a different kind of thing. */
 .thanksRail {
