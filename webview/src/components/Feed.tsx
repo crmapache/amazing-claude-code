@@ -1,6 +1,6 @@
 import { useSmoothStream } from 'smooth-stream-text/react'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { drawnInFeed, openThought } from '../feed/build'
+import { drawnInFeed, openThought, spokenAnswer } from '../feed/build'
 import { parseParagraphs } from '../feed/markdown'
 import type { FeedItem, FeedRowItem, ToolItem } from '../feed/types'
 import type { CardState } from '../hooks/useCardState'
@@ -119,8 +119,12 @@ export const Feed = ({
    * as an even stream, with the pace adjusting itself to the supply - which is why the text flows rather
    * than jumping out in batches of twenty words. The reveal wave over that stream is drawn by the card
    * itself (see TextCard).
+   *
+   * The chunks are handed over cleaned: an answer beginning with a service block that the model printed
+   * back at itself must not show while it streams either - see spokenAnswer, and the same call in
+   * applyAssistant for the finished block.
    */
-  const { text: pacedText } = useSmoothStream(streamingText, { done: !streaming })
+  const { text: pacedText } = useSmoothStream(spokenAnswer(streamingText), { done: !streaming })
 
   /**
    * The printing thought and answer live in the same list as everything else rather than as separate

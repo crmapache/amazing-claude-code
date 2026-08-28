@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent, AgentRateLimitEvent } from '../protocol'
-import { contextOf, contextUsage, initialPanelState, reducePanel, type PanelState } from './build'
+import { contextOf, contextUsage, initialPanelState, reducePanel, spokenAnswer, type PanelState } from './build'
 import type {
   AskItem,
   CompactItem,
@@ -2208,6 +2208,62 @@ describe('a typing answer', () => {
 
     expect(stopped.streamingText).toBe('')
     expect(stopped.streamingId).toBeUndefined()
+  })
+})
+
+/**
+ * A service block the model prints back at itself instead of merely reading it. Three such answers came out
+ * of one real conversation, and each of them began with a reminder about a background agent that had just
+ * finished (see spokenAnswer).
+ */
+describe('a service block at the front of an answer', () => {
+  const answers = (state: PanelState) => state.items.filter((item): item is TextItem => item.kind === 'text')
+
+  /** The shape it really arrives in: the tag is never closed, and the invented wrapper ends the block. */
+  const echo = [
+    '<system-reminder>',
+    'Background agent afd28080854009bcc completed. Do NOT read the output file directly - the result is included below.',
+    '',
+    'Result:',
+    '',
+    'The plan holds: the early return on a composing key is the only guard there is.',
+    '</parameter>',
+    '</invoke>',
+    '</function_results>',
+  ].join('\n')
+
+  it('shows only what the agent said after the block', () => {
+    const state = play([textEvent(`${echo}A good review. Taken into account.`)])
+
+    expect(answers(state)).toHaveLength(1)
+    expect(answers(state)[0]?.source).toBe('A good review. Taken into account.')
+  })
+
+  it('leaves no card at all when the whole answer was the block', () => {
+    expect(play([textEvent(echo)]).items).toHaveLength(0)
+  })
+
+  it('cuts a closed block off the front of an answer', () => {
+    const state = play([
+      textEvent('<system-reminder>Do not read the file itself.</system-reminder>\n\nReading the tests instead.'),
+    ])
+
+    expect(answers(state)[0]?.source).toBe('Reading the tests instead.')
+  })
+
+  it('does not touch the same tag inside an answer', () => {
+    const said = 'The panel drops it: a `<system-reminder>` in the middle is the agent talking about the tag.'
+
+    expect(answers(play([textEvent(said)]))[0]?.source).toBe(said)
+  })
+
+  it('holds back a tag that has only half arrived', () => {
+    // The answer is printed as it streams: without this the wall shows itself for a frame, and then the
+    // printing card is handed a text that has grown shorter.
+    expect(spokenAnswer('<system-remin')).toBe('')
+    expect(spokenAnswer('<')).toBe('')
+    // While an answer that merely begins with a bracket is not held back at all.
+    expect(spokenAnswer('<b>bold</b> and nothing service about it')).toBe('<b>bold</b> and nothing service about it')
   })
 })
 
