@@ -62,6 +62,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             onFinished = { sessionId -> sendStatus(sessionId, SessionSnapshot.STATUS_IDLE) },
             onCrashed = { sessionId, exitCode -> sendProcessExited(sessionId, exitCode) },
             onToolPermission = { sessionId, request -> permissionListener?.invoke(sessionId, request) },
+            // Straight to the owner of the cards rather than through a listener of its own: a question
+            // taken back is news for exactly the place that is holding it, and there is nobody else to
+            // tell.
+            onPermissionWithdrawn = { sessionId, requestId -> permissions.withdraw(sessionId, requestId) },
             onTitle = { sessionId, title -> sendSessionTitle(sessionId, title) },
             // A tab already carrying a name the model picked is left alone - a name outlives the
             // process that asked for it, and asking again would spend a model call to arrive at the

@@ -75,6 +75,11 @@ internal class ClaudeSession(
      * (see [PermissionChannel]). Until someone answers, the turn stands still.
      */
     private val onToolPermission: (PermissionChannel.ToolPermission) -> Unit = {},
+    /**
+     * The agent took its question back - see [PermissionChannel.Incoming.Withdrawn]. Whoever drew the
+     * card has to stop offering buttons that now answer nobody.
+     */
+    private val onPermissionWithdrawn: (String) -> Unit = {},
     /** An LLM picked the conversation's name by its first message - see [rememberTitle]. */
     private val onTitle: (String) -> Unit = {},
     /**
@@ -635,11 +640,19 @@ internal class ClaudeSession(
             return
         }
 
-        // An incoming request: not an answer to our own, but the agent's question to the panel.
-        if (line.contains("\"control_request\"")) {
+        // An incoming request: not an answer to our own, but the agent's question to the panel - or that
+        // same question taken back (see PermissionChannel.Incoming.Withdrawn). Which lines those are is
+        // the channel's own knowledge - see PermissionChannel.mayBelong.
+        if (PermissionChannel.mayBelong(line)) {
             val payload = runCatching { Json.parseToJsonElement(line).jsonObject }.getOrNull()
+            val type = payload?.get("type")?.jsonPrimitive?.contentOrNull
 
-            if (payload?.get("type")?.jsonPrimitive?.contentOrNull == "control_request") {
+            if (payload != null &&
+                (type == PermissionChannel.CONTROL_REQUEST || type == PermissionChannel.CONTROL_CANCEL_REQUEST)
+            ) {
+                // Whatever it turns out to be goes to askPermission, the unreadable included: a request
+                // nobody answers is a turn stopped forever, and the trace it leaves there is the only
+                // explanation such a conversation ever gets.
                 askPermission(payload)
                 return
             }
@@ -920,6 +933,16 @@ internal class ClaudeSession(
             is PermissionChannel.Incoming.Permission -> {
                 awaitingPermission[incoming.request.requestId] = incoming.request
                 onToolPermission(incoming.request)
+            }
+
+            is PermissionChannel.Incoming.Withdrawn -> {
+                // Nothing is written back: an answer to a question that has been taken back the CLI
+                // discards, and the card that sent it would meanwhile have drawn a decision nobody acted
+                // on. Forgetting it here is what lets the panel take the card off the screen - and what
+                // lets a remark typed onto a plan afterwards travel as an ordinary message rather than
+                // into a request that no longer exists (see SessionPermissions.awaited).
+                awaitingPermission.remove(incoming.requestId)
+                onPermissionWithdrawn(incoming.requestId)
             }
 
             is PermissionChannel.Incoming.Unsupported -> {

@@ -359,8 +359,17 @@ type ShellMessageBody =
    * A permission has been answered - possibly on another device. With one client this said nothing new
    * (it had drawn the decision on the click), with two it is the only way the other one learns its
    * buttons are no longer worth pressing.
+   *
+   * 'withdrawn' is nobody's decision: the agent took its question back (Stop pressed over a waiting
+   * card, a hook that came to its own answer). The card closes exactly as after a decision - what it
+   * must not do is go on offering buttons that now answer nobody. See PermissionChannel.Incoming.
    */
-  | { type: 'permissionResolved'; sessionId: string; id: string; decision: 'once' | 'always' | 'deny' }
+  | {
+      type: 'permissionResolved'
+      sessionId: string
+      id: string
+      decision: 'once' | 'always' | 'deny' | 'withdrawn'
+    }
   | { type: 'planResolved'; sessionId: string; id: string; decision: string }
   /**
    * A person's message as it stands in the feed, echoed back by the shell.
@@ -382,7 +391,7 @@ type ShellMessageBody =
       quotes?: string[]
       steering?: boolean
     }
-  | { type: 'askResolved'; sessionId: string; id: string; outcome: 'answered' | 'dismissed' }
+  | { type: 'askResolved'; sessionId: string; id: string; outcome: 'answered' | 'dismissed' | 'withdrawn' }
   | { type: 'status'; sessionId: string; state: AgentStatus }
   /**
    * The tab's name from the first message - not straight away: while the LLM thinks, the tab already

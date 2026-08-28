@@ -101,6 +101,10 @@ export const Feed = ({
    * panels above the input field answer for them. An agent's card (task) does not get here either - it
    * has a tab of its own, see AgentStreamView. A plan's card leaves the feed as soon as a decision about
    * it is taken (either way) - it has done its job rather than hanging there inactive.
+   *
+   * A plan the agent took back is not a decision and does not leave: nobody chose anything, the text is
+   * still worth reading, and a plan vanishing because the turn was stopped would be the person's loss.
+   * It merely loses its buttons - see PlanCard.withdrawn.
    */
   const settled = useMemo(
     () =>
@@ -110,7 +114,11 @@ export const Feed = ({
           item.kind !== 'ask' &&
           item.kind !== 'perm' &&
           item.kind !== 'task' &&
-          !(item.kind === 'plan' && cards.planDecisions[item.id] !== undefined),
+          !(
+            item.kind === 'plan' &&
+            cards.planDecisions[item.id] !== undefined &&
+            cards.planDecisions[item.id] !== 'withdrawn'
+          ),
       ),
     [items, cards.planDecisions],
   )
@@ -425,7 +433,8 @@ const ItemView = memo(({
       return (
         <PlanCard
           item={item}
-          awaiting={awaitingPlan}
+          awaiting={awaitingPlan && cards.planDecisions[item.id] === undefined}
+          withdrawn={cards.planDecisions[item.id] === 'withdrawn'}
           onApprove={() => onPlanDecision(item.id, 'approve')}
           onKeepPlanning={() => onPlanDecision(item.id, 'keepPlanning')}
           onOpenLink={onOpenLink}

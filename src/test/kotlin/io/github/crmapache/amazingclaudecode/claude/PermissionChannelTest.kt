@@ -86,6 +86,54 @@ class PermissionChannelTest {
         assertTrue(request.suggestions.isEmpty())
     }
 
+    /**
+     * Which lines of the stream are this channel's business at all - decided before any parsing.
+     *
+     * The check used to be one substring, and a withdrawal never matched it: "control_cancel_request"
+     * does not contain "control_request". The news of a taken-back question fell straight through into
+     * the feed's parsing, and the card it was about stayed on screen with live buttons.
+     */
+    @Test
+    fun `both a question and its withdrawal are recognised in the stream`() {
+        assertTrue(
+            PermissionChannel.mayBelong(
+                """{"type":"control_request","request_id":"r","request":{"subtype":"can_use_tool"}}""",
+            ),
+        )
+        assertTrue(PermissionChannel.mayBelong("""{"type":"control_cancel_request","request_id":"r"}"""))
+    }
+
+    @Test
+    fun `the conversation's own lines are not`() {
+        assertTrue(!PermissionChannel.mayBelong("""{"type":"assistant","message":{"content":[]}}"""))
+        assertTrue(
+            !PermissionChannel.mayBelong(
+                """{"type":"control_response","response":{"subtype":"success","request_id":"r"}}""",
+            ),
+        )
+    }
+
+    /**
+     * A question taken back is not a question: answering it is worse than staying silent.
+     *
+     * The CLI does this for real - Stop pressed over a waiting card cancels the question along with the
+     * turn - and an answer sent afterwards it discards, while the card that sent it has already drawn a
+     * decision nobody carried out. Which is why this must not come out as Unsupported: that is the one
+     * branch that answers.
+     */
+    @Test
+    fun `a question the agent takes back is news rather than a request`() {
+        val incoming = parse("""{"type":"control_cancel_request","request_id":"request-8"}""")
+
+        assertEquals("request-8", (incoming as PermissionChannel.Incoming.Withdrawn).requestId)
+    }
+
+    // Without a number there is no telling which card it is about, and guessing would close the wrong one.
+    @Test
+    fun `a withdrawal with no number closes nothing`() {
+        assertNull(parse("""{"type":"control_cancel_request"}"""))
+    }
+
     @Test
     fun `the conversation's events and our own answers do not belong to the channel`() {
         assertNull(parse("""{"type":"assistant","message":{"role":"assistant","content":[]}}"""))

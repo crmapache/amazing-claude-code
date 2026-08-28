@@ -24,6 +24,8 @@ internal class ClaudeSessions(
     private val onCrashed: (sessionId: String, exitCode: Int) -> Unit = { _, _ -> },
     /** The agent asks the panel for permission: until someone answers, the turn stands still. */
     private val onToolPermission: (sessionId: String, request: PermissionChannel.ToolPermission) -> Unit = { _, _ -> },
+    /** The agent took its question back - see ClaudeSession.onPermissionWithdrawn. */
+    private val onPermissionWithdrawn: (sessionId: String, requestId: String) -> Unit = { _, _ -> },
     /** An LLM picked the conversation's name by its first message - see ClaudeSession.onTitle. */
     private val onTitle: (sessionId: String, title: String) -> Unit = { _, _ -> },
     /** Whether this conversation still needs a name of its own - see ClaudeSession.titleWanted. */
@@ -346,6 +348,7 @@ internal class ClaudeSessions(
             onFinished = { onFinished(sessionId) },
             onCrashed = { exitCode -> onCrashed(sessionId, exitCode) },
             onToolPermission = { request -> onToolPermission(sessionId, request) },
+            onPermissionWithdrawn = { requestId -> onPermissionWithdrawn(sessionId, requestId) },
             onTitle = { title -> onTitle(sessionId, title) },
             titleWanted = { titleWanted(sessionId) },
             onTurnEnded = { onTurnEnded(sessionId) },

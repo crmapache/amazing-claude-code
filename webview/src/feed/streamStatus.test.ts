@@ -70,6 +70,18 @@ describe('what the turn is standing on', () => {
     expect(awaiting([plan('pl1')], cards([], { pl1: 'approve' }))).toBeUndefined()
   })
 
+  /**
+   * The agent took the question back itself - Stop pressed over a waiting card cancels it along with the
+   * turn (see PermissionChannel.Incoming.Withdrawn on the IDE's side). Nobody decided anything, and the
+   * conversation must stop saying it is waiting for a person all the same: otherwise the strip, the tab's
+   * dot and the phone's list all go on promising a decision that no longer exists.
+   */
+  it('is not a card the agent has taken back', () => {
+    expect(awaiting([perm('p1', { decision: 'withdrawn' })], cards())).toBeUndefined()
+    expect(awaiting([plan('pl1')], cards([], { pl1: 'withdrawn' }))).toBeUndefined()
+    expect(awaiting([ask('a1')], cards(['a1']))).toBeUndefined()
+  })
+
   /** A conversation opened from the history: the turn that asked ended some time in the past. */
   it('is not a question or a plan replayed out of a past conversation', () => {
     expect(awaiting([ask('a1', { historic: true })], cards())).toBeUndefined()

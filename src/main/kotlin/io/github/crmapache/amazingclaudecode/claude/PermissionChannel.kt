@@ -88,20 +88,55 @@ internal object PermissionChannel {
     sealed interface Incoming {
         data class Permission(val request: ToolPermission) : Incoming
 
+        /**
+         * The agent has taken its question back: there is nothing left to answer.
+         *
+         * It happens for real - pressing Stop over a card waiting for a decision cancels the question
+         * along with the turn, and so does a hook that comes to its own decision while the panel is
+         * already being asked. What must not happen is answering it: an answer to a withdrawn question
+         * the CLI throws away, while the card, once pressed, has already written "allowed" into the feed
+         * - a decision nobody carried out. So this is not a request but news, and the only right move is
+         * to take the card off the screen.
+         */
+        data class Withdrawn(val requestId: String) : Incoming
+
         /** A foreign or new kind of request: we still have to answer, or the turn stalls. */
         data class Unsupported(val requestId: String, val subtype: String) : Incoming
     }
 
     const val CAN_USE_TOOL = "can_use_tool"
 
+    /** The agent's question to the panel. */
+    const val CONTROL_REQUEST = "control_request"
+
+    /** The agent taking that question back - see [Incoming.Withdrawn]. */
+    const val CONTROL_CANCEL_REQUEST = "control_cancel_request"
+
     /** The kind of permission update that adds a rule: the name from the CLI's protocol. */
     private const val ADD_RULES = "addRules"
 
+    /**
+     * A cheap look at a line before parsing it: is this the channel's business at all.
+     *
+     * Two checks rather than one shorter: "control_cancel_request" does not contain "control_request",
+     * and a single substring left the news of a withdrawal falling through into the feed's parsing, where
+     * nobody expected it. Kept here beside the words it looks for - the stream's reading has no business
+     * knowing how this channel names its lines.
+     */
+    fun mayBelong(line: String): Boolean =
+        line.contains("\"$CONTROL_REQUEST\"") || line.contains("\"$CONTROL_CANCEL_REQUEST\"")
+
     /** null - the line is not about this channel: an ordinary conversation event, or our own answer. */
     fun parse(payload: JsonObject): Incoming? {
-        if (payload["type"]?.jsonPrimitive?.contentOrNull != "control_request") return null
+        val type = payload["type"]?.jsonPrimitive?.contentOrNull
+        if (type != CONTROL_REQUEST && type != CONTROL_CANCEL_REQUEST) return null
 
         val requestId = payload["request_id"]?.jsonPrimitive?.contentOrNull ?: return null
+
+        // A withdrawal carries the number of the question and nothing else - there is no `request` in it
+        // to read, and nothing to answer.
+        if (type == CONTROL_CANCEL_REQUEST) return Incoming.Withdrawn(requestId)
+
         // Here and below `as?` rather than `jsonObject`: an empty spot in the CLI's answer is not
         // always a missing field - an honest null gets written there too, and on that `jsonObject`
         // throws right inside the stream's parsing.

@@ -1,5 +1,5 @@
 import type { AgentStatus, AgentTab } from '../components/StreamSwitcher'
-import type { CardState } from '../hooks/useCardState'
+import type { CardState, PlanDecision } from '../hooks/useCardState'
 import type { PanelState } from './panelState'
 import { formatDuration } from './tools'
 import type { AskItem, FeedItem, PermItem, PlanItem, TaskItem } from './types'
@@ -200,7 +200,7 @@ export const pendingPermission = (items: FeedItem[], stream: string): PermItem |
  */
 export const pendingPlan = (
   panel: PanelState,
-  decisions: Record<string, 'approve' | 'keepPlanning'>,
+  decisions: Record<string, PlanDecision>,
 ): PlanItem | undefined =>
   panel.status === 'running'
     ? [...panel.items].reverse().find((item): item is PlanItem => item.kind === 'plan' && decisions[item.id] === undefined)

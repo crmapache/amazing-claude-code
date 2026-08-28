@@ -108,7 +108,7 @@ import {
   type SoundMemory,
   type SoundPrefs,
 } from './sounds'
-import { useCardState, type CardState } from './hooks/useCardState'
+import { planDecisionOf, useCardState, type CardState } from './hooks/useCardState'
 import { groupOrder, moveTab, placeAtEnd, placeIn, STATISTICS_GROUP, type TabPlace } from './tabs'
 import { useSelection } from './hooks/useSelection'
 
@@ -1095,7 +1095,7 @@ export const App = () => {
             break
 
           case 'planResolved':
-            cards.decidePlan(message.id, message.decision === 'approve' ? 'approve' : 'keepPlanning')
+            cards.decidePlan(message.id, planDecisionOf(message.decision))
             break
 
           case 'askResolved':

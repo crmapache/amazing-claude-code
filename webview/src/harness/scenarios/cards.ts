@@ -391,6 +391,38 @@ export const scenariosCards: Scenario[] = [
     ]),
   ]),
 
+  /**
+   * The same withdrawal, but over a plan. A plan that nobody decided about does not leave the feed: its
+   * text is still worth reading, and losing it because the turn was stopped would be the person's loss.
+   * It merely stops offering buttons and says so - see PlanCard.withdrawn.
+   */
+  scenario('plan-withdrawn', 'A plan the agent takes back', 'cards', [
+    checkpoint('The user asks to plan moving the config', [
+      user('Plan how to move the config into a separate module'),
+      wait(500),
+    ]),
+    checkpoint('ExitPlanMode: a 3-step plan - awaiting a decision', [
+      toolUse(
+        'ExitPlanMode',
+        {
+          plan:
+            '## What we are doing\n' +
+            '\n' +
+            '1. Move the environment variables into `config/env.ts`\n' +
+            '2. Replace the direct uses of process.env with an import from config\n' +
+            '3. Add validation of the required variables at startup\n',
+        },
+        'c7c-plan',
+      ),
+      wait(500),
+    ]),
+    checkpoint('Stop pressed - the plan stays, its buttons do not', [
+      shell({ type: 'planResolved', sessionId: SESSION, id: 'c7c-plan', decision: 'withdrawn' }),
+      wait(300),
+      turnResult(1600),
+    ]),
+  ]),
+
   scenario('plan-keep-planning', 'A plan: asked to rework it', 'cards', [
     checkpoint('The user asks to plan moving the config', [
       user('Plan how to move the config into a separate module'),
@@ -601,6 +633,44 @@ export const scenariosCards: Scenario[] = [
           'approval and cannot be auto-allowed by permission rules.',
         rememberable: false,
       }),
+    ]),
+  ]),
+
+  /**
+   * Stop pressed over a card that is waiting for a decision. The agent takes the question back itself
+   * (see PermissionChannel.Incoming.Withdrawn on the IDE's side), and the panel has to take the card off
+   * the screen: left there, its buttons answer nobody, while the status line and the phone's list go on
+   * promising a decision that no longer exists.
+   */
+  scenario('permission-withdrawn', 'A permission the agent takes back', 'cards', [
+    checkpoint('The user asks to delete a file', [
+      user('Delete the unused file src/legacy/old-auth.ts'),
+      wait(500),
+    ]),
+    checkpoint('Bash: rm - awaiting a permission', [
+      toolUse('Bash', { command: 'rm src/legacy/old-auth.ts' }, 'c9c-rm'),
+      wait(400),
+      shell({
+        type: 'permission',
+        id: 'c9c-perm',
+        sessionId: SESSION,
+        toolName: 'Bash',
+        target: 'rm src/legacy/old-auth.ts',
+        command: 'rm src/legacy/old-auth.ts',
+        mode: 'default',
+      }),
+    ]),
+    // Exactly what a live CLI sends on Stop: the question is cancelled, the call comes back rejected, and
+    // the turn ends. The card must be gone from above the input field - and the feed says why.
+    checkpoint('Stop pressed - the question is taken back, the card goes', [
+      shell({ type: 'permissionResolved', sessionId: SESSION, id: 'c9c-perm', decision: 'withdrawn' }),
+      toolResult(
+        'c9c-rm',
+        'The user doesn\'t want to proceed with this tool use. The tool use was rejected.',
+        true,
+      ),
+      wait(300),
+      turnResult(2100),
     ]),
   ]),
 
