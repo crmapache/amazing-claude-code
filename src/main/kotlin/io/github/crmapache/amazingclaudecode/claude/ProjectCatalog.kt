@@ -8,6 +8,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.util.concurrency.AppExecutorUtil
+import io.github.crmapache.amazingclaudecode.editor.UnsavedEdits
 import io.github.crmapache.amazingclaudecode.project.ProjectFacts
 import io.github.crmapache.amazingclaudecode.sound.AlertSounds
 import java.util.concurrent.TimeUnit
@@ -328,6 +329,10 @@ internal class ProjectCatalog(
         }
 
         ApplicationManager.getApplication().executeOnPooledThread {
+            // A command through "!" reads the files off the disk exactly as the agent does, and a person
+            // running `git diff` right after fixing a line means the line they just fixed - see
+            // [UnsavedEdits]. The IDE saves before running anything of its own for the same reason.
+            UnsavedEdits.flush(project)
             sendBashResult(clientId, sessionId, id, ShellCommand.run(command, project.basePath))
         }
     }
