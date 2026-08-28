@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AgentStreamView } from '../../components/AgentStreamView'
 import { Feed } from '../../components/Feed'
 import { StreamSwitcher } from '../../components/StreamSwitcher'
@@ -30,13 +30,6 @@ const WAITING_FOR = {
   plan: 'A plan is waiting - decide',
 } as const
 
-/**
- * How long to wait for a page of earlier messages before letting the placeholder be tapped again.
- * Generous on purpose: the request goes to a machine across the city and back, and unlocking early
- * invites a second request for a page that is already on its way.
- */
-const EARLIER_TIMEOUT_MS = 15_000
-
 interface ThreadProps {
   feed: PanelState
   /** Which plans have been decided and which questions answered - kept by the application, see mobile/App. */
@@ -55,7 +48,10 @@ interface ThreadProps {
   onUnqueue: (id: string) => void
   onStop: () => void
   onStopTask: (taskId: string) => void
-  /** A page further back than the EARLIER placeholder reaches - absent once there is nothing further. */
+  /**
+   * A page further back than the EARLIER placeholder reaches - absent once there is nothing further, and
+   * while an answer is still on its way (see useEarlierPages, which owns both).
+   */
   onLoadEarlier?: () => void
   /** How many answers about earlier pages have arrived - see PanelState.earlierPages. */
   earlierPages: number
@@ -97,7 +93,6 @@ export const Thread = ({
    */
   const now = useNow()
 
-  const [loadingEarlier, setLoadingEarlier] = useState(false)
   const [activeStream, setActiveStream] = useState('main')
 
   /**
@@ -109,28 +104,6 @@ export const Thread = ({
    * anywhere, and the conversation simply stopped after the last turn (see SessionQueue.kt).
    */
   const queue = feed.queue
-
-  /*
-   * The answer has arrived - the placeholder can be tapped again.
-   *
-   * By the answer rather than by the feed having grown: an answer that adds nothing is an answer all the
-   * same (the conversation's beginning was reached, or the page did not answer the boundary on screen),
-   * and waiting for cards that are never coming left the button dead for the rest of the session.
-   */
-  useEffect(() => {
-    if (loadingEarlier) setLoadingEarlier(false)
-  }, [earlierPages])
-
-  /*
-   * And a way out when no answer arrives at all. A page travels in one frame, and a frame over the size
-   * limit is dropped between here and the IDE without a word to either end (see ClaudeHistory.pageOf,
-   * which is what keeps pages under it). Left alone, the first such miss would lock the button for good.
-   */
-  useEffect(() => {
-    if (!loadingEarlier) return
-    const timeout = setTimeout(() => setLoadingEarlier(false), EARLIER_TIMEOUT_MS)
-    return () => clearTimeout(timeout)
-  }, [loadingEarlier])
 
   /*
    * Following the answer as it arrives is the feed's own business here, exactly as it is in the panel
@@ -233,14 +206,7 @@ export const Thread = ({
             // the wire anyway (see RemoteCommands).
             onOpenLink={(url) => window.open(url, '_blank', 'noopener,noreferrer')}
             earlierPages={earlierPages}
-            onLoadEarlier={
-              onLoadEarlier && !loadingEarlier
-                ? () => {
-                    setLoadingEarlier(true)
-                    onLoadEarlier()
-                  }
-                : undefined
-            }
+            onLoadEarlier={onLoadEarlier}
           />
         )}
       </div>

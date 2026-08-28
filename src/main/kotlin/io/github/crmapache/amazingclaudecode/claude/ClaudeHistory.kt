@@ -76,7 +76,7 @@ internal object ClaudeHistory {
      * has nothing to do with this: it is resumed from its transcript whole either way.
      */
     fun opening(workingDirectory: String?, id: String): Page =
-        page(workingDirectory, id, before = null, pageSize = OPENING_PAGE_SIZE, maxChars = OPENING_PAGE_CHARS)
+        page(workingDirectory, id, before = null, pageSize = OPENING_PAGE_MESSAGES, maxChars = OPENING_PAGE_CHARS)
 
     /**
      * A page further back than [before], sized for whoever asked.
@@ -88,13 +88,21 @@ internal object ClaudeHistory {
      */
     fun earlier(workingDirectory: String?, id: String, before: String?, local: Boolean): Page =
         if (local) {
-            page(workingDirectory, id, before, pageSize = OPENING_PAGE_SIZE, maxChars = OPENING_PAGE_CHARS)
+            page(workingDirectory, id, before, pageSize = OPENING_PAGE_MESSAGES, maxChars = OPENING_PAGE_CHARS)
         } else {
             page(workingDirectory, id, before)
         }
 
-    /** How much of a conversation a tab opens with - see [opening]. */
-    internal const val OPENING_PAGE_SIZE = 200
+    /**
+     * How much of a conversation a tab opens with, and how much one press of "load earlier" brings -
+     * counted in messages rather than in the transcript's lines (see [drawsOwnRow]).
+     */
+    internal const val OPENING_PAGE_MESSAGES = 60
+
+    /**
+     * And the same for a phone. Smaller because its page has to survive a relay frame - see [earlier].
+     */
+    internal const val PAGE_MESSAGES = 30
 
     /**
      * And its budget in characters. Four times a phone's page: nothing here has to survive a relay's
@@ -195,6 +203,45 @@ internal object ClaudeHistory {
         return normalizedPayload.toString()
     }
 
+    /**
+     * Whether this line draws a row of its own in the feed.
+     *
+     * A page is counted in what a person scrolls past, and that is not lines. One step of the agent is two
+     * lines on disk - the call inside its answer, and the result filed as a message from the person - and
+     * a whole burst of such steps collapses on screen into a single folded row (see appendToolCall in
+     * feed/build.ts). Half the lines of a busy page draw nothing at all: a result only closes a card that
+     * already stands, an empty thinking block is dropped, the CLI's own marks and the commands' wrappers
+     * were never on screen to begin with. Counted in lines, a page of two hundred came out as one row -
+     * the press did nothing visible, which is the very thing this exists to fix.
+     *
+     * Stated the positive way on purpose. Everything that draws nothing sticks to its neighbours and the
+     * whole run of them counts as one message, so a shape that draws nothing needs no rule of its own
+     * here - and there are more of those than one would think (a task list, a question, a subagent's
+     * launch all live outside the feed, see FeedRowItem in components/Feed.tsx).
+     *
+     * Read off the raw line without parsing it, exactly as [scan] does: these lines outnumber the rest
+     * many times over, and some of them run to kilobytes. Being off by one message here changes the size
+     * of a page and nothing else - the boundary between pages is a uuid either way.
+     */
+    internal fun drawsOwnRow(line: String): Boolean {
+        // A tool call's result: a message from the person by shape only, and on screen not a row but the
+        // closing of one that already stands.
+        if (line.contains(TOOL_RESULT)) return false
+        // The CLI's own mark: written by the shell rather than by the person - a skill's body, a warning
+        // before a command, a caption under an image.
+        if (line.contains(META)) return false
+        if (line.contains(MESSAGE)) return UNDRAWN_CONTENT.none { line.contains(it) }
+
+        // An answer draws a row when it has words in it. A lone tool call has none, and neither has an
+        // empty thinking block - the CLI writes plenty of those, only a signature inside. The output of a
+        // local command is by now an answer with a text block of its own (see commandOutput).
+        return line.contains(REPLY) && line.contains(TEXT_BLOCK)
+    }
+
+    private const val TOOL_RESULT = "\"type\":\"tool_result\""
+    private const val META = "\"isMeta\":true"
+    private const val TEXT_BLOCK = "\"type\":\"text\""
+
     /** A page of a conversation's messages, and where the next one would start - see [page]. */
     data class Page(val lines: List<String>, val cursor: String?)
 
@@ -217,15 +264,19 @@ internal object ClaudeHistory {
         workingDirectory: String?,
         id: String,
         before: String?,
-        pageSize: Int = 60,
+        pageSize: Int = PAGE_MESSAGES,
         maxChars: Int = MAX_PAGE_CHARS,
     ): Page {
         val file = transcriptFile(workingDirectory, id) ?: return Page(emptyList(), null)
 
-        // Shortened exactly as the live journal shortens what goes through it (see JournalTrim): a single
-        // tool result can weigh a megabyte on disk, and this page is on its way to a phone, where a
-        // message over the size limit is not shortened but dropped whole and in silence.
-        val window = runCatching { file.useLines { lines -> windowOf(replayable(lines).map(JournalTrim::trim), before, pageSize) } }
+        // Shortened the way the live journal shortens what goes through it (see JournalTrim), only harder:
+        // a single tool result can weigh a megabyte on disk, and this page travels under a budget in
+        // characters - on a phone one such result used to be the whole page. What a folded row shows is a
+        // preview, so a few kilobytes of it are enough, and the rest of the budget goes on messages, which
+        // is what the person came for. The full text stays on disk; how much was left out is said in the
+        // text itself.
+        val shorten = { line: String -> JournalTrim.trim(line, HISTORY_ENTRY_CHARS, HISTORY_STRING_CHARS) }
+        val window = runCatching { file.useLines { lines -> windowOf(replayable(lines).map(shorten), before, pageSize) } }
             .onFailure { thisLogger().warn("Failed to page conversation $id", it) }
             .getOrDefault(Window(emptyList(), moreAbove = false))
 
@@ -255,38 +306,74 @@ internal object ClaudeHistory {
      * out of this page is built from, and without one the rest of the conversation above would become
      * unreachable.
      */
-    internal fun windowOf(lines: Sequence<String>, before: String?, pageSize: Int): Window {
+    internal fun windowOf(
+        lines: Sequence<String>,
+        before: String?,
+        pageSize: Int,
+        maxLines: Int = MAX_WINDOW_LINES,
+    ): Window {
         val limit = pageSize + WINDOW_SLACK
-        val kept = ArrayDeque<String>()
+        // Messages rather than lines: a message is one line that draws a row of its own, or the whole
+        // unbroken run of lines that draw nothing (see [drawsOwnRow]). Kept as groups so that the oldest
+        // message can be dropped whole - counting them over a flat queue would mean recounting the run at
+        // every step.
+        val kept = ArrayDeque<MutableList<String>>()
+        var held = 0
+        var run = false
         var dropped = false
 
         for (line in lines) {
             if (before != null && uuidOf(line) == before) break
 
-            kept.addLast(line)
-            while (kept.size > limit) {
-                kept.removeFirst()
+            val draws = drawsOwnRow(line)
+            if (!draws && run) kept.last().add(line) else kept.addLast(mutableListOf(line))
+            run = !draws
+            held += 1
+
+            while (kept.size > limit || held > maxLines) {
+                val oldest = kept.first()
+                // A single run longer than the whole ceiling gives up its oldest lines rather than itself:
+                // dropping it whole would leave nothing to cut a page out of.
+                if (kept.size == 1 && oldest.size > 1) {
+                    oldest.removeAt(0)
+                    held -= 1
+                } else {
+                    held -= oldest.size
+                    kept.removeFirst()
+                }
                 dropped = true
+                if (kept.isEmpty()) {
+                    run = false
+                    break
+                }
             }
         }
 
-        while (dropped && kept.isNotEmpty() && uuidOf(kept.first()) == null) kept.removeFirst()
+        val window = kept.flatten().toMutableList()
+        while (dropped && window.isNotEmpty() && uuidOf(window.first()) == null) window.removeAt(0)
 
-        return Window(kept.toList(), dropped)
+        return Window(window, dropped)
     }
 
-    /** How much room past a page the window leaves for the slicing to step back into. */
+    /** How many messages past a page the window leaves for the slicing to step back into. */
     private const val WINDOW_SLACK = 8
+
+    /**
+     * And the ceiling in lines, whatever the messages come out to. One message can be an unbroken run of
+     * hundreds of calls, and the window is held in memory whole - a page's worth of such messages would be
+     * tens of megabytes, which is exactly what reading a transcript by lines exists to avoid.
+     */
+    private const val MAX_WINDOW_LINES = 4000
 
     /**
      * The slicing itself, apart from the disk - so a test can check it without a transcript file.
      *
-     * Two limits rather than one, and the second is the one that matters. A page is counted in messages
-     * because that is what a person scrolls, but it travels to a phone in a single frame capped at 256 KB
-     * (see RelayLink.MAX_FRAME_BYTES), and a frame over the cap is dropped by the relay with a line in its
-     * log and nothing else: the tap on "load more" simply did nothing, again and again. Sixty messages of
-     * an ordinary conversation are a few tens of kilobytes; sixty messages of a working day full of file
-     * reads were two megabytes.
+     * Two limits rather than one. The first counts messages, because that is what a person scrolls, and
+     * a message is not a line: see [drawsOwnRow]. The second is the weight, because a page travels to a
+     * phone in a single frame capped at 256 KB (see RelayLink.MAX_FRAME_BYTES), and a frame over the cap
+     * is dropped by the relay with a line in its log and nothing else: the tap on "load more" simply did
+     * nothing, again and again. Thirty messages of an ordinary conversation are a few tens of kilobytes;
+     * thirty messages of a working day full of file reads are megabytes.
      *
      * At least one message is always returned, even an outsized one on its own: a page that comes back
      * empty because its first message did not fit would leave the cursor where it was and the button
@@ -301,7 +388,20 @@ internal object ClaudeHistory {
     ): Page {
         val boundary = before?.let { uuid -> all.indexOfFirst { it.contains("\"uuid\":\"$uuid\"") } }
         val end = if (boundary != null && boundary >= 0) boundary else all.size
-        val floor = (end - pageSize).coerceAtLeast(0)
+
+        // How far back [pageSize] messages reach. A line that draws a row of its own is a message by
+        // itself; a line that draws nothing is taken together with the whole run it belongs to, because
+        // on screen that run is a single folded row (see [drawsOwnRow]).
+        var floor = end
+        var messages = 0
+        while (floor > 0 && messages < pageSize) {
+            var start = floor - 1
+            if (!drawsOwnRow(all[start])) {
+                while (start > 0 && !drawsOwnRow(all[start - 1])) start--
+            }
+            floor = start
+            messages += 1
+        }
 
         // Backwards from the newest of the page: what has to survive a tight budget is the end of the
         // conversation, the part that stands right above what is already on screen.
@@ -335,6 +435,17 @@ internal object ClaudeHistory {
      * whole page rather than its tail.
      */
     internal const val MAX_PAGE_CHARS = 128 * 1024
+
+    /**
+     * Above this an entry of a page is looked into, and this is how much of one string inside it survives
+     * - see [page]. Far below what the live journal allows itself (JournalTrim.MAX_ENTRY_CHARS): there the
+     * point is to catch the rare monster, here it is to spend the budget on messages rather than on one
+     * file read whole. Eight kilobytes are some two hundred lines of text under a folded row nobody has
+     * opened yet, and the note about what was left out comes with them.
+     */
+    internal const val HISTORY_ENTRY_CHARS = 8 * 1024
+
+    internal const val HISTORY_STRING_CHARS = 8 * 1024
 
     private fun uuidOf(line: String): String? = UUID_FIELD.find(line)?.groupValues?.get(1)
 
@@ -559,6 +670,14 @@ internal object ClaudeHistory {
         "\"content\":\"<local-command-",
         "\"content\":\"<task-notification>",
     )
+
+    /**
+     * And the same as the feed draws it - see [drawsOwnRow]. One more than the list above: a reminder the
+     * CLI writes to itself is a message the person never sent and never saw, but it is still one of the
+     * conversation's own records, so the count in the history list leaves it alone (see SERVICE_BLOCK in
+     * feed/build.ts).
+     */
+    private val UNDRAWN_CONTENT = SERVICE_CONTENT + "\"content\":\"<system-reminder>"
 
     private val SHELL_BLOCK =
         Regex("""<bash-(input|stdout|stderr|exit-code)>.*?</bash-\1>""", RegexOption.DOT_MATCHES_ALL)

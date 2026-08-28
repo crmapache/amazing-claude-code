@@ -30,6 +30,7 @@ import { chipFor, detailFor, formatDuration, hunksFor, metaFor, resultToText, ta
 import type {
   DetailLine,
   FeedItem,
+  FeedRowItem,
   LimitItem,
   TextItem,
   ThinkItem,
@@ -369,8 +370,10 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
      */
     case 'historyPage': {
       // The answer arrived, whatever is in it - a screen unlocks its control on this alone (see
-      // PanelState.earlierPages).
-      const answered = { ...state, earlierPages: state.earlierPages + 1 }
+      // PanelState.earlierPages). It brought nothing to look at until proven otherwise: a page dropped
+      // here as stale or repeated moved no rows, and saying so is what stops the screen from asking again
+      // over and over (see PanelState.lastPageRows).
+      const answered = { ...state, earlierPages: state.earlierPages + 1, lastPageRows: 0 }
 
       // A page answers the boundary it was asked for, and only the boundary standing on screen right now
       // is worth applying: when a frame goes missing and the person asks again, both answers can arrive,
@@ -386,14 +389,34 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         page = reducePanel(page, { kind: 'agent', event, replay: true }, now)
       }
 
+      // Whatever the page left "running" is closed the same way the end of a replay closes it: a call
+      // whose result lies in the part of the conversation already on screen has nobody left to answer it,
+      // and the card would spin for the rest of the tab's life.
+      page = applyReplayFinished(page, now)
+
       // The page goes in first and the mark is rebuilt over the result: that way it stands above what has
       // just been loaded rather than where the previous one stood, in the middle of the feed.
-      const merged = { ...answered, seq: page.seq, items: [...page.items, ...answered.items] }
+      const merged = {
+        ...answered,
+        seq: page.seq,
+        items: [...page.items, ...answered.items],
+        lastPageRows: page.items.filter(drawnInFeed).length,
+      }
 
       return withEarlier(merged, action.cursor ?? null)
     }
   }
 }
+
+/**
+ * Whether this item is a row on the screen the person scrolls - see FeedRowItem.
+ *
+ * The one place that answers it, because two of them ask. The feed itself draws by this, and a page of
+ * history is measured by it: "the answer brought nothing" is a fact about rows, not about items. A page
+ * made entirely of subagent launches fills state.items and moves not a pixel.
+ */
+export const drawnInFeed = (item: FeedItem): item is FeedRowItem =>
+  item.kind !== 'todo' && item.kind !== 'ask' && item.kind !== 'perm' && item.kind !== 'task'
 
 /**
  * Whether Claude Code's transcript keeps this event, and so whether its identifier can be asked for a

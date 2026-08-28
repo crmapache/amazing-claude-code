@@ -115,40 +115,83 @@ const answerFeedback = (message: WebviewMessage): void => {
  * so that the mark above the feed is a working button rather than a caption: a tab opens a past
  * conversation with its end, and the way back through it is worth being able to try without an IDE.
  *
- * The third answer comes back without a cursor - the conversation's beginning, where the mark has to
- * disappear.
+ * Four pages, and deliberately of two different kinds. The first and the last hold a conversation - the
+ * ordinary press, over as soon as it is answered. The two in between hold nothing but a burst of tool
+ * calls, which the feed folds into a single row: that is the page that arrives in full and moves the
+ * screen by almost nothing, and the panel is supposed to ask for the next one itself rather than leave
+ * the press looking ignored (see useEarlierPages). The last answer comes back without a cursor - the
+ * conversation's beginning, where the mark has to disappear.
  */
 let earlierPages = 0
+
+/** The pages themselves, in the order they are asked for - the newest first, as one reads back. */
+const EARLIER_PAGES: ('talk' | 'calls' | 'start')[] = ['talk', 'calls', 'calls', 'start']
 
 const answerHistoryPage = (message: WebviewMessage): void => {
   if (message.type !== 'historyPage') return
 
   earlierPages += 1
   const page = earlierPages
-  const last = page >= 3
+  const shape = EARLIER_PAGES[page - 1] ?? 'start'
+  const last = shape === 'start'
   const uuid = (line: number): string => `h${page}-${line}`
 
-  const entries = [
-    {
-      type: 'user',
-      uuid: uuid(1),
-      message: { role: 'user', content: [{ type: 'text', text: `And what did we settle on back then? (page ${page})` }] },
-    },
-    {
-      type: 'assistant',
-      uuid: uuid(2),
-      message: {
-        content: [
-          {
-            type: 'text',
-            text: last
-              ? 'That is where this conversation begins - there is nothing above it.'
-              : 'On leaving the order of the sections alone and only fixing the look.',
-          },
-        ],
-      },
-    },
+  const asked = (line: number, text: string) => ({
+    type: 'user',
+    uuid: uuid(line),
+    message: { role: 'user', content: [{ type: 'text', text }] },
+  })
+
+  const replied = (line: number, text: string) => ({
+    type: 'assistant',
+    uuid: uuid(line),
+    message: { content: [{ type: 'text', text }] },
+  })
+
+  const called = (line: number, name: string, input: unknown) => ({
+    type: 'assistant',
+    uuid: uuid(line),
+    message: { content: [{ type: 'tool_use', id: `p${page}-${line}`, name, input }] },
+  })
+
+  const returned = (line: number, text: string) => ({
+    type: 'user',
+    uuid: uuid(line),
+    message: { content: [{ type: 'tool_result', tool_use_id: `p${page}-${line - 1}`, content: text }] },
+  })
+
+  // A stretch of a working day: on disk it is a dozen lines, on screen one folded row.
+  const burst = [
+    called(1, 'Read', { file_path: 'src/checkout/summary.tsx' }),
+    returned(2, 'export const Summary = () => {'),
+    called(3, 'Grep', { pattern: 'discountTotal', path: 'src' }),
+    returned(4, 'src/checkout/summary.tsx:41'),
+    called(5, 'Read', { file_path: 'src/checkout/totals.ts' }),
+    returned(6, 'export const totals = (lines: Line[]) => {'),
+    called(7, 'Bash', { command: 'pnpm vitest run checkout' }),
+    returned(8, '12 passed'),
   ]
+
+  const talk =
+    shape === 'start'
+      ? [
+          asked(1, 'Where did this whole thing start?'),
+          replied(2, 'That is where this conversation begins - there is nothing above it.'),
+          asked(3, 'Right, I remember now.'),
+          replied(4, 'The order of the sections was left alone; only the look was fixed.'),
+          asked(5, 'And the totals?'),
+          replied(6, 'Rounded once, at the end, so the line items still add up.'),
+        ]
+      : [
+          asked(1, `And what did we settle on back then? (page ${page})`),
+          replied(2, 'On leaving the order of the sections alone and only fixing the look.'),
+          asked(3, 'What about the discount line?'),
+          replied(4, 'It stays under the subtotal - moving it up made the tax read as part of it.'),
+          asked(5, 'Good.'),
+          replied(6, 'Then the look is the whole of it.'),
+        ]
+
+  const entries = shape === 'calls' ? burst : talk
 
   setTimeout(() => {
     window.__accReceive?.({
@@ -162,6 +205,10 @@ const answerHistoryPage = (message: WebviewMessage): void => {
 }
 
 const listenToPanel = () => {
+  // A scenario replayed from the top reads its history from the top too. The counter is a module's own,
+  // so without this the mark stayed dead after the pages ran out once, for the rest of the browser tab.
+  earlierPages = 0
+
   if (window.__accSend) return
 
   window.__accSend = (payload: string) => {

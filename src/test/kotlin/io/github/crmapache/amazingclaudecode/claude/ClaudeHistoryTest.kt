@@ -8,6 +8,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -584,6 +585,157 @@ class ClaudeHistoryTest {
 
         assertEquals("u1", page.cursor)
     }
+
+    // --- A page is counted in messages, not in lines ------------------------------
+
+    /**
+     * The whole point of counting in messages. One step of the agent is two lines on disk, and a burst of
+     * them is a single folded row on screen - so a page of two hundred lines used to add one row to the
+     * feed and the press looked like it had done nothing.
+     */
+    @Test
+    fun `a burst of calls and their results counts as one message`() {
+        val all = listOf(
+            said("u1"),
+            called("a1"),
+            returned("r1"),
+            called("a2"),
+            returned("r2"),
+            answered("t1"),
+        )
+
+        val page = ClaudeHistory.pageOf(all, before = null, pageSize = 2)
+
+        // Two messages: the answer, and the whole burst standing above it.
+        assertEquals(listOf("a1", "r1", "a2", "r2", "t1"), page.lines.map { uuidIn(it) })
+        assertEquals("a1", page.cursor)
+    }
+
+    /**
+     * The lines the feed drops on the floor - an empty thinking block (the CLI writes plenty, a signature
+     * and nothing else), the shell's own mark, a reminder written to itself - draw no row and must not
+     * break a burst into pieces either, or a page would be spent on them.
+     */
+    @Test
+    fun `lines that draw nothing join the burst instead of ending it`() {
+        val all = listOf(
+            said("u1"),
+            called("a1"),
+            thoughtNothing("k1"),
+            meta("m1"),
+            reminder("s1"),
+            returned("r1"),
+            answered("t1"),
+        )
+
+        val page = ClaudeHistory.pageOf(all, before = null, pageSize = 2)
+
+        assertEquals(listOf("a1", "k1", "m1", "s1", "r1", "t1"), page.lines.map { uuidIn(it) })
+        assertEquals("a1", page.cursor)
+    }
+
+    /** A page asked for ten messages holds ten of them, however many lines that comes to. */
+    @Test
+    fun `a page holds the asked-for number of messages, whatever they weigh in lines`() {
+        val all = (1..10).flatMap { number ->
+            listOf(said("u$number"), called("a$number"), returned("r$number"))
+        }
+
+        val page = ClaudeHistory.pageOf(all, before = null, pageSize = 6, maxChars = 1024 * 1024)
+
+        // Six messages: three of the person's, three bursts between them.
+        assertEquals("u8", page.cursor)
+        assertEquals(9, page.lines.size, "six messages came to ${page.lines.size} lines")
+    }
+
+    /** Counted in messages, consecutive pages must still tile the file exactly - see the same claim above. */
+    @Test
+    fun `consecutive pages counted in messages do not repeat or skip anything`() {
+        val all = (1..6).flatMap { number -> listOf(said("u$number"), called("a$number"), returned("r$number")) }
+
+        val first = ClaudeHistory.pageOf(all, before = null, pageSize = 4, maxChars = 1024 * 1024)
+        val second = ClaudeHistory.pageOf(all, before = first.cursor, pageSize = 4, maxChars = 1024 * 1024)
+        val third = ClaudeHistory.pageOf(all, before = second.cursor, pageSize = 4, maxChars = 1024 * 1024)
+
+        // Four messages a page - a person's line, then the burst that answered it, twice over.
+        assertEquals(6, first.lines.size, "a page of four messages came to ${first.lines.size} lines")
+        assertEquals(
+            all.map { uuidIn(it) },
+            (third.lines + second.lines + first.lines).map { uuidIn(it) },
+            "the pages have to tile the file exactly",
+        )
+        assertNull(third.cursor)
+    }
+
+    /** And the window that page is cut out of holds messages too, not lines. */
+    @Test
+    fun `the window keeps a page's worth of messages, not of lines`() {
+        val all = (1..40).flatMap { number -> listOf(said("u$number"), called("a$number"), returned("r$number")) }
+
+        val window = ClaudeHistory.windowOf(all.asSequence(), before = null, pageSize = 4)
+
+        assertTrue(window.moreAbove)
+        assertEquals("r40", uuidIn(window.lines.last()))
+        // Four messages plus the slack, each of them up to two lines - and nowhere near the 120 lines a
+        // window counted in lines would have kept.
+        assertTrue(window.lines.size in 12..30, "the window held ${window.lines.size} lines for 4 messages")
+    }
+
+    /**
+     * One message can be an unbroken run of hundreds of calls, and the window is held in memory whole. The
+     * ceiling in lines is what keeps that from becoming tens of megabytes - the very thing reading a
+     * transcript by lines exists to avoid.
+     */
+    @Test
+    fun `a single endless burst does not grow the window past its ceiling`() {
+        val burst = (1..5_000).map { called("a$it") }
+
+        val window = ClaudeHistory.windowOf(burst.asSequence(), before = null, pageSize = 30, maxLines = 100)
+
+        assertTrue(window.moreAbove)
+        assertTrue(window.lines.size <= 100, "the window held ${window.lines.size} lines")
+        // Cut down to the ceiling it may be, but it is still the end of the conversation and still usable.
+        assertEquals("a5000", uuidIn(window.lines.last()))
+        assertNotNull(uuidIn(window.lines.first()))
+    }
+
+    /**
+     * A page of history is shortened harder than the live journal shortens the same entry. The journal is
+     * catching the rare monster; a page is spending a budget in characters, and one file read whole used
+     * to be the whole of it - especially on a phone, where the budget is a quarter of the desk's.
+     */
+    @Test
+    fun `a page of history shortens a long result harder than the live journal does`() {
+        val result = """{"type":"user","uuid":"r1","message":{"content":[{"type":"tool_result","content":"${"x".repeat(40_000)}"}]}}"""
+
+        val journal = JournalTrim.trim(result)
+        val history = JournalTrim.trim(result, ClaudeHistory.HISTORY_ENTRY_CHARS, ClaudeHistory.HISTORY_STRING_CHARS)
+
+        assertEquals(result, journal, "the journal leaves an entry of this size alone")
+        assertTrue(history.length < result.length / 4, "the page kept ${history.length} of ${result.length}")
+        assertTrue(history.contains("more characters"), "what was left out has to be said out loud")
+    }
+
+    private fun said(uuid: String) =
+        """{"type":"user","uuid":"$uuid","message":{"role":"user","content":"what about it?"}}"""
+
+    private fun answered(uuid: String) =
+        """{"type":"assistant","uuid":"$uuid","message":{"content":[{"type":"text","text":"here it is"}]}}"""
+
+    private fun called(uuid: String) =
+        """{"type":"assistant","uuid":"$uuid","message":{"content":[{"type":"tool_use","name":"Read","input":{}}]}}"""
+
+    private fun returned(uuid: String) =
+        """{"type":"user","uuid":"$uuid","message":{"content":[{"type":"tool_result","content":"done"}]}}"""
+
+    private fun thoughtNothing(uuid: String) =
+        """{"type":"assistant","uuid":"$uuid","message":{"content":[{"type":"thinking","thinking":"","signature":"s"}]}}"""
+
+    private fun meta(uuid: String) =
+        """{"type":"user","uuid":"$uuid","isMeta":true,"message":{"role":"user","content":"the shell wrote this"}}"""
+
+    private fun reminder(uuid: String) =
+        """{"type":"user","uuid":"$uuid","message":{"role":"user","content":"<system-reminder>never shown</system-reminder>"}}"""
 
     private fun uuidIn(line: String): String? =
         Json.parseToJsonElement(line).jsonObject["uuid"]?.jsonPrimitive?.contentOrNull

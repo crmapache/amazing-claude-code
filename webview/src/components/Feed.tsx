@@ -1,8 +1,8 @@
 import { useSmoothStream } from 'smooth-stream-text/react'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { openThought } from '../feed/build'
+import { drawnInFeed, openThought } from '../feed/build'
 import { parseParagraphs } from '../feed/markdown'
-import type { AskItem, FeedItem, PermItem, TaskItem, TodoItem, ToolItem } from '../feed/types'
+import type { FeedItem, FeedRowItem, ToolItem } from '../feed/types'
 import type { CardState } from '../hooks/useCardState'
 import s from './feed.module.css'
 import { BashCard } from './items/BashCard'
@@ -23,12 +23,6 @@ import { TextCard } from './items/TextCard'
 import { ToolGroupCard } from './items/ToolGroupCard'
 import { UserCard } from './items/UserCard'
 import { ScrollThumb } from './ScrollThumb'
-
-/**
- * The task list, the agent's question and a permission request are not drawn in the feed - the pinned
- * panels above the input field answer for them (TaskListPanel/AskPanel/PermissionPanel).
- */
-type FeedRowItem = Exclude<FeedItem, TodoItem | AskItem | PermItem | TaskItem>
 
 /** A dozen and a half pixels of slack: scrolling lands exactly at the bottom only rarely. */
 const BOTTOM_THRESHOLD_PX = 16
@@ -110,10 +104,7 @@ export const Feed = ({
     () =>
       items.filter(
         (item): item is FeedRowItem =>
-          item.kind !== 'todo' &&
-          item.kind !== 'ask' &&
-          item.kind !== 'perm' &&
-          item.kind !== 'task' &&
+          drawnInFeed(item) &&
           !(
             item.kind === 'plan' &&
             cards.planDecisions[item.id] !== undefined &&

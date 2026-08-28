@@ -540,3 +540,13 @@ export type FeedItem =
   | CrashItem
   | ErrorItem
   | LimitItem
+
+/**
+ * What the feed actually draws as a row of its own.
+ *
+ * The task list, the agent's question and a permission request live in the pinned panels over the input
+ * field; a subagent's card has a tab of its own. They are all in the feed's items and none of them is on
+ * the screen the person scrolls - which is why a page of history made entirely of subagent launches
+ * arrives honestly and moves nothing (see drawnInFeed in build.ts).
+ */
+export type FeedRowItem = Exclude<FeedItem, TodoItem | AskItem | PermItem | TaskItem>

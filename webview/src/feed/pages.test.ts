@@ -175,3 +175,95 @@ describe('a page of earlier messages', () => {
     expect(live.oldestEventUuid).toEqual('u4')
   })
 })
+
+/**
+ * How much a page is worth to the person who pressed for it - see PanelState.lastPageRows.
+ *
+ * A page is a slab of the transcript, and much of what is in it draws nothing on screen: a burst of calls
+ * is one folded row however many it holds, a subagent's launch has a tab of its own, a call's result only
+ * closes a card that already stands. Counted in entries, a page could arrive in full and move nothing -
+ * which is exactly what the press looked like from the outside.
+ */
+describe('what a page of earlier messages is worth on screen', () => {
+  const opened = feed([replayed('tail', 'u5'), { kind: 'replayFinished', cursor: 'u5' }])
+
+  const called = (id: string, name: string, uuid: string): AgentEvent =>
+    ({
+      type: 'assistant',
+      uuid,
+      message: { content: [{ type: 'tool_use', id, name, input: { file_path: '/tmp/a.ts' } }] },
+    }) as AgentEvent
+
+  const returned = (id: string, uuid: string): AgentEvent =>
+    ({
+      type: 'user',
+      uuid,
+      message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'done' }] },
+    }) as AgentEvent
+
+  it('counts a whole burst of calls as the single row it draws', () => {
+    const paged = reducePanel(
+      opened,
+      {
+        kind: 'historyPage',
+        before: 'u5',
+        cursor: 'u1',
+        entries: [
+          called('t1', 'Read', 'a1'),
+          returned('t1', 'r1'),
+          called('t2', 'Grep', 'a2'),
+          returned('t2', 'r2'),
+          called('t3', 'Bash', 'a3'),
+          returned('t3', 'r3'),
+        ],
+      },
+      2_000,
+    )
+
+    expect(said(paged)).toEqual(['mark:EARLIER', 'toolGroup', 'text:tail'])
+    expect(paged.lastPageRows).toEqual(1)
+  })
+
+  /** A subagent's card lives in a tab of its own, so a page made of launches moves the feed by nothing. */
+  it('counts nothing for a page the feed does not draw', () => {
+    const paged = reducePanel(
+      opened,
+      {
+        kind: 'historyPage',
+        before: 'u5',
+        cursor: 'u1',
+        entries: [called('t1', 'Task', 'a1'), called('t2', 'Task', 'a2')],
+      },
+      2_000,
+    )
+
+    expect(paged.lastPageRows).toEqual(0)
+  })
+
+  /** An answer dropped as stale added nothing, and has to say so or the screen would stop asking. */
+  it('counts nothing for an answer that was not applied', () => {
+    const stale = reducePanel(
+      opened,
+      { kind: 'historyPage', before: 'u404', entries: [assistant('older', 'u4')], cursor: 'u4' },
+      2_000,
+    )
+
+    expect(stale.lastPageRows).toEqual(0)
+  })
+
+  /**
+   * A call at the page's own edge has its result in the part of the conversation already on screen, where
+   * nobody is left to apply it. Without closing it, the card spins for the rest of the tab's life.
+   */
+  it('closes a call the page left without a result', () => {
+    const paged = reducePanel(
+      opened,
+      { kind: 'historyPage', before: 'u5', cursor: 'u1', entries: [called('t1', 'Read', 'a1')] },
+      2_000,
+    )
+
+    const group = paged.items.find((item) => item.kind === 'toolGroup')
+    expect(group?.kind === 'toolGroup' && group.pending).toBe(false)
+    expect(group?.kind === 'toolGroup' && group.tools[0].pending).toBe(false)
+  })
+})

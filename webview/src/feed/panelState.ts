@@ -251,6 +251,20 @@ export interface PanelState {
    * request being ignored.
    */
   earlierPages: number
+  /**
+   * How many rows the last page of earlier messages actually put on screen - see drawnInFeed.
+   *
+   * Rows rather than entries, and that is the whole point. A page is a slab of the transcript, and half
+   * of what is in it draws nothing: a call's result only closes a card that already stands, a burst of
+   * calls is one folded row however many it holds, a subagent's launch lives in a tab of its own. So a
+   * page could arrive in full and move the screen by a single line or by nothing at all - the press
+   * looked ignored. A screen that sees too few rows here asks for the next page itself (see
+   * useEarlierPages).
+   *
+   * Zero also for an answer that was dropped as stale or as a repeat: nothing was added, and pretending
+   * otherwise would stop the asking exactly where it should go on.
+   */
+  lastPageRows: number
 }
 
 export type PanelAction =
@@ -376,6 +390,7 @@ export const initialPanelState: PanelState = {
   queue: [],
   reachedStart: false,
   earlierPages: 0,
+  lastPageRows: 0,
 }
 
 /** A new item in the feed, with the next number of its own. */
