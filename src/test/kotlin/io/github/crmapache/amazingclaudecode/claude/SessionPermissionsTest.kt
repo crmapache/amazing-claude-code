@@ -90,6 +90,57 @@ class SessionPermissionsTest : BasePlatformTestCase() {
         assertFalse(hub.snapshotOf("shared").awaitsYou)
     }
 
+    /**
+     * The agent takes its question back - Stop pressed over a card waiting for a decision cancels the
+     * question along with the turn.
+     *
+     * Before this was handled the card stayed on screen with live buttons, the conversation went on
+     * saying "waiting for you" in every list, and a press wrote "allowed" into the feed while the agent
+     * threw the answer away. So a withdrawal has to close the card exactly as a decision does - the
+     * difference being that nobody decided anything.
+     */
+    fun testAWithdrawnQuestionStopsWaiting() {
+        val hub = hub()
+        hub.permissions.ask("withdrawn", request("perm-withdrawn"))
+        val afterAsk = hub.lastSeq("withdrawn")
+
+        hub.permissions.withdraw("withdrawn", "perm-withdrawn")
+
+        assertTrue(hub.lastSeq("withdrawn") > afterAsk)
+        assertFalse(hub.snapshotOf("withdrawn").awaitsYou)
+    }
+
+    /** And pressing it afterwards - on this device or the other one - changes nothing. */
+    fun testPressingAWithdrawnCardChangesNothing() {
+        val hub = hub()
+        hub.permissions.ask("pressed", request("perm-pressed"))
+        hub.permissions.withdraw("pressed", "perm-pressed")
+        val afterWithdrawal = hub.lastSeq("pressed")
+
+        hub.permissions.decide("perm-pressed", "once")
+
+        assertEquals(afterWithdrawal, hub.lastSeq("pressed"))
+    }
+
+    /**
+     * A plan is held apart from ordinary permissions - the card with the buttons is the plan's own - and
+     * a withdrawal names the request rather than the card, so the plan has to be found by the number of
+     * the question standing under it.
+     */
+    fun testAWithdrawnPlanIsNoLongerWaitedOn() {
+        val hub = hub()
+        hub.permissions.ask(
+            "withdrawnPlan",
+            request("plan-withdrawn", tool = "ExitPlanMode", input = buildJsonObject { put("plan", "- a step") }),
+        )
+        assertTrue(hub.snapshotOf("withdrawnPlan").awaitsYou)
+
+        hub.permissions.withdraw("withdrawnPlan", "plan-withdrawn")
+
+        assertFalse(hub.snapshotOf("withdrawnPlan").awaitsYou)
+        assertEquals(0, hub.permissions.keptCount())
+    }
+
     /** And a question that has been asked is a conversation waiting for you - that is what a list shows. */
     fun testAnAskedQuestionIsVisibleInTheSnapshot() {
         val hub = hub()

@@ -317,13 +317,20 @@ export interface FindingsItem {
   findings: Finding[]
 }
 
+/**
+ * How a permission card was closed. The first three are the person's decision; 'withdrawn' is nobody's -
+ * the agent took the question back itself and there was nothing left to decide (see
+ * PermissionChannel.Incoming.Withdrawn on the IDE's side).
+ */
+export type PermDecision = 'once' | 'always' | 'deny' | 'withdrawn'
+
 export interface PermItem {
   id: string
   kind: 'perm'
   target: string
   meta: string
   command: string
-  decision: 'once' | 'always' | 'deny' | null
+  decision: PermDecision | null
   /**
    * Why it asked, when the asker was not the mode: a safety check, an `ask` rule, a hook, a classifier.
    * Empty means an ordinary question, and there must be no extra line in the card.

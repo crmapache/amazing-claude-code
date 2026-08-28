@@ -224,16 +224,45 @@ internal class SessionPermissions(private val hub: ClaudeSessionHub) {
 
         hub.stats.notePlan(decision)
         notePending(pending.sessionId)
-        hub.broadcast(
-            pending.sessionId,
-            buildJsonObject {
-                put("type", "planResolved")
-                put("sessionId", pending.sessionId)
-                put("id", itemId)
-                put("decision", decision)
-            }.toString(),
-        )
+        planResolved(pending.sessionId, itemId, decision)
     }
+
+    /**
+     * The agent has taken its question back, and there is no longer anything to answer.
+     *
+     * It arrives over the same channel the question came in on (see PermissionChannel.Incoming.Withdrawn)
+     * and happens for real: Stop pressed over a waiting card cancels the question along with the turn.
+     * Until this was handled, such a card stayed on screen with live buttons - a press wrote "allowed"
+     * into the feed while the agent discarded the answer, and the status line went on saying the
+     * conversation was waiting for a person who had nothing left to decide.
+     *
+     * Which of the three maps holds it is not known from the outside: a withdrawal names the request, not
+     * the card. Missing from all three is the ordinary race - the person answered a moment before the
+     * agent gave up - and there is nothing to do about it.
+     */
+    fun withdraw(sessionId: String, requestId: String) {
+        channelPermissions.remove(requestId)?.let { pending ->
+            resolved(pending.sessionId, requestId, WITHDRAWN)
+            return
+        }
+
+        cardOf(plans, requestId)?.let { (itemId, pending) ->
+            plans.remove(itemId)
+            notePending(pending.sessionId)
+            planResolved(pending.sessionId, itemId, WITHDRAWN)
+            return
+        }
+
+        cardOf(asks, requestId)?.let { (itemId, pending) ->
+            asks.remove(itemId)
+            notePending(pending.sessionId)
+            askResolved(pending.sessionId, itemId, WITHDRAWN)
+        }
+    }
+
+    /** The card a request was waiting under, by the request's own number. */
+    private fun cardOf(cards: ConcurrentHashMap<String, Pending>, requestId: String): Pair<String, Pending>? =
+        cards.entries.firstOrNull { it.value.requestId == requestId }?.let { it.key to it.value }
 
     /**
      * An answer to a question with options.
@@ -316,6 +345,18 @@ internal class SessionPermissions(private val hub: ClaudeSessionHub) {
                 put("type", "permissionResolved")
                 put("sessionId", sessionId)
                 put("id", id)
+                put("decision", decision)
+            }.toString(),
+        )
+    }
+
+    private fun planResolved(sessionId: String, itemId: String, decision: String) {
+        hub.broadcast(
+            sessionId,
+            buildJsonObject {
+                put("type", "planResolved")
+                put("sessionId", sessionId)
+                put("id", itemId)
                 put("decision", decision)
             }.toString(),
         )
@@ -409,6 +450,13 @@ internal class SessionPermissions(private val hub: ClaudeSessionHub) {
         const val KEEP_PLANNING = "The user wants to keep planning: refine the plan and show it again."
 
         const val CARD_LOST = "The panel could not attach this request to its card."
+
+        /**
+         * What a card is closed with when nobody decided anything: the agent took the question back
+         * itself. The screens know it apart from a decision - a withdrawn plan stays in the feed, while
+         * a decided one has done its job and leaves it.
+         */
+        const val WITHDRAWN = "withdrawn"
 
         /**
          * How long a decision is remembered as "already taken". Long enough to cover two devices

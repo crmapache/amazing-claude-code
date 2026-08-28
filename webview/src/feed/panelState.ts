@@ -1,5 +1,5 @@
 import type { AgentEvent, AgentStatus, AgentUsage, QueuedMessage } from '../protocol'
-import type { BackgroundTask, FeedItem, TodoEntry, UserToken } from './types'
+import type { BackgroundTask, FeedItem, PermDecision, TodoEntry, UserToken } from './types'
 
 /**
  * Everything one tab holds, and everything that may happen to it.
@@ -319,7 +319,7 @@ export type PanelAction =
       rememberable?: boolean
       taskId?: string
     }
-  | { kind: 'permissionResolved'; id: string; decision: 'once' | 'always' | 'deny' }
+  | { kind: 'permissionResolved'; id: string; decision: PermDecision }
   | { kind: 'modeRequested'; mode: string }
   | { kind: 'modeApplied'; mode: string; applied: boolean; error?: string }
   | { kind: 'modelRequested'; model: string }

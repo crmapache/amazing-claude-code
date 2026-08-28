@@ -3,7 +3,7 @@ import { unbase64url } from '../core/crypto'
 import { deriveSessionTitle } from '../feed/title'
 import type { HistoryEntry, ShellMessage } from '../protocol'
 import { ClockContext } from '../hooks/useNow'
-import { useCardState } from '../hooks/useCardState'
+import { planDecisionOf, useCardState } from '../hooks/useCardState'
 import { applyFact, emptyFacts, isFact, type ProjectFacts } from './facts'
 import { RemoteClock } from './clock'
 import { applyMessage, emptyFeed, feedTicks, tickFeed, type MobileFeed } from './feed'
@@ -248,7 +248,7 @@ export const App = () => {
     // conversation's own state. Either device may have been the one that answered, and the other has to
     // stop saying that something is waiting for a person who has already dealt with it.
     if (message.type === 'planResolved') {
-      cards.decidePlan(message.id, message.decision === 'approve' ? 'approve' : 'keepPlanning')
+      cards.decidePlan(message.id, planDecisionOf(message.decision))
     }
     if (message.type === 'askResolved') cards.answerAsk(message.id)
 

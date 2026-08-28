@@ -1,6 +1,20 @@
 import { useCallback, useMemo, useState } from 'react'
 
 /**
+ * What became of a plan card. The first two are the person's decision, after which the card has done its
+ * job and leaves the feed. 'withdrawn' is nobody's - the agent took the question back (Stop pressed over
+ * it, a hook that answered first), and then the plan stays in the feed, simply without buttons: the text
+ * is still worth reading, and losing it because the turn was stopped would be the person's loss.
+ */
+export type PlanDecision = 'approve' | 'keepPlanning' | 'withdrawn'
+
+/** What the shell said about a plan, as this screen understands it - see PlanDecision. */
+export const planDecisionOf = (decision: string): PlanDecision => {
+  if (decision === 'approve') return 'approve'
+  return decision === 'withdrawn' ? 'withdrawn' : 'keepPlanning'
+}
+
+/**
  * The cards' state that lives in the interface only: what is expanded, which plans have been answered,
  * which questions have been closed. The agent knows nothing about this, so it has no place in the feed's
  * shared model.
@@ -8,8 +22,8 @@ import { useCallback, useMemo, useState } from 'react'
 export interface CardState {
   isOpen: (id: string) => boolean
   toggle: (id: string) => void
-  planDecisions: Record<string, 'approve' | 'keepPlanning'>
-  decidePlan: (itemId: string, decision: 'approve' | 'keepPlanning') => void
+  planDecisions: Record<string, PlanDecision>
+  decidePlan: (itemId: string, decision: PlanDecision) => void
   answeredAsks: string[]
   answerAsk: (itemId: string) => void
   /**
@@ -26,7 +40,7 @@ export interface CardState {
 
 export const useCardState = (): CardState => {
   const [open, setOpen] = useState<Record<string, boolean>>({})
-  const [planDecisions, setPlanDecisions] = useState<Record<string, 'approve' | 'keepPlanning'>>({})
+  const [planDecisions, setPlanDecisions] = useState<Record<string, PlanDecision>>({})
   const [answeredAsks, setAnsweredAsks] = useState<string[]>([])
 
   const toggle = useCallback((id: string) => {
@@ -35,7 +49,7 @@ export const useCardState = (): CardState => {
 
   const isOpen = useCallback((id: string) => open[id] === true, [open])
 
-  const decidePlan = useCallback((itemId: string, decision: 'approve' | 'keepPlanning') => {
+  const decidePlan = useCallback((itemId: string, decision: PlanDecision) => {
     setPlanDecisions((current) => ({ ...current, [itemId]: decision }))
   }, [])
 
