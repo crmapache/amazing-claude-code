@@ -1299,11 +1299,14 @@ const applyAssistant = (
 
   for (const block of blocks) {
     if (block.type === 'text') {
-      if (!block.text.trim()) continue
+      // An answer that begins with a service block the model has printed back at itself: what is shown is
+      // what it said after that block, if it said anything at all (see spokenAnswer).
+      const said = spokenAnswer(block.text)
+      if (!said.trim()) continue
       // The same text already stands in the feed as a red slab - a second time, as an ordinary answer, it
       // adds nothing. That is how a failed compaction arrives: the CLI reports it both as a separate event
       // and as the agent's message, word for word.
-      if (alreadyShownAsError(next, block.text)) continue
+      if (alreadyShownAsError(next, said)) continue
 
       /**
        * A code review's findings are a card of their own rather than the wall of JSON they arrive in:
@@ -1311,7 +1314,7 @@ const applyAssistant = (
        * ordinary answer with a fenced block inside (see readReview). Whatever was said around the block
        * stays the answer it was, and stands above the card.
        */
-      const review = readReview(block.text)
+      const review = readReview(said)
       const id = reserved
       reserved = undefined
 
@@ -1321,7 +1324,7 @@ const applyAssistant = (
         continue
       }
 
-      next = addAnswer(next, id, block.text)
+      next = addAnswer(next, id, said)
       continue
     }
 
@@ -1585,6 +1588,15 @@ const applyToolUse = (
  */
 const ASYNC_AGENT_LAUNCHED = /^Async agent launched successfully/
 
+/** The tags a service block is written with - the opening ones are needed on their own in spokenAnswer. */
+const SERVICE_TAGS = [
+  'system-reminder',
+  'local-command-caveat',
+  'local-command-stdout',
+  'command-message',
+  'task-notification',
+] as const
+
 /**
  * The internal things the CLI puts into a person's message in their own words: a reminder to itself, the
  * preamble about local commands and their output, the notification about a task that has ended. In a past
@@ -1594,8 +1606,51 @@ const ASYNC_AGENT_LAUNCHED = /^Async agent launched successfully/
  * The notification is not merely dropped: before this it goes into the card of the task it speaks about
  * (see applyReplayedTaskNotification).
  */
-const SERVICE_BLOCK =
-  /<(system-reminder|local-command-caveat|local-command-stdout|command-message|task-notification)>[\s\S]*?<\/\1>/g
+const SERVICE_BLOCK = new RegExp(`<(${SERVICE_TAGS.join('|')})>[\\s\\S]*?</\\1>`, 'g')
+
+/**
+ * The wrapper of closing tags a model invents around such a block: it prints the block as though it were
+ * the result of a call, and the invented end of that result stays in the answer.
+ */
+const STRAY_CLOSERS = /^(?:\s*<\/(?:antml:)?(?:parameter|invoke|function_calls|function_results)>)+/
+const INVENTED_END = /<\/(?:antml:)?function_results>/
+
+/** The answer that stood after a service block, with the invented wrapper taken off its front. */
+const spokenTail = (rest: string): string => rest.replace(STRAY_CLOSERS, '').trimStart()
+
+/**
+ * What the agent said, out of an answer that begins with a service block.
+ *
+ * This is neither the panel's doing nor the CLI's: handed a reminder that a background agent has finished,
+ * the model sometimes prints the reminder back as its own answer - the reminder itself, the subagent's
+ * whole report inside it, the invented wrapper above, and only after all that the one sentence it meant to
+ * say. In the feed it reads as a broken panel, although the panel showed honestly what came to it.
+ *
+ * Only the beginning of an answer and only once. In the middle of an answer the same tag is the agent
+ * talking about it - explaining what a reminder is, quoting one in an example - and cutting there would
+ * eat the conversation instead of the noise.
+ *
+ * An unclosed block is the usual shape of this - the model opens the tag and never closes it - so the
+ * invented wrapper serves as the second boundary: what stands after it is the answer. With neither
+ * boundary the whole message is service text, and there is nothing to show at all.
+ */
+export const spokenAnswer = (text: string): string => {
+  const started = text.trimStart()
+  if (!started.startsWith('<')) return text
+
+  const opened = SERVICE_TAGS.find((tag) => started.startsWith(`<${tag}>`))
+  // A tag that has only half arrived: the answer is printed as it streams, and without this the wall
+  // shows itself for a frame - and then the printing card is handed a text that has grown shorter, which
+  // the even stream it is printed by does not expect (see useSmoothStream in Feed).
+  if (!opened) return SERVICE_TAGS.some((tag) => `<${tag}>`.startsWith(started)) ? '' : text
+
+  const closing = `</${opened}>`
+  const closed = started.indexOf(closing)
+  if (closed >= 0) return spokenTail(started.slice(closed + closing.length))
+
+  const invented = INVENTED_END.exec(started)
+  return invented ? spokenTail(started.slice(invented.index + invented[0].length)) : ''
+}
 
 /** A slash command lies in a transcript as markup rather than as the string "/deploy 0.7.11". */
 const COMMAND_NAME = /<command-name>([\s\S]*?)<\/command-name>/

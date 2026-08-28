@@ -754,6 +754,29 @@ export const scenariosCards: Scenario[] = [
       }),
       wait(500),
     ]),
+    /**
+     * Handed the reminder that the background agent has finished, the model sometimes prints the whole
+     * reminder back as its own answer - the report inside it and an invented wrapper of closing tags, and
+     * only then the sentence it meant to say. Seen live it reads as a broken panel, so the feed shows the
+     * sentence alone: neither the wall while the answer streams nor a card with it when it is finished
+     * (see spokenAnswer in feed/build.ts).
+     */
+    checkpoint('The model prints the reminder back at itself - the feed shows only the sentence', [
+      ...textReply(
+        [
+          '<system-reminder>',
+          'Background agent c10b-task-id completed. Do NOT read the output file directly - the result is included below.',
+          '',
+          'Result:',
+          '',
+          'Found 14 TODOs in 9 files. Most of them sit in src/legacy/, and the oldest goes back to the first commit.',
+          '</parameter>',
+          '</invoke>',
+          '</function_results>Fourteen TODOs in nine files - almost all of them in src/legacy/.',
+        ].join('\n'),
+      ),
+      turnResult(1800),
+    ]),
   ]),
 
   /**
