@@ -216,6 +216,13 @@ type ShellMessageBody =
       }
       /** The sound alert settings - they outlive an IDE restart. */
       sounds?: SoundSettings
+      /**
+       * What the improve button asks for. Two texts rather than one: `instructions` is what the person
+       * put in themselves and is usually empty, `builtIn` is what is in force while it is - the screen
+       * shows the second as the first's placeholder and restores it on request, and a default a screen
+       * cannot name is a default nobody edits (see PromptImprover on the IDE's side).
+       */
+      improve?: { instructions: string; builtIn: string }
     }
   | {
       type: 'usage'
@@ -588,6 +595,14 @@ type ShellMessageBody =
    * sent, which is precisely the file a bug report is usually about.
    */
   | { type: 'feedbackSent'; ok: boolean; error?: string; note?: string }
+  /**
+   * The draft rewritten - the answer to a press of the sparkle button (see `improvePrompt` below).
+   *
+   * Exactly one of text/error arrives, and the press it belongs to is named: the panel applies nothing it
+   * cannot match to a press it is still waiting on. An answer that arrives after the draft has moved on -
+   * the message was sent, the field was edited - is dropped rather than applied over what is there now.
+   */
+  | { type: 'promptImproved'; sessionId: string; id: string; text?: string; error?: string }
 
 /**
  * One day of work, as the IDE kept it (see DayRecord on the plugin's side) - every project's day of that
@@ -1036,6 +1051,34 @@ export type WebviewMessage =
       /** Whether the report goes with it. The panel sends the flag; the text itself is built here. */
       logs: boolean
     }
+  /**
+   * Rewrite what stands in the input field (see feed/improve.ts here and PromptImprover on the IDE's
+   * side).
+   *
+   * `draft` is the field's text with a [[n]] marker wherever it holds an attachment, and `attachments`
+   * says what each marker is - a file's path, an image's name, a quote's first words. The chips
+   * themselves never leave the panel, and an image's bytes certainly do not: what comes back is text with
+   * the same markers in it, and the attachments are put back here.
+   */
+  | {
+      type: 'improvePrompt'
+      sessionId: string
+      id: string
+      draft: string
+      attachments: string[]
+      /**
+       * Rewrites of this same draft the person has already been shown and pressed the button past, oldest
+       * first. A second press means the first answer was not what they wanted, so it travels along as
+       * something to avoid rather than being quietly thrown away - otherwise the button rolls the same dice
+       * again and can hand back very nearly the same sentence.
+       */
+      rejected?: string[]
+    }
+  /**
+   * What that button asks by, in the person's own words - kept in the IDE's settings, like the model and
+   * the mode. Empty puts the built-in text back in force.
+   */
+  | { type: 'setImproveInstructions'; text: string }
 
 /** What a piece of feedback is about. The words on the screen differ; these are what travel. */
 export type FeedbackKind = 'bug' | 'idea' | 'hello'

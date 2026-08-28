@@ -87,6 +87,13 @@ internal class ProjectCatalog(
                     )
                     if (preferences.composerLayout.isNotEmpty()) put("composerLayout", preferences.composerLayout)
                 }
+                // What the improve button asks for. Both texts: the screen shows the built-in one as what
+                // is in force while nothing of one's own has been put in, and it is also what the restore
+                // button restores - a default the screen cannot name is a default nobody edits.
+                putJsonObject("improve") {
+                    put("instructions", preferences.improveInstructions)
+                    put("builtIn", PromptImprover.BUILT_IN_INSTRUCTIONS)
+                }
                 // The sound settings are also a choice made once.
                 putJsonObject("sounds") {
                     putJsonArray("muted") {
@@ -300,6 +307,61 @@ internal class ProjectCatalog(
                 }.toString(),
             )
         }
+    }
+
+    // --- The improve button --------------------------------------------------------
+
+    /**
+     * The draft in the input field, rewritten (see [PromptImprover]).
+     *
+     * Addressed at whoever asked rather than broadcast, like the history above: a draft is one person's
+     * unsent message, and the other windows watching this project have no business being handed it.
+     *
+     * An answer always goes back, a failure included - the button spins while it waits, and silence would
+     * leave it spinning until the panel is reloaded.
+     */
+    fun improvePrompt(
+        clientId: String,
+        sessionId: String,
+        id: String,
+        draft: String,
+        attachments: List<String>,
+        rejected: List<String>,
+    ) {
+        // Without a number there is nobody to answer: the panel matches the answer to the press by it,
+        // and applies nothing it cannot match.
+        if (id.isBlank()) return
+
+        PromptImprover.improve(
+            workingDirectory = project.basePath,
+            draft = draft,
+            attachments = attachments,
+            rejected = rejected,
+            onError = { message -> sendImproved(clientId, sessionId, id, error = shortError(message)) },
+            onResult = { text -> sendImproved(clientId, sessionId, id, text = text) },
+        )
+    }
+
+    private fun sendImproved(clientId: String, sessionId: String, id: String, text: String? = null, error: String? = null) {
+        hub.emitTo(
+            clientId,
+            buildJsonObject {
+                put("type", "promptImproved")
+                put("sessionId", sessionId)
+                put("id", id)
+                text?.let { put("text", it) }
+                error?.let { put("error", it) }
+            }.toString(),
+        )
+    }
+
+    /**
+     * A failure as one line under the input field. The CLI can be verbose when it is unhappy - a stack of
+     * a rate limit, a whole usage page - and none of that fits in the strip where it has to be read.
+     */
+    private fun shortError(message: String): String {
+        val line = message.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() } ?: "Could not rewrite the prompt."
+        return if (line.length > ERROR_LIMIT) "${line.take(ERROR_LIMIT)}…" else line
     }
 
     // --- Bash mode -----------------------------------------------------------------
@@ -724,6 +786,9 @@ internal class ProjectCatalog(
          * neighbour would hint at commands this project has never had.
          */
         private const val COMMANDS_KEY = "acc.slashCommands"
+
+        /** How much of a failed rewrite's complaint fits in the strip above the input field. */
+        private const val ERROR_LIMIT = 240
 
         /**
          * Our own version, read out of our own plugin.xml.

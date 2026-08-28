@@ -101,6 +101,19 @@ internal object RemoteCommands {
         "setModel",
         "setEffort",
         "setComposerLayout",
+        /**
+         * The sparkle button beside the paperclip and the text it asks by.
+         *
+         * `setImproveInstructions` writes a machine-wide setting, and belongs with `setDefaultMode` above
+         * it for the same reason: a decision about every future press is not one to make from a sofa.
+         *
+         * `improvePrompt` is refused for a plainer reason - the phone has no such button, and a door is
+         * opened when something needs to walk through it, not in advance. On its merits it is a narrow one:
+         * a run with no tools, no conversation and nothing written anywhere (see PromptImprover), which is
+         * less than `prompt` already grants. When the phone grows the button, this moves up to ALLOWED.
+         */
+        "improvePrompt",
+        "setImproveInstructions",
         "setExecutablePath",
         // Turning remote access on or off, and choosing the relay, are decisions about the channel
         // itself. A device that could make them could also point this IDE at a relay of its own.

@@ -18,6 +18,7 @@ export type MenuScreen =
   | 'remoteAbout'
   | 'defaultMode'
   | 'composerLayout'
+  | 'improvePrompt'
   | 'feedback'
   | 'feedbackLog'
 
@@ -41,6 +42,8 @@ export interface MenuSummary {
   sounds: string
   defaultMode: string
   composerLayout: string
+  /** Whether the improve button asks by a text of one's own - "Default" or "Custom". */
+  improvePrompt: string
   remote: RemoteSummary
   version: string
 }
@@ -83,6 +86,7 @@ const TITLES: Record<MenuScreen, { title: string; hint: string }> = {
   remoteAbout: { title: 'WHAT TRAVELS', hint: 'read this before you turn it on' },
   defaultMode: { title: 'DEFAULT MODE', hint: 'what new tabs start in' },
   composerLayout: { title: 'COMPOSER LAYOUT', hint: 'where the input sits' },
+  improvePrompt: { title: 'IMPROVE PROMPT', hint: 'what the sparkle button asks for' },
   feedback: { title: 'FEEDBACK', hint: 'a bug, an idea, or just hello' },
   feedbackLog: { title: 'WHAT GETS ATTACHED', hint: 'the whole report, before it goes' },
 }
@@ -173,6 +177,14 @@ const ICONS: Record<string, ReactNode> = {
   feedback: (
     <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
       <path d="M3.2 3.2h9.6a1.6 1.6 0 0 1 1.6 1.6v4.8a1.6 1.6 0 0 1-1.6 1.6H6.6l-2.7 2.2v-2.2h-.7A1.6 1.6 0 0 1 1.6 9.6V4.8a1.6 1.6 0 0 1 1.6-1.6z" />
+    </svg>
+  ),
+  /* The same sparkle the button in the composer wears (see Composer.Sparkle): one mark for one feature,
+     so the row and the button recognise each other without being read. */
+  improvePrompt: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16" fill="currentColor">
+      <path d="M9.5 2.2q1.1 6 6.3 7.3-5.2 1.3-6.3 7.3-1.1-6-6.3-7.3 5.2-1.3 6.3-7.3Z" />
+      <path d="M17.8 14q.55 3.3 3.4 4-2.85 0.7-3.4 4-0.55-3.3-3.4-4 2.85-0.7 3.4-4Z" />
     </svg>
   ),
 }
@@ -372,6 +384,14 @@ export const SideMenu = ({ open, screen, summary, onPick, onOpenStatistics, onBa
                 sub="Where the input sits"
                 value={summary.composerLayout}
                 onClick={() => onPick('composerLayout')}
+              />
+              <Row
+                icon="improvePrompt"
+                iconClass={s.rowIconImprove}
+                label="Improve prompt"
+                sub="What the sparkle button asks for"
+                value={summary.improvePrompt}
+                onClick={() => onPick('improvePrompt')}
               />
             </div>
 

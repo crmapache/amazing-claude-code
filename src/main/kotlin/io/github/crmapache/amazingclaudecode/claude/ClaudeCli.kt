@@ -18,6 +18,7 @@ internal object ClaudeCli {
     fun run(
         workingDirectory: String?,
         args: List<String>,
+        input: String? = null,
         timeoutMs: Int = DEFAULT_TIMEOUT_MS,
         onError: (String) -> Unit,
         onResult: (String) -> Unit,
@@ -36,7 +37,9 @@ internal object ClaudeCli {
                     .withCharset(Charsets.UTF_8)
                     .apply { workingDirectory?.let { withWorkingDirectory(Path.of(it)) } }
 
-                CapturingProcessHandler(commandLine).runProcess(timeoutMs)
+                val handler = CapturingProcessHandler(commandLine)
+                if (input != null) feed(handler, input)
+                handler.runProcess(timeoutMs)
             }.fold(
                 onSuccess = { output ->
                     when {
@@ -51,6 +54,28 @@ internal object ClaudeCli {
                     onError(it.message ?: "Failed to run claude.")
                 },
             )
+        }
+    }
+
+    /**
+     * Text handed to the CLI through its standard input rather than as an argument.
+     *
+     * An argument is the wrong road for anything a person wrote: on Windows npm installs the CLI as a
+     * batch file, the platform runs it through cmd.exe, and both are line-based - a newline inside an
+     * argument ends the command there and the rest of the line never reaches the CLI, silently (the whole
+     * story is in ClaudeLaunch). Standard input has no such rule: it is bytes until it is closed.
+     *
+     * On a thread of its own because a pipe holds only so much - about sixty kilobytes on the usual
+     * systems. A draft longer than that would fill it and block the writer, while the reader on the other
+     * end is a process we have not started waiting for yet: both sides would stand still until the
+     * timeout. Closing the stream is what says "that is all" - without it the CLI waits for more.
+     */
+    private fun feed(handler: CapturingProcessHandler, input: String) {
+        val stream = handler.processInput ?: return
+
+        AppExecutorUtil.getAppExecutorService().submit {
+            runCatching { stream.use { it.write(input.toByteArray(Charsets.UTF_8)) } }
+                .onFailure { thisLogger().info("Could not hand the text over through stdin: ${it.message}") }
         }
     }
 }

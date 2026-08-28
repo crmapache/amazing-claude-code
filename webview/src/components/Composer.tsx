@@ -12,6 +12,7 @@ import {
 import { createPortal } from 'react-dom'
 import { isBashDraft } from '../feed/bash'
 import { matchFiles } from '../feed/files'
+import { improveRequest, type ImproveRequest } from '../feed/improve'
 import {
   argumentOptions,
   argumentQuery,
@@ -155,6 +156,21 @@ const Paperclip = () => (
   </svg>
 )
 
+/**
+ * The four-pointed sparkle of the improve button - the mark every tool in the trade now uses for "a model
+ * did this", so it needs no caption to be recognised.
+ *
+ * Filled rather than stroked, unlike the paperclip beside it: at thirteen pixels an outlined star is four
+ * hairlines and a hole, and it reads as a smudge. The second, smaller star is what makes it a sparkle
+ * rather than an asterisk.
+ */
+const Sparkle = () => (
+  <svg className={s.sparkleIcon} viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+    <path className={s.sparkleBig} d="M9.5 2.2q1.1 6 6.3 7.3-5.2 1.3-6.3 7.3-1.1-6-6.3-7.3 5.2-1.3 6.3-7.3Z" />
+    <path className={s.sparkleSmall} d="M17.8 14q.55 3.3 3.4 4-2.85 0.7-3.4 4-0.55-3.3-3.4-4 2.85-0.7 3.4-4Z" />
+  </svg>
+)
+
 /** The highlight of a chip the arrow has reached (see .tokenSelected in the styles). */
 const SELECTED_CHIP_CLASS = s.tokenSelected ?? ''
 
@@ -207,6 +223,32 @@ interface ComposerProps {
    * itself and is simply invisible from outside.
    */
   registerInsert: (insert: ((token: UserToken) => void) | null) => void
+  /**
+   * Rewrite what is in the field (see feed/improve.ts). The request is built here rather than in the
+   * panel because it is built out of the field's own contents, and because the same shape is what the
+   * answer is read back against.
+   */
+  onImprove: (request: ImproveRequest) => void
+  /** A rewrite is under way: the sparkle turns and the button refuses a second press. */
+  improving?: boolean
+  /**
+   * What stands in the field is a rewrite nobody has touched since, so the next press starts over from what
+   * was written originally - and goes out knowing that this answer was pressed past (see
+   * App.improveSources). Only the tooltip changes by it: the rule is easiest to learn at the moment it
+   * applies, from the button one is already pointing at.
+   */
+  improveRetry?: boolean
+  /**
+   * Why the last rewrite came to nothing - one line, above the field. It is cleared by the panel on the
+   * next edit: a complaint about a draft that has since been rewritten by hand is noise.
+   */
+  improveError?: string
+  /**
+   * Hands "replace the whole field" outwards, so that a rewritten draft lands as one step of this field's
+   * undo history: Cmd+Z has to bring the person's own words back, and that history lives here rather than
+   * in the panel (see undoStack).
+   */
+  registerApply: (apply: ((tokens: UserToken[]) => void) | null) => void
   /** Send now: a busy agent gets the message at its next step. */
   onSubmit: () => void
   /** Defer: the agent takes this next, once it has finished what it started. */
@@ -269,6 +311,11 @@ export const Composer = ({
   onDropFiles,
   fileDragOver = false,
   registerInsert,
+  onImprove,
+  improving = false,
+  improveRetry = false,
+  improveError = '',
+  registerApply,
   onSubmit,
   onQueue,
   canSubmit,
@@ -333,9 +380,15 @@ export const Composer = ({
     selectedChip.current = node
   }
 
-  useEffect(() => {
+  /**
+   * Which layout the field standing in the DOM right now was built for - see the second effect below.
+   */
+  const filledLayout = useRef<ComposerLayout | null>(null)
+
+  /** Puts the state into the field, whole. Both effects below go through it, and nothing else does. */
+  const fillField = () => {
     const root = input.current
-    if (!root || tokens === lastReported.current) return
+    if (!root) return
 
     // The field is rebuilt whole - the highlighted node is about to be gone.
     clearChipSelection()
@@ -344,7 +397,32 @@ export const Composer = ({
     // they are, and the state catches up with the first edit.
     relabelImages(root, imageBaseCount)
     lastReported.current = tokens
+    filledLayout.current = layout
+  }
+
+  useEffect(() => {
+    if (tokens === lastReported.current) return
+    fillField()
   }, [tokens])
+
+  /**
+   * Each layout draws the field inside markup of its own (see the three returns at the end of this file),
+   * so changing layout hands us a brand-new, empty contentEditable - while the state still holds the
+   * draft, unchanged. The effect above is then looking at tokens that did not move and leaves the field
+   * empty.
+   *
+   * Nothing was actually lost by that - Send still sent what was typed - which is what made it worse than
+   * losing it: the draft was gone from the screen, could not be read or edited, and came back only by
+   * being sent blind.
+   *
+   * Guarded by the layout the field was last built for rather than run on every change of it: on the very
+   * first render the effect above has already filled the field, and rebuilding it a second time would put
+   * the caret into a panel nobody has clicked on yet (see placeCaretAtEnd).
+   */
+  useEffect(() => {
+    if (filledLayout.current === layout) return
+    fillField()
+  }, [layout])
 
   /**
    * An undo history of our own: the browser's native undo does not see the chips - they are inserted
@@ -1009,6 +1087,25 @@ export const Composer = ({
   }, [registerInsert])
 
   /**
+   * The rewritten draft, arriving from the panel. Through applyTokens rather than through the tokens prop
+   * so that it is a step in the undo history: pressing the sparkle and disliking the answer has to be one
+   * Cmd+Z away, and a draft replaced from outside would otherwise be gone for good.
+   *
+   * A ref for the same reason as insertFromShell above: what is registered is set once, and it has to
+   * reach the current render rather than the first one.
+   */
+  const applyFromShell = useRef<(next: UserToken[]) => void>(() => {})
+  applyFromShell.current = (next: UserToken[]) => {
+    applyTokens(next)
+    input.current?.focus()
+  }
+
+  useEffect(() => {
+    registerApply((next) => applyFromShell.current(next))
+    return () => registerApply(null)
+  }, [registerApply])
+
+  /**
    * A file or a folder dropped into the field we take for ourselves: without that the embedded browser
    * would simply open the file in place of the panel's page. The contents themselves we do not need - only
    * the path, out of which the shell assembles the chip.
@@ -1299,6 +1396,42 @@ export const Composer = ({
     </button>
   )
 
+  /*
+   * The draft, rewritten by Claude Code itself in a run of its own (see feed/improve.ts and PromptImprover
+   * on the IDE's side). It joins the paperclip and the slash rather than standing on its own: the three of
+   * them are what one does TO a message, as against Send, which does something WITH it. It comes first of
+   * the three everywhere - which under left reads as last, because that whole row is mirrored (see
+   * .railToolsRowLeft), and being nearest to Send is what the three of them share there anyway.
+   *
+   * Refused rather than hidden when there is nothing to do: an empty field and a field holding nothing but
+   * attachments have no prompt in them to improve, and a command through "!" goes to a shell rather than to
+   * a model - a rewritten shell command would be a different command.
+   */
+  const improvable = useMemo(() => (bash ? null : improveRequest(tokens)), [tokens, bash])
+  const improveButton = (
+    <button
+      type="button"
+      className={`${s.attach} ${improving ? s.attachBusy : ''}`}
+      data-tooltip={
+        bash
+          ? 'A terminal command is not rewritten'
+          : improveRetry
+            ? 'Another take, from what you wrote'
+            : 'Improve the prompt'
+      }
+      data-tooltip-at="top"
+      aria-label="Improve the prompt"
+      aria-busy={improving}
+      disabled={improving || improvable === null}
+      /* Like the slash beside it: the press must not pull the focus out of the field, which is where the
+         answer is about to land. */
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => improvable && onImprove(improvable)}
+    >
+      <Sparkle />
+    </button>
+  )
+
   /* Only the rail's variant is built here: in compact the heart stands in the selectors' row rather than
      among the buttons (see below), and in the ordinary layout it stands in the status line under the field
      (see StatusBar). */
@@ -1383,6 +1516,7 @@ export const Composer = ({
       {queueButton}
       {stopButton}
       {forceStopButton}
+      {improveButton}
       {attachButton}
       {slashButton}
       {/* Level with the two beside it rather than beside the heart a row above - see FeedbackButton.tight. */}
@@ -1396,6 +1530,7 @@ export const Composer = ({
       {queueButton}
       {stopButton}
       {forceStopButton}
+      {improveButton}
       {attachButton}
       {slashButton}
       {/* The heart goes to the row's far end, opposite Send - under left the row is mirrored whole (see
@@ -1412,6 +1547,7 @@ export const Composer = ({
           rather than a row below. The buttons themselves have moved right, over to Send. */}
       {meters}
       <div className={s.spacer} />
+      {improveButton}
       {attachButton}
       {slashButton}
       {stopButton}
@@ -1461,6 +1597,19 @@ export const Composer = ({
   const boxClassName = (extra: string) =>
     `${s.box} ${extra} ${focused ? s.boxFocused : ''} ${dropping || fileDragOver ? s.boxDropping : ''} ${bash ? s.boxBash : ''}`
 
+  /*
+   * Why a rewrite came to nothing, in the flow above the field rather than as a card in the feed: it is
+   * about the message being written, not about the conversation, and the feed is the conversation's own
+   * record. In the flow rather than floating, so that it cannot cover the first line of what one is
+   * writing while explaining that it was not rewritten.
+   */
+  const improveNoteNode = improveError ? (
+    <div className={s.improveNote} role="status">
+      <Sparkle />
+      <span className={s.improveNoteText}>{improveError}</span>
+    </div>
+  ) : null
+
   const suggestNode = suggesting ? (
     <SlashSuggest
       commands={suggestionItems}
@@ -1475,6 +1624,7 @@ export const Composer = ({
     return (
       <div className={s.boxWrap}>
         {suggestNode}
+        {improveNoteNode}
 
         <div className={s.compactRow}>
           <div
@@ -1531,6 +1681,7 @@ export const Composer = ({
     return (
       <div className={s.boxWrap}>
         {suggestNode}
+        {improveNoteNode}
 
         <div className={s.railRow}>
           <div
@@ -1594,6 +1745,7 @@ export const Composer = ({
   return (
     <div className={s.boxWrap}>
       {suggestNode}
+      {improveNoteNode}
 
       <div
         className={boxClassName('')}
