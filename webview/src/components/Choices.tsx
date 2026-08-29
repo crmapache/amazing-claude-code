@@ -11,13 +11,20 @@ import s from './sideMenu.module.css'
 export const ChoiceList = ({
   options,
   selected,
+  note,
   onPick,
 }: {
   options: MenuOption[]
   selected: string
+  /**
+   * A line above the list, for a choice that needs one - what this setting does not do, say. Inside the
+   * list's own container rather than beside it: two `.screen` boxes stacked would pad twice.
+   */
+  note?: string
   onPick: (id: string) => void
 }) => (
   <div className={`${s.screen} ${s.screenList}`}>
+    {note ? <span className={`${s.screenNote} ${s.choiceNote}`}>{note}</span> : null}
     {options.map((option) => {
       const on = option.id === selected
 

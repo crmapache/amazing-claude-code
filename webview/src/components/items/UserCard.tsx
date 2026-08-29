@@ -3,6 +3,7 @@ import { LinkedText } from './LinkedText'
 import { chipLabel, chipTitle, pasteBlockPreview, pasteLineCount } from '../../feed/reference'
 import type { Chip, ChipKind, UserItem } from '../../feed/types'
 import s from '../feed.module.css'
+import { useT } from '../../i18n'
 
 const CHIP_CLASS: Record<ChipKind, string> = {
   file: s.chipFile ?? '',
@@ -20,10 +21,13 @@ interface UserCardProps {
   onOpenLink: (url: string) => void
 }
 
-export const UserCard = ({ item, onOpenLink }: UserCardProps) => (
+export const UserCard = ({ item, onOpenLink }: UserCardProps) => {
+  const t = useT()
+
+  return (
   <div className={s.user}>
     <div className={s.userHead}>
-      <span className={s.label}>YOU</span>
+      <span className={s.label}>{t.feed.you}</span>
       <span className={s.time}>{item.time}</span>
       <div className={s.spacer} />
     </div>
@@ -50,7 +54,8 @@ export const UserCard = ({ item, onOpenLink }: UserCardProps) => (
       )}
     </div>
   </div>
-)
+  )
+}
 
 /**
  * The text is shown exactly as it was typed - without markup and without rewrapping of ours: the lines
@@ -97,13 +102,14 @@ const ChipView = memo(({ chip }: { chip: Chip }) => (
  * repaints on every chunk of a printing answer, while a sent paste never changes.
  */
 const PasteBlock = memo(({ chip }: { chip: Chip }) => {
+  const t = useT()
   const text = chip.text ?? ''
   const lines = pasteLineCount(text)
 
   return (
     <span className={`${s.chip} ${s.chipPaste} ${s.chipPasteBlock}`} data-tooltip={chipTitle(chip)}>
       <span className={s.chipPasteCount}>
-        {lines} {lines === 1 ? 'line' : 'lines'} pasted
+        {t.feed.pastedLines(lines)}
       </span>
       <span className={s.chipPasteText}>{pasteBlockPreview(text)}</span>
     </span>

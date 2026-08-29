@@ -1,6 +1,8 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { Microphone } from './Microphone'
 import { useHoverTarget } from '../hooks/useHoverTarget'
 import { useWheelScroll } from '../hooks/useWheelScroll'
+import { useT } from '../i18n'
 import { STATISTICS_ICON } from '../stats/icons'
 import s from './sideMenu.module.css'
 
@@ -13,12 +15,17 @@ export type MenuScreen =
   | 'history'
   | 'mcp'
   | 'plugins'
+  | 'settings'
   | 'sounds'
   | 'remote'
   | 'remoteAbout'
   | 'defaultMode'
   | 'composerLayout'
   | 'improvePrompt'
+  | 'voice'
+  | 'voiceLanguage'
+  | 'voiceDevice'
+  | 'language'
   | 'feedback'
   | 'feedbackLog'
 
@@ -44,6 +51,10 @@ export interface MenuSummary {
   composerLayout: string
   /** Whether the improve button asks by a text of one's own - "Default" or "Custom". */
   improvePrompt: string
+  /** Dictation: the language it listens in, or that it is switched off. */
+  voice: string
+  /** The language in force, written in itself - "简体中文" rather than "Chinese". */
+  language: string
   remote: RemoteSummary
   version: string
 }
@@ -66,29 +77,29 @@ interface SideMenuProps {
 }
 
 /**
- * Where a step back leads from each screen. Two of them stand one level deeper than the rest: "what
- * travels" belongs to remote access, and the report's preview belongs to the feedback form it is about -
- * coming back from either to the root list would lose the screen that was being filled in.
+ * The five screens that live behind "Settings" rather than in the root list.
+ *
+ * They used to stand in the root as a group of four, which made the first thing anybody saw a list of
+ * ten rows - and the four of them are the same kind of thing: a preference, set once and rarely
+ * revisited. One row instead of four, and the language joins them rather than making the root longer.
+ */
+const SETTINGS_SCREENS: MenuScreen[] = ['sounds', 'defaultMode', 'composerLayout', 'improvePrompt', 'voice', 'language']
+
+/**
+ * Where a step back leads from each screen. Three of them stand one level deeper than the rest: the
+ * preferences belong to "Settings", "what travels" to remote access, and the report's preview to the
+ * feedback form it is about - coming back from any of them to the root list would lose the screen one
+ * was in the middle of.
  */
 export const parentOf = (screen: MenuScreen): MenuScreen => {
   if (screen === 'remoteAbout') return 'remote'
   if (screen === 'feedbackLog') return 'feedback'
+  // The language dictation listens in and the microphone it listens through are chosen on lists of their
+  // own - sixty-odd languages will not fit beside a key field, and coming back from either belongs to the
+  // voice screen rather than to the settings list two steps up.
+  if (screen === 'voiceLanguage' || screen === 'voiceDevice') return 'voice'
+  if (SETTINGS_SCREENS.includes(screen)) return 'settings'
   return 'menu'
-}
-
-const TITLES: Record<MenuScreen, { title: string; hint: string }> = {
-  menu: { title: 'MENU', hint: 'everything the panel keeps out of the way' },
-  history: { title: 'HISTORY', hint: 'past conversations of this project' },
-  mcp: { title: 'MCP SERVERS', hint: 'status · sign in · reconnect' },
-  plugins: { title: 'PLUGINS', hint: 'installed · browse · marketplaces' },
-  sounds: { title: 'SOUND ALERTS', hint: 'when the panel calls you' },
-  remote: { title: 'REMOTE ACCESS', hint: 'state · relay · paired devices' },
-  remoteAbout: { title: 'WHAT TRAVELS', hint: 'read this before you turn it on' },
-  defaultMode: { title: 'DEFAULT MODE', hint: 'what new tabs start in' },
-  composerLayout: { title: 'COMPOSER LAYOUT', hint: 'where the input sits' },
-  improvePrompt: { title: 'IMPROVE PROMPT', hint: 'what the sparkle button asks for' },
-  feedback: { title: 'FEEDBACK', hint: 'a bug, an idea, or just hello' },
-  feedbackLog: { title: 'WHAT GETS ATTACHED', hint: 'the whole report, before it goes' },
 }
 
 const TONE_CLASS: Record<RemoteSummary['tone'], string> = {
@@ -187,6 +198,24 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M17.8 14q.55 3.3 3.4 4-2.85 0.7-3.4 4-0.55-3.3-3.4-4 2.85-0.7 3.4-4Z" />
     </svg>
   ),
+  settings: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="8" r="2.1" />
+      <path d="M8 1.9v1.5M8 12.6v1.5M13.1 8h-1.5M4.4 8H2.9M11.6 4.4l-1.1 1.1M5.5 10.5l-1.1 1.1M11.6 11.6l-1.1-1.1M5.5 5.5L4.4 4.4" />
+    </svg>
+  ),
+  /* The same microphone the composer's button wears: one drawing for one feature, so the row and the
+     button recognise each other without being read. */
+  voice: <Microphone size={16} />,
+  /* A globe rather than a letter: the row has to be recognisable from inside a language one cannot read,
+     which is exactly the case somebody looking for this row is in. */
+  language: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="8" r="5.7" />
+      <path d="M2.3 8h11.4" />
+      <path d="M8 2.3c1.5 1.6 2.3 3.6 2.3 5.7S9.5 12.1 8 13.7C6.5 12.1 5.7 10.1 5.7 8S6.5 3.9 8 2.3Z" />
+    </svg>
+  ),
 }
 
 /**
@@ -201,6 +230,7 @@ const ICONS: Record<string, ReactNode> = {
  * costs something to render (the screens themselves) the caller withholds until there is a reason.
  */
 export const SideMenu = ({ open, screen, summary, onPick, onOpenStatistics, onBack, onClose, children }: SideMenuProps) => {
+  const t = useT()
   const sheet = useRef<HTMLElement>(null)
   const root = useRef<HTMLDivElement>(null)
   const detail = useRef<HTMLDivElement>(null)
@@ -235,7 +265,7 @@ export const SideMenu = ({ open, screen, summary, onPick, onOpenStatistics, onBa
     return () => window.removeEventListener('keydown', onKeyDown, true)
   }, [open, screen, onBack, onClose])
 
-  const head = TITLES[screen]
+  const head = t.menu.titles[screen]
   const remoteTint = TONE_TINT[summary.remote.tone]
 
   return (
@@ -245,7 +275,7 @@ export const SideMenu = ({ open, screen, summary, onPick, onOpenStatistics, onBa
       <aside ref={sheet} className={`${s.sheet} ${open ? s.sheetOpen : s.sheetShut}`} aria-hidden={!open}>
         <div className={s.head}>
           {inDetail ? (
-            <button type="button" className={s.headButton} aria-label="Back" onClick={onBack}>
+            <button type="button" className={s.headButton} aria-label={t.common.back} onClick={onBack}>
               <svg viewBox="0 0 16 16" aria-hidden="true" width="15" height="15">
                 <path
                   d="M9.5 3.5L5 8l4.5 4.5"
@@ -269,7 +299,7 @@ export const SideMenu = ({ open, screen, summary, onPick, onOpenStatistics, onBa
           <button
             type="button"
             className={`${s.headButton} ${s.headClose}`}
-            aria-label="Close menu"
+            aria-label={t.common.closeMenu}
             onClick={onClose}
           >
             <svg viewBox="0 0 16 16" aria-hidden="true" width="14" height="14">
@@ -292,29 +322,29 @@ export const SideMenu = ({ open, screen, summary, onPick, onOpenStatistics, onBa
             // and Tab has to agree with it.
             inert={inDetail}
           >
-            <div className={`${s.group} ${s.groupFirst}`}>THIS PROJECT</div>
+            <div className={`${s.group} ${s.groupFirst}`}>{t.menu.groups.project}</div>
             <div className={s.rows}>
               <Row
                 icon="history"
                 iconClass={s.rowIconHistory}
-                label="History"
-                sub="Past conversations of this project"
+                label={t.menu.rows.history.label}
+                sub={t.menu.rows.history.sub}
                 value={summary.history === null ? '' : String(summary.history)}
                 onClick={() => onPick('history')}
               />
               <Row
                 icon="statistics"
                 iconClass={s.rowIconStatistics}
-                label="Statistics"
-                sub="Hours, habits, achievements"
+                label={t.menu.rows.statistics.label}
+                sub={t.menu.rows.statistics.sub}
                 value={summary.statistics}
                 onClick={onOpenStatistics}
               />
               <Row
                 icon="mcp"
                 iconClass={s.rowIconMcp}
-                label="MCP servers"
-                sub="Status, sign-in, reconnect"
+                label={t.menu.rows.mcp.label}
+                sub={t.menu.rows.mcp.sub}
                 value={summary.mcp ? `${summary.mcp.connected}/${summary.mcp.total}` : ''}
                 // The count is worth a dot of its own only when everything is up: "4/5" in the same grey
                 // as the rest says nothing about whether that is fine.
@@ -324,14 +354,14 @@ export const SideMenu = ({ open, screen, summary, onPick, onOpenStatistics, onBa
               <Row
                 icon="plugins"
                 iconClass={s.rowIconPlugins}
-                label="Plugins"
-                sub="Installed, browse, marketplaces"
+                label={t.menu.rows.plugins.label}
+                sub={t.menu.rows.plugins.sub}
                 value={summary.plugins === null ? '' : String(summary.plugins)}
                 onClick={() => onPick('plugins')}
               />
             </div>
 
-            <div className={s.group}>DEVICES</div>
+            <div className={s.group}>{t.menu.groups.devices}</div>
             <div className={s.rows}>
               <button
                 type="button"
@@ -347,7 +377,7 @@ export const SideMenu = ({ open, screen, summary, onPick, onOpenStatistics, onBa
                 </span>
                 <span className={s.rowCardText}>
                   <span className={s.rowCardTop}>
-                    <span className={s.rowLabel}>Remote access</span>
+                    <span className={s.rowLabel}>{t.menu.rows.remote.label}</span>
                     <span className={s.badge} style={{ color: TONE_CLASS[summary.remote.tone] }}>
                       <span className={s.badgeDot} />
                       {summary.remote.label}
@@ -359,58 +389,31 @@ export const SideMenu = ({ open, screen, summary, onPick, onOpenStatistics, onBa
               </button>
             </div>
 
-            <div className={s.group}>PREFERENCES</div>
-            <div className={s.rows}>
-              <Row
-                icon="sounds"
-                iconClass={s.rowIconSounds}
-                label="Sound alerts"
-                sub="When the panel calls you"
-                value={summary.sounds}
-                onClick={() => onPick('sounds')}
-              />
-              <Row
-                icon="defaultMode"
-                iconClass={s.rowIconMode}
-                label="Default mode"
-                sub="What new tabs start in"
-                value={summary.defaultMode}
-                onClick={() => onPick('defaultMode')}
-              />
-              <Row
-                icon="composerLayout"
-                iconClass={s.rowIconLayout}
-                label="Composer layout"
-                sub="Where the input sits"
-                value={summary.composerLayout}
-                onClick={() => onPick('composerLayout')}
-              />
-              <Row
-                icon="improvePrompt"
-                iconClass={s.rowIconImprove}
-                label="Improve prompt"
-                sub="What the sparkle button asks for"
-                value={summary.improvePrompt}
-                onClick={() => onPick('improvePrompt')}
-              />
-            </div>
-
             {/* The plugin itself, rather than the work done in it - which is why it stands apart from the
-                three groups above and right against the version in the footer. */}
-            <div className={s.group}>THE PLUGIN</div>
+                groups above and right against the version in the footer. Both rows belong to it: the
+                settings configure the plugin, and the feedback is about the plugin. */}
+            <div className={s.group}>{t.menu.groups.plugin}</div>
             <div className={s.rows}>
+              <Row
+                icon="settings"
+                iconClass={s.rowIconSettings}
+                label={t.menu.rows.settings.label}
+                sub={t.menu.rows.settings.sub}
+                value=""
+                onClick={() => onPick('settings')}
+              />
               <Row
                 icon="feedback"
                 iconClass={s.rowIconFeedback}
-                label="Send feedback"
-                sub="A bug, an idea, or just hello"
+                label={t.menu.rows.feedback.label}
+                sub={t.menu.rows.feedback.sub}
                 value=""
                 onClick={() => onPick('feedback')}
               />
             </div>
 
             <div className={s.footer}>
-              <span>Amazing Claude Code</span>
+              <span>{t.menu.footer}</span>
               <span className={s.footerVersion}>{summary.version}</span>
             </div>
           </div>
@@ -425,6 +428,78 @@ export const SideMenu = ({ open, screen, summary, onPick, onOpenStatistics, onBa
         </div>
       </aside>
     </>
+  )
+}
+
+/**
+ * What used to be the PREFERENCES group of the root list, one level down.
+ *
+ * The rows are the same rows, values and all - what changed is only where they stand: the root opened on
+ * ten entries, four of which were the same kind of thing. The language joins them here rather than making
+ * that list eleven long.
+ */
+export const SettingsScreen = ({
+  summary,
+  onPick,
+}: {
+  summary: MenuSummary
+  onPick: (screen: MenuScreen) => void
+}) => {
+  const t = useT()
+
+  return (
+    <div className={s.screen}>
+      <div className={s.rows}>
+        <Row
+          icon="sounds"
+          iconClass={s.rowIconSounds}
+          label={t.settings.rows.sounds.label}
+          sub={t.settings.rows.sounds.sub}
+          value={summary.sounds}
+          onClick={() => onPick('sounds')}
+        />
+        <Row
+          icon="defaultMode"
+          iconClass={s.rowIconMode}
+          label={t.settings.rows.defaultMode.label}
+          sub={t.settings.rows.defaultMode.sub}
+          value={summary.defaultMode}
+          onClick={() => onPick('defaultMode')}
+        />
+        <Row
+          icon="composerLayout"
+          iconClass={s.rowIconLayout}
+          label={t.settings.rows.composerLayout.label}
+          sub={t.settings.rows.composerLayout.sub}
+          value={summary.composerLayout}
+          onClick={() => onPick('composerLayout')}
+        />
+        <Row
+          icon="improvePrompt"
+          iconClass={s.rowIconImprove}
+          label={t.settings.rows.improvePrompt.label}
+          sub={t.settings.rows.improvePrompt.sub}
+          value={summary.improvePrompt}
+          onClick={() => onPick('improvePrompt')}
+        />
+        <Row
+          icon="voice"
+          iconClass={s.rowIconVoice}
+          label={t.settings.rows.voice.label}
+          sub={t.settings.rows.voice.sub}
+          value={summary.voice}
+          onClick={() => onPick('voice')}
+        />
+        <Row
+          icon="language"
+          iconClass={s.rowIconLanguage}
+          label={t.settings.rows.language.label}
+          sub={t.settings.rows.language.sub}
+          value={summary.language}
+          onClick={() => onPick('language')}
+        />
+      </div>
+    </div>
   )
 }
 

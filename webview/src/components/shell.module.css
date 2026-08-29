@@ -190,6 +190,10 @@
   flex: none;
   display: flex;
   flex-direction: column;
+  /* The same as on .dock (composer.module.css): under left/right this column holds the very same stack of
+     cards, and a tall one used to grow it past the panel's height, taking Send and the input field off the
+     bottom of the screen with it. */
+  min-height: 0;
   gap: 12px;
   /* The top and the bottom are the same 8px as .railRow's (see composer.module.css): the input field's bottom
      edge and the rail's bottom edge share one and the same edge of the dock, and without a matching gap from
@@ -202,6 +206,13 @@
 .workArea[data-layout='right'] > .railColumn {
   grid-column: 2;
   border-left: 1px solid var(--acc-line);
+}
+
+/* The pair to .dock's rule: giving way is opt-in, and only a card with a scroll of its own asks for it by
+   marking itself data-shrinks. The attribute rather than a class, because these cards are drawn from
+   composer.module.css and a class of theirs cannot be named from here. */
+.railColumn > *:not([data-shrinks]) {
+  flex: none;
 }
 
 .workArea[data-layout='left'] > .railColumn {
@@ -748,14 +759,32 @@
 
 /* The bottom row: a summary in text, as in a terminal's status line. The meters go in a row of their own
    above the buttons - beside them they scatter one by one. */
-/* What is left in the status row is the selectors and, at its far end, the heart (see Thanks.tsx): the
-   branch with its PR has moved into the header, the usage into the input field's own bottom row (see
-   UsageMeters). One row rather than a column of them - there is one thing left on each side. */
+/* The status row: the selectors on one side, and on the other the usage with the bubble and the heart (see
+   .statusEnd). The branch with its PR has moved into the header.
+
+   It wraps as two blocks rather than letting the selectors wrap inside themselves. Dragged narrow enough,
+   the three of them plus the usage no longer fit on a line, and the choice is which way to spend the second
+   line: on the selectors breaking into a column one button wide (three lines, and the whole panel loses the
+   height), or on the end of the row stepping down under them (two lines, both of them full). The row-gap is
+   what the second line stands on. */
 .status {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
   padding: 7px 2px 8px;
+}
+
+/* The far end of the status row as one block: the usage, then the bubble and the heart. Together, because
+   they step onto the second line together - the usage parted from the pair reads as a third thing in a row
+   that has only two. margin-left holds them at the far edge on either line, which a spacer between the two
+   blocks could not do: on a wrapped line the spacer stays behind on the first one. */
+.statusEnd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  margin-left: auto;
 }
 
 /* Every meter is one whole piece: the key and the value must not drift apart. A size of its own rather than
@@ -811,12 +840,18 @@
 /* --- The usage rings in the input field's bottom row ------------------------ */
 
 /* The gaps differ: between a ring and its number it is tight (that is one meter), between the meters it is
-   roomy - otherwise the row reads as one mush of percentages. */
+   roomy - otherwise the row reads as one mush of percentages.
+
+   One line and no shrinking: this block now stands at the far end of the status row, between the spacer and
+   the bubble with the heart (see .status and StatusBar.tsx), and there a wrap costs the whole row a second
+   line - for the sake of moving the day's tokens under the rings. What gives way when the panel is dragged
+   narrow is the selectors opposite: they wrap by themselves, and each of them is one button rather than a
+   line of figures. */
 .meters {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 12px;
+  flex: none;
+  gap: 12px;
   min-width: 0;
   font: 12.5px/1.4 var(--acc-mono);
 }
@@ -947,7 +982,6 @@
 .selectors {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 4px;
   position: relative;
   /* Above the menu's scrim (.menuScrim, z-index 40): without this a second click on a button's own self (in
@@ -957,11 +991,14 @@
      itself and decide itself (see App.openSelector), as the header's buttons already do (see .history and
      its neighbours, the same trick). */
   z-index: 41;
-  /* Not flex: none - the heart stands in the same row now (see .thanks and StatusBar.tsx), and a block that
-     cannot shrink would push it out past the panel's right edge on a narrow panel. It does not grow either:
-     the row's free width belongs to the spacer between them rather than to the selectors. What shrinks
-     inside is the selectors themselves - each of them ends its value with an ellipsis (see .selectorText)
-     rather than being cut off by the panel's edge. */
+  /* Not flex: none - the usage and the pair stand in the same row now (see .statusEnd and StatusBar.tsx),
+     and a block that cannot shrink would push them out past the panel's right edge on a narrow panel. It
+     does not grow either: the row's free width belongs to the gap before the far end rather than to the
+     selectors. What shrinks inside is the selectors themselves - each of them ends its value with an
+     ellipsis (see .selectorText) rather than being cut off by the panel's edge.
+
+     They do not wrap among themselves: the row above wraps instead (see .status), and this block staying
+     one line deep is exactly what that buys. */
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
@@ -1218,9 +1255,10 @@
   height: 13px;
 }
 
-/* The pair at the far end of the status row - the bubble and the heart. Their own spacing, taken from the
-   selectors opposite them (.selectors), rather than the row's wide one: two icon buttons ten pixels apart
-   read as two separate things rather than as a pair. */
+/* The pair at the far end of the row - the bubble and the heart. One and the same block wherever it stands:
+   the status row under the field, the selectors' row in compact, the usage's row in the side rail. Their own
+   spacing, taken from the selectors opposite them (.selectors), rather than the row's wide one: two icon
+   buttons ten pixels apart read as two separate things rather than as a pair. */
 .endPair {
   display: flex;
   align-items: center;
@@ -1277,17 +1315,11 @@
   background: var(--acc-accent-12);
 }
 
-/* Compact's variant: square and 26px, the same box as the paperclip it stands beside (see .attach in
-   composer.module.css) rather than the heart's wider capsule a row above. */
-.feedbackTight {
-  width: 26px;
-  border: none;
-  background: var(--acc-neutral-12);
-}
-
-.feedbackTight:hover,
-.feedbackTight[data-hover] {
-  background: var(--acc-accent-12);
+/* Compact's variant: the same three pixels shorter as the heart it stands beside, for the same reason
+   (see .thanksLevel above) - the two of them share a row with MODEL/EFFORT/MODE there. */
+.feedbackLevel {
+  height: 23px;
+  min-height: 23px;
 }
 
 /* Level with the heart, the paperclip and the slash. */

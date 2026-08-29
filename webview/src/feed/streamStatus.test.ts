@@ -17,7 +17,7 @@ const perm = (id: string, extra: Partial<PermItem> = {}): PermItem => ({
   id,
   kind: 'perm',
   target: 'src/app.ts',
-  meta: 'Edit',
+  mode: 'manual',
   command: '',
   decision: null,
   rememberable: true,
@@ -27,7 +27,7 @@ const perm = (id: string, extra: Partial<PermItem> = {}): PermItem => ({
 const plan = (id: string, extra: Partial<PlanItem> = {}): PlanItem => ({
   id,
   kind: 'plan',
-  meta: 'ExitPlanMode',
+  steps: 0,
   duration: '',
   paragraphs: [],
   ...extra,
@@ -36,7 +36,6 @@ const plan = (id: string, extra: Partial<PlanItem> = {}): PlanItem => ({
 const ask = (id: string, extra: Partial<AskItem> = {}): AskItem => ({
   id,
   kind: 'ask',
-  meta: 'AskUserQuestion',
   questions: [{ id: 'q1', title: 'Which way?', hint: '', multiSelect: false, options: [] }],
   ...extra,
 })

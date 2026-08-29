@@ -74,6 +74,25 @@ internal object RemoteCommands {
         "resumeSession",
         "newSession",
         "renameSession",
+        /**
+         * Dictating from a phone.
+         *
+         * The one voice message a device may send, and it asks for a token rather than for a
+         * microphone: the phone records with its own (a phone in a hand is closer to a mouth than a
+         * laptop across the room ever is) and talks to Deepgram directly, so nothing about this reaches
+         * the microphone on the work machine - `voiceStart` and the rest stay refused below.
+         *
+         * What comes back expires in a minute and transcribes only (see VoiceGrant): it cannot read the
+         * account, cannot make keys, and is worthless by the time a phone left on a train is opened.
+         * The key itself never leaves the keychain. It is refused outright unless voice input has been
+         * switched on at the desk and a key left there, so a plugin nobody has configured hands out
+         * nothing at all.
+         *
+         * The audio deliberately does not travel through the relay. A live voice crossing a server whose
+         * whole design is that it carries only sealed envelopes would be the one thing it must never
+         * carry - and it would arrive late, having gone twice as far.
+         */
+        "voiceToken",
     )
 
     /**
@@ -101,6 +120,15 @@ internal object RemoteCommands {
         "setModel",
         "setEffort",
         "setComposerLayout",
+        /**
+         * The language of the interface, which is a machine-wide setting like the ones above it: the panel
+         * on the desk speaks it too, and so do the push notifications this side writes. A phone that could
+         * change it would be changing the language of a screen its owner is not looking at.
+         *
+         * The phone is not left in English by it - it is handed the language in force as a fact of the
+         * project (see RemoteFeed) and speaks it without being able to set it.
+         */
+        "setLanguage",
         /**
          * The sparkle button beside the paperclip and the text it asks by.
          *
@@ -167,6 +195,29 @@ internal object RemoteCommands {
         "feedbackAttach",
         "feedbackDetach",
         "feedbackSend",
+        /*
+         * Voice input, refused whole (see VoiceDesk).
+         *
+         * The microphone belongs to the machine with the IDE on it, and a message that opens it from
+         * across the network is a listening device, whatever it was meant for. The settings around it are
+         * refused for the reasons their neighbours above are: the key is a secret in this machine's
+         * keychain, and the hotkeys are decided at the keyboard they will be pressed on.
+         *
+         * The words themselves need nothing here: a dictation ends as an ordinary draft in the input
+         * field, and what is done with it travels as `prompt` like anything else somebody typed.
+         */
+        "voiceStart",
+        "voiceStop",
+        "voiceCancel",
+        "voiceConfig",
+        "voiceEnabled",
+        "voiceLanguage",
+        "voiceDevice",
+        "voiceKey",
+        "voiceBalance",
+        "voiceCaptureHotkey",
+        "voiceStopCapture",
+        "voiceClearHotkey",
         "mcpList",
         "mcpAdd",
         "mcpRemove",

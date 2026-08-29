@@ -25,6 +25,23 @@ export interface Chip {
   text?: string
 }
 
+/**
+ * Where a change to the field came from, as the field itself reports it (see Composer.onTokensChange).
+ *
+ * The panel has to tell them apart because one of them means something about the person: `hand` is them
+ * moving on from what they had, and things that are only true of what they had - the way back to a draft
+ * before a rewrite, the takes they have already turned down - end there. The other two are the field
+ * putting back or renumbering what is already in it, and a rule that read them as a hand on the keyboard
+ * would quietly throw away what the person never touched.
+ */
+export type DraftEdit =
+  /** Typed, pasted, dropped, a chip closed - the person themselves. */
+  | 'hand'
+  /** A step of the field's own undo history: the same words as before, not new ones. */
+  | 'history'
+  /** The captions of images renumbered after a message went out - nothing about the draft's meaning. */
+  | 'renumber'
+
 export type UserToken =
   /**
    * echo marks a piece of text the panel put in on the person's behalf rather than something they wrote:
@@ -101,7 +118,72 @@ export interface Hunk {
 export interface DetailLine {
   text: string
   tone?: 'ok' | 'bad' | 'dim'
+  /**
+   * A line the panel wrote itself rather than one the tool printed.
+   *
+   * Set instead of `text`, not beside it: what the panel says about a call has to be said in whatever
+   * language the panel is speaking when the card is painted, and prose stored in the feed would stay in
+   * the language it was built in - a conversation half in one language after a switch. Tool output is
+   * the opposite case and keeps `text` as it came.
+   */
+  note?: DetailNote
 }
+
+/** What the panel itself has to say on a line of a card - see DetailLine.note. */
+export type DetailNote =
+  /** A call that never got a result, and why it was closed anyway. */
+  | { kind: 'closed'; reason: ClosedReason }
+  /** A subagent that did not finish on its own. */
+  | { kind: 'taskEnded'; outcome: TaskOutcome }
+  /** A command launched in the background, and how it ended. */
+  | { kind: 'backgroundEnded'; outcome: TaskOutcome; duration: string }
+  /** The tool printed more than a card shows, and this is how much was left out. */
+  | { kind: 'moreLines'; count: number }
+  /** How many of a subagent's earliest steps were dropped to keep its log bounded. */
+  | { kind: 'trimmed'; count: number }
+
+/**
+ * Why a call that never got a result was closed anyway.
+ *
+ * The card is told which of the four happened rather than what to say about it: the sentence is chosen
+ * at painting time (see Rows and ToolCard), so a change of language repaints the whole feed instead of
+ * leaving yesterday's cards in yesterday's words.
+ */
+export type ClosedReason =
+  /** Out of a saved conversation: the transcript simply holds no result for this call. */
+  | 'replay'
+  /** The process died under it. */
+  | 'exited'
+  /** The person pressed Stop. */
+  | 'stopped'
+  /** The turn ended without this call ever reporting back. */
+  | 'turnEnded'
+  /**
+   * A background command that outlived the process which launched it.
+   *
+   * Not the same as 'exited': the command is very likely still running - a dev server does not die with
+   * the CLI - but there is nobody left to report about it, so the panel stops following it. Saying it
+   * was interrupted would be a lie about a process that is alive.
+   */
+  | 'untracked'
+
+/**
+ * The short summary at the end of a tool's line - "· 42 lines", "· no matches", "· +12 −4".
+ *
+ * A shape rather than a sentence, for the same reason as [ClosedReason] above: the words belong to the
+ * moment of painting. The numbers are the tool's own and travel as they are.
+ */
+export type ToolMeta =
+  | { kind: 'none' }
+  /** The call answered with an error. */
+  | { kind: 'failed' }
+  | { kind: 'lines'; count: number }
+  | { kind: 'matches'; count: number }
+  /** Whether a command printed anything at all - the one thing worth saying about a Bash result. */
+  | { kind: 'output'; empty: boolean }
+  | { kind: 'diff'; added: number; removed: number }
+  /** The call was closed without a result - see [ClosedReason]. */
+  | { kind: 'closed'; reason: ClosedReason }
 
 export interface UserItem {
   id: string
@@ -153,7 +235,7 @@ export interface ToolItem {
   toolName: string
   input: unknown
   target: string
-  meta: string
+  meta: ToolMeta
   duration: string
   detail: DetailLine[]
   hunks: Hunk[]
@@ -263,7 +345,8 @@ export interface TodoItem {
 export interface PlanItem {
   id: string
   kind: 'plan'
-  meta: string
+  /** How many steps the plan has, counted by its top-level items. The card puts it into words itself. */
+  steps: number
   duration: string
   /**
    * The whole plan parsed as markdown - by the same parsing as an ordinary answer from the agent. This
@@ -328,7 +411,14 @@ export interface PermItem {
   id: string
   kind: 'perm'
   target: string
-  meta: string
+  /**
+   * The permission mode the question was asked under, as the CLI names it ("bypassPermissions").
+   *
+   * The identifier rather than the caption, because the card is drawn long after the reducer ran: the
+   * words are chosen when it is painted, so changing the panel's language repaints the whole feed
+   * instead of leaving yesterday's cards in yesterday's language (see PermissionPanel).
+   */
+  mode: string
   command: string
   decision: PermDecision | null
   /**
@@ -359,7 +449,6 @@ export interface AskQuestion {
 export interface AskItem {
   id: string
   kind: 'ask'
-  meta: string
   questions: AskQuestion[]
   /** Unset means a question of the main stream. Set means a question of a particular agent. */
   taskId?: string
@@ -379,7 +468,13 @@ export interface CheckpointItem {
   id: string
   kind: 'checkpoint'
   chip: string
+  /** What the mark says, when the words are the CLI's or the conversation's own. */
   target: string
+  /**
+   * What the mark says, when the words are the panel's. Set instead of `target` - see DetailLine.note
+   * for why the panel's own prose is never stored in the feed.
+   */
+  targetKey?: 'cleared' | 'earlier' | 'notKept' | 'notOnPhone'
 }
 
 /**
@@ -405,19 +500,57 @@ export interface BashItem {
 export interface CompactItem {
   id: string
   kind: 'compact'
+  /** What the card says, when the words are the CLI's own (the error of a failed compaction). */
   target: string
+  /** What the card says, when the words are the panel's - see [CompactOutcome]. */
+  outcome?: CompactOutcome
   /** The compaction is still running - the card appears at once, before the outcome is known. */
   pending: boolean
+}
+
+/**
+ * What became of a compaction, and the figures the sentence is built from.
+ *
+ * `manual` says who asked for it, `before`/`after` are the context in tokens either side. Both may be
+ * missing: the CLI does not always say, and then the card says only that it happened.
+ */
+export interface CompactOutcome {
+  state: 'running' | 'done'
+  manual?: boolean
+  before?: number
+  after?: number
+  took?: string
 }
 
 export interface MetaItem {
   id: string
   kind: 'meta'
+  /**
+   * The turn's result in English, and it stays English whatever the panel speaks.
+   *
+   * This is not a caption but a marker: it travels to the IDE, and NotificationReasons.kt reads
+   * "Stopped by you" out of it to decide that an interrupted turn is not worth a push on the phone (see
+   * STOPPED_BY_YOU in build.ts, and the same prefix in sounds.ts). Translate it and every non-English
+   * user starts getting a notification for every Escape - silently.
+   *
+   * What is drawn on screen comes from [outcome] below instead.
+   */
   stats: string[]
+  /** How the turn ended and how long it took - the card's own words are chosen from these. */
+  outcome?: { state: 'worked' | 'stopped'; duration: string }
 }
 
 /** How a chain of retries ended: the request went through, the CLI gave up, or the turn was interrupted. */
 export type RetryOutcome = 'recovered' | 'failed' | 'stopped'
+
+/**
+ * Why the request was refused, as a fact rather than as a sentence about it.
+ *
+ * The words are chosen where the row is painted (see RetryRow), like every other line the panel writes
+ * itself: the caption goes inside a translated frame (see stream.retryWaiting), so an English one drawn
+ * from here left half a Russian sentence on screen.
+ */
+export type RetryReason = 'rateLimited' | 'overloaded' | 'auth' | 'error'
 
 /**
  * The server refused, and the CLI is waiting the refusal out to repeat the request.
@@ -434,8 +567,8 @@ export type RetryOutcome = 'recovered' | 'failed' | 'stopped'
 export interface RetryItem {
   id: string
   kind: 'retry'
-  /** The refusal in the terminal's own words: "API overloaded", "Rate limited". */
-  label: string
+  /** Why the request was refused - see RetryReason. */
+  reason: RetryReason
   attempt: number
   maxRetries: number
   /** When the next attempt goes - the countdown grows out of it. */
@@ -475,7 +608,8 @@ export interface ModelSwitchItem {
 export interface CrashItem {
   id: string
   kind: 'crash'
-  message: string
+  /** The exit code, when the process left one. The sentence around it is built when the card is drawn. */
+  exitCode?: number
 }
 
 /**
@@ -514,7 +648,13 @@ export interface LimitItem {
   id: string
   kind: 'limit'
   state: 'extra' | 'waiting'
-  /** Which window ran out, in words: "5-hour", "weekly". Empty when the CLI did not say. */
+  /**
+   * Which window ran out, as the CLI names it ("five_hour", "seven_day_opus"). Empty when it did not say.
+   *
+   * The identifier rather than the words, for the same reason as the mode on a permission card: the card
+   * is drawn long after the reducer ran, so the wording is chosen at painting time and a change of
+   * language repaints the whole feed rather than leaving old cards in the old language.
+   */
   window: string
   /** When the window resets, in milliseconds; absent when the CLI did not say. */
   resetsAt?: number

@@ -13,6 +13,7 @@ import {
 import type { ExtraUsage, UsageWindow } from '../../protocol'
 import type { ProjectFacts } from '../facts'
 import m from '../mobile.module.css'
+import { useT } from '../../i18n'
 
 interface LimitsProps {
   facts: ProjectFacts
@@ -31,6 +32,7 @@ interface LimitsProps {
  * it is the one thing on either ring that cannot be guessed from looking at it.
  */
 export const Limits = ({ facts, context, onClose }: LimitsProps) => {
+  const t = useT()
   const budget = facts.week ? weekBudgetToday(facts.week.resets) : null
   /** Which window is being paid past, when one is - it takes that window's own row below. */
   const burning = facts.extra?.active ? limitWindowRing(facts.extra.window) : null
@@ -41,8 +43,8 @@ export const Limits = ({ facts, context, onClose }: LimitsProps) => {
       <div className={m.sheet} onClick={(event) => event.stopPropagation()}>
         <div className={m.sheetGrab} />
         <div className={m.sheetHead}>
-          <span className={m.sheetTitle}>Limits and context</span>
-          <button type="button" className={m.sheetClose} aria-label="Close" onClick={onClose}>
+          <span className={m.sheetTitle}>{t.mobile.limits.title}</span>
+          <button type="button" className={m.sheetClose} aria-label={t.common.close} onClick={onClose}>
             ×
           </button>
         </div>
@@ -56,7 +58,7 @@ export const Limits = ({ facts, context, onClose }: LimitsProps) => {
             <ExtraWindow extra={facts.extra!} />
           ) : facts.session ? (
             <Window
-              name="Five-hour window"
+              name={t.mobile.limits.fiveHourWindow}
               usage={facts.session}
               color={paceColor(facts.session.percent, facts.session.resets, FIVE_HOUR_MS)}
             />
@@ -71,16 +73,13 @@ export const Limits = ({ facts, context, onClose }: LimitsProps) => {
             <>
               <div className={m.limDivider} />
               <Window
-                name="Weekly window"
+                name={t.mobile.limits.weeklyWindow}
                 usage={facts.week}
                 color={paceColor(facts.week.percent, facts.week.resets, WEEK_MS)}
                 pace={budget}
               />
               {budget === null ? null : (
-                <p className={m.limNote}>
-                  The dim arc is an even pace: {budget}% of the week is already “due” by today. While the
-                  bright arc is shorter than it, the week is on plan.
-                </p>
+                <p className={m.limNote}>{t.mobile.limits.paceNote(budget)}</p>
               )}
             </>
           ) : null}
@@ -89,9 +88,9 @@ export const Limits = ({ facts, context, onClose }: LimitsProps) => {
 
           <div className={m.limBlock}>
             <div className={m.limHead}>
-              <span className={m.limName}>This conversation’s context</span>
+              <span className={m.limName}>{t.mobile.limits.context}</span>
               <span className={m.limMeta}>
-                {compact(context.used)} of {compact(context.limit)}
+                {t.mobile.limits.ofTotal(compact(context.used), compact(context.limit))}
               </span>
               <span className={m.limValue} style={{ color: contextColor(context.percent) }}>
                 {context.percent}%
@@ -114,8 +113,8 @@ export const Limits = ({ facts, context, onClose }: LimitsProps) => {
               <div className={m.limDivider} />
               <div className={m.limRow}>
                 <span className={m.limText}>
-                  <span className={m.limName}>Spent today</span>
-                  <span className={m.limMeta}>across every project</span>
+                  <span className={m.limName}>{t.mobile.limits.spentToday}</span>
+                  <span className={m.limMeta}>{t.mobile.limits.acrossProjects}</span>
                 </span>
                 <span className={m.limValue} style={{ color: 'var(--acc-branch-light)' }}>
                   {facts.todayTokens}
@@ -127,7 +126,7 @@ export const Limits = ({ facts, context, onClose }: LimitsProps) => {
           {!facts.session && !facts.week && !facts.extra?.active ? (
             // The windows come from the agent itself and are sometimes simply not there yet - a freshly
             // started IDE has asked nobody anything. Saying so beats an empty sheet.
-            <p className={m.limEmpty}>The IDE has not reported the subscription windows yet.</p>
+            <p className={m.limEmpty}>{t.mobile.limits.noWindows}</p>
           ) : null}
         </div>
       </div>
@@ -137,15 +136,16 @@ export const Limits = ({ facts, context, onClose }: LimitsProps) => {
 
 /** The window that ran out and is now being paid for: the burning ring, and how much of the doubling has gone. */
 const ExtraWindow = ({ extra }: { extra: ExtraUsage }) => {
-  const window = limitWindowName(extra.window)
+  const t = useT()
+  const window = limitWindowName(t, extra.window)
 
   return (
     <div className={m.limRow}>
       <Ring percent={100} color="var(--acc-extra)" flame size={44} />
       <span className={m.limText}>
-        <span className={m.limName}>Extra usage</span>
+        <span className={m.limName}>{t.mobile.limits.extraUsage}</span>
         <span className={m.limMeta}>
-          {window ? `the ${window} limit is used up` : 'the limit is used up'}, billed on top of the plan
+          {t.mobile.limits.extraUsed(window)}
         </span>
       </span>
       {extra.percent === undefined ? null : (
@@ -165,6 +165,7 @@ interface WindowProps {
 }
 
 const Window = ({ name, usage, color, pace = null }: WindowProps) => {
+  const t = useT()
   const left = timeLeft(usage.resets)
 
   return (
@@ -176,7 +177,9 @@ const Window = ({ name, usage, color, pace = null }: WindowProps) => {
           "When it is known" specifically: a window that has just reset has no next reset time until
           the very first turn of the day, and "resets soon" would then mean the opposite of the truth.
         */}
-        <span className={m.limMeta}>{left === null ? 'reset time unknown yet' : `resets in ${left}`}</span>
+        <span className={m.limMeta}>
+          {left === null ? t.mobile.limits.resetUnknown : t.mobile.limits.resetsIn(left)}
+        </span>
       </span>
       <span className={m.limValue} style={{ color }}>
         {usage.percent}%

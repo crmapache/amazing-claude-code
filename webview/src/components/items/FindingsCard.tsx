@@ -3,6 +3,8 @@ import type { Finding, FindingsItem } from '../../feed/types'
 import s from '../feed.module.css'
 import { Caret } from './Caret'
 import { Inline } from './Markdown'
+import { useT } from '../../i18n'
+import type { Dict } from '../../i18n/en'
 
 interface FindingsCardProps {
   item: FindingsItem
@@ -24,10 +26,13 @@ interface FindingsCardProps {
  * review that found ten would otherwise bury the rest of the conversation under itself. The order is the
  * review's own - it ranks them most severe first, and re-sorting here would throw that away.
  */
-export const FindingsCard = ({ item, isOpen, onToggle, onOpenLink }: FindingsCardProps) => (
+export const FindingsCard = ({ item, isOpen, onToggle, onOpenLink }: FindingsCardProps) => {
+  const t = useT()
+
+  return (
   <div className={s.findings}>
     <div className={s.findingsHead}>
-      <span className={s.findingsLabel}>REVIEW</span>
+      <span className={s.findingsLabel}>{t.feed.findings.label}</span>
       <span className={s.findingsCount}>{findingsSummary(item.findings)}</span>
       <div className={s.spacer} />
     </div>
@@ -44,14 +49,15 @@ export const FindingsCard = ({ item, isOpen, onToggle, onOpenLink }: FindingsCar
       ))}
     </div>
   </div>
-)
+  )
+}
 
 /** How a finding ended, when the review was re-sent after the fixes - the one thing worth a colour here. */
-const OUTCOMES: Record<NonNullable<Finding['outcome']>, { label: string; className: string }> = {
-  fixed: { label: 'fixed', className: s.findingFixed ?? '' },
-  skipped: { label: 'skipped', className: s.findingSkipped ?? '' },
-  no_change_needed: { label: 'no change needed', className: s.findingSkipped ?? '' },
-}
+const outcomes = (t: Dict): Record<NonNullable<Finding['outcome']>, { label: string; className: string }> => ({
+  fixed: { label: t.feed.findings.fixed, className: s.findingFixed ?? '' },
+  skipped: { label: t.feed.findings.skipped, className: s.findingSkipped ?? '' },
+  no_change_needed: { label: t.feed.findings.noChange, className: s.findingSkipped ?? '' },
+})
 
 const FindingRow = ({
   finding,
@@ -64,7 +70,8 @@ const FindingRow = ({
   onToggle: () => void
   onOpenLink: (url: string) => void
 }) => {
-  const outcome = finding.outcome ? OUTCOMES[finding.outcome] : undefined
+  const t = useT()
+  const outcome = finding.outcome ? outcomes(t)[finding.outcome] : undefined
   /**
    * The head carries the short label when the review sent one, and the summary itself otherwise. Both are
    * the same sentence at different lengths, so showing them one under the other would read as a repeat -
@@ -81,7 +88,7 @@ const FindingRow = ({
         {/* PLAUSIBLE is the one verdict worth saying out loud: it means the check could not confirm the
             finding, and reading it as settled fact is exactly the mistake to avoid. A confirmed one adds
             nothing to a row that is already a confirmed finding. */}
-        {finding.verdict === 'PLAUSIBLE' ? <span className={s.findingMaybe}>unconfirmed</span> : null}
+        {finding.verdict === 'PLAUSIBLE' ? <span className={s.findingMaybe}>{t.feed.findings.unconfirmed}</span> : null}
         {outcome ? <span className={`${s.findingTag} ${outcome.className}`}>{outcome.label}</span> : null}
         <div className={s.spacer} />
       </button>

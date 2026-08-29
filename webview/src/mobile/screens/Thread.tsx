@@ -12,7 +12,10 @@ import type { TaskItem } from '../../feed/types'
 import type { ProjectFacts } from '../facts'
 import { Back } from './Back'
 import { Composer, type OutgoingPrompt } from './Composer'
+import type { PhoneDictation } from '../useDictation'
 import m from '../mobile.module.css'
+import { useT } from '../../i18n'
+import type { Dict } from '../../i18n/en'
 
 /** Mobile has no "clear finished agents" action, so every task the session ever ran stays on the strip. */
 const NO_HIDDEN_TASKS: ReadonlySet<string> = new Set()
@@ -24,11 +27,11 @@ const NO_HIDDEN_TASKS: ReadonlySet<string> = new Set()
  * permission is one tap, a plan is a page to read - and someone glancing at a phone decides whether to
  * stop what they are doing by this line alone.
  */
-const WAITING_FOR = {
-  perm: 'Permission needed - answer it',
-  ask: 'A question is waiting - answer it',
-  plan: 'A plan is waiting - decide',
-} as const
+const waitingFor = (t: Dict): Record<'perm' | 'ask' | 'plan', string> => ({
+  perm: t.mobile.thread.waitingPerm,
+  ask: t.mobile.thread.waitingAsk,
+  plan: t.mobile.thread.waitingPlan,
+})
 
 interface ThreadProps {
   feed: PanelState
@@ -41,6 +44,8 @@ interface ThreadProps {
   connected: boolean
   /** Nothing about this conversation has arrived yet - see MobileFeed.loaded. */
   loading: boolean
+  /** Dictation, held by the application because the token for it arrives there - see useDictation. */
+  voice: PhoneDictation
   onSend: (prompt: OutgoingPrompt) => void
   /** Said when the agent comes free. It waits in the IDE, not here - see SessionQueue.kt. */
   onQueue: (prompt: OutgoingPrompt) => void
@@ -77,6 +82,7 @@ export const Thread = ({
   facts,
   connected,
   loading,
+  voice,
   onSend,
   onQueue,
   onUnqueue,
@@ -87,6 +93,7 @@ export const Thread = ({
   onDecide,
   onBack,
 }: ThreadProps) => {
+  const t = useT()
   /**
    * The IDE's clock rather than this device's - the counter beside "Claude is thinking" counts from a
    * moment that machine stamped (see mobile/clock.ts and hooks/useNow).
@@ -168,7 +175,7 @@ export const Thread = ({
 
       {waiting && (
         <button type="button" className={m.waitingBanner} onClick={onDecide}>
-          {WAITING_FOR[waiting.kind]}
+          {waitingFor(t)[waiting.kind]}
         </button>
       )}
 
@@ -187,7 +194,7 @@ export const Thread = ({
         {resolvedStream !== 'main' ? (
           <AgentStreamView item={activeTask} />
         ) : loading && feed.items.length === 0 ? (
-          <p className={m.empty}>Loading the conversation…</p>
+          <p className={m.empty}>{t.mobile.thread.loading}</p>
         ) : (
           <Feed
             items={feed.items}
@@ -195,7 +202,7 @@ export const Thread = ({
             streamingId={feed.streamingId}
             streamingThinking={feed.streamingThinking}
             streaming={feed.status === 'running'}
-            streamStatus={streamStatus(feed, cards, now())}
+            streamStatus={streamStatus(t, feed, cards, now())}
             statusStalled={feed.retry !== undefined}
             cards={cards}
             // Answering a plan happens on the decision screen, where the buttons are the size of a thumb.
@@ -223,7 +230,7 @@ export const Thread = ({
                 <button
                   type="button"
                   className={m.queueRemove}
-                  aria-label="Remove from the queue"
+                  aria-label={t.mobile.removeFromQueue}
                   onClick={() => onUnqueue(item.id)}
                 >
                   ×
@@ -242,6 +249,7 @@ export const Thread = ({
           onSend={onSend}
           onQueue={onQueue}
           onStop={onStop}
+          voice={voice}
         />
       </footer>
     </>

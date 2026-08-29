@@ -5,6 +5,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessions.Companion.MAIN_SESSION
 import io.github.crmapache.amazingclaudecode.remote.RemoteAgent
 import io.github.crmapache.amazingclaudecode.remote.RemoteCommands
+import io.github.crmapache.amazingclaudecode.voice.VoiceGrant
 import io.github.crmapache.amazingclaudecode.remote.RemoteLimits
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
@@ -272,6 +273,18 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
             "checkAuth" -> hub.auth.check()
 
             "history" -> hub.catalog.sendHistory(clientId)
+
+            /*
+             * A phone asking to dictate (see VoiceGrant).
+             *
+             * Handled here rather than by the panel's window, unlike every other voice message: this is
+             * the one of them a remote client may send, and the panel's own door is deliberately shut to
+             * remote clients altogether (see ClaudePanel). What travels back is a token that expires in a
+             * minute, never the key.
+             */
+            "voiceToken" -> VoiceGrant.send(field("id")) { answer ->
+                hub.emitTo(clientId, answer.toString(), asker)
+            }
 
             // A page further back than what the journal's own catch-up handed over - see
             // ClaudeHistory.page. "before" absent asks for the transcript's own last page.

@@ -1,4 +1,12 @@
-import { EFFORT_SAMPLE, MODE_SAMPLE, MODEL_SAMPLE, modeLabel, modeShortLabel, modelLabel } from '../catalog'
+import {
+  EFFORT_SAMPLE,
+  effortShortLabel,
+  modeLabel,
+  modeSample,
+  modeShortLabel,
+  modelLabel,
+  modelSample,
+} from '../catalog'
 import {
   FIVE_HOUR_MS,
   limitWindowName,
@@ -11,10 +19,14 @@ import {
   WEEK_MS,
   weekBudgetToday,
 } from '../feed/usage'
-import type { ExtraUsage, UsageWindow } from '../protocol'
+import type { ReactNode } from 'react'
+import type { ExtraUsage, ModelInfo, UsageWindow } from '../protocol'
+import { Chevron } from './Chevron'
 import { FeedbackButton } from './Feedback'
 import s from './shell.module.css'
 import { ThanksButton } from './Thanks'
+import { useT } from '../i18n'
+import type { Dict } from '../i18n/en'
 
 export type SelectorKind = 'model' | 'effort' | 'mode'
 
@@ -61,6 +73,7 @@ interface UsageMetersProps {
  * Composer), and a second figure about the same thing would only take up room.
  */
 export const UsageMeters = ({ todayTokens, usage }: UsageMetersProps) => {
+  const t = useT()
   /**
    * Which ring burns, when one does. The window that ran out is the one being paid past, and a five-hour
    * one and a weekly one are two different rings: painting the five-hour ring for an exhausted week would
@@ -75,24 +88,24 @@ export const UsageMeters = ({ todayTokens, usage }: UsageMetersProps) => {
           What matters now is that the work is being paid for - so the ring is closed, painted its own
           colour, left without a number and set alight, and the tooltip says the rest. */}
       {burning === 'session' ? (
-        <Meter percent={100} color="var(--acc-extra)" value="" flame tooltip={extraTooltip(usage.extra!)} />
+        <Meter percent={100} color="var(--acc-extra)" value="" flame tooltip={extraTooltip(t, usage.extra!)} />
       ) : usage.session ? (
         <Meter
           percent={usage.session.percent}
           color={paceColor(usage.session.percent, usage.session.resets, FIVE_HOUR_MS)}
-          tooltip={windowTooltip('5-hour limit', usage.session)}
+          tooltip={windowTooltip(t, t.status.sessionLimit, usage.session)}
         />
       ) : null}
 
       {burning === 'week' ? (
-        <Meter percent={100} color="var(--acc-extra)" value="" flame tooltip={extraTooltip(usage.extra!)} />
+        <Meter percent={100} color="var(--acc-extra)" value="" flame tooltip={extraTooltip(t, usage.extra!)} />
       ) : usage.week ? (
         <WeekMeter usage={usage.week} />
       ) : null}
 
       <span
         className={s.meterTokens}
-        data-tooltip="Tokens spent today, across all projects"
+        data-tooltip={t.status.todayTokens}
         data-tooltip-at="top left"
         data-tooltip-kind="meter"
       >
@@ -314,34 +327,64 @@ interface StatusBarProps {
   switchedFrom?: string
   effort: string
   mode: string
+  /** The CLI's own list of models - the MODEL button measures its width by it, see modelSample. */
+  models: ModelInfo[] | null
+  /** The usage rings and the day's tokens - see [UsageMeters]. */
+  meters: ReactNode
   onOpen: (kind: SelectorKind, anchor: Anchor) => void
   onOpenThanks: (anchor: Anchor) => void
   onOpenFeedback: () => void
 }
 
 /**
- * The bottom line: what we work with (the model, the effort, the mode), and at the row's far end the heart
- * (see Thanks.tsx). The branch and its PR have moved from here into the header - one place for every
- * layout rather than a copy per layout (see Header.tsx). The usage lives in the input field itself, see
- * [UsageMeters].
+ * The bottom line: what we work with (the model, the effort, the mode) on the left, and at the row's far
+ * end the usage with the bubble and the heart beside it (see Thanks.tsx). The branch and its PR have moved
+ * from here into the header - one place for every layout rather than a copy per layout (see Header.tsx).
  *
- * The heart is pinned to the opposite edge by a spacer rather than by the row's alignment: the selectors
- * keep the width they need, the heart keeps the far end, and the gap between them is whatever is left -
- * so nothing moves when the model or the mode changes.
+ * The usage used to stand in the input field's own bottom row, on the left of it, where the buttons now
+ * are. It reads better here: that row is what one does to a message, while the figures are what the
+ * account has left - a fact about the day rather than about this draft - and they belong with the other
+ * two things in this line that are not about the draft either.
+ *
+ * The far end is pinned by its own margin rather than by the row's alignment (see .statusEnd): the
+ * selectors keep the width they need, the far end keeps the far edge, and the gap between them is whatever
+ * is left - so nothing moves when the model or the mode changes. The usage stands inside that end, in front
+ * of the pair: the figures arrive late and change width, and there they grow into the gap instead of
+ * pushing the buttons.
  */
-export const StatusBar = ({ model, switchedFrom, effort, mode, onOpen, onOpenThanks, onOpenFeedback }: StatusBarProps) => (
+export const StatusBar = ({
+  model,
+  switchedFrom,
+  effort,
+  mode,
+  models,
+  meters,
+  onOpen,
+  onOpenThanks,
+  onOpenFeedback,
+}: StatusBarProps) => (
   <div className={s.status}>
     <div className={s.selectors}>
-      <Selectors model={model} switchedFrom={switchedFrom} effort={effort} mode={mode} onOpen={onOpen} />
+      <Selectors
+        model={model}
+        switchedFrom={switchedFrom}
+        effort={effort}
+        mode={mode}
+        models={models}
+        onOpen={onOpen}
+      />
     </div>
 
-    <div className={s.spacer} />
+    <div className={s.statusEnd}>
+      {meters}
 
-    {/* The two of them as one group: this row spaces its parts widely (the selectors on one side, the
-        buttons on the other), while these two belong together and sit at the selectors' own spacing. */}
-    <div className={s.endPair}>
-      <FeedbackButton onOpen={onOpenFeedback} />
-      <ThanksButton onOpen={onOpenThanks} />
+      {/* The two of them as one group: this row spaces its parts widely (the selectors on one side, the
+          usage and the buttons on the other), while these two belong together and sit at the selectors'
+          own spacing. */}
+      <div className={s.endPair}>
+        <FeedbackButton onOpen={onOpenFeedback} />
+        <ThanksButton onOpen={onOpenThanks} />
+      </div>
     </div>
   </div>
 )
@@ -358,6 +401,8 @@ interface BranchChipProps {
  * look and behaviour have to stay the same.
  */
 export const BranchChip = ({ gitBranch, pullRequest, onOpenPullRequest }: BranchChipProps) => {
+  const t = useT()
+
   if (!gitBranch) return null
 
   return (
@@ -368,13 +413,13 @@ export const BranchChip = ({ gitBranch, pullRequest, onOpenPullRequest }: Branch
         type="button"
         className={s.statusPrLink}
         onClick={onOpenPullRequest}
-        data-tooltip="Open pull request in browser"
+        data-tooltip={t.status.openPr}
         data-tooltip-at="top left"
       >
           PR #{pullRequest}
         </button>
       ) : (
-        <span className={s.statusPr}>no PR</span>
+        <span className={s.statusPr}>{t.status.noPr}</span>
       )}
     </span>
   )
@@ -387,6 +432,7 @@ export const BranchChip = ({ gitBranch, pullRequest, onOpenPullRequest }: Branch
  * number after a slash, but two percentages in a row had to be compared in one's head every time.
  */
 const WeekMeter = ({ usage }: { usage: UsageWindow }) => {
+  const t = useT()
   const budget = weekBudgetToday(usage.resets)
 
   return (
@@ -396,8 +442,8 @@ const WeekMeter = ({ usage }: { usage: UsageWindow }) => {
       pace={budget}
       tooltip={
         budget === null
-          ? windowTooltip('Weekly limit', usage)
-          : `${windowTooltip('Weekly limit', usage)}\nDim ring: ${budget}% even-pace budget for today`
+          ? windowTooltip(t, t.status.weekLimit, usage)
+          : `${windowTooltip(t, t.status.weekLimit, usage)}\n${t.status.paceBudget(budget)}`
       }
     />
   )
@@ -438,7 +484,7 @@ const Selector = ({ label, value, sample, hint, className = '', onOpen }: Select
       </span>
       <span className={s.selectorText}>{value}</span>
     </span>
-    <Chevron />
+    <Chevron className={s.selectorCaret} />
   </button>
 )
 
@@ -453,6 +499,8 @@ interface SelectorsProps {
   switchedFrom?: string
   effort: string
   mode: string
+  /** The CLI's own list of models: the MODEL button measures its width by it - see modelSample. */
+  models?: ModelInfo[] | null
   /** The row shares the width evenly rather than standing as fixed buttons - see .selectorAuto. */
   auto?: boolean
   onOpen: (kind: SelectorKind, anchor: Anchor) => void
@@ -463,36 +511,45 @@ interface SelectorsProps {
  * tooltips and width samples are one and the same, and they must not drift apart between the status line,
  * compact and the side rail.
  */
-export const Selectors = ({ model, switchedFrom, effort, mode, auto = false, onOpen }: SelectorsProps) => {
+export const Selectors = ({
+  model,
+  switchedFrom,
+  effort,
+  mode,
+  models = null,
+  auto = false,
+  onOpen,
+}: SelectorsProps) => {
+  const t = useT()
   const grow = auto ? s.selectorAuto : ''
 
   return (
     <>
       <Selector
-        label="MODEL"
+        label={t.selectors.model}
         value={modelLabel(model)}
-        sample={MODEL_SAMPLE}
+        sample={modelSample(models)}
         hint={
           switchedFrom
-            ? `Model: ${modelLabel(model)} - Claude Code switched to it on its own, off ${modelLabel(switchedFrom)}`
-            : `Model: ${modelLabel(model)}`
+            ? t.status.modelHintSwitched(modelLabel(model), modelLabel(switchedFrom))
+            : t.status.modelHint(modelLabel(model))
         }
         className={`${grow} ${switchedFrom ? s.selectorSwitched ?? '' : ''}`}
         onOpen={(anchor) => onOpen('model', anchor)}
       />
       <Selector
-        label="EFFORT"
-        value={effort}
+        label={t.selectors.effort}
+        value={effortShortLabel(effort)}
         sample={EFFORT_SAMPLE}
-        hint={`Reasoning effort: ${effort}`}
+        hint={t.status.effortHint(effort)}
         className={grow}
         onOpen={(anchor) => onOpen('effort', anchor)}
       />
       <Selector
-        label="MODE"
-        value={modeShortLabel(mode)}
-        sample={MODE_SAMPLE}
-        hint={`Permission mode: ${modeLabel(mode)}`}
+        label={t.selectors.mode}
+        value={modeShortLabel(t, mode)}
+        sample={modeSample(t)}
+        hint={t.status.modeHint(modeLabel(t, mode))}
         className={`${grow} ${modeClass(mode)}`}
         onOpen={(anchor) => onOpen('mode', anchor)}
       />
@@ -500,23 +557,17 @@ export const Selectors = ({ model, switchedFrom, effort, mode, auto = false, onO
   )
 }
 
-/** A tidy chevron instead of ▼: the typographic triangle has a weight and a look of its own. */
-const Chevron = () => (
-  <svg className={s.selectorCaret} viewBox="0 0 10 6" aria-hidden="true">
-    <path d="M1 1.4 5 5 9 1.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-)
-
 /**
  * A window's tooltip: the share and, when it is known, how long until the reset. "When" specifically: for
  * a window that has just reset, nobody knows the next reset time yet - it will begin with the very first
  * turn - and then the line about the reset is not written at all. It used to say "Resets in soon" there,
  * which in that case meant exactly the opposite: not "any moment" but "unknown".
  */
-const windowTooltip = (title: string, usage: UsageWindow): string => {
+const windowTooltip = (t: Dict, title: string, usage: UsageWindow): string => {
   const left = timeLeft(usage.resets)
+  const used = t.status.windowUsed(title, usage.percent)
 
-  return left === null ? `${title}: ${usage.percent}% used` : `${title}: ${usage.percent}% used\nResets in ${left}`
+  return left === null ? used : `${used}\n${t.status.resetsIn(left)}`
 }
 
 /**
@@ -524,12 +575,12 @@ const windowTooltip = (title: string, usage: UsageWindow): string => {
  * gone when the account says. Without that share it still says the main thing - the plan's limit is
  * behind us and the work is being billed.
  */
-const extraTooltip = (extra: ExtraUsage): string => {
-  const window = limitWindowName(extra.window)
-  const named = window ? `the ${window} limit` : 'the limit'
-  const spent = extra.percent === undefined ? '' : `\n${extra.percent}% of the monthly extra usage spent`
+const extraTooltip = (t: Dict, extra: ExtraUsage): string => {
+  const window = limitWindowName(t, extra.window)
+  const named = window ? t.status.limitNamed(window) : t.status.limitUnnamed
+  const spent = extra.percent === undefined ? '' : `\n${t.status.extraSpent(extra.percent)}`
 
-  return `Extra usage: ${named} is used up, the work is billed on top of the plan${spent}`
+  return `${t.status.extraUsage(named)}${spent}`
 }
 
 /** An accent of its own for every permission mode - see .selectorPlan and its neighbours. */

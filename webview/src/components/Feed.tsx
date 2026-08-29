@@ -23,6 +23,7 @@ import { TextCard } from './items/TextCard'
 import { ToolGroupCard } from './items/ToolGroupCard'
 import { UserCard } from './items/UserCard'
 import { ScrollThumb } from './ScrollThumb'
+import { useT } from '../i18n'
 
 /** A dozen and a half pixels of slack: scrolling lands exactly at the bottom only rarely. */
 const BOTTOM_THRESHOLD_PX = 16
@@ -89,6 +90,7 @@ export const Feed = ({
   scrollRef,
 }: FeedProps) => {
   const view = useRef<HTMLElement | null>(null)
+  const t = useT()
 
   /**
    * The task list, the agent's question and a permission request are not drawn in the feed - the pinned
@@ -303,8 +305,8 @@ export const Feed = ({
       >
         {isEmpty ? (
           <div className={s.empty}>
-            <p className={s.emptyTitle}>Ask Claude about this project</p>
-            <p className={s.emptyHint}>@ for files · / for commands</p>
+            <p className={s.emptyTitle}>{t.feed.empty.title}</p>
+            <p className={s.emptyHint}>{t.feed.empty.hint}</p>
           </div>
         ) : null}
 
@@ -347,7 +349,7 @@ export const Feed = ({
           type="button"
           className={s.jumpToBottom}
           onClick={jumpToBottom}
-          data-tooltip="Jump to latest"
+          data-tooltip={t.feed.jumpToLatest}
           data-tooltip-at="top right"
         >
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">

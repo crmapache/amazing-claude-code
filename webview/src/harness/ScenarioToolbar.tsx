@@ -1,3 +1,4 @@
+import { LOCALES } from '../i18n'
 import type { PlaybackMode, Scenario } from './types'
 import s from './harness.module.css'
 
@@ -56,6 +57,29 @@ export const ScenarioToolbar = ({
             Steps
           </button>
         </div>
+      ) : null}
+
+      {/* Which language every scenario is played in. It reloads rather than switching in place: the
+          language reaches the panel through the shell's first message (see harness/events.ts), and that
+          message is only sent once, at the start of a scenario. */}
+      {!collapsed ? (
+        <select
+          className={s.languageSelect}
+          value={new URLSearchParams(window.location.search).get('lang') ?? ''}
+          onChange={(event) => {
+            const search = new URLSearchParams(window.location.search)
+            if (event.target.value) search.set('lang', event.target.value)
+            else search.delete('lang')
+            window.location.search = search.toString()
+          }}
+        >
+          <option value="">Language: default</option>
+          {LOCALES.map((locale) => (
+            <option key={locale.id} value={locale.id}>
+              {locale.native}
+            </option>
+          ))}
+        </select>
       ) : null}
 
       {!collapsed

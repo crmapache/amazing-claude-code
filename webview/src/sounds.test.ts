@@ -17,21 +17,21 @@ const meta = (id: string, stats: string[] = ['Worked 3s']): FeedItem => ({ id, k
 
 const error = (id: string, message: string): FeedItem => ({ id, kind: 'error', message })
 
-const plan = (id: string): FeedItem => ({ id, kind: 'plan', meta: '', duration: '', paragraphs: [] })
+const plan = (id: string): FeedItem => ({ id, kind: 'plan', steps: 0, duration: '', paragraphs: [] })
 
-const ask = (id: string): FeedItem => ({ id, kind: 'ask', meta: '', questions: [] })
+const ask = (id: string): FeedItem => ({ id, kind: 'ask', questions: [] })
 
 const perm = (id: string): FeedItem => ({
   id,
   kind: 'perm',
   target: 'rm -rf /',
-  meta: '',
+  mode: 'manual',
   command: 'rm -rf /',
   decision: null,
   rememberable: true,
 })
 
-const crash = (id: string): FeedItem => ({ id, kind: 'crash', message: 'exit 1' })
+const crash = (id: string): FeedItem => ({ id, kind: 'crash', exitCode: 1 })
 
 const text = (id: string): FeedItem => ({ id, kind: 'text', paragraphs: [], source: '' })
 

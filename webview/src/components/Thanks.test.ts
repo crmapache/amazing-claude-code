@@ -1,12 +1,13 @@
+import { en } from '../i18n/en'
 import { describe, expect, it } from 'vitest'
-import { SHARE, SHARE_TEXT, THANKS_LINKS, thanksMenu, thanksUrl } from './Thanks'
+import { SHARE, shareText, THANKS_LINKS, thanksMenu, thanksUrl } from './Thanks'
 
-const MENU = thanksMenu(false)
+const MENU = thanksMenu(en, false)
 
 describe('the thanks menu', () => {
   it('has something behind every entry - an entry that does nothing is a dead button', () => {
     for (const option of MENU.options) {
-      expect(thanksUrl(option.id) ?? (option.id === SHARE ? SHARE_TEXT : undefined)).toBeTruthy()
+      expect(thanksUrl(option.id) ?? (option.id === SHARE ? shareText(en) : undefined)).toBeTruthy()
     }
   })
 
@@ -22,14 +23,14 @@ describe('the thanks menu', () => {
   })
 
   it('shares the plugin page rather than a corner of it, and says what it is', () => {
-    expect(SHARE_TEXT).toContain('https://plugins.jetbrains.com/plugin/33255-amazing-claude-code')
-    expect(SHARE_TEXT).not.toContain('/reviews')
-    expect(SHARE_TEXT.length).toBeLessThan(200)
+    expect(shareText(en)).toContain('https://plugins.jetbrains.com/plugin/33255-amazing-claude-code')
+    expect(shareText(en)).not.toContain('/reviews')
+    expect(shareText(en).length).toBeLessThan(200)
   })
 
   it('answers a press on the entry that copies, because nothing else will', () => {
-    const before = thanksMenu(false).options.find((option) => option.id === SHARE)
-    const after = thanksMenu(true).options.find((option) => option.id === SHARE)
+    const before = thanksMenu(en, false).options.find((option) => option.id === SHARE)
+    const after = thanksMenu(en, true).options.find((option) => option.id === SHARE)
 
     expect(after?.sub).not.toBe(before?.sub)
     expect(after?.sub).toMatch(/copied/i)

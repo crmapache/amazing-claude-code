@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Selection } from '../hooks/useSelection'
+import { useT } from '../i18n'
 import { placeSelectionMenu, type Placement } from '../selectionPlacement'
 import s from './shell.module.css'
 
@@ -17,6 +18,7 @@ interface SelectionMenuProps {
  * is not needed here.
  */
 export const SelectionMenu = ({ selection, onFork, onQuote }: SelectionMenuProps) => {
+  const t = useT()
   const menu = useRef<HTMLDivElement | null>(null)
   const [spot, setSpot] = useState<Placement | null>(null)
 
@@ -58,7 +60,7 @@ export const SelectionMenu = ({ selection, onFork, onQuote }: SelectionMenuProps
       style={spot ? { left: spot.x, top: spot.y } : { left: 0, top: 0, visibility: 'hidden' }}
     >
       <button type="button" className={s.selectionButton} onMouseDown={guard(onQuote)}>
-        Quote
+        {t.chrome.selection.quote}
       </button>
       <div className={s.selectionDivider} />
       <button
@@ -66,7 +68,7 @@ export const SelectionMenu = ({ selection, onFork, onQuote }: SelectionMenuProps
         className={`${s.selectionButton} ${s.selectionBranch}`}
         onMouseDown={guard(onFork)}
       >
-        Fork from here
+        {t.chrome.selection.fork}
       </button>
     </div>,
     document.body,

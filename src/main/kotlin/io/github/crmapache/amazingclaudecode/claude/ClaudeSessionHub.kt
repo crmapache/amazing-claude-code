@@ -365,6 +365,11 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             // nothing but what lies on disk (see ProjectCatalog.sendCommands).
             "the commands" to { catalog.sendCommands() },
             "the remote state" to { broadcastRemoteState() },
+            // Nobody else says it. `init` carries the language too, but it never leaves this machine
+            // (see RemoteFeed), so without this a phone was drawn in English for ever - including on the
+            // Chinese IDE the whole setting exists for, where nothing is ever chosen by hand and the
+            // only other caller (the language screen) is therefore never reached.
+            "the language" to { catalog.sendLocale() },
         )) {
             runCatching(collect).onFailure { thisLogger().warn("Could not collect $what", it) }
         }
@@ -546,8 +551,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      * An answer to one client's question - the clipboard, a command's output, the history list. It is
      * of no interest to anyone else and would be noise in the journal.
      */
-    fun emitTo(clientId: String, json: String) {
-        clients[clientId]?.answer(listOf(json))
+    fun emitTo(clientId: String, json: String, asker: String = clientId) {
+        val client = clients[clientId] ?: return
+
+        if (asker == clientId) client.answer(listOf(json)) else client.answerOne(asker, listOf(json))
     }
 
     private fun deliver(json: String) {
@@ -1248,6 +1255,9 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
          * arriving before the project it belongs to is a screen drawn twice.
          */
         private val PROJECT_ORDER = listOf(
+            // First of all of them: everything after this is drawn in whatever language it names, and a
+            // client that joins without it draws the lot in English and then redraws it.
+            "locale",
             "init",
             "auth",
             "modeAvailability",

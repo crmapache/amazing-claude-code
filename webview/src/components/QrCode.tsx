@@ -1,5 +1,6 @@
 import qrcode from 'qrcode-generator'
 import { useMemo } from 'react'
+import { useT } from '../i18n'
 
 interface QrCodeProps {
   value: string
@@ -20,6 +21,7 @@ interface QrCodeProps {
  * encoder by hand instead would be three hundred lines of arithmetic to avoid that.
  */
 export const QrCode = ({ value, scale = 4 }: QrCodeProps) => {
+  const t = useT()
   const { path, size } = useMemo(() => {
     // Zero picks the smallest version the content fits into; 'M' recovers from a fair amount of glare
     // and camera noise without making the code much denser.
@@ -45,7 +47,7 @@ export const QrCode = ({ value, scale = 4 }: QrCodeProps) => {
       height={size * scale}
       viewBox={`0 0 ${size} ${size}`}
       role="img"
-      aria-label="Pairing code"
+      aria-label={t.remote.codeLabel}
       shapeRendering="crispEdges"
     >
       {/* The quiet zone matters as much as the squares: a code drawn flush against a dark panel is one

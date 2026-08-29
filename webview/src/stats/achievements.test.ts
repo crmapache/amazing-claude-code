@@ -84,7 +84,7 @@ describe('dressing', () => {
   })
 
   it('takes the step count from the catalogue when an older IDE does not send one', () => {
-    expect(dress(state('thanks', 1, 1, 2))!.steps).toBe(2)
+    expect(dress(state('thanks', 1, 1, 2))!.steps).toBe(3)
     expect(dress(state('reader', 2, 300, 1000))!.steps).toBe(5)
   })
 
@@ -111,9 +111,9 @@ describe('the summary', () => {
     expect(summary.completed).toBe(1)
     expect(summary.total).toBe(46)
     // As many steps as each has: reader's two, forked's one, nothing for shell - against 41 ladders of
-    // five, four milestones of one and the two lines of thanks.
+    // five, four milestones of one and the three lines of thanks.
     expect(summary.tiers).toBe(3)
-    expect(summary.tiersTotal).toBe(211)
+    expect(summary.tiersTotal).toBe(212)
     expect(summary.spread[0]).toBe(44)
     expect(summary.spread[2]).toBe(1)
     expect(summary.spread[5]).toBe(1)

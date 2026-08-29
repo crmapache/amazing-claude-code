@@ -3,6 +3,8 @@ import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
 import { STATISTICS_GROUP } from '../tabs'
 import { BranchChip } from './StatusBar'
 import s from './shell.module.css'
+import { useT } from '../i18n'
+import type { Dict } from '../i18n/en'
 
 /**
  * What is happening in a tab: nothing, work under way, work finished, or someone being waited for. The
@@ -166,13 +168,14 @@ const DOT_CLASS: Record<SessionState, string> = {
   crashed: s.dotCrashed ?? '',
 }
 
-const DOT_TITLE: Record<SessionState, string> = {
-  idle: 'Idle',
-  running: 'Claude is working',
-  done: 'Turn finished',
-  attention: 'Waiting for you',
-  crashed: 'Session stopped unexpectedly',
-}
+/** What the dot on a tab says when the pointer rests on it - see SessionState. */
+const dotTitle = (t: Dict): Record<SessionState, string> => ({
+  idle: t.header.idle,
+  running: t.header.running,
+  done: t.header.done,
+  attention: t.header.attention,
+  crashed: t.header.crashed,
+})
 
 /**
  * Three lines as a drawing rather than the "☰" character: the typographic version has a seat of its own
@@ -203,6 +206,7 @@ export const Header = ({
   onPickStatistics,
   onCloseStatistics,
 }: HeaderProps) => {
+  const t = useT()
   const compact = layout === 'compact' || isSideComposerLayout(layout)
   const header = useRef<HTMLElement>(null)
   const tabs = useRef<HTMLDivElement>(null)
@@ -569,7 +573,7 @@ export const Header = ({
         }}
       >
         <span className={s.tabGroupBar} style={{ background: color }} />
-        <span className={`${s.dot} ${DOT_CLASS[session.state]}`} data-tooltip={DOT_TITLE[session.state]} />
+        <span className={`${s.dot} ${DOT_CLASS[session.state]}`} data-tooltip={dotTitle(t)[session.state]} />
         {session.depth > 0 ? (
           <span className={s.tabFork} style={{ color }}>
             ⑂
@@ -621,12 +625,12 @@ export const Header = ({
       }}
     >
       <span className={s.tabGroupBar} style={{ background: STATISTICS_COLOR }} />
-      <span className={s.dot} data-tooltip="Statistics" />
-      <span className={s.tabTitle}>Statistics</span>
+      <span className={s.dot} data-tooltip={t.header.statistics} />
+      <span className={s.tabTitle}>{t.header.statistics}</span>
       <button
         type="button"
         className={s.tabClose}
-        aria-label="Close statistics"
+        aria-label={t.header.closeStatistics}
         onClick={(event) => {
           event.stopPropagation()
           onCloseStatistics?.()
@@ -642,7 +646,7 @@ export const Header = ({
       {/* A strip of tabs, and said to be one: without it a screen reader announces a row of nameless
           boxes, and nothing in here could be reached by keyboard at all - neither a conversation nor the
           statistics beside them. */}
-      <div className={s.tabs} ref={tabs} role="tablist" aria-label="Conversations">
+      <div className={s.tabs} ref={tabs} role="tablist" aria-label={t.header.conversations}>
         {groups.map((group, index) => (
           <Fragment key={group.groupId}>
             {index === statsAt ? statisticsTab : null}
@@ -653,7 +657,7 @@ export const Header = ({
         ))}
         {statsAt >= groups.length ? statisticsTab : null}
 
-        <button type="button" className={s.tabAdd} data-tooltip="New session" onClick={onNewSession}>
+        <button type="button" className={s.tabAdd} data-tooltip={t.header.newSession} onClick={onNewSession}>
           +
         </button>
       </div>
@@ -664,7 +668,7 @@ export const Header = ({
         {watchers > 0 && (
           <span
             className={s.watchers}
-            data-tooltip={`${watchers} other ${watchers === 1 ? 'client is' : 'clients are'} watching this project`}
+            data-tooltip={t.header.watchers(watchers)}
           >
             ◉ {watchers}
           </span>
@@ -675,8 +679,8 @@ export const Header = ({
         <button
           type="button"
           className={s.historyButton}
-          aria-label="Menu"
-          data-tooltip="Menu"
+          aria-label={t.header.menu}
+          data-tooltip={t.header.menu}
           onClick={onOpenMenu}
         >
           <HamburgerIcon />

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import s from './shell.module.css'
+import { useT } from '../i18n'
 
 interface ConfirmProps {
   title: string
@@ -18,6 +19,7 @@ interface ConfirmProps {
  * break off.
  */
 export const Confirm = ({ title, subject, confirmLabel, onConfirm, onCancel }: ConfirmProps) => {
+  const t = useT()
   const confirmRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
@@ -44,7 +46,7 @@ export const Confirm = ({ title, subject, confirmLabel, onConfirm, onCancel }: C
         <div className={s.confirmSubject}>{subject}</div>
         <div className={s.confirmActions}>
           <button type="button" className={s.confirmCancel} onClick={onCancel}>
-            Cancel
+            {t.chrome.confirm.cancel}
           </button>
           <button type="button" className={s.confirmAccept} ref={confirmRef} onClick={onConfirm}>
             {confirmLabel}

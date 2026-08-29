@@ -181,9 +181,12 @@
   padding-top: 13px;
 }
 
+/* A hair of space between the rows: each lights up as a rounded block of its own, and flush against
+   its neighbour that block reads as a seam rather than as a row. */
 .rows {
   display: flex;
   flex-direction: column;
+  gap: 2px;
   padding: 0 6px;
 }
 
@@ -264,6 +267,19 @@
 .rowIconFeedback {
   background: var(--acc-heart-16);
   color: var(--acc-heart);
+}
+
+/* The gear stands for the whole group that moved behind it, so it takes the neutral of the interface
+   itself rather than borrowing the colour of any one setting inside. */
+.rowIconSettings {
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-dim);
+}
+
+/* The globe wears the same branch blue as the MCP row: both are about reaching somewhere else. */
+.rowIconLanguage {
+  background: var(--acc-branch-12);
+  color: var(--acc-branch);
 }
 
 .rowText {
@@ -405,11 +421,12 @@
   gap: 14px;
 }
 
-/* A list-shaped screen keeps its own padding: rows run edge to edge and are told apart by their hover,
-   not by a gap. */
+/* A list-shaped screen keeps its own padding: rows run edge to edge and are told apart by their own
+   fill - kept off each other by the same hair as the root list, so that a ticked row and the one under
+   the cursor do not merge into a single two-tone block. */
 .screenList {
   padding: 6px 6px 20px;
-  gap: 0;
+  gap: 2px;
 }
 
 .screenLabel {
@@ -423,6 +440,11 @@
   line-height: 1.45;
   color: var(--acc-fg-faint);
   text-wrap: pretty;
+}
+
+/* A note standing above a list-shaped screen: the list runs edge to edge, a paragraph must not. */
+.choiceNote {
+  padding: 6px 8px 10px;
 }
 
 .screenEmpty {
@@ -1386,5 +1408,233 @@
 }
 
 .layoutNameOn {
+  color: var(--acc-fg);
+}
+
+/* --- Voice input ----------------------------------------------------------- */
+
+/* The rose of the recording indicator itself, so the row and the button in the composer are recognisably
+   about the same thing. */
+.rowIconVoice {
+  background: var(--acc-bad-12);
+  color: var(--acc-bad-light);
+}
+
+/* What is left on the Deepgram account, and the way to ask again. One row rather than two, because the
+   figure means nothing without the button beside it: it is a cached answer, not a live one. */
+.balanceRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.balanceText {
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--acc-fg-faint);
+  overflow-wrap: anywhere;
+}
+
+/* One mode with both of its triggers - the chord and the mouse button. */
+.hotkeyBlock {
+  /* The height of everything a binding row puts side by side - the keys, the empty slot, the wait for a
+     press. Kept in one place because the row reads as broken the moment two of them differ. */
+  --acc-hotkey-h: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-card);
+}
+
+.hotkeyRow {
+  display: flex;
+  /* Wide enough that the cross which clears one slot reads as belonging to it rather than as a divider
+     before the next one. */
+  gap: 14px;
+  /* One line, always. The keyboard and the mouse are one decision made twice, and a half of it that
+     drops under the other - which is what wrapping did while a binding was being recorded - reads as the
+     row having changed rather than as a row waiting for a key. */
+  flex-wrap: nowrap;
+  margin-top: 7px;
+}
+
+.hotkeySlot {
+  /* By its keys rather than by half the row - and able to give way, see the two states below. */
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/*
+ * KEY and MOUSE beside the keys they label.
+ *
+ * Given the row's own height rather than left as a nine-pixel line of text: a short box and a tall one
+ * are centred against each other in fractions of a pixel, and the browser then rounds each of them its
+ * own way - which is how a label ends up sitting a pixel above the keys it belongs to.
+ */
+.hotkeyKind {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: var(--acc-hotkey-h);
+  /* Capitals have no descender, so a line of them centred by its own box sits a pixel above the middle of
+     the keys beside it. This is that pixel, put back by hand. */
+  padding-top: 2px;
+  font: 600 9px/1 var(--acc-mono);
+  letter-spacing: 0.08em;
+  color: var(--acc-fg-ghost);
+}
+
+/*
+ * The area a binding is set from, and it has three looks. With keys on it the keys are what somebody
+ * looks for, so the button gets out of their way and keeps only its hover; with nothing on it there is
+ * nothing to look at at all, so it has to say "press me" itself.
+ */
+.hotkeyButton {
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* One height for everything in the row - a key, an empty slot, the wait for a press - so that the KEY
+     and MOUSE labels beside them sit level whichever of the three is on screen. */
+  min-height: var(--acc-hotkey-h);
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--acc-r-md);
+  font: 11px var(--acc-font);
+  color: var(--acc-fg-body);
+  white-space: nowrap;
+  transition: background-color 80ms linear, border-color 80ms linear, color 80ms linear;
+}
+
+/*
+ * Keys on it: no frame, only the padding its hover needs to read as one patch behind them.
+ *
+ * The one thing in the row that never gives way. Everything else can lose its last few pixels to an
+ * ellipsis; a chord cut short is not a shorter hotkey, it is a different one.
+ */
+.hotkeyButtonSet {
+  flex: none;
+  padding: 0 4px;
+}
+
+.hotkeyButtonSet:hover,
+.hotkeyButtonSet[data-hover] {
+  background: var(--acc-bg-hover);
+}
+
+.hotkeyButtonSet:hover .cap,
+.hotkeyButtonSet[data-hover] .cap {
+  border-color: var(--acc-line-hover);
+  color: var(--acc-fg);
+}
+
+/*
+ * The two states that are a sentence rather than keys: nothing bound, and waiting for a press.
+ *
+ * Laid out as text rather than as a flex row so that they can end in an ellipsis. They are the halves of
+ * the row that may be squeezed - in the narrowest panel "Press a mouse button…" beside a three-key chord
+ * does not fit at any size, and the alternative to trimming it is a row that jumps a line while somebody
+ * is looking at it.
+ */
+.hotkeyButtonEmpty,
+.hotkeyButtonLive {
+  display: block;
+  height: var(--acc-hotkey-h);
+  line-height: calc(var(--acc-hotkey-h) - 2px);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Nothing bound: dashed rather than solid - an empty slot is an invitation, not a value. */
+.hotkeyButtonEmpty {
+  border: 1px dashed var(--acc-line);
+  color: var(--acc-fg-ghost);
+}
+
+.hotkeyButtonEmpty:hover,
+.hotkeyButtonEmpty[data-hover] {
+  border-color: var(--acc-line-hover);
+  color: var(--acc-fg);
+}
+
+/* Waiting for a key. The same rose as a running dictation: in both cases the panel is listening to
+   something it does not normally listen to, and that is worth one colour. */
+.hotkeyButtonLive {
+  border-color: var(--acc-bad-32);
+  background: var(--acc-bad-12);
+  color: var(--acc-bad-light);
+}
+
+/*
+ * One key of a hotkey.
+ *
+ * A key rather than a word in a box, and the thicker bottom edge is the whole of that illusion - without
+ * it the same rectangle reads as a tag. What stands inside is often a drawing rather than a character
+ * (see HotkeyCaps): ⌥ and ⌘ are not in this panel's font, and written as text they fell through to
+ * whatever the system had, at a size and a weight of their own.
+ */
+.cap {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  /*
+   * One size for every key, and the numbers are chosen so that they meet: a sign is 14 wide, the padding
+   * takes it to 26, and 26 is also the least a key may be - so ⌥ and F come out the same square while
+   * Shift is simply wider. Keys of two sizes side by side is the thing that reads as broken.
+   */
+  height: var(--acc-hotkey-h);
+  min-width: 26px;
+  /* The thicker bottom edge is taken off the top, or the letter sits high in its own key. */
+  padding: 1px 5px 0;
+  border: 1px solid var(--acc-line);
+  border-bottom-width: 2px;
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-control);
+  font: 11px/1 var(--acc-mono);
+  color: var(--acc-fg-body);
+  transition: border-color 80ms linear, color 80ms linear;
+}
+
+.capGlyph {
+  flex: none;
+  display: block;
+  /* A hair above the letters beside it: a sign has no x-height to sit on, and at the same nominal size
+     as the type it reads as the smaller of the two. */
+  width: 14px;
+  height: 14px;
+}
+
+/* Which side of the keyboard, on the key itself: "RIGHT ⌥" is one key of a keyboard, not two. */
+.capSide {
+  font: 600 8px/1 var(--acc-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--acc-fg-ghost);
+}
+
+.hotkeyClear {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--acc-r-sm);
+  color: var(--acc-fg-ghost);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.hotkeyClear:hover,
+.hotkeyClear[data-hover] {
+  background: var(--acc-neutral-12);
   color: var(--acc-fg);
 }

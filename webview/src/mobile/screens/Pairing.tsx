@@ -4,6 +4,7 @@ import { pair, relayAddress } from '../link'
 import type { PairedAgent } from '../storage'
 import { Back } from './Back'
 import m from '../mobile.module.css'
+import { useT } from '../../i18n'
 
 /** What a pairing code says, however it arrived: scanned out of the address bar, or typed in below. */
 export interface PairingOffer {
@@ -32,6 +33,7 @@ interface PairingProps {
  * compare. Neither route grants access by itself.
  */
 export const Pairing = ({ offer, onPaired, onCancel }: PairingProps) => {
+  const t = useT()
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -56,7 +58,7 @@ export const Pairing = ({ offer, onPaired, onCancel }: PairingProps) => {
         ),
       )
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Pairing did not work.')
+      setError(failure instanceof Error ? failure.message : t.mobile.pairing.failed)
     } finally {
       setBusy(false)
     }
@@ -66,7 +68,7 @@ export const Pairing = ({ offer, onPaired, onCancel }: PairingProps) => {
     const [version, agentId, secret, fingerprint] = code.trim().replace(/^.*#/, '').split('.')
 
     if (version !== '1' || !agentId || !secret || !fingerprint) {
-      setError('That does not look like a pairing code.')
+      setError(t.mobile.pairing.notACode)
       return
     }
 
@@ -92,20 +94,14 @@ export const Pairing = ({ offer, onPaired, onCancel }: PairingProps) => {
         {onCancel && (
           <Back onClick={onCancel} />
         )}
-        <span className={m.headerTitle}>Pair with an IDE</span>
+        <span className={m.headerTitle}>{t.mobile.pairing.title}</span>
       </header>
 
       <div className={m.decisionBody}>
         {offer ? (
-          <p className={m.pairingNote}>
-            Pairing with the IDE that showed this code. It is now asking someone at the machine to
-            allow it.
-          </p>
+          <p className={m.pairingNote}>{t.mobile.pairing.fromCode}</p>
         ) : (
-          <p className={m.pairingNote}>
-            In the IDE, open the panel&apos;s menu → Remote access → Pair a device. Scan the code with
-            the camera, or type it in below.
-          </p>
+          <p className={m.pairingNote}>{t.mobile.pairing.how}</p>
         )}
 
         {/* The one check the cryptography cannot make for anybody: that the phone asking is this phone
@@ -113,18 +109,13 @@ export const Pairing = ({ offer, onPaired, onCancel }: PairingProps) => {
             show the same number, so this is the device's own - the same one the IDE is displaying. */}
         {own && (
           <>
-            <p className={m.pairingNote}>
-              The IDE is showing a fingerprint. Allow it only if it reads:
-            </p>
+            <p className={m.pairingNote}>{t.mobile.pairing.fingerprintAsk}</p>
             <p className={m.pairingFingerprint}>{own}</p>
           </>
         )}
         {!offer && (
           <>
-            <p className={m.pairingNote}>
-              The IDE will then ask you to confirm, and show a fingerprint. This app will show the same
-              one - allow it only if they match.
-            </p>
+            <p className={m.pairingNote}>{t.mobile.pairing.fingerprintNote}</p>
 
             <textarea
               className={m.pairingInput}
@@ -145,7 +136,7 @@ export const Pairing = ({ offer, onPaired, onCancel }: PairingProps) => {
             exactly travels, and who can see it" should be one tap away. */}
         <p className={m.pairingNote}>
           <a className={m.pairingLink} href="/privacy" target="_blank" rel="noreferrer">
-            What travels between your IDE and this phone
+            {t.mobile.composer.whatTravels}
           </a>
         </p>
       </div>
@@ -160,11 +151,11 @@ export const Pairing = ({ offer, onPaired, onCancel }: PairingProps) => {
             disabled={busy || !code.trim()}
             onClick={submit}
           >
-            {busy ? 'Waiting for the IDE…' : 'Pair'}
+            {busy ? t.mobile.pairing.waiting : t.mobile.pair}
           </button>
         )}
         {offer && !error && (
-          <p className={m.pairingNote}>{busy ? 'Waiting for the IDE…' : 'Paired.'}</p>
+          <p className={m.pairingNote}>{busy ? t.mobile.pairing.waiting : t.mobile.pairing.done}</p>
         )}
       </footer>
     </div>

@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react'
 import type { FeedbackAttachment, FeedbackKind } from '../protocol'
 import s from './sideMenu.module.css'
 import shell from './shell.module.css'
+import { useT } from '../i18n'
+import type { Dict } from '../i18n/en'
 
 /**
  * Telling the author something: a speech bubble beside the heart, and behind it a screen in the side menu
@@ -19,10 +21,10 @@ import shell from './shell.module.css'
  */
 
 /** What each kind of feedback calls itself on the screen, and what it asks for. */
-export const FEEDBACK_KINDS: { id: FeedbackKind; label: string; placeholder: string }[] = [
-  { id: 'bug', label: 'Bug', placeholder: 'What happened, and what did you expect instead?' },
-  { id: 'idea', label: 'Idea', placeholder: 'What would you like the panel to do?' },
-  { id: 'hello', label: 'Hello', placeholder: 'Anything at all - it reaches a person, not a queue.' },
+export const FEEDBACK_KINDS: { id: FeedbackKind; word: keyof Dict['feedback']['kinds'] }[] = [
+  { id: 'bug', word: 'bug' },
+  { id: 'idea', word: 'idea' },
+  { id: 'hello', word: 'hello' },
 ]
 
 /** How many files may go, how big each may be, and how much of it altogether. Checked again in the IDE. */
@@ -78,7 +80,34 @@ export interface FeedbackDraft {
   /** The report itself, once it has been asked for. Null means "not fetched yet". */
   report: string | null
   sending: boolean
-  message: { ok: boolean; text: string } | null
+  /** How the last attempt went - see [FeedbackOutcome]. */
+  message: FeedbackOutcome | null
+}
+
+/**
+ * What happened to the last report, as what happened rather than as a sentence about it.
+ *
+ * The sentence is put together where it is drawn (see [outcomeText]). It cannot be put together where
+ * this is set: that handler is subscribed once for the panel's whole life, so a sentence built inside it
+ * is built with the dictionary of the very first render - English, always, because the language arrives
+ * after it. The same rule the voice errors follow (see feed/voice.ts).
+ */
+export type FeedbackOutcome =
+  | { kind: 'sent' }
+  /** It went, but something was left behind, and the IDE says what. */
+  | { kind: 'partly'; note: string }
+  /** It did not go. [said] is the IDE's own account of why, when it had one. */
+  | { kind: 'failed'; said?: string }
+
+export const outcomeText = (t: Dict, outcome: FeedbackOutcome): string => {
+  switch (outcome.kind) {
+    case 'sent':
+      return t.feedback.sent
+    case 'partly':
+      return t.feedback.sentPartly(outcome.note)
+    default:
+      return outcome.said || t.feedback.notSent
+  }
 }
 
 export const emptyFeedback = (): FeedbackDraft => ({
@@ -95,12 +124,12 @@ export const emptyFeedback = (): FeedbackDraft => ({
 })
 
 /** Whether this draft may be sent, and why not when it may not. */
-export const feedbackProblem = (draft: FeedbackDraft): string | null => {
-  if (!draft.text.trim()) return 'Write a few words first.'
-  if (draft.text.length > MAX_MESSAGE_CHARS) return `That is longer than ${MAX_MESSAGE_CHARS} characters.`
-  if (draft.attachments.length > MAX_ATTACHMENTS) return `No more than ${MAX_ATTACHMENTS} files.`
+export const feedbackProblem = (t: Dict, draft: FeedbackDraft): string | null => {
+  if (!draft.text.trim()) return t.feedback.problems.empty
+  if (draft.text.length > MAX_MESSAGE_CHARS) return t.feedback.problems.tooLong(MAX_MESSAGE_CHARS)
+  if (draft.attachments.length > MAX_ATTACHMENTS) return t.feedback.problems.tooMany(MAX_ATTACHMENTS)
   if (totalBytes(draft.attachments) > MAX_TOTAL_BYTES) {
-    return `The files add up to more than ${humanBytes(MAX_TOTAL_BYTES)}.`
+    return t.feedback.problems.tooHeavy(humanBytes(MAX_TOTAL_BYTES))
   }
   return null
 }
@@ -126,32 +155,35 @@ interface FeedbackButtonProps {
   /** The side rail's variant: no frame of its own, like the heart's (see Thanks.tsx). */
   rail?: boolean
   /**
-   * Compact's variant: square, and level with the paperclip and the slash it stands beside.
+   * Compact's variant: level with the selectors it shares a row with, exactly as the heart beside it is
+   * (see ThanksButton.withSelectors).
    *
-   * It stands there rather than beside the heart, which is where it stands in every other layout,
-   * because compact's row of selectors cannot give up the width. The three selectors share that row and
-   * refuse to shrink below their own text (see .selectorAuto), so a second button next to the heart
-   * pushes the heart itself off the edge in any panel narrow enough to have chosen compact in the first
-   * place.
+   * It used to stand a row below, among the paperclip and the slash, because compact's row of selectors
+   * could not give up the width for it. It can now: the MODE button stopped spelling out "PERMISSION
+   * MODE" and gave back more room than this button takes.
    */
-  tight?: boolean
+  withSelectors?: boolean
   onOpen: () => void
 }
 
-export const FeedbackButton = ({ rail = false, tight = false, onOpen }: FeedbackButtonProps) => (
+export const FeedbackButton = ({ rail = false, withSelectors = false, onOpen }: FeedbackButtonProps) => {
+  const t = useT()
+
+  return (
   <button
     type="button"
-    className={`${shell.feedback} ${rail ? shell.feedbackRail : ''} ${tight ? shell.feedbackTight : ''}`}
+    className={`${shell.feedback} ${rail ? shell.feedbackRail : ''} ${withSelectors ? shell.feedbackLevel : ''}`}
     /* The panel's own tooltip rather than a title, unlike the heart beside it: this button opens the side
        menu rather than a popup above itself, so there is nothing for the hint to cover. */
-    data-tooltip="Report a bug or send an idea"
+    data-tooltip={t.feedback.button}
     data-tooltip-at="top"
-    aria-label="Report a bug or send an idea"
+    aria-label={t.feedback.button}
     onClick={onOpen}
   >
     <Bubble />
   </button>
-)
+  )
+}
 
 /** An outlined bubble rather than a solid one: beside a solid heart, a second filled shape would read as a
  *  pair of indicators rather than as two different errands. */
@@ -186,18 +218,23 @@ interface FeedbackProps {
 }
 
 export const Feedback = ({ draft, conversation, onChange, onAttach, onDetach, onPreview, onSend }: FeedbackProps) => {
+  const t = useT()
   const kind = FEEDBACK_KINDS.find((option) => option.id === draft.kind) ?? FEEDBACK_KINDS[0]
   const logsHere = logsFit(draft.kind)
   const logsOn = feedbackLogs(draft)
   const total = totalBytes(draft.attachments)
   const overflowing = draft.attachments.length > MAX_ATTACHMENTS || total > MAX_TOTAL_BYTES
-  const problem = feedbackProblem(draft)
+  const problem = feedbackProblem(t, draft)
 
   return (
     <div className={s.screen}>
       {draft.message ? (
-        <div className={draft.message.ok ? `${s.message} ${s.messageOk}` : `${s.message} ${s.messageBad}`}>
-          {draft.message.text}
+        <div
+          className={
+            draft.message.kind === 'sent' ? `${s.message} ${s.messageOk}` : `${s.message} ${s.messageBad}`
+          }
+        >
+          {outcomeText(t, draft.message)}
         </div>
       ) : null}
 
@@ -209,7 +246,7 @@ export const Feedback = ({ draft, conversation, onChange, onAttach, onDetach, on
             className={`${s.tab} ${draft.kind === option.id ? s.tabOn : ''}`}
             onClick={() => onChange({ kind: option.id, message: null })}
           >
-            {option.label}
+            {t.feedback.kinds[option.word].label}
           </button>
         ))}
       </div>
@@ -218,19 +255,19 @@ export const Feedback = ({ draft, conversation, onChange, onAttach, onDetach, on
         <Grower
           className={s.textarea}
           value={draft.text}
-          placeholder={kind.placeholder}
+          placeholder={t.feedback.kinds[kind.word].placeholder}
           maxLength={MAX_MESSAGE_CHARS}
           onChange={(text) => onChange({ text, message: null })}
         />
       </div>
 
       <div className={s.field}>
-        <span className={s.screenLabel}>EMAIL</span>
+        <span className={s.screenLabel}>{t.feedback.email}</span>
         <input
           className={s.input}
           type="email"
           spellCheck={false}
-          placeholder="optional"
+          placeholder={t.feedback.emailOptional}
           value={draft.email}
           onChange={(event) => onChange({ email: event.target.value, emailTouched: true })}
         />
@@ -242,7 +279,7 @@ export const Feedback = ({ draft, conversation, onChange, onAttach, onDetach, on
 
       <div className={s.field}>
         <div className={s.screenGroup}>
-          <span className={s.screenLabel}>ATTACHMENTS</span>
+          <span className={s.screenLabel}>{t.feedback.attachments}</span>
           <span className={s.screenGroupHint}>
             up to {MAX_ATTACHMENTS} files · {humanBytes(MAX_ATTACHMENT_BYTES)} each
           </span>
@@ -257,7 +294,7 @@ export const Feedback = ({ draft, conversation, onChange, onAttach, onDetach, on
             <button
               type="button"
               className={s.attachDrop}
-              aria-label={`Remove ${file.name}`}
+              aria-label={t.feedback.removeFile(file.name)}
               onClick={() => onDetach(file.id)}
             >
               ×
@@ -274,12 +311,16 @@ export const Feedback = ({ draft, conversation, onChange, onAttach, onDetach, on
             disabled={draft.attachments.length >= MAX_ATTACHMENTS}
             onClick={onAttach}
           >
-            Add files
+            {t.feedback.addFiles}
           </button>
           {draft.attachments.length > 0 ? (
             <span className={`${s.attachTotal} ${overflowing ? s.attachTotalBad : ''}`}>
-              {draft.attachments.length} of {MAX_ATTACHMENTS} · {humanBytes(total)} of{' '}
-              {humanBytes(MAX_TOTAL_BYTES)}
+              {t.feedback.attachTotal(
+                draft.attachments.length,
+                MAX_ATTACHMENTS,
+                humanBytes(total),
+                humanBytes(MAX_TOTAL_BYTES),
+              )}
             </span>
           ) : null}
         </div>
@@ -299,22 +340,22 @@ export const Feedback = ({ draft, conversation, onChange, onAttach, onDetach, on
         onClick={() => onChange({ logs: !draft.logs })}
       >
         <span className={s.switchText}>
-          <span className={s.switchLabel}>Attach debug logs</span>
+          <span className={s.switchLabel}>{t.feedback.logs}</span>
           <span className={s.switchHint}>
             {logsHere ? (
               <>
                 {conversation ? (
                   <>
-                    From the tab <span className={s.switchTab}>{shortTitle(conversation)}</span> -{' '}
+                    {t.feedback.logsFromTab('')}
+                    <span className={s.switchTab}>{shortTitle(conversation)}</span> -{' '}
                   </>
                 ) : (
-                  'From the tab you have open now: '
+                  t.feedback.logsFromOpenTab
                 )}
-                versions, timings and what went wrong. Not your conversation, not your file names, not
-                your paths - and you can read the whole thing before it goes.
+                {t.feedback.logsWhat}
               </>
             ) : (
-              'Only with a bug: the report is an account of something going wrong, and there is nothing here for it to describe.'
+              t.feedback.logsOnlyBug
             )}
           </span>
         </span>
@@ -325,7 +366,7 @@ export const Feedback = ({ draft, conversation, onChange, onAttach, onDetach, on
 
       {logsOn ? (
         <button type="button" className={s.linkRow} onClick={onPreview}>
-          See exactly what gets attached
+          {t.feedback.seeWhat}
         </button>
       ) : null}
 
@@ -343,7 +384,7 @@ export const Feedback = ({ draft, conversation, onChange, onAttach, onDetach, on
             disabled={draft.sending || problem !== null}
             onClick={onSend}
           >
-            {draft.sending ? 'Sending…' : 'Send'}
+            {draft.sending ? t.feedback.sending : t.feedback.send}
           </button>
         </span>
       </div>
@@ -412,26 +453,24 @@ export const FeedbackLog = ({
   text: string | null
   conversation: string
   onCopy: () => void
-}) => (
+}) => {
+  const t = useT()
+
+  return (
   <div className={s.screen}>
-    <span className={s.screenNote}>
-      This is the entire attachment, word for word{conversation ? <>, for the tab <b>{conversation}</b></> : null}.
-      It is built here, in your IDE, from what the plugin itself saw: versions, the shape of that
-      conversation, and anything that failed. File names appear as short hashes, so the same file reads as
-      the same file without saying which one it is.
-    </span>
+    <span className={s.screenNote}>{t.feedback.reportNote(conversation)}</span>
 
     {text === null ? (
-      <div className={s.screenEmpty}>Building it…</div>
+      <div className={s.screenEmpty}>{t.feedback.building}</div>
     ) : (
       <>
         <pre className={s.logText}>{text}</pre>
         <div className={s.formActions}>
           <button type="button" className={s.button} onClick={onCopy}>
-            Copy
+            {t.feedback.copy}
           </button>
         </div>
       </>
     )}
-  </div>
-)
+  </div>  )
+}

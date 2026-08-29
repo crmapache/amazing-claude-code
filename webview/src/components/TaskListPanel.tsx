@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
 import type { TodoEntry, TodoItem } from '../feed/types'
+import { Chevron } from './Chevron'
 import s from './composer.module.css'
+import { useT } from '../i18n'
 
 interface TaskListPanelProps {
   /** The last task list the agent sent - or nothing, when there has not been one yet. */
@@ -22,6 +24,7 @@ const VISIBLE_LIMIT = 5
  * the state the agent sent.
  */
 export const TaskListPanel = ({ item, layout }: TaskListPanelProps) => {
+  const t = useT()
   const compact = layout === 'compact' || isSideComposerLayout(layout)
   const [expanded, setExpanded] = useState(false)
 
@@ -58,7 +61,7 @@ export const TaskListPanel = ({ item, layout }: TaskListPanelProps) => {
         ) : null}
 
         <div className={`${s.taskCompactRow} ${s.taskCompactBleed}`}>
-          <span className={s.taskPanelLabel}>TASKS</span>
+          <span className={s.taskPanelLabel}>{t.chrome.tasks.label}</span>
           <span className={s.taskPanelProgress}>
             {done}/{todos.length}
           </span>
@@ -78,10 +81,10 @@ export const TaskListPanel = ({ item, layout }: TaskListPanelProps) => {
             <button
               type="button"
               className={s.taskCompactArrow}
-              aria-label={expanded ? 'Collapse the task list' : 'Show the rest of the task list'}
+              aria-label={expanded ? t.chrome.tasks.collapse : t.chrome.tasks.expand}
               onClick={() => setExpanded((current) => !current)}
             >
-              {expanded ? '▼' : '▲'}
+              <Chevron className={`${s.taskCompactCaret} ${expanded ? '' : s.taskCompactCaretUp}`} />
             </button>
           ) : null}
         </div>
@@ -98,10 +101,10 @@ export const TaskListPanel = ({ item, layout }: TaskListPanelProps) => {
   return (
     <div className={s.taskPanel}>
       <div className={s.taskPanelHead}>
-        <span className={s.taskPanelLabel}>TASK LIST</span>
+        <span className={s.taskPanelLabel}>{t.chrome.tasks.listLabel}</span>
         <div className={s.spacer} />
         <span className={s.taskPanelProgress}>
-          {done} / {todos.length} done
+          {t.chrome.tasks.progress(done, todos.length)}
         </span>
       </div>
 

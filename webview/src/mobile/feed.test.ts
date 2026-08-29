@@ -1,3 +1,4 @@
+import { en } from '../i18n/en'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ShellMessage } from '../protocol'
 import { streamStatus } from '../feed/streamStatus'
@@ -450,14 +451,14 @@ describe('the phone building a conversation', () => {
       const clock = new RemoteClock()
       clock.observe(THERE)
 
-      expect(streamStatus(feed.state, emptyCards, clock.now())).toBe('Claude is thinking · 0.0s')
+      expect(streamStatus(en, feed.state, emptyCards, clock.now())).toBe('Claude is thinking · 0.0s')
 
       // Three seconds later by either clock. Read off the phone's own, the turn is still five seconds
       // short of having begun - which is the negative number people were seeing, and which the floor in
       // formatDuration now flattens into a counter stuck at zero. Neither is the time this turn has run.
       vi.setSystemTime(HERE + 3000)
-      expect(streamStatus(feed.state, emptyCards, Date.now())).toBe('Claude is thinking · 0.0s')
-      expect(streamStatus(feed.state, emptyCards, clock.now())).toBe('Claude is thinking · 3.0s')
+      expect(streamStatus(en, feed.state, emptyCards, Date.now())).toBe('Claude is thinking · 0.0s')
+      expect(streamStatus(en, feed.state, emptyCards, clock.now())).toBe('Claude is thinking · 3.0s')
     })
 
     it('moves the counters once asked to, without a message arriving', () => {
@@ -466,7 +467,7 @@ describe('the phone building a conversation', () => {
 
       const ticked = tickFeed(feed, THERE + 4000)
       expect(ticked).not.toBe(feed)
-      expect(streamStatus(ticked.state, emptyCards, THERE + 4000)).toContain('4.0s')
+      expect(streamStatus(en, ticked.state, emptyCards, THERE + 4000)).toContain('4.0s')
     })
 
     /** A finished conversation has nothing to move - and a phone must not wake its screen for nothing. */

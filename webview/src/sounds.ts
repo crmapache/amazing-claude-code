@@ -12,6 +12,7 @@
 
 import { STOPPED_BY_YOU } from './feed/build'
 import type { FeedItem } from './feed/types'
+import type { Dict } from './i18n/en'
 import type { AgentStatus, SoundId } from './protocol'
 
 export interface SoundInfo {
@@ -19,6 +20,26 @@ export interface SoundInfo {
   label: string
   hint: string
 }
+
+/**
+ * The occasions, in the order the settings screen lists them.
+ *
+ * Only the identifiers: what each one is called is a matter for whatever language the panel is speaking
+ * (see soundList and i18n), while this order is the design's and is the same everywhere.
+ */
+export const SOUND_IDS: SoundId[] = [
+  'turnFinished',
+  'permission',
+  'question',
+  'plan',
+  'rateLimit',
+  'extraUsage',
+  'trouble',
+]
+
+/** The same occasions, dressed in words. */
+export const soundList = (t: Dict): SoundInfo[] =>
+  SOUND_IDS.map((id) => ({ id, label: t.sounds[id].label, hint: t.sounds[id].hint }))
 
 /** The volume of a sound nothing has been said about: the file as it is. */
 export const FULL_VOLUME = 100
@@ -79,17 +100,6 @@ export const setVolume = (prefs: SoundPrefs, sound: SoundId, volume: number): So
 
   return { muted, volumes }
 }
-
-/** The order here is the order in the settings list: what calls most often comes first. */
-export const SOUNDS: SoundInfo[] = [
-  { id: 'turnFinished', label: 'Turn finished', hint: 'Claude answered and is waiting for you' },
-  { id: 'permission', label: 'Permission asked', hint: 'a tool call needs your approval' },
-  { id: 'question', label: 'Question asked', hint: 'Claude asked you to pick an answer' },
-  { id: 'plan', label: 'Plan ready', hint: 'a plan is waiting for your approval' },
-  { id: 'rateLimit', label: 'Limit reached', hint: 'the subscription limit stopped the turn' },
-  { id: 'extraUsage', label: 'Extra usage started', hint: 'the plan is used up - the work is now billed on top' },
-  { id: 'trouble', label: 'Something broke', hint: 'an error, a dead process or a signed-out session' },
-]
 
 /**
  * What sounds when there are several occasions at once. A turn broken off by a refusal brings both an

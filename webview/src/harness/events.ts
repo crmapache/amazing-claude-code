@@ -42,6 +42,9 @@ export const resolvePlan = (itemId: string, decision: 'approve' | 'keepPlanning'
     windows would look long expired. */
 export const inHours = (count: number): string => new Date(Date.now() + count * 60 * 60 * 1000).toISOString()
 
+/** The language asked for in the address bar, if any - see the note in `bootstrap` below. */
+const harnessLanguage = (): string => new URLSearchParams(window.location.search).get('lang') ?? ''
+
 /** Signing in and opening the project - the shared start for every scenario. */
 export const bootstrap: ScenarioStep[] = [
   shell({ type: 'auth', installed: true, loggedIn: true, email: 'you@example.com', plan: 'Max' }),
@@ -53,6 +56,15 @@ export const bootstrap: ScenarioStep[] = [
     // The version stands at the foot of the menu and under a shared picture of the statistics - without
     // one here both would be looked at empty.
     pluginVersion: '0.8.0',
+    /*
+     * The language every scenario is played in, taken from `?lang=` in the address.
+     *
+     * The panel decides its language from what the shell says, and the harness is the shell here - so
+     * this is the whole of the switch: `?lang=zh-Hans` and every scenario is Chinese, including the parts
+     * the player invents. Without it there would be no way to look at eight of the nine languages outside
+     * a running IDE.
+     */
+    preferences: { model: '', effort: '', mode: '', language: harnessLanguage(), ideLanguage: 'en' },
     // The improve screen shows the built-in text as the field's placeholder, so without one here the
     // screen would be looked at empty and the only thing on it could not be judged.
     improve: {

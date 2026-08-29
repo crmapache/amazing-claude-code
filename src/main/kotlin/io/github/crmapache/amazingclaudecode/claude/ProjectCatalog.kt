@@ -55,6 +55,23 @@ internal class ProjectCatalog(
 
     // --- The project's own facts ---------------------------------------------------
 
+    /**
+     * The language in force, as a fact of its own rather than only as part of `init`.
+     *
+     * `init` carries the working directory and never leaves this machine (see RemoteFeed), so a phone
+     * would never learn the language from it. And a machine-wide setting changed in one window has to
+     * reach the others: a fact sent on every change does both with one message.
+     */
+    fun sendLocale() {
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "locale")
+                put("language", ClaudePreferences.language)
+                put("ideLanguage", IdeLanguage.current())
+            }.toString(),
+        )
+    }
+
     fun sendInit() {
         val preferences = ClaudePreferences.snapshot()
 
@@ -86,6 +103,13 @@ internal class ProjectCatalog(
                         ),
                     )
                     if (preferences.composerLayout.isNotEmpty()) put("composerLayout", preferences.composerLayout)
+                    // Two values rather than one, and the empty one is not the useless one: `language`
+                    // is the explicit choice and is usually empty, `ideLanguage` is what the IDE itself
+                    // is set to. Empty means "speak whatever the IDE speaks", and the picker needs the
+                    // second value to say which language that is right now instead of promising
+                    // something unnamed.
+                    put("language", preferences.language)
+                    put("ideLanguage", IdeLanguage.current())
                 }
                 // What the improve button asks for. Both texts: the screen shows the built-in one as what
                 // is in force while nothing of one's own has been put in, and it is also what the restore

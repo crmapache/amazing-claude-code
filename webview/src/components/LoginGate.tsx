@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import s from './shell.module.css'
+import { useT } from '../i18n'
 
 export interface AuthState {
   installed: boolean
@@ -30,6 +31,7 @@ interface LoginGateProps {
  * single line about /login, while that command itself is unavailable in streaming mode.
  */
 export const LoginGate = ({ auth, waiting, onLogin, onRecheck, onSetExecutablePath }: LoginGateProps) => {
+  const t = useT()
   /**
    * The field holds what the person typed, and while they have typed nothing - the path already saved
    * earlier. It cannot be started as state of its own: the screen is shown before the shell's first
@@ -42,7 +44,7 @@ export const LoginGate = ({ auth, waiting, onLogin, onRecheck, onSetExecutablePa
   if (!auth) {
     return (
       <div className={s.gate}>
-        <p className={s.gateWaiting}>Checking Claude Code…</p>
+        <p className={s.gateWaiting}>{t.login.checking}</p>
       </div>
     )
   }
@@ -55,11 +57,8 @@ export const LoginGate = ({ auth, waiting, onLogin, onRecheck, onSetExecutablePa
   if (!auth.installed) {
     return (
       <div className={s.gate}>
-        <p className={s.gateTitle}>Claude Code not found</p>
-        <p className={s.gateText}>
-          The panel drives the claude CLI. If it is installed, point the panel at it - the IDE does not always
-          see the same PATH as your terminal.
-        </p>
+        <p className={s.gateTitle}>{t.login.notFound}</p>
+        <p className={s.gateText}>{t.login.notFoundText}</p>
 
         <div className={s.gateRow}>
           <input
@@ -73,13 +72,13 @@ export const LoginGate = ({ auth, waiting, onLogin, onRecheck, onSetExecutablePa
             }}
           />
           <button type="button" className={s.gateButton} onClick={() => onSetExecutablePath(path.trim())}>
-            Use this
+            {t.login.useThis}
           </button>
         </div>
 
         {auth.searched && auth.searched.length > 0 ? (
           <details className={s.gateDetails}>
-            <summary className={s.gateSummary}>Where the panel looked</summary>
+            <summary className={s.gateSummary}>{t.login.whereLooked}</summary>
             <ul className={s.gateList}>
               {auth.searched.map((place) => (
                 <li key={place}>{place}</li>
@@ -89,7 +88,7 @@ export const LoginGate = ({ auth, waiting, onLogin, onRecheck, onSetExecutablePa
         ) : null}
 
         <button type="button" className={s.gateGhost} onClick={onRecheck}>
-          Check again
+          {t.login.checkAgain}
         </button>
       </div>
     )
@@ -97,22 +96,19 @@ export const LoginGate = ({ auth, waiting, onLogin, onRecheck, onSetExecutablePa
 
   return (
     <div className={s.gate}>
-      <p className={s.gateTitle}>Sign in to Claude Code</p>
-      <p className={s.gateText}>
-        Signing in happens once, in the IDE terminal: Claude opens a browser and waits for you to come
-        back. The panel picks it up on its own.
-      </p>
+      <p className={s.gateTitle}>{t.login.signIn}</p>
+      <p className={s.gateText}>{t.login.signInText}</p>
 
       <button type="button" className={s.gateButton} onClick={onLogin}>
-        {waiting ? 'Open the terminal again' : 'Log in'}
+        {waiting ? t.login.openTerminalAgain : t.login.logIn}
       </button>
 
       {waiting ? (
-        <p className={s.gateWaiting}>Finish the login in the terminal - this screen closes by itself.</p>
+        <p className={s.gateWaiting}>{t.login.finishInTerminal}</p>
       ) : null}
 
       <button type="button" className={s.gateGhost} onClick={onRecheck}>
-        Check again
+        {t.login.checkAgain}
       </button>
     </div>
   )

@@ -1,4 +1,5 @@
 import type { MenuOption } from './components/Menu'
+import type { Dict } from './i18n/en'
 
 /**
  * Where the input field sits. bottom - at the bottom, full width, as before. compact - at the bottom
@@ -10,11 +11,11 @@ import type { MenuOption } from './components/Menu'
  */
 export type ComposerLayout = 'left' | 'bottom' | 'right' | 'compact'
 
-export const COMPOSER_LAYOUT_OPTIONS: MenuOption[] = [
-  { id: 'bottom', label: 'Default' },
-  { id: 'compact', label: 'Compact' },
-  { id: 'left', label: 'Left' },
-  { id: 'right', label: 'Right' },
+export const composerLayoutOptions = (t: Dict): MenuOption[] => [
+  { id: 'bottom', label: t.composerLayout.bottom },
+  { id: 'compact', label: t.composerLayout.compact },
+  { id: 'left', label: t.composerLayout.left },
+  { id: 'right', label: t.composerLayout.right },
 ]
 
 /** The shell sends the layout straight out of the settings - an old or foreign value counts as "bottom". */

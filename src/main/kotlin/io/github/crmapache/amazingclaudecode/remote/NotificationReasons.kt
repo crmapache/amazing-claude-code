@@ -1,6 +1,8 @@
 package io.github.crmapache.amazingclaudecode.remote
 
 import io.github.crmapache.amazingclaudecode.claude.ClaudeRateLimit
+import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
+import io.github.crmapache.amazingclaudecode.claude.IdeLanguage
 import io.github.crmapache.amazingclaudecode.claude.SessionSnapshot
 
 /**
@@ -122,14 +124,21 @@ internal object NotificationReasons {
      * Short because a lock screen is short, and specific because "something happened" is worth less
      * than nothing: the whole value of the notification is knowing whether to reach for the phone.
      */
-    fun title(reason: String, project: String, target: String): String = when (reason) {
-        "permission" -> if (target.isEmpty()) "Waiting for a permission" else "Permission: $target"
-        "question" -> "Claude is asking you something"
-        "plan" -> "A plan is ready for you"
-        "rateLimit" -> "You have hit a limit"
-        EXTRA_USAGE -> "The plan is used up - the work is now billed"
-        "trouble" -> "Something broke in $project"
-        else -> "The turn is finished"
+    fun title(reason: String, project: String, target: String): String {
+        // The language the panel speaks, resolved the same way the panel resolves it (see IdeLanguage).
+        // Read at the moment of writing rather than kept: the setting is machine-wide and can change
+        // between one notification and the next.
+        val language = IdeLanguage.inForce(ClaudePreferences.language)
+
+        return when (reason) {
+            "permission" -> PushWords.permission(language, target)
+            "question" -> PushWords.question(language)
+            "plan" -> PushWords.plan(language)
+            "rateLimit" -> PushWords.rateLimit(language)
+            EXTRA_USAGE -> PushWords.extraUsage(language)
+            "trouble" -> PushWords.trouble(language, project)
+            else -> PushWords.turnFinished(language)
+        }
     }
 
     private fun isTurnEnd(message: String): Boolean =

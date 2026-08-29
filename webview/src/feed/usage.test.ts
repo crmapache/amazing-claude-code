@@ -1,3 +1,4 @@
+import { en } from '../i18n/en'
 import { describe, expect, it } from 'vitest'
 import {
   contextColor,
@@ -122,15 +123,15 @@ describe('ringDash', () => {
 
 describe('the limit windows', () => {
   it('names them the way the CLI does', () => {
-    expect(limitWindowName('five_hour')).toBe('5-hour')
-    expect(limitWindowName('seven_day')).toBe('weekly')
-    expect(limitWindowName('seven_day_opus')).toBe('weekly Opus')
+    expect(limitWindowName(en, 'five_hour')).toBe('5-hour')
+    expect(limitWindowName(en, 'seven_day')).toBe('weekly')
+    expect(limitWindowName(en, 'seven_day_opus')).toBe('weekly Opus')
   })
 
   // A bucket that appears in a later CLI must not turn into "your seven_day_whatever limit" in the panel.
   it('says nothing about a window it does not know', () => {
-    expect(limitWindowName('seven_day_whatever')).toBe('')
-    expect(limitWindowName(undefined)).toBe('')
+    expect(limitWindowName(en, 'seven_day_whatever')).toBe('')
+    expect(limitWindowName(en, undefined)).toBe('')
   })
 
   it('sends every weekly window to the weekly ring, and everything else to the five-hour one', () => {

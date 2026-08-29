@@ -2,6 +2,7 @@ package io.github.crmapache.amazingclaudecode.feedback
 
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.util.concurrency.AppExecutorUtil
+import io.github.crmapache.amazingclaudecode.net.IdeHttp
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -163,26 +164,8 @@ internal object FeedbackSender {
      */
     private fun header(text: String): ByteArray = text.toByteArray(StandardCharsets.UTF_8)
 
-    /**
-     * The client, built once. The two halves of it are wrapped separately on purpose: a company that has
-     * no proxy but does have its own certificate authority should not lose the second because the first
-     * was not there to be read.
-     */
-    private val cached: HttpClient by lazy {
-        val builder = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SECONDS))
-
-        runCatching {
-            val provider = com.intellij.util.net.JdkProxyProvider.getInstance()
-            builder.proxy(provider.proxySelector)
-            builder.authenticator(provider.authenticator)
-        }.onFailure { thisLogger().info("The IDE's proxy settings were not available: ${describe(it)}") }
-
-        runCatching {
-            builder.sslContext(com.intellij.util.net.ssl.CertificateManager.getInstance().sslContext)
-        }.onFailure { thisLogger().info("The IDE's certificate store was not available: ${describe(it)}") }
-
-        builder.build()
-    }
+    /** The way out this machine has - the proxy and the certificates the IDE itself uses (see IdeHttp). */
+    private val cached: HttpClient by lazy { IdeHttp.client(CONNECT_TIMEOUT_SECONDS) }
 
     private fun client(): HttpClient = cached
 

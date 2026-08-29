@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import type { RemoteDevice } from '../protocol'
 import { QrCode } from './QrCode'
 import s from './sideMenu.module.css'
+import { useT } from '../i18n'
+import type { Dict } from '../i18n/en'
 
 export interface RemoteStatus {
   state: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'relay_down' | 'refused'
@@ -29,9 +31,9 @@ interface RemoteProps {
 }
 
 /** How long a pairing code is still worth something, in words rather than a timestamp. */
-const remaining = (expiresAt: number): string => {
+const remaining = (t: Dict, expiresAt: number): string => {
   const seconds = Math.max(0, Math.round((expiresAt - Date.now()) / 1000))
-  return seconds > 60 ? `${Math.ceil(seconds / 60)} min left` : `${seconds}s left`
+  return seconds > 60 ? t.remote.minutesLeft(Math.ceil(seconds / 60)) : t.remote.secondsLeft(seconds)
 }
 
 /**
@@ -40,29 +42,39 @@ const remaining = (expiresAt: number): string => {
  * Kept apart rather than collapsed into one spinner because the fix differs: a tunnel fixes itself, a
  * relay that is down is somebody else's server, and a refusal will still be a refusal in an hour.
  */
-export const REMOTE_STATE: Record<
-  RemoteStatus['state'],
-  { label: string; hint: string; tone: 'off' | 'busy' | 'live' | 'bad' }
-> = {
-  idle: { label: 'Off', hint: 'This IDE cannot be reached from outside.', tone: 'off' },
-  connecting: { label: 'Connecting…', hint: 'Reaching the relay for the first time.', tone: 'busy' },
-  connected: { label: 'Connected', hint: 'A paired device can see this project.', tone: 'live' },
-  reconnecting: {
-    label: 'Reconnecting…',
-    hint: 'The line dropped. This is ordinary - it comes back by itself.',
-    tone: 'busy',
-  },
-  relay_down: {
-    label: 'Relay unreachable',
-    hint: 'The relay is not answering. Your work is unaffected; only the phone is.',
-    tone: 'bad',
-  },
-  refused: {
-    label: 'Refused',
-    hint: 'The relay would not have this plugin - it may be too old, or another IDE took this address.',
-    tone: 'bad',
-  },
+type RemoteTone = 'off' | 'busy' | 'live' | 'bad'
+
+/**
+ * The colour of each state. The words live in the dictionary beside it (see remote.states) - the colour
+ * says the same thing before the words are read, and that half is the same in every language.
+ */
+const REMOTE_TONE: Record<RemoteStatus['state'], RemoteTone> = {
+  idle: 'off',
+  connecting: 'busy',
+  connected: 'live',
+  reconnecting: 'busy',
+  relay_down: 'bad',
+  refused: 'bad',
 }
+
+/** The state's own words - the key the dictionary knows it by. */
+const STATE_WORDS: Record<RemoteStatus['state'], keyof Dict['remote']['states']> = {
+  idle: 'idle',
+  connecting: 'connecting',
+  connected: 'connected',
+  reconnecting: 'reconnecting',
+  relay_down: 'unreachable',
+  refused: 'refused',
+}
+
+/** What a state says and how it is coloured, in one answer - the menu's row asks for exactly this. */
+export const remoteState = (
+  t: Dict,
+  state: RemoteStatus['state'],
+): { label: string; hint: string; tone: RemoteTone } => ({
+  ...t.remote.states[STATE_WORDS[state]],
+  tone: REMOTE_TONE[state],
+})
 
 const TONE_COLOR: Record<'off' | 'busy' | 'live' | 'bad', string> = {
   off: 'var(--acc-fg-ghost)',
@@ -97,6 +109,7 @@ export const Remote = ({
   onRevoke,
   onAbout,
 }: RemoteProps) => {
+  const t = useT()
   const [relay, setRelay] = useState(status.relay)
 
   /** Only so the countdown under the code moves - there is nothing else on this screen that ticks. */
@@ -112,7 +125,7 @@ export const Remote = ({
     return () => window.clearInterval(timer)
   }, [status.pairing])
 
-  const meaning = REMOTE_STATE[status.state]
+  const meaning = remoteState(t, status.state)
   const colour = TONE_COLOR[meaning.tone]
   const tint = TONE_TINT[meaning.tone]
   const devices = status.devices ?? []
@@ -123,30 +136,30 @@ export const Remote = ({
         <div className={s.stateTop} style={{ color: colour }}>
           <span className={s.stateDot} />
           <span className={s.stateLabel}>{meaning.label}</span>
-          <span className={s.stateAgent}>agent {status.agentId || '—'}</span>
+          <span className={s.stateAgent}>{t.remote.agent(status.agentId || '—')}</span>
         </div>
         <p className={s.stateHint}>{meaning.hint}</p>
 
         {/* The relay is the part people ask about, so the path is drawn rather than described: one hop
             that forwards, not a service the conversation is handed over to. */}
         <div className={s.path}>
-          <span className={s.pathNode}>THIS IDE</span>
+          <span className={s.pathNode}>{t.remote.thisIde}</span>
           <span className={s.pathLink} />
           <span
             className={`${s.pathNode} ${status.state === 'connected' ? s.pathNodeLive : ''}`}
             style={status.state === 'connected' ? { color: colour } : undefined}
           >
-            RELAY
+            {t.remote.relay}
           </span>
           <span className={s.pathLink} />
-          <span className={s.pathNode}>DEVICE</span>
+          <span className={s.pathNode}>{t.remote.device}</span>
         </div>
       </div>
 
       <button type="button" className={s.switchRow} onClick={() => onToggle(!status.enabled)} aria-pressed={status.enabled}>
         <span className={s.switchText}>
-          <span className={s.switchLabel}>Allow this IDE to be reached remotely</span>
-          <span className={s.switchHint}>Off until you turn it on, and off again the moment you turn it back.</span>
+          <span className={s.switchLabel}>{t.remote.allow}</span>
+          <span className={s.switchHint}>{t.remote.allowHint}</span>
         </span>
         <span className={`${s.switchTrack} ${status.enabled ? s.switchTrackOn : ''}`}>
           <span className={`${s.switchKnob} ${status.enabled ? s.switchKnobOn : ''}`} />
@@ -154,7 +167,7 @@ export const Remote = ({
       </button>
 
       <div className={s.field}>
-        <span className={s.screenLabel}>RELAY ADDRESS</span>
+        <span className={s.screenLabel}>{t.remote.relayAddress}</span>
         <input
           className={s.input}
           value={relay}
@@ -173,10 +186,7 @@ export const Remote = ({
       </div>
 
       {status.keysKept === false && (
-        <div className={s.screenNote}>
-          This IDE is set not to remember passwords, so a pairing will not survive a restart. Turn on the
-          IDE&apos;s password safe if you want it to stick.
-        </div>
+        <div className={s.screenNote}>{t.remote.noSafe}</div>
       )}
 
       {/* A device that has proved it saw the code and is waiting for a person. The proof is not the whole
@@ -184,17 +194,15 @@ export const Remote = ({
           scanned it first. Comparing the two fingerprints does catch that. */}
       {status.pending && (
         <div className={s.card}>
-          <span className={s.switchLabel}>{status.pending.label} wants to pair</span>
-          <span className={s.screenNote}>
-            The device calls itself that - check the fingerprint below matches the one on its screen.
-          </span>
+          <span className={s.switchLabel}>{t.remote.wantsToPair(status.pending.label)}</span>
+          <span className={s.screenNote}>{t.remote.checkFingerprint}</span>
           <code className={s.fingerprint}>{status.pending.fingerprint}</code>
           <div className={s.cardActions}>
             <button type="button" className={`${s.button} ${s.buttonPrimary}`} onClick={onApprove}>
-              Allow
+              {t.remote.allowDevice}
             </button>
             <button type="button" className={s.button} onClick={onRefuse}>
-              Refuse
+              {t.remote.refuse}
             </button>
           </div>
         </div>
@@ -202,11 +210,8 @@ export const Remote = ({
 
       {status.pairing && !status.pending && (
         <div className={s.card}>
-          <span className={s.switchLabel}>Scan this with the phone</span>
-          <span className={s.screenNote}>
-            {remaining(status.pairing.expiresAt)} · works once. The secret is in the part of the address
-            after the hash, which browsers never send to a server.
-          </span>
+          <span className={s.switchLabel}>{t.remote.scanThis}</span>
+          <span className={s.screenNote}>{t.remote.codeNote(remaining(t, status.pairing.expiresAt))}</span>
           <div className={s.qr}>
             <div className={s.qrCode}>
               <QrCode value={status.pairing.url} />
@@ -214,7 +219,7 @@ export const Remote = ({
             <div className={s.qrSide}>
               <code className={s.qrUrl}>{status.pairing.url}</code>
               <button type="button" className={`${s.button} ${s.buttonWide}`} onClick={onCancelPairing}>
-                Stop offering
+                {t.remote.stopOffering}
               </button>
             </div>
           </div>
@@ -223,13 +228,13 @@ export const Remote = ({
 
       {status.enabled && !status.pairing && !status.pending && (
         <button type="button" className={`${s.button} ${s.buttonPrimary} ${s.buttonWide}`} onClick={onPair}>
-          Pair a device
+          {t.remote.pairDevice}
         </button>
       )}
 
       {devices.length > 0 && (
         <div className={s.field}>
-          <span className={s.screenLabel}>PAIRED DEVICES</span>
+          <span className={s.screenLabel}>{t.remote.pairedDevices}</span>
           {devices.map((device) => (
             <div key={device.id} className={s.device}>
               <span className={s.deviceText}>
@@ -239,7 +244,7 @@ export const Remote = ({
               {/* Immediate, and it works while the phone is switched off: with the secret gone its frames
                   simply stop opening. Nothing has to reach it. */}
               <button type="button" className={`${s.button} ${s.buttonDanger}`} onClick={() => onRevoke(device.id)}>
-                Revoke
+                {t.remote.revoke}
               </button>
             </div>
           ))}
@@ -249,8 +254,8 @@ export const Remote = ({
       <button type="button" className={s.aboutLink} onClick={onAbout}>
         <span className={s.aboutIcon}>i</span>
         <span className={s.rowText}>
-          <span className={s.rowLabel}>What travels, and what a phone may do</span>
-          <span className={s.rowSub}>Read this before you turn it on</span>
+          <span className={s.rowLabel}>{t.remote.whatTravels}</span>
+          <span className={s.rowSub}>{t.remote.whatTravelsSub}</span>
         </span>
         <svg viewBox="0 0 16 16" aria-hidden="true" className={s.rowChevron}>
           <path
@@ -266,7 +271,7 @@ export const Remote = ({
 
       {status.fingerprint && (
         <div className={s.field}>
-          <span className={s.screenNote}>This IDE&apos;s fingerprint</span>
+          <span className={s.screenNote}>{t.remote.fingerprint}</span>
           <code className={s.fingerprint}>{status.fingerprint}</code>
         </div>
       )}
@@ -282,35 +287,26 @@ export const Remote = ({
  * sends the conversation - your code included - through a server. A person is entitled to read that
  * before the switch, not in a policy afterwards.
  */
-export const RemoteAbout = () => (
-  <div className={s.screen}>
-    <p className={s.aboutProse}>
-      With this on, your conversations travel through a relay so a paired phone can read them and answer.
-      That includes what the agent reads and writes: source code, file paths, the output of commands.
-    </p>
-    <p className={s.aboutProse}>
-      The relay cannot read any of it - the contents are sealed between this IDE and your phone. It does
-      see when you are connected and how much goes by, which is roughly your working hours. You can run a
-      relay of your own instead.
-    </p>
+export const RemoteAbout = () => {
+  const t = useT()
 
-    <div className={s.aboutList}>
-      <div className={s.aboutItem}>
-        <span className={s.aboutMarkOk}>✓</span>
-        <span>A paired phone can answer permissions, send messages and stop a turn.</span>
+  return (
+    <div className={s.screen}>
+      <p className={s.aboutProse}>{t.remote.about.first}</p>
+      <p className={s.aboutProse}>{t.remote.about.second}</p>
+
+      <div className={s.aboutList}>
+        <div className={s.aboutItem}>
+          <span className={s.aboutMarkOk}>✓</span>
+          <span>{t.remote.about.can}</span>
+        </div>
+        <div className={s.aboutItem}>
+          <span className={s.aboutMarkNo}>✕</span>
+          <span>{t.remote.about.cannot}</span>
+        </div>
       </div>
-      <div className={s.aboutItem}>
-        <span className={s.aboutMarkNo}>✕</span>
-        <span>
-          It cannot run shell commands, install plugins, change the permission mode, or touch this
-          machine&apos;s clipboard.
-        </span>
-      </div>
+
+      <p className={s.aboutProse}>{t.remote.about.third}</p>
     </div>
-
-    <p className={s.aboutProse}>
-      A pairing is proved by a code shown once on this screen. Comparing the two fingerprints catches the
-      one thing the code cannot: someone who photographed the screen and scanned it first.
-    </p>
-  </div>
-)
+  )
+}

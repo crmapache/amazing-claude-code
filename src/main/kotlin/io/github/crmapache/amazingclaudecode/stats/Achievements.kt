@@ -39,8 +39,8 @@ internal object Achievements {
          *
          * Told to the panel with the rest (see [State]) because it is what the card is drawn from - as
          * many pips as there are steps, and the top step painted as the top. Most ladders have five, and
-         * the ones that do not have a reason: the achievement about saying thanks has two, because saying
-         * it two ways is thanks enough - there is a third way, and asking for every last one is begging.
+         * the ones that do not have a reason: the achievement about saying thanks has three, because there
+         * are three ways to say it and no more.
          */
         val steps: Int get() = ladder?.size ?: 1
 
@@ -169,10 +169,9 @@ internal object Achievements {
         "on-the-road" to ladder(5, 50, 150, 400, 1000) { it.phonePrompts },
         "watched" to ladder(1, 5, 15, 40, 100) { it.watched },
         "ceiling" to ladder(1, 5, 20, 60, 150) { it.ranOutFiveHour },
-        // Two lines rather than five, and fewer than there are ways: a star on GitHub, a review on the
-        // plugin's page, a word passed to somebody who has not heard of it - any two of the three are the
-        // whole of it (see StatsCollector, "thanks").
-        "thanks" to ladder(1, 2) { it.thanks },
+        // Three lines rather than five, one for each way there is: a star on GitHub, a review on the
+        // plugin's page, a word passed to somebody who has not heard of it (see StatsCollector, "thanks").
+        "thanks" to ladder(1, 2, 3) { it.thanks },
     )
 
     val ALL: List<Definition> = CATALOGUE.map { (id, make) -> make(id) }

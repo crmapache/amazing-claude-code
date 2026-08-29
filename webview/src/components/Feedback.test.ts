@@ -1,3 +1,6 @@
+import { LOCALES } from '../i18n'
+import { DICTIONARIES } from '../i18n/all'
+import { en } from '../i18n/en'
 import { describe, expect, it } from 'vitest'
 import {
   FEEDBACK_KINDS,
@@ -20,33 +23,38 @@ const files = (count: number, bytes: number): FeedbackAttachment[] =>
 
 describe('what the send button obeys', () => {
   it('will not send an empty message - there would be nothing to read', () => {
-    expect(feedbackProblem(emptyFeedback())).toBeTruthy()
-    expect(feedbackProblem(draftWith({ text: '   \n  ' }))).toBeTruthy()
+    expect(feedbackProblem(en, emptyFeedback())).toBeTruthy()
+    expect(feedbackProblem(en, draftWith({ text: '   \n  ' }))).toBeTruthy()
   })
 
   it('sends a message with words in it, with or without an address', () => {
-    expect(feedbackProblem(draftWith({ text: 'the panel hangs on reopening a tab' }))).toBeNull()
+    expect(feedbackProblem(en, draftWith({ text: 'the panel hangs on reopening a tab' }))).toBeNull()
   })
 
   it('refuses a message longer than Telegram would carry', () => {
-    expect(feedbackProblem(draftWith({ text: 'x'.repeat(MAX_MESSAGE_CHARS + 1) }))).toBeTruthy()
+    expect(feedbackProblem(en, draftWith({ text: 'x'.repeat(MAX_MESSAGE_CHARS + 1) }))).toBeTruthy()
   })
 
   it('refuses more files than the IDE would send', () => {
     const draft = draftWith({ text: 'here you go', attachments: files(MAX_ATTACHMENTS + 1, 10) })
-    expect(feedbackProblem(draft)).toBeTruthy()
+    expect(feedbackProblem(en, draft)).toBeTruthy()
   })
 
   it('refuses files that add up past the total, even when each one fits', () => {
     const draft = draftWith({ text: 'here you go', attachments: files(3, MAX_TOTAL_BYTES / 2) })
-    expect(feedbackProblem(draft)).toBeTruthy()
+    expect(feedbackProblem(en, draft)).toBeTruthy()
   })
 })
 
 describe('the words on the screen', () => {
+  /** In every language, not only in English: a translation that reused one line would flatten the three. */
   it('asks for something different for each kind - a bug report and a hello are not the same request', () => {
-    const placeholders = new Set(FEEDBACK_KINDS.map((kind) => kind.placeholder))
-    expect(placeholders.size).toBe(FEEDBACK_KINDS.length)
+    for (const { id } of LOCALES) {
+      const dictionary = DICTIONARIES[id]
+      const placeholders = new Set(FEEDBACK_KINDS.map((kind) => dictionary.feedback.kinds[kind.word].placeholder))
+
+      expect(placeholders.size, id).toBe(FEEDBACK_KINDS.length)
+    }
   })
 
   it('starts on the bug, because that is what a person opens this for', () => {

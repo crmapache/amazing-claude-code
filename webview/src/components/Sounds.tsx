@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
+import { useT } from '../i18n'
 import type { SoundId } from '../protocol'
-import { SOUNDS, isMuted, volumeOf, type SoundPrefs } from '../sounds'
+import { isMuted, soundList, volumeOf, type SoundPrefs } from '../sounds'
 import s from './sideMenu.module.css'
 
 interface SoundsProps {
@@ -32,6 +33,8 @@ const MOVING_KEYS = new Set([
  * not settings for every occasion but the six moments where the panel waits for a person.
  */
 export const Sounds = ({ prefs, onToggle, onVolume, onPreview }: SoundsProps) => {
+  const t = useT()
+
   /**
    * The end of the fiddling with a slider is caught on the window rather than on the slider itself.
    *
@@ -75,7 +78,7 @@ export const Sounds = ({ prefs, onToggle, onVolume, onPreview }: SoundsProps) =>
 
   return (
     <div className={s.screen}>
-      {SOUNDS.map((sound) => {
+      {soundList(t).map((sound) => {
         const on = !isMuted(prefs, sound.id)
         const volume = volumeOf(prefs, sound.id)
 
@@ -100,14 +103,14 @@ export const Sounds = ({ prefs, onToggle, onVolume, onPreview }: SoundsProps) =>
               </span>
 
               <span className={`${s.soundPercent} ${on ? '' : s.soundPercentOff}`}>
-                {on ? `${volume}%` : 'muted'}
+                {on ? `${volume}%` : t.common.muted}
               </span>
 
               <button
                 type="button"
                 className={s.soundPlay}
-                aria-label={`Play ${sound.label}`}
-                data-tooltip="Play it"
+                aria-label={t.sounds.playNamed(sound.label)}
+                data-tooltip={t.sounds.play}
                 onClick={() => onPreview(sound.id)}
               >
                 ▶
@@ -125,7 +128,7 @@ export const Sounds = ({ prefs, onToggle, onVolume, onPreview }: SoundsProps) =>
               max={100}
               step={1}
               value={volume}
-              aria-label={`${sound.label} volume`}
+              aria-label={t.sounds.volumeOf(sound.label)}
               onChange={(event) => onVolume(sound.id, Number(event.target.value))}
               // Hear the result at once rather than guess how much quieter it has become. Only at the
               // gesture's end: one per cent at a time would be a mush.

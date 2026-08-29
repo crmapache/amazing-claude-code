@@ -1,4 +1,5 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Microphone } from '../../components/Microphone'
 import { Ring } from '../../components/StatusBar'
 import { atQueryInText, matchFiles } from '../../feed/files'
 import { appendChip, matchCommands, slashQuery, type CommandEntry } from '../../feed/slash'
@@ -17,7 +18,10 @@ import {
 import { encodeImage, IMAGE_BUDGET, IMAGE_MINIMUM, type PickedImage } from '../images'
 import { phoneCommands, type ProjectFacts } from '../facts'
 import { Limits } from './Limits'
+import { voiceJoin, voiceMessage } from '../../feed/voice'
+import type { PhoneDictation } from '../useDictation'
 import m from '../mobile.module.css'
+import { useT } from '../../i18n'
 
 /** A message on its way to the agent, in the three pieces the shell wants it in. */
 export interface OutgoingPrompt {
@@ -37,6 +41,8 @@ interface ComposerProps {
   onSend: (prompt: OutgoingPrompt) => void
   onQueue: (prompt: OutgoingPrompt) => void
   onStop: () => void
+  /** Dictation - the state lives in the application, because the token for it arrives there. */
+  voice: PhoneDictation
 }
 
 /** Ticks at every fifth - unrelated to the colour thresholds, purely the scale's ruler. */
@@ -111,12 +117,32 @@ export const Composer = ({
   onSend,
   onQueue,
   onStop,
+  voice,
 }: ComposerProps) => {
+  const t = useT()
   const [draft, setDraft] = useState('')
   const [caret, setCaret] = useState(0)
   const [attached, setAttached] = useState<PickedImage[]>([])
   const [focused, setFocused] = useState(false)
   const [limitsOpen, setLimitsOpen] = useState(false)
+
+  /*
+   * Where a dictated phrase lands.
+   *
+   * Handed upwards rather than pulled down as state: the draft belongs to this field, and the words
+   * arrive from a socket the application holds (see useDictation). The rule for joining them to what is
+   * already written is the panel's own - one rule for both screens (see feed/voice.ts).
+   */
+  /** When the press began, and whether a tap has latched it on - see the button below. */
+  const pressedAt = useRef(0)
+  const held = useRef(false)
+  const listening = voice.phase === 'listening'
+
+  const registerInsert = voice.registerInsert
+  useEffect(() => {
+    registerInsert((phrase) => setDraft((current) => voiceJoin(current, phrase)))
+    return () => registerInsert(null)
+  }, [registerInsert])
   const [attachError, setAttachError] = useState('')
 
   /**
@@ -158,7 +184,7 @@ export const Composer = ({
     }
   }, [draft])
 
-  const commands = useMemo(() => phoneCommands(facts), [facts])
+  const commands = useMemo(() => phoneCommands(t, facts), [t, facts])
 
   /** Which ring burns, when one does: the window being paid past, not always the five-hour one. */
   const burning = facts.extra?.active ? limitWindowRing(facts.extra.window) : null
@@ -255,8 +281,8 @@ export const Composer = ({
       if (refused > 0) {
         setAttachError(
           added.length > 0
-            ? `${refused} more would not fit in one message - send these first.`
-            : 'That would not fit in one message. Try one photo at a time.',
+            ? t.mobile.composer.photosDropped(refused)
+            : t.mobile.composer.photoTooBig,
         )
       }
     },
@@ -316,16 +342,18 @@ export const Composer = ({
         <div className={m.suggest}>
           <div className={m.sheetGrab} />
           <div className={m.sheetHead}>
-            <span className={m.sheetTitle}>{commandMatches.length > 0 ? 'Commands' : 'Project files'}</span>
+            <span className={m.sheetTitle}>
+              {commandMatches.length > 0 ? t.mobile.composer.commands : t.mobile.composer.projectFiles}
+            </span>
             <span className={m.sheetCount}>
               {commandMatches.length > 0
-                ? `${commandMatches.length} of ${commands.length}`
-                : `${fileMatches.length} of ${facts.files.length}`}
+                ? t.mobile.composer.ofTotal(commandMatches.length, commands.length)
+                : t.mobile.composer.ofTotal(fileMatches.length, facts.files.length)}
             </span>
             <button
               type="button"
               className={m.sheetClose}
-              aria-label="Close the list"
+              aria-label={t.mobile.composer.closeList}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => setDismissedAt(suggestQuery)}
             >
@@ -384,7 +412,7 @@ export const Composer = ({
         <button
           type="button"
           className={m.meter}
-          aria-label="Usage limits"
+          aria-label={t.mobile.composer.usageLimits}
           disabled={!facts.session && !facts.week && !facts.extra?.active}
           onClick={() => setLimitsOpen(true)}
         >
@@ -404,7 +432,7 @@ export const Composer = ({
         <button
           type="button"
           className={m.meter}
-          aria-label="Usage limits"
+          aria-label={t.mobile.composer.usageLimits}
           disabled={!facts.session && !facts.week && !facts.extra?.active}
           onClick={() => setLimitsOpen(true)}
         >
@@ -454,7 +482,7 @@ export const Composer = ({
               <button
                 type="button"
                 className={m.attachRemove}
-                aria-label={`Remove ${image.name}`}
+                aria-label={t.mobile.composer.removeImage(image.name)}
                 onClick={() => setAttached((current) => current.filter((one) => one.id !== image.id))}
               >
                 ×
@@ -489,7 +517,7 @@ export const Composer = ({
             className={m.composerInput}
             value={draft}
             rows={1}
-            placeholder={connected ? 'Say something…' : 'Reconnecting…'}
+            placeholder={connected ? t.mobile.composer.say : t.mobile.composer.reconnecting}
             // Not "send": there is a Send button under the field, and Enter here makes a new line. A
             // key cap that says one thing and does another is worse than a plain one.
             enterKeyHint="enter"
@@ -504,13 +532,16 @@ export const Composer = ({
         </div>
       </div>
 
+      {voice.interim ? <p className={m.voiceTail}>{voice.interim}</p> : null}
+      {voice.error ? <p className={m.attachError}>{voiceMessage(t, voice.error, true)}</p> : null}
+
       <div className={m.tools}>
         {/* The button does not open a catalogue but puts a slash into the field: the command is typed
             on from there and the list narrows by itself, exactly as at the desk. */}
         <button
           type="button"
           className={`${m.iconBtn} ${commandMatches.length > 0 ? m.iconBtnOn : ''}`}
-          aria-label="Slash commands"
+          aria-label={t.mobile.composer.slash}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => replace(0, 0, '/')}
         >
@@ -520,10 +551,67 @@ export const Composer = ({
         <button
           type="button"
           className={m.iconBtn}
-          aria-label="Attach a photo"
+          aria-label={t.mobile.composer.attachPhoto}
           onClick={() => picker.current?.click()}
         >
           <Paperclip />
+        </button>
+
+        {/*
+          Dictation. Held down it records and stops when the finger lifts; tapped it stays on until the
+          next tap. That is the gesture every messenger already taught everybody, and it is the one that
+          suits a phone: holding a button for a two-minute thought is not a thing a hand wants to do.
+
+          Pointer events rather than mouse or touch ones: one set that covers a finger, a stylus and the
+          desktop browser this is debugged in. The press is claimed with setPointerCapture so that a
+          finger sliding off the button still ends the dictation on release rather than leaving it
+          recording for ever.
+        */}
+        <button
+          type="button"
+          className={`${m.iconBtn} ${listening ? m.iconBtnLive : ''}`}
+          aria-label={listening ? t.mobile.composer.voiceStop : t.mobile.composer.voice}
+          aria-pressed={listening}
+          /*
+             Greyed out with no link, but never while it is recording.
+
+             The socket to Deepgram is the phone's own and outlives a relay that flaps, so disabling a
+             running dictation would be a recording nothing could stop: a disabled control gets no
+             pointer events, so even letting go would not reach it. Idle is different - starting needs
+             the link, because the token comes from the IDE, and a button that looks ready and answers a
+             press with nothing at all is worse than one that says it cannot.
+          */
+          disabled={voice.phase === 'finishing' || (!connected && !listening)}
+          onPointerDown={(event) => {
+            if (listening) return
+            // Belt and braces with the disabled state above: no link, no token, and a microphone
+            // opened for nothing would only light the indicator.
+            if (!connected) return
+            event.currentTarget.setPointerCapture(event.pointerId)
+            pressedAt.current = Date.now()
+            voice.start()
+          }}
+          onPointerUp={() => {
+            if (!listening) return
+            // A tap rather than a hold: leave it running, and let the next tap end it.
+            if (Date.now() - pressedAt.current < TAP_MS) {
+              held.current = true
+              return
+            }
+            voice.stop()
+          }}
+          onPointerCancel={() => voice.cancel()}
+          onClick={() => {
+            // The click that follows a tap-to-latch is the same press; the one after that is the stop.
+            if (!listening) return
+            if (held.current) {
+              held.current = false
+              return
+            }
+            voice.stop()
+          }}
+        >
+          <Microphone className={m.iconMic} />
         </button>
 
         {/*
@@ -549,7 +637,7 @@ export const Composer = ({
 
         {running ? (
           <>
-            <button type="button" className={m.stop} aria-label="Stop the run" onClick={onStop}>
+            <button type="button" className={m.stop} aria-label={t.mobile.composer.stop} onClick={onStop}>
               <StopSquare />
             </button>
             <button
@@ -585,7 +673,10 @@ const folderOf = (path: string): string => {
   return parts.slice(0, -1).join('/')
 }
 
-/** The same paperclip as the panel's, drawn rather than typed - see Composer.tsx at the desk. */
+
+/** How long a press counts as a tap rather than as holding the button down. */
+const TAP_MS = 350
+
 const Paperclip = () => (
   <svg className={m.iconClip} viewBox="0 0 24 24" aria-hidden="true">
     <path

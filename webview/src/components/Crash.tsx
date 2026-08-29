@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { send } from '../bridge'
 import s from './shell.module.css'
+import { dictOf, resolveLocale } from '../i18n'
 
 /**
  * The last barrier between a failure in the interface and an empty black panel.
@@ -29,16 +30,24 @@ export class Crash extends Component<{ children: ReactNode }, CrashState> {
   render() {
     if (!this.state.message) return this.props.children
 
+    /*
+     * The words are fetched rather than taken from the hook, and both halves of that are forced.
+     *
+     * This is a class - an error boundary has to be one - and it stands ABOVE the panel that owns the
+     * language setting, so there is no context to read here even if there were a hook to read it with.
+     * What there is, is the attribute the provider writes onto <html> on every change (see
+     * LocaleProvider): the language is on the page itself, and reading it back is exact.
+     */
+    const t = dictOf(resolveLocale(document.documentElement.lang))
+
     return (
       <div className={s.panel} data-anchor="right">
         <div className={s.gate}>
-          <p className={s.gateTitle}>The panel hit an error</p>
-          <p className={s.gateText}>
-            Reloading is safe: your conversations live in the Claude Code processes behind the panel and survive it.
-          </p>
+          <p className={s.gateTitle}>{t.chrome.crash.title}</p>
+          <p className={s.gateText}>{t.chrome.crash.text}</p>
           <p className={s.gateWaiting}>{this.state.message}</p>
           <button type="button" className={s.gateButton} onClick={() => window.location.reload()}>
-            Reload the panel
+            {t.chrome.crash.button}
           </button>
         </div>
       </div>

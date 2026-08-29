@@ -2,6 +2,7 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { withoutShellText } from '../feed/bash'
 import type { QueuedMessage } from '../protocol'
 import s from './composer.module.css'
+import { useT } from '../i18n'
 
 interface QueueProps {
   /**
@@ -15,6 +16,7 @@ interface QueueProps {
 }
 
 export const Queue = ({ items, onReorder, onRemove }: QueueProps) => {
+  const t = useT()
   const [dragFrom, setDragFrom] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState<number | null>(null)
   const rowRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -61,10 +63,8 @@ export const Queue = ({ items, onReorder, onRemove }: QueueProps) => {
   return (
     <div className={s.queue}>
       <div className={s.queueHead}>
-        <span className={s.queueLabel}>QUEUED</span>
-        <span className={s.queueHint}>
-          {items.length} will fire in order when the run finishes · drag to reorder
-        </span>
+        <span className={s.queueLabel}>{t.chrome.queue.label}</span>
+        <span className={s.queueHint}>{t.chrome.queue.hint(items.length)}</span>
         <div className={s.spacer} />
       </div>
 

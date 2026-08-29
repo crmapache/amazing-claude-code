@@ -1,4 +1,5 @@
 import s from './composer.module.css'
+import { useT } from '../i18n'
 
 export interface Quote {
   id: string
@@ -12,6 +13,7 @@ interface QuotesProps {
 
 /** Pieces of output selected with the mouse: they will travel along with the next message. */
 export const Quotes = ({ items, onRemove }: QuotesProps) => {
+  const t = useT()
   if (items.length === 0) return null
 
   return (
@@ -22,7 +24,7 @@ export const Quotes = ({ items, onRemove }: QuotesProps) => {
           <span className={s.quoteText}>
             “{quote.text.length > 120 ? `${quote.text.slice(0, 120)}…` : quote.text}”
           </span>
-          <span className={s.quoteSrc}>from output</span>
+          <span className={s.quoteSrc}>{t.feed.fromOutput}</span>
           <button type="button" className={s.iconButton} onClick={() => onRemove(quote.id)}>
             ×
           </button>

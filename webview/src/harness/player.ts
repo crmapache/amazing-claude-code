@@ -1,4 +1,4 @@
-import type { ShellMessage, WebviewMessage } from '../protocol'
+import type { ShellMessage, VoiceHotkey, VoiceHotkeySlot, WebviewMessage } from '../protocol'
 import { bootstrap, SESSION } from './events'
 import { SHOWCASE_HISTORY } from './scenarios/showcase'
 import type { Scenario, ScenarioStep } from './types'
@@ -163,6 +163,229 @@ const answerImprove = (message: WebviewMessage): void => {
   }, 1200)
 }
 
+/*
+ * Voice input, played by the harness.
+ *
+ * In the IDE this is a microphone and a socket to Deepgram (see the voice package on the plugin's side);
+ * here the speech is invented, but it arrives the way real speech does - a grey tail that grows word by
+ * word and then settles into the field as a phrase. That is the half of the feature worth looking at
+ * without an IDE and without a key: the tail must never end up in the message, and the settled phrases
+ * must join the draft with exactly one space between them.
+ *
+ * Every third dictation fails, as the improve button above does: the line that explains a failed
+ * dictation is otherwise a piece of interface nobody ever sees.
+ */
+let voiceRuns = 0
+let voiceTimers: ReturnType<typeof setTimeout>[] = []
+let voiceSettings = {
+  enabled: true,
+  language: 'en',
+  device: '',
+  keyHint: '…9f2c',
+  hotkeys: {
+    push: { caps: [{ glyph: 'option', text: '', side: 'right' }] },
+    hold: {
+      caps: [
+        { glyph: '', text: 'Ctrl', side: '' },
+        { glyph: '', text: 'Shift', side: '' },
+        { glyph: '', text: 'V', side: '' },
+      ],
+    },
+    pushMouse: { caps: [{ glyph: 'mouse', text: '4', side: '' }] },
+    holdMouse: { caps: [] },
+  } as Record<VoiceHotkeySlot, VoiceHotkey>,
+}
+
+/** A few of the sixty-odd nova-3 takes, enough for the list and the search above it to be tried. */
+const VOICE_LANGUAGES = [
+  { code: 'multi', native: 'Multilingual', english: 'Follows a language change mid-sentence' },
+  { code: 'en', native: 'English', english: 'English' },
+  { code: 'de', native: 'Deutsch', english: 'German' },
+  { code: 'es', native: 'Español', english: 'Spanish' },
+  { code: 'fr', native: 'Français', english: 'French' },
+  { code: 'ja', native: '日本語', english: 'Japanese' },
+  { code: 'ru', native: 'Русский', english: 'Russian' },
+  { code: 'zh', native: '中文', english: 'Chinese (Simplified)' },
+]
+
+const VOICE_DEVICES = [
+  { id: 'MacBook Pro Microphone', label: 'MacBook Pro Microphone' },
+  { id: 'Shure MV7', label: 'Shure MV7' },
+]
+
+/** What gets dictated. Two phrases, so the space between them can be checked on screen. */
+const VOICE_PHRASES = [
+  'add a spinner to the export button',
+  'and keep it disabled while the file is being written',
+]
+
+const voiceConfig = (): ShellMessage => ({
+  type: 'voiceConfig',
+  enabled: voiceSettings.enabled,
+  language: voiceSettings.language,
+  languages: VOICE_LANGUAGES,
+  device: voiceSettings.device,
+  devices: VOICE_DEVICES,
+  keyHint: voiceSettings.keyHint,
+  hotkeys: voiceSettings.hotkeys,
+})
+
+const voiceLater = (ms: number, run: () => void): void => {
+  voiceTimers.push(setTimeout(run, ms))
+}
+
+const voiceSilence = (): void => {
+  for (const timer of voiceTimers) clearTimeout(timer)
+  voiceTimers = []
+}
+
+/**
+ * The settings, answered a beat later rather than at once.
+ *
+ * The panel asks for them while it is mounting, before its own subscription is in place - in the IDE the
+ * answer comes back from another process and lands well after that, while here it would be handed over
+ * inside the same call and drop into a bridge that is not listening yet. The delay is what makes the
+ * harness behave like the shell rather than like a function call.
+ */
+const sendVoiceConfig = (): void => {
+  voiceLater(60, () => window.__accReceive?.(voiceConfig()))
+}
+
+const answerVoice = (message: WebviewMessage): void => {
+  if (message.type === 'voiceConfig') {
+    sendVoiceConfig()
+    return
+  }
+
+  if (message.type === 'voiceEnabled') {
+    voiceSettings = { ...voiceSettings, enabled: message.enabled }
+    sendVoiceConfig()
+    return
+  }
+
+  if (message.type === 'voiceLanguage') {
+    voiceSettings = { ...voiceSettings, language: message.language }
+    sendVoiceConfig()
+    return
+  }
+
+  if (message.type === 'voiceDevice') {
+    voiceSettings = { ...voiceSettings, device: message.device }
+    sendVoiceConfig()
+    return
+  }
+
+  if (message.type === 'voiceKey') {
+    voiceSettings = { ...voiceSettings, keyHint: message.key ? `…${message.key.slice(-4)}` : '' }
+    sendVoiceConfig()
+    return
+  }
+
+  if (message.type === 'voiceBalance') {
+    window.__accReceive?.({ type: 'voiceBalanceIs', state: 'checking' })
+    // Not instant, so the "asking Deepgram" line is something one can actually see.
+    voiceLater(600, () =>
+      window.__accReceive?.(
+        voiceSettings.keyHint
+          ? { type: 'voiceBalanceIs', state: 'ok', amount: 182.4, units: 'usd' }
+          : { type: 'voiceBalanceIs', state: 'none' },
+      ),
+    )
+    return
+  }
+
+  // The recording of a hotkey: in the IDE the next real press is taken (see VoiceHotkeys), here one is
+  // invented after a beat, so that the "press a key" state is visible on the way past.
+  if (message.type === 'voiceCaptureHotkey') {
+    const slot = message.slot
+    voiceLater(900, () => {
+      const bound: VoiceHotkey =
+        slot === 'pushMouse' || slot === 'holdMouse'
+          ? { caps: [{ glyph: 'mouse', text: '5', side: '' }] }
+          : {
+              caps: [
+                { glyph: 'option', text: '', side: '' },
+                { glyph: '', text: 'Shift', side: '' },
+                { glyph: '', text: 'D', side: '' },
+              ],
+            }
+      voiceSettings = { ...voiceSettings, hotkeys: { ...voiceSettings.hotkeys, [slot]: bound } }
+      window.__accReceive?.(voiceConfig())
+      return
+    })
+    return
+  }
+
+  if (message.type === 'voiceClearHotkey') {
+    voiceSettings = {
+      ...voiceSettings,
+      hotkeys: { ...voiceSettings.hotkeys, [message.slot]: { caps: [] } },
+    }
+    sendVoiceConfig()
+    return
+  }
+
+  if (message.type === 'voiceCancel') {
+    voiceSilence()
+    window.__accReceive?.({ type: 'voiceText', text: '', final: false })
+    window.__accReceive?.({ type: 'voiceState', phase: 'idle', mode: 'hold', level: 0, error: '' })
+    return
+  }
+
+  if (message.type === 'voiceStop') {
+    voiceSilence()
+    window.__accReceive?.({ type: 'voiceState', phase: 'finishing', mode: 'hold', level: 0, error: '' })
+    // The tail Deepgram still owes after the key is released - a couple of tenths of a second in life.
+    voiceLater(320, () => {
+      window.__accReceive?.({ type: 'voiceText', text: '', final: false })
+      window.__accReceive?.({ type: 'voiceState', phase: 'idle', mode: 'hold', level: 0, error: '' })
+    })
+    return
+  }
+
+  if (message.type !== 'voiceStart') return
+
+  voiceSilence()
+  voiceRuns += 1
+
+  if (voiceRuns % 3 === 0) {
+    window.__accReceive?.({ type: 'voiceState', phase: 'listening', mode: message.mode, level: 20, error: '' })
+    voiceLater(700, () =>
+      window.__accReceive?.({ type: 'voiceState', phase: 'idle', mode: message.mode, level: 0, error: 'mic' }),
+    )
+    return
+  }
+
+  window.__accReceive?.({ type: 'voiceState', phase: 'listening', mode: message.mode, level: 12, error: '' })
+
+  const phrase = VOICE_PHRASES[(voiceRuns - 1) % VOICE_PHRASES.length] ?? VOICE_PHRASES[0]!
+  const words = phrase.split(' ')
+  let elapsed = 0
+
+  words.forEach((_, index) => {
+    elapsed += 260
+    const tail = words.slice(0, index + 1).join(' ')
+    voiceLater(elapsed, () => {
+      window.__accReceive?.({ type: 'voiceText', text: tail, final: false })
+      // The ring answers the voice rather than sitting still - a level that never moves is exactly how a
+      // dead microphone looks, and this is the state that has to be told apart from it.
+      window.__accReceive?.({
+        type: 'voiceState',
+        phase: 'listening',
+        mode: message.mode,
+        level: 25 + ((index * 37) % 60),
+        error: '',
+      })
+    })
+  })
+
+  // The phrase settles: the grey tail is replaced by the words themselves in the draft.
+  voiceLater(elapsed + 320, () => {
+    window.__accReceive?.({ type: 'voiceText', text: '', final: false })
+    window.__accReceive?.({ type: 'voiceText', text: phrase, final: true })
+  })
+}
+
 /**
  * Pages of a conversation older than what is on screen.
  *
@@ -296,6 +519,7 @@ const listenToPanel = () => {
     if (message) answerFeedback(message)
     if (message) answerHistoryPage(message)
     if (message) answerImprove(message)
+    if (message) answerVoice(message)
   }
 
   window.dispatchEvent(new Event('acc:ready'))

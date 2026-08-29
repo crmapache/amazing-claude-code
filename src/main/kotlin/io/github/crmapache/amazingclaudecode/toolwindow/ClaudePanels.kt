@@ -4,6 +4,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindowManager
 
@@ -38,5 +39,24 @@ internal class ClaudePanels(private val project: Project) {
         const val TOOL_WINDOW_ID = "AmazingClaudeCode"
 
         fun getInstance(project: Project): ClaudePanels = project.service()
+
+        /**
+         * Every panel open on this machine right now.
+         *
+         * For the settings that are the machine's rather than a project's - the language, voice input.
+         * They are saved once and are true everywhere, but everything that carries them to a screen goes
+         * through the conversation hub, and that is a project service: told to one window only, a second
+         * project went on drawing itself in yesterday's language, and showed a microphone button whose
+         * dictation was refused the moment it was pressed.
+         *
+         * Projects without a panel are not missed by this: one opening later is handed the settings as
+         * they stand, along with everything else about the project.
+         */
+        fun everyPanel(tell: (ClaudePanel) -> Unit) {
+            for (project in ProjectManager.getInstance().openProjects) {
+                if (project.isDisposed) continue
+                runCatching { getInstance(project).panel?.let(tell) }
+            }
+        }
     }
 }

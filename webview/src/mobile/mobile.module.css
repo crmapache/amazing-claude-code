@@ -1045,12 +1045,47 @@
   font: 500 17px/1 var(--acc-mono);
 }
 
+/*
+ * The microphone while it is listening. Red, because that is what recording means everywhere, and it
+ * has to be legible at arm's length on a phone in daylight - which is also why it is the fill that
+ * changes rather than an outline.
+ */
+.iconBtnLive {
+  background: var(--acc-bad-24);
+  color: var(--acc-bad-light);
+}
+
+/*
+ * The phrase being said, under the field rather than inside it.
+ *
+ * At the desk this is drawn beside the caret; here it is not, and deliberately. A phone's field is two
+ * lines tall with a keyboard under it, so a tail growing inside it pushes the whole conversation up the
+ * screen while somebody is still speaking.
+ */
+.voiceTail {
+  margin: var(--acc-sp-2) var(--acc-sp-5) 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--acc-fg-ghost);
+}
+
 .iconClip {
   width: 17px;
   height: 17px;
   overflow: visible;
   /* Drawn at an angle and stood upright, as in the panel. */
   transform: rotate(-45deg);
+}
+
+/*
+ * The microphone beside it - the same size and nothing else.
+ *
+ * Its own rule rather than the paperclip's: that one turns its glyph upright, and the microphone
+ * arrived wearing it and stood leaning at 45 degrees.
+ */
+.iconMic {
+  width: 17px;
+  height: 17px;
 }
 
 /* The system's own file chooser is what this opens; the input itself is never seen. */

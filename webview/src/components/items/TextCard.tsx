@@ -1,5 +1,6 @@
 import { RevealProvider } from 'smooth-stream-text/react'
 import { paragraphsText } from '../../feed/markdown'
+import { useT } from '../../i18n'
 import type { TextItem } from '../../feed/types'
 import { CopyButton } from './CopyButton'
 import { Markdown } from './Markdown'
@@ -63,6 +64,8 @@ const isTouchDensity = (): boolean =>
  * message, only from the other side.
  */
 export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
+  const t = useT()
+
   /**
    * The reveal wave draws every word as a separate node with an animation of its own - on an ordinary
    * answer that is pretty and costs nothing noticeable, while on a sheet of tens of thousands of words (a
@@ -79,7 +82,7 @@ export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
 
   return (
     <div className={s.text} data-copyable>
-      <CopyButton text={paragraphsText(item.paragraphs)} className={s.textCopy} title="Copy the whole reply" />
+      <CopyButton text={paragraphsText(item.paragraphs)} className={s.textCopy} title={t.feed.copyReply} />
 
       {/* One wave for the whole card: otherwise every paragraph would start the reveal afresh and the
           text would light up in steps rather than in one motion. */}

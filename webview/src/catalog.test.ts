@@ -1,11 +1,18 @@
+import { LOCALES } from './i18n'
+import { DICTIONARIES } from './i18n/all'
+import { en } from './i18n/en'
+import { ru } from './i18n/ru'
 import { describe, expect, it } from 'vitest'
 import {
-  EFFORT_OPTIONS,
+  columns,
+  effortOptions,
+  effortShortLabel,
   EFFORT_SAMPLE,
-  MODE_SAMPLE,
+  modeSample,
   MODEL_SAMPLE,
-  MODEL_OPTIONS,
-  MODE_OPTIONS,
+  modelSample,
+  modelCatalogue,
+  modeOptions,
   modeLabel,
   modeMenuOptions,
   modelLabel,
@@ -32,14 +39,14 @@ describe('permission modes', () => {
   })
 
   it('finds a caption by the old name too - otherwise a raw value ends up in the status row', () => {
-    expect(modeLabel('default')).toBe('Ask permissions')
-    expect(modeShortLabel('default')).toBe('Ask')
-    expect(modeShortLabel('manual')).toBe('Ask')
+    expect(modeLabel(en, 'default')).toBe('Ask permissions')
+    expect(modeShortLabel(en, 'default')).toBe('Ask')
+    expect(modeShortLabel(en, 'manual')).toBe('Ask')
   })
 
   it('keeps the outdated name out of the mode list', () => {
-    expect(MODE_OPTIONS.map((option) => option.id)).not.toContain('default')
-    expect(MODE_OPTIONS.map((option) => option.id)).toContain('manual')
+    expect(modeOptions(en).map((option) => option.id)).not.toContain('default')
+    expect(modeOptions(en).map((option) => option.id)).toContain('manual')
   })
 })
 
@@ -93,21 +100,21 @@ describe('the modes the agent refused', () => {
 
 describe('the availability of the optional modes in the menu', () => {
   it('shows auto and bypass but marks them unavailable - like a model, rather than dropping them from the list', () => {
-    const options = modeMenuOptions({ bypass: false, auto: false })
+    const options = modeMenuOptions(en, { bypass: false, auto: false })
 
     expect(options.find((option) => option.id === 'auto')?.disabled).toBe(true)
     expect(options.find((option) => option.id === 'bypassPermissions')?.disabled).toBe(true)
   })
 
   it('leaves an available mode an ordinary item, with no mark', () => {
-    const options = modeMenuOptions({ bypass: true, auto: true })
+    const options = modeMenuOptions(en, { bypass: true, auto: true })
 
     expect(options.find((option) => option.id === 'auto')?.disabled).toBeUndefined()
     expect(options.find((option) => option.id === 'bypassPermissions')?.disabled).toBeUndefined()
   })
 
   it('does not let the unavailability of auto/bypass touch the other modes', () => {
-    const options = modeMenuOptions({ bypass: false, auto: false })
+    const options = modeMenuOptions(en, { bypass: false, auto: false })
 
     expect(options.find((option) => option.id === 'manual')?.disabled).toBeUndefined()
     expect(options.find((option) => option.id === 'acceptEdits')?.disabled).toBeUndefined()
@@ -124,16 +131,45 @@ describe('the model catalogue', () => {
   ]
 
   it('puts the CLI live catalogue above the built-in list', () => {
-    expect(modelOptions(models).map((option) => option.id)).toEqual(['default', 'sonnet', 'opus-legacy'])
+    expect(modelOptions(en, models).map((option) => option.id)).toEqual(['default', 'sonnet', 'opus-legacy'])
   })
 
   it('shows the built-in list while there is no catalogue', () => {
-    expect(modelOptions(null)).toBe(MODEL_OPTIONS)
-    expect(modelOptions([])).toBe(MODEL_OPTIONS)
+    expect(modelOptions(en, null)).toEqual(modelCatalogue(en))
+    expect(modelOptions(en, [])).toEqual(modelCatalogue(en))
+  })
+
+  /**
+   * The CLI answers in English whatever the panel is set to - it has no idea which language this is. So
+   * where its list names a model the panel has words for, the panel's own line is used and only the set
+   * of models comes from the CLI.
+   */
+  it('describes a known model in the panel’s language rather than the CLI’s', () => {
+    const models = [{ value: 'sonnet', label: 'Sonnet', resolved: 'claude-sonnet-5', description: 'Efficient for routine tasks' }]
+
+    expect(modelOptions(ru, models)[0]?.sub).toBe(ru.models.sonnet.sub)
+  })
+
+  /** The caption is as much the panel's own as the line under it - "Default (recommended)" is a sentence. */
+  it('names a known model in the panel’s language too', () => {
+    const models = [
+      { value: 'default', label: 'Default (recommended)', resolved: 'claude-sonnet-5', description: 'Recommended' },
+    ]
+
+    expect(modelOptions(ru, models)[0]?.label).toBe(ru.models.default.label)
+  })
+
+  it('keeps the CLI’s own words for a model it has never heard of', () => {
+    const models = [
+      { value: 'opus-legacy', label: 'Opus legacy', resolved: 'claude-opus-4', description: 'Something only the CLI knows' },
+    ]
+
+    expect(modelOptions(ru, models)[0]?.sub).toBe('Something only the CLI knows')
+    expect(modelOptions(ru, models)[0]?.label).toBe('Opus legacy')
   })
 
   it('shows an unavailable model but marks it', () => {
-    expect(modelOptions(models).find((option) => option.id === 'opus-legacy')?.tag).toBe('unavailable')
+    expect(modelOptions(en, models).find((option) => option.id === 'opus-legacy')?.tag).toBe('unavailable')
   })
 })
 
@@ -164,16 +200,16 @@ describe('the model the agent moved to itself', () => {
   })
 
   it('keeps the tick on the choice while the conversation is on the chosen model', () => {
-    expect(modelMenu(models, 'sonnet', undefined)).toMatchObject({ selected: 'sonnet' })
-    expect(modelMenu(models, '', undefined)).toMatchObject({ selected: 'default' })
+    expect(modelMenu(en, models, 'sonnet', undefined)).toMatchObject({ selected: 'sonnet' })
+    expect(modelMenu(en, models, '', undefined)).toMatchObject({ selected: 'default' })
   })
 
   it('moves the tick onto the catalogue model with the same identifier after a move', () => {
-    expect(modelMenu(models, 'default', 'claude-sonnet-5')).toMatchObject({ selected: 'sonnet' })
+    expect(modelMenu(en, models, 'default', 'claude-sonnet-5')).toMatchObject({ selected: 'sonnet' })
   })
 
   it('starts a row of its own for a model missing from the catalogue - otherwise there is nothing to mark', () => {
-    const menu = modelMenu(models, 'default', 'claude-opus-4-8')
+    const menu = modelMenu(en, models, 'default', 'claude-opus-4-8')
 
     expect(menu.selected).toBe('claude-opus-4-8')
     expect(menu.options.at(-1)).toMatchObject({ id: 'claude-opus-4-8', label: 'Opus 4.8' })
@@ -256,22 +292,92 @@ describe('the model caption in the bottom row', () => {
 /**
  * The button measures its width off these samples rather than off what is chosen right now (see Selector
  * in StatusBar.tsx). Let a sample turn out shorter than the genuine caption and it gets clipped with an
- * ellipsis for no reason at all.
+ * ellipsis for no reason at all; let it turn out longer than any caption that can occur and the button
+ * carries columns nothing will ever fill - which is what put the three of them onto two lines.
  */
 describe('the width samples for the selectors', () => {
   it('keeps the model sample no shorter than any caption of the known families', () => {
-    const labels = ['default', ...MODEL_OPTIONS.map((option) => modelLabel(option.id))]
+    const labels = ['default', ...modelCatalogue(en).map((option) => modelLabel(option.id))]
 
     for (const label of labels) expect(label.length).toBeLessThanOrEqual(MODEL_SAMPLE.length)
   })
 
-  it('keeps the effort sample no shorter than any option in the menu', () => {
-    for (const option of EFFORT_OPTIONS) expect(option.label.length).toBeLessThanOrEqual(EFFORT_SAMPLE.length)
+  /**
+   * Once the CLI's catalogue is there, it and not the built-in shape says how wide the button has to be:
+   * these are the only captions anyone in this installation can choose.
+   */
+  it('measures the model button by the catalogue the CLI sent', () => {
+    const models = [
+      { value: 'default', label: 'Default', description: '', resolved: 'claude-sonnet-5' },
+      { value: 'opus', label: 'Opus', description: '', resolved: 'claude-opus-5' },
+    ]
+
+    expect(modelSample(models)).toBe('Sonnet 5')
   })
 
-  it('keeps the mode sample no shorter than any short caption', () => {
-    const labels = MODE_OPTIONS.map((option) => modeShortLabel(option.id))
+  it('falls back to the built-in shape while the catalogue is unknown', () => {
+    expect(modelSample(null)).toBe(MODEL_SAMPLE)
+    expect(modelSample([])).toBe(MODEL_SAMPLE)
+  })
 
-    for (const label of labels) expect(label.length).toBeLessThanOrEqual(MODE_SAMPLE.length)
+  /**
+   * The menu's own words, not the button's: what the button says is the short caption (see
+   * effortShortLabel), and that is what has to fit into the room the sample holds.
+   */
+  it('keeps the effort sample no shorter than any caption the button can show', () => {
+    for (const option of effortOptions(en)) {
+      expect(columns(effortShortLabel(option.label)), option.id).toBeLessThanOrEqual(columns(EFFORT_SAMPLE))
+    }
+  })
+
+  /** The short form is a caption and nothing else - the value the CLI is given stays as it is. */
+  it('shortens only the one effort value that is longer than the rest', () => {
+    expect(effortShortLabel('ultracode')).toBe('ultra')
+
+    for (const option of effortOptions(en)) {
+      if (option.id !== 'ultracode') expect(effortShortLabel(option.label)).toBe(option.label)
+    }
+  })
+
+  /**
+   * No column stands empty whatever is chosen: the widest caption is exactly as wide as the room. A
+   * sample wider than every caption is room nothing can fill - on three buttons at once, in a row that has
+   * to fit into a panel somebody dragged narrow.
+   */
+  it('holds no more room than the widest caption needs', () => {
+    expect(columns(EFFORT_SAMPLE)).toBe(
+      Math.max(...effortOptions(en).map((option) => columns(effortShortLabel(option.label)))),
+    )
+
+    for (const { id } of LOCALES) {
+      const dictionary = DICTIONARIES[id]
+
+      expect(columns(modeSample(dictionary)), id).toBe(
+        Math.max(...modeOptions(dictionary).map((option) => columns(modeShortLabel(dictionary, option.id)))),
+      )
+    }
+  })
+
+  /**
+   * In every language, not only in English: the captions are translated while the button is not redrawn
+   * per language, and a Han character takes two columns for one character - measured by length, the
+   * Chinese sample came out narrower than the caption it is supposed to hold (see columns).
+   */
+  it('keeps the mode sample no shorter than any short caption, in every language', () => {
+    for (const { id } of LOCALES) {
+      const dictionary = DICTIONARIES[id]
+      const sample = columns(modeSample(dictionary))
+
+      for (const option of modeOptions(dictionary)) {
+        expect(columns(modeShortLabel(dictionary, option.id)), `${id}: ${option.id}`).toBeLessThanOrEqual(sample)
+      }
+    }
+  })
+
+  it('counts a full-width character as the two columns it is drawn in', () => {
+    expect(columns('Ask')).toBe(3)
+    expect(columns('不问')).toBe(4)
+    expect(columns('確認')).toBe(4)
+    expect(columns('안 물음')).toBe(7)
   })
 })

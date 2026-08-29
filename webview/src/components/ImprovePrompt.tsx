@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useT } from '../i18n'
 import s from './sideMenu.module.css'
 
 interface ImprovePromptProps {
@@ -23,6 +24,7 @@ interface ImprovePromptProps {
  * setting rewritten thirty times a sentence is thirty writes for one decision.
  */
 export const ImprovePrompt = ({ instructions, builtIn, onChange }: ImprovePromptProps) => {
+  const t = useT()
   const [text, setText] = useState(instructions)
   const field = useRef<HTMLTextAreaElement>(null)
 
@@ -38,15 +40,10 @@ export const ImprovePrompt = ({ instructions, builtIn, onChange }: ImprovePrompt
 
   return (
     <div className={s.screen}>
-      <span className={s.screenNote}>
-        The sparkle button beside the paperclip rewrites what stands in the input field. This is what it
-        asks for, and it is sent together with the draft to a Claude Code run of its own - no tools, no
-        project files, no conversation, nothing written anywhere. It counts against your usage like any
-        other message.
-      </span>
+      <span className={s.screenNote}>{t.improvePrompt.note}</span>
 
       <div className={s.field}>
-        <span className={s.screenLabel}>INSTRUCTIONS</span>
+        <span className={s.screenLabel}>{t.improvePrompt.label}</span>
         <textarea
           ref={field}
           className={s.instructions}
@@ -56,16 +53,10 @@ export const ImprovePrompt = ({ instructions, builtIn, onChange }: ImprovePrompt
           onChange={(event) => setText(event.target.value)}
           onBlur={() => save(text)}
         />
-        <span className={s.screenNote}>
-          Empty means the text shown above in grey - the one the button uses out of the box. Whatever you
-          put here replaces it whole.
-        </span>
-        <span className={s.screenNote}>
-          Pressing the button again on a draft it has just rewritten starts over from what you originally
-          wrote, rather than rewriting its own answer - so a second press is another attempt, not a second
-          pass. The answers you pressed past go along with it, as things to steer away from. Edit the field
-          yourself and that becomes the new starting point.
-        </span>
+        <span className={s.screenNote}>{t.improvePrompt.emptyMeans}</span>
+        {/* Why the grey text above is in English however the panel speaks: it is a prompt to a model
+            rather than interface copy, and it already asks for the draft's own language back. */}
+        <span className={s.screenNote}>{t.improvePrompt.builtInLanguage}</span>
       </div>
 
       <div className={s.inputRow}>
@@ -84,7 +75,7 @@ export const ImprovePrompt = ({ instructions, builtIn, onChange }: ImprovePrompt
             }
           }}
         >
-          {custom ? 'Back to the built-in text' : 'Edit the built-in text'}
+          {custom ? t.improvePrompt.backToBuiltIn : t.improvePrompt.editBuiltIn}
         </button>
       </div>
     </div>

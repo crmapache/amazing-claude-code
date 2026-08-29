@@ -1,3 +1,4 @@
+import type { Dict } from '../i18n/en'
 import type { ExtraUsage, ShellMessage, UsageWindow } from '../protocol'
 
 /**
@@ -67,17 +68,18 @@ export const mergeUsage = (current: UsageFacts, message: UsageMessage): UsageFac
  * Here rather than in the feed because two things read it: the row in the feed (see rate_limit_event in
  * build.ts) and the tooltip on the burning ring (see UsageMeters).
  */
-const LIMIT_WINDOW_NAME: Record<string, string> = {
-  five_hour: '5-hour',
-  seven_day: 'weekly',
-  seven_day_opus: 'weekly Opus',
-  seven_day_sonnet: 'weekly Sonnet',
-  seven_day_oauth_apps: 'weekly apps',
-  seven_day_overage_included: 'weekly, extra usage included',
-  overage: 'extra usage',
-}
+const limitWindowNames = (t: Dict): Record<string, string> => ({
+  five_hour: t.limits.fiveHour,
+  seven_day: t.limits.weekly,
+  seven_day_opus: t.limits.weeklyOpus,
+  seven_day_sonnet: t.limits.weeklySonnet,
+  seven_day_oauth_apps: t.limits.weeklyApps,
+  seven_day_overage_included: t.limits.weeklyWithExtra,
+  overage: t.limits.extra,
+})
 
-export const limitWindowName = (window: string | undefined): string => LIMIT_WINDOW_NAME[window ?? ''] ?? ''
+export const limitWindowName = (t: Dict, window: string | undefined): string =>
+  limitWindowNames(t)[window ?? ''] ?? ''
 
 /**
  * Which of the two rings the window belongs to: the five-hour one or the weekly one.

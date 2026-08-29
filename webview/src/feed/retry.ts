@@ -1,7 +1,7 @@
 import type { AgentEvent, AgentSystemEvent } from '../protocol'
 import { formatDuration } from './tools'
 import type { PanelState } from './panelState'
-import type { RetryItem, RetryOutcome } from './types'
+import type { RetryItem, RetryOutcome, RetryReason } from './types'
 
 /**
  * The pause the CLI waits a refused request out in, before repeating it.
@@ -13,24 +13,27 @@ import type { RetryItem, RetryOutcome } from './types'
  */
 
 /**
- * The server's refusal in the terminal's own words: there the same pause is captioned exactly so.
+ * What the server refused with, as one of four facts rather than as a sentence.
  *
- * The panel is obliged to call what is happening what the CLI calls it - otherwise one and the same
- * overload is described differently in the terminal and in the panel. A broken connection falls into the
- * general "API error" for the same reason: it has no response code (see protocol), and the terminal does
- * not tell it from other refusals either.
+ * The four are the terminal's own division of them, and the sentences beside them say the same things -
+ * a person should not meet one overload described two ways in two windows. What they are not is English:
+ * the caption is set inside a translated frame (see stream.retryWaiting), so a line taken from the
+ * terminal wholesale drew half a Russian sentence.
+ *
+ * A broken connection falls into the general "API error": it has no response code (see protocol), and
+ * the terminal does not tell it from other refusals either.
  */
-export const retryLabel = (status: number | null | undefined): string => {
+export const retryReason = (status: number | null | undefined): RetryReason => {
   switch (status) {
     case 429:
-      return 'Rate limited'
+      return 'rateLimited'
     case 529:
-      return 'API overloaded'
+      return 'overloaded'
     case 401:
     case 403:
-      return 'Authentication failed'
+      return 'auth'
     default:
-      return 'API error'
+      return 'error'
   }
 }
 
@@ -54,31 +57,40 @@ const RETRY_TRACE_MS = 5_000
  * shared feed: a server overload concerns the whole conversation anyway rather than one of its branches.
  */
 export const applyApiRetry = (state: PanelState, event: AgentSystemEvent, now: number): PanelState => {
-  const label = retryLabel(event.error_status)
+  const reason = retryReason(event.error_status)
   const attempt = event.attempt ?? (state.retry ? state.retry.attempt + 1 : 1)
   const maxRetries = event.max_retries ?? state.retry?.maxRetries ?? 0
   const retryAt = now + Math.max(0, event.retry_delay_ms ?? 0)
 
   if (state.retry) {
-    const retry = { ...state.retry, label, attempt, maxRetries, retryAt }
+    const retry = { ...state.retry, reason, attempt, maxRetries, retryAt }
 
     return {
       ...state,
       retry,
       items: state.items.map((item) =>
-        item.kind === 'retry' && item.id === retry.itemId ? { ...item, label, attempt, maxRetries, retryAt } : item,
+        item.kind === 'retry' && item.id === retry.itemId ? { ...item, reason, attempt, maxRetries, retryAt } : item,
       ),
     }
   }
 
   const itemId = `retry-${state.seq}`
-  const card: RetryItem = { id: itemId, kind: 'retry', label, attempt, maxRetries, retryAt, duration: '', pending: true }
+  const card: RetryItem = {
+    id: itemId,
+    kind: 'retry',
+    reason,
+    attempt,
+    maxRetries,
+    retryAt,
+    duration: '',
+    pending: true,
+  }
 
   return {
     ...state,
     seq: state.seq + 1,
     items: [...state.items, card],
-    retry: { itemId, label, attempt, maxRetries, retryAt, startedAt: now },
+    retry: { itemId, reason, attempt, maxRetries, retryAt, startedAt: now },
   }
 }
 

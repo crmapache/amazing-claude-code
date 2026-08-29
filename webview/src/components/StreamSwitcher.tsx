@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import s from './shell.module.css'
+import { useT } from '../i18n'
 
 export type AgentStatus = 'idle' | 'running' | 'done' | 'needs-input' | 'stopped' | 'failed'
 
@@ -97,6 +98,7 @@ export const StreamSwitcher = ({
   onPick,
   onStop,
 }: StreamSwitcherProps) => {
+  const t = useT()
   // A mouse wheel scrolls vertically only - we translate deltaY into horizontal scrolling ourselves, or
   // on overflow the chips would be unreachable without a trackpad and without Shift. preventDefault needs
   // a real, non-passive listener: otherwise the event would also roll the feed down on every scroll of
@@ -133,7 +135,7 @@ export const StreamSwitcher = ({
         {STATUS_DOT[mainStatus] ? (
           <span className={s.streamDot} style={{ background: STATUS_DOT[mainStatus] }} />
         ) : null}
-        <span className={s.streamLabel}>main</span>
+        <span className={s.streamLabel}>{t.chrome.streams.main}</span>
       </button>
 
       {/* Not a button but a row with buttons inside: a chip has two - the chip itself switches the
@@ -168,13 +170,13 @@ export const StreamSwitcher = ({
             <button
               type="button"
               className={s.streamStop}
-              data-tooltip="Stop this agent"
-              aria-label={`Stop ${tab.label}`}
+              data-tooltip={t.chrome.streams.stopAgent}
+              aria-label={t.chrome.streams.stopAgentNamed(tab.label)}
               onClick={(event) => {
                 event.stopPropagation()
                 onStop({
                   id: tab.stopId as string,
-                  title: 'Stop this agent?',
+                  title: t.chrome.streams.stopAgentTitle,
                   subject: tab.meta || tab.label,
                 })
               }}
@@ -201,16 +203,20 @@ export const StreamSwitcher = ({
           data-tooltip-at="top"
         >
           <span className={s.streamDot} style={{ background: 'var(--acc-accent)' }} />
-          <span className={s.streamLabel}>bg</span>
+          <span className={s.streamLabel}>{t.chrome.streams.background}</span>
           <span className={s.streamDuration}>{task.duration}</span>
           <span className={s.streamMeta}>{task.label}</span>
           <button
             type="button"
             className={s.streamStop}
-            data-tooltip="Stop this command"
-            aria-label={`Stop ${task.label}`}
+            data-tooltip={t.chrome.streams.stopCommand}
+            aria-label={t.chrome.streams.stopAgentNamed(task.label)}
             onClick={() =>
-              onStop({ id: task.id, title: 'Stop this command?', subject: task.description || task.label })
+              onStop({
+                id: task.id,
+                title: t.chrome.streams.stopCommandTitle,
+                subject: task.description || task.label,
+              })
             }
           >
             <StopCross />

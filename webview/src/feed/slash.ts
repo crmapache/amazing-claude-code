@@ -1,5 +1,7 @@
-import { BUILTIN_COMMANDS, EFFORT_OPTIONS, modelOptions, PANEL_COMMANDS, type CommandOption } from '../catalog'
+import { builtinCommands, effortOptions, modelOptions, panelCommands, type CommandOption } from '../catalog'
+import type { Dict } from '../i18n/en'
 import type { ModelInfo } from '../protocol'
+import { endsOpen } from './tokens'
 import type { Chip, UserToken } from './types'
 
 /** Typed text only, without attachments - an attachment cannot be a slash command. */
@@ -11,32 +13,23 @@ export const plainText = (tokens: UserToken[]): string =>
  * as an insertion at the caret in the field: without a space it merges with the already typed text into
  * one unreadable word.
  */
-export const appendChip = (tokens: UserToken[], chip: Chip): UserToken[] => {
-  const next = [...tokens]
-  const last = next.at(-1)
-
-  if (last?.kind === 'text' && last.value.length > 0 && !/\s$/.test(last.value)) {
-    next.push({ kind: 'text', value: ' ' })
-  }
-
-  next.push({ kind: 'chip', chip })
-  next.push({ kind: 'text', value: ' ' })
-  return next
-}
+export const appendChip = (tokens: UserToken[], chip: Chip): UserToken[] =>
+  appendSpaced(tokens, { kind: 'chip', chip })
 
 /**
  * The same as [appendChip], but as ordinary text - for cases where the text itself has to be visible and
  * copyable literally (an absolute path, for instance) rather than a chip with a shortened caption.
  */
-export const appendText = (tokens: UserToken[], text: string): UserToken[] => {
+export const appendText = (tokens: UserToken[], text: string): UserToken[] =>
+  appendSpaced(tokens, { kind: 'text', value: text })
+
+const appendSpaced = (tokens: UserToken[], token: UserToken): UserToken[] => {
   const next = [...tokens]
   const last = next.at(-1)
 
-  if (last?.kind === 'text' && last.value.length > 0 && !/\s$/.test(last.value)) {
-    next.push({ kind: 'text', value: ' ' })
-  }
+  if (last?.kind === 'text' && endsOpen(last.value)) next.push({ kind: 'text', value: ' ' })
 
-  next.push({ kind: 'text', value: text })
+  next.push(token)
   next.push({ kind: 'text', value: ' ' })
   return next
 }
@@ -78,16 +71,20 @@ export interface CommandHint {
  * that defines a command with the same name as one of our BUILTIN_COMMANDS, that is its definition
  * rather than our guess.
  */
-export const buildCommands = (cliCommands: string[], hints: Record<string, CommandHint> = {}): CommandEntry[] => {
+export const buildCommands = (
+  t: Dict,
+  cliCommands: string[],
+  hints: Record<string, CommandHint> = {},
+): CommandEntry[] => {
   const entries: CommandEntry[] = []
   const seen = new Set<string>()
 
-  for (const command of PANEL_COMMANDS) {
+  for (const command of panelCommands(t)) {
     seen.add(command.id)
     entries.push({ ...command, group: 'panel' })
   }
 
-  for (const command of BUILTIN_COMMANDS) {
+  for (const command of builtinCommands(t)) {
     seen.add(command.id)
     const hint = hints[command.id]
     entries.push({
@@ -185,18 +182,22 @@ export interface LocalCommand {
  * agent, whose answer ("for this session only") is untrue besides. An unfamiliar value is left to the
  * agent: it may know a model we do not.
  */
-export const localCommand = (text: string, models: ModelInfo[] | null = null): LocalCommand | null => {
+export const localCommand = (
+  t: Dict,
+  text: string,
+  models: ModelInfo[] | null = null,
+): LocalCommand | null => {
   const trimmed = text.trim()
   if (!trimmed.startsWith('/')) return null
 
   const [name = '', ...rest] = trimmed.slice(1).split(/\s+/)
   const argument = rest.join(' ')
 
-  if (PANEL_COMMANDS.some((command) => command.id === name)) return { name, argument }
+  if (panelCommands(t).some((command) => command.id === name)) return { name, argument }
 
   // The values come from the same list as the hint and the menu in the bottom line - there would be
   // nothing for those three to drift over.
-  const known = argumentOptions(name, models)?.some((option) => option.id === argument)
+  const known = argumentOptions(t, name, models)?.some((option) => option.id === argument)
   return known ? { name, argument } : null
 }
 
@@ -205,18 +206,28 @@ export const localCommand = (text: string, models: ModelInfo[] | null = null): L
  * as the hint's second step. The models come from the CLI's live catalogue (see modelOptions), the
  * effort from a list of its own: its set of values is the same across versions.
  */
-const ARGUMENT_OPTIONS: Record<string, CommandOption[]> = {
-  effort: EFFORT_OPTIONS.map((option) => ({ id: option.id, hint: option.sub ?? '' })),
-}
+const argumentSets = (t: Dict): Record<string, CommandOption[]> => ({
+  effort: effortOptions(t).map((option) => ({ id: option.id, hint: option.sub ?? '' })),
+})
 
-/** A command without its argument is meaningless - sending it as it is, Enter included, serves nothing. */
-export const requiresArgument = (id: string): boolean => id === 'model' || id in ARGUMENT_OPTIONS
+/**
+ * A command without its argument is meaningless - sending it as it is, Enter included, serves nothing.
+ *
+ * Asked by name alone rather than of the list above, because the answer is about which commands take an
+ * argument at all: that is the same in every language, and building a translated list to look one name
+ * up in it would be work for nothing.
+ */
+export const requiresArgument = (id: string): boolean => id === 'model' || id === 'effort'
 
 /** A command's enumerable values, when it has any - for the argument's hint. */
-export const argumentOptions = (command: string, models: ModelInfo[] | null = null): CommandOption[] | undefined =>
+export const argumentOptions = (
+  t: Dict,
+  command: string,
+  models: ModelInfo[] | null = null,
+): CommandOption[] | undefined =>
   command === 'model'
-    ? modelOptions(models).map((option) => ({ id: option.id, hint: option.sub ?? '' }))
-    : ARGUMENT_OPTIONS[command]
+    ? modelOptions(t, models).map((option) => ({ id: option.id, hint: option.sub ?? '' }))
+    : argumentSets(t)[command]
 
 /** The name of a command typed in full and exactly one space after it - the field's start up to the caret. */
 const COMPLETED_COMMAND = /^\/(\S+) $/
@@ -365,12 +376,16 @@ export interface ArgumentQuery {
  * The command's name has been typed and exactly one space follows it - what comes next is its argument,
  * and if the command supports one, it needs a hint too.
  */
-export const argumentQuery = (draft: string, models: ModelInfo[] | null = null): ArgumentQuery | null => {
+export const argumentQuery = (
+  t: Dict,
+  draft: string,
+  models: ModelInfo[] | null = null,
+): ArgumentQuery | null => {
   const match = /^\/([a-z]+) ([^\s]*)$/.exec(draft)
   if (!match) return null
 
   const command = match[1] ?? ''
-  const options = argumentOptions(command, models)
+  const options = argumentOptions(t, command, models)
   if (!options) return null
 
   return { command, query: match[2] ?? '', options }

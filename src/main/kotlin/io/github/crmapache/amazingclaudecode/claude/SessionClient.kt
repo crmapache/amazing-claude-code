@@ -32,6 +32,16 @@ internal interface SessionClient {
     fun answer(messages: List<String>) = deliver(messages)
 
     /**
+     * The same, but to the one device that asked rather than to all of them.
+     *
+     * Only the relay's client has more than one device behind it, and only some answers care. Most do
+     * not - a list of past conversations is the same list whoever reads it. A minted Deepgram token is
+     * not: it belongs to the press that asked for it, and arriving unasked at a second phone it ended a
+     * dictation somebody there was in the middle of (see VoiceGrant).
+     */
+    fun answerOne(asker: String, messages: List<String>) = answer(messages)
+
+    /**
      * Whether this client is the IDE itself.
      *
      * Not "is it on this machine": a browser page open beside the IDE is on the same machine and is

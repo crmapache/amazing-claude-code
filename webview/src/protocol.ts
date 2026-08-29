@@ -213,6 +213,16 @@ type ShellMessageBody =
         mode: string
         /** Where the input field sits. Unset means a panel opened for the first time, behaving as before (at the bottom). */
         composerLayout?: string
+        /**
+         * The language chosen by hand. Empty - which is the usual case - means "whatever the IDE
+         * speaks", so that a Chinese IDE gets a Chinese panel without anyone having to find the switch.
+         */
+        language?: string
+        /**
+         * What the IDE itself is set to, whether or not a choice was made. The picker needs it to say
+         * which language "Automatic" means right now rather than promise something unnamed.
+         */
+        ideLanguage?: string
       }
       /** The sound alert settings - they outlive an IDE restart. */
       sounds?: SoundSettings
@@ -224,6 +234,14 @@ type ShellMessageBody =
        */
       improve?: { instructions: string; builtIn: string }
     }
+  /**
+   * The language in force, on its own rather than only inside `init`.
+   *
+   * Two readers need it that way. A phone is never sent `init` - it carries the working directory (see
+   * RemoteFeed) - and would otherwise never learn the language at all. And the setting is machine-wide,
+   * so a change made in one window has to reach the other one, which is already past its own `init`.
+   */
+  | { type: 'locale'; language?: string; ideLanguage?: string }
   | {
       type: 'usage'
       session?: UsageWindow
@@ -603,6 +621,74 @@ type ShellMessageBody =
    * the message was sent, the field was edited - is dropped rather than applied over what is there now.
    */
   | { type: 'promptImproved'; sessionId: string; id: string; text?: string; error?: string }
+  /**
+   * Everything the voice input screen draws itself from - see VoiceDesk on the IDE's side.
+   *
+   * The Deepgram key is not in it and never will be: only `keyHint`, the last four characters of it, so
+   * that a person can tell the key they pasted from some other one. The panel is a web page in an
+   * embedded browser, and a secret that never enters it cannot leave through it.
+   */
+  | {
+      type: 'voiceConfig'
+      enabled: boolean
+      /** A nova-3 language code, or `multi`. */
+      language: string
+      languages: VoiceLanguage[]
+      /** The chosen input device by its name; empty means the system's own default. */
+      device: string
+      devices: VoiceDevice[]
+      keyHint: string
+      hotkeys: Record<VoiceHotkeySlot, VoiceHotkey>
+    }
+  /**
+   * How a dictation is going, and the level of the microphone while it does.
+   *
+   * `error` is a code rather than a sentence - `no-key`, `mic`, `key`, `network`, `deepgram` - and the
+   * words for it are written here, in the panel's own language. The IDE speaks one language; this side
+   * speaks nine.
+   */
+  | {
+      type: 'voiceState'
+      phase: 'idle' | 'listening' | 'finishing'
+      mode: 'push' | 'hold'
+      /** 0..100, for the ring around the button. */
+      level: number
+      error: string
+    }
+  /**
+   * Words from a dictation. `final: false` is the phrase as it is being said - it replaces the previous
+   * one and is drawn in grey beside the caret; `final: true` is a phrase Deepgram has settled on, and
+   * that is what goes into the draft.
+   */
+  | { type: 'voiceText'; text: string; final: boolean }
+  /** The balance behind the key, asked for by `voiceBalance`. See VoiceBalance for what each state means. */
+  | ({ type: 'voiceBalanceIs' } & VoiceBalance)
+  /**
+   * A hotkey recording that ended without a binding: Escape, or a mouse button we will not bind. A
+   * successful one arrives as a fresh `voiceConfig` instead - the binding is a setting like any other.
+   */
+  | { type: 'voiceCapture'; slot: VoiceHotkeySlot; problem: 'button' | 'cancelled' }
+  /**
+   * A phone's permission to dictate: a token that expires, and what to ask Deepgram for (see VoiceGrant).
+   *
+   * The key itself is never here. This one lasts a minute and transcribes only, which is what makes it
+   * safe to hand to a device that could be left on a train - see SECURITY-REMOTE-CONTROL.md.
+   *
+   * Exactly one of token/error arrives. The error is a code the phone says in its own words, the same
+   * five `voiceState` uses, plus `off` for "voice input is switched off at the desk".
+   */
+  | {
+      type: 'voiceGrant'
+      /** The `voiceToken` this answers - see the request for why an answer has to name one. */
+      id: string
+      token?: string
+      /** Seconds the token is good for - it is spent on the handshake and never again. */
+      expiresIn?: number
+      /** The language chosen at the desk: the same person is speaking, and two places to set it drift. */
+      language?: string
+      model?: string
+      error?: string
+    }
 
 /**
  * One day of work, as the IDE kept it (see DayRecord on the plugin's side) - every project's day of that
@@ -927,6 +1013,11 @@ export type WebviewMessage =
   | { type: 'setEffort'; sessionId: string; effort: string }
   /** Where the input field sits - also a choice that outlives an IDE restart. */
   | { type: 'setComposerLayout'; layout: string }
+  /**
+   * What language the panel speaks. An empty string is a value, not a missing one: it means "follow the
+   * IDE", which is what the picker's first entry sets and what a panel nobody has touched already does.
+   */
+  | { type: 'setLanguage'; language: string }
   | { type: 'refreshUsage' }
   | { type: 'openDevTools' }
   /**
@@ -1079,6 +1170,122 @@ export type WebviewMessage =
    * the mode. Empty puts the built-in text back in force.
    */
   | { type: 'setImproveInstructions'; text: string }
+  /**
+   * Voice input (see VoiceDesk on the IDE's side).
+   *
+   * Handled by the panel's own window like the feedback messages above, and refused to a remote client
+   * twice over - by the list in RemoteCommands and by never reaching the place that handles them. The
+   * microphone belongs to the machine the IDE runs on, and a message that opens it from across the
+   * network is a listening device whatever it was meant for.
+   */
+  | { type: 'voiceStart'; mode: VoiceMode }
+  /** The speech is over: stop the microphone and wait for the tail Deepgram still owes. */
+  | { type: 'voiceStop' }
+  /** Escape, or the field going away: throw the dictation out without putting anything in the draft. */
+  | { type: 'voiceCancel' }
+  /** Send `voiceConfig` - asked for when the settings screen opens. */
+  | { type: 'voiceConfig' }
+  | { type: 'voiceEnabled'; enabled: boolean }
+  | { type: 'voiceLanguage'; language: string }
+  | { type: 'voiceDevice'; device: string }
+  /**
+   * The Deepgram key, on its way to the system keychain (see VoiceKeys). Empty forgets it.
+   *
+   * This is the only direction it ever travels: the IDE answers with the last four characters and never
+   * with the key.
+   */
+  | { type: 'voiceKey'; key: string }
+  | { type: 'voiceBalance' }
+  /** Wait for the next key or mouse button and bind it to this slot. */
+  | { type: 'voiceCaptureHotkey'; slot: VoiceHotkeySlot }
+  | { type: 'voiceStopCapture' }
+  | { type: 'voiceClearHotkey'; slot: VoiceHotkeySlot }
+  /**
+   * A phone asking to dictate - the one voice message a remote client may send (see RemoteCommands).
+   *
+   * It asks for a token rather than for a microphone: the phone records with its own and streams to
+   * Deepgram itself, so the audio never crosses the relay and the machine's microphone is never opened
+   * from outside. Answered with `voiceGrant` carrying the same [id].
+   *
+   * The id is the phone's own, and the answer is worthless without it. A grant is minted over the
+   * network, so it can land after the press that asked for it is over - and it is handed back to the
+   * device that asked, out of a channel that carries several: acted on blindly, one phone's refusal
+   * ended another phone's dictation in the middle of a word.
+   */
+  | { type: 'voiceToken'; id: string }
+
+/**
+ * Which way a dictation is being held.
+ *
+ * `push` records while the hotkey is held, like a walkie-talkie; `hold` is a toggle - one press starts
+ * it, the next stops it, and the hands are free in between.
+ */
+export type VoiceMode = 'push' | 'hold'
+
+/**
+ * The four hotkeys. Each mode takes a chord and a mouse button, and they are independent triggers of the
+ * same thing: a release from the keyboard must not stop what a thumb on the mouse is holding.
+ */
+export type VoiceHotkeySlot = 'push' | 'hold' | 'pushMouse' | 'holdMouse'
+
+/**
+ * A binding as the screen draws it: the keys it is pressed with, in the order a hand takes them. Empty
+ * means nothing is bound.
+ *
+ * Keys rather than one assembled string, because the signs are not in the panel's font: ⌥ and ⌘ used to
+ * arrive inside the label and fell through to whatever the system had, at a size and weight of their own
+ * in the middle of a line. Each cap is drawn here instead - see HotkeyCaps.
+ */
+export interface VoiceHotkey {
+  caps: VoiceHotkeyCap[]
+}
+
+/**
+ * One key of a binding. Assembled by the IDE, whose business it is which sign belongs on a key: a Mac
+ * prints ⌥ and ⌘ and spells the rest out, Windows prints its own key, Linux has Super.
+ */
+export interface VoiceHotkeyCap {
+  /** A sign the panel has a drawing for. Empty means the key is a word - see `text`. */
+  glyph: VoiceHotkeyGlyph
+  /** The word on the key: 'Ctrl', 'Shift', 'F', 'Space', or a mouse button's number. */
+  text: string
+  /**
+   * Which side of the keyboard, and only for a binding that is one bare modifier - there the side is the
+   * binding. A word, so it is said here: 'left', 'right', or empty.
+   */
+  side: string
+}
+
+/** The keys the panel draws rather than spells: the two a Mac prints, the Windows key, and a mouse. */
+export type VoiceHotkeyGlyph = '' | 'option' | 'command' | 'win' | 'mouse'
+
+/** A language nova-3 will listen in. Both names travel untranslated - a language names itself. */
+export interface VoiceLanguage {
+  code: string
+  native: string
+  english: string
+}
+
+export interface VoiceDevice {
+  id: string
+  label: string
+}
+
+/**
+ * What is left on the Deepgram account.
+ *
+ * `noAccess` is not a failure and is the reason this is a union rather than a number: reading a balance
+ * needs the owner or admin role, so a key made as a member transcribes perfectly and cannot see the
+ * money at all. Saying "something went wrong" over a key that works would send people replacing a key
+ * that is fine.
+ */
+export type VoiceBalance =
+  | { state: 'ok'; amount: number; units: string }
+  | { state: 'checking' }
+  | { state: 'none' }
+  | { state: 'noAccess' }
+  | { state: 'rejected' }
+  | { state: 'failed' }
 
 /** What a piece of feedback is about. The words on the screen differ; these are what travel. */
 export type FeedbackKind = 'bug' | 'idea' | 'hello'
@@ -1188,8 +1395,8 @@ export interface AgentSystemEvent {
    * error_status is the server's response code; a broken connection (a timeout, the network dropping)
    * had no response at all, and null arrives. error is the same refusal in one word: overloaded,
    * rate_limit, authentication_failed, server_error, unknown. The panel reads the code only: the refusal
-   * is named by it, the same way the terminal names it (see retryLabel in feed/build.ts), while the word
-   * is kept as a description of the stream's shape.
+   * is named by it, in the same four kinds the terminal tells apart (see retryReason in feed/retry.ts),
+   * while the word is kept as a description of the stream's shape.
    */
   attempt?: number
   max_retries?: number

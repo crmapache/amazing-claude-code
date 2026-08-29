@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import type { McpServerInfo } from '../protocol'
 import { SkeletonBar } from './Skeleton'
 import s from './sideMenu.module.css'
+import { useT } from '../i18n'
+import type { Dict } from '../i18n/en'
 
 interface McpProps {
   /** null means the list has not arrived yet: it loads by itself, long before the screen is opened. */
@@ -23,13 +25,13 @@ const TRANSPORTS = ['stdio', 'sse', 'http'] as const
  * What each state is called on screen. The words are the ones the terminal's `/mcp` prints: the panel and
  * the terminal show one and the same thing, and calling it by different words is not an option.
  */
-const STATUS_TEXT: Record<string, string> = {
-  connected: 'connected',
-  'needs-auth': 'needs authentication',
-  failed: 'failed',
-  pending: 'connecting…',
-  disabled: 'disabled',
-}
+const statusText = (t: Dict): Record<string, string> => ({
+  connected: t.mcp.status.connected,
+  'needs-auth': t.mcp.status.needsAuth,
+  failed: t.mcp.status.failed,
+  pending: t.mcp.status.pending,
+  disabled: t.mcp.status.disabled,
+})
 
 const STATUS_CLASS: Record<string, string> = {
   connected: s.cardStateOk ?? '',
@@ -77,6 +79,7 @@ export const Mcp = ({
   onRemove,
   onAdd,
 }: McpProps) => {
+  const t = useT()
   const [name, setName] = useState('')
   const [command, setCommand] = useState('')
   const [transport, setTransport] = useState('stdio')
@@ -125,7 +128,7 @@ export const Mcp = ({
           ))
         : null}
 
-      {servers?.length === 0 ? <div className={s.screenEmpty}>No MCP servers configured.</div> : null}
+      {servers?.length === 0 ? <div className={s.screenEmpty}>{t.mcp.empty}</div> : null}
 
       {shown.map((group) => (
         <div key={group.scope} className={s.field}>
@@ -160,11 +163,11 @@ export const Mcp = ({
           setCommand('')
         }}
       >
-        <span className={s.screenLabel}>ADD SERVER</span>
+        <span className={s.screenLabel}>{t.mcp.addServer}</span>
         <div className={s.inputRow}>
           <input
             className={s.input}
-            placeholder="name"
+            placeholder={t.mcp.namePlaceholder}
             value={name}
             onChange={(event) => setName(event.target.value)}
           />
@@ -183,16 +186,16 @@ export const Mcp = ({
         </div>
         <input
           className={s.input}
-          placeholder="command, or URL for sse/http"
+          placeholder={t.mcp.commandPlaceholder}
           value={command}
           onChange={(event) => setCommand(event.target.value)}
         />
         <div className={s.formActions}>
           <button type="button" className={s.button} onClick={onRefresh} disabled={loading}>
-            {loading ? 'Refreshing…' : 'Refresh all'}
+            {loading ? t.mcp.refreshing : t.mcp.refreshAll}
           </button>
           <button type="submit" className={`${s.button} ${s.buttonPrimary}`} disabled={pendingAction === ADD_SERVER_KEY}>
-            {pendingAction === ADD_SERVER_KEY ? 'Adding…' : 'Add'}
+            {pendingAction === ADD_SERVER_KEY ? t.mcp.adding : t.mcp.add}
           </button>
         </div>
       </form>
@@ -220,6 +223,7 @@ const ServerRow = ({
   onAuthenticate: (name: string) => void
   onRemove: (name: string) => void
 }) => {
+  const t = useT()
   const authKey = `auth:${server.name}`
   const reconnectKey = `reconnect:${server.name}`
   const removeKey = `remove:${server.name}`
@@ -233,7 +237,7 @@ const ServerRow = ({
         <span className={`${s.cardDot} ${DOT_CLASS[server.status] ?? ''}`} />
         <span className={s.cardName}>{server.name}</span>
         <span className={`${s.cardState} ${STATUS_CLASS[server.status] ?? ''}`}>
-          {STATUS_TEXT[server.status] ?? server.status}
+          {statusText(t)[server.status] ?? server.status}
         </span>
       </div>
 
@@ -256,7 +260,7 @@ const ServerRow = ({
               onAuthenticate(server.name)
             }}
           >
-            {pendingAction === authKey ? 'Opening…' : 'Authenticate'}
+            {pendingAction === authKey ? t.mcp.opening : t.mcp.authenticate}
           </button>
         ) : null}
 
@@ -269,7 +273,7 @@ const ServerRow = ({
             onReconnect(server.name)
           }}
         >
-          {pendingAction === reconnectKey ? 'Reconnecting…' : server.status === 'failed' ? 'Retry' : 'Reconnect'}
+          {pendingAction === reconnectKey ? t.mcp.reconnecting : server.status === 'failed' ? t.mcp.retry : t.mcp.reconnect}
         </button>
 
         {removable ? (
@@ -282,7 +286,7 @@ const ServerRow = ({
               onRemove(server.name)
             }}
           >
-            {pendingAction === removeKey ? 'Removing…' : 'Remove'}
+            {pendingAction === removeKey ? t.mcp.removing : t.mcp.remove}
           </button>
         ) : null}
       </div>

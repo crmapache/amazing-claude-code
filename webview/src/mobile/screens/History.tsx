@@ -3,6 +3,7 @@ import type { HistoryEntry } from '../../protocol'
 import type { ProjectEntry } from './Sessions'
 import { Back } from './Back'
 import m from '../mobile.module.css'
+import { useT } from '../../i18n'
 
 interface HistoryProps {
   project: ProjectEntry
@@ -21,18 +22,21 @@ interface HistoryProps {
  * From a phone it opens a tab of its own, because from here there is no telling whether somebody is in
  * the middle of using the one on screen.
  */
-export const History = ({ project, conversations, onOpen, onBack }: HistoryProps) => (
+export const History = ({ project, conversations, onOpen, onBack }: HistoryProps) => {
+  const t = useT()
+
+  return (
   <>
     <header className={m.header}>
       <Back onClick={onBack} />
-      <span className={m.headerTitle}>History</span>
+      <span className={m.headerTitle}>{t.mobile.history.title}</span>
       <span className={m.headerMeta}>{project.name}</span>
     </header>
 
     <div className={m.list}>
-      {conversations === null && <p className={m.empty}>Loading…</p>}
+      {conversations === null && <p className={m.empty}>{t.common.loading}</p>}
 
-      {conversations?.length === 0 && <p className={m.empty}>No past conversations in this project yet.</p>}
+      {conversations?.length === 0 && <p className={m.empty}>{t.mobile.history.empty}</p>}
 
       {conversations && conversations.length > 0 && (
         <div className={m.project}>
@@ -41,7 +45,7 @@ export const History = ({ project, conversations, onOpen, onBack }: HistoryProps
               <button key={entry.id} type="button" className={m.past} onClick={() => onOpen(entry)}>
                 <span className={m.pastTitle}>{entry.title}</span>
                 <span className={m.pastMeta}>
-                  {describeWhen(entry.updatedAt)} · {entry.messages} {entry.messages === 1 ? 'message' : 'messages'}
+                  {describeWhen(entry.updatedAt)} · {t.history.messages(entry.messages)}
                 </span>
               </button>
             ))}
@@ -49,5 +53,5 @@ export const History = ({ project, conversations, onOpen, onBack }: HistoryProps
         </div>
       )}
     </div>
-  </>
-)
+  </>  )
+}

@@ -1,3 +1,4 @@
+import { en } from '../i18n/en'
 import { describe, expect, it } from 'vitest'
 import {
   buildCommands,
@@ -72,7 +73,7 @@ describe('matchCommands', () => {
 
 describe('buildCommands', () => {
   it('joins the panel commands, the built-in ones and the project ones', () => {
-    const commands = buildCommands(['ai-docs'])
+    const commands = buildCommands(en, ['ai-docs'])
     const groups = new Set(commands.map((command) => command.group))
 
     expect(groups).toEqual(new Set(['panel', 'built-in', 'project']))
@@ -82,14 +83,14 @@ describe('buildCommands', () => {
 
   it('lets a skill from disk reach the list before the agent has named its own commands', () => {
     // Until the first message the agent's list is empty: it arrives with system:init.
-    const commands = buildCommands([], { task: { description: 'Start a new task', argumentHint: '[task]' } })
+    const commands = buildCommands(en, [], { task: { description: 'Start a new task', argumentHint: '[task]' } })
     const task = commands.find((command) => command.id === 'task')
 
     expect(task).toEqual({ id: 'task', hint: 'Start a new task', argumentHint: '[task]', group: 'project' })
   })
 
   it('does not double the same command coming from the agent and from disk', () => {
-    const commands = buildCommands(['task'], { task: { description: 'Start a new task', argumentHint: '' } })
+    const commands = buildCommands(en, ['task'], { task: { description: 'Start a new task', argumentHint: '' } })
 
     expect(commands.filter((command) => command.id === 'task')).toHaveLength(1)
   })
@@ -97,27 +98,27 @@ describe('buildCommands', () => {
 
 describe('localCommand', () => {
   it('recognises the commands the panel runs itself', () => {
-    expect(localCommand('/login')).toEqual({ name: 'login', argument: '' })
-    expect(localCommand('  /fork  ')).toEqual({ name: 'fork', argument: '' })
+    expect(localCommand(en, '/login')).toEqual({ name: 'login', argument: '' })
+    expect(localCommand(en, '  /fork  ')).toEqual({ name: 'fork', argument: '' })
   })
 
   it('leaves the agent commands alone', () => {
-    expect(localCommand('/pr-review')).toBeNull()
+    expect(localCommand(en, '/pr-review')).toBeNull()
   })
 
   it('recognises its own command when it has become a chip too', () => {
     const tokens: UserToken[] = [{ kind: 'chip', chip: { kind: 'cmd', value: 'fork' } }, { kind: 'text', value: ' ' }]
-    expect(localCommand(tokensText(tokens))).toEqual({ name: 'fork', argument: '' })
+    expect(localCommand(en, tokensText(tokens))).toEqual({ name: 'fork', argument: '' })
   })
 
   it('lets the panel run the model and effort choice itself - that is its setting rather than a turn of the agent', () => {
-    expect(localCommand('/model haiku')).toEqual({ name: 'model', argument: 'haiku' })
-    expect(localCommand('/effort low')).toEqual({ name: 'effort', argument: 'low' })
+    expect(localCommand(en, '/model haiku')).toEqual({ name: 'model', argument: 'haiku' })
+    expect(localCommand(en, '/effort low')).toEqual({ name: 'effort', argument: 'low' })
   })
 
   it('leaves an unfamiliar value to the agent: it may know a model we do not', () => {
-    expect(localCommand('/model whatever-3')).toBeNull()
-    expect(localCommand('/model')).toBeNull()
+    expect(localCommand(en, '/model whatever-3')).toBeNull()
+    expect(localCommand(en, '/model')).toBeNull()
   })
 })
 

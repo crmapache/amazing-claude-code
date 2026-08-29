@@ -3,6 +3,7 @@ import type { CardState, PlanDecision } from '../hooks/useCardState'
 import type { PanelState } from './panelState'
 import { formatDuration } from './tools'
 import type { AskItem, FeedItem, PermItem, PlanItem, TaskItem } from './types'
+import type { Dict } from '../i18n/en'
 
 /**
  * Whether the turn stands on this feed item waiting for the person. A permission request, a question with
@@ -58,7 +59,12 @@ export const awaiting = (items: FeedItem[], cards: CardState): PermItem | PlanIt
  * phone's state, though, was built out of moments stamped by the machine with the IDE, and answering
  * against the phone's own clock subtracts one machine's time from another's - see mobile/clock.ts.
  */
-export const streamStatus = (panel: PanelState, cards: CardState, now: number = Date.now()): string => {
+export const streamStatus = (
+  t: Dict,
+  panel: PanelState,
+  cards: CardState,
+  now: number = Date.now(),
+): string => {
   /**
    * The request to the model failed and waits for a retry: at that moment the turn is not running at all -
    * no text, no calls, no question - and a "Claude is thinking" with a running counter would be an outright
@@ -73,7 +79,7 @@ export const streamStatus = (panel: PanelState, cards: CardState, now: number = 
     // RetryRow) - here goes only what is not in it: how long all of this has already dragged on. The line's
     // familiar shape is kept - "what is happening - how long it has run" - and exactly what was untrue
     // changes.
-    return `${panel.retry.label} · waiting ${formatDuration(now - panel.retry.startedAt)}`
+    return t.stream.retryWaiting(t.feed.retry.reason[panel.retry.reason], formatDuration(now - panel.retry.startedAt))
   }
 
   // The compacting is spoken about by its own card in the feed (a CONTEXT with a growing percentage) -
@@ -81,7 +87,7 @@ export const streamStatus = (panel: PanelState, cards: CardState, now: number = 
   if (panel.compacting) return ''
 
   const awaitingDecision = panel.items.some((item) => ownStream(item) && awaitsYou(item, cards))
-  if (awaitingDecision) return 'Waiting for you'
+  if (awaitingDecision) return t.stream.waitingForYou
 
   /**
    * The main stream's own turn may have ended already (the agent started a background subagent and fell
@@ -92,7 +98,7 @@ export const streamStatus = (panel: PanelState, cards: CardState, now: number = 
   if (panel.status !== 'running') {
     const pending = panel.items.filter((item) => item.kind === 'task' && item.pending).length
     if (pending === 0) return ''
-    return pending === 1 ? 'Waiting for subagent' : `Waiting for ${pending} subagents`
+    return pending === 1 ? t.stream.waitingForSubagent : t.stream.waitingForSubagents(pending)
   }
 
   /**
@@ -102,7 +108,7 @@ export const streamStatus = (panel: PanelState, cards: CardState, now: number = 
    * and no decision is awaited from the person, there is exactly one honest caption here - the turn is
    * thinking.
    */
-  const label = 'Claude is thinking'
+  const label = t.stream.thinking
   if (!panel.turnStartedAt) return label
 
   // A decision has just been taken: awaitingDecision is already false, but the effect that carries
@@ -110,7 +116,7 @@ export const streamStatus = (panel: PanelState, cards: CardState, now: number = 
   // right here so that the number does not jump on the next tick.
   const ongoingWait = panel.waitStartedAt ? now - panel.waitStartedAt : 0
   const elapsed = formatDuration(now - panel.turnStartedAt - panel.pausedMs - ongoingWait)
-  return `${label} · ${elapsed}`
+  return t.stream.withElapsed(label, elapsed)
 }
 
 const statusOf = (task: TaskItem, items: FeedItem[], answeredAsks: string[]): AgentStatus => {

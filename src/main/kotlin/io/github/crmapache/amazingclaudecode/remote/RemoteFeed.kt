@@ -90,7 +90,7 @@ internal object RemoteFeed {
      * descriptions and the project's file list - what the composer on the phone is drawn from and
      * nothing besides.
      */
-    private val PROJECT_FACTS = listOf("project", "usage", "commandHints", "commands", FILES)
+    private val PROJECT_FACTS = listOf("project", "usage", "commandHints", "commands", FILES, LOCALE)
 
     /**
      * A line of a past conversation being replayed into a tab.
@@ -110,6 +110,15 @@ internal object RemoteFeed {
     }
 
     private const val FILES = "files"
+
+    /**
+     * The language the panel speaks, so the phone speaks it too.
+     *
+     * It carries a language tag and nothing else - no path, no name, nothing about the machine - which
+     * is why it can be on this list at all. `init`, which also names the language, cannot: it carries
+     * the working directory.
+     */
+    private const val LOCALE = "locale"
 
     /**
      * How much of the file list a phone is sent. Forty-eight kilobytes is upwards of a thousand paths

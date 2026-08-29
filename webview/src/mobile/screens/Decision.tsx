@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { modeShortLabel } from '../../catalog'
 import type { CardState } from '../../hooks/useCardState'
 import type { PanelState } from '../../feed/panelState'
 import { awaiting } from '../../feed/streamStatus'
 import type { AskItem, AskQuestion, FeedItem, PermItem, PlanItem, TextItem } from '../../feed/types'
+import { useT } from '../../i18n'
 import { Back } from './Back'
 import m from '../mobile.module.css'
 
@@ -43,6 +45,7 @@ export const Decision = ({
   onOpenThread,
   onBack,
 }: DecisionProps) => {
+  const t = useT()
   const [expanded, setExpanded] = useState(false)
 
   /**
@@ -94,7 +97,7 @@ export const Decision = ({
 
         {permission && (
           <>
-            <h1 className={m.decisionVerb}>{permission.meta}</h1>
+            <h1 className={m.decisionVerb}>{t.permission.underMode(modeShortLabel(t, permission.mode))}</h1>
             <p className={m.decisionTarget}>{permission.target}</p>
 
             {permission.command && (
@@ -110,7 +113,7 @@ export const Decision = ({
           </>
         )}
 
-        {plan && <h1 className={m.decisionVerb}>A plan is waiting</h1>}
+        {plan && <h1 className={m.decisionVerb}>{t.mobile.decision.planWaiting}</h1>}
 
         {/* The question in full rather than its heading alone: what an option means is in the line under
             it, and choosing between two labels without them is guessing. When a call asks several, the
@@ -121,15 +124,17 @@ export const Decision = ({
             {question.hint && <p className={m.decisionTarget}>{question.hint}</p>}
             {ask.questions.length > 1 && (
               <p className={m.decisionContext}>
-                Question {ask.questions.findIndex((one) => one.title === question.title) + 1} of{' '}
-                {ask.questions.length}
+                {t.mobile.decision.questionOf(
+                  ask.questions.findIndex((one) => one.title === question.title) + 1,
+                  ask.questions.length,
+                )}
               </p>
             )}
           </>
         )}
 
         {!waiting && (
-          <p className={m.empty}>Nothing is waiting for you here any more.</p>
+          <p className={m.empty}>{t.mobile.decision.nothingWaiting}</p>
         )}
 
         {/* One line of what the agent was doing. This is what makes reading the conversation optional
@@ -137,7 +142,7 @@ export const Decision = ({
         {doing && <p className={m.decisionDoing}>{doing}</p>}
 
         <button type="button" className={m.decisionLink} onClick={onOpenThread}>
-          Open the conversation
+          {t.mobile.decision.openConversation}
         </button>
       </div>
 
@@ -145,10 +150,10 @@ export const Decision = ({
         {permission && (
           <>
             <button type="button" className={m.buttonPrimary} onClick={() => onDecide(permission.id, 'once')}>
-              Allow once
+              {t.mobile.decision.allowOnce}
             </button>
             <button type="button" className={m.buttonDanger} onClick={() => onDecide(permission.id, 'deny')}>
-              Deny
+              {t.mobile.decision.deny}
             </button>
           </>
         )}
@@ -156,10 +161,10 @@ export const Decision = ({
         {plan && (
           <>
             <button type="button" className={m.buttonPrimary} onClick={() => onPlan(plan.id, 'approve')}>
-              Approve &amp; run
+              {t.feed.plan.approve}
             </button>
             <button type="button" className={m.buttonSecondary} onClick={() => onPlan(plan.id, 'keepPlanning')}>
-              Keep planning
+              {t.feed.plan.keepPlanning}
             </button>
           </>
         )}

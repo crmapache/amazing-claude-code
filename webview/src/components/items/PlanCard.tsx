@@ -1,6 +1,7 @@
 import type { PlanItem } from '../../feed/types'
 import { Markdown } from './Markdown'
 import s from '../feed.module.css'
+import { useT } from '../../i18n'
 
 interface PlanCardProps {
   item: PlanItem
@@ -35,11 +36,14 @@ export const PlanCard = ({
   awaiting,
   withdrawn,
   onOpenLink,
-}: PlanCardProps) => (
+}: PlanCardProps) => {
+  const t = useT()
+
+  return (
   <div className={s.plan}>
     <div className={s.planHead}>
-      <span className={s.planLabel}>PLAN READY</span>
-      <span className={s.planHint}>{item.meta}</span>
+      <span className={s.planLabel}>{t.feed.plan.label}</span>
+      <span className={s.planHint}>{item.steps > 0 ? t.feed.plan.steps(item.steps) : ''}</span>
       <div className={s.spacer} />
     </div>
 
@@ -51,16 +55,17 @@ export const PlanCard = ({
       {awaiting && (
         <>
           <button type="button" className={s.primary} onClick={onApprove}>
-            Approve &amp; run
+            {t.feed.plan.approve}
           </button>
           <button type="button" className={s.secondary} onClick={onKeepPlanning}>
-            Keep planning
+            {t.feed.plan.keepPlanning}
           </button>
         </>
       )}
-      {withdrawn && <span className={s.planHint}>The agent stopped waiting for a decision</span>}
+      {withdrawn && <span className={s.planHint}>{t.feed.plan.withdrawn}</span>}
       <div className={s.spacer} />
       <span className={s.planHint}>{item.duration}</span>
     </div>
   </div>
-)
+  )
+}

@@ -32,8 +32,7 @@ const cardFor = (state: PanelState, taskId: string): string => state.taskCards[t
 const outcomeOf = (status: string | undefined): TaskOutcome =>
   status === 'failed' ? 'failed' : status === 'stopped' ? 'stopped' : 'ok'
 
-const endedText = (outcome: TaskOutcome): string =>
-  outcome === 'failed' ? 'Failed before it finished.' : 'Stopped before it finished.'
+
 
 /** A tool call by its id - the cards live inside groups rather than in the feed directly. */
 const findTool = (items: FeedItem[], id: string): ToolItem | undefined => {
@@ -118,17 +117,19 @@ const noteBackgroundEnd = (
   summary: string | undefined,
 ): FeedItem[] => {
   const tone = outcome === 'failed' ? ('bad' as const) : ('dim' as const)
-  const ended = outcome === 'failed' ? 'failed' : outcome === 'stopped' ? 'was stopped' : 'finished'
   // The CLI's text explains a failure to the point ("exit code 3"), while on an ordinary end it repeats
   // the command's description, which already stands in the card.
   const detail = outcome === 'failed' && summary ? detailFor(summary) : []
-  const text = duration ? `Background command ${ended} after ${duration}.` : `Background command ${ended}.`
 
   return mapTool(items, toolUseId, (tool) => ({
     ...tool,
     duration: duration || tool.duration,
     isError: tool.isError || outcome === 'failed',
-    detail: [...tool.detail, { text, tone }, ...detail],
+    detail: [
+      ...tool.detail,
+      { text: '', note: { kind: 'backgroundEnded' as const, outcome, duration }, tone },
+      ...detail,
+    ],
   }))
 }
 
@@ -256,7 +257,10 @@ const finishTaskCard = (
   const lines = summary ? detailFor(summary) : []
   // A killed or failed agent used to look exactly like one that had finished: green circle, summary in
   // place. The mark goes on the first line - it also explains why the summary breaks off mid-way.
-  const log = outcome === 'ok' ? lines : [{ text: endedText(outcome), tone: 'bad' as const }, ...lines]
+  const log =
+    outcome === 'ok'
+      ? lines
+      : [{ text: '', note: { kind: 'taskEnded' as const, outcome }, tone: 'bad' as const }, ...lines]
 
   return {
     ...state,
@@ -349,7 +353,6 @@ export const applyReplayedTaskNotification = (
  * instead of disappearing silently.
  */
 const AGENT_LOG_LIMIT = 300
-const TRIM_MARK = /^…(\d+) earlier steps trimmed$/
 
 export const appendAgentLog = (log: DetailLine[], lines: DetailLine[]): DetailLine[] => {
   if (lines.length === 0) return log
@@ -357,13 +360,20 @@ export const appendAgentLog = (log: DetailLine[], lines: DetailLine[]): DetailLi
   const merged = [...log, ...lines]
   if (merged.length <= AGENT_LOG_LIMIT) return merged
 
-  const already = TRIM_MARK.exec(merged[0]?.text ?? '')
-  const priorTrimmed = already ? Number(already[1]) : 0
-  const withoutMark = already ? merged.slice(1) : merged
+  // The running total is carried as a number, not read back out of the sentence that was drawn from it.
+  // A log that overflowed three times has to say so, and a mark recovered by matching English prose
+  // would stop matching the moment that prose was translated - silently, back to zero, with no test to
+  // notice (see DetailLine.note).
+  const mark = merged[0]?.note
+  const trimmedBefore = mark?.kind === 'trimmed' ? mark.count : 0
+  const withoutMark = mark?.kind === 'trimmed' ? merged.slice(1) : merged
   const keep = withoutMark.slice(withoutMark.length - (AGENT_LOG_LIMIT - 1))
   const trimmedNow = withoutMark.length - keep.length
 
-  return [{ text: `…${priorTrimmed + trimmedNow} earlier steps trimmed`, tone: 'dim' as const }, ...keep]
+  return [
+    { text: '', tone: 'dim' as const, note: { kind: 'trimmed', count: trimmedBefore + trimmedNow } },
+    ...keep,
+  ]
 }
 
 /**
@@ -412,7 +422,6 @@ export const noteSubagent = (
         {
           id: askBlock.id,
           kind: 'ask',
-          meta: `${questions.length} ${questions.length === 1 ? 'question' : 'questions'} · blocks the run`,
           questions,
           taskId,
           // See applyToolUse: a question out of a replay holds nobody.

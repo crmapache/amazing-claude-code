@@ -9,9 +9,8 @@ import type {
   ToolResultBlock,
   ToolUseBlock,
 } from '../protocol'
-import { modeShortLabel, normalizeMode, sameModel } from '../catalog'
+import { normalizeMode, sameModel } from '../catalog'
 import { parseParagraphs } from './markdown'
-import { limitWindowName } from './usage'
 import { initialPanelState, push, type PanelAction, type PanelState } from './panelState'
 import { applyApiRetry, closeRetry, closeRetryFor } from './retry'
 import {
@@ -28,6 +27,8 @@ import { readPlan, readQuestions, readTodos } from './toolInput'
 import { readReview } from './findings'
 import { chipFor, detailFor, formatDuration, hunksFor, metaFor, resultToText, targetFor } from './tools'
 import type {
+  ClosedReason,
+  CompactOutcome,
   DetailLine,
   FeedItem,
   FeedRowItem,
@@ -37,6 +38,7 @@ import type {
   TodoEntry,
   TodoItem,
   ToolGroupItem,
+  MetaItem,
   ToolItem,
   UserItem,
 } from './types'
@@ -144,7 +146,15 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         waitStartedAt: action.status === 'idle' ? undefined : state.waitStartedAt,
         seq: stoppedSilently ? state.seq + 1 : state.seq,
         items: stoppedSilently
-          ? [...state.items, { id: `meta-${state.seq}`, kind: 'meta', stats: [STOPPED_BY_YOU] }]
+          ? [
+              ...state.items,
+              {
+                id: `meta-${state.seq}`,
+                kind: 'meta',
+                stats: [STOPPED_BY_YOU],
+                outcome: { state: 'stopped' as const, duration: '' },
+              },
+            ]
           : state.items,
       }
 
@@ -282,9 +292,7 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
             id: action.id,
             kind: 'perm',
             target: action.target,
-            // With the caption from the menu rather than the protocol's name: "bypassPermissions mode" is
-            // something the person sees nowhere else, they chose "Bypass".
-            meta: `${modeShortLabel(action.mode)} mode`,
+            mode: action.mode,
             command: action.command,
             decision: null,
             reason: action.reason,
@@ -313,7 +321,13 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         seq: state.seq + 1,
         items: [
           ...state.items,
-          { id: `cp-${state.seq}`, kind: 'checkpoint', chip: action.chip, target: action.target },
+          {
+            id: `cp-${state.seq}`,
+            kind: 'checkpoint',
+            chip: action.chip,
+            target: action.target,
+            targetKey: action.targetKey,
+          },
         ],
       }
 
@@ -460,7 +474,7 @@ const withEarlier = (state: PanelState, cursor: string | null | undefined): Pane
 
   const rest = state.items.filter((item) => !(item.kind === 'checkpoint' && item.chip === EARLIER_CHIP))
   const mark: FeedItem[] = cursor
-    ? [{ id: 'earlier', kind: 'checkpoint', chip: EARLIER_CHIP, target: EARLIER_TARGET }]
+    ? [{ id: 'earlier', kind: 'checkpoint', chip: EARLIER_CHIP, target: '', targetKey: 'earlier' as const }]
     : []
 
   return {
@@ -474,8 +488,6 @@ const withEarlier = (state: PanelState, cursor: string | null | undefined): Pane
 /** The mark over a feed that begins mid-conversation - a button wherever there is something to fetch. */
 const EARLIER_CHIP = 'EARLIER'
 
-/** What it says when there is nothing to press - a screen with a button of its own overrides this. */
-const EARLIER_TARGET = 'earlier messages'
 
 
 /**
@@ -581,7 +593,7 @@ const finishCompacting = (state: PanelState): PanelState => {
 const closeUnfinished = (
   state: PanelState,
   now: number,
-  notes: { tool: string; task: string; meta: string; tone: 'bad' | 'dim' },
+  notes: { reason: ClosedReason; tone: 'bad' | 'dim' },
   keepTasks: 'all' | 'background' | 'none',
 ): { items: FeedItem[]; startedAt: Record<string, number> } => {
   const startedAt = { ...state.startedAt }
@@ -598,8 +610,8 @@ const closeUnfinished = (
       pending: false,
       isError: notes.tone === 'bad' || tool.isError,
       duration,
-      meta: notes.meta,
-      detail: [...tool.detail, { text: notes.tool, tone: notes.tone }],
+      meta: { kind: 'closed', reason: notes.reason },
+      detail: [...tool.detail, { text: '', note: { kind: 'closed', reason: notes.reason }, tone: notes.tone }],
     }
   }
 
@@ -618,7 +630,9 @@ const closeUnfinished = (
         pending: false,
         duration,
         outcome: 'stopped' as const,
-        log: appendAgentLog(item.log, [{ text: notes.task, tone: notes.tone }]),
+        log: appendAgentLog(item.log, [
+          { text: '', note: { kind: 'closed', reason: notes.reason }, tone: notes.tone },
+        ]),
       }
     }
 
@@ -661,12 +675,7 @@ const applyReplayFinished = (state: PanelState, now: number): PanelState => {
   const { items, startedAt } = closeUnfinished(
     state,
     now,
-    {
-      tool: 'The saved conversation keeps no result for this call.',
-      task: 'How this one ended is not part of the saved conversation.',
-      meta: '· not in the transcript',
-      tone: 'dim',
-    },
+    { reason: 'replay', tone: 'dim' },
     'none',
   )
 
@@ -682,12 +691,7 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
   const { items, startedAt } = closeUnfinished(
     state,
     now,
-    {
-      tool: 'Claude Code stopped responding before this finished.',
-      task: 'Session ended before this returned.',
-      meta: '· interrupted',
-      tone: 'bad',
-    },
+    { reason: 'exited', tone: 'bad' },
     'none',
   )
 
@@ -708,7 +712,7 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
           duration,
           detail: [
             ...tool.detail,
-            { text: `Ran ${duration} in the background - no longer tracked.`, tone: 'dim' as const },
+            { text: '', note: { kind: 'closed' as const, reason: 'untracked' as const }, tone: 'dim' as const },
           ],
         }))
       : current
@@ -735,10 +739,8 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
       {
         id: `crash-${state.seq}`,
         kind: 'crash',
-        message:
-          exitCode === 0
-            ? 'Claude Code stopped unexpectedly.'
-            : `Claude Code stopped unexpectedly (exit code ${exitCode}).`,
+        // The code alone: the sentence around it belongs to whatever language the card is painted in.
+        ...(exitCode === 0 ? {} : { exitCode }),
       },
     ],
   }
@@ -883,7 +885,7 @@ const applyAgentEvent = (
         id,
         kind: 'limit',
         state: limitState,
-        window: limitWindowName(info.rateLimitType),
+        window: info.rateLimitType ?? '',
         ...(resetsAt ? { resetsAt } : {}),
       }))
     }
@@ -925,7 +927,7 @@ const applyAgentEvent = (
         stopRequestedAt: undefined,
         starting: false,
         items: [
-          { id: `cleared-${state.seq}`, kind: 'checkpoint', chip: 'CLEAR', target: 'conversation cleared - nothing above this is remembered anymore' },
+          { id: `cleared-${state.seq}`, kind: 'checkpoint', chip: 'CLEAR', target: '', targetKey: 'cleared' },
         ],
       }
     }
@@ -1038,7 +1040,8 @@ const applyAgentEvent = (
       // trace that this is not a natural end but a Stop/Escape is that the stop request is still standing
       // uncleared at this moment.
       const cancelled = state.stopRequestedAt !== undefined
-      const stats = resultStats(event, cancelled)
+      const outcome = resultOutcome(event, cancelled)
+      const stats = resultStats(outcome)
 
       // The refusal goes into the feed BEFORE the turn's result: it happened earlier, and "Worked 3s"
       // under it reads as the end of this very turn rather than of the next one.
@@ -1063,15 +1066,11 @@ const applyAgentEvent = (
         now,
         cancelled
           ? {
-              tool: 'Stopped before it finished.',
-              task: 'Stopped before it returned.',
-              meta: '· interrupted',
+              reason: 'stopped' as const,
               tone: 'bad',
             }
           : {
-              tool: 'The turn ended before this finished.',
-              task: 'The turn ended before this returned.',
-              meta: '· unfinished',
+              reason: 'turnEnded' as const,
               tone: 'bad',
             },
         cancelled ? 'background' : 'all',
@@ -1099,7 +1098,7 @@ const applyAgentEvent = (
         suppressNextMeta: false,
         items: state.suppressNextMeta
           ? settled
-          : [...settled, { id: `meta-${withError.seq}`, kind: 'meta', stats }],
+          : [...settled, { id: `meta-${withError.seq}`, kind: 'meta', stats, outcome }],
       }
     }
 
@@ -1199,7 +1198,13 @@ const applySystem = (
       seq: base.seq + 1,
       items: [
         ...base.items,
-        { id: `compact-${base.seq}`, kind: 'compact', target: 'Compacting conversation…', pending: true },
+        {
+          id: `compact-${base.seq}`,
+          kind: 'compact',
+          target: '',
+          outcome: { state: 'running' },
+          pending: true,
+        },
       ],
     }
   }
@@ -1216,7 +1221,7 @@ const applySystem = (
   }
 
   if (isMainStreamEvent && event.subtype === 'compact_boundary') {
-    const target = compactBoundaryText(event.compact_metadata)
+    const outcome = compactOutcome(event.compact_metadata)
     // The boundary is the compaction's end: from here on the card stands in the feed with its figures,
     // and the status line speaks about the turn again.
     const done = { ...base, compacting: false }
@@ -1225,13 +1230,16 @@ const applySystem = (
     const last = done.items.at(-1)
 
     if (last?.kind === 'compact' && last.pending) {
-      return { ...done, items: [...done.items.slice(0, -1), { ...last, target, pending: false }] }
+      return { ...done, items: [...done.items.slice(0, -1), { ...last, outcome, pending: false }] }
     }
 
     return {
       ...done,
       seq: done.seq + 1,
-      items: [...done.items, { id: `compact-${done.seq}`, kind: 'compact', target, pending: false }],
+      items: [
+        ...done.items,
+        { id: `compact-${done.seq}`, kind: 'compact', target: '', outcome, pending: false },
+      ],
     }
   }
 
@@ -1488,8 +1496,8 @@ const applyToolUse = (
           id: block.id,
           kind: 'plan',
           // Steps are the top-level items - the same thing a person counts by eye; nested clarifications
-          // do not sound like steps of their own.
-          meta: steps > 0 ? `· ${steps} ${steps === 1 ? 'step' : 'steps'}` : '',
+          // do not sound like steps of their own. The number alone: the card says it in its own words.
+          steps,
           duration: '',
           paragraphs,
           // A plan out of a replay waits for no decision - see PlanItem.historic.
@@ -1512,7 +1520,6 @@ const applyToolUse = (
         {
           id: block.id,
           kind: 'ask',
-          meta: `${questions.length} ${questions.length === 1 ? 'question' : 'questions'} · blocks the run`,
           questions,
           // A question out of a replay holds nothing: the turn that asked it ended some time in the past
           // (see AskItem.historic).
@@ -1568,7 +1575,7 @@ const applyToolUse = (
     toolName: block.name,
     input,
     target: targetFor(block.name, input, workingDirectory),
-    meta: '',
+    meta: { kind: 'none' },
     duration: '',
     detail: [],
     hunks: [],
@@ -1938,11 +1945,35 @@ const withoutEmpty = (usage?: AgentUsage): AgentUsage | undefined => {
 /** The caption of an interrupted turn - one for every route it could have broken off by. */
 export const STOPPED_BY_YOU = 'Stopped by you'
 
-/** Tokens, price and model are noise under every turn; out of all that only the duration is needed. */
-const resultStats = (event: Extract<AgentEvent, { type: 'result' }>, cancelled: boolean): string[] => {
-  const duration = typeof event.duration_ms === 'number' ? formatDuration(event.duration_ms) : ''
+/**
+ * How the turn ended, out of a result event: tokens, price and model are noise under every turn, and out
+ * of all of it only the duration is wanted.
+ *
+ * This is what the row on screen is worded from, and what the marker beside it is built out of.
+ */
+const resultOutcome = (
+  event: Extract<AgentEvent, { type: 'result' }>,
+  cancelled: boolean,
+): MetaItem['outcome'] => ({
+  state: cancelled ? 'stopped' : 'worked',
+  duration: typeof event.duration_ms === 'number' ? formatDuration(event.duration_ms) : '',
+})
 
-  if (!cancelled) return duration ? [`Worked ${duration}`] : []
+/**
+ * The same result as the marker line the IDE reads - in English, and staying English (see
+ * MetaItem.stats).
+ *
+ * Built out of the outcome rather than out of the event a second time. The two carry one fact between
+ * them and used to be worked out side by side from the same input, which is a fact with two chances to
+ * be wrong: the row could say the turn was stopped while the marker said it worked, and the marker is
+ * the half nobody looks at - it is read by NotificationReasons.kt, out in the IDE.
+ */
+const resultStats = (outcome: MetaItem['outcome']): string[] => {
+  if (!outcome) return []
+
+  const { state, duration } = outcome
+  if (state !== 'stopped') return duration ? [`Worked ${duration}`] : []
+
   // Not "Worked": the turn did not work through, it was broken off halfway, and the caption is obliged to
   // say exactly that - otherwise an interrupted turn is indistinguishable from a finished one.
   return [duration ? `${STOPPED_BY_YOU} · ${duration}` : STOPPED_BY_YOU]
@@ -1956,15 +1987,13 @@ export const formatTokens = (value: number): string => {
 }
 
 /** The text of a finished CONTEXT card - with real before and after figures and a time, when the IDE sent them. */
-const compactBoundaryText = (meta: AgentSystemEvent['compact_metadata']): string => {
-  const before = meta?.pre_tokens
-  const trigger = meta?.trigger === 'manual' ? 'manually' : 'automatically'
-  if (before === undefined) return `context ${trigger} compacted`
-
-  const into = meta?.post_tokens !== undefined ? `a ${formatTokens(meta.post_tokens)} summary` : 'a summary'
-  const duration = meta?.duration_ms !== undefined ? ` in ${formatDuration(meta.duration_ms)}` : ''
-  return `${trigger} compacted ${formatTokens(before)} of context into ${into}${duration}`
-}
+const compactOutcome = (meta: AgentSystemEvent['compact_metadata']): CompactOutcome => ({
+  state: 'done',
+  manual: meta?.trigger === 'manual',
+  ...(meta?.pre_tokens !== undefined ? { before: meta.pre_tokens } : {}),
+  ...(meta?.post_tokens !== undefined ? { after: meta.post_tokens } : {}),
+  ...(meta?.duration_ms !== undefined ? { took: formatDuration(meta.duration_ms) } : {}),
+})
 
 const formatClock = (ms: number): string => {
   const date = new Date(ms)

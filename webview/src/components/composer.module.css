@@ -14,10 +14,34 @@
   }
 }
 
+/*
+ * Gives way rather than standing at its full height whatever happens (flex: none, as it was).
+ *
+ * A card in this stack can be tall - six questions in one call is an ordinary thing - and the dock used to
+ * grow past the panel's own height along with it. What stood below the growth was the input field itself,
+ * and the panel clips what does not fit (see .panel in shell.module.css): the person was left looking at a
+ * question with nothing to answer it with, and no scroll anywhere to reach the field. It happens on a short
+ * panel, which is exactly the panel someone drags to the bottom edge of the screen.
+ *
+ * Now the room runs out inside the stack instead. The feed above gives up its height first (it has a scroll
+ * of its own and loses nothing), and when it has none left the card that can scroll gives up the difference
+ * (see .ask below).
+ */
 .dock {
-  flex: none;
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   background: var(--acc-bg-panel);
   padding: 8px 10px 0;
+}
+
+/* Nothing in the stack shrinks of its own accord: a squeezed queue, task row or input field has nowhere to
+   put what does not fit and would simply be cut in half. Giving way is opt-in - a card marks itself with
+   data-shrinks when it has a list inside that can scroll instead. The same pair of rules stands over the
+   side rail (.railColumn in shell.module.css), which holds the very same cards under left/right. */
+.dock > *:not([data-shrinks]) {
+  flex: none;
 }
 
 /* The border faces where the feed adjoins the input field - see App.tsx (layout). */
@@ -222,7 +246,15 @@
 
 /* --- The questions -------------------------------------------------------- */
 
+/* A column that can give way (see .dock and data-shrinks above): the head and the foot keep their height
+   while the list of questions takes what is left over and scrolls. How much is left over is decided by the
+   panel's height rather than by a number written here - see .askBody. */
 .ask {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 0;
   margin-bottom: 8px;
   border: 1px solid var(--acc-branch-40);
   border-radius: var(--acc-r-2xl);
@@ -230,13 +262,32 @@
   overflow: hidden;
 }
 
-/* On the baseline rather than centred: the label and the title are of different sizes. */
+/* Centred rather than on the baseline, unlike .permHead: the cross at the far end is taller than the text
+   beside it, and in a row aligned by the baseline the whole line hangs from that cross's top edge. Folded,
+   where the head is the entire card, the caption stood two pixels above the middle because of it. */
 .askHead {
+  flex: none;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 9px;
   padding: 8px 11px;
   border-bottom: 1px solid var(--acc-branch-20);
+}
+
+/* Folded, the head is the whole card, and the line under it would be a second border a pixel above the
+   card's own - two rules for one edge, and the content half a pixel higher than the middle. */
+.askHeadAlone {
+  border-bottom: none;
+}
+
+/* On the baseline within the group, because the label is small mono and the count is ordinary text: by the
+   centres of their own boxes those two stand at different heights. The group as a whole is what the row
+   centres (the same trick as .taskPanelTextGroup). */
+.askTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-width: 0;
 }
 
 .askLabel {
@@ -253,7 +304,6 @@
 /* It releases the question rather than hides it: the turn stands while the agent waits for an answer - so
    the cross is always visible rather than only under the cursor. */
 .askDismiss {
-  align-self: center;
   flex: none;
   width: 18px;
   height: 18px;
@@ -270,15 +320,69 @@
   color: var(--acc-fg);
 }
 
-/* The head and the send button stay in place - only the list of questions itself spins. Without this six
-   questions in one call (an ordinary thing) would push the input field off the screen: the panel here is a
-   pinned one rather than part of an endless feed. */
+/* Centred on the card's own top edge rather than in the head's flex row: the row's content is left-aligned,
+   so a flex child could never land in the true centre of the card. Sits inside the border (top: 0, no
+   negative offset) because .ask clips overflow for its rounded corners - a floating tab half outside it
+   would be cut off.
+   The padding at the top stands in for the border this tab does not have: with a border only along the
+   bottom the content box sits a pixel below the tab's own middle, and at twelve pixels a missed centre is
+   the whole difference between a handle and a chip of something. */
+.askCollapse {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 12px;
+  padding-top: 1px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--acc-branch-32);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  background: var(--acc-branch-12);
+  /* In the card's own colour rather than grey: everything else here - the border, the label, the tint of
+     the background - belongs to the question, and the one grey thing among them read as something left
+     over from elsewhere rather than as a part of the card. */
+  color: var(--acc-branch);
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.askCollapse:hover {
+  background: var(--acc-branch-20);
+  border-color: var(--acc-branch-60);
+  color: var(--acc-branch-light);
+}
+
+/* Folding and unfolding are one drawing at two angles rather than two characters (see Chevron.tsx). Turned
+   rather than swapped, because the turn itself says the two states are the same thing - and because a
+   swapped glyph jumps where a rotation has somewhere to go. */
+.askCaret {
+  width: 10px;
+  height: 6px;
+  transition: transform 0.16s ease;
+}
+
+.askCaretUp {
+  transform: rotate(180deg);
+}
+
+/*
+ * The head and the send button stay in place - only the list of questions itself spins.
+ *
+ * How tall it may grow is not written here. It used to be (320px), and a fixed ceiling is wrong in both
+ * directions at once: on a tall panel it cut a card that had room to open, and on a short one it was still
+ * more height than the panel had to give - the input field went off the screen anyway, which is the whole
+ * reason it was put there. Now the card takes what the panel has left over after the field (see .dock), so
+ * on a short panel the list scrolls and on a tall one it opens as far as it goes.
+ */
 .askBody {
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 11px;
-  max-height: 320px;
+  flex: 0 1 auto;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -416,6 +520,7 @@
 }
 
 .askFoot {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -614,13 +719,24 @@
   display: grid;
   place-items: center;
   border-radius: var(--acc-r-xs);
-  font: 9px/1 var(--acc-mono);
   color: var(--acc-fg-faint);
 }
 
 .taskCompactArrow:hover {
   background: var(--acc-line-strong);
   color: var(--acc-fg);
+}
+
+/* The list opens upwards - the input field below stays put - so folded the arrow points up: it shows where
+   the tasks will come back from rather than which way the row will move. */
+.taskCompactCaret {
+  width: 10px;
+  height: 6px;
+  transition: transform 0.16s ease;
+}
+
+.taskCompactCaretUp {
+  transform: rotate(180deg);
 }
 
 /* --- The queue ------------------------------------------------------------- */
@@ -1052,10 +1168,12 @@
   gap: 6px;
 }
 
-/* justify-content is not needed: the buttons divide the row evenly by themselves (see .selectorAuto in
-   shell.module.css), and there is no reason for them to crowd into its right edge. position+z-index are
-   there for the same reason as .selectors in shell.module.css: above the menu's scrim, otherwise a second
-   click on a button's own self goes to the scrim. */
+/* The same shape as the status line under the field in the ordinary layout (see .status in
+   shell.module.css): the selectors at their own width on the left, the bubble and the heart at the far
+   end, and the spacer between them taking whatever is left. They used to divide the row evenly among
+   themselves instead (.selectorAuto), because there was nothing at the far end for the emptiness to go to.
+   position+z-index are there for the same reason as .selectors in shell.module.css: above the menu's
+   scrim, otherwise a second click on a button's own self goes to the scrim. */
 .compactSelectors {
   display: flex;
   align-items: center;
@@ -1066,9 +1184,10 @@
 
 /* The same children as in the ordinary layout's .tools (see Composer.toolsRow), but without its
    background, border and padding - those are of no use here, the row already stands in a column of its own
-   with insets of its own (see .compactRow). justify-content is not needed: the buttons are pressed to the
-   left edge by the order of the children themselves and by the .spacer before the usage (the same trick as
-   in .tools) rather than by the row's alignment. */
+   with insets of its own (see .compactRow). justify-content is not needed: the four little buttons are
+   held at the left edge and Send at the right one by the .spacer between them, the same trick as in
+   .tools. The usage rides in this row too here, in front of Send: this layout has no status line to put it
+   in, and the row above is full. */
 .compactToolsRow {
   display: flex;
   align-items: center;
@@ -1118,9 +1237,15 @@
    .railToolsRow below): the rings do not arrive from the CLI at once and are shorter until they do (no
    rings, only a "..."), while Stop/ForceStop show and hide on every turn of the agent - if all of that
    shared one row, any of them would change its neighbours' positions when it appeared. Apart, each touches
-   only itself. */
+   only itself.
+
+   The bubble and the heart keep it company at the row's far end, exactly as they do in the status line
+   under the field in the ordinary layout: none of the three is about the message being written, and the
+   row of buttons below is. That end is the field's side, the same one Send holds a row lower - see
+   .railMirrored. */
 .railMeters {
   display: flex;
+  align-items: center;
 }
 
 /* The same children as in the ordinary layout's .tools (see Composer.toolsRow), but without its
@@ -1129,10 +1254,11 @@
    the rail's bottom, however many cards (a permission, a question, the tasks, the queue, the quotes) stand
    above it: they have no special insets of their own, they simply run in order from the top.
 
-   justify-content defaults to flex-start - Send comes first and always stands at the edge, whatever appears
-   or disappears behind it (Stop, ForceStop, Queue). Under right that edge is the left one, and it is also
-   the boundary with the feed (the rail is to the right of the feed). See .railToolsRowLeft below - under
-   left everything is mirrored. */
+   justify-content defaults to flex-start - the four little buttons come first and always stand at that
+   edge, while Send holds the other one, whatever appears or disappears in front of it (Stop, ForceStop,
+   Queue). The row is written the way left needs it: there the first edge is the panel's outer one and the
+   other is the boundary with the feed, so Send ends up against the field. Under right the whole row is
+   reflected instead (see .railMirrored below), which puts Send against the field there too. */
 .railToolsRow {
   display: flex;
   align-items: center;
@@ -1141,13 +1267,32 @@
 }
 
 /*
- * The mirror of .railToolsRow for left: the rail there stands to the left of the feed, and without this
- * modifier Send would end up at the outer edge of the whole panel - furthest of all from what is actually
- * beside it, the feed and the input field. row-reverse turns both the order and the packing around at once:
- * the row is pressed to the rail's right edge (the boundary with the feed under left), and Send stands
- * first at that boundary - exactly where it stands under right relative to its own boundary.
+ * The rail reflected, for right: there the field stands to the LEFT of the rail, and the rows are written
+ * in the order left needs (see mirroredRail in Composer.tsx). Reflecting rather than reordering is the
+ * whole point - what has to stay put is not an order of buttons but a side: Send and the pair keep the
+ * edge the field is on, the little buttons and the figures keep the panel's outer edge, whichever side of
+ * the feed the rail was dragged to.
+ *
+ * row-reverse turns the order and the packing around at once, and it does it to the row's own children
+ * only - the four little buttons live inside a wrapper of their own (.toolGroups), so they come through
+ * this reflection in the order they are written in.
+ *
+ * Keyboard tabbing goes on following the DOM, which under right means walking the row from its right end
+ * to its left one. That is what a reflection is: the row is the same row, seen from the other side.
  */
-.railToolsRowLeft {
+.railMirrored {
+  flex-direction: row-reverse;
+}
+
+/*
+ * Under left it is the four little buttons that turn around instead, and nothing else: the row as a whole
+ * already reads the way it should (the buttons at the panel's outer edge, Send against the field), while
+ * the buttons themselves have to run towards the field rather than away from it - slash, paperclip,
+ * sparkle, microphone. Under right the same four run away from it, which is the same order seen in a
+ * mirror; between the two of them the rail is one arrangement reflected, not two arrangements.
+ */
+.railToolsRowLeft .toolGroups,
+.railToolsRowLeft .toolGroup {
   flex-direction: row-reverse;
 }
 
@@ -1292,9 +1437,10 @@
 }
 
 /*
- * The field's bottom row: the usage on the left (ctx/5h/wk/tok), the buttons on the right - attachments,
- * commands and sending. The row does not wrap: when room is short the usage squeezes itself (its meters wrap
- * inside their own block) while the buttons stay in place - a Send button that rode onto a second line reads
+ * The field's bottom row: what one does to the message on the left (dictating, rewriting, attaching,
+ * commanding), what one does with it on the right (Send, Queue, Stop). The usage used to stand at the left
+ * edge and has moved down into the status line, where the heart is - it is a fact about the day rather than
+ * about this draft (see StatusBar). The row does not wrap: a Send button that rode onto a second line reads
  * as a breakage.
  */
 .tools {
@@ -1305,6 +1451,28 @@
   border-top: 1px solid var(--acc-bg-control);
   background: var(--acc-bg-raised);
   min-width: 0;
+}
+
+/*
+ * The four little buttons of the row's leading edge, in two pairs: the microphone with the sparkle (words
+ * put into the field without one's hands), the paperclip with the slash (things put into it that are not
+ * words). The wider gap between the pairs is the only thing telling them apart - a divider between two
+ * pairs of borderless squares is a heavier line than the buttons themselves, and in a row this short it
+ * reads as the row being cut in half.
+ *
+ * A wrapper of its own rather than the row's own gap: the row spaces everything else at 5px, and the pause
+ * between the groups has to be wider than that without dragging Send and Queue apart with it.
+ */
+.toolGroups {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.toolGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .attach {
@@ -1424,28 +1592,187 @@
   }
 }
 
-/* Why a rewrite came to nothing - one line above the field (see Composer.improveNoteNode). It stands in the
-   flow rather than over the field: an explanation that covers what is being written is worse than none. */
+/* The microphone. A hair larger than the paperclip and the slash for the same reason the sparkle is: an
+   outlined shape made mostly of thin strokes weighs less to the eye than a glyph at the same size. */
+.voiceIcon {
+  width: 14px;
+  height: 14px;
+}
+
+/*
+ * The button while it is listening.
+ *
+ * Red, because that is what recording is everywhere - and the one place in this row where a warm colour is
+ * not decoration but a state somebody has to be able to see from across the desk. The ring around it grows
+ * with the room's loudness (--acc-voice-level, 0..100, set by the composer): a microphone that hears
+ * nothing is otherwise indistinguishable from one that works, which is the single most common way this
+ * kind of feature fails silently.
+ *
+ * box-shadow rather than a border or an extra element: it costs no layout, so a ring redrawn ten times a
+ * second cannot push the neighbouring buttons about.
+ */
+.voiceLive {
+  background: var(--acc-bad-16);
+  color: var(--acc-bad-light);
+  box-shadow: 0 0 0 calc(1px + var(--acc-voice-level, 0) * 0.04px) var(--acc-bad-24);
+  transition:
+    background-color 80ms linear,
+    color 80ms linear,
+    box-shadow 90ms ease-out;
+}
+
+.voiceLive:hover,
+.voiceLive[data-hover] {
+  background: var(--acc-bad-24);
+  color: var(--acc-bad-light);
+}
+
+/*
+ * The couple of tenths of a second after the key is released, while Deepgram counts the tail.
+ *
+ * Dimmed rather than spinning: it is short, and a spinner appearing for a quarter of a second reads as a
+ * flicker. The button refuses a press throughout - a second dictation started into the tail of the first
+ * would interleave two people's sentences.
+ */
+.voiceFinishing:disabled {
+  background: var(--acc-bad-12);
+  color: var(--acc-bad-light);
+  opacity: 1;
+}
+
+/*
+ * The phrase being dictated, in grey after everything in the field.
+ *
+ * A pseudo-element rather than a node: the field is a contentEditable whose contents ARE the draft (see
+ * composerDom), so a live node here would be read into the message, and replacing it while an input method
+ * was assembling a character would take that character out of its hands.
+ *
+ * The placeholder gets out of the way while it shows - the two would otherwise sit on top of each other in
+ * an empty field, which is exactly the case dictation starts from.
+ */
+.field[data-voice]::after {
+  content: attr(data-voice);
+  color: var(--acc-fg-ghost);
+  pointer-events: none;
+}
+
+.field[data-voice]:empty::before {
+  content: none;
+}
+
+/* What the sparkle button has to say - one line above the field (see Composer.improveNoteNode). It stands
+   in the flow rather than over the field: an explanation that covers what is being written is worse than
+   none. */
 .improveNote {
   display: flex;
   align-items: center;
+  /* In a narrow panel the way back drops to a line of its own rather than squeezing the reason for it: the
+     rail layouts leave the field about a hundred and forty pixels, and a row that cannot wrap spends them
+     on the button and leaves the sentence a sliver. */
+  flex-wrap: wrap;
   gap: 7px;
+  max-width: 100%;
   margin-bottom: 6px;
-  padding: 6px 10px;
-  border: 1px solid var(--acc-bad-32);
+  border: 1px solid;
   border-radius: var(--acc-r-lg);
+}
+
+/* A rewrite that came to nothing: the width of the field, because the sentence explaining it is a sentence
+   and is allowed to wrap. */
+.improveNoteBad {
+  padding: 6px 10px;
+  border-color: var(--acc-bad-32);
   background: var(--acc-bad-10);
   color: var(--acc-bad-light);
+}
+
+/* The way back on its own: no wider than the words in it, and in the panel's quietest colours. A full-width
+   strip in an alert's shape, saying that everything went well, would be read as something having gone
+   wrong - and read that way every single time the button is pressed. */
+/*
+ * The way back to one's own words, when nothing has gone wrong - an ordinary button above the field.
+ *
+ * It used to borrow the strip above: a bordered pill with a sentence in it and the action as a word
+ * inside that. Read as a notice one has to look inside for, which it never was - there is no news here,
+ * only something to press. The failed-rewrite strip beside it stays as it is, because that one really is
+ * a sentence, with a way back offered at the end of it.
+ */
+.improveBack {
+  align-self: flex-start;
+  /* fit-content alone measures the words and ignores the box it stands in - in the rail layouts that is
+     fifteen pixels of button hanging past the field. */
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 4px 9px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-control);
+  font: 11px var(--acc-font);
+  color: var(--acc-fg-body);
+  cursor: pointer;
+  transition: background-color 80ms linear, border-color 80ms linear, color 80ms linear;
+}
+
+.improveBack:hover,
+.improveBack[data-hover] {
+  border-color: var(--acc-line-hover);
+  background: var(--acc-bg-control-hover);
+  color: var(--acc-fg);
+}
+
+.improveBack .sparkleIcon {
+  flex: none;
 }
 
 .improveNote .sparkleIcon {
   flex: none;
 }
 
+/* Takes the row when there is room and pushes the way back to the right; below about a hundred and twenty
+   pixels it keeps the whole line to itself and the button wraps under it. */
 .improveNoteText {
+  flex: 1 1 120px;
   font: 11px var(--acc-font);
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* The way back itself. A word rather than an icon: an arrow beside a sparkle says "again" at least as
+   readily as it says "undo", and this is the one press in the panel that must not be guessed at. */
+.improveUndo {
+  /* May shrink and may wrap its own words: in the narrowest panels there is no width at which this phrase
+     fits on one line, and a button that refuses to wrap simply hangs outside the panel. */
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 11px var(--acc-font);
+  color: var(--acc-fg-dim);
+  text-align: left;
+  cursor: pointer;
+  transition: color 80ms linear;
+}
+
+.improveUndo:hover,
+.improveUndo[data-hover] {
+  color: var(--acc-fg);
+}
+
+.improveNoteBad .improveUndo {
+  color: var(--acc-bad-light);
+  text-decoration: underline;
+}
+
+/* Beside an error the way back is still a button and still answers the cursor. Written out for the
+   combined state on purpose: `.improveNoteBad .improveUndo` and `.improveUndo:hover` weigh the same, so the
+   one written later would win every tie and leave the button dead under the pointer. */
+.improveNoteBad .improveUndo:hover,
+.improveNoteBad .improveUndo[data-hover] {
+  color: var(--acc-fg);
 }
 
 .spacer {

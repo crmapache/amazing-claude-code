@@ -101,7 +101,7 @@ describe('a feed restored from the journal', () => {
    */
   it('marks a beginning that is no longer kept', () => {
     const truncated = live([
-      { kind: 'checkpoint', chip: 'EARLIER', target: 'earlier messages are no longer kept' },
+      { kind: 'checkpoint', chip: 'EARLIER', target: '', targetKey: 'notKept' },
       { kind: 'prompt', tokens: [{ kind: 'text', value: 'carry on' }], quotes: [] },
     ])
 

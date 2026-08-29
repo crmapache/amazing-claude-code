@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { AvailablePluginInfo, InstalledPluginInfo, PluginMarketplaceInfo } from '../protocol'
 import { SkeletonBar } from './Skeleton'
 import s from './sideMenu.module.css'
+import { useT } from '../i18n'
 
 type View = 'installed' | 'browse' | 'marketplaces'
 
@@ -53,6 +54,7 @@ export const Plugins = ({
   onRemoveMarketplace,
   onDismissMessage,
 }: PluginsProps) => {
+  const t = useT()
   const [view, setView] = useState<View>('installed')
   const [query, setQuery] = useState('')
   const [source, setSource] = useState('')
@@ -99,21 +101,24 @@ export const Plugins = ({
           className={`${s.tab} ${view === 'installed' ? s.tabOn : ''}`}
           onClick={() => switchView('installed')}
         >
-          Installed{tabCount(installed)}
+          {t.plugins.tabInstalled}
+          {tabCount(installed)}
         </button>
         <button
           type="button"
           className={`${s.tab} ${view === 'browse' ? s.tabOn : ''}`}
           onClick={() => switchView('browse')}
         >
-          Browse{tabCount(available)}
+          {t.plugins.tabBrowse}
+          {tabCount(available)}
         </button>
         <button
           type="button"
           className={`${s.tab} ${view === 'marketplaces' ? s.tabOn : ''}`}
           onClick={() => switchView('marketplaces')}
         >
-          Markets{tabCount(marketplaces)}
+          {t.plugins.tabMarkets}
+          {tabCount(marketplaces)}
         </button>
       </div>
 
@@ -140,7 +145,7 @@ export const Plugins = ({
               ))
             : null}
 
-          {installed?.length === 0 ? <div className={s.screenEmpty}>No plugins installed.</div> : null}
+          {installed?.length === 0 ? <div className={s.screenEmpty}>{t.plugins.emptyInstalled}</div> : null}
 
           {installed?.map((plugin) => {
             const enableKey = `enable:${plugin.id}`
@@ -168,7 +173,7 @@ export const Plugins = ({
                         onDisable(plugin.id)
                       }}
                     >
-                      {pendingAction === disableKey ? 'Disabling…' : 'Disable'}
+                      {pendingAction === disableKey ? t.plugins.disabling : t.plugins.disable}
                     </button>
                   ) : (
                     <button
@@ -180,7 +185,7 @@ export const Plugins = ({
                         onEnable(plugin.id)
                       }}
                     >
-                      {pendingAction === enableKey ? 'Enabling…' : 'Enable'}
+                      {pendingAction === enableKey ? t.plugins.enabling : t.plugins.enable}
                     </button>
                   )}
                   <button
@@ -192,7 +197,7 @@ export const Plugins = ({
                       onUninstall(plugin.id)
                     }}
                   >
-                    {pendingAction === uninstallKey ? 'Uninstalling…' : 'Uninstall'}
+                    {pendingAction === uninstallKey ? t.plugins.uninstalling : t.plugins.uninstall}
                   </button>
                 </div>
               </div>
@@ -200,7 +205,7 @@ export const Plugins = ({
           })}
 
           <button type="button" className={`${s.button} ${s.buttonWide}`} onClick={onRefresh} disabled={loading}>
-            {loading ? 'Refreshing…' : 'Refresh'}
+            {loading ? t.plugins.refreshing : t.plugins.refresh}
           </button>
         </>
       ) : null}
@@ -209,7 +214,7 @@ export const Plugins = ({
         <>
           <input
             className={s.input}
-            placeholder="Search plugins by name or description…"
+            placeholder={t.plugins.searchPlaceholder}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             autoFocus
@@ -232,7 +237,7 @@ export const Plugins = ({
 
           {available !== null && browseResults.length === 0 ? (
             <div className={s.screenEmpty}>
-              {available.length === 0 ? 'No marketplaces connected.' : 'No matches.'}
+              {available.length === 0 ? t.plugins.noMarketplaces : t.plugins.noMatches}
             </div>
           ) : null}
 
@@ -258,7 +263,7 @@ export const Plugins = ({
                       onInstall(plugin.id)
                     }}
                   >
-                    {busy ? 'Installing…' : 'Install'}
+                    {busy ? t.plugins.installing : t.plugins.install}
                   </button>
                 </div>
               </div>
@@ -285,7 +290,7 @@ export const Plugins = ({
               ))
             : null}
 
-          {marketplaces?.length === 0 ? <div className={s.screenEmpty}>No marketplaces configured.</div> : null}
+          {marketplaces?.length === 0 ? <div className={s.screenEmpty}>{t.plugins.emptyMarketplaces}</div> : null}
 
           {marketplaces?.map((marketplace) => {
             const removeKey = `remove-marketplace:${marketplace.name}`
@@ -309,7 +314,7 @@ export const Plugins = ({
                       onRemoveMarketplace(marketplace.name)
                     }}
                   >
-                    {busy ? 'Removing…' : 'Remove'}
+                    {busy ? t.plugins.removing : t.plugins.remove}
                   </button>
                 </div>
               </div>
@@ -327,10 +332,10 @@ export const Plugins = ({
               setSource('')
             }}
           >
-            <span className={s.screenLabel}>ADD MARKETPLACE</span>
+            <span className={s.screenLabel}>{t.plugins.addMarketplace}</span>
             <input
               className={s.input}
-              placeholder="URL, path, or owner/repo on GitHub"
+              placeholder={t.plugins.marketplacePlaceholder}
               value={source}
               onChange={(event) => setSource(event.target.value)}
             />
@@ -339,7 +344,7 @@ export const Plugins = ({
               className={`${s.button} ${s.buttonPrimary} ${s.buttonEnd}`}
               disabled={pendingAction === ADD_MARKETPLACE_KEY}
             >
-              {pendingAction === ADD_MARKETPLACE_KEY ? 'Adding…' : 'Add'}
+              {pendingAction === ADD_MARKETPLACE_KEY ? t.plugins.adding : t.plugins.add}
             </button>
           </form>
         </>

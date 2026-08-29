@@ -11,6 +11,8 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { isBashDraft } from '../feed/bash'
+import { useT } from '../i18n'
+import { Microphone } from './Microphone'
 import { matchFiles } from '../feed/files'
 import { improveRequest, type ImproveRequest } from '../feed/improve'
 import {
@@ -29,7 +31,7 @@ import {
   type CommandEntry,
 } from '../feed/slash'
 import { clipboardHtml, clipboardTokens, tokensText } from '../feed/tokens'
-import type { Chip, UserToken } from '../feed/types'
+import type { Chip, DraftEdit, UserToken } from '../feed/types'
 import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
 import type { ModelInfo } from '../protocol'
 import { SlashSuggest } from './SlashSuggest'
@@ -63,6 +65,9 @@ import { FeedbackButton } from './Feedback'
 import { Selectors, type Anchor, type SelectorKind } from './StatusBar'
 import { ThanksButton } from './Thanks'
 import s from './composer.module.css'
+/* The pair of the bubble and the heart is drawn the same everywhere and lives with the status row it
+   belongs to (see .endPair there) - the same borrowing Feedback.tsx already makes of this file. */
+import shell from './shell.module.css'
 
 /** Ticks at every fifth - unrelated to the colour thresholds, purely the scale's ruler. */
 const CONTEXT_METER_TICKS = [20, 40, 60, 80]
@@ -185,6 +190,22 @@ const MODIFIER_KEYS = ['Shift', 'Meta', 'Control', 'Alt', 'CapsLock']
  */
 const isComposingEvent = (event: Event): boolean => event instanceof InputEvent && event.isComposing
 
+/**
+ * What the microphone button needs to know about itself.
+ *
+ * Deliberately small: which of the three things it is doing, and nothing else. The panel holds the rest
+ * (see App), and the settings behind it belong to a screen of their own.
+ *
+ * The loudness of the room is deliberately not here. It arrives ten times a second, and a prop is a
+ * render of the whole panel each time - up to twelve hundred of them over a two-minute dictation, for one
+ * CSS variable. It is written onto the page instead (see `--acc-voice-level` in App), and inherited.
+ */
+export interface VoiceButtonState {
+  /** Switched off in the settings means no button at all rather than a disabled one. */
+  enabled: boolean
+  phase: 'idle' | 'listening' | 'finishing'
+}
+
 interface ComposerProps {
   /** Whose tab this is - each has an undo history of its own rather than one shared by all. */
   sessionId: string
@@ -196,9 +217,16 @@ interface ComposerProps {
   contextPercent: number
   /** The panel's and the agent's commands as one list. */
   commands: CommandEntry[]
-  /** The model catalogue from the CLI - the value hint for `/model` comes out of it. */
+  /**
+   * The model catalogue from the CLI - the value hint for `/model` comes out of it, and the MODEL button
+   * measures its own width by it (see modelSample).
+   */
   models: ModelInfo[] | null
-  /** The usage row (ctx/5h/wk/tok) - it stands in the field's bottom row, see UsageMeters. */
+  /**
+   * The usage row (5h/wk/tok) - see UsageMeters. Compact keeps it among the buttons and the side rail in
+   * a row of its own; the ordinary layout draws it in the status line under the field (see StatusBar) and
+   * does not use this at all.
+   */
   meters: ReactNode
   /** The project's files for the "@" hint - relative to the working directory's root. */
   files: string[]
@@ -206,7 +234,12 @@ interface ComposerProps {
   imageBaseCount: number
   /** The panel asks for the field to be focused, after a reference from the editor for instance. */
   focusToken: number
-  onTokensChange: (tokens: UserToken[]) => void
+  /**
+   * The field's contents changed - and where the change came from, which the panel needs in order to tell
+   * the person moving on from what they wrote apart from the field putting those same words back (see
+   * DraftEdit).
+   */
+  onTokensChange: (tokens: UserToken[], from: DraftEdit) => void
   onAttach: () => void
   /** Files and folders dropped into the field: the shell assembles the chips out of them (see protocol). */
   onDropFiles: (paths: string[]) => void
@@ -243,6 +276,40 @@ interface ComposerProps {
    * next edit: a complaint about a draft that has since been rewritten by hand is noise.
    */
   improveError?: string
+  /**
+   * A rewrite stands in the field and the words it was made out of are still held (see
+   * App.improveSources), so there is a way back to offer - the line above the field.
+   *
+   * Said out loud rather than left to Cmd+Z, which does the same thing invisibly: replacing what somebody
+   * wrote is the one thing this button does, and a replacement with no way back in sight is a thing one
+   * presses once and then stops pressing.
+   */
+  improveRestore?: boolean
+  /** Put the person's own words back in place of the rewrite (see App.restoreDraft). */
+  onImproveRestore?: () => void
+  /**
+   * Voice input, as far as the composer needs to know it: whether the button exists at all, and what a
+   * running dictation is doing. Everything else - the key, the language, the hotkeys - is the settings
+   * screen's business (see VoiceInput).
+   */
+  voice?: VoiceButtonState
+  /** Start dictating from the button. It toggles, which is the only thing a button can mean. */
+  onVoiceStart?: () => void
+  /** Stop and let Deepgram count the tail - the same press again, or the field losing its reason to hold it. */
+  onVoiceStop?: () => void
+  /**
+   * The phrase being said right now, drawn in grey after everything in the field.
+   *
+   * It is drawn rather than inserted: a live node inside the field would join the draft's tokens, and it
+   * would take the half-typed character out of an input method's hands the instant it changed. As a
+   * pseudo-element it exists for the eye only - see .fieldVoice in the styles.
+   */
+  voiceGhost?: string
+  /**
+   * Why a dictation came to nothing - one line above the field, in the same strip the sparkle button uses
+   * (see improveNoteNode). Cleared by the panel on the next edit, like that one.
+   */
+  voiceError?: string
   /**
    * Hands "replace the whole field" outwards, so that a rewritten draft lands as one step of this field's
    * undo history: Cmd+Z has to bring the person's own words back, and that history lives here rather than
@@ -315,6 +382,13 @@ export const Composer = ({
   improving = false,
   improveRetry = false,
   improveError = '',
+  improveRestore = false,
+  onImproveRestore,
+  voice,
+  onVoiceStart,
+  onVoiceStop,
+  voiceGhost = '',
+  voiceError = '',
   registerApply,
   onSubmit,
   onQueue,
@@ -332,8 +406,17 @@ export const Composer = ({
   onOpenFeedback,
   railContainer,
 }: ComposerProps) => {
+  const t = useT()
   const compact = layout === 'compact'
   const rail = isSideComposerLayout(layout)
+  /**
+   * The rail stands on the far side of the feed from where it is written in the DOM: under right the
+   * field is to its left, so the whole of it is reflected (see .railMirrored). What the reflection is
+   * about is the field - everything one presses stands on the side the field is on, and everything one
+   * only reads stands away from it - so it is right that turns around here and not left: the rows are
+   * written in the order left needs.
+   */
+  const mirroredRail = layout === 'right'
   const [focused, setFocused] = useState(false)
   /**
    * A dragged file hangs over the field - we highlight where it will land. This is a drag the page sees
@@ -519,15 +602,15 @@ export const Composer = ({
     if (dismissed || commandMatches.length > 0) return null
 
     if (command !== null) {
-      const options = argumentOptions(command, models)
+      const options = argumentOptions(t, command, models)
       const value = argumentText.trim()
       // A space inside the value means the argument is no longer one word from a list but free text -
       // there is nothing to choose there.
       return options && !/\s/.test(value) ? { command, query: value, options } : null
     }
 
-    return head === null ? null : argumentQuery(head, models)
-  }, [head, dismissed, commandMatches, command, argumentText, models])
+    return head === null ? null : argumentQuery(t, head, models)
+  }, [t, head, dismissed, commandMatches, command, argumentText, models])
 
   const argumentMatches = useMemo(
     () => (argument ? matchArguments(argument.options, argument.query) : []),
@@ -621,7 +704,7 @@ export const Composer = ({
   const report = (next: UserToken[], boundary = false) => {
     commitHistory(tokens, boundary)
     lastReported.current = next
-    onTokensChange(next)
+    onTokensChange(next, 'hand')
     // Any edit may take the caret past the field's edge - it is limited in height and scrolls past that
     // (see scrollCaretIntoView).
     if (input.current) scrollCaretIntoView(input.current)
@@ -647,7 +730,7 @@ export const Composer = ({
 
     const next = extractTokens(root)
     lastReported.current = next
-    onTokensChange(next)
+    onTokensChange(next, 'renumber')
   }, [imageBaseCount])
 
   /** A programmatic edit of the whole contents: we change the DOM ourselves rather than wait for the effect. */
@@ -675,7 +758,10 @@ export const Composer = ({
       scrollCaretIntoView(root)
     }
     lastReported.current = next
-    onTokensChange(next)
+    // Reported as a step of the history rather than as a hand on the keyboard: Cmd+Z over a rewrite puts
+    // the person's own words back, and reading that as "they have moved on from those words" would throw
+    // away the very thing it just restored (see DraftEdit).
+    onTokensChange(next, 'history')
   }
 
   const undo = () => {
@@ -1123,8 +1209,8 @@ export const Composer = ({
   const placeholder = tokens.length
     ? ''
     : planMode
-      ? 'Describe what to plan…'
-      : 'Ask, or describe a change…'
+      ? t.composer.placeholderPlan
+      : t.composer.placeholder
 
   /**
    * The caret has run into a chip and stopped on it rather than stepped over: from there backspace
@@ -1362,9 +1448,9 @@ export const Composer = ({
     <button
       type="button"
       className={s.attach}
-      data-tooltip="Attach files or folders"
+      data-tooltip={t.composer.attach}
       data-tooltip-at="top"
-      aria-label="Attach files or folders"
+      aria-label={t.composer.attach}
       onClick={onAttach}
     >
       <Paperclip />
@@ -1380,9 +1466,9 @@ export const Composer = ({
     <button
       type="button"
       className={s.attach}
-      data-tooltip="Slash commands"
+      data-tooltip={t.composer.slash}
       data-tooltip-at="top"
-      aria-label="Slash commands"
+      aria-label={t.composer.slash}
       disabled={slashDisabled}
       /* The press must not take the focus away from the field: the slash goes where the caret stands,
          and a caret that has left the field would drop it at the end instead. */
@@ -1399,9 +1485,9 @@ export const Composer = ({
   /*
    * The draft, rewritten by Claude Code itself in a run of its own (see feed/improve.ts and PromptImprover
    * on the IDE's side). It joins the paperclip and the slash rather than standing on its own: the three of
-   * them are what one does TO a message, as against Send, which does something WITH it. It comes first of
-   * the three everywhere - which under left reads as last, because that whole row is mirrored (see
-   * .railToolsRowLeft), and being nearest to Send is what the three of them share there anyway.
+   * them are what one does TO a message, as against Send, which does something WITH it. It stands beside
+   * the microphone rather than beside the paperclip: the two of them put words into the field without
+   * one's hands, the other two put in things that are not words (see writingTools below).
    *
    * Refused rather than hidden when there is nothing to do: an empty field and a field holding nothing but
    * attachments have no prompt in them to improve, and a command through "!" goes to a shell rather than to
@@ -1414,13 +1500,13 @@ export const Composer = ({
       className={`${s.attach} ${improving ? s.attachBusy : ''}`}
       data-tooltip={
         bash
-          ? 'A terminal command is not rewritten'
+          ? t.composer.improveTerminal
           : improveRetry
-            ? 'Another take, from what you wrote'
-            : 'Improve the prompt'
+            ? t.composer.improveAgain
+            : t.composer.improve
       }
       data-tooltip-at="top"
-      aria-label="Improve the prompt"
+      aria-label={t.composer.improve}
       aria-busy={improving}
       disabled={improving || improvable === null}
       /* Like the slash beside it: the press must not pull the focus out of the field, which is where the
@@ -1432,15 +1518,56 @@ export const Composer = ({
     </button>
   )
 
-  /* Only the rail's variant is built here: in compact the heart stands in the selectors' row rather than
-     among the buttons (see below), and in the ordinary layout it stands in the status line under the field
-     (see StatusBar). */
-  const thanksButton = <ThanksButton rail onOpen={(anchor) => onOpenThanks?.(anchor)} />
-  const feedbackButton = <FeedbackButton rail onOpen={() => onOpenFeedback?.()} />
+  /*
+   * Dictation (see feed/voice.ts here and the voice package on the IDE's side).
+   *
+   * It stands last of the four - after the sparkle, the paperclip and the slash - which puts it right
+   * against Send in the ordinary layout: the microphone is the last thing one touches before sending,
+   * and it is where the picture in the request put it. In compact and in the rail it simply joins the
+   * same group, because that group is what "things you do to a message" means in every layout.
+   *
+   * The button toggles, and a button can mean nothing else: press to start, press to stop. Holding to
+   * talk is what the hotkeys are for, and the settings screen says so.
+   *
+   * There is no button at all while the feature is switched off, rather than a disabled one: a control
+   * that does nothing and explains nothing is worse than an empty space.
+   */
+  const listening = voice?.phase === 'listening'
+  const finishing = voice?.phase === 'finishing'
+  const voiceButton = !voice?.enabled ? null : (
+    <button
+      type="button"
+      className={`${s.attach} ${listening ? s.voiceLive : ''} ${finishing ? s.voiceFinishing : ''}`}
+      data-tooltip={listening ? t.composer.voiceStop : t.composer.voice}
+      data-tooltip-at="top"
+      aria-label={listening ? t.composer.voiceStop : t.composer.voice}
+      aria-pressed={listening}
+      disabled={finishing}
+      /* Like the two beside it: the press must not pull the focus out of the field, which is where the
+         words are about to land. */
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => (listening ? onVoiceStop?.() : onVoiceStart?.())}
+    >
+      <Microphone className={s.voiceIcon} />
+    </button>
+  )
+
+  /*
+   * The bubble and the heart, as one pair: they say something back and say thanks, neither is about the
+   * message being written, and both stand beside the usage - in the status line under the field in the
+   * ordinary layout (see StatusBar), in the usage's own row in the side rail, in the selectors' row in
+   * compact. Only the rail's borderless variant is built here; the other two rows draw their own.
+   */
+  const railEndPair = (
+    <div className={shell.endPair}>
+      <FeedbackButton rail onOpen={() => onOpenFeedback?.()} />
+      <ThanksButton rail onOpen={(anchor) => onOpenThanks?.(anchor)} />
+    </div>
+  )
 
   const stopButton = streaming ? (
     <button type="button" className={s.stop} onClick={onStop}>
-      ■ Stop
+      ■ {t.composer.stop}
     </button>
   ) : null
 
@@ -1451,10 +1578,10 @@ export const Composer = ({
       type="button"
       className={s.forceStop}
       onClick={onForceStop}
-      data-tooltip="Claude isn't confirming the stop"
+      data-tooltip={t.composer.forceStopHint}
       data-tooltip-at="top"
     >
-      ⚠ Not responding · Force stop
+      ⚠ {t.composer.forceStop}
     </button>
   ) : null
 
@@ -1470,10 +1597,10 @@ export const Composer = ({
       className={`${s.send} ${s.sendQueued}`}
       onClick={onQueue}
       disabled={!canSubmit || !streaming}
-      data-tooltip="Send after the current run finishes"
+      data-tooltip={t.composer.queueHint}
       data-tooltip-at="top"
     >
-      Queue
+      {t.composer.queue}
     </button>
   )
 
@@ -1483,77 +1610,74 @@ export const Composer = ({
       className={`${s.send} ${bash ? s.sendRun : ''}`}
       onClick={onSubmit}
       disabled={!canSubmit}
-      data-tooltip={bash ? 'Run in your shell - Claude sees the output with your next message' : undefined}
+      data-tooltip={bash ? t.composer.runHint : undefined}
       data-tooltip-at="top"
     >
-      {bash ? 'Run' : 'Send'}
+      {bash ? t.composer.run : t.composer.send}
     </button>
   )
 
   /**
-   * The row of buttons under the field: usage, attachments, commands, sending. One and the same set of
-   * children both in the ordinary layout (a `.tools` row of its own inside box) and in compact (the second
-   * row of the column to the right of box, see below) - the buttons' behaviour does not obey the layout,
-   * only where the row stands and in which order it reads them changes. In left/right the usage stands in
-   * a row of its own above this one, in the side rail (see .railMeters below) - here it would climb in as
-   * the same heap that pushes Send/Queue when a Stop appears.
+   * The buttons that do something to the message being written, in two groups: first what puts words in
+   * the field without one's hands (the microphone and the sparkle), then what puts things into it that
+   * are not words (a file and a command).
    *
-   * The order differs by rearranging the children in the markup rather than through the CSS `order`:
-   * keyboard tabbing goes by the DOM's order and does not follow the visual `order`, so a rearrangement
-   * through CSS would part ways with what is visible on the screen.
+   * They stand first in the row, at its leading edge, and the sending buttons stand last at the far end -
+   * the row reads the way the work goes, from assembling a message to letting go of it. The groups are
+   * separated by a wider gap rather than by a divider (see .toolGroup): four identical little squares in
+   * an even row read as one heap, and the pause between two pairs is enough to tell them apart.
+   *
+   * One and the same set of children in every layout - the buttons' behaviour does not obey the layout,
+   * only where the row stands changes. The order is set by rearranging the children in the markup rather
+   * than through the CSS `order`: keyboard tabbing goes by the DOM's order and does not follow the visual
+   * one, so a rearrangement through CSS would part ways with what is visible on the screen.
+   */
+  const writingTools = (
+    <div className={s.toolGroups}>
+      <div className={s.toolGroup}>
+        {voiceButton}
+        {improveButton}
+      </div>
+      <div className={s.toolGroup}>
+        {attachButton}
+        {slashButton}
+      </div>
+    </div>
+  )
+
+  /**
+   * What starts and stops a turn, at the row's far end in every layout. Send and Queue are the ordinary
+   * actions and stand last of all; Stop and Force stop interrupt the agent, so they ride in front of them
+   * rather than break the Send/Queue pair apart when they appear.
+   */
+  const sendingButtons = (
+    <>
+      {stopButton}
+      {forceStopButton}
+      {queueButton}
+      {sendButton}
+    </>
+  )
+
+  /**
+   * The row of buttons under the field. In compact the usage rides along in it (that layout has no status
+   * row of its own, and the row above is already full of selectors), between the spacer and the sending
+   * buttons rather than at the very end: there it grows leftwards into the spacer as the figures arrive,
+   * and Send keeps the edge it stands on. In the other layouts the usage stands beside the heart - under
+   * the field in the ordinary layout (see StatusBar), in a row of its own in the side rail.
    */
   const toolsRow = compact ? (
     <>
-      {/* In compact the buttons are the most important thing on the row (the usage is already visible a
-          row above, in the rings), so Send and Queue come first and the usage last, after the icons. Send
-          and Queue are ordinary actions, so they stand first; Stop and Force stop interrupt the agent, so
-          they ride behind them rather than break the Send/Queue pair apart. The .spacer before the usage
-          presses the buttons to the left edge: without it they hang in a shared group with the usage,
-          which .compactToolsRow (justify-content: flex-end) drives whole to the right edge - and in the
-          first instant after the plugin starts, while the usage is still empty and narrow, the buttons
-          ride rightwards along with it. */}
-      {sendButton}
-      {queueButton}
-      {stopButton}
-      {forceStopButton}
-      {improveButton}
-      {attachButton}
-      {slashButton}
-      {/* Level with the two beside it rather than beside the heart a row above - see FeedbackButton.tight. */}
-      <FeedbackButton tight onOpen={() => onOpenFeedback?.()} />
+      {writingTools}
       <div className={s.spacer} />
       {meters}
-    </>
-  ) : rail ? (
-    <>
-      {sendButton}
-      {queueButton}
-      {stopButton}
-      {forceStopButton}
-      {improveButton}
-      {attachButton}
-      {slashButton}
-      {/* The heart goes to the row's far end, opposite Send - under left the row is mirrored whole (see
-          .railToolsRowLeft), so the end here is always the rail's outer edge rather than its boundary
-          with the feed. */}
-      <div className={s.spacer} />
-      {feedbackButton}
-      {thanksButton}
+      {sendingButtons}
     </>
   ) : (
     <>
-      {/* The usage goes on the left, in the place where the attachment and command buttons used to stand:
-          this is where one looks while deciding what to write next, and the numbers have to be at hand
-          rather than a row below. The buttons themselves have moved right, over to Send. */}
-      {meters}
+      {writingTools}
       <div className={s.spacer} />
-      {improveButton}
-      {attachButton}
-      {slashButton}
-      {stopButton}
-      {forceStopButton}
-      {queueButton}
-      {sendButton}
+      {sendingButtons}
     </>
   )
 
@@ -1575,6 +1699,11 @@ export const Composer = ({
       contentEditable
       suppressContentEditableWarning
       data-placeholder={placeholder}
+      /* The phrase being dictated, drawn after everything in the field by a pseudo-element (see
+         .field[data-voice] in the styles). An attribute rather than a node on purpose: a node here would
+         become part of the draft the moment the field was read, and changing it mid-composition would take
+         a half-assembled character out of the input method's hands. */
+      data-voice={voiceGhost || undefined}
       onInput={handleInput}
       // The finishing touches the input above put off while the character was still being assembled.
       onCompositionEnd={handleCompositionEnd}
@@ -1598,16 +1727,56 @@ export const Composer = ({
     `${s.box} ${extra} ${focused ? s.boxFocused : ''} ${dropping || fileDragOver ? s.boxDropping : ''} ${bash ? s.boxBash : ''}`
 
   /*
-   * Why a rewrite came to nothing, in the flow above the field rather than as a card in the feed: it is
-   * about the message being written, not about the conversation, and the feed is the conversation's own
-   * record. In the flow rather than floating, so that it cannot cover the first line of what one is
-   * writing while explaining that it was not rewritten.
+   * What the sparkle button has to say for itself, in the flow above the field rather than as a card in the
+   * feed: it is about the message being written, not about the conversation, and the feed is the
+   * conversation's own record. In the flow rather than floating, so that it cannot cover the first line of
+   * what one is writing while explaining itself.
+   *
+   * Two things are said here and they are not exclusive: why a rewrite came to nothing, and the way back
+   * from a rewrite that did land. A second press that fails leaves both true at once - the complaint is
+   * about this press, the way back is about the take still standing in the field - so they share one line
+   * rather than stacking two above a field that is short enough already.
+   *
+   * With nothing to complain about, the line shrinks to the width of the way back: a full-width strip
+   * saying one quiet thing reads as an alert, which this is not.
+   *
+   * The live region is the sentence rather than the whole line. A button inside one is read out as a
+   * trailing clause of the announcement instead of as something to press, and the way back is the one
+   * thing here that has to be findable.
    */
-  const improveNoteNode = improveError ? (
-    <div className={s.improveNote} role="status">
-      <Sparkle />
-      <span className={s.improveNoteText}>{improveError}</span>
+  /*
+   * Dictation shares this line rather than opening a second one of its own. Both are about the message
+   * being written, both are one sentence long, and the layouts this panel is squeezed into (compact, the
+   * side rails) have room for exactly one strip above the field.
+   *
+   * A dictation that just failed wins over a rewrite that failed earlier: it is the thing the person was
+   * doing a second ago, and the older complaint is about a draft they have moved on from.
+   */
+  const noteText = voiceError || improveError
+
+  /* Like the sparkle itself: the press must not pull the focus out of the field it is putting the words
+     back into. */
+  const keepFocus = (event: { preventDefault: () => void }) => event.preventDefault()
+
+  const improveNoteNode = noteText ? (
+    <div className={`${s.improveNote} ${s.improveNoteBad}`}>
+      {voiceError ? <Microphone className={s.voiceIcon} /> : <Sparkle />}
+      <span className={s.improveNoteText} role="status">
+        {noteText}
+      </span>
+      {improveRestore ? (
+        <button type="button" className={s.improveUndo} onMouseDown={keepFocus} onClick={() => onImproveRestore?.()}>
+          {t.composer.restore}
+        </button>
+      ) : null}
     </div>
+  ) : improveRestore ? (
+    /* On its own it is a button and nothing else: a phrase inside a pill with a button inside that reads
+       as a notice one has to find the action in, and this is only ever an action. */
+    <button type="button" className={s.improveBack} onMouseDown={keepFocus} onClick={() => onImproveRestore?.()}>
+      <Sparkle />
+      {t.composer.restore}
+    </button>
   ) : null
 
   const suggestNode = suggesting ? (
@@ -1659,15 +1828,22 @@ export const Composer = ({
                 switchedFrom={switchedFrom}
                 effort={effort ?? ''}
                 mode={mode ?? ''}
-                auto
+                models={models}
                 onOpen={(kind, anchor) => onOpenSelector?.(kind, anchor)}
               />
 
-              {/* Right after MODE rather than past a spacer: unlike the status line, this row is divided
-                  evenly among the three selectors (see .selectorAuto), so its end is wherever they end.
-                  The bubble is not here but among the buttons below - this row has no width to spare, and
-                  why that matters is written out at FeedbackButton.tight. */}
-              <ThanksButton withSelectors onOpen={(anchor) => onOpenThanks?.(anchor)} />
+              {/* Past a spacer, at the row's far end - the same shape as the status line under the field
+                  in the ordinary layout (see StatusBar). The bubble stands here beside the heart rather
+                  than among the buttons below: the room for it came out of the MODE button, whose label
+                  used to spell out "PERMISSION MODE" and took eleven columns to say what one word says.
+                  The selectors keep their own width here rather than sharing the row evenly, for the same
+                  reason as in the status line: the far end belongs to the pair, and what is left over is
+                  the gap between them. */}
+              <div className={s.spacer} />
+              <div className={shell.endPair}>
+                <FeedbackButton withSelectors onOpen={() => onOpenFeedback?.()} />
+                <ThanksButton withSelectors onOpen={(anchor) => onOpenThanks?.(anchor)} />
+              </div>
             </div>
 
             <div className={s.compactToolsRow}>{toolsRow}</div>
@@ -1721,6 +1897,7 @@ export const Composer = ({
                     switchedFrom={switchedFrom}
                     effort={effort ?? ''}
                     mode={mode ?? ''}
+                    models={models}
                     auto
                     onOpen={(kind, anchor) => onOpenSelector?.(kind, anchor)}
                   />
@@ -1728,10 +1905,23 @@ export const Composer = ({
 
                 {/* The usage sits right under the selectors, in a row of its own: neither does it move
                     when a Stop/Queue appears below, nor do they when the usage rings grow after the data
-                    arrives. */}
-                <div className={s.railMeters}>{meters}</div>
+                    arrives. The bubble and the heart keep it company at the row's far end - the same row
+                    the status line makes of them under the field in the ordinary layout, and for the same
+                    reason: neither of them is about the message being written. That end is the side the
+                    field is on, the same side Send stands on in the row below (see .railMirrored). */}
+                <div className={mirroredRail ? `${s.railMeters} ${s.railMirrored}` : s.railMeters}>
+                  {meters}
+                  <div className={s.spacer} />
+                  {railEndPair}
+                </div>
 
-                <div className={layout === 'left' ? `${s.railToolsRow} ${s.railToolsRowLeft}` : s.railToolsRow}>
+                <div
+                  className={
+                    mirroredRail
+                      ? `${s.railToolsRow} ${s.railMirrored}`
+                      : `${s.railToolsRow} ${s.railToolsRowLeft}`
+                  }
+                >
                   {toolsRow}
                 </div>
               </>,

@@ -1,3 +1,4 @@
+import { en } from '../i18n/en'
 import { describe, expect, it } from 'vitest'
 import type { ShellMessage } from '../protocol'
 import { applyFact, emptyFacts, isFact, phoneCommands } from './facts'
@@ -94,7 +95,7 @@ describe('phoneCommands', () => {
    * an agent that has never heard of it.
    */
   it('leaves out the panel’s own commands, which no agent would understand', () => {
-    const ids = phoneCommands(emptyFacts()).map((command) => command.id)
+    const ids = phoneCommands(en, emptyFacts()).map((command) => command.id)
 
     expect(ids).not.toContain('resume')
     expect(ids).not.toContain('fork')
@@ -113,7 +114,7 @@ describe('phoneCommands', () => {
       commands: ['mcp__snakein__analyze'],
     } as ShellMessage)
 
-    expect(phoneCommands(facts).map((command) => command.id)).toContain('mcp__snakein__analyze')
+    expect(phoneCommands(en, facts).map((command) => command.id)).toContain('mcp__snakein__analyze')
   })
 
   it('keeps the built-in ones and adds whatever the project keeps on disk', () => {
@@ -122,7 +123,7 @@ describe('phoneCommands', () => {
       hints: { deploy: { description: 'build, sign and publish', argumentHint: '' } },
     } as ShellMessage)
 
-    const commands = phoneCommands(facts)
+    const commands = phoneCommands(en, facts)
 
     expect(commands.map((command) => command.id)).toContain('context')
     expect(commands.find((command) => command.id === 'deploy')).toEqual({

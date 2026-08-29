@@ -111,3 +111,18 @@ button:disabled {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/*
+ * Letter-spacing belongs to the small capitalised labels of the design, and it is a latin idea: a Han
+ * character, a kana or a hangul syllable is drawn in its own square box, and prising those apart reads as
+ * a rendering fault rather than as a style. The rule is here, at the root, so it reaches every module
+ * without each of them having to remember (see the tracking in shell/composer/feed).
+ *
+ * Asked by an attribute rather than by naming the languages again: the list of them lives in
+ * i18n/locales.ts, where the compiler holds it against the list of languages the panel speaks. Written
+ * out here as tags, it was a fourth copy that nothing kept in step - and a tenth language added upstairs
+ * would simply have gone on being spaced out.
+ */
+html[data-cjk] * {
+  letter-spacing: normal;
+}

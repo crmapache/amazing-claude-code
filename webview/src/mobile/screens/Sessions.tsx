@@ -1,6 +1,8 @@
 import { ChatRow } from './ChatRow'
 import type { LinkState } from '../link'
 import m from '../mobile.module.css'
+import { useT } from '../../i18n'
+import type { Dict } from '../../i18n/en'
 
 export interface SessionEntry {
   agentId: string
@@ -69,22 +71,11 @@ interface SessionsProps {
  * different: a tunnel fixes itself, a sleeping laptop is fixed by opening it, and a relay that will not
  * answer is somebody's server rather than anything to do with this phone.
  */
-const REACH_TEXT: Record<Exclude<SessionsProps['reach'], 'connected' | 'none'>, string> = {
-  connecting: 'Connecting…',
-  asleep: 'Connected to the relay, but no IDE is answering.',
-  elsewhere: 'Also open in another tab or in the installed app - that copy holds the connection.',
-  reconnecting: 'Reconnecting… the list below may be out of date.',
-  offline: 'Cannot reach the relay. Nothing is lost - this comes back on its own.',
-}
+const reachText = (t: Dict): Record<Exclude<SessionsProps['reach'], 'connected' | 'none'>, string> =>
+  t.mobile.sessions.reach
 
 /** The same thing said about one IDE rather than about the phone's whole situation. */
-const AGENT_TEXT: Record<Exclude<LinkState, 'connected'>, string> = {
-  connecting: 'connecting…',
-  asleep: 'not answering',
-  elsewhere: 'open elsewhere',
-  reconnecting: 'reconnecting…',
-  offline: 'offline',
-}
+const agentText = (t: Dict): Record<Exclude<LinkState, 'connected'>, string> => t.mobile.sessions.agent
 
 /**
  * What is happening, across every paired IDE.
@@ -109,6 +100,7 @@ export const Sessions = ({
   onHide,
   onShowHidden,
 }: SessionsProps) => {
+  const t = useT()
   // Where the projects this IDE merely remembers begin. They get a heading of their own: "there is
   // nothing in this one" and "this one is not even open" are different facts, and a list that shows
   // them alike reads as a list of empty projects.
@@ -126,9 +118,9 @@ export const Sessions = ({
             somebody arriving from a link looks. The same asset the installed icon is made of - one
             logo, no second copy to keep in step (see scripts/mobile-icons.py). */}
         <img className={m.headerLogo} src="/icon-192.png" alt="" />
-        <span className={m.headerTitle}>Amazing Claude Code</span>
+        <span className={m.headerTitle}>{t.menu.footer}</span>
         <button type="button" className={m.headerAction} onClick={onPair}>
-          Pair
+          {t.mobile.pair}
         </button>
       </header>
 
@@ -141,7 +133,7 @@ export const Sessions = ({
             <span key={agent.agentId} className={m.agent}>
               <span className={`${m.dot} ${agent.state === 'connected' ? m.dotLive : ''}`} />
               <span className={m.agentLabel}>{agent.label}</span>
-              {agent.state !== 'connected' && <span className={m.agentState}>{AGENT_TEXT[agent.state]}</span>}
+              {agent.state !== 'connected' && <span className={m.agentState}>{agentText(t)[agent.state]}</span>}
 
               {/* An IDE that has stopped answering for good - a sandbox that was thrown away, a machine
                   that will not come back - otherwise sits on this list forever, knocking every half
@@ -158,20 +150,20 @@ export const Sessions = ({
         </div>
       )}
 
-      {reach !== 'connected' && reach !== 'none' && <p className={m.reach}>{REACH_TEXT[reach]}</p>}
+      {reach !== 'connected' && reach !== 'none' && <p className={m.reach}>{reachText(t)[reach]}</p>}
 
       <div className={m.list}>
         {projects.length === 0 && reach === 'connected' && (
-          <p className={m.empty}>Nothing to show yet. Open a project in the IDE, or pair another one.</p>
+          <p className={m.empty}>{t.mobile.sessions.nothingYet}</p>
         )}
 
         {projects.length === 0 && reach === 'none' && (
-          <p className={m.empty}>No IDE is paired with this phone yet. Tap Pair to add one.</p>
+          <p className={m.empty}>{t.mobile.sessions.nonePaired}</p>
         )}
 
         {projects.map((project, index) => (
           <div key={`${project.agentId}:${project.key}`}>
-            {index === firstClosed && <p className={m.sectionTitle}>Recently opened</p>}
+            {index === firstClosed && <p className={m.sectionTitle}>{t.mobile.sessions.recentlyOpened}</p>}
 
             <section className={`${m.project} ${project.online ? '' : m.projectOffline}`}>
               <div className={m.projectHead}>
@@ -194,7 +186,7 @@ export const Sessions = ({
                 </div>
               ) : (
                 <p className={m.projectQuiet}>
-                  {project.closed ? 'Not open in the IDE right now.' : 'No conversations yet.'}
+                  {project.closed ? t.mobile.sessions.projectClosed : t.mobile.sessions.noConversations}
                 </p>
               )}
 
@@ -202,7 +194,7 @@ export const Sessions = ({
                   hiding one is that it stops taking up a row. */}
               {project.hiddenCount > 0 && (
                 <button type="button" className={m.projectHidden} onClick={() => onShowHidden(project)}>
-                  {project.hiddenCount} hidden · show
+                  {t.mobile.sessions.hidden(project.hiddenCount)}
                 </button>
               )}
 
@@ -223,7 +215,7 @@ export const Sessions = ({
                     disabled={!project.online}
                     onClick={() => onHistory(project)}
                   >
-                    Past conversations
+                    {t.mobile.sessions.pastConversations}
                   </button>
                 )}
 
@@ -234,10 +226,10 @@ export const Sessions = ({
                   type="button"
                   className={project.closed ? m.projectOpen : m.projectNew}
                   disabled={!project.online}
-                  aria-label={project.closed ? undefined : 'New chat'}
+                  aria-label={project.closed ? undefined : t.mobile.sessions.newChat}
                   onClick={() => onNew(project)}
                 >
-                  {project.closed ? 'New chat' : null}
+                  {project.closed ? t.mobile.sessions.newChat : null}
                 </button>
               </div>
             </section>

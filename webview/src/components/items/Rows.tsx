@@ -3,7 +3,11 @@ import { LinkedText } from './LinkedText'
 import { modelLabel } from '../../catalog'
 import { compactProgress } from '../../feed/compact'
 import { plainLine } from '../../feed/markdown'
+import { formatTokens } from '../../feed/build'
+import { limitWindowName } from '../../feed/usage'
 import { useNow } from '../../hooks/useNow'
+import { useT } from '../../i18n'
+import type { Dict } from '../../i18n/en'
 import type {
   CheckpointItem,
   CompactItem,
@@ -31,17 +35,18 @@ import { Caret } from './Caret'
  * asterisks and hashes in it mean nothing and merely stick out mid-sentence (see plainLine).
  */
 export const ThinkRow = ({ item, open, onToggle }: { item: ThinkItem; open: boolean; onToggle: () => void }) => {
+  const t = useT()
   const last = item.thoughts.at(-1) ?? ''
 
   return (
     <div className={s.think}>
       <button type="button" className={s.thinkHead} onClick={onToggle}>
         <Caret open={open} />
-        <span className={`${s.toolChip} ${s.chipThink} ${item.pending ? s.thinkPending : ''}`}>THINK</span>
+        <span className={`${s.toolChip} ${s.chipThink} ${item.pending ? s.thinkPending : ''}`}>{t.feed.think.chip}</span>
         {/* An expanded card names itself with a number rather than with the last thought: that thought
             stands a line below, and repeating it as a heading serves nothing. */}
         <span className={s.thinkText}>
-          {open ? `${item.thoughts.length} ${item.thoughts.length === 1 ? 'thought' : 'thoughts'}` : plainLine(last)}
+          {open ? t.feed.think.thoughts(item.thoughts.length) : plainLine(last)}
         </span>
         {item.thoughts.length > 1 && !open ? <span className={s.thinkCount}>{item.thoughts.length}</span> : null}
       </button>
@@ -66,24 +71,30 @@ export const ThinkRow = ({ item, open, onToggle }: { item: ThinkItem; open: bool
  * one that names a genuine gap rather than a moment in the conversation (FORK, CLEAR). A tap fetches the
  * next page of what came before it; the row stays a plain mark until there is something to fetch with.
  */
-export const CheckpointRow = ({ item, onLoadEarlier }: { item: CheckpointItem; onLoadEarlier?: () => void }) =>
-  onLoadEarlier ? (
+export const CheckpointRow = ({ item, onLoadEarlier }: { item: CheckpointItem; onLoadEarlier?: () => void }) => {
+  const t = useT()
+  // A mark the panel worded itself says it in today's language; one carrying the conversation's own
+  // words (a fork's name, a compaction's summary) says them as they are.
+  const target = item.targetKey ? t.feed.checkpoint[item.targetKey] : item.target
+
+  return onLoadEarlier ? (
     // The row sits inside the button rather than being it: a fingertip's worth of height belongs to the
     // target, and the mark itself has to stand in the middle of that height, not at its top.
     <button type="button" className={s.checkpointButton} onClick={onLoadEarlier}>
       <span className={s.checkpoint}>
         <span className={s.checkpointChip}>{item.chip}</span>
-        <span className={s.checkpointTarget}>load earlier messages</span>
+        <span className={s.checkpointTarget}>{t.feed.checkpoint.loadEarlier}</span>
         <span className={s.dashed} />
       </span>
     </button>
   ) : (
     <div className={s.checkpoint}>
       <span className={s.checkpointChip}>{item.chip}</span>
-      <span className={s.checkpointTarget}>{item.target}</span>
+      <span className={s.checkpointTarget}>{target}</span>
       <span className={s.dashed} />
     </div>
   )
+}
 
 /** How often the compaction bar grows: more often serves nothing, the curve is gentle as it is. */
 const COMPACT_TICK_MS = 500
@@ -125,12 +136,13 @@ const useCompactProgress = (pending: boolean): number => {
  * shows that work is under way and roughly how long it has been going.
  */
 export const CompactRow = ({ item }: { item: CompactItem }) => {
+  const t = useT()
   const percent = useCompactProgress(item.pending)
 
   return (
     <div className={s.compact}>
-      <span className={`${s.compactLabel} ${item.pending ? s.pending : ''}`}>CONTEXT</span>
-      <span className={s.compactText}>{item.target}</span>
+      <span className={`${s.compactLabel} ${item.pending ? s.pending : ''}`}>{t.feed.compact.label}</span>
+      <span className={s.compactText}>{compactText(t, item)}</span>
       {item.pending ? <span className={s.compactPercent}>{percent}%</span> : null}
       <div className={s.spacer} />
     </div>
@@ -175,17 +187,15 @@ const useRetryCountdown = (item: RetryItem): number => {
 }
 
 /** The attempts as a number: "1 attempt", but "4 attempts". */
-const attempts = (count: number): string => (count === 1 ? '1 attempt' : `${count} attempts`)
-
 /** How a chain of retries ended - in words rather than in colour: colour is not read by everyone. */
-const retryOutcomeText = (item: RetryItem): string => {
+const retryOutcomeText = (t: Dict, item: RetryItem): string => {
   switch (item.outcome) {
     case 'recovered':
-      return `went through after ${attempts(item.attempt)}`
+      return t.feed.retry.recovered(item.attempt)
     case 'failed':
-      return `gave up after ${attempts(item.attempt)}`
+      return t.feed.retry.failed(item.attempt)
     default:
-      return `stopped after ${attempts(item.attempt)}`
+      return t.feed.retry.stopped(item.attempt)
   }
 }
 
@@ -198,18 +208,21 @@ const retryOutcomeText = (item: RetryItem): string => {
  * in its place.
  */
 export const RetryRow = ({ item }: { item: RetryItem }) => {
+  const t = useT()
   const left = useRetryCountdown(item)
-  const attemptOf = item.maxRetries ? `attempt ${item.attempt}/${item.maxRetries}` : `attempt ${item.attempt}`
+  const attemptOf = item.maxRetries
+    ? t.feed.retry.attemptOf(item.attempt, item.maxRetries)
+    : t.feed.retry.attempt(item.attempt)
 
   return (
     <div className={s.retry}>
-      <span className={`${s.retryLabel} ${item.pending ? s.pending : ''}`}>RETRY</span>
+      <span className={`${s.retryLabel} ${item.pending ? s.pending : ''}`}>{t.feed.retry.label}</span>
       <span className={s.retryText}>
-        {item.label} · {item.pending ? attemptOf : retryOutcomeText(item)}
+        {t.feed.retry.reason[item.reason]} · {item.pending ? attemptOf : retryOutcomeText(t, item)}
       </span>
       {/* The countdown has run out - the attempt is under way, and what we wait for now is an answer rather than a pause. */}
       <span className={s.retryCount}>
-        {item.pending ? (left > 0 ? `retrying in ${left}s` : 'retrying…') : item.duration}
+        {item.pending ? (left > 0 ? t.feed.retry.retryingIn(left) : t.feed.retry.retrying) : item.duration}
       </span>
       <div className={s.spacer} />
     </div>
@@ -217,13 +230,18 @@ export const RetryRow = ({ item }: { item: RetryItem }) => {
 }
 
 /** A turn's result - an interrupted one included: it differs by its caption rather than by the row's look. */
-export const MetaRow = ({ item }: { item: MetaItem }) => (
-  <div className={s.meta}>
-    {item.stats.map((stat, index) => (
-      <span key={index}>{stat}</span>
-    ))}
-  </div>
-)
+export const MetaRow = ({ item }: { item: MetaItem }) => {
+  const t = useT()
+  // Drawn from `outcome`, never from `stats`: that one is the English marker the IDE reads, and it is
+  // the same string in every language on purpose (see MetaItem).
+  const text = item.outcome
+    ? item.outcome.state === 'stopped'
+      ? t.feed.result.stopped(item.outcome.duration)
+      : t.feed.result.worked(item.outcome.duration)
+    : ''
+
+  return <div className={s.meta}>{text ? <span>{text}</span> : null}</div>
+}
 
 /**
  * The conversation was moved to another model by the CLI itself (see ModelSwitchItem).
@@ -243,9 +261,12 @@ export const ModelSwitchRow = ({
 }: {
   item: ModelSwitchItem
   onOpenLink: (url: string) => void
-}) => (
+}) => {
+  const t = useT()
+
+  return (
   <div className={s.modelSwitch}>
-    <span className={s.modelSwitchLabel}>MODEL</span>
+    <span className={s.modelSwitchLabel}>{t.feed.modelSwitch.label}</span>
     <div className={s.modelSwitchBody}>
       <p className={s.modelSwitchLine}>
         {item.from ? (
@@ -255,7 +276,7 @@ export const ModelSwitchRow = ({
           </>
         ) : null}
         <span className={s.modelSwitchTo}>{modelLabel(item.to)}</span>
-        <span className={s.modelSwitchNote}>switched by Claude Code, not by you</span>
+        <span className={s.modelSwitchNote}>{t.feed.modelSwitch.note}</span>
       </p>
       {item.reason ? (
         <p className={s.modelSwitchReason}>
@@ -264,7 +285,23 @@ export const ModelSwitchRow = ({
       ) : null}
     </div>
   </div>
-)
+  )
+}
+
+/**
+ * What a compaction card says: the panel's own words, built from the figures the CLI gave.
+ *
+ * `target` is only ever the CLI's own line (the error of a failed compaction) and is shown as it came.
+ */
+const compactText = (t: Dict, item: CompactItem): string => {
+  if (!item.outcome) return item.target
+  if (item.outcome.state === 'running') return t.feed.compact.running
+
+  const { manual = false, before, after, took = '' } = item.outcome
+  return before === undefined
+    ? t.feed.compact.done(manual)
+    : t.feed.compact.doneWith(manual, formatTokens(before), after === undefined ? '' : formatTokens(after), took)
+}
 
 /** How often the waiting row checks whether the window has reset: to the minute is close enough. */
 const LIMIT_TICK_MS = 10_000
@@ -294,6 +331,7 @@ const resetClock = (resetsAt: number): string =>
  * would be claiming the opposite of the truth.
  */
 export const LimitRow = ({ item }: { item: LimitItem }) => {
+  const t = useT()
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -306,20 +344,16 @@ export const LimitRow = ({ item }: { item: LimitItem }) => {
   const left = untilReset(item.resetsAt, now)
   if (item.state === 'waiting' && item.resetsAt !== undefined && left === null) return null
 
-  const window_ = item.window ? `${item.window} limit` : 'usage limit'
+  const named = limitWindowName(t, item.window)
 
   return (
     <div className={`${s.limit} ${item.state === 'extra' ? s.limitExtra : ''}`}>
-      <span className={s.limitLabel}>{item.state === 'extra' ? 'EXTRA USAGE' : 'LIMIT'}</span>
+      <span className={s.limitLabel}>{item.state === 'extra' ? t.feed.limit.extraLabel : t.feed.limit.label}</span>
       <span className={s.limitText}>
-        {item.state === 'extra'
-          ? `The ${window_} is used up - the work goes on as extra usage, billed on top of the plan`
-          : `The ${window_} is used up - waiting for it to reset`}
+        {item.state === 'extra' ? t.feed.limit.extra(named) : t.feed.limit.waiting(named)}
       </span>
-      {item.state === 'waiting' && item.resetsAt !== undefined ? (
-        <span className={s.limitWhen}>
-          {resetClock(item.resetsAt)} · in {left}
-        </span>
+      {item.state === 'waiting' && item.resetsAt !== undefined && left ? (
+        <span className={s.limitWhen}>{t.feed.limit.resetAt(resetClock(item.resetsAt), left)}</span>
       ) : null}
       <div className={s.spacer} />
     </div>
@@ -327,12 +361,18 @@ export const LimitRow = ({ item }: { item: LimitItem }) => {
 }
 
 /** The process died on its own - an unambiguous mark rather than a silent "idle". */
-export const CrashRow = ({ item }: { item: CrashItem }) => (
-  <div className={s.crash}>
-    <span className={s.crashLabel}>SESSION</span>
-    <span className={s.crashText}>{item.message}</span>
-  </div>
-)
+export const CrashRow = ({ item }: { item: CrashItem }) => {
+  const t = useT()
+
+  return (
+    <div className={s.crash}>
+      <span className={s.crashLabel}>{t.feed.crash.label}</span>
+      <span className={s.crashText}>
+        {item.exitCode === undefined ? t.feed.crash.text : t.feed.crash.textWithCode(item.exitCode)}
+      </span>
+    </div>
+  )
+}
 
 /**
  * A refusal from the agent or the process - in its place in the chronology (see ErrorItem). The cross

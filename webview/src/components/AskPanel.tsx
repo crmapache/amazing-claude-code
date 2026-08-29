@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AskItem, AskQuestion } from '../feed/types'
+import { Chevron } from './Chevron'
 import { MAX_DIGIT_HOTKEYS, useDigitHotkey } from '../hooks/useDigitHotkey'
 import s from './composer.module.css'
+import { useT } from '../i18n'
 
 /** Whether typing is happening right now in a field that does not belong to this panel. */
 const typedOutside = (target: HTMLElement | null, panel: HTMLElement | null): boolean => {
@@ -35,6 +37,7 @@ interface AskPanelProps {
  * is sent rather than hanging there inactive.
  */
 export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: AskPanelProps) => {
+  const t = useT()
   /** The options picked per question: no more than one for an ordinary question, any number for multiSelect. */
   const [picks, setPicks] = useState<Record<string, string[]>>({})
   const [custom, setCustom] = useState<Record<string, string>>({})
@@ -45,6 +48,8 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
    * keeps it until Enter is pressed - otherwise a second tick could no longer be set with a hotkey.
    */
   const [activeIndex, setActiveIndex] = useState(0)
+  /** Hides the body and the foot, leaving only the head - a temporary "out of my way", not a decision. */
+  const [collapsed, setCollapsed] = useState(false)
   /** The panel itself: by it we tell our own "your answer" field from someone else's form on the page. */
   const panel = useRef<HTMLDivElement>(null)
 
@@ -135,7 +140,7 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
   )
 
   useDigitHotkey(Math.min(active ? active.options.length + 1 : 0, MAX_DIGIT_HOTKEYS), pick, {
-    enabled: hotkeys && Boolean(item),
+    enabled: hotkeys && Boolean(item) && !collapsed,
     composerEmpty,
   })
 
@@ -160,7 +165,7 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
    * belongs to it - there it sends the message.
    */
   useEffect(() => {
-    if (!item || !hotkeys) return
+    if (!item || !hotkeys || collapsed) return
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Enter' || event.shiftKey || event.metaKey || event.ctrlKey) return
@@ -186,132 +191,155 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [item, hotkeys, composerEmpty])
+  }, [item, hotkeys, composerEmpty, collapsed])
 
   if (!item) return null
 
   return (
-    <div className={s.ask} ref={panel}>
-      <div className={s.askHead}>
-        <span className={s.askLabel}>CLAUDE ASKS</span>
-        <span className={s.askMeta}>{item.meta}</span>
+    /* data-shrinks: of the whole stack above the input field this is the card that gives up its height when
+       the panel runs short of it - the list of questions inside has a scroll to put the difference into
+       (see .dock and .askBody in composer.module.css). */
+    <div className={s.ask} ref={panel} data-shrinks="">
+      {/* The card grows upwards - the input field below it stays where it is - so folded it points up:
+          the arrow shows where the questions will come back from rather than which way the head will
+          move. One drawing at two angles, and the turn itself says that the two states are one thing. */}
+      <button
+        type="button"
+        className={s.askCollapse}
+        aria-label={collapsed ? t.feed.ask.expand : t.feed.ask.collapse}
+        onClick={() => setCollapsed((current) => !current)}
+      >
+        <Chevron className={`${s.askCaret} ${collapsed ? s.askCaretUp : ''}`} />
+      </button>
+
+      <div className={`${s.askHead} ${collapsed ? s.askHeadAlone : ''}`}>
+        {/* The label and the count go in a group of their own: the cross keeps the middle of the row,
+            while text of two different sizes lines up on the baseline (as in TaskListPanel). */}
+        <span className={s.askTitle}>
+          <span className={s.askLabel}>{t.feed.ask.label}</span>
+          <span className={s.askMeta}>{t.feed.ask.blocks(item.questions.length)}</span>
+        </span>
         <div className={s.spacer} />
         <button
           type="button"
           className={s.askDismiss}
-          data-tooltip="Close and answer in your own words"
-          aria-label="Close the question"
+          data-tooltip={t.feed.ask.dismissHint}
+          aria-label={t.feed.ask.dismiss}
           onClick={() => onDismiss(item.id)}
         >
           ×
         </button>
       </div>
 
-      <div className={s.askBody}>
-        {item.questions.map((question, questionIndex) => {
-          const selected = picks[question.id] ?? []
-          // The digits pick an option in one question at a time - in the rest they are dimmed, so as not
-          // to promise a press that would go elsewhere.
-          const keyed = hotkeys && questionIndex === activeIndex
+      {!collapsed && (
+        <div className={s.askBody}>
+          {item.questions.map((question, questionIndex) => {
+            const selected = picks[question.id] ?? []
+            // The digits pick an option in one question at a time - in the rest they are dimmed, so as not
+            // to promise a press that would go elsewhere.
+            const keyed = hotkeys && questionIndex === activeIndex
 
-          return (
-            <div key={question.id} className={s.question}>
-              <div className={s.questionHead}>
-                <span className={s.questionTitle}>{question.title}</span>
-                <span className={s.questionHint}>{question.hint}</span>
-                {question.multiSelect ? <span className={s.questionMulti}>pick any</span> : null}
-              </div>
+            return (
+              <div key={question.id} className={s.question}>
+                <div className={s.questionHead}>
+                  <span className={s.questionTitle}>{question.title}</span>
+                  <span className={s.questionHint}>{question.hint}</span>
+                  {question.multiSelect ? <span className={s.questionMulti}>{t.feed.ask.pickAny}</span> : null}
+                </div>
 
-              <div className={s.options}>
-                {question.options.map((option, index) => {
-                  const on = selected.includes(option.id)
-                  // The tenth option and beyond got no digit - the circle stays empty, so that the
-                  // captions do not drift apart on the left edge.
-                  const digit = index < MAX_DIGIT_HOTKEYS ? String(index + 1) : ''
+                <div className={s.options}>
+                  {question.options.map((option, index) => {
+                    const on = selected.includes(option.id)
+                    // The tenth option and beyond got no digit - the circle stays empty, so that the
+                    // captions do not drift apart on the left edge.
+                    const digit = index < MAX_DIGIT_HOTKEYS ? String(index + 1) : ''
 
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      className={`${s.option} ${on ? s.optionOn : ''}`}
-                      onClick={() => {
-                        setActiveIndex(questionIndex)
-                        toggle(question, option.id)
-                      }}
-                    >
-                      {question.multiSelect ? (
-                        <span className={`${s.optionCheck} ${on ? s.optionCheckOn : ''} ${keyed ? '' : s.optionKeyIdle}`}>
-                          {on ? '✓' : digit}
-                        </span>
-                      ) : (
-                        <span className={`${s.optionKey} ${on ? s.optionKeyOn : ''} ${keyed ? '' : s.optionKeyIdle}`}>
-                          {digit}
-                        </span>
-                      )}
-                      <div>
-                        <div className={`${s.optionLabel} ${on ? s.optionLabelOn : ''}`}>{option.label}</div>
-                        {option.sub ? <div className={s.optionSub}>{option.sub}</div> : null}
-                      </div>
-                    </button>
-                  )
-                })}
-
-                {(() => {
-                  const otherOn = custom[question.id] !== undefined
-                  // It continues the same numbering as the real options above - Other reads as one more
-                  // of them rather than a separate thing.
-                  const otherDigit = question.options.length < MAX_DIGIT_HOTKEYS ? String(question.options.length + 1) : ''
-
-                  if (otherOn) {
                     return (
-                      <div className={`${s.option} ${s.optionOn} ${s.optionOther}`}>
-                        <span className={`${s.optionKey} ${s.optionKeyOn} ${keyed ? '' : s.optionKeyIdle}`}>✓</span>
-                        <input
-                          className={s.otherInput}
-                          autoFocus
-                          placeholder="type your own answer…"
-                          value={custom[question.id] ?? ''}
-                          onFocus={() => setActiveIndex(questionIndex)}
-                          onChange={(event) =>
-                            setCustom((current) => ({ ...current, [question.id]: event.target.value }))
-                          }
-                        />
-                      </div>
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={`${s.option} ${on ? s.optionOn : ''}`}
+                        onClick={() => {
+                          setActiveIndex(questionIndex)
+                          toggle(question, option.id)
+                        }}
+                      >
+                        {question.multiSelect ? (
+                          <span className={`${s.optionCheck} ${on ? s.optionCheckOn : ''} ${keyed ? '' : s.optionKeyIdle}`}>
+                            {on ? '✓' : digit}
+                          </span>
+                        ) : (
+                          <span className={`${s.optionKey} ${on ? s.optionKeyOn : ''} ${keyed ? '' : s.optionKeyIdle}`}>
+                            {digit}
+                          </span>
+                        )}
+                        <div>
+                          <div className={`${s.optionLabel} ${on ? s.optionLabelOn : ''}`}>{option.label}</div>
+                          {option.sub ? <div className={s.optionSub}>{option.sub}</div> : null}
+                        </div>
+                      </button>
                     )
-                  }
+                  })}
 
-                  return (
-                    <button
-                      type="button"
-                      className={`${s.option} ${s.optionOther}`}
-                      onClick={() => {
-                        setActiveIndex(questionIndex)
-                        pickOther(question)
-                      }}
-                    >
-                      <span className={`${s.optionKey} ${keyed ? '' : s.optionKeyIdle}`}>{otherDigit}</span>
-                      <div className={s.optionLabel}>Other</div>
-                    </button>
-                  )
-                })()}
+                  {(() => {
+                    const otherOn = custom[question.id] !== undefined
+                    // It continues the same numbering as the real options above - Other reads as one more
+                    // of them rather than a separate thing.
+                    const otherDigit = question.options.length < MAX_DIGIT_HOTKEYS ? String(question.options.length + 1) : ''
+
+                    if (otherOn) {
+                      return (
+                        <div className={`${s.option} ${s.optionOn} ${s.optionOther}`}>
+                          <span className={`${s.optionKey} ${s.optionKeyOn} ${keyed ? '' : s.optionKeyIdle}`}>✓</span>
+                          <input
+                            className={s.otherInput}
+                            autoFocus
+                            placeholder={t.feed.ask.ownAnswer}
+                            value={custom[question.id] ?? ''}
+                            onFocus={() => setActiveIndex(questionIndex)}
+                            onChange={(event) =>
+                              setCustom((current) => ({ ...current, [question.id]: event.target.value }))
+                            }
+                          />
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <button
+                        type="button"
+                        className={`${s.option} ${s.optionOther}`}
+                        onClick={() => {
+                          setActiveIndex(questionIndex)
+                          pickOther(question)
+                        }}
+                      >
+                        <span className={`${s.optionKey} ${keyed ? '' : s.optionKeyIdle}`}>{otherDigit}</span>
+                        <div className={s.optionLabel}>{t.feed.ask.other}</div>
+                      </button>
+                    )
+                  })()}
+                </div>
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
 
-      <div className={s.askFoot}>
-        <button
-          type="button"
-          className={`${s.primary} ${answered ? s.primaryBranch : s.primaryOff}`}
-          disabled={!answered}
-          onClick={() => onSubmit(item.id, answers)}
-        >
-          {answered ? 'Send answers' : 'Pick to continue'}
-        </button>
-        <div className={s.spacer} />
-        <span className={s.askNote}>the run continues right where it asked</span>
-      </div>
+      {!collapsed && (
+        <div className={s.askFoot}>
+          <button
+            type="button"
+            className={`${s.primary} ${answered ? s.primaryBranch : s.primaryOff}`}
+            disabled={!answered}
+            onClick={() => onSubmit(item.id, answers)}
+          >
+            {answered ? t.feed.ask.send : t.feed.ask.pickToContinue}
+          </button>
+          <div className={s.spacer} />
+          <span className={s.askNote}>{t.feed.ask.note}</span>
+        </div>
+      )}
     </div>
   )
 }

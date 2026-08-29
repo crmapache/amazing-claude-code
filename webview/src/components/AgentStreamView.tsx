@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef } from 'react'
 import type { TaskItem } from '../feed/types'
 import s from './feed.module.css'
+import { useT } from '../i18n'
+import { noteText } from './items/ToolCard'
 
 interface AgentStreamViewProps {
   /** The agent currently opened by a chip - or nothing while no tab is chosen. */
@@ -15,6 +17,7 @@ interface AgentStreamViewProps {
  * nothing.
  */
 export const AgentStreamView = ({ item }: AgentStreamViewProps) => {
+  const t = useT()
   const body = useRef<HTMLDivElement | null>(null)
 
   // A live agent's growing log sticks to the bottom, like the main feed - otherwise watching a working
@@ -34,13 +37,16 @@ export const AgentStreamView = ({ item }: AgentStreamViewProps) => {
           key={index}
           className={`${s.agentViewLine} ${line.tone === 'ok' ? s.agentViewOk : ''} ${line.tone === 'bad' ? s.agentViewBad : ''} ${line.tone === 'dim' ? s.agentViewDim : ''}`}
         >
-          {line.text}
+          {/* A subagent returns rather than finishes - see noteText. */}
+          {line.note ? noteText(t, line.note, 'task') : line.text}
         </div>
       ))}
       {/* It ticks by the same shared tick mechanism as this agent's chip in the header (see
           tickDurations in feed/build.ts) - we simply show the same value here rather than only on the
           chip. */}
-      {item.pending ? <div className={s.agentViewWorking}>Working · {item.duration || '0.0s'}</div> : null}
+      {item.pending ? (
+        <div className={s.agentViewWorking}>{t.feed.agentWorking(item.duration || '0.0s')}</div>
+      ) : null}
     </div>
   )
 }

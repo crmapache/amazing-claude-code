@@ -314,8 +314,22 @@
   --acc-stream-3: #4f8fd8;
 
   /* --- Fonts -------------------------------------------------------------- */
-  --acc-font: 'Instrument Sans', system-ui, sans-serif;
-  --acc-mono: 'JetBrains Mono', ui-monospace, monospace;
+  /*
+   * Instrument Sans carries latin and latin-ext and nothing else - its @font-face rules say so with a
+   * unicode-range, so every other script falls through to whatever comes next in this list. Which is why
+   * the CJK families are named here rather than left to `system-ui`: on a machine with several installed,
+   * the browser otherwise picks by its own order and can draw Chinese text in a Japanese face. Cyrillic
+   * has no such ambiguity and is left to the system.
+   *
+   * The Han variant is chosen by `<html lang>`, which the panel writes on every language change (see
+   * i18n/LocaleProvider) - the families below only decide which face, not which shapes.
+   */
+  --acc-font: 'Instrument Sans', system-ui, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC',
+    'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Noto Sans JP', 'Apple SD Gothic Neo', 'Malgun Gothic',
+    'Noto Sans KR', sans-serif;
+  --acc-mono: 'JetBrains Mono', ui-monospace, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC',
+    'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Noto Sans JP', 'Apple SD Gothic Neo', 'Malgun Gothic',
+    'Noto Sans KR', monospace;
   /* The line height of the feed's text. In the IDE it comes from the console's settings - the panel has to
      read the same way as the terminal beside it; here is only a fallback value for the browser and the
      harness, where there is nobody to ask. */

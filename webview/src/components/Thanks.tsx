@@ -1,6 +1,8 @@
 import type { MenuOption } from './Menu'
 import { anchorFrom, type Anchor } from './StatusBar'
 import s from './shell.module.css'
+import { useT } from '../i18n'
+import type { Dict } from '../i18n/en'
 
 /**
  * Saying thanks: a heart at the far end of the row opposite MODEL/EFFORT/MODE, and behind it the panel's
@@ -41,36 +43,37 @@ export const SHARE = 'share'
  * person who pasted it. The address is the plugin's front page rather than the reviews tab: whoever reads
  * this has not seen the thing yet, and the first thing they should meet is what it is.
  */
-export const SHARE_TEXT =
-  'Check out Amazing Claude Code - Claude Code as a proper panel inside JetBrains IDEs: ' +
-  'https://plugins.jetbrains.com/plugin/33255-amazing-claude-code'
+export const shareText = (t: Dict): string => t.thanks.shareText
 
 /**
  * The menu behind the heart. [copied] is the answer to a press on the last entry: the clipboard cannot be
  * looked into, and a menu that simply closed on a press would leave "did that do anything?" hanging - the
  * other two entries answer for themselves by a browser window opening.
  */
-export const thanksMenu = (copied: boolean): { title: string; width: number; options: MenuOption[]; selected: string } => ({
-  title: 'SAY THANKS',
+export const thanksMenu = (
+  t: Dict,
+  copied: boolean,
+): { title: string; width: number; options: MenuOption[]; selected: string } => ({
+  title: t.thanks.title,
   width: 266,
   options: [
     {
       id: 'github',
-      label: 'Star on GitHub',
-      sub: 'Helps other people find the plugin',
+      label: t.thanks.star,
+      sub: t.thanks.starSub,
       icon: '★',
       iconTone: 'warn',
     },
     {
       id: 'rate',
-      label: 'Rate it on the plugin page',
-      sub: 'A review in the JetBrains Marketplace',
+      label: t.thanks.rate,
+      sub: t.thanks.rateSub,
       icon: '✎',
     },
     {
       id: SHARE,
-      label: 'Share with friends',
-      sub: copied ? 'Copied - paste it wherever you like' : 'Copies a line about it and the link',
+      label: t.thanks.share,
+      sub: copied ? t.thanks.shareCopied : t.thanks.shareSub,
       // An arrow leaving the corner: the two above lead somewhere, this one hands something over.
       icon: '↗',
     },
@@ -88,19 +91,23 @@ interface ThanksButtonProps {
   onOpen: (anchor: Anchor) => void
 }
 
-export const ThanksButton = ({ rail = false, withSelectors = false, onOpen }: ThanksButtonProps) => (
+export const ThanksButton = ({ rail = false, withSelectors = false, onOpen }: ThanksButtonProps) => {
+  const t = useT()
+
+  return (
   <button
     type="button"
     className={`${s.thanks} ${rail ? s.thanksRail : ''} ${withSelectors ? s.thanksLevel : ''}`}
     /* A title rather than the panel's own data-tooltip, as the selectors beside it have: this hint would
        unfold upwards, into the very place the menu opens into, and cover it. */
-    title="Enjoying the plugin? Say thanks"
-    aria-label="Enjoying the plugin? Say thanks"
+    title={t.thanks.button}
+    aria-label={t.thanks.button}
     onClick={(event) => onOpen(anchorFrom(event.currentTarget))}
   >
     <Heart />
   </button>
-)
+  )
+}
 
 /** A solid heart: an outline one at this size reads as a smudge rather than as a heart. */
 const Heart = () => (

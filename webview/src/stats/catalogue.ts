@@ -439,13 +439,13 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
       {
         id: 'thanks',
         name: 'Thanks',
-        hint: 'A star, a review, a word to a friend - any two of the three.',
+        hint: 'A star, a review and share with a friend.',
         unit: 'count',
-        // Two lines, though there are three ways to cross them: saying it twice is thanks enough, and a
-        // third line would mean the achievement asks for every last one. See Achievements.kt, "thanks".
-        steps: 2,
+        // Three lines, one for each way there is to say it. See Achievements.kt, "thanks".
+        steps: 3,
         done: () => 'done',
-        note: (value) => (value >= 2 ? 'said thanks two ways' : 'said thanks'),
+        note: (value) =>
+          value >= 3 ? 'said thanks every way there is' : value >= 2 ? 'said thanks two ways' : 'said thanks',
       },
     ],
   },

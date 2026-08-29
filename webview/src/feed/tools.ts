@@ -1,4 +1,4 @@
-import type { DetailLine, DiffLine, Hunk, ToolChip } from './types'
+import type { DetailLine, DiffLine, Hunk, ToolChip, ToolMeta } from './types'
 
 /** How many lines of a tool's output are shown when it is expanded. */
 const DETAIL_LIMIT = 60
@@ -151,45 +151,56 @@ export const targetFor = (name: string, input: unknown, workingDirectory: string
   return name
 }
 
-export const metaFor = (name: string, input: unknown, result: string, isError: boolean): string => {
-  if (isError) return '· failed'
+/**
+ * The summary at the end of a tool's line, as a shape rather than as a sentence.
+ *
+ * The figures are the tool's own; the words around them are chosen when the card is painted (see
+ * ToolMeta and ToolCard). Nothing here knows what language the panel is in, and it does not need to.
+ */
+export const metaFor = (name: string, input: unknown, result: string, isError: boolean): ToolMeta => {
+  if (isError) return { kind: 'failed' }
 
   const data = asInput(input)
 
   if (name === 'Read' || name === 'NotebookRead') {
     const lines = countLines(result)
-    return lines > 0 ? `· ${lines} lines` : ''
+    return lines > 0 ? { kind: 'lines', count: lines } : { kind: 'none' }
   }
 
-  if (name === 'Grep' || name === 'Glob') {
-    const matches = countLines(result)
-    return matches > 0 ? `· ${matches} matches` : '· no matches'
-  }
+  if (name === 'Grep' || name === 'Glob') return { kind: 'matches', count: countLines(result) }
 
   if (name === 'Edit' || name === 'MultiEdit' || name === 'NotebookEdit') {
     const before = countLines(str(data.old_string))
     const after = countLines(str(data.new_string))
-    return `· +${Math.max(after - before, 0) + Math.min(before, after)} −${before}`
+    return { kind: 'diff', added: Math.max(after - before, 0) + Math.min(before, after), removed: before }
   }
 
   if (name === 'Write') {
     const lines = countLines(str(data.content))
-    return lines > 0 ? `· ${lines} lines` : ''
+    return lines > 0 ? { kind: 'lines', count: lines } : { kind: 'none' }
   }
 
-  if (name === 'Bash') return result.trim().length > 0 ? '· output' : '· no output'
+  if (name === 'Bash') return { kind: 'output', empty: result.trim().length === 0 }
 
-  return ''
+  return { kind: 'none' }
 }
 
 export const detailFor = (result: string): DetailLine[] => {
   if (!result.trim()) return []
 
   const lines = result.split('\n')
-  const shown = lines.slice(0, DETAIL_LIMIT).map((text) => ({ text, tone: toneOf(text) }))
+  const shown: DetailLine[] = lines.slice(0, DETAIL_LIMIT).map((text) => ({ text, tone: toneOf(text) }))
 
+  // The panel's own words about the output rather than a line of it, so they are put into the card in
+  // whatever language it is being painted in (see DetailLine.note). Written into the feed as a finished
+  // sentence, this was the one English line inside every Russian or Chinese card - and it is the most
+  // common card there is.
   if (lines.length > DETAIL_LIMIT) {
-    shown.push({ text: `… ${lines.length - DETAIL_LIMIT} more lines`, tone: 'dim' as const })
+    shown.push({
+      text: '',
+      tone: 'dim' as const,
+      note: { kind: 'moreLines' as const, count: lines.length - DETAIL_LIMIT },
+    })
   }
 
   return shown

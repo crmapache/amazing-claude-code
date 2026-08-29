@@ -5,6 +5,7 @@ import type { HistoryEntry, ShellMessage } from '../protocol'
 import { ClockContext } from '../hooks/useNow'
 import { planDecisionOf, useCardState } from '../hooks/useCardState'
 import { applyFact, emptyFacts, isFact, type ProjectFacts } from './facts'
+import { LocaleProvider, activeLocale } from '../i18n'
 import { RemoteClock } from './clock'
 import { applyMessage, emptyFeed, feedTicks, tickFeed, type MobileFeed } from './feed'
 import { Link, type LinkState, type SessionLaunch } from './link'
@@ -17,6 +18,7 @@ import { Pairing, type PairingOffer } from './screens/Pairing'
 import { Sessions, type AgentEntry, type ProjectEntry, type SessionEntry } from './screens/Sessions'
 import { Thread } from './screens/Thread'
 import type { OutgoingPrompt } from './screens/Composer'
+import { useDictation } from './useDictation'
 import { forgetAgent, listAgents, readSetting, writeSetting, type PairedAgent } from './storage'
 import m from './mobile.module.css'
 
@@ -213,12 +215,33 @@ export const App = () => {
     if (current?.agentId === agentId) link.watch(current.projectKey, current.sessionId, seen.current)
   }, [])
 
+  /**
+   * Dictation (see useDictation and mobile/dictation.ts).
+   *
+   * The request for a token goes through a ref rather than through `command` directly, because the
+   * address it needs - which agent, which project - is only known once a conversation is on screen,
+   * while the hook itself has to exist before the handler below that answers it.
+   */
+  const askForToken = useRef<(id: string) => void>(() => undefined)
+  const dictation = useDictation({ requestToken: useCallback((id: string) => askForToken.current(id), []) })
+
+  /** The same, in reverse: the handler is built once and would otherwise hold the first hook it saw. */
+  const grantArrived = useRef(dictation.grant)
+  grantArrived.current = dictation.grant
+
   const receive = useCallback((agentId: string, message: ShellMessage, projectKey: string) => {
     // The one answer that belongs to a project rather than to a conversation, and the one that arrives
     // while nothing is being watched at all - the screen that asked for it is a list of past
     // conversations, not a feed.
     if (message.type === 'history') {
       setHistories((current) => ({ ...current, [`${agentId}:${projectKey}`]: message.conversations }))
+      return
+    }
+
+    // A token for dictating (see VoiceGrant): an answer to something this phone asked for, belonging to
+    // no conversation, so it too is taken before the guard below.
+    if (message.type === 'voiceGrant') {
+      grantArrived.current(message)
       return
     }
 
@@ -464,6 +487,61 @@ export const App = () => {
     links.current[agentId]?.command(projectKey, message)
   }, [])
 
+  /*
+   * Where a request for a dictation token goes: to whichever IDE the conversation on screen belongs to.
+   *
+   * Kept as a ref rather than passed into the hook because the hook is built once, while the address
+   * changes with every conversation opened. Off any thread it points at nothing - a press elsewhere has
+   * nowhere to put the words anyway.
+   */
+  useEffect(() => {
+    askForToken.current =
+      screen.at === 'thread' || screen.at === 'decide'
+        ? (id: string) => command(screen.agentId, screen.projectKey, { type: 'voiceToken', id })
+        : () => undefined
+  }, [screen, command])
+
+  /*
+   * A dictation belongs to the conversation it was started in, and ends when that screen is left.
+   *
+   * It has to end rather than follow: the field it was filling is gone with the screen, so the words
+   * would land in whichever draft happens to be mounted next - the phone's version of the mix-up the
+   * panel guards against with voiceTargetRef. Ending it also releases the microphone, which a latched
+   * dictation would otherwise hold for as long as the tab lived.
+   */
+  const leaveDictation = dictation.cancel
+  /** Which conversation is on screen, as one string - the thing a dictation is tied to. */
+  const dictatingIn = showingFeed ? `${screen.agentId}:${screen.projectKey}:${screen.sessionId}` : ''
+
+  useEffect(() => {
+    if (!dictatingIn) return undefined
+
+    return () => leaveDictation()
+  }, [dictatingIn, leaveDictation])
+
+  /*
+   * The page going away, or going behind another application.
+   *
+   * `pagehide` is the one that matters on a phone: a browser throws a backgrounded tab out without
+   * warning, and everything in it - including an open microphone - would go with it silently. Hidden is
+   * treated the same way rather than left running: a panel that goes on listening while somebody is in
+   * another app is the behaviour nobody would forgive, whatever the intention was.
+   */
+  useEffect(() => {
+    const stop = () => leaveDictation()
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') stop()
+    }
+
+    window.addEventListener('pagehide', stop)
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      window.removeEventListener('pagehide', stop)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [leaveDictation])
+
   /**
    * Start a conversation, opening the project first when it is not open.
    *
@@ -576,199 +654,215 @@ export const App = () => {
     for (const link of Object.values(links.current)) link.refreshInventory()
   }, [])
 
-  if (screen.at === 'pairing') {
-    return (
-      <Pairing
-        offer={scanned.current}
-        onPaired={(agent: PairedAgent) => {
-          scanned.current = null
-          setAgents((current) => [...current.filter((one) => one.agentId !== agent.agentId), agent])
-          setScreen({ at: 'sessions' })
-        }}
-        onCancel={agents.length > 0 ? () => setScreen({ at: 'sessions' }) : undefined}
-      />
-    )
-  }
+  /*
+   * The language of every screen below.
+   *
+   * It is not this device's choice: the phone is shown the language chosen at the desk (see
+   * facts.locale and RemoteCommands, which refuses `setLanguage` from here). Taken from the
+   * project in view, or from whatever project has already said, so that the list of chats speaks
+   * the right language before any one of them is opened.
+   */
+  const spoken = localeOf(facts, screen)
+  const locale = activeLocale(spoken?.chosen, spoken?.ide)
 
-  const list = (
-    <div className={m.screen}>
-      <Sessions
-        agents={paired}
-        projects={projects}
-        reach={reach}
-        onOpen={open}
-        onNew={(project) => setScreen({ at: 'new', agentId: project.agentId, projectKey: project.key })}
-        onPair={() => setScreen({ at: 'pairing' })}
-        onForget={forget}
-        onHide={hide}
-        onShowHidden={showHidden}
-        onHistory={(project) => {
-          // Asked for on every visit: it is read off that machine's disk, and a conversation held at the
-          // desk five minutes ago should be on the list rather than one refresh away.
-          command(project.agentId, project.key, { type: 'history' })
-          setScreen({ at: 'history', agentId: project.agentId, projectKey: project.key })
-        }}
-      />
-    </div>
-  )
+  const body = (() => {
+    if (screen.at === 'pairing') {
+      return (
+        <Pairing
+          offer={scanned.current}
+          onPaired={(agent: PairedAgent) => {
+            scanned.current = null
+            setAgents((current) => [...current.filter((one) => one.agentId !== agent.agentId), agent])
+            setScreen({ at: 'sessions' })
+          }}
+          onCancel={agents.length > 0 ? () => setScreen({ at: 'sessions' }) : undefined}
+        />
+      )
+    }
 
-  if (screen.at === 'sessions') return list
-
-  if (screen.at === 'history') {
-    const project = projects.find((one) => one.agentId === screen.agentId && one.key === screen.projectKey)
-    if (!project) return list
-
-    return (
+    const list = (
       <div className={m.screen}>
-        <History
-          project={project}
-          conversations={histories[`${screen.agentId}:${screen.projectKey}`] ?? null}
-          onOpen={(entry) => openPast(screen.agentId, screen.projectKey, entry)}
-          onBack={back}
+        <Sessions
+          agents={paired}
+          projects={projects}
+          reach={reach}
+          onOpen={open}
+          onNew={(project) => setScreen({ at: 'new', agentId: project.agentId, projectKey: project.key })}
+          onPair={() => setScreen({ at: 'pairing' })}
+          onForget={forget}
+          onHide={hide}
+          onShowHidden={showHidden}
+          onHistory={(project) => {
+            // Asked for on every visit: it is read off that machine's disk, and a conversation held at the
+            // desk five minutes ago should be on the list rather than one refresh away.
+            command(project.agentId, project.key, { type: 'history' })
+            setScreen({ at: 'history', agentId: project.agentId, projectKey: project.key })
+          }}
         />
       </div>
     )
-  }
 
-  if (screen.at === 'new') {
-    const project = projects.find((one) => one.agentId === screen.agentId && one.key === screen.projectKey)
-    const inventory = inventories[screen.agentId]
+    if (screen.at === 'sessions') return list
 
-    // The project has gone from the list while this screen stood open - closed at the desk, or the IDE
-    // stopped answering. There is nothing to start in it, and pretending otherwise ends in a request
-    // that is refused for reasons this screen cannot explain.
-    if (!project) return list
+    if (screen.at === 'history') {
+      const project = projects.find((one) => one.agentId === screen.agentId && one.key === screen.projectKey)
+      if (!project) return list
 
-    return (
-      <div className={m.screen}>
-        <NewSession
-          project={project}
-          models={inventory?.models ?? null}
-          prefs={inventory?.prefs ?? EMPTY_LAUNCH}
-          busy={opening !== null && opening.error === ''}
-          error={opening?.error ?? ''}
-          onStart={(launch) => startSession(project, launch)}
-          onBack={back}
-        />
-      </div>
-    )
-  }
+      return (
+        <div className={m.screen}>
+          <History
+            project={project}
+            conversations={histories[`${screen.agentId}:${screen.projectKey}`] ?? null}
+            onOpen={(entry) => openPast(screen.agentId, screen.projectKey, entry)}
+            onBack={back}
+          />
+        </div>
+      )
+    }
 
-  // Inside the project it belongs to rather than across all of them: with one identifier per project
-  // ("main" everywhere), a flat search found another project's tab and drew its title and its project's
-  // name over this conversation.
-  const entry = projects
-    .find((project) => project.agentId === screen.agentId && project.key === screen.projectKey)
-    ?.sessions.find((one) => one.sessionId === screen.sessionId)
+    if (screen.at === 'new') {
+      const project = projects.find((one) => one.agentId === screen.agentId && one.key === screen.projectKey)
+      const inventory = inventories[screen.agentId]
 
-  if (screen.at === 'decide') {
+      // The project has gone from the list while this screen stood open - closed at the desk, or the IDE
+      // stopped answering. There is nothing to start in it, and pretending otherwise ends in a request
+      // that is refused for reasons this screen cannot explain.
+      if (!project) return list
+
+      return (
+        <div className={m.screen}>
+          <NewSession
+            project={project}
+            models={inventory?.models ?? null}
+            prefs={inventory?.prefs ?? EMPTY_LAUNCH}
+            busy={opening !== null && opening.error === ''}
+            error={opening?.error ?? ''}
+            onStart={(launch) => startSession(project, launch)}
+            onBack={back}
+          />
+        </div>
+      )
+    }
+
+    // Inside the project it belongs to rather than across all of them: with one identifier per project
+    // ("main" everywhere), a flat search found another project's tab and drew its title and its project's
+    // name over this conversation.
+    const entry = projects
+      .find((project) => project.agentId === screen.agentId && project.key === screen.projectKey)
+      ?.sessions.find((one) => one.sessionId === screen.sessionId)
+
+    if (screen.at === 'decide') {
+      return (
+        <div className={m.screen}>
+          <ClockContext.Provider value={clockOf(screen.agentId).now}>
+            <Decision
+              feed={feed.state}
+              cards={cards}
+              title={entry?.title ?? 'A conversation'}
+              project={entry?.projectName ?? ''}
+              onDecide={(id, decision) =>
+                command(screen.agentId, screen.projectKey, { type: 'permissionDecision', id, decision })
+              }
+              onPlan={(id, decision) =>
+                command(screen.agentId, screen.projectKey, {
+                  type: 'planDecision',
+                  sessionId: screen.sessionId,
+                  id,
+                  decision,
+                })
+              }
+              onAsk={(id, answers, text) =>
+                command(screen.agentId, screen.projectKey, {
+                  type: 'askAnswer',
+                  sessionId: screen.sessionId,
+                  id,
+                  answers,
+                  text,
+                })
+              }
+              onOpenThread={() => setScreen({ ...screen, at: 'thread' })}
+              onBack={back}
+            />
+          </ClockContext.Provider>
+        </div>
+      )
+    }
+
     return (
       <div className={m.screen}>
         <ClockContext.Provider value={clockOf(screen.agentId).now}>
-          <Decision
+          <Thread
             feed={feed.state}
             cards={cards}
-            title={entry?.title ?? 'A conversation'}
+            title={entry?.title ?? NEW_SESSION_TITLE}
             project={entry?.projectName ?? ''}
-            onDecide={(id, decision) =>
-              command(screen.agentId, screen.projectKey, { type: 'permissionDecision', id, decision })
-            }
-            onPlan={(id, decision) =>
+            facts={facts[`${screen.agentId}:${screen.projectKey}`] ?? emptyFacts()}
+            connected={states[screen.agentId] === 'connected'}
+            loading={!feed.loaded}
+            voice={dictation}
+            onSend={(prompt: OutgoingPrompt) => {
+              // The first message names the tab, with the panel's own rule and the panel's own function -
+              // otherwise a conversation begun from a phone stays "new session" at the desk for as long as
+              // it lasts. The better name from the model replaces this one when it arrives.
+              if (!entry || entry.titleSource === 'default') {
+                command(screen.agentId, screen.projectKey, {
+                  type: 'renameSession',
+                  sessionId: screen.sessionId,
+                  title: deriveSessionTitle(prompt.text),
+                })
+              }
+
               command(screen.agentId, screen.projectKey, {
-                type: 'planDecision',
+                type: 'prompt',
+                sessionId: screen.sessionId,
+                text: prompt.text,
+                // The pieces the card is drawn from travel with the message: the shell keeps them and
+                // echoes them back, which is how this screen - and the panel at the desk - shows what was
+                // asked rather than only what was answered.
+                tokens: prompt.tokens,
+                quotes: [],
+                // Photos from the phone travel as bytes: there is no path on this device the agent could
+                // read (see prompt.images in protocol.ts).
+                images: prompt.images,
+              })
+            }}
+            // Queued in the IDE rather than on this device: the page holding it is thrown out while the
+            // phone sits in a pocket, and that is exactly when a queued message matters (see SessionQueue).
+            onQueue={(prompt: OutgoingPrompt) => {
+              command(screen.agentId, screen.projectKey, {
+                type: 'queuePrompt',
+                sessionId: screen.sessionId,
+                id: `q-${Date.now().toString(36)}-${queueCounter.current++}`,
+                text: prompt.text,
+                tokens: prompt.tokens,
+                quotes: [],
+                images: prompt.images,
+              })
+            }}
+            onUnqueue={(id: string) =>
+              command(screen.agentId, screen.projectKey, {
+                type: 'unqueuePrompt',
                 sessionId: screen.sessionId,
                 id,
-                decision,
               })
             }
-            onAsk={(id, answers, text) =>
-              command(screen.agentId, screen.projectKey, {
-                type: 'askAnswer',
-                sessionId: screen.sessionId,
-                id,
-                answers,
-                text,
-              })
+            onStop={() =>
+              command(screen.agentId, screen.projectKey, { type: 'stop', sessionId: screen.sessionId })
             }
-            onOpenThread={() => setScreen({ ...screen, at: 'thread' })}
+            onStopTask={(taskId) =>
+              command(screen.agentId, screen.projectKey, { type: 'stopTask', sessionId: screen.sessionId, taskId })
+            }
+            earlierPages={feed.state.earlierPages}
+            onLoadEarlier={loadEarlier}
+            onDecide={() => setScreen({ ...screen, at: 'decide' })}
             onBack={back}
           />
         </ClockContext.Provider>
       </div>
     )
-  }
+  })()
 
-  return (
-    <div className={m.screen}>
-      <ClockContext.Provider value={clockOf(screen.agentId).now}>
-        <Thread
-          feed={feed.state}
-          cards={cards}
-          title={entry?.title ?? NEW_SESSION_TITLE}
-          project={entry?.projectName ?? ''}
-          facts={facts[`${screen.agentId}:${screen.projectKey}`] ?? emptyFacts()}
-          connected={states[screen.agentId] === 'connected'}
-          loading={!feed.loaded}
-          onSend={(prompt: OutgoingPrompt) => {
-            // The first message names the tab, with the panel's own rule and the panel's own function -
-            // otherwise a conversation begun from a phone stays "new session" at the desk for as long as
-            // it lasts. The better name from the model replaces this one when it arrives.
-            if (!entry || entry.titleSource === 'default') {
-              command(screen.agentId, screen.projectKey, {
-                type: 'renameSession',
-                sessionId: screen.sessionId,
-                title: deriveSessionTitle(prompt.text),
-              })
-            }
-
-            command(screen.agentId, screen.projectKey, {
-              type: 'prompt',
-              sessionId: screen.sessionId,
-              text: prompt.text,
-              // The pieces the card is drawn from travel with the message: the shell keeps them and
-              // echoes them back, which is how this screen - and the panel at the desk - shows what was
-              // asked rather than only what was answered.
-              tokens: prompt.tokens,
-              quotes: [],
-              // Photos from the phone travel as bytes: there is no path on this device the agent could
-              // read (see prompt.images in protocol.ts).
-              images: prompt.images,
-            })
-          }}
-          // Queued in the IDE rather than on this device: the page holding it is thrown out while the
-          // phone sits in a pocket, and that is exactly when a queued message matters (see SessionQueue).
-          onQueue={(prompt: OutgoingPrompt) => {
-            command(screen.agentId, screen.projectKey, {
-              type: 'queuePrompt',
-              sessionId: screen.sessionId,
-              id: `q-${Date.now().toString(36)}-${queueCounter.current++}`,
-              text: prompt.text,
-              tokens: prompt.tokens,
-              quotes: [],
-              images: prompt.images,
-            })
-          }}
-          onUnqueue={(id: string) =>
-            command(screen.agentId, screen.projectKey, {
-              type: 'unqueuePrompt',
-              sessionId: screen.sessionId,
-              id,
-            })
-          }
-          onStop={() =>
-            command(screen.agentId, screen.projectKey, { type: 'stop', sessionId: screen.sessionId })
-          }
-          onStopTask={(taskId) =>
-            command(screen.agentId, screen.projectKey, { type: 'stopTask', sessionId: screen.sessionId, taskId })
-          }
-          earlierPages={feed.state.earlierPages}
-          onLoadEarlier={loadEarlier}
-          onDecide={() => setScreen({ ...screen, at: 'decide' })}
-          onBack={back}
-        />
-      </ClockContext.Provider>
-    </div>
-  )
+  return <LocaleProvider locale={locale}>{body}</LocaleProvider>
 }
 
 /**
@@ -778,6 +872,18 @@ export const App = () => {
  * at once, and a round trip before a conversation appears would be felt. Marked as this device's so
  * that two clients inventing one in the same millisecond cannot collide.
  */
+/**
+ * The language tag this phone should speak, out of everything the paired IDEs have said.
+ *
+ * The project in view answers first; when none is - the list of chats, the pairing screen - any project
+ * that has already said will do. They are all the same person's machines, and one of their answers is
+ * far better than falling back to English on the screen that lists the work.
+ */
+const localeOf = (facts: Record<string, ProjectFacts>, screen: Screen): ProjectFacts['locale'] => {
+  const key = 'agentId' in screen ? `${screen.agentId}:${screen.projectKey}` : ''
+  return facts[key]?.locale ?? Object.values(facts).find((fact) => fact.locale)?.locale
+}
+
 /** Where the put-away conversations are remembered on this device - see the note on the state. */
 const HIDDEN_KEY = 'hiddenChats'
 

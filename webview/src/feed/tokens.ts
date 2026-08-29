@@ -9,6 +9,19 @@ import type { Chip, ChipKind, UserToken } from './types'
  * answers must not drift apart.
  */
 
+/**
+ * Whether something appended to this text would run into it.
+ *
+ * The one question three different join rules all begin with (see appendChip and appendText in
+ * feed/slash.ts, voiceJoin in feed/voice.ts), and the one that breaks quietly: written out separately
+ * each time, one of the copies loses the "already ends in a space" half and glues two words together in
+ * a message that has already gone.
+ *
+ * What each of them does about the answer is their own business, and deliberately not shared - a
+ * dictated Japanese phrase wants no space at all, while a file path after the same phrase wants one.
+ */
+export const endsOpen = (text: string): boolean => text.length > 0 && !/\s$/.test(text)
+
 /** An image from the clipboard: the kind that has bytes rather than just a path. */
 const isImage = (token: UserToken): boolean =>
   token.kind === 'chip' && token.chip.kind === 'img' && Boolean(token.chip.data)

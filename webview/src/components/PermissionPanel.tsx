@@ -1,6 +1,9 @@
 import { useCallback, useMemo } from 'react'
+import { modeShortLabel } from '../catalog'
 import type { PermItem } from '../feed/types'
 import { useDigitHotkey } from '../hooks/useDigitHotkey'
+import { useT } from '../i18n'
+import type { Dict } from '../i18n/en'
 import s from './composer.module.css'
 
 type Decision = 'once' | 'always' | 'deny'
@@ -9,10 +12,14 @@ type Decision = 'once' | 'always' | 'deny'
  * The order is the same as on the buttons - and so is the hotkey order: the digit on a button has to
  * match the one that presses it.
  */
-const DECISIONS: { id: Decision; label: string; className: (styles: typeof s) => string }[] = [
-  { id: 'once', label: 'Allow once', className: (styles) => `${styles.primary} ${styles.primaryWarn}` },
-  { id: 'always', label: 'Always allow', className: (styles) => styles.secondary ?? '' },
-  { id: 'deny', label: 'Deny', className: (styles) => `${styles.secondary} ${styles.secondaryDanger}` },
+const DECISIONS: {
+  id: Decision
+  word: keyof Dict['permission']['decisions']
+  className: (styles: typeof s) => string
+}[] = [
+  { id: 'once', word: 'once', className: (styles) => `${styles.primary} ${styles.primaryWarn}` },
+  { id: 'always', word: 'always', className: (styles) => styles.secondary ?? '' },
+  { id: 'deny', word: 'deny', className: (styles) => `${styles.secondary} ${styles.secondaryDanger}` },
 ]
 
 interface PermissionPanelProps {
@@ -29,6 +36,7 @@ interface PermissionPanelProps {
  * the click rather than hanging there inactive.
  */
 export const PermissionPanel = ({ item, composerEmpty, onDecide }: PermissionPanelProps) => {
+  const t = useT()
   const itemId = item?.id
   /**
    * "Always allow" is not always shown: some questions are not waived by a rule (see
@@ -56,10 +64,10 @@ export const PermissionPanel = ({ item, composerEmpty, onDecide }: PermissionPan
   return (
     <div className={s.perm}>
       <div className={s.permHead}>
-        <span className={s.permLabel}>PERMISSION</span>
+        <span className={s.permLabel}>{t.permission.label}</span>
         <span className={s.permTarget}>{item.target}</span>
         <div className={s.spacer} />
-        <span className={s.askMeta}>{item.meta}</span>
+        <span className={s.askMeta}>{t.permission.underMode(modeShortLabel(t, item.mode))}</span>
       </div>
 
       <div className={s.permCmd}>{item.command}</div>
@@ -79,7 +87,7 @@ export const PermissionPanel = ({ item, composerEmpty, onDecide }: PermissionPan
             {/* The digit sits right on the button: a hotkey nobody is told about does not exist -
                 nobody will press it. */}
             <span className={s.actionKey}>{index + 1}</span>
-            {decision.label}
+            {t.permission.decisions[decision.word]}
           </button>
         ))}
       </div>

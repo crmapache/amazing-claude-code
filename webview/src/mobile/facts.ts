@@ -1,6 +1,7 @@
 import type { CommandEntry, CommandHint } from '../feed/slash'
 import { buildCommands } from '../feed/slash'
 import { mergeUsage, type UsageFacts } from '../feed/usage'
+import type { Dict } from '../i18n/en'
 import type { ShellMessage } from '../protocol'
 
 /**
@@ -28,6 +29,19 @@ export interface ProjectFacts extends UsageFacts {
    * commands - which live in no file and so have no hint of their own - reach the field at all.
    */
   commands: string[]
+  /**
+   * The language the panel at the desk is speaking, so this screen speaks it too.
+   *
+   * It is not a property of the project but of the person, and it arrives here the same way the project's
+   * facts do because there is no other route: the phone is never sent `init`, which carries the working
+   * directory (see RemoteFeed). Absent until the IDE says - and then it is English, as it always was.
+   *
+   * Both halves are kept as they arrived rather than folded into one here. Which of them wins is a rule
+   * - an explicit choice beats the language of the IDE - and that rule already exists, in `activeLocale`;
+   * applied here as well, it was written twice and `activeLocale` was left being called with a second
+   * argument that could never mean anything.
+   */
+  locale?: { chosen: string; ide: string }
 }
 
 export const emptyFacts = (): ProjectFacts => ({ files: [], hints: {}, commands: [] })
@@ -43,7 +57,8 @@ export const isFact = (message: ShellMessage): boolean =>
   message.type === 'project' ||
   message.type === 'files' ||
   message.type === 'commandHints' ||
-  message.type === 'commands'
+  message.type === 'commands' ||
+  message.type === 'locale'
 
 /**
  * One fact folded into what is already known.
@@ -77,6 +92,14 @@ export const applyFact = (facts: ProjectFacts, message: ShellMessage): ProjectFa
     case 'commands':
       return { ...facts, commands: message.commands }
 
+    /*
+     * Both halves, as they were said. Which of them wins is decided where every screen asks for it (see
+     * activeLocale) - the phone is looking at the same setting as the panel, it simply cannot change it
+     * (see RemoteCommands).
+     */
+    case 'locale':
+      return { ...facts, locale: { chosen: message.language ?? '', ide: message.ideLanguage ?? '' } }
+
     default:
       return facts
   }
@@ -94,5 +117,5 @@ export const applyFact = (facts: ProjectFacts, message: ShellMessage): ProjectFa
  * Past conversations are not lost by this: the phone has a screen for them already, reached from the
  * project rather than from the field.
  */
-export const phoneCommands = (facts: ProjectFacts): CommandEntry[] =>
-  buildCommands(facts.commands, facts.hints).filter((command) => command.group !== 'panel')
+export const phoneCommands = (t: Dict, facts: ProjectFacts): CommandEntry[] =>
+  buildCommands(t, facts.commands, facts.hints).filter((command) => command.group !== 'panel')

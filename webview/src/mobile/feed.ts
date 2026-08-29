@@ -108,7 +108,8 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
               action: {
                 kind: 'checkpoint',
                 chip: 'EARLIER',
-                target: 'earlier messages are not shown on the phone',
+                target: '',
+                targetKey: 'notOnPhone',
               },
             },
           ]

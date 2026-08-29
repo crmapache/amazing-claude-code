@@ -1,3 +1,4 @@
+import type { Dict } from '../i18n/en'
 import { chipLabel } from './reference'
 import type { Chip, UserToken } from './types'
 
@@ -44,9 +45,13 @@ const detail = (chip: Chip): string => {
       return `the file ${chip.value}`
     case 'dir':
       return `the folder ${chip.value}`
-    // An image pasted from the clipboard has no name on disk at all - only bytes, which stay here.
+    /*
+     * The caption the person is looking at - "Image #6" - rather than a description of it. An image
+     * pasted from the clipboard has no name on disk at all, only bytes, and those stay here; the caption
+     * is the only thing that tells one screenshot from the next, on their screen and in the answer.
+     */
     case 'img':
-      return chip.value ? `the image ${chip.value}` : 'an image pasted from the clipboard'
+      return chip.value || 'an image pasted from the clipboard'
     case 'cmd':
       return `the command /${chip.value}`
     case 'ref':
@@ -172,4 +177,124 @@ export const improveResult = (request: ImproveRequest, answer: string): UserToke
   }
 
   return tokens
+}
+
+/**
+ * What a tab knows about its rewrites between one press of the sparkle and the next.
+ *
+ * A little state machine rather than three lines each in three places of the panel, because the rules in
+ * it are all of the kind that break without showing: pressed twice, the button has to reach past its own
+ * answer to the words it was given, and the way back has to lead to those same words however many takes
+ * have stood in the field since. Neither can be seen on the screen until it is wrong.
+ */
+/**
+ * Why the last rewrite came to nothing, as what happened rather than as a sentence about it.
+ *
+ * The sentence is put together where it is drawn (see [improveNote]). It cannot be put together where
+ * this is set: that handler is subscribed once for the panel's whole life, so a sentence built inside it
+ * carries the dictionary of the very first render - English, always, because the language arrives after
+ * it. The voice errors already work this way (see feed/voice.ts), and this is the same rule.
+ */
+export type ImproveNote =
+  /** The model answered with nothing there was anything to put in the field. */
+  | { kind: 'empty' }
+  /** The draft moved on while the answer was in flight, so it was left alone. */
+  | { kind: 'changed' }
+  /** The IDE's own account of what went wrong, when it had one. */
+  | { kind: 'said'; text: string }
+
+export const improveNote = (t: Dict, note: ImproveNote): string => {
+  switch (note.kind) {
+    case 'empty':
+      return t.composer.improveEmpty
+    case 'changed':
+      return t.composer.improveChanged
+    default:
+      return note.text
+  }
+}
+
+export interface ImproveSource {
+  /** What every press of this chain is a rewrite OF - the first request, kept as it was. */
+  source: ImproveRequest
+  /** The takes this source has produced, oldest first: what the person has pressed past. */
+  attempts: string[]
+  /** The field as the person themselves left it - where the way back leads. */
+  before: UserToken[]
+  /** A take of `before` is standing in the field right now, untouched: there is a way back to offer. */
+  applied: boolean
+}
+
+/**
+ * How many turned-down takes travel with the next press. They are short, but somebody leaning on that
+ * button would otherwise grow the request without bound - and the older a take is, the less it says about
+ * what is wanted now, so it is the oldest that go.
+ */
+export const IMPROVE_ATTEMPTS_KEPT = 4
+
+/**
+ * The button pressed. Everything a previous press learned is carried over: the words to rewrite, the takes
+ * pressed past, and the way back - all three are about the person's own draft, and this press does not
+ * change that draft, whatever it hands back.
+ *
+ * `applied` is carried over rather than lowered because what stands in the field until the answer arrives
+ * is still the previous take: if this press comes to nothing, that take is what one is still looking at,
+ * and the way back out of it is still the way back.
+ */
+export const improveStarted = (
+  held: ImproveSource | undefined,
+  request: ImproveRequest,
+  field: UserToken[],
+): ImproveSource => ({
+  source: held?.source ?? request,
+  attempts: held?.attempts ?? [],
+  before: held?.before ?? field,
+  applied: held?.applied ?? false,
+})
+
+/** A take landed in the field: it joins what has been seen, and there is now a way back out of it. */
+export const improveLanded = (held: ImproveSource, answer: string): ImproveSource => ({
+  ...held,
+  attempts: [...held.attempts, answer].slice(-IMPROVE_ATTEMPTS_KEPT),
+  applied: true,
+})
+
+/**
+ * The way back taken: the person's own words stand in the field again.
+ *
+ * What the chain knows is deliberately kept. Taking one's own words back is the plainest way of saying the
+ * take was not wanted, and a next press that had forgotten it would throw the same dice against the same
+ * words - which is the one thing this button must not do twice in a row.
+ */
+export const improveTakenBack = (held: ImproveSource): ImproveSource => ({ ...held, applied: false })
+
+/**
+ * The same draft or not. Chips by identity rather than by their contents: within one chain they are the
+ * very objects that were put in, and comparing an image's bytes to answer "is this the same field" would
+ * be paying a great deal for an answer already known.
+ */
+const sameDraft = (one: UserToken[], other: UserToken[]): boolean => {
+  if (one === other) return true
+  if (one.length !== other.length) return false
+
+  return one.every((token, index) => {
+    const against = other[index]
+    if (token.kind !== against.kind) return false
+    if (token.kind === 'text') return against.kind === 'text' && token.value === against.value
+    return against.kind === 'chip' && token.chip === against.chip
+  })
+}
+
+/**
+ * The field stepped through its own undo history: the chain stands, and what changes is only whether a
+ * take is on the screen or the words it was made from.
+ *
+ * Kept rather than ended because Cmd+Z is not the person moving on - it is them going back, and going back
+ * over a rewrite lands on their own draft. Ending the chain there would forget every take they had turned
+ * down and hand the next press the model's own sentence to rewrite, which is the one thing the chain
+ * exists to prevent.
+ */
+export const improveShown = (held: ImproveSource, field: UserToken[]): ImproveSource => {
+  const applied = !sameDraft(field, held.before)
+  return applied === held.applied ? held : { ...held, applied }
 }

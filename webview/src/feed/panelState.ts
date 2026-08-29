@@ -1,5 +1,13 @@
 import type { AgentEvent, AgentStatus, AgentUsage, QueuedMessage } from '../protocol'
-import type { BackgroundTask, FeedItem, PermDecision, TodoEntry, UserToken } from './types'
+import type {
+  BackgroundTask,
+  CheckpointItem,
+  FeedItem,
+  PermDecision,
+  RetryReason,
+  TodoEntry,
+  UserToken,
+} from './types'
 
 /**
  * Everything one tab holds, and everything that may happen to it.
@@ -31,7 +39,7 @@ export interface PanelProject {
 export interface ApiRetry {
   /** This chain's card in the feed. */
   itemId: string
-  label: string
+  reason: RetryReason
   attempt: number
   maxRetries: number
   retryAt: number
@@ -342,7 +350,7 @@ export type PanelAction =
   /** The queue as the IDE now holds it - the whole list, from whichever window last changed it. */
   | { kind: 'queue'; items: QueuedMessage[] }
   /** A mark from the panel in the feed: that this conversation was branched off another, for instance. */
-  | { kind: 'checkpoint'; chip: string; target: string }
+  | { kind: 'checkpoint'; chip: string; target: string; targetKey?: CheckpointItem['targetKey'] }
   /** Once a second it pulls up the duration of the calls that have not finished. */
   | { kind: 'tick' }
   /** Stop was pressed - the status is genuinely awaited rather than assumed. */

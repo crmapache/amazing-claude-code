@@ -110,7 +110,7 @@ internal object PromptImprover {
 - Keep the kind of message: a question stays a question, an instruction stays an instruction, a bug report stays a bug report.
 - Match the size of the task. A one-line request stays one or two lines. Do not turn a small ask into a checklist, a specification or a plan.
 - Be concrete: say what to change, where, and what the result should look like - using only what the draft already gives you.
-- Keep every [[n]] marker exactly once and unchanged. Move a marker if the sentence reads better with it somewhere else.
+- Keep every [[n]] marker exactly once and unchanged, and keep them in the order they appear in the draft. Move a marker within the text if the sentence reads better with it somewhere else, but never past another marker: the person put those attachments in that order and the order is part of what they mean.
 - Leave code, paths, commands, identifiers and error messages exactly as they are written."""
 
     /**

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { send, subscribe } from './bridge'
 import { copyToClipboard, installClipboardBridge, resolveClipboard } from './clipboard'
 import {
-  EFFORT_OPTIONS,
+  effortOptions,
   modeMenuOptions,
   modelMenu,
   type ModeAvailability,
@@ -17,7 +17,7 @@ import { AgentStreamView } from './components/AgentStreamView'
 import { AskPanel } from './components/AskPanel'
 import { Composer } from './components/Composer'
 import {
-  COMPOSER_LAYOUT_OPTIONS,
+  composerLayoutOptions,
   isSideComposerLayout,
   layoutForRoom,
   normalizeComposerLayout,
@@ -40,7 +40,11 @@ import { LoginGate, type AuthState } from './components/LoginGate'
 import { Mcp } from './components/Mcp'
 import { Menu, type MenuOption } from './components/Menu'
 import { ImprovePrompt } from './components/ImprovePrompt'
-import { SideMenu, parentOf, type MenuScreen, type MenuSummary } from './components/SideMenu'
+import { VoiceDevices, VoiceInput, VoiceLanguages, type VoiceSettings } from './components/VoiceInput'
+import { SettingsScreen, SideMenu, parentOf, type MenuScreen, type MenuSummary } from './components/SideMenu'
+import { Language } from './components/Language'
+import { LocaleProvider, activeLocale, nativeName, useDict } from './i18n'
+import type { Dict } from './i18n/en'
 import { StatisticsTab, type StatisticsView } from './components/stats/StatisticsTab'
 import { dressAll, summarize } from './stats/achievements'
 import { ChoiceList, LayoutChoice } from './components/Choices'
@@ -50,10 +54,10 @@ import { Queue } from './components/Queue'
 import { Quotes, type Quote } from './components/Quotes'
 import { SelectionMenu } from './components/SelectionMenu'
 import { Tooltips } from './components/Tooltips'
-import { Remote, RemoteAbout, REMOTE_STATE, type RemoteStatus } from './components/Remote'
+import { Remote, RemoteAbout, remoteState, type RemoteStatus } from './components/Remote'
 import { Sounds } from './components/Sounds'
 import { StatusBar, UsageMeters, type Anchor, type SelectorKind } from './components/StatusBar'
-import { SHARE, SHARE_TEXT, thanksMenu, thanksUrl } from './components/Thanks'
+import { SHARE, shareText, thanksMenu, thanksUrl } from './components/Thanks'
 import { useHoliday } from './hooks/useHoliday'
 import { useHoverTarget } from './hooks/useHoverTarget'
 import { useLowPanel } from './hooks/useLowPanel'
@@ -85,7 +89,18 @@ import {
   pendingPlan,
   streamStatus,
 } from './feed/streamStatus'
-import { improveResult, type ImproveRequest } from './feed/improve'
+import {
+  improveLanded,
+  improveNote,
+  improveResult,
+  improveShown,
+  improveStarted,
+  improveTakenBack,
+  type ImproveNote,
+  type ImproveRequest,
+  type ImproveSource,
+} from './feed/improve'
+import { voiceAppend, voiceGhost, voiceMessage } from './feed/voice'
 import { composePrompt, countSessionImages, imageAttachments, tokensText, trimTrailingSpace } from './feed/tokens'
 import type { FeedItem, TaskItem, TodoItem, UserItem, UserToken } from './feed/types'
 import { mergeUsage, type UsageFacts } from './feed/usage'
@@ -97,12 +112,14 @@ import type {
   ModelInfo,
   PluginMarketplaceInfo,
   SoundId,
+  VoiceBalance,
+  VoiceHotkeySlot,
   StatisticsData,
   TitleSource,
 } from './protocol'
 import {
   NO_SOUND_PREFS,
-  SOUNDS,
+  SOUND_IDS,
   isMuted,
   rememberPanel,
   setVolume,
@@ -118,6 +135,12 @@ import { groupOrder, moveTab, placeAtEnd, placeIn, STATISTICS_GROUP, type TabPla
 import { useSelection } from './hooks/useSelection'
 
 const MAIN_SESSION = 'main'
+
+/**
+ * Where a Deepgram key comes from. The console rather than the marketing page: somebody sent here is
+ * here to sign up and copy a key, and the front page is two clicks further from that than this is.
+ */
+const DEEPGRAM_URL = 'https://console.deepgram.com/signup'
 
 /** A tab's placeholder title - before the first message and right after /clear. */
 const defaultTitle = (sessionId: string): string => (sessionId === MAIN_SESSION ? 'main session' : 'new session')
@@ -209,11 +232,24 @@ interface Draft {
 const EMPTY_DRAFT: Draft = { tokens: [], quotes: [] }
 
 /**
- * How many turned-down rewrites travel with the next press of the improve button (see App.improveSources).
- * They are short, but somebody leaning on that button would otherwise grow the request without bound - and
- * the older an attempt is, the less it says about what is wanted now, so it is the oldest that go.
+ * Voice input before the IDE has said anything about it - which is also what it looks like on a machine
+ * where nobody has switched it on. Switched off means no microphone button at all, so an unanswered panel
+ * shows exactly what a panel without the feature shows.
  */
-const IMPROVE_ATTEMPTS_KEPT = 4
+const NO_VOICE: VoiceSettings = {
+  enabled: false,
+  language: 'en',
+  languages: [],
+  device: '',
+  devices: [],
+  keyHint: '',
+  hotkeys: {
+    push: { caps: [] },
+    hold: { caps: [] },
+    pushMouse: { caps: [] },
+    holdMouse: { caps: [] },
+  },
+}
 
 export const App = () => {
   const [panels, dispatchPanel] = useReducer(panelsReducer, { [MAIN_SESSION]: initialPanelState })
@@ -260,6 +296,24 @@ export const App = () => {
    * new tab, a fork and the IDE's next start begin from it.
    */
   const [prefs, setPrefs] = useState({ model: '', effort: 'high', mode: 'manual' })
+  /**
+   * What language the panel speaks, in two halves: the choice somebody made and what the IDE itself is
+   * set to. An empty choice means the second one - a Chinese IDE gets a Chinese panel without anyone
+   * having to find the switch first, which is the whole reason the setting exists (see i18n).
+   */
+  const [language, setLanguage] = useState({ chosen: '', ide: '' })
+
+  /**
+   * The language everything below is drawn in, and its words.
+   *
+   * Read here rather than through the hook because this component is the one that owns the setting: a
+   * context reaches children, and App is above its own provider. Everything under it uses `useT()`.
+   *
+   * Right beside the state rather than by its first use: the words are wanted by the memos further down
+   * as well as by the render, and those run before any of it.
+   */
+  const locale = activeLocale(language.chosen, language.ide)
+  const t = useDict(locale)
   const [auth, setAuth] = useState<AuthState | null>(null)
   /**
    * Whether the "no questions" mode is allowed on this machine. The shell finds that out from the CLI
@@ -443,30 +497,28 @@ export const App = () => {
   const improvingRef = useRef(improving)
   improvingRef.current = improving
 
-  /** Why the last rewrite came to nothing - one line above the input field, cleared by the next edit. */
-  const [improveError, setImproveError] = useState('')
+  /**
+   * Why the last rewrite came to nothing - one line above the input field, cleared by the next edit.
+   *
+   * A code rather than a finished sentence (see ImproveNote): this is set from a subscription made once
+   * for the panel's whole life, and a sentence built there would keep the language of the first render.
+   */
+  const [improveError, setImproveError] = useState<ImproveNote | null>(null)
 
   /**
-   * What a tab's rewrite started from, kept for as long as the field still holds that rewrite untouched.
+   * What a tab's rewrites are about - the words they were made from, the takes already seen, and the way
+   * back to those words. The rules of it live in feed/improve.ts (see ImproveSource), because they are the
+   * kind that break without showing; what the panel adds is where they start and when they end.
    *
-   * Without it a second press would rewrite the rewrite, and a rewrite of a rewrite drifts: every pass adds
-   * a little of its own, and by the third the message is about something else. So a second press is another
-   * attempt at the same original rather than a second pass over the answer - which is what pressing a
-   * button again means when the first answer was not liked.
+   * They end the moment a hand touches the field (see onTokensChange below): an edited rewrite is a draft
+   * of one's own again, and reaching back behind it would throw that editing away.
    *
-   * It is dropped the moment a hand touches the field (see onTokensChange below): an edited rewrite is a
-   * draft of one's own again, and reaching back behind it would throw that editing away.
-   *
-   * `attempts` are the answers this source has already produced, oldest first. A press past one of them is
-   * the person saying it was not what they wanted, so they travel with the next request as things to avoid
-   * (see the rejected field in protocol.ts) - without that, the second press rolls the same dice against
-   * the same words and can hand back very nearly the same sentence, which reads as a button that did
-   * nothing.
+   * The way back is held here rather than left to Cmd+Z, which cannot do this job: the field's undo
+   * history is cleared when the tab changes, so a rewrite looked at in the next tab along would have
+   * nothing behind it, and after three presses Cmd+Z walks back through the takes one at a time rather
+   * than to what was written.
    */
-  const [improveSources, setImproveSources] = useState<
-    Record<string, { source: ImproveRequest; attempts: string[] }>
-  >({})
-
+  const [improveSources, setImproveSources] = useState<Record<string, ImproveSource>>({})
 
   /**
    * A rewrite is being put into the field by us right now. The field reports that edit outwards exactly as
@@ -480,6 +532,54 @@ export const App = () => {
    * arrive with init and are shown on the screen behind the menu (see ImprovePrompt).
    */
   const [improveInstructions, setImproveInstructions] = useState({ instructions: '', builtIn: '' })
+
+  /**
+   * Voice input, as the panel holds it: the settings behind the screen, and what a running dictation is
+   * doing right now.
+   *
+   * The settings arrive whole from the IDE (see VoiceDesk) rather than being assembled here, because most
+   * of them are things only that side can answer - which microphones exist, what the hotkeys were bound
+   * to, whether a key is in the keychain. The key itself never arrives, only its last four characters.
+   */
+  const [voice, setVoice] = useState<VoiceSettings>(NO_VOICE)
+
+  /**
+   * What a dictation is doing.
+   *
+   * The phase only. How loud the room is arrives ten times a second and is written straight onto the page
+   * instead (see the `voiceState` handler): in state it was a render of the whole panel per reading, and
+   * neither the feed nor the composer is memoised.
+   */
+  const [voiceRun, setVoiceRun] = useState<'idle' | 'listening' | 'finishing'>('idle')
+
+  /** The same phase, for the window's key handler - which is built once and would hold a stale one. */
+  const voiceRunRef = useRef(voiceRun)
+  voiceRunRef.current = voiceRun
+
+  /**
+   * The phrase being said right now, drawn in grey after the draft.
+   *
+   * Held apart from the draft on purpose: it is replaced wholesale by the next interim result and is not
+   * a part of the message until Deepgram settles on it. A tail written into the draft and rewritten
+   * twice a second would fill the undo history with words nobody typed.
+   */
+  const [voiceInterim, setVoiceInterim] = useState('')
+
+  /** Why a dictation came to nothing - one line above the field, beside the improve button's own. */
+  const [voiceError, setVoiceError] = useState('')
+
+  const [voiceBalance, setVoiceBalance] = useState<VoiceBalance>({ state: 'none' })
+
+  /** Which hotkey the IDE is waiting for a press on, and why the last wait ended with nothing. */
+  const [voiceCapturing, setVoiceCapturing] = useState<VoiceHotkeySlot | null>(null)
+  const [voiceCaptureProblem, setVoiceCaptureProblem] = useState('')
+
+  /**
+   * Where a dictated phrase is landing. A ref rather than state because it is read inside the message
+   * handler, which is built once: the words arrive while somebody is talking, and a handler holding a
+   * stale tab would put the last sentence into the conversation they left.
+   */
+  const voiceTargetRef = useRef('')
 
   const panel = panels[active] ?? initialPanelState
   const draft = drafts[active] ?? EMPTY_DRAFT
@@ -526,8 +626,26 @@ export const App = () => {
    */
   const tickedModel = modelInForce(models, prefs.model, panel.model)
 
+  /**
+   * The drafts as they stand right now, for the shell's messages: that subscription is set up once for the
+   * panel's whole life and never sees a fresh render's state (see the message handler below).
+   */
+  const draftsRef = useRef(drafts)
+  draftsRef.current = drafts
+
   const editDraft = useCallback(
     (session: string, change: Partial<Draft>) => {
+      // Written down here as well as into state, and the "right now" above is why. The shell hands a
+      // whole batch of messages over in one synchronous pass (see bridge), so a second message in that
+      // batch reads this ref before any render has happened. Two settled phrases in one frame is not
+      // exotic - Deepgram may answer `Finalize` with several - and the second used to be built on the
+      // draft from before the first, dropping a whole phrase with nothing in the undo history to get it
+      // back with.
+      draftsRef.current = {
+        ...draftsRef.current,
+        [session]: { ...(draftsRef.current[session] ?? EMPTY_DRAFT), ...change },
+      }
+
       setDrafts((current) => ({
         ...current,
         [session]: { ...(current[session] ?? EMPTY_DRAFT), ...change },
@@ -535,13 +653,6 @@ export const App = () => {
     },
     [],
   )
-
-  /**
-   * The drafts as they stand right now, for the shell's messages: that subscription is set up once for the
-   * panel's whole life and never sees a fresh render's state (see the message handler below).
-   */
-  const draftsRef = useRef(drafts)
-  draftsRef.current = drafts
 
   /**
    * "Replace the whole field", handed over by the composer (see Composer.registerApply). A rewritten draft
@@ -616,6 +727,10 @@ export const App = () => {
     // The menu's row names the achievements' count before the tab is ever opened - so the figures are
     // asked for here, once, along with everything else the menu shows.
     send({ type: 'statistics' })
+    // Whether there is a microphone button at all is decided by a setting in the IDE, so the button
+    // cannot draw itself until this comes back. Asked for here rather than relied upon: the IDE does send
+    // it when the panel opens, but that happens while this page is still loading.
+    send({ type: 'voiceConfig' })
     loadMcp()
     loadPlugins()
   }, [loadMcp, loadPlugins])
@@ -1017,6 +1132,10 @@ export const App = () => {
               if (message.preferences.composerLayout) {
                 setComposerLayoutState(normalizeComposerLayout(message.preferences.composerLayout))
               }
+              setLanguage({
+                chosen: message.preferences.language ?? '',
+                ide: message.preferences.ideLanguage ?? '',
+              })
             }
             if (message.improve) setImproveInstructions(message.improve)
             feed({
@@ -1030,6 +1149,17 @@ export const App = () => {
                 },
               },
             })
+            break
+
+          /**
+           * The language, told again outside `init`.
+           *
+           * The setting is machine-wide, so a second window of the same project has to hear about a
+           * change it did not make; and a phone is never sent `init` at all (it carries the working
+           * directory - see RemoteFeed), so this is the only way it learns the language.
+           */
+          case 'locale':
+            setLanguage({ chosen: message.language ?? '', ide: message.ideLanguage ?? '' })
             break
 
           case 'project':
@@ -1088,7 +1218,8 @@ export const App = () => {
                 action: {
                   kind: 'checkpoint',
                   chip: 'EARLIER',
-                  target: 'earlier messages are no longer kept',
+                  target: '',
+                  targetKey: 'notKept',
                 },
               })
             }
@@ -1226,34 +1357,17 @@ export const App = () => {
 
             const rewritten = message.error ? null : improveResult(pending.request, message.text ?? '')
             if (!rewritten) {
-              setImproveError(message.error || 'Claude Code answered with nothing to put in the field.')
+              complain(message.error ? { kind: 'said', text: message.error } : { kind: 'empty' }, '')
               break
             }
 
             const current = draftsRef.current[pending.sessionId] ?? EMPTY_DRAFT
             if (current.tokens !== pending.tokens) {
-              setImproveError('The draft changed while it was being rewritten, so it was left alone.')
+              complain({ kind: 'changed' }, '')
               break
             }
 
-            const apply = applyToComposer.current
-            // Through the field itself while it is the one on screen - that is what makes this a step in
-            // its undo history. A tab switched away from in the meantime has no field to speak of, and its
-            // draft is simply replaced.
-            //
-            // The flag is up for exactly the length of that call: the field reports the change straight
-            // back out, and without it our own writing would read as the person editing and would throw
-            // away what this rewrite started from (see improveSources).
-            if (apply && pending.sessionId === activeRef.current) {
-              applyingImprove.current = true
-              try {
-                apply(rewritten)
-              } finally {
-                applyingImprove.current = false
-              }
-            } else {
-              editDraft(pending.sessionId, { tokens: rewritten })
-            }
+            applyTokens(pending.sessionId, rewritten, true)
 
             // What was just shown joins what this source has produced: it is not turned down yet, but the
             // next press is exactly the person saying it was (see improveSources).
@@ -1261,11 +1375,85 @@ export const App = () => {
               const entry = current[pending.sessionId]
               if (!entry) return current
 
-              const attempts = [...entry.attempts, message.text ?? ''].slice(-IMPROVE_ATTEMPTS_KEPT)
-              return { ...current, [pending.sessionId]: { ...entry, attempts } }
+              return { ...current, [pending.sessionId]: improveLanded(entry, message.text ?? '') }
             })
             break
           }
+
+          case 'voiceConfig':
+            setVoice({
+              enabled: message.enabled,
+              language: message.language,
+              languages: message.languages,
+              device: message.device,
+              devices: message.devices,
+              keyHint: message.keyHint,
+              hotkeys: message.hotkeys,
+            })
+            // A binding that landed arrives as a fresh config rather than as an answer of its own, so
+            // this is also where the "press a key" state ends.
+            setVoiceCapturing(null)
+            setVoiceCaptureProblem('')
+            break
+
+          case 'voiceState': {
+            // Where the words go is decided when the dictation starts, not when they arrive: a tab
+            // switched to mid-sentence must not catch the tail of what was said about another one.
+            if (message.phase === 'listening' && !voiceTargetRef.current) {
+              voiceTargetRef.current = activeRef.current
+            }
+            if (message.phase === 'idle') voiceTargetRef.current = ''
+
+            setVoiceRun(message.phase)
+            // The ring's size follows the room's loudness, and is written onto the page rather than kept
+            // in state: it arrives ten times a second, and state here is a render of the whole panel for
+            // each of them. Inherited from the root by the button's own rule (see .voiceLive).
+            document.documentElement.style.setProperty(
+              '--acc-voice-level',
+              String(message.phase === 'listening' ? message.level : 0),
+            )
+
+            // Nothing is being said any more, so nothing is left half-said: a ghost outliving its
+            // dictation hangs in the field with no way to select it or delete it.
+            if (message.phase === 'idle') setVoiceInterim('')
+
+            if (message.error) {
+              complain(null, message.error)
+            } else if (message.phase !== 'idle') {
+              // A dictation that started is an answer to whatever went wrong last time.
+              setVoiceError('')
+            }
+            break
+          }
+
+          case 'voiceText': {
+            if (!message.final) {
+              setVoiceInterim(voiceGhost(message.text))
+              break
+            }
+
+            // The settled phrase replaces the grey tail it was drawn as.
+            setVoiceInterim('')
+
+            const target = voiceTargetRef.current || activeRef.current
+            const current = draftsRef.current[target] ?? EMPTY_DRAFT
+            const next = voiceAppend(current.tokens, message.text)
+            // Deepgram sends an empty final result for a pause it decided was the end of a phrase.
+            if (next === current.tokens) break
+
+            applyTokens(target, next)
+            break
+          }
+
+          case 'voiceBalanceIs':
+            setVoiceBalance(message)
+            break
+
+          case 'voiceCapture':
+            setVoiceCapturing(null)
+            // Escape means the person changed their mind, and saying so back to them is noise.
+            setVoiceCaptureProblem(message.problem === 'button' ? 'button' : '')
+            break
 
           case 'error':
             feed({ session: message.sessionId, action: { kind: 'error', message: message.message } })
@@ -1472,22 +1660,14 @@ export const App = () => {
                   {
                     ...emptyFeedback(),
                     email: current.email,
-                    message: {
-                      // Not "ok" when something was left behind: it went, but not all of it, and the one
-                      // thing worse than a failure here is a thank-you that hides one.
-                      ok: !message.note,
-                      text: message.note
-                        ? `Sent, but not everything. ${message.note}`
-                        : 'Sent. Thank you ❤️ - it goes straight to me.',
-                    },
+                    // Not "sent" when something was left behind: it went, but not all of it, and the
+                    // one thing worse than a failure here is a thank-you that hides one.
+                    message: message.note ? { kind: 'partly', note: message.note } : { kind: 'sent' },
                   }
                 : {
                     ...current,
                     sending: false,
-                    message: {
-                      ok: false,
-                      text: message.error || 'It could not be sent. Nothing was lost - try again.',
-                    },
+                    message: { kind: 'failed', said: message.error },
                   },
             )
             break
@@ -1810,6 +1990,15 @@ export const App = () => {
       // its own business - closing the command or file hint - so it reaches here only when there is
       // nothing left to close above.
       if (event.key === 'Escape') {
+        // A dictation started from the button is thrown away first: it is the newer thing on screen, and
+        // the words nobody wants must not land in the field while the agent is being stopped. One started
+        // from a hotkey never reaches here - the IDE takes that Escape for itself (see HotkeyEngine).
+        if (voiceRunRef.current !== 'idle') {
+          event.preventDefault()
+          send({ type: 'voiceCancel' })
+          return
+        }
+
         if (!running) return
         event.preventDefault()
         send({ type: 'stop', sessionId: active })
@@ -2114,28 +2303,127 @@ export const App = () => {
     improveSeq.current += 1
     const id = `improve-${Date.now()}-${improveSeq.current}`
 
-    // What stands in the field is a rewrite nobody has touched since - so this press is another attempt at
-    // what was written originally rather than a pass over the answer (see improveSources), and everything
-    // that source has produced so far is something the person has now pressed past.
-    const previous = improveSources[active]
-    const source = previous?.source ?? request
-    const rejected = previous?.attempts ?? []
+    // A press over a rewrite nobody has touched carries on the chain this tab is already in rather than
+    // starting a new one (see improveStarted): the same words to rewrite, and every take they have already
+    // produced as something the person has now pressed past.
+    const chain = improveStarted(improveSources[active], request, draft.tokens)
 
-    setImproveError('')
-    setImproveSources((current) => ({ ...current, [active]: { source, attempts: rejected } }))
-    setImproving({ id, sessionId: active, request: source, tokens: draft.tokens })
+    setImproveError(null)
+    setImproveSources((current) => ({ ...current, [active]: chain }))
+    setImproving({ id, sessionId: active, request: chain.source, tokens: draft.tokens })
     send({
       type: 'improvePrompt',
       sessionId: active,
       id,
-      draft: source.draft,
-      attachments: source.attachments,
-      rejected,
+      draft: chain.source.draft,
+      attachments: chain.source.attachments,
+      rejected: chain.attempts,
+    })
+  }
+
+  /**
+   * This tab's chain of rewrites is over - the draft it was about is not on the screen any more.
+   *
+   * One home for the transition rather than the same three lines wherever it happens: a draft leaves the
+   * chain by several different doors (typed over, sent, a quote dropped into it), and a door that forgot
+   * to close it leaves the panel offering a way back to words nobody is looking at.
+   */
+  const forgetImproveSource = (sessionId: string) => {
+    setImproveSources((current) => {
+      if (!(sessionId in current)) return current
+
+      const { [sessionId]: _dropped, ...rest } = current
+      return rest
+    })
+  }
+
+  /**
+   * Put a whole draft into a tab, ours rather than the person's: a rewrite that has come back, or the way
+   * back out of one.
+   *
+   * Through the field itself while it is the one on screen - that is what makes it a step in that field's
+   * undo history. A tab switched away from in the meantime has no field to speak of, and its draft is
+   * simply replaced.
+   *
+   * The flag is up for exactly the length of that call: the field reports the change straight back out,
+   * and without it our own writing would read as the person editing and would end the chain it belongs to
+   * (see improveSources).
+   */
+  /** The codes above, said in the panel's own language (see feed/voice.ts and feed/improve.ts). */
+  const voiceErrorText = voiceError ? voiceMessage(t, voiceError) : ''
+  const improveErrorText = improveError ? improveNote(t, improveError) : ''
+
+  /**
+   * Tokens into the field, by the one road that leaves the undo history intact.
+   *
+   * Through the composer while the tab is the one on screen (see Composer.registerApply), so that what
+   * lands becomes a step of the field's own undo history and a Cmd+Z takes it back; straight into the
+   * draft otherwise, because a tab nobody is looking at has no field to put anything into.
+   *
+   * [ours] says whose writing this is, and only a rewrite is ours: it is the panel's answer to somebody
+   * asking not to have written what they wrote, so the field must not take it for a hand on the keyboard.
+   * A dictation is the opposite case - it IS them writing - so it reads as an ordinary edit and ends an
+   * improve chain (see improveSources), which is right: the draft is no longer the one that was
+   * rewritten.
+   */
+  const applyTokens = (sessionId: string, tokens: UserToken[], ours = false) => {
+    const apply = applyToComposer.current
+
+    if (!apply || sessionId !== activeRef.current) {
+      editDraft(sessionId, { tokens })
+      return
+    }
+
+    applyingImprove.current = ours
+    try {
+      apply(tokens)
+    } finally {
+      applyingImprove.current = false
+    }
+  }
+
+  /**
+   * The way back: what stands in the field is a rewrite nobody has touched, and this puts the person's own
+   * words back in its place (see the line the composer draws above the field).
+   *
+   * It goes in through the field itself, exactly as the rewrite did, so that it is one step of the undo
+   * history - the take just turned down is a Cmd+Z away rather than gone, which is what makes pressing
+   * this safe enough to try.
+   *
+   * What this tab's rewrites started from is deliberately kept: taking one's own words back is the
+   * plainest way of saying the take was not wanted, and the next press has to carry that (see
+   * improveSources) rather than throw the same dice against the same words again.
+   */
+  const restoreDraft = () => {
+    const entry = improveSources[active]
+    if (!entry?.applied) return
+
+    applyTokens(active, entry.before, true)
+
+    setImproveError(null)
+    setImproveSources((current) => {
+      const held = current[active]
+      return held ? { ...current, [active]: improveTakenBack(held) } : current
     })
   }
 
   /** A complaint about one tab's draft has nothing to say about the next tab's. */
-  useEffect(() => setImproveError(''), [active])
+  useEffect(() => {
+    setImproveError(null)
+    setVoiceError('')
+  }, [active])
+
+  /**
+   * One line above the field, one complaint in it - the newest.
+   *
+   * The two share that line and the microphone's used to win it outright, which was fine until it turned
+   * out nothing ever took it down: pressing the microphone with no key left a note that outlived the
+   * session and quietly swallowed every "the draft changed while it was being rewritten" after it.
+   */
+  const complain = (rewrite: ImproveNote | null, voice: string) => {
+    setImproveError(rewrite)
+    setVoiceError(voice)
+  }
 
   /**
    * Sending a message: straight into the work or into the queue.
@@ -2152,8 +2440,8 @@ export const App = () => {
     // The tab's own catalogue while it has one, and the project's remembered one until then: this tab's
     // process may not have come up yet, and the two disagree only about a server switched on or off
     // since - where the live one is the truth.
-    () => buildCommands(panel.slashCommands.length > 0 ? panel.slashCommands : knownCommands, commandHints),
-    [panel.slashCommands, knownCommands, commandHints],
+    () => buildCommands(t, panel.slashCommands.length > 0 ? panel.slashCommands : knownCommands, commandHints),
+    [t, panel.slashCommands, knownCommands, commandHints],
   )
 
   const submit = useCallback((queued: boolean, overrideText?: string) => {
@@ -2168,12 +2456,7 @@ export const App = () => {
     // A message on its way out is a draft nobody is going to rewrite again: what it started from has
     // nothing left to be compared against (see improveSources). The field is emptied further down by
     // several different paths, and this stands ahead of all of them.
-    if (!isOverride && improveSources[active]) {
-      setImproveSources((current) => {
-        const { [active]: _dropped, ...rest } = current
-        return rest
-      })
-    }
+    if (!isOverride) forgetImproveSource(active)
     // The empty tail is taken off at once: it is invisible in the field (the last line there takes no
     // space, at most the caret stands on it) while in the feed it would show as a spare empty line. To the
     // agent composePrompt does not send it anyway.
@@ -2194,7 +2477,7 @@ export const App = () => {
     // Through tokensText rather than plainText: a command in the field is a chip, and plain text does not
     // see it at all (see captureCommand). To the agent it means exactly "/name" anyway, and that is what we
     // recognise it by.
-    const local = localCommand(tokensText(typed), models)
+    const local = localCommand(t, tokensText(typed), models)
     if (local) {
       runLocal(local)
       if (!isOverride) editDraft(active, { tokens: [] })
@@ -2443,18 +2726,20 @@ export const App = () => {
   // /login, and that command itself is out of reach in streaming mode.
   if (!auth || !auth.loggedIn) {
     return (
-      <div className={s.panel} data-anchor={dockAnchor}>
-        <LoginGate
-          auth={auth}
-          waiting={loginWaiting}
-          onLogin={() => {
-            send({ type: 'login' })
-            setLoginWaiting(true)
-          }}
-          onRecheck={() => send({ type: 'checkAuth' })}
-          onSetExecutablePath={(path) => send({ type: 'setExecutablePath', path })}
-        />
-      </div>
+      <LocaleProvider locale={locale}>
+        <div className={s.panel} data-anchor={dockAnchor}>
+          <LoginGate
+            auth={auth}
+            waiting={loginWaiting}
+            onLogin={() => {
+              send({ type: 'login' })
+              setLoginWaiting(true)
+            }}
+            onRecheck={() => send({ type: 'checkAuth' })}
+            onSetExecutablePath={(path) => send({ type: 'setExecutablePath', path })}
+          />
+        </div>
+      </LocaleProvider>
     )
   }
 
@@ -2475,10 +2760,29 @@ export const App = () => {
     setSideMenu((current) => ({ open: !current.open, screen: 'menu' }))
   }
 
-  const closeMenu = () => setSideMenu((current) => ({ ...current, open: false }))
+  const closeMenu = () => {
+    stopCapturingHotkey()
+    setSideMenu((current) => ({ ...current, open: false }))
+  }
 
   /** A step back: out of "what travels" to remote access, out of any other screen to the root. */
-  const backMenu = () => setSideMenu((current) => ({ ...current, screen: parentOf(current.screen) }))
+  const backMenu = () => {
+    stopCapturingHotkey()
+    setSideMenu((current) => ({ ...current, screen: parentOf(current.screen) }))
+  }
+
+  /**
+   * A hotkey recording ends when the screen it belongs to is left, whichever way.
+   *
+   * It has to: while it runs, the IDE swallows the next key or button press for it (see VoiceHotkeys), so
+   * a recording left behind would eat a keystroke somewhere else entirely and bind the panel to it.
+   */
+  const stopCapturingHotkey = () => {
+    if (!voiceCapturing) return
+
+    setVoiceCapturing(null)
+    send({ type: 'voiceStopCapture' })
+  }
 
   /**
    * The statistics as a tab of the strip rather than a screen of the menu: a chart of a month wants the
@@ -2539,6 +2843,19 @@ export const App = () => {
       setFeedback((current) => ({ ...current, report: null }))
       send({ type: 'feedbackReport', sessionId: reportedSession()?.id ?? active })
     }
+
+    // The devices are read afresh every time: a headset plugged in since the panel opened has to be in
+    // the list, and nothing else on this screen would have noticed it.
+    if (screen === 'voice') {
+      setVoiceCaptureProblem('')
+      send({ type: 'voiceConfig' })
+    }
+
+    // A hotkey recording left running would swallow the very keys this screen is being left by.
+    if (screen !== 'voice' && voiceCapturing) {
+      setVoiceCapturing(null)
+      send({ type: 'voiceStopCapture' })
+    }
   }
 
   /** The bubble beside the heart opens the very same screen the menu's own row does. */
@@ -2563,20 +2880,30 @@ export const App = () => {
         }
       : null,
     plugins: pluginsInstalled?.length ?? null,
-    sounds: `${SOUNDS.filter((sound) => !isMuted(soundPrefs, sound.id)).length} on`,
+    sounds: t.common.countOn(SOUND_IDS.filter((sound) => !isMuted(soundPrefs, sound)).length),
     defaultMode:
-      modeMenuOptions(availableModes).find((option) => option.id === normalizeMode(prefs.mode))?.label ?? '',
-    composerLayout: COMPOSER_LAYOUT_OPTIONS.find((option) => option.id === chosenLayout)?.label ?? '',
-    improvePrompt: improveInstructions.instructions.trim() ? 'Custom' : 'Default',
+      modeMenuOptions(t, availableModes).find((option) => option.id === normalizeMode(prefs.mode))?.label ?? '',
+    composerLayout: composerLayoutOptions(t).find((option) => option.id === chosenLayout)?.label ?? '',
+    improvePrompt: improveInstructions.instructions.trim()
+      ? t.settings.improveSummary.custom
+      : t.settings.improveSummary.builtIn,
+    // The language it listens in, written in itself as in the picker - or that there is nothing to
+    // listen with yet, which is the answer somebody opening this row for the first time needs.
+    voice: voice.enabled
+      ? voice.languages.find((entry) => entry.code === voice.language)?.native ?? voice.language
+      : t.voice.off,
+    // Written in itself, as in the picker: the row is read by somebody who may be looking for a way out
+    // of a language they cannot read.
+    language: nativeName(locale),
     remote: {
-      label: REMOTE_STATE[remote.state].label,
+      label: remoteState(t, remote.state).label,
       // Connected and paired, the state's own sentence says nothing new - the useful line is who is on
       // the other end and through which relay.
       hint:
         remote.state === 'connected' && remote.devices?.length
-          ? `${remote.devices[0]?.label} is paired · relay ${relayHost(remote.relay)}`
-          : REMOTE_STATE[remote.state].hint,
-      tone: REMOTE_STATE[remote.state].tone,
+          ? t.remote.pairedVia(remote.devices[0]?.label ?? '', relayHost(remote.relay))
+          : remoteState(t, remote.state).hint,
+      tone: remoteState(t, remote.state).tone,
     },
     version: pluginVersion,
   }
@@ -2640,6 +2967,16 @@ export const App = () => {
             delete next[id]
             return next
           })
+          // The draft of a conversation that no longer exists, and what its rewrites were about: both are
+          // about a field nobody can open again, and both hold on to whatever was attached to that draft.
+          setDrafts((current) => {
+            if (!(id in current)) return current
+
+            const next = { ...current }
+            delete next[id]
+            return next
+          })
+          forgetImproveSource(id)
           dispatchPanel({ session: id, closed: true })
           const next = sessions.filter((session) => session.id !== id)
           setSessions(next)
@@ -2664,6 +3001,16 @@ export const App = () => {
         onOpenPullRequest={openPullRequest}
       />
   )
+
+  /**
+   * The usage rings and the day's tokens, built once for whoever draws them.
+   *
+   * Where they stand depends on the layout and nowhere on what they say: the status line under the field
+   * in the ordinary layout (see StatusBar), the row of buttons in compact, a row of their own in the side
+   * rail (both see Composer). Only one of those is on the screen at a time, so this node is drawn once
+   * however many places are handed it.
+   */
+  const metersNode = <UsageMeters todayTokens={usage.todayTokens ?? '…'} usage={usage} />
 
   /**
    * A permission, a question, the task list with the branch and the PR, the queue, the quotes - the whole
@@ -2708,6 +3055,7 @@ export const App = () => {
   )
 
   return (
+    <LocaleProvider locale={locale}>
     <div
       className={s.panel}
       ref={setPanelNode}
@@ -2731,7 +3079,7 @@ export const App = () => {
         <Confirm
           title={stopping.title}
           subject={stopping.subject}
-          confirmLabel="Stop"
+          confirmLabel={t.chrome.confirm.stop}
           onCancel={() => setStopping(null)}
           onConfirm={() => {
             send({ type: 'stopTask', sessionId: active, taskId: stopping.id })
@@ -2744,9 +3092,9 @@ export const App = () => {
           a running turn will survive this no better than a closed tab (see resume). */}
       {resuming ? (
         <Confirm
-          title="This tab is still working. Open the past chat here?"
+          title={t.chrome.resume.title}
           subject={resuming.title}
-          confirmLabel="Open"
+          confirmLabel={t.chrome.confirm.open}
           onCancel={() => setResuming(null)}
           onConfirm={() => {
             openResumed(resuming)
@@ -2764,9 +3112,9 @@ export const App = () => {
         />
       ) : sessions.length === 0 ? (
         <div className={s.emptyState}>
-          <p className={s.gateTitle}>No open chats</p>
+          <p className={s.gateTitle}>{t.chrome.noChats.title}</p>
           <button type="button" className={s.gateButton} onClick={() => startSession(MAIN_SESSION)}>
-            New chat
+            {t.chrome.noChats.button}
           </button>
         </div>
       ) : (
@@ -2809,7 +3157,7 @@ export const App = () => {
               streamingId={panel.streamingId}
               streamingThinking={panel.streamingThinking}
               streaming={running}
-              streamStatus={streamStatus(panel, cards)}
+              streamStatus={streamStatus(t, panel, cards)}
               statusStalled={panel.retry !== undefined}
               cards={cards}
               scrollRef={attachFeed}
@@ -2837,6 +3185,10 @@ export const App = () => {
                 editDraft(active, {
                   tokens: appendChip(draft.tokens, { kind: 'quote', value: `ref${ordinal}`, text: selection.text }),
                 })
+                // It goes into the draft without passing through the field, so the chain has to be closed
+                // here by hand: a rewrite with a quote added under it is a draft of one's own again, and a
+                // way back still on offer would take the quote away with it.
+                forgetImproveSource(active)
                 clearSelection()
                 setFocusToken((current) => current + 1)
               }}
@@ -2863,9 +3215,7 @@ export const App = () => {
             contextPercent={context.percent}
             commands={commands}
             models={models}
-            meters={
-              <UsageMeters todayTokens={usage.todayTokens ?? '…'} usage={usage} />
-            }
+            meters={metersNode}
             files={files}
             imageBaseCount={imageBaseCount}
             focusToken={focusToken}
@@ -2879,17 +3229,38 @@ export const App = () => {
             onOpenFeedback={openFeedback}
             railContainer={railNode}
             fileDragOver={fileDragOver}
-            onTokensChange={(tokens) => {
-              // A complaint about a draft that has since been rewritten by hand is noise.
-              setImproveError('')
-              // A hand on the keyboard makes this a draft of one's own again: the next press of the sparkle
-              // starts from what is in the field rather than from what stood before the last rewrite.
-              if (!applyingImprove.current && improveSources[active]) {
-                setImproveSources((current) => {
-                  const { [active]: _dropped, ...rest } = current
-                  return rest
-                })
+            onTokensChange={(tokens, from) => {
+              // Renumbered image captions are not an edit at all - nothing was said, and a complaint about
+              // the last rewrite is still worth reading.
+              if (from !== 'renumber') {
+                setImproveError(null)
+                setVoiceError('')
               }
+
+              if (!applyingImprove.current && improveSources[active]) {
+                // A hand on the keyboard makes this a draft of one's own again: the next press of the
+                // sparkle starts from what is in the field rather than from what stood before the last
+                // rewrite.
+                if (from === 'hand') forgetImproveSource(active)
+                // Cmd+Z over a rewrite is the person going back to their own words rather than moving on
+                // from them: the chain stands, and only whether a take is on the screen changes with it.
+                else if (from === 'history') {
+                  setImproveSources((current) => {
+                    const held = current[active]
+                    return held ? { ...current, [active]: improveShown(held, tokens) } : current
+                  })
+                }
+              }
+
+              // A renumbering while a rewrite is in flight: the draft did not change, only the number in a
+              // caption did, so the answer must not be turned away as landing on a different draft (see
+              // the promptImproved case above).
+              if (from === 'renumber') {
+                setImproving((current) =>
+                  current && current.sessionId === active ? { ...current, tokens } : current,
+                )
+              }
+
               editDraft(active, { tokens })
             }}
             onAttach={() => send({ type: 'pick' })}
@@ -2901,7 +3272,22 @@ export const App = () => {
             onImprove={improvePrompt}
             improving={improving !== null}
             improveRetry={improveSources[active] !== undefined}
-            improveError={improveError}
+            improveError={improveErrorText}
+            /* While THIS tab's next take is on its way there is nothing to offer: what the way back leads
+               to is about to be decided again, and the answer landing under a line that says otherwise is
+               worse than a moment without one. A rewrite running in another tab has nothing to do with
+               this one - the slot it occupies is shared, the draft is not. */
+            improveRestore={improving?.sessionId !== active && Boolean(improveSources[active]?.applied)}
+            onImproveRestore={restoreDraft}
+            voice={{ enabled: voice.enabled, phase: voiceRun }}
+            /* The button toggles: it starts the hands-free mode, which is the only one a button can mean -
+               holding a button down with the mouse while talking is nobody's idea of dictation. */
+            onVoiceStart={() => send({ type: 'voiceStart', mode: 'hold' })}
+            onVoiceStop={() => send({ type: 'voiceStop' })}
+            /* Only in the tab the words are going to: the tail of a sentence being said about another
+               conversation has no business hanging under this one's draft. */
+            voiceGhost={voiceTargetRef.current === active || !voiceTargetRef.current ? voiceInterim : ''}
+            voiceError={voiceErrorText}
             onSubmit={sendNow}
             onQueue={queueNext}
             canSubmit={draftReady}
@@ -2929,6 +3315,8 @@ export const App = () => {
               switchedFrom={panel.switchedFrom}
               effort={prefs.effort}
               mode={mode}
+              models={models}
+              meters={metersNode}
               onOpen={openSelector}
               onOpenThanks={openThanks}
               onOpenFeedback={openFeedback}
@@ -3022,6 +3410,70 @@ export const App = () => {
           />
         ) : null}
 
+        {sideMenu.open && sideMenu.screen === 'settings' ? (
+          <SettingsScreen summary={menuSummary} onPick={openScreen} />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'voice' ? (
+          <VoiceInput
+            settings={voice}
+            balance={voiceBalance}
+            capturing={voiceCapturing}
+            captureProblem={voiceCaptureProblem ? t.voice.badButton : ''}
+            onToggle={(enabled) => send({ type: 'voiceEnabled', enabled })}
+            onKey={(key) => send({ type: 'voiceKey', key })}
+            onRefreshBalance={() => send({ type: 'voiceBalance' })}
+            onCapture={(slot) => {
+              setVoiceCapturing(slot)
+              setVoiceCaptureProblem('')
+              send({ type: 'voiceCaptureHotkey', slot })
+            }}
+            onStopCapture={() => {
+              setVoiceCapturing(null)
+              send({ type: 'voiceStopCapture' })
+            }}
+            onClear={(slot) => send({ type: 'voiceClearHotkey', slot })}
+            onOpenLanguages={() => openScreen('voiceLanguage')}
+            onOpenDevices={() => openScreen('voiceDevice')}
+            onOpenSite={() => send({ type: 'openExternal', url: DEEPGRAM_URL })}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'voiceLanguage' ? (
+          <VoiceLanguages
+            settings={voice}
+            onPick={(language) => {
+              send({ type: 'voiceLanguage', language })
+              // Back to the screen that sent us here: the list is a step of the voice screen rather than a
+              // place to stay, and a choice made is the end of that step.
+              setSideMenu({ open: true, screen: 'voice' })
+            }}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'voiceDevice' ? (
+          <VoiceDevices
+            settings={voice}
+            onPick={(device) => {
+              send({ type: 'voiceDevice', device })
+              setSideMenu({ open: true, screen: 'voice' })
+            }}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'language' ? (
+          <Language
+            chosen={language.chosen}
+            ide={language.ide}
+            onPick={(next) => {
+              // Kept here as well as sent: the IDE answers with a `locale` message of its own, but the
+              // screen must not sit in the old language for the length of that round trip.
+              setLanguage((current) => ({ ...current, chosen: next }))
+              send({ type: 'setLanguage', language: next })
+            }}
+          />
+        ) : null}
+
         {sideMenu.open && sideMenu.screen === 'sounds' ? (
           <Sounds
             prefs={soundPrefs}
@@ -3055,7 +3507,7 @@ export const App = () => {
             // The same list, availability marks and all: a mode this machine or this model cannot do is
             // no better a default than it is a current mode, and saying so in one place but not the
             // other would only puzzle.
-            options={modeMenuOptions(availableModes)}
+            options={modeMenuOptions(t, availableModes)}
             // The saved default rather than what the tab is in right now. They part ways the moment the
             // tab's mode is changed, and that is the whole point of having two controls.
             selected={normalizeMode(prefs.mode)}
@@ -3065,7 +3517,7 @@ export const App = () => {
 
         {sideMenu.open && sideMenu.screen === 'composerLayout' ? (
           <LayoutChoice
-            options={COMPOSER_LAYOUT_OPTIONS}
+            options={composerLayoutOptions(t)}
             selected={chosenLayout}
             // The menu steps aside on the choice, unlike the lists beside it. What is chosen here is the
             // shape of the panel itself, and the menu covers exactly the place that changes: staying open
@@ -3106,7 +3558,7 @@ export const App = () => {
             onSend={() => {
               // The same check the button obeys, once more before anything travels: the button can be
               // reached by keyboard while it is disabled in some browsers, and this one is cheap.
-              if (feedbackProblem(feedback)) return
+              if (feedbackProblem(t, feedback)) return
 
               setFeedback((current) => ({ ...current, sending: true, message: null }))
               send({
@@ -3135,8 +3587,8 @@ export const App = () => {
       {menu ? (
         <Menu
           {...(menu.kind === 'thanks'
-            ? thanksMenu(shared)
-            : menuProps(menu.kind, models, prefs.model, tickedModel, prefs.effort, mode, availableModes))}
+            ? thanksMenu(t, shared)
+            : menuProps(t, menu.kind, models, prefs.model, tickedModel, prefs.effort, mode, availableModes))}
           anchor={menu.anchor}
           onClose={() => setMenu(null)}
           onPick={(id) => {
@@ -3153,7 +3605,7 @@ export const App = () => {
             if (kind === 'thanks') {
               const url = thanksUrl(id)
               if (url) send({ type: 'openExternal', url })
-              if (id === SHARE) void copyToClipboard(SHARE_TEXT).then((ok) => setShared(ok))
+              if (id === SHARE) void copyToClipboard(shareText(t)).then((ok) => setShared(ok))
               // Which way was taken, not that the menu was opened: there are three ways to say thanks and
               // the achievement counts the different ones (see Achievements.kt, "thanks").
               if (url || id === SHARE) send({ type: 'stat', kind: 'thanks', way: id })
@@ -3162,6 +3614,7 @@ export const App = () => {
         />
       ) : null}
     </div>
+    </LocaleProvider>
   )
 }
 
@@ -3297,6 +3750,7 @@ const relayHost = (relay: string): string => {
 }
 
 const menuProps = (
+  t: Dict,
   kind: SelectorKind,
   models: ModelInfo[] | null,
   /** The chosen value rather than what the agent resolved it into: the tick has to stand on the choice. */
@@ -3309,29 +3763,29 @@ const menuProps = (
 ): { title: string; hint?: string; width: number; options: MenuOption[]; selected: string; tick?: boolean } => {
   if (kind === 'model') {
     return {
-      title: 'MODEL',
+      title: t.selectors.model,
       width: 344,
-      ...modelMenu(models, selectedModel, switched),
+      ...modelMenu(t, models, selectedModel, switched),
     }
   }
 
   if (kind === 'effort') {
     return {
-      title: 'EFFORT',
+      title: t.selectors.effort,
       width: 320,
-      options: EFFORT_OPTIONS,
+      options: effortOptions(t),
       selected: effort,
     }
   }
 
   return {
-    title: 'PERMISSION MODE',
+    title: t.selectors.mode,
     // The one hint left of the three: the others named what the menu already says by its own title, while
     // this one is a key nothing on screen mentions. The circle it walks is the terminal's, and the
     // unavailable it simply steps over (see nextMode).
-    hint: 'shift+tab',
+    hint: t.selectors.modeHint,
     width: 372,
-    options: modeMenuOptions(availableModes),
+    options: modeMenuOptions(t, availableModes),
     selected: mode,
   }
 }

@@ -17,6 +17,7 @@ internal object ClaudePreferences {
         val mode: String,
         val composerLayout: String,
         val improveInstructions: String,
+        val language: String,
     )
 
     fun snapshot(): Snapshot = Snapshot(
@@ -25,6 +26,7 @@ internal object ClaudePreferences {
         mode = mode,
         composerLayout = composerLayout,
         improveInstructions = improveInstructions,
+        language = language,
     )
 
     var model: String
@@ -58,6 +60,20 @@ internal object ClaudePreferences {
     var improveInstructions: String
         get() = read(IMPROVE_INSTRUCTIONS_KEY)
         set(value) = write(IMPROVE_INSTRUCTIONS_KEY, value.trim())
+
+    /**
+     * The language the panel speaks. Empty means "whatever the IDE speaks" (see [IdeLanguage]).
+     *
+     * Empty rather than "en" as the default, and that is the whole point of the setting: somebody
+     * working in a Chinese IDE should be spoken to in Chinese without first having to discover that a
+     * switch exists. An explicit choice always wins over the IDE's, including an explicit English.
+     *
+     * Machine-wide beside the model and the mode above: a language is a property of the person, not of
+     * the repository, and choosing it once per project would be choosing it forever.
+     */
+    var language: String
+        get() = read(LANGUAGE_KEY)
+        set(value) = write(LANGUAGE_KEY, value.trim())
 
     /**
      * The path to the executable, given by hand. Empty means we look for it ourselves (see
@@ -128,6 +144,53 @@ internal object ClaudePreferences {
         get() = read(FEEDBACK_EMAIL_KEY)
         set(value) = write(FEEDBACK_EMAIL_KEY, value.trim())
 
+    /**
+     * Whether the microphone button and its hotkeys exist at all.
+     *
+     * Off until it is turned on, like remote access above and for a smaller version of the same reason:
+     * it needs a key of somebody's own, it listens to a microphone, and neither should arrive with an
+     * installed plugin. Off also means no listener on the IDE's event queue - see VoiceHotkeys.
+     */
+    var voiceEnabled: Boolean
+        get() = read(VOICE_ENABLED_KEY) == "true"
+        set(value) = write(VOICE_ENABLED_KEY, if (value) "true" else "")
+
+    /** Which language dictation listens in - a nova-3 code, or `multi`. See VoiceLanguages. */
+    var voiceLanguage: String
+        get() = read(VOICE_LANGUAGE_KEY)
+        set(value) = write(VOICE_LANGUAGE_KEY, value.trim())
+
+    /**
+     * The input device by its mixer name. Empty means whatever the system calls the default, which is
+     * what almost everybody wants and what follows a headset being plugged in.
+     */
+    var voiceDevice: String
+        get() = read(VOICE_DEVICE_KEY)
+        set(value) = write(VOICE_DEVICE_KEY, value.trim())
+
+    /**
+     * The four bindings, written the way HotkeyBinding writes them.
+     *
+     * Four rather than two because the keyboard and the mouse are independent triggers of the same two
+     * modes: somebody with a side button on their mouse wants it for push-to-talk without giving up the
+     * chord, and a release from one device must not stop what the other started.
+     */
+    var voicePushHotkey: String
+        get() = read(VOICE_PUSH_KEY)
+        set(value) = write(VOICE_PUSH_KEY, value.trim())
+
+    var voiceHoldHotkey: String
+        get() = read(VOICE_HOLD_KEY)
+        set(value) = write(VOICE_HOLD_KEY, value.trim())
+
+    var voicePushMouse: String
+        get() = read(VOICE_PUSH_MOUSE_KEY)
+        set(value) = write(VOICE_PUSH_MOUSE_KEY, value.trim())
+
+    var voiceHoldMouse: String
+        get() = read(VOICE_HOLD_MOUSE_KEY)
+        set(value) = write(VOICE_HOLD_MOUSE_KEY, value.trim())
+
     private fun read(key: String): String = PropertiesComponent.getInstance().getValue(key).orEmpty()
 
     private fun write(key: String, value: String) {
@@ -141,10 +204,18 @@ internal object ClaudePreferences {
     private const val MODE_KEY = "acc.mode"
     private const val COMPOSER_LAYOUT_KEY = "acc.composerLayout"
     private const val IMPROVE_INSTRUCTIONS_KEY = "acc.improve.instructions"
+    private const val LANGUAGE_KEY = "acc.language"
     private const val EXECUTABLE_KEY = "acc.executable"
     private const val MUTED_SOUNDS_KEY = "acc.sounds.muted"
     private const val SOUND_VOLUMES_KEY = "acc.sounds.volumes"
     private const val REMOTE_ENABLED_KEY = "acc.remote.enabled"
     private const val REMOTE_RELAY_KEY = "acc.remote.relayUrl"
     private const val FEEDBACK_EMAIL_KEY = "acc.feedback.email"
+    private const val VOICE_ENABLED_KEY = "acc.voice.enabled"
+    private const val VOICE_LANGUAGE_KEY = "acc.voice.language"
+    private const val VOICE_DEVICE_KEY = "acc.voice.device"
+    private const val VOICE_PUSH_KEY = "acc.voice.push"
+    private const val VOICE_HOLD_KEY = "acc.voice.hold"
+    private const val VOICE_PUSH_MOUSE_KEY = "acc.voice.pushMouse"
+    private const val VOICE_HOLD_MOUSE_KEY = "acc.voice.holdMouse"
 }

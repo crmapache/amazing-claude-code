@@ -1,3 +1,6 @@
+import { modeShortLabel } from '../catalog'
+import { en } from '../i18n/en'
+import { limitWindowName } from './usage'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -474,7 +477,7 @@ describe('building the feed out of the agent stream', () => {
     expect(read?.pending).toBe(false)
     expect(read?.isError).toBe(false)
     expect(read?.target).toBe('package.json')
-    expect(read?.meta).toContain('lines')
+    expect(read?.meta).toEqual({ kind: 'lines', count: 5 })
     expect(read?.detail.length).toBeGreaterThan(0)
     expect(read?.duration).toMatch(/s$/)
   })
@@ -996,7 +999,8 @@ describe('building the feed out of the agent stream', () => {
       const [row] = limits(play([limitEvent({ status: 'rejected' })]))
 
       expect(row?.state).toBe('waiting')
-      expect(row?.window).toBe('5-hour')
+      // The CLI's own name for the window, not the words: those are chosen when the row is drawn.
+      expect(row?.window).toBe('five_hour')
       expect(row?.resetsAt).toBe(AHEAD * 1000)
       // Not an error: nothing is broken, there is nothing to fix and nothing to close with a cross.
       expect(play([limitEvent({ status: 'rejected' })]).items.some((item) => item.kind === 'error')).toBe(false)
@@ -1046,14 +1050,16 @@ describe('building the feed out of the agent stream', () => {
       expect(limits(state).map((row) => row.state)).toEqual(['waiting', 'extra'])
     })
 
-    it('names the weekly windows the way the CLI does, and stays quiet about ones it does not know', () => {
+    it('carries the window the CLI named, and leaves the words to the row', () => {
       const named = (rateLimitType: string): string | undefined =>
         limits(play([limitEvent({ status: 'rejected', rateLimitType })]))[0]?.window
 
-      expect(named('seven_day')).toBe('weekly')
-      expect(named('seven_day_opus')).toBe('weekly Opus')
+      expect(named('seven_day')).toBe('seven_day')
+      expect(named('seven_day_opus')).toBe('seven_day_opus')
+      expect(limitWindowName(en, 'seven_day')).toBe('weekly')
+      expect(limitWindowName(en, 'seven_day_opus')).toBe('weekly Opus')
       // A bucket that appears in a later CLI must not turn into "your seven_day_whatever limit".
-      expect(named('seven_day_whatever')).toBe('')
+      expect(limitWindowName(en, 'seven_day_whatever')).toBe('')
     })
   })
 
@@ -1153,7 +1159,7 @@ describe('building the feed out of the agent stream', () => {
       expect(groups).toHaveLength(1)
       expect(groups[0]?.pending).toBe(false)
       expect(groups[0]?.tools.at(-1)?.isError).toBe(true)
-      expect(groups[0]?.tools.at(-1)?.meta).toBe('· interrupted')
+      expect(groups[0]?.tools.at(-1)?.meta).toEqual({ kind: 'closed', reason: 'exited' })
       expect(state.crashed).toBe(true)
     })
 
@@ -1170,7 +1176,7 @@ describe('building the feed out of the agent stream', () => {
       const groups = state.items.filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
       expect(groups[0]?.pending).toBe(false)
       expect(groups[0]?.tools.at(-1)?.pending).toBe(false)
-      expect(groups[0]?.tools.at(-1)?.meta).toBe('· interrupted')
+      expect(groups[0]?.tools.at(-1)?.meta).toEqual({ kind: 'closed', reason: 'stopped' })
       // A card's counter lives in startedAt - leaving the record means going on recomputing the duration on
       // every tick.
       expect(state.startedAt.t1).toBeUndefined()
@@ -1182,7 +1188,7 @@ describe('building the feed out of the agent stream', () => {
 
       const groups = state.items.filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
       expect(groups[0]?.tools.at(-1)?.pending).toBe(false)
-      expect(groups[0]?.tools.at(-1)?.meta).toBe('· unfinished')
+      expect(groups[0]?.tools.at(-1)?.meta).toEqual({ kind: 'closed', reason: 'turnEnded' })
     })
 
     it('lets a background subagent outlive the end of a turn: its end brings a notification', () => {
@@ -1399,8 +1405,21 @@ describe('a background subagent log', () => {
 
     const task = state.items.find((item) => item.kind === 'task')
     expect(task?.kind === 'task' && task.log.length).toBe(300)
-    expect(task?.kind === 'task' && task.log[0]?.text).toMatch(/^…\d+ earlier steps trimmed$/)
+    // A count rather than a sentence: the words are the card's, said in whatever language it is being
+    // painted in (see DetailLine.note).
+    expect(task?.kind === 'task' && task.log[0]?.note).toEqual({ kind: 'trimmed', count: 11 })
     expect(task?.kind === 'task' && task.log.at(-1)?.text).toBe('step 309')
+  })
+
+  /** A log that overflows twice has to say how much has gone in total, not how much went last time. */
+  it('adds up what earlier trims already took out', () => {
+    let state = play([taskStartedEvent('task-1', 'toolu-parent', 'Explore')])
+    for (let i = 0; i < 620; i += 1) {
+      state = play([subagentMessageEvent('toolu-parent', `step ${i}`)], state)
+    }
+
+    const task = state.items.find((item) => item.kind === 'task')
+    expect(task?.kind === 'task' && task.log[0]?.note).toEqual({ kind: 'trimmed', count: 321 })
   })
 
   it('lets a permission action with a taskId create a PermItem tied to the agent', () => {
@@ -1428,7 +1447,9 @@ describe('a background subagent log', () => {
     })
 
     const perm = state.items.find((item) => item.kind === 'perm')
-    expect(perm?.kind === 'perm' && perm.meta).toBe('Bypass mode')
+    // The mode's identifier: the caption is put together where the card is painted (see PermissionPanel).
+    expect(perm?.kind === 'perm' && perm.mode).toBe('bypassPermissions')
+    expect(modeShortLabel(en, 'bypassPermissions')).toBe('Bypass')
   })
 
   // The reason and the ban on "Always allow" arrive from the IDE - the panel only shows them.
@@ -1562,7 +1583,7 @@ describe('one subagent - one card', () => {
 
     const task = tasks(state)[0]
     expect(task?.outcome).toBe('stopped')
-    expect(task?.log.map((line) => line.text)).toEqual(['Stopped before it finished.'])
+    expect(task?.log.map((line) => line.note)).toEqual([{ kind: 'taskEnded', outcome: 'stopped' }])
   })
 
   /**
@@ -1601,7 +1622,7 @@ describe('one subagent - one card', () => {
     const task = tasks(state)[0]
     expect(task?.pending).toBe(false)
     expect(task?.outcome).toBe('stopped')
-    expect(task?.log.at(-1)?.text).toBe('Stopped before it returned.')
+    expect(task?.log.at(-1)?.note).toEqual({ kind: 'closed', reason: 'stopped' })
   })
 
   it('lets a background agent outlive an interrupted turn too: stopping the turn does not concern it', () => {
@@ -1622,7 +1643,7 @@ describe('one subagent - one card', () => {
 
     const task = tasks(state)[0]
     expect(task?.pending).toBe(false)
-    expect(task?.log.at(-1)?.text).toBe('Session ended before this returned.')
+    expect(task?.log.at(-1)?.note).toEqual({ kind: 'closed', reason: 'exited' })
   })
 })
 
@@ -1691,9 +1712,11 @@ describe('background commands in the task channel', () => {
 
     expect(state.background).toHaveLength(0)
     expect(tool(state, 'toolu-1')?.duration).toBe('30s')
-    expect(tool(state, 'toolu-1')?.detail.map((line) => line.text)).toContain(
-      'Background command was stopped after 30s.',
-    )
+    expect(tool(state, 'toolu-1')?.detail.map((line) => line.note)).toContainEqual({
+      kind: 'backgroundEnded',
+      outcome: 'stopped',
+      duration: '30s',
+    })
     expect(tool(state, 'toolu-1')?.isError).toBe(false)
   })
 
@@ -1713,8 +1736,8 @@ describe('background commands in the task channel', () => {
 
     const command = tool(state, 'toolu-1')
     expect(command?.isError).toBe(true)
-    expect(command?.detail.map((line) => line.text)).toEqual([
-      'Background command failed after 2.0s.',
+    expect(command?.detail.map((line) => line.note ?? line.text)).toEqual([
+      { kind: 'backgroundEnded', outcome: 'failed', duration: '2.0s' },
       'Background command "Start the dev server" failed with exit code 3',
     ])
   })
@@ -1727,9 +1750,12 @@ describe('background commands in the task channel', () => {
     state = reducePanel(state, { kind: 'processExited', exitCode: 1 }, 1_700_000_060_000)
 
     expect(state.background).toHaveLength(0)
-    expect(tool(state, 'toolu-1')?.detail.map((line) => line.text)).toContain(
-      'Ran 1m 00s in the background - no longer tracked.',
-    )
+    // Not 'exited': the command is very likely still running, there is simply nobody left to watch it.
+    expect(tool(state, 'toolu-1')?.detail.map((line) => line.note)).toContainEqual({
+      kind: 'closed',
+      reason: 'untracked',
+    })
+    expect(tool(state, 'toolu-1')?.duration).toBe('1m 00s')
   })
 })
 
@@ -1939,7 +1965,7 @@ describe('compacting the context', () => {
 
     expect(state.compacting).toBe(true)
     expect(compact?.pending).toBe(true)
-    expect(compact?.target).toBe('Compacting conversation…')
+    expect(compact?.outcome).toEqual({ state: 'running' })
   })
 
   it('lets a compact_boundary update that same card with real numbers rather than create a second one', () => {
@@ -1952,9 +1978,13 @@ describe('compacting the context', () => {
     const compactItems = state.items.filter((item) => item.kind === 'compact')
     expect(compactItems).toHaveLength(1)
     expect(compactItems[0]?.kind === 'compact' && compactItems[0].pending).toBe(false)
-    expect(compactItems[0]?.kind === 'compact' && compactItems[0].target).toBe(
-      'automatically compacted 168.0k of context into a 41.0k summary in 3.2s',
-    )
+    expect(compactItems[0]?.kind === 'compact' && compactItems[0].outcome).toEqual({
+      state: 'done',
+      manual: false,
+      before: 168000,
+      after: 41000,
+      took: '3.2s',
+    })
   })
 
   it('falls back to the previous wording without post_tokens/duration_ms', () => {
@@ -1962,7 +1992,7 @@ describe('compacting the context', () => {
     const compact = state.items.find((item): item is CompactItem => item.kind === 'compact')
 
     expect(compact?.pending).toBe(false)
-    expect(compact?.target).toBe('manually compacted 5.0k of context into a summary')
+    expect(compact?.outcome).toEqual({ state: 'done', manual: true, before: 5000 })
   })
 
   it('creates a finished card for a compact_boundary without a preceding ping too', () => {
@@ -1970,7 +2000,7 @@ describe('compacting the context', () => {
     const compact = state.items.find((item): item is CompactItem => item.kind === 'compact')
 
     expect(compact?.pending).toBe(false)
-    expect(compact?.target).toBe('automatically compacted 90.0k of context into a 30.0k summary')
+    expect(compact?.outcome).toEqual({ state: 'done', manual: false, before: 90000, after: 30000 })
   })
 
   it('lets the closing status extinguish the compacting flag without touching an already finished card', () => {
@@ -2301,7 +2331,7 @@ describe('the plan card', () => {
   })
 
   it('does not count a nested clarification as a separate step', () => {
-    expect(card()?.meta).toBe('· 2 steps')
+    expect(card()?.steps).toBe(2)
   })
 })
 
@@ -2483,7 +2513,7 @@ describe('the end of a past conversation replay', () => {
     const task = tasks(state)[0]
     expect(task?.pending).toBe(false)
     expect(task?.outcome).toBe('stopped')
-    expect(task?.log.at(-1)?.text).toBe('How this one ended is not part of the saved conversation.')
+    expect(task?.log.at(-1)?.note).toEqual({ kind: 'closed', reason: 'replay' })
     // The card's counter no longer ticks: without this it would run from the moment the tab was opened and
     // grow for as long as it stays open.
     expect(state.startedAt).toEqual({})
@@ -2498,10 +2528,7 @@ describe('the end of a past conversation replay', () => {
     expect(group?.pending).toBe(false)
     expect(tool?.pending).toBe(false)
     expect(tool?.isError).toBe(false)
-    expect(tool?.detail.at(-1)).toEqual({
-      text: 'The saved conversation keeps no result for this call.',
-      tone: 'dim',
-    })
+    expect(tool?.detail.at(-1)).toEqual({ text: '', note: { kind: 'closed', reason: 'replay' }, tone: 'dim' })
   })
 
   it('does not close a live turn started while the replay was playing along with it', () => {
@@ -2626,7 +2653,11 @@ describe('a task notification out of a transcript', () => {
 
     // Without the duration: the command ran in another process, and the counter in this tab starts when
     // the tab is opened - any figure here would be made up.
-    expect(firstTool(state)?.detail.at(-1)).toEqual({ text: 'Background command finished.', tone: 'dim' })
+    expect(firstTool(state)?.detail.at(-1)).toEqual({
+      text: '',
+      note: { kind: 'backgroundEnded', outcome: 'ok', duration: '' },
+      tone: 'dim',
+    })
     expect(firstTool(state)?.isError).toBe(false)
   })
 
@@ -2637,7 +2668,11 @@ describe('a task notification out of a transcript', () => {
     ])
 
     expect(firstTool(state)?.isError).toBe(true)
-    expect(firstTool(state)?.detail.map((line) => line.text)).toContain('Background command failed.')
+    expect(firstTool(state)?.detail.map((line) => line.note)).toContainEqual({
+      kind: 'backgroundEnded',
+      outcome: 'failed',
+      duration: '',
+    })
     expect(firstTool(state)?.detail.at(-1)?.text).toContain('exit code 1')
   })
 
@@ -2676,7 +2711,7 @@ describe('a task notification out of a transcript', () => {
       notificationEvent(notification(undefined, 'stopped', '3 background shell command task(s) have no completion record')),
     ])
 
-    expect(firstTool(state)?.detail.some((line) => line.text.startsWith('Background command'))).toBe(false)
+    expect(firstTool(state)?.detail.some((line) => line.note?.kind === 'backgroundEnded')).toBe(false)
     expect(state.items.filter((item) => item.kind === 'user')).toHaveLength(0)
   })
 
@@ -2689,7 +2724,7 @@ describe('a task notification out of a transcript', () => {
       notificationEvent(notification('toolu-1', 'completed', 'Background command "pnpm build" completed (exit code 0)')),
     ])
 
-    const ends = firstTool(state)?.detail.filter((line) => line.text.startsWith('Background command')) ?? []
+    const ends = firstTool(state)?.detail.filter((line) => line.note?.kind === 'backgroundEnded') ?? []
     expect(ends).toHaveLength(1)
   })
 })
@@ -2808,7 +2843,7 @@ describe('repeated requests to the API', () => {
     const state = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600) }, START)
 
     expect(cards(state)).toHaveLength(1)
-    expect(cards(state)[0]).toMatchObject({ label: 'API overloaded', attempt: 1, maxRetries: 10, pending: true })
+    expect(cards(state)[0]).toMatchObject({ reason: 'overloaded', attempt: 1, maxRetries: 10, pending: true })
     expect(cards(state)[0]?.retryAt).toBe(START + 600)
     expect(state.retry?.attempt).toBe(1)
   })
@@ -2823,15 +2858,16 @@ describe('repeated requests to the API', () => {
     expect(cards(state)[0]?.retryAt).toBe(START + 1_800 + 2_400)
   })
 
+  /** The four the terminal tells apart, kept apart here too - as facts, not as its English. */
   it('names a refusal the way the terminal names it', () => {
     const limited = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600, 429) }, START)
     const auth = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600, 401) }, START)
     // A dropped connection arrives with no response code at all - the terminal calls it by a general word too.
     const offline = reducePanel(initialPanelState, { kind: 'agent', event: retryEvent(1, 600, null) }, START)
 
-    expect(cards(limited)[0]?.label).toBe('Rate limited')
-    expect(cards(auth)[0]?.label).toBe('Authentication failed')
-    expect(cards(offline)[0]?.label).toBe('API error')
+    expect(cards(limited)[0]?.reason).toBe('rateLimited')
+    expect(cards(auth)[0]?.reason).toBe('auth')
+    expect(cards(offline)[0]?.reason).toBe('error')
   })
 
   it('leaves a drawn-out run in the feed as a trace when the request finally gets through', () => {

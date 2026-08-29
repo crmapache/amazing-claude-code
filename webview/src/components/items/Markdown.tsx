@@ -5,6 +5,7 @@ import type { Paragraph, TableAlign, TableData, TextPart } from '../../feed/type
 import { copyToClipboard } from '../../clipboard'
 import { CopyButton } from './CopyButton'
 import s from '../feed.module.css'
+import { useT } from '../../i18n'
 
 /**
  * Parsed markdown on screen - one and the same for the agent's answer and for a plan.
@@ -43,6 +44,8 @@ const ParagraphView = ({
   reveal: boolean
   onOpenLink: (url: string) => void
 }) => {
+  const t = useT()
+
   if (paragraph.codeBlock) {
     const code = paragraph.parts.map((part) => part.text).join('')
 
@@ -53,7 +56,7 @@ const ParagraphView = ({
         <Piece reveal={reveal} as="pre" className={s.codeBlock}>
           {code}
         </Piece>
-        <CopyButton text={code} className={s.codeCopy} title="Copy this block" />
+        <CopyButton text={code} className={s.codeCopy} title={t.feed.copyBlock} />
       </div>
     )
   }
@@ -218,6 +221,7 @@ const COPIED_FLASH_MS = 900
  * one piece, and replacing the clipboard halfway through would be dishonest.
  */
 const InlineCode = ({ text, reveal }: { text: string; reveal: boolean }) => {
+  const t = useT()
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
@@ -229,7 +233,7 @@ const InlineCode = ({ text, reveal }: { text: string; reveal: boolean }) => {
   return (
     <span
       className={copied ? `${s.code} ${s.codeCopied}` : s.code}
-      data-tooltip={copied ? 'Copied' : 'Click to copy'}
+      data-tooltip={copied ? t.feed.copy.copied : t.feed.copy.click}
       onClick={() => {
         if (window.getSelection()?.isCollapsed === false) return
         void copyToClipboard(text).then((ok) => {

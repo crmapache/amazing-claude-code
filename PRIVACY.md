@@ -1,8 +1,8 @@
 # Privacy
 
-_Last updated: 27 August 2026_
+_Last updated: 29 August 2026_
 
-Amazing Claude Code is a panel for Claude Code inside JetBrains IDEs. With two exceptions, both
+Amazing Claude Code is a panel for Claude Code inside JetBrains IDEs. With three exceptions, all
 described below, it sends nothing anywhere: the agent runs on your machine, the conversation stays on
 your machine, and the plugin has no analytics, no telemetry and no account of any kind.
 
@@ -12,6 +12,10 @@ happens when you do.
 
 The second is **feedback** - the form behind the speech bubble beside the heart. Nothing travels from
 it unless you write something and press Send; see "Feedback" at the end of this page.
+
+The third is **voice input** - dictation with a Deepgram key of your own. It is off until you turn it
+on and add a key, and it records only while you hold the hotkey or the microphone button is lit; see
+"Voice input" below.
 
 ## What travels, and where
 
@@ -136,6 +140,43 @@ the relay, which forwards it to the author's Telegram and keeps nothing itself. 
 message arrived, roughly how big it was and when - never what was in it. Once forwarded, the message
 lives in that Telegram chat for as long as the author keeps it.
 
+## Voice input
+
+Voice input is off when the plugin is installed. Turning it on needs a Deepgram key of your own -
+there is no service of ours in the middle, and no account with us to have one.
+
+**Your key** is kept in your operating system's keychain through the IDE's password safe, never in a
+settings file. The panel itself is never given it: the settings screen is shown the last four
+characters, which is enough to tell one key from another and no use to anyone reading them off your
+screen.
+
+**While a dictation runs**, the audio from your microphone is streamed to `api.deepgram.com` over an
+encrypted connection, and the words come back as text. That is the only thing that leaves your machine,
+and it happens only between the moment a dictation starts and the moment it ends - the microphone is
+opened when you start one and released when it finishes, so no other application is locked out of it in
+the meantime and nothing is listening while you are not dictating.
+
+**Nothing is recorded.** The audio is not written to disk, not kept in memory past the moment it is
+sent, and not logged; the words come back into the input field and are yours from then on. The plugin's
+own debug report never contains any of it - what a dictation writes there is that one happened, in
+which language, at what sample rate.
+
+What Deepgram does with the audio is between you and Deepgram: they are the processor here, under
+whatever terms your account with them says. The plugin sends the audio, the chosen language and nothing
+else - no file names, no project name, no part of your conversation.
+
+**Dictating from your phone** works the same way, with one difference: the phone records with its own
+microphone and streams to Deepgram itself, so the audio never crosses the relay. The key stays in the
+keychain on your machine; what the phone is given is a token that expires after a minute and can do
+nothing but transcribe - it cannot read the account, and it is worthless by the time a phone left
+somewhere is opened. Your IDE refuses to issue one at all unless voice input is switched on there and a
+key has been added. Everything else about voice input is unreachable from a phone: no message opens the
+microphone on your work machine.
+
+**The hotkeys** are read from the IDE's own event queue, and only while an IDE window has the keyboard.
+The plugin installs no system-wide hook and asks for no accessibility permission: a key pressed in
+another application is never seen by it.
+
 ## Your choices
 
 - Remote access is off by default; the plugin does nothing over the network until you turn it on.
@@ -144,6 +185,8 @@ lives in that Telegram chat for as long as the author keeps it.
 - You can revoke any paired device at any time, from the panel: menu → Remote access.
 - You can reset this IDE's identity entirely, which drops every pairing at once.
 - You can run your own relay.
+- Voice input is off by default, needs a key of your own, and records only while you are dictating.
+  Removing the key ("Forget this key") takes it out of the keychain.
 
 ## Contact
 

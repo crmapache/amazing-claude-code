@@ -17,10 +17,10 @@ import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.claude.SessionClient
 import io.github.crmapache.amazingclaudecode.claude.SessionLaunch
 import io.github.crmapache.amazingclaudecode.stats.StatsLedger
+import io.github.crmapache.amazingclaudecode.net.IdeHttp
 import java.net.http.HttpClient
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
-import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
@@ -266,29 +266,8 @@ internal class RemoteAgent : Disposable {
 
     fun state(): RelayLink.State = link?.state ?: RelayLink.State.IDLE
 
-    /**
-     * The IDE's own proxy and certificates.
-     *
-     * Corporate networks are the ordinary case rather than the exception, and both halves matter: the
-     * proxy because there is no way out without it, the certificate store because a network that
-     * inspects TLS presents its own certificate and the JDK's default trust store has never heard of
-     * it.
-     */
-    private fun httpClient(): HttpClient {
-        val builder = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15))
-
-        runCatching {
-            val provider = com.intellij.util.net.JdkProxyProvider.getInstance()
-            builder.proxy(provider.proxySelector)
-            builder.authenticator(provider.authenticator)
-        }.onFailure { thisLogger().info("The IDE's proxy settings were not available: ${it.message}") }
-
-        runCatching {
-            builder.sslContext(com.intellij.util.net.ssl.CertificateManager.getInstance().sslContext)
-        }.onFailure { thisLogger().info("The IDE's certificate store was not available: ${it.message}") }
-
-        return builder.build()
-    }
+    /** The way out this machine has - the proxy and the certificates the IDE itself uses (see IdeHttp). */
+    private fun httpClient(): HttpClient = IdeHttp.client()
 
     // --- Frames ---------------------------------------------------------------------
 
@@ -1218,6 +1197,22 @@ internal class RemoteAgent : Disposable {
 
             for (device in state.devices()) queue(device.id, messages)
 
+            link?.flush(::resyncFrames)
+        }
+
+        /**
+         * To the one device that asked. Every other client is one device and takes the default.
+         *
+         * [asker] is the address a command arrived from (see the call to SessionCommands.handle), so an
+         * answer that belongs to whoever asked has somewhere narrower to go than "everybody paired with
+         * this project" - which for a minted Deepgram token is the difference between answering a
+         * question and interrupting somebody else's sentence.
+         */
+        override fun answerOne(asker: String, messages: List<String>) {
+            if (link == null) return
+            if (state.devices().none { it.id == asker }) return
+
+            queue(asker, messages)
             link?.flush(::resyncFrames)
         }
 

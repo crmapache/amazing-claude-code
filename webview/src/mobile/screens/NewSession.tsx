@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { EFFORT_OPTIONS, MODE_OPTIONS, modelOptions } from '../../catalog'
+import { effortOptions, modeOptions, modelOptions } from '../../catalog'
 import type { MenuOption } from '../../components/Menu'
 import type { ModelInfo } from '../../protocol'
 import type { SessionLaunch } from '../link'
 import type { ProjectEntry } from './Sessions'
 import { Back } from './Back'
 import m from '../mobile.module.css'
+import { useT } from '../../i18n'
+import type { Dict } from '../../i18n/en'
 
 interface NewSessionProps {
   project: ProjectEntry
@@ -28,11 +30,11 @@ interface NewSessionProps {
  * configured defaults, and a phone quietly sending "manual" would be overriding them while claiming to
  * be doing nothing.
  */
-const AS_CONFIGURED: MenuOption = {
+const asConfiguredOption = (t: Dict): MenuOption => ({
   id: '',
-  label: 'As configured',
-  sub: 'However Claude Code is set up on that machine.',
-}
+  label: t.mobile.newSession.asConfigured,
+  sub: t.mobile.newSession.asConfiguredSub,
+})
 
 /**
  * Starting a conversation from a phone.
@@ -46,6 +48,8 @@ const AS_CONFIGURED: MenuOption = {
  * (see SessionLaunch), so a tab started here decides nothing about the next one opened at the keyboard.
  */
 export const NewSession = ({ project, models, prefs, busy, error, onStart, onBack }: NewSessionProps) => {
+  const t = useT()
+  const asConfigured = asConfiguredOption(t)
   const [launch, setLaunch] = useState<SessionLaunch>(prefs)
 
   // One list at a time. Three lists open at once is six screens of scrolling to reach a button, and the
@@ -53,27 +57,27 @@ export const NewSession = ({ project, models, prefs, busy, error, onStart, onBac
   const [open, setOpen] = useState<keyof SessionLaunch | null>(null)
 
   const choices: Array<{ field: keyof SessionLaunch; title: string; options: MenuOption[] }> = [
-    { field: 'model', title: 'Model', options: [AS_CONFIGURED, ...modelOptions(models)] },
-    { field: 'effort', title: 'Effort', options: [AS_CONFIGURED, ...EFFORT_OPTIONS] },
-    { field: 'mode', title: 'Mode', options: [AS_CONFIGURED, ...MODE_OPTIONS] },
+    { field: 'model', title: t.mobile.newSession.model, options: [asConfigured, ...modelOptions(t, models)] },
+    { field: 'effort', title: t.mobile.newSession.effort, options: [asConfigured, ...effortOptions(t)] },
+    { field: 'mode', title: t.mobile.newSession.mode, options: [asConfigured, ...modeOptions(t)] },
   ]
 
   return (
     <>
       <header className={m.header}>
         <Back onClick={onBack} />
-        <span className={m.headerTitle}>New conversation</span>
+        <span className={m.headerTitle}>{t.mobile.newSession.title}</span>
         <span className={m.headerMeta}>{project.name}</span>
       </header>
 
       <div className={m.list}>
         {project.closed && (
-          <p className={m.reach}>This project is closed - the IDE will open it before starting.</p>
+          <p className={m.reach}>{t.mobile.newSession.closedProject}</p>
         )}
 
         <div className={m.choices}>
           {choices.map(({ field, title, options }, index) => {
-            const chosen = options.find((option) => option.id === launch[field]) ?? AS_CONFIGURED
+            const chosen = options.find((option) => option.id === launch[field]) ?? asConfigured
             const isOpen = open === field
 
             return (
@@ -123,7 +127,7 @@ export const NewSession = ({ project, models, prefs, busy, error, onStart, onBac
 
       <footer className={m.decisionFooter}>
         <button type="button" className={m.buttonPrimary} disabled={busy} onClick={() => onStart(launch)}>
-          {busy ? 'Opening the project…' : 'Start'}
+          {busy ? t.mobile.newSession.opening : t.mobile.newSession.start}
         </button>
       </footer>
     </>

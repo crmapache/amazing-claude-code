@@ -28,6 +28,7 @@ import io.github.crmapache.amazingclaudecode.editor.SelectionReference
 import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import io.github.crmapache.amazingclaudecode.feedback.FeedbackDesk
 import io.github.crmapache.amazingclaudecode.sound.AlertSounds
+import io.github.crmapache.amazingclaudecode.voice.VoiceDesk
 import io.github.crmapache.amazingclaudecode.webview.FilePicker
 import io.github.crmapache.amazingclaudecode.webview.IdeTypography
 import io.github.crmapache.amazingclaudecode.webview.ImageDownloads
@@ -70,6 +71,17 @@ internal class ClaudePanel(
     val component: JComponent
 
     /**
+     * The language setting changed somewhere on this machine - see ClaudePanels.everyPanel.
+     *
+     * Everything that carries it to a screen goes through the hub, and the hub belongs to one project:
+     * the window that made the change is not the only one that has to hear about it.
+     */
+    fun localeChanged() = hub.catalog.sendLocale()
+
+    /** The same, for the voice input settings - they are the machine's too (see VoiceDesk). */
+    fun voiceSettingsChanged() = voice.sendConfig()
+
+    /**
      * Whether the panel is still alive. The platform answers that same question only in a deprecated
      * way, while a checked disposable answers it itself: it dies with its parent and from that moment
      * on honestly says "I am gone".
@@ -104,6 +116,13 @@ internal class ClaudePanel(
      */
     private val feedback = FeedbackDesk(project, hub) { message -> webview?.send(message) }
 
+    /**
+     * Voice input's side of the house: the microphone, the Deepgram key and the hotkeys (see VoiceDesk).
+     * It answers through this window for the same reason the feedback screen does - what it does belongs
+     * to no conversation, and this is the one door a paired phone cannot reach.
+     */
+    private val voice = VoiceDesk(project) { message -> webview?.send(message) }
+
     /** When something was last dropped into the panel with the mouse - see [attachDropped]. */
     @Volatile
     private var lastDropAt = 0L
@@ -121,6 +140,8 @@ internal class ClaudePanel(
 
         hub.register(client)
         ClaudePanels.getInstance(project).register(this, parentDisposable)
+        // The hotkeys need a panel to put a dictation into, and this is the moment one exists.
+        voice.opened(parentDisposable)
         Disposer.register(parentDisposable) {
             hub.detach(client.id)
             hub.auth.stopPolling()
@@ -188,6 +209,15 @@ internal class ClaudePanel(
 
             "setComposerLayout" -> ClaudePreferences.composerLayout = field("layout")
 
+            // An empty value is a value here: it means "follow the IDE", which is what the picker's own
+            // first entry sets (see the language screen in SideMenu). Told to everyone afterwards rather
+            // than only to whoever asked: the setting is machine-wide, and a second window - or a phone -
+            // left speaking the old language would be showing a setting that is no longer true.
+            "setLanguage" -> {
+                ClaudePreferences.language = field("language")
+                ClaudePanels.everyPanel { it.localeChanged() }
+            }
+
             // The panel calls the person. It decides that itself (only there is it known what exactly
             // the turn is busy with), and the sound happens here - see AlertSounds.
             "sound" -> playAlert(
@@ -246,6 +276,35 @@ internal class ClaudePanel(
             "feedbackAttach" -> feedback.attach()
 
             "feedbackDetach" -> feedback.detach(field("id"))
+
+            /*
+             * Voice input. Handled here rather than by the conversation's commands for the same reason
+             * the feedback screen is (see VoiceDesk): these open a microphone on this machine and spend
+             * a key kept in its keychain, and a network client never reaches this handler at all.
+             */
+            "voiceStart" -> voice.start(field("mode"))
+
+            "voiceStop" -> voice.stop()
+
+            "voiceCancel" -> voice.cancel()
+
+            "voiceConfig" -> voice.sendConfig()
+
+            "voiceEnabled" -> voice.setEnabled(payload["enabled"]?.jsonPrimitive?.booleanOrNull == true)
+
+            "voiceLanguage" -> voice.setLanguage(field("language"))
+
+            "voiceDevice" -> voice.setDevice(field("device"))
+
+            "voiceKey" -> voice.setKey(field("key"))
+
+            "voiceBalance" -> voice.refreshBalance()
+
+            "voiceCaptureHotkey" -> voice.captureHotkey(field("slot"))
+
+            "voiceStopCapture" -> voice.stopCapturing()
+
+            "voiceClearHotkey" -> voice.clearHotkey(field("slot"))
 
             "feedbackSend" -> feedback.send(
                 kind = field("kind"),

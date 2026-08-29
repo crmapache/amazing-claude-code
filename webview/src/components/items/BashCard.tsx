@@ -1,5 +1,6 @@
 import type { BashItem } from '../../feed/types'
 import s from '../feed.module.css'
+import { useT } from '../../i18n'
 
 /**
  * A command the person ran themselves through "!", and its output.
@@ -9,6 +10,7 @@ import s from '../feed.module.css'
  * Hence the "!" at the start, the same one it was typed with.
  */
 export const BashCard = ({ item }: { item: BashItem }) => {
+  const t = useT()
   const failed = !item.pending && item.exitCode !== undefined && item.exitCode !== 0
 
   return (
@@ -21,7 +23,7 @@ export const BashCard = ({ item }: { item: BashItem }) => {
           // Together with toolMeta: the pulsing "running right now" caption is set by a compound rule
           // (.toolMeta.running), and on its own the running class means nothing - the same pair as with
           // tool calls.
-          <span className={`${s.toolMeta} ${s.running}`}>running</span>
+          <span className={`${s.toolMeta} ${s.running}`}>{t.feed.bash.running}</span>
         ) : failed ? (
           <span className={s.bashFailed}>exit {item.exitCode}</span>
         ) : null}
@@ -31,7 +33,7 @@ export const BashCard = ({ item }: { item: BashItem }) => {
           nothing" and "the output went missing" are different things. */}
       {item.pending ? null : (
         <pre className={`${s.bashOutput} ${failed ? s.bashOutputFailed : ''}`}>
-          {item.output.trimEnd() || 'no output'}
+          {item.output.trimEnd() || t.feed.bash.noOutput}
         </pre>
       )}
     </div>

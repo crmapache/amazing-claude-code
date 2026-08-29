@@ -256,3 +256,16 @@
   min-width: 40px;
   text-align: center;
 }
+
+/* The language every scenario is played in - see the note beside it in ScenarioToolbar. */
+.languageSelect {
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 5px 6px;
+  border: 1px solid var(--acc-line);
+  border-radius: 6px;
+  background: var(--acc-bg-control);
+  color: var(--acc-fg);
+  font: inherit;
+  font-size: 11px;
+}

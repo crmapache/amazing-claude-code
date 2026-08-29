@@ -4,6 +4,7 @@ import type { CardState } from '../../hooks/useCardState'
 import s from '../feed.module.css'
 import { CHIP_CLASS, ToolCard } from './ToolCard'
 import { Caret } from './Caret'
+import { useT } from '../../i18n'
 
 interface ToolGroupCardProps {
   item: ToolGroupItem
@@ -21,6 +22,7 @@ interface ToolGroupCardProps {
 const COLLAPSE_DELAY_MS = 300
 
 export const ToolGroupCard = ({ item, cards, awaitingPermissionId }: ToolGroupCardProps) => {
+  const t = useT()
   const [collapsed, setCollapsed] = useState(!item.pending)
 
   useEffect(() => {
@@ -61,16 +63,16 @@ export const ToolGroupCard = ({ item, cards, awaitingPermissionId }: ToolGroupCa
             <span className={s.toolTarget}>{current.target}</span>
             {item.pending ? (
               <span className={`${s.toolMeta} ${currentAwaited ? s.waiting : s.running}`}>
-                {currentAwaited ? '· waiting for you' : '· running'}
+                {currentAwaited ? t.feed.tool.waitingForYou : t.feed.tool.running}
               </span>
             ) : null}
           </>
         ) : (
-          <span className={s.toolTarget}>{item.tools.length} tools</span>
+          <span className={s.toolTarget}>{t.feed.tool.count(item.tools.length)}</span>
         )}
 
         <div className={s.spacer} />
-        {!collapsed ? <span className={s.toolMeta}>{item.tools.length} tools</span> : null}
+        {!collapsed ? <span className={s.toolMeta}>{t.feed.tool.count(item.tools.length)}</span> : null}
         <span className={s.toolDur}>{item.duration}</span>
       </button>
 
