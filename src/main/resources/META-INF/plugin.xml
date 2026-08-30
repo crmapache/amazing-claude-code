@@ -11,6 +11,16 @@
      is not a loss but an honest way to update. -->
 <idea-plugin require-restart="true">
     <depends>com.intellij.modules.platform</depends>
+    <!-- The embedded browser, and required on purpose - without it there is no panel at all. Since
+         2026.2 it is a bundled plugin, and its classes reach us only through this line.
+         Android Studio is the reason it must stay required rather than become optional: it ships the
+         Java side of the browser and no native side whatsoever, so the panel there came up as its own
+         "this IDE has no browser" notice with nothing a person could do about it. JetBrains publish the
+         browser as an ordinary marketplace plugin, natives included, and a required dependency is what
+         turns that dead panel into the IDE offering to install it alongside us. Optional would install
+         cleanly and then do nothing, which is the worse of the two.
+         Whether the browser actually came up is still asked separately (see WebviewHost.isSupported) -
+         a dependency that resolved is not a browser that started. -->
     <depends>com.intellij.modules.jcef</depends>
     <!-- Signing in to Claude Code opens a browser and waits for a code to come back, that is, it is a
          dialogue with a process. We hold it in the built-in terminal rather than invent a sign-in

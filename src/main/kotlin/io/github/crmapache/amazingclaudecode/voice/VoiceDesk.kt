@@ -40,7 +40,9 @@ internal class VoiceDesk(
      * One thread rather than the shared pool, because two settings changed quickly would otherwise race
      * and the screen would keep whichever message happened to arrive last.
      */
-    private val configs = AppExecutorUtil.createBoundedApplicationPoolExecutor("acc-voice-config", 1)
+    // Capitalised because the platform insists: a lower-case pool name is logged as an
+    // IllegalArgumentException with a stack trace on every panel that opens.
+    private val configs = AppExecutorUtil.createBoundedApplicationPoolExecutor("ACC voice config", 1)
 
     /** The panel is up: the hotkeys now have somewhere to put a dictation. */
     fun opened(parent: Disposable) {

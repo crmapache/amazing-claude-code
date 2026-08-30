@@ -1,4 +1,5 @@
 import org.jetbrains.changelog.Changelog
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask
 import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
@@ -132,21 +133,50 @@ intellijPlatform {
     // learning about it through a rejection.
     pluginVerification {
         ides {
-            recommended()
+            // -PverifyIde=/path/to/IDE.app checks the archive against one IDE already lying on this
+            // machine and against nothing else. That is for working on compatibility itself: an installed
+            // copy answers in seconds, where the set below is gigabytes of downloads.
+            val installed = providers.gradleProperty("verifyIde").orNull
+
+            if (installed != null) {
+                local(file(installed))
+            } else {
+                recommended()
+                // Android Studio is named on its own because the recommended set never contains it:
+                // Google builds it from its own branch and publishes it somewhere the verifier does not
+                // look. It is also the reason the lower bound is 261 at all, so leaving it unchecked would
+                // mean finding out from a review that a release stopped fitting the IDE the bound was
+                // lowered for. The version is the oldest stable Quail: what breaks, breaks against the
+                // earliest build we promise to work in.
+                create(IntelliJPlatformType.AndroidStudio, "2026.1.1.8")
+            }
         }
 
         // What counts as a failed check. The list is explicit because it differs from the default in
         // both directions.
         //
-        // Stricter: experimental usages fail the task too. The plugin has not a single experimental
-        // usage of its own, and keeping that count at zero is cheaper than one day sorting through an
-        // accumulated list in a version's card.
+        // Softer, and newly so: experimental usages do not fail the task either. There is exactly one -
+        // taking the write-intent lock before the editors are written out (UnsavedEdits) - and it is
+        // experimental only in 2026.1, where the whole write-intent mechanism is marked that way and
+        // offers nothing settled to use instead. Dropping the call is not an option: without that lock
+        // saving the documents throws, and the point of that code is that the agent reads what is on the
+        // screen rather than what was last written to disk.
         //
         // Softer: deprecated usages do not fail the task. Each of them is deliberate and none has a
-        // supported replacement: opening a terminal for the sign-in (ClaudeLogin), the resource handler's
-        // previous pair of methods, without which the panel does not load at all
-        // (WebviewResources.ResourceHandler), and the list of recent projects (RemoteAgent) - the one
-        // that is not deprecated lives in a class closed to plugins, which would fail this very task.
+        // supported replacement: opening a terminal for the sign-in (ClaudeLogin), rereading files after
+        // the agent's edits (DiskRefresh), catching the dictation hotkey while the keyboard is the IDE's
+        // (VoiceHotkeys), and the list of recent projects (RemoteAgent) - the one that is not deprecated
+        // lives in a class closed to plugins, which would fail this very task.
+        //
+        // Softer: a missing dependency does not fail the task. Exactly one comes up missing and it is
+        // not missing at all - the embedded browser, which below 2026.2 is a marketplace plugin rather
+        // than part of the IDE (see plugin.xml). The verifier looks for it among the target IDE's bundled
+        // plugins and gives up; the IDE, asked the same question, is offered it by the marketplace and
+        // installs it with us - checked against the resolver Android Studio itself uses. Keeping this
+        // level would mean the task failing against every 2026.1 IDE forever, over the very arrangement
+        // that lets the plugin run there. What it used to guard is still guarded: a dependency that is
+        // genuinely absent takes its classes with it, and unresolved classes are compatibility problems,
+        // which do fail below.
         //
         // There is not a single usage of what is closed to plugins left - and none should appear: the
         // marketplace does not let a version through moderation because of those. So they fail the task
@@ -154,11 +184,9 @@ intellijPlatform {
         failureLevel = listOf(
             VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
             VerifyPluginTask.FailureLevel.INTERNAL_API_USAGES,
-            VerifyPluginTask.FailureLevel.EXPERIMENTAL_API_USAGES,
             VerifyPluginTask.FailureLevel.SCHEDULED_FOR_REMOVAL_API_USAGES,
             VerifyPluginTask.FailureLevel.OVERRIDE_ONLY_API_USAGES,
             VerifyPluginTask.FailureLevel.NON_EXTENDABLE_API_USAGES,
-            VerifyPluginTask.FailureLevel.MISSING_DEPENDENCIES,
             VerifyPluginTask.FailureLevel.INVALID_PLUGIN,
         )
     }
@@ -238,6 +266,29 @@ tasks.processResources {
     dependsOn(buildWebview)
     from(webviewDist) {
         into("webview")
+    }
+}
+
+// Starting an IDE that is already installed on this machine, with this build of the plugin in it:
+// -PideHome="/Applications/Android Studio.app" ./gradlew runInstalledIde -PopenProject=sandbox-project
+//
+// The ordinary sandbox starts what the build is made against, and that is exactly the IDE where nothing
+// can go wrong. The lower bound exists for Android Studio, which is not on the JetBrains repositories at
+// all and lags the base platform by a version - the only copy to try the plugin in is the one a person
+// installed. Its own settings are not touched: the run gets a sandbox of its own, like any other.
+providers.gradleProperty("ideHome").orNull?.let { home ->
+    intellijPlatformTesting.runIde.register("runInstalledIde") {
+        localPath = file(home)
+
+        // -PidePlugins=/path/one,/path/two puts unpacked plugins into that run beside ours. Needed for
+        // the same reason as the task itself: the embedded browser is a plugin in the IDEs below 2026.2,
+        // and there it has to be installed rather than assumed. Dropping it into the sandbox by hand does
+        // not work - preparing the sandbox wipes what it did not put there.
+        providers.gradleProperty("idePlugins").orNull?.let { paths ->
+            plugins {
+                paths.split(',').filter { it.isNotBlank() }.forEach { localPlugin(file(it.trim())) }
+            }
+        }
     }
 }
 

@@ -44,16 +44,25 @@
   width: min(350px, 100%);
   background: var(--acc-bg-panel);
   border-left: 1px solid var(--acc-line-strong);
-  box-shadow: -18px 0 44px rgb(var(--acc-ch-shade) / 62%);
-  transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition:
+    transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
+/* The shadow belongs to the open state rather than to the sheet, and that is not tidiness. Shut, the
+   sheet is parked just past the panel's right edge - but a shadow travels with the thing that casts it,
+   and this one reaches 18px back with 44 more of blur, so it lay across the right edge of the feed all
+   day long, in every panel, including the ones whose menu was never opened. It read as an inner shadow
+   down the side of the conversation and there was nothing on screen it could have been cast by. It fades
+   on the same curve as the slide, so opening still looks like a sheet coming over the panel. */
 .sheetOpen {
   transform: translateX(0);
+  box-shadow: -18px 0 44px rgb(var(--acc-ch-shade) / 62%);
 }
 
 .sheetShut {
   transform: translateX(100%);
+  box-shadow: none;
 }
 
 /* --- The head: the way back, where one is, and the way out ------------------ */
