@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-08-30
+
+- Fixed: text pasted into the input field could not be read back afterwards. In the message it collapsed into a chip showing seven words of it, and hovering over that chip unfolded the whole paste into a strip twenty characters wide running down the window, cut off wherever the window ended and impossible to scroll. A paste now opens in the conversation itself: press it and the text is there, monospaced and as you pasted it, scrolling inside its own block with a button to copy the whole of it. Very long ones are drawn down to a few hundred lines, and the panel says how many of how many you are looking at - copying still takes all of it. The hover hint went back to being a hint: the first lines of the text, and nothing beyond them. This works on the phone too, where there is no hovering at all and a paste could not be seen by any means.
+- Fixed: opening anything in the conversation threw the feed to the end. A group of tool calls, a thought, a paste - unfolding one made the feed taller, and while it was following the newest message that growth dragged it down: the card you had just opened left the screen upwards and the end of the conversation appeared instead. What you open now stays where you opened it, and the text unfolds downwards from there; the arrow in the corner takes you back to the newest message when you want it.
+
 ## [0.9.0] - 2026-08-29
 
 - Added: **voice input** - hold a key and talk, and the words land in the input field as you say them. It runs on a Deepgram key of your own: sign up, paste the key into Settings → Voice input, and the screen shows how much of the $200 they hand out at sign-up is still there. There is no service of ours in the middle - the audio goes from your machine to Deepgram and nowhere else, nothing is recorded, and the microphone is opened when a dictation starts and released the moment it ends. Two hotkeys, each of which can be a key or a side button of the mouse: one that records while you hold it, and one that starts on a press and stops on the next, for a longer thought with your hands free. A single modifier is the binding worth having - hold the right Option and nothing in the IDE competes for it. The hotkeys work anywhere the IDE has the keyboard, the editor included, so a thought does not need the panel focused first; there is a microphone button beside the slash for when the mouse is closer. Words appear in grey beside the caret as they are being recognised and settle into the draft as phrases, so a long sentence is not a wait staring at a spinner. Sixty-odd languages to listen in, your microphone if the system's default is the wrong one, and Escape throws a dictation away without putting anything in the field. It works from your phone too, over remote access: hold the microphone button there and talk, or tap it once to leave it on. The phone records with its own microphone and talks to Deepgram directly - the audio never goes through the relay - and it is never given your key: the IDE hands it a token that expires after a minute and can do nothing but transcribe.
@@ -435,7 +440,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.9.0...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.9.1...HEAD
+[0.9.1]: https://github.com/crmapache/amazing-claude-code/compare/0.9.0...0.9.1
 [0.9.0]: https://github.com/crmapache/amazing-claude-code/compare/0.8.5...0.9.0
 [0.8.5]: https://github.com/crmapache/amazing-claude-code/compare/0.8.4...0.8.5
 [0.8.4]: https://github.com/crmapache/amazing-claude-code/compare/0.8.3...0.8.4
