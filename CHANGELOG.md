@@ -9,6 +9,10 @@ commits.
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-08-30
+
+- Added: when Claude runs a workflow - one call with a fleet of agents behind it, the way ultracode does - you can now see the fleet. The chip in the header counts it and fills as the agents finish, and opening it shows them all at once: the phases in order, and under each the agents with a dot for what they are doing, how long each took, what it cost and how many tools it called. Which are still queued for a free slot, which was retried, which was skipped by hand, which came back from the journal on a resumed run, and which failed and why - all of it is there. Until now none of this reached the panel at all: those agents are not subagents, their events never arrive in the stream, and a workflow looked like a single tool call that went quiet for ten minutes with nine agents working behind it. The one line the panel did show repeated the name of whichever agent moved last, over and over.
+
 ## [0.9.1] - 2026-08-30
 
 - Fixed: text pasted into the input field could not be read back afterwards. In the message it collapsed into a chip showing seven words of it, and hovering over that chip unfolded the whole paste into a strip twenty characters wide running down the window, cut off wherever the window ended and impossible to scroll. A paste now opens in the conversation itself: press it and the text is there, monospaced and as you pasted it, scrolling inside its own block with a button to copy the whole of it. Very long ones are drawn down to a few hundred lines, and the panel says how many of how many you are looking at - copying still takes all of it. The hover hint went back to being a hint: the first lines of the text, and nothing beyond them. This works on the phone too, where there is no hovering at all and a paste could not be seen by any means.
@@ -440,7 +444,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.9.1...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.9.2...HEAD
+[0.9.2]: https://github.com/crmapache/amazing-claude-code/compare/0.9.1...0.9.2
 [0.9.1]: https://github.com/crmapache/amazing-claude-code/compare/0.9.0...0.9.1
 [0.9.0]: https://github.com/crmapache/amazing-claude-code/compare/0.8.5...0.9.0
 [0.8.5]: https://github.com/crmapache/amazing-claude-code/compare/0.8.4...0.8.5
