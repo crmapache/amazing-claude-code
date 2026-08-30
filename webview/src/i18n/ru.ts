@@ -383,6 +383,24 @@ export const ru: Dict = {
       },
     },
 
+    workflow: {
+      agents: (n) => {
+        const rest = n % 100
+        const last = n % 10
+        if (rest >= 11 && rest <= 14) return `${n} агентов`
+        if (last === 1) return `${n} агент`
+        if (last >= 2 && last <= 4) return `${n} агента`
+        return `${n} агентов`
+      },
+      running: (n) => `${n} в работе`,
+      done: (n) => `${n} готово`,
+      failed: (n) => `${n} упало`,
+      queued: 'в очереди',
+      skipped: 'пропущен',
+      attempt: (n) => `попытка ${n}`,
+      cached: 'из журнала',
+    },
+
     tool: {
       running: '· идёт',
       waitingForYou: '· ждёт вас',

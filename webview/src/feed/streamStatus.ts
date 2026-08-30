@@ -152,7 +152,9 @@ export const buildAgentTabs = (
     .filter((item): item is TaskItem => item.kind === 'task' && !hiddenTaskIds.has(item.id))
     .map((task) => ({
       id: task.id,
-      label: `agent:${task.target}`,
+      // A workflow's chip counts its fleet instead: "agent:agent" said nothing, and how many agents are
+      // running at once is the one thing worth having on a chip that small.
+      label: task.workflow ? `workflow:${task.workflow.total}` : `agent:${task.target}`,
       meta: task.meta,
       status: statusOf(task, panel.items, answeredAsks),
       percent: task.percent,

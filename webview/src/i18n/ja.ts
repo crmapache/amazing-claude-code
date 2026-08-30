@@ -353,6 +353,17 @@ export const ja: Dict = {
 
     think: { chip: '思考', thoughts: (n) => `${n} 件の考え` },
 
+    workflow: {
+      agents: (n) => `エージェント ${n} 体`,
+      running: (n) => `${n} 実行中`,
+      done: (n) => `${n} 完了`,
+      failed: (n) => `${n} 失敗`,
+      queued: '待機中',
+      skipped: 'スキップ',
+      attempt: (n) => `${n} 回目`,
+      cached: 'ジャーナルから',
+    },
+
     tool: {
       running: '· 実行中',
       waitingForYou: '· あなた待ち',

@@ -14,6 +14,7 @@ import {
   wait,
 } from '../events'
 import type { Scenario } from '../types'
+import type { WorkflowProgress } from '../../protocol'
 
 /** What `/code-review` answers with in streaming mode - a line of preamble and a fenced json block. */
 const REVIEW_REPORT = "I've completed the review. Here are the findings.\n\n```json\n[\n  {\n    \"file\": \"lib/providers/google-ads/sync/entity-daily-metrics.ts\",\n    \"line\": 66,\n    \"category\": \"correctness\",\n    \"verdict\": \"CONFIRMED\",\n    \"short_summary\": \"`metrics.phone_calls` is not selectable on `customer`\",\n    \"summary\": \"`metrics.phone_calls` is not selectable on the `customer` report, so every account-level request fails and no account-level action can be measured.\",\n    \"failure_scenario\": \"The SDK's field metadata lists `metrics.phone_calls` under `CampaignMetric` and `AdGroupMetric` but not under `CustomerMetric`. The account report therefore asks Google for a field it does not have, the query is rejected, every container lands in `unread`, and the only symptom is one line in the console.\"\n  },\n  {\n    \"file\": \"lib/analysis/action-impact/metric.ts\",\n    \"line\": 84,\n    \"category\": \"correctness\",\n    \"verdict\": \"PLAUSIBLE\",\n    \"summary\": \"An account that never populates `metrics.phone_calls` reads as a 0% change rather than as unmeasurable.\",\n    \"failure_scenario\": \"An advertiser without call reporting gets 0 on every day both before and after the change. Both bands collapse to zero, the comparison calls them touching, and the journal states \\u201cwe looked and nothing moved\\u201d about a phone number whose effect was never observable.\"\n  },\n  {\n    \"file\": \"supabase/migrations/20260825230000_call_rate_metric.sql\",\n    \"line\": 29,\n    \"category\": \"correctness\",\n    \"summary\": \"The migration drops the constraint by a name the declarative schema does not give it.\",\n    \"failure_scenario\": \"A database built from the declarative file carries the auto-generated name, so `drop constraint` without `if exists` aborts the whole run.\"\n  },\n  {\n    \"file\": \"lib/analysis/change-clustering/dispositions.ts\",\n    \"line\": 201,\n    \"category\": \"simplification\",\n    \"outcome\": \"fixed\",\n    \"summary\": \"The helper meant to end the copies of this expression left the third copy in place.\",\n    \"failure_scenario\": \"`index.ts:162` still reads the role out of the link name itself, character for character. Any change to how a role is read applies to two of the three call sites.\"\n  }\n]\n```"
@@ -49,6 +50,24 @@ const HUGE_LOG = Array.from(
   (_, at) =>
     `2026-08-29T15:0${at % 10}:12.418Z  worker#${(at % 8) + 1}  GET /api/checkout/summary 200 in ${18 + (at % 40)}ms  cache=${at % 3 === 0 ? 'miss' : 'hit'}`,
 ).join('\n')
+
+/**
+ * One agent's line in a workflow's report. A helper because the CLI resends the whole fleet on every
+ * change - the checkpoints below differ from one another by a field or two in a list of nine.
+ */
+const wfAgent = (
+  index: number,
+  label: string,
+  over: Partial<Extract<WorkflowProgress, { type: 'workflow_agent' }>> = {},
+): WorkflowProgress => ({
+  type: 'workflow_agent',
+  index,
+  label,
+  phaseIndex: 1,
+  model: 'claude-opus-5',
+  state: 'start',
+  ...over,
+})
 
 export const scenariosCards: Scenario[] = [
   /**
@@ -1138,6 +1157,98 @@ export const scenariosCards: Scenario[] = [
         command: 'npm test',
         mode: 'default',
       }),
+    ]),
+  ]),
+
+  /**
+   * A Workflow call - one task with a fleet of agents behind it.
+   *
+   * Those agents reach the panel by no other route: not one of their events carries the mark of a
+   * subagent, and their conversations are written straight to disk (checked against CLI 2.1.247 by
+   * recording a real run). All the panel is given is the report below, which the CLI resends whole on
+   * every change - so the checkpoints here are snapshots of it, exactly as they arrive.
+   */
+  scenario('workflow', 'A workflow: a fleet of agents at once', 'cards', [
+    checkpoint('The agent starts a workflow - one call, nine agents behind it', [
+      toolUse('Workflow', { description: 'Review the checkout across four dimensions' }, 'c14-wf'),
+      agent({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'c14-wf-id',
+        tool_use_id: 'c14-wf',
+        description: 'Review the checkout across four dimensions',
+        task_type: 'local_workflow',
+      }),
+      wait(700),
+    ]),
+    checkpoint('The first phase: four review agents, two of them still queued', [
+      agent({
+        type: 'system',
+        subtype: 'task_progress',
+        task_id: 'c14-wf-id',
+        description: 'Review: bugs',
+        workflow_progress: [
+          { type: 'workflow_phase', index: 1, title: 'Review' },
+          wfAgent(1, 'review:bugs', { state: 'start', startedAt: Date.now() - 6200 }),
+          wfAgent(2, 'review:perf', { state: 'start', startedAt: Date.now() - 5100 }),
+          wfAgent(3, 'review:security', {}),
+          wfAgent(4, 'review:tests', {}),
+        ],
+      }),
+      wait(1500),
+    ]),
+    checkpoint('Two are done, one failed, and the script itself reports the count', [
+      agent({
+        type: 'system',
+        subtype: 'task_progress',
+        task_id: 'c14-wf-id',
+        description: 'Review: security',
+        workflow_progress: [
+          { type: 'workflow_phase', index: 1, title: 'Review' },
+          wfAgent(1, 'review:bugs', { state: 'done', durationMs: 18400, tokens: 42100, toolCalls: 11 }),
+          wfAgent(2, 'review:perf', { state: 'done', durationMs: 12900, tokens: 26300, toolCalls: 7 }),
+          wfAgent(3, 'review:security', { state: 'start', startedAt: Date.now() - 4300 }),
+          wfAgent(4, 'review:tests', { state: 'error', error: 'the agent returned nothing', attempt: 2 }),
+          { type: 'workflow_log', message: '3 dimensions covered, 9 findings so far' },
+        ],
+      }),
+      wait(1500),
+    ]),
+    checkpoint('The second phase verifies what the first one found', [
+      agent({
+        type: 'system',
+        subtype: 'task_progress',
+        task_id: 'c14-wf-id',
+        description: 'Verify: finding 3',
+        workflow_progress: [
+          { type: 'workflow_phase', index: 1, title: 'Review' },
+          { type: 'workflow_phase', index: 2, title: 'Verify' },
+          wfAgent(1, 'review:bugs', { state: 'done', durationMs: 18400, tokens: 42100, toolCalls: 11 }),
+          wfAgent(2, 'review:perf', { state: 'done', durationMs: 12900, tokens: 26300, toolCalls: 7 }),
+          wfAgent(3, 'review:security', { state: 'done', durationMs: 21050, tokens: 51800, toolCalls: 14 }),
+          wfAgent(4, 'review:tests', { state: 'error', error: 'the agent returned nothing', attempt: 2 }),
+          wfAgent(5, 'verify:totals.ts:41', { state: 'done', durationMs: 6100, tokens: 9400, toolCalls: 3, phaseIndex: 2 }),
+          wfAgent(6, 'verify:summary.tsx:66', { state: 'start', startedAt: Date.now() - 2400, phaseIndex: 2 }),
+          wfAgent(7, 'verify:env.ts:12', { state: 'done', durationMs: 800, cached: true, phaseIndex: 2 }),
+          wfAgent(8, 'verify:guard.ts:19', { phaseIndex: 2 }),
+          wfAgent(9, 'verify:cart.ts:88', { state: 'error', skipped: true, phaseIndex: 2 }),
+          { type: 'workflow_log', message: '3 dimensions covered, 9 findings so far' },
+          { type: 'workflow_log', message: '5 findings confirmed, 4 refuted' },
+        ],
+      }),
+      wait(1500),
+    ]),
+    checkpoint('The workflow ends and the agent reports back', [
+      agent({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'c14-wf-id',
+        tool_use_id: 'c14-wf',
+        status: 'completed',
+        summary: 'Dynamic workflow "Review the checkout across four dimensions" completed',
+      }),
+      ...textReply('Five findings survived the verification pass - the worst of them is in the totals, where a discount can go negative.'),
+      turnResult(184000),
     ]),
   ]),
 

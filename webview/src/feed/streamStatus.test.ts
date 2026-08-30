@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { CardState } from '../hooks/useCardState'
-import { awaiting } from './streamStatus'
-import type { AskItem, FeedItem, PermItem, PlanItem } from './types'
+import { awaiting, buildAgentTabs } from './streamStatus'
+import type { AskItem, FeedItem, PermItem, PlanItem, TaskItem } from './types'
+import { initialPanelState } from './build'
 
 const cards = (answeredAsks: string[] = [], planDecisions: CardState['planDecisions'] = {}): CardState => ({
   isOpen: () => false,
@@ -110,5 +111,34 @@ describe('what the turn is standing on', () => {
   /** A subagent's own question is answered on its own tab - the main stream is not standing on it. */
   it('is not a subagent question', () => {
     expect(awaiting([ask('a1', { taskId: 'task-1' })], cards())).toBeUndefined()
+  })
+})
+
+const task = (over: Partial<TaskItem> = {}): TaskItem => ({
+  id: 'task-1',
+  kind: 'task',
+  target: 'Explore',
+  meta: 'Find the callers',
+  duration: '',
+  percent: 0,
+  log: [],
+  pending: true,
+  ...over,
+})
+
+const tabsOf = (item: TaskItem) => buildAgentTabs({ ...initialPanelState, items: [item] }, [], new Set())
+
+describe('buildAgentTabs', () => {
+  it('names a subagent by the kind of agent it is', () => {
+    expect(tabsOf(task())[0]?.label).toBe('agent:Explore')
+  })
+
+  /**
+   * A workflow has no subagent_type at all, so the chip used to read "agent:agent" over a fleet of nine -
+   * both halves of it saying nothing. The count is what a chip that small can usefully carry.
+   */
+  it('counts the fleet on a workflow chip instead', () => {
+    const workflow = { phases: [], log: [], running: 2, done: 7, failed: 0, total: 9 }
+    expect(tabsOf(task({ target: 'workflow', workflow }))[0]?.label).toBe('workflow:9')
   })
 })

@@ -388,6 +388,21 @@ export const en = {
 
     think: { chip: 'THINK', thoughts: (n: number): string => `${n} ${n === 1 ? 'thought' : 'thoughts'}` },
 
+    /** The inside of a Workflow call: its phases and the fleet of agents in them (see WorkflowRun). */
+    workflow: {
+      agents: (n: number): string => `${n} ${n === 1 ? 'agent' : 'agents'}`,
+      running: (n: number): string => `${n} running`,
+      done: (n: number): string => `${n} done`,
+      failed: (n: number): string => `${n} failed`,
+      /** Waiting for a slot: a fleet larger than the concurrency cap mostly stands in a queue. */
+      queued: 'queued',
+      skipped: 'skipped',
+      /** Shown only past the first - see workflowView. */
+      attempt: (n: number): string => `try ${n}`,
+      /** A resumed run gave this one back out of the journal instead of running it again. */
+      cached: 'cached',
+    },
+
     tool: {
       running: '· running',
       waitingForYou: '· waiting for you',

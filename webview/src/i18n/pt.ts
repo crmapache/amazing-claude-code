@@ -353,6 +353,17 @@ export const pt: Dict = {
 
     think: { chip: 'PENSA', thoughts: (n) => `${n} ${n === 1 ? 'ideia' : 'ideias'}` },
 
+    workflow: {
+      agents: (n) => `${n} ${n === 1 ? 'agente' : 'agentes'}`,
+      running: (n) => `${n} em andamento`,
+      done: (n) => `${n} ${n === 1 ? 'pronto' : 'prontos'}`,
+      failed: (n) => `${n} ${n === 1 ? 'falhou' : 'falharam'}`,
+      queued: 'na fila',
+      skipped: 'pulado',
+      attempt: (n) => `tentativa ${n}`,
+      cached: 'do registro',
+    },
+
     tool: {
       running: '· rodando',
       waitingForYou: '· esperando você',

@@ -351,6 +351,17 @@ export const zh: Dict = {
 
     think: { chip: '思考', thoughts: (n) => `${n} 段思考` },
 
+    workflow: {
+      agents: (n) => `${n} 个代理`,
+      running: (n) => `${n} 个进行中`,
+      done: (n) => `${n} 个完成`,
+      failed: (n) => `${n} 个失败`,
+      queued: '排队中',
+      skipped: '已跳过',
+      attempt: (n) => `第 ${n} 次`,
+      cached: '来自日志',
+    },
+
     tool: {
       running: '· 进行中',
       waitingForYou: '· 等你决定',

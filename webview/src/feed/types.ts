@@ -4,6 +4,8 @@
  * list, the plan, the questions), some from system events.
  */
 
+import type { WorkflowView } from './workflow'
+
 /**
  * An attachment to a user's message: a file, an image, a folder, a command, or a piece of a file sent
  * from the editor.
@@ -293,6 +295,14 @@ export interface TaskItem {
    * at all.
    */
   background?: boolean
+  /**
+   * The inside of a workflow - its phases and the agents in them (see feed/workflow.ts).
+   *
+   * Only a `Workflow` call has one. Its agents reach the panel by no other route: their events carry no
+   * mark of a subagent and never arrive in the stream at all, so without this the card is a single tool
+   * call that goes quiet for ten minutes while forty agents work behind it.
+   */
+  workflow?: WorkflowView
 }
 
 /**

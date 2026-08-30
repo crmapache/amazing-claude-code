@@ -1330,6 +1330,49 @@ export interface ToolResultBlock {
 
 export type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock
 
+/**
+ * One line of a workflow's report - see `workflow_progress` in [AgentSystemEvent].
+ *
+ * Everything but the kind and the number is optional on purpose: this is somebody else's shape, read out
+ * of the stream rather than agreed with anyone, and a field that stops arriving must leave the panel
+ * showing less rather than showing nothing.
+ */
+export type WorkflowProgress =
+  /** A phase of the script - `phase('Review')`. Agents point back at it by [index]. */
+  | { type: 'workflow_phase'; index: number; title?: string; kind?: string }
+  /** A line the script printed itself - `log('12 of 40 found')`. */
+  | { type: 'workflow_log'; message?: string }
+  | {
+      type: 'workflow_agent'
+      /** Its number in the run, counted from one - and the key the report is merged by. */
+      index: number
+      /** What to call it on screen: `opts.label`, or the first words of its prompt. */
+      label?: string
+      phaseIndex?: number
+      phaseTitle?: string
+      agentId?: string
+      agentType?: string
+      model?: string
+      /** 'start' covers both queued and running - the two are told apart by [startedAt]. */
+      state?: 'start' | 'done' | 'error'
+      isolation?: 'worktree' | 'remote'
+      /** A resumed run gave this one back out of the journal instead of running it again. */
+      cached?: boolean
+      /** The safety classifier refused the spawn; [error] says why. */
+      blocked?: boolean
+      /** Dropped by hand from the workflows screen rather than failed. */
+      skipped?: boolean
+      attempt?: number
+      error?: string
+      promptPreview?: string
+      resultPreview?: string
+      queuedAt?: number
+      startedAt?: number
+      durationMs?: number
+      tokens?: number
+      toolCalls?: number
+    }
+
 export interface AgentSystemEvent {
   type: 'system'
   subtype: string
@@ -1386,6 +1429,21 @@ export interface AgentSystemEvent {
   usage?: { total_tokens?: number; tool_uses?: number; duration_ms?: number }
   last_tool_name?: string
   summary?: string
+  /**
+   * The inside of a running workflow - a `Workflow` call, which is one task with a whole fleet of agents
+   * in it (`task_type` is then `local_workflow`).
+   *
+   * Those agents are not subagents of the ordinary kind and cannot be shown as such: their events never
+   * reach this stream at all - not one line of theirs carries `parent_tool_use_id`, and their
+   * conversations are written straight to disk. This report is the only word about them the panel gets,
+   * and it holds everything: the phases in order, every agent with its state, its model, what it cost and
+   * how it ended (checked against CLI 2.1.247). Without reading it a workflow looks like a single tool
+   * call that goes quiet for ten minutes, whatever is going on inside.
+   *
+   * The whole list arrives every time rather than what changed - the CLI keeps it in the task and merges
+   * into it itself - so it is read as it stands rather than accumulated (see feed/workflow.ts).
+   */
+  workflow_progress?: WorkflowProgress[]
   /**
    * A request to the model failed with a refusal the CLI waits out itself (subtype `api_retry`): the
    * attempt's number, how many there are in total and how long until the next one. While that pause

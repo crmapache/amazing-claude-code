@@ -2,6 +2,7 @@ import type { AgentSystemEvent, ContentBlock, TextBlock, ToolUseBlock } from '..
 import type { PanelState } from './panelState'
 import { readQuestions } from './toolInput'
 import { commandLabel, detailFor, formatDuration, targetFor } from './tools'
+import { workflowView } from './workflow'
 import type { BackgroundTask, DetailLine, FeedItem, TaskOutcome, ToolItem } from './types'
 
 /**
@@ -202,7 +203,9 @@ export const applyTaskStarted = (state: PanelState, event: AgentSystemEvent, now
         id: taskId,
         kind: 'task',
         taskId,
-        target: event.subagent_type ?? 'agent',
+        // A workflow is not a subagent and must not be labelled as one: it has no subagent_type, so the
+        // chip used to read "agent:agent" over a fleet of nine.
+        target: event.subagent_type ?? (event.task_type === 'local_workflow' ? 'workflow' : 'agent'),
         meta: event.description ?? '',
         duration: '',
         percent: 0,
@@ -223,6 +226,21 @@ export const applyTaskProgress = (state: PanelState, event: AgentSystemEvent): P
     ...state,
     items: state.items.map((item) => {
       if (item.kind !== 'task' || item.id !== card) return item
+
+      /**
+       * A workflow reports itself in full - every phase and every agent in it, over again on each change
+       * (see workflow_progress in protocol.ts). Its card is drawn from that report, and the log line
+       * this channel offers is dropped: for a workflow `last_tool_name` is the label of whichever agent
+       * moved last, so a fleet of nine produced nine identical lines of "→ Scout the components" and
+       * nothing whatever about the nine.
+       */
+      const workflow = workflowView(event.workflow_progress)
+      if (workflow) {
+        // The chip in the header fills as the fleet finishes. A workflow is the one task that can say
+        // how far along it is at all: an ordinary subagent knows no such thing, and its ring stays empty.
+        const percent = workflow.total > 0 ? Math.round((workflow.done / workflow.total) * 100) : item.percent
+        return { ...item, meta: event.description ?? item.meta, percent, workflow }
+      }
 
       // The very same call may already have arrived through the subagent's main stream (noteSubagent, a
       // line like "Bash…"/"Bash: command") - this channel reports the same name afterwards, and without

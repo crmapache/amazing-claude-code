@@ -356,6 +356,17 @@ export const de: Dict = {
 
     think: { chip: 'DENKT', thoughts: (n) => `${n} ${n === 1 ? 'Gedanke' : 'Gedanken'}` },
 
+    workflow: {
+      agents: (n) => `${n} ${n === 1 ? 'Agent' : 'Agenten'}`,
+      running: (n) => `${n} laufen`,
+      done: (n) => `${n} fertig`,
+      failed: (n) => `${n} fehlgeschlagen`,
+      queued: 'in der Warteschlange',
+      skipped: 'übersprungen',
+      attempt: (n) => `Versuch ${n}`,
+      cached: 'aus dem Journal',
+    },
+
     tool: {
       running: '· läuft',
       waitingForYou: '· wartet auf dich',

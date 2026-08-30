@@ -970,6 +970,114 @@
    no card of its own, so the ticking timer has to look just as recognisable rather than in a separate
    invented style. Not composes: postcss-modules-scope resolves it only against classes declared earlier in
    the file, and .streamingText is declared below. */
+/* --- What is inside a workflow ---------------------------------------------
+   A fleet of agents, one line each, on the screen of the task that runs them (see WorkflowRun). Lines
+   rather than cards: the point of nine agents is seeing the nine at once, and nine cards do not fit a
+   panel dragged narrow. */
+
+.workflow {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.workflowHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font: var(--acc-fs-label, 10px) var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+/* The counts sit apart from each other so that "3 running" and "5 done" do not read as one number. */
+.workflowCounts {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+.workflowRunning {
+  color: var(--acc-accent);
+}
+
+.workflowFailed {
+  color: var(--acc-bad-text);
+}
+
+.workflowPhase {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.workflowPhaseTitle {
+  margin-bottom: 2px;
+  font: var(--acc-fs-label, 10px) var(--acc-mono);
+  color: var(--acc-fg-fainter);
+}
+
+.workflowAgent {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
+  color: var(--acc-fg-dim);
+}
+
+/* The state is a dot rather than a word: nine words down a column are read one by one, nine dots are
+   taken in at a glance - which is the whole reason this screen exists. */
+.workflowDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--acc-fg-fainter);
+}
+
+.workflowAgent[data-state='running'] .workflowDot {
+  background: var(--acc-accent);
+}
+
+.workflowAgent[data-state='done'] .workflowDot {
+  background: var(--acc-ok);
+}
+
+.workflowAgent[data-state='failed'] .workflowDot {
+  background: var(--acc-bad);
+}
+
+/* Queued and skipped keep the faint dot: neither is work, and neither is a result. */
+.workflowAgent[data-state='queued'],
+.workflowAgent[data-state='skipped'] {
+  color: var(--acc-fg-fainter);
+}
+
+.workflowAgent[data-state='running'] .workflowLabel {
+  color: var(--acc-fg);
+}
+
+/* The label takes what room there is and gives the rest to the figures: a label cut short is still
+   recognisable, while "4.1s · 12k" cut short is not a figure at all. */
+.workflowLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflowMeta {
+  flex: none;
+  color: var(--acc-fg-fainter);
+}
+
+/* A line the script printed itself - it narrates the fleet above it. */
+.workflowLog {
+  font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
 .agentViewWorking {
   font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
   background: linear-gradient(

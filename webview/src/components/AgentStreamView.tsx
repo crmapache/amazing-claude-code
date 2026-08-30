@@ -3,6 +3,7 @@ import type { TaskItem } from '../feed/types'
 import s from './feed.module.css'
 import { useT } from '../i18n'
 import { noteText } from './items/ToolCard'
+import { WorkflowRun } from './items/WorkflowRun'
 
 interface AgentStreamViewProps {
   /** The agent currently opened by a chip - or nothing while no tab is chosen. */
@@ -26,12 +27,16 @@ export const AgentStreamView = ({ item }: AgentStreamViewProps) => {
     const element = body.current
     if (!element) return
     element.scrollTop = element.scrollHeight
-  }, [item?.id, item?.log.length])
+  }, [item?.id, item?.log.length, item?.workflow])
 
   if (!item) return null
 
   return (
     <div className={s.agentViewBody} ref={body}>
+      {/* A workflow's fleet stands above its log: the log here is the CLI's own preamble about where the
+          transcripts went, while the agents are what one opened this screen for (see WorkflowRun). */}
+      {item.workflow ? <WorkflowRun run={item.workflow} /> : null}
+
       {item.log.map((line, index) => (
         <div
           key={index}

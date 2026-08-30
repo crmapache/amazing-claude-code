@@ -351,6 +351,17 @@ export const ko: Dict = {
 
     think: { chip: '생각', thoughts: (n) => `생각 ${n}개` },
 
+    workflow: {
+      agents: (n) => `에이전트 ${n}개`,
+      running: (n) => `${n}개 진행 중`,
+      done: (n) => `${n}개 완료`,
+      failed: (n) => `${n}개 실패`,
+      queued: '대기 중',
+      skipped: '건너뜀',
+      attempt: (n) => `${n}번째 시도`,
+      cached: '저널에서',
+    },
+
     tool: {
       running: '· 진행 중',
       waitingForYou: '· 기다리는 중',
