@@ -34,11 +34,16 @@ dazwischen, kein Konto bei uns.
 
 ## Erste Schritte
 
-1. Claude Code installieren und im Terminal zum Laufen bringen.
-2. Das Panel über die Seitenleiste öffnen; bist du noch nicht angemeldet, erledigt das eine Taste
-   im Terminal der IDE.
-3. Losschreiben: Dateien ins Feld ziehen, `@` für eine Datei, `/` für einen Befehl, `!` um etwas
-   in deiner Shell auszuführen. Modell, Aufwand und Modus sind die drei Tasten unter dem Feld.
+1. Claude Code installieren und im Terminal zum Laufen bringen - genau diese CLI steuert das
+   Panel.
+2. Das Panel über die Taste in der Seitenleiste öffnen. Bist du noch nicht angemeldet, erledigt
+   das eine Taste im Terminal der IDE.
+3. Nachricht schreiben: Dateien oder Ordner ins Feld ziehen, `@` für eine Projektdatei, `/` für
+   einen Befehl, `!` um etwas in deiner Shell auszuführen.
+4. Im Editor etwas markieren und "Send to Amazing Claude Code GUI" wählen - unterwegs ist dann
+   eine genaue Datei- und Zeilenangabe statt eingefügten Textes.
+5. Modell, Aufwand und Berechtigungsmodus sind die drei Tasten unter dem Feld, und jede gehört zu
+   dem Tab, den du gerade ansiehst.
 
 ## Außerdem im Panel
 

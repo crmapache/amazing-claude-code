@@ -124,16 +124,6 @@ intellijPlatform {
               <li><b>Android Studio included</b>, along with every JetBrains IDE from 2026.1 on.</li>
             </ul>
 
-            <h2>Getting started</h2>
-            <ol>
-              <li>Have Claude Code installed and working in a terminal.</li>
-              <li>Open the panel from the side bar; if you are not signed in, one button does it in the
-              IDE's terminal.</li>
-              <li>Write - drop files in, type <code>@</code> for a file, <code>/</code> for a command,
-              <code>!</code> to run something in your shell. Model, effort and mode are the three
-              buttons under the field.</li>
-            </ol>
-
             <h2>Also in the panel</h2>
             <ul>
               <li><b>History</b> of this project's past conversations, terminal ones included.</li>

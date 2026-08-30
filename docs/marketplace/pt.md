@@ -34,11 +34,15 @@ meio e sem nenhuma conta nossa.
 
 ## Como começar
 
-1. Tenha o Claude Code instalado e funcionando no terminal.
-2. Abra o painel pela barra lateral; se você ainda não fez login, um botão resolve isso no
-   terminal da própria IDE.
-3. Escreva: solte arquivos no campo, `@` para um arquivo, `/` para um comando, `!` para rodar algo
-   no seu shell. Modelo, esforço e modo são os três botões abaixo do campo.
+1. Tenha o Claude Code instalado e funcionando no terminal: é esse CLI que o painel usa.
+2. Abra o painel pelo botão na barra lateral. Se você ainda não fez login, um botão resolve isso
+   no terminal da própria IDE.
+3. Escreva sua mensagem: solte arquivos ou pastas no campo, `@` para um arquivo do projeto, `/`
+   para um comando, `!` para rodar algo no seu shell.
+4. Selecione um trecho no editor e escolha "Send to Amazing Claude Code GUI": vai uma referência
+   exata de arquivo e linhas, não o texto colado.
+5. Modelo, esforço e modo de permissão são os três botões abaixo do campo, e cada um pertence à
+   aba que você está olhando.
 
 ## Também no painel
 

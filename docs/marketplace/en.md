@@ -33,11 +33,15 @@ permission rules, MCP servers and skills all come with it. No proxy, no account 
 
 ## Getting started
 
-1. Have Claude Code installed and working in a terminal.
-2. Open the panel from the side bar; if you are not signed in, one button does it in the IDE's
-   terminal.
-3. Write - drop files in, type `@` for a file, `/` for a command, `!` to run something in your
-   shell. Model, effort and mode are the three buttons under the field.
+1. Have Claude Code installed and working in a terminal - the panel drives that CLI.
+2. Open the panel from the tool window button on the side bar. If you are not signed in, one
+   button does it in the IDE's own terminal.
+3. Write your message. Drag files or folders into the field, type `@` for a project file, `/` for
+   a command, `!` to run something in your shell.
+4. Right-click a selection in the editor and choose "Send to Amazing Claude Code GUI" to send a
+   precise file-and-line reference instead of pasted text.
+5. Model, effort and permission mode are the three buttons under the field, and each belongs to
+   the tab you are looking at.
 
 ## Also in the panel
 

@@ -37,12 +37,16 @@ avec lui. Pas de proxy au milieu, aucun compte chez nous.
 
 ## Pour commencer
 
-1. Avoir Claude Code installé et fonctionnel dans un terminal.
-2. Ouvrir le panneau depuis la barre latérale ; si vous n'êtes pas connecté, un bouton s'en charge
-   dans le terminal de l'IDE.
-3. Écrire : déposez des fichiers dans le champ, `@` pour un fichier, `/` pour une commande, `!`
-   pour lancer quelque chose dans votre shell. Modèle, effort et mode sont les trois boutons sous
-   le champ.
+1. Avoir Claude Code installé et fonctionnel dans un terminal : c'est ce CLI que le panneau
+   pilote.
+2. Ouvrir le panneau depuis le bouton de la barre latérale. Si vous n'êtes pas connecté, un bouton
+   s'en charge dans le terminal de l'IDE.
+3. Écrire votre message : déposez fichiers et dossiers dans le champ, `@` pour un fichier du
+   projet, `/` pour une commande, `!` pour lancer quelque chose dans votre shell.
+4. Sélectionnez du code dans l'éditeur et choisissez « Send to Amazing Claude Code GUI » : c'est
+   une référence précise au fichier et aux lignes qui part, pas du texte collé.
+5. Modèle, effort et mode de permissions sont les trois boutons sous le champ, et chacun appartient
+   à l'onglet que vous regardez.
 
 ## Également dans le panneau
 

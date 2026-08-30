@@ -36,11 +36,15 @@ proxy y sin ninguna cuenta nuestra.
 
 ## Primeros pasos
 
-1. Ten Claude Code instalado y funcionando en una terminal.
-2. Abre el panel desde la barra lateral; si no has iniciado sesión, un botón lo hace en la
-   terminal del propio IDE.
-3. Escribe: suelta archivos en el campo, `@` para un archivo, `/` para un comando, `!` para
-   ejecutar algo en tu shell. Modelo, esfuerzo y modo son los tres botones bajo el campo.
+1. Ten Claude Code instalado y funcionando en una terminal: es el CLI que mueve el panel.
+2. Abre el panel con el botón de la barra lateral. Si no has iniciado sesión, un botón lo hace en
+   la terminal del propio IDE.
+3. Escribe tu mensaje: suelta archivos o carpetas en el campo, `@` para un archivo del proyecto,
+   `/` para un comando, `!` para ejecutar algo en tu shell.
+4. Selecciona código en el editor y elige "Send to Amazing Claude Code GUI": viaja una referencia
+   exacta de archivo y líneas, no el texto pegado.
+5. Modelo, esfuerzo y modo de permisos son los tres botones bajo el campo, y cada uno pertenece a
+   la pestaña que estás mirando.
 
 ## Además, en el panel
 
