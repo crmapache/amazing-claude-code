@@ -18,7 +18,90 @@ import type { Scenario } from '../types'
 /** What `/code-review` answers with in streaming mode - a line of preamble and a fenced json block. */
 const REVIEW_REPORT = "I've completed the review. Here are the findings.\n\n```json\n[\n  {\n    \"file\": \"lib/providers/google-ads/sync/entity-daily-metrics.ts\",\n    \"line\": 66,\n    \"category\": \"correctness\",\n    \"verdict\": \"CONFIRMED\",\n    \"short_summary\": \"`metrics.phone_calls` is not selectable on `customer`\",\n    \"summary\": \"`metrics.phone_calls` is not selectable on the `customer` report, so every account-level request fails and no account-level action can be measured.\",\n    \"failure_scenario\": \"The SDK's field metadata lists `metrics.phone_calls` under `CampaignMetric` and `AdGroupMetric` but not under `CustomerMetric`. The account report therefore asks Google for a field it does not have, the query is rejected, every container lands in `unread`, and the only symptom is one line in the console.\"\n  },\n  {\n    \"file\": \"lib/analysis/action-impact/metric.ts\",\n    \"line\": 84,\n    \"category\": \"correctness\",\n    \"verdict\": \"PLAUSIBLE\",\n    \"summary\": \"An account that never populates `metrics.phone_calls` reads as a 0% change rather than as unmeasurable.\",\n    \"failure_scenario\": \"An advertiser without call reporting gets 0 on every day both before and after the change. Both bands collapse to zero, the comparison calls them touching, and the journal states \\u201cwe looked and nothing moved\\u201d about a phone number whose effect was never observable.\"\n  },\n  {\n    \"file\": \"supabase/migrations/20260825230000_call_rate_metric.sql\",\n    \"line\": 29,\n    \"category\": \"correctness\",\n    \"summary\": \"The migration drops the constraint by a name the declarative schema does not give it.\",\n    \"failure_scenario\": \"A database built from the declarative file carries the auto-generated name, so `drop constraint` without `if exists` aborts the whole run.\"\n  },\n  {\n    \"file\": \"lib/analysis/change-clustering/dispositions.ts\",\n    \"line\": 201,\n    \"category\": \"simplification\",\n    \"outcome\": \"fixed\",\n    \"summary\": \"The helper meant to end the copies of this expression left the third copy in place.\",\n    \"failure_scenario\": \"`index.ts:162` still reads the role out of the link name itself, character for character. Any change to how a role is read applies to two of the three call sites.\"\n  }\n]\n```"
 
+/** A briefing of the kind people paste into the field instead of retyping - long, and multi-line. */
+const BRIEF = [
+  'You are moving the existing JetBrains plugin into a standalone desktop app on Electron for macOS.',
+  'Read the README first. Then save this whole text into docs/desktop/PLAN.md and work through it stage',
+  'by stage.',
+  '',
+  'Work to the end without handing control back to me. Do not ask questions: at a fork, choose yourself',
+  'and write the choice down with your reasoning in docs/desktop/DECISIONS.md. Do not stop to ask',
+  '"shall I go on" - simply go on with the next stage.',
+  '',
+  'WHY THIS IS NOT A REWRITE: the interface already knows nothing about the IDE. webview/ receives the',
+  "agent's events untouched through window.__accSend / window.__accReceive, and webview/src/protocol.ts",
+  'is the single source of truth. The mobile build already runs this very interface in an ordinary',
+  'browser. That is, only the host changes.',
+  '',
+  'STACK: Electron + electron-vite + TypeScript. Vitest for the unit tests, Playwright _electron for the',
+  'smoke test, electron-builder for the build, node-pty for the terminal.',
+  '',
+  'STAGE A. The skeleton: a window, the panel inside it, the bridge in the preload.',
+  'STAGE B. Launching the CLI out of the main process, the stream parsed line by line.',
+  'STAGE C. The project: opening a folder, the recent list, the working directory.',
+  'STAGE D. The editor: reading a file, watching the disk, writing back.',
+  'STAGE E. The build and signing.',
+].join('\n')
+
+/** The same thing a hundred times over: a log people paste whole, past what the feed will draw. */
+const HUGE_LOG = Array.from(
+  { length: 900 },
+  (_, at) =>
+    `2026-08-29T15:0${at % 10}:12.418Z  worker#${(at % 8) + 1}  GET /api/checkout/summary 200 in ${18 + (at % 40)}ms  cache=${at % 3 === 0 ? 'miss' : 'hit'}`,
+).join('\n')
+
 export const scenariosCards: Scenario[] = [
+  /**
+   * A paste is the one attachment with nowhere else to be read: a file chip stands for a file still on
+   * disk, a paste stands for text that exists nowhere but in this message. So it opens in the feed - see
+   * PasteView in UserCard.
+   *
+   * It arrives here as an echo rather than through `user(...)`: the harness's send carries plain text,
+   * and chips are exactly what this scenario is about. The panel draws somebody else's message out of
+   * these very tokens (see promptEcho), which is the path a message from a phone or a second panel takes.
+   */
+  scenario('paste', 'A paste inside a sent message', 'cards', [
+    checkpoint('A long paste at the end of a message: the first lines of it, folded', [
+      shell({
+        type: 'promptEcho',
+        sessionId: SESSION,
+        tokens: [
+          { kind: 'text', value: '/Users/you/demo-project - here is the plugin itself\n' },
+          { kind: 'chip', chip: { kind: 'paste', value: 'pasted', text: BRIEF } },
+        ],
+      }),
+      wait(400),
+    ]),
+    checkpoint('The agent takes it on', [
+      ...textReply("I'll start by reading the README and understanding the existing plugin structure."),
+      turnResult(8000),
+    ]),
+    checkpoint('A paste in the middle of a message stays an ordinary chip', [
+      shell({
+        type: 'promptEcho',
+        sessionId: SESSION,
+        tokens: [
+          { kind: 'text', value: 'and take this into account too: ' },
+          { kind: 'chip', chip: { kind: 'paste', value: 'pasted', text: BRIEF } },
+          { kind: 'text', value: ' - stage E can wait until the rest of it works' },
+        ],
+      }),
+      wait(400),
+    ]),
+    checkpoint('A log too long to be drawn whole - open it and the panel says how much is on screen', [
+      shell({
+        type: 'promptEcho',
+        sessionId: SESSION,
+        tokens: [
+          { kind: 'text', value: 'the checkout is slow again, here is an hour of it\n' },
+          { kind: 'chip', chip: { kind: 'paste', value: 'pasted', text: HUGE_LOG } },
+        ],
+      }),
+      wait(400),
+    ]),
+  ]),
+
+
   scenario('todo-list', 'The task list', 'cards', [
     checkpoint('The user asks to break the work into steps', [
       user('Break the work on the login feature into steps and get started'),

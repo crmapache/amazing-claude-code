@@ -378,6 +378,12 @@ export const en = {
     copyBlock: 'Copy this block',
     copyReply: 'Copy the whole reply',
     pastedLines: (n: number): string => `${n} ${n === 1 ? 'line' : 'lines'} pasted`,
+    /** A collapsed paste opens on a click - the hover hint shows only its first lines. */
+    pasteOpen: 'Show the whole paste',
+    pasteClose: 'Collapse it back',
+    copyPaste: 'Copy the pasted text',
+    /** Said only when a paste is too long to be drawn whole - the copy button still copies all of it. */
+    pasteShown: (shown: number, total: number): string => `First ${shown} lines of ${total} · copying takes all of it`,
     fromOutput: 'from output',
 
     think: { chip: 'THINK', thoughts: (n: number): string => `${n} ${n === 1 ? 'thought' : 'thoughts'}` },

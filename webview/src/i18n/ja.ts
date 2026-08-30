@@ -345,6 +345,10 @@ export const ja: Dict = {
     copyBlock: 'このブロックをコピー',
     copyReply: '返信全体をコピー',
     pastedLines: (n) => `${n} 行を貼り付け`,
+    pasteOpen: '貼り付けた内容をすべて表示',
+    pasteClose: '折りたたむ',
+    copyPaste: '貼り付けたテキストをコピー',
+    pasteShown: (shown, total) => `全 ${total} 行のうち最初の ${shown} 行 · コピーはすべて`,
     fromOutput: '出力から',
 
     think: { chip: '思考', thoughts: (n) => `${n} 件の考え` },

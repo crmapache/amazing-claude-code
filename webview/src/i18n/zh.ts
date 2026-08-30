@@ -343,6 +343,10 @@ export const zh: Dict = {
     copyBlock: '复制这段代码',
     copyReply: '复制整条回复',
     pastedLines: (n) => `粘贴了 ${n} 行`,
+    pasteOpen: '显示完整的粘贴内容',
+    pasteClose: '重新折叠',
+    copyPaste: '复制粘贴的文本',
+    pasteShown: (shown, total) => `共 ${total} 行，显示前 ${shown} 行 · 复制的是全部`,
     fromOutput: '来自输出',
 
     think: { chip: '思考', thoughts: (n) => `${n} 段思考` },

@@ -1,7 +1,10 @@
-import { memo } from 'react'
+import { memo, useMemo } from 'react'
 import { LinkedText } from './LinkedText'
-import { chipLabel, chipTitle, pasteBlockPreview, pasteLineCount } from '../../feed/reference'
+import { Caret } from './Caret'
+import { CopyButton } from './CopyButton'
+import { chipLabel, chipTitle, pasteBlockPreview, pasteBody, pasteLineCount } from '../../feed/reference'
 import type { Chip, ChipKind, UserItem } from '../../feed/types'
+import type { CardState } from '../../hooks/useCardState'
 import s from '../feed.module.css'
 import { useT } from '../../i18n'
 
@@ -17,11 +20,13 @@ const CHIP_CLASS: Record<ChipKind, string> = {
 
 interface UserCardProps {
   item: UserItem
+  /** What is unfolded in the feed - here it is the pastes inside the message (see PasteView). */
+  cards: CardState
   /** Open a link from one's own message in the system browser. */
   onOpenLink: (url: string) => void
 }
 
-export const UserCard = ({ item, onOpenLink }: UserCardProps) => {
+export const UserCard = ({ item, cards, onOpenLink }: UserCardProps) => {
   const t = useT()
 
   return (
@@ -44,10 +49,16 @@ export const UserCard = ({ item, onOpenLink }: UserCardProps) => {
       {item.tokens.map((token, index) =>
         token.kind === 'text' ? (
           <TextToken key={index} value={token.value} echo={token.echo === true} onOpenLink={onOpenLink} />
-        ) : // A paste with nothing after it in the message takes a whole line: the room is free anyway,
-        // and seven words in a narrow chip are not enough to recall what exactly was sent.
-        token.chip.kind === 'paste' && index === item.tokens.length - 1 ? (
-          <PasteBlock key={index} chip={token.chip} />
+        ) : token.chip.kind === 'paste' ? (
+          // A paste with nothing after it in the message takes a whole line: the room is free anyway,
+          // and seven words in a narrow chip are not enough to recall what exactly was sent.
+          <PasteView
+            key={index}
+            chip={token.chip}
+            block={index === item.tokens.length - 1}
+            open={cards.isOpen(`${item.id}:paste:${index}`)}
+            onToggle={() => cards.toggle(`${item.id}:paste:${index}`)}
+          />
         ) : (
           <ChipView key={index} chip={token.chip} />
         ),
@@ -97,21 +108,103 @@ const ChipView = memo(({ chip }: { chip: Chip }) => (
 ))
 
 /**
- * The same paste chip, but full width - and with the start of the text over several lines instead of
- * seven words. It is computed from the paste's text like the ordinary one, hence memo as well: the feed
- * repaints on every chunk of a printing answer, while a sent paste never changes.
+ * A paste in a sent message, and the one attachment that opens.
+ *
+ * It opens because there is nowhere else to read it. A file chip stands for a file that is still on
+ * disk; a paste stands for text that exists nowhere but in this message, and the collapsed chip shows
+ * seven words of it. That used to be what the hover hint was for - it carried the whole text - and a
+ * hundred lines in a hint the width of a hint is a strip of twenty characters down the window, cut off
+ * at its edge (see chipTitle). Here the text is in the feed instead: it is selected, copied and found
+ * by the browser's own search, and the phone - which has no hover at all and so had no way to see a
+ * paste whatsoever - opens it with the same tap.
+ *
+ * [block] is a paste with nothing after it in the message: the room is free anyway, so the collapsed
+ * form takes the whole width and shows the first lines rather than seven words. Standing in the middle
+ * of a message it stays an ordinary chip, and the text it opens goes below it on a line of its own.
+ *
+ * memo for the same reason as the ordinary chip: the feed repaints on every chunk of a printing answer,
+ * while a sent paste never changes.
  */
-const PasteBlock = memo(({ chip }: { chip: Chip }) => {
+const PasteView = memo(({
+  chip,
+  block,
+  open,
+  onToggle,
+}: {
+  chip: Chip
+  block: boolean
+  open: boolean
+  onToggle: () => void
+}) => {
   const t = useT()
   const text = chip.text ?? ''
-  const lines = pasteLineCount(text)
 
-  return (
-    <span className={`${s.chip} ${s.chipPaste} ${s.chipPasteBlock}`} data-tooltip={chipTitle(chip)}>
-      <span className={s.chipPasteCount}>
-        {t.feed.pastedLines(lines)}
+  // A hundred kilobytes is an ordinary paste, and both of these walk the text whole. Neither is wanted
+  // on a repaint that changed a word in the answer below.
+  const lines = useMemo(() => pasteLineCount(text), [text])
+  const body = useMemo(() => (open ? pasteBody(text) : null), [open, text])
+
+  // What the click does comes first, the start of the text after it: the hint is read left to right and
+  // the first line is the one that is always read.
+  const hint = `${t.feed.pasteOpen}\n\n${chipTitle(chip)}`
+
+  // A button rather than a span with a click on it: this is the one chip that does something, and a
+  // keyboard has to be able to reach it as well as a pointer.
+  const collapsed = block ? (
+    <button
+      type="button"
+      className={`${s.chip} ${s.chipPaste} ${s.chipPasteBlock} ${s.chipPasteOpens}`}
+      data-tooltip={hint}
+      data-tooltip-kind="paste"
+      onClick={onToggle}
+    >
+      <span className={s.chipPasteHead}>
+        {/* The same arrow as on a folded group of calls: what folds in this panel says so with it. */}
+        <Caret open={false} />
+        <span className={s.chipPasteCount}>{t.feed.pastedLines(lines)}</span>
       </span>
       <span className={s.chipPasteText}>{pasteBlockPreview(text)}</span>
-    </span>
+    </button>
+  ) : (
+    <button
+      type="button"
+      className={`${s.chip} ${s.chipPaste} ${s.chipPasteOpens}`}
+      data-tooltip={hint}
+      data-tooltip-kind="paste"
+      onClick={onToggle}
+    >
+      {chipLabel(chip)}
+    </button>
+  )
+
+  if (!open || !body) return collapsed
+
+  return (
+    <>
+      {/* The chip stays where it was when it is not the whole line: the message keeps reading the way it
+          was written, with the text hanging below rather than in place of the attachment. */}
+      {!block && collapsed}
+      <span className={`${s.chip} ${s.chipPaste} ${s.chipPasteBlock} ${s.chipPasteFull}`}>
+        <span className={s.chipPasteHead}>
+          {/* Only this closes it back: inside the open text a click is a person selecting a line, and a
+              paste that collapses under a selection cannot be copied by hand at all. */}
+          <button
+            type="button"
+            className={s.chipPasteToggle}
+            data-tooltip={t.feed.pasteClose}
+            onClick={onToggle}
+          >
+            <Caret open />
+            {t.feed.pastedLines(lines)}
+          </button>
+          {/* The whole paste travels, however much of it is drawn - see pasteBody. */}
+          <CopyButton text={text} className={s.chipPasteCopy} title={t.feed.copyPaste} />
+        </span>
+        <span className={s.chipPasteBody}>{body.text}</span>
+        {body.shownLines < body.lines && (
+          <span className={s.chipPasteCut}>{t.feed.pasteShown(body.shownLines, body.lines)}</span>
+        )}
+      </span>
+    </>
   )
 })

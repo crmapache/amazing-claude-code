@@ -131,29 +131,89 @@ export const pasteLineCount = (text: string): number => {
 }
 
 /**
- * How much of a paste's text is shown in the hover tooltip. A system tooltip will not show more anyway -
- * but a node's attribute takes whatever it is given.
+ * How much of a text a hover hint takes - lines of a paste, characters of a quote.
+ *
+ * A hint is a reminder of what is inside, not a way of reading it: the panel draws all of them with one
+ * element of its own (see Tooltips), and that element takes whatever it is given. A paste's whole text
+ * used to be given, and a hundred lines in a hint 220 pixels wide unfolded into a strip of twenty
+ * characters down the whole window, cut off wherever the window ended - unreadable, and with no way to
+ * scroll it: the hint lets the pointer straight through. What is inside is read by expanding the paste
+ * in the message itself (see PasteView in UserCard).
  */
-const PASTE_TITLE_CHARS = 2_000
+const TITLE_LINES = 5
+const TITLE_LINE_CHARS = 70
+const QUOTE_TITLE_CHARS = 400
+
+/** The first few lines, each of them short enough to stay a line rather than wrap into a paragraph. */
+const titlePreview = (text: string): string => {
+  const body = text.trim()
+  const lines: string[] = []
+
+  for (let at = 0; at < body.length && lines.length < TITLE_LINES; ) {
+    const end = body.indexOf('\n', at)
+    const line = body.slice(at, end < 0 ? undefined : end)
+    lines.push(line.length > TITLE_LINE_CHARS ? `${line.slice(0, TITLE_LINE_CHARS)}…` : line)
+    if (end < 0) return lines.join('\n')
+    at = end + 1
+  }
+
+  return `${lines.join('\n')}\n…`
+}
 
 /**
  * What a chip shows on hover. One function for every place it is drawn: in the input field as a DOM
  * node and in the feed as React markup - those two tooltips must not drift apart, the chip is one and
  * the same to the person.
  *
- * For a collapsed paste this is its size and its whole text: the caption shows only the beginning, and
- * there is no other way to see what is inside without expanding the chip.
+ * Nothing here is translated, and nothing here needs to be: a path, a range and the start of the text
+ * itself are the thing rather than words about it. Whatever the panel says in its own voice about a
+ * paste - how many lines it holds, that it opens on a click - is said beside the chip, where the words
+ * come from the dictionary.
  */
 export const chipTitle = (chip: Chip): string => {
-  if (chip.kind === 'quote') return chip.text ?? ''
-
-  if (chip.kind === 'paste') {
-    const text = chip.text ?? ''
-    const shown = text.length > PASTE_TITLE_CHARS ? `${text.slice(0, PASTE_TITLE_CHARS)}\n…` : text
-    return `${pasteLineCount(text)} lines pasted\n\n${shown}`
+  if (chip.kind === 'quote') {
+    const text = (chip.text ?? '').trim()
+    return text.length > QUOTE_TITLE_CHARS ? `${text.slice(0, QUOTE_TITLE_CHARS)}…` : text
   }
 
+  if (chip.kind === 'paste') return titlePreview(chip.text ?? '')
+
   return chip.range ? `${chip.value} ${chip.range}` : chip.value
+}
+
+/**
+ * How much of a paste is drawn when it is expanded in the message. People paste hundred-kilobyte logs
+ * into the field, and a hundred kilobytes of text laid out inside the feed is a repaint the panel feels
+ * on every chunk of a printing answer.
+ *
+ * The rest is not lost: the copy button beside the text copies the paste whole, however much of it is
+ * on screen.
+ */
+const PASTE_OPEN_CHARS = 20_000
+
+export interface PasteBody {
+  /** The text to draw. */
+  text: string
+  /** How many lines of it are on screen and how many there are in all - equal when nothing was cut. */
+  shownLines: number
+  lines: number
+}
+
+/**
+ * The expanded paste: its text, cut at the ceiling on a line boundary rather than mid-word. The cut is
+ * reported as a pair of figures instead of a ready sentence - the words around them are the panel's own
+ * and are chosen where it is drawn, in the language of the moment.
+ */
+export const pasteBody = (text: string): PasteBody => {
+  const body = text.trimEnd()
+  const lines = pasteLineCount(body)
+
+  if (body.length <= PASTE_OPEN_CHARS) return { text: body, shownLines: lines, lines }
+
+  const cut = body.lastIndexOf('\n', PASTE_OPEN_CHARS)
+  const shown = body.slice(0, cut > 0 ? cut : PASTE_OPEN_CHARS)
+
+  return { text: shown, shownLines: pasteLineCount(shown), lines }
 }
 
 /**

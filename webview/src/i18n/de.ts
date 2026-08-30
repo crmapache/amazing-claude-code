@@ -348,6 +348,10 @@ export const de: Dict = {
     copyBlock: 'Diesen Block kopieren',
     copyReply: 'Die ganze Antwort kopieren',
     pastedLines: (n) => `${n} ${n === 1 ? 'Zeile' : 'Zeilen'} eingefügt`,
+    pasteOpen: 'Den ganzen eingefügten Text zeigen',
+    pasteClose: 'Wieder einklappen',
+    copyPaste: 'Eingefügten Text kopieren',
+    pasteShown: (shown, total) => `Erste ${shown} von ${total} Zeilen · kopiert wird alles`,
     fromOutput: 'aus der Ausgabe',
 
     think: { chip: 'DENKT', thoughts: (n) => `${n} ${n === 1 ? 'Gedanke' : 'Gedanken'}` },

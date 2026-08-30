@@ -28,6 +28,9 @@ import { useT } from '../i18n'
 /** A dozen and a half pixels of slack: scrolling lands exactly at the bottom only rarely. */
 const BOTTOM_THRESHOLD_PX = 16
 
+/** How long an opened card keeps the feed in place - long enough for it to finish growing. */
+const HOLD_MS = 400
+
 const isAtBottom = (element: HTMLElement): boolean =>
   element.scrollHeight - element.scrollTop - element.clientHeight < BOTTOM_THRESHOLD_PX
 
@@ -183,9 +186,63 @@ export const Feed = ({
   /** The same thing, but in state - whether to draw the "down" button depends on it. */
   const [stuck, setStuck] = useState(true)
 
+  /**
+   * The row a person last pressed something in, and where it stood at that moment.
+   *
+   * Written on every press inside the feed and used only by the one below: a press is not by itself a
+   * reason to hold anything, and holding the feed on every click would stop an answer printing at the
+   * bottom the moment somebody copied a line out of it.
+   */
+  const pressed = useRef<{ row: HTMLElement; top: number } | null>(null)
+  /**
+   * The row being held in place right now - see [holdPressed].
+   *
+   * A deadline rather than a single frame: a card that has just opened goes on growing after the paint
+   * (a diff unfolds, a font lands), and each of those growths comes back through the observer below.
+   */
+  const held = useRef<{ row: HTMLElement; top: number; until: number } | null>(null)
+
+  const rememberPress = useCallback((target: EventTarget | null) => {
+    const element = view.current
+    const row = target instanceof Element ? target.closest<HTMLElement>('[data-acc-row]') : null
+    pressed.current = element && row ? { row, top: row.getBoundingClientRect().top } : null
+  }, [])
+
+  /**
+   * What opening a card does to the scroll: nothing.
+   *
+   * Everything that unfolds in the feed - a group of calls, a thought, a paste in one's own message -
+   * makes the feed taller, and while it sticks to the bottom that growth used to drag it to the end. The
+   * card opened under the pointer therefore left the screen upwards, and what came into view was the end
+   * of the conversation, which is precisely what the person was not looking at. So a press that unfolds
+   * something pins the row it happened in: the text opens where the eye already is, downwards.
+   *
+   * The bottom loses out to the pinned row on purpose. Unfolding an old card means reading it, and a feed
+   * that jumps to the end mid-reading is the very thing being fixed here - the "down" button appears
+   * instead, and takes one back the moment it is wanted.
+   */
+  const holdPressed = useCallback(() => {
+    if (pressed.current) held.current = { ...pressed.current, until: performance.now() + HOLD_MS }
+  }, [])
+
   const toBottom = useCallback(() => {
     const element = view.current
     if (!element) return
+
+    const holding = held.current
+    if (holding) {
+      if (!holding.row.isConnected || performance.now() > holding.until) held.current = null
+      else {
+        // The row is put back where it was pressed, and where the feed ends up afterwards is what decides
+        // whether it still sticks: unfolding at the very bottom leaves it there, unfolding higher up does
+        // not.
+        element.scrollTop += holding.row.getBoundingClientRect().top - holding.top
+        const atBottom = isAtBottom(element)
+        stick.current = atBottom
+        setStuck(atBottom)
+        return
+      }
+    }
 
     if (stick.current) {
       element.scrollTop = element.scrollHeight
@@ -203,7 +260,7 @@ export const Feed = ({
     }
   }, [])
 
-  useLayoutEffect(toBottom, [items, pacedText, streamingThinking, toBottom])
+  useLayoutEffect(toBottom, [items, pacedText, streamingThinking, cards, toBottom])
 
   /**
    * Keep the reading position when a page of earlier messages arrives - see [FeedProps.earlierPages].
@@ -271,6 +328,23 @@ export const Feed = ({
    * One effect is not enough: the cards keep growing after the paint - a diff expands, a font loads - and
    * the feed is left standing a little above the end.
    */
+  /**
+   * The same card state, with every fold and unfold pinning its row first (see [holdPressed]).
+   *
+   * Here rather than in each card because the cards already share this one object: what unfolds in the
+   * feed unfolds through it, so a card added later gets the behaviour without knowing there is any.
+   */
+  const folding = useMemo<CardState>(
+    () => ({
+      ...cards,
+      toggle: (id: string) => {
+        holdPressed()
+        cards.toggle(id)
+      },
+    }),
+    [cards, holdPressed],
+  )
+
   useEffect(() => {
     const element = view.current
     if (!element) return
@@ -292,6 +366,12 @@ export const Feed = ({
           view.current = element
           scrollRef?.(element)
         }}
+        // On the press rather than on the click: by the time a click is delivered the card has already
+        // been through React once on some paths, and the row would be measured where it moved to. A key
+        // counts as a press of its own - a card unfolds from the keyboard just as well, and the anchor
+        // left over from some earlier click would pin a row nobody was looking at.
+        onPointerDownCapture={(event) => rememberPress(event.target)}
+        onKeyDownCapture={(event) => rememberPress(event.target)}
         onScroll={(event) => {
           const element = event.currentTarget
           const atBottom = isAtBottom(element)
@@ -311,10 +391,10 @@ export const Feed = ({
         ) : null}
 
         {rows.map((item) => (
-          <div key={item.id} className={s.row}>
+          <div key={item.id} className={s.row} data-acc-row="">
             <ItemView
               item={item}
-              cards={cards}
+              cards={folding}
               lastPendingId={lastPendingId}
               awaitingPlan={streaming}
               onPlanDecision={onPlanDecision}
@@ -407,7 +487,7 @@ const ItemView = memo(({
 }: ItemViewProps) => {
   switch (item.kind) {
     case 'user':
-      return <UserCard item={item} onOpenLink={onOpenLink} />
+      return <UserCard item={item} cards={cards} onOpenLink={onOpenLink} />
 
     case 'bash':
       return <BashCard item={item} />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chipLabel, rangeLabel, referenceChip, referenceText } from './reference'
+import { chipLabel, chipTitle, pasteBody, rangeLabel, referenceChip, referenceText } from './reference'
 
 const span = (over: Partial<Parameters<typeof rangeLabel>[0]> = {}) => ({
   path: 'src/useSocket.js',
@@ -50,5 +50,55 @@ describe('reference', () => {
   it('does not let a long word (a link, say) stretch the chip - it is clipped by characters', () => {
     const text = 'Use the claude_design MCP (https://api.anthropic.com/v1/design/mcp, auth via /design-login) to import this project'
     expect(chipLabel({ kind: 'paste', value: 'paste1', text })).toBe('Use the claude_design MCP (https://api.a…')
+  })
+})
+
+/**
+ * The hint is a reminder of what is inside, not a place to read it: it is drawn 220 pixels wide with the
+ * pointer passing straight through, so a long text in it becomes an unreadable strip down the window with
+ * no way to scroll it. The text itself is read by expanding the paste in the message.
+ */
+describe('chipTitle', () => {
+  const lines = (n: number) => Array.from({ length: n }, (_, at) => `line ${at + 1}`).join('\n')
+
+  it('keeps a short paste whole - there is nothing to cut', () => {
+    expect(chipTitle({ kind: 'paste', value: 'paste1', text: lines(3) })).toBe('line 1\nline 2\nline 3')
+  })
+
+  it('takes only the first lines of a long paste, saying that it goes on', () => {
+    expect(chipTitle({ kind: 'paste', value: 'paste1', text: lines(120) })).toBe(
+      'line 1\nline 2\nline 3\nline 4\nline 5\n…',
+    )
+  })
+
+  it('shortens a line that is long by itself - one line must stay one line', () => {
+    const title = chipTitle({ kind: 'paste', value: 'paste1', text: `${'x'.repeat(400)}\nsecond` })
+    expect(title).toBe(`${'x'.repeat(70)}…\nsecond`)
+  })
+
+  it('holds a quote to a ceiling as well', () => {
+    const title = chipTitle({ kind: 'quote', value: 'ref1', text: 'q'.repeat(900) })
+    expect(title).toBe(`${'q'.repeat(400)}…`)
+  })
+
+  it('leaves a path and its range alone: they are the thing itself, not words about it', () => {
+    expect(chipTitle({ kind: 'ref', value: 'src/App.tsx', range: 'L12-L18' })).toBe('src/App.tsx L12-L18')
+  })
+})
+
+describe('pasteBody', () => {
+  it('gives a whole paste whole - the counts then say nothing was left out', () => {
+    const body = pasteBody('first\nsecond\nthird')
+    expect(body).toEqual({ text: 'first\nsecond\nthird', shownLines: 3, lines: 3 })
+  })
+
+  it('cuts a huge one on a line boundary rather than mid-line', () => {
+    const line = `${'x'.repeat(99)}\n`
+    const body = pasteBody(line.repeat(300))
+
+    expect(body.lines).toBe(300)
+    expect(body.shownLines).toBe(200)
+    expect(body.text.endsWith('x')).toBe(true)
+    expect(body.text).toBe(line.repeat(200).trimEnd())
   })
 })

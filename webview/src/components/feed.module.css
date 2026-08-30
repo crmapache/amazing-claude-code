@@ -280,6 +280,24 @@
   color: var(--acc-fg-faint);
 }
 
+/* A collapsed paste is the one chip that answers a click - it opens the text inside it (see PasteView).
+   The pointer says so before the click: everything else in a sent message is inert.
+
+   It is a button, so it starts from the chip's own look rather than the browser's idea of one: the text
+   inside goes left (a button centres it), and the colour is the chip's (a button would take the system's
+   own). */
+.chipPasteOpens {
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .chipPasteOpens:hover {
+    border-color: var(--acc-paste);
+  }
+}
+
 /* Three lines - as many as an ordinary paragraph of an answer would take: beyond that it is no longer a
    reminder of what was pasted but a second conversation on top of the first. */
 .chipPasteText {
@@ -292,6 +310,92 @@
   word-break: break-word;
   color: var(--acc-fg-dim);
   line-height: 16px;
+}
+
+/* --- An opened paste ------------------------------------------------------- */
+
+/* Opened, it is no longer a caption of an attachment but the text itself, so it drops the chip's tinted
+   background for the same deep one the code blocks of an answer stand on. */
+.chipPasteFull {
+  background: var(--acc-bg-deep);
+  cursor: default;
+}
+
+.chipPasteHead {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* The line count doubles as the way back: it is where the eye already is, and a paste closes where it
+   opened. The caption keeps the collapsed one's look - only the pointer says it is pressable. */
+.chipPasteToggle {
+  min-height: var(--acc-hit);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--acc-fg-faint);
+  font: var(--acc-fs-label, 10px) var(--acc-mono);
+  cursor: pointer;
+}
+
+/* The arrow is sized for the head of a call, where the line is taller than this one. */
+.chipPasteHead .caret {
+  height: auto;
+}
+
+@media (hover: hover) {
+  .chipPasteToggle:hover {
+    color: var(--acc-fg);
+  }
+}
+
+/* Always visible, unlike the one on a code block: a paste is opened on purpose, and the button is half
+   the reason for opening it. */
+.chipPasteCopy {
+  min-height: var(--acc-hit);
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: var(--acc-r-sm);
+  background: none;
+  color: var(--acc-fg-faint);
+  font-size: 11px;
+}
+
+@media (hover: hover) {
+  .chipPasteCopy:hover {
+    background: var(--acc-bg-control);
+    color: var(--acc-fg);
+  }
+}
+
+/* The text as it was pasted, monospaced like the code blocks of an answer. It scrolls inside itself
+   rather than growing the message: half the panel is as much as a piece of the past may take before the
+   conversation around it stops being visible at all. */
+.chipPasteBody {
+  max-height: 46vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--acc-fg-dim);
+  font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
+  line-height: 1.5;
+  /* The wheel stops here instead of scrolling the feed on behind it once the end is reached. */
+  overscroll-behavior: contain;
+}
+
+/* Said only when the text was cut - see pasteBody. */
+.chipPasteCut {
+  font: var(--acc-fs-label, 10px) var(--acc-mono);
+  color: var(--acc-fg-fainter);
 }
 
 /* A quote inside a message: the same trick as in the Claude chat - a stripe on the left and dimmed text so
