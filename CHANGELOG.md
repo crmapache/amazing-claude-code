@@ -9,6 +9,14 @@ commits.
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-08-30
+
+- Added: the plugin works in Android Studio, and in every other 2026.1 IDE with it. Until now it was not so much broken there as invisible: we built for 2026.2 and up, and Android Studio's stable channel runs a version behind, so it never appeared in its marketplace at all. Two things had to go. One was ours - the code that hands the panel's own page to the embedded browser named three types that do not exist before 2026.2, and a class naming a type its IDE has never heard of cannot be loaded, so the panel would not have come up even if you had installed it by hand. That code is now built against whatever shape of that interface the running IDE actually has, so one plugin fits both and the next change to it is not another break. The other is Android Studio's own doing: it ships without an embedded browser, which is why panels like ours come up blank there. JetBrains publish the browser as an ordinary plugin for exactly this case, so Android Studio now offers to install it along with us, and the panel arrives with everything on it - the conversation, the input field, the tabs, the lot.
+- Fixed: a shadow lay down the right-hand edge of the conversation, in every panel, with nothing on screen that could have cast it. It belonged to the side menu, which is parked just past that edge while it is shut - and a shadow travels with the thing that casts it, so the menu was shading the feed all day without ever being opened. It now appears with the menu and goes with it.
+- Fixed: opening the panel wrote a stack trace into the IDE's log, every time. Nothing broke - the platform simply wants a capitalised name for a background thread pool and says so in the loudest way it has.
+- Fixed: the EFFORT chip told you about the whole window rather than about the conversation you were looking at. Pick ultracode in one tab, switch to another, and the chip still read ultra while the conversation there went on working at whatever it had started with - so you would write a task expecting a fleet of agents and get none, with nothing on screen to explain it. Every chip under the input field now belongs to the conversation it stands under: the model, the effort and the permission mode. Picking a model or an effort still sets what the NEXT tab will start with, and never reaches into the tabs already open.
+- Fixed: changing the effort during a long answer waited for that answer to finish, and left a message in the conversation that you never wrote, with a reply to it. It was being sent as an ordinary turn, for want of anything better; there is a proper way to ask the CLI for it, and it now takes effect at once, mid-answer, without a word in the feed.
+
 ## [0.9.2] - 2026-08-30
 
 - Added: when Claude runs a workflow - one call with a fleet of agents behind it, the way ultracode does - you can now see the fleet. The chip in the header counts it and fills as the agents finish, and opening it shows them all at once: the phases in order, and under each the agents with a dot for what they are doing, how long each took, what it cost and how many tools it called. Which are still queued for a free slot, which was retried, which was skipped by hand, which came back from the journal on a resumed run, and which failed and why - all of it is there. Until now none of this reached the panel at all: those agents are not subagents, their events never arrive in the stream, and a workflow looked like a single tool call that went quiet for ten minutes with nine agents working behind it. The one line the panel did show repeated the name of whichever agent moved last, over and over.
@@ -444,7 +452,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.9.2...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.9.3...HEAD
+[0.9.3]: https://github.com/crmapache/amazing-claude-code/compare/0.9.2...0.9.3
 [0.9.2]: https://github.com/crmapache/amazing-claude-code/compare/0.9.1...0.9.2
 [0.9.1]: https://github.com/crmapache/amazing-claude-code/compare/0.9.0...0.9.1
 [0.9.0]: https://github.com/crmapache/amazing-claude-code/compare/0.8.5...0.9.0
