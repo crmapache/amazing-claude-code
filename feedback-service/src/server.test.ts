@@ -81,7 +81,7 @@ describe('taking a piece of feedback', () => {
         { name: 'kind', value: 'bug' },
         { name: 'text', value: 'the panel hangs on reopening a tab' },
         { name: 'email', value: 'you@example.com' },
-        { name: 'environment', value: 'Amazing Claude Code 0.8.1' },
+        { name: 'environment', value: 'Amazing Claude Code GUI 0.8.1' },
         { name: 'report', filename: 'report.txt', value: 'WebStorm 2026.2' },
         { name: 'file', filename: 'shot.png', value: Buffer.from([1, 2, 3]) },
       ]),

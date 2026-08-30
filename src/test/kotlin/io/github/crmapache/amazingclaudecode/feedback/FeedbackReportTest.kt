@@ -33,7 +33,7 @@ class FeedbackReportTest {
         entries.mapIndexed { index, json -> SessionJournal.Entry(seq = index + 1L, at = 1000L * index, json = json) }
 
     private fun report(journal: List<SessionJournal.Entry>, events: List<DiagnosticsLog.Entry> = emptyList()) =
-        FeedbackReport.build(environment = listOf("Amazing Claude Code 9.9.9"), journal = journal, events = events)
+        FeedbackReport.build(environment = listOf("Amazing Claude Code GUI 9.9.9"), journal = journal, events = events)
 
     @Test
     fun `nothing a person typed or the agent answered comes out`() {
@@ -239,14 +239,14 @@ class FeedbackReportTest {
         )
 
         val text = FeedbackReport.build(
-            environment = listOf("Amazing Claude Code 9.9.9"),
+            environment = listOf("Amazing Claude Code GUI 9.9.9"),
             journal = journal + journalOf("""{"type":"status","status":"idle"}"""),
             events = emptyList(),
         )
 
         assertTrue(text.length <= FeedbackReport.MAX_CHARS, "the report should respect its ceiling")
         // The head survives, and so does the end - the cut is made in the middle, where the least is lost.
-        assertContains(text, "Amazing Claude Code 9.9.9")
+        assertContains(text, "Amazing Claude Code GUI 9.9.9")
         assertContains(text, "status idle")
         // And the outline still has its heading: a cut report should read as shortened, not as broken.
         assertContains(text, "--- this conversation, in outline ---")

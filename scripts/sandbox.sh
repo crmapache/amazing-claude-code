@@ -38,7 +38,7 @@ mkdir -p "$(dirname "$LOG")"
 cd "$PROJECT_DIR"
 
 notify() {
-  osascript -e "display notification \"$1\" with title \"Amazing Claude Code\"" 2>/dev/null || true
+  osascript -e "display notification \"$1\" with title \"Amazing Claude Code GUI\"" 2>/dev/null || true
 }
 
 notify "Building the plugin…"

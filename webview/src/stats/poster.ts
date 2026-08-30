@@ -173,7 +173,7 @@ const header = (options: PosterOptions): HTMLElement => {
   mark.setAttribute('style', 'display:flex;align-items:center;gap:9px;font:11px var(--acc-mono)')
   mark.innerHTML =
     `<span style="display:flex">${LOGO}</span>` +
-    '<span style="color:var(--acc-fg);font-weight:600;letter-spacing:0.02em">Amazing Claude Code</span>' +
+    '<span style="color:var(--acc-fg);font-weight:600;letter-spacing:0.02em">Amazing Claude Code GUI</span>' +
     `<span style="color:var(--acc-fg-ghost)">plugin for ${options.ide || 'JetBrains IDEs'}</span>`
 
   const line = document.createElement('div')
@@ -212,7 +212,7 @@ const signature = (options: PosterOptions): HTMLElement => {
   )
   mark.innerHTML =
     `<span style="display:flex">${LOGO}</span>` +
-    '<span style="color:var(--acc-fg);font-weight:600;letter-spacing:0.02em">Amazing Claude Code</span>' +
+    '<span style="color:var(--acc-fg);font-weight:600;letter-spacing:0.02em">Amazing Claude Code GUI</span>' +
     (options.version ? `<span style="color:var(--acc-fg-faint)">${options.version}</span>` : '') +
     `<span style="color:var(--acc-fg-ghost)">plugin for ${options.ide || 'JetBrains IDEs'}</span>` +
     '<span style="flex:1"></span>' +

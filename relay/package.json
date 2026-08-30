@@ -1,7 +1,7 @@
 {
   "name": "amazing-claude-code-relay",
   "version": "0.1.0",
-  "description": "A tiny relay that introduces a JetBrains IDE running Amazing Claude Code to a paired phone, and passes sealed envelopes between them.",
+  "description": "A tiny relay that introduces a JetBrains IDE running Amazing Claude Code GUI to a paired phone, and passes sealed envelopes between them.",
   "private": false,
   "license": "Apache-2.0",
   "type": "module",

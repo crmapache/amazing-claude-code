@@ -54,7 +54,7 @@ export const ko: Dict = {
       feedback: { label: '피드백 보내기', sub: '버그, 아이디어, 그냥 인사도 좋아요' },
     },
 
-    footer: 'Amazing Claude Code',
+    footer: 'Amazing Claude Code GUI',
   },
 
   settings: {
@@ -297,7 +297,7 @@ export const ko: Dict = {
     shareSub: '소개 한 줄과 링크를 복사해요',
     shareCopied: '복사했어요 - 원하는 곳에 붙여 넣으세요',
     shareText:
-      'Amazing Claude Code 한번 봐 - JetBrains IDE 안에 Claude Code를 제대로 된 패널로 넣어줘: https://plugins.jetbrains.com/plugin/33255-amazing-claude-code',
+      'Amazing Claude Code GUI 한번 봐 - JetBrains IDE 안에 Claude Code를 제대로 된 패널로 넣어줘: https://plugins.jetbrains.com/plugin/33255-amazing-claude-code',
   },
 
   login: {

@@ -5,7 +5,8 @@ does **not** grant any rights to the project's name or branding.
 
 ## What is not licensed
 
-- The name **Amazing Claude Code**, and names confusingly similar to it.
+- The name **Amazing Claude Code GUI** (and the earlier name **Amazing Claude
+  Code**), and names confusingly similar to either.
 - The plugin logo and the tool window icon, and marks confusingly similar to
   them.
 - The plugin ID `io.github.crmapache.amazingclaudecode`, and IDs derived from
@@ -17,14 +18,14 @@ These remain the property of the author, Maksim Zolotoi.
 
 - Use the software, read the source, and modify it, under the terms of the
   Elastic License 2.0.
-- Refer to the project by name to state a plain fact — "a fork of Amazing
-  Claude Code", "compatible with Amazing Claude Code", "a patch for Amazing
-  Claude Code". Descriptive references like these are fine.
+- Refer to the project by name to state a plain fact - "a fork of Amazing
+  Claude Code GUI", "compatible with Amazing Claude Code GUI", "a patch for
+  Amazing Claude Code GUI". Descriptive references like these are fine.
 - Submit changes back to this repository.
 
 ## What you may not do
 
-- Publish a fork or a derivative work under the name Amazing Claude Code, under
+- Publish a fork or a derivative work under the name Amazing Claude Code GUI, under
   a confusingly similar name, or under the same plugin ID. Pick your own name,
   your own ID, and your own logo.
 - Use the name or logo in a way that suggests your fork is this project, or

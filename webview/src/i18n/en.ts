@@ -70,7 +70,7 @@ export const en = {
     },
 
     /** The plugin's own name at the foot of the list, beside its version. Never translated. */
-    footer: 'Amazing Claude Code',
+    footer: 'Amazing Claude Code GUI',
   },
 
   settings: {
@@ -330,7 +330,7 @@ export const en = {
      * the language the person is reading the panel in, because that is very likely their friends' too.
      */
     shareText:
-      'Check out Amazing Claude Code - Claude Code as a proper panel inside JetBrains IDEs: https://plugins.jetbrains.com/plugin/33255-amazing-claude-code',
+      'Check out Amazing Claude Code GUI - Claude Code as a proper panel inside JetBrains IDEs: https://plugins.jetbrains.com/plugin/33255-amazing-claude-code',
   },
 
   login: {

@@ -1,4 +1,4 @@
-# Amazing Claude Code — заметки для работы с проектом
+# Amazing Claude Code GUI - заметки для работы с проектом
 
 Плагин для JetBrains IDE: нативная чат-панель для Claude Code внутри IDE
 (`webview/` — React/TS-интерфейс панели, Kotlin-код плагина — в `src/`).

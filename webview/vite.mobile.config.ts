@@ -85,7 +85,7 @@ const PRIVACY_SHELL = `<!doctype html>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="index, follow" />
-    <title>Privacy — Amazing Claude Code</title>
+    <title>Privacy - Amazing Claude Code GUI</title>
     <style>
       :root { color-scheme: dark light; }
       body {

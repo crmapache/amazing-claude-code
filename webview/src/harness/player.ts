@@ -44,7 +44,7 @@ const SAMPLE_FILES = [
 ]
 
 const SAMPLE_REPORT = [
-  'Amazing Claude Code 0.8.1',
+  'Amazing Claude Code GUI 0.8.1',
   'WebStorm 2026.2 (WS-262.19173.4)',
   'macOS 26.6 - aarch64',
   'Claude Code 2.1.4',

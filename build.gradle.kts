@@ -63,32 +63,121 @@ intellijPlatform {
         id = "io.github.crmapache.amazingclaudecode"
         name = "Amazing Claude Code GUI"
         version = providers.gradleProperty("version")
+        /**
+         * The marketplace page. It is read by two kinds of people - someone deciding whether to install
+         * anything at all, and someone who already has a competitor installed - so it is written as a
+         * page rather than a paragraph: what it is, why this one, how to start, what is inside, and what
+         * leaves the machine. Headings and short bold leads are what make the middle part skimmable; the
+         * screenshots above it carry the looks, so the text carries the facts.
+         *
+         * Two rules from the marketplace's own listing guide apply here: no images (those belong to the
+         * media section) and no adjective that cannot be checked. Every claim below is a thing the plugin
+         * does; if one of them stops being true, this text is part of the change.
+         *
+         * The same page in the panel's other eight languages lives in `docs/marketplace/`, linked from
+         * the row under the opening paragraphs. The marketplace takes one description and one only, so
+         * the translations are ordinary files in the repository - which also means they are only as
+         * fresh as the last time this text was carried over to them. Change this, change those.
+         */
         description =
             """
-            <p>A native chat panel for Claude Code inside JetBrains IDEs — a real input field and a
-            readable output area, instead of a terminal session.</p>
-            <p>It has everything the Claude Code CLI does: the same models, subscription, slash
-            commands, and permission modes. On top of that, it adds things a terminal can't do:</p>
+            <p><b>Claude Code as a chat panel in your JetBrains IDE.</b> Cards instead of terminal
+            scrollback, files you point at instead of paths you type, and your code right next to
+            it.</p>
+
+            <p>It drives the Claude Code CLI already on your machine, so your account, models, slash
+            commands, permission rules, MCP servers and skills all come with it. No proxy, no account
+            of ours.</p>
+
+            <p>&#127760; <b>English</b> |
+            <a href="https://github.com/crmapache/amazing-claude-code/blob/main/docs/marketplace/zh.md">简体中文</a> |
+            <a href="https://github.com/crmapache/amazing-claude-code/blob/main/docs/marketplace/ru.md">Русский</a> |
+            <a href="https://github.com/crmapache/amazing-claude-code/blob/main/docs/marketplace/es.md">Español</a> |
+            <a href="https://github.com/crmapache/amazing-claude-code/blob/main/docs/marketplace/pt.md">Português (Brasil)</a> |
+            <a href="https://github.com/crmapache/amazing-claude-code/blob/main/docs/marketplace/de.md">Deutsch</a> |
+            <a href="https://github.com/crmapache/amazing-claude-code/blob/main/docs/marketplace/fr.md">Français</a> |
+            <a href="https://github.com/crmapache/amazing-claude-code/blob/main/docs/marketplace/ja.md">日本語</a> |
+            <a href="https://github.com/crmapache/amazing-claude-code/blob/main/docs/marketplace/ko.md">한국어</a></p>
+
+            <h2>Why this one</h2>
             <ul>
-              <li>Branch any conversation into a new tab at any point, without touching the original</li>
-              <li>Quote Claude's own output straight into your next message, as a compact reference</li>
-              <li>Send a precise file-and-line reference from the editor, so Claude reads the real
-              surrounding code instead of a pasted snippet</li>
-              <li>Attach files, folders, and images through the IDE's own picker, or reference project
-              files right as you type</li>
+              <li><b>Point at files, do not type them.</b> Drag one in, type <code>@</code> to pick it,
+              paste a screenshot - each lands as a chip you cannot mistype.</li>
+              <li><b>Send code with its address.</b> Select lines, "Send to Amazing Claude Code GUI",
+              and the agent reads the real file around them instead of a snippet with no context.</li>
+              <li><b>Grab any part of an answer.</b> Quote it into your next message, or fork the
+              conversation from that exact point - the original stays as it was.</li>
+              <li><b>See what it is doing.</b> Tool calls with their duration, diffs with counts, the
+              todo list ticking off, plans, subagents, whole fleets of agents in one workflow call, and
+              what the turn cost.</li>
+              <li><b>No unexplained silence.</b> An overloaded or rate-limited API becomes a card with
+              the reason, the attempt and the countdown.</li>
+              <li><b>Nothing answers for you.</b> A permission request, a plan or a question waits as
+              long as it takes - no timeout, no auto-continue.</li>
+              <li><b>A side panel, not an editor tab</b>, on any edge of the window.</li>
+              <li><b>Conversations outlive the panel.</b> Collapse it, switch projects, come back - the
+              agent kept working, and queued messages are still queued.</li>
+              <li><b>Model, effort and mode change mid-conversation</b>, per tab, without restarting
+              anything.</li>
+              <li><b>Answer it from your phone.</b> Off by default, paired by QR code, end-to-end
+              encrypted, revocable in one tap.</li>
+              <li><b>Android Studio included</b>, along with every JetBrains IDE from 2026.1 on.</li>
             </ul>
-            <p><b>Answer it from your phone.</b> Remote access is off when the plugin is installed and
-            does nothing over the network until you turn it on. Once you do, you pair a phone by
-            scanning a QR code shown in the panel - confirmed at your desk, with a fingerprint to
-            compare - and from then on you can read a conversation, answer a permission request or a
-            plan, and send a message from anywhere. What travels goes through a relay server,
-            encrypted end to end: the relay passes sealed envelopes between the two and cannot read
-            what is inside them. A paired phone cannot run shell commands on your machine, change
-            permission modes or install anything; any device can be revoked instantly, even while it
-            is switched off, and you can point the plugin at a relay of your own. What travels and
-            what the relay can see is described in the
-            <a href="https://relay.mzpizote.com/privacy">privacy policy</a>.</p>
-            <p>Same Claude Code, properly integrated into your editor.</p>
+
+            <h2>Getting started</h2>
+            <ol>
+              <li>Have Claude Code installed and working in a terminal.</li>
+              <li>Open the panel from the side bar; if you are not signed in, one button does it in the
+              IDE's terminal.</li>
+              <li>Write - drop files in, type <code>@</code> for a file, <code>/</code> for a command,
+              <code>!</code> to run something in your shell. Model, effort and mode are the three
+              buttons under the field.</li>
+            </ol>
+
+            <h2>Also in the panel</h2>
+            <ul>
+              <li><b>History</b> of this project's past conversations, terminal ones included.</li>
+              <li><b>A queue</b> for messages written while a turn is running, reorderable by drag.</li>
+              <li><b>Improve prompt</b> - the sparkle rewrites your draft in a run of its own, costing
+              your conversation no context, and one button puts your words back.</li>
+              <li><b>Voice input</b> with a Deepgram key of your own: hold a hotkey, even from the
+              editor.</li>
+              <li><b>Sound alerts</b> for the seven moments worth one, and only when you are not
+              already looking.</li>
+              <li><b>Statistics</b> of hours, habits and achievements, shareable as a picture.</li>
+              <li><b>Nine languages</b>, following your IDE by default.</li>
+              <li><b>Your unsaved buffers</b> are written before a turn, and files the agent changed
+              are re-read at once.</li>
+            </ul>
+
+            <h2>Privacy and transparency</h2>
+            <ul>
+              <li><b>Everything runs on your machine.</b> No proxy, no server of ours in the middle.
+              Your Claude sign-in belongs to the CLI - the plugin never reads it or hunts for API keys
+              on your disk.</li>
+              <li><b>No telemetry, no analytics, no account.</b> With remote access off, the only thing
+              that ever leaves is a feedback report you write and send yourself - and one button shows
+              its exact text first.</li>
+              <li><b>Your permission rules stay yours.</b> The CLI decides what to ask about, with your
+              settings, rules and hooks. The plugin adds no hook of its own and never starts a session
+              in a laxer mode than the one on screen.</li>
+              <li><b>Source available</b> on GitHub under the Elastic License 2.0, and the
+              <a href="https://relay.mzpizote.com/privacy">privacy policy</a> lists everything that can
+              leave the machine.</li>
+            </ul>
+
+            <h2>Requirements</h2>
+            <p>Claude Code installed and signed in, and any JetBrains IDE from 2026.1 on, Android Studio
+            included. Android Studio has no embedded browser of its own, so the IDE offers to install
+            JetBrains' browser plugin alongside this one.</p>
+
+            <h2>Links</h2>
+            <ul>
+              <li><a href="https://github.com/crmapache/amazing-claude-code">Source code</a></li>
+              <li><a href="https://github.com/crmapache/amazing-claude-code/issues">Report a bug or ask
+              for a feature</a>, or use the form in the panel</li>
+              <li><a href="https://relay.mzpizote.com/privacy">Privacy policy</a></li>
+            </ul>
             """.trimIndent()
 
         // The marketplace requires a working address and email from the author: moderation contacts the

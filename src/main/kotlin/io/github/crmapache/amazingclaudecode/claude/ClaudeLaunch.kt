@@ -91,7 +91,7 @@ internal object ClaudeLaunch {
      * the wording itself for the same reason, and the test holds both.
      */
     val PANEL_BRIEFING = """
-        This conversation runs inside the Amazing Claude Code panel of a JetBrains IDE. A person is
+        This conversation runs inside the Amazing Claude Code GUI panel of a JetBrains IDE. A person is
         sitting in front of it, watching the answer as it is written, and can press a button on the
         spot - this is not a headless script, whatever the launch mode may look like from inside.
 

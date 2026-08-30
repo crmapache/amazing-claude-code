@@ -54,7 +54,7 @@ export const es: Dict = {
       feedback: { label: 'Enviar comentarios', sub: 'Un fallo, una idea o simplemente un hola' },
     },
 
-    footer: 'Amazing Claude Code',
+    footer: 'Amazing Claude Code GUI',
   },
 
   settings: {
@@ -299,7 +299,7 @@ export const es: Dict = {
     shareSub: 'Copia una línea sobre él y el enlace',
     shareCopied: 'Copiado - pégalo donde quieras',
     shareText:
-      'Échale un ojo a Amazing Claude Code - Claude Code como un panel en condiciones dentro de los IDE de JetBrains: https://plugins.jetbrains.com/plugin/33255-amazing-claude-code',
+      'Échale un ojo a Amazing Claude Code GUI - Claude Code como un panel en condiciones dentro de los IDE de JetBrains: https://plugins.jetbrains.com/plugin/33255-amazing-claude-code',
   },
 
   login: {

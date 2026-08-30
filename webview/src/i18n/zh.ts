@@ -54,7 +54,7 @@ export const zh: Dict = {
       feedback: { label: '发送反馈', sub: '问题、想法，或者只是打个招呼' },
     },
 
-    footer: 'Amazing Claude Code',
+    footer: 'Amazing Claude Code GUI',
   },
 
   settings: {
@@ -297,7 +297,7 @@ export const zh: Dict = {
     shareSub: '复制一句介绍和链接',
     shareCopied: '已复制 - 想贴哪儿就贴哪儿',
     shareText:
-      '推荐一下 Amazing Claude Code - 把 Claude Code 做成 JetBrains IDE 里像样的面板：https://plugins.jetbrains.com/plugin/33255-amazing-claude-code',
+      '推荐一下 Amazing Claude Code GUI - 把 Claude Code 做成 JetBrains IDE 里像样的面板：https://plugins.jetbrains.com/plugin/33255-amazing-claude-code',
   },
 
   login: {

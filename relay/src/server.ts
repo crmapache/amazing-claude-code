@@ -8,7 +8,7 @@ import { Mailboxes } from './routing/mailbox.js'
 import { addressHint, decodeAddress, encodeAddress, FrameError, FrameType, parse, WIRE_VERSION } from './wire/frame.js'
 
 /**
- * A relay for Amazing Claude Code: it introduces an IDE to a phone and passes sealed envelopes between
+ * A relay for Amazing Claude Code GUI: it introduces an IDE to a phone and passes sealed envelopes between
  * them.
  *
  * What it can see, in full: two opaque 16-byte addresses, a counter, how big each envelope is, and

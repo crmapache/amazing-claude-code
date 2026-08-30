@@ -77,8 +77,8 @@ class FeedbackSenderTest {
             kind = "bug",
             text = "the panel hangs on reopening a tab",
             email = "you@example.com",
-            environment = "Amazing Claude Code 9.9.9 · WebStorm 2026.2",
-            report = "Amazing Claude Code 9.9.9\n+0.4s Read ok",
+            environment = "Amazing Claude Code GUI 9.9.9 · WebStorm 2026.2",
+            report = "Amazing Claude Code GUI 9.9.9\n+0.4s Read ok",
             files = listOf(FeedbackAttachments.Picked(id = "a1", name = "shot.png", bytes = 4, path = file)),
         )
 
@@ -91,7 +91,7 @@ class FeedbackSenderTest {
         assertContains(body, "the panel hangs on reopening a tab")
         assertContains(body, "you@example.com")
         assertContains(body, """filename="report.txt"""")
-        assertContains(body, "Amazing Claude Code 9.9.9")
+        assertContains(body, "Amazing Claude Code GUI 9.9.9")
         assertContains(body, """name="file"; filename="shot.png"""")
 
         // Five parts - kind, text, email, environment, report, file - and the delimiter that closes them.

@@ -1,4 +1,4 @@
-# Amazing Claude Code — relay
+# Amazing Claude Code GUI - relay
 
 A tiny server that introduces an IDE to a phone and passes sealed envelopes between them.
 

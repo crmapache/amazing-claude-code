@@ -2,7 +2,7 @@
 
 _Last updated: 29 August 2026_
 
-Amazing Claude Code is a panel for Claude Code inside JetBrains IDEs. With three exceptions, all
+Amazing Claude Code GUI is a panel for Claude Code inside JetBrains IDEs. With three exceptions, all
 described below, it sends nothing anywhere: the agent runs on your machine, the conversation stays on
 your machine, and the plugin has no analytics, no telemetry and no account of any kind.
 

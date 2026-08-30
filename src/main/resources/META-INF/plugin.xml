@@ -35,8 +35,14 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <!-- Where the panel says something to the IDE rather than to the person in front of it: a picture
-             of the statistics written into the downloads folder, for instance. -->
-        <notificationGroup id="Amazing Claude Code" displayType="BALLOON"/>
+             of the statistics written into the downloads folder, for instance.
+             The id stays the old name on purpose - it is the key the IDE files a person's notification
+             settings under, and renaming it would silently reset them. What they read is the caption,
+             which comes from the bundle. -->
+        <notificationGroup id="Amazing Claude Code"
+                           displayType="BALLOON"
+                           bundle="messages.AccBundle"
+                           key="notification.group"/>
 
         <!-- anchor sets the default position only: from then on the user drags the button between the
              edges themselves, and the platform remembers their choice. -->
@@ -58,13 +64,13 @@
     <actions>
         <action id="AmazingClaudeCode.SendSelection"
                 class="io.github.crmapache.amazingclaudecode.editor.SendSelectionAction"
-                text="Send to Amazing Claude Code"
+                text="Send to Amazing Claude Code GUI"
                 description="Put a reference to the selected lines into the Claude panel input">
             <add-to-group group-id="EditorPopupMenu" anchor="first"/>
         </action>
         <action id="AmazingClaudeCode.SendSelectionAbsolute"
                 class="io.github.crmapache.amazingclaudecode.editor.SendSelectionAbsoluteAction"
-                text="Send Absolute Path to Amazing Claude Code"
+                text="Send Absolute Path to Amazing Claude Code GUI"
                 description="Put the file's full path into the Claude panel input, for a conversation started outside this project">
             <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="AmazingClaudeCode.SendSelection"/>
         </action>

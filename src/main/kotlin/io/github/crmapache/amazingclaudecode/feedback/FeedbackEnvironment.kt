@@ -47,7 +47,7 @@ internal object FeedbackEnvironment {
 
     /** The lines themselves, in the order they are read. */
     fun lines(): List<String> = listOf(
-        "Amazing Claude Code ${ProjectCatalog.pluginVersion ?: "(version unknown)"}",
+        "Amazing Claude Code GUI ${ProjectCatalog.pluginVersion ?: "(version unknown)"}",
         ide(),
         os(),
         claude(),
