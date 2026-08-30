@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Amazing Claude Code. The section for the version being
+All notable changes to Amazing Claude Code GUI. The section for the version being
 built is what the Marketplace and the IDE's update dialog show, so every release
 lists only its own changes. Entries up to 0.7.4 were reconstructed from the
 plugin's git history: until then all releases shared one ever-growing block of
@@ -8,6 +8,11 @@ notes, and a few releases never updated it at all — those are described by the
 commits.
 
 ## [Unreleased]
+
+## [0.9.4] - 2026-08-30
+
+- Changed: the plugin says its full name, Amazing Claude Code GUI, in every place it names itself - the button on the side bar, both items in the editor's context menu, the foot of the panel's menu, the picture you share from the statistics tab, and the notification group in the IDE's settings. It was called two different things depending on where you looked, and the shorter one was the older one. Nothing you had set is affected: what the IDE files your notification preferences under, and the safe where your Deepgram key and paired devices live, keep their old keys on purpose.
+- Added: the plugin's page in the Marketplace now exists in all nine languages the panel speaks - Chinese, Russian, Spanish, Portuguese, German, French, Japanese and Korean beside English - each a full translation rather than a summary, linked from a row of languages at the top of the page. The page itself was rewritten while we were at it: what it gives you that a terminal does not, how to start in three steps, what else is in the panel, and what does and does not leave your machine.
 
 ## [0.9.3] - 2026-08-30
 
@@ -452,7 +457,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.9.3...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.9.4...HEAD
+[0.9.4]: https://github.com/crmapache/amazing-claude-code/compare/0.9.3...0.9.4
 [0.9.3]: https://github.com/crmapache/amazing-claude-code/compare/0.9.2...0.9.3
 [0.9.2]: https://github.com/crmapache/amazing-claude-code/compare/0.9.1...0.9.2
 [0.9.1]: https://github.com/crmapache/amazing-claude-code/compare/0.9.0...0.9.1
