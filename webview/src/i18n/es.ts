@@ -345,7 +345,6 @@ export const es: Dict = {
     copyBlock: 'Copiar este bloque',
     copyReply: 'Copiar toda la respuesta',
     pastedLines: (n) => `${n} ${n === 1 ? 'línea pegada' : 'líneas pegadas'}`,
-    pasteOpen: 'Mostrar el pegado completo',
     pasteClose: 'Volver a plegarlo',
     copyPaste: 'Copiar el texto pegado',
     pasteShown: (shown, total) => `Primeras ${shown} líneas de ${total} · al copiar se lleva todo`,

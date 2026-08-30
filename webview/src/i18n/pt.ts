@@ -345,7 +345,6 @@ export const pt: Dict = {
     copyBlock: 'Copiar este bloco',
     copyReply: 'Copiar a resposta inteira',
     pastedLines: (n) => `${n} ${n === 1 ? 'linha colada' : 'linhas coladas'}`,
-    pasteOpen: 'Mostrar a colagem inteira',
     pasteClose: 'Recolher de novo',
     copyPaste: 'Copiar o texto colado',
     pasteShown: (shown, total) => `Primeiras ${shown} linhas de ${total} · copiar leva tudo`,

@@ -343,7 +343,6 @@ export const ko: Dict = {
     copyBlock: '이 블록 복사',
     copyReply: '답변 전체 복사',
     pastedLines: (n) => `${n}줄 붙여넣음`,
-    pasteOpen: '붙여넣은 내용 전체 보기',
     pasteClose: '다시 접기',
     copyPaste: '붙여넣은 텍스트 복사',
     pasteShown: (shown, total) => `전체 ${total}줄 중 처음 ${shown}줄 · 복사는 전체`,

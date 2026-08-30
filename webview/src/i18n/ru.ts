@@ -359,7 +359,6 @@ export const ru: Dict = {
       if (last >= 2 && last <= 4) return `вставлено ${n} строки`
       return `вставлено ${n} строк`
     },
-    pasteOpen: 'Показать вставку целиком',
     pasteClose: 'Свернуть обратно',
     copyPaste: 'Скопировать вставленный текст',
     pasteShown: (shown, total) => {

@@ -379,7 +379,6 @@ export const en = {
     copyReply: 'Copy the whole reply',
     pastedLines: (n: number): string => `${n} ${n === 1 ? 'line' : 'lines'} pasted`,
     /** A collapsed paste opens on a click - the hover hint shows only its first lines. */
-    pasteOpen: 'Show the whole paste',
     pasteClose: 'Collapse it back',
     copyPaste: 'Copy the pasted text',
     /** Said only when a paste is too long to be drawn whole - the copy button still copies all of it. */

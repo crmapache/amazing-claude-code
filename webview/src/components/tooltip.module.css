@@ -57,14 +57,3 @@
   padding: 5px 9px;
   font: 11px/1.45 var(--acc-font);
 }
-
-/* A paste's hint shows the first lines of the text itself rather than words about it, so it is set the
-   way the text was written: monospaced, indents kept (pre-line above would eat them, and an indent is
-   half of what a line of code is recognised by) and wider, because a line of code is longer than a
-   caption. What it is - text, not a caption - is the whole reason a paste opens on a click. */
-.tip[data-kind='paste'] {
-  max-width: 340px;
-  white-space: pre-wrap;
-  font: 11px/1.45 var(--acc-mono);
-  color: var(--acc-fg-dim);
-}

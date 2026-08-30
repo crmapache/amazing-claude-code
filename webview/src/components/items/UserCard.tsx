@@ -118,6 +118,12 @@ const ChipView = memo(({ chip }: { chip: Chip }) => (
  * by the browser's own search, and the phone - which has no hover at all and so had no way to see a
  * paste whatsoever - opens it with the same tap.
  *
+ * And precisely because it opens, the collapsed chip carries no hint at all - it is the one chip in the
+ * panel without one. A hint that repeats the first lines of the text stands over the feed at the very
+ * moment the click puts those same lines into it, so it covers the answer it was previewing; and the
+ * click itself needs no announcing, since the caret says the chip folds the same way a folded group of
+ * calls does.
+ *
  * [block] is a paste with nothing after it in the message: the room is free anyway, so the collapsed
  * form takes the whole width and shows the first lines rather than seven words. Standing in the middle
  * of a message it stays an ordinary chip, and the text it opens goes below it on a line of its own.
@@ -144,18 +150,12 @@ const PasteView = memo(({
   const lines = useMemo(() => pasteLineCount(text), [text])
   const body = useMemo(() => (open ? pasteBody(text) : null), [open, text])
 
-  // What the click does comes first, the start of the text after it: the hint is read left to right and
-  // the first line is the one that is always read.
-  const hint = `${t.feed.pasteOpen}\n\n${chipTitle(chip)}`
-
   // A button rather than a span with a click on it: this is the one chip that does something, and a
   // keyboard has to be able to reach it as well as a pointer.
   const collapsed = block ? (
     <button
       type="button"
       className={`${s.chip} ${s.chipPaste} ${s.chipPasteBlock} ${s.chipPasteOpens}`}
-      data-tooltip={hint}
-      data-tooltip-kind="paste"
       onClick={onToggle}
     >
       <span className={s.chipPasteHead}>
@@ -169,8 +169,6 @@ const PasteView = memo(({
     <button
       type="button"
       className={`${s.chip} ${s.chipPaste} ${s.chipPasteOpens}`}
-      data-tooltip={hint}
-      data-tooltip-kind="paste"
       onClick={onToggle}
     >
       {chipLabel(chip)}
