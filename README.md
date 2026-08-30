@@ -4,6 +4,18 @@ A Claude Code panel for JetBrains IDEs: a real chat with an input field and pars
 output, instead of a terminal session. The button lives on the side bar and can be
 moved to any edge of the window.
 
+🌐 What the plugin is, in your language:
+[English](docs/marketplace/en.md) |
+[简体中文](docs/marketplace/zh.md) |
+[Русский](docs/marketplace/ru.md) |
+[Español](docs/marketplace/es.md) |
+[Português (Brasil)](docs/marketplace/pt.md) |
+[Deutsch](docs/marketplace/de.md) |
+[Français](docs/marketplace/fr.md) |
+[日本語](docs/marketplace/ja.md) |
+[한국어](docs/marketplace/ko.md)
+
+The rest of this file is for people working on the plugin rather than using it.
 The interface is built from the "Claude Code Panel" mockup in Claude Design.
 
 ## What it does that a terminal doesn't
