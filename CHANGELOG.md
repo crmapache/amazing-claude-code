@@ -9,6 +9,10 @@ commits.
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-08-30
+
+- Fixed: hovering a pasted block in a sent message put a tall strip of that same text over the conversation, and clicking the block then unfolded the text underneath it - so the hint covered the very thing it was previewing. The collapsed paste now carries no hint at all: it is the one chip in the panel that opens on a click, and the caret on it already says so, the same way a folded group of tool calls does.
+
 ## [0.9.4] - 2026-08-30
 
 - Changed: the plugin says its full name, Amazing Claude Code GUI, in every place it names itself - the button on the side bar, both items in the editor's context menu, the foot of the panel's menu, the picture you share from the statistics tab, and the notification group in the IDE's settings. It was called two different things depending on where you looked, and the shorter one was the older one. Nothing you had set is affected: what the IDE files your notification preferences under, and the safe where your Deepgram key and paired devices live, keep their old keys on purpose.
@@ -457,7 +461,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.9.4...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.9.5...HEAD
+[0.9.5]: https://github.com/crmapache/amazing-claude-code/compare/0.9.4...0.9.5
 [0.9.4]: https://github.com/crmapache/amazing-claude-code/compare/0.9.3...0.9.4
 [0.9.3]: https://github.com/crmapache/amazing-claude-code/compare/0.9.2...0.9.3
 [0.9.2]: https://github.com/crmapache/amazing-claude-code/compare/0.9.1...0.9.2
