@@ -513,6 +513,15 @@ type ShellMessageBody =
    */
   | { type: 'model'; sessionId: string; model: string; applied: boolean; error?: string }
   /**
+   * The effort this conversation works at: on a change of its own, and once when the conversation is
+   * born - that is the moment nothing else could tell the panel what the tab started on.
+   *
+   * There is no "applied" here on purpose. The CLI takes an effort change without answering yes or no
+   * (see ClaudeSession.setEffort), so there is nothing to refuse with and nothing to roll back to: this
+   * message says what is, not how the request went.
+   */
+  | { type: 'effort'; sessionId: string; effort: string }
+  /**
    * Whether the "no questions" mode is allowed on this machine: an organization's policy can forbid it,
    * and an old CLI does not allow switching into it on the fly either. The Shift+Tab cycle depends on
    * it - a forbidden mode it steps over.

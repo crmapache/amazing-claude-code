@@ -12,8 +12,7 @@ import kotlinx.serialization.json.jsonPrimitive
  *
  * Parsing events in full has no place here - that is the interface's work. The shell cares about two
  * boundaries only: where a turn ended and where one began. It lights and clears the panel's "working"
- * state by them, releases the deferred preference command, and knows whether the conversation is free
- * (see [ClaudeSession]).
+ * state by them, and knows whether the conversation is free (see [ClaudeSession]).
  */
 internal object AgentStream {
 
@@ -35,7 +34,7 @@ internal object AgentStream {
      * events carry the tool call that spawned them - the same mark the feed tells them apart by - and
      * they arrive even after the main turn's result, with no result of their own. Lighting up work by
      * them means lighting it up forever: there would be nothing left to clear it, and while the panel
-     * thinks itself busy, both the deferred preference command and the delivery check stand still.
+     * thinks itself busy, the delivery check stands still.
      */
     fun isTurnActivity(line: String): Boolean {
         val payload = topLevel(line, "assistant", "stream_event") ?: return false

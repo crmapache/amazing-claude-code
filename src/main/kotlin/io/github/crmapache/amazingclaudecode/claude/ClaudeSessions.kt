@@ -34,6 +34,15 @@ internal class ClaudeSessions(
     private val onTurnEnded: (sessionId: String) -> Unit = {},
     /** The turn started on its own, without a send from the panel; see ClaudeSession.onTurnStarted. */
     private val onTurnStarted: (sessionId: String) -> Unit = {},
+    /**
+     * A conversation has just been born, and this is the effort it was born with.
+     *
+     * Said out loud because nobody else can say it later: the CLI never announces the effort and cannot
+     * be asked about it (see ClaudeSession.setEffort), so a tab whose effort nobody has touched would
+     * otherwise be drawn by whatever the setting holds NOW - that is, by a choice made in a neighbouring
+     * tab after this conversation had already started on something else.
+     */
+    private val onBorn: (sessionId: String, effort: String) -> Unit = { _, _ -> },
 ) : Disposable {
 
     private val sessions = ConcurrentHashMap<String, ClaudeSession>()
@@ -243,10 +252,25 @@ internal class ClaudeSessions(
         }
     }
 
+    /**
+     * The effort, and unlike the model the setting is written straight away: this channel never refuses
+     * (see ClaudeSession.setEffort), so there is nothing to hold it back for.
+     */
     fun setEffort(sessionId: String, effort: String) {
         ClaudePreferences.effort = effort
         session(sessionId).setEffort(effort)
     }
+
+    /**
+     * What effort this conversation works at - null when there is no conversation yet, and then the
+     * saved setting is the honest answer (that is what such a tab will start on).
+     *
+     * Asked of the conversation for the same reason as the permission mode: the setting is one for the
+     * whole application, while every open tab keeps what it was started with. And unlike the model and
+     * the mode there is nobody else to ask at all - the CLI neither announces the effort nor answers
+     * questions about it (see ClaudeSession.setEffort).
+     */
+    fun effort(sessionId: String): String? = sessions[sessionId]?.effort
 
     /**
      * This conversation starts on what was chosen for it rather than on what the settings hold.
@@ -327,6 +351,9 @@ internal class ClaudeSessions(
         // Chosen for this conversation alone, or nothing at all - the usual case, in which the settings
         // decide (see SessionLaunch).
         val launch = launches.remove(sessionId) ?: SessionLaunch()
+        val effort = launch.effort.ifEmpty { ClaudePreferences.effort }
+
+        onBorn(sessionId, effort)
 
         return ClaudeSession(
             workingDirectory = workingDirectory,
@@ -335,7 +362,7 @@ internal class ClaudeSessions(
             // A new conversation starts with whatever is chosen now: re-picking the model in every tab is
             // work over nothing.
             model = launch.model.ifEmpty { ClaudePreferences.model },
-            effort = launch.effort.ifEmpty { ClaudePreferences.effort },
+            effort = effort,
             // Never chosen at all - we start in the same mode a terminal would start in this directory (see
             // PermissionDefaultMode).
             permissionMode = PermissionModes.resolve(

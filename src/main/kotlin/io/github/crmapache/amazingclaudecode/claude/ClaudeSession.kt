@@ -16,6 +16,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.addJsonObject
@@ -59,7 +60,7 @@ internal class ClaudeSession(
      * whatever was chosen at the moment the tab was opened.
      */
     private var model: String = "",
-    private var effort: String = "",
+    effort: String = "",
     permissionMode: String = "",
     private val onEvent: (String) -> Unit,
     private val onError: (String) -> Unit,
@@ -102,11 +103,10 @@ internal class ClaudeSession(
      * all.
      *
      * The panel learns this from the stream as well (the result event travels into the feed), but
-     * relying on that alone is not enough: it may never reach the feed - swallowed, for instance, by
-     * the suppression of a preference command's reply (see [suppressingPreferenceReply]), or not parsed
-     * by the interface as the end of a turn. Then "Claude is thinking" with its running counter stays
-     * on screen forever while the agent has long been free, and the conversation looks stuck - exactly
-     * the breakage this separate signal exists for.
+     * relying on that alone is not enough: it may never reach the feed, or not be parsed by the
+     * interface as the end of a turn. Then "Claude is thinking" with its running counter stays on
+     * screen forever while the agent has long been free, and the conversation looks stuck - exactly the
+     * breakage this separate signal exists for.
      */
     private val onTurnEnded: () -> Unit = {},
     /**
@@ -138,19 +138,26 @@ internal class ClaudeSession(
     /**
      * The person's turn is running: a message was sent, there has been no result yet.
      *
-     * Needed not for the feed but for the session's own decisions: while a turn runs, a preference
-     * command such as `/effort` does not go into the process (see [setEffort]).
+     * Needed not for the feed but for the session's own decisions - the delivery check and the spinner
+     * above all.
      */
     @Volatile
     private var busy = false
 
-    /** A preference command waiting for the current turn to end - see [setEffort]. */
-    @Volatile
-    private var pendingPreference: String? = null
-
     /** Whether the process's death is our own request rather than a crash. */
     @Volatile
     private var stopRequested = false
+
+    /**
+     * The effort this conversation works at.
+     *
+     * Readable from outside for a reason the model and the mode do not have: those two the CLI reports
+     * itself, in every `system/init`, so a client can be told what is by whoever heard it last. About
+     * the effort the CLI says nothing at all, ever (see [setEffort]) - this field is the only record of
+     * it there is, and a client joining is answered from here (see ClaudeSessionHub.attach).
+     */
+    var effort: String = effort
+        private set
 
     /**
      * This conversation's permission mode. A live process receives it as a control message, but it has
@@ -166,17 +173,6 @@ internal class ClaudeSession(
 
     /** Answers to control requests arrive mixed in with the conversation's events. */
     private val awaitingControl = ConcurrentHashMap<String, Control>()
-
-    /**
-     * A turn is running in which the panel itself, not the person, changed the model or the effort
-     * through /model and /effort. That command has no control channel, only an ordinary turn in the
-     * shared stream, so the agent answers it with the same text as in a terminal: "for this session
-     * only". The panel has its own truth - the choice outlives new tabs and IDE restarts - and the
-     * discrepancy is confusing. Neither this turn's text nor its result is let into the feed; system
-     * events pass as usual - the status line lives by them.
-     */
-    @Volatile
-    private var suppressingPreferenceReply = false
 
     private class Control(val onResult: (JsonObject) -> Unit, val onFailure: (String) -> Unit)
 
@@ -339,16 +335,6 @@ internal class ClaudeSession(
     fun wake(): Boolean = handler != null || start() != null
 
     /**
-     * /effort the panel sends itself, not the person: showing the agent's answer to it in the feed
-     * serves nothing, and it is misleading besides (see the comment on [suppressingPreferenceReply]).
-     */
-    fun applyPreference(command: String) {
-        val process = handler ?: start() ?: return
-        suppressingPreferenceReply = true
-        write(process, userMessage(command, emptyList()))
-    }
-
-    /**
      * How a model change ended. The agent can genuinely say no: a model may be forbidden by an
      * organization or unavailable on a plan, and such a one it will not take. [model] is the one that
      * ends up working: the new one on agreement and the previous one on refusal, so that the panel has
@@ -395,24 +381,75 @@ internal class ClaudeSession(
         }
     }
 
-    /** The effort changes by a slash command: the CLI has no control request of its own for it. */
+    /**
+     * Changing the effort of THIS conversation - by a control request (`apply_flag_settings`), the same
+     * way as the model and the mode.
+     *
+     * It used to travel as an ordinary turn: the panel wrote `/effort high` into the conversation as
+     * though the person had, silenced the agent's reply to it, and while someone else's turn was
+     * running held the command back until that turn ended. That is gone, and with it the machinery it
+     * needed. Measured on CLI 2.1.247, launched with the panel's own flags: the request is answered at
+     * once, works in the middle of a running turn without disturbing it, and overrides the `--effort`
+     * the process came up with.
+     *
+     * Two things this channel does NOT give, and both decide how the rest is built:
+     *
+     * - **It never says no.** An unknown level, an organization that forbids xhigh, workflows switched
+     *   off - all of it is answered with `success` here (the CLI's own explanations for those live on
+     *   its Remote Control bridge, which we are not). So there is no refusal to show and nothing to
+     *   roll back to, unlike the model and the mode.
+     * - **It cannot be read back.** `get_settings` on this version reports the merge of settings files
+     *   and nothing about the session; `system/init` carries no effort at all, and no event announces a
+     *   change. Hence the effort of a conversation is true only here, in the conversation itself, and
+     *   the panel learns it from us (see ClaudeSessionHub.changeEffort).
+     *
+     * A sleeping conversation has nothing to change: the effort will travel as a flag at launch, and
+     * remembering it here is the whole of the work.
+     *
+     * Nobody waits for the answer, and there is nothing in it to wait for: it carries no payload, and
+     * "yes" is the only thing it ever says. What the conversation is set to is decided by the line
+     * below, not by the CLI - a failure to write reaches the panel by its own road (see [write]) and
+     * would change nothing here anyway, since the next process takes the effort as a flag.
+     */
     fun setEffort(effort: String) {
         this.effort = effort
         if (handler == null) return
 
-        // In the middle of a running turn the command is kept to ourselves. Sending it now is
-        // impossible: the suppression of the reply (see [suppressingPreferenceReply]) stays silent
-        // until the next result, and the next result belongs to someone else's turn, the running one.
-        // Its ending would then be lost whole - both the rest of the agent's answer and the result
-        // itself, after which the panel clears the spinner - that is, the conversation stays "thinking"
-        // forever. The running turn is unaffected by the effort anyway: the CLI applies it to the next
-        // one, so waiting changes nothing that matters.
-        if (busy) {
-            pendingPreference = "/effort $effort"
-            return
+        control("apply_flag_settings", onFailure = { message ->
+            thisLogger().warn("Effort $effort was not applied: $message")
+        }) {
+            putJsonObject("settings") { effortSettings(effort) }
         }
+    }
 
-        applyPreference("/effort $effort")
+    /**
+     * Both keys, every time, whatever was chosen.
+     *
+     * The flag settings are a layer the CLI merges rather than replaces, so a key left unsaid keeps the
+     * value of the previous choice: pick ultracode and then max, and the orchestration would stay on
+     * with nobody having asked for it.
+     *
+     * `ultracode` is the CLI's own name for "xhigh plus standing dynamic-workflow orchestration", and
+     * that is exactly how it is spelled out here; `auto` is the absence of a choice, which this layer
+     * writes as null - the model's own default then applies.
+     */
+    private fun JsonObjectBuilder.effortSettings(effort: String) {
+        when (effort) {
+            EFFORT_ULTRACODE -> {
+                put("effortLevel", EFFORT_XHIGH)
+                put("ultracode", true)
+            }
+
+            EFFORT_AUTO -> {
+                put("effortLevel", JsonNull)
+                put("ultracode", false)
+            }
+
+            else -> {
+                put("effortLevel", effort)
+                put("ultracode", false)
+            }
+        }
     }
 
     /**
@@ -575,7 +612,6 @@ internal class ClaudeSession(
         stopRequested = true
         handler = null
         busy = false
-        pendingPreference = null
         // There is nowhere left to deliver what was swallowed, and no reason to: the conversation with
         // its context is about to be gone.
         undelivered.forget()
@@ -680,8 +716,8 @@ internal class ClaudeSession(
             return
         }
 
-        // A turn's result is noticed before anything else and reported upwards in every case - even
-        // when the line itself will not travel into the feed (see onTurnEnded).
+        // A turn's result is noticed before anything else and reported upwards in every case, whatever
+        // becomes of the line itself further on (see onTurnEnded).
         val turnResult = AgentStream.isTurnResult(line)
 
         // And a turn's start by the very first sign of work: the turn could have begun without a send
@@ -689,22 +725,14 @@ internal class ClaudeSession(
         if (!turnResult) noteTurnActivity(line)
 
         try {
-            consumeEvent(line, turnResult)
+            consumeEvent(line)
         } finally {
             if (turnResult) endTurn()
         }
     }
 
     /** The body of the parsing: everything after which the turn must be closed anyway - see [consume]. */
-    private fun consumeEvent(line: String, turnResult: Boolean) {
-        if (suppressingPreferenceReply) {
-            // System events pass as always - the status line lives by them (the model, the mode). The
-            // turn itself is marked as done by the result: there is always exactly one, and without it
-            // this discrepancy would never end.
-            if (turnResult) suppressingPreferenceReply = false
-            if (!line.contains("\"type\":\"system\"")) return
-        }
-
+    private fun consumeEvent(line: String) {
         if (line.contains("\"type\":\"conversation_reset\"")) resetConversation(line)
 
         rememberTitle(line)
@@ -752,10 +780,7 @@ internal class ClaudeSession(
         NEW_CONVERSATION_ID.find(line)?.groupValues?.get(1)?.let { conversationId = it }
     }
 
-    /**
-     * The turn has ended: the panel should clear its work, and the deferred preference command should
-     * travel (see [setEffort]).
-     */
+    /** The turn has ended: the panel should clear its work. */
     private fun endTurn() {
         busy = false
         onTurnEnded()
@@ -763,30 +788,6 @@ internal class ClaudeSession(
         // The end of a turn is the first moment anything can be said about what was sent: until then an
         // accepted message is indistinguishable from a swallowed one.
         startDeliveryCheck()
-
-        flushPreference()
-    }
-
-    /**
-     * Send the preference command deferred by [setEffort] - but only once nothing of the person's can
-     * turn into a turn ahead of it.
-     *
-     * A preference command silences the feed until the next result (see [suppressingPreferenceReply]),
-     * and that silence does not know whose result it caught. Write the command out while a message of
-     * the person's is still waiting to be taken up by the CLI, and the silence lands on THEIR turn: the
-     * agent's whole answer disappears from the feed, the panel shows their message with nothing after
-     * it, and the service reply the silence was for leaks into the feed afterwards instead.
-     *
-     * So we wait for the list of unaccounted sends to empty. The delivery check settles it within
-     * seconds and calls back here on its way out (see [checkDeliveries]), and nothing is lost by
-     * waiting: the CLI applies the effort to the next turn either way.
-     */
-    private fun flushPreference() {
-        if (busy || undelivered.snapshot().isNotEmpty()) return
-
-        val command = pendingPreference ?: return
-        pendingPreference = null
-        applyPreference(command)
     }
 
     /**
@@ -796,12 +797,9 @@ internal class ClaudeSession(
      * is what a turn looks like when the CLI takes up a person's deferred message. Without this signal
      * the panel would stand "free" for the whole of such a turn: no spinner, the counter still, the
      * answer typing itself out of nowhere.
-     *
-     * The reply to a preference command does not belong here: it does not travel into the feed (see
-     * [suppressingPreferenceReply]) and it is not the person's work.
      */
     private fun noteTurnActivity(line: String) {
-        if (busy || suppressingPreferenceReply) return
+        if (busy) return
         if (!AgentStream.isTurnActivity(line)) return
 
         busy = true
@@ -845,16 +843,6 @@ internal class ClaudeSession(
     }
 
     private fun checkDeliveries(watched: List<PromptDeliveries.Delivery>, attempt: Int) {
-        // Every way out of here is a moment where the list may have just emptied - and a preference
-        // command held back for exactly that (see [flushPreference]) has nothing else to wake it.
-        try {
-            lookForDeliveries(watched, attempt)
-        } finally {
-            flushPreference()
-        }
-    }
-
-    private fun lookForDeliveries(watched: List<PromptDeliveries.Delivery>, attempt: Int) {
         val conversation = conversationId
 
         val pending = undelivered.stillPending(watched)
@@ -902,8 +890,7 @@ internal class ClaudeSession(
 
             // The first resend declared a turn started (see below), and now nobody is going to end it:
             // the repeat vanished the same way the original did, so no result event will ever come.
-            // Without this the panel keeps a spinner and a running counter until the IDE is restarted,
-            // and a preference command deferred to the end of the turn never travels at all.
+            // Without this the panel keeps a spinner and a running counter until the IDE is restarted.
             endTurn()
             return
         }
@@ -1075,7 +1062,6 @@ internal class ClaudeSession(
 
     private fun start(): OSProcessHandler? {
         stopRequested = false
-        suppressingPreferenceReply = false
         // What this launch is asking to continue - checked against what actually comes up (see
         // [rememberConversation]).
         continuing = conversationId
@@ -1128,9 +1114,6 @@ internal class ClaudeSession(
                 override fun processTerminated(event: ProcessEvent) {
                     handler = null
                     busy = false
-                    // There is nowhere to send it now, and the next process will get the effort as a
-                    // flag at launch (see ClaudeLaunch).
-                    pendingPreference = null
                     // What was undelivered went missing along with the process: raising a new one for
                     // its sake is not what anyone expects from a conversation that has just crashed.
                     // About the crash itself the panel is told separately, below.
@@ -1234,6 +1217,15 @@ internal class ClaudeSession(
     private companion object {
         val SESSION_ID = Regex("\"session_id\"\\s*:\\s*\"([^\"]+)\"")
         val NEW_CONVERSATION_ID = Regex("\"new_conversation_id\"\\s*:\\s*\"([^\"]+)\"")
+
+        /**
+         * The two effort names that are not levels: one asks for the model's own default, the other for
+         * a level plus something besides it (see [effortSettings]). Everything else the panel offers is
+         * the level itself, spelled as the CLI spells it.
+         */
+        const val EFFORT_AUTO = "auto"
+        const val EFFORT_ULTRACODE = "ultracode"
+        const val EFFORT_XHIGH = "xhigh"
 
         /** How long any control request is waited for before we give up ourselves. */
         const val CONTROL_TIMEOUT_SECONDS = 20L

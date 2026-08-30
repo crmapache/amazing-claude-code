@@ -609,6 +609,10 @@ export const App = () => {
   // function of its own.
   const model = resolvePanelModel(panel, models, prefs.model)
 
+  // And the effort of this tab rather than of the window: the setting is only what a tab that has not
+  // started yet will start on (see PanelState.effort).
+  const effort = panel.pendingEffort ?? panel.effort ?? prefs.effort
+
   // Which of the optional things the Shift+Tab cycle may reach: the permission for bypass arrives from
   // the shell, auto through a refusal of its own on the current model (see autoRefusedModels).
   const availableModes = useMemo(
@@ -1729,6 +1733,15 @@ export const App = () => {
             })
             break
 
+          // What the shell says about this conversation, and never about the others: the setting the
+          // choice also wrote (see pickEffort) is what the NEXT tab starts on, not what this one runs at.
+          case 'effort':
+            feed({
+              session: message.sessionId,
+              action: { kind: 'effortApplied', effort: message.effort },
+            })
+            break
+
           case 'mode': {
             // auto is unavailable through nobody's fault and not just this once - it is a property of the
             // model, and there is nowhere to learn it in advance (see ModeAvailability): the only way is to
@@ -2208,10 +2221,18 @@ export const App = () => {
     [active],
   )
 
+  /**
+   * The effort of THIS conversation - and, as with the model, the one the next tab will start on. Both
+   * at once, and deliberately: the choice applies where it was made, while the tabs already open keep
+   * working at whatever they were started at (see ClaudeSessionHub.changeEffort).
+   */
   const pickEffort = useCallback(
     (effort: string) => {
       setPrefs((current) => ({ ...current, effort }))
       send({ type: 'setEffort', sessionId: active, effort })
+      // Shown as chosen until the shell answers - for the same reason as the model: without it the
+      // choice looks lost for as long as the message travels.
+      dispatchPanel({ session: active, action: { kind: 'effortRequested', effort } })
     },
     [active],
   )
@@ -3222,7 +3243,7 @@ export const App = () => {
             layout={composerLayout}
             model={model}
             switchedFrom={panel.switchedFrom}
-            effort={prefs.effort}
+            effort={effort}
             mode={mode}
             onOpenSelector={openSelector}
             onOpenThanks={openThanks}
@@ -3313,7 +3334,7 @@ export const App = () => {
             <StatusBar
               model={model}
               switchedFrom={panel.switchedFrom}
-              effort={prefs.effort}
+              effort={effort}
               mode={mode}
               models={models}
               meters={metersNode}
@@ -3588,7 +3609,7 @@ export const App = () => {
         <Menu
           {...(menu.kind === 'thanks'
             ? thanksMenu(t, shared)
-            : menuProps(t, menu.kind, models, prefs.model, tickedModel, prefs.effort, mode, availableModes))}
+            : menuProps(t, menu.kind, models, prefs.model, tickedModel, effort, mode, availableModes))}
           anchor={menu.anchor}
           onClose={() => setMenu(null)}
           onPick={(id) => {

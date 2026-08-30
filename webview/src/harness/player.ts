@@ -516,6 +516,13 @@ const listenToPanel = () => {
       setTimeout(() => window.__accReceive?.({ type: 'history', conversations: SHOWCASE_HISTORY }), 200)
     }
 
+    // The shell is the only one who can say what effort a conversation works at (see
+    // ClaudeSessionHub.changeEffort), so here the harness plays that part: without the answer the chip
+    // would stand "chosen" forever and the applied state would never be seen.
+    if (message?.type === 'setEffort') {
+      window.__accReceive?.({ type: 'effort', sessionId: message.sessionId, effort: message.effort })
+    }
+
     if (message) answerFeedback(message)
     if (message) answerHistoryPage(message)
     if (message) answerImprove(message)

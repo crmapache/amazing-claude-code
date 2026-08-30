@@ -74,6 +74,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             titleWanted = { sessionId -> tabs.titleSource(sessionId) != SessionSnapshot.TITLE_LLM },
             onTurnEnded = { sessionId -> sendStatus(sessionId, SessionSnapshot.STATUS_IDLE) },
             onTurnStarted = { sessionId -> sendStatus(sessionId, SessionSnapshot.STATUS_RUNNING) },
+            onBorn = { sessionId, effort -> sendEffort(sessionId, effort) },
         )
     }
 
@@ -288,6 +289,11 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             // that opens the panel over a queue put there from a phone would otherwise show none of it.
             val waiting = queued.of(sessionId)
             if (waiting.isNotEmpty()) batch += queueMessage(sessionId, waiting)
+
+            // And what it works at: the effort is told by nobody but us (see [changeEffort]), so a client
+            // joining now has no other way to learn it. A conversation that has not started yet says
+            // nothing here - there is nothing to say, and the setting is the honest answer for it.
+            conversations.effort(sessionId)?.let { batch += effortMessage(sessionId, it) }
         }
 
         client.deliver(batch)
@@ -1013,6 +1019,42 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     }
 
     /**
+     * The effort of one conversation, and of no other - the same promise the MODE and MODEL selectors
+     * make. The chosen value does become what the NEXT tab starts on (see ClaudeSessions.setEffort),
+     * but a conversation already running is never moved by a choice made in a neighbouring one.
+     *
+     * Told to the clients rather than left to be worked out, and this is the whole reason the message
+     * exists: the CLI says nothing about the effort - not in `system/init`, not in an event of its own,
+     * not in an answer to a question (see ClaudeSession.setEffort). What the panel knows about a
+     * conversation's effort, it knows from here and from nowhere else.
+     */
+    fun changeEffort(sessionId: String, effort: String) {
+        conversations.setEffort(sessionId, effort)
+        sendEffort(sessionId, effort)
+    }
+
+    /**
+     * The effort a conversation works at right now - said on a change and at its birth, which is the only
+     * moment anyone could learn what an untouched tab started on.
+     *
+     * Live rather than into the journal, for the same reason as the queue (see [sendQueue]): this is what
+     * a conversation IS, not something it has said. Journalled, every pick would sit in the feed's history
+     * forever and crowd out the messages a phone is handed to rebuild it - and the one message that
+     * mattered would be the first to be trimmed away, leaving a long conversation drawn by a setting
+     * chosen in some other tab. A client that was not listening is told on joining (see [attach]).
+     */
+    private fun sendEffort(sessionId: String, effort: String) {
+        emitLive(effortMessage(sessionId, effort))
+    }
+
+    private fun effortMessage(sessionId: String, effort: String): String =
+        buildJsonObject {
+            put("type", "effort")
+            put("sessionId", sessionId)
+            put("effort", effort)
+        }.toString()
+
+    /**
      * Opening a past conversation: the process comes up with its transcript, and its saved events are
      * replayed into the feed - otherwise the tab would look empty although the agent remembers
      * everything.
@@ -1096,6 +1138,12 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
                 put("sessionId", sessionId)
             }.toString(),
         )
+
+        // A reset wipes what a client holds about this tab, and the effort is state rather than history
+        // (see [sendEffort]) - so it has to be said again. Otherwise a tab that has just taken a
+        // different conversation would be drawn by the setting, which by then may be somebody else's
+        // choice made in another tab.
+        conversations.effort(sessionId)?.let { sendEffort(sessionId, it) }
     }
 
     fun snapshotOf(sessionId: String): SessionSnapshot = snapshot(sessionId).get()

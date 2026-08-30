@@ -74,6 +74,20 @@ export interface PanelState {
    * arrive instantly, and it can genuinely refuse.
    */
   pendingModel?: string
+  /**
+   * The effort THIS conversation works at.
+   *
+   * It lives in the tab for the same reason the mode and the model do: the neighbouring tab has a
+   * conversation of its own, and a choice made here must not move it. The saved setting stays what it
+   * always was - what the NEXT tab starts on - and it is the fallback here only while this conversation
+   * has not started yet.
+   *
+   * Nothing but the shell can tell us this: the CLI announces the effort nowhere and answers no question
+   * about it, so the value arrives as a message and is remembered here.
+   */
+  effort?: string
+  /** A chosen effort until the shell confirms it - as with the model and the mode. */
+  pendingEffort?: string
 
   /**
    * The model the agent moved this conversation OFF by itself, when it did - and nothing while nobody
@@ -347,6 +361,13 @@ export type PanelAction =
   | { kind: 'modelRequested'; model: string }
   /** The model now in force: on the agent's refusal the previous one rather than the chosen one. */
   | { kind: 'modelApplied'; model: string; error?: string }
+  | { kind: 'effortRequested'; effort: string }
+  /**
+   * The effort this conversation works at, as the shell says it does. There is no "applied" beside it
+   * and no refusal to report: the CLI takes an effort change without an answer either way, so what the
+   * shell sends is simply what is (see ClaudeSessionHub.changeEffort).
+   */
+  | { kind: 'effortApplied'; effort: string }
   /** The queue as the IDE now holds it - the whole list, from whichever window last changed it. */
   | { kind: 'queue'; items: QueuedMessage[] }
   /** A mark from the panel in the feed: that this conversation was branched off another, for instance. */

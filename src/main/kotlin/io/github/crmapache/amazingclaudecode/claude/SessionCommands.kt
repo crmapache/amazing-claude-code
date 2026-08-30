@@ -221,7 +221,7 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
             // waiting for the next turn to end.
             "setModel" -> hub.changeModel(sessionId, field("model"))
 
-            "setEffort" -> hub.conversations.setEffort(sessionId, field("effort"))
+            "setEffort" -> hub.changeEffort(sessionId, field("effort"))
 
             "refreshUsage" -> hub.usage.refreshAll()
 

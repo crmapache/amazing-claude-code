@@ -366,6 +366,14 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
       return action.error ? addError(applied, action.error) : applied
     }
 
+    case 'effortRequested':
+      return { ...state, pendingEffort: action.effort }
+
+    // No refusal arm here, unlike the model and the mode: the effort channel does not refuse (see
+    // ClaudeSession.setEffort), so the shell's word is the last one.
+    case 'effortApplied':
+      return { ...state, pendingEffort: undefined, effort: action.effort }
+
     // The whole list rather than a change to it: the IDE holds the queue, either window may have been
     // the one that changed it, and what arrives is how it stands now (see SessionQueue.kt).
     case 'queue':

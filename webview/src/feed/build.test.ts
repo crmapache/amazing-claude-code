@@ -256,6 +256,32 @@ describe('changing the model', () => {
   })
 })
 
+describe('changing the effort', () => {
+  it('shows the chosen one before the shell confirms it', () => {
+    const state = reducePanel(initialPanelState, { kind: 'effortRequested', effort: 'ultracode' })
+
+    expect(state.pendingEffort).toBe('ultracode')
+  })
+
+  it('takes the shell at its word: there is no refusal on this channel', () => {
+    let state = reducePanel(initialPanelState, { kind: 'effortRequested', effort: 'ultracode' })
+    state = reducePanel(state, { kind: 'effortApplied', effort: 'ultracode' })
+
+    expect(state.pendingEffort).toBeUndefined()
+    expect(state.effort).toBe('ultracode')
+  })
+
+  it('keeps the effort in the conversation it was chosen in, and nowhere else', () => {
+    // The two states are two tabs: this is the promise the whole thing exists for - a choice in one
+    // conversation must not move another that is already running.
+    const chosen = reducePanel(initialPanelState, { kind: 'effortApplied', effort: 'low' })
+    const neighbour = reducePanel(initialPanelState, { kind: 'effortApplied', effort: 'max' })
+
+    expect(chosen.effort).toBe('low')
+    expect(neighbour.effort).toBe('max')
+  })
+})
+
 /** An answer signed by a model, the way a live stream signs every one of them. */
 const signedTextEvent = (model: string, text: string): AgentEvent => ({
   type: 'assistant',
