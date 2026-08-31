@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { chipLabel, chipTitle, pasteBody, rangeLabel, referenceChip, referenceText } from './reference'
+import {
+  chipLabel,
+  chipTitle,
+  collapsesPaste,
+  pasteBody,
+  pasteCollapseLines,
+  rangeLabel,
+  referenceChip,
+  referenceText,
+} from './reference'
 
 const span = (over: Partial<Parameters<typeof rangeLabel>[0]> = {}) => ({
   path: 'src/useSocket.js',
@@ -100,5 +109,44 @@ describe('pasteBody', () => {
     expect(body.shownLines).toBe(200)
     expect(body.text.endsWith('x')).toBe(true)
     expect(body.text).toBe(line.repeat(200).trimEnd())
+  })
+})
+
+describe('pasteCollapseLines', () => {
+  it('nothing chosen means the default rather than "never fold"', () => {
+    expect(pasteCollapseLines(undefined)).toBe(2)
+    expect(pasteCollapseLines('')).toBe(2)
+  })
+
+  it('a chosen zero is a choice - it switches folding off', () => {
+    expect(pasteCollapseLines('0')).toBe(0)
+  })
+
+  it('a value from another version does not become a surprise', () => {
+    expect(pasteCollapseLines('nonsense')).toBe(2)
+    expect(pasteCollapseLines('-3')).toBe(2)
+  })
+})
+
+describe('collapsesPaste', () => {
+  const paste = (count: number) => Array.from({ length: count }, (_, index) => `line ${index + 1}`).join('\n')
+
+  it('by default any paste with a line break folds - as the field always did', () => {
+    expect(collapsesPaste(paste(2), 2)).toBe(true)
+    expect(collapsesPaste('one line', 2)).toBe(false)
+  })
+
+  it('a trailing newline does not make a line of its own', () => {
+    // A line copied out of a terminal almost always ends in one.
+    expect(collapsesPaste('one line\n', 2)).toBe(false)
+  })
+
+  it('a threshold holds back everything shorter than itself', () => {
+    expect(collapsesPaste(paste(9), 10)).toBe(false)
+    expect(collapsesPaste(paste(10), 10)).toBe(true)
+  })
+
+  it('zero folds nothing, however long the paste', () => {
+    expect(collapsesPaste(paste(500), 0)).toBe(false)
   })
 })

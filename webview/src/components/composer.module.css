@@ -994,15 +994,51 @@
  * nothing to drive under it.
  */
 .contextMeterRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 10px 12px 0;
   pointer-events: none;
 }
 
 .contextMeter {
+  flex: 1 1 auto;
   position: relative;
   height: 3px;
   border-radius: 999px;
   background: var(--acc-meter-track);
+}
+
+/*
+ * The reading at the end of the bar: "ctx 42%", in the colour the fill has at that moment. It is what
+ * turns the stripe from decoration into an instrument - without it people did not know the panel showed
+ * the context at all (and asked for the feature it already had).
+ *
+ * flex: none plus tabular figures - so that the bar's right edge does not twitch left and right as the
+ * digits change; the same reason the usage rings' numbers are set this way. The line height is pressed
+ * down to the bar's own so the row does not grow taller than the figure itself needs.
+ *
+ * A step larger than the panel's smallest captions: at nine pixels the reading was there and went unread -
+ * the eye takes it for a mark on the gauge rather than for a number it is meant to make out.
+ *
+ * No opacity of its own: the figure promises to be the colour of the fill, and a fill dimmed by a quarter
+ * is simply a different, duller colour - which is exactly what made the number read as a caption beside
+ * the gauge rather than as its reading.
+ *
+ * The pixel up is optical alignment, not a fudge. The flex row centres the two boxes, and by the em box
+ * they are centred to a fraction of a pixel - but the ink of "ctx 35%" carries no descenders, so its
+ * weight sits between the x-height and the baseline, a whole pixel below the middle of its own box. The
+ * bar therefore crossed the letters at the top of the lowercase rather than through their middle. A pixel
+ * up puts it through the middle.
+ */
+.contextMeterValue {
+  flex: none;
+  position: relative;
+  top: -1px;
+  font-size: 10.5px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
 }
 
 /*
@@ -1396,7 +1432,11 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 6px 3px;
+  /* Equal above and below, and narrower on the right than on the left: on the left stands text, on the
+     right a button with rounded corners of its own, and the same six pixels beside it read as too much air.
+     The vertical padding used to differ by one pixel between top and bottom - invisible under a single line
+     of text, plain as day once the button became a square centred in the row. */
+  padding: 2px 2px 2px 6px;
   border: 1px solid;
   border-radius: var(--acc-r-sm);
   font: 11px var(--acc-mono);
@@ -1415,6 +1455,37 @@
   filter: brightness(1.25);
 }
 
+/*
+ * Both buttons on a chip are squares rather than a small glyph with nothing but an opacity behind it: a
+ * bare character has no hit area of its own, and on sight it reads as part of the caption rather than as
+ * something to press.
+ *
+ * The backing on hover is currentColor and not a grey of its own. Every kind of attachment has its own
+ * colour (CHIP_STYLE in composerDom.ts - file, image, directory, command, link, quote, paste), the button's
+ * glyph already inherits it, and so a translucent currentColor gives on every chip simply a brighter
+ * version of that chip's own colour instead of one and the same grey smudge over all of them.
+ */
+.tokenRemove,
+.tokenExpand {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border-radius: var(--acc-r-xs);
+  transition: background-color 80ms linear;
+}
+
+.tokenRemove:hover,
+.tokenExpand:hover {
+  background-color: color-mix(in srgb, currentColor 22%, transparent);
+}
+
+.tokenRemove:active,
+.tokenExpand:active {
+  background-color: color-mix(in srgb, currentColor 34%, transparent);
+}
+
 .tokenRemove {
   opacity: 0.6;
   font-size: 10px;
@@ -1429,7 +1500,6 @@
    chip would compete for attention. */
 .tokenExpand {
   opacity: 0.45;
-  font-size: 10px;
 }
 
 .tokenExpand:hover {

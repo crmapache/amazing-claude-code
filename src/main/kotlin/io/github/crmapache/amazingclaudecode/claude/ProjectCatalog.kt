@@ -103,6 +103,9 @@ internal class ProjectCatalog(
                         ),
                     )
                     if (preferences.composerLayout.isNotEmpty()) put("composerLayout", preferences.composerLayout)
+                    // Sent only when chosen, like the layout above: an absent value means the panel's own
+                    // default rather than "never fold", and the two must not be confused.
+                    if (preferences.pasteCollapse.isNotEmpty()) put("pasteCollapse", preferences.pasteCollapse)
                     // Two values rather than one, and the empty one is not the useless one: `language`
                     // is the explicit choice and is usually empty, `ideLanguage` is what the IDE itself
                     // is set to. Empty means "speak whatever the IDE speaks", and the picker needs the
@@ -180,34 +183,45 @@ internal class ProjectCatalog(
     }
 
     /**
-     * The description and argument syntax of slash commands - out of the frontmatter of files on disk
-     * (see ClaudeCommandHints). The list of installed plugins is needed only for their installPath, so
-     * we take the light `plugin list` without `--available`.
+     * The names, descriptions and argument syntax of slash commands - out of the files on disk (see
+     * ClaudeCommandHints). The list of installed plugins is needed only for their installPath, so we
+     * take the light `plugin list` without `--available`.
+     *
+     * It goes out twice on purpose: first what is on disk right here, then the same with the plugins'
+     * commands added. The plugin list is a separate `claude` run - a whole Node start-up that can time
+     * out, fail or answer in a shape we do not expect - and hanging the disk scan on its success meant
+     * that one failure took the project's own commands with it. The panel then had nothing to hint with
+     * until the agent named its own list, that is, until the first message of the conversation had been
+     * sent: a person who had just installed the plugin typed "/" and did not find their own commands.
      */
     fun refreshCommandHints() {
+        broadcastCommandHints(installed = emptyList())
+
         ClaudePlugin.installed(
             project.basePath,
-            onResult = { installed ->
-                AppExecutorUtil.getAppExecutorService().submit {
-                    val hints = ClaudeCommandHints.scan(project.basePath, installed)
-
-                    hub.broadcastProject(
-                        buildJsonObject {
-                            put("type", "commandHints")
-                            putJsonObject("hints") {
-                                hints.forEach { (id, hint) ->
-                                    putJsonObject(id) {
-                                        put("description", hint.description)
-                                        put("argumentHint", hint.argumentHint)
-                                    }
-                                }
-                            }
-                        }.toString(),
-                    )
-                }
-            },
+            onResult = { installed -> if (installed.isNotEmpty()) broadcastCommandHints(installed) },
             onError = { thisLogger().warn("Couldn't list plugins for command hints: $it") },
         )
+    }
+
+    private fun broadcastCommandHints(installed: List<InstalledPlugin>) {
+        AppExecutorUtil.getAppExecutorService().submit {
+            val hints = ClaudeCommandHints.scan(project.basePath, installed)
+
+            hub.broadcastProject(
+                buildJsonObject {
+                    put("type", "commandHints")
+                    putJsonObject("hints") {
+                        hints.forEach { (id, hint) ->
+                            putJsonObject(id) {
+                                put("description", hint.description)
+                                put("argumentHint", hint.argumentHint)
+                            }
+                        }
+                    }
+                }.toString(),
+            )
+        }
     }
 
     /**

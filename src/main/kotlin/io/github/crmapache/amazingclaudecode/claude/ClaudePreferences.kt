@@ -16,6 +16,7 @@ internal object ClaudePreferences {
         val effort: String,
         val mode: String,
         val composerLayout: String,
+        val pasteCollapse: String,
         val improveInstructions: String,
         val language: String,
     )
@@ -25,6 +26,7 @@ internal object ClaudePreferences {
         effort = effort,
         mode = mode,
         composerLayout = composerLayout,
+        pasteCollapse = pasteCollapse,
         improveInstructions = improveInstructions,
         language = language,
     )
@@ -48,6 +50,20 @@ internal object ClaudePreferences {
     var composerLayout: String
         get() = read(COMPOSER_LAYOUT_KEY)
         set(value) = write(COMPOSER_LAYOUT_KEY, value)
+
+    /**
+     * From how many lines a pasted text folds into a chip in the input field: "0" never folds it, a
+     * number folds a paste of that many lines and longer. Empty means the panel's own default (see
+     * pasteCollapseLines in feed/reference.ts) - the same shape as composerLayout above, and for the same
+     * reason: the panel has to behave sensibly before the IDE has said anything at all, the harness
+     * included.
+     *
+     * Machine-wide, beside the rest: whether one wants to see a pasted log whole is a habit of the
+     * person rather than a property of the repository.
+     */
+    var pasteCollapse: String
+        get() = read(PASTE_COLLAPSE_KEY)
+        set(value) = write(PASTE_COLLAPSE_KEY, value.trim())
 
     /**
      * What the improve button asks for, in the person's own words. Empty means the built-in text (see
@@ -203,6 +219,7 @@ internal object ClaudePreferences {
     private const val EFFORT_KEY = "acc.effort"
     private const val MODE_KEY = "acc.mode"
     private const val COMPOSER_LAYOUT_KEY = "acc.composerLayout"
+    private const val PASTE_COLLAPSE_KEY = "acc.pasteCollapse"
     private const val IMPROVE_INSTRUCTIONS_KEY = "acc.improve.instructions"
     private const val LANGUAGE_KEY = "acc.language"
     private const val EXECUTABLE_KEY = "acc.executable"

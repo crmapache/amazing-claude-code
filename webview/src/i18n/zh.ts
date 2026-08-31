@@ -29,6 +29,7 @@ export const zh: Dict = {
       remoteAbout: { title: '哪些内容会离开本机', hint: '开启之前请先读一遍' },
       defaultMode: { title: '默认模式', hint: '新标签页从哪种模式开始' },
       composerLayout: { title: '输入框布局', hint: '输入框放在哪里' },
+      pasteCollapse: { title: '粘贴的文本', hint: '何时把粘贴折叠成小卡片' },
       improvePrompt: { title: '优化提示词', hint: '星标按钮按什么要求改写' },
       voice: { title: '语音输入', hint: '用说的，不用打字' },
       voiceLanguage: { title: '口述语言', hint: '听写要听哪种语言' },
@@ -42,6 +43,7 @@ export const zh: Dict = {
       project: '本项目',
       devices: '设备',
       plugin: '插件本身',
+      author: '来自作者',
     },
 
     rows: {
@@ -49,9 +51,15 @@ export const zh: Dict = {
       statistics: { label: '统计', sub: '时长、习惯、成就' },
       mcp: { label: 'MCP 服务器', sub: '状态、登录、重新连接' },
       plugins: { label: '插件', sub: '已安装、浏览、市场' },
-      remote: { label: '远程访问' },
+      remote: { label: '远程访问', sub: '状态、中继、已配对设备' },
       settings: { label: '设置', sub: '提示音、模式、布局、语言' },
       feedback: { label: '发送反馈', sub: '问题、想法，或者只是打个招呼' },
+    },
+
+    author: {
+      title: '马上要面试了吗？',
+      body: '我为此做了一个 AI 助手。免费试用 - 也算是支持我。谢谢',
+      tagline: '实时面试副驾',
     },
 
     footer: 'Amazing Claude Code GUI',
@@ -62,6 +70,7 @@ export const zh: Dict = {
       sounds: { label: '提示音', sub: '面板需要你的时候' },
       defaultMode: { label: '默认模式', sub: '新标签页从哪种模式开始' },
       composerLayout: { label: '输入框布局', sub: '输入框放在哪里' },
+      pasteCollapse: { label: '粘贴的文本', sub: '何时把粘贴折叠成小卡片' },
       improvePrompt: { label: '优化提示词', sub: '星标按钮按什么要求改写' },
       voice: { label: '语音输入', sub: '用你自己的 Deepgram 密钥听写' },
       language: { label: '语言', sub: '面板使用的语言' },
@@ -105,6 +114,15 @@ export const zh: Dict = {
     compact: '紧凑',
     left: '靠左',
     right: '靠右',
+  },
+
+  pasteCollapse: {
+    note: '多行粘贴会折叠成一张小卡片，免得大段文字塞满输入框。两种方式都不会丢内容 - 折叠后的粘贴完整保留原文，点它上面的铅笔按钮就能展开回输入框。',
+    never: '从不折叠',
+    neverSub: '粘贴的内容始终以纯文本留在输入框里',
+    from: (lines) => `${lines} 行起`,
+    foldLabel: '长粘贴折叠',
+    foldSub: (min, max) => `从多少行起 - ${min} 到 ${max}`,
   },
 
   improvePrompt: {
@@ -390,6 +408,8 @@ export const zh: Dict = {
     /** The counter under a subagent's own log while it runs. */
       agentWorking: (duration) => `工作中 · ${duration}`,
     task: {
+      /** The heading over a subagent's errand inside its card in the feed (see TaskCard). */
+      errand: '交给它的任务',
       closed: {
         replay: '它是怎么结束的，保存的对话里没有记录。',
         exited: '会话在它返回之前就结束了。',
@@ -523,7 +543,6 @@ export const zh: Dict = {
 
   remote: {
     codeLabel: '配对码',
-    pairedVia: (device, relay) => `已与 ${device} 配对 · 中继 ${relay}`,
     states: {
       idle: { label: '已关闭', hint: '外部无法访问这个 IDE。' },
       connecting: { label: '连接中…', hint: '第一次去连中继。' },

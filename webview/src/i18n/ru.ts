@@ -29,6 +29,7 @@ export const ru: Dict = {
       remoteAbout: { title: 'ЧТО УХОДИТ НАРУЖУ', hint: 'прочитайте, прежде чем включать' },
       defaultMode: { title: 'РЕЖИМ ПО УМОЛЧАНИЮ', hint: 'с чего начинаются новые вкладки' },
       composerLayout: { title: 'РАСКЛАДКА ПОЛЯ ВВОДА', hint: 'где стоит поле ввода' },
+      pasteCollapse: { title: 'ВСТАВЛЕННЫЙ ТЕКСТ', hint: 'когда вставка сворачивается в чип' },
       improvePrompt: { title: 'УЛУЧШЕНИЕ ПРОМПТА', hint: 'о чём просит кнопка со звёздочкой' },
       voice: { title: 'ГОЛОСОВОЙ ВВОД', hint: 'диктовать вместо того, чтобы печатать' },
       voiceLanguage: { title: 'ЯЗЫК ДИКТОВКИ', hint: 'какую речь распознавать' },
@@ -42,6 +43,7 @@ export const ru: Dict = {
       project: 'ЭТОТ ПРОЕКТ',
       devices: 'УСТРОЙСТВА',
       plugin: 'САМ ПЛАГИН',
+      author: 'ОТ АВТОРА',
     },
 
     rows: {
@@ -49,9 +51,15 @@ export const ru: Dict = {
       statistics: { label: 'Статистика', sub: 'Часы, привычки, достижения' },
       mcp: { label: 'Серверы MCP', sub: 'Состояние, вход, переподключение' },
       plugins: { label: 'Плагины', sub: 'Установленные, каталог, маркетплейсы' },
-      remote: { label: 'Удалённый доступ' },
+      remote: { label: 'Удалённый доступ', sub: 'Состояние, релей, устройства' },
       settings: { label: 'Настройки', sub: 'Звуки, режим, раскладка, язык' },
       feedback: { label: 'Написать нам', sub: 'Баг, идея или просто привет' },
+    },
+
+    author: {
+      title: 'Скоро собеседование?',
+      body: 'Я сделал для него ИИ-ассистента. Попробуйте бесплатно - и поддержите меня. Спасибо',
+      tagline: 'подсказки прямо на собеседовании',
     },
 
     footer: 'Amazing Claude Code GUI',
@@ -62,6 +70,7 @@ export const ru: Dict = {
       sounds: { label: 'Звуковые сигналы', sub: 'Когда панель вас зовёт' },
       defaultMode: { label: 'Режим по умолчанию', sub: 'С чего начинаются новые вкладки' },
       composerLayout: { label: 'Раскладка поля ввода', sub: 'Где стоит поле ввода' },
+      pasteCollapse: { label: 'Вставленный текст', sub: 'Когда вставка сворачивается в чип' },
       improvePrompt: { label: 'Улучшение промпта', sub: 'О чём просит кнопка со звёздочкой' },
       voice: { label: 'Голосовой ввод', sub: 'Диктовка по вашему ключу Deepgram' },
       language: { label: 'Язык', sub: 'На каком языке говорит панель' },
@@ -112,6 +121,15 @@ export const ru: Dict = {
     compact: 'Плотная',
     left: 'Слева',
     right: 'Справа',
+  },
+
+  pasteCollapse: {
+    note: 'Многострочная вставка сворачивается в чип, чтобы стена текста не заполняла поле ввода. Ничего при этом не теряется - свёрнутая вставка хранит текст целиком и разворачивается обратно в поле кнопкой с карандашом на ней.',
+    never: 'Никогда не сворачивать',
+    neverSub: 'Всё вставленное остаётся в поле обычным текстом',
+    from: (lines) => `От ${lines} строк`,
+    foldLabel: 'Сворачивать длинные вставки',
+    foldSub: (min, max) => `С какого числа строк - от ${min} до ${max}`,
   },
 
   improvePrompt: {
@@ -429,6 +447,8 @@ export const ru: Dict = {
     /** The counter under a subagent's own log while it runs. */
       agentWorking: (duration) => `Работает · ${duration}`,
     task: {
+      /** The heading over a subagent's errand inside its card in the feed (see TaskCard). */
+      errand: 'ЧТО ЕМУ ПОРУЧИЛИ',
       closed: {
         replay: 'Чем это кончилось, в сохранённом разговоре не записано.',
         exited: 'Сессия кончилась раньше, чем пришёл ответ.',
@@ -568,7 +588,6 @@ export const ru: Dict = {
 
   remote: {
     codeLabel: 'Код для пары',
-    pairedVia: (device, relay) => `${device} в паре · релей ${relay}`,
     states: {
       idle: { label: 'Выключен', hint: 'До этой IDE снаружи не достучаться.' },
       connecting: { label: 'Подключаемся…', hint: 'Первый выход на релей.' },

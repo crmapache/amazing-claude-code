@@ -18,7 +18,6 @@ interface AgentStreamViewProps {
  * nothing.
  */
 export const AgentStreamView = ({ item }: AgentStreamViewProps) => {
-  const t = useT()
   const body = useRef<HTMLDivElement | null>(null)
 
   // A live agent's growing log sticks to the bottom, like the main feed - otherwise watching a working
@@ -33,6 +32,21 @@ export const AgentStreamView = ({ item }: AgentStreamViewProps) => {
 
   return (
     <div className={s.agentViewBody} ref={body}>
+      <AgentLog item={item} />
+    </div>
+  )
+}
+
+/**
+ * What an agent did, as lines - the whole of the screen above and the inside of its card in the feed
+ * (see TaskCard). One rendering for both: the card was added long after this screen, and a second copy
+ * of it would drift the moment either changed.
+ */
+export const AgentLog = ({ item }: { item: TaskItem }) => {
+  const t = useT()
+
+  return (
+    <>
       {/* A workflow's fleet stands above its log: the log here is the CLI's own preamble about where the
           transcripts went, while the agents are what one opened this screen for (see WorkflowRun). */}
       {item.workflow ? <WorkflowRun run={item.workflow} /> : null}
@@ -52,6 +66,6 @@ export const AgentStreamView = ({ item }: AgentStreamViewProps) => {
       {item.pending ? (
         <div className={s.agentViewWorking}>{t.feed.agentWorking(item.duration || '0.0s')}</div>
       ) : null}
-    </div>
+    </>
   )
 }

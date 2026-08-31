@@ -1230,6 +1230,44 @@ describe('building the feed out of the agent stream', () => {
       expect(tasks[0]?.outcome).toBeUndefined()
     })
 
+    it('keeps the errand a subagent was sent on, so the card can show it', () => {
+      // The chip in the header holds a name and a duration; what the agent was asked lives nowhere else
+      // (see TaskItem.prompt and TaskCard).
+      const state = play([
+        toolUseEvent('a1', 'Task', {
+          description: 'review',
+          subagent_type: 'code-reviewer',
+          prompt: 'Look at the diff\nand report anything broken.',
+        }),
+      ])
+
+      const task = state.items.find((item): item is TaskItem => item.kind === 'task')
+      expect(task?.prompt).toBe('Look at the diff\nand report anything broken.')
+      expect(task?.target).toBe('code-reviewer')
+    })
+
+    it('cuts an errand no card could show whole', () => {
+      const state = play([
+        toolUseEvent('a1', 'Task', { description: 'review', prompt: 'x'.repeat(9_000) }),
+      ])
+
+      const task = state.items.find((item): item is TaskItem => item.kind === 'task')
+      expect(task?.prompt).toHaveLength(4_001)
+      expect(task?.prompt?.endsWith('…')).toBe(true)
+    })
+
+    it('makes a workflow one card rather than a tool call beside a task', () => {
+      // Its end arrives as a task notification rather than as a tool result, so left as an ordinary tool
+      // call the launch stood in the feed unfinished for ever - next to the card that held the answer.
+      const state = play([
+        toolUseEvent('w1', 'Workflow', { description: 'Review the checkout across four dimensions' }),
+      ])
+
+      expect(state.items.filter((item) => item.kind === 'toolGroup')).toHaveLength(0)
+      const task = state.items.find((item): item is TaskItem => item.kind === 'task')
+      expect(task?.target).toBe('workflow')
+    })
+
     it('computes the group full span on a re-append after a resolve (regression)', () => {
       const T0 = 1_700_000_000_000
       // T0: tool1 called

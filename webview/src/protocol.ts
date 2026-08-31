@@ -214,6 +214,12 @@ type ShellMessageBody =
         /** Where the input field sits. Unset means a panel opened for the first time, behaving as before (at the bottom). */
         composerLayout?: string
         /**
+         * From how many lines a pasted text folds into a chip, as a number in a string; "0" never folds
+         * it. Unset means the panel's own default - see pasteCollapseLines in feed/reference.ts, where
+         * the difference between "nothing chosen" and "switched off" is spelled out.
+         */
+        pasteCollapse?: string
+        /**
          * The language chosen by hand. Empty - which is the usual case - means "whatever the IDE
          * speaks", so that a Chinese IDE gets a Chinese panel without anyone having to find the switch.
          */
@@ -1022,6 +1028,8 @@ export type WebviewMessage =
   | { type: 'setEffort'; sessionId: string; effort: string }
   /** Where the input field sits - also a choice that outlives an IDE restart. */
   | { type: 'setComposerLayout'; layout: string }
+  /** From how many lines a paste folds into a chip; '0' never folds, an empty string restores the default. */
+  | { type: 'setPasteCollapse'; lines: string }
   /**
    * What language the panel speaks. An empty string is a value, not a missing one: it means "follow the
    * IDE", which is what the picker's first entry sets and what a panel nobody has touched already does.

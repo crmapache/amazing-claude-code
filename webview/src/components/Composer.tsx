@@ -35,6 +35,7 @@ import type { Chip, DraftEdit, UserToken } from '../feed/types'
 import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
 import type { ModelInfo } from '../protocol'
 import { SlashSuggest } from './SlashSuggest'
+import { collapsesPaste } from '../feed/reference'
 import { contextColor, contextGlow } from '../feed/usage'
 import {
   atQueryAt,
@@ -48,7 +49,6 @@ import {
   extractTokens,
   hasFiles,
   headText,
-  isMultiline,
   needsLeadingSpace,
   needsTrailingSpace,
   padTrailingBreak,
@@ -73,9 +73,19 @@ import shell from './shell.module.css'
 const CONTEXT_METER_TICKS = [20, 40, 60, 80]
 
 /**
- * The context bar at the very top of the field is the one place where how much of it is taken is visible:
- * the same thing is repeated nowhere as a figure. The fill and the colour are read at a glance, while an
- * exact number adds nothing to the decision at hand ("is it time to compact").
+ * What the gauge is measuring, in the shape a status line writes it in. Deliberately not translated: it
+ * is a reading off an instrument, like the effort values and the "38h 10m" of the usage rings - see the
+ * note about what stays English in the i18n section of CLAUDE.md.
+ */
+export const contextCaption = (percent: number): string => `ctx ${Math.round(percent)}%`
+
+/**
+ * The context bar at the very top of the field is the one place where how much of it is taken is visible.
+ *
+ * The figure at its end is not a duplicate of the fill but the thing that says what the fill is about: a
+ * nameless stripe over the field was read as decoration, and people wrote in asking for a context
+ * indicator the panel had had all along. It is coloured by the same thresholds as the fill, so the pair
+ * still reads at a glance and the number is there for the moment one wants it ("is it time to compact").
  */
 const ContextMeter = ({ percent }: { percent: number }) => {
   const color = contextColor(percent)
@@ -86,8 +96,8 @@ const ContextMeter = ({ percent }: { percent: number }) => {
     // along with the text, and in a long message the lines slid under the bar - which read as a
     // strikethrough. A separate row is physically outside the scrolling, and nothing can slide under
     // it.
-    <div className={s.contextMeterRow} aria-hidden="true">
-      <div className={s.contextMeter}>
+    <div className={s.contextMeterRow}>
+      <div className={s.contextMeter} aria-hidden="true">
         <div
           className={s.contextMeterFill}
           style={{ width: `${percent}%`, background: color, boxShadow: `0 0 8px ${glow.strong}, 0 0 16px ${glow.soft}` }}
@@ -96,6 +106,9 @@ const ContextMeter = ({ percent }: { percent: number }) => {
           <span key={tick} className={s.contextMeterTick} style={{ left: `${tick}%` }} />
         ))}
       </div>
+      <span className={s.contextMeterValue} style={{ color }}>
+        {contextCaption(percent)}
+      </span>
     </div>
   )
 }
@@ -113,6 +126,10 @@ const CONTEXT_METER_SEGMENTS = 5
  * out shorter than the even ones. Five discrete divisions promise no pixel precision anyway, so we round
  * up - a segment lights as soon as the progress has entered its share at all, the same way a battery
  * indicator's arrow does.
+ *
+ * The figure the wide layout writes at the end of its bar has nowhere to go in a three-pixel column, so
+ * here it is a hover hint instead: the narrow layouts are chosen precisely because there is no room, and
+ * a caption taking a whole line of the field's height would undo the reason for the vertical scale.
  */
 const ContextMeterVertical = ({ percent }: { percent: number }) => {
   const color = contextColor(percent)
@@ -121,7 +138,7 @@ const ContextMeterVertical = ({ percent }: { percent: number }) => {
   const lit = Math.ceil((clamped / 100) * CONTEXT_METER_SEGMENTS)
 
   return (
-    <div className={s.compactMeter} aria-hidden="true">
+    <div className={s.compactMeter} data-tooltip={contextCaption(percent)} data-tooltip-at="top right">
       <div className={s.compactMeterTrack}>
         {Array.from({ length: CONTEXT_METER_SEGMENTS }, (_, index) => (
           <span
@@ -215,6 +232,12 @@ interface ComposerProps {
   planMode: boolean
   /** The same figure as "ctx" in the status line - it colours the context bar in the field. */
   contextPercent: number
+  /**
+   * From how many lines a pasted text folds into a chip; 0 never folds it. A setting of the person's
+   * (see the pasted-text screen in SideMenu) rather than a constant, because the same behaviour is right
+   * for a hundred-line log and wrong for a two-line one meant to be edited before sending.
+   */
+  pasteCollapseLines: number
   /** The panel's and the agent's commands as one list. */
   commands: CommandEntry[]
   /**
@@ -367,6 +390,7 @@ export const Composer = ({
   streaming,
   planMode,
   contextPercent,
+  pasteCollapseLines,
   commands,
   models,
   meters,
@@ -1121,11 +1145,12 @@ export const Composer = ({
       const text = event.clipboardData?.getData('text/plain') ?? ''
       if (!text) return
 
-      // Multi-line goes in as a chip, like a file or an image: a pasted wall of text pushed everything
+      // A long paste goes in as a chip, like a file or an image: a pasted wall of text pushed everything
       // else out of the field, and one's own message had to be scrolled to see what was written around
-      // it. Single-line stays text: a short paste is edited right in the field, and a chip is precisely
-      // what forbids that.
-      if (isMultiline(text)) insertChipAtCursor({ kind: 'paste', value: 'pasted', text })
+      // it. A shorter one stays text: a paste one means to edit before sending is edited right in the
+      // field, and a chip is precisely what forbids that. Where the line between the two falls is the
+      // person's to set - see the pasted-text screen in SideMenu.
+      if (collapsesPaste(text, pasteCollapseLines)) insertChipAtCursor({ kind: 'paste', value: 'pasted', text })
       else pasteText(text)
       return
     }

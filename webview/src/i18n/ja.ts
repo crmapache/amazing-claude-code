@@ -31,6 +31,7 @@ export const ja: Dict = {
       remoteAbout: { title: '外に出る情報', hint: 'オンにする前にお読みください' },
       defaultMode: { title: 'デフォルトのモード', hint: '新しいタブが始まるモード' },
       composerLayout: { title: '入力欄のレイアウト', hint: '入力欄を置く場所' },
+      pasteCollapse: { title: '貼り付けたテキスト', hint: '貼り付けをチップにまとめる条件' },
       improvePrompt: { title: 'プロンプトの改善', hint: '星ボタンが出す指示' },
       voice: { title: '音声入力', hint: '打つかわりに話す' },
       voiceLanguage: { title: '話す言語', hint: '音声入力が聞き取る言語' },
@@ -44,6 +45,7 @@ export const ja: Dict = {
       project: 'このプロジェクト',
       devices: '端末',
       plugin: 'プラグイン本体',
+      author: '作者から',
     },
 
     rows: {
@@ -51,9 +53,15 @@ export const ja: Dict = {
       statistics: { label: '統計', sub: '時間、習慣、実績' },
       mcp: { label: 'MCP サーバー', sub: '状態、サインイン、再接続' },
       plugins: { label: 'プラグイン', sub: 'インストール済み、一覧、マーケットプレイス' },
-      remote: { label: 'リモートアクセス' },
+      remote: { label: 'リモートアクセス', sub: '状態、リレー、ペアリング済みの端末' },
       settings: { label: '設定', sub: '通知音、モード、レイアウト、言語' },
       feedback: { label: 'フィードバックを送る', sub: '不具合、アイデア、ひとことでも' },
+    },
+
+    author: {
+      title: '面接を控えていますか？',
+      body: 'そのための AI アシスタントを作りました。無料で試せます - 応援にもなります。ありがとう',
+      tagline: 'リアルタイム面接コパイロット',
     },
 
     footer: 'Amazing Claude Code GUI',
@@ -64,6 +72,7 @@ export const ja: Dict = {
       sounds: { label: '通知音', sub: 'パネルがあなたを呼ぶとき' },
       defaultMode: { label: 'デフォルトのモード', sub: '新しいタブが始まるモード' },
       composerLayout: { label: '入力欄のレイアウト', sub: '入力欄を置く場所' },
+      pasteCollapse: { label: '貼り付けたテキスト', sub: '貼り付けをチップにまとめる条件' },
       improvePrompt: { label: 'プロンプトの改善', sub: '星ボタンが出す指示' },
       voice: { label: '音声入力', sub: '自分の Deepgram キーで口述する' },
       language: { label: '言語', sub: 'パネルが話す言語' },
@@ -107,6 +116,15 @@ export const ja: Dict = {
     compact: 'コンパクト',
     left: '左',
     right: '右',
+  },
+
+  pasteCollapse: {
+    note: '複数行の貼り付けは、大量のテキストが入力欄を埋めないようにチップへまとめられます。どちらでも内容は失われません - チップは全文をそのまま保持し、付いている鉛筆ボタンで入力欄に戻せます。',
+    never: 'まとめない',
+    neverSub: '貼り付けたものはそのまま入力欄のテキストとして残ります',
+    from: (lines) => `${lines} 行から`,
+    foldLabel: '長い貼り付けをまとめる',
+    foldSub: (min, max) => `何行からまとめるか - ${min}〜${max}`,
   },
 
   improvePrompt: {
@@ -392,6 +410,8 @@ export const ja: Dict = {
     /** The counter under a subagent's own log while it runs. */
       agentWorking: (duration) => `作業中 · ${duration}`,
     task: {
+      /** The heading over a subagent's errand inside its card in the feed (see TaskCard). */
+      errand: '依頼した内容',
       closed: {
         replay: 'どう終わったかは保存された会話に残っていません。',
         exited: '結果が返る前にセッションが終わりました。',
@@ -525,7 +545,6 @@ export const ja: Dict = {
 
   remote: {
     codeLabel: 'ペアリングコード',
-    pairedVia: (device, relay) => `${device} とペアリング済み · リレー ${relay}`,
     states: {
       idle: { label: 'オフ', hint: 'この IDE には外から届きません。' },
       connecting: { label: '接続中…', hint: 'リレーへの最初の接続です。' },

@@ -266,6 +266,13 @@
   color: var(--acc-fg-dim);
 }
 
+/* The clipboard shares the layout row's neutral: both are about the shape of the input field rather than
+   about a feature of its own. */
+.rowIconPaste {
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-dim);
+}
+
 /* The same rose as the heart in the status row: both entries lead to the same person, and the colour is
    what says so without a word of explanation. */
 .rowIconImprove {
@@ -299,36 +306,48 @@
   gap: 2px;
 }
 
+/*
+ * One line each, always - the same rule the head's hint follows, and for the same reason.
+ *
+ * The value on the right is as wide as the state it names, and "Relay unreachable" beside "Remote access"
+ * pushed that row's description onto a second line: a list of rows where one row is taller than the rest
+ * reads as a row that has gone wrong, and it went wrong in exactly the state one is looking at it in. A
+ * narrow tool window did the same thing to "History". What is cut here is a description of what is behind
+ * the row, and the row is still the way to find out.
+ */
 .rowLabel {
   font: 500 12.5px var(--acc-font);
   color: var(--acc-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .rowSub {
   font-size: 11px;
   color: var(--acc-fg-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* What the screen would say if one opened it - the count of servers, which mode is the default. Saves the
    trip in the cases where the answer is the whole question. */
 .rowValue {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font: 10.5px var(--acc-mono);
   color: var(--acc-fg-ghost);
 }
 
-.rowValueOk {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--acc-ok-light);
-}
-
+/* Coloured from the component, not from here: the colour is the state, and the states are known there.
+   Two rows raise one - MCP when every server is up, remote access whenever the line has a state at all. */
 .rowValueDot {
   width: 6px;
   height: 6px;
   border-radius: 9px;
-  background: var(--acc-ok);
 }
 
 .rowChevron {
@@ -338,72 +357,114 @@
   color: var(--acc-fg-ghost);
 }
 
-/*
- * Remote access is the one entry that carries a state rather than a count, and the state is the reason
- * to open it. A card with the state's own tint says at a glance what a row of text would have to be read
- * for.
- */
-.rowCard {
+/* --- The author's card: the one advertisement in the panel ------------------ */
+
+/* Not a row and deliberately not shaped like one. Every other entry in this list leads somewhere inside
+   the panel, and a promotion wearing the same clothes as "History" would be a promotion pretending to be
+   part of the plugin. This one is a card that says its piece and offers one way out - to the browser. */
+.author {
   display: flex;
-  align-items: flex-start;
-  gap: 11px;
-  width: 100%;
+  flex-direction: column;
+  gap: 9px;
   padding: 11px 10px;
   border: 1px solid var(--acc-line);
   border-radius: var(--acc-r-2xl);
   background: var(--acc-bg-card);
+}
+
+.authorWords {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.authorBody {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--acc-fg-faint);
+  /* Three lines of thanks in a 350px sheet break where the wrapping happens to fall - a last line of one
+     word reads as a mistake in a card whose whole job is to sound like a person. */
+  text-wrap: pretty;
+}
+
+/* Inline with the last word rather than on a line of its own: it ends the sentence, it is not a mark
+   beside it. Rose at three quarters - a full-strength heart in this palette is the colour of an error. */
+.authorHeart {
+  display: inline-block;
+  vertical-align: -3px;
+  margin-left: 6px;
+  width: 13px;
+  height: 13px;
+  color: rgb(var(--acc-ch-rose) / 75%);
+}
+
+.authorSite {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 5px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-xl);
+  background: var(--acc-bg-raised);
   text-align: left;
+  transition:
+    border-color 80ms linear,
+    background-color 80ms linear;
 }
 
-.rowCard:hover,
-.rowCard[data-hover] {
-  border-color: var(--acc-line-hover);
+.authorSite:hover,
+.authorSite[data-hover] {
+  border-color: var(--acc-warn-40);
+  background: var(--acc-bg-card);
 }
 
-.rowCardText {
+/* A fixed height with the picture cropped into it, not a picture left to set the height itself: the file
+   is a wide banner, and letting it keep its own proportions would hand a third of the menu's last screen
+   to an advertisement. */
+.authorShot {
+  display: block;
+  width: 100%;
+  height: 88px;
+  border-radius: var(--acc-r-sm);
+  object-fit: cover;
+  object-position: center 40%;
+}
+
+.authorFoot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 3px 3px;
+}
+
+.authorNames {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 1px;
 }
 
-.rowCardTop {
-  display: flex;
-  align-items: center;
-  gap: 7px;
+.authorName {
+  font: 500 12px var(--acc-font);
+  color: var(--acc-fg);
 }
 
-.rowCardHint {
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--acc-fg-faint);
-  text-wrap: pretty;
-}
-
-.rowCardChevron {
-  flex: none;
-  margin-top: 6px;
-  width: 13px;
-  height: 13px;
-  color: var(--acc-fg-ghost);
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 1px 7px 2px;
-  border-radius: 999px;
+.authorTagline {
   font: 10px var(--acc-mono);
-  background: var(--acc-neutral-12);
+  color: var(--acc-fg-ghost);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.badgeDot {
-  width: 5px;
-  height: 5px;
-  border-radius: 9px;
-  background: currentcolor;
+/* The arrow out of the panel, in the same sand the rest of the card warms to on hover: it is the whole
+   notice that this one press leaves the IDE. */
+.authorArrow {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--acc-warn);
 }
 
 .footer {
@@ -1380,6 +1441,56 @@
   line-height: 1.45;
   color: var(--acc-fg-faint);
   text-wrap: pretty;
+}
+
+/*
+ * A choice that carries a field of its own - the number of lines a paste has to reach before it folds
+ * (see PasteCollapse.tsx). The box is the same .choice; only the halves inside it differ, so the row
+ * cannot drift away from the plain ones above and below it.
+ */
+.choiceField {
+  align-items: center;
+}
+
+/* The half that chooses. It takes the whole row apart from the field, so that the hit area is the row
+   itself rather than the words in it - a two-line option with a small target beside a large one reads as
+   two different kinds of thing. */
+.choiceHit {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 9px;
+  text-align: left;
+}
+
+/*
+ * The number itself. Narrow on purpose: three digits is the whole range it accepts, and a field the width
+ * of the row would promise a sentence.
+ *
+ * Chromium's own spinner arrows are turned off (the field is a text one with a numeric keyboard, so they
+ * never appear on the desktop either) - at this size they take a third of the box and land under the
+ * pointer exactly where the digits are.
+ */
+.choiceNumber {
+  flex: none;
+  width: 56px;
+  padding: 5px 0;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-raised);
+  color: var(--acc-fg);
+  font: 12px var(--acc-mono);
+  text-align: center;
+}
+
+.choiceNumber:focus-visible {
+  outline: none;
+  border-color: var(--acc-accent-40);
+}
+
+/* Dimmed rather than gone: what folding would go back to stays readable while "never fold" is chosen. */
+.choiceNumber:disabled {
+  opacity: 0.4;
 }
 
 /* --- Composer layout: four little drawings rather than four words ----------- */

@@ -121,6 +121,12 @@ internal object RemoteCommands {
         "setEffort",
         "setComposerLayout",
         /**
+         * How a pasted text behaves in the input field - a machine-wide setting like the layout above,
+         * and about the panel on the desk. The phone does not fold pastes at all: it has no clipboard
+         * chip to fold them into.
+         */
+        "setPasteCollapse",
+        /**
          * The language of the interface, which is a machine-wide setting like the ones above it: the panel
          * on the desk speaks it too, and so do the push notifications this side writes. A phone that could
          * change it would be changing the language of a screen its owner is not looking at.

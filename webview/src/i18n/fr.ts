@@ -33,6 +33,7 @@ export const fr: Dict = {
       remoteAbout: { title: 'CE QUI SORT D’ICI', hint: 'à lire avant de l’activer' },
       defaultMode: { title: 'MODE PAR DÉFAUT', hint: 'ce avec quoi démarrent les nouveaux onglets' },
       composerLayout: { title: 'DISPOSITION DU CHAMP', hint: 'où se place le champ de saisie' },
+      pasteCollapse: { title: 'TEXTE COLLÉ', hint: 'quand un collage se replie en pastille' },
       improvePrompt: { title: 'AMÉLIORER LE PROMPT', hint: 'ce que demande le bouton étoile' },
       voice: { title: 'SAISIE VOCALE', hint: 'dicter au lieu de taper' },
       voiceLanguage: { title: 'LANGUE PARLÉE', hint: 'ce que la dictée écoute' },
@@ -46,6 +47,7 @@ export const fr: Dict = {
       project: 'CE PROJET',
       devices: 'APPAREILS',
       plugin: 'LE PLUGIN',
+      author: 'DE L’AUTEUR',
     },
 
     rows: {
@@ -53,9 +55,15 @@ export const fr: Dict = {
       statistics: { label: 'Statistiques', sub: 'Heures, habitudes, trophées' },
       mcp: { label: 'Serveurs MCP', sub: 'État, connexion, reconnexion' },
       plugins: { label: 'Plugins', sub: 'Installés, parcourir, marketplaces' },
-      remote: { label: 'Accès à distance' },
+      remote: { label: 'Accès à distance', sub: 'État, relais, appareils appairés' },
       settings: { label: 'Réglages', sub: 'Sons, mode, disposition, langue' },
       feedback: { label: 'Envoyer un retour', sub: 'Un bug, une idée ou juste un bonjour' },
+    },
+
+    author: {
+      title: 'Un entretien en vue ?',
+      body: 'J’ai créé un assistant IA pour ça. Essaie-le gratuitement - et soutiens-moi. Merci',
+      tagline: 'copilote d’entretien en temps réel',
     },
 
     footer: 'Amazing Claude Code GUI',
@@ -66,6 +74,7 @@ export const fr: Dict = {
       sounds: { label: 'Alertes sonores', sub: 'Quand le panneau t’appelle' },
       defaultMode: { label: 'Mode par défaut', sub: 'Ce avec quoi démarrent les nouveaux onglets' },
       composerLayout: { label: 'Disposition du champ', sub: 'Où se place le champ de saisie' },
+      pasteCollapse: { label: 'Texte collé', sub: 'Quand un collage se replie en pastille' },
       improvePrompt: { label: 'Améliorer le prompt', sub: 'Ce que demande le bouton étoile' },
       voice: { label: 'Saisie vocale', sub: 'Dicter avec votre propre clé Deepgram' },
       language: { label: 'Langue', sub: 'La langue que parle le panneau' },
@@ -109,6 +118,15 @@ export const fr: Dict = {
     compact: 'Compacte',
     left: 'Gauche',
     right: 'Droite',
+  },
+
+  pasteCollapse: {
+    note: 'Un collage de plusieurs lignes se replie en pastille pour qu\'un mur de texte n\'occupe pas tout le champ de saisie. Rien n\'est perdu : la pastille garde le texte entier et se redéploie dans le champ par le bouton crayon qu\'elle porte.',
+    never: 'Ne jamais replier',
+    neverSub: 'Tout ce qui est collé reste dans le champ en texte simple',
+    from: (lines) => `À partir de ${lines} lignes`,
+    foldLabel: 'Replier les collages longs',
+    foldSub: (min, max) => `À partir de combien de lignes - ${min} à ${max}`,
   },
 
   improvePrompt: {
@@ -396,6 +414,8 @@ export const fr: Dict = {
     /** The counter under a subagent's own log while it runs. */
       agentWorking: (duration) => `Travaille · ${duration}`,
     task: {
+      /** The heading over a subagent's errand inside its card in the feed (see TaskCard). */
+      errand: 'CE QUI LUI A ÉTÉ DEMANDÉ',
       closed: {
         replay: 'La conversation enregistrée ne dit pas comment cela s’est terminé.',
         exited: 'La session s’est terminée avant le retour.',
@@ -530,7 +550,6 @@ export const fr: Dict = {
 
   remote: {
     codeLabel: 'Code d’appairage',
-    pairedVia: (device, relay) => `${device} est appairé · relais ${relay}`,
     states: {
       idle: { label: 'Désactivé', hint: 'Cet IDE n’est pas joignable depuis l’extérieur.' },
       connecting: { label: 'Connexion…', hint: 'Premier contact avec le relais.' },

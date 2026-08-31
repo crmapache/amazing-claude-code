@@ -29,6 +29,7 @@ export const pt: Dict = {
       remoteAbout: { title: 'O QUE SAI DAQUI', hint: 'leia antes de ligar' },
       defaultMode: { title: 'MODO PADRÃO', hint: 'com o que as novas abas começam' },
       composerLayout: { title: 'LAYOUT DO CAMPO', hint: 'onde fica o campo de escrita' },
+      pasteCollapse: { title: 'TEXTO COLADO', hint: 'quando uma colagem vira um chip' },
       improvePrompt: { title: 'MELHORAR O PROMPT', hint: 'o que o botão da estrela pede' },
       voice: { title: 'ENTRADA POR VOZ', hint: 'ditar em vez de digitar' },
       voiceLanguage: { title: 'IDIOMA FALADO', hint: 'o que o ditado escuta' },
@@ -42,6 +43,7 @@ export const pt: Dict = {
       project: 'ESTE PROJETO',
       devices: 'DISPOSITIVOS',
       plugin: 'O PLUGIN',
+      author: 'DO AUTOR',
     },
 
     rows: {
@@ -49,9 +51,15 @@ export const pt: Dict = {
       statistics: { label: 'Estatísticas', sub: 'Horas, hábitos, conquistas' },
       mcp: { label: 'Servidores MCP', sub: 'Estado, entrada, reconexão' },
       plugins: { label: 'Plugins', sub: 'Instalados, explorar, marketplaces' },
-      remote: { label: 'Acesso remoto' },
+      remote: { label: 'Acesso remoto', sub: 'Estado, relay, dispositivos pareados' },
       settings: { label: 'Configurações', sub: 'Sons, modo, layout, idioma' },
       feedback: { label: 'Enviar feedback', sub: 'Um bug, uma ideia ou só um oi' },
+    },
+
+    author: {
+      title: 'Tem uma entrevista chegando?',
+      body: 'Fiz um assistente de IA para ela. Teste de graça - e me ajude. Obrigado',
+      tagline: 'copiloto de entrevistas em tempo real',
     },
 
     footer: 'Amazing Claude Code GUI',
@@ -62,6 +70,7 @@ export const pt: Dict = {
       sounds: { label: 'Avisos sonoros', sub: 'Quando o painel chama você' },
       defaultMode: { label: 'Modo padrão', sub: 'Com o que as novas abas começam' },
       composerLayout: { label: 'Layout do campo', sub: 'Onde fica o campo de escrita' },
+      pasteCollapse: { label: 'Texto colado', sub: 'Quando uma colagem vira um chip' },
       improvePrompt: { label: 'Melhorar o prompt', sub: 'O que o botão da estrela pede' },
       voice: { label: 'Entrada por voz', sub: 'Dite com a sua própria chave da Deepgram' },
       language: { label: 'Idioma', sub: 'Em que idioma o painel fala' },
@@ -105,6 +114,15 @@ export const pt: Dict = {
     compact: 'Compacto',
     left: 'Esquerda',
     right: 'Direita',
+  },
+
+  pasteCollapse: {
+    note: 'Uma colagem de várias linhas vira um chip para que uma parede de texto não tome conta do campo de escrita. Nada se perde: o chip guarda o texto inteiro e volta a se abrir no campo pelo botão de lápis que fica nele.',
+    never: 'Nunca recolher',
+    neverSub: 'Tudo o que for colado fica no campo como texto comum',
+    from: (lines) => `A partir de ${lines} linhas`,
+    foldLabel: 'Recolher colagens longas',
+    foldSub: (min, max) => `A partir de quantas linhas - ${min} a ${max}`,
   },
 
   improvePrompt: {
@@ -392,6 +410,8 @@ export const pt: Dict = {
     /** The counter under a subagent's own log while it runs. */
       agentWorking: (duration) => `Trabalhando · ${duration}`,
     task: {
+      /** The heading over a subagent's errand inside its card in the feed (see TaskCard). */
+      errand: 'O QUE FOI PEDIDO',
       closed: {
         replay: 'Como isto terminou não está na conversa salva.',
         exited: 'A sessão acabou antes de isto retornar.',
@@ -526,7 +546,6 @@ export const pt: Dict = {
 
   remote: {
     codeLabel: 'Código de pareamento',
-    pairedVia: (device, relay) => `${device} está pareado · relay ${relay}`,
     states: {
       idle: { label: 'Desligado', hint: 'Não dá para chegar nesta IDE de fora.' },
       connecting: { label: 'Conectando…', hint: 'Primeiro contato com o relay.' },

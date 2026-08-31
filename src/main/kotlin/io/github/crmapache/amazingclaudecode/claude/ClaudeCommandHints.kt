@@ -14,6 +14,11 @@ internal data class CommandHint(val description: String, val argumentHint: Strin
  * For the CLI's genuinely built-in commands (code-review, for instance - it is baked into the binary
  * rather than a file) there is no file on disk and never will be: their syntax is hardcoded in
  * catalog.ts (BUILTIN_COMMANDS), checked against the binary directly.
+ *
+ * What is found here is not only the descriptions but the names themselves - until the first message of
+ * a conversation has been sent the agent has named nothing, and this scan is the only thing the hint has
+ * (see buildCommands in feed/slash.ts). That is why a file without a description is kept rather than
+ * dropped: its name is the greater half of what the hint is for.
  */
 internal object ClaudeCommandHints {
 
@@ -43,24 +48,66 @@ internal object ClaudeCommandHints {
         return hints
     }
 
-    private fun scanCommandsDir(dir: File, prefix: String, into: MutableMap<String, CommandHint>) {
-        val files = runCatching { dir.listFiles { file -> file.isFile && file.extension == "md" } }.getOrNull()
-        files?.forEach { file ->
-            parseFrontmatter(file)?.let { into["$prefix${file.nameWithoutExtension}"] = it }
+    /**
+     * How deep the walk into subdirectories goes. Nesting names a command rather than hides it
+     * (see below), so three levels is already more than anybody writes; the limit is here so that a
+     * symlinked loop under .claude/ cannot turn a hint refresh into an endless walk.
+     */
+    private const val MAX_DEPTH = 3
+
+    /**
+     * A subdirectory is part of the command's name rather than a place to hide it: the CLI calls
+     * `.claude/commands/demo/deep/twice.md` `/demo:deep:twice` - one colon per level (checked against a
+     * live agent's `slash_commands`, not guessed from the docs). Reading the top level only, the hint
+     * knew nothing of a command sorted into a folder - the very way a project with more than a handful
+     * of them is kept.
+     */
+    private fun scanCommandsDir(dir: File, prefix: String, into: MutableMap<String, CommandHint>, depth: Int = 0) {
+        val entries = runCatching { dir.listFiles() }.getOrNull() ?: return
+
+        for (entry in entries) {
+            if (entry.isFile && entry.extension == "md") {
+                remember(into, "$prefix${entry.nameWithoutExtension}", parseFrontmatter(entry))
+                continue
+            }
+
+            if (entry.isDirectory && depth < MAX_DEPTH) {
+                scanCommandsDir(entry, prefix = "$prefix${entry.name}:", into = into, depth = depth + 1)
+            }
         }
     }
 
     private fun scanSkillsDir(dir: File, prefix: String, into: MutableMap<String, CommandHint>) {
         val dirs = runCatching { dir.listFiles { file -> file.isDirectory } }.getOrNull()
         dirs?.forEach { skillDir ->
-            parseFrontmatter(File(skillDir, "SKILL.md"))?.let { into["$prefix${skillDir.name}"] = it }
+            val skill = File(skillDir, "SKILL.md")
+            if (skill.isFile) remember(into, "$prefix${skillDir.name}", parseFrontmatter(skill))
         }
     }
+
+    /**
+     * The first definition of a name wins, and the order of the scan above is the order of the CLI's own
+     * precedence: the project's own command outranks a personal one of the same name, and both outrank a
+     * plugin's.
+     */
+    private fun remember(into: MutableMap<String, CommandHint>, id: String, hint: CommandHint?) {
+        if (into.containsKey(id)) return
+        into[id] = hint ?: EMPTY
+    }
+
+    private val EMPTY = CommandHint(description = "", argumentHint = "")
 
     private val FRONTMATTER = Regex("""(?s)\A---\s*\n(.*?)\n---""")
     private val FIELD = Regex("""^([A-Za-z0-9_-]+):(.*)$""")
 
-    /** Plain line-by-line field reading - without full YAML, like the rest of the parsing in this plugin. */
+    /**
+     * Plain line-by-line field reading - without full YAML, like the rest of the parsing in this plugin.
+     *
+     * Nothing found is not the same as nothing there: a command file needs no frontmatter at all (the CLI
+     * runs it just the same, verified live), and such a file used to fall out of the scan entirely - name
+     * and all. So the absence of a description is answered with an empty hint by the caller rather than
+     * with a refusal here.
+     */
     private fun parseFrontmatter(file: File): CommandHint? {
         if (!file.isFile) return null
         val text = runCatching { file.readText() }.getOrNull() ?: return null

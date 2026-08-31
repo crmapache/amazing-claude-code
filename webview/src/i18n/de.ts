@@ -32,6 +32,7 @@ export const de: Dict = {
       remoteAbout: { title: 'WAS DAS HAUS VERLÄSST', hint: 'lies das, bevor du es einschaltest' },
       defaultMode: { title: 'STANDARDMODUS', hint: 'womit neue Tabs starten' },
       composerLayout: { title: 'LAYOUT DES EINGABEFELDS', hint: 'wo das Eingabefeld sitzt' },
+      pasteCollapse: { title: 'EINGEFÜGTER TEXT', hint: 'wann eine Einfügung zum Chip wird' },
       improvePrompt: { title: 'PROMPT VERBESSERN', hint: 'worum der Stern-Button bittet' },
       voice: { title: 'SPRACHEINGABE', hint: 'diktieren statt tippen' },
       voiceLanguage: { title: 'GESPROCHENE SPRACHE', hint: 'worauf das Diktat hört' },
@@ -45,6 +46,7 @@ export const de: Dict = {
       project: 'DIESES PROJEKT',
       devices: 'GERÄTE',
       plugin: 'DAS PLUGIN',
+      author: 'VOM AUTOR',
     },
 
     rows: {
@@ -52,9 +54,15 @@ export const de: Dict = {
       statistics: { label: 'Statistik', sub: 'Stunden, Gewohnheiten, Erfolge' },
       mcp: { label: 'MCP-Server', sub: 'Status, Anmeldung, Neuverbindung' },
       plugins: { label: 'Plugins', sub: 'Installiert, stöbern, Marktplätze' },
-      remote: { label: 'Fernzugriff' },
+      remote: { label: 'Fernzugriff', sub: 'Status, Relay, gekoppelte Geräte' },
       settings: { label: 'Einstellungen', sub: 'Töne, Modus, Layout, Sprache' },
       feedback: { label: 'Feedback senden', sub: 'Ein Bug, eine Idee oder einfach hallo' },
+    },
+
+    author: {
+      title: 'Steht ein Vorstellungsgespräch an?',
+      body: 'Ich habe einen KI-Assistenten dafür gebaut. Kostenlos ausprobieren - und mich unterstützen. Danke',
+      tagline: 'Interview-Copilot in Echtzeit',
     },
 
     footer: 'Amazing Claude Code GUI',
@@ -65,6 +73,7 @@ export const de: Dict = {
       sounds: { label: 'Signaltöne', sub: 'Wenn das Panel nach dir ruft' },
       defaultMode: { label: 'Standardmodus', sub: 'Womit neue Tabs starten' },
       composerLayout: { label: 'Layout des Eingabefelds', sub: 'Wo das Eingabefeld sitzt' },
+      pasteCollapse: { label: 'Eingefügter Text', sub: 'Wann eine Einfügung zum Chip wird' },
       improvePrompt: { label: 'Prompt verbessern', sub: 'Worum der Stern-Button bittet' },
       voice: { label: 'Spracheingabe', sub: 'Diktieren mit deinem eigenen Deepgram-Schlüssel' },
       language: { label: 'Sprache', sub: 'Welche Sprache das Panel spricht' },
@@ -108,6 +117,15 @@ export const de: Dict = {
     compact: 'Kompakt',
     left: 'Links',
     right: 'Rechts',
+  },
+
+  pasteCollapse: {
+    note: 'Eine mehrzeilige Einfügung wird zu einem Chip zusammengefaltet, damit eine Textwand das Eingabefeld nicht füllt. Verloren geht dabei nichts - der Chip hält den Text vollständig und klappt mit der Stift-Schaltfläche darauf wieder ins Feld zurück.',
+    never: 'Nie zusammenfalten',
+    neverSub: 'Alles Eingefügte bleibt als gewöhnlicher Text im Feld',
+    from: (lines) => `Ab ${lines} Zeilen`,
+    foldLabel: 'Lange Einfügungen zusammenfalten',
+    foldSub: (min, max) => `Ab wie vielen Zeilen - ${min} bis ${max}`,
   },
 
   improvePrompt: {
@@ -395,6 +413,8 @@ export const de: Dict = {
     /** The counter under a subagent's own log while it runs. */
       agentWorking: (duration) => `Arbeitet · ${duration}`,
     task: {
+      /** The heading over a subagent's errand inside its card in the feed (see TaskCard). */
+      errand: 'DER AUFTRAG',
       closed: {
         replay: 'Wie das ausging, steht nicht im gespeicherten Gespräch.',
         exited: 'Die Sitzung endete, bevor das hier zurückkam.',
@@ -529,7 +549,6 @@ export const de: Dict = {
 
   remote: {
     codeLabel: 'Kopplungscode',
-    pairedVia: (device, relay) => `${device} ist gekoppelt · Relay ${relay}`,
     states: {
       idle: { label: 'Aus', hint: 'Diese IDE ist von außen nicht erreichbar.' },
       connecting: { label: 'Verbinde…', hint: 'Erster Kontakt zum Relay.' },

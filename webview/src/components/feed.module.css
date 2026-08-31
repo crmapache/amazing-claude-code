@@ -775,6 +775,14 @@
   color: var(--acc-branch-light);
 }
 
+/* The iris of subagents everywhere else in the panel - the chip in the header, the dropdown, the agent's
+   own screen. A launch in the feed is the same thing being talked about, and a colour of its own would
+   only hide that. */
+.chipAgent {
+  background: var(--acc-agent-12);
+  color: var(--acc-agent-light);
+}
+
 .toolTarget {
   font: 12px var(--acc-mono);
   color: var(--acc-fg-soft);
@@ -801,6 +809,13 @@
   animation: acc-pulse 1.6s infinite;
 }
 
+/* An agent's card keeps its errand on the head while it works (see TaskCard), so it is the ticking
+   duration that says the work is live - the same pulse, moved to the other end of the row. */
+.toolDur.running {
+  color: var(--acc-accent-light);
+  animation: acc-pulse 1.6s infinite;
+}
+
 /* Deliberately not pulsing: the agent is doing nothing, it stands and waits for you - it should not look
    as brisk as genuine work. */
 .toolMeta.waiting {
@@ -823,6 +838,42 @@
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--acc-fg-dim);
+}
+
+/* The heading over the errand inside an agent's card - the same quiet caption the rest of the panel
+   labels a block with, so the two lines below it read as an answer to it. */
+.taskPromptLabel {
+  font: var(--acc-fs-meta, 11px) var(--acc-mono);
+  letter-spacing: 0.06em;
+  color: var(--acc-fg-faint);
+  margin-bottom: 4px;
+}
+
+/*
+ * The prompt as it was written. It is capped in height rather than shown whole: an errand runs to
+ * thousands of characters, and a card that pushes the whole conversation off the screen when opened is a
+ * card nobody opens twice. What does not fit scrolls inside the block - the text is there, it simply does
+ * not take the feed with it.
+ */
+.taskPrompt {
+  font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
+  line-height: var(--acc-code-leading, 18px);
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--acc-fg-body);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* The agent's own log under the errand, set apart by a rule rather than by a heading: what is above is
+   what it was asked, what is below is what it did - and with a gap alone the two ran together. */
+.taskLog {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--acc-line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .detailOk {

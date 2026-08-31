@@ -44,6 +44,7 @@ export const en = {
       remoteAbout: { title: 'WHAT TRAVELS', hint: 'read this before you turn it on' },
       defaultMode: { title: 'DEFAULT MODE', hint: 'what new tabs start in' },
       composerLayout: { title: 'COMPOSER LAYOUT', hint: 'where the input sits' },
+      pasteCollapse: { title: 'PASTED TEXT', hint: 'when a paste folds into a chip' },
       improvePrompt: { title: 'IMPROVE PROMPT', hint: 'what the sparkle button asks for' },
       voice: { title: 'VOICE INPUT', hint: 'dictate instead of typing' },
       voiceLanguage: { title: 'SPOKEN LANGUAGE', hint: 'what dictation listens for' },
@@ -57,6 +58,7 @@ export const en = {
       project: 'THIS PROJECT',
       devices: 'DEVICES',
       plugin: 'THE PLUGIN',
+      author: 'FROM THE AUTHOR',
     },
 
     rows: {
@@ -64,9 +66,19 @@ export const en = {
       statistics: { label: 'Statistics', sub: 'Hours, habits, achievements' },
       mcp: { label: 'MCP servers', sub: 'Status, sign-in, reconnect' },
       plugins: { label: 'Plugins', sub: 'Installed, browse, marketplaces' },
-      remote: { label: 'Remote access' },
+      remote: { label: 'Remote access', sub: 'State, relay, paired devices' },
       settings: { label: 'Settings', sub: 'Sounds, mode, layout, language' },
       feedback: { label: 'Send feedback', sub: 'A bug, an idea, or just hello' },
+    },
+
+    /**
+     * The one advertisement in the panel: the author's other product, at the foot of the menu. The
+     * name is not here on purpose - "Snakein" is a name, and a name is the same in every language.
+     */
+    author: {
+      title: 'Got an interview coming up?',
+      body: 'I built an AI assistant for it. Try it free - and support me. Thanks',
+      tagline: 'real-time interview copilot',
     },
 
     /** The plugin's own name at the foot of the list, beside its version. Never translated. */
@@ -78,6 +90,7 @@ export const en = {
       sounds: { label: 'Sound alerts', sub: 'When the panel calls you' },
       defaultMode: { label: 'Default mode', sub: 'What new tabs start in' },
       composerLayout: { label: 'Composer layout', sub: 'Where the input sits' },
+      pasteCollapse: { label: 'Pasted text', sub: 'When a paste folds into a chip' },
       improvePrompt: { label: 'Improve prompt', sub: 'What the sparkle button asks for' },
       voice: { label: 'Voice input', sub: 'Dictate with your own Deepgram key' },
       language: { label: 'Language', sub: 'What the panel speaks' },
@@ -123,6 +136,17 @@ export const en = {
     compact: 'Compact',
     left: 'Left',
     right: 'Right',
+  },
+
+  pasteCollapse: {
+    note: 'A multi-line paste folds into a chip so that a wall of text does not fill the input field. Nothing is lost either way - a folded paste holds the text whole and unfolds back into the field by the pencil button on it.',
+    never: 'Never fold',
+    neverSub: 'Everything pasted stays in the field as plain text',
+    /** "From 5 lines" - the threshold a paste has to reach to be folded. Beside the row in the settings. */
+    from: (lines: number): string => `From ${lines} lines`,
+    /** The other row of that screen: the one carrying the number field. */
+    foldLabel: 'Fold long pastes',
+    foldSub: (min: number, max: number): string => `From how many lines - ${min} to ${max}`,
   },
 
   improvePrompt: {
@@ -434,6 +458,8 @@ export const en = {
     /** The counter under a subagent's own log while it runs. */
       agentWorking: (duration: string): string => `Working · ${duration}`,
     task: {
+      /** The heading over a subagent's errand inside its card in the feed (see TaskCard). */
+      errand: 'WHAT IT WAS ASKED',
       closed: {
         replay: 'How this one ended is not part of the saved conversation.',
         exited: 'Session ended before this returned.',
@@ -600,7 +626,6 @@ export const en = {
     /** The square of dots itself - there is nothing to read there, so it is named instead. */
     codeLabel: 'Pairing code',
     /** The remote row in the side menu, once a device is on the other end. */
-    pairedVia: (device: string, relay: string): string => `${device} is paired · relay ${relay}`,
     states: {
       idle: { label: 'Off', hint: 'This IDE cannot be reached from outside.' },
       connecting: { label: 'Connecting…', hint: 'Reaching the relay for the first time.' },

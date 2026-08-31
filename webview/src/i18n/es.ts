@@ -29,6 +29,7 @@ export const es: Dict = {
       remoteAbout: { title: 'QUÉ SALE DE AQUÍ', hint: 'léelo antes de activarlo' },
       defaultMode: { title: 'MODO POR DEFECTO', hint: 'con qué empiezan las pestañas nuevas' },
       composerLayout: { title: 'DISPOSICIÓN DEL CAMPO', hint: 'dónde se coloca el campo de entrada' },
+      pasteCollapse: { title: 'TEXTO PEGADO', hint: 'cuándo un pegado se pliega en una ficha' },
       improvePrompt: { title: 'MEJORAR EL PROMPT', hint: 'qué pide el botón de la estrella' },
       voice: { title: 'ENTRADA POR VOZ', hint: 'dictar en lugar de escribir' },
       voiceLanguage: { title: 'IDIOMA HABLADO', hint: 'qué escucha el dictado' },
@@ -42,6 +43,7 @@ export const es: Dict = {
       project: 'ESTE PROYECTO',
       devices: 'DISPOSITIVOS',
       plugin: 'EL PLUGIN',
+      author: 'DEL AUTOR',
     },
 
     rows: {
@@ -49,9 +51,15 @@ export const es: Dict = {
       statistics: { label: 'Estadísticas', sub: 'Horas, hábitos, logros' },
       mcp: { label: 'Servidores MCP', sub: 'Estado, inicio de sesión, reconexión' },
       plugins: { label: 'Plugins', sub: 'Instalados, explorar, marketplaces' },
-      remote: { label: 'Acceso remoto' },
+      remote: { label: 'Acceso remoto', sub: 'Estado, relay, dispositivos vinculados' },
       settings: { label: 'Ajustes', sub: 'Sonidos, modo, disposición, idioma' },
       feedback: { label: 'Enviar comentarios', sub: 'Un fallo, una idea o simplemente un hola' },
+    },
+
+    author: {
+      title: '¿Tienes una entrevista pronto?',
+      body: 'Le hice un asistente de IA. Pruébalo gratis - y apóyame. Gracias',
+      tagline: 'copiloto de entrevistas en tiempo real',
     },
 
     footer: 'Amazing Claude Code GUI',
@@ -62,6 +70,7 @@ export const es: Dict = {
       sounds: { label: 'Avisos sonoros', sub: 'Cuándo te llama el panel' },
       defaultMode: { label: 'Modo por defecto', sub: 'Con qué empiezan las pestañas nuevas' },
       composerLayout: { label: 'Disposición del campo', sub: 'Dónde se coloca el campo de entrada' },
+      pasteCollapse: { label: 'Texto pegado', sub: 'Cuándo un pegado se pliega en una ficha' },
       improvePrompt: { label: 'Mejorar el prompt', sub: 'Qué pide el botón de la estrella' },
       voice: { label: 'Entrada por voz', sub: 'Dicta con tu propia clave de Deepgram' },
       language: { label: 'Idioma', sub: 'En qué idioma habla el panel' },
@@ -105,6 +114,15 @@ export const es: Dict = {
     compact: 'Compacta',
     left: 'Izquierda',
     right: 'Derecha',
+  },
+
+  pasteCollapse: {
+    note: 'Un pegado de varias líneas se pliega en una ficha para que un muro de texto no llene el campo de entrada. No se pierde nada: la ficha guarda el texto entero y vuelve a desplegarse en el campo con el botón del lápiz que lleva encima.',
+    never: 'No plegar nunca',
+    neverSub: 'Todo lo pegado se queda en el campo como texto normal',
+    from: (lines) => `Desde ${lines} líneas`,
+    foldLabel: 'Plegar los pegados largos',
+    foldSub: (min, max) => `A partir de cuántas líneas: ${min} a ${max}`,
   },
 
   improvePrompt: {
@@ -392,6 +410,8 @@ export const es: Dict = {
     /** The counter under a subagent's own log while it runs. */
       agentWorking: (duration) => `Trabajando · ${duration}`,
     task: {
+      /** The heading over a subagent's errand inside its card in the feed (see TaskCard). */
+      errand: 'LO QUE SE LE PIDIÓ',
       closed: {
         replay: 'Cómo acabó esto no está en la conversación guardada.',
         exited: 'La sesión terminó antes de que esto devolviera nada.',
@@ -526,7 +546,6 @@ export const es: Dict = {
 
   remote: {
     codeLabel: 'Código de emparejamiento',
-    pairedVia: (device, relay) => `${device} está emparejado · relé ${relay}`,
     states: {
       idle: { label: 'Apagado', hint: 'A este IDE no se llega desde fuera.' },
       connecting: { label: 'Conectando…', hint: 'Primer contacto con el relay.' },

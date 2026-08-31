@@ -1,4 +1,5 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react'
+import snakeinHero from '../assets/snakein-hero.webp'
 import { Microphone } from './Microphone'
 import { useHoverTarget } from '../hooks/useHoverTarget'
 import { useWheelScroll } from '../hooks/useWheelScroll'
@@ -21,6 +22,7 @@ export type MenuScreen =
   | 'remoteAbout'
   | 'defaultMode'
   | 'composerLayout'
+  | 'pasteCollapse'
   | 'improvePrompt'
   | 'voice'
   | 'voiceLanguage'
@@ -29,10 +31,14 @@ export type MenuScreen =
   | 'feedback'
   | 'feedbackLog'
 
-/** The state of remote access as the root row shows it - the colour and the words come from the caller. */
+/**
+ * The state of remote access as the root row shows it - the word and the colour come from the caller.
+ *
+ * A word and a tone, and no sentence beside them: the row is a row like every other one in the list, and
+ * what the state means in full is written on the screen behind it, where there is room to say it.
+ */
 export interface RemoteSummary {
   label: string
-  hint: string
   tone: 'off' | 'busy' | 'live' | 'bad'
 }
 
@@ -49,6 +55,8 @@ export interface MenuSummary {
   sounds: string
   defaultMode: string
   composerLayout: string
+  /** From how many lines a pasted text folds into a chip, or that it never does. */
+  pasteCollapse: string
   /** Whether the improve button asks by a text of one's own - "Default" or "Custom". */
   improvePrompt: string
   /** Dictation: the language it listens in, or that it is switched off. */
@@ -72,9 +80,24 @@ interface SideMenuProps {
   onOpenStatistics: () => void
   onBack: () => void
   onClose: () => void
+  /**
+   * An address to the system browser. The page has no browser of its own to open anything with, so the
+   * only outward link in the menu - the author's card at its foot - hands the address to the shell.
+   */
+  onOpenLink: (url: string) => void
   /** The screen itself, built by the caller - the frame knows nothing about what is inside. */
   children: ReactNode
 }
+
+/**
+ * Where the author's card leads. The marks say which placement brought the visit: it is the one
+ * advertisement in the panel, and whether it is worth the room it takes is a question with an answer.
+ */
+const AUTHOR_URL =
+  'https://snakein.com/?utm_source=amazing-claude-code&utm_medium=plugin&utm_campaign=side-menu'
+
+/** The author's other product, named the same in every language. */
+const AUTHOR_PRODUCT = 'Snakein'
 
 /**
  * The five screens that live behind "Settings" rather than in the root list.
@@ -83,7 +106,15 @@ interface SideMenuProps {
  * ten rows - and the four of them are the same kind of thing: a preference, set once and rarely
  * revisited. One row instead of four, and the language joins them rather than making the root longer.
  */
-const SETTINGS_SCREENS: MenuScreen[] = ['sounds', 'defaultMode', 'composerLayout', 'improvePrompt', 'voice', 'language']
+const SETTINGS_SCREENS: MenuScreen[] = [
+  'sounds',
+  'defaultMode',
+  'composerLayout',
+  'pasteCollapse',
+  'improvePrompt',
+  'voice',
+  'language',
+]
 
 /**
  * Where a step back leads from each screen. Three of them stand one level deeper than the rest: the
@@ -102,19 +133,38 @@ export const parentOf = (screen: MenuScreen): MenuScreen => {
   return 'menu'
 }
 
-const TONE_CLASS: Record<RemoteSummary['tone'], string> = {
-  off: 'var(--acc-fg-ghost)',
-  busy: 'var(--acc-warn)',
-  live: 'var(--acc-ok)',
-  bad: 'var(--acc-bad)',
+/**
+ * The colours of a value that is a state rather than a count - the dot and the word share them.
+ *
+ * Two rows have one: MCP says so when every server is up, remote access always, because the whole point
+ * of that row is which of four states the line is in.
+ */
+interface ValueTone {
+  text: string
+  dot: string
 }
 
-/** The tint of the remote row: the state's own colour, faint enough to stay a background. */
-const TONE_TINT: Record<RemoteSummary['tone'], { border: string; background: string }> = {
-  off: { border: 'var(--acc-line)', background: 'var(--acc-bg-card)' },
-  busy: { border: 'var(--acc-warn-32)', background: 'var(--acc-warn-06)' },
-  live: { border: 'var(--acc-ok-32)', background: 'var(--acc-ok-10)' },
-  bad: { border: 'var(--acc-bad-32)', background: 'var(--acc-bad-10)' },
+const VALUE_OK: ValueTone = { text: 'var(--acc-ok-light)', dot: 'var(--acc-ok)' }
+
+const TONE_VALUE: Record<RemoteSummary['tone'], ValueTone> = {
+  off: { text: 'var(--acc-fg-ghost)', dot: 'var(--acc-fg-ghost)' },
+  busy: { text: 'var(--acc-warn)', dot: 'var(--acc-warn)' },
+  live: { text: 'var(--acc-ok)', dot: 'var(--acc-ok)' },
+  bad: { text: 'var(--acc-bad)', dot: 'var(--acc-bad)' },
+}
+
+/**
+ * The icon of the remote row, in the colour of the state.
+ *
+ * Every other row's icon has a colour fixed for good, and this one deliberately does not: it used to be a
+ * whole tinted card, and losing that tint entirely would leave the row saying nothing until it is read.
+ * A green box against a grey one is the answer to "is it on" from across the panel.
+ */
+const TONE_ICON: Record<RemoteSummary['tone'], CSSProperties> = {
+  off: { background: 'var(--acc-neutral-12)', color: 'var(--acc-fg-dim)' },
+  busy: { background: 'var(--acc-warn-12)', color: 'var(--acc-warn)' },
+  live: { background: 'var(--acc-ok-12)', color: 'var(--acc-ok)' },
+  bad: { background: 'var(--acc-bad-12)', color: 'var(--acc-bad)' },
 }
 
 const Chevron = ({ className }: { className: string }) => (
@@ -185,6 +235,15 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M2.4 10h11.2" />
     </svg>
   ),
+  /* A clipboard with lines of text on it: the row is about what happens to what comes off the clipboard,
+     and a chip drawn instead would need the whole story told before it meant anything. */
+  pasteCollapse: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 3.2H4.4a1.2 1.2 0 0 0-1.2 1.2v8a1.2 1.2 0 0 0 1.2 1.2h7.2a1.2 1.2 0 0 0 1.2-1.2v-8a1.2 1.2 0 0 0-1.2-1.2H10" />
+      <rect x="6" y="1.9" width="4" height="2.6" rx="0.9" />
+      <path d="M5.9 8h4.2M5.9 10.6h2.6" />
+    </svg>
+  ),
   feedback: (
     <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
       <path d="M3.2 3.2h9.6a1.6 1.6 0 0 1 1.6 1.6v4.8a1.6 1.6 0 0 1-1.6 1.6H6.6l-2.7 2.2v-2.2h-.7A1.6 1.6 0 0 1 1.6 9.6V4.8a1.6 1.6 0 0 1 1.6-1.6z" />
@@ -229,7 +288,17 @@ const ICONS: Record<string, ReactNode> = {
  * The frame stays mounted while the panel is shut - that is what lets it slide rather than appear. What
  * costs something to render (the screens themselves) the caller withholds until there is a reason.
  */
-export const SideMenu = ({ open, screen, summary, onPick, onOpenStatistics, onBack, onClose, children }: SideMenuProps) => {
+export const SideMenu = ({
+  open,
+  screen,
+  summary,
+  onPick,
+  onOpenStatistics,
+  onBack,
+  onClose,
+  onOpenLink,
+  children,
+}: SideMenuProps) => {
   const t = useT()
   const sheet = useRef<HTMLElement>(null)
   const root = useRef<HTMLDivElement>(null)
@@ -266,7 +335,6 @@ export const SideMenu = ({ open, screen, summary, onPick, onOpenStatistics, onBa
   }, [open, screen, onBack, onClose])
 
   const head = t.menu.titles[screen]
-  const remoteTint = TONE_TINT[summary.remote.tone]
 
   return (
     <>
@@ -348,7 +416,11 @@ export const SideMenu = ({ open, screen, summary, onPick, onOpenStatistics, onBa
                 value={summary.mcp ? `${summary.mcp.connected}/${summary.mcp.total}` : ''}
                 // The count is worth a dot of its own only when everything is up: "4/5" in the same grey
                 // as the rest says nothing about whether that is fine.
-                valueOk={Boolean(summary.mcp && summary.mcp.connected === summary.mcp.total && summary.mcp.total > 0)}
+                valueTone={
+                  summary.mcp && summary.mcp.connected === summary.mcp.total && summary.mcp.total > 0
+                    ? VALUE_OK
+                    : undefined
+                }
                 onClick={() => onPick('mcp')}
               />
               <Row
@@ -363,30 +435,20 @@ export const SideMenu = ({ open, screen, summary, onPick, onOpenStatistics, onBa
 
             <div className={s.group}>{t.menu.groups.devices}</div>
             <div className={s.rows}>
-              <button
-                type="button"
-                className={s.rowCard}
-                style={{ borderColor: remoteTint.border, background: remoteTint.background }}
+              {/* A row like the four above it, not the tinted card it used to be. The card carried a whole
+                  sentence about the state and stood three lines tall for it - at the top of a list whose
+                  every other entry says its piece in one. What the sentence explained is on the screen
+                  behind the row; what is worth knowing without opening it is the state itself, and that
+                  fits where the other rows keep their counts. */}
+              <Row
+                icon="remote"
+                iconStyle={TONE_ICON[summary.remote.tone]}
+                label={t.menu.rows.remote.label}
+                sub={t.menu.rows.remote.sub}
+                value={summary.remote.label}
+                valueTone={TONE_VALUE[summary.remote.tone]}
                 onClick={() => onPick('remote')}
-              >
-                <span
-                  className={`${s.rowIcon}`}
-                  style={{ color: TONE_CLASS[summary.remote.tone] }}
-                >
-                  {ICONS.remote}
-                </span>
-                <span className={s.rowCardText}>
-                  <span className={s.rowCardTop}>
-                    <span className={s.rowLabel}>{t.menu.rows.remote.label}</span>
-                    <span className={s.badge} style={{ color: TONE_CLASS[summary.remote.tone] }}>
-                      <span className={s.badgeDot} />
-                      {summary.remote.label}
-                    </span>
-                  </span>
-                  <span className={s.rowCardHint}>{summary.remote.hint}</span>
-                </span>
-                <Chevron className={s.rowCardChevron} />
-              </button>
+              />
             </div>
 
             {/* The plugin itself, rather than the work done in it - which is why it stands apart from the
@@ -410,6 +472,58 @@ export const SideMenu = ({ open, screen, summary, onPick, onOpenStatistics, onBa
                 value=""
                 onClick={() => onPick('feedback')}
               />
+            </div>
+
+            {/* The one advertisement in the panel, and it stands where an advertisement can be walked
+                past: at the foot of a menu, under everything the menu is actually opened for. The
+                picture is here rather than a line of link text because the product is a screen - a
+                bare address asks to be trusted, a screenshot lets one decide before the click. */}
+            <div className={s.group}>{t.menu.groups.author}</div>
+            <div className={s.rows}>
+              <div className={s.author}>
+                <div className={s.authorWords}>
+                  <span className={s.rowLabel}>{t.menu.author.title}</span>
+                  <span className={s.authorBody}>
+                    {t.menu.author.body}
+                    <svg className={s.authorHeart} viewBox="0 0 16 16" aria-hidden="true">
+                      <path
+                        d="M8 14.3l-.9-.85C3.4 10.1 1 7.95 1 5.4A3.55 3.55 0 0 1 4.6 1.8c1.3 0 2.55.6 3.4 1.57A4.4 4.4 0 0 1 11.4 1.8A3.55 3.55 0 0 1 15 5.4c0 2.55-2.4 4.7-6.1 8.06z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                  </span>
+                </div>
+
+                <button type="button" className={s.authorSite} onClick={() => onOpenLink(AUTHOR_URL)}>
+                  {/* Decorative on purpose: the name and what it does are written right underneath, and
+                      a screen reader announcing the picture too would say the same thing twice. The
+                      measurements are the file's own - without them the row jumps as it decodes. */}
+                  <img
+                    className={s.authorShot}
+                    src={snakeinHero}
+                    alt=""
+                    width={608}
+                    height={182}
+                    decoding="async"
+                  />
+                  <span className={s.authorFoot}>
+                    <span className={s.authorNames}>
+                      <span className={s.authorName}>{AUTHOR_PRODUCT}</span>
+                      <span className={s.authorTagline}>{t.menu.author.tagline}</span>
+                    </span>
+                    <svg className={s.authorArrow} viewBox="0 0 16 16" aria-hidden="true">
+                      <path
+                        d="M5.4 10.6L10.6 5.4M6.2 5.2h4.6v4.6"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </span>
+                </button>
+              </div>
             </div>
 
             <div className={s.footer}>
@@ -475,6 +589,14 @@ export const SettingsScreen = ({
           onClick={() => onPick('composerLayout')}
         />
         <Row
+          icon="pasteCollapse"
+          iconClass={s.rowIconPaste}
+          label={t.settings.rows.pasteCollapse.label}
+          sub={t.settings.rows.pasteCollapse.sub}
+          value={summary.pasteCollapse}
+          onClick={() => onPick('pasteCollapse')}
+        />
+        <Row
           icon="improvePrompt"
           iconClass={s.rowIconImprove}
           label={t.settings.rows.improvePrompt.label}
@@ -505,30 +627,35 @@ export const SettingsScreen = ({
 
 const Row = ({
   icon,
-  iconClass,
+  iconClass = '',
+  iconStyle,
   label,
   sub,
   value,
-  valueOk = false,
+  valueTone,
   onClick,
 }: {
   icon: string
-  iconClass: string
+  iconClass?: string
+  /** For the one row whose colour is not fixed: remote access wears the colour of its own state. */
+  iconStyle?: CSSProperties
   label: string
   sub: string
   value: string
-  valueOk?: boolean
+  valueTone?: ValueTone
   onClick: () => void
 }) => (
   <button type="button" className={s.row} onClick={onClick}>
-    <span className={`${s.rowIcon} ${iconClass}`}>{ICONS[icon]}</span>
+    <span className={`${s.rowIcon} ${iconClass}`} style={iconStyle}>
+      {ICONS[icon]}
+    </span>
     <span className={s.rowText}>
       <span className={s.rowLabel}>{label}</span>
       <span className={s.rowSub}>{sub}</span>
     </span>
     {value ? (
-      <span className={`${s.rowValue} ${valueOk ? s.rowValueOk : ''}`}>
-        {valueOk ? <span className={s.rowValueDot} /> : null}
+      <span className={s.rowValue} style={valueTone ? { color: valueTone.text } : undefined}>
+        {valueTone ? <span className={s.rowValueDot} style={{ background: valueTone.dot }} /> : null}
         {value}
       </span>
     ) : null}

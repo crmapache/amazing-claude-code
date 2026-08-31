@@ -23,6 +23,7 @@ import {
   normalizeComposerLayout,
   type ComposerLayout,
 } from './composerLayout'
+import { pasteCollapseSummary } from './pasteCollapse'
 import { Confirm } from './components/Confirm'
 import { Feed } from './components/Feed'
 import {
@@ -48,6 +49,7 @@ import type { Dict } from './i18n/en'
 import { StatisticsTab, type StatisticsView } from './components/stats/StatisticsTab'
 import { dressAll, summarize } from './stats/achievements'
 import { ChoiceList, LayoutChoice } from './components/Choices'
+import { PasteCollapse } from './components/PasteCollapse'
 import { PermissionPanel } from './components/PermissionPanel'
 import { Plugins } from './components/Plugins'
 import { Queue } from './components/Queue'
@@ -68,7 +70,7 @@ import s from './components/shell.module.css'
 import { bashCommand, shellText, type ShellRun } from './feed/bash'
 import { contextOf, initialPanelState, reducePanel, type PanelState } from './feed/build'
 import { deferFollowUpForCompact } from './feed/compact'
-import { referenceChip } from './feed/reference'
+import { PASTE_COLLAPSE_DEFAULT, PASTE_COLLAPSE_NEVER, pasteCollapseLines, referenceChip } from './feed/reference'
 import { deriveSessionTitle } from './feed/title'
 import {
   appendChip,
@@ -341,6 +343,21 @@ export const App = () => {
   const [dockAnchor, setDockAnchor] = useState<'left' | 'right' | 'top' | 'bottom'>('right')
   /** Where the input field sits, as the person chose it. It arrives from the shell at startup and is saved there too. */
   const [chosenLayout, setComposerLayoutState] = useState<ComposerLayout>('bottom')
+  /**
+   * From how many lines a pasted text folds into a chip. The panel's own default until the IDE says
+   * otherwise: the harness has no IDE behind it at all, and a field that folded nothing there would be
+   * a different field from the one in the plugin.
+   */
+  const [pasteCollapse, setPasteCollapseState] = useState(PASTE_COLLAPSE_DEFAULT)
+  /**
+   * The number the folding goes back to when it is switched on again.
+   *
+   * "Never fold" is saved as a zero, and a zero cannot remember the threshold it replaced - so the screen
+   * would offer the default rather than the number that was set, and the one thing a person is sure to do
+   * after switching folding off is switch it back on. Kept beside the setting rather than inside the
+   * screen: the screen is thrown away every time the menu goes back a step.
+   */
+  const [pasteCollapseLast, setPasteCollapseLast] = useState(PASTE_COLLAPSE_DEFAULT)
   /**
    * And what the panel is drawn with: a panel dragged down to a strip has no height for the default
    * layout, and compact is what exists for that room (see layoutForRoom). The choice above is what the
@@ -1136,6 +1153,11 @@ export const App = () => {
               if (message.preferences.composerLayout) {
                 setComposerLayoutState(normalizeComposerLayout(message.preferences.composerLayout))
               }
+              // Read unconditionally, unlike the layout above: an absent value is a meaningful answer
+              // here - it is what puts the default back after the setting has been cleared.
+              const folds = pasteCollapseLines(message.preferences.pasteCollapse)
+              setPasteCollapseState(folds)
+              if (folds !== PASTE_COLLAPSE_NEVER) setPasteCollapseLast(folds)
               setLanguage({
                 chosen: message.preferences.language ?? '',
                 ide: message.preferences.ideLanguage ?? '',
@@ -1871,6 +1893,13 @@ export const App = () => {
   const setComposerLayout = useCallback((next: ComposerLayout) => {
     send({ type: 'setComposerLayout', layout: next })
     setComposerLayoutState(next)
+  }, [])
+
+  /** How a pasted text behaves in the field - kept by the IDE beside the layout, for the same reason. */
+  const setPasteCollapse = useCallback((lines: number) => {
+    send({ type: 'setPasteCollapse', lines: String(lines) })
+    setPasteCollapseState(lines)
+    if (lines !== PASTE_COLLAPSE_NEVER) setPasteCollapseLast(lines)
   }, [])
 
   /**
@@ -2905,6 +2934,7 @@ export const App = () => {
     defaultMode:
       modeMenuOptions(t, availableModes).find((option) => option.id === normalizeMode(prefs.mode))?.label ?? '',
     composerLayout: composerLayoutOptions(t).find((option) => option.id === chosenLayout)?.label ?? '',
+    pasteCollapse: pasteCollapseSummary(t, pasteCollapse),
     improvePrompt: improveInstructions.instructions.trim()
       ? t.settings.improveSummary.custom
       : t.settings.improveSummary.builtIn,
@@ -2916,14 +2946,10 @@ export const App = () => {
     // Written in itself, as in the picker: the row is read by somebody who may be looking for a way out
     // of a language they cannot read.
     language: nativeName(locale),
+    // The word alone, and its colour. The sentence that used to stand under it belongs to the screen
+    // behind the row - see RemoteSummary.
     remote: {
       label: remoteState(t, remote.state).label,
-      // Connected and paired, the state's own sentence says nothing new - the useful line is who is on
-      // the other end and through which relay.
-      hint:
-        remote.state === 'connected' && remote.devices?.length
-          ? t.remote.pairedVia(remote.devices[0]?.label ?? '', relayHost(remote.relay))
-          : remoteState(t, remote.state).hint,
       tone: remoteState(t, remote.state).tone,
     },
     version: pluginVersion,
@@ -3234,6 +3260,7 @@ export const App = () => {
             streaming={running}
             planMode={mode === 'plan'}
             contextPercent={context.percent}
+            pasteCollapseLines={pasteCollapse}
             commands={commands}
             models={models}
             meters={metersNode}
@@ -3355,6 +3382,7 @@ export const App = () => {
         onOpenStatistics={openStatistics}
         onBack={backMenu}
         onClose={closeMenu}
+        onOpenLink={openLink}
       >
         {/* Only what is being looked at is built: the MCP and plugin screens are whole lists, and the
             menu is shut far more of the time than it is open. */}
@@ -3550,6 +3578,10 @@ export const App = () => {
               closeMenu()
             }}
           />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'pasteCollapse' ? (
+          <PasteCollapse t={t} lines={pasteCollapse} last={pasteCollapseLast} onPick={setPasteCollapse} />
         ) : null}
 
         {sideMenu.open && sideMenu.screen === 'improvePrompt' ? (
@@ -3751,23 +3783,6 @@ const latestTodo = (items: FeedItem[]): TodoItem | undefined =>
 const lastUserText = (items: FeedItem[]): string => {
   const last = [...items].reverse().find((item): item is UserItem => item.kind === 'user')
   return last ? tokensText(last.tokens).trim() : ''
-}
-
-/**
- * The relay's host alone, for the one line in the menu that mentions it.
- *
- * An empty address is the public relay - naming it here would be a second place to keep that name in
- * step with the plugin's own default.
- */
-const relayHost = (relay: string): string => {
-  if (!relay) return 'the public one'
-
-  try {
-    return new URL(relay).host
-  } catch {
-    // Half-typed addresses live in that field while a person edits it - it is not worth an error here.
-    return relay
-  }
 }
 
 const menuProps = (

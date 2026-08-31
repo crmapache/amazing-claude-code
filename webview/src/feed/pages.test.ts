@@ -180,7 +180,7 @@ describe('a page of earlier messages', () => {
  * How much a page is worth to the person who pressed for it - see PanelState.lastPageRows.
  *
  * A page is a slab of the transcript, and much of what is in it draws nothing on screen: a burst of calls
- * is one folded row however many it holds, a subagent's launch has a tab of its own, a call's result only
+ * is one folded row however many it holds, a task list lives in a panel of its own, a call's result only
  * closes a card that already stands. Counted in entries, a page could arrive in full and move nothing -
  * which is exactly what the press looked like from the outside.
  */
@@ -224,8 +224,40 @@ describe('what a page of earlier messages is worth on screen', () => {
     expect(paged.lastPageRows).toEqual(1)
   })
 
-  /** A subagent's card lives in a tab of its own, so a page made of launches moves the feed by nothing. */
+  /** The task list is drawn in a pinned panel over the input field, so a page of it moves nothing. */
   it('counts nothing for a page the feed does not draw', () => {
+    const wroteTodos = (id: string, uuid: string): AgentEvent =>
+      ({
+        type: 'assistant',
+        uuid,
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id,
+              name: 'TodoWrite',
+              input: { todos: [{ content: 'one', status: 'pending' }] },
+            },
+          ],
+        },
+      }) as AgentEvent
+
+    const paged = reducePanel(
+      opened,
+      {
+        kind: 'historyPage',
+        before: 'u5',
+        cursor: 'u1',
+        entries: [wroteTodos('t1', 'a1'), wroteTodos('t2', 'a2')],
+      },
+      2_000,
+    )
+
+    expect(paged.lastPageRows).toEqual(0)
+  })
+
+  /** A subagent's launch is a row of its own now - see TaskCard and FeedRowItem. */
+  it('counts a subagent launch as the row it draws', () => {
     const paged = reducePanel(
       opened,
       {
@@ -237,7 +269,7 @@ describe('what a page of earlier messages is worth on screen', () => {
       2_000,
     )
 
-    expect(paged.lastPageRows).toEqual(0)
+    expect(paged.lastPageRows).toEqual(2)
   })
 
   /** An answer dropped as stale added nothing, and has to say so or the screen would stop asking. */

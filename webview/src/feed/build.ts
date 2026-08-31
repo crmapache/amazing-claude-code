@@ -438,7 +438,7 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
  * made entirely of subagent launches fills state.items and moves not a pixel.
  */
 export const drawnInFeed = (item: FeedItem): item is FeedRowItem =>
-  item.kind !== 'todo' && item.kind !== 'ask' && item.kind !== 'perm' && item.kind !== 'task'
+  item.kind !== 'todo' && item.kind !== 'ask' && item.kind !== 'perm'
 
 /**
  * Whether Claude Code's transcript keeps this event, and so whether its identifier can be asked for a
@@ -1537,8 +1537,39 @@ const applyToolUse = (
     }
   }
 
-  if (block.name === 'Task' || block.name === 'Agent') {
-    const subagent = typeof input.subagent_type === 'string' ? input.subagent_type : 'general'
+/**
+ * How much of a subagent's errand the card keeps.
+ *
+ * A prompt is written for a machine and runs to whatever length the model felt like: the card shows it
+ * whole up to here and says nothing beyond, because the state of the feed is copied on every repaint and
+ * a fleet of agents carrying ten kilobytes of instructions each is paid for on every one of them. What is
+ * cut is the tail of the instructions - the errand itself always stands at the front.
+ */
+const TASK_PROMPT_CHARS = 4000
+
+const taskPrompt = (input: Record<string, unknown>): string => {
+  const prompt = typeof input.prompt === 'string' ? input.prompt.trim() : ''
+  if (prompt.length <= TASK_PROMPT_CHARS) return prompt
+
+  return `${prompt.slice(0, TASK_PROMPT_CHARS)}…`
+}
+
+  if (block.name === 'Task' || block.name === 'Agent' || block.name === 'Workflow') {
+    /**
+     * A workflow is a fleet rather than a subagent and has no subagent_type at all - the same name the
+     * system event gives it (see applyTaskStarted), so that the two roads to one card agree.
+     *
+     * It goes through this branch rather than becoming an ordinary tool card because its end never comes
+     * as a tool result: it arrives as a task notification, into the task's card. Left as a tool call, the
+     * launch stood in the feed marked "unfinished" for ever, beside the card that did have the answer.
+     */
+    const subagent =
+      block.name === 'Workflow'
+        ? 'workflow'
+        : typeof input.subagent_type === 'string'
+          ? input.subagent_type
+          : 'general'
+    const prompt = taskPrompt(input)
     /**
      * A card for this subagent has already been created by the task_started system event - it arrives
      * before the tool_use block when the subagent is raised not by the turn but by a skill. There must be
@@ -1551,7 +1582,14 @@ const applyToolUse = (
         ...state,
         items: state.items.map((item) =>
           item.kind === 'task' && item.id === known
-            ? { ...item, target: subagent, meta: targetFor(block.name, input, workingDirectory) }
+            ? {
+                ...item,
+                target: subagent,
+                meta: targetFor(block.name, input, workingDirectory),
+                // The card the system event made knows the errand in one line at best - the call is the
+                // only place the whole of it is ever said.
+                prompt: prompt || item.prompt,
+              }
             : item,
         ),
       }
@@ -1567,6 +1605,7 @@ const applyToolUse = (
           kind: 'task',
           target: subagent,
           meta: targetFor(block.name, input, workingDirectory),
+          prompt,
           duration: '',
           percent: 0,
           log: [],

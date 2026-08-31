@@ -8,6 +8,7 @@ import s from './feed.module.css'
 import { BashCard } from './items/BashCard'
 import { FindingsCard } from './items/FindingsCard'
 import { PlanCard } from './items/PlanCard'
+import { TaskCard } from './items/TaskCard'
 import {
   CheckpointRow,
   CompactRow,
@@ -500,6 +501,9 @@ const ItemView = memo(({
 
     case 'toolGroup':
       return <ToolGroupCard item={item} cards={cards} awaitingPermissionId={lastPendingId} />
+
+    case 'task':
+      return <TaskCard item={item} open={cards.isOpen(item.id)} onToggle={() => cards.toggle(item.id)} />
 
     case 'findings':
       return (

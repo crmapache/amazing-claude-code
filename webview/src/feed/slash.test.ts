@@ -89,6 +89,16 @@ describe('buildCommands', () => {
     expect(task).toEqual({ id: 'task', hint: 'Start a new task', argumentHint: '[task]', group: 'project' })
   })
 
+  it('shows a command that has no description at all', () => {
+    // Frontmatter is optional for the CLI, and a project command written as a bare prompt has none. Such
+    // a file used to fall out of the scan whole (see ClaudeCommandHints), so the hint knew nothing about
+    // it until the first message of the conversation had been sent.
+    const commands = buildCommands(en, [], { deploy: { description: '', argumentHint: '' } })
+    const deploy = commands.find((command) => command.id === 'deploy')
+
+    expect(deploy).toEqual({ id: 'deploy', hint: '', argumentHint: '', group: 'project' })
+  })
+
   it('does not double the same command coming from the agent and from disk', () => {
     const commands = buildCommands(en, ['task'], { task: { description: 'Start a new task', argumentHint: '' } })
 

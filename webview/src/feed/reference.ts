@@ -131,6 +131,42 @@ export const pasteLineCount = (text: string): number => {
 }
 
 /**
+ * From how many lines a pasted text folds into a chip instead of going into the field as it is.
+ *
+ * Two is "every paste that has a line break in it", which is what the field always did and stays the
+ * default. It is a setting because the same behaviour is right for a hundred-line log and wrong for a
+ * two-line stack trace one wants to edit before sending - and the second case is the one people wrote
+ * in about (see the pasted-text screen in SideMenu).
+ */
+export const PASTE_COLLAPSE_DEFAULT = 2
+
+/** Never fold, whatever was pasted - the value the "off" entry of that screen saves. */
+export const PASTE_COLLAPSE_NEVER = 0
+
+/**
+ * The setting as it arrives from the IDE, as a number of lines.
+ *
+ * Absent is not the same as zero: nothing said means the default above, while a genuine zero means the
+ * person switched the folding off. Anything unreadable is treated as nothing said - a stored value from
+ * a future version must not turn the field's behaviour into a surprise.
+ */
+export const pasteCollapseLines = (value: string | undefined): number => {
+  if (value === undefined || value.trim() === '') return PASTE_COLLAPSE_DEFAULT
+
+  const lines = Number.parseInt(value, 10)
+  if (!Number.isFinite(lines) || lines < 0) return PASTE_COLLAPSE_DEFAULT
+
+  return lines
+}
+
+/**
+ * Whether this paste goes in as a chip. The line count is the same one the tooltip shows, so the
+ * threshold on the screen means exactly what the chip then says about itself.
+ */
+export const collapsesPaste = (text: string, minLines: number): boolean =>
+  minLines > PASTE_COLLAPSE_NEVER && pasteLineCount(text) >= minLines
+
+/**
  * How much of a text a hover hint takes - lines of a paste, characters of a quote.
  *
  * A hint is a reminder of what is inside, not a way of reading it: the panel draws all of them with one

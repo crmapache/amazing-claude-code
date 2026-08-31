@@ -784,7 +784,16 @@ export const scenariosCards: Scenario[] = [
     // The CLI reports one and the same launch twice: as a call block in the agent's answer and as a system
     // event with a task_id of its own. Both are here - the chip in the header has to stay a single one.
     checkpoint('Task: launching the Explore subagent', [
-      toolUse('Task', { subagent_type: 'Explore', description: 'Find where the environment variables are read' }, 'c10-task'),
+      toolUse(
+        'Task',
+        {
+          subagent_type: 'Explore',
+          description: 'Find where the environment variables are read',
+          prompt:
+            'Find every place in this repository where an environment variable is read.\n\nGo through src/ and report the file and the line for each one, together with the name of the variable. Include indirect reads through a config helper. Do not change any files - the answer is the whole of the job.',
+        },
+        'c10-task',
+      ),
       agent({
         type: 'system',
         subtype: 'task_started',
@@ -1069,13 +1078,23 @@ export const scenariosCards: Scenario[] = [
               type: 'tool_use',
               id: 'c12-a',
               name: 'Task',
-              input: { subagent_type: 'react-architecture', description: 'A review of the front end' },
+              input: {
+                subagent_type: 'react-architecture',
+                description: 'A review of the front end',
+                prompt:
+                  'Review the front end of this change: the components under webview/src/components and the hooks beside them. Report anything that re-renders needlessly or duplicates what the design system already has.',
+              },
             },
             {
               type: 'tool_use',
               id: 'c12-b',
               name: 'Task',
-              input: { subagent_type: 'nest-architecture', description: 'A review of the back end' },
+              input: {
+                subagent_type: 'nest-architecture',
+                description: 'A review of the back end',
+                prompt:
+                  'Review the back end of this change: the controllers, the use-cases and the repositories it touches. Report anything that reaches across a layer it should not.',
+              },
             },
           ],
         },

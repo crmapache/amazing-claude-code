@@ -278,6 +278,18 @@ export interface TaskItem {
   taskId?: string
   target: string
   meta: string
+  /**
+   * What the agent was actually asked, in full - the `prompt` of the Task call, cut to a readable length
+   * (see TASK_PROMPT_CHARS in build.ts).
+   *
+   * `meta` beside it is one line: the model's own description of the errand, which is what the chip and
+   * the card's head can hold. The whole errand is the thing one opens the card for - without it a
+   * subagent was a name and a duration, and what it had been sent to do was nowhere on the screen.
+   *
+   * Absent for an agent a skill raised: it reaches the panel through system events, which carry the
+   * description and no prompt at all.
+   */
+  prompt?: string
   duration: string
   percent: number
   log: DetailLine[]
@@ -695,8 +707,13 @@ export type FeedItem =
  * What the feed actually draws as a row of its own.
  *
  * The task list, the agent's question and a permission request live in the pinned panels over the input
- * field; a subagent's card has a tab of its own. They are all in the feed's items and none of them is on
- * the screen the person scrolls - which is why a page of history made entirely of subagent launches
- * arrives honestly and moves nothing (see drawnInFeed in build.ts).
+ * field. They are all in the feed's items and none of them is on the screen the person scrolls (see
+ * drawnInFeed in build.ts).
+ *
+ * A subagent's card used to be in this list too - it lived on its chip in the header alone. The chip is
+ * hidden the moment the agent finishes and nobody is watching it (see hiddenTaskIds in App), so what an
+ * agent had been sent to do and what it answered left the panel with it: the conversation kept no trace
+ * of a launch at all. Now the card stands in the feed like any other call, and the chip is what it
+ * always was - the way to watch one while it runs.
  */
-export type FeedRowItem = Exclude<FeedItem, TodoItem | AskItem | PermItem | TaskItem>
+export type FeedRowItem = Exclude<FeedItem, TodoItem | AskItem | PermItem>

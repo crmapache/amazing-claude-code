@@ -29,6 +29,7 @@ export const ko: Dict = {
       remoteAbout: { title: '밖으로 나가는 것', hint: '켜기 전에 읽어 주세요' },
       defaultMode: { title: '기본 모드', hint: '새 탭이 시작하는 모드' },
       composerLayout: { title: '입력창 배치', hint: '입력창을 두는 자리' },
+      pasteCollapse: { title: '붙여넣은 텍스트', hint: '붙여넣기를 칩으로 접는 기준' },
       improvePrompt: { title: '프롬프트 다듬기', hint: '별 버튼이 요청하는 내용' },
       voice: { title: '음성 입력', hint: '타이핑 대신 말하기' },
       voiceLanguage: { title: '말하는 언어', hint: '받아쓰기가 알아들을 언어' },
@@ -42,6 +43,7 @@ export const ko: Dict = {
       project: '이 프로젝트',
       devices: '기기',
       plugin: '플러그인 자체',
+      author: '만든 사람',
     },
 
     rows: {
@@ -49,9 +51,15 @@ export const ko: Dict = {
       statistics: { label: '통계', sub: '시간, 습관, 업적' },
       mcp: { label: 'MCP 서버', sub: '상태, 로그인, 다시 연결' },
       plugins: { label: '플러그인', sub: '설치됨, 둘러보기, 마켓플레이스' },
-      remote: { label: '원격 접속' },
+      remote: { label: '원격 접속', sub: '상태, 릴레이, 연결된 기기' },
       settings: { label: '설정', sub: '알림음, 모드, 배치, 언어' },
       feedback: { label: '피드백 보내기', sub: '버그, 아이디어, 그냥 인사도 좋아요' },
+    },
+
+    author: {
+      title: '곧 면접이 있나요?',
+      body: '그래서 AI 어시스턴트를 만들었어요. 무료로 써보세요 - 응원도 됩니다. 감사합니다',
+      tagline: '실시간 면접 코파일럿',
     },
 
     footer: 'Amazing Claude Code GUI',
@@ -62,6 +70,7 @@ export const ko: Dict = {
       sounds: { label: '알림음', sub: '패널이 부를 때' },
       defaultMode: { label: '기본 모드', sub: '새 탭이 시작하는 모드' },
       composerLayout: { label: '입력창 배치', sub: '입력창을 두는 자리' },
+      pasteCollapse: { label: '붙여넣은 텍스트', sub: '붙여넣기를 칩으로 접는 기준' },
       improvePrompt: { label: '프롬프트 다듬기', sub: '별 버튼이 요청하는 내용' },
       voice: { label: '음성 입력', sub: '내 Deepgram 키로 받아쓰기' },
       language: { label: '언어', sub: '패널이 쓰는 언어' },
@@ -105,6 +114,15 @@ export const ko: Dict = {
     compact: '좁게',
     left: '왼쪽',
     right: '오른쪽',
+  },
+
+  pasteCollapse: {
+    note: '여러 줄을 붙여넣으면 긴 텍스트가 입력창을 가득 채우지 않도록 칩으로 접힙니다. 어느 쪽이든 내용은 그대로입니다 - 접힌 칩은 전체 텍스트를 담고 있고, 칩에 있는 연필 버튼으로 다시 입력창에 펼칠 수 있습니다.',
+    never: '접지 않기',
+    neverSub: '붙여넣은 것은 모두 일반 텍스트로 입력창에 남습니다',
+    from: (lines) => `${lines}줄부터`,
+    foldLabel: '긴 붙여넣기 접기',
+    foldSub: (min, max) => `몇 줄부터 접을지 - ${min}~${max}`,
   },
 
   improvePrompt: {
@@ -390,6 +408,8 @@ export const ko: Dict = {
     /** The counter under a subagent's own log while it runs. */
       agentWorking: (duration) => `작업 중 · ${duration}`,
     task: {
+      /** The heading over a subagent's errand inside its card in the feed (see TaskCard). */
+      errand: '맡긴 일',
       closed: {
         replay: '어떻게 끝났는지는 저장된 대화에 없어요.',
         exited: '결과가 돌아오기 전에 세션이 끝났어요.',
@@ -523,7 +543,6 @@ export const ko: Dict = {
 
   remote: {
     codeLabel: '페어링 코드',
-    pairedVia: (device, relay) => `${device} 연결됨 · 릴레이 ${relay}`,
     states: {
       idle: { label: '꺼짐', hint: '이 IDE에는 밖에서 닿을 수 없어요.' },
       connecting: { label: '연결 중…', hint: '릴레이에 처음 닿는 중이에요.' },

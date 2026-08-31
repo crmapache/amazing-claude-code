@@ -360,12 +360,6 @@ export const charAfter = (range: Range): string => {
   return (startContainer.textContent ?? '').charAt(startOffset)
 }
 
-/**
- * Whether what was pasted takes more than one line. A trailing newline does not count: a line copied out
- * of a terminal almost always ends in one, and that does not stop it being a line.
- */
-export const isMultiline = (text: string): boolean => text.trimEnd().includes('\n')
-
 /** Before an attachment a space is needed only when a non-space character already stands there - an empty start of the field needs none. */
 export const needsLeadingSpace = (char: string): boolean => char.length > 0 && !/\s/.test(char)
 
@@ -641,14 +635,19 @@ const renderChipNode = (chip: Chip, onRemove: () => void, onExpand?: () => void)
 
   /**
    * Only on a collapsed paste: it is the one chip with nothing behind it but text - which means there is
-   * something to expand back. A pilcrow rather than an arrow: the panel's monospaced font has no arrows,
-   * they get substituted from another one and stand beside the cross at a slightly different size.
+   * something to expand back. A drawn pencil rather than a character from the font: a pilcrow stood here
+   * and said nothing at all about what the button does, while an arrow the panel's monospaced font does not
+   * have at all - it gets substituted from another one and stands beside the cross at a slightly different
+   * size. Drawn in the same manner as the rest of the composer's icons (see Paperclip in Composer.tsx).
    */
   if (onExpand) {
     const expand = document.createElement('button')
     expand.type = 'button'
     expand.className = s.tokenExpand ?? ''
-    expand.textContent = '¶'
+    expand.innerHTML =
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.6" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>'
     expand.title = 'Insert as plain text'
     expand.addEventListener('click', (event) => {
       event.stopPropagation()
