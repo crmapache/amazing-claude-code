@@ -9,6 +9,14 @@ commits.
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-08-30
+
+- Added: a card at the foot of the side menu, past Settings, pointing at the author's other product - an AI interview copilot. It is the one advertisement anywhere in the panel: a picture, a line about it and a single way out, into your own browser, with nothing about your accounts touched to get there.
+- Added: launching a subagent - a Task call, or a Workflow's fleet of agents - now leaves a row in the conversation, not only a chip in the header. Collapsed, it says who was launched, for what and for how long; opened, it shows the whole instruction the agent was given and its own log ending in its report. Until now that chip disappeared the moment the agent finished, and with it went every trace of the work: a turn that launched five agents read as an answer that came out of nowhere, with no request and no report to be found anywhere afterwards.
+- Added: the field's slash-command list finds commands sorted into subfolders. A file at `.claude/commands/demo/deep/twice.md` is `/demo:deep:twice` to the CLI, one colon per level, and until now only the top level of `.claude/commands` was read, so a project with more than a handful of commands and a folder to keep them in was invisible to the hint. A command file with no frontmatter at all is kept too, with an empty description rather than being dropped - the CLI runs such a file just the same.
+- Added: a setting for how long a pasted block has to be before it folds into a chip - "Pasted text" behind Settings, a line count or "never". It defaults to two lines, which is what always folded before; raise it and a short pasted line stays a short pasted line instead of becoming a chip to open.
+- Fixed: the project's own commands could be missing from the slash-command hint until the first message of a conversation had been sent, if the separate check for installed plugins failed to answer in time. The disk is now read and reported on its own, with the plugins' commands added to it a moment later rather than holding it back.
+
 ## [0.9.5] - 2026-08-30
 
 - Fixed: hovering a pasted block in a sent message put a tall strip of that same text over the conversation, and clicking the block then unfolded the text underneath it - so the hint covered the very thing it was previewing. The collapsed paste now carries no hint at all: it is the one chip in the panel that opens on a click, and the caret on it already says so, the same way a folded group of tool calls does.
@@ -461,7 +469,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.9.5...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.9.6...HEAD
+[0.9.6]: https://github.com/crmapache/amazing-claude-code/compare/0.9.5...0.9.6
 [0.9.5]: https://github.com/crmapache/amazing-claude-code/compare/0.9.4...0.9.5
 [0.9.4]: https://github.com/crmapache/amazing-claude-code/compare/0.9.3...0.9.4
 [0.9.3]: https://github.com/crmapache/amazing-claude-code/compare/0.9.2...0.9.3
