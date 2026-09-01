@@ -9,6 +9,19 @@ commits.
 
 ## [Unreleased]
 
+## [0.9.7] - 2026-09-01
+
+- Added: a path anywhere in the conversation opens the file in the editor beside the panel. The head of every Read, Edit and Write card, a path in the middle of an answer, a path inside a fenced block, a path in your own message, a path in the text of an error - all of them are clicked rather than read off the screen and typed into "go to file" by hand. A line number takes you to the line, a column to the character, and a range - `App.tsx:15:33-40` or `App.tsx:15-20` - is selected rather than merely reached. For an edit, where the CLI reports success and no position at all, the panel sends a line of the change itself and the IDE finds it in the file it is about to show. A path that leads to another machine is refused on both sides: reaching for a host somebody else named is how Windows introduces itself to it, and the text a path is read out of is the agent's retelling of files, command output and web pages.
+- Added: the diff of an edit stands open in the conversation - the lines it removed and, under them, the lines it added. Until now it was folded away behind a caret, and inside a burst of calls behind two, so a wrong edit went past unnoticed, which is the whole reason for watching an agent work. Six lines are shown and the rest is one click away, on a row that says how many are left and closes them again.
+- Added: Українська - the panel now speaks ten languages. As with the rest, leaving the language setting empty means the panel speaks whatever the IDE does.
+- Fixed: a fresh fork opened with the context gauge at a red 100%. It knew neither how much of the window it had inherited nor how large that window is, and fell back to a guess smaller than the conversation it had just been handed. A fork now starts from its parent's figure and asks the CLI for the exact one as soon as it comes up.
+- Fixed: a fork carried on the same conversation on a different model, at a different effort and in a different permission mode - whatever had last been picked anywhere in the panel. Every selector writes the machine's default as well as changing its own tab, so a model chosen in a neighbouring tab decided what a fork made here started on. A fork now continues on what its parent runs on.
+- Fixed: a conversation's forks could not be rearranged between themselves - dragging one moved the whole group. A fork now moves inside its own group, while the conversation it grew out of still carries the group with it.
+- Fixed: the percentage beside CONTEXT started over from zero whenever the panel was rebuilt - coming back to the IDE after a break, a restored panel, a phone joining mid-compaction - while the compaction it describes went on running. It is now counted from the moment the compaction began.
+- Fixed: a failed edit drew a full diff of a change that never happened - struck-out old lines and green new ones over an untouched file - and threw away the CLI's explanation of why it failed. A failed edit now shows the reason instead.
+- Fixed: hovering a file's chip in a sent message answered with the same file name it was already showing, and covered the line underneath while it did. Chips whose name fits say nothing on hover; a name too long for the chip still carries the whole path there.
+- Fixed: the row over an expanded paste moved down a few pixels the moment it opened, and its arrow sat above the letters beside it.
+
 ## [0.9.6] - 2026-08-30
 
 - Added: a card at the foot of the side menu, past Settings, pointing at the author's other product - an AI interview copilot. It is the one advertisement anywhere in the panel: a picture, a line about it and a single way out, into your own browser, with nothing about your accounts touched to get there.
@@ -469,7 +482,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.9.6...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.9.7...HEAD
+[0.9.7]: https://github.com/crmapache/amazing-claude-code/compare/0.9.6...0.9.7
 [0.9.6]: https://github.com/crmapache/amazing-claude-code/compare/0.9.5...0.9.6
 [0.9.5]: https://github.com/crmapache/amazing-claude-code/compare/0.9.4...0.9.5
 [0.9.4]: https://github.com/crmapache/amazing-claude-code/compare/0.9.3...0.9.4
