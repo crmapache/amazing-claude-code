@@ -180,6 +180,8 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
 
             "reorderGroups" -> hub.reorderGroups(field("groupId"), field("beforeGroupId").ifEmpty { null })
 
+            "reorderTabs" -> hub.reorderTabs(sessionId, field("beforeSessionId").ifEmpty { null })
+
             // "Always" from a distance is served as a "once": it would otherwise write a permanent rule
             // into this machine's settings, which is a different act from unblocking one step.
             "permissionDecision" -> hub.permissions.decide(

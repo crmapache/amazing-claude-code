@@ -61,7 +61,7 @@ export const bootstrap: ScenarioStep[] = [
      *
      * The panel decides its language from what the shell says, and the harness is the shell here - so
      * this is the whole of the switch: `?lang=zh-Hans` and every scenario is Chinese, including the parts
-     * the player invents. Without it there would be no way to look at eight of the nine languages outside
+     * the player invents. Without it there would be no way to look at any language but English outside
      * a running IDE.
      */
     preferences: { model: '', effort: '', mode: '', language: harnessLanguage(), ideLanguage: 'en' },

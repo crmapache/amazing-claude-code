@@ -90,8 +90,22 @@ describe('chipTitle', () => {
     expect(title).toBe(`${'q'.repeat(400)}…`)
   })
 
-  it('leaves a path and its range alone: they are the thing itself, not words about it', () => {
-    expect(chipTitle({ kind: 'ref', value: 'src/App.tsx', range: 'L12-L18' })).toBe('src/App.tsx L12-L18')
+  /**
+   * A file's chip says nothing on hover, because there is nothing to say: the caption is the file's own
+   * name, and a hint that repeats it with the folders in front spends a hover and covers the line under
+   * the chip to tell you what you are already looking at.
+   */
+  it('says nothing over a file whose name is on the chip already', () => {
+    expect(chipTitle({ kind: 'ref', value: 'src/App.tsx', range: 'L12-L18' })).toBe('')
+    expect(chipTitle({ kind: 'file', value: 'src/useSocket.js' })).toBe('')
+    expect(chipTitle({ kind: 'file', value: 'CLAUDE.md' })).toBe('')
+  })
+
+  // Unless the name did not fit: cut in the middle it cannot be read at all, and the hint is then the one
+  // place the whole of it exists.
+  it('says the whole of a name that had to be cut', () => {
+    const long = `src/${'a'.repeat(60)}.ts`
+    expect(chipTitle({ kind: 'file', value: long })).toBe(long)
   })
 })
 

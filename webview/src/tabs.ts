@@ -106,3 +106,39 @@ export const moveTab = (
         : { groupId, beforeGroupId: nextGroups[nextGroups.indexOf(groupId) + 1] ?? null },
   }
 }
+
+/**
+ * The new order of a group's own tabs after a fork has been dragged inside it.
+ *
+ * The group as a whole is dragged by [moveTab] above; this is the other half of the same gesture - the
+ * one that rearranges a conversation's forks between themselves. A fork stays inside its group either
+ * way: dropped anywhere else it goes back where it was, because a tab in the middle of somebody else's
+ * subject means nothing.
+ *
+ * The group's first tab is the conversation everything here grew out of, and it keeps its place: the
+ * strip marks a group by its head - the gap before it, the colour bar, the indent of the forks under it -
+ * and a fork standing first would say the group began with a branch of something that is not there.
+ *
+ * `beforeId` is the tab we will stand BEFORE, or null for the end of the group.
+ */
+export const moveWithinGroup = (sessions: Session[], id: string, beforeId: string | null): Session[] => {
+  const moving = sessions.find((session) => session.id === id)
+  if (!moving || id === beforeId) return sessions
+
+  const group = sessions.filter((session) => session.groupId === moving.groupId)
+  // Nothing to rearrange: a lone conversation, or the head of the group, which does not move.
+  if (group.length < 3 || group[0]?.id === id) return sessions
+
+  const rest = group.filter((session) => session.id !== id)
+  const at = beforeId === null ? -1 : rest.findIndex((session) => session.id === beforeId)
+  // Never before the head - and never past the end of its own group.
+  const index = at < 0 ? rest.length : Math.max(1, at)
+  const ordered = [...rest.slice(0, index), moving, ...rest.slice(index)]
+
+  if (ordered.every((session, place) => group[place]?.id === session.id)) return sessions
+
+  // The group occupies one unbroken run of the strip (see groupOrder), so its tabs are put back in the
+  // place they came from and everything around them stays exactly as it was.
+  const from = sessions.findIndex((session) => session.groupId === moving.groupId)
+  return [...sessions.slice(0, from), ...ordered, ...sessions.slice(from + group.length)]
+}

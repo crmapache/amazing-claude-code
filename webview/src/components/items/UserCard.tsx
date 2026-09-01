@@ -100,7 +100,9 @@ const TextToken = ({
  * does not change at all - and recomputing it a hundred times a second serves nothing.
  */
 const ChipView = memo(({ chip }: { chip: Chip }) => (
-  <span className={`${s.chip} ${CHIP_CLASS[chip.kind]}`} data-tooltip={chipTitle(chip)}>
+  // No attribute at all when there is nothing to add (see chipTitle): an empty one is still a hover, and
+  // an empty box under the pointer reads as something that failed to load.
+  <span className={`${s.chip} ${CHIP_CLASS[chip.kind]}`} data-tooltip={chipTitle(chip) || undefined}>
     {/* There is deliberately no attachment type icon - see renderChipNode in Composer: the chip here is
         the same one as in the input field and should look the same. */}
     {chipLabel(chip)}

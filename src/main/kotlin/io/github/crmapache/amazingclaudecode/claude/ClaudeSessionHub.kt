@@ -194,6 +194,18 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             if (!replay) runCatching { stats.noteLine(sessionId, line) }
                 .onFailure { thisLogger().warn("The statistics could not read a line", it) }
 
+            /**
+             * A process that has just come up: it has loaded a transcript, and how much of the window
+             * that transcript takes is known to it alone.
+             *
+             * Waiting for the end of the first turn is too late for exactly one kind of tab - a fork. It
+             * inherits the whole of its parent's conversation, so its window is full from the first
+             * second, while the panel, knowing neither the figure nor the window's size, fell back to the
+             * shared guess of two hundred thousand and drew a red 100% over an ordinary conversation (see
+             * the seed in App.fork, which covers the seconds before this answer arrives).
+             */
+            if (!replay && line.contains(INIT_MARKER)) usage.refreshContext(sessionId)
+
             // The end of a turn is the only moment the taken context window has genuinely changed: we
             // ask the very process that has just finished for a fresh figure.
             if (line.contains(RESULT_MARKER)) {
@@ -762,6 +774,11 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         if (tabs.moveGroup(groupId, beforeGroupId)) broadcastSessions()
     }
 
+    /** A fork moved among its own group's tabs - see SessionRegistry.moveTab. */
+    fun reorderTabs(sessionId: String, beforeSessionId: String?) {
+        if (tabs.moveTab(sessionId, beforeSessionId)) broadcastSessions()
+    }
+
     fun broadcastSessions() {
         deliver(sessionsMessage())
         // The tabs themselves are half of what a phone's list shows: one opened, closed or renamed
@@ -1288,6 +1305,9 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
 
         /** The end of a turn - the one moment the context window and the usage have genuinely moved. */
         private const val RESULT_MARKER = "\"type\":\"result\""
+
+        /** A conversation's process has come up with its transcript loaded - see the context above. */
+        private const val INIT_MARKER = "\"subtype\":\"init\""
 
         private const val TYPE_FIELD = "\"type\":\""
 

@@ -214,7 +214,16 @@ export const chipTitle = (chip: Chip): string => {
 
   if (chip.kind === 'paste') return titlePreview(chip.text ?? '')
 
-  return chip.range ? `${chip.value} ${chip.range}` : chip.value
+  /**
+   * A file's chip usually needs no hint at all: the caption is the file's own name, and the hint would
+   * repeat it with the folders above it in front. A hover that answers with what is already on screen is
+   * a hover spent for nothing, and it covers the line under the chip while it does it.
+   *
+   * The exception is a name that did not fit: cut in the middle it is not readable at all, and then the
+   * hint is the only place the whole of it exists.
+   */
+  const title = chip.range ? `${chip.value} ${chip.range}` : chip.value
+  return chipLabel(chip).includes('…') ? title : ''
 }
 
 /**

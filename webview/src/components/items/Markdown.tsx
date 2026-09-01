@@ -1,10 +1,13 @@
 import { Reveal } from 'smooth-stream-text/react'
 import { createElement, useEffect, useState } from 'react'
+import { fileRef } from '../../feed/paths'
 import { parseInline } from '../../feed/markdown'
 import type { Paragraph, TableAlign, TableData, TextPart } from '../../feed/types'
 import { copyToClipboard } from '../../clipboard'
 import { CopyButton } from './CopyButton'
+import { PathLink, withPathLinks } from './PathLink'
 import s from '../feed.module.css'
+import { useOpenFile } from '../../hooks/useOpenFile'
 import { useT } from '../../i18n'
 
 /**
@@ -53,9 +56,7 @@ const ParagraphView = ({
     // cleaning the whole account away around it afterwards.
     return (
       <div className={s.codeBlockWrap}>
-        <Piece reveal={reveal} as="pre" className={s.codeBlock}>
-          {code}
-        </Piece>
+        <CodeBlock code={code} reveal={reveal} />
         <CopyButton text={code} className={s.codeCopy} title={t.feed.copyBlock} />
       </div>
     )
@@ -207,8 +208,71 @@ const PartView = ({
   if (part.code) return <InlineCode text={part.text} reveal={reveal} />
   if (part.mark) return <Piece reveal={reveal} className={s.mark}>{part.text}</Piece>
   if (part.strong) return <Piece reveal={reveal} className={s.strong}>{part.text}</Piece>
-  return <Piece reveal={reveal}>{part.text}</Piece>
+  return <PlainText text={part.text} reveal={reveal} />
 }
+
+/**
+ * A stretch of ordinary text, with the files it names picked out as links.
+ *
+ * The agent writes paths without marking them as code most of the time - asked for a list of files it
+ * answers with bare lines - and a path that cannot be clicked is the retyping this was built to remove.
+ * Where there is no editor to open anything in (the phone) the text stays exactly what it was.
+ */
+const PlainText = ({ text, reveal }: { text: string; reveal: boolean }) => {
+  const runs = withPathLinks(text, useOpenFile())
+  if (!runs) return <Piece reveal={reveal}>{text}</Piece>
+
+  return (
+    <>
+      {runs.map((run, index) =>
+        run.ref ? (
+          <PathLink key={index} run={run}>
+            <Piece reveal={reveal}>{run.text}</Piece>
+          </PathLink>
+        ) : (
+          <Piece key={index} reveal={reveal}>
+            {run.text}
+          </Piece>
+        ),
+      )}
+    </>
+  )
+}
+
+/**
+ * A fenced block, with the files named inside it picked out the same way.
+ *
+ * Asked for "a flat list of files" the agent answers with a block of paths, and that block is the most
+ * literal list of files there is - every line of it worth a click.
+ *
+ * The reveal wave is given up on a block that holds paths: it takes a plain string to run over, and a
+ * fraction of a second of animation is a poor trade for a list one cannot click. A block without paths -
+ * a command, a snippet - keeps it.
+ */
+const CodeBlock = ({ code, reveal }: { code: string; reveal: boolean }) => {
+  const runs = withPathLinks(code, useOpenFile())
+  if (!runs) {
+    return (
+      <Piece reveal={reveal} as="pre" className={s.codeBlock}>
+        {code}
+      </Piece>
+    )
+  }
+
+  return (
+    <pre className={s.codeBlock}>
+      {runs.map((run, index) =>
+        run.ref ? (
+          <PathLink key={index} run={run} />
+        ) : (
+          run.text
+        ),
+      )}
+    </pre>
+  )
+}
+
+
 
 /** How long the copied highlight is held before the ordinary look returns. */
 const COPIED_FLASH_MS = 900
@@ -222,6 +286,7 @@ const COPIED_FLASH_MS = 900
  */
 const InlineCode = ({ text, reveal }: { text: string; reveal: boolean }) => {
   const t = useT()
+  const openFile = useOpenFile()
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
@@ -230,12 +295,29 @@ const InlineCode = ({ text, reveal }: { text: string; reveal: boolean }) => {
     return () => clearTimeout(timeout)
   }, [copied])
 
+  /**
+   * A path is opened rather than copied - inside an IDE that is what a click on one means, and the panel
+   * stands two panes away from the editor it belongs to. Everything else in backticks keeps the copy: a
+   * flag, a branch's name, an identifier are wanted in the clipboard and nowhere else.
+   *
+   * The tooltip says which of the two this piece is before it is clicked, so nothing here is a surprise.
+   * Where there is no editor at all - the phone - there is no reference either (see useOpenFile), and the
+   * path goes on copying exactly as it did.
+   */
+  const ref = openFile ? fileRef(text) : null
+
   return (
     <span
-      className={copied ? `${s.code} ${s.codeCopied}` : s.code}
-      data-tooltip={copied ? t.feed.copy.copied : t.feed.copy.click}
+      className={copied ? `${s.code} ${s.codeCopied}` : ref ? `${s.code} ${s.codeFile}` : s.code}
+      data-tooltip={copied ? t.feed.copy.copied : ref ? t.feed.copy.openFile : t.feed.copy.click}
       onClick={() => {
         if (window.getSelection()?.isCollapsed === false) return
+
+        if (ref && openFile) {
+          openFile(ref)
+          return
+        }
+
         void copyToClipboard(text).then((ok) => {
           if (ok) setCopied(true)
         })

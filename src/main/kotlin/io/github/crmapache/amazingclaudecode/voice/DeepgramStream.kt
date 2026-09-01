@@ -301,7 +301,7 @@ internal class DeepgramStream(
      * What went wrong, as a word the panel can translate.
      *
      * A code rather than a sentence, because the sentence belongs on the other side: the panel speaks
-     * nine languages and this one does not (see webview/src/i18n). The detail goes to the log, where it
+     * every language the panel has and this one does not (see webview/src/i18n). The detail goes to the log, where it
      * is read by whoever is debugging rather than by whoever is dictating.
      *
      * The key being wrong is the one failure worth telling apart: it is the common one, it happens on the

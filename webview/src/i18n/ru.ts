@@ -427,6 +427,7 @@ export const ru: Dict = {
       output: (empty) => (empty ? '· без вывода' : '· есть вывод'),
       diff: (added, removed) => `· +${added} −${removed}`,
       moreLines: (n) => `… ещё строк: ${n}`,
+      fewerLines: '… свернуть',
       count: (n) => `инструментов: ${n}`,
       closed: {
         replay: 'В сохранённом разговоре результата этого вызова нет.',
@@ -551,7 +552,7 @@ export const ru: Dict = {
       unconfirmed: 'не подтверждено',
     },
 
-    copy: { copied: 'Скопировано', click: 'Нажмите, чтобы скопировать' },
+    copy: { copied: 'Скопировано', click: 'Нажмите, чтобы скопировать', openFile: 'Открыть в редакторе' },
   },
 
   chrome: {

@@ -25,7 +25,16 @@ import {
 import { replayedMessage } from './replayed'
 import { readPlan, readQuestions, readTodos } from './toolInput'
 import { readReview } from './findings'
-import { chipFor, detailFor, formatDuration, hunksFor, metaFor, resultToText, targetFor } from './tools'
+import {
+  chipFor,
+  detailFor,
+  formatDuration,
+  hunksFor,
+  isEditTool,
+  metaFor,
+  resultToText,
+  targetFor,
+} from './tools'
 import type {
   ClosedReason,
   CompactOutcome,
@@ -1212,6 +1221,9 @@ const applySystem = (
           target: '',
           outcome: { state: 'running' },
           pending: true,
+          // The clock of the machine the IDE runs on, and the moment the CLI announced the compaction -
+          // in a feed restored from the journal that is the real start rather than "just now".
+          startedAt: now,
         },
       ],
     }
@@ -1246,7 +1258,7 @@ const applySystem = (
       seq: done.seq + 1,
       items: [
         ...done.items,
-        { id: `compact-${done.seq}`, kind: 'compact', target: '', outcome, pending: false },
+        { id: `compact-${done.seq}`, kind: 'compact', target: '', outcome, pending: false, startedAt: now },
       ],
     }
   }
@@ -1407,7 +1419,18 @@ const addThought = (state: PanelState, thought: string): PanelState => {
 const appendToolCall = (state: PanelState, tool: ToolItem, now: number): PanelState => {
   const last = state.items.at(-1)
 
-  if (last?.kind === 'toolGroup') {
+  /**
+   * An edit is never folded in with its neighbours: it neither joins the group in front of it nor lets
+   * the next call join it, so it stands as a row of its own with its diff open (see ToolCard).
+   *
+   * It is the one call a person has to see whether they were looking for it or not - it changes their
+   * files. Folded into a burst of reads and greps it ended up behind two closed carets, the group's and
+   * the card's, and a wrong edit went past unnoticed, which is the whole reason for watching an agent
+   * work. Which tools those are is asked of one place (see isEditTool).
+   */
+  const alone = isEditTool(tool.toolName)
+
+  if (!alone && last?.kind === 'toolGroup' && !isEditTool(last.tools.at(-1)?.toolName ?? '')) {
     const tools = [...last.tools, tool]
     const group: ToolGroupItem = { ...last, tools, pending: tools.some((t) => t.pending) }
     return {
@@ -1804,7 +1827,7 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
 
     const text = resultToText(result.content)
     const isError = result.is_error === true
-    const hunks = hunksFor(item.id, item.toolName, item.input, text)
+    const hunks = hunksFor(item.id, item.toolName, item.input, text, isError)
 
     return {
       ...item,

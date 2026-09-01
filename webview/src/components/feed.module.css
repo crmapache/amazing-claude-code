@@ -343,8 +343,12 @@
 }
 
 /* The arrow is sized for the head of a call, where the line is taller than this one. */
+/* On the middle of the row, not at its top: .caret is written for a call's head, where it is pinned to
+   the first line of a box that goes on for another twenty pixels (see .caret). Here the row is one line
+   of text, and an arrow pinned to its top stands two pixels above the letters beside it. */
 .chipPasteHead .caret {
   height: auto;
+  align-self: center;
 }
 
 @media (hover: hover) {
@@ -354,10 +358,16 @@
 }
 
 /* Always visible, unlike the one on a code block: a paste is opened on purpose, and the button is half
-   the reason for opening it. */
+   the reason for opening it.
+
+   The negative margin is what keeps the row still. The button is twenty pixels tall and the caption beside
+   it thirteen, so in the flow it stretched the row to its own height - and the caption, centred in a row
+   that had grown, moved down by the difference the moment the paste opened. The button keeps its size (it
+   is a target for a finger), and the row keeps the height of its text. */
 .chipPasteCopy {
   min-height: var(--acc-hit);
   margin-left: auto;
+  margin-block: -4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -507,6 +517,35 @@
 @media (hover: hover) {
   .code:hover {
     background: var(--acc-neutral-16);
+  }
+}
+
+/* A path in backticks opens the file rather than copying it (see InlineCode). Underlined only under the
+   pointer, and dotted: a solid line would read as a web link, while the eye still needs telling that this
+   piece leads somewhere and the one beside it does not. */
+@media (hover: hover) {
+  .codeFile:hover {
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+  }
+}
+
+/* A path the agent wrote as ordinary text, or inside a fenced block: a click opens the file. It has to
+   read as the text around it - a coloured or boxed path would repaint half of a list of files - so the
+   only mark is the pointer, and a dotted underline once the pointer is on it. Inline, so a path inside a
+   <pre> keeps the block's line breaks. */
+.pathLink {
+  display: inline;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .pathLink:hover {
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
   }
 }
 
@@ -692,9 +731,28 @@
   text-align: left;
 }
 
+/* Only a head that opens something is entitled to a pointer - the same rule base.css keeps for a dimmed
+   button, written out here because a tool call's head is a div (see ToolCard). The group's head and the
+   subagent's card are real buttons and carry this class through `composes`, so they are named too: a row
+   that highlights under the pointer is the only hint that it opens. */
+.toolHead[role='button'] {
+  cursor: pointer;
+}
+
 @media (hover: hover) {
-  .toolHead:not(:disabled):hover {
+  .toolHead[role='button']:hover,
+  button.toolHead:not(:disabled):hover {
     background: var(--acc-bg-card);
+  }
+}
+
+/* The path in the head opens the file. Dotted and only under the pointer, exactly as a path in the text of
+   an answer is (see .codeFile): a solid line in this panel means a link into a browser, and a permanent
+   underline on every call's head would draw a line through half the feed. */
+@media (hover: hover) {
+  .toolTargetLink:hover {
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
   }
 }
 
@@ -905,6 +963,28 @@
   flex-direction: column;
   gap: 8px;
   margin-top: 2px;
+  /* The diff stands under the call's head rather than inside the body: it is shown without being asked
+     (see ToolCard), while the body opens on the caret. The indent lines it up with the head's caption. */
+  padding: 4px 0 2px 24px;
+}
+
+/* What was left out of an open diff, and the button that shows it. In the same mono as the lines above it,
+   and dim: it is the panel speaking, not a line of the file. Aligned left like them, because it stands at
+   the end of the same column. */
+.hunkMore {
+  font: var(--acc-fs-meta, 11px) var(--acc-mono);
+  color: var(--acc-fg-faint);
+  padding: 2px 2px 2px 2px;
+  text-align: left;
+  align-self: flex-start;
+}
+
+@media (hover: hover) {
+  .hunkMore:hover {
+    color: var(--acc-fg-dim);
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+  }
 }
 
 .hunk {

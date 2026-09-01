@@ -254,7 +254,7 @@ internal class Microphone {
 
         /**
          * What the panel is told when the device will not play - a code rather than a sentence, because
-         * the sentence belongs on the side that speaks nine languages (see webview/src/i18n).
+         * the sentence belongs on the side that speaks every language the panel has (see webview/src/i18n).
          *
          * One code for both halves of it - the line refusing to open and the line dying mid-dictation -
          * because there is one thing to do about either: find out what else on the machine is holding

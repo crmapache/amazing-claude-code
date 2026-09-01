@@ -1,13 +1,13 @@
 /**
  * The languages the panel speaks, and how a tag from outside is brought to one of them.
  *
- * Nine rather than one because half the reviews our competitors get are written in Chinese while their
+ * Ten rather than one because half the reviews our competitors get are written in Chinese while their
  * interface - and, until now, ours - is English throughout. The list is deliberately closed: a locale
  * exists here only when there is a dictionary behind it, so an unknown tag falls back to English rather
  * than to a screen half in one language and half in another.
  */
 
-export type Locale = 'en' | 'ru' | 'es' | 'pt-BR' | 'zh-Hans' | 'de' | 'fr' | 'ja' | 'ko'
+export type Locale = 'en' | 'ru' | 'uk' | 'es' | 'pt-BR' | 'zh-Hans' | 'de' | 'fr' | 'ja' | 'ko'
 
 export interface LocaleInfo {
   id: Locale
@@ -28,6 +28,7 @@ export const LOCALES: LocaleInfo[] = [
   { id: 'en', native: 'English', english: 'English' },
   { id: 'zh-Hans', native: '简体中文', english: 'Chinese (Simplified)' },
   { id: 'ru', native: 'Русский', english: 'Russian' },
+  { id: 'uk', native: 'Українська', english: 'Ukrainian' },
   { id: 'es', native: 'Español', english: 'Spanish' },
   { id: 'pt-BR', native: 'Português (Brasil)', english: 'Portuguese (Brazil)' },
   { id: 'de', native: 'Deutsch', english: 'German' },
@@ -41,7 +42,7 @@ export const DEFAULT_LOCALE: Locale = 'en'
 /**
  * The ones written in square boxes: Han, kana and hangul.
  *
- * Typed as a set of [Locale], so the compiler is the thing that keeps it honest: a tenth language added
+ * Typed as a set of [Locale], so the compiler is the thing that keeps it honest: another language added
  * above without a decision about this one does not compile, and a tag renamed here is renamed there.
  * The style rules ask for it through `data-cjk` on the root rather than by naming the tags again in CSS
  * (see base.css) - a fourth handwritten copy of this list would go stale in silence, and what fails then
@@ -55,7 +56,7 @@ export const nativeName = (locale: Locale): string =>
 
 /**
  * A tag from anywhere - the IDE's language pack, a saved setting, a query parameter - brought to one of
- * the nine.
+ * the ten.
  *
  * Java writes locales with an underscore ("zh_CN"), the web with a hyphen, and both add subtags we have
  * no separate dictionary for. So the tag is normalised and read from the left: the script and the region

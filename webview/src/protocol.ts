@@ -660,7 +660,7 @@ type ShellMessageBody =
    *
    * `error` is a code rather than a sentence - `no-key`, `mic`, `key`, `network`, `deepgram` - and the
    * words for it are written here, in the panel's own language. The IDE speaks one language; this side
-   * speaks nine.
+   * speaks them all.
    */
   | {
       type: 'voiceState'
@@ -924,6 +924,14 @@ export type WebviewMessage =
   /** The tabs' new order after a drag - by group, as moveTab arranges it. The statistics tab is the panel's own and is never reported here. */
   | { type: 'reorderGroups'; groupId: string; beforeGroupId?: string }
   /**
+   * The same after a fork was dragged inside its own group - by tab, as moveWithinGroup arranges it.
+   *
+   * `beforeSessionId` is the tab this one now stands before; absent means the end of its group. It never
+   * leaves that group and never steps in front of its head, so nothing here can rearrange the groups
+   * themselves.
+   */
+  | { type: 'reorderTabs'; sessionId: string; beforeSessionId?: string }
+  /**
    * Turn remote access on or off. Off is how the plugin ships and how it stays until this arrives:
    * what it opens is a channel that can send messages to an agent with a shell on this machine, and
    * nobody should acquire one by installing a plugin.
@@ -1048,6 +1056,28 @@ export type WebviewMessage =
   | { type: 'cursor'; cursor: string }
   /** A link (a PR number, for instance) - we open it in the system browser rather than in JCEF. */
   | { type: 'openExternal'; url: string }
+  /**
+   * A path named in the feed, opened in the IDE's editor: the head of a call's card, a file mentioned in
+   * an answer, a `path:line` reference.
+   *
+   * The path travels as the agent wrote it - absolute, or relative to the project - and the line and the
+   * column are 1-based, the way a person reads them. Both are the shell's to make sense of (see OpenInEditor): the
+   * panel knows neither where the project sits on disk nor whether the file is there at all.
+   *
+   * `find` stands in for the line where there is no number to send: the CLI answers an edit with a
+   * sentence rather than with a position, so what travels is the first line the edit added, and the place
+   * is looked up in the file on the other side.
+   */
+  | {
+      type: 'openFile'
+      path: string
+      line?: number
+      column?: number
+      /** The end of a range the reference named - then the editor selects it rather than only going there. */
+      endLine?: number
+      endColumn?: number
+      find?: string
+    }
   /**
    * A picture the panel drew of itself - the statistics as an image to share (see stats/poster.ts).
    *

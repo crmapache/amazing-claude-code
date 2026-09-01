@@ -390,6 +390,7 @@ export const pt: Dict = {
       output: (empty) => (empty ? '· sem saída' : '· com saída'),
       diff: (added, removed) => `· +${added} −${removed}`,
       moreLines: (n) => `… mais ${n} linhas`,
+      fewerLines: '… recolher',
       count: (n) => `${n} ${n === 1 ? 'ferramenta' : 'ferramentas'}`,
       closed: {
         replay: 'A conversa salva não guarda o resultado desta chamada.',
@@ -509,7 +510,7 @@ export const pt: Dict = {
       unconfirmed: 'não confirmado',
     },
 
-    copy: { copied: 'Copiado', click: 'Clique para copiar' },
+    copy: { copied: 'Copiado', click: 'Clique para copiar', openFile: 'Abrir no editor' },
   },
 
   chrome: {

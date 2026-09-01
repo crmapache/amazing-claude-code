@@ -1,5 +1,5 @@
 /**
- * Everything the panel says, in English - and the source of truth for the other eight languages.
+ * Everything the panel says, in English - and the source of truth for every other language.
  *
  * The shape is the contract. Every other dictionary is declared as `Dict`, which is `typeof en`, so the
  * compiler - not a reviewer - is what fails when a key is missing, a key is spelled differently, or a
@@ -436,6 +436,8 @@ export const en = {
       /** The minus is a real minus sign, not a hyphen - it is set beside a plus and has to match it. */
       diff: (added: number, removed: number): string => `· +${added} −${removed}`,
       moreLines: (n: number): string => `… ${n} more lines`,
+      /** The same row once the whole diff is open: it collapses it back - see ToolCard. */
+      fewerLines: '… collapse',
       count: (n: number): string => `${n} ${n === 1 ? 'tool' : 'tools'}`,
       /** Why a call that never answered was closed anyway - see ClosedReason. */
       closed: {
@@ -586,7 +588,7 @@ export const en = {
       unconfirmed: 'unconfirmed',
     },
 
-    copy: { copied: 'Copied', click: 'Click to copy' },
+    copy: { copied: 'Copied', click: 'Click to copy', openFile: 'Open in the editor' },
   },
 
   chrome: {

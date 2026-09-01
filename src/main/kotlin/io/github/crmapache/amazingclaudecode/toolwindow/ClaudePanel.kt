@@ -24,6 +24,7 @@ import io.github.crmapache.amazingclaudecode.AccBundle
 import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.claude.SessionClient
+import io.github.crmapache.amazingclaudecode.editor.OpenInEditor
 import io.github.crmapache.amazingclaudecode.editor.SelectionReference
 import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import io.github.crmapache.amazingclaudecode.feedback.FeedbackDesk
@@ -190,6 +191,8 @@ internal class ClaudePanel(
         }
 
         val field = { name: String -> payload[name]?.jsonPrimitive?.contentOrNull.orEmpty() }
+        /** A figure from the panel, or zero for "not said" - a line, a column (see OpenInEditor.Place). */
+        val whole = { name: String -> payload[name]?.jsonPrimitive?.intOrNull ?: 0 }
 
         when (field("type")) {
             "ready" -> {
@@ -259,6 +262,22 @@ internal class ClaudePanel(
             // The PR number in the status bar is a link: we open it in the system browser rather than
             // inside JCEF, so as not to raise a full web viewport inside the panel.
             "openExternal" -> field("url").takeIf { it.isNotBlank() }?.let { BrowserUtil.browse(it) }
+
+            // A path named in the feed - the head of a call's card, a file mentioned in an answer -
+            // opened in the editor beside the panel (see OpenInEditor). Handled here rather than by the
+            // conversation's commands for the same reason the clipboard and the file chooser are: it
+            // reaches this machine's own surfaces, and a network client never arrives at this handler.
+            "openFile" -> OpenInEditor.open(
+                project,
+                field("path"),
+                OpenInEditor.Place(
+                    line = whole("line"),
+                    column = whole("column"),
+                    endLine = whole("endLine"),
+                    endColumn = whole("endColumn"),
+                    find = field("find"),
+                ),
+            )
 
             // The embedded browser's clipboard is its own and does not reach the IDE's (see
             // WebviewClipboard) - we go to the real one on its behalf.

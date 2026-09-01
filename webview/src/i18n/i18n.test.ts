@@ -87,9 +87,9 @@ describe('every dictionary', () => {
  */
 const SHARED_WITH_ENGLISH: Record<string, Locale[]> = {
   // The plugin's own name, a flag's value the CLI knows by that spelling, and a keyboard chord.
-  'menu.footer': ['ru', 'es', 'pt-BR', 'zh-Hans', 'de', 'fr', 'ja', 'ko'],
-  'effort.tags.ultra': ['ru', 'es', 'pt-BR', 'zh-Hans', 'de', 'fr', 'ja', 'ko'],
-  'selectors.modeHint': ['ru', 'es', 'pt-BR', 'zh-Hans', 'de', 'fr', 'ja', 'ko'],
+  'menu.footer': ['ru', 'uk', 'es', 'pt-BR', 'zh-Hans', 'de', 'fr', 'ja', 'ko'],
+  'effort.tags.ultra': ['ru', 'uk', 'es', 'pt-BR', 'zh-Hans', 'de', 'fr', 'ja', 'ko'],
+  'selectors.modeHint': ['ru', 'uk', 'es', 'pt-BR', 'zh-Hans', 'de', 'fr', 'ja', 'ko'],
   // Words the Latin languages happen to write exactly as English does.
   'menu.titles.menu.title': ['pt-BR', 'fr'],
   'menu.titles.plugins.title': ['es', 'pt-BR', 'de', 'fr'],

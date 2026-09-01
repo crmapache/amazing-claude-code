@@ -9,8 +9,8 @@ class IdeLanguageTest {
     /**
      * Both sides answer "which of our languages is this tag", and neither can ask the other: this side
      * writes a push notification while nothing of the panel is running, that side writes the screen. So
-     * the list is in two places, and this is what stops the two from drifting apart - a tenth language
-     * added only in the panel would leave a notification in English for the person who chose it.
+     * the list is in two places, and this is what stops the two from drifting apart - a language added
+     * only in the panel would leave a notification in English for the person who chose it.
      */
     @Test
     fun `the panel knows the same languages, in the same order`() {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { LinkedText } from './LinkedText'
 import { modelLabel } from '../../catalog'
 import { compactProgress } from '../../feed/compact'
@@ -100,27 +100,29 @@ export const CheckpointRow = ({ item, onLoadEarlier }: { item: CheckpointItem; o
 const COMPACT_TICK_MS = 500
 
 /**
- * How much of a compaction is behind - by a stopwatch from the first message about it.
+ * How much of a compaction is behind - counted from the moment it began (see CompactItem.startedAt).
  *
- * The time is counted from the card's appearance rather than from any mark in the event: the card is
- * created by the very message the CLI announces the compaction's start with, so that is its start.
+ * From the mark in the feed rather than from a stopwatch started when this card was drawn. A stopwatch
+ * belongs to the card on screen, and the card is rebuilt whenever the feed is: coming back to the IDE
+ * after a break, a panel restored from the journal, a phone joining mid-compaction. Every one of those
+ * used to send the percentage back to zero while the compaction it describes carried on.
+ *
+ * `now` comes from the clock the mark was written by (see hooks/useNow) - on a phone that is a different
+ * machine, and the difference read against the wrong one is however much the two disagree.
  */
-const useCompactProgress = (pending: boolean): number => {
-  const startedAt = useRef<number | null>(null)
-  const [percent, setPercent] = useState(0)
+const useCompactProgress = (item: CompactItem): number => {
+  const now = useNow()
+  const [percent, setPercent] = useState(() => compactProgress(now() - item.startedAt))
 
   useEffect(() => {
-    if (!pending) return
+    if (!item.pending) return
 
-    const from = startedAt.current ?? Date.now()
-    startedAt.current = from
-
-    const tick = () => setPercent(compactProgress(Date.now() - from))
+    const tick = () => setPercent(compactProgress(now() - item.startedAt))
     tick()
 
     const timer = window.setInterval(tick, COMPACT_TICK_MS)
     return () => window.clearInterval(timer)
-  }, [pending])
+  }, [item.pending, item.startedAt, now])
 
   return percent
 }
@@ -137,7 +139,7 @@ const useCompactProgress = (pending: boolean): number => {
  */
 export const CompactRow = ({ item }: { item: CompactItem }) => {
   const t = useT()
-  const percent = useCompactProgress(item.pending)
+  const percent = useCompactProgress(item)
 
   return (
     <div className={s.compact}>

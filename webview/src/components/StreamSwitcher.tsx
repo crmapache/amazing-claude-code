@@ -199,7 +199,10 @@ export const StreamSwitcher = ({
           //
           // The command first, because that is the question a chip raises ("what is this that keeps
           // running"), and the model's description under it when there is one.
-          data-tooltip={[task.command, task.description].filter(Boolean).join('\n') || task.label}
+          //
+          // And nothing at all when there is neither: the chip's own caption is right there on it, and a
+          // hover that answers with it is a hover spent to cover the row below.
+          data-tooltip={[task.command, task.description].filter(Boolean).join('\n') || undefined}
           data-tooltip-at="top"
         >
           <span className={s.streamDot} style={{ background: 'var(--acc-accent)' }} />

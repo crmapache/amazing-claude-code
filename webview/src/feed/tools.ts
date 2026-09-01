@@ -1,3 +1,4 @@
+import { isOpenablePath } from './paths'
 import type { DetailLine, DiffLine, Hunk, ToolChip, ToolMeta } from './types'
 
 /** How many lines of a tool's output are shown when it is expanded. */
@@ -24,6 +25,66 @@ export const chipFor = (name: string): ToolChip => {
   if (name.startsWith('mcp__')) return 'MCP'
   return CHIPS[name] ?? 'TOOL'
 }
+
+/**
+ * The tools that rewrite a piece of a file, and are therefore the ones with a diff.
+ *
+ * Asked in three places that must agree: the summary at the end of the row, the diff itself, and the
+ * rule that keeps such a call out of a group so its diff stands open in the feed (see STANDS_ALONE in
+ * build.ts). Written out three times, a fourth edit tool - or a rename of one - would part them in
+ * silence, and the diff would go back to hiding inside a burst of calls, which is the exact breakage all
+ * of this was written against.
+ */
+export const isEditTool = (name: string): boolean =>
+  name === 'Edit' || name === 'MultiEdit' || name === 'NotebookEdit'
+
+/**
+ * The line of an edit to land on when the file opens - or nothing, and then it opens at the top.
+ *
+ * A place in the file is what the panel cannot ask for: the CLI answers an edit with a sentence about
+ * success and no position at all, so what travels instead is a line of the change itself, and the IDE
+ * finds it in the file it is about to show (see OpenInEditor).
+ *
+ * The longest added line rather than the first: the first is as often as not a brace or a blank, and a
+ * search for "  {" lands confidently in the wrong part of the file - worse than not moving the caret. For
+ * the same reason a change with nothing substantial in it sends nothing: the top of the file is an honest
+ * answer, a wrong line in the middle is not.
+ */
+export const editAnchor = (hunks: Hunk[]): string => {
+  const added = hunks.flatMap((hunk) => hunk.lines).filter((line) => line.kind === 'add')
+  const best = added.reduce<string>((longest, line) => {
+    const text = line.text.trim()
+    return text.length > longest.length ? text : longest
+  }, '')
+
+  return best.length >= ANCHOR_MIN_CHARS ? best : ''
+}
+
+/** Below this a line is too ordinary to be found by: a brace, a comma, a closing bracket. */
+const ANCHOR_MIN_CHARS = 8
+
+/** Whether the panel shows a file's path in the head of this call's card, and opens it on a click. */
+export const filePathOf = (name: string, input: unknown): string => {
+  // A pattern is not a file: Glob and Grep take a `path` too, but theirs is the directory to search
+  // under, and an editor has nothing to open for one. Anything else is asked by name rather than
+  // guessed: a third-party MCP tool with a `path` argument would otherwise get a link that promises an
+  // editor and, half the time, opens nothing.
+  if (!FILE_TOOLS.has(name)) return ''
+
+  const data = asInput(input)
+  const path = str(data.file_path) || str(data.notebook_path) || str(data.path)
+  return isOpenablePath(path) ? path.trim() : ''
+}
+
+/** The tools whose argument is one file, named outright. */
+const FILE_TOOLS = new Set([
+  'Read',
+  'NotebookRead',
+  'Write',
+  'Edit',
+  'MultiEdit',
+  'NotebookEdit',
+])
 
 type ToolInput = Record<string, unknown>
 
@@ -169,7 +230,7 @@ export const metaFor = (name: string, input: unknown, result: string, isError: b
 
   if (name === 'Grep' || name === 'Glob') return { kind: 'matches', count: countLines(result) }
 
-  if (name === 'Edit' || name === 'MultiEdit' || name === 'NotebookEdit') {
+  if (isEditTool(name)) {
     const before = countLines(str(data.old_string))
     const after = countLines(str(data.new_string))
     return { kind: 'diff', added: Math.max(after - before, 0) + Math.min(before, after), removed: before }
@@ -219,14 +280,43 @@ const toneOf = (line: string): DetailLine['tone'] => {
  * matching start and end and show the difference as removed and added lines - exactly what the design
  * draws.
  */
-export const hunksFor = (id: string, name: string, input: unknown, result: string): Hunk[] => {
-  if (name !== 'Edit' && name !== 'MultiEdit' && name !== 'NotebookEdit') return []
+export const hunksFor = (
+  id: string,
+  name: string,
+  input: unknown,
+  result: string,
+  /** The call failed. Then there is no diff at all: nothing was written - see below. */
+  isError = false,
+): Hunk[] => {
+  if (!isEditTool(name)) return []
+
+  /**
+   * A failed edit changed nothing, so it has nothing to show.
+   *
+   * The diff is built out of what the agent asked to replace rather than out of what came back, and on a
+   * refusal ("the text to replace was not found") that is a picture of a change that never happened -
+   * struck-out old lines and green new ones over an untouched file. The card's own body is given up for
+   * a diff (see applyToolResults), so the CLI's explanation was thrown away along with it: the person
+   * was left with an invention instead of a reason.
+   */
+  if (isError) return []
 
   const data = asInput(input)
-  const before = str(data.old_string).split('\n')
-  const after = str(data.new_string).split('\n')
+  const oldText = str(data.old_string)
+  const newText = str(data.new_string)
 
-  if (before.length === 0 && after.length === 0) return []
+  /**
+   * A call that carries neither half is not an edit we can draw.
+   *
+   * `MultiEdit` keeps its pairs inside an `edits` array and `NotebookEdit` names a cell, so neither has
+   * these fields at all - and out of two empty strings the arithmetic below produced one empty hunk
+   * captioned "+0 -0". An empty diff is still a diff as far as the card is concerned, so the tool's real
+   * answer was dropped and the caret that could have shown it was gone.
+   */
+  if (!oldText && !newText) return []
+
+  const before = oldText.split('\n')
+  const after = newText.split('\n')
 
   let head = 0
   while (head < before.length && head < after.length && before[head] === after[head]) head++

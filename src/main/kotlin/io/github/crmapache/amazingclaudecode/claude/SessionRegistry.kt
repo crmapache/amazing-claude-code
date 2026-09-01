@@ -158,6 +158,36 @@ internal class SessionRegistry {
         return true
     }
 
+    /**
+     * One tab's new place inside its own group, after a fork was dragged among its neighbours (see
+     * moveWithinGroup in tabs.ts, which this mirrors).
+     *
+     * A fork never leaves its group and never steps in front of the conversation it grew out of: the
+     * group's head is what the strip marks a group by, and the group itself stays one unbroken run of the
+     * list, which everything reading this list relies on.
+     *
+     * [beforeId] is the tab this one comes to stand before, or null for the end of the group.
+     */
+    @Synchronized
+    fun moveTab(id: String, beforeId: String?): Boolean {
+        if (id == beforeId) return false
+
+        val moving = tabs.firstOrNull { it.id == id } ?: return false
+        val group = tabs.filter { it.groupId == moving.groupId }
+        if (group.size < 3 || group.first().id == id) return false
+
+        val rest = group.filterNot { it.id == id }
+        val at = beforeId?.let { before -> rest.indexOfFirst { it.id == before } } ?: -1
+        val index = if (at < 0) rest.size else maxOf(1, at)
+        val ordered = rest.subList(0, index) + moving + rest.subList(index, rest.size)
+        if (ordered == group) return false
+
+        val from = tabs.indexOfFirst { it.groupId == moving.groupId }
+        repeat(group.size) { tabs.removeAt(from) }
+        tabs.addAll(from, ordered)
+        return true
+    }
+
     @Synchronized
     fun contains(id: String): Boolean = tabs.any { it.id == id }
 

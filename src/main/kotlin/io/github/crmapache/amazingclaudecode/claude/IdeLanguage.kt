@@ -17,14 +17,14 @@ import java.util.Locale
 internal object IdeLanguage {
 
     /**
-     * The nine the panel has dictionaries for (see webview/src/i18n/locales.ts).
+     * The ones the panel has dictionaries for (see webview/src/i18n/locales.ts).
      *
      * Kept here as well as there because both sides answer the same question and neither can ask the
      * other: this side decides what a push notification says while the phone is asleep, and that side
-     * decides what the screen says. A tenth language means an edit in both, and
+     * decides what the screen says. Another language means an edit in both, and
      * [IdeLanguageTest] fails until the lists agree again.
      */
-    val SUPPORTED = listOf("en", "zh-Hans", "ru", "es", "pt-BR", "de", "fr", "ja", "ko")
+    val SUPPORTED = listOf("en", "zh-Hans", "ru", "uk", "es", "pt-BR", "de", "fr", "ja", "ko")
 
     const val DEFAULT = "en"
 
@@ -40,7 +40,7 @@ internal object IdeLanguage {
     fun inForce(chosen: String): String = if (chosen.isNotBlank()) resolve(chosen) else current()
 
     /**
-     * A tag from anywhere brought to one of the nine.
+     * A tag from anywhere brought to one of the ten.
      *
      * Read from the left, because the region only matters where we have two dictionaries to tell apart
      * and we have none: one Portuguese, one Chinese. Traditional Chinese lands on the Simplified

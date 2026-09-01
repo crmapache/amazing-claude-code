@@ -2032,6 +2032,19 @@ describe('compacting the context', () => {
     expect(compact?.outcome).toEqual({ state: 'running' })
   })
 
+  /**
+   * The percentage after the caption is counted from here (see CompactRow). Kept in the feed rather than
+   * in the card on screen, because everything that rebuilds the feed - coming back to the IDE, a panel
+   * restored from the journal, a phone joining - would otherwise start it over at zero while the
+   * compaction it describes carried on.
+   */
+  it('writes down when the compaction began, by the clock of the machine that saw it', () => {
+    const state = play([compactingStatusEvent()])
+    const compact = state.items.find((item): item is CompactItem => item.kind === 'compact')
+
+    expect(compact?.startedAt).toBe(1_700_000_000_000)
+  })
+
   it('lets a compact_boundary update that same card with real numbers rather than create a second one', () => {
     let state = play([compactingStatusEvent()])
     state = play(

@@ -626,6 +626,8 @@ const renderChipNode = (chip: Chip, onRemove: () => void, onExpand?: () => void)
   const node = document.createElement('span')
   node.className = s.token ?? ''
   node.contentEditable = 'false'
+  // Empty means "nothing a hover would add" (see chipTitle) - and an empty title attribute is not a
+  // hover at all, which is exactly what is wanted.
   node.title = chipTitle(chip)
   Object.assign(node.style, CHIP_STYLE[chip.kind])
 

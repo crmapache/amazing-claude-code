@@ -115,6 +115,9 @@ internal object RemoteCommands {
         "bash",
         "closeSession",
         "reorderGroups",
+        // The same list, one step finer: the order the tabs at the desk are drawn in, which a phone has
+        // no picture of and no reason to rearrange.
+        "reorderTabs",
         "setMode",
         "setDefaultMode",
         "setModel",
@@ -173,6 +176,13 @@ internal object RemoteCommands {
         "dropped",
         "openDevTools",
         "openExternal",
+        /**
+         * Opening a file in the editor at the desk. It reaches the machine's own surfaces exactly as
+         * `openExternal` above does - a phone asking to raise a file in somebody's IDE is remote control
+         * of that IDE - and it names a path, which is the one thing this side deliberately never sends
+         * outwards (see RemoteFeed).
+         */
+        "openFile",
         "cursor",
         "clipboardRead",
         "clipboardWrite",

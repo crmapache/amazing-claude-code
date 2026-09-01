@@ -68,12 +68,35 @@ internal class ClaudeSessions(
      * A branch off another conversation: the branch gets its whole transcript and an identifier of its
      * own. Continuing in the branch leaves the parent untouched, and if the parent has never answered
      * yet, there is nothing to branch off - we start an ordinary conversation.
+     *
+     * It starts on what the PARENT runs on - its model, its effort, its permission mode - rather than on
+     * what the settings hold. The two disagree more often than it seems: every selector writes the
+     * machine's default as well as changing its own tab, so a model picked in a neighbouring tab decided
+     * what a fork made here started on. Carrying on the same conversation on another model and at another
+     * effort is not what "fork" says on the button.
+     *
+     * The mode travels along for the same reason and with the same limit as the rest: it applies to this
+     * conversation and writes nothing into the settings (see SessionLaunch), so an approved plan frees
+     * the fork of the conversation it continues without deciding anything about the next tab opened from
+     * "+".
      */
     fun branchFrom(parentId: String, branchId: String) {
         if (sessions.containsKey(branchId)) return
 
-        val parent = sessions[parentId]?.conversationId
-        sessions[branchId] = newSession(branchId, forkFrom = parent).also {
+        val parent = sessions[parentId]
+        // Field by field rather than one or the other: a request that names a model is still a fork, and
+        // the effort and the mode it said nothing about are still the parent's. Written whole, the
+        // request's silence would have meant "the settings decide", which is the one answer neither side
+        // asked for. An empty field of the parent's means the same thing and is right there: that is what
+        // a tab nobody has touched is itself running on.
+        val chosen = launches[branchId] ?: SessionLaunch()
+        launches[branchId] = SessionLaunch(
+            model = chosen.model.ifEmpty { parent?.model.orEmpty() },
+            effort = chosen.effort.ifEmpty { parent?.effort.orEmpty() },
+            mode = chosen.mode.ifEmpty { parent?.permissionMode.orEmpty() },
+        )
+
+        sessions[branchId] = newSession(branchId, forkFrom = parent?.conversationId).also {
             Disposer.register(this, it)
         }
     }
@@ -271,6 +294,16 @@ internal class ClaudeSessions(
      * questions about it (see ClaudeSession.setEffort).
      */
     fun effort(sessionId: String): String? = sessions[sessionId]?.effort
+
+    /**
+     * The model this conversation runs on, or null when there is no such conversation - then the saved
+     * setting is the honest answer, exactly as with the effort above.
+     *
+     * Asked for the same reason: the setting is one for the whole application, while a tab keeps what it
+     * was started with, and a fork has to be started on its parent's model rather than on a choice made
+     * in some third tab (see [branchFrom]).
+     */
+    fun model(sessionId: String): String? = sessions[sessionId]?.model
 
     /**
      * This conversation starts on what was chosen for it rather than on what the settings hold.

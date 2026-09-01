@@ -16,9 +16,9 @@ export { DEFAULT_LOCALE, LOCALES, nativeName, resolveLocale, type Locale, type L
 /**
  * How each dictionary is fetched - one at a time, and only the one being spoken.
  *
- * All nine used to be imported outright, and both bundles carried all nine: the phone downloaded eight
- * sets of words it would never draw, about 90 KB gzip and roughly two fifths of everything it fetches on
- * a first load, over somebody's mobile data.
+ * All of them used to be imported outright, and both bundles carried all of them: the phone downloaded
+ * every set of words it would never draw, about 90 KB gzip and roughly two fifths of everything it fetches
+ * on a first load, over somebody's mobile data.
  *
  * Nothing on screen waits for this. Both clients begin in English by construction - the panel learns the
  * language from `init` and the phone from a fact over the relay, and neither has arrived at first paint -
@@ -31,6 +31,7 @@ export { DEFAULT_LOCALE, LOCALES, nativeName, resolveLocale, type Locale, type L
 const LOADERS: Record<Locale, () => Promise<Dict>> = {
   en: async () => en,
   ru: async () => (await import('./ru')).ru,
+  uk: async () => (await import('./uk')).uk,
   es: async () => (await import('./es')).es,
   'pt-BR': async () => (await import('./pt')).pt,
   'zh-Hans': async () => (await import('./zh')).zh,

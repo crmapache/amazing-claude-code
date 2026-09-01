@@ -388,6 +388,7 @@ export const ko: Dict = {
       output: (empty) => (empty ? '· 출력 없음' : '· 출력 있음'),
       diff: (added, removed) => `· +${added} −${removed}`,
       moreLines: (n) => `… ${n}줄 더`,
+      fewerLines: '… 접기',
       count: (n) => `도구 ${n}개`,
       closed: {
         replay: '저장된 대화에는 이 호출의 결과가 없어요.',
@@ -506,7 +507,7 @@ export const ko: Dict = {
       unconfirmed: '미확인',
     },
 
-    copy: { copied: '복사됨', click: '클릭해서 복사' },
+    copy: { copied: '복사됨', click: '클릭해서 복사', openFile: '편집기에서 열기' },
   },
 
   chrome: {

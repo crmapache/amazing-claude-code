@@ -124,6 +124,74 @@ class SessionRegistryTest {
     }
 
     @Test
+    fun `a fork moves among its own group's forks`() {
+        val registry = SessionRegistry()
+        registry.open("branch-1", parentId = ClaudeSessions.MAIN_SESSION)
+        registry.open("branch-2", parentId = ClaudeSessions.MAIN_SESSION)
+        registry.open("session-2")
+
+        assertTrue(registry.moveTab("branch-2", beforeId = "branch-1"))
+
+        assertEquals(
+            listOf(ClaudeSessions.MAIN_SESSION, "branch-2", "branch-1", "session-2"),
+            registry.tabs().map { it.id },
+        )
+    }
+
+    /**
+     * The head of a group is the conversation everything in it grew out of: the strip marks a group by it,
+     * and a fork standing first would say the group began with a branch of something that is not there.
+     *
+     * A fork dropped on top of the head does not go back where it came from - it stops right after it.
+     * Refusing the drop outright would read as the strip having ignored the hand.
+     */
+    @Test
+    fun `a fork never steps in front of the conversation it grew out of`() {
+        val registry = SessionRegistry()
+        registry.open("branch-1", parentId = ClaudeSessions.MAIN_SESSION)
+        registry.open("branch-2", parentId = ClaudeSessions.MAIN_SESSION)
+
+        assertTrue(registry.moveTab("branch-2", beforeId = ClaudeSessions.MAIN_SESSION))
+
+        assertEquals(
+            listOf(ClaudeSessions.MAIN_SESSION, "branch-2", "branch-1"),
+            registry.tabs().map { it.id },
+        )
+    }
+
+    // And the head itself does not move at all: it is dragged by the whole group instead (see moveGroup).
+    @Test
+    fun `the head of a group is not rearranged inside it`() {
+        val registry = SessionRegistry()
+        registry.open("branch-1", parentId = ClaudeSessions.MAIN_SESSION)
+        registry.open("branch-2", parentId = ClaudeSessions.MAIN_SESSION)
+
+        assertFalse(registry.moveTab(ClaudeSessions.MAIN_SESSION, beforeId = "branch-2"))
+
+        assertEquals(
+            listOf(ClaudeSessions.MAIN_SESSION, "branch-1", "branch-2"),
+            registry.tabs().map { it.id },
+        )
+    }
+
+    // Dropped at the end it goes last in ITS group rather than last in the strip: a group is one unbroken
+    // run of the list, and everything that reads this list leans on that.
+    @Test
+    fun `a fork dropped at the end stays inside its group`() {
+        val registry = SessionRegistry()
+        registry.open("branch-1", parentId = ClaudeSessions.MAIN_SESSION)
+        registry.open("branch-2", parentId = ClaudeSessions.MAIN_SESSION)
+        registry.open("session-2")
+
+        assertTrue(registry.moveTab("branch-1", beforeId = null))
+
+        assertEquals(
+            listOf(ClaudeSessions.MAIN_SESSION, "branch-2", "branch-1", "session-2"),
+            registry.tabs().map { it.id },
+        )
+    }
+
+    @Test
     fun `a group moved to the end goes last`() {
         val registry = SessionRegistry()
         registry.open("session-2")

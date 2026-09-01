@@ -133,7 +133,8 @@ import {
 } from './sounds'
 import { planDecisionOf, useCardState, type CardState } from './hooks/useCardState'
 import { useEarlierPages } from './hooks/useEarlierPages'
-import { groupOrder, moveTab, placeAtEnd, placeIn, STATISTICS_GROUP, type TabPlace } from './tabs'
+import { OpenFileContext, type OpenFileRequest } from './hooks/useOpenFile'
+import { groupOrder, moveTab, moveWithinGroup, placeAtEnd, placeIn, STATISTICS_GROUP, type TabPlace } from './tabs'
 import { useSelection } from './hooks/useSelection'
 
 const MAIN_SESSION = 'main'
@@ -1930,6 +1931,18 @@ export const App = () => {
 
   const openLink = useCallback((url: string) => send({ type: 'openExternal', url }), [])
 
+  /**
+   * A path named in the feed, opened in the editor beside the panel.
+   *
+   * Handed down through a context rather than through the props of every card between here and the leaf
+   * that draws the path (see useOpenFile). It exists at the desk and nowhere else: on the phone the same
+   * feed shows the same paths, and there is no editor there to open them in.
+   */
+  const openFile = useCallback(
+    (request: OpenFileRequest) => send({ type: 'openFile', ...request }),
+    [],
+  )
+
   const dismissError = useCallback(
     (id: string) => dispatchPanel({ session: active, action: { kind: 'dismissError', id } }),
     [active],
@@ -2107,6 +2120,45 @@ export const App = () => {
         action: { kind: 'checkpoint', chip: 'FORK', target: `continues ${parentTitle} · nothing here goes back` },
       })
 
+      /**
+       * The context gauge starts where the parent's stands: a fork carries its parent's whole transcript,
+       * so the window it occupies is the parent's window, from the very first second and before a single
+       * message is sent.
+       *
+       * Left to work it out for itself, the new tab knew neither figure - not how much is taken and not
+       * how large the window is - and fell back to the shared guess of two hundred thousand. On a
+       * conversation of any size that guess is smaller than what the fork actually inherited, and the
+       * meter opened at a red 100% (see contextOf). The exact figure from the CLI arrives at the end of
+       * this tab's first turn and replaces this one; until then the parent's is the truest there is.
+       */
+      const parentPanel = parent ? panelsRef.current[parent.id] : undefined
+      const inherited = parentPanel?.context
+      if (inherited && inherited.max > 0) {
+        dispatchPanel({
+          session: id,
+          action: { kind: 'context', used: inherited.used, max: inherited.max },
+        })
+      }
+
+      /**
+       * The selectors say what this tab runs on from the first second, and a fork runs on what its parent
+       * runs on (see ClaudeSessions.branchFrom, which starts the process on exactly these).
+       *
+       * Without it the chips under a fresh fork showed the machine's saved default - that is, a choice
+       * made in some other tab - until the fork's process came up and named the truth in its `system/init`.
+       * The effort needs nothing here: the shell announces it as the conversation is born (see onBorn),
+       * which is the only route it has at all.
+       */
+      if (parentPanel?.model) {
+        dispatchPanel({ session: id, action: { kind: 'modelApplied', model: parentPanel.model } })
+      }
+      if (parentPanel?.permissionMode) {
+        dispatchPanel({
+          session: id,
+          action: { kind: 'modeApplied', mode: parentPanel.permissionMode, applied: true },
+        })
+      }
+
       setActive(id)
       setFocusToken((current) => current + 1)
     },
@@ -2157,6 +2209,27 @@ export const App = () => {
       }
     },
     [sessions, statsTab.open, statsTab.place],
+  )
+
+  /**
+   * A fork rearranged inside its own group - the other half of the same gesture (see moveWithinGroup).
+   *
+   * The shell hears about it for the same reason it hears about the groups: it keeps the order the tabs
+   * are listed in, and a second client reads that list rather than building one of its own.
+   */
+  const reorderTabs = useCallback(
+    (sessionId: string, beforeSessionId: string | null) => {
+      const moved = moveWithinGroup(sessions, sessionId, beforeSessionId)
+      if (moved === sessions) return
+
+      setSessions(moved)
+      send({
+        type: 'reorderTabs',
+        sessionId,
+        ...(beforeSessionId ? { beforeSessionId } : {}),
+      })
+    },
+    [sessions],
   )
 
   /**
@@ -3031,6 +3104,7 @@ export const App = () => {
         }}
         onNewSession={() => startSession(`session-${Date.now()}`)}
         onReorderGroups={reorderGroups}
+        onReorderTabs={reorderTabs}
         onOpenMenu={openMenu}
         statistics={
           statsTab.open
@@ -3103,6 +3177,7 @@ export const App = () => {
 
   return (
     <LocaleProvider locale={locale}>
+    <OpenFileContext.Provider value={openFile}>
     <div
       className={s.panel}
       ref={setPanelNode}
@@ -3667,6 +3742,7 @@ export const App = () => {
         />
       ) : null}
     </div>
+    </OpenFileContext.Provider>
     </LocaleProvider>
   )
 }

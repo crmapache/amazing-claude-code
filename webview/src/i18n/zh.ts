@@ -388,6 +388,7 @@ export const zh: Dict = {
       output: (empty) => (empty ? '· 没有输出' : '· 有输出'),
       diff: (added, removed) => `· +${added} −${removed}`,
       moreLines: (n) => `… 还有 ${n} 行`,
+      fewerLines: '… 收起',
       count: (n) => `${n} 个工具`,
       closed: {
         replay: '保存的对话里没有这次调用的结果。',
@@ -506,7 +507,7 @@ export const zh: Dict = {
       unconfirmed: '未确认',
     },
 
-    copy: { copied: '已复制', click: '点击复制' },
+    copy: { copied: '已复制', click: '点击复制', openFile: '在编辑器中打开' },
   },
 
   chrome: {

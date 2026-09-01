@@ -505,6 +505,17 @@ const listenToPanel = () => {
     // quietly going nowhere.
     if (message?.type === 'openExternal') window.open(message.url, '_blank', 'noopener')
 
+    /*
+     * A path clicked in the feed. In the IDE it opens in the editor beside the panel; here there is no
+     * editor at all, so the harness says out loud what it was asked for - that is enough to see that the
+     * link fired, and which line it named.
+     */
+    if (message?.type === 'openFile') {
+      const at = [message.line, message.column].filter(Boolean).join(':')
+      const to = [message.endLine, message.endColumn].filter(Boolean).join(':')
+      console.info('openFile', message.path, [at, to].filter(Boolean).join('-') || message.find || '')
+    }
+
     // The picture of the statistics screen: in the IDE the shell writes it into the downloads folder,
     // here the browser has downloads of its own and does it itself - so the button can be tried out.
     if (message?.type === 'saveImage') download(message.name, message.data)

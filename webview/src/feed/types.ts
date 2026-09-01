@@ -528,6 +528,16 @@ export interface CompactItem {
   outcome?: CompactOutcome
   /** The compaction is still running - the card appears at once, before the outcome is known. */
   pending: boolean
+  /**
+   * When the compaction began, by the clock of the machine the IDE runs on.
+   *
+   * The percentage after the caption is counted from here rather than from a stopwatch started when the
+   * card was drawn (see CompactRow). A stopwatch lives inside the card on screen, and everything that
+   * rebuilds the feed from the journal - coming back to the IDE, a panel restored after a reload, a phone
+   * joining - built a new card and started it at zero, so the figure walked back to nothing while the
+   * compaction it describes went on running.
+   */
+  startedAt: number
 }
 
 /**

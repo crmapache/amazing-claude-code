@@ -292,7 +292,7 @@ internal class VoiceDesk(
      *
      * Which sign belongs on a key is this machine's business (⌥ and ⌘ on a Mac, words everywhere else),
      * and the drawing of it is the panel's - see HotkeyCap. The side of the keyboard travels as a word
-     * because it is one, and words are translated on the side that speaks nine languages.
+     * because it is one, and words are translated on the side that speaks every language the panel has.
      */
     private fun kotlinx.serialization.json.JsonObjectBuilder.binding(stored: String) {
         putJsonArray("caps") {

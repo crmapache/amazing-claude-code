@@ -390,6 +390,7 @@ export const ja: Dict = {
       output: (empty) => (empty ? '· 出力なし' : '· 出力あり'),
       diff: (added, removed) => `· +${added} −${removed}`,
       moreLines: (n) => `… 他 ${n} 行`,
+      fewerLines: '… 折りたたむ',
       count: (n) => `ツール ${n} 件`,
       closed: {
         replay: '保存された会話には、この呼び出しの結果がありません。',
@@ -508,7 +509,7 @@ export const ja: Dict = {
       unconfirmed: '未確認',
     },
 
-    copy: { copied: 'コピーしました', click: 'クリックでコピー' },
+    copy: { copied: 'コピーしました', click: 'クリックでコピー', openFile: 'エディタで開く' },
   },
 
   chrome: {

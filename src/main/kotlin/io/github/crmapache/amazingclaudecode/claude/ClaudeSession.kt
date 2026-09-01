@@ -59,7 +59,7 @@ internal class ClaudeSession(
      * yet then, and remembering the new value is the conversation's own duty, or it would come up with
      * whatever was chosen at the moment the tab was opened.
      */
-    private var model: String = "",
+    model: String = "",
     effort: String = "",
     permissionMode: String = "",
     private val onEvent: (String) -> Unit,
@@ -147,6 +147,17 @@ internal class ClaudeSession(
     /** Whether the process's death is our own request rather than a crash. */
     @Volatile
     private var stopRequested = false
+
+    /**
+     * The model this conversation runs on.
+     *
+     * Readable from outside for the same reason the effort below is: a fork has to start on what its
+     * parent is running, and the parent's own choice lives here rather than in the saved preference -
+     * the two disagree the moment a model is picked in one tab and a fork is made from another (see
+     * ClaudeSessions.branchFrom).
+     */
+    var model: String = model
+        private set
 
     /**
      * The effort this conversation works at.

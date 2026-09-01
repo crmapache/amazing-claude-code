@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { Session } from './components/Header'
-import { groupOrder, moveTab, placeAtEnd, placeIn, STATISTICS_GROUP, type TabPlace } from './tabs'
+import {
+  groupOrder,
+  moveTab,
+  moveWithinGroup,
+  placeAtEnd,
+  placeIn,
+  STATISTICS_GROUP,
+  type TabPlace,
+} from './tabs'
 
 const tab = (id: string, groupId: string, depth = 0): Session => ({
   id,
@@ -114,5 +122,62 @@ describe('the statistics tab in the strip', () => {
   it('lets a conversation opened afterwards appear on its far side', () => {
     const opened = [...sessions, tab('fresh', 'fresh')]
     expect(strip(opened, atEnd)).toEqual(['main', 'second', 'third', STATISTICS_GROUP, 'fresh'])
+  })
+})
+
+describe('rearranging the forks inside a group', () => {
+  /** The same conversation with three forks: two of them have something to be rearranged between. */
+  const withThree: Session[] = [
+    tab('main', 'main'),
+    tab('fork-1', 'main', 1),
+    tab('fork-2', 'main', 1),
+    tab('fork-3', 'main', 1),
+    tab('second', 'second'),
+  ]
+
+  it('moves one fork past another and leaves everything else alone', () => {
+    expect(ids(moveWithinGroup(withThree, 'fork-3', 'fork-2'))).toEqual([
+      'main',
+      'fork-1',
+      'fork-3',
+      'fork-2',
+      'second',
+    ])
+  })
+
+  it('sends a fork dropped at the end to the end of its own group, not of the strip', () => {
+    expect(ids(moveWithinGroup(withThree, 'fork-1', null))).toEqual([
+      'main',
+      'fork-2',
+      'fork-3',
+      'fork-1',
+      'second',
+    ])
+  })
+
+  // The head of the group is the conversation the forks grew out of, and it keeps its place.
+  it('never puts a fork in front of its conversation', () => {
+    expect(ids(moveWithinGroup(withThree, 'fork-2', 'main'))).toEqual([
+      'main',
+      'fork-2',
+      'fork-1',
+      'fork-3',
+      'second',
+    ])
+  })
+
+  it('does not move the head of a group', () => {
+    expect(moveWithinGroup(withThree, 'main', 'fork-2')).toBe(withThree)
+  })
+
+  // A single fork under an unmovable head has nothing to be rearranged with - the strip drags the whole
+  // group by it instead (see Header).
+  it('leaves a group of two alone', () => {
+    const two = [tab('main', 'main'), tab('fork-1', 'main', 1)]
+    expect(moveWithinGroup(two, 'fork-1', null)).toBe(two)
+  })
+
+  it('returns the same list when nothing moved', () => {
+    expect(moveWithinGroup(withThree, 'fork-3', null)).toBe(withThree)
   })
 })

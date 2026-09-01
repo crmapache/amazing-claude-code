@@ -393,6 +393,7 @@ export const de: Dict = {
       output: (empty) => (empty ? '· keine Ausgabe' : '· mit Ausgabe'),
       diff: (added, removed) => `· +${added} −${removed}`,
       moreLines: (n) => `… ${n} weitere Zeilen`,
+      fewerLines: '… einklappen',
       count: (n) => `${n} ${n === 1 ? 'Werkzeug' : 'Werkzeuge'}`,
       closed: {
         replay: 'Das gespeicherte Gespräch enthält kein Ergebnis für diesen Aufruf.',
@@ -512,7 +513,7 @@ export const de: Dict = {
       unconfirmed: 'unbestätigt',
     },
 
-    copy: { copied: 'Kopiert', click: 'Zum Kopieren klicken' },
+    copy: { copied: 'Kopiert', click: 'Zum Kopieren klicken', openFile: 'Im Editor öffnen' },
   },
 
   chrome: {

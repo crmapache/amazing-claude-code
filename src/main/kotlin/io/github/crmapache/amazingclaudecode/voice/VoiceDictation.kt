@@ -33,7 +33,7 @@ internal class VoiceDictation : Disposable {
         /**
          * Empty unless something went wrong, and then it is a code rather than a sentence: `no-key`,
          * `mic`, `key`, `network`, `deepgram`. The sentence is the panel's, because the panel is the side
-         * that speaks nine languages (see webview/src/i18n).
+         * that speaks every language the panel has (see webview/src/i18n).
          */
         val error: String,
     )

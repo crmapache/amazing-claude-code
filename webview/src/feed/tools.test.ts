@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { chipFor, commandLabel, formatDuration, targetFor } from './tools'
+import {
+  chipFor,
+  commandLabel,
+  editAnchor,
+  filePathOf,
+  formatDuration,
+  hunksFor,
+  targetFor,
+} from './tools'
 
 describe('a call duration', () => {
   it('leaves the fractions of a second on fast calls', () => {
@@ -101,5 +109,90 @@ describe('a skill call', () => {
 
   it('falls back to the tool name when there is no skill in the call', () => {
     expect(targetFor('Skill', {}, '')).toBe('Skill')
+  })
+})
+
+describe("an edit's diff", () => {
+  const edit = { file_path: '/p/a.ts', old_string: 'const a = 1', new_string: 'const a = 2' }
+
+  it('is built out of what was replaced', () => {
+    const hunks = hunksFor('t1', 'Edit', edit, 'The file has been updated')
+    expect(hunks).toHaveLength(1)
+    expect(hunks[0]?.lines.map((line) => line.sign)).toEqual(['-', '+'])
+  })
+
+  /**
+   * A failed edit changed nothing, so it has nothing to show. The diff is built out of the request rather
+   * than out of the answer, so on a refusal it drew a change that never happened - and, since a card with
+   * a diff gives up its body for it, the CLI's explanation was thrown away along with the truth.
+   */
+  it('is not drawn at all when the call failed', () => {
+    expect(hunksFor('t1', 'Edit', edit, 'String to replace not found in file', true)).toEqual([])
+  })
+
+  /**
+   * MultiEdit keeps its pairs in an `edits` array and NotebookEdit names a cell: neither carries the two
+   * fields a diff is made of, and out of two empty strings the arithmetic produced one empty hunk
+   * captioned "+0 -0" - which counts as a diff, so the tool's real answer was dropped behind it.
+   */
+  it('is not drawn for a call that carries neither half of one', () => {
+    const multi = { file_path: '/p/a.ts', edits: [{ old_string: 'a', new_string: 'b' }] }
+    expect(hunksFor('t1', 'MultiEdit', multi, 'Applied 1 edit')).toEqual([])
+  })
+
+  it('is not drawn for a tool that does not edit', () => {
+    expect(hunksFor('t1', 'Read', { file_path: '/p/a.ts' }, '1\tconst a = 1')).toEqual([])
+  })
+})
+
+describe('the file a call names', () => {
+  it('is the file the tool was given', () => {
+    expect(filePathOf('Edit', { file_path: '/p/a.ts' })).toBe('/p/a.ts')
+    expect(filePathOf('Read', { file_path: '/p/a.ts' })).toBe('/p/a.ts')
+    expect(filePathOf('NotebookEdit', { notebook_path: '/p/a.ipynb' })).toBe('/p/a.ipynb')
+  })
+
+  // Their `path` is the directory to search under, and an editor has nothing to open for one.
+  it('is nothing for a search', () => {
+    expect(filePathOf('Grep', { path: '/p/src' })).toBe('')
+    expect(filePathOf('Glob', { path: '/p/src' })).toBe('')
+  })
+
+  /**
+   * Asked by name rather than by the shape of the arguments: a third-party MCP tool with a `path` of its
+   * own would otherwise get a clickable head promising an editor, with nothing behind it half the time.
+   */
+  it('is nothing for a tool we know nothing about', () => {
+    expect(filePathOf('mcp__notion__fetch', { path: '/p/a.ts' })).toBe('')
+  })
+
+  // The same refusal the text of an answer gets, and for the same reason: reaching for a host somebody
+  // else named is what makes Windows introduce itself to it (see isOpenablePath).
+  it('is nothing for a network path', () => {
+    expect(filePathOf('Read', { file_path: '//attacker.example/share/a.ts' })).toBe('')
+    expect(filePathOf('Edit', { file_path: '\\\\attacker.example\\share\\a.ts' })).toBe('')
+  })
+})
+
+describe('where an edit opens the file', () => {
+  const hunksOf = (oldText: string, newText: string) =>
+    hunksFor('t1', 'Edit', { file_path: '/p/a.ts', old_string: oldText, new_string: newText }, 'ok')
+
+  it('is a line of the change, so the caret lands where the work is', () => {
+    expect(editAnchor(hunksOf('const total = price', 'const total = price + tax'))).toBe(
+      'const total = price + tax',
+    )
+  })
+
+  // The first added line is as often as not a brace, and a search for one lands confidently in the wrong
+  // part of the file - worse than not moving the caret at all.
+  it('is the longest added line rather than the first', () => {
+    const hunks = hunksOf('  {\n  }', '  {\n    assertAppleDomain(validationUrl)\n  }')
+    expect(editAnchor(hunks)).toBe('assertAppleDomain(validationUrl)')
+  })
+
+  it('is nothing when the change has nothing to be found by', () => {
+    expect(editAnchor(hunksOf('a', 'b'))).toBe('')
+    expect(editAnchor([])).toBe('')
   })
 })

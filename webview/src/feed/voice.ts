@@ -87,7 +87,7 @@ export const voiceGhost = (interim: string): string => interim.trim()
  * What went wrong, in the panel's own language.
  *
  * The IDE sends a code rather than a sentence (see VoiceDictation.State) because it has one language and
- * this side has nine. Each code is a different thing to do about it: add a key, switch the feature on,
+ * this side has them all. Each code is a different thing to do about it: add a key, switch the feature on,
  * find out what else is holding the microphone, fix the key, look at the network, try again later.
  *
  * `remote` is the phone asking. Two of the answers change there and both would otherwise send somebody
