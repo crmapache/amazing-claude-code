@@ -33,9 +33,16 @@ internal object ClaudeSettings {
 
     data class Source(val layer: Layer, val file: File)
 
-    /** Layers from the strongest down: the first value found is the one in force. */
+    /**
+     * Layers from the strongest down: the first value found is the one in force.
+     *
+     * The policy's and the user's files are the CLI's own, wherever the CLI runs for this project (see
+     * ClaudeHome): for a project opened out of WSL they are the distribution's, not this machine's. The
+     * project's own files are read where the IDE sees the project.
+     */
     fun sources(projectDirectory: String?): List<Source> = buildList {
-        val managed = HostOs.managedSettingsDirectory()
+        val home = ClaudeHome.of(projectDirectory)
+        val managed = home.managedSettingsDirectory
         add(Source(Layer.POLICY, File(managed, MANAGED_SETTINGS)))
         // The directory beside the policy: its separate pieces live there and the CLI reads all of
         // them. By name, so that the order is the same on every launch.
@@ -49,7 +56,7 @@ internal object ClaudeSettings {
             add(Source(Layer.PROJECT, File(directory, ".claude/$SETTINGS")))
         }
 
-        add(Source(Layer.USER, File(HostOs.configDirectory(), SETTINGS)))
+        add(Source(Layer.USER, File(home.configDirectory, SETTINGS)))
     }
 
     /**

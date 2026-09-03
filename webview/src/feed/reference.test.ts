@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  chipFile,
   chipLabel,
   chipTitle,
   collapsesPaste,
   pasteBody,
   pasteCollapseLines,
   rangeLabel,
+  rangePlace,
   referenceChip,
   referenceText,
 } from './reference'
@@ -155,6 +157,29 @@ describe('collapsesPaste', () => {
     expect(collapsesPaste('one line\n', 2)).toBe(false)
   })
 
+  /**
+   * The case the folding exists for and used to miss entirely: text copied out of a browser or a log
+   * viewer often has no line breaks at all, and one line was below every threshold - while in a field a
+   * few hundred pixels wide it is forty lines of wall.
+   */
+  it('folds a wall of text that arrived as a single line', () => {
+    expect(collapsesPaste('one very long line', 2, 12)).toBe(true)
+  })
+
+  it('leaves a short paste alone however it was measured', () => {
+    expect(collapsesPaste('one line', 5, 3)).toBe(false)
+  })
+
+  // The larger of the two counts decides: a text of twenty written lines folds at a threshold of ten
+  // even where the field is wide enough to draw it in eight.
+  it('takes whichever count is larger', () => {
+    expect(collapsesPaste(paste(20), 10, 8)).toBe(true)
+  })
+
+  it('never folds when the folding is switched off, whatever it would look like', () => {
+    expect(collapsesPaste(paste(50), 0, 400)).toBe(false)
+  })
+
   it('a threshold holds back everything shorter than itself', () => {
     expect(collapsesPaste(paste(9), 10)).toBe(false)
     expect(collapsesPaste(paste(10), 10)).toBe(true)
@@ -162,5 +187,70 @@ describe('collapsesPaste', () => {
 
   it('zero folds nothing, however long the paste', () => {
     expect(collapsesPaste(paste(500), 0)).toBe(false)
+  })
+})
+
+describe('rangePlace', () => {
+  it('reads a whole line, and whole lines, back out of their caption', () => {
+    expect(rangePlace('L12')).toEqual({ line: 12 })
+    expect(rangePlace('L12-L18')).toEqual({ line: 12, endLine: 18 })
+  })
+
+  it('ends a piece of one line on its last character, the way the editor is asked to select it', () => {
+    // The caption's end is the column after the last selected character (see SelectionReference.kt).
+    expect(rangePlace('L12:5-30')).toEqual({ line: 12, column: 5, endColumn: 29 })
+  })
+
+  it('carries both ends of a selection across lines', () => {
+    expect(rangePlace('L12:5-L18:30')).toEqual({ line: 12, column: 5, endLine: 18, endColumn: 29 })
+  })
+
+  it('reads its own captions back exactly', () => {
+    const whole = span({ wholeLines: true })
+    expect(rangePlace(rangeLabel(whole))).toEqual({ line: 12, endLine: 18 })
+    const cut = span()
+    expect(rangePlace(rangeLabel(cut))).toEqual({ line: 12, column: 5, endLine: 18, endColumn: 29 })
+  })
+
+  it('makes no selection out of a caret that only stood somewhere', () => {
+    expect(rangePlace('L12:5-5')).toEqual({ line: 12, column: 5 })
+  })
+
+  it('refuses what is nobody\'s caption', () => {
+    expect(rangePlace('12')).toBeNull()
+    expect(rangePlace('L12:')).toBeNull()
+    expect(rangePlace('lines 12-18')).toBeNull()
+  })
+})
+
+describe('chipFile', () => {
+  it('opens an attached file by its path', () => {
+    expect(chipFile({ kind: 'file', value: 'src/useSocket.js' })).toEqual({ path: 'src/useSocket.js' })
+  })
+
+  it('opens a reference from the editor on its own selection', () => {
+    expect(chipFile(referenceChip(span()))).toEqual({
+      path: 'src/useSocket.js',
+      line: 12,
+      column: 5,
+      endLine: 18,
+      endColumn: 29,
+    })
+  })
+
+  it('opens a pasted picture by the file the shell wrote, and not at all when there is none', () => {
+    expect(chipFile({ kind: 'img', value: 'Image #3', data: 'data:image/png;base64,AA==', path: '/tmp/acc/shot.png' })).toEqual({ path: '/tmp/acc/shot.png' })
+    expect(chipFile({ kind: 'img', value: 'Image #3', data: 'data:image/png;base64,AA==' })).toBeNull()
+  })
+
+  it('opens nothing for what is not a file', () => {
+    expect(chipFile({ kind: 'dir', value: 'src/' })).toBeNull()
+    expect(chipFile({ kind: 'cmd', value: 'compact' })).toBeNull()
+    expect(chipFile({ kind: 'quote', value: 'Claude', text: 'a line' })).toBeNull()
+    expect(chipFile({ kind: 'paste', value: 'Pasted text', text: 'a\nb' })).toBeNull()
+  })
+
+  it('refuses a network path however it got onto the chip', () => {
+    expect(chipFile({ kind: 'file', value: '//host/share/x.js' })).toBeNull()
   })
 })

@@ -16,7 +16,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
  */
 class ClaudeSessionsTest : BasePlatformTestCase() {
 
-    private fun sessions(onBorn: (String, String) -> Unit = { _, _ -> }) = ClaudeSessions(
+    private fun sessions(onBorn: (String, String, String) -> Unit = { _, _, _ -> }) = ClaudeSessions(
         workingDirectory = null,
         parentDisposable = testRootDisposable,
         onEvent = { _, _ -> },
@@ -86,9 +86,32 @@ class ClaudeSessionsTest : BasePlatformTestCase() {
      * (see ClaudeSession.setEffort), so a panel left to guess would draw every untouched tab by the
      * current setting - that is, by a choice made somewhere else entirely.
      */
+    /**
+     * The model is announced at birth beside the effort, and for the same reason. A conversation opened
+     * from the history then adopts the model its transcript names, before its process is up - what it
+     * carries on at is its own model, not the setting's (see ClaudeSessionHub.resumeConversation).
+     */
+    fun testAResumedConversationAdoptsItsOwnModelBeforeItWakes() {
+        ClaudePreferences.model = "haiku"
+        val born = mutableMapOf<String, String>()
+        val sessions = sessions { sessionId, _, model -> born[sessionId] = model }
+
+        sessions.resume("old", "conversation-1")
+        assertEquals("haiku", born["old"])
+        assertEquals("haiku", sessions.model("old"))
+
+        sessions.adoptModel("old", "claude-opus-5")
+        assertEquals("claude-opus-5", sessions.model("old"))
+        // Adopting is no choice: the next tab still starts on the setting.
+        assertEquals("haiku", ClaudePreferences.model)
+
+        sessions.adoptModel("old", "")
+        assertEquals("claude-opus-5", sessions.model("old"))
+    }
+
     fun testEachConversationIsBornAtWhatWasChosenByThen() {
         val born = mutableMapOf<String, String>()
-        val sessions = sessions { sessionId, effort -> born[sessionId] = effort }
+        val sessions = sessions { sessionId, effort, _ -> born[sessionId] = effort }
 
         ClaudePreferences.effort = "high"
         sessions.setPermissionMode("first", PermissionModes.PLAN) {}

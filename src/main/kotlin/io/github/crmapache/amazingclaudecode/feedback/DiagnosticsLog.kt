@@ -131,6 +131,8 @@ internal class DiagnosticsLog {
         const val PANEL = "panel"
         const val RELAY = "relay"
         const val STATS = "stats"
+        /** The search over the conversations: a run started, found, failed - never a query or a hit. */
+        const val SEARCH = "search"
 
         fun getInstance(): DiagnosticsLog = service()
 

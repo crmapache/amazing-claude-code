@@ -111,6 +111,55 @@ export const ja: Dict = {
     messages: (n) => `${n} 件のメッセージ`,
   },
 
+  search: {
+    title: '検索',
+    button: '会話を検索',
+    tabs: { chat: 'このチャット', project: 'すべてのチャット', ai: 'Claude に聞く' },
+    placeholder: '単語、または「引用符で囲んだ」フレーズ…',
+    aiPlaceholder: '探しているものを説明してください。何の話だったか、だいたいいつ頃か…',
+    aiNote: 'Claude がこのプロジェクトの会話を読みます · 独立した実行で、使用量に加算されます',
+    find: '検索',
+    cancel: 'キャンセル',
+    retry: '再試行',
+    copy: 'コピー',
+    openInChat: 'チャットで開く',
+    aiSearching: '会話を読んでいます…',
+    noChat: 'このタブにはまだ会話がありません。すべてのチャットを試してください。',
+    typeToSearch: '結果はここに表示されます。',
+    aiEmpty: '上に説明を書いて「検索」を押してください。',
+    nothing: '見つかりませんでした。',
+    nothingHere: 'このチャットには何もありません。',
+    aiNothing: 'モデルは該当するものを見つけられませんでした。',
+    results: (n) => `${n} 件`,
+    inChats: (n, chats) => `${chats} 件のチャットに ${n} 件`,
+    showing: (shown, total) => `${total} 件中 ${shown} 件を表示`,
+    places: (n) => `モデルが示す ${n} 箇所`,
+    you: 'あなた',
+    more: 'メッセージ全体を表示',
+    less: '折りたたむ',
+    clear: 'クリア',
+    matchCase: '大文字と小文字を区別',
+    wholeWords: '単語単位で検索',
+    chars: (shown, total) => `${total} 文字中 ${shown} 文字`,
+    failed: '検索に失敗しました。',
+    failedLabel: '失敗',
+    steps: {
+      grep: (subject) => `「${subject}」を検索しました`,
+      read: (subject) => `「${subject}」を読みました`,
+      list: '会話の一覧を読みました',
+      other: 'ファイルを見て回りました',
+      count: (n) => `${n} ステップ`,
+    },
+    capsule: {
+      reopen: '検索に戻る',
+      close: '検索を閉じる',
+      loading: 'メッセージを探しています…',
+      missing: '読み込んだメッセージの中にありません',
+      previous: 'このチャット内の前の一致',
+      next: 'このチャット内の次の一致',
+    },
+  },
+
   composerLayout: {
     bottom: '標準',
     compact: 'コンパクト',
@@ -119,7 +168,7 @@ export const ja: Dict = {
   },
 
   pasteCollapse: {
-    note: '複数行の貼り付けは、大量のテキストが入力欄を埋めないようにチップへまとめられます。どちらでも内容は失われません - チップは全文をそのまま保持し、付いている鉛筆ボタンで入力欄に戻せます。',
+    note: '長い貼り付けはチップに折りたたまれ、大量のテキストが入力欄を埋め尽くさないようにします。行数は入力欄で実際に何行になるかで数えるので、一行のまま貼り付けた長文も折りたたまれます。どちらの場合も内容は失われません - 折りたたまれた貼り付けは本文をそのまま保持し、鉛筆ボタンで入力欄に戻せます。',
     never: 'まとめない',
     neverSub: '貼り付けたものはそのまま入力欄のテキストとして残ります',
     from: (lines) => `${lines} 行から`,
@@ -141,7 +190,6 @@ export const ja: Dict = {
     note: 'キーを押したまま話すと、言葉がそのまま入力欄に入ります。動かしているのはあなた自身の Deepgram キーで、音声は Deepgram だけに送られます。プラグインは間にサーバーを持ちません。',
     off: 'オフ',
     enable: '音声入力',
-    enableHint: 'マイクのボタンを表示し、下のホットキーを待ち受けます。',
 
     key: 'DEEPGRAM API キー',
     keyPlaceholder: 'キーを貼り付け',
@@ -158,11 +206,10 @@ export const ja: Dict = {
     balanceRefresh: '更新',
 
     getKey: 'キーはまだですか？',
-    getKeyHint: 'deepgram.com で登録し、API キーを作ってください。新規アカウントにはカード不要で 200 ドル分が付きます。いまの料金なら数百時間の口述に相当します。',
+    getKeyHint: 'deepgram.com で登録し、API キーを作成します。カード不要で $200 分のクレジット。',
     openSite: 'deepgram.com を開く',
 
     hotkeys: 'ホットキー',
-    hotkeysHint: 'キーボードが IDE にある間だけ効きます - エディタでも、パネルでも、ダイアログでも。ほかのアプリでは効きません。',
     push: '押している間だけ話す',
     pushHint: '押している間だけ録り、離すと止まります。',
     hold: '両手を空けて',
@@ -177,7 +224,6 @@ export const ja: Dict = {
     sideLeft: '左',
     sideRight: '右',
     badButton: '使えるのはマウスのサイドボタンだけです。主要な三つは IDE のあちこちですでに意味を持っています。',
-    modifierTip: 'ここは修飾キー単独が向いています。右 Option か右 Ctrl を押しっぱなしにすれば、IDE の中で取り合いになりません。',
 
     language: '話す言語',
     languageHint: '音声入力が聞き取る言語',
@@ -189,6 +235,12 @@ export const ja: Dict = {
     deviceDefault: 'システムの既定',
     deviceDefaultHint: 'システムの設定にそのまま従います',
     deviceNote: '変更は次の音声入力から有効になります。',
+
+    promo: {
+      title: 'ここでの音声入力は快適ですか？',
+      body: 'ほかのウィンドウでもキーを押しながら話すだけ。もう一つの拙作が、いま入力中の場所に声を文字にして書き込みます。今登録した方には、ずっと無料のままです。',
+      tagline: 'Mac と Windows のための音声入力',
+    },
 
     errorNoKey: 'まず Deepgram のキーを追加してください - 設定、そして音声入力。',
     errorNoKeyRemote: 'この会話が動いているマシンに Deepgram のキーがありません。向こうの設定の音声入力で追加してください。',
@@ -534,9 +586,8 @@ export const ja: Dict = {
       stopCommand: 'このコマンドを止める',
       stopCommandTitle: 'このコマンドを止めますか？',
     },
-    confirm: { cancel: 'キャンセル', stop: '停止', open: '開く' },
-    resume: { title: 'このタブはまだ作業中です。ここに過去の会話を開きますか？' },
-    noChats: { title: '開いている会話はありません', button: '新しい会話' },
+    confirm: { cancel: 'キャンセル', stop: '停止' },
+    noChats: { title: '一緒に作業できるのが楽しみです！', button: 'はじめる' },
     crash: {
       title: 'パネルでエラーが起きました',
       text: '再読み込みしても安全です。会話はパネルの裏側にある Claude Code のプロセスにあり、パネルより長生きします。',

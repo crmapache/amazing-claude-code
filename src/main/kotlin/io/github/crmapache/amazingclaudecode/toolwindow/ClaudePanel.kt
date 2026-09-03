@@ -33,6 +33,7 @@ import io.github.crmapache.amazingclaudecode.voice.VoiceDesk
 import io.github.crmapache.amazingclaudecode.webview.FilePicker
 import io.github.crmapache.amazingclaudecode.webview.IdeTypography
 import io.github.crmapache.amazingclaudecode.webview.ImageDownloads
+import io.github.crmapache.amazingclaudecode.webview.PastedFiles
 import io.github.crmapache.amazingclaudecode.webview.WebviewClipboard
 import io.github.crmapache.amazingclaudecode.webview.WebviewFileDrop
 import io.github.crmapache.amazingclaudecode.webview.WebviewHost
@@ -288,6 +289,25 @@ internal class ClaudePanel(
             // The statistics screen as a picture to share: JCEF has no downloads of its own, so the bytes
             // come here and the file is written where downloads belong (see ImageDownloads).
             "saveImage" -> ImageDownloads.save(project, field("name"), field("data"))
+
+            // A picture or a document pasted into the panel, given a file of its own - so that the
+            // attachment can be copied, opened and pointed at like any other (see PastedFiles). Here
+            // rather than with the conversation's commands for the same reason as the clipboard above: it
+            // writes to this machine's disk, and a network client never reaches this handler.
+            "savePastedFile" -> PastedFiles.save(
+                field("id"),
+                field("name"),
+                field("mediaType"),
+                field("data"),
+            ) { id, path ->
+                webview?.send(
+                    buildJsonObject {
+                        put("type", "pastedFile")
+                        put("id", id)
+                        put("path", path)
+                    }.toString(),
+                )
+            }
 
             // Feedback. Handled here rather than by the conversation's commands on purpose: this is the
             // one place a remote client cannot reach (see FeedbackDesk), and these messages read files

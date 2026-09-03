@@ -10,6 +10,10 @@ import { RemoteClock } from './clock'
 import { applyMessage, emptyFeed, feedTicks, tickFeed, type MobileFeed } from './feed'
 import { Link, type LinkState, type SessionLaunch } from './link'
 import { buildProjects, chatKey, type Inventory } from './projects'
+import { tabHolding } from '../feed/resume'
+import { chatHits, rowOf } from '../feed/search'
+import type { PaintedTerm, SearchHit, SearchProgressStep, SearchScope } from '../protocol'
+import { Search, type SearchTab } from '../components/Search'
 import { useEarlierPages } from '../hooks/useEarlierPages'
 import { Decision } from './screens/Decision'
 import { History } from './screens/History'
@@ -97,6 +101,82 @@ export const App = () => {
    * of this screen a project with eight open conversations takes up.
    */
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set())
+
+  /**
+   * The search (see Search.tsx and, for the rules, feed/search.ts) - the same window as the panel's,
+   * opened over a conversation or over a project's history. Which IDE and which project it asks is part
+   * of what it holds: a phone talks to several.
+   */
+  const [search, setSearch] = useState<{
+    open: boolean
+    tab: SearchTab
+    query: string
+    aiQuery: string
+    /** The field's two switches - the pair Find in Files has (see TextIndex.search on the IDE's side). */
+    matchCase: boolean
+    wholeWords: boolean
+    agentId: string
+    projectKey: string
+    /** The tab a "this chat" search is kept to; empty over a project's history. */
+    sessionId: string
+  }>({ open: false, tab: 'project', query: '', aiQuery: '', matchCase: false, wholeWords: false, agentId: '', projectKey: '', sessionId: '' })
+  const [searchAnswer, setSearchAnswer] = useState<{
+    hits: SearchHit[]
+    terms: PaintedTerm[]
+    counts: { chat: number; project: number; conversations: number }
+    total: number
+    error: string
+    /** Whether this is an answer at all, or the empty state a cleared field puts back (see emptyLine in Search). */
+    answered: boolean
+    /** The scope the hits were found for - the list is drawn under that tab and no other (see Search.answerScope). */
+    scope: SearchScope | ''
+  }>({ hits: [], terms: [], counts: EMPTY_COUNTS, total: 0, error: '', answered: false, scope: '' })
+  const [searchLoading, setSearchLoading] = useState(false)
+  const searchAsked = useRef('')
+  /** The scope the query out and unanswered was asked for - what its answer is stamped with. */
+  const askedScope = useRef<SearchScope>('project')
+  const searchSeq = useRef(0)
+  const [aiSearch, setAiSearch] = useState<{
+    id: string
+    hits: SearchHit[]
+    error: string
+    answered: boolean
+    /** What the model has done so far (see searchProgress in protocol.ts), and when the run began. */
+    steps: SearchProgressStep[]
+    startedAt: number
+  }>({ id: '', hits: [], error: '', answered: false, steps: [], startedAt: 0 })
+  const aiSearchRef = useRef(aiSearch)
+  aiSearchRef.current = aiSearch
+
+  /** The search folded into a thread's corner - by the conversation it stands over (see chatKey). */
+  /** The search folded into the thread's corner - the panel's own state (see SearchCapsuleState in App.tsx). */
+  const [capsule, setCapsule] = useState<{
+    key: string
+    terms: PaintedTerm[]
+    note: 'none' | 'loading' | 'missing'
+    /** This conversation's hits in the order they stand in it, and which one the thread is on - see chatHits. */
+    hits: SearchHit[]
+    at: number
+  } | null>(null)
+
+  /** The seconds the model's run has taken - by this device's own clock, which is what it waits by. */
+  const [aiSeconds, setAiSeconds] = useState(0)
+
+  useEffect(() => {
+    if (!aiSearch.id) return
+
+    const tick = () => setAiSeconds(Math.max(0, Math.round((Date.now() - aiSearch.startedAt) / 1000)))
+    tick()
+    const timer = window.setInterval(tick, 1000)
+    return () => window.clearInterval(timer)
+  }, [aiSearch.id, aiSearch.startedAt])
+  const [feedFocus, setFeedFocus] = useState<{ key: string; row: string; nonce: number } | undefined>(undefined)
+  /** The jump has been made - the request is dropped, so the next visit to the thread does not repeat it (see Feed.onFocused). */
+  const forgetFeedFocus = useCallback(() => setFeedFocus(undefined), [])
+
+  /** A jump still on its way - into a conversation being opened, or above what the feed holds. */
+  const jumping = useRef<{ key: string; hit: SearchHit; pages: number } | null>(null)
+  const [jumpTick, setJumpTick] = useState(0)
   const links = useRef<Record<string, Link>>({})
 
   /**
@@ -235,6 +315,35 @@ export const App = () => {
     // conversations, not a feed.
     if (message.type === 'history') {
       setHistories((current) => ({ ...current, [`${agentId}:${projectKey}`]: message.conversations }))
+      return
+    }
+
+    // The search's answer: to a request this phone made, about no conversation in particular (see
+    // searchResults in protocol.ts) - taken before the guard below, like the history.
+    if (message.type === 'searchResults') {
+      if (message.id === searchAsked.current) {
+        searchAsked.current = ''
+        setSearchLoading(false)
+        setSearchAnswer({
+          hits: message.hits,
+          terms: message.terms,
+          counts: message.counts ?? EMPTY_COUNTS,
+          total: message.total ?? message.hits.length,
+          error: message.error ?? '',
+          answered: true,
+          scope: askedScope.current,
+        })
+      } else if (message.id === aiSearchRef.current.id) {
+        setAiSearch((current) => ({ ...current, id: '', hits: message.hits, error: message.error ?? '', answered: true }))
+      }
+      return
+    }
+
+    // One step of the model's search, while it is still searching.
+    if (message.type === 'searchProgress') {
+      if (message.id === aiSearchRef.current.id) {
+        setAiSearch((current) => ({ ...current, steps: [...current.steps, { kind: message.kind, subject: message.subject }] }))
+      }
       return
     }
 
@@ -605,22 +714,43 @@ export const App = () => {
   /**
    * Open a past conversation, in a tab of its own.
    *
-   * Not in the tab that happens to be on screen at the desk, which is what the panel does: it can see
-   * which tab that is, and from here there is no telling whether somebody is working in it. The name
-   * goes last, after the request that opens it - resuming resets a tab's title on purpose, and a name
-   * sent before that would be the one thing thrown away.
+   * Always its own, unlike at the desk: the panel reuses the tab in front of it when there is nothing in
+   * it to lose (see resume in App.tsx), and from here there is no telling what is in the tab on that
+   * screen at all.
+   *
+   * One request rather than three. The tab is opened by the same side that resumes the conversation, and
+   * the name travels inside that request: sent separately it had to go last - resuming drops a tab's
+   * name on purpose - and a frame that arrives out of order over the relay was a tab called "New chat".
    */
   const openPast = useCallback(
     (agentId: string, projectKey: string, entry: HistoryEntry) => {
+      // Already open on that machine - then this is "take me there": the history lists open conversations
+      // too, and a second tab on one transcript is two processes writing over each other.
+      const project = projects.find((item) => item.agentId === agentId && item.key === projectKey)
+      const open = tabHolding(
+        entry.id,
+        (project?.sessions ?? []).map((session) => ({ id: session.sessionId })),
+        (tab) => project?.sessions.find((session) => session.sessionId === tab)?.conversation,
+      )
+
+      if (open) {
+        enter(agentId, projectKey, open, false)
+        return
+      }
+
       const sessionId = newSessionId()
 
-      command(agentId, projectKey, { type: 'newSession', kind: 'main', sessionId, title: '' })
-      command(agentId, projectKey, { type: 'resumeSession', sessionId, conversationId: entry.id })
-      command(agentId, projectKey, { type: 'renameSession', sessionId, title: deriveSessionTitle(entry.title, 40) })
+      command(agentId, projectKey, {
+        type: 'resumeSession',
+        sessionId,
+        conversationId: entry.id,
+        title: deriveSessionTitle(entry.title, 40),
+        titleSource: entry.titleSource === 'heuristic' ? 'heuristic' : 'llm',
+      })
 
       enter(agentId, projectKey, sessionId, false)
     },
-    [command, enter],
+    [command, enter, projects],
   )
 
   /**
@@ -642,6 +772,255 @@ export const App = () => {
       })
     },
   )
+
+  // --- The search --------------------------------------------------------------------
+
+  /* A typed query goes out a moment after the typing pauses - the panel's own rule (see App.tsx). */
+  useEffect(() => {
+    if (!search.open || search.tab === 'ai') return
+    const query = search.query.trim()
+    if (!query) {
+      searchAsked.current = ''
+      setSearchLoading(false)
+      setSearchAnswer({ hits: [], terms: [], counts: EMPTY_COUNTS, total: 0, error: '', answered: false, scope: '' })
+      return
+    }
+
+    const scope = search.tab
+    const { matchCase, wholeWords } = search
+    const timer = setTimeout(() => {
+      const id = `s-${(searchSeq.current += 1)}`
+      searchAsked.current = id
+      askedScope.current = scope
+      setSearchLoading(true)
+      command(search.agentId, search.projectKey, { type: 'search', id, sessionId: search.sessionId, scope, query, matchCase, wholeWords })
+    }, SEARCH_DEBOUNCE_MS)
+
+    return () => clearTimeout(timer)
+  }, [search.open, search.tab, search.query, search.matchCase, search.wholeWords, search.agentId, search.projectKey, search.sessionId, command])
+
+  const openSearch = useCallback((agentId: string, projectKey: string, sessionId: string) => {
+    setSearch((current) => ({
+      ...current,
+      open: true,
+      agentId,
+      projectKey,
+      sessionId,
+      // Over a project's history there is no "this chat" to search; over a thread the tab follows the
+      // conversation it was last used on.
+      tab: sessionId ? (current.sessionId === sessionId ? current.tab : 'chat') : current.tab === 'chat' ? 'project' : current.tab,
+    }))
+  }, [])
+
+  const closeSearch = useCallback(() => setSearch((current) => ({ ...current, open: false })), [])
+
+  const runAiSearch = useCallback(() => {
+    const query = search.aiQuery.trim()
+    if (!query) return
+    const id = `a-${(searchSeq.current += 1)}`
+    setAiSearch({ id, hits: [], error: '', answered: false, steps: [], startedAt: Date.now() })
+    setAiSeconds(0)
+    command(search.agentId, search.projectKey, { type: 'searchAi', id, sessionId: search.sessionId, query })
+  }, [search.aiQuery, search.agentId, search.projectKey, search.sessionId, command])
+
+  const cancelAiSearch = useCallback(() => {
+    const id = aiSearchRef.current.id
+    if (!id) return
+    command(search.agentId, search.projectKey, { type: 'searchCancel', id })
+    setAiSearch((current) => ({ ...current, id: '' }))
+  }, [search.agentId, search.projectKey, command])
+
+  /** The conversation on screen, as one string - what a capsule and a jump are tied to. */
+  const threadKey = thread ? chatKey(thread.agentId, thread.projectKey, thread.sessionId) : ''
+
+  /** The conversation behind the thread on screen, if the IDE has named one yet (see SessionEntry.conversation). */
+  const threadConversation = thread
+    ? projects
+        .find((project) => project.agentId === thread.agentId && project.key === thread.projectKey)
+        ?.sessions.find((one) => one.sessionId === thread.sessionId)?.conversation
+    : undefined
+
+  /**
+   * A hit chosen: the window folds into the capsule and the thread goes to the hit.
+   *
+   * A hit in another conversation opens it the way the history does from here - the tab already
+   * holding it, else a tab of its own (see openPast) - and the jump waits for that feed to arrive.
+   */
+  const jumpToHit = useCallback(
+    (hit: SearchHit, terms: PaintedTerm[], all: readonly SearchHit[]) => {
+      const project = projects.find((item) => item.agentId === search.agentId && item.key === search.projectKey)
+      const hits = chatHits(all, hit.conversationId)
+      const at = Math.max(0, hits.findIndex((one) => one.uuid === hit.uuid))
+      const onScreen =
+        thread &&
+        thread.agentId === search.agentId &&
+        thread.projectKey === search.projectKey &&
+        project?.sessions.find((one) => one.sessionId === thread.sessionId)?.conversation === hit.conversationId
+
+      setSearch((current) => ({ ...current, open: false }))
+
+      if (onScreen) {
+        const key = chatKey(thread.agentId, thread.projectKey, thread.sessionId)
+        setCapsule({ key, terms, note: 'none', hits, at })
+        const row = rowOf(feed.state.items, hit)
+        if (row) {
+          jumping.current = null
+          setFeedFocus({ key, row, nonce: Date.now() })
+        } else {
+          jumping.current = { key, hit, pages: 0 }
+          setCapsule((current) => (current ? { ...current, note: 'loading' } : current))
+          setJumpTick((tick) => tick + 1)
+        }
+        return
+      }
+
+      const held = tabHolding(
+        hit.conversationId,
+        (project?.sessions ?? []).map((session) => ({ id: session.sessionId })),
+        (tab) => project?.sessions.find((session) => session.sessionId === tab)?.conversation,
+      )
+      const sessionId = held ?? newSessionId()
+      const key = chatKey(search.agentId, search.projectKey, sessionId)
+      setCapsule({ key, terms, note: 'loading', hits, at })
+      jumping.current = { key, hit, pages: 0 }
+
+      if (held) {
+        enter(search.agentId, search.projectKey, held, false)
+        return
+      }
+
+      command(search.agentId, search.projectKey, {
+        type: 'resumeSession',
+        sessionId,
+        conversationId: hit.conversationId,
+        title: deriveSessionTitle(hit.title, 40),
+        titleSource: hit.named ? 'llm' : 'heuristic',
+      })
+      enter(search.agentId, search.projectKey, sessionId, false)
+    },
+    [projects, search.agentId, search.projectKey, thread, feed.state.items, enter, command],
+  )
+
+  /** One hit up or down this conversation - the capsule's arrows, by the panel's rule (see stepHit in App.tsx). */
+  const stepHit = useCallback(
+    (direction: -1 | 1) => {
+      if (!capsule || capsule.hits.length < 2) return
+      const at = (capsule.at + direction + capsule.hits.length) % capsule.hits.length
+      const hit = capsule.hits[at]!
+      const row = rowOf(feed.state.items, hit)
+      if (row) {
+        jumping.current = null
+        setCapsule({ ...capsule, at, note: 'none' })
+        setFeedFocus({ key: capsule.key, row, nonce: Date.now() })
+        return
+      }
+
+      jumping.current = { key: capsule.key, hit, pages: 0 }
+      setCapsule({ ...capsule, at, note: 'loading' })
+      setJumpTick((tick) => tick + 1)
+    },
+    [capsule, feed.state.items],
+  )
+
+  /** The search over and done with - the panel's own rule (see resetSearch in App.tsx). */
+  const resetSearch = useCallback(() => {
+    jumping.current = null
+    setCapsule(null)
+    cancelAiSearch()
+    setSearch((current) => ({ ...current, open: false, query: '', aiQuery: '' }))
+    setSearchAnswer({ hits: [], terms: [], counts: EMPTY_COUNTS, total: 0, error: '', answered: false, scope: '' })
+    setAiSearch({ id: '', hits: [], error: '', answered: false, steps: [], startedAt: 0 })
+  }, [cancelAiSearch])
+
+  // The conversation the capsule stands on is gone - the search goes with it, the panel's own rule (see App.tsx).
+  useEffect(() => {
+    if (!capsule) return
+    const alive = projects.some((project) =>
+      project.sessions.some((session) => chatKey(project.agentId, project.key, session.sessionId) === capsule.key),
+    )
+    if (!alive) resetSearch()
+  }, [projects, capsule, resetSearch])
+
+  /*
+   * A jump still on its way - the panel's own rule (see App.tsx): once the feed on screen holds the
+   * conversation, the row is looked for after every change, one more page is asked for while it is not
+   * there, and at the beginning or the limit the capsule says so.
+   */
+  useEffect(() => {
+    const pending = jumping.current
+    if (!pending || pending.key !== threadKey || !feed.loaded) return
+    const onScreen = projects
+      .find((project) => thread && project.agentId === thread.agentId && project.key === thread.projectKey)
+      ?.sessions.find((one) => thread && one.sessionId === thread.sessionId)?.conversation
+    if (onScreen !== pending.hit.conversationId && feed.state.sessionId !== pending.hit.conversationId) return
+
+    const row = rowOf(feed.state.items, pending.hit)
+    if (row) {
+      jumping.current = null
+      setFeedFocus({ key: threadKey, row, nonce: Date.now() })
+      setCapsule((current) => (current && current.key === threadKey ? { ...current, note: 'none' } : current))
+      return
+    }
+
+    if (feed.state.reachedStart || pending.pages >= JUMP_PAGE_LIMIT) {
+      jumping.current = null
+      setCapsule((current) => (current && current.key === threadKey ? { ...current, note: 'missing' } : current))
+      return
+    }
+
+    if (loadEarlier) {
+      pending.pages += 1
+      loadEarlier()
+    }
+  }, [threadKey, feed.loaded, feed.state.sessionId, feed.state.items, feed.state.reachedStart, loadEarlier, projects, thread, jumpTick])
+
+  const capsuleProps =
+    capsule && capsule.key === threadKey
+      ? {
+          note: capsule.note,
+          count: capsule.hits.length,
+          at: capsule.at,
+          onStep: stepHit,
+          onOpen: () => setSearch((current) => ({ ...current, open: true })),
+          onClose: resetSearch,
+        }
+      : undefined
+
+  const searchWindow = search.open ? (
+    <Search
+      tab={search.tab}
+      onTab={(tab) => setSearch((current) => ({ ...current, tab }))}
+      query={search.query}
+      onQuery={(query) => setSearch((current) => ({ ...current, query }))}
+      matchCase={search.matchCase}
+      wholeWords={search.wholeWords}
+      onMatchCase={(matchCase) => setSearch((current) => ({ ...current, matchCase }))}
+      onWholeWords={(wholeWords) => setSearch((current) => ({ ...current, wholeWords }))}
+      hits={searchAnswer.hits}
+      answerScope={searchAnswer.scope}
+      counts={searchAnswer.counts}
+      total={aiSearch.answered && search.tab === 'ai' ? aiSearch.hits.length : searchAnswer.total}
+      loading={searchLoading}
+      answered={searchAnswer.answered}
+      error={searchAnswer.error}
+      aiQuery={search.aiQuery}
+      onAiQuery={(aiQuery) => setSearch((current) => ({ ...current, aiQuery }))}
+      aiHits={aiSearch.hits}
+      aiRunning={aiSearch.id !== ''}
+      aiError={aiSearch.error}
+      aiAnswered={aiSearch.answered}
+      aiSteps={aiSearch.steps}
+      aiSeconds={aiSeconds}
+      onRunAi={runAiSearch}
+      onCancelAi={cancelAiSearch}
+      hasChat={search.sessionId !== '' && Boolean(threadConversation)}
+      onPick={(hit) =>
+        search.tab === 'ai' ? jumpToHit(hit, [], aiSearch.hits) : jumpToHit(hit, searchAnswer.terms, searchAnswer.hits)
+      }
+      onClose={resetSearch}
+      onDismiss={closeSearch}
+    />
+  ) : null
 
   const back = useCallback(() => {
     watching.current = null
@@ -715,6 +1094,7 @@ export const App = () => {
             conversations={histories[`${screen.agentId}:${screen.projectKey}`] ?? null}
             onOpen={(entry) => openPast(screen.agentId, screen.projectKey, entry)}
             onBack={back}
+            onSearch={() => openSearch(screen.agentId, screen.projectKey, '')}
           />
         </div>
       )
@@ -856,14 +1236,33 @@ export const App = () => {
             onLoadEarlier={loadEarlier}
             onDecide={() => setScreen({ ...screen, at: 'decide' })}
             onBack={back}
+            onSearch={() => openSearch(screen.agentId, screen.projectKey, screen.sessionId)}
+            capsule={capsuleProps}
+            focus={feedFocus?.key === threadKey ? feedFocus : undefined}
+            onFocused={forgetFeedFocus}
+            paint={capsule?.key === threadKey ? capsule.terms : undefined}
           />
         </ClockContext.Provider>
       </div>
     )
   })()
 
-  return <LocaleProvider locale={locale}>{body}</LocaleProvider>
+  return (
+    <LocaleProvider locale={locale}>
+      {body}
+      {searchWindow}
+    </LocaleProvider>
+  )
 }
+
+/** What a search that has not been asked anything yet has found. */
+const EMPTY_COUNTS = { chat: 0, project: 0, conversations: 0 }
+
+/** How long the typing pauses before a query goes out - the panel's figure (see App.tsx). */
+const SEARCH_DEBOUNCE_MS = 160
+
+/** How many pages above a jump may fetch on its own - the panel's figure (see App.tsx). */
+const JUMP_PAGE_LIMIT = 40
 
 /**
  * An identifier for a tab this phone is opening.

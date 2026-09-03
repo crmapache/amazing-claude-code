@@ -1,5 +1,6 @@
 import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react'
 import snakeinHero from '../assets/snakein-hero.webp'
+import { AuthorCard } from './AuthorCard'
 import { Microphone } from './Microphone'
 import { useHoverTarget } from '../hooks/useHoverTarget'
 import { useWheelScroll } from '../hooks/useWheelScroll'
@@ -474,56 +475,21 @@ export const SideMenu = ({
               />
             </div>
 
-            {/* The one advertisement in the panel, and it stands where an advertisement can be walked
-                past: at the foot of a menu, under everything the menu is actually opened for. The
-                picture is here rather than a line of link text because the product is a screen - a
-                bare address asks to be trusted, a screenshot lets one decide before the click. */}
+            {/* An advertisement standing where one can be walked past: at the foot of a menu, under
+                everything the menu is actually opened for. The card itself is shared with the voice
+                screen, which carries the other one (see AuthorCard). */}
             <div className={s.group}>{t.menu.groups.author}</div>
             <div className={s.rows}>
-              <div className={s.author}>
-                <div className={s.authorWords}>
-                  <span className={s.rowLabel}>{t.menu.author.title}</span>
-                  <span className={s.authorBody}>
-                    {t.menu.author.body}
-                    <svg className={s.authorHeart} viewBox="0 0 16 16" aria-hidden="true">
-                      <path
-                        d="M8 14.3l-.9-.85C3.4 10.1 1 7.95 1 5.4A3.55 3.55 0 0 1 4.6 1.8c1.3 0 2.55.6 3.4 1.57A4.4 4.4 0 0 1 11.4 1.8A3.55 3.55 0 0 1 15 5.4c0 2.55-2.4 4.7-6.1 8.06z"
-                        fill="currentColor"
-                      />
-                    </svg>
-                  </span>
-                </div>
-
-                <button type="button" className={s.authorSite} onClick={() => onOpenLink(AUTHOR_URL)}>
-                  {/* Decorative on purpose: the name and what it does are written right underneath, and
-                      a screen reader announcing the picture too would say the same thing twice. The
-                      measurements are the file's own - without them the row jumps as it decodes. */}
-                  <img
-                    className={s.authorShot}
-                    src={snakeinHero}
-                    alt=""
-                    width={608}
-                    height={182}
-                    decoding="async"
-                  />
-                  <span className={s.authorFoot}>
-                    <span className={s.authorNames}>
-                      <span className={s.authorName}>{AUTHOR_PRODUCT}</span>
-                      <span className={s.authorTagline}>{t.menu.author.tagline}</span>
-                    </span>
-                    <svg className={s.authorArrow} viewBox="0 0 16 16" aria-hidden="true">
-                      <path
-                        d="M5.4 10.6L10.6 5.4M6.2 5.2h4.6v4.6"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </span>
-                </button>
-              </div>
+              <AuthorCard
+                title={t.menu.author.title}
+                body={t.menu.author.body}
+                heart
+                shot={snakeinHero}
+                name={AUTHOR_PRODUCT}
+                tagline={t.menu.author.tagline}
+                url={AUTHOR_URL}
+                onOpenLink={onOpenLink}
+              />
             </div>
 
             <div className={s.footer}>

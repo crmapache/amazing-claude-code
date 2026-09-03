@@ -88,6 +88,72 @@ export interface HistoryEntry {
   titleSource?: TitleSource
 }
 
+/** Where a typed search looks: the conversation in the tab, or every conversation of the project. */
+export type SearchScope = 'chat' | 'project'
+
+/**
+ * One thing the model did while searching (see AiStep on the IDE's side).
+ *
+ * A kind and a subject rather than a sentence: the words belong to the panel, which speaks ten
+ * languages, and this is a fact about the run. `subject` is the pattern it searched for, or the title
+ * of the conversation it opened.
+ */
+export interface SearchProgressStep {
+  kind: 'grep' | 'read' | 'list' | 'other'
+  subject: string
+}
+
+/**
+ * One matched word as the feed paints it (see matchSpans in feed/searchText.ts, and Painted on the
+ * IDE's side, where the rule lives). The panel applies it and knows no rule of its own.
+ */
+export interface PaintedTerm {
+  /** The word as the index folds it - what a word on screen is compared with. */
+  term: string
+  /**
+   * How many of its characters the query accounts for: the typed part of a word found by its beginning,
+   * the stem of one found by its stem, the whole of one found by a typo. "use" lights the "Use" of
+   * UserCard and no more.
+   */
+  paint: number
+  /** Under Match case, what those characters have to be, exactly as typed. */
+  text?: string
+  /** Under Whole words, only a run of its own counts - not a camel-case part of a longer one. */
+  whole?: boolean
+}
+
+/**
+ * One message the search found - enough to show it in the list, to open the conversation it is in and
+ * to jump to it there (see feed/search.ts). The words are found on the IDE's side, where the index is
+ * (see SearchIndex and TextIndex.kt); the panel only draws.
+ */
+export interface SearchHit {
+  /** The conversation the message is in - what resumeSession opens, what tabHolding recognises. */
+  conversationId: string
+  /** The transcript's own name for the message - what the feed scrolls to (see UserItem.uuid). */
+  uuid: string
+  speaker: 'you' | 'claude'
+  /** Epoch milliseconds by the IDE's clock; zero when the transcript kept no time. */
+  at: number
+  /** The conversation's title, as the history lists it. */
+  title: string
+  /** Whether that title is the model's own rather than a guess off the first line - see HistoryEntry.titleSource. */
+  named: boolean
+  /** How many messages that conversation holds - what stands under its title where the list groups by it. */
+  messages: number
+  /** The whole message's length in characters, so an unfolded one can say how much of it is shown. */
+  length: number
+  /** A piece of the message around the first matched word, with an ellipsis where it was cut. */
+  snippet: string
+  /** Where the matched words stand in the snippet, as [start, end) pairs - what the list paints. */
+  spans: [number, number][]
+  /** The message itself, up to a budget - what unfolds under the snippet. */
+  text: string
+  truncated: boolean
+  /** The model's one sentence on why it picked this - only on the hits of a described search. */
+  reason?: string
+}
+
 /**
  * One MCP server the way the CLI itself sees it (the mcp_status answer). The statuses and the scopes
  * are its words rather than ours: the panel is obliged to call a server's state what the terminal
@@ -517,7 +583,13 @@ type ShellMessageBody =
    * rather than the one asked for: on a refusal that is the previous one, the panel returns to it, and
    * the reason travels in error.
    */
-  | { type: 'model'; sessionId: string; model: string; applied: boolean; error?: string }
+  /**
+   * The model in force in a tab. Answering a choice, `applied` says whether the agent took it. With
+   * `born` it is the model the conversation came up on - a fact about the tab rather than a choice,
+   * said at its birth the way the effort is: a conversation opened from the history carries on at its
+   * own model (see ClaudeSessionHub.resumeConversation), and that is not what the next tab starts on.
+   */
+  | { type: 'model'; sessionId: string; model: string; applied: boolean; error?: string; born?: boolean }
   /**
    * The effort this conversation works at: on a change of its own, and once when the conversation is
    * born - that is the moment nothing else could tell the panel what the tab started on.
@@ -527,6 +599,16 @@ type ShellMessageBody =
    * message says what is, not how the request went.
    */
   | { type: 'effort'; sessionId: string; effort: string }
+  /**
+   * The conversation a tab holds, said by the shell: after a reset, which wipes everything the panel
+   * knew about the tab, and to a client joining. The panel writes it down itself the moment a past
+   * conversation is picked (see the `resumed` action), and that is what keeps the same conversation from
+   * opening twice - but the reset that follows the pick took the note with it, and the process names
+   * the conversation only once it is up, seconds later or never. In between, a second press on the same
+   * row opened a second tab on one transcript, and a search's jump into that conversation waited for a
+   * process that might not come.
+   */
+  | { type: 'conversation'; sessionId: string; conversationId: string }
   /**
    * Whether the "no questions" mode is allowed on this machine: an organization's policy can forbid it,
    * and an old CLI does not allow switching into it on the fly either. The Shift+Tab cycle depends on
@@ -554,6 +636,8 @@ type ShellMessageBody =
    * one the request carried: several of them may be in flight at once.
    */
   | { type: 'clipboard'; id: string; text: string; html: string; image: string }
+  /** Where a pasted file was written - the answer to `savePastedFile`. */
+  | { type: 'pastedFile'; id: string; path: string }
   /** The answer to mcpList - and to mcpAdd/mcpRemove, so that the list refreshes at once. */
   | { type: 'mcpServers'; servers: McpServerInfo[] }
   /** The outcome of mcpAdd/mcpRemove - not to be mistaken for a `/mcp` inside the conversation. */
@@ -636,6 +720,40 @@ type ShellMessageBody =
    * the message was sent, the field was edited - is dropped rather than applied over what is there now.
    */
   | { type: 'promptImproved'; sessionId: string; id: string; text?: string; error?: string }
+  /**
+   * The answer to a `search` or a `searchAi` below, named by the request's number: the panel shows
+   * nothing it cannot match to a request it is still waiting on - a query typed on after the request
+   * went out has an answer of its own coming.
+   *
+   * `terms` are the words the messages were found by, folded as the index folds them (see Words in
+   * TextIndex.kt and feed/searchText.ts) - what the feed paints when the person jumps to a hit. Empty
+   * for a described search: the model found the messages, not a word.
+   */
+  | {
+      type: 'searchResults'
+      id: string
+      hits: SearchHit[]
+      /** The words the feed paints, each with how far - see PaintedTerm. */
+      terms: PaintedTerm[]
+      /**
+       * How many matched in each scope, and in how many conversations - the numbers on the window's tabs
+       * and beside its field. Counted before the list was cut to its limit: a badge saying "50" over two
+       * hundred matches lies about the one thing it says.
+       */
+      counts?: { chat: number; project: number; conversations: number }
+      /** How many matched in the scope that was asked for - `hits` may be the first [limit] of them. */
+      total?: number
+      error?: string
+    }
+  /**
+   * What the model is doing while it searches (see AiSearch and SearchDesk on the IDE's side).
+   *
+   * One message per step, in the order the steps happen. A kind and a subject rather than a sentence:
+   * the words belong to the panel, which speaks ten languages, and this is a fact about the run. Sent
+   * because the run takes ten to twenty-five seconds, and a spinner alone for that long is
+   * indistinguishable from one that has hung.
+   */
+  | ({ type: 'searchProgress'; id: string } & SearchProgressStep)
   /**
    * Everything the voice input screen draws itself from - see VoiceDesk on the IDE's side.
    *
@@ -1087,6 +1205,15 @@ export type WebviewMessage =
    */
   | { type: 'saveImage'; name: string; data: string }
   /**
+   * Something pasted into the panel - a screenshot, a document - to be kept as a file (see
+   * PastedFiles.kt). The answer comes back as `pastedFile` with the same id: an attachment with a path
+   * can be copied, opened and named to somebody, while pasted bytes could only ever be called "Image #3".
+   *
+   * `name` is what the clipboard called it, empty for a screenshot - the clipboard holds pixels and no
+   * name at all.
+   */
+  | { type: 'savePastedFile'; id: string; name: string; mediaType: string; data: string }
+  /**
    * The clipboard through the shell: the embedded browser's own does not meet the IDE's (see
    * clipboard.ts). Reading comes with an answer, hence its `id`; writing needs none.
    */
@@ -1105,7 +1232,12 @@ export type WebviewMessage =
   /** A page further back than the journal's own catch-up reaches - see ShellMessageBody's historyPage. */
   | { type: 'historyPage'; sessionId: string; before?: string }
   /** Continue a past conversation in this tab. */
-  | { type: 'resumeSession'; sessionId: string; conversationId: string }
+  /**
+   * Continue a past conversation in this tab - the shell opens the tab too when there is none under this
+   * id (see ClaudeSessionHub.resumeConversation). The name travels along because resuming drops the one
+   * the tab wore, and only the client that chose the conversation knows what it is called.
+   */
+  | { type: 'resumeSession'; sessionId: string; conversationId: string; title?: string; titleSource?: TitleSource }
   /** Open the IDE's terminal with a Claude Code sign-in or sign-out. */
   | { type: 'login' }
   | { type: 'logout' }
@@ -1217,6 +1349,28 @@ export type WebviewMessage =
    * the mode. Empty puts the built-in text back in force.
    */
   | { type: 'setImproveInstructions'; text: string }
+  /**
+   * The search behind the magnifier (see SearchDesk on the IDE's side). A typed query, matched against
+   * the index of this project's conversations; `sessionId` names the tab whose conversation a 'chat'
+   * search is kept to - the IDE knows which conversation that tab holds.
+   */
+  | {
+      type: 'search'
+      id: string
+      sessionId: string
+      scope: SearchScope
+      query: string
+      /** The field's two switches, the pair Find in Files has - off when absent (see TextIndex.search). */
+      matchCase?: boolean
+      wholeWords?: boolean
+    }
+  /**
+   * The same, described in words for a model to find (see AiSearch): what it was about, roughly when.
+   * A run of its own with read-only tools over the conversations as text, never the tab's conversation.
+   */
+  | { type: 'searchAi'; id: string; sessionId: string; query: string }
+  /** The person stopped waiting for the model's search: its process ends, its answer is dropped. */
+  | { type: 'searchCancel'; id: string }
   /**
    * Voice input (see VoiceDesk on the IDE's side).
    *

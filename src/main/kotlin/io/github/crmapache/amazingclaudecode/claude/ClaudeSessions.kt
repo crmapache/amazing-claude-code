@@ -42,7 +42,7 @@ internal class ClaudeSessions(
      * otherwise be drawn by whatever the setting holds NOW - that is, by a choice made in a neighbouring
      * tab after this conversation had already started on something else.
      */
-    private val onBorn: (sessionId: String, effort: String) -> Unit = { _, _ -> },
+    private val onBorn: (sessionId: String, effort: String, model: String) -> Unit = { _, _, _ -> },
 ) : Disposable {
 
     private val sessions = ConcurrentHashMap<String, ClaudeSession>()
@@ -124,6 +124,18 @@ internal class ClaudeSessions(
      */
     fun wake(sessionId: String) {
         sessions[sessionId]?.wake()
+    }
+
+    /**
+     * The model a conversation opened from the history carries on at - its own, read off the transcript,
+     * rather than the setting (see ClaudeSessionHub.resumeConversation for why). Only before the process
+     * is up: a launch flag is all this is, and a running conversation changes its model by [setModel].
+     * The setting is left alone on purpose: this is what the conversation was on, not a choice anybody
+     * made for the next tab.
+     */
+    fun adoptModel(sessionId: String, model: String) {
+        if (model.isEmpty()) return
+        sessions[sessionId]?.adoptModel(model)
     }
 
     /**
@@ -385,16 +397,18 @@ internal class ClaudeSessions(
         // decide (see SessionLaunch).
         val launch = launches.remove(sessionId) ?: SessionLaunch()
         val effort = launch.effort.ifEmpty { ClaudePreferences.effort }
+        // A new conversation starts with whatever is chosen now: re-picking the model in every tab is
+        // work over nothing. A conversation opened from the history is the exception, and it is told
+        // its own model a moment later, once its transcript has been read (see adoptModel).
+        val model = launch.model.ifEmpty { ClaudePreferences.model }
 
-        onBorn(sessionId, effort)
+        onBorn(sessionId, effort, model)
 
         return ClaudeSession(
             workingDirectory = workingDirectory,
             forkFrom = forkFrom,
             resumeFrom = resumeFrom,
-            // A new conversation starts with whatever is chosen now: re-picking the model in every tab is
-            // work over nothing.
-            model = launch.model.ifEmpty { ClaudePreferences.model },
+            model = model,
             effort = effort,
             // Never chosen at all - we start in the same mode a terminal would start in this directory (see
             // PermissionDefaultMode).

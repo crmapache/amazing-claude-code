@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CLIPBOARD_ATTRIBUTE,
   clipboardHtml,
+  clipboardTextOf,
   clipboardTokens,
   composePrompt,
   imageAttachments,
@@ -133,5 +134,60 @@ describe('the clipboard', () => {
     expect(
       clipboardTokens(`<span ${CLIPBOARD_ATTRIBUTE}="${encodeURIComponent(JSON.stringify(broken))}"></span>`),
     ).toBeNull()
+  })
+})
+
+/**
+ * What a copied message carries out of the panel.
+ *
+ * Deliberately not the same as what the agent was sent: `@` is this field's syntax, and a caption like
+ * "Image #3" names something that exists nowhere a person could open. Outside the panel the useful thing
+ * is the path - which is the whole reason a pasted picture is written to a file at all.
+ */
+describe('clipboardTextOf', () => {
+  it('gives a file its path, without the marker the field needs', () => {
+    const tokens: UserToken[] = [
+      { kind: 'text', value: 'look at ' },
+      { kind: 'chip', chip: { kind: 'file', value: 'src/App.tsx' } },
+      { kind: 'text', value: ' please' },
+    ]
+
+    expect(clipboardTextOf(tokens)).toBe('look at src/App.tsx please')
+  })
+
+  it('keeps the range of a reference from the editor', () => {
+    const tokens: UserToken[] = [{ kind: 'chip', chip: { kind: 'ref', value: 'src/App.tsx', range: 'L12:5-L18:30' } }]
+
+    expect(clipboardTextOf(tokens)).toBe('src/App.tsx (L12:5-L18:30)')
+  })
+
+  it('gives a pasted picture the file it was written into', () => {
+    const tokens: UserToken[] = [
+      { kind: 'chip', chip: { kind: 'img', value: 'Image #2', data: PNG, path: '/tmp/pasted-17.png' } },
+    ]
+
+    expect(clipboardTextOf(tokens)).toBe('/tmp/pasted-17.png')
+  })
+
+  // The shell may be older than this, or the disk may be full: then the caption is all there is, and it
+  // still says which of the pictures this was.
+  it('falls back to the caption when the picture has no file', () => {
+    const tokens: UserToken[] = [{ kind: 'chip', chip: { kind: 'img', value: 'Image #2', data: PNG } }]
+
+    expect(clipboardTextOf(tokens)).toBe('[Image #2]')
+  })
+
+  it('gives a quote and a paste their text rather than their preview', () => {
+    const tokens: UserToken[] = [
+      { kind: 'chip', chip: { kind: 'quote', value: 'Claude', text: 'the totals are rounded once' } },
+      { kind: 'text', value: ' ' },
+      { kind: 'chip', chip: { kind: 'paste', value: 'pasted', text: 'line one\nline two' } },
+    ]
+
+    expect(clipboardTextOf(tokens)).toBe('the totals are rounded once line one\nline two')
+  })
+
+  it('leaves a command as it was typed', () => {
+    expect(clipboardTextOf([{ kind: 'chip', chip: { kind: 'cmd', value: 'review' } }])).toBe('/review')
   })
 })

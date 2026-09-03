@@ -308,7 +308,7 @@ internal class ProjectUsage(
             hub.broadcastProject(
                 buildJsonObject {
                     put("type", "usage")
-                    put("todayTokens", ClaudeTokenUsage.today())
+                    put("todayTokens", ClaudeTokenUsage.today(workingDirectory))
                 }.toString(),
             )
         }

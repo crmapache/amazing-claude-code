@@ -72,6 +72,17 @@ internal object RemoteCommands {
         // for it is no wider a door.
         "historyPage",
         "resumeSession",
+        /**
+         * Searching the conversations - the same words "historyPage" already hands out, found rather
+         * than paged. The answer is a list of snippets small enough for a relay frame, and nothing about
+         * it runs anything: the index is built on this side whether a phone asks or not. The model's
+         * search is a `claude -p` with read-only tools inside a folder of plain text (see AiSearch) -
+         * the same act as the improve button would be, and narrower than "prompt", which is allowed.
+         * Cancelling one is taking back one's own request.
+         */
+        "search",
+        "searchAi",
+        "searchCancel",
         "newSession",
         "renameSession",
         /**
@@ -194,6 +205,10 @@ internal object RemoteCommands {
         // harmless; a message that makes the IDE write files is not, and the statistics tab it comes from
         // is the panel's alone anyway.
         "saveImage",
+        // The same, for anything pasted into the panel: it writes a file on this machine, and the path it
+        // answers with names a folder on it. A phone attaches its pictures through its own screen and
+        // needs no file of ours to point at.
+        "savePastedFile",
         /*
          * Feedback. Every one of these is refused, and for a different reason each:
          *

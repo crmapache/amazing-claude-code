@@ -12,6 +12,7 @@ import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import io.github.crmapache.amazingclaudecode.remote.LocalBridgeServer
 import io.github.crmapache.amazingclaudecode.remote.NotificationReasons
 import io.github.crmapache.amazingclaudecode.remote.RemoteAgent
+import io.github.crmapache.amazingclaudecode.search.SearchDesk
 import io.github.crmapache.amazingclaudecode.remote.RemoteKeys
 import io.github.crmapache.amazingclaudecode.remote.RemoteState
 import io.github.crmapache.amazingclaudecode.stats.StatsCollector
@@ -74,7 +75,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             titleWanted = { sessionId -> tabs.titleSource(sessionId) != SessionSnapshot.TITLE_LLM },
             onTurnEnded = { sessionId -> sendStatus(sessionId, SessionSnapshot.STATUS_IDLE) },
             onTurnStarted = { sessionId -> sendStatus(sessionId, SessionSnapshot.STATUS_RUNNING) },
-            onBorn = { sessionId, effort -> sendEffort(sessionId, effort) },
+            onBorn = { sessionId, effort, model ->
+                sendEffort(sessionId, effort)
+                sendModel(sessionId, model)
+            },
         )
     }
 
@@ -106,6 +110,9 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
 
     /** The single entrance every request about a conversation comes through. */
     val commands: SessionCommands = SessionCommands(this)
+
+    /** The search over this project's conversations - the three tabs behind the magnifier (see SearchDesk). */
+    val search: SearchDesk = SearchDesk(project, this)
 
     /**
      * What the agent changes on disk, read back into the IDE - the other half of [UnsavedEdits]. One
@@ -173,6 +180,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     private var inventoryListener: (() -> Unit)? = null
 
     init {
+        // Where the CLI keeps its files for this project is a process to find out on a WSL project, and
+        // the history, the settings and the hint all ask it soon: paid now, off every thread anybody
+        // waits on (see ClaudeHome). A project on this machine returns from this at once.
+        ClaudeHome.warmUp(project.basePath)
         catalog.scheduleUpdates(this, usage)
         usage.scheduleUpdates(this)
         auth.scheduleUpdates(this)
@@ -306,6 +317,8 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             // joining now has no other way to learn it. A conversation that has not started yet says
             // nothing here - there is nothing to say, and the setting is the honest answer for it.
             conversations.effort(sessionId)?.let { batch += effortMessage(sessionId, it) }
+            conversations.model(sessionId)?.let { batch += modelMessage(sessionId, it) }
+            conversations.conversationIdOf(sessionId)?.let { batch += conversationMessage(sessionId, it) }
         }
 
         client.deliver(batch)
@@ -1072,19 +1085,56 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         }.toString()
 
     /**
+     * The model a conversation came up on - said at its birth, the way the effort is, and for the same
+     * reason: a tab whose model nobody has touched would otherwise be drawn by whatever the setting
+     * holds now. `born` tells the panel this is a fact about the tab, not a choice to write into the
+     * setting (see the `model` message in protocol.ts). Handed to a joining client beside the effort.
+     */
+    private fun sendModel(sessionId: String, model: String) {
+        emitLive(modelMessage(sessionId, model))
+    }
+
+    private fun modelMessage(sessionId: String, model: String): String =
+        buildJsonObject {
+            put("type", "model")
+            put("sessionId", sessionId)
+            put("model", model)
+            put("applied", true)
+            put("born", true)
+        }.toString()
+
+    /**
      * Opening a past conversation: the process comes up with its transcript, and its saved events are
      * replayed into the feed - otherwise the tab would look empty although the agent remembers
      * everything.
      */
-    fun resumeConversation(sessionId: String, conversationId: String) {
+    fun resumeConversation(
+        sessionId: String,
+        conversationId: String,
+        /**
+         * What this conversation is called, as the history screen shows it - empty when the asking
+         * client did not say. The tab wears it from the first second: resuming drops the name the tab
+         * carried (it belongs to a conversation no longer in it), and a name that arrives any later than
+         * this is a tab called "New chat" for as long as nobody writes into it.
+         */
+        title: String = "",
+        titleSource: String = SessionSnapshot.TITLE_HEURISTIC,
+    ) {
         if (conversationId.isEmpty()) return
+
+        // The tab may not exist at all: every client draws its own first and asks afterwards, and this
+        // list is what they are all redrawn from (see SessionRegistry.takeOver).
+        val opened = tabs.takeOver(sessionId, title, titleSource)
+        if (opened) {
+            val tab = tabs.tabs().firstOrNull { it.id == sessionId }
+            stats.noteSessionOpened(sessionId, parentId = null, groupId = tab?.groupId ?: sessionId, depth = tab?.depth ?: 0)
+        }
 
         stats.noteResumed(sessionId, conversationId)
         conversations.resume(sessionId, conversationId)
         // The feed that was there described a different conversation: every client is told to drop it
         // rather than left showing something that no longer exists.
         resetJournal(sessionId)
-        tabs.resetTitle(sessionId)
         broadcastSessions()
 
         ApplicationManager.getApplication().executeOnPooledThread {
@@ -1092,6 +1142,22 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             // whoever is looking, page by page (see ClaudeHistory.opening for why the whole of it never
             // arrived at all on Windows).
             val page = ClaudeHistory.opening(project.basePath, conversationId)
+
+            /**
+             * The conversation carries on at its own model, not at the setting's. The setting is what a
+             * NEW tab starts on; a past conversation was answered by a model of its own, and its messages
+             * were sized to that model's window. Launched on the setting's, an old conversation held on a
+             * million-token model came up on a two-hundred-thousand one: the CLI honestly reported a
+             * window taken one and a half times over, the meter clamped it to a red 100%, and the first
+             * message would have compacted a conversation nobody asked to compact. The CLI itself,
+             * resumed without a model flag, carries on at the session's model - this does the same and
+             * tells the panel which one it is, before the replay names it.
+             */
+            if (page.model.isNotEmpty()) {
+                conversations.adoptModel(sessionId, page.model)
+                sendModel(sessionId, page.model)
+            }
+
             page.lines.forEach { line -> onAgentLine(sessionId, line, replay = true) }
 
             // How much of the conversation went to the feed, and whether more of it is waiting above. The
@@ -1161,7 +1227,21 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // different conversation would be drawn by the setting, which by then may be somebody else's
         // choice made in another tab.
         conversations.effort(sessionId)?.let { sendEffort(sessionId, it) }
+        conversations.model(sessionId)?.let { sendModel(sessionId, it) }
+        // And which conversation the tab holds now - the panel wrote that down the moment the past
+        // conversation was picked, and this reset has just wiped it. The process names it again only
+        // once it is up, seconds later or never (no executable, a sign-in needed), and until then a
+        // second press on the same row of the history opened a second tab on one transcript, and a
+        // search's jump into the conversation waited under its veil for a process that might not come.
+        conversations.conversationIdOf(sessionId)?.let { emitLive(conversationMessage(sessionId, it)) }
     }
+
+    private fun conversationMessage(sessionId: String, conversationId: String): String =
+        buildJsonObject {
+            put("type", "conversation")
+            put("sessionId", sessionId)
+            put("conversationId", conversationId)
+        }.toString()
 
     fun snapshotOf(sessionId: String): SessionSnapshot = snapshot(sessionId).get()
 

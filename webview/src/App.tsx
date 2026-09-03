@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { createPortal } from 'react-dom'
 import { send, subscribe } from './bridge'
 import { copyToClipboard, installClipboardBridge, resolveClipboard } from './clipboard'
+import { resolvePastedFile } from './pasted'
 import {
   effortOptions,
   modeMenuOptions,
@@ -26,6 +27,7 @@ import {
 import { pasteCollapseSummary } from './pasteCollapse'
 import { Confirm } from './components/Confirm'
 import { Feed } from './components/Feed'
+import type { FeedMemory, FeedPlace } from './feed/place'
 import {
   Feedback,
   FeedbackLog,
@@ -71,6 +73,8 @@ import { bashCommand, shellText, type ShellRun } from './feed/bash'
 import { contextOf, initialPanelState, reducePanel, type PanelState } from './feed/build'
 import { deferFollowUpForCompact } from './feed/compact'
 import { PASTE_COLLAPSE_DEFAULT, PASTE_COLLAPSE_NEVER, pasteCollapseLines, referenceChip } from './feed/reference'
+import { isUntouchedTab, tabHolding } from './feed/resume'
+import { chatHits, rowOf } from './feed/search'
 import { deriveSessionTitle } from './feed/title'
 import {
   appendChip,
@@ -110,6 +114,10 @@ import type {
   AvailablePluginInfo,
   HistoryEntry,
   InstalledPluginInfo,
+  PaintedTerm,
+  SearchHit,
+  SearchProgressStep,
+  SearchScope,
   McpServerInfo,
   ModelInfo,
   PluginMarketplaceInfo,
@@ -133,7 +141,10 @@ import {
 } from './sounds'
 import { planDecisionOf, useCardState, type CardState } from './hooks/useCardState'
 import { useEarlierPages } from './hooks/useEarlierPages'
-import { OpenFileContext, type OpenFileRequest } from './hooks/useOpenFile'
+import { Search, type SearchTab } from './components/Search'
+import { SearchCapsule, type CapsuleNote } from './components/SearchCapsule'
+import { KnownFilesContext, OpenFileContext, type OpenFileRequest } from './hooks/useOpenFile'
+import { knownFiles } from './feed/paths'
 import { groupOrder, moveTab, moveWithinGroup, placeAtEnd, placeIn, STATISTICS_GROUP, type TabPlace } from './tabs'
 import { useSelection } from './hooks/useSelection'
 
@@ -233,6 +244,32 @@ interface Draft {
 }
 
 const EMPTY_DRAFT: Draft = { tokens: [], quotes: [] }
+
+/** The search folded into a feed's corner - see the capsule state in App and SearchCapsule.tsx. */
+interface SearchCapsuleState {
+  /** The tab it stands over. */
+  session: string
+  /** The words to paint across the feed, and how far (see Feed.paint). */
+  terms: PaintedTerm[]
+  /** What the feed is doing about the hit: still on its way to it, or unable to reach it - see CapsuleNote. */
+  note: CapsuleNote
+  /** The hits of this conversation in the order they stand in it, and which one the feed is on - see chatHits. */
+  hits: SearchHit[]
+  at: number
+}
+
+/** What a search that has not been asked anything yet has found. */
+const EMPTY_COUNTS = { chat: 0, project: 0, conversations: 0 }
+
+/** How long the typing pauses before a query goes out - short enough to feel live, long enough to skip most keystrokes. */
+const SEARCH_DEBOUNCE_MS = 160
+
+/**
+ * How many pages above a jump may fetch on its own before giving up. Sixty messages a page (see
+ * ClaudeHistory.OPENING_PAGE_MESSAGES): forty pages is a very long conversation loaded whole, and past
+ * that the feed itself - drawn without virtualisation - is what suffers.
+ */
+const JUMP_PAGE_LIMIT = 40
 
 /**
  * Voice input before the IDE has said anything about it - which is also what it looks like on a machine
@@ -434,7 +471,6 @@ export const App = () => {
    * moment. We ask only about a busy tab: a free one has nothing to lose, its conversation goes nowhere -
    * it stays in the very history this one was opened from.
    */
-  const [resuming, setResuming] = useState<HistoryEntry | null>(null)
   /**
    * A finished agent disappears from the tabs by itself as soon as nobody is looking at it (see the effect
    * below) - rather than instantly before the eyes of whoever is reading it right then: in that case it
@@ -493,6 +529,22 @@ export const App = () => {
   const cards = useCardState()
 
   /**
+   * Where each tab's feed was left standing - see feed/place.ts.
+   *
+   * Kept here rather than inside the feed because the feed is exactly what does not survive a switch of
+   * tabs: it is keyed by the tab and built from nothing every time, which used to mean every return
+   * landed at the end of the conversation instead of at the line being read.
+   */
+  const feedPlaces = useRef(new Map<string, FeedPlace>())
+  const feedPlace = useMemo<FeedMemory>(
+    () => ({
+      read: () => feedPlaces.current.get(active),
+      write: (place) => feedPlaces.current.set(active, place),
+    }),
+    [active],
+  )
+
+  /**
    * The left/right side rail's node - an empty <div> in the markup below, into which Composer draws
    * MODEL/EFFORT/MODE and the buttons through a portal (see Composer.railContainer). State rather than an
    * ordinary ref: the portal itself is drawn in an effect after this node's first render, and React has to
@@ -537,6 +589,103 @@ export const App = () => {
    * than to what was written.
    */
   const [improveSources, setImproveSources] = useState<Record<string, ImproveSource>>({})
+
+  /**
+   * The search window and what stands in it (see Search.tsx): which tab, the typed query - one for
+   * both of its scopes - and the description for the model. Kept while the window is shut, so the
+   * capsule can bring it back exactly as it was.
+   */
+  const [search, setSearch] = useState<{
+    open: boolean
+    tab: SearchTab
+    query: string
+    aiQuery: string
+    /** The field's two switches - the pair Find in Files has (see TextIndex.search on the IDE's side). */
+    matchCase: boolean
+    wholeWords: boolean
+    /** The tab the window was last opened over - what the search belongs to until a hit moves it (see the effect over sessions). */
+    openedIn: string
+  }>({
+    open: false,
+    tab: 'chat',
+    query: '',
+    aiQuery: '',
+    matchCase: false,
+    wholeWords: false,
+    openedIn: '',
+  })
+
+  /**
+   * The answer to the latest typed query, and the number of the query out and unanswered. An answer
+   * is matched to a query by number and applied only to the one still waited on: a word typed on
+   * after the request went out has an answer of its own coming, and an earlier one arriving late must
+   * not overwrite it.
+   */
+  const [searchAnswer, setSearchAnswer] = useState<{
+    hits: SearchHit[]
+    terms: PaintedTerm[]
+    /** What each scope found, for the window's tabs, and how much of the shown scope the list holds. */
+    counts: { chat: number; project: number; conversations: number }
+    total: number
+    error: string
+    /** Whether this is an answer at all, or the empty state a cleared field puts back (see emptyLine in Search). */
+    answered: boolean
+    /** The scope the hits were found for - the list is drawn under that tab and no other (see Search.answerScope). */
+    scope: SearchScope | ''
+  }>({ hits: [], terms: [], counts: EMPTY_COUNTS, total: 0, error: '', answered: false, scope: '' })
+  const [searchLoading, setSearchLoading] = useState(false)
+  const searchAsked = useRef('')
+  /** The scope the query out and unanswered was asked for - what its answer is stamped with. */
+  const askedScope = useRef<SearchScope>('project')
+  const searchSeq = useRef(0)
+
+  /** The model's search: its run's number while it runs, and what it answered (see AiSearch on the IDE's side). */
+  const [aiSearch, setAiSearch] = useState<{
+    id: string
+    hits: SearchHit[]
+    error: string
+    answered: boolean
+    /** What the model has done so far, oldest first (see searchProgress in protocol.ts). */
+    steps: SearchProgressStep[]
+    /** When the run began, by this window's own clock: what the seconds beside the spinner count from. */
+    startedAt: number
+  }>({ id: '', hits: [], error: '', answered: false, steps: [], startedAt: 0 })
+  const aiSearchRef = useRef(aiSearch)
+  aiSearchRef.current = aiSearch
+
+  /**
+   * The search folded into the corner of a feed after a hit was chosen (see SearchCapsule): the hits of
+   * that conversation in the order they stand in it, which one the feed is on, and the words to paint.
+   * It belongs to a tab and goes with it when the tabs change.
+   */
+  const [capsule, setCapsule] = useState<SearchCapsuleState | null>(null)
+
+  /**
+   * The seconds the model's run has taken, moved once a second while it runs and left alone otherwise.
+   *
+   * By this window's own clock rather than the IDE's: what it measures is how long the person has been
+   * waiting, which each screen counts from its own request (see the phone's own copy of this).
+   */
+  const [aiSeconds, setAiSeconds] = useState(0)
+
+  useEffect(() => {
+    if (!aiSearch.id) return
+
+    const tick = () => setAiSeconds(Math.max(0, Math.round((Date.now() - aiSearch.startedAt) / 1000)))
+    tick()
+    const timer = window.setInterval(tick, 1000)
+    return () => window.clearInterval(timer)
+  }, [aiSearch.id, aiSearch.startedAt])
+
+  /** The row a feed is asked to bring on screen, by tab - see Feed.focus. */
+  const [feedFocus, setFeedFocus] = useState<{ session: string; row: string; nonce: number } | undefined>(undefined)
+
+  /**
+   * A jump still on its way: the hit is in a conversation being opened, or above what the tab holds.
+   * Watched by an effect below, which fetches pages until the row is there or the beginning is reached.
+   */
+  const jumping = useRef<{ session: string; hit: SearchHit; pages: number; awaitReplay: boolean } | null>(null)
+  const [jumpTick, setJumpTick] = useState(0)
 
   /**
    * A rewrite is being put into the field by us right now. The field reports that edit outwards exactly as
@@ -624,8 +773,9 @@ export const App = () => {
   const mode = panel.pendingMode ?? panel.permissionMode ?? prefs.mode
 
   // Which model is genuinely running - see resolvePanelModel, and there too why it was split out into a
-  // function of its own.
-  const model = resolvePanelModel(panel, models, prefs.model)
+  // function of its own. Measured against this tab's own model where it has one (see PanelState.ownModel):
+  // the setting is what a tab that has not started yet will start on.
+  const model = resolvePanelModel(panel, models, panel.ownModel ?? prefs.model)
 
   // And the effort of this tab rather than of the window: the setting is only what a tab that has not
   // started yet will start on (see PanelState.effort).
@@ -646,7 +796,7 @@ export const App = () => {
    * (see modelInForce). It lives in the tab rather than in the shared setting: the neighbouring one has a
    * conversation and a model of its own.
    */
-  const tickedModel = modelInForce(models, prefs.model, panel.model)
+  const tickedModel = modelInForce(models, panel.ownModel ?? prefs.model, panel.model)
 
   /**
    * The drafts as they stand right now, for the shell's messages: that subscription is set up once for the
@@ -1295,6 +1445,12 @@ export const App = () => {
             dispatchPanel({ session: message.sessionId, reset: true })
             break
 
+          // The conversation the tab holds, said by the shell after the reset above wiped the panel's own
+          // note of it (see the `conversation` message in protocol.ts).
+          case 'conversation':
+            dispatchPanel({ session: message.sessionId, action: { kind: 'resumed', conversationId: message.conversationId } })
+            break
+
           /**
            * The card has been answered - possibly on another device, possibly on this one a moment ago.
            * Applying it twice changes nothing (the decision is already there), and that is what makes the
@@ -1518,12 +1674,21 @@ export const App = () => {
            * when the cursor is absent - that is the answer "the beginning is on screen", which is not the
            * same as saying nothing about the boundary at all (see withEarlier in build.ts).
            */
-          case 'replayFinished':
+          case 'replayFinished': {
+            // A jump into a conversation being opened waits for this: pages above the replay are asked
+            // for only once the replay has said where it starts (see the effect over `jumping`).
+            const pending = jumping.current
+            if (pending && pending.session === message.sessionId && pending.awaitReplay) {
+              pending.awaitReplay = false
+              setJumpTick((tick) => tick + 1)
+            }
+
             feed({
               session: message.sessionId,
               action: { kind: 'replayFinished', cursor: message.cursor ?? null },
             })
             break
+          }
 
           /** A page of messages older than what this tab holds - read off the transcript on disk. */
           case 'historyPage':
@@ -1556,6 +1721,43 @@ export const App = () => {
           case 'history':
             setHistory(message.conversations)
             break
+
+          case 'searchResults': {
+            if (message.id === searchAsked.current) {
+              searchAsked.current = ''
+              setSearchLoading(false)
+              setSearchAnswer({
+                hits: message.hits,
+                terms: message.terms,
+                counts: message.counts ?? EMPTY_COUNTS,
+                total: message.total ?? message.hits.length,
+                error: message.error ?? '',
+                answered: true,
+                scope: askedScope.current,
+              })
+              break
+            }
+            if (message.id === aiSearchRef.current.id) {
+              setAiSearch((current) => ({
+                ...current,
+                id: '',
+                hits: message.hits,
+                error: message.error ?? '',
+                answered: true,
+              }))
+            }
+            break
+          }
+
+          // One step of the model's search, while it is still searching (see AiStep on the IDE's side).
+          case 'searchProgress': {
+            if (message.id !== aiSearchRef.current.id) break
+            setAiSearch((current) => ({
+              ...current,
+              steps: [...current.steps, { kind: message.kind, subject: message.subject }],
+            }))
+            break
+          }
 
           case 'mcpServers':
             setMcpServers(message.servers)
@@ -1748,8 +1950,9 @@ export const App = () => {
           case 'model':
             // The setting follows the model in force rather than the one chosen: a rejected one must
             // neither stand as a tick in the menu nor travel as a flag into the next tab - with it the
-            // process would not come up at all.
-            setPrefs((current) => ({ ...current, model: message.model }))
+            // process would not come up at all. Not for a birth: the model a conversation came up on is
+            // this tab's, and a past conversation's model is no choice for the next tab (see protocol.ts).
+            if (!message.born) setPrefs((current) => ({ ...current, model: message.model }))
             feed({
               session: message.sessionId,
               action: { kind: 'modelApplied', model: message.model, error: message.error },
@@ -1782,7 +1985,7 @@ export const App = () => {
                 // Resolved by the same formula as in the render (see resolvePanelModel), otherwise
                 // "did the agent name a model" would be decided differently in two places.
                 const sessionPanel = panelsRef.current[message.sessionId]
-                const refusedModel = resolvePanelModel(sessionPanel ?? {}, modelsRef.current, prefsRef.current.model)
+                const refusedModel = resolvePanelModel(sessionPanel ?? {}, modelsRef.current, sessionPanel?.ownModel ?? prefsRef.current.model)
                 setAutoRefusedModels((current) => (current.includes(refusedModel) ? current : [...current, refusedModel]))
               } else {
                 setRefusedModes((current) => withRefusedMode(current, message.mode))
@@ -1802,6 +2005,12 @@ export const App = () => {
 
           case 'clipboard':
             resolveClipboard(message)
+            break
+
+          // Where the shell put something pasted into the panel - whoever pasted it is waiting for the
+          // path (see savePastedFile).
+          case 'pastedFile':
+            resolvePastedFile(message)
             break
 
           case 'selection':
@@ -1938,6 +2147,13 @@ export const App = () => {
    * that draws the path (see useOpenFile). It exists at the desk and nowhere else: on the phone the same
    * feed shows the same paths, and there is no editor there to open them in.
    */
+  /**
+   * What the project has, for the same leaves: a name the list answers for is a link whatever its shape
+   * (see KnownFiles). The list is the one the "@" hint is drawn from, rebuilt only when the shell sends a
+   * new one - the feed repaints on every chunk of an answer, and the lookup must not.
+   */
+  const known = useMemo(() => knownFiles(files), [files])
+
   const openFile = useCallback(
     (request: OpenFileRequest) => send({ type: 'openFile', ...request }),
     [],
@@ -2058,6 +2274,17 @@ export const App = () => {
         event.preventDefault()
         send({ type: 'stop', sessionId: active })
         dispatchPanel({ session: active, action: { kind: 'stopRequested' } })
+        return
+      }
+
+      // The search, by the key every application opens its search with. By the key's position first, as
+      // the developer tools above: under a Cyrillic layout the same key types another letter, and a
+      // shortcut read off the letter did not open the search at all for two of the panel's ten languages.
+      // The letter is still honoured for the layouts that keep it somewhere else (Dvorak puts F where
+      // QWERTY has Y).
+      if ((event.code === 'KeyF' || event.key === 'f' || event.key === 'F') && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
+        event.preventDefault()
+        setSearch((current) => ({ ...current, open: true }))
         return
       }
 
@@ -2233,33 +2460,26 @@ export const App = () => {
   )
 
   /**
-   * A past conversation carries on in the tab it was chosen from: the panel replays its history right
-   * there.
+   * A past conversation opens in the tab named here - the one on screen when there is nothing in it to
+   * lose, a tab of its own otherwise (see [resume], which decides which).
    *
-   * We no longer start a tab of its own for it. The tabs are the person's to run - they open them, close
-   * them and lay them out in order - while the history, slipping one more tab in for every conversation
-   * opened, stuffed the panel's top with tabs nobody asked for: glancing into a past conversation and
-   * coming back then cost a tidy-up afterwards too.
+   * The name travels with the request rather than being set here alone. Resuming drops the tab's own
+   * name on the shell's side - it describes a conversation no longer in it - and the list of tabs comes
+   * straight back from there, so a name written only into this screen's copy lived until that answer and
+   * no longer: a tab opened from the history sat called "New chat" until somebody wrote into it.
    */
   const openResumed = useCallback(
-    (entry: HistoryEntry) => {
+    (entry: HistoryEntry, target: string) => {
       const title = deriveSessionTitle(entry.title, 40)
+      const titleSource: TitleSource = entry.titleSource === 'heuristic' ? 'heuristic' : 'llm'
 
       setSideMenu({ open: false, screen: 'menu' })
-      // The title has already been set by the history panel - either the model's own, and then it stays,
-      // or a guess off the conversation's first line, and then the shell is free to ask for a real one
-      // as soon as the conversation carries on here (see sessionTitle). Either way it is not the
-      // placeholder the very next message would overwrite.
-      //
-      // There may be no tab at all: the person closed them all and opens a past conversation from the
-      // history on an empty panel. Then it is started right here - otherwise the replay would travel into
-      // a conversation not visible through a single tab (see the empty state in the markup below).
-      const titleSource: TitleSource = entry.titleSource === 'heuristic' ? 'heuristic' : 'llm'
       setSessions((current) =>
-        current.some((session) => session.id === active)
-          ? current.map((session) => (session.id === active ? { ...session, title, titleSource } : session))
-          : [...current, { id: active, title, state: 'idle', groupId: active, depth: 0, titleSource }],
+        current.some((session) => session.id === target)
+          ? current.map((session) => (session.id === target ? { ...session, title, titleSource } : session))
+          : [...current, { id: target, title, state: 'idle', groupId: target, depth: 0, titleSource }],
       )
+      setActive(target)
 
       /**
        * Everything the panel remembered about this tab is about a conversation no longer in it: the feed,
@@ -2267,33 +2487,66 @@ export const App = () => {
        * sound alerts. Leaving any of it means mixing it into the replay of someone else's conversation
        * about to arrive on top.
        */
-      dispatchPanel({ session: active, closed: true })
+      dispatchPanel({ session: target, closed: true })
+      // The tab holds this conversation from now on - said here rather than waited for from the process,
+      // which is what makes a second press on the same row find it (see tabHolding).
+      dispatchPanel({ session: target, action: { kind: 'resumed', conversationId: entry.id } })
       setActiveStream('main')
-      forgetShellCommands(active)
-      setShellRuns((current) => ({ ...current, [active]: [] }))
-      delete soundMemory.current[active]
+      forgetShellCommands(target)
+      setShellRuns((current) => ({ ...current, [target]: [] }))
+      delete soundMemory.current[target]
 
-      send({ type: 'resumeSession', sessionId: active, conversationId: entry.id })
+      send({ type: 'resumeSession', sessionId: target, conversationId: entry.id, title, titleSource })
     },
-    [active],
+    [],
   )
 
+  /**
+   * Which tab a conversation chosen from the history opens in.
+   *
+   * The tab on screen when it is untouched - an empty feed and an empty field - and a tab of its own
+   * otherwise. Both halves of that are the point. Reusing an untouched tab is what people expect from a
+   * history: they closed everything, or pressed "+", and picking a conversation there should not leave a
+   * blank tab behind. And a tab with anything in it is somebody's work - a running turn, an answer worth
+   * rereading, or a request half typed into the field - which opening a past conversation would end
+   * without asking.
+   *
+   * It used to be the tab on screen either way, with a question over a busy one whose only two answers
+   * were "cancel" and "kill the turn". The question is gone: there is nothing to weigh when the other
+   * answer costs nothing.
+   */
   const resume = useCallback(
     (entry: HistoryEntry) => {
-      // This conversation is already open in this tab - replaying it anew serves nothing.
-      if (panelsRef.current[active]?.sessionId === entry.id) {
+      // Already open somewhere - then this press is "take me there": the tab comes to the front and
+      // nothing is replayed. In the tab on screen that is simply closing the menu.
+      const open = tabHolding(entry.id, sessions, (tab) => panelsRef.current[tab]?.sessionId)
+
+      if (open) {
+        setActive(open)
         setSideMenu({ open: false, screen: 'menu' })
-        return
+        return open
       }
 
-      if (panelsRef.current[active]?.status === 'running') {
-        setResuming(entry)
-        return
-      }
+      /**
+       * What is on screen may not be a conversation at all: the statistics are a tab of the strip too,
+       * and its identifier belongs to no conversation (see STATISTICS_GROUP). An empty strip, on the
+       * other hand, IS the tab to reuse - the panel's own one, which everything with no conversation
+       * named in it belongs to.
+       */
+      const onConversation = sessions.length === 0 || sessions.some((session) => session.id === active)
+      const untouched =
+        onConversation &&
+        isUntouchedTab({
+          panel: panelsRef.current[active],
+          draft: draftsRef.current[active],
+          shellRuns: shellRuns[active],
+        })
 
-      openResumed(entry)
+      const target = untouched ? active : `session-${Date.now()}`
+      openResumed(entry, target)
+      return target
     },
-    [active, openResumed],
+    [active, openResumed, sessions, shellRuns],
   )
 
   /**
@@ -2306,6 +2559,188 @@ export const App = () => {
   const { loadEarlier } = useEarlierPages(panel, active, (before) =>
     send({ type: 'historyPage', sessionId: active, before }),
   )
+
+  // --- The search --------------------------------------------------------------------
+
+  /*
+   * A typed query goes out a moment after the typing pauses, scoped to the tab on screen. An emptied
+   * field clears the list at once rather than asking for nothing.
+   */
+  useEffect(() => {
+    if (!search.open || search.tab === 'ai') return
+    const query = search.query.trim()
+    if (!query) {
+      searchAsked.current = ''
+      setSearchLoading(false)
+      setSearchAnswer({ hits: [], terms: [], counts: EMPTY_COUNTS, total: 0, error: '', answered: false, scope: '' })
+      return
+    }
+
+    const scope = search.tab
+    const { matchCase, wholeWords } = search
+    const timer = setTimeout(() => {
+      const id = `s-${(searchSeq.current += 1)}`
+      searchAsked.current = id
+      askedScope.current = scope
+      setSearchLoading(true)
+      send({ type: 'search', id, sessionId: active, scope, query, matchCase, wholeWords })
+    }, SEARCH_DEBOUNCE_MS)
+
+    return () => clearTimeout(timer)
+  }, [search.open, search.tab, search.query, search.matchCase, search.wholeWords, active])
+
+  /**
+   * The jump has been made, and the feed says so: the request is dropped, so the feed built for the next
+   * visit to the tab restores the place the reading was left at rather than jumping again (see
+   * Feed.onFocused).
+   */
+  const forgetFeedFocus = useCallback(() => setFeedFocus(undefined), [])
+
+  const openSearch = useCallback(() => setSearch((current) => ({ ...current, open: true })), [])
+  const closeSearch = useCallback(() => setSearch((current) => ({ ...current, open: false })), [])
+
+  const runAiSearch = useCallback(() => {
+    const query = search.aiQuery.trim()
+    if (!query) return
+    const id = `a-${(searchSeq.current += 1)}`
+    setAiSearch({ id, hits: [], error: '', answered: false, steps: [], startedAt: Date.now() })
+    setAiSeconds(0)
+    send({ type: 'searchAi', id, sessionId: active, query })
+  }, [search.aiQuery, active])
+
+  const cancelAiSearch = useCallback(() => {
+    const id = aiSearchRef.current.id
+    if (!id) return
+    send({ type: 'searchCancel', id })
+    setAiSearch((current) => ({ ...current, id: '' }))
+  }, [])
+
+  /**
+   * Bring a hit on screen in the tab it belongs to: at once when its row is there, otherwise by way of
+   * the effect below, which fetches the pages above until it is (see rowOf in feed/search.ts).
+   */
+  const showHit = useCallback((session: string, hit: SearchHit, awaitReplay: boolean) => {
+    const row = awaitReplay ? undefined : rowOf(panelsRef.current[session]?.items ?? [], hit)
+    if (row) {
+      jumping.current = null
+      setFeedFocus({ session, row, nonce: Date.now() })
+      setCapsule((current) => (current && current.session === session ? { ...current, note: 'none' } : current))
+      return
+    }
+
+    jumping.current = { session, hit, pages: 0, awaitReplay }
+    setCapsule((current) => (current && current.session === session ? { ...current, note: 'loading' } : current))
+    setJumpTick((tick) => tick + 1)
+  }, [])
+
+  /**
+   * A hit chosen in the window: the window folds into the capsule and the feed goes to the hit.
+   *
+   * The conversation opens by the history's own rule (see resume) - the tab already holding it, else
+   * an untouched tab on screen, else a tab of its own - so a search never lands on somebody's work. A
+   * conversation that has to be opened is jumped into only once its replay has been played: the rows
+   * of the tab being reused would otherwise answer for it.
+   *
+   * The capsule takes the whole list along and keeps this conversation's part of it, in conversation
+   * order - what its arrows walk (see stepHit).
+   */
+  const jumpToHit = useCallback(
+    (hit: SearchHit, terms: PaintedTerm[], all: readonly SearchHit[]) => {
+      const held = tabHolding(hit.conversationId, sessions, (tab) => panelsRef.current[tab]?.sessionId)
+      const target = resume({
+        id: hit.conversationId,
+        title: hit.title,
+        updatedAt: hit.at,
+        messages: 0,
+        titleSource: hit.named ? 'llm' : 'heuristic',
+      })
+
+      const hits = chatHits(all, hit.conversationId)
+      setSearch((current) => ({ ...current, open: false }))
+      setCapsule({ session: target, terms, note: 'none', hits, at: Math.max(0, hits.findIndex((one) => one.uuid === hit.uuid)) })
+      showHit(target, hit, held === undefined)
+    },
+    [resume, sessions, showHit],
+  )
+
+  /**
+   * One hit up or down this conversation - the capsule's arrows. Wraps around at either end, as every
+   * find-next does; a hit above what the tab holds goes the same way a chosen one does (see showHit).
+   */
+  const stepHit = useCallback(
+    (direction: -1 | 1) => {
+      if (!capsule || capsule.hits.length < 2) return
+      const at = (capsule.at + direction + capsule.hits.length) % capsule.hits.length
+      setCapsule({ ...capsule, at, note: 'none' })
+      showHit(capsule.session, capsule.hits[at]!, false)
+    },
+    [capsule, showHit],
+  )
+
+  /**
+   * The search over and done with: the window shut, the capsule gone, both fields emptied and the answers
+   * dropped - what the cross does, the capsule's and the window's own alike. As against Escape and a click
+   * beside the window (see closeSearch), which only put the window away and keep everything for the capsule
+   * to bring back: a cross says "done with this", a step back says "not now".
+   */
+  const resetSearch = useCallback(() => {
+    jumping.current = null
+    setCapsule(null)
+    cancelAiSearch()
+    setSearch((current) => ({ ...current, open: false, query: '', aiQuery: '', openedIn: '' }))
+    setSearchAnswer({ hits: [], terms: [], counts: EMPTY_COUNTS, total: 0, error: '', answered: false, scope: '' })
+    setAiSearch({ id: '', hits: [], error: '', answered: false, steps: [], startedAt: 0 })
+  }, [cancelAiSearch])
+
+  // Which tab the window stands over, written down as it opens - whichever way it was opened.
+  useEffect(() => {
+    if (search.open) setSearch((current) => (current.openedIn === active ? current : { ...current, openedIn: active }))
+  }, [search.open, active])
+
+  /**
+   * The tab the search stands on is gone - closed here, from the phone or by the IDE - and the search
+   * goes with it, the way the cross takes it (see resetSearch). A capsule that outlived its tab would
+   * come back over the next conversation opened, and a query typed over a conversation that no longer
+   * exists is nobody's. The capsule's tab counts once there is a capsule; before a hit was chosen, the
+   * tab the window was opened over.
+   */
+  useEffect(() => {
+    const alive = (id: string) => sessions.some((session) => session.id === id)
+    const gone = capsule ? !alive(capsule.session) : search.openedIn !== '' && !alive(search.openedIn)
+    if (gone) resetSearch()
+  }, [sessions, capsule, search.openedIn, resetSearch])
+
+  /*
+   * A jump still on its way (see jumping). Once the tab holds the conversation and the replay is over,
+   * the row is looked for after every change of the feed; while it is not there, one more page is
+   * asked for - up to a limit, because a day-long conversation loaded whole is the very thing the
+   * pages exist to avoid - and at the beginning, or the limit, the capsule says the hit is not among
+   * what is loaded. The hit is still readable in the window.
+   */
+  useEffect(() => {
+    const pending = jumping.current
+    if (!pending || pending.session !== active || pending.awaitReplay) return
+    if (panel.sessionId !== pending.hit.conversationId) return
+
+    const row = rowOf(panel.items, pending.hit)
+    if (row) {
+      jumping.current = null
+      setFeedFocus({ session: active, row, nonce: Date.now() })
+      setCapsule((current) => (current && current.session === active ? { ...current, note: 'none' } : current))
+      return
+    }
+
+    if (panel.reachedStart || pending.pages >= JUMP_PAGE_LIMIT) {
+      jumping.current = null
+      setCapsule((current) => (current && current.session === active ? { ...current, note: 'missing' } : current))
+      return
+    }
+
+    if (loadEarlier) {
+      pending.pages += 1
+      loadEarlier()
+    }
+  }, [active, panel.sessionId, panel.items, panel.reachedStart, loadEarlier, jumpTick])
 
   /**
    * Choosing a model from the menu in the bottom row and by a command in the field is one and the same
@@ -2805,6 +3240,16 @@ export const App = () => {
     }
   }, [sessions])
 
+  // And the search window, as the magnifier beside the slash opens it - dev builds only, like the rest.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+
+    window.__accHarnessOpenSearch = () => setSearch((current) => ({ ...current, open: true }))
+    return () => {
+      window.__accHarnessOpenSearch = undefined
+    }
+  }, [])
+
   const agentTabs = useMemo(
     () => buildAgentTabs(panel, cards.answeredAsks, hiddenTaskIds),
     [panel, cards.answeredAsks, hiddenTaskIds],
@@ -3097,6 +3542,8 @@ export const App = () => {
             return next
           })
           forgetImproveSource(id)
+          // Where a feed nobody can open again was left standing.
+          feedPlaces.current.delete(id)
           dispatchPanel({ session: id, closed: true })
           const next = sessions.filter((session) => session.id !== id)
           setSessions(next)
@@ -3178,6 +3625,7 @@ export const App = () => {
   return (
     <LocaleProvider locale={locale}>
     <OpenFileContext.Provider value={openFile}>
+    <KnownFilesContext.Provider value={known}>
     <div
       className={s.panel}
       ref={setPanelNode}
@@ -3210,18 +3658,39 @@ export const App = () => {
         />
       ) : null}
 
-      {/* The tab is busy with work - before handing it over to a past conversation we ask: a process with
-          a running turn will survive this no better than a closed tab (see resume). */}
-      {resuming ? (
-        <Confirm
-          title={t.chrome.resume.title}
-          subject={resuming.title}
-          confirmLabel={t.chrome.confirm.open}
-          onCancel={() => setResuming(null)}
-          onConfirm={() => {
-            openResumed(resuming)
-            setResuming(null)
-          }}
+      {search.open ? (
+        <Search
+          tab={search.tab}
+          onTab={(tab) => setSearch((current) => ({ ...current, tab }))}
+          query={search.query}
+          onQuery={(query) => setSearch((current) => ({ ...current, query }))}
+          matchCase={search.matchCase}
+          wholeWords={search.wholeWords}
+          onMatchCase={(matchCase) => setSearch((current) => ({ ...current, matchCase }))}
+          onWholeWords={(wholeWords) => setSearch((current) => ({ ...current, wholeWords }))}
+          hits={searchAnswer.hits}
+          answerScope={searchAnswer.scope}
+          counts={searchAnswer.counts}
+          total={aiSearch.answered && search.tab === 'ai' ? aiSearch.hits.length : searchAnswer.total}
+          loading={searchLoading}
+          answered={searchAnswer.answered}
+          error={searchAnswer.error}
+          aiQuery={search.aiQuery}
+          onAiQuery={(aiQuery) => setSearch((current) => ({ ...current, aiQuery }))}
+          aiHits={aiSearch.hits}
+          aiRunning={aiSearch.id !== ''}
+          aiError={aiSearch.error}
+          aiAnswered={aiSearch.answered}
+          aiSteps={aiSearch.steps}
+          aiSeconds={aiSeconds}
+          onRunAi={runAiSearch}
+          onCancelAi={cancelAiSearch}
+          hasChat={Boolean(panel.sessionId)}
+          onPick={(hit) =>
+            search.tab === 'ai' ? jumpToHit(hit, [], aiSearch.hits) : jumpToHit(hit, searchAnswer.terms, searchAnswer.hits)
+          }
+          onClose={resetSearch}
+          onDismiss={closeSearch}
         />
       ) : null}
 
@@ -3261,6 +3730,17 @@ export const App = () => {
               the feed's background, so the layer covers the feed and nothing above or below it. */}
           {holiday ? <Snowfall /> : null}
 
+          {capsule && capsule.session === active ? (
+            <SearchCapsule
+              note={capsule.note}
+              count={capsule.hits.length}
+              at={capsule.at}
+              onStep={stepHit}
+              onOpen={openSearch}
+              onClose={resetSearch}
+            />
+          ) : null}
+
           {resolvedStream === 'main' ? (
             /*
              * A feed of its own per tab, rather than one feed shown a different conversation.
@@ -3270,7 +3750,11 @@ export const App = () => {
              * across a switch of tabs, those measurements described one conversation and were applied to
              * another: a tab where earlier messages had been loaded made the next tab restore a position
              * worked out from a chat it knew nothing about, and it opened neither at the end nor where it
-             * was left. Told apart by the tab's own identity, each starts clean and ends at the bottom.
+             * was left. Told apart by the tab's own identity, each starts clean.
+             *
+             * Starting clean is not the same as starting at the end, though, and for a while it was: the
+             * one thing worth carrying across a switch - the line being read - travels outside the feed,
+             * by the tab it belongs to (see [feedPlace] and feed/place.ts).
              */
             <Feed
               key={active}
@@ -3288,6 +3772,10 @@ export const App = () => {
               onOpenLink={openLink}
               onLoadEarlier={loadEarlier}
               earlierPages={panel.earlierPages}
+              focus={feedFocus?.session === active ? feedFocus : undefined}
+              onFocused={forgetFeedFocus}
+              paint={capsule?.session === active ? capsule.terms : undefined}
+              place={feedPlace}
             />
           ) : (
             <AgentStreamView item={activeTask} />
@@ -3350,6 +3838,7 @@ export const App = () => {
             onOpenSelector={openSelector}
             onOpenThanks={openThanks}
             onOpenFeedback={openFeedback}
+            onOpenSearch={openSearch}
             railContainer={railNode}
             fileDragOver={fileDragOver}
             onTokensChange={(tokens, from) => {
@@ -3560,6 +4049,7 @@ export const App = () => {
             onOpenLanguages={() => openScreen('voiceLanguage')}
             onOpenDevices={() => openScreen('voiceDevice')}
             onOpenSite={() => send({ type: 'openExternal', url: DEEPGRAM_URL })}
+            onOpenLink={openLink}
           />
         ) : null}
 
@@ -3716,7 +4206,7 @@ export const App = () => {
         <Menu
           {...(menu.kind === 'thanks'
             ? thanksMenu(t, shared)
-            : menuProps(t, menu.kind, models, prefs.model, tickedModel, effort, mode, availableModes))}
+            : menuProps(t, menu.kind, models, panel.ownModel ?? prefs.model, tickedModel, effort, mode, availableModes))}
           anchor={menu.anchor}
           onClose={() => setMenu(null)}
           onPick={(id) => {
@@ -3742,6 +4232,7 @@ export const App = () => {
         />
       ) : null}
     </div>
+    </KnownFilesContext.Provider>
     </OpenFileContext.Provider>
     </LocaleProvider>
   )
@@ -3851,9 +4342,15 @@ const sessionState = (panel: PanelState | undefined, active: boolean, cards: Car
 
 // --- Derived data -----------------------------------------------------------
 
-/** The last task list the agent sent - the panel above the input field mirrors only that one. */
+/**
+ * The last task list the agent sent - the panel above the input field mirrors only that one.
+ *
+ * A list out of a past conversation's replay is not one of them (see TodoItem.replayed): the panel
+ * says what is being worked on now, and in a conversation opened for reading nothing is. It comes back
+ * the moment the agent writes a list of its own into the tab.
+ */
 const latestTodo = (items: FeedItem[]): TodoItem | undefined =>
-  [...items].reverse().find((item): item is TodoItem => item.kind === 'todo')
+  [...items].reverse().find((item): item is TodoItem => item.kind === 'todo' && !item.replayed)
 
 /** The text of the person's last line - to work out whether this is a compaction right now. */
 const lastUserText = (items: FeedItem[]): string => {

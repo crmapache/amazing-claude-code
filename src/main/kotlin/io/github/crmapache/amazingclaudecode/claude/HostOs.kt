@@ -11,6 +11,11 @@ import java.io.File
  * three and two chances to drift: a config directory read one way here and another way there points
  * the panel at a folder the CLI never writes to, and the history looks empty next to a terminal full
  * of conversations.
+ *
+ * "There" means this machine. A project's CLI does not always run on it - a project opened out of WSL
+ * has its CLI inside the distribution - so whoever reads the CLI's files for a project asks
+ * [ClaudeHome], which answers with these two directories for a project on this machine and with the
+ * distribution's for one inside WSL.
  */
 internal object HostOs {
 
@@ -21,8 +26,9 @@ internal object HostOs {
     val isMac: Boolean get() = name.startsWith("Mac")
 
     /**
-     * The user's own Claude Code directory - the one the CLI reads its settings and writes its
-     * conversations into.
+     * The user's own Claude Code directory on this machine - the one a CLI running here reads its
+     * settings from and writes its conversations into. For a project's CLI, wherever it runs, ask
+     * [ClaudeHome].
      *
      * Moves with an environment variable, exactly as it does for the CLI: a person who pointed their
      * CLI elsewhere expects the panel to look there too, not into an empty `~/.claude`.

@@ -4,6 +4,7 @@ import s from './sideMenu.module.css'
 import shell from './shell.module.css'
 import { useT } from '../i18n'
 import type { Dict } from '../i18n/en'
+import { useFieldHistory } from '../hooks/useFieldHistory'
 
 /**
  * Telling the author something: a speech bubble beside the heart, and behind it a screen in the side menu
@@ -226,6 +227,8 @@ export const Feedback = ({ draft, conversation, onChange, onAttach, onDetach, on
   const overflowing = draft.attachments.length > MAX_ATTACHMENTS || total > MAX_TOTAL_BYTES
   const problem = feedbackProblem(t, draft)
 
+  const emailKeys = useFieldHistory(draft.email, (email) => onChange({ email, emailTouched: true }))
+
   return (
     <div className={s.screen}>
       {draft.message ? (
@@ -269,7 +272,8 @@ export const Feedback = ({ draft, conversation, onChange, onAttach, onDetach, on
           spellCheck={false}
           placeholder={t.feedback.emailOptional}
           value={draft.email}
-          onChange={(event) => onChange({ email: event.target.value, emailTouched: true })}
+          onChange={emailKeys.onChange}
+          onKeyDown={emailKeys.onKeyDown}
         />
         <span className={s.screenNote}>
           Only so there is somewhere to answer. Leave it empty and the message still arrives - it just ends
@@ -394,8 +398,9 @@ export const Feedback = ({ draft, conversation, onChange, onAttach, onDetach, on
 
 /**
  * The message field. A real textarea - the first one in this panel, where the input is a contentEditable
- * that carries chips (see Composer): nothing here needs chips, and a native field brings line breaks,
- * undo and selection with it rather than having them written again.
+ * that carries chips (see Composer): nothing here needs chips, and a native field brings line breaks and
+ * selection with it rather than having them written again. The word before the caret and the undo history
+ * it does not bring inside the IDE - those are lent by useFieldHistory, as to every plain field here.
  *
  * It grows with what is typed instead of scrolling inside a fixed box: this is a form one fills in and
  * looks over, and a five-line window over a twenty-line message hides the half already written.
@@ -425,6 +430,8 @@ const Grower = ({
     node.style.height = `${node.scrollHeight}px`
   }, [value])
 
+  const keys = useFieldHistory(value, onChange)
+
   return (
     <textarea
       ref={field}
@@ -434,7 +441,8 @@ const Grower = ({
       maxLength={maxLength}
       spellCheck
       rows={4}
-      onChange={(event) => onChange(event.target.value)}
+      onChange={keys.onChange}
+      onKeyDown={keys.onKeyDown}
     />
   )
 }

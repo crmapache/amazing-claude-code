@@ -109,6 +109,56 @@ export const es: Dict = {
     messages: (n) => (n === 1 ? `${n} mensaje` : `${n} mensajes`),
   },
 
+  search: {
+    title: 'Buscar',
+    button: 'Buscar en las conversaciones',
+    tabs: { chat: 'Este chat', project: 'Todos los chats', ai: 'Preguntar a Claude' },
+    placeholder: 'Palabras, o una frase "entre comillas"…',
+    aiPlaceholder: 'Describe lo que buscas: de qué trataba, más o menos cuándo…',
+    aiNote: 'Claude lee las conversaciones de este proyecto · una ejecución aparte, cuenta en tu consumo',
+    find: 'Buscar',
+    cancel: 'Cancelar',
+    retry: 'Reintentar',
+    copy: 'Copiar',
+    openInChat: 'Abrir en el chat',
+    aiSearching: 'Leyendo las conversaciones…',
+    noChat: 'Esta pestaña aún no tiene conversación: prueba con todos los chats.',
+    typeToSearch: 'Los resultados aparecerán aquí.',
+    aiEmpty: 'Descríbelo arriba y pulsa Buscar.',
+    nothing: 'No se encontró nada.',
+    nothingHere: 'Nada en este chat.',
+    aiNothing: 'El modelo no encontró nada que encaje.',
+    results: (n) => (n === 1 ? '1 resultado' : `${n} resultados`),
+    inChats: (n, chats) => `${n} en ${chats === 1 ? '1 chat' : `${chats} chats`}`,
+    showing: (shown, total) => `mostrando ${shown} de ${total}`,
+    places: (n) =>
+      n === 1 ? '1 lugar que señala el modelo' : `${n} lugares que señala el modelo`,
+    you: 'Tú',
+    more: 'Mostrar el mensaje entero',
+    less: 'Mostrar menos',
+    clear: 'Borrar',
+    matchCase: 'Distinguir mayúsculas',
+    wholeWords: 'Solo palabras completas',
+    chars: (shown, total) => `${shown} de ${total} caracteres`,
+    failed: 'La búsqueda falló.',
+    failedLabel: 'FALLÓ',
+    steps: {
+      grep: (subject) => `buscó «${subject}»`,
+      read: (subject) => `leyó «${subject}»`,
+      list: 'leyó la lista de conversaciones',
+      other: 'revisó los archivos',
+      count: (n) => (n === 1 ? '1 paso' : `${n} pasos`),
+    },
+    capsule: {
+      reopen: 'Volver a la búsqueda',
+      close: 'Cerrar la búsqueda',
+      loading: 'Buscando el mensaje…',
+      missing: 'no está entre los mensajes cargados',
+      previous: 'Coincidencia anterior en este chat',
+      next: 'Siguiente coincidencia en este chat',
+    },
+  },
+
   composerLayout: {
     bottom: 'Normal',
     compact: 'Compacta',
@@ -117,7 +167,7 @@ export const es: Dict = {
   },
 
   pasteCollapse: {
-    note: 'Un pegado de varias líneas se pliega en una ficha para que un muro de texto no llene el campo de entrada. No se pierde nada: la ficha guarda el texto entero y vuelve a desplegarse en el campo con el botón del lápiz que lleva encima.',
+    note: 'Un pegado largo se pliega en un chip para que un muro de texto no llene el campo de entrada. Las líneas se cuentan como quedarían en el propio campo, así que un texto pegado en una sola línea interminable también se pliega. No se pierde nada en ninguno de los casos: un pegado plegado guarda el texto entero y se despliega de vuelta al campo con el botón del lápiz.',
     never: 'No plegar nunca',
     neverSub: 'Todo lo pegado se queda en el campo como texto normal',
     from: (lines) => `Desde ${lines} líneas`,
@@ -139,7 +189,6 @@ export const es: Dict = {
     note: 'Mantén una tecla y habla: las palabras aparecen en el campo mientras las dices. Funciona con tu propia clave de Deepgram: el audio va a Deepgram y a ningún otro sitio, el plugin no tiene servidor en medio.',
     off: 'Desactivada',
     enable: 'Entrada por voz',
-    enableHint: 'Muestra el botón del micrófono y escucha los atajos de abajo.',
 
     key: 'CLAVE DE DEEPGRAM',
     keyPlaceholder: 'Pega tu clave',
@@ -156,11 +205,10 @@ export const es: Dict = {
     balanceRefresh: 'Actualizar',
 
     getKey: '¿Aún sin clave?',
-    getKeyHint: 'Regístrate en deepgram.com y crea una clave de API. Las cuentas nuevas reciben 200 $ de crédito sin tarjeta: a estos precios son varios cientos de horas de dictado.',
+    getKeyHint: 'Regístrate en deepgram.com y crea una clave API. $200 de crédito sin tarjeta.',
     openSite: 'Abrir deepgram.com',
 
     hotkeys: 'ATAJOS',
-    hotkeysHint: 'Funcionan mientras el teclado esté en el IDE: en el editor, en el panel, en un diálogo. No en otra aplicación.',
     push: 'Pulsar y hablar',
     pushHint: 'Graba mientras lo mantienes y para al soltarlo.',
     hold: 'Manos libres',
@@ -175,7 +223,6 @@ export const es: Dict = {
     sideLeft: 'Izquierdo',
     sideRight: 'Derecho',
     badButton: 'Solo sirven los botones laterales del ratón: los tres principales ya significan algo en todo el IDE.',
-    modifierTip: 'Un solo modificador va muy bien aquí: mantén el Option derecho o el Ctrl derecho y nada en el IDE competirá por él.',
 
     language: 'Idioma hablado',
     languageHint: 'Qué escucha el dictado',
@@ -187,6 +234,12 @@ export const es: Dict = {
     deviceDefault: 'El del sistema',
     deviceDefaultHint: 'Sigue lo que tenga configurado el sistema',
     deviceNote: 'El cambio se aplica en el próximo dictado.',
+
+    promo: {
+      title: '¿Te gusta dictar aquí?',
+      body: 'Mantén una tecla y habla en cualquier otra ventana: mi otra app escribe tu voz allí donde estés. Regístrate ahora y para ti seguirá siendo gratis.',
+      tagline: 'dictado para Mac y Windows',
+    },
 
     errorNoKey: 'Añade primero una clave de Deepgram: Ajustes y luego Entrada por voz.',
     errorNoKeyRemote: 'No hay clave de Deepgram en el equipo donde corre esta conversación: añádela allí, en Ajustes, Entrada por voz.',
@@ -535,9 +588,8 @@ export const es: Dict = {
       stopCommand: 'Parar este comando',
       stopCommandTitle: '¿Parar este comando?',
     },
-    confirm: { cancel: 'Cancelar', stop: 'Parar', open: 'Abrir' },
-    resume: { title: 'Esta pestaña sigue trabajando. ¿Abrir aquí la conversación anterior?' },
-    noChats: { title: 'No hay conversaciones abiertas', button: 'Nueva conversación' },
+    confirm: { cancel: 'Cancelar', stop: 'Parar' },
+    noChats: { title: '¡Con ganas de trabajar juntos!', button: 'Empecemos' },
     crash: {
       title: 'El panel se ha topado con un error',
       text: 'Recargar es seguro: tus conversaciones viven en los procesos de Claude Code que hay detrás del panel y le sobreviven.',

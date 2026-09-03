@@ -1656,9 +1656,17 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 12px;
   background: var(--acc-bg);
   text-align: center;
+}
+
+/* The gap alone was not the gap: a paragraph carries the browser's own margin, and the button a top
+   margin meant for the login screen, so the greeting and the button it belongs to stood a line and a half
+   apart. Zeroed here rather than on the shared classes - the login screen is laid out around them. */
+.emptyState > p,
+.emptyState > .gateButton {
+  margin: 0;
 }
 
 /* --- The fallback view without an embedded browser -------------------------- */

@@ -1198,6 +1198,12 @@ export const scenariosCards: Scenario[] = [
         description: 'Review the checkout across four dimensions',
         task_type: 'local_workflow',
       }),
+      // The call is answered at once and in these words (CLI 2.1.257): a confirmation of the launch, not
+      // the outcome - the fleet runs on as a background task, and the card must not close here.
+      toolResult(
+        'c14-wf',
+        'Workflow launched in background. Task ID: c14-wf-id\nSummary: Review the checkout across four dimensions',
+      ),
       wait(700),
     ]),
     checkpoint('The first phase: four review agents, two of them still queued', [

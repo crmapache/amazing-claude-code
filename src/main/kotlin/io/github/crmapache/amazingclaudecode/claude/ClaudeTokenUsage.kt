@@ -29,8 +29,12 @@ internal object ClaudeTokenUsage {
     private const val RECENT_MS = 2L * 24 * 60 * 60 * 1000
     private const val MAX_DEPTH = 8
 
-    fun today(): String {
-        val root = File(HostOs.configDirectory(), "projects")
+    /**
+     * [workingDirectory] says whose transcripts to read: every project of the CLI's machine, and for a
+     * project opened out of WSL that machine is the distribution, not this one (see ClaudeHome).
+     */
+    fun today(workingDirectory: String?): String {
+        val root = ClaudeHome.of(workingDirectory).projectsDirectory
         if (!root.isDirectory) return "0.0M"
 
         val cutoff = System.currentTimeMillis() - RECENT_MS

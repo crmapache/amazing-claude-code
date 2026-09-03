@@ -30,6 +30,7 @@ export const bash = (
 export const agent = (event: AgentEvent): ScenarioStep => ({ kind: 'agent', event })
 export const user = (text: string): ScenarioStep => ({ kind: 'user', text })
 export const wait = (ms: number): ScenarioStep => ({ kind: 'wait', ms })
+export const openSearch = (): ScenarioStep => ({ kind: 'openSearch' })
 
 /** Imitates a genuine click on a plan card's button - see __accHarnessResolvePlan. */
 export const resolvePlan = (itemId: string, decision: 'approve' | 'keepPlanning'): ScenarioStep => ({

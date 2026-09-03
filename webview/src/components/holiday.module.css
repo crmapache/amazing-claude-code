@@ -78,8 +78,10 @@
 /* --- The snow -------------------------------------------------------------- */
 
 /*
- * Above the feed's text but below everything one reaches for: jump-to-bottom sits at 20, the selection
- * menu at 30, the menu scrim at 40. pointer-events are off on the whole layer: the feed is selectable
+ * Above the feed's text but below everything one reaches for: jump-to-bottom sits at 20, the search
+ * veil at 21 and its capsule at 22, the selection menu at 30, the menu scrim at 40 with the menus, sheets and the three
+ * selectors at 41, the search window's scrim at 44 and the window at 45. pointer-events are off on the
+ * whole layer: the feed is selectable
  * text, and a layer of dots over it would break selection wherever a dot happened to be.
  *
  * The flakes fall past the bottom of the feed and are gone. A drift heaping up on that bottom edge was

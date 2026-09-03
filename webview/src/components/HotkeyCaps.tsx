@@ -4,6 +4,21 @@ import type { VoiceHotkeyCap, VoiceHotkeyGlyph } from '../protocol'
 import s from './sideMenu.module.css'
 
 /**
+ * A sign the panel has a drawing for: the ones the IDE names on a voice hotkey (see VoiceHotkeyGlyph).
+ * Empty means the key is a word.
+ */
+export type KeyGlyph = VoiceHotkeyGlyph
+
+/** One key as any screen draws it - a voice binding's caps fit this shape as they arrive (see VoiceHotkeyCap). */
+export interface KeyCap {
+  glyph: KeyGlyph
+  /** The word on the key, when it is a word: 'Ctrl', 'Shift', 'F'. */
+  text?: string
+  /** Which side of the keyboard, for a binding that is one bare modifier - see VoiceHotkeyCap.side. */
+  side?: string
+}
+
+/**
  * A hotkey drawn as the keys it is pressed with - one cap each, the way they read on a keyboard.
  *
  * The signs are drawings rather than characters, and that is the whole point of this file. ⌥ and ⌘ are
@@ -11,10 +26,11 @@ import s from './sideMenu.module.css'
  * weight of their own, next to letters set in ours - which is what a hotkey looked like before. A drawing
  * takes the colour and the size of the line it stands in and looks the same on every machine.
  *
- * Which key carries a sign and which carries a word is decided in the IDE (see HotkeyBinding.kt): a Mac
- * prints ⌥ and ⌘ and spells Ctrl and Shift out, Windows prints its own key, Linux has Super.
+ * Which key carries a sign and which carries a word is decided in the IDE for a voice binding (see
+ * HotkeyBinding.kt): a Mac prints ⌥ and ⌘ and spells Ctrl and Shift out, Windows prints its own key,
+ * Linux has Super. The search window's foot builds its caps itself, by the same rule (see Search.tsx).
  */
-export const HotkeyCaps = ({ caps }: { caps: VoiceHotkeyCap[] }) => {
+export const HotkeyCaps = ({ caps }: { caps: readonly (KeyCap | VoiceHotkeyCap)[] }) => {
   const t = useT()
 
   return (
@@ -38,7 +54,7 @@ export const HotkeyCaps = ({ caps }: { caps: VoiceHotkeyCap[] }) => {
  * Stroked at the same weight as the microphone beside it and drawn in `currentColor`, so a cap that is
  * one sign and a cap that is one letter carry the same weight on the screen.
  */
-const Glyph = ({ glyph }: { glyph: VoiceHotkeyGlyph }) => {
+const Glyph = ({ glyph }: { glyph: KeyGlyph }) => {
   switch (glyph) {
     // Both strokes of it: the bar over the right half is as much a part of ⌥ as the slope under it, and
     // the slope alone reads as a stray flourish rather than as a key.

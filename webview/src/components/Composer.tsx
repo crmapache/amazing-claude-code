@@ -13,6 +13,7 @@ import { createPortal } from 'react-dom'
 import { isBashDraft } from '../feed/bash'
 import { useT } from '../i18n'
 import { Microphone } from './Microphone'
+import { Magnifier } from './SearchCapsule'
 import { matchFiles } from '../feed/files'
 import { improveRequest, type ImproveRequest } from '../feed/improve'
 import {
@@ -30,13 +31,13 @@ import {
   slashQuery as slashQueryFromText,
   type CommandEntry,
 } from '../feed/slash'
-import { clipboardHtml, clipboardTokens, tokensText } from '../feed/tokens'
+import { clipboardHtml, clipboardTextOf, clipboardTokens, tokensText } from '../feed/tokens'
 import type { Chip, DraftEdit, UserToken } from '../feed/types'
 import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
 import type { ModelInfo } from '../protocol'
 import { SlashSuggest } from './SlashSuggest'
 import { collapsesPaste } from '../feed/reference'
-import { contextColor, contextGlow } from '../feed/usage'
+import { contextColor } from '../feed/usage'
 import {
   atQueryAt,
   caretRect,
@@ -51,6 +52,7 @@ import {
   headText,
   needsLeadingSpace,
   needsTrailingSpace,
+  notePastedPath,
   padTrailingBreak,
   placeCaretAtEnd,
   placeCaretBefore,
@@ -60,7 +62,9 @@ import {
   removeChip,
   scrollCaretIntoView,
   splitTokens,
+  wrappedLineCount,
 } from './composerDom'
+import { savePastedFile, savePastedFiles } from '../pasted'
 import { FeedbackButton } from './Feedback'
 import { Selectors, type Anchor, type SelectorKind } from './StatusBar'
 import { ThanksButton } from './Thanks'
@@ -68,6 +72,15 @@ import s from './composer.module.css'
 /* The pair of the bubble and the heart is drawn the same everywhere and lives with the status row it
    belongs to (see .endPair there) - the same borrowing Feedback.tsx already makes of this file. */
 import shell from './shell.module.css'
+
+/**
+ * What a pasted file's chip is called - the same split the IDE makes for a chosen file (see
+ * FilePicker.kindOf). Only the icon and the colour hang on it: the path travels to the agent either way.
+ */
+const kindOfPath = (path: string): 'img' | 'file' =>
+  IMAGE_EXTENSIONS.has(path.substring(path.lastIndexOf('.') + 1).toLowerCase()) ? 'img' : 'file'
+
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'])
 
 /** Ticks at every fifth - unrelated to the colour thresholds, purely the scale's ruler. */
 const CONTEXT_METER_TICKS = [20, 40, 60, 80]
@@ -89,7 +102,6 @@ export const contextCaption = (percent: number): string => `ctx ${Math.round(per
  */
 const ContextMeter = ({ percent }: { percent: number }) => {
   const color = contextColor(percent)
-  const glow = contextGlow(percent)
 
   return (
     // A row of its own above the field rather than a layer over its top padding: the padding scrolls
@@ -98,10 +110,10 @@ const ContextMeter = ({ percent }: { percent: number }) => {
     // it.
     <div className={s.contextMeterRow}>
       <div className={s.contextMeter} aria-hidden="true">
-        <div
-          className={s.contextMeterFill}
-          style={{ width: `${percent}%`, background: color, boxShadow: `0 0 8px ${glow.strong}, 0 0 16px ${glow.soft}` }}
-        />
+        {/* A flat fill, no halo: the glow it used to carry made the lit part read as a thicker bar than
+            the track it lies on, and a meter whose two halves look like two different lines does not read
+            as a share of one whole. */}
+        <div className={s.contextMeterFill} style={{ width: `${percent}%`, background: color }} />
         {CONTEXT_METER_TICKS.map((tick) => (
           <span key={tick} className={s.contextMeterTick} style={{ left: `${tick}%` }} />
         ))}
@@ -133,7 +145,6 @@ const CONTEXT_METER_SEGMENTS = 5
  */
 const ContextMeterVertical = ({ percent }: { percent: number }) => {
   const color = contextColor(percent)
-  const glow = contextGlow(percent)
   const clamped = Math.min(100, Math.max(0, percent))
   const lit = Math.ceil((clamped / 100) * CONTEXT_METER_SEGMENTS)
 
@@ -146,7 +157,7 @@ const ContextMeterVertical = ({ percent }: { percent: number }) => {
             className={s.compactMeterSeg}
             style={
               index < lit
-                ? { background: color, boxShadow: `0 0 8px ${glow.strong}, 0 0 16px ${glow.soft}` }
+                ? { background: color }
                 : undefined
             }
           />
@@ -382,6 +393,8 @@ interface ComposerProps {
    * only the markup. null/undefined means it is not mounted yet, or the layout is not left/right.
    */
   railContainer?: HTMLElement | null
+  /** The search window (see Search.tsx). Absent means no button: a client without the search has no use for one. */
+  onOpenSearch?: () => void
 }
 
 export const Composer = ({
@@ -429,6 +442,7 @@ export const Composer = ({
   onOpenThanks,
   onOpenFeedback,
   railContainer,
+  onOpenSearch,
 }: ComposerProps) => {
   const t = useT()
   const compact = layout === 'compact'
@@ -803,6 +817,56 @@ export const Composer = ({
   }
 
   /**
+   * Undo and Redo as the context menu over the field understands them - the IDE draws that menu itself
+   * (right click), and its items run the browser's own undo.
+   *
+   * That undo knows nothing about this field. Chips are put in through a Range, so they are not in its
+   * history at all, and what is in it is only the typing: pressing Undo in the menu peeled words off the
+   * text and left every attachment standing, while our history did not move an inch - so the next Cmd+Z
+   * put back what the menu had just taken away. Undo that walks forwards is the report this came from.
+   *
+   * Caught on `input` rather than on `beforeinput`: a command run this way sends no beforeinput at all,
+   * so there is nothing to cancel and the DOM is already rearranged by the time we hear about it. That
+   * costs nothing here - our own restore rewrites the field from the tokens, which puts back whatever the
+   * native undo has just taken apart. Stopped from going further so that the ordinary input handling does
+   * not read that half-undone DOM as something the person typed.
+   */
+  const menuHistory = useRef({ undo: () => {}, redo: () => {} })
+
+  menuHistory.current = {
+    undo: () => (undoStack.current.length > 0 ? undo() : restoreField()),
+    redo: () => (redoStack.current.length > 0 ? redo() : restoreField()),
+  }
+
+  /** The field as the panel believes it stands - what an unwanted native edit is undone by. */
+  const restoreField = () => {
+    const root = input.current
+    if (!root) return
+
+    rebuildDom(root, tokens)
+    placeCaretAtEnd(root)
+  }
+
+  useEffect(() => {
+    const field = input.current
+    if (!field) return
+
+    const onNativeHistory = (event: Event) => {
+      const inputType = (event as InputEvent).inputType
+      if (inputType !== 'historyUndo' && inputType !== 'historyRedo') return
+
+      event.stopPropagation()
+      if (inputType === 'historyUndo') menuHistory.current.undo()
+      else menuHistory.current.redo()
+    }
+
+    // On the field itself and in the capture phase: React listens on the page's root, so this runs first
+    // and stopPropagation keeps the half-undone DOM from reaching handleInput.
+    field.addEventListener('input', onNativeHistory, true)
+    return () => field.removeEventListener('input', onNativeHistory, true)
+  }, [layout])
+
+  /**
    * Whether what stands in the field has just become a finished command - then it is already a chip and
    * there is nothing left to report.
    *
@@ -1101,7 +1165,7 @@ export const Composer = ({
     if (picked.length === 0) return
 
     event.preventDefault()
-    event.clipboardData.setData('text/plain', tokensText(picked))
+    event.clipboardData.setData('text/plain', clipboardTextOf(picked))
     event.clipboardData.setData('text/html', clipboardHtml(picked))
 
     // We cut not through deleteContents: the selection may have begun or ended inside a chip, and the
@@ -1141,6 +1205,20 @@ export const Composer = ({
       return
     }
 
+    // A document - a pdf, a spreadsheet, an archive - copied in a file manager. The browser hands over
+    // its bytes and its name and never its path, so until the shell writes it out there is nothing to
+    // attach: such a paste used to do nothing at all. Written out, it becomes an ordinary file chip.
+    const documents = Array.from(event.clipboardData?.files ?? []).filter(
+      (file) => !file.type.startsWith('image/'),
+    )
+
+    if (documents.length > 0) {
+      void savePastedFiles(documents).then((paths) => {
+        for (const path of paths) insertChipAtCursor({ kind: kindOfPath(path), value: path })
+      })
+      return
+    }
+
     if (images.length === 0) {
       const text = event.clipboardData?.getData('text/plain') ?? ''
       if (!text) return
@@ -1150,7 +1228,12 @@ export const Composer = ({
       // it. A shorter one stays text: a paste one means to edit before sending is edited right in the
       // field, and a chip is precisely what forbids that. Where the line between the two falls is the
       // person's to set - see the pasted-text screen in SideMenu.
-      if (collapsesPaste(text, pasteCollapseLines)) insertChipAtCursor({ kind: 'paste', value: 'pasted', text })
+      //
+      // How many lines it would take right here, rather than how many it is written in: a wall of text
+      // pasted as one line is still a wall (see wrappedLineCount).
+      const drawn = input.current ? wrappedLineCount(input.current, text, pasteCollapseLines) : 0
+
+      if (collapsesPaste(text, pasteCollapseLines, drawn)) insertChipAtCursor({ kind: 'paste', value: 'pasted', text })
       else pasteText(text)
       return
     }
@@ -1170,7 +1253,24 @@ export const Composer = ({
           (token) => token.kind === 'chip' && token.chip.kind === 'img' && Boolean(token.chip.data),
         ).length
 
-        insertChipAtCursor({ kind: 'img', value: `Image #${imageBaseCount + count + 1}`, data: reader.result })
+        const data = reader.result
+        insertChipAtCursor({ kind: 'img', value: `Image #${imageBaseCount + count + 1}`, data })
+
+        /**
+         * The bytes also go to the shell, which keeps them as a file and answers with its path (see
+         * savePastedFile). Not waited for: the chip is in the field already, and a paste that hangs for
+         * a second before showing anything would be a worse trade than a chip that gains a path a moment
+         * later. Reported as the panel's own edit rather than as a hand on the keyboard - nobody touched
+         * anything, a chip merely learned where its picture lives.
+         */
+        void savePastedFile(data, file.name).then((path) => {
+          const field = input.current
+          if (!path || !field || !notePastedPath(field, data, path)) return
+
+          const next = extractTokens(field)
+          lastReported.current = next
+          onTokensChange(next, 'renumber')
+        })
       }
       reader.readAsDataURL(file)
     }
@@ -1657,6 +1757,25 @@ export const Composer = ({
    * than through the CSS `order`: keyboard tabbing goes by the DOM's order and does not follow the visual
    * one, so a rearrangement through CSS would part ways with what is visible on the screen.
    */
+  /*
+   * The search, a group of its own after the two pairs. It is the one button here that does nothing to
+   * the message being written - it looks back over what was said - and standing in a pair with the
+   * slash it would read as one more way of putting something into the field. The gap between the
+   * groups says that on its own (see .toolGroups).
+   */
+  const searchButton = onOpenSearch ? (
+    <button
+      type="button"
+      className={s.attach}
+      data-tooltip={t.search.button}
+      data-tooltip-at="top"
+      aria-label={t.search.button}
+      onClick={onOpenSearch}
+    >
+      <Magnifier size={14} />
+    </button>
+  ) : null
+
   const writingTools = (
     <div className={s.toolGroups}>
       <div className={s.toolGroup}>
@@ -1667,6 +1786,7 @@ export const Composer = ({
         {attachButton}
         {slashButton}
       </div>
+      {searchButton ? <div className={s.toolGroup}>{searchButton}</div> : null}
     </div>
   )
 

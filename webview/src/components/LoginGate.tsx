@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import s from './shell.module.css'
 import { useT } from '../i18n'
+import { useFieldHistory } from '../hooks/useFieldHistory'
 
 export interface AuthState {
   installed: boolean
@@ -40,6 +41,8 @@ export const LoginGate = ({ auth, waiting, onLogin, onRecheck, onSetExecutablePa
    */
   const [edited, setEdited] = useState<string | null>(null)
   const path = edited ?? auth?.executablePath ?? ''
+  // Before the early returns: a hook has to be called on every render, whatever the screen shows.
+  const pathKeys = useFieldHistory(path, setEdited)
 
   if (!auth) {
     return (
@@ -66,9 +69,10 @@ export const LoginGate = ({ auth, waiting, onLogin, onRecheck, onSetExecutablePa
             value={path}
             placeholder="/path/to/claude"
             spellCheck={false}
-            onChange={(event) => setEdited(event.target.value)}
+            onChange={pathKeys.onChange}
             onKeyDown={(event) => {
-              if (event.key === 'Enter') onSetExecutablePath(path.trim())
+              pathKeys.onKeyDown(event)
+              if (!event.defaultPrevented && event.key === 'Enter') onSetExecutablePath(path.trim())
             }}
           />
           <button type="button" className={s.gateButton} onClick={() => onSetExecutablePath(path.trim())}>

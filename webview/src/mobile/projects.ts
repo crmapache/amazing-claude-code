@@ -23,6 +23,8 @@ export interface Inventory {
       worked?: boolean
       /** Its process died under it. */
       crashed?: boolean
+      /** The conversation behind the tab, when there is one - the identifier the history names it by. */
+      conversation?: string
       q: number
     }>
   }>
@@ -119,6 +121,7 @@ export const buildProjects = (
         // conversation looked like on this screen before either existed.
         worked: session.worked === true,
         crashed: session.crashed === true,
+        conversation: session.conversation,
         seq: session.q,
         online,
       }))

@@ -7,7 +7,7 @@ import { copyToClipboard } from '../../clipboard'
 import { CopyButton } from './CopyButton'
 import { PathLink, withPathLinks } from './PathLink'
 import s from '../feed.module.css'
-import { useOpenFile } from '../../hooks/useOpenFile'
+import { useKnownFiles, useOpenFile } from '../../hooks/useOpenFile'
 import { useT } from '../../i18n'
 
 /**
@@ -185,6 +185,8 @@ const PartView = ({
   reveal: boolean
   onOpenLink: (url: string) => void
 }) => {
+  const emphasis = [part.strong ? s.strong : '', part.em ? s.em : ''].filter(Boolean).join(' ')
+
   if (part.href) {
     const href = part.href
     return (
@@ -192,7 +194,7 @@ const PartView = ({
         href={href}
         // A link in a heading stays both a link and bold: one does not cancel the other - it is clicked,
         // but it is still a section's heading.
-        className={part.strong ? `${s.link} ${s.strong}` : s.link}
+        className={emphasis ? `${s.link} ${emphasis}` : s.link}
         // We open it in the system browser through the host IDE: ordinary navigation would carry the
         // panel's own webview off to that address instead of showing it outside.
         onClick={(event) => {
@@ -207,7 +209,7 @@ const PartView = ({
 
   if (part.code) return <InlineCode text={part.text} reveal={reveal} />
   if (part.mark) return <Piece reveal={reveal} className={s.mark}>{part.text}</Piece>
-  if (part.strong) return <Piece reveal={reveal} className={s.strong}>{part.text}</Piece>
+  if (emphasis) return <Piece reveal={reveal} className={emphasis}>{part.text}</Piece>
   return <PlainText text={part.text} reveal={reveal} />
 }
 
@@ -219,7 +221,7 @@ const PartView = ({
  * Where there is no editor to open anything in (the phone) the text stays exactly what it was.
  */
 const PlainText = ({ text, reveal }: { text: string; reveal: boolean }) => {
-  const runs = withPathLinks(text, useOpenFile())
+  const runs = withPathLinks(text, useOpenFile(), useKnownFiles())
   if (!runs) return <Piece reveal={reveal}>{text}</Piece>
 
   return (
@@ -250,7 +252,7 @@ const PlainText = ({ text, reveal }: { text: string; reveal: boolean }) => {
  * a command, a snippet - keeps it.
  */
 const CodeBlock = ({ code, reveal }: { code: string; reveal: boolean }) => {
-  const runs = withPathLinks(code, useOpenFile())
+  const runs = withPathLinks(code, useOpenFile(), useKnownFiles())
   if (!runs) {
     return (
       <Piece reveal={reveal} as="pre" className={s.codeBlock}>
@@ -287,6 +289,7 @@ const COPIED_FLASH_MS = 900
 const InlineCode = ({ text, reveal }: { text: string; reveal: boolean }) => {
   const t = useT()
   const openFile = useOpenFile()
+  const known = useKnownFiles()
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
@@ -304,7 +307,7 @@ const InlineCode = ({ text, reveal }: { text: string; reveal: boolean }) => {
    * Where there is no editor at all - the phone - there is no reference either (see useOpenFile), and the
    * path goes on copying exactly as it did.
    */
-  const ref = openFile ? fileRef(text) : null
+  const ref = openFile ? fileRef(text, true, known) : null
 
   return (
     <span

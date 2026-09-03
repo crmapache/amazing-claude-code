@@ -109,6 +109,56 @@ export const pt: Dict = {
     messages: (n) => (n === 1 ? `${n} mensagem` : `${n} mensagens`),
   },
 
+  search: {
+    title: 'Buscar',
+    button: 'Buscar nas conversas',
+    tabs: { chat: 'Este chat', project: 'Todos os chats', ai: 'Perguntar ao Claude' },
+    placeholder: 'Palavras, ou uma frase "entre aspas"…',
+    aiPlaceholder: 'Descreva o que procura: sobre o que era, mais ou menos quando…',
+    aiNote: 'Claude lê as conversas deste projeto · uma execução à parte, conta no seu consumo',
+    find: 'Buscar',
+    cancel: 'Cancelar',
+    retry: 'Tentar de novo',
+    copy: 'Copiar',
+    openInChat: 'Abrir no chat',
+    aiSearching: 'Lendo as conversas…',
+    noChat: 'Esta aba ainda não tem conversa: tente todos os chats.',
+    typeToSearch: 'Os resultados aparecerão aqui.',
+    aiEmpty: 'Descreva acima e pressione Buscar.',
+    nothing: 'Nada encontrado.',
+    nothingHere: 'Nada neste chat.',
+    aiNothing: 'O modelo não encontrou nada que sirva.',
+    results: (n) => (n === 1 ? '1 resultado' : `${n} resultados`),
+    inChats: (n, chats) => `${n} em ${chats === 1 ? '1 chat' : `${chats} chats`}`,
+    showing: (shown, total) => `mostrando ${shown} de ${total}`,
+    places: (n) =>
+      n === 1 ? '1 lugar que o modelo aponta' : `${n} lugares que o modelo aponta`,
+    you: 'Você',
+    more: 'Mostrar a mensagem inteira',
+    less: 'Mostrar menos',
+    clear: 'Limpar',
+    matchCase: 'Diferenciar maiúsculas',
+    wholeWords: 'Só palavras inteiras',
+    chars: (shown, total) => `${shown} de ${total} caracteres`,
+    failed: 'A busca falhou.',
+    failedLabel: 'FALHOU',
+    steps: {
+      grep: (subject) => `procurou “${subject}”`,
+      read: (subject) => `leu “${subject}”`,
+      list: 'leu a lista de conversas',
+      other: 'passou pelos arquivos',
+      count: (n) => (n === 1 ? '1 passo' : `${n} passos`),
+    },
+    capsule: {
+      reopen: 'Voltar à busca',
+      close: 'Fechar a busca',
+      loading: 'Procurando a mensagem…',
+      missing: 'não está entre as mensagens carregadas',
+      previous: 'Ocorrência anterior neste chat',
+      next: 'Próxima ocorrência neste chat',
+    },
+  },
+
   composerLayout: {
     bottom: 'Padrão',
     compact: 'Compacto',
@@ -117,7 +167,7 @@ export const pt: Dict = {
   },
 
   pasteCollapse: {
-    note: 'Uma colagem de várias linhas vira um chip para que uma parede de texto não tome conta do campo de escrita. Nada se perde: o chip guarda o texto inteiro e volta a se abrir no campo pelo botão de lápis que fica nele.',
+    note: 'Uma colagem longa vira um chip para que uma parede de texto não encha o campo de entrada. As linhas são contadas como ficariam no próprio campo, então um texto colado em uma única linha sem fim também vira chip. Nada se perde em nenhum dos casos: uma colagem recolhida guarda o texto inteiro e volta ao campo pelo botão do lápis.',
     never: 'Nunca recolher',
     neverSub: 'Tudo o que for colado fica no campo como texto comum',
     from: (lines) => `A partir de ${lines} linhas`,
@@ -139,7 +189,6 @@ export const pt: Dict = {
     note: 'Segure uma tecla e fale - as palavras aparecem no campo enquanto você diz. Funciona com a sua própria chave da Deepgram: o áudio vai para a Deepgram e para mais lugar nenhum, o plugin não tem servidor no meio.',
     off: 'Desligada',
     enable: 'Entrada por voz',
-    enableHint: 'Mostra o botão do microfone e escuta os atalhos abaixo.',
 
     key: 'CHAVE DA DEEPGRAM',
     keyPlaceholder: 'Cole a sua chave',
@@ -156,11 +205,10 @@ export const pt: Dict = {
     balanceRefresh: 'Atualizar',
 
     getKey: 'Ainda sem chave?',
-    getKeyHint: 'Cadastre-se em deepgram.com e crie uma chave de API. Contas novas ganham US$ 200 de crédito sem cartão - a estes preços são várias centenas de horas de ditado.',
+    getKeyHint: 'Cadastre-se em deepgram.com e crie uma chave de API. $200 de crédito sem cartão.',
     openSite: 'Abrir deepgram.com',
 
     hotkeys: 'ATALHOS',
-    hotkeysHint: 'Funcionam enquanto o teclado estiver na IDE - no editor, no painel, num diálogo. Em outro aplicativo, não.',
     push: 'Segurar para falar',
     pushHint: 'Grava enquanto você segura e para quando solta.',
     hold: 'Mãos livres',
@@ -175,7 +223,6 @@ export const pt: Dict = {
     sideLeft: 'Esquerdo',
     sideRight: 'Direito',
     badButton: 'Só servem os botões laterais do mouse - os três principais já significam alguma coisa em toda a IDE.',
-    modifierTip: 'Um modificador sozinho cai bem aqui: segure o Option direito ou o Ctrl direito e nada na IDE disputa com ele.',
 
     language: 'Idioma falado',
     languageHint: 'O que o ditado escuta',
@@ -187,6 +234,12 @@ export const pt: Dict = {
     deviceDefault: 'Padrão do sistema',
     deviceDefaultHint: 'Segue o que o sistema estiver usando',
     deviceNote: 'A mudança vale a partir do próximo ditado.',
+
+    promo: {
+      title: 'Gostou de ditar por aqui?',
+      body: 'Segure uma tecla e fale em qualquer outra janela: meu outro app escreve sua voz onde você estiver. Cadastre-se agora e continua grátis para você.',
+      tagline: 'ditado para Mac e Windows',
+    },
 
     errorNoKey: 'Adicione primeiro uma chave da Deepgram - Configurações e depois Entrada por voz.',
     errorNoKeyRemote: 'Não há chave da Deepgram na máquina onde esta conversa roda - adicione lá, em Configurações, Entrada por voz.',
@@ -535,9 +588,8 @@ export const pt: Dict = {
       stopCommand: 'Parar este comando',
       stopCommandTitle: 'Parar este comando?',
     },
-    confirm: { cancel: 'Cancelar', stop: 'Parar', open: 'Abrir' },
-    resume: { title: 'Esta aba ainda está trabalhando. Abrir a conversa anterior aqui?' },
-    noChats: { title: 'Nenhuma conversa aberta', button: 'Nova conversa' },
+    confirm: { cancel: 'Cancelar', stop: 'Parar' },
+    noChats: { title: 'Animado para trabalhar com você!', button: 'Vamos começar' },
     crash: {
       title: 'O painel esbarrou num erro',
       text: 'Recarregar é seguro: suas conversas vivem nos processos do Claude Code atrás do painel e sobrevivem a ele.',

@@ -11,11 +11,13 @@ import { countSessionImages } from '../../feed/tokens'
 import type { TaskItem } from '../../feed/types'
 import type { ProjectFacts } from '../facts'
 import { Back } from './Back'
+import { Magnifier, SearchCapsule } from '../../components/SearchCapsule'
 import { Composer, type OutgoingPrompt } from './Composer'
 import type { PhoneDictation } from '../useDictation'
 import m from '../mobile.module.css'
 import { useT } from '../../i18n'
 import type { Dict } from '../../i18n/en'
+import type { PaintedTerm } from '../../protocol'
 
 /** Mobile has no "clear finished agents" action, so every task the session ever ran stays on the strip. */
 const NO_HIDDEN_TASKS: ReadonlySet<string> = new Set()
@@ -62,6 +64,24 @@ interface ThreadProps {
   earlierPages: number
   onDecide: () => void
   onBack: () => void
+  /** The search window, over this conversation (see Search.tsx and the wiring in mobile/App). */
+  onSearch: () => void
+  /** The search folded into the feed's corner after a hit was chosen - see SearchCapsule. */
+  capsule?: {
+    /** What the feed is doing about the hit - the capsule and the veil word it themselves (see CapsuleNote). */
+    note: 'none' | 'loading' | 'missing'
+    /** This conversation's hits and which one the thread is on - the arrows walk them. */
+    count: number
+    at: number
+    onStep: (direction: -1 | 1) => void
+    onOpen: () => void
+    onClose: () => void
+  }
+  /** The row a search jumped to, and the words it paints - see Feed.focus and Feed.paint. */
+  focus?: { row: string; nonce: number }
+  /** The jump has been made - see Feed.onFocused. */
+  onFocused?: () => void
+  paint?: readonly PaintedTerm[]
 }
 
 /**
@@ -92,6 +112,11 @@ export const Thread = ({
   earlierPages,
   onDecide,
   onBack,
+  onSearch,
+  capsule,
+  focus,
+  onFocused,
+  paint,
 }: ThreadProps) => {
   const t = useT()
   /**
@@ -171,6 +196,9 @@ export const Thread = ({
         <Back onClick={onBack} />
         <span className={m.headerTitle}>{title}</span>
         <span className={m.headerMeta}>{project}</span>
+        <button type="button" className={m.headerAction} onClick={onSearch} aria-label={t.search.title}>
+          <Magnifier size={18} />
+        </button>
       </header>
 
       {waiting && (
@@ -191,6 +219,10 @@ export const Thread = ({
       />
 
       <div className={m.thread}>
+        {capsule && resolvedStream === 'main' ? (
+          <SearchCapsule {...capsule} />
+        ) : null}
+
         {resolvedStream !== 'main' ? (
           <AgentStreamView item={activeTask} />
         ) : loading && feed.items.length === 0 ? (
@@ -214,6 +246,9 @@ export const Thread = ({
             onOpenLink={(url) => window.open(url, '_blank', 'noopener,noreferrer')}
             earlierPages={earlierPages}
             onLoadEarlier={onLoadEarlier}
+            focus={focus}
+            onFocused={onFocused}
+            paint={paint}
           />
         )}
       </div>

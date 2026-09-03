@@ -18,6 +18,8 @@ export interface SessionEntry {
   /** Work in this one has been finished at least once, and its process died under it - see ChatRow. */
   worked: boolean
   crashed: boolean
+  /** The conversation behind the tab - what tells the history that it is already open (see tabHolding). */
+  conversation?: string
   seq: number
   online: boolean
 }

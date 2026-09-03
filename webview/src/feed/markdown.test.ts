@@ -2,6 +2,70 @@ import { describe, expect, it } from 'vitest'
 import { linkify, paragraphsText, parseInline, parseParagraphs, plainLine } from './markdown'
 
 describe('parseInline', () => {
+  /**
+   * Italic came late: the panel drew bold and left `*so*` standing with its asterisks on screen, in
+   * answers that lean on it - a list where every item opens with an italic subject read as broken
+   * markup. What is checked here is mostly the other half: where a lone asterisk or underscore is an
+   * ordinary character and must stay one.
+   */
+  it('reads italic written with asterisks', () => {
+    expect(parseInline('the *keys* never leave the Mac')).toEqual([
+      { text: 'the ' },
+      { text: 'keys', em: true },
+      { text: ' never leave the Mac' },
+    ])
+  })
+
+  it('reads italic written with underscores', () => {
+    expect(parseInline('the _keys_ never leave')).toEqual([
+      { text: 'the ' },
+      { text: 'keys', em: true },
+      { text: ' never leave' },
+    ])
+  })
+
+  it('keeps bold bold', () => {
+    expect(parseInline('**Stale docs.** the README promised six')).toEqual([
+      { text: 'Stale docs.', strong: true },
+      { text: ' the README promised six' },
+    ])
+  })
+
+  it('reads a piece written as both', () => {
+    expect(parseInline('***right here***')).toEqual([{ text: 'right here', strong: true, em: true }])
+  })
+
+  it('marks a whole italic run, links and code inside it included', () => {
+    expect(parseInline('*see `App.tsx` there*')).toEqual([
+      { text: 'see ', em: true },
+      { text: 'App.tsx', code: true, em: true },
+      { text: ' there', em: true },
+    ])
+  })
+
+  it('leaves a multiplication alone', () => {
+    expect(parseInline('2 * 3 * 4')).toEqual([{ text: '2 * 3 * 4' }])
+  })
+
+  it('leaves globs alone', () => {
+    expect(parseInline('*.ts and *.tsx')).toEqual([{ text: '*.ts and *.tsx' }])
+  })
+
+  // The one that would have hurt daily: identifiers are written in prose without backticks all the time.
+  it('leaves an underscore inside a word alone', () => {
+    expect(parseInline('MAX_LIST_DEPTH is the ceiling')).toEqual([{ text: 'MAX_LIST_DEPTH is the ceiling' }])
+  })
+
+  it('leaves a file name with underscores alone', () => {
+    expect(parseInline('open my_file_name.ts')).toEqual([{ text: 'open my_file_name.ts' }])
+  })
+
+  it('keeps an italic piece out of an address', () => {
+    expect(parseInline('https://example.com/a_b_c')).toEqual([
+      { text: 'https://example.com/a_b_c', href: 'https://example.com/a_b_c' },
+    ])
+  })
+
   it('turns a bare URL into a link', () => {
     expect(parseInline('look at https://example.com/docs next')).toEqual([
       { text: 'look at ' },

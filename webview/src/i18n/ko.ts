@@ -109,6 +109,55 @@ export const ko: Dict = {
     messages: (n) => `메시지 ${n}개`,
   },
 
+  search: {
+    title: '검색',
+    button: '대화 검색',
+    tabs: { chat: '이 채팅', project: '모든 채팅', ai: 'Claude에게 묻기' },
+    placeholder: '단어 또는 "따옴표로 묶은" 구절…',
+    aiPlaceholder: '찾는 내용을 설명하세요. 무엇에 관한 것이었는지, 대략 언제였는지…',
+    aiNote: 'Claude가 이 프로젝트의 대화를 읽습니다 · 별도의 실행이며 사용량에 포함됩니다',
+    find: '찾기',
+    cancel: '취소',
+    retry: '다시 시도',
+    copy: '복사',
+    openInChat: '채팅에서 열기',
+    aiSearching: '대화를 읽는 중…',
+    noChat: '이 탭에는 아직 대화가 없습니다. 모든 채팅에서 찾아보세요.',
+    typeToSearch: '결과가 여기에 표시됩니다.',
+    aiEmpty: '위에 설명을 적고 찾기를 누르세요.',
+    nothing: '찾은 것이 없습니다.',
+    nothingHere: '이 채팅에는 없습니다.',
+    aiNothing: '모델이 맞는 것을 찾지 못했습니다.',
+    results: (n) => `결과 ${n}개`,
+    inChats: (n, chats) => `채팅 ${chats}개에 ${n}개`,
+    showing: (shown, total) => `${total}개 중 ${shown}개 표시`,
+    places: (n) => `모델이 가리키는 ${n}곳`,
+    you: '나',
+    more: '메시지 전체 보기',
+    less: '접기',
+    clear: '지우기',
+    matchCase: '대소문자 구분',
+    wholeWords: '단어 단위 검색',
+    chars: (shown, total) => `${total}자 중 ${shown}자`,
+    failed: '검색에 실패했습니다.',
+    failedLabel: '실패',
+    steps: {
+      grep: (subject) => `“${subject}” 검색함`,
+      read: (subject) => `“${subject}” 읽음`,
+      list: '대화 목록을 읽음',
+      other: '파일들을 훑어봄',
+      count: (n) => `${n}단계`,
+    },
+    capsule: {
+      reopen: '검색으로 돌아가기',
+      close: '검색 닫기',
+      loading: '메시지를 찾는 중…',
+      missing: '불러온 메시지에 없습니다',
+      previous: '이 채팅의 이전 일치 항목',
+      next: '이 채팅의 다음 일치 항목',
+    },
+  },
+
   composerLayout: {
     bottom: '기본',
     compact: '좁게',
@@ -117,7 +166,7 @@ export const ko: Dict = {
   },
 
   pasteCollapse: {
-    note: '여러 줄을 붙여넣으면 긴 텍스트가 입력창을 가득 채우지 않도록 칩으로 접힙니다. 어느 쪽이든 내용은 그대로입니다 - 접힌 칩은 전체 텍스트를 담고 있고, 칩에 있는 연필 버튼으로 다시 입력창에 펼칠 수 있습니다.',
+    note: '긴 붙여넣기는 칩으로 접혀서 많은 텍스트가 입력창을 가득 채우지 않게 합니다. 줄 수는 입력창에서 실제로 몇 줄이 되는지로 세기 때문에, 한 줄로 붙여넣은 긴 텍스트도 접힙니다. 어느 쪽이든 내용은 사라지지 않아요 - 접힌 붙여넣기는 본문을 그대로 담고 있고, 연필 버튼으로 입력창에 다시 펼칠 수 있습니다.',
     never: '접지 않기',
     neverSub: '붙여넣은 것은 모두 일반 텍스트로 입력창에 남습니다',
     from: (lines) => `${lines}줄부터`,
@@ -139,7 +188,6 @@ export const ko: Dict = {
     note: '키를 누른 채 말하면 말한 순서대로 입력창에 글이 들어옵니다. 본인 Deepgram 키로 동작하며, 음성은 Deepgram으로만 갑니다. 플러그인은 중간에 서버를 두지 않습니다.',
     off: '꺼짐',
     enable: '음성 입력',
-    enableHint: '마이크 버튼을 보여 주고 아래 단축키를 기다립니다.',
 
     key: 'DEEPGRAM API 키',
     keyPlaceholder: '키를 붙여 넣으세요',
@@ -156,11 +204,10 @@ export const ko: Dict = {
     balanceRefresh: '새로고침',
 
     getKey: '아직 키가 없나요?',
-    getKeyHint: 'deepgram.com에서 가입하고 API 키를 만드세요. 새 계정에는 카드 없이 200달러가 주어지며, 지금 요금이면 수백 시간 분량의 받아쓰기입니다.',
+    getKeyHint: 'deepgram.com에서 가입하고 API 키를 만드세요. 카드 없이 $200 크레딧.',
     openSite: 'deepgram.com 열기',
 
     hotkeys: '단축키',
-    hotkeysHint: '키보드가 IDE에 있는 동안에만 동작합니다 - 편집기, 패널, 대화 상자 모두 포함. 다른 앱에서는 동작하지 않습니다.',
     push: '누른 채 말하기',
     pushHint: '누르고 있는 동안 녹음하고, 떼면 멈춥니다.',
     hold: '손 놓고 말하기',
@@ -175,7 +222,6 @@ export const ko: Dict = {
     sideLeft: '왼쪽',
     sideRight: '오른쪽',
     badButton: '마우스는 옆면 버튼만 쓸 수 있습니다. 주요 세 버튼은 IDE 곳곳에서 이미 제 몫이 있습니다.',
-    modifierTip: '여기서는 수정 키 하나가 가장 알맞습니다. 오른쪽 Option이나 오른쪽 Ctrl을 누르고 있으면 IDE 안에서 겹칠 일이 없습니다.',
 
     language: '말하는 언어',
     languageHint: '받아쓰기가 알아들을 언어',
@@ -187,6 +233,12 @@ export const ko: Dict = {
     deviceDefault: '시스템 기본',
     deviceDefaultHint: '시스템 설정을 그대로 따릅니다',
     deviceNote: '바꾼 내용은 다음 받아쓰기부터 적용됩니다.',
+
+    promo: {
+      title: '여기서 받아쓰기가 마음에 드나요?',
+      body: '다른 창에서도 키를 누른 채 말해 보세요. 제가 만든 또 다른 앱이 말한 내용을 커서가 있는 곳에 그대로 적어 줍니다. 지금 가입하면 계속 무료예요.',
+      tagline: 'Mac과 Windows를 위한 받아쓰기',
+    },
 
     errorNoKey: '먼저 Deepgram 키를 넣어 주세요 - 설정, 그다음 음성 입력.',
     errorNoKeyRemote: '이 대화가 도는 컴퓨터에 Deepgram 키가 없습니다. 그쪽 설정의 음성 입력에서 넣어 주세요.',
@@ -532,9 +584,8 @@ export const ko: Dict = {
       stopCommand: '이 명령 멈추기',
       stopCommandTitle: '이 명령을 멈출까요?',
     },
-    confirm: { cancel: '취소', stop: '멈추기', open: '열기' },
-    resume: { title: '이 탭은 아직 작업 중이에요. 여기에 지난 대화를 열까요?' },
-    noChats: { title: '열린 대화가 없어요', button: '새 대화' },
+    confirm: { cancel: '취소', stop: '멈추기' },
+    noChats: { title: '함께 일하게 되어 기뻐요!', button: '시작하기' },
     crash: {
       title: '패널에서 오류가 났어요',
       text: '새로 고쳐도 안전해요. 대화는 패널 뒤의 Claude Code 프로세스에 있고 패널보다 오래 남아요.',

@@ -2,6 +2,7 @@ package io.github.crmapache.amazingclaudecode.claude
 
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
+import com.intellij.execution.process.ProcessHandler
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.util.concurrency.AppExecutorUtil
 import java.nio.file.Path
@@ -15,11 +16,17 @@ internal object ClaudeCli {
 
     private const val DEFAULT_TIMEOUT_MS = 30_000
 
+    /**
+     * [onStarted] is handed the process as soon as it exists, for whoever needs to end it early - a
+     * search the person cancelled (see AiSearch). A run ended that way reports a failure like any
+     * other; it is the caller's business to know it asked for that.
+     */
     fun run(
         workingDirectory: String?,
         args: List<String>,
         input: String? = null,
         timeoutMs: Int = DEFAULT_TIMEOUT_MS,
+        onStarted: ((ProcessHandler) -> Unit)? = null,
         onError: (String) -> Unit,
         onResult: (String) -> Unit,
     ) {
@@ -38,6 +45,7 @@ internal object ClaudeCli {
                     .apply { workingDirectory?.let { withWorkingDirectory(Path.of(it)) } }
 
                 val handler = CapturingProcessHandler(commandLine)
+                onStarted?.invoke(handler)
                 if (input != null) feed(handler, input)
                 handler.runProcess(timeoutMs)
             }.fold(

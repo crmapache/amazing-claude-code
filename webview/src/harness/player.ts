@@ -1,4 +1,4 @@
-import type { ShellMessage, VoiceHotkey, VoiceHotkeySlot, WebviewMessage } from '../protocol'
+import type { PaintedTerm, SearchHit, ShellMessage, VoiceHotkey, VoiceHotkeySlot, WebviewMessage } from '../protocol'
 import { bootstrap, SESSION } from './events'
 import { SHOWCASE_HISTORY } from './scenarios/showcase'
 import type { Scenario, ScenarioStep } from './types'
@@ -482,10 +482,245 @@ const answerHistoryPage = (message: WebviewMessage): void => {
   }, 400)
 }
 
+/**
+ * A conversation chosen in the history screen.
+ *
+ * In the IDE the shell opens the tab when there is none under this id, replays the transcript's end into
+ * it and declares the replay over. Here the harness plays that part - so the rule that decides WHICH tab
+ * a past conversation lands in (see resume in App.tsx) can be tried out without an IDE: pick one on an
+ * untouched tab and it opens right there, type a word into the field first and the next one opens in a
+ * tab of its own.
+ */
+const answerResume = (message: WebviewMessage): void => {
+  if (message.type !== 'resumeSession') return
+
+  const name = message.title || 'a past conversation'
+  const uuid = (line: number): string => `r-${message.conversationId}-${line}`
+
+  const line = (event: unknown): void => {
+    window.__accReceive?.({ type: 'agent', sessionId: message.sessionId, event, replay: true } as never)
+  }
+
+  setTimeout(() => {
+    line({
+      type: 'user',
+      uuid: uuid(1),
+      message: { role: 'user', content: [{ type: 'text', text: `Where did we leave off on ${name}?` }] },
+    })
+    line({
+      type: 'assistant',
+      uuid: uuid(2),
+      message: { content: [{ type: 'text', text: 'On the last change of that day - it is all still here.' }] },
+    })
+
+    window.__accReceive?.({ type: 'replayFinished', sessionId: message.sessionId, cursor: uuid(1) } as never)
+  }, 250)
+}
+
+/**
+ * The search, answered by the harness (see SearchDesk on the IDE's side for the real thing).
+ *
+ * Two corpora. The showcase's past conversations are given a few messages each, so "all chats" and the
+ * model's search have something to find and a hit can open one of them. And whatever the scenario on
+ * screen typed into the field is remembered as it goes past, so a hit in "this chat" lands on a row that
+ * is really there - a live message of one's own is found by its words (see rowOf in feed/search.ts).
+ * The words are matched by plain inclusion: the harness shows the window, not the ranking.
+ */
+const LIVE_CONVERSATION = 'demo-session'
+
+let typedIntoFeed: { text: string; at: number }[] = []
+
+let aiSearches = 0
+
+const cancelledSearches = new Set<string>()
+
+const pastMessage = (
+  conversationId: string,
+  uuid: string,
+  speaker: 'you' | 'claude',
+  text: string,
+  minutesAgo: number,
+): Omit<SearchHit, 'snippet' | 'spans' | 'truncated' | 'title' | 'named'> => ({
+  conversationId,
+  uuid,
+  speaker,
+  text,
+  at: Date.now() - minutesAgo * 60_000,
+  // How long the conversation is, and the message: what the group heading and an unfolded hit say.
+  messages: 20 + (uuid.length % 7) * 9,
+  length: text.length,
+})
+
+const SEARCH_PAST = [
+  pastMessage('h-1', 'p1-1', 'you', 'The Apple Pay button never shows in the checkout sheet on Safari 17 - merchant validation fails silently.', 14),
+  pastMessage('h-1', 'p1-2', 'claude', 'The validation call goes through the proxy, and the proxy strips the Origin header; Apple rejects it without a word.', 13),
+  pastMessage('h-2', 'p2-1', 'you', 'Refund webhooks are retried every 30 seconds and the queue explodes by lunchtime.', 3 * 60),
+  pastMessage('h-2', 'p2-2', 'claude', 'Every retry re-enqueues the whole batch. A per-event backoff with a ceiling of an hour stops the storm.', 3 * 60 - 2),
+  pastMessage('h-4', 'p4-1', 'you', 'Why does the Adyen sandbox reject our 3DS challenge every single time?', 2 * 24 * 60),
+  pastMessage('h-4', 'p4-2', 'claude', 'The challenge window size is wrong: 05 means full page, and the sheet sends 02.', 2 * 24 * 60 - 3),
+  pastMessage('h-6', 'p6-1', 'you', 'Postgres deadlock on concurrent refunds again, twice this morning.', 5 * 24 * 60),
+  pastMessage('h-6', 'p6-2', 'claude', 'Two transactions lock the order row and the refund row in opposite order. Lock the order first in both.', 5 * 24 * 60 - 4),
+  pastMessage('h-9', 'p9-1', 'you', 'Idempotency keys on the intent endpoint - what do we store with them, and for how long?', 11 * 24 * 60),
+  pastMessage('h-9', 'p9-2', 'claude', 'The key, the request hash and the first response, for 24 hours. A second request with the same key and a different hash is a 409.', 11 * 24 * 60 - 5),
+]
+
+/** A query's words as typed, quotation marks dropped - the harness matches by inclusion. */
+const searchWords = (query: string): string[] =>
+  query
+    .replace(/["«»“”„]/g, ' ')
+    .split(/\s+/)
+    .filter((word) => word.length > 0)
+
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * The words the feed paints, as the IDE names them (see Painted in TextIndex.kt): every word of the
+ * matched texts that a typed word begins, folded, painted as far as it was typed - so "dee" lights the
+ * "Dee" of Deepgram in the feed the way the real index does.
+ */
+const paintedTerms = (texts: string[], words: string[], matchCase: boolean, wholeWords: boolean): PaintedTerm[] =>
+  words.flatMap((word) => {
+    const needle = matchCase ? word : word.toLowerCase()
+    const found = new Set<string>()
+    for (const text of texts) {
+      for (const token of text.match(/[\p{L}\p{N}]+/gu) ?? []) {
+        const probe = matchCase ? token : token.toLowerCase()
+        if (wholeWords ? probe === needle : probe.startsWith(needle)) found.add(token.toLowerCase())
+      }
+    }
+    return [...found].map((term) => ({
+      term,
+      paint: word.length,
+      ...(matchCase ? { text: word } : {}),
+      ...(wholeWords ? { whole: true } : {}),
+    }))
+  })
+
+/** Whether a word stands in a text under the field's two switches - an inclusion, case-blind or word-bound. */
+const wordStands = (text: string, word: string, matchCase: boolean, wholeWords: boolean): boolean =>
+  new RegExp(wholeWords ? `\\b${escapeRegExp(word)}\\b` : escapeRegExp(word), matchCase ? '' : 'i').test(text)
+
+/** The hit for a message that matched: a window of it around the first word, the words' places in it. */
+const searchHit = (
+  message: (typeof SEARCH_PAST)[number],
+  words: string[],
+  matchCase: boolean,
+  title: string,
+  named: boolean,
+): SearchHit => {
+  const fold = (text: string): string => (matchCase ? text : text.toLowerCase())
+  const folded = fold(message.text)
+  const first = Math.min(...words.map((word) => folded.indexOf(fold(word))).filter((at) => at >= 0), message.text.length)
+  const start = message.text.length <= 220 ? 0 : Math.max(0, first - 60)
+  const end = Math.min(message.text.length, start + 220)
+  const lead = start > 0 ? '…' : ''
+  const snippet = lead + message.text.slice(start, end) + (end < message.text.length ? '…' : '')
+
+  const spans: [number, number][] = []
+  const window_ = fold(snippet)
+  for (const word of words) {
+    const needle = fold(word)
+    for (let at = window_.indexOf(needle); at >= 0; at = window_.indexOf(needle, at + 1)) spans.push([at, at + word.length])
+  }
+  spans.sort((a, b) => a[0] - b[0])
+
+  return { ...message, title, named, snippet, spans: spans.filter((span, index) => index === 0 || span[0] >= spans[index - 1]![1]), truncated: false }
+}
+
+const answerSearch = (message: WebviewMessage): void => {
+  if (message.type === 'prompt') {
+    if (message.text.trim()) typedIntoFeed.push({ text: message.text, at: Date.now() })
+    return
+  }
+
+  if (message.type === 'searchCancel') {
+    cancelledSearches.add(message.id)
+    return
+  }
+
+  if (message.type === 'search') {
+    const words = searchWords(message.query)
+    const matchCase = message.matchCase === true
+    const wholeWords = message.wholeWords === true
+    const live = typedIntoFeed.map((typed, index) =>
+      pastMessage(LIVE_CONVERSATION, `live-${index}`, 'you', typed.text, (Date.now() - typed.at) / 60_000),
+    )
+    const matched = [...live, ...SEARCH_PAST].filter((one) => words.every((word) => wordStands(one.text, word, matchCase, wholeWords)))
+    const hits = (message.scope === 'chat' ? matched.filter((one) => one.conversationId === LIVE_CONVERSATION) : matched)
+      .map((one) => {
+        const past = SHOWCASE_HISTORY.find((entry) => entry.id === one.conversationId)
+        return searchHit(one, words, matchCase, past?.title ?? 'This conversation', past?.titleSource === 'llm')
+      })
+      .sort((a, b) => b.at - a.at)
+
+    // Both counts whichever scope was asked for - the window's tabs carry one each (see SearchDesk).
+    const counts = {
+      chat: matched.filter((one) => one.conversationId === LIVE_CONVERSATION).length,
+      project: matched.length,
+      conversations: new Set(matched.map((one) => one.conversationId)).size,
+    }
+
+    setTimeout(() => {
+      window.__accReceive?.({
+        type: 'searchResults',
+        id: message.id,
+        hits,
+        terms: paintedTerms(matched.map((one) => one.text), words, matchCase, wholeWords),
+        counts,
+        total: message.scope === 'chat' ? counts.chat : counts.project,
+      } as never)
+    }, 180)
+    return
+  }
+
+  if (message.type === 'searchAi') {
+    aiSearches += 1
+    const failing = aiSearches % 3 === 0
+
+    /*
+     * What the model does on the way, one step at a time (see AiStep on the IDE's side): it greps for
+     * words of its own, opens what looked promising, and only then answers. Played out over the seconds
+     * the real run takes, so the progress panel can be looked at without an IDE.
+     */
+    const steps = [
+      { kind: 'list' as const, subject: '' },
+      { kind: 'grep' as const, subject: 'refund|retry|deadlock' },
+      { kind: 'read' as const, subject: 'Refund webhooks retry storm' },
+      { kind: 'grep' as const, subject: 'lock order' },
+      { kind: 'read' as const, subject: 'Postgres deadlock on concurrent refunds' },
+    ]
+    steps.forEach((step, index) => {
+      setTimeout(() => {
+        if (cancelledSearches.has(message.id)) return
+        window.__accReceive?.({ type: 'searchProgress', id: message.id, ...step } as never)
+      }, 260 * (index + 1))
+    })
+    const reasons = [
+      'This is where the retry storm was traced to the batch being re-enqueued whole.',
+      'The deadlock on refunds - the two lock orders are named here.',
+      'The 3DS challenge rejection and its cause, the window size code.',
+    ]
+    const picked = [SEARCH_PAST[3]!, SEARCH_PAST[7]!, SEARCH_PAST[5]!].map((one, index) => ({
+      ...searchHit(one, [], false, SHOWCASE_HISTORY.find((entry) => entry.id === one.conversationId)?.title ?? '', true),
+      reason: reasons[index],
+    }))
+
+    setTimeout(() => {
+      if (cancelledSearches.delete(message.id)) return
+      window.__accReceive?.(
+        failing
+          ? ({ type: 'searchResults', id: message.id, hits: [], terms: [], error: 'The model could not be reached - try again.' } as never)
+          : ({ type: 'searchResults', id: message.id, hits: picked, terms: [] } as never),
+      )
+    }, 2200)
+  }
+}
+
 const listenToPanel = () => {
   // A scenario replayed from the top reads its history from the top too. The counter is a module's own,
   // so without this the mark stayed dead after the pages ran out once, for the rest of the browser tab.
   earlierPages = 0
+  typedIntoFeed = []
 
   if (window.__accSend) return
 
@@ -520,6 +755,19 @@ const listenToPanel = () => {
     // here the browser has downloads of its own and does it itself - so the button can be tried out.
     if (message?.type === 'saveImage') download(message.name, message.data)
 
+    // Something pasted into the panel: in the IDE the shell writes it out and answers with the path (see
+    // PastedFiles.kt), so a copied message carries the file rather than "Image #3". Here there is no disk
+    // to write to, so the harness invents a path - enough to see that a copy comes out with one.
+    if (message?.type === 'savePastedFile') {
+      const suffix = message.mediaType.split('/')[1] ?? 'png'
+      const name = message.name || `${message.id}.${suffix}`
+      window.__accReceive?.({
+        type: 'pastedFile',
+        id: message.id,
+        path: `/Users/demo/Library/Caches/amazing-claude-code/pasted/${name}`,
+      } as never)
+    }
+
     // The history screen asks the shell for this project's past conversations. In the IDE they are read
     // off Claude Code's own folder; here they are the showcase's invented ones, so the screen can be
     // looked at - and photographed - without an IDE.
@@ -536,8 +784,10 @@ const listenToPanel = () => {
 
     if (message) answerFeedback(message)
     if (message) answerHistoryPage(message)
+    if (message) answerResume(message)
     if (message) answerImprove(message)
     if (message) answerVoice(message)
+    if (message) answerSearch(message)
   }
 
   window.dispatchEvent(new Event('acc:ready'))
@@ -655,6 +905,11 @@ export class ScenarioPlayer {
 
     if (step.kind === 'openStatistics') {
       window.__accHarnessOpenStatistics?.(step.view ?? 'overview')
+      return
+    }
+
+    if (step.kind === 'openSearch') {
+      window.__accHarnessOpenSearch?.()
       return
     }
 

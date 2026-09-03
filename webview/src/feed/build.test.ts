@@ -1268,6 +1268,95 @@ describe('building the feed out of the agent stream', () => {
       expect(task?.target).toBe('workflow')
     })
 
+    it('takes no context figure out of a replayed turn', () => {
+      // A past turn's usage says how much that turn read, not how full this window is now. Read as the
+      // second, a day-long conversation opened from the history came up with a red 100% (see contextOf).
+      const spent: AgentEvent = {
+        type: 'result',
+        subtype: 'success',
+        duration_ms: 400,
+        usage: { input_tokens: 4_000, cache_read_input_tokens: 900_000, output_tokens: 100 },
+      }
+
+      const replayed = reducePanel(initialPanelState, { kind: 'agent', event: spent, replay: true }, 1_700_000_000_000)
+      expect(contextOf(replayed).percent).toBe(0)
+
+      // Live, the same figures are exactly what the meter is for.
+      const live = reducePanel(initialPanelState, { kind: 'agent', event: spent }, 1_700_000_000_000)
+      expect(contextOf(live).percent).toBeGreaterThan(90)
+    })
+
+    it('marks a replayed task list as a record rather than the work of the moment', () => {
+      const write: AgentEvent = {
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'todo-1',
+              name: 'TodoWrite',
+              input: { todos: [{ content: 'Fix the meter', status: 'in_progress', activeForm: 'Fixing the meter' }] },
+            },
+          ],
+        },
+      }
+
+      const replayed = reducePanel(initialPanelState, { kind: 'agent', event: write, replay: true }, 1_700_000_000_000)
+      const fromReplay = replayed.items.find((item): item is TodoItem => item.kind === 'todo')
+      expect(fromReplay?.replayed).toBe(true)
+
+      // Live it is the work of the moment, and the panel over the input field mirrors it (see latestTodo).
+      const live = reducePanel(initialPanelState, { kind: 'agent', event: write }, 1_700_000_000_000)
+      expect(live.items.find((item): item is TodoItem => item.kind === 'todo')?.replayed).toBeUndefined()
+    })
+
+    it('keeps a workflow running past the tool result that only confirms its launch', () => {
+      // Since CLI 2.1.257 a Workflow answers at once, in its own words, and runs its fleet as a background
+      // task (recorded against that CLI). Read as a result, that answer closed the card at 0.0s and the
+      // chip went out with it - an orchestration of a dozen agents was nowhere on screen while it worked.
+      const launched = play([
+        toolUseEvent('w1', 'Workflow', { description: 'Extract the facts' }),
+        {
+          type: 'system',
+          subtype: 'task_started',
+          task_id: 'w85f7t77l',
+          tool_use_id: 'w1',
+          description: 'Extract the facts',
+          task_type: 'local_workflow',
+        },
+        toolResultEvent(
+          'w1',
+          'Workflow launched in background. Task ID: w85f7t77l\nSummary: Extract the facts\nTranscript dir: /tmp/x',
+        ),
+      ])
+
+      const running = launched.items.find((item): item is TaskItem => item.kind === 'task')
+      expect(running?.pending).toBe(true)
+      expect(running?.background).toBe(true)
+      expect(running?.taskId).toBe('w85f7t77l')
+
+      const reported = play([
+        {
+          type: 'system',
+          subtype: 'task_progress',
+          task_id: 'w85f7t77l',
+          tool_use_id: 'w1',
+          description: 'Extract: agent2',
+          workflow_progress: [
+            { type: 'workflow_phase', index: 1, title: 'Extract' },
+            { type: 'workflow_agent', index: 1, label: 'agent1', state: 'done', phaseIndex: 1 },
+            { type: 'workflow_agent', index: 2, label: 'agent2', state: 'start', phaseIndex: 1 },
+          ],
+        },
+        { type: 'system', subtype: 'task_notification', task_id: 'w85f7t77l', tool_use_id: 'w1', status: 'completed', summary: 'Dynamic workflow "Extract the facts" completed' },
+      ], launched)
+
+      const done = reported.items.find((item): item is TaskItem => item.kind === 'task')
+      expect(done?.workflow?.total).toBe(2)
+      expect(done?.pending).toBe(false)
+      expect(done?.outcome).toBe('ok')
+    })
+
     it('computes the group full span on a re-append after a resolve (regression)', () => {
       const T0 = 1_700_000_000_000
       // T0: tool1 called

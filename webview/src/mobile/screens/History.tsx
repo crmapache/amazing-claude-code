@@ -2,6 +2,7 @@ import { describeWhen } from '../../feed/when'
 import type { HistoryEntry } from '../../protocol'
 import type { ProjectEntry } from './Sessions'
 import { Back } from './Back'
+import { Magnifier } from '../../components/SearchCapsule'
 import m from '../mobile.module.css'
 import { useT } from '../../i18n'
 
@@ -11,6 +12,8 @@ interface HistoryProps {
   conversations: HistoryEntry[] | null
   onOpen: (entry: HistoryEntry) => void
   onBack: () => void
+  /** The search over this project's conversations - the same window as over a thread, minus "this chat". */
+  onSearch: () => void
 }
 
 /**
@@ -22,7 +25,7 @@ interface HistoryProps {
  * From a phone it opens a tab of its own, because from here there is no telling whether somebody is in
  * the middle of using the one on screen.
  */
-export const History = ({ project, conversations, onOpen, onBack }: HistoryProps) => {
+export const History = ({ project, conversations, onOpen, onBack, onSearch }: HistoryProps) => {
   const t = useT()
 
   return (
@@ -31,6 +34,9 @@ export const History = ({ project, conversations, onOpen, onBack }: HistoryProps
       <Back onClick={onBack} />
       <span className={m.headerTitle}>{t.mobile.history.title}</span>
       <span className={m.headerMeta}>{project.name}</span>
+      <button type="button" className={m.headerAction} onClick={onSearch} aria-label={t.search.title}>
+        <Magnifier size={18} />
+      </button>
     </header>
 
     <div className={m.list}>

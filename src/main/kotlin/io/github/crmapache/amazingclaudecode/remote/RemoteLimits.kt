@@ -86,8 +86,10 @@ internal class RemoteLimits {
             // reads its past ones: each one opened from the history is a tab of its own, and at five a
             // minute someone going through yesterday's work ran out in half a minute. What that looked
             // like on the phone was a conversation opening empty, which is a poor way to say "not so
-            // fast".
+            // fast". The history goes through the second of these: it opens the tab as well as the
+            // conversation (see ClaudeSessionHub.resumeConversation), and one request is all it sends.
             "newSession" to 15,
+            "resumeSession" to 15,
             "permissionDecision" to 40,
             "planDecision" to 40,
             "askAnswer" to 40,
@@ -98,6 +100,11 @@ internal class RemoteLimits {
             // Being caught up is cheap for the agent and expensive to be denied: a phone in a lift does
             // it on every reconnect.
             "ready" to 60,
+            // A search answers as one types - a word is half a dozen requests - and costs a lookup in an
+            // index already in memory. The model's search starts a process and a paid run, so it is
+            // counted like a message.
+            "search" to 120,
+            "searchAi" to 10,
         )
 
         const val DEFAULT_PER_MINUTE = 30

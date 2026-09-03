@@ -46,6 +46,33 @@ export const tokenText = (token: UserToken): string => {
 }
 
 /**
+ * What an attachment means in the clipboard - which is not what it means to the agent.
+ *
+ * The agent is handed the message: `@path` for a file, `[Image #3]` for bytes that travel beside the
+ * text. A person copying that message is taking it somewhere else - a task, a chat, a terminal - and
+ * there the only useful thing an attachment can leave behind is the path to what it stood for. So the
+ * marker `@` goes (it is this field's syntax and means nothing outside it), and a pasted picture gives
+ * the file it was written into (see PastedFiles.kt), falling back to its caption when there is none.
+ */
+export const clipboardText = (token: UserToken): string => {
+  if (token.kind === 'text') return token.value
+
+  const { chip } = token
+  if (chip.kind === 'cmd') return `/${chip.value}`
+  if (chip.kind === 'quote') return chip.text ?? ''
+  if (chip.kind === 'paste') return chip.text ?? ''
+  if (chip.kind === 'ref') return chip.range ? `${chip.value} (${chip.range})` : chip.value
+  // Bytes from the clipboard: the path if the shell managed to keep them, the caption if it did not - an
+  // empty space where an attachment stood would say less than its number does.
+  if (chip.data) return chip.path || `[${chip.value}]`
+
+  return chip.value
+}
+
+/** A whole message as it goes into the clipboard. */
+export const clipboardTextOf = (tokens: UserToken[]): string => tokens.map(clipboardText).join('')
+
+/**
  * The text of a sequence of attachments, with the images numbered.
  *
  * An image's number is recounted from its place in the sequence rather than taken from the chip: the

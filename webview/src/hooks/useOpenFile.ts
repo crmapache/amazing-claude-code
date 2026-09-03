@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react'
+import { NOTHING_KNOWN, type KnownFiles } from '../feed/paths'
 
 /** What the panel asks the IDE to open, and where in it to land. */
 export interface OpenFileRequest {
@@ -41,3 +42,15 @@ export const OpenFileContext = createContext<((request: OpenFileRequest) => void
 
 /** The editor to open a named file in, or null where there is none - see [OpenFileContext]. */
 export const useOpenFile = (): ((request: OpenFileRequest) => void) | null => useContext(OpenFileContext)
+
+/**
+ * The project's files, for telling a file's name from a word that merely looks like one (see KnownFiles).
+ *
+ * A context for the same reason as the one above: the readers are the same leaves. The default knows
+ * nothing, which is the honest answer everywhere the shell has not sent its list - the harness, the
+ * phone, the first moments of the panel - and there the rules about shape decide alone, as they did.
+ */
+export const KnownFilesContext = createContext<KnownFiles>(NOTHING_KNOWN)
+
+/** What the project is known to have - see [KnownFilesContext]. */
+export const useKnownFiles = (): KnownFiles => useContext(KnownFilesContext)

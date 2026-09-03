@@ -1001,10 +1001,12 @@
   pointer-events: none;
 }
 
+/* Four pixels rather than three, and the same four for the fill: the fill used to glow, and the glow
+   made it read as a thicker bar than the track under it. Flat, the two are one line of one weight. */
 .contextMeter {
   flex: 1 1 auto;
   position: relative;
-  height: 3px;
+  height: 4px;
   border-radius: 999px;
   background: var(--acc-meter-track);
 }

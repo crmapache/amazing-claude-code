@@ -4,6 +4,7 @@ import { QrCode } from './QrCode'
 import s from './sideMenu.module.css'
 import { useT } from '../i18n'
 import type { Dict } from '../i18n/en'
+import { useFieldHistory } from '../hooks/useFieldHistory'
 
 export interface RemoteStatus {
   state: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'relay_down' | 'refused'
@@ -130,6 +131,8 @@ export const Remote = ({
   const tint = TONE_TINT[meaning.tone]
   const devices = status.devices ?? []
 
+  const relayKeys = useFieldHistory(relay, setRelay)
+
   return (
     <div className={s.screen}>
       <div className={s.stateCard} style={{ borderColor: tint.border, background: tint.background }}>
@@ -173,10 +176,11 @@ export const Remote = ({
           value={relay}
           spellCheck={false}
           placeholder="wss://…"
-          onChange={(event) => setRelay(event.target.value)}
+          onChange={relayKeys.onChange}
           onBlur={() => relay !== status.relay && onRelay(relay)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') onRelay(relay)
+            relayKeys.onKeyDown(event)
+            if (!event.defaultPrevented && event.key === 'Enter') onRelay(relay)
           }}
         />
         <span className={s.screenNote}>

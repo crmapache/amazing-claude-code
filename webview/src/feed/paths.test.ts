@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fileRef, isOpenablePath, withFileRefs } from './paths'
+import { fileRef, isOpenablePath, knownFiles, withFileRefs } from './paths'
 
 /**
  * What a click on a piece of an answer does hangs on this rule alone: a path opens in the editor, anything
@@ -185,5 +185,70 @@ describe('files named in ordinary text', () => {
 
   it('finds nothing in a text with no paths in it', () => {
     expect(linked('Всё готово, тесты зелёные.')).toEqual([])
+  })
+})
+
+/**
+ * The project's own list answers before any rule about shape does. The first review of the links put the
+ * two failures of shape side by side: a name with an extension the panel did not know copied where its
+ * neighbour opened, and a bare `.gitignore` in a list of files was the one line in it that was not a link.
+ */
+describe('files the project is known to have', () => {
+  const known = knownFiles([
+    '.gitignore',
+    'Makefile',
+    'build',
+    'sandbox-project.iml',
+    'notes.txtx',
+    'src/components/Button.js',
+    'src/legacy/Button.js',
+    'src/utils/',
+  ])
+
+  it('makes a bare name in ordinary text a link when the project has the file', () => {
+    expect(withFileRefs('the rules live in .gitignore and nowhere else', known)).toEqual([
+      { text: 'the rules live in ' },
+      { text: '.gitignore', ref: { path: '.gitignore' } },
+      { text: ' and nowhere else' },
+    ])
+  })
+
+  it('leaves a bare name alone when the project has no such file', () => {
+    expect(withFileRefs('the rules live in .gitignore', knownFiles([]))).toEqual([{ text: 'the rules live in .gitignore' }])
+    expect(withFileRefs('runs on Node.js', known)).toEqual([{ text: 'runs on Node.js' }])
+  })
+
+  it('trusts the list over the extension in backticks', () => {
+    expect(fileRef('sandbox-project.iml', true, knownFiles([]))).toEqual({ path: 'sandbox-project.iml' })
+    expect(fileRef('notes.txtx', true, knownFiles([]))).toBeNull()
+    expect(fileRef('notes.txtx', true, known)).toEqual({ path: 'notes.txtx' })
+  })
+
+  it('takes a name without an extension only inside backticks', () => {
+    expect(fileRef('Makefile', true, known)).toEqual({ path: 'Makefile' })
+    // A script called "build" must not turn the word into a link across every answer.
+    expect(withFileRefs('run the build again', known)).toEqual([{ text: 'run the build again' }])
+    expect(fileRef('build', false, known)).toBeNull()
+  })
+
+  it('matches folders written in front against the tail of the path', () => {
+    expect(known.has('components/Button.js')).toBe(true)
+    expect(known.has('legacy/Button.js')).toBe(true)
+    expect(known.has('ponents/Button.js')).toBe(false)
+    expect(known.has('src/Button.js')).toBe(false)
+    expect(known.has('./src/components/Button.js')).toBe(true)
+    expect(known.has('src\\components\\Button.js')).toBe(true)
+  })
+
+  it('does not count a folder as a file', () => {
+    expect(known.has('utils')).toBe(false)
+    expect(known.has('src/utils/')).toBe(false)
+  })
+
+  it('still reads the line after a known name', () => {
+    expect(withFileRefs('see .gitignore:3', known)).toEqual([
+      { text: 'see ' },
+      { text: '.gitignore:3', ref: { path: '.gitignore', line: 3 } },
+    ])
   })
 })

@@ -276,6 +276,29 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
 
             "history" -> hub.catalog.sendHistory(clientId)
 
+            /**
+             * The search over this project's conversations (see SearchDesk). Answered to whoever asked,
+             * like the history: what somebody is looking for is theirs alone. The tab's identifier names
+             * the conversation a "this chat" search is scoped to - the client knows the tab, this side
+             * knows what conversation it holds.
+             */
+            "search" -> hub.search.find(
+                clientId,
+                asker,
+                id = field("id"),
+                sessionId = sessionId,
+                scope = field("scope"),
+                query = field("query"),
+                // The field's two switches, off unless the client says so (see TextIndex.search).
+                matchCase = payload["matchCase"]?.jsonPrimitive?.booleanOrNull == true,
+                wholeWords = payload["wholeWords"]?.jsonPrimitive?.booleanOrNull == true,
+            )
+
+            // The same, described in words to a model rather than typed as words to match (see AiSearch).
+            "searchAi" -> hub.search.ask(clientId, asker, id = field("id"), query = field("query"))
+
+            "searchCancel" -> hub.search.cancel(field("id"))
+
             /*
              * A phone asking to dictate (see VoiceGrant).
              *
@@ -292,7 +315,18 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
             // ClaudeHistory.page. "before" absent asks for the transcript's own last page.
             "historyPage" -> hub.catalog.sendHistoryPage(clientId, sessionId, field("before").ifEmpty { null })
 
-            "resumeSession" -> hub.resumeConversation(sessionId, field("conversationId"))
+            // The name comes along with the request: the tab is about to lose the one it wears, and only
+            // whoever chose the conversation knows what it is called (see ClaudeSessionHub.resumeConversation).
+            "resumeSession" -> hub.resumeConversation(
+                sessionId = sessionId,
+                conversationId = field("conversationId"),
+                title = field("title"),
+                titleSource = if (field("titleSource") == SessionSnapshot.TITLE_LLM) {
+                    SessionSnapshot.TITLE_LLM
+                } else {
+                    SessionSnapshot.TITLE_HEURISTIC
+                },
+            )
 
             // The automatic search missed - the person pointed at the file themselves.
             "setExecutablePath" -> {

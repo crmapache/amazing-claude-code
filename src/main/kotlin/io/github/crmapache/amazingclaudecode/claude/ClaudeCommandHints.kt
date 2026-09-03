@@ -31,13 +31,18 @@ internal object ClaudeCommandHints {
         }
 
         // The user's own commands and skills - out of the same directory the CLI reads its personal
-        // settings from, so that a moved config directory does not leave the hint half-empty.
-        val personal = HostOs.configDirectory()
+        // settings from, so that a moved config directory does not leave the hint half-empty. The CLI's
+        // directory for THIS project rather than this machine's: a project opened out of WSL has its CLI,
+        // and its personal commands, inside the distribution (see ClaudeHome).
+        val home = ClaudeHome.of(workingDirectory)
+        val personal = home.configDirectory
         scanCommandsDir(File(personal, "commands"), prefix = "", into = hints)
         scanSkillsDir(File(personal, "skills"), prefix = "", into = hints)
 
         for (plugin in installed) {
-            val installPath = plugin.installPath ?: continue
+            // Printed by the CLI in its own terms - inside WSL that is a Linux path, and it is turned into
+            // one this JVM can open the same way as everything else of the CLI's.
+            val installPath = plugin.installPath?.let(home::hostPath) ?: continue
             // "context7@claude-plugins-official" → "context7": the namespaced names in the
             // slash_commands list itself are put together the same way ("vercel:deploy").
             val name = plugin.id.substringBefore('@')

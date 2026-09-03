@@ -1,3 +1,4 @@
+import { isOpenablePath, type FileRef } from './paths'
 import type { Chip } from './types'
 
 export interface SelectionSpan {
@@ -160,11 +161,20 @@ export const pasteCollapseLines = (value: string | undefined): number => {
 }
 
 /**
- * Whether this paste goes in as a chip. The line count is the same one the tooltip shows, so the
- * threshold on the screen means exactly what the chip then says about itself.
+ * Whether this paste goes in as a chip.
+ *
+ * Two counts, and the larger of them wins. The text's own lines are what the chip then says about itself,
+ * so the threshold on the settings screen means what it looks like it means. But a wall of text pasted as
+ * ONE line has no line breaks at all and used to walk straight into the field - which is the very thing
+ * the folding exists to prevent: the field it lands in is a few hundred pixels wide, and there that one
+ * line is forty. So the caller may also say how many lines it actually takes where it is going (see
+ * wrappedLineCount), and that count decides too.
+ *
+ * Measured rather than guessed from the character count on purpose: how many lines a text takes depends
+ * on the width of the panel, and the panel is narrow at one desk and half a screen wide at another.
  */
-export const collapsesPaste = (text: string, minLines: number): boolean =>
-  minLines > PASTE_COLLAPSE_NEVER && pasteLineCount(text) >= minLines
+export const collapsesPaste = (text: string, minLines: number, drawnLines = 0): boolean =>
+  minLines > PASTE_COLLAPSE_NEVER && Math.max(pasteLineCount(text), drawnLines) >= minLines
 
 /**
  * How much of a text a hover hint takes - lines of a paste, characters of a quote.
@@ -277,4 +287,62 @@ export const chipLabel = (chip: Chip): string => {
   const parts = chip.value.split('/').filter(Boolean)
   const name = truncateMiddle(parts.at(-1) ?? chip.value)
   return chip.range ? `${name} ${chip.range}` : name
+}
+
+/**
+ * Where a reference from the editor points, read back out of its caption - so that the chip in a sent
+ * message opens the editor on the very piece it was made from.
+ *
+ * The caption is the four shapes rangeLabel writes and nothing else: `L12`, `L12-L18`, `L12:5-30`,
+ * `L12:5-L18:30`. Anything else is nobody's caption, and then the chip opens the file at its top rather
+ * than somewhere guessed.
+ *
+ * The end column is written the way the editor counts a selection's end - the column AFTER the last
+ * selected character (see SelectionReference.kt) - while a range the editor is asked to select ends on
+ * its last character, the way a person counts (see OpenInEditor.select). Hence the one subtracted here:
+ * without it the reopened selection was a character longer than the one that was made.
+ */
+export const rangePlace = (range: string): Omit<FileRef, 'path'> | null => {
+  const match = RANGE.exec(range.trim())
+  if (!match) return null
+
+  const line = Number(match[1])
+  const column = match[2] ? Number(match[2]) : undefined
+  const endLine = match[3] ? Number(match[3]) : undefined
+  const written = match[4] ?? match[5]
+  const endColumn = written ? Number(written) - 1 : undefined
+
+  return {
+    line,
+    ...(column === undefined ? {} : { column }),
+    ...(endLine === undefined ? {} : { endLine }),
+    // A selection that ends where it began on the same line is no selection: the caret alone is enough.
+    ...(endColumn === undefined || (endLine === undefined && column !== undefined && endColumn < column)
+      ? {}
+      : { endColumn }),
+  }
+}
+
+/** `L12`, `L12-L18`, `L12:5-30`, `L12:5-L18:30` - the end column of one line in the last group, of another line in the fourth. */
+const RANGE = /^L(\d+)(?::(\d+))?(?:-(?:L(\d+)(?::(\d+))?|(\d+)))?$/
+
+/**
+ * The file a chip in a sent message opens, or nothing when it stands for no file.
+ *
+ * An attached file opens itself; a reference from the editor opens on its own selection; a pasted
+ * picture opens the file the shell wrote it into (see PastedFiles.kt) - when there is one, which an old
+ * shell or a failed write leaves out. A folder is not a file, a command and a quote are not even paths,
+ * and a paste has its own way of opening (see PasteView).
+ *
+ * The same refusals as for a path in an answer (see isOpenablePath): a chip's path comes from the file
+ * chooser and from what was typed after "@", and neither is a reason to reach for a network share.
+ */
+export const chipFile = (chip: Chip): FileRef | null => {
+  if (chip.kind === 'file') return isOpenablePath(chip.value) ? { path: chip.value } : null
+  if (chip.kind === 'img') return chip.path && isOpenablePath(chip.path) ? { path: chip.path } : null
+  if (chip.kind === 'ref') {
+    if (!isOpenablePath(chip.value)) return null
+    return { path: chip.value, ...(chip.range ? rangePlace(chip.range) ?? {} : {}) }
+  }
+  return null
 }

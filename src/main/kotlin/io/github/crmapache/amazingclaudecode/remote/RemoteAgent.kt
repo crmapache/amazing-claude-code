@@ -928,6 +928,13 @@ internal class RemoteAgent : Disposable {
                                     // out from status and awaitsYou - see SessionSnapshot.worked.
                                     put("worked", snapshot.worked)
                                     put("crashed", snapshot.crashed)
+                                    // Which conversation stands behind the tab - so that a past one
+                                    // picked in the history opens the tab it is already in rather than a
+                                    // second one just like it (see tabHolding in feed/resume.ts). Known
+                                    // from the first second for a resumed conversation and only once the
+                                    // process has said so for a fresh one, which is the honest answer in
+                                    // both cases: a conversation with no name yet is in no tab.
+                                    attachment.hub.conversations.conversationIdOf(tab.id)?.let { put("conversation", it) }
                                     put("q", attachment.hub.lastSeq(tab.id))
                                 }
                             }

@@ -17,6 +17,8 @@ export type ScenarioStep =
    * The figures themselves arrive as an ordinary shell message (see the statistics scenario).
    */
   | { kind: 'openStatistics'; view?: 'overview' | 'achievements' }
+  /** Open the search window, the way the magnifier beside the slash would. */
+  | { kind: 'openSearch' }
 
 /**
  * One meaningful moment of a scenario with a caption for the checkpoints card. In auto playback its steps
@@ -53,6 +55,8 @@ declare global {
     __accHarnessResolvePlan?: (itemId: string, decision: 'approve' | 'keepPlanning') => void
     /** And the same for the statistics tab: opens it as the menu's row does, on the screen asked for. */
     __accHarnessOpenStatistics?: (view: 'overview' | 'achievements') => void
+    /** And for the search window: opens it as the magnifier beside the slash does. */
+    __accHarnessOpenSearch?: () => void
     /**
      * Shot mode only: the frame has been played out in full. Whatever photographs the panel waits for
      * this rather than for the page's load - the events reach the feed through the bridge, a moment

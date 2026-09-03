@@ -2,9 +2,12 @@ import { memo, useMemo } from 'react'
 import { LinkedText } from './LinkedText'
 import { Caret } from './Caret'
 import { CopyButton } from './CopyButton'
-import { chipLabel, chipTitle, pasteBlockPreview, pasteBody, pasteLineCount } from '../../feed/reference'
+import { chipFile, chipLabel, chipTitle, pasteBlockPreview, pasteBody, pasteLineCount } from '../../feed/reference'
+import { COPY_ATTRIBUTE } from '../../feed/copy'
+import { clipboardText } from '../../feed/tokens'
 import type { Chip, ChipKind, UserItem } from '../../feed/types'
 import type { CardState } from '../../hooks/useCardState'
+import { useOpenFile } from '../../hooks/useOpenFile'
 import s from '../feed.module.css'
 import { useT } from '../../i18n'
 
@@ -99,15 +102,49 @@ const TextToken = ({
  * from the text itself, while the feed repaints on every chunk of a printing answer. The chip meanwhile
  * does not change at all - and recomputing it a hundred times a second serves nothing.
  */
-const ChipView = memo(({ chip }: { chip: Chip }) => (
+const ChipView = memo(({ chip }: { chip: Chip }) => {
+  const t = useT()
+  const openFile = useOpenFile()
+  const file = openFile ? chipFile(chip) : null
   // No attribute at all when there is nothing to add (see chipTitle): an empty one is still a hover, and
   // an empty box under the pointer reads as something that failed to load.
-  <span className={`${s.chip} ${CHIP_CLASS[chip.kind]}`} data-tooltip={chipTitle(chip) || undefined}>
-    {/* There is deliberately no attachment type icon - see renderChipNode in Composer: the chip here is
-        the same one as in the input field and should look the same. */}
-    {chipLabel(chip)}
-  </span>
-))
+  const title = chipTitle(chip)
+  // What the chip means in the clipboard travels beside it: copied as it looks, `App.tsx` is a name with
+  // no path in it, while what the agent was handed is the path itself (see copiedText).
+  const copy = { [COPY_ATTRIBUTE]: clipboardText({ kind: 'chip', chip }) }
+
+  /*
+   * A chip that stands for a file opens it - a button rather than a span with a click on it, so that a
+   * keyboard reaches it as well as a pointer. It was the one file name in the feed that did nothing when
+   * clicked, and a person who has just attached a file is the surest to click it. Where there is no
+   * editor (the phone), or nothing to open (a folder, a command), it stays the plain chip below.
+   *
+   * The hover says what a click does, the way it does on every path that opens (see PathLink) - unless
+   * the name had to be cut, and then the hover is the only place the whole of it exists (see chipTitle).
+   */
+  if (file && openFile) {
+    return (
+      <button
+        type="button"
+        className={`${s.chip} ${CHIP_CLASS[chip.kind]} ${s.chipOpens}`}
+        aria-label={`${t.feed.copy.openFile}: ${chip.value}`}
+        data-tooltip={title || t.feed.copy.openFile}
+        {...copy}
+        onClick={() => openFile(file)}
+      >
+        {chipLabel(chip)}
+      </button>
+    )
+  }
+
+  return (
+    <span className={`${s.chip} ${CHIP_CLASS[chip.kind]}`} data-tooltip={title || undefined} {...copy}>
+      {/* There is deliberately no attachment type icon - see renderChipNode in Composer: the chip here is
+          a reminder of what was sent, and the colour of the kind is reminder enough. */}
+      {chipLabel(chip)}
+    </span>
+  )
+})
 
 /**
  * A paste in a sent message, and the one attachment that opens.

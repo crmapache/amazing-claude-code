@@ -79,7 +79,7 @@ const KNOWN_EXTENSIONS = new Set([
   'php', 'cs', 'swift', 'c', 'h', 'cc', 'cpp', 'hpp', 'm', 'mm', 'scala', 'dart', 'lua', 'pl', 'r',
   'jl', 'zig', 'hs', 'ex', 'exs', 'clj', 'vue', 'svelte', 'astro',
   // Shells and build files
-  'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd', 'gradle', 'mk', 'podspec', 'gemspec',
+  'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd', 'gradle', 'mk', 'podspec', 'gemspec', 'iml',
   // Markup, styles, data, docs
   'html', 'htm', 'xml', 'svg', 'css', 'scss', 'sass', 'less', 'md', 'mdx', 'txt', 'rst', 'adoc',
   'json', 'jsonc', 'json5', 'yml', 'yaml', 'toml', 'ini', 'cfg', 'conf', 'properties', 'env',
@@ -88,6 +88,59 @@ const KNOWN_EXTENSIONS = new Set([
   'gitignore', 'gitattributes', 'gitmodules', 'dockerignore', 'editorconfig', 'npmrc', 'nvmrc',
   'prettierrc', 'eslintrc', 'babelrc', 'stylelintrc',
 ])
+
+/**
+ * The files the project is known to have - the first thing asked before any rule about shape.
+ *
+ * The shape rules below are guesses, and the two ways they guess wrong stood side by side in the very
+ * first review: `modules.xml` opened and `sandbox-project.iml` copied, with no visible difference between
+ * them; `.idea/.gitignore` in a list of files was a link and the bare `.gitignore` on the next line was
+ * not. Whether a name is a file is not a matter of shape at all - the project either has it or it does
+ * not, and the shell already sends the panel the list it draws the "@" hint from (see ProjectCatalog).
+ *
+ * The list is not the whole truth: it stops at a few thousand entries and leaves out the folders nobody
+ * mentions by hand (`.idea`, `node_modules`, the build output), so the shape rules stay for whatever it
+ * does not cover. But where it answers, it answers outright, whatever the extension.
+ */
+export interface KnownFiles {
+  /** Whether this, as written - a bare name or a relative path - names one of the project's files. */
+  has(path: string): boolean
+}
+
+/** No list at all: the harness, the phone, the panel before the shell has answered. */
+export const NOTHING_KNOWN: KnownFiles = { has: () => false }
+
+/**
+ * A lookup over the shell's list: relative paths with forward slashes, folders with a slash at the end.
+ *
+ * By the last piece of the path, because that is what a bare name is - and a path with folders in front
+ * of it is then checked against the tails of the files that go by that name, so that `components/Button.js`
+ * finds `src/components/Button.js` and not `src/legacy/Button.js`. Folders are left out: an editor has
+ * nothing to open for one.
+ */
+export const knownFiles = (files: readonly string[]): KnownFiles => {
+  const byName = new Map<string, string[]>()
+
+  for (const file of files) {
+    if (file.endsWith('/')) continue
+    const name = file.slice(file.lastIndexOf('/') + 1)
+    if (!name) continue
+    const paths = byName.get(name)
+    if (paths) paths.push(file)
+    else byName.set(name, [file])
+  }
+
+  return {
+    has(path) {
+      const written = path.replace(/\\/g, '/').replace(/^(?:\.\/)+/, '')
+      const name = written.slice(written.lastIndexOf('/') + 1)
+      const paths = byName.get(name)
+      if (!paths) return false
+      if (!written.includes('/')) return true
+      return paths.some((candidate) => candidate === written || candidate.endsWith(`/${written}`))
+    },
+  }
+}
 
 /** The punctuation a sentence leaves stuck to a path, and the "@" the panel's own file chips are written with. */
 const EDGES = /^[@(["']+|[).,;:"'\]]+$/g
@@ -124,8 +177,13 @@ const EXTENSION = /\.([A-Za-z][A-Za-z0-9]{0,14})$/
  * lone `CLAUDE.md` there is a file and is treated as one. In running prose the same shape is a word about
  * as often as it is a file - "Node.js", "Next.js", "React.js" - so there a name has to carry a separator
  * or a line number before it becomes a link (see withFileRefs).
+ *
+ * [known] answers before either rule does: a name the project has is a file whatever its shape (see
+ * KnownFiles). With one reservation outside backticks - the name has to carry a dot. A project that
+ * keeps a script called `build` would otherwise turn the word "build" into a link across every answer,
+ * and inside backticks alone is `Makefile` plainly a file rather than a word.
  */
-export const fileRef = (text: string, bare = true): FileRef | null => {
+export const fileRef = (text: string, bare = true, known: KnownFiles = NOTHING_KNOWN): FileRef | null => {
   const trimmed = text.trim().replace(EDGES, '')
   if (!isOpenablePath(trimmed)) return null
 
@@ -145,14 +203,20 @@ export const fileRef = (text: string, bare = true): FileRef | null => {
 
   const lastSegment = path.split(/[/\\]/).at(-1) ?? ''
   const extension = EXTENSION.exec(lastSegment)?.[1]?.toLowerCase()
-  // A last segment without an extension is a directory, or a word we cannot tell from one.
-  if (!extension) return null
 
-  // A separator or a line number makes the shape a path by itself; a bare name has to earn it by its
-  // extension, or every `state.items` in an answer becomes a link to a file that was never there.
-  const separated = /[/\\]/.test(path)
-  const shaped = separated || named || (bare && KNOWN_EXTENSIONS.has(extension))
-  if (!shaped) return null
+  // The project's own list first: a file it has is a file, and no rule about shape gets a say.
+  const listed = (bare || extension !== undefined) && known.has(path)
+
+  if (!listed) {
+    // A last segment without an extension is a directory, or a word we cannot tell from one.
+    if (!extension) return null
+
+    // A separator or a line number makes the shape a path by itself; a bare name has to earn it by its
+    // extension, or every `state.items` in an answer becomes a link to a file that was never there.
+    const separated = /[/\\]/.test(path)
+    const shaped = separated || named || (bare && KNOWN_EXTENSIONS.has(extension))
+    if (!shaped) return null
+  }
 
   if (!named) return { path }
 
@@ -192,14 +256,15 @@ const TOKENS = /\S+/g
  * a list of paths that cannot be clicked is exactly the retyping this was built to remove. A fenced block
  * of them goes the same way (see ParagraphView).
  *
- * The rule is stricter here than in backticks: a path must carry a separator or a line number. In prose a
- * bare "Node.js" is a name far more often than a file, and a sentence peppered with links that open
- * nothing is worse than one with no links at all.
+ * The rule is stricter here than in backticks: a path must carry a separator or a line number, unless
+ * the project is known to have a file of that name (see KnownFiles). In prose a bare "Node.js" is a name
+ * far more often than a file, and a sentence peppered with links that open nothing is worse than one
+ * with no links at all.
  *
  * Every character of the original comes back out, in order - the runs are the text, cut rather than
  * rewritten - so a block of code still reads exactly as the agent wrote it.
  */
-export const withFileRefs = (text: string): TextRun[] => {
+export const withFileRefs = (text: string, known: KnownFiles = NOTHING_KNOWN): TextRun[] => {
   const runs: TextRun[] = []
   let last = 0
 
@@ -211,7 +276,7 @@ export const withFileRefs = (text: string): TextRun[] => {
     const core = token.replace(EDGES, '')
     if (!core) continue
 
-    const ref = fileRef(core, false)
+    const ref = fileRef(core, false, known)
     if (!ref) continue
 
     const start = at + token.indexOf(core)

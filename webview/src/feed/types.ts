@@ -20,6 +20,14 @@ export interface Chip {
   /** An image pasted from the clipboard: a data URL with bytes rather than a path on disk. */
   data?: string
   /**
+   * Where those bytes were kept (see PastedFiles.kt) - a pasted picture's only path on disk.
+   *
+   * Absent for everything else: the other attachments carry their path in [value], and this one cannot -
+   * the caption "Image #3" is what the chip is called, and the numbering is what tells two screenshots
+   * apart. Absent too when the shell could not write the file, or is too old to know how.
+   */
+  path?: string
+  /**
    * The full text of something that has no path on disk to be re-read from: a quote out of the agent's
    * output and a collapsed paste from the clipboard. That text is the chip's whole content - it is what
    * travels to the agent, while the caption shows only its beginning.
@@ -60,6 +68,8 @@ export interface TextPart {
   code?: boolean
   mark?: boolean
   strong?: boolean
+  /** Italic - `*so*` or `_so_`. Bold and italic are not exclusive: `***so***` is both. */
+  em?: boolean
   /** The URL, when the piece is a link (a markdown link or a bare http/https address in the text). */
   href?: string
 }
@@ -194,11 +204,19 @@ export interface UserItem {
   tokens: UserToken[]
   /** The pieces of output the message refers to. They are shown with it in the feed. */
   quotes: string[]
+  /**
+   * The transcript's own name for this message - what a search hit is jumped to by (see feed/search.ts).
+   * Only a message read off the disk has one: the person's own live message is put into the feed at
+   * the press of Send, before the CLI has written it anywhere, so a hit on it is found by its text.
+   */
+  uuid?: string
 }
 
 export interface TextItem {
   id: string
   kind: 'text'
+  /** The transcript's own name for the answer this text is part of - see UserItem.uuid. */
+  uuid?: string
   paragraphs: Paragraph[]
   /**
    * The same answer before the markup was parsed. Needed for comparison with errors: the CLI can say one
@@ -362,6 +380,15 @@ export interface TodoItem {
   id: string
   kind: 'todo'
   todos: TodoEntry[]
+  /**
+   * The list came out of a past conversation's replay rather than out of a live turn.
+   *
+   * It is kept rather than dropped - the conversation genuinely had it, and the agent resumed from that
+   * transcript still holds it - but the panel pinned over the input field is about what is being worked
+   * on now, and after a replay nothing is (see latestTodo in App). A conversation opened from the
+   * history put a list of yesterday's tasks over the field with one of them marked RUNNING.
+   */
+  replayed?: boolean
 }
 
 export interface PlanItem {

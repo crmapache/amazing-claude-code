@@ -119,6 +119,41 @@
   padding: 0 var(--acc-feed-gutter, 16px);
 }
 
+/*
+ * The row a search jumped to, lit for a moment (see Feed.focus). A wash across the whole row rather
+ * than an outline around the card: the cards have gutters and shapes of their own, and an outline
+ * hugging one of them reads as a focus ring on a button. The wash fades on its own; the row itself is
+ * not moved or resized, so nothing under it shifts.
+ */
+.rowLit {
+  animation: acc-row-lit 1.8s ease-out both;
+}
+
+@keyframes acc-row-lit {
+  0%,
+  60% {
+    background: var(--acc-accent-soft);
+    box-shadow: inset 3px 0 0 var(--acc-accent);
+  }
+  100% {
+    background: transparent;
+    box-shadow: inset 3px 0 0 transparent;
+  }
+}
+
+/*
+ * The words a search matched, wherever they stand (see Feed.paint). A registered highlight rather than
+ * a mark element: the text is not wrapped in anything, so chips, code and links keep their markup and
+ * the reveal wave keeps its single line. Only colours may be set here - that is all the browser allows
+ * on a highlight, and all that is wanted.
+ */
+::highlight(acc-search) {
+  /* The same paint as the marks in the search window's list. A wash of twelve percent was tried first
+     and was lost on a card: a highlight in running text has to be found from across the panel. */
+  background-color: var(--acc-warn-32);
+  color: var(--acc-warn-light);
+}
+
 /* --- The empty state ------------------------------------------------------- */
 
 .empty {
@@ -127,16 +162,20 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 6px;
   color: var(--acc-fg-faint);
 }
 
+/* Both lines drop the browser's paragraph margin: the gap above belongs to the flex column, and left
+   as it was it stood on top of a line's worth of margin from each of them. */
 .emptyTitle {
+  margin: 0;
   font-size: 13px;
   color: var(--acc-fg-dim);
 }
 
 .emptyHint {
+  margin: 0;
   font: var(--acc-fs-meta, 11px) var(--acc-mono);
   color: var(--acc-fg-fainter);
 }
@@ -154,9 +193,12 @@
   background: var(--acc-bg-card);
 }
 
+/* By the baseline rather than by the middle: the label and the time are two pieces of text of different
+   sizes and different line heights, and centring their boxes leaves the letters themselves sitting a
+   pixel apart - which is exactly what one notices in a heading two words long. */
 .userHead {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 8px;
 }
 
@@ -221,6 +263,22 @@
   background: var(--acc-accent-soft);
   border-color: var(--acc-accent-line);
   color: var(--acc-accent-light);
+}
+
+/* A chip that opens its file - a button in the chip's own clothes. The text inside goes left (a button
+   centres it) and the pointer says it does something; the dotted line under the pointer is the mark every
+   path that opens carries in this panel (see .pathLink): a solid one here means a link out into a browser.
+   The colours stay the kind's - a button would take the system's own. */
+.chipOpens {
+  text-align: left;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .chipOpens:hover {
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+  }
 }
 
 .chipImg {
@@ -440,6 +498,11 @@
   font-size: var(--acc-fs-body, 13px);
   line-height: var(--acc-leading, 1.62);
   color: var(--acc-fg-body);
+  /* A word with no room to break - a path in backticks, a hash, a link - is broken by force, the same
+     rule the person's own message has (see .userBody). On a phone a path to a file in a project runs the
+     whole width of the screen and then some, and left alone it ran out of the card sideways; the fenced
+     blocks are not touched by this - they scroll inside their own wrap. */
+  overflow-wrap: anywhere;
 }
 
 .textCopy {
@@ -566,6 +629,12 @@
 .strong {
   font-weight: 600;
   color: var(--acc-fg);
+}
+
+/* Italic carries no colour of its own: it is a shade of the sentence it stands in, not a piece singled
+   out of it the way bold is. Written together (***so***) the two simply add up. */
+.em {
+  font-style: italic;
 }
 
 .link {

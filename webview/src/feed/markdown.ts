@@ -9,9 +9,9 @@ const MAX_LIST_DEPTH = 3
 /**
  * Parsing the agent's answer into the design's paragraphs.
  *
- * Full markdown here is neither needed nor useful: the panel draws five things - a paragraph, a list
- * item, a code block, an inline code span and a bold piece. Everything else stays text rather than
- * turning into markup the design does not describe.
+ * Full markdown here is neither needed nor useful: the panel draws six things - a paragraph, a list
+ * item, a code block, an inline code span, a bold piece and an italic one. Everything else stays text
+ * rather than turning into markup the design does not describe.
  */
 export const parseParagraphs = (source: string): Paragraph[] => {
   const paragraphs: Paragraph[] = []
@@ -246,10 +246,20 @@ export const linkify = (text: string): TextPart[] => {
   return parts
 }
 
-/** Inline code, bold text, links (markdown and bare URLs) and branch highlighting inside a line. */
+/**
+ * Inline code, bold and italic text, links (markdown and bare URLs) and branch highlighting inside a
+ * line.
+ *
+ * The italic halves are deliberately stricter than the bold ones. A lone asterisk is an ordinary
+ * character in an answer about code - a glob, a multiplication, a footnote - so a piece only counts as
+ * italic when it neither opens nor closes on a space: `2 * 3 * 4` and `*.ts and *.tsx` stay what they
+ * were written as. An underscore is stricter still: it lives inside identifiers (`MAX_LIST_DEPTH`), so a
+ * pair with a word character against it on either side is left alone as text.
+ */
 export const parseInline = (line: string): TextPart[] => {
   const parts: TextPart[] = []
-  const pattern = /\[\[(.+?)\]\]|`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/\S+)/g
+  const pattern =
+    /\[\[(.+?)\]\]|`([^`]+)`|\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|\*([^*\s](?:[^*]*[^*\s])?)\*|_([^_\s](?:[^_]*[^_\s])?)_|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/\S+)/g
 
   let last = 0
   let match: RegExpExecArray | null
@@ -264,34 +274,73 @@ export const parseInline = (line: string): TextPart[] => {
       parts.push({ text: match[2], code: true })
       last = match.index + match[0].length
     } else if (match[3] !== undefined) {
+      for (const part of emphasized(match[3], { strong: true, em: true })) parts.push(part)
+      last = match.index + match[0].length
+    } else if (match[4] !== undefined) {
       // A bold piece may hold an address too - "**http://localhost:5173/**" is written all the time. We
       // parse its contents with the same parsing, or the link is lost exactly where it was singled out
       // as the most important thing in the answer.
-      for (const part of emphasized(match[3])) parts.push(part)
+      for (const part of emphasized(match[4], { strong: true })) parts.push(part)
       last = match.index + match[0].length
     } else if (match[5] !== undefined) {
-      parts.push({ text: match[4] ?? match[5], href: match[5] })
+      for (const part of emphasized(match[5], { em: true })) parts.push(part)
       last = match.index + match[0].length
     } else if (match[6] !== undefined) {
-      const href = trimUrlPunctuation(match[6])
+      const end = match.index + match[0].length
+      // Inside a word this is no italic at all but a name written as it is spelled in the code.
+      if (WORD_CHARACTER.test(line[match.index - 1] ?? '') || WORD_CHARACTER.test(line[end] ?? '')) {
+        parts.push({ text: match[0] })
+      } else {
+        for (const part of emphasized(match[6], { em: true })) parts.push(part)
+      }
+      last = end
+    } else if (match[8] !== undefined) {
+      parts.push({ text: match[7] ?? match[8], href: match[8] })
+      last = match.index + match[0].length
+    } else if (match[9] !== undefined) {
+      const href = trimUrlPunctuation(match[9])
       parts.push({ text: href, href })
       last = match.index + href.length
     }
   }
 
   if (last < line.length) parts.push({ text: line.slice(last) })
-  return parts.length > 0 ? parts : [{ text: line }]
+  return parts.length > 0 ? joinPlain(parts) : [{ text: line }]
 }
 
+const WORD_CHARACTER = /[\p{L}\p{N}_]/u
+
 /**
- * A whole line under emphasis - a heading or the contents of a bold piece.
+ * Plain neighbours back into one piece.
  *
- * It is parsed as an ordinary line, and the bold mark is laid over every part of it: a link inside stays
- * a link, code stays code. The recursion is finite: by its own pattern, the contents of a bold piece
- * hold no asterisks.
+ * They appear where a pair of underscores turned out to be part of a name (`my_file_name.ts`): the run
+ * is put back as text, in three pieces. On screen that reads the same, but a piece is also the unit the
+ * paths in prose are looked for in (see PlainText) - and a name cut in three is a name none of them
+ * finds, so the one link the person actually wanted goes missing.
  */
-const emphasized = (text: string): TextPart[] =>
-  parseInline(text).map((part) => ({ ...part, strong: true }))
+const joinPlain = (parts: TextPart[]): TextPart[] =>
+  parts.reduce<TextPart[]>((joined, part) => {
+    const previous = joined[joined.length - 1]
+    const bare = (piece: TextPart): boolean => Object.keys(piece).length === 1
+
+    if (previous && bare(previous) && bare(part)) {
+      joined[joined.length - 1] = { text: previous.text + part.text }
+      return joined
+    }
+
+    joined.push(part)
+    return joined
+  }, [])
+
+/**
+ * A whole line under emphasis - a heading, or the contents of a bold or italic piece.
+ *
+ * It is parsed as an ordinary line, and the mark is laid over every part of it: a link inside stays a
+ * link, code stays code, and italic inside bold keeps both. The recursion is finite: the contents of a
+ * piece never hold the character that closed it, so every step is shorter than the one before.
+ */
+const emphasized = (text: string, mark: { strong?: boolean; em?: boolean } = { strong: true }): TextPart[] =>
+  parseInline(text).map((part) => ({ ...part, ...mark }))
 
 /**
  * The same text, but on one line and without markup - for places that have nothing to show it with. A

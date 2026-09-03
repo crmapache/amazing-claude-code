@@ -346,6 +346,16 @@ internal class ClaudeSession(
     fun wake(): Boolean = handler != null || start() != null
 
     /**
+     * The model a conversation opened from the history carries on at (see ClaudeSessions.adoptModel):
+     * remembered for the launch flag, and only while there is no process to disagree with - a running
+     * conversation changes its model by [setModel], through the agent.
+     */
+    fun adoptModel(model: String) {
+        if (handler != null) return
+        this.model = model
+    }
+
+    /**
      * How a model change ended. The agent can genuinely say no: a model may be forbidden by an
      * organization or unavailable on a plan, and such a one it will not take. [model] is the one that
      * ends up working: the new one on agreement and the previous one on refusal, so that the panel has

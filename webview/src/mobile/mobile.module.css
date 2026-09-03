@@ -715,6 +715,9 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* The positioned box the search capsule sits in the corner of - the panel's .body, here (see
+     search.module.css). */
+  position: relative;
 }
 
 /* The one thing worth interrupting the reading for. It is a button rather than a banner because it

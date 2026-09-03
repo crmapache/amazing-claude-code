@@ -135,6 +135,31 @@ internal class SessionRegistry {
     }
 
     /**
+     * The tab a past conversation is opening in - see ClaudeSessionHub.resumeConversation. True means
+     * there was no such tab and it has just been opened.
+     *
+     * Opening one here rather than leaving it to whoever asked is the point. A client draws its tab
+     * first and asks afterwards, so a tab is on their screen either way; but this list is the one every
+     * client is told back, and a request naming a tab that is not in it used to leave a live process
+     * nobody's list points at - and the asking screen redrawn from this list a moment later, without
+     * its tab. That is exactly what a conversation chosen from the history on an empty panel did: it
+     * flickered and stayed shut, while its process was up all along.
+     *
+     * The name travels with the request because the conversation being opened is the only thing that
+     * knows it: the tab's own name describes what is no longer in it, so it is dropped first and the new
+     * one put on top - past a name a model picked for the previous conversation, which [rename] on its
+     * own would rightly refuse to touch.
+     */
+    @Synchronized
+    fun takeOver(id: String, title: String, titleSource: String): Boolean {
+        if (open(id = id, title = title, titleSource = titleSource)) return true
+
+        resetTitle(id)
+        rename(id, title, titleSource)
+        return false
+    }
+
+    /**
      * The tabs' new order after a drag. The unit is a group - a conversation together with its forks:
      * they cannot be pulled apart, and someone else's tab cannot be dropped inside (see moveTab in
      * tabs.ts, which this mirrors - minus the statistics tab, which the panel drags on its own and never

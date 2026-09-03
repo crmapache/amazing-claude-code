@@ -1,15 +1,22 @@
 package io.github.crmapache.amazingclaudecode.editor
 
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.util.SystemInfo
+import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.search.FilenameIndex
+import com.intellij.psi.search.GlobalSearchScope
+import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.util.concurrency.AppExecutorUtil
 import java.io.File
 
@@ -26,6 +33,13 @@ import java.io.File
  * that. What guards this is the door rather than the destination: the request is served by the panel's
  * own handler, which a network client never reaches, `openFile` is refused outright to anyone remote (see
  * RemoteCommands), and a network path is refused on both sides (see below and isOpenablePath).
+ *
+ * A name is found the way "go to file" finds it. Half of what the agent writes in backticks is a bare
+ * name - `Button.js`, `UserService.java` - and the first release of this looked for it at the project's
+ * root only, so for any source file in a folder the click did nothing at all, silently: the very first
+ * review of the feature said exactly that. Now a name that is not at the root is looked up across the
+ * project by the index, narrowed by whatever folders were written in front of it, and when several files
+ * are left the person picks (see [byName], [rank]).
  */
 internal object OpenInEditor {
 
@@ -53,35 +67,75 @@ internal object OpenInEditor {
      * Asking the disk whether a path is a file is not free: a sleeping external drive or an unmounted
      * share answers in seconds rather than in milliseconds, and that thread is the one every message from
      * the panel arrives on - so the panel would sit silent, whole, until the disk got round to it. The
-     * file chooser and the clipboard beside this one step aside for the same reason.
+     * file chooser and the clipboard beside this one step aside for the same reason. The index is slower
+     * still when it is being built: the lookup waits for it, and nothing else does.
      */
     fun open(project: Project, path: String, place: Place) {
         if (path.isBlank()) return
 
         AppExecutorUtil.getAppExecutorService().execute {
-            val file = resolve(project, path) ?: run {
-                // Never with the path: this buffer travels outwards inside a bug report (see
-                // DiagnosticsLog), and the ordinary log is enough for a link that led nowhere.
-                thisLogger().info("A file link from the panel pointed at nothing")
-                return@execute
-            }
+            val files = resolve(project, path)
 
-            val line = if (place.line > 0) place.line - 1 else lineOf(file, place.find)
-            // The column only where the reference named one: a person who wrote "120:30" meant the
-            // thirtieth character, and a caret at the start of the line answers a question nobody asked.
-            val column = if (place.line > 0 && place.column > 0) place.column - 1 else 0
+            when (files.size) {
+                0 -> {
+                    // Never with the path: this buffer travels outwards inside a bug report (see
+                    // DiagnosticsLog), and the ordinary log is enough for a link that led nowhere.
+                    thisLogger().info("A file link from the panel pointed at nothing")
+                }
 
-            ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed) return@invokeLater
+                1 -> show(project, files.single(), place)
 
-                // Through a descriptor rather than plain openFile: it is the only one that can put the
-                // caret in a place, and a link to line 120 that opens at line 1 has done half its job. The
-                // editor itself comes back from it, which is what a range needs (see select).
-                val descriptor = OpenFileDescriptor(project, file, line, column)
-                FileEditorManager.getInstance(project).openTextEditor(descriptor, true)
-                    ?.let { editor -> select(editor, line, place) }
+                else -> ApplicationManager.getApplication().invokeLater {
+                    if (project.isDisposed) return@invokeLater
+                    choose(project, path.trim(), files) { chosen ->
+                        AppExecutorUtil.getAppExecutorService().execute { show(project, chosen, place) }
+                    }
+                }
             }
         }
+    }
+
+    /** One file, opened where the reference points. Reads the file on the calling thread, never on the EDT. */
+    private fun show(project: Project, file: VirtualFile, place: Place) {
+        val line = if (place.line > 0) place.line - 1 else lineOf(file, place.find)
+        // The column only where the reference named one: a person who wrote "120:30" meant the
+        // thirtieth character, and a caret at the start of the line answers a question nobody asked.
+        val column = if (place.line > 0 && place.column > 0) place.column - 1 else 0
+
+        ApplicationManager.getApplication().invokeLater {
+            if (project.isDisposed) return@invokeLater
+
+            // Through a descriptor rather than plain openFile: it is the only one that can put the
+            // caret in a place, and a link to line 120 that opens at line 1 has done half its job. The
+            // editor itself comes back from it, which is what a range needs (see select).
+            val descriptor = OpenFileDescriptor(project, file, line, column)
+            FileEditorManager.getInstance(project).openTextEditor(descriptor, true)
+                ?.let { editor -> select(editor, line, place) }
+        }
+    }
+
+    /**
+     * Several files answer to the name: the person picks, the way "go to file" has them pick.
+     *
+     * The list shows each file's path from the project's root - the name is the same on every row, and
+     * the folder is the only thing that tells them apart - and the popup's title is what was written, so
+     * it is clear what the list is an answer to. Typing into the popup narrows the rows by that path, as
+     * in every chooser of the IDE. No words of the plugin's own anywhere in it: the panel speaks ten
+     * languages and the IDE one, and a path is the same in all of them.
+     */
+    private fun choose(project: Project, written: String, files: List<VirtualFile>, onChosen: (VirtualFile) -> Unit) {
+        val base = project.basePath
+        val caption = { file: VirtualFile -> base?.let { FileUtil.getRelativePath(it, file.path, '/') } ?: file.path }
+
+        JBPopupFactory.getInstance()
+            .createPopupChooserBuilder(files)
+            .setTitle(written)
+            .setRenderer(SimpleListCellRenderer.create("") { file -> caption(file) })
+            .setNamerForFiltering(caption)
+            .setRequestFocus(true)
+            .setItemChosenCallback(onChosen)
+            .createPopup()
+            .showCenteredInCurrentWindow(project)
     }
 
     /**
@@ -91,6 +145,11 @@ internal object OpenInEditor {
      * and left to count the rest by eye. The end is inclusive, the way a person counts, and both ends are
      * clamped to what the file actually has: a reference written from memory - or against a file that has
      * changed since - must land somewhere real rather than nowhere.
+     *
+     * A range across lines may name a column at each end as well - `L12:5-L18:30` is how a selection
+     * made in the editor is written on its chip (see SelectionReference) - and then the end is that
+     * column of that line. Read as a piece of one line, which is what happened before the chip could be
+     * clicked, it selected the first line only.
      */
     private fun select(editor: Editor, line: Int, place: Place) {
         if (place.line <= 0) return
@@ -104,11 +163,14 @@ internal object OpenInEditor {
             else document.getLineStartOffset(from)
 
         val end = when {
+            // A piece of the file: "15-20" ends where line twenty ends, "12:5-18:30" after its thirtieth
+            // character.
+            place.endLine > place.line -> {
+                val to = (place.endLine - 1).coerceIn(0, lastLine)
+                if (place.endColumn > 0) offsetIn(document, to, place.endColumn) else document.getLineEndOffset(to)
+            }
             // A piece of one line: "33-40" ends after the fortieth character.
             place.column > 0 && place.endColumn > place.column -> offsetIn(document, from, place.endColumn)
-            // A piece of the file: "15-20" ends where line twenty ends.
-            place.endLine > place.line ->
-                document.getLineEndOffset((place.endLine - 1).coerceIn(0, lastLine))
             else -> return
         }
 
@@ -142,7 +204,7 @@ internal object OpenInEditor {
     }
 
     /**
-     * The file this path names, or nothing when there is none.
+     * The files this path names: none, one, or several to choose from.
      *
      * A network path never gets this far: reaching for a host somebody else named is what makes Windows
      * introduce itself to it, and the same reach is what hangs on a share that is no longer mounted. The
@@ -151,22 +213,97 @@ internal object OpenInEditor {
      *
      * A directory is nothing here as well: the agent names those too (`Glob` over `src/`), and an editor
      * has nothing to open for one.
+     *
+     * An absolute path, or one that resolves from the project's root, is the file it says. Anything else
+     * relative is a name to look up (see [byName]): the agent writes `Button.js` for a file three folders
+     * down, and `src/App.tsx` for `webview/src/App.tsx` when that is the folder it was working in.
      */
-    private fun resolve(project: Project, path: String): VirtualFile? {
+    private fun resolve(project: Project, path: String): List<VirtualFile> {
         val trimmed = path.trim()
-        if (trimmed.isEmpty()) return null
-        if (trimmed.startsWith("//") || trimmed.startsWith("\\\\")) return null
-        if (trimmed.any { it.isISOControl() }) return null
+        if (trimmed.isEmpty()) return emptyList()
+        if (trimmed.startsWith("//") || trimmed.startsWith("\\\\")) return emptyList()
+        if (trimmed.any { it.isISOControl() }) return emptyList()
 
         val base = project.basePath
-        val candidate = File(trimmed).let { file ->
-            if (file.isAbsolute || base == null) file else File(base, trimmed)
-        }
-        if (!candidate.isFile) return null
+        val absolute = File(trimmed).isAbsolute
+        val candidate = if (absolute || base == null) File(trimmed) else File(base, trimmed)
 
-        // refreshAndFind rather than find: a file the agent has just written may not be in the IDE's
-        // picture of the disk yet, and the one moment it is asked for is right after it appeared.
-        return LocalFileSystem.getInstance().refreshAndFindFileByPath(candidate.absolutePath)
+        if (candidate.isFile) {
+            // refreshAndFind rather than find: a file the agent has just written may not be in the IDE's
+            // picture of the disk yet, and the one moment it is asked for is right after it appeared.
+            return listOfNotNull(LocalFileSystem.getInstance().refreshAndFindFileByPath(candidate.absolutePath))
+        }
+
+        if (absolute) return emptyList()
+        return byName(project, trimmed)
+    }
+
+    /**
+     * The project's files that go by this name, in the folders that were written - the IDE's own
+     * "go to file", asked by the last piece of the path and narrowed by the rest (see [rank]).
+     *
+     * Through the index rather than by walking the disk: a project is tens of thousands of files, and a
+     * click must answer at once. The index covers what the IDE considers the project's own - excluded
+     * folders and libraries are not in it, so `node_modules` never answers to a name - and it is asked in
+     * smart mode: while it is still being built there is nothing to ask, and the click waits for it rather
+     * than answering "nothing" about a file that is there.
+     *
+     * Case follows the file system: on a Mac and on Windows `readme.md` is `README.md`, on Linux it is not.
+     */
+    private fun byName(project: Project, written: String): List<VirtualFile> {
+        val name = segmentsOf(written).lastOrNull() ?: return emptyList()
+        val caseSensitive = SystemInfo.isFileSystemCaseSensitive
+
+        val found = runCatching {
+            ReadAction.nonBlocking<Collection<VirtualFile>> {
+                FilenameIndex.getVirtualFilesByName(name, caseSensitive, GlobalSearchScope.projectScope(project))
+            }.inSmartMode(project).executeSynchronously()
+        }.getOrElse { failure ->
+            thisLogger().info("Couldn't look a file link up by name", failure)
+            return emptyList()
+        }
+
+        val byPath = found.filter { !it.isDirectory }.associateBy { it.path }
+        return rank(written, byPath.keys, caseSensitive).mapNotNull { byPath[it] }
+    }
+
+    /**
+     * Which of the files called by a name are the one that was written, and in what order to offer them.
+     *
+     * A written path is a tail to match: `src/Button.js` is `/app/src/Button.js` and `/app/legacy/src/Button.js`,
+     * and not `/app/xsrc/Button.js` - the pieces between the separators are compared whole, so a folder
+     * whose name merely ends the same way does not count. Either separator does, because the agent writes
+     * both, and a `.` in the path adds nothing. A `..` refuses the whole thing: a tail cannot climb.
+     *
+     * Nothing under the folders written - a file that has moved since, a folder misremembered by the agent -
+     * and every file of that name is offered instead. A list to pick from is an answer; "nothing
+     * happened" is the one thing a click on a link must never be.
+     *
+     * The shallowest file comes first - nearest the root is the likeliest meaning of a bare name - and
+     * among equals the order is alphabetical, so that the same name offers the same list every time.
+     *
+     * The arithmetic and nothing else, so that it can be asked without an IDE (see OpenInEditorTest).
+     */
+    fun rank(written: String, candidates: Collection<String>, caseSensitive: Boolean = true): List<String> {
+        val wanted = segmentsOf(written)
+        if (wanted.isEmpty() || wanted.any { it == ".." }) return emptyList()
+
+        val underFolders = candidates.filter { endsWith(segmentsOf(it), wanted, caseSensitive) }
+        val byName = underFolders.ifEmpty {
+            candidates.filter { endsWith(segmentsOf(it), wanted.takeLast(1), caseSensitive) }
+        }
+
+        return byName.sortedWith(compareBy<String> { segmentsOf(it).size }.thenBy { it })
+    }
+
+    /** The pieces of a path between its separators, either kind, without the empty ones and the `.` that means "here". */
+    private fun segmentsOf(path: String): List<String> =
+        path.split('/', '\\').filter { it.isNotEmpty() && it != "." }
+
+    private fun endsWith(path: List<String>, tail: List<String>, caseSensitive: Boolean): Boolean {
+        if (tail.size > path.size) return false
+        val offset = path.size - tail.size
+        return tail.indices.all { path[offset + it].equals(tail[it], ignoreCase = !caseSensitive) }
     }
 
     /**

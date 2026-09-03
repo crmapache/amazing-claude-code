@@ -105,6 +105,63 @@ const FIELD_TOP_INSET_PX = 20
 const CARET_MARGIN_PX = 4
 
 /**
+ * The band on screen taken up by the line the caret stands on - or nothing, when it cannot be found at
+ * all.
+ *
+ * A caret does not always measure itself: standing on an EMPTY line Chromium hands out no rectangles for
+ * it whatsoever (checked live in the panel), and the same happens on a boundary between nodes. That
+ * emptiness used to be read as "then the caret is at the end of the contents", which is true of the empty
+ * last line and false of every blank line in the middle - and a message written as a list is mostly blank
+ * lines. Breaking a line up in the middle of such a draft threw the field to the bottom of it, and the
+ * next keystroke did it again.
+ *
+ * So the line is measured by the character the caret stands beside: it lies on that very line. Forward
+ * first and backward second - at the end of a wrapped line the two are different lines, and the one being
+ * typed into is the one ahead.
+ */
+const caretLine = (range: Range): { top: number; bottom: number } | null => {
+  const own = range.getBoundingClientRect()
+  if (own.height > 0) return own
+
+  const node = range.startContainer
+  const at = range.startOffset
+  // An offset counts characters inside a text node and children inside an element - and a range over one
+  // child measures that child, so both are asked in exactly the same way.
+  const length = node.nodeType === Node.TEXT_NODE ? (node.textContent ?? '').length : node.childNodes.length
+
+  for (const [from, to] of [
+    [at, at + 1],
+    [at - 1, at],
+  ]) {
+    if (from < 0 || to > length) continue
+
+    const probe = document.createRange()
+    probe.setStart(node, from)
+    probe.setEnd(node, to)
+
+    const box = probe.getBoundingClientRect()
+    if (box.height > 0) return box
+  }
+
+  return null
+}
+
+/**
+ * How far the field has to scroll for the line with the caret to be seen whole - zero when it already is,
+ * negative upwards.
+ */
+export const caretScrollShift = (
+  caret: { top: number; bottom: number },
+  field: { top: number; bottom: number },
+): number => {
+  const below = caret.bottom - field.bottom
+  if (below > 0) return below + CARET_MARGIN_PX
+
+  const above = field.top + FIELD_TOP_INSET_PX - caret.top
+  return above > 0 ? -(above + CARET_MARGIN_PX) : 0
+}
+
+/**
  * Keeps the caret in view.
  *
  * The field is limited in height and scrolls inside itself past that, while the browser does not always
@@ -118,25 +175,12 @@ export const scrollCaretIntoView = (root: HTMLElement) => {
   const range = selection.getRangeAt(0)
   if (!root.contains(range.startContainer)) return
 
-  const caret = range.getBoundingClientRect()
-  const field = root.getBoundingClientRect()
+  const caret = caretLine(range)
+  // Nothing measured at all: the field is left exactly where it stands. An unmeasurable caret says
+  // nothing about where it is, and a guess about that costs the person the place they were writing in.
+  if (!caret) return
 
-  // An empty rectangle means the range could not measure itself (that happens precisely on that empty
-  // last line). At that moment the caret is always at the end of the contents, so we simply bring the
-  // field down to its bottom.
-  if (caret.height === 0 && caret.top === 0) {
-    root.scrollTop = root.scrollHeight
-    return
-  }
-
-  const below = caret.bottom - field.bottom
-  if (below > 0) {
-    root.scrollTop += below + CARET_MARGIN_PX
-    return
-  }
-
-  const above = field.top + FIELD_TOP_INSET_PX - caret.top
-  if (above > 0) root.scrollTop -= above + CARET_MARGIN_PX
+  root.scrollTop += caretScrollShift(caret, root.getBoundingClientRect())
 }
 
 /** An empty range at the very end of the contents - the fallback when there is no caret. */
@@ -433,6 +477,94 @@ export const rebuildDom = (root: HTMLElement, tokens: UserToken[]) => {
 }
 
 /** Reads the DOM back into tokens - called after every keystroke and every edit. */
+/**
+ * Where a pasted picture ended up on disk, written onto the chip that is already in the field.
+ *
+ * The path arrives a moment after the paste - the shell has to decode and write the bytes first (see
+ * PastedFiles.kt) - and by then the chip is long since standing in the field. Nothing on screen changes:
+ * the caption stays the number it was, and only what the chip means outside the panel gets better, which
+ * is exactly what a copy of the message will need.
+ *
+ * Matched by the bytes rather than by position: between the paste and the answer the person may have
+ * typed, pasted again or deleted something else entirely. Two chips holding the same bytes are the same
+ * picture pasted twice, and one file is the honest answer for both.
+ */
+export const notePastedPath = (root: HTMLElement, data: string, path: string): boolean => {
+  let changed = false
+
+  for (const node of Array.from(root.childNodes)) {
+    if (!(node instanceof HTMLElement)) continue
+
+    const chip = chipByNode.get(node)
+    if (!chip || chip.kind !== 'img' || chip.data !== data || chip.path === path) continue
+
+    chipByNode.set(node, { ...chip, path })
+    changed = true
+  }
+
+  return changed
+}
+
+/**
+ * How many lines a text would take in the field as it stands - the lines a person sees, not the ones the
+ * text is written in.
+ *
+ * The folding of a long paste is set in lines (see collapsesPaste), and counting only the line breaks
+ * missed the case it exists for: a wall of text copied out of a browser or a log viewer often arrives as
+ * one single line, and one line is below every threshold. In a field a few hundred pixels wide that line
+ * is forty, and the message it was pasted into had to be scrolled to be read.
+ *
+ * Measured rather than guessed from a character count: the panel is narrow at one desk and half a screen
+ * wide at another, and the same paragraph is four lines here and one there. The measuring copy carries
+ * the field's own font and width - the font comes from the IDE's settings and is nothing this side can
+ * assume.
+ */
+export const wrappedLineCount = (field: HTMLElement, text: string, atLeast = 1): number => {
+  const style = getComputedStyle(field)
+  const width = field.clientWidth - parseFloat(style.paddingLeft || '0') - parseFloat(style.paddingRight || '0')
+  if (!(width > 0) || text.length === 0) return 0
+
+  /*
+   * Long texts are answered without laying them out at all. No character in any font at any size is
+   * narrower than a few pixels, so a text longer than "the widest possible line times the number of lines
+   * asked about" cannot fit into fewer lines than that - and laying out a hundred kilobytes to learn it
+   * costs a visible pause on the very paste that most needs to be quick.
+   */
+  const ceiling = Math.max(1, atLeast) * Math.ceil(width / NARROWEST_CHARACTER)
+  if (text.length > ceiling) return Math.max(1, atLeast)
+
+  const ruler = document.createElement('div')
+  ruler.style.position = 'fixed'
+  ruler.style.top = '-10000px'
+  ruler.style.left = '0'
+  ruler.style.visibility = 'hidden'
+  ruler.style.pointerEvents = 'none'
+  ruler.style.width = `${width}px`
+  ruler.style.font = style.font
+  ruler.style.letterSpacing = style.letterSpacing
+  ruler.style.whiteSpace = 'pre-wrap'
+  ruler.style.overflowWrap = style.overflowWrap
+  ruler.style.wordBreak = style.wordBreak
+  ruler.style.tabSize = style.tabSize
+
+  document.body.append(ruler)
+
+  // One line of this font at this width, asked of the same element - `line-height: normal` is a number
+  // nobody outside the layout knows, and every count here is a division by it.
+  ruler.textContent = 'X'
+  const line = ruler.getBoundingClientRect().height
+
+  ruler.textContent = text
+  const height = ruler.getBoundingClientRect().height
+
+  ruler.remove()
+
+  return line > 0 ? Math.max(1, Math.round(height / line)) : 0
+}
+
+/** No glyph is thinner than this, whatever the font - see the ceiling above. */
+const NARROWEST_CHARACTER = 4
+
 export const extractTokens = (root: HTMLElement): UserToken[] => {
   const tokens: UserToken[] = []
 

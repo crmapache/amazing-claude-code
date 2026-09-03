@@ -1,5 +1,5 @@
 import { linkify } from '../../feed/markdown'
-import { useOpenFile } from '../../hooks/useOpenFile'
+import { useKnownFiles, useOpenFile } from '../../hooks/useOpenFile'
 import s from '../feed.module.css'
 import { PathLink, withPathLinks } from './PathLink'
 
@@ -46,7 +46,7 @@ export const LinkedText = ({ text, onOpenLink }: LinkedTextProps) => (
 
 /** A stretch with no address in it: whatever names a file becomes a link, the rest stays as it came. */
 const PlainWithPaths = ({ text }: { text: string }) => {
-  const runs = withPathLinks(text, useOpenFile())
+  const runs = withPathLinks(text, useOpenFile(), useKnownFiles())
   if (!runs) return <span>{text}</span>
 
   return (

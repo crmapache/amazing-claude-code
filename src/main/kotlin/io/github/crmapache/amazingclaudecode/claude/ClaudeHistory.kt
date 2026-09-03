@@ -117,12 +117,19 @@ internal object ClaudeHistory {
      * A lazy sequence rather than a list on purpose: it is the whole point of reading a transcript by
      * lines at all, and it is easy to undo by accident with a stray toList().
      */
-    internal fun replayable(lines: Sequence<String>): Sequence<String> =
-        lines
-            .filter { line -> line.startsWith("{") && REPLAYABLE.any { mark -> line.contains(mark) } }
-            .mapNotNull { line ->
-                commandOutput(line) ?: line.takeIf { it.contains(MESSAGE) || it.contains(REPLY) }?.let(::normalizeContent)
-            }
+    internal fun replayable(lines: Sequence<String>): Sequence<String> = candidates(lines).mapNotNull(::replayLine)
+
+    /**
+     * The lines a page may be cut out of, told by their shape alone - not parsed, and that is the point
+     * (see [page]). A few of them turn out to draw nothing once looked into - a command that printed
+     * nothing - and are dropped then; the window keeps a little slack for that (see windowOf).
+     */
+    internal fun candidates(lines: Sequence<String>): Sequence<String> =
+        lines.filter { line -> line.startsWith("{") && REPLAYABLE.any { mark -> line.contains(mark) } }
+
+    /** One candidate line in the shape the feed draws, or null when it draws nothing after all. */
+    internal fun replayLine(line: String): String? =
+        commandOutput(line) ?: line.takeIf { it.contains(MESSAGE) || it.contains(REPLY) }?.let(::normalizeContent)
 
     private const val MESSAGE = "\"type\":\"user\""
     private const val REPLY = "\"type\":\"assistant\""
@@ -131,7 +138,8 @@ internal object ClaudeHistory {
     private val REPLAYABLE = listOf(MESSAGE, REPLY, COMMAND)
 
     /** What a command the CLI ran itself printed - the wrapping the transcript keeps it in. */
-    private val STDOUT = Regex("<local-command-stdout>([\\s\\S]*?)</local-command-stdout>")
+    private const val STDOUT_TAG = "<local-command-stdout>"
+    private val STDOUT = Regex("$STDOUT_TAG([\\s\\S]*?)</local-command-stdout>")
 
     /** The CLI's own preamble beside that output - internal, and never a part of what was printed. */
     private val CAVEAT = Regex("<local-command-caveat>[\\s\\S]*?</local-command-caveat>")
@@ -152,6 +160,9 @@ internal object ClaudeHistory {
      * silently reduced to the part inside.
      */
     internal fun commandOutput(line: String): String? {
+        // Without the wrapping in it the line cannot be that, and the answer is known before parsing a
+        // line that may run to a megabyte.
+        if (!line.contains(STDOUT_TAG)) return null
         val payload = runCatching { Json.parseToJsonElement(line).jsonObject }.getOrNull() ?: return null
 
         val content = when (payload["type"]?.jsonPrimitive?.contentOrNull) {
@@ -243,7 +254,28 @@ internal object ClaudeHistory {
     private const val TEXT_BLOCK = "\"type\":\"text\""
 
     /** A page of a conversation's messages, and where the next one would start - see [page]. */
-    data class Page(val lines: List<String>, val cursor: String?)
+    /**
+     * [model] is the one the conversation was last answered by, read off the page's own lines - empty
+     * when none of them was an answer. Right only for the conversation's end, which is what the tab opens
+     * with (see [opening]): that is the model a resumed conversation carries on at.
+     */
+    data class Page(val lines: List<String>, val cursor: String?, val model: String = "")
+
+    /**
+     * The model that last answered in [lines], by the signature under the answer - the same field the
+     * feed reads the model from (see realModel in feed/build.ts). The CLI's own placeholders sign as
+     * <synthetic> and are not a model anybody can be launched on.
+     */
+    internal fun lastModel(lines: List<String>): String {
+        for (line in lines.asReversed()) {
+            if (!line.contains(REPLY)) continue
+            val model = MODEL_FIELD.find(line)?.groupValues?.get(1) ?: continue
+            if (model.isNotBlank() && !model.startsWith("<")) return model
+        }
+        return ""
+    }
+
+    private val MODEL_FIELD = Regex("\"model\":\"([^\"]+)\"")
 
     /**
      * A page of the conversation's messages, older than [before] - the same lines [replay] would hand
@@ -276,13 +308,23 @@ internal object ClaudeHistory {
         // is what the person came for. The full text stays on disk; how much was left out is said in the
         // text itself.
         val shorten = { line: String -> JournalTrim.trim(line, HISTORY_ENTRY_CHARS, HISTORY_STRING_CHARS) }
-        val window = runCatching { file.useLines { lines -> windowOf(replayable(lines).map(shorten), before, pageSize) } }
+
+        // The window is cut out of the raw lines, and only the lines it kept are looked into. Every line
+        // before the boundary used to be parsed - twice, for the command output and for the shape of the
+        // content - and shortened, only to be thrown away by the window a moment later. On a working day's
+        // transcript of fifty megabytes that was seconds for one page, and a jump to a search hit above
+        // what the tab holds asks for its pages one after another: the veil stood over the feed for as
+        // long as it took to read the whole file that many times over. Told by their shape alone, the
+        // lines cost a pass of string checks; the parsing is paid for a page's worth of them.
+        val window = runCatching { file.useLines { lines -> windowOf(candidates(lines), before, pageSize) } }
             .onFailure { thisLogger().warn("Failed to page conversation $id", it) }
             .getOrDefault(Window(emptyList(), moreAbove = false))
+        val prepared = window.lines.mapNotNull(::replayLine).map(shorten)
 
         // The boundary has already done its work inside the window, so the slicing is asked for the
         // window's own end rather than for it a second time.
-        return pageOf(window.lines, before = null, pageSize = pageSize, maxChars = maxChars, moreAbove = window.moreAbove)
+        val sliced = pageOf(prepared, before = null, pageSize = pageSize, maxChars = maxChars, moreAbove = window.moreAbove)
+        return sliced.copy(model = lastModel(sliced.lines))
     }
 
     /** The stretch of a transcript one page can be cut out of - see [windowOf]. */
@@ -311,6 +353,7 @@ internal object ClaudeHistory {
         before: String?,
         pageSize: Int,
         maxLines: Int = MAX_WINDOW_LINES,
+        maxChars: Long = MAX_WINDOW_CHARS,
     ): Window {
         val limit = pageSize + WINDOW_SLACK
         // Messages rather than lines: a message is one line that draws a row of its own, or the whole
@@ -319,6 +362,7 @@ internal object ClaudeHistory {
         // every step.
         val kept = ArrayDeque<MutableList<String>>()
         var held = 0
+        var weight = 0L
         var run = false
         var dropped = false
 
@@ -329,23 +373,23 @@ internal object ClaudeHistory {
             if (!draws && run) kept.last().add(line) else kept.addLast(mutableListOf(line))
             run = !draws
             held += 1
+            weight += line.length
 
-            while (kept.size > limit || held > maxLines) {
+            // The newest line is never given up, however heavy: a window with nothing in it is a page with
+            // nothing in it, and the button over the feed dead.
+            while ((kept.size > limit || held > maxLines || weight > maxChars) && held > 1) {
                 val oldest = kept.first()
                 // A single run longer than the whole ceiling gives up its oldest lines rather than itself:
                 // dropping it whole would leave nothing to cut a page out of.
                 if (kept.size == 1 && oldest.size > 1) {
-                    oldest.removeAt(0)
+                    weight -= oldest.removeAt(0).length
                     held -= 1
                 } else {
                     held -= oldest.size
+                    weight -= oldest.sumOf { it.length.toLong() }
                     kept.removeFirst()
                 }
                 dropped = true
-                if (kept.isEmpty()) {
-                    run = false
-                    break
-                }
             }
         }
 
@@ -364,6 +408,17 @@ internal object ClaudeHistory {
      * tens of megabytes, which is exactly what reading a transcript by lines exists to avoid.
      */
     private const val MAX_WINDOW_LINES = 4000
+
+    /**
+     * And the ceiling in characters, whatever the lines come out to. The window holds the transcript's
+     * lines as they are on disk - shortening them first is what made a page cost seconds (see [page]) -
+     * and a line on disk is a tool's result whole: a file read in one go, a build log, half a megabyte
+     * each. Four thousand of those are a couple of gigabytes, on exactly the conversations the paging was
+     * made for, and the IDE's heap does not have them. A window cut by weight is at worst a shorter page -
+     * the button over the feed simply has to be pressed once more - and at this size that takes a run of
+     * results heavier than anything the CLI ordinarily writes.
+     */
+    private const val MAX_WINDOW_CHARS = 32L * 1024 * 1024
 
     /**
      * The slicing itself, apart from the disk - so a test can check it without a transcript file.
@@ -464,23 +519,24 @@ internal object ClaudeHistory {
     internal fun slugFor(path: String): String = path.map { if (it.isLetterOrDigit()) it else '-' }.joinToString("")
 
     /**
-     * Where to look for this project's conversations. There are two candidates, because a project's
-     * path and the path the CLI knows it by do not always match: `/tmp` on macOS is really
-     * `/private/tmp`, and a project may well sit behind a symbolic link. The CLI files conversations
-     * under the real path while the IDE hands over its own - so we look into both folders and show
-     * whatever was found.
+     * Where to look for this project's conversations - inside the CLI's own directory, under the name the
+     * CLI gives the project.
+     *
+     * Both are asked of [ClaudeHome] rather than of this machine: for a project opened out of WSL the CLI
+     * runs inside the distribution, keeps its files there and names the project by its Linux path, and
+     * the history looked into a folder on Windows that could not exist and showed an empty list without a
+     * word (the whole story is in ClaudeHome). There are two candidate folders, because a project's path
+     * and the path the CLI knows it by do not always match: `/tmp` on macOS is really `/private/tmp`, and
+     * a project may well sit behind a symbolic link. The CLI files conversations under the real path
+     * while the IDE hands over its own - so we look into both and show whatever was found.
      */
-    private fun directoriesFor(workingDirectory: String?): List<File> {
-        val path = workingDirectory ?: return emptyList()
-        val real = runCatching { File(path).canonicalPath }.getOrDefault(path)
-        val projects = File(HostOs.configDirectory(), "projects")
+    internal fun directoriesFor(workingDirectory: String?): List<File> = directoriesFor(ClaudeHome.of(workingDirectory))
 
-        return listOf(path, real)
-            .distinct()
-            .map { File(projects, slugFor(it)) }
+    internal fun directoriesFor(home: ClaudeHome): List<File> =
+        home.projectPaths
+            .map { File(home.projectsDirectory, slugFor(it)) }
             .distinctBy { it.path }
             .filter { it.isDirectory }
-    }
 
     private fun entryFor(file: File): Entry? {
         val id = file.nameWithoutExtension
@@ -573,7 +629,7 @@ internal object ClaudeHistory {
      * internal one; "" means internal, with nothing to show; a non-empty string is the command itself,
      * the one meaningful thing the wrapping holds.
      */
-    private fun serviceReplica(payload: JsonObject): String? {
+    internal fun serviceReplica(payload: JsonObject): String? {
         val content = payload["message"]?.jsonObject?.get("content") as? JsonPrimitive ?: return null
         if (!content.isString) return null
         val text = content.content.trim()
@@ -593,7 +649,7 @@ internal object ClaudeHistory {
      * The command's name with its argument - that is how a conversation is recognised in the list: a
      * dozen runs of one and the same skill differ from each other by nothing else.
      */
-    private fun commandTitle(text: String): String {
+    internal fun commandTitle(text: String): String {
         val name = tag(COMMAND_NAME_TAG, text).ifEmpty { tag(COMMAND_MESSAGE_TAG, text) }
         if (name.isEmpty()) return ""
 
@@ -617,7 +673,7 @@ internal object ClaudeHistory {
      * or a bare command), that is the whole substance of the message - we take the last line, exactly
      * as the native picker shows it.
      */
-    private fun firstText(payload: JsonObject): String {
+    internal fun firstText(payload: JsonObject): String {
         val content = payload["message"]?.jsonObject?.get("content") ?: return ""
 
         val text = runCatching {

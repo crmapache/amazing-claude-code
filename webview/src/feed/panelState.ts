@@ -63,6 +63,13 @@ export interface PanelState {
   status: AgentStatus
   sessionId?: string
   model?: string
+  /**
+   * The model this tab is meant to run on: chosen in it, inherited by a fork, or the one a conversation
+   * from the history came up on (see the `model` message). What the choice is measured against, where
+   * `model` above is what the stream last named - the two part ways when the agent swaps models on its
+   * own. Absent, the tab follows the setting, as a fresh tab does.
+   */
+  ownModel?: string
   permissionMode?: string
   /**
    * A mode chosen but not yet confirmed. The button and the menu show it until the agent answers:
@@ -338,6 +345,17 @@ export type PanelAction =
   | { kind: 'status'; status: AgentStatus }
   | { kind: 'error'; message: string }
   | { kind: 'init'; project: PanelProject }
+  /**
+   * A past conversation has just been handed to this tab - it holds that conversation from this moment,
+   * before its process has come up and said so itself.
+   *
+   * The identifier survives resuming: the CLI carries on the same conversation under the same name (a
+   * fork is the one that gets a new one). Written down here rather than waited for, because the answer
+   * to "is this conversation already open somewhere" is asked the second after the press - and until the
+   * process announced itself the honest answer was "no", which is how the same conversation ended up in
+   * two tabs at once.
+   */
+  | { kind: 'resumed'; conversationId: string }
   /** The branch and its pull request arrive later: the number is fetched from GitHub. */
   | { kind: 'project'; gitBranch?: string; pullRequest?: string; pullRequestUrl?: string }
   /** This conversation's taken context window - a figure from the CLI itself. */

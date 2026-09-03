@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useT } from '../i18n'
 import s from './sideMenu.module.css'
+import { useFieldHistory } from '../hooks/useFieldHistory'
 
 interface ImprovePromptProps {
   /** What the person put in themselves. Empty means the built-in text below is in force. */
@@ -38,6 +39,8 @@ export const ImprovePrompt = ({ instructions, builtIn, onChange }: ImprovePrompt
 
   const custom = text.trim() !== ''
 
+  const keys = useFieldHistory(text, setText)
+
   return (
     <div className={s.screen}>
       <span className={s.screenNote}>{t.improvePrompt.note}</span>
@@ -50,7 +53,8 @@ export const ImprovePrompt = ({ instructions, builtIn, onChange }: ImprovePrompt
           value={text}
           placeholder={builtIn}
           spellCheck
-          onChange={(event) => setText(event.target.value)}
+          onChange={keys.onChange}
+          onKeyDown={keys.onKeyDown}
           onBlur={() => save(text)}
         />
         <span className={s.screenNote}>{t.improvePrompt.emptyMeans}</span>

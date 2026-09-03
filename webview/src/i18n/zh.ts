@@ -109,6 +109,55 @@ export const zh: Dict = {
     messages: (n) => `${n} 条消息`,
   },
 
+  search: {
+    title: '搜索',
+    button: '搜索对话',
+    tabs: { chat: '当前聊天', project: '所有聊天', ai: '问 Claude' },
+    placeholder: '词语，或用"引号"括起的短语…',
+    aiPlaceholder: '描述你要找的内容：关于什么，大概什么时候…',
+    aiNote: 'Claude 会阅读本项目的对话 · 单独的一次运行，计入你的用量',
+    find: '查找',
+    cancel: '取消',
+    retry: '重试',
+    copy: '复制',
+    openInChat: '在聊天中打开',
+    aiSearching: '正在阅读对话…',
+    noChat: '这个标签页还没有对话，试试所有聊天。',
+    typeToSearch: '结果会显示在这里。',
+    aiEmpty: '在上方描述，然后按"查找"。',
+    nothing: '什么也没找到。',
+    nothingHere: '这个聊天里没有。',
+    aiNothing: '模型没有找到合适的内容。',
+    results: (n) => `${n} 条结果`,
+    inChats: (n, chats) => `${chats} 个聊天中 ${n} 条`,
+    showing: (shown, total) => `显示 ${total} 条中的 ${shown} 条`,
+    places: (n) => `模型指向的 ${n} 处`,
+    you: '你',
+    more: '显示完整消息',
+    less: '收起',
+    clear: '清除',
+    matchCase: '区分大小写',
+    wholeWords: '全字匹配',
+    chars: (shown, total) => `${total} 个字符中的 ${shown} 个`,
+    failed: '搜索失败。',
+    failedLabel: '失败',
+    steps: {
+      grep: (subject) => `搜索了“${subject}”`,
+      read: (subject) => `读取了“${subject}”`,
+      list: '读取了对话列表',
+      other: '翻阅了文件',
+      count: (n) => `${n} 步`,
+    },
+    capsule: {
+      reopen: '返回搜索',
+      close: '关闭搜索',
+      loading: '正在查找该消息…',
+      missing: '不在已加载的消息中',
+      previous: '本聊天中的上一个匹配',
+      next: '本聊天中的下一个匹配',
+    },
+  },
+
   composerLayout: {
     bottom: '默认',
     compact: '紧凑',
@@ -117,7 +166,7 @@ export const zh: Dict = {
   },
 
   pasteCollapse: {
-    note: '多行粘贴会折叠成一张小卡片，免得大段文字塞满输入框。两种方式都不会丢内容 - 折叠后的粘贴完整保留原文，点它上面的铅笔按钮就能展开回输入框。',
+    note: '长粘贴会折叠成一张小卡片，免得大段文字塞满输入框。行数按它在输入框里实际会占几行来算，所以粘贴成一整行的长文本也会折叠。两种方式都不会丢内容 - 折叠后的粘贴完整保留原文，点它上面的铅笔按钮就能展开回输入框。',
     never: '从不折叠',
     neverSub: '粘贴的内容始终以纯文本留在输入框里',
     from: (lines) => `${lines} 行起`,
@@ -139,7 +188,6 @@ export const zh: Dict = {
     note: '按住一个键说话，字就随着话音落进输入框。它用的是你自己的 Deepgram 密钥：音频只发给 Deepgram，插件中间没有任何服务器。',
     off: '已关闭',
     enable: '语音输入',
-    enableHint: '显示麦克风按钮，并监听下面的快捷键。',
 
     key: 'DEEPGRAM API 密钥',
     keyPlaceholder: '粘贴你的密钥',
@@ -156,11 +204,10 @@ export const zh: Dict = {
     balanceRefresh: '刷新',
 
     getKey: '还没有密钥？',
-    getKeyHint: '到 deepgram.com 注册并创建一个 API 密钥。新账户免绑卡即送 200 美元额度 —— 按现在的价格，够听写好几百个小时。',
+    getKeyHint: '在 deepgram.com 注册并创建 API 密钥。无需银行卡，赠送 200 美元额度。',
     openSite: '打开 deepgram.com',
 
     hotkeys: '快捷键',
-    hotkeysHint: '只要键盘在 IDE 里就有效 —— 编辑器、面板、对话框都算。切到别的应用就不行。',
     push: '按住说话',
     pushHint: '按住时录音，松开就停。',
     hold: '解放双手',
@@ -175,7 +222,6 @@ export const zh: Dict = {
     sideLeft: '左',
     sideRight: '右',
     badButton: '只能用鼠标的侧键 —— 主要的三个键在 IDE 里到处都已有各自的含义。',
-    modifierTip: '这里用单个修饰键最合适：按住右 Option 或右 Ctrl，IDE 里没有别的功能来抢。',
 
     language: '口述语言',
     languageHint: '听写要听哪种语言',
@@ -187,6 +233,12 @@ export const zh: Dict = {
     deviceDefault: '系统默认',
     deviceDefaultHint: '跟随系统的设置',
     deviceNote: '改动会在下一次听写时生效。',
+
+    promo: {
+      title: '喜欢在这里口述吗？',
+      body: '在任何其他窗口里也能按住热键说话 - 我的另一个应用会把你说的话直接写进光标所在处。现在注册，就对你一直免费。',
+      tagline: '适用于 Mac 和 Windows 的听写',
+    },
 
     errorNoKey: '请先填入 Deepgram 密钥 —— 设置，然后是语音输入。',
     errorNoKeyRemote: '运行这个对话的那台机器上还没有 Deepgram 密钥 —— 请到那边的设置里，在语音输入中添加。',
@@ -532,9 +584,8 @@ export const zh: Dict = {
       stopCommand: '停止这条命令',
       stopCommandTitle: '停止这条命令？',
     },
-    confirm: { cancel: '取消', stop: '停止', open: '打开' },
-    resume: { title: '这个标签页还在工作。要在这里打开过去的对话吗？' },
-    noChats: { title: '没有打开的对话', button: '新建对话' },
+    confirm: { cancel: '取消', stop: '停止' },
+    noChats: { title: '很高兴和你一起工作！', button: '开始吧' },
     crash: {
       title: '面板出错了',
       text: '重新加载是安全的：对话保存在面板背后的 Claude Code 进程里，不会随面板一起消失。',

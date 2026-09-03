@@ -4,6 +4,7 @@ import {
   bash,
   checkpoint,
   inHours,
+  openSearch,
   rateLimit,
   replayed,
   scenario,
@@ -19,6 +20,31 @@ import {
 import type { Scenario } from '../types'
 
 export const scenariosSystem: Scenario[] = [
+  /*
+   * The search behind the magnifier (see Search.tsx, SearchCapsule.tsx and feed/search.ts). The two turns
+   * give "this chat" something to find - the harness remembers what the scenario typed (see answerSearch
+   * in player.ts) - and the third checkpoint opens the window. From there it is hands-on: "balance" finds
+   * the first message and jumps to it, "refund" under "all chats" opens a past conversation, and the third
+   * tab answers a description after a moment, failing every third time so the error strip can be seen.
+   */
+  scenario('search-chats', 'Searching the conversations', 'system', [
+    checkpoint('A question about the balance', [
+      user('Why does the Deepgram balance not show with a Member key?'),
+      wait(500),
+      ...textReply(
+        'Balance needs an Owner or Admin key: a Member key transcribes fine but sees no money. That is the noAccess state, not an error.',
+      ),
+      turnResult(1800),
+    ]),
+    checkpoint('And one about the search button', [
+      user('The search button in the compact layout crowds the Send button'),
+      wait(500),
+      ...textReply('The meters in that row do not shrink. Letting them give way first keeps Send on its edge.'),
+      turnResult(1500),
+    ]),
+    checkpoint('The search window opens', [wait(300), openSearch()]),
+  ]),
+
   scenario('session-crash', 'A broken session', 'system', [
     checkpoint('The user asks to run the tests', [user('Run the full set of tests'), wait(500)]),
     checkpoint('Bash: pnpm test', [toolUse('Bash', { command: 'pnpm test' }, 's13-1'), wait(900)]),
@@ -397,6 +423,12 @@ export const scenariosSystem: Scenario[] = [
           '- on every change of `value` the timer starts afresh',
           '- the value updates only once the user has stopped typing',
           '- `delay` can be tuned for a particular field',
+          '',
+          // Bold, italic, both at once - and the characters that merely look like markup beside them:
+          // a glob, a multiplication, an identifier with underscores. All three have to stay text.
+          '**One caveat.** *The timer lives in the effect*, so a component that unmounts mid-wait ***never***',
+          'sets the value. Search for it in _any_ of *.ts and *.tsx; the ceiling is MAX_LIST_DEPTH, and',
+          '2 * 3 * 4 stays arithmetic.',
         ].join('\n'),
       ),
       turnResult(2400),

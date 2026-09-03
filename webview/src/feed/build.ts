@@ -108,6 +108,9 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
     case 'init':
       return { ...state, project: action.project }
 
+    case 'resumed':
+      return { ...state, sessionId: action.conversationId }
+
     case 'project':
       // The branch and the PR now arrive as separate messages with frequencies of their own (see
       // ClaudePanel.refreshBranch/refreshPullRequest) - each field falls back to its previous value when
@@ -367,6 +370,7 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         ...state,
         pendingModel: undefined,
         model: action.model,
+        ownModel: action.model,
         streamModel: undefined,
         // Whatever the agent had swapped before is answered by a choice of the person's own: the accent
         // on the button says "you did not pick this", and now they have (see PanelState.switchedFrom).
@@ -998,6 +1002,7 @@ const applyAgentEvent = (
         blocksOf(event.message.content),
         now,
         replay,
+        event.uuid,
       )
     }
 
@@ -1011,7 +1016,7 @@ const applyAgentEvent = (
       // put it there: that record is the only trace that the person said anything at all, and without it
       // a past conversation's feed consisted of answers alone.
       const withPrompt = replay ? addReplayedPrompt(noted, event, now) : noted
-      return applyToolResults(withPrompt, blocks, now)
+      return applyToolResults(withPrompt, blocks, now, replay)
     }
 
     case 'result': {
@@ -1051,7 +1056,13 @@ const applyAgentEvent = (
       // much of the context window is taken now" it gives a figure many times too high. The real snapshot
       // of the current state is in the last step of iterations; with one step it coincides with usage
       // anyway.
-      const usage = mergeUsage(state.usage, contextSnapshot(event))
+      //
+      // Not from a replay, for the same reason liveContextUsed is not taken from one: those figures
+      // belong to a turn that ended long ago, and the meter reads them as "how full the window is now".
+      // A day-long conversation opened from the history therefore came up with a red 100% - its last
+      // turn's cached tokens against the fallback window - until the IDE's own answer arrived (see
+      // INIT_MARKER in ClaudeSessionHub). Left alone, the meter stays quiet until that answer.
+      const usage = replay ? state.usage : mergeUsage(state.usage, contextSnapshot(event))
       // An interruption does not tear the stream with an event of its own - the agent simply closes the
       // turn with an ordinary result a little before its time (see ClaudeSession.interrupt). The only
       // trace that this is not a natural end but a Stop/Escape is that the stop request is still standing
@@ -1298,12 +1309,13 @@ const alreadyShownAsError = (state: PanelState, text: string): boolean => {
  * than appearing beside itself. Nothing was printing (a local command's output, for instance, appears at
  * once and whole) - the card takes the next number like any other.
  */
-const addAnswer = (state: PanelState, id: string | undefined, text: string): PanelState => {
+const addAnswer = (state: PanelState, id: string | undefined, text: string, uuid?: string): PanelState => {
   const paragraphs = parseParagraphs(text)
+  const item: TextItem = { id: id ?? '', kind: 'text', paragraphs, source: text, ...(uuid ? { uuid } : {}) }
 
   return id
-    ? { ...state, items: [...state.items, { id, kind: 'text', paragraphs, source: text }] }
-    : push(state, (itemId) => ({ id: itemId, kind: 'text', paragraphs, source: text }))
+    ? { ...state, items: [...state.items, item] }
+    : push(state, (itemId) => ({ ...item, id: itemId }))
 }
 
 const applyAssistant = (
@@ -1312,6 +1324,8 @@ const applyAssistant = (
   now: number,
   /** A past conversation's replay rather than a live turn - see applyAgentEvent. */
   replay = false,
+  /** The transcript's name for this answer, kept on its text so a search can jump to it (see TextItem.uuid). */
+  uuid?: string,
 ): PanelState => {
   if (isNoContentPlaceholder(blocks)) {
     return { ...state, streamingText: '', streamingId: undefined, suppressNextMeta: true }
@@ -1347,12 +1361,12 @@ const applyAssistant = (
       reserved = undefined
 
       if (review) {
-        if (review.intro) next = addAnswer(next, id, review.intro)
+        if (review.intro) next = addAnswer(next, id, review.intro, uuid)
         next = push(next, (itemId) => ({ id: itemId, kind: 'findings', findings: review.findings }))
         continue
       }
 
-      next = addAnswer(next, id, said)
+      next = addAnswer(next, id, said, uuid)
       continue
     }
 
@@ -1468,7 +1482,7 @@ const applyToolUse = (
   if (block.name === 'TodoWrite') {
     return {
       ...state,
-      items: [...state.items, { id: block.id, kind: 'todo', todos: readTodos(input) }],
+      items: [...state.items, { id: block.id, kind: 'todo', todos: readTodos(input), ...(replay ? { replayed: true } : {}) }],
     }
   }
 
@@ -1497,7 +1511,7 @@ const applyToolUse = (
       const { [taskId]: _removed, ...tasks } = state.tasks
       return push(
         { ...state, tasks },
-        (id) => ({ id, kind: 'todo', todos: orderedTasks(tasks) }),
+        (id) => ({ id, kind: 'todo', todos: orderedTasks(tasks), ...(replay ? { replayed: true } : {}) }),
       )
     }
 
@@ -1512,7 +1526,7 @@ const applyToolUse = (
         activeForm: activeForm || existing.activeForm,
       },
     }
-    return push({ ...state, tasks }, (id) => ({ id, kind: 'todo', todos: orderedTasks(tasks) }))
+    return push({ ...state, tasks }, (id) => ({ id, kind: 'todo', todos: orderedTasks(tasks), ...(replay ? { replayed: true } : {}) }))
   }
 
   if (block.name === 'ExitPlanMode') {
@@ -1662,8 +1676,14 @@ const taskPrompt = (input: Record<string, unknown>): string => {
  * brought later by a separate task_notification event (see below). Taking this confirmation for a result,
  * the card would close instantly - the agent had not even begun while the chip in the header went out as
  * though it had finished.
+ *
+ * A Workflow answers the same way since CLI 2.1.257, in its own words: "Workflow launched in background.
+ * Task ID: …" - and then runs its fleet for ten minutes as a background task, reporting through
+ * task_progress and ending with a task_notification (recorded against that CLI). Read as a result, the
+ * launch closed the card at 0.0s, the chip went out with it, and an orchestration of a dozen agents was
+ * nowhere on screen while it worked - exactly the complaint that brought this line here.
  */
-const ASYNC_AGENT_LAUNCHED = /^Async agent launched successfully/
+const ASYNC_AGENT_LAUNCHED = /^(Async agent launched successfully|Workflow launched in background)/
 
 /** The tags a service block is written with - the opening ones are needed on their own in spokenAnswer. */
 const SERVICE_TAGS = [
@@ -1808,10 +1828,18 @@ const addReplayedPrompt = (
     time: formatClock(Number.isNaN(said) ? now : said),
     tokens: tokens.length > 0 ? tokens : [{ kind: 'text', value: text }],
     quotes,
+    // The transcript's name for the line, so a search hit on it can be found in the feed (see rowOf).
+    ...(event.uuid ? { uuid: event.uuid } : {}),
   }))
 }
 
-const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number): PanelState => {
+const applyToolResults = (
+  state: PanelState,
+  blocks: ContentBlock[],
+  now: number,
+  /** A past conversation's replay rather than a live turn - see applyAgentEvent. */
+  replay = false,
+): PanelState => {
   const results = blocks.filter((block): block is ToolResultBlock => block.type === 'tool_result')
   if (results.length === 0) return state
 
@@ -1886,7 +1914,7 @@ const applyToolResults = (state: PanelState, blocks: ContentBlock[], now: number
     return { ...item, tools, pending }
   })
 
-  return applyTaskCreated({ ...state, items, startedAt }, results)
+  return applyTaskCreated({ ...state, items, startedAt }, results, replay)
 }
 
 /** "Task #3 created successfully: …" - the only place TaskCreate names the number it assigned. */
@@ -1898,7 +1926,7 @@ const TASK_CREATED = /^Task #(\d+) created successfully/
  * one day - we have no power over the tool's words), the task is left as it is, neither shown nor
  * breaking the rest of the list: a missing line is better than the whole list with mixed-up numbers.
  */
-const applyTaskCreated = (state: PanelState, results: ToolResultBlock[]): PanelState => {
+const applyTaskCreated = (state: PanelState, results: ToolResultBlock[], replay: boolean): PanelState => {
   const pendingIds = Object.keys(state.pendingTasks).filter((id) => results.some((r) => r.tool_use_id === id))
   if (pendingIds.length === 0) return state
 
@@ -1921,7 +1949,12 @@ const applyTaskCreated = (state: PanelState, results: ToolResultBlock[]): PanelS
     }
   }
 
-  return push({ ...state, tasks, pendingTasks }, (id) => ({ id, kind: 'todo', todos: orderedTasks(tasks) }))
+  return push({ ...state, tasks, pendingTasks }, (id) => ({
+    id,
+    kind: 'todo',
+    todos: orderedTasks(tasks),
+    ...(replay ? { replayed: true } : {}),
+  }))
 }
 
 /** pending/in_progress/completed - the same state dictionary TodoWrite has. */

@@ -3,6 +3,7 @@ import type { AvailablePluginInfo, InstalledPluginInfo, PluginMarketplaceInfo } 
 import { SkeletonBar } from './Skeleton'
 import s from './sideMenu.module.css'
 import { useT } from '../i18n'
+import { useFieldHistory } from '../hooks/useFieldHistory'
 
 type View = 'installed' | 'browse' | 'marketplaces'
 
@@ -92,6 +93,10 @@ export const Plugins = ({
 
     return matches.slice(0, BROWSE_LIMIT)
   }, [available, installedIds, query])
+
+  // The keys the browser inside the IDE does not give a plain field - see useFieldHistory.
+  const queryKeys = useFieldHistory(query, setQuery)
+  const sourceKeys = useFieldHistory(source, setSource)
 
   return (
     <div className={s.screen}>
@@ -216,7 +221,8 @@ export const Plugins = ({
             className={s.input}
             placeholder={t.plugins.searchPlaceholder}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={queryKeys.onChange}
+            onKeyDown={queryKeys.onKeyDown}
             autoFocus
           />
 
@@ -337,7 +343,8 @@ export const Plugins = ({
               className={s.input}
               placeholder={t.plugins.marketplacePlaceholder}
               value={source}
-              onChange={(event) => setSource(event.target.value)}
+              onChange={sourceKeys.onChange}
+              onKeyDown={sourceKeys.onKeyDown}
             />
             <button
               type="submit"

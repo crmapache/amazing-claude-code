@@ -112,6 +112,49 @@ class SessionRegistryTest {
         assertEquals(SessionSnapshot.TITLE_DEFAULT, registry.tabs().single().titleSource)
     }
 
+    // The tab a past conversation opens in. This is the case that shipped broken: everything closed, a
+    // conversation picked in the history, and the tab it was opened into existed on that one screen
+    // only - so the list coming back from here wiped it, the panel flickered and stayed empty.
+    @Test
+    fun `a past conversation opens a tab of its own when there is none`() {
+        val registry = SessionRegistry()
+        registry.close(ClaudeSessions.MAIN_SESSION)
+
+        assertTrue(registry.takeOver("session-2", "Refund webhooks", SessionSnapshot.TITLE_LLM))
+
+        val tab = registry.tabs().single()
+        assertEquals("session-2", tab.id)
+        assertEquals("Refund webhooks", tab.title)
+        assertEquals(SessionSnapshot.TITLE_LLM, tab.titleSource)
+    }
+
+    // The name a model picked belongs to the conversation that has just left this tab, so here - unlike
+    // an ordinary rename - it has to give way.
+    @Test
+    fun `a past conversation renames the tab it lands in over any name it wore`() {
+        val registry = SessionRegistry()
+        registry.rename(ClaudeSessions.MAIN_SESSION, "fix the parser", SessionSnapshot.TITLE_LLM)
+
+        assertFalse(registry.takeOver(ClaudeSessions.MAIN_SESSION, "Refund webhooks", SessionSnapshot.TITLE_HEURISTIC))
+
+        val tab = registry.tabs().single()
+        assertEquals("Refund webhooks", tab.title)
+        assertEquals(SessionSnapshot.TITLE_HEURISTIC, tab.titleSource)
+    }
+
+    // A client that says nothing about the name leaves the tab with the stand-in rather than with the
+    // previous conversation's name.
+    @Test
+    fun `a past conversation with no name given wipes the tab's own`() {
+        val registry = SessionRegistry()
+        registry.rename(ClaudeSessions.MAIN_SESSION, "fix the parser", SessionSnapshot.TITLE_LLM)
+
+        registry.takeOver(ClaudeSessions.MAIN_SESSION, "", SessionSnapshot.TITLE_HEURISTIC)
+
+        assertEquals("main session", registry.tabs().single().title)
+        assertEquals(SessionSnapshot.TITLE_DEFAULT, registry.tabs().single().titleSource)
+    }
+
     @Test
     fun `a group moves with its forks`() {
         val registry = SessionRegistry()

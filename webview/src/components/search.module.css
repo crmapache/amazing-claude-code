@@ -1,0 +1,1047 @@
+/*
+ * The search window and the capsule it folds into (see Search.tsx and SearchCapsule.tsx).
+ *
+ * The window is a layer over the whole panel, a step above the menu's own (see holiday.module.css for
+ * the ladder). Above rather than level with it on purpose: MODEL, EFFORT and MODE stand at 41 so that a
+ * second press on one of them closes its own menu through the menu's scrim, and a search at the same
+ * height left them poking through the dimming and under the window's bottom edge.
+ *
+ * Four bands: the tabs, the field, the results, the foot. The tabs and the foot are the darker card
+ * colour and the middle is the panel's - so the window reads as a thing with a top and a bottom rather
+ * than as a floating slab, which is what tells it from the feed behind it at a glance.
+ */
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 44;
+  background: rgb(var(--acc-ch-shade) / 55%);
+}
+
+.window {
+  position: absolute;
+  z-index: 45;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(720px, calc(100% - 28px));
+  /* Hung from the top rather than stretched to the bottom: a list of hits is read from its first line,
+     and a window the height of the panel is mostly empty dark under a dozen results. */
+  height: min(450px, calc(100% - 28px));
+  display: flex;
+  flex-direction: column;
+  background: var(--acc-bg-panel);
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-2xl);
+  box-shadow: var(--acc-shadow-menu);
+  overflow: hidden;
+}
+
+/* A narrow panel: the window is the panel. Measured against the viewport, which in the IDE is the tool
+   window itself and on a phone is the screen. */
+@media (max-width: 480px) {
+  .window {
+    top: 0;
+    bottom: 0;
+    height: auto;
+    width: 100%;
+    border: none;
+    border-radius: 0;
+  }
+}
+
+/* --- The tabs ------------------------------------------------------------------- */
+
+/*
+ * A row of tabs rather than a segmented switch: each one carries what it found, and a badge inside a
+ * pill inside a segmented control is two roundings deep. The active one is lit by the window's own
+ * colour and an underline, so the band reads as the top of the sheet below it.
+ *
+ * Nothing about a tab changes its width: the active one is told by colour and the underline alone, the
+ * way the conversation tabs in the header are told, and the count stands on every tab from the start
+ * (see .tabCount). A bolder active label and a badge arriving with the first answer each moved the
+ * tabs beside them by a few pixels - under the pointer, while typing - and a row that moves reads as
+ * broken.
+ */
+.tabs {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  height: 42px;
+  background: var(--acc-bg-card);
+  border-bottom: 1px solid var(--acc-line);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 0 14px;
+  font: 500 13px var(--acc-font);
+  color: var(--acc-fg-faint);
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+/* In a narrow panel the three of them share what there is, and the label gives way before the count. */
+@media (max-width: 560px) {
+  .tab {
+    flex: 1 1 0;
+    padding: 0 8px;
+    gap: 5px;
+  }
+}
+
+.tabLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab:hover,
+.tab[data-hover] {
+  color: var(--acc-fg-body);
+}
+
+.tabOn {
+  background: var(--acc-bg-panel);
+  border-bottom-color: var(--acc-accent);
+  color: var(--acc-fg);
+}
+
+/* The model's tab answers in its own colour, the one the panel uses for everything it does by itself. */
+.tabAi.tabOn {
+  border-bottom-color: var(--acc-agent);
+}
+
+.tabMark {
+  flex: none;
+  color: var(--acc-agent-light);
+}
+
+/* While the model reads, the spark on its tab breathes - the tab is visible from the other two. */
+.sparkBusy {
+  animation: acc-search-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes acc-search-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* What that tab found - there from the start, at zero, so the tabs never move (see the note above). Wide
+   enough for two digits whatever it says, for the same reason: "9" growing into "10" is a shove too. */
+.tabCount {
+  flex: none;
+  min-width: 28px;
+  text-align: center;
+  padding: 2px 7px;
+  border-radius: var(--acc-r-sm);
+  font: 600 10.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+  background: rgb(var(--acc-ch-mist) / 12%);
+}
+
+.tabCountLive {
+  color: var(--acc-accent-light);
+  background: var(--acc-accent-16);
+}
+
+.tabAi .tabCountLive {
+  color: var(--acc-agent-light);
+  background: rgb(var(--acc-ch-iris) / 16%);
+}
+
+.tabsFill {
+  flex: 1;
+  min-width: 0;
+}
+
+.close {
+  flex: none;
+  width: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* The glyph sits a hair low in its box against the tabs beside it; lifted, not the box. */
+  padding-bottom: 2px;
+  font: 19px/1 var(--acc-font);
+  color: var(--acc-fg-dim);
+  transition: color 0.12s ease;
+}
+
+.close:hover,
+.close[data-hover] {
+  color: var(--acc-fg);
+}
+
+/* --- The field ------------------------------------------------------------------ */
+
+.fieldRow {
+  flex: none;
+  padding: 14px 16px 12px;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-lg);
+  background: var(--acc-bg-sunken);
+  color: var(--acc-fg-dim);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* A field with something in it is the live part of the window, and says so with a ring rather than a
+   brighter border alone: the border is one pixel and the eye lands on the list, not on it. */
+.field:focus-within,
+.fieldLive {
+  border-color: var(--acc-accent-line);
+  box-shadow: 0 0 0 3px var(--acc-accent-08);
+  color: var(--acc-accent-light);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: 15px var(--acc-font);
+  color: var(--acc-fg);
+}
+
+.input::placeholder {
+  color: var(--acc-fg-ghost);
+}
+
+/*
+ * The × that empties the field, there only while there is something to empty. The same bare glyph as
+ * the window's own close and the capsule's, at the size of the letters beside it: a filled circle here
+ * would be a second control competing with the ring around the field.
+ */
+.clear {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--acc-r-sm);
+  /* The glyph sits a hair low in its box, like the window's close - lifted, not the box. */
+  padding-bottom: 1px;
+  font: 17px/1 var(--acc-font);
+  color: var(--acc-fg-ghost);
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.clear:hover,
+.clear[data-hover] {
+  color: var(--acc-fg);
+  background: var(--acc-neutral-12);
+}
+
+/* In the description's field the × stands in the Find button's row, centred against it. */
+.clearAi {
+  margin-top: 3px;
+}
+
+/*
+ * The field's two switches, Match case and Whole words - the pair Find in Files has, lettered the way
+ * it letters them and kept where it keeps them, at the field's end. A lit one is the colour of a lit
+ * count on a tab: the same "this is on" the window says elsewhere. They stand after the × and the ring,
+ * and neither of those moves them: what appears between the words and the switches is taken out of the
+ * field's own width, not out of theirs.
+ */
+.switches {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: -6px;
+}
+
+.switch {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: var(--acc-r-sm);
+  font: 600 10.5px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.switch:hover,
+.switch[data-hover] {
+  color: var(--acc-fg-body);
+  background: var(--acc-neutral-12);
+}
+
+.switchOn,
+.switchOn:hover,
+.switchOn[data-hover] {
+  color: var(--acc-accent-light);
+  background: var(--acc-accent-16);
+}
+
+/* A query is out: a small ring turning at the field's end, gone the moment the answer lands. */
+.spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 1.5px solid var(--acc-line-strong);
+  border-top-color: var(--acc-fg-dim);
+  animation: acc-search-spin 0.8s linear infinite;
+}
+
+@keyframes acc-search-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- The description for the model ---------------------------------------------- */
+
+.ask {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 14px 16px 12px;
+}
+
+/* The Find button lives inside the field rather than under it: the two are one action, and a button on
+   a line of its own puts a gap where the eye goes straight from the words to the press. */
+.fieldAi {
+  height: auto;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 10px 9px 12px;
+}
+
+.fieldAi:focus-within {
+  border-color: var(--acc-agent-line);
+  box-shadow: 0 0 0 3px rgb(var(--acc-ch-iris) / 8%);
+}
+
+/* While the run is on, the field is a record of what was asked rather than something to type into. */
+.fieldQuiet,
+.fieldQuiet:focus-within {
+  border-color: var(--acc-agent-line);
+  box-shadow: none;
+}
+
+.area {
+  flex: 1;
+  min-width: 0;
+  /* Measured by the window itself, from two lines to six (see the effect over the description in
+     Search.tsx): a drag handle inside a window that has its own height reads as two things arguing over
+     one edge. Past six lines it scrolls. */
+  resize: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: 14.5px/1.5 var(--acc-font);
+  color: var(--acc-fg);
+  padding: 0;
+}
+
+.area::placeholder {
+  color: var(--acc-fg-ghost);
+}
+
+.askNote {
+  font: 10.5px/1.4 var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.run,
+.cancel {
+  flex: none;
+  height: 28px;
+  padding: 0 13px;
+  border-radius: var(--acc-r-md);
+  font: 600 12px var(--acc-font);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.run {
+  background: var(--acc-agent);
+  color: var(--acc-on-accent);
+}
+
+.run:hover:not(:disabled),
+.run[data-hover]:not(:disabled) {
+  background: var(--acc-agent-light);
+}
+
+.run:disabled {
+  background: var(--acc-bg-control);
+  color: var(--acc-fg-faint);
+}
+
+.cancel {
+  background: var(--acc-bg-control);
+  color: var(--acc-fg);
+}
+
+.cancel:hover,
+.cancel[data-hover] {
+  background: var(--acc-bg-hover);
+}
+
+/* The width both states of that button hold - see SteadyWord in Search.tsx. The word that isn't showing
+   lies in the same cell under the one that is, so the button is as wide as the longer of the two. */
+.steady {
+  display: grid;
+  justify-items: center;
+}
+
+.steady > * {
+  grid-area: 1 / 1;
+}
+
+.steadyGhost {
+  visibility: hidden;
+}
+
+/* --- What went wrong ----------------------------------------------------------- */
+
+.error {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 16px 12px;
+  padding: 9px 12px;
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bad-soft);
+  border: 1px solid var(--acc-bad-32);
+}
+
+.errorLabel {
+  flex: none;
+  font: 600 10px var(--acc-mono);
+  letter-spacing: 0.06em;
+  color: var(--acc-bad-light);
+}
+
+.errorText {
+  flex: 1;
+  min-width: 0;
+  font: 12px/1.35 var(--acc-font);
+  color: var(--acc-bad-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.errorRetry {
+  flex: none;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--acc-r-md);
+  font: 600 11px var(--acc-font);
+  color: var(--acc-fg);
+  background: var(--acc-bg-control);
+}
+
+.errorRetry:hover,
+.errorRetry[data-hover] {
+  background: var(--acc-bg-hover);
+}
+
+/* --- The model at work ----------------------------------------------------------- */
+
+/*
+ * What the model is doing, while it does it (see AiStep on the IDE's side). A run takes ten to
+ * twenty-five seconds, and a spinner alone for that long is indistinguishable from one that has hung -
+ * so the steps are named: the words it searched for, the conversations it opened.
+ */
+.progress {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 16px 14px;
+}
+
+.progressHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.progressRing {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--acc-line-strong);
+  border-top-color: var(--acc-agent-light);
+  animation: acc-search-spin 0.8s linear infinite;
+}
+
+.progressText {
+  font: 13px var(--acc-font);
+  color: var(--acc-fg-body);
+}
+
+.progressMeta {
+  flex: none;
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+  font: 11.5px/1.45 var(--acc-mono);
+}
+
+.stepDone,
+.stepNow,
+.stepPast {
+  display: flex;
+  gap: 7px;
+  min-width: 0;
+}
+
+.stepDone {
+  color: var(--acc-fg-mono);
+}
+
+.stepNow {
+  color: var(--acc-agent-light);
+  animation: acc-search-pulse 1.5s ease-in-out infinite;
+}
+
+.stepPast {
+  color: var(--acc-fg-ghost);
+}
+
+.stepMark {
+  flex: none;
+  width: 10px;
+}
+
+/* --- The results ---------------------------------------------------------------- */
+
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 10px 10px;
+  scrollbar-width: none;
+}
+
+.list::-webkit-scrollbar {
+  display: none;
+}
+
+.empty {
+  margin: 18px 12px;
+  text-align: center;
+  font: 13px/1.5 var(--acc-font);
+  color: var(--acc-fg-mono);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 7px;
+}
+
+/* Which conversation the rows under it belong to. A line rather than a card: the rows are the thing to
+   press, and a boxed heading over them would read as one more of them. */
+/* By the baseline rather than by the middle: the title and the date are two sizes of two fonts, and
+   centring their boxes left the letters a pixel apart - which is what one sees in a heading. The rule
+   between them has no letters to align and takes the middle on its own. */
+.groupHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 6px 0;
+  min-width: 0;
+}
+
+.groupTitle {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 11px var(--acc-font);
+  color: var(--acc-branch-light);
+}
+
+.groupMeta {
+  flex: none;
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.groupRule {
+  flex: 1;
+  align-self: center;
+  height: 1px;
+  min-width: 8px;
+  background: var(--acc-line);
+}
+
+.hit {
+  /* The box the pill on a hovered row is placed in - see .openPill. */
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-raised);
+  border: 1px solid var(--acc-line);
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.hit:hover,
+.hit[data-hover],
+.hitSelected {
+  background: var(--acc-bg-control);
+  border-color: var(--acc-fg-ghost);
+  box-shadow: 0 2px 8px rgb(var(--acc-ch-shade) / 45%);
+}
+
+/* Unfolded, the row is text and not a button any more, and the pointer over it changes nothing. Lifted
+   like a folded row, its background met the Copy button's own colour and the button vanished into it. */
+.hitOpen,
+.hitOpen:hover,
+.hitOpen[data-hover] {
+  background: var(--acc-bg-card);
+  border-color: var(--acc-fg-ghost);
+  box-shadow: none;
+}
+
+/*
+ * Thirteen above and below rather than eleven, and the number is not taste: the chevron at the row's
+ * end is twenty-six tall and stands ten from the top, so a one-line row - thirteen, a twenty-pixel
+ * line, thirteen - is exactly as tall as ten, the chevron, ten, and both the line and the button sit in
+ * its middle. At eleven the row came out four short, and the chevron stood ten from the top and six
+ * from the bottom: the most common row in the list, and the one that looked off. A row of more lines
+ * keeps the chevron at its first line, where the text it folds begins.
+ */
+.hitBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 4px 13px 12px;
+  text-align: left;
+  color: var(--acc-fg-body);
+}
+
+.speaker {
+  flex: none;
+  margin-top: 1px;
+  padding: 2px 7px;
+  border-radius: var(--acc-r-md);
+  font: 600 10px var(--acc-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--acc-fg-soft);
+  background: rgb(var(--acc-ch-mist) / 12%);
+  white-space: nowrap;
+}
+
+.speakerYou {
+  color: var(--acc-accent-light);
+  background: rgb(var(--acc-ch-moon) / 14%);
+}
+
+.hitText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Three lines and no more: a hit is recognised here, not read - reading is what the chevron is for. */
+.snippet {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  font: 13.5px/1.5 var(--acc-font);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Hugging the letters, without the padding a mark used to have: a mark now ends where the typing ends,
+   often in the middle of a word, and three pixels of padding there read as a space inside the word
+   ("Use rCard"). The same shape as the paint in the feed, which can have no padding at all. */
+.snippet mark {
+  background: var(--acc-warn-32);
+  color: var(--acc-warn-light);
+  border-radius: var(--acc-r-xs);
+  padding: 0;
+}
+
+.whole {
+  font: 13.5px/1.6 var(--acc-font);
+  color: var(--acc-fg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.hitMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.metaDot {
+  color: var(--acc-line-hover);
+}
+
+/* Why the model picked this one - its own words, in its own colour, so they are not read as the message. */
+.reason {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+  padding: 8px 10px;
+  border-radius: var(--acc-r-md);
+  background: var(--acc-agent-soft);
+  font: 12px/1.5 var(--acc-font);
+  color: var(--acc-agent-light);
+}
+
+.reasonMark {
+  flex: none;
+  margin-top: 3px;
+}
+
+/*
+ * The pill on a row under the pointer. Not a button: the row itself is one, and two targets in a row
+ * where the whole of it does the same thing is one target too many.
+ *
+ * Over the words rather than beside them. As a flex neighbour it pushed the snippet narrower the moment
+ * the pointer arrived, and the text reflowed under the very pointer that was reading it. It stands in the
+ * row's top-right corner short of the chevron, level with it, with a shadow to say it is above the text.
+ */
+.openPill {
+  position: absolute;
+  top: 10px;
+  right: 42px;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: var(--acc-r-md);
+  font: 600 11px var(--acc-font);
+  color: var(--acc-on-accent);
+  background: var(--acc-accent);
+  box-shadow: 0 2px 8px rgb(var(--acc-ch-shade) / 55%);
+  white-space: nowrap;
+}
+
+.hit:hover .openPill,
+.hit[data-hover] .openPill,
+.hitSelected .openPill {
+  display: inline-flex;
+}
+
+/* Under a thumb there is no pointer to hover with, and the row is a tap away anyway. */
+[data-acc-density='touch'] .openPill {
+  display: none;
+}
+
+/* Unfolded, the row stops being a button - the text is there to be read and selected - so the two
+   things it can do are written out under it. */
+.hitActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.openButton,
+.copyButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: var(--acc-r-md);
+  font: 600 11px var(--acc-font);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.openButton {
+  color: var(--acc-on-accent);
+  background: var(--acc-accent);
+}
+
+.openButton:hover,
+.openButton[data-hover] {
+  background: var(--acc-accent-hover);
+}
+
+/* An edge of its own, so the button is a button on any background it lands on - the row it stands in
+   is one shade away from its fill. */
+.copyButton {
+  color: var(--acc-fg);
+  background: var(--acc-bg-control);
+  border: 1px solid var(--acc-line-strong);
+}
+
+.copyButton:hover,
+.copyButton[data-hover] {
+  background: var(--acc-bg-hover);
+}
+
+.copyDone,
+.copyDone:hover {
+  color: var(--acc-ok-text);
+  background: var(--acc-ok-12);
+}
+
+.unfold {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  margin: 10px 8px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--acc-r-md);
+  color: var(--acc-fg-faint);
+  transition: color 0.12s ease, background 0.12s ease, transform 0.15s ease;
+}
+
+/* Two shades up from the row rather than one: the row itself lifts to the control colour under the
+   pointer, and a chevron lifted to the panel's stood on it invisible - the "Show less" nobody could see. */
+.unfold:hover,
+.unfold[data-hover] {
+  color: var(--acc-fg);
+  background: var(--acc-bg-control-hover);
+}
+
+.unfoldOpen {
+  transform: rotate(180deg);
+  color: var(--acc-fg);
+  background: var(--acc-bg-control);
+}
+
+/* --- The foot -------------------------------------------------------------------- */
+
+/* How much was found - the one thing the foot says (see Search: the key caps that stood here were taken out). */
+.foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 34px;
+  padding: 0 16px;
+  border-top: 1px solid var(--acc-line);
+  background: var(--acc-bg-card);
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.footStatus {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--acc-fg-ghost);
+}
+
+
+/* --- The veil ------------------------------------------------------------------- */
+
+/*
+ * Over the feed while it is still on its way to the hit (see SearchCapsule). Opaque, the feed's own
+ * colour: a translucent one was tried first, and through it the feed was seen shifting up and down as
+ * every page landed above it and the scroll was put back - which reads as flicker, not as progress.
+ * Nothing under it is worth seeing anyway - it is the end of a conversation nobody asked for. The
+ * capsule stands above it, so the jump can be given up from where it was asked for. Instant on the way
+ * in - the feed under it is the thing to hide - and a fade on the way out, across the paint in which the
+ * row is scrolled to, so the feed is never seen in between.
+ */
+.veil {
+  position: absolute;
+  inset: 0;
+  z-index: 21;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--acc-bg);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0s linear 0.2s;
+}
+
+.veilOn {
+  opacity: 1;
+  visibility: visible;
+  transition: none;
+}
+
+.veilRing {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 2px solid rgb(var(--acc-ch-mist) / 25%);
+  border-top-color: var(--acc-accent-light);
+  animation: acc-search-spin 0.8s linear infinite;
+}
+
+.veilText {
+  font: 12.5px var(--acc-font);
+  color: var(--acc-fg-body);
+}
+
+/* --- The capsule ----------------------------------------------------------------- */
+
+/*
+ * The corner of the feed - above the veil and the jump-to-bottom button on the ladder, under everything
+ * modal. The feed's body is the positioned box it sits in (see .body in shell.module.css); on a phone the
+ * same box is .thread (see mobile.module.css).
+ */
+.capsule {
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  z-index: 22;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--acc-r-lg);
+  background: var(--acc-bg-panel);
+  border: 1px solid var(--acc-line-strong);
+  box-shadow: var(--acc-shadow-popover);
+  color: var(--acc-fg);
+  max-width: calc(100% - 28px);
+}
+
+.capsuleBack {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: var(--acc-r-md);
+  color: var(--acc-fg);
+  transition: background 0.12s ease;
+}
+
+.capsuleBack:hover,
+.capsuleBack[data-hover] {
+  background: var(--acc-bg-hover);
+}
+
+.capsuleIcon {
+  flex: none;
+  color: var(--acc-accent-light);
+}
+
+.capsuleText {
+  flex: none;
+  font: 500 12px var(--acc-font);
+}
+
+/* Said only while the feed is still catching up with the hit, or cannot reach it at all. */
+.capsuleNote {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 10px var(--acc-font);
+  color: var(--acc-fg-faint);
+}
+
+/* A hair of a line between the way back and the arrows: two groups, not one row of four buttons. */
+.capsuleRule {
+  flex: none;
+  width: 1px;
+  height: 14px;
+  margin: 0 3px;
+  background: var(--acc-line-strong);
+}
+
+/* Which of this conversation's hits the feed is on. */
+.capsuleCount {
+  flex: none;
+  padding: 0 4px;
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+  white-space: nowrap;
+}
+
+.capsuleStep,
+.capsuleClose {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--acc-r-md);
+  color: var(--acc-fg-dim);
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.capsuleClose {
+  font: 16px/1 var(--acc-font);
+}
+
+.capsuleStep:hover,
+.capsuleStep[data-hover],
+.capsuleClose:hover,
+.capsuleClose[data-hover] {
+  color: var(--acc-fg);
+  background: var(--acc-bg-hover);
+}
+
+/* Under a thumb the same row, grown to a fingertip - see --acc-hit. */
+[data-acc-density='touch'] .capsuleBack,
+[data-acc-density='touch'] .capsuleStep,
+[data-acc-density='touch'] .capsuleClose {
+  height: 32px;
+}
+
+[data-acc-density='touch'] .capsuleStep,
+[data-acc-density='touch'] .capsuleClose {
+  width: 32px;
+}

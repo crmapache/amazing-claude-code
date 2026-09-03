@@ -131,6 +131,73 @@ export const en = {
     messages: (n: number): string => (n === 1 ? `${n} message` : `${n} messages`),
   },
 
+  search: {
+    title: 'Search',
+    /** The tooltip of the magnifier beside the slash. */
+    button: 'Search the conversations',
+    /** "Claude" is a name and is not translated - see the note on AUTHOR_PRODUCT in SideMenu. */
+    tabs: { chat: 'This chat', project: 'All chats', ai: 'Ask Claude' },
+    placeholder: 'Words, or a phrase "in quotes"…',
+    aiPlaceholder: 'Describe what you are looking for - what it was about, roughly when…',
+    /** Under the field of the model's tab: what pressing Find actually does, and what it costs. */
+    aiNote: 'Claude reads this project\'s conversations · a run of its own, counts against your usage',
+    find: 'Find',
+    cancel: 'Cancel',
+    retry: 'Retry',
+    copy: 'Copy',
+    /** The pill on the row under the pointer: pressing the row opens that message in its conversation. */
+    openInChat: 'Open in chat',
+    aiSearching: 'Reading the conversations…',
+    /** "This chat" on a tab that has not said anything yet. */
+    noChat: 'This tab holds no conversation yet - try all chats.',
+    typeToSearch: 'Results will show up here.',
+    aiEmpty: 'Describe it above and press Find.',
+    nothing: 'Nothing found.',
+    nothingHere: 'Nothing in this chat.',
+    aiNothing: 'The model found nothing that fits.',
+    results: (n: number): string => (n === 1 ? '1 result' : `${n} results`),
+    /** At the foot, across the project: how many matched, and in how many conversations. */
+    inChats: (n: number, chats: number): string =>
+      `${n} in ${chats === 1 ? '1 chat' : `${chats} chats`}`,
+    /** The status at the foot of the window, when the list holds only the best of what matched. */
+    showing: (shown: number, total: number): string => `showing ${shown} of ${total}`,
+    /** The same status for a list the model chose. */
+    places: (n: number): string => (n === 1 ? '1 place the model points at' : `${n} places the model points at`),
+    /** The keys the foot of the window offers - the words beside ⏎, → and ←. */
+    you: 'You',
+    more: 'Show the whole message',
+    less: 'Show less',
+    /** The × inside a field, there while it holds anything. */
+    clear: 'Clear',
+    /** The field's two switches, the pair Find in Files has - their tooltips; the caps on them (Cc, W) are not words. */
+    matchCase: 'Match case',
+    wholeWords: 'Whole words',
+    /** Under an unfolded message that was cut to its budget: how much of it is on screen. */
+    chars: (shown: number, total: number): string => `${shown} of ${total} chars`,
+    failed: 'The search failed.',
+    /** The label on the red strip - a word, so the sentence beside it can be the CLI's own. */
+    failedLabel: 'FAILED',
+    /** What the model has done so far, one line per step (see AiStep on the IDE's side). */
+    steps: {
+      grep: (subject: string): string => `searched for “${subject}”`,
+      read: (subject: string): string => `read “${subject}”`,
+      list: 'read the list of conversations',
+      other: 'looked through the files',
+      count: (n: number): string => (n === 1 ? '1 step' : `${n} steps`),
+    },
+    capsule: {
+      /** The capsule in the feed's corner: the way back into the window it folded into. */
+      reopen: 'Back to search',
+      close: 'Close the search',
+      /** On the veil over the feed while it is still on its way to the hit - a conversation opening, pages loading. */
+      loading: 'Finding the message…',
+      missing: 'not among the loaded messages',
+      /** The arrows: one hit up or down THIS conversation, whatever the search was over. */
+      previous: 'Previous match in this chat',
+      next: 'Next match in this chat',
+    },
+  },
+
   composerLayout: {
     bottom: 'Default',
     compact: 'Compact',
@@ -139,7 +206,7 @@ export const en = {
   },
 
   pasteCollapse: {
-    note: 'A multi-line paste folds into a chip so that a wall of text does not fill the input field. Nothing is lost either way - a folded paste holds the text whole and unfolds back into the field by the pencil button on it.',
+    note: 'A long paste folds into a chip so that a wall of text does not fill the input field. Lines are counted as they would fall in the field itself, so text pasted as one endless line folds too. Nothing is lost either way - a folded paste holds the text whole and unfolds back into the field by the pencil button on it.',
     never: 'Never fold',
     neverSub: 'Everything pasted stays in the field as plain text',
     /** "From 5 lines" - the threshold a paste has to reach to be folded. Beside the row in the settings. */
@@ -169,7 +236,6 @@ export const en = {
     /** The value beside the row in the settings list when the feature is off. */
     off: 'Off',
     enable: 'Voice input',
-    enableHint: 'Shows the microphone button and listens for the hotkeys below.',
 
     key: 'DEEPGRAM API KEY',
     keyPlaceholder: 'Paste your key',
@@ -188,11 +254,10 @@ export const en = {
     balanceRefresh: 'Refresh',
 
     getKey: 'No key yet?',
-    getKeyHint: 'Sign up at deepgram.com and create an API key. New accounts get $200 of credit without a card - at these rates that is several hundred hours of dictation.',
+    getKeyHint: 'Sign up at deepgram.com and create an API key. $200 of credit without a card.',
     openSite: 'Open deepgram.com',
 
     hotkeys: 'HOTKEYS',
-    hotkeysHint: 'They work while the IDE has the keyboard - in the editor, in the panel, in a dialog. Not while you are in another application.',
     push: 'Push to talk',
     pushHint: 'Records while you hold it, stops when you let go.',
     hold: 'Hands free',
@@ -209,7 +274,6 @@ export const en = {
     sideLeft: 'Left',
     sideRight: 'Right',
     badButton: 'Only the side buttons of a mouse can be used - the main three already mean something everywhere in the IDE.',
-    modifierTip: 'A single modifier works well here: hold the right Option or the right Ctrl and nothing in the IDE competes for it.',
 
     language: 'Spoken language',
     languageHint: 'What dictation listens for',
@@ -221,6 +285,14 @@ export const en = {
     deviceDefault: 'System default',
     deviceDefaultHint: 'Follows whatever the system is set to',
     deviceNote: 'Changing this takes effect on the next dictation.',
+
+    /** The card at the foot of this screen - the author's other app. The product's name is not here: it
+        is written the same in every language (see DICTATION_PRODUCT). */
+    promo: {
+      title: 'Enjoying dictating here?',
+      body: 'Hold a key and talk in any other window too - my other app types your voice into whatever you are in. Sign up now and it stays free for you.',
+      tagline: 'dictation for Mac and Windows',
+    },
 
     errorNoKey: 'Add a Deepgram key first - Settings, then Voice input.',
     errorNoKeyRemote: 'No Deepgram key on the machine this conversation runs on - add one there, in Settings, Voice input.',
@@ -614,9 +686,8 @@ export const en = {
       stopCommand: 'Stop this command',
       stopCommandTitle: 'Stop this command?',
     },
-    confirm: { cancel: 'Cancel', stop: 'Stop', open: 'Open' },
-    resume: { title: 'This tab is still working. Open the past chat here?' },
-    noChats: { title: 'No open chats', button: 'New chat' },
+    confirm: { cancel: 'Cancel', stop: 'Stop' },
+    noChats: { title: 'Excited to work together!', button: "Let's start" },
     crash: {
       title: 'The panel hit an error',
       text: 'Reloading is safe: your conversations live in the Claude Code processes behind the panel and survive it.',

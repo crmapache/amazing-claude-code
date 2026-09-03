@@ -1,4 +1,4 @@
-import { withFileRefs, type TextRun } from '../../feed/paths'
+import { withFileRefs, type KnownFiles, type TextRun } from '../../feed/paths'
 import { useOpenFile } from '../../hooks/useOpenFile'
 import { useT } from '../../i18n'
 import s from '../feed.module.css'
@@ -41,10 +41,10 @@ export const PathLink = ({ run, children }: { run: TextRun; children?: React.Rea
  * A person's own message counts: a path pasted into the field by hand is the one thing they most obviously
  * meant to point at. So does the text of an error, which is where a stack trace's paths live.
  */
-export const withPathLinks = (text: string, openFile: unknown): TextRun[] | null => {
+export const withPathLinks = (text: string, openFile: unknown, known?: KnownFiles): TextRun[] | null => {
   if (!openFile) return null
 
-  const runs = withFileRefs(text)
+  const runs = withFileRefs(text, known)
   // By whether anything is a link rather than by how many pieces came back: a text that is nothing but a
   // path comes back as ONE piece, and that piece is the link.
   return runs.some((run) => run.ref) ? runs : null

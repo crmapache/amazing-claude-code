@@ -112,6 +112,56 @@ export const de: Dict = {
     messages: (n) => (n === 1 ? `${n} Nachricht` : `${n} Nachrichten`),
   },
 
+  search: {
+    title: 'Suche',
+    button: 'In den Unterhaltungen suchen',
+    tabs: { chat: 'Dieser Chat', project: 'Alle Chats', ai: 'Claude fragen' },
+    placeholder: 'Wörter, oder ein Satz „in Anführungszeichen“…',
+    aiPlaceholder: 'Beschreibe, was du suchst: worum es ging, ungefähr wann…',
+    aiNote: 'Claude liest die Unterhaltungen dieses Projekts · ein eigener Lauf, zählt auf dein Kontingent',
+    find: 'Suchen',
+    cancel: 'Abbrechen',
+    retry: 'Erneut versuchen',
+    copy: 'Kopieren',
+    openInChat: 'Im Chat öffnen',
+    aiSearching: 'Lese die Unterhaltungen…',
+    noChat: 'Dieser Tab hat noch keine Unterhaltung - versuch es mit allen Chats.',
+    typeToSearch: 'Die Treffer erscheinen hier.',
+    aiEmpty: 'Beschreibe es oben und drücke Suchen.',
+    nothing: 'Nichts gefunden.',
+    nothingHere: 'Nichts in diesem Chat.',
+    aiNothing: 'Das Modell hat nichts Passendes gefunden.',
+    results: (n) => (n === 1 ? '1 Treffer' : `${n} Treffer`),
+    inChats: (n, chats) => `${n} in ${chats === 1 ? '1 Chat' : `${chats} Chats`}`,
+    showing: (shown, total) => `${shown} von ${total} werden gezeigt`,
+    places: (n) =>
+      n === 1 ? '1 Stelle, auf die das Modell zeigt' : `${n} Stellen, auf die das Modell zeigt`,
+    you: 'Du',
+    more: 'Ganze Nachricht anzeigen',
+    less: 'Weniger anzeigen',
+    clear: 'Leeren',
+    matchCase: 'Groß-/Kleinschreibung beachten',
+    wholeWords: 'Nur ganze Wörter',
+    chars: (shown, total) => `${shown} von ${total} Zeichen`,
+    failed: 'Die Suche ist fehlgeschlagen.',
+    failedLabel: 'FEHLGESCHLAGEN',
+    steps: {
+      grep: (subject) => `nach „${subject}“ gesucht`,
+      read: (subject) => `„${subject}“ gelesen`,
+      list: 'die Liste der Unterhaltungen gelesen',
+      other: 'die Dateien durchgesehen',
+      count: (n) => (n === 1 ? '1 Schritt' : `${n} Schritte`),
+    },
+    capsule: {
+      reopen: 'Zurück zur Suche',
+      close: 'Suche schließen',
+      loading: 'Nachricht wird gesucht…',
+      missing: 'nicht unter den geladenen Nachrichten',
+      previous: 'Vorheriger Treffer in diesem Chat',
+      next: 'Nächster Treffer in diesem Chat',
+    },
+  },
+
   composerLayout: {
     bottom: 'Standard',
     compact: 'Kompakt',
@@ -120,7 +170,7 @@ export const de: Dict = {
   },
 
   pasteCollapse: {
-    note: 'Eine mehrzeilige Einfügung wird zu einem Chip zusammengefaltet, damit eine Textwand das Eingabefeld nicht füllt. Verloren geht dabei nichts - der Chip hält den Text vollständig und klappt mit der Stift-Schaltfläche darauf wieder ins Feld zurück.',
+    note: 'Ein langer Einfügetext wird zu einem Chip, damit eine Textwand das Eingabefeld nicht füllt. Die Zeilen werden so gezählt, wie sie im Feld selbst fallen würden - Text, der als eine endlose Zeile eingefügt wird, klappt also auch zusammen. Verloren geht dabei nichts: Ein eingeklappter Einfügetext behält den ganzen Text und klappt über die Stiftschaltfläche wieder ins Feld auf.',
     never: 'Nie zusammenfalten',
     neverSub: 'Alles Eingefügte bleibt als gewöhnlicher Text im Feld',
     from: (lines) => `Ab ${lines} Zeilen`,
@@ -142,7 +192,6 @@ export const de: Dict = {
     note: 'Taste halten und sprechen - die Wörter landen im Eingabefeld, während du sie sagst. Es läuft über deinen eigenen Deepgram-Schlüssel: der Ton geht zu Deepgram und sonst nirgendwohin, das Plugin hat keinen Server dazwischen.',
     off: 'Aus',
     enable: 'Spracheingabe',
-    enableHint: 'Zeigt die Mikrofon-Schaltfläche und hört auf die Tasten unten.',
 
     key: 'DEEPGRAM-API-SCHLÜSSEL',
     keyPlaceholder: 'Schlüssel einfügen',
@@ -159,11 +208,10 @@ export const de: Dict = {
     balanceRefresh: 'Aktualisieren',
 
     getKey: 'Noch kein Schlüssel?',
-    getKeyHint: 'Bei deepgram.com anmelden und einen API-Schlüssel anlegen. Neue Konten bekommen 200 $ Guthaben ohne Karte - zu diesen Preisen sind das mehrere hundert Stunden Diktat.',
+    getKeyHint: 'Registriere dich auf deepgram.com und erstelle einen API-Key. 200 $ Guthaben ohne Karte.',
     openSite: 'deepgram.com öffnen',
 
     hotkeys: 'TASTENKÜRZEL',
-    hotkeysHint: 'Sie greifen, solange die IDE die Tastatur hat - im Editor, im Panel, in einem Dialog. In einer anderen Anwendung nicht.',
     push: 'Halten und sprechen',
     pushHint: 'Nimmt auf, solange du hältst, und hört beim Loslassen auf.',
     hold: 'Hände frei',
@@ -178,7 +226,6 @@ export const de: Dict = {
     sideLeft: 'Links',
     sideRight: 'Rechts',
     badButton: 'Nur die Seitentasten der Maus taugen dafür - die drei Haupttasten bedeuten in der IDE überall schon etwas.',
-    modifierTip: 'Ein einzelner Modifikator passt hier gut: halte die rechte Option- oder die rechte Strg-Taste, dann streitet sich nichts in der IDE darum.',
 
     language: 'Gesprochene Sprache',
     languageHint: 'Worauf das Diktat hört',
@@ -190,6 +237,12 @@ export const de: Dict = {
     deviceDefault: 'Systemstandard',
     deviceDefaultHint: 'Folgt dem, was das System eingestellt hat',
     deviceNote: 'Die Änderung gilt ab dem nächsten Diktat.',
+
+    promo: {
+      title: 'Gefällt dir das Diktieren hier?',
+      body: 'Halte eine Taste gedrückt und sprich auch in jedem anderen Fenster - meine andere App schreibt deine Stimme dorthin, wo du gerade bist. Melde dich jetzt an, dann bleibt es für dich kostenlos.',
+      tagline: 'Diktieren für Mac und Windows',
+    },
 
     errorNoKey: 'Zuerst einen Deepgram-Schlüssel hinterlegen - Einstellungen, dann Spracheingabe.',
     errorNoKeyRemote: 'Auf dem Rechner, auf dem dieses Gespräch läuft, liegt kein Deepgram-Schlüssel - dort hinterlegen, in den Einstellungen unter Spracheingabe.',
@@ -538,9 +591,8 @@ export const de: Dict = {
       stopCommand: 'Diesen Befehl stoppen',
       stopCommandTitle: 'Diesen Befehl stoppen?',
     },
-    confirm: { cancel: 'Abbrechen', stop: 'Stoppen', open: 'Öffnen' },
-    resume: { title: 'In diesem Tab läuft noch Arbeit. Das frühere Gespräch hier öffnen?' },
-    noChats: { title: 'Keine offenen Gespräche', button: 'Neues Gespräch' },
+    confirm: { cancel: 'Abbrechen', stop: 'Stoppen' },
+    noChats: { title: 'Freue mich auf die Zusammenarbeit!', button: "Los geht's" },
     crash: {
       title: 'Das Panel ist auf einen Fehler gelaufen',
       text: 'Neu laden ist sicher: deine Gespräche leben in den Claude-Code-Prozessen hinter dem Panel und überstehen es.',

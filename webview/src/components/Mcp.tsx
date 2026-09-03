@@ -4,6 +4,7 @@ import { SkeletonBar } from './Skeleton'
 import s from './sideMenu.module.css'
 import { useT } from '../i18n'
 import type { Dict } from '../i18n/en'
+import { useFieldHistory } from '../hooks/useFieldHistory'
 
 interface McpProps {
   /** null means the list has not arrived yet: it loads by itself, long before the screen is opened. */
@@ -108,6 +109,9 @@ export const Mcp = ({
   const rest = servers?.filter((server) => !known.has(server.scope)) ?? []
   const shown = rest.length > 0 ? [...groups, { scope: 'other', title: 'OTHER', hint: '', servers: rest }] : groups
 
+  const nameKeys = useFieldHistory(name, setName)
+  const commandKeys = useFieldHistory(command, setCommand)
+
   return (
     <div className={s.screen}>
       {message ? (
@@ -169,7 +173,8 @@ export const Mcp = ({
             className={s.input}
             placeholder={t.mcp.namePlaceholder}
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={nameKeys.onChange}
+            onKeyDown={nameKeys.onKeyDown}
           />
           <div className={s.tabs}>
             {TRANSPORTS.map((option) => (
@@ -188,7 +193,8 @@ export const Mcp = ({
           className={s.input}
           placeholder={t.mcp.commandPlaceholder}
           value={command}
-          onChange={(event) => setCommand(event.target.value)}
+          onChange={commandKeys.onChange}
+          onKeyDown={commandKeys.onKeyDown}
         />
         <div className={s.formActions}>
           <button type="button" className={s.button} onClick={onRefresh} disabled={loading}>

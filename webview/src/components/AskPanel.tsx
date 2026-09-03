@@ -2,8 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AskItem, AskQuestion } from '../feed/types'
 import { Chevron } from './Chevron'
 import { MAX_DIGIT_HOTKEYS, useDigitHotkey } from '../hooks/useDigitHotkey'
+import { savePastedFiles } from '../pasted'
 import s from './composer.module.css'
 import { useT } from '../i18n'
+import { useFieldHistory } from '../hooks/useFieldHistory'
+import type { ClipboardEvent } from 'react'
 
 /** Whether typing is happening right now in a field that does not belong to this panel. */
 const typedOutside = (target: HTMLElement | null, panel: HTMLElement | null): boolean => {
@@ -291,15 +294,44 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
                       return (
                         <div className={`${s.option} ${s.optionOn} ${s.optionOther}`}>
                           <span className={`${s.optionKey} ${s.optionKeyOn} ${keyed ? '' : s.optionKeyIdle}`}>✓</span>
-                          <input
-                            className={s.otherInput}
-                            autoFocus
-                            placeholder={t.feed.ask.ownAnswer}
+                          <OwnAnswer
                             value={custom[question.id] ?? ''}
                             onFocus={() => setActiveIndex(questionIndex)}
-                            onChange={(event) =>
-                              setCustom((current) => ({ ...current, [question.id]: event.target.value }))
-                            }
+                            onChange={(value) => setCustom((current) => ({ ...current, [question.id]: value }))}
+                            /**
+                             * A screenshot or a document pasted into the answer.
+                             *
+                             * The answer travels to the agent as text and nothing else, so what goes in
+                             * here is the path: the shell keeps the bytes as a file (see savePastedFiles)
+                             * and the agent reads it as it would any other file named in a message.
+                             * Before this a paste of anything but text simply did nothing - the field is
+                             * an ordinary input, and bytes have nowhere to go in one.
+                             */
+                            onPaste={(event) => {
+                              const files = Array.from(event.clipboardData?.files ?? [])
+                              if (files.length === 0) return
+
+                              event.preventDefault()
+                              const field = event.currentTarget
+                              const at = field.selectionStart ?? field.value.length
+                              const to = field.selectionEnd ?? at
+
+                              void savePastedFiles(files).then((paths) => {
+                                if (paths.length === 0) return
+
+                                setCustom((current) => {
+                                  const value = current[question.id] ?? ''
+                                  // Where the caret was when the paste happened - the answer may well be
+                                  // half written, and appending to its end would put the file after words
+                                  // it has nothing to do with.
+                                  const head = value.slice(0, Math.min(at, value.length))
+                                  const tail = value.slice(Math.min(to, value.length))
+                                  const inserted = joinPaths(head, paths, tail)
+
+                                  return { ...current, [question.id]: inserted }
+                                })
+                              })
+                            }}
                           />
                         </div>
                       )
@@ -341,5 +373,50 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * The pasted paths put into an answer that is being written, without gluing them to the words around
+ * them: a path stuck to the end of a sentence is a path nothing can open.
+ */
+const joinPaths = (head: string, paths: string[], tail: string): string => {
+  const body = paths.join(' ')
+  const before = head && !/\s$/.test(head) ? `${head} ` : head
+  const after = tail && !/^\s/.test(tail) ? ` ${tail}` : tail
+
+  return `${before}${body}${after}`
+}
+
+/**
+ * The field of an answer in one's own words. A component of its own for the sake of one hook: the word
+ * before the caret and the undo history the browser inside the IDE does not give a plain field (see
+ * useFieldHistory), and a hook cannot be called from inside the list of questions.
+ */
+const OwnAnswer = ({
+  value,
+  onChange,
+  onFocus,
+  onPaste,
+}: {
+  value: string
+  onChange: (value: string) => void
+  onFocus: () => void
+  onPaste: (event: ClipboardEvent<HTMLInputElement>) => void
+}) => {
+  const t = useT()
+  const keys = useFieldHistory(value, onChange)
+
+  return (
+    <input
+      className={s.otherInput}
+      autoFocus
+      placeholder={t.feed.ask.ownAnswer}
+      value={value}
+      onFocus={onFocus}
+      onChange={keys.onChange}
+      onKeyDown={keys.onKeyDown}
+      onPaste={onPaste}
+    />
   )
 }

@@ -334,6 +334,20 @@ class ClaudeHistoryTest {
     // With no boundary at all, a page is the file's own tail - the only case where that is the right
     // answer: a conversation whose live journal has never sent anything of it yet (see ClaudeHistory.page).
     @Test
+    fun `the page names the model that last answered, and never a placeholder`() {
+        val lines = listOf(
+            """{"type":"assistant","uuid":"a1","message":{"model":"claude-sonnet-5","content":[{"type":"text","text":"one"}]}}""",
+            """{"type":"user","uuid":"u2","message":{"role":"user","content":[{"type":"text","text":"two"}]}}""",
+            """{"type":"assistant","uuid":"a3","message":{"model":"claude-opus-5","content":[{"type":"text","text":"three"}]}}""",
+            """{"type":"assistant","uuid":"a4","message":{"model":"<synthetic>","content":[{"type":"text","text":"Unknown command"}]}}""",
+        )
+
+        assertEquals("claude-opus-5", ClaudeHistory.lastModel(lines))
+        assertEquals("", ClaudeHistory.lastModel(listOf(lines[1])))
+        assertEquals("", ClaudeHistory.lastModel(emptyList()))
+    }
+
+    @Test
     fun `a page with no boundary is the file's own last page`() {
         val all = (1..5).map { """{"type":"user","uuid":"u$it","message":{"role":"user","content":"m$it"}}""" }
 
@@ -570,6 +584,48 @@ class ClaudeHistoryTest {
 
         assertEquals(20_000, read, "the file has to be walked to reach its end")
         assertTrue(window.lines.size <= 18, "the window kept ${window.lines.size} lines out of 20000")
+    }
+
+    /**
+     * The window holds the transcript's lines as they are on disk, and a line on disk is a tool's result
+     * whole - half a megabyte each on a day of heavy reads. Counted in lines alone, a window of those was
+     * gigabytes, on exactly the conversations the paging exists for. So it is capped by weight too, and
+     * gives up its oldest messages first: what has to survive is the end of the conversation.
+     */
+    @Test
+    fun `the window is capped by weight, and the oldest messages go first`() {
+        val heavy = "x".repeat(1000)
+        val all = (1..20).map { """{"type":"user","uuid":"u$it","message":{"role":"user","content":"$heavy"}}""" }
+
+        val window = ClaudeHistory.windowOf(all.asSequence(), before = null, pageSize = 50, maxChars = 5_000)
+
+        assertTrue(window.moreAbove)
+        assertEquals("u20", uuidIn(window.lines.last()))
+        assertTrue(window.lines.size in 1..5, "the window held ${window.lines.size} lines under a budget of five")
+        assertTrue(window.lines.sumOf { it.length } <= 5_000)
+    }
+
+    /**
+     * One message can outweigh the whole budget by itself - a run of calls with a build log in each. It
+     * gives up its oldest lines rather than itself, and never its last: a window with nothing in it is a
+     * page with nothing in it, and the button over the feed dead.
+     */
+    @Test
+    fun `a single message over the weight gives up its oldest lines, never its last`() {
+        val heavy = "x".repeat(1000)
+        val call = { number: Int ->
+            """{"type":"assistant","uuid":"a$number","message":{"content":[{"type":"tool_use","input":"$heavy"}]}}"""
+        }
+        val all = (1..10).map(call)
+
+        val window = ClaudeHistory.windowOf(all.asSequence(), before = null, pageSize = 50, maxChars = 2_500)
+
+        assertTrue(window.moreAbove)
+        assertEquals("a10", uuidIn(window.lines.last()))
+        assertTrue(window.lines.size in 1..2, "the window held ${window.lines.size} lines")
+
+        val single = ClaudeHistory.windowOf(all.take(1).asSequence(), before = null, pageSize = 50, maxChars = 10)
+        assertEquals(1, single.lines.size)
     }
 
     /**

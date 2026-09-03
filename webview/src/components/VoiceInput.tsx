@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocale, useT, type Dict } from '../i18n'
 import type { VoiceBalance, VoiceDevice, VoiceHotkey, VoiceHotkeySlot, VoiceLanguage } from '../protocol'
+import { AuthorCard } from './AuthorCard'
 import { ChoiceList } from './Choices'
 import { HotkeyCaps } from './HotkeyCaps'
 import type { MenuOption } from './Menu'
 import s from './sideMenu.module.css'
+import notastreamHero from '../assets/notastream-hero.webp'
+import { useFieldHistory } from '../hooks/useFieldHistory'
 
 /** Everything the screen draws itself from - the `voiceConfig` message, plus what the panel knows. */
 export interface VoiceSettings {
@@ -34,7 +37,20 @@ interface VoiceInputProps {
   onOpenLanguages: () => void
   onOpenDevices: () => void
   onOpenSite: () => void
+  /** An address to the system browser - this page has no browser of its own (see App.openLink). */
+  onOpenLink: (url: string) => void
 }
+
+/**
+ * Where the card at the foot of this screen leads. The marks say which placement brought the visit: the
+ * panel carries two advertisements in all, and whether either earns its room is a question worth an
+ * answer.
+ */
+const DICTATION_URL =
+  'https://notastream.com/?utm_source=amazing-claude-code&utm_medium=plugin&utm_campaign=voice-input'
+
+/** The other product's name - written the same in every language, so it never enters the dictionaries. */
+const DICTATION_PRODUCT = 'notastream'
 
 /**
  * The voice input screen.
@@ -59,6 +75,7 @@ export const VoiceInput = ({
   onOpenLanguages,
   onOpenDevices,
   onOpenSite,
+  onOpenLink,
 }: VoiceInputProps) => {
   const t = useT()
   // The money is formatted by the panel's own language rather than by the account's - "$182.40" and
@@ -85,14 +102,17 @@ export const VoiceInput = ({
     settings.languages.find((entry) => entry.code === settings.language)?.native ?? settings.language
   const device = settings.devices.find((entry) => entry.id === settings.device)?.label ?? t.voice.deviceDefault
 
+  const keyKeys = useFieldHistory(key, setKey)
+
   return (
     <div className={s.screen}>
       <span className={s.screenNote}>{t.voice.note}</span>
 
       <button type="button" className={s.switchRow} onClick={() => onToggle(!settings.enabled)} aria-pressed={settings.enabled}>
+        {/* The label alone: what the switch does is said by the paragraph above the screen and by the
+            hotkey rows below it, and a third telling of it only pushed those rows down the screen. */}
         <span className={s.switchText}>
           <span className={s.switchLabel}>{t.voice.enable}</span>
-          <span className={s.switchHint}>{t.voice.enableHint}</span>
         </span>
         <span className={`${s.switchTrack} ${settings.enabled ? s.switchTrackOn : ''}`}>
           <span className={`${s.switchKnob} ${settings.enabled ? s.switchKnobOn : ''}`} />
@@ -111,9 +131,10 @@ export const VoiceInput = ({
             value={key}
             spellCheck={false}
             placeholder={settings.keyHint ? t.voice.keySet(settings.keyHint) : t.voice.keyPlaceholder}
-            onChange={(event) => setKey(event.target.value)}
+            onChange={keyKeys.onChange}
             onKeyDown={(event) => {
-              if (event.key !== 'Enter' || key.trim() === '') return
+              keyKeys.onKeyDown(event)
+              if (event.defaultPrevented || event.key !== 'Enter' || key.trim() === '') return
               onKey(key.trim())
               setKey('')
             }}
@@ -161,7 +182,6 @@ export const VoiceInput = ({
 
       <div className={s.field}>
         <span className={s.screenLabel}>{t.voice.hotkeys}</span>
-        <span className={s.screenNote}>{t.voice.hotkeysHint}</span>
 
         <HotkeyRow
           label={t.voice.push}
@@ -188,7 +208,6 @@ export const VoiceInput = ({
         />
 
         {captureProblem ? <span className={`${s.message} ${s.messageBad}`}>{captureProblem}</span> : null}
-        <span className={s.screenNote}>{t.voice.modifierTip}</span>
       </div>
 
       <button type="button" className={s.switchRow} onClick={onOpenLanguages}>
@@ -206,6 +225,19 @@ export const VoiceInput = ({
         </span>
         <span className={s.rowValue}>{device}</span>
       </button>
+
+      {/* The same card the menu's foot carries, for the same reason it stands last: whoever has read
+          this screen to the end has already decided that talking beats typing, and the app it points at
+          does that everywhere else on the machine. */}
+      <AuthorCard
+        title={t.voice.promo.title}
+        body={t.voice.promo.body}
+        shot={notastreamHero}
+        name={DICTATION_PRODUCT}
+        tagline={t.voice.promo.tagline}
+        url={DICTATION_URL}
+        onOpenLink={onOpenLink}
+      />
     </div>
   )
 }
@@ -352,6 +384,8 @@ export const VoiceLanguages = ({
     )
     .map((entry) => ({ id: entry.code, label: entry.native, sub: entry.english }))
 
+  const queryKeys = useFieldHistory(query, setQuery)
+
   return (
     <div className={s.screen}>
       <input
@@ -359,7 +393,8 @@ export const VoiceLanguages = ({
         value={query}
         spellCheck={false}
         placeholder={t.voice.searchLanguages}
-        onChange={(event) => setQuery(event.target.value)}
+        onChange={queryKeys.onChange}
+        onKeyDown={queryKeys.onKeyDown}
       />
       <span className={s.screenNote}>{t.voice.multiHint}</span>
       <ChoiceList options={options} selected={settings.language} onPick={onPick} />
