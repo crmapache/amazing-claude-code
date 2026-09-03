@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-09-02
+
+- Fixed: a workflow's card and its agent screen filled with hundreds of identical lines - "756 earlier steps trimmed" over a wall of agent labels - and pushed the one useful thing off the screen: the fleet itself, with every agent's state, time, tokens and tool count. Between two full reports the CLI keeps sending bare progress notes that carry nothing but the name of whichever agent moved last, and those were being written down one by one. A workflow now takes nothing from that channel and keeps its log for what its own ending puts there.
+- Changed: an opened agent card is held by the line down its left side alone. The rule that used to run across it met that line at a corner neither of them drew, and on a workflow, which has no errand written above it, it stood there dividing nothing at all.
+
 ## [0.10.1] - 2026-09-02
 
 - Fixed: a message copied out of the panel arrived as one long paragraph anywhere that draws formatting - an editor, a task tracker, a messenger. A line break is not a line break in formatted text, it is ordinary space, and those applications take the formatted half of the clipboard over the plain one lying beside it. Paste into a terminal and the lines were there, paste into anything that renders and they were gone.
@@ -513,7 +518,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.10.1...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.10.2...HEAD
+[0.10.2]: https://github.com/crmapache/amazing-claude-code/compare/0.10.1...0.10.2
 [0.10.1]: https://github.com/crmapache/amazing-claude-code/compare/0.10.0...0.10.1
 [0.10.0]: https://github.com/crmapache/amazing-claude-code/compare/0.9.7...0.10.0
 [0.9.7]: https://github.com/crmapache/amazing-claude-code/compare/0.9.6...0.9.7
