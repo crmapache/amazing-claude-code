@@ -1357,6 +1357,54 @@ describe('building the feed out of the agent stream', () => {
       expect(done?.outcome).toBe('ok')
     })
 
+    it('keeps a workflow log free of the labels that arrive between its reports', () => {
+      // Between two reports the CLI sends bare progress events, and for a workflow last_tool_name in them
+      // is the label of whichever agent moved last. Judged by the event rather than by the task, those
+      // lines went into the log: a fleet of sixteen wrote hundreds of "→ read:orchestration" above the
+      // report that is the only thing on the card saying anything about the sixteen.
+      const launched = play([
+        toolUseEvent('w1', 'Workflow', { description: 'Read the corpus' }),
+        {
+          type: 'system',
+          subtype: 'task_started',
+          task_id: 'wf-noise',
+          tool_use_id: 'w1',
+          description: 'Read the corpus',
+          task_type: 'local_workflow',
+        },
+      ])
+
+      const noisy = play(
+        [
+          taskProgressEvent('wf-noise', 'read:orchestration'),
+          taskProgressEvent('wf-noise', 'read:wording'),
+          {
+            type: 'system',
+            subtype: 'task_progress',
+            task_id: 'wf-noise',
+            workflow_progress: [
+              { type: 'workflow_agent', index: 1, label: 'read:orchestration', state: 'start', startedAt: 1 },
+            ],
+          },
+          taskProgressEvent('wf-noise', 'read:metrics'),
+        ],
+        launched,
+      )
+
+      const workflow = noisy.items.find((item): item is TaskItem => item.kind === 'task')
+      expect(workflow?.log).toEqual([])
+      expect(workflow?.workflow?.total).toBe(1)
+
+      // An ordinary subagent still gets those lines: a background agent of a skill has no stream of its
+      // own, and this channel is all that says it is alive.
+      const agent = play([
+        agentTaskStartedEvent('t-plain', 'call-plain', 'general-purpose'),
+        taskProgressEvent('t-plain', 'Read'),
+      ])
+      const plain = agent.items.find((item): item is TaskItem => item.kind === 'task')
+      expect(plain?.log.map((line) => line.text)).toEqual(['→ Read'])
+    })
+
     it('computes the group full span on a re-append after a resolve (regression)', () => {
       const T0 = 1_700_000_000_000
       // T0: tool1 called

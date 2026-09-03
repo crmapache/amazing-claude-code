@@ -992,12 +992,15 @@
   overflow-y: auto;
 }
 
-/* The agent's own log under the errand, set apart by a rule rather than by a heading: what is above is
-   what it was asked, what is below is what it did - and with a gap alone the two ran together. */
+/* The agent's own log under the errand - what is above is what it was asked, what is below is what it
+   did. Set apart by a gap alone: the rule that used to stand here ran the full width of the card and met
+   the line down its left side at a corner neither of them drew, so an open card read as two boxes badly
+   joined rather than as one - worst of all on a workflow, which has no errand above it and so showed the
+   rule with nothing on either side of it. Every other body in the feed is held by that left line only
+   (see toolBody). The gap is wider than the one between the log's own lines, which is what tells the two
+   blocks apart now. */
 .taskLog {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--acc-line);
+  margin-top: 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;

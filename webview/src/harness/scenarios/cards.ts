@@ -1223,6 +1223,12 @@ export const scenariosCards: Scenario[] = [
       wait(1500),
     ]),
     checkpoint('Two are done, one failed, and the script itself reports the count', [
+      // Between two reports the CLI keeps sending bare progress events, and for a workflow the name in
+      // them is the label of whichever agent moved last. They are here so that the card is watched under
+      // the same traffic it gets live: nothing of these may reach its log - hundreds of them used to
+      // stand above the report and push it off the screen.
+      agent({ type: 'system', subtype: 'task_progress', task_id: 'c14-wf-id', last_tool_name: 'review:bugs' }),
+      agent({ type: 'system', subtype: 'task_progress', task_id: 'c14-wf-id', last_tool_name: 'review:security' }),
       agent({
         type: 'system',
         subtype: 'task_progress',

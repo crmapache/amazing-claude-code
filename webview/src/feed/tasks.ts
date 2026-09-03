@@ -242,6 +242,18 @@ export const applyTaskProgress = (state: PanelState, event: AgentSystemEvent): P
         return { ...item, meta: event.description ?? item.meta, percent, workflow }
       }
 
+      /**
+       * The rule above belongs to the task, not to the event that carried it: between two reports the CLI
+       * sends the same channel plain progress events, and those hold nothing but that label. Read one by
+       * one, they went into the log after all - a fleet of sixteen wrote seven hundred lines of
+       * "→ read:orchestration" above the one thing on the card that says anything about the sixteen, and
+       * the log's own cap then reported them as "756 earlier steps trimmed". A workflow keeps its log for
+       * what its own end puts there (see finishTaskCard); it takes nothing from this channel.
+       */
+      if (item.workflow || item.target === 'workflow') {
+        return { ...item, meta: event.description ?? item.meta }
+      }
+
       // The very same call may already have arrived through the subagent's main stream (noteSubagent, a
       // line like "Bash…"/"Bash: command") - this channel reports the same name afterwards, and without
       // this the log turned into pairs of repeated lines on every call.
