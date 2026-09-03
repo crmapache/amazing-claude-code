@@ -11,6 +11,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { isBashDraft } from '../feed/bash'
+import { isLetterKey } from '../feed/fieldEdits'
 import { useT } from '../i18n'
 import { Microphone } from './Microphone'
 import { Magnifier } from './SearchCapsule'
@@ -1446,15 +1447,17 @@ export const Composer = ({
     // An undo history of our own - the browser's native Cmd+Z/Ctrl+Z knows nothing about our chips and
     // would restore them wrongly, so we intercept it entirely. Ctrl is needed on a Mac too: Chromium
     // inside JCEF answers Ctrl+Z with an undo of its own regardless of the host OS, and without the
-    // interception that would look like a stray "someone else's" undo over the input field.
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+    // interception that would look like a stray "someone else's" undo over the input field. The key is
+    // asked for by the letter people are told about rather than by the character the layout prints on
+    // it - see isLetterKey.
+    if ((event.metaKey || event.ctrlKey) && isLetterKey(event, 'z')) {
       event.preventDefault()
       if (event.shiftKey) redo()
       else undo()
       return
     }
 
-    if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'y') {
+    if ((event.metaKey || event.ctrlKey) && !event.shiftKey && isLetterKey(event, 'y')) {
       event.preventDefault()
       redo()
       return

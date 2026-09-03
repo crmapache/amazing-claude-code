@@ -114,3 +114,19 @@ export const isBoundary = (before: FieldState, after: FieldState, lastKind: 'ins
   if (lastKind !== undefined && kind !== lastKind) return true
   return kind === 'insert' && isSpace(after.value[after.start - 1] ?? '')
 }
+
+/**
+ * Whether the key pressed is the letter asked for, whatever the layout writes on it.
+ *
+ * A layout renames the key: with a Ukrainian or a Russian one in force, Cmd/Ctrl+Z arrives as "я" and
+ * Cmd/Ctrl+Y as "н" - the letters that key prints there. Asked by name alone, undo and redo worked in
+ * English and stayed silent for everyone else, and silently: the browser's own undo took over, and it
+ * knows nothing about the chips in the field. The physical key answers as well, and either answer
+ * counts - a layout that moves the letter elsewhere (Dvorak) writes it on the key it moved it to, and
+ * the person means the letter they see. The same reason holds off a Mac with Alt held, where the
+ * character is "ç" and only the key itself is still recognisable.
+ *
+ * [letter] is a lowercase Latin letter - the one written in the shortcut people are told about.
+ */
+export const isLetterKey = (event: { key: string; code: string }, letter: string): boolean =>
+  event.key.toLowerCase() === letter || event.code === `Key${letter.toUpperCase()}`

@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ChangeEvent, type KeyboardEvent } from 'react'
-import { FieldHistory, deleteWordBackward, isBoundary, type FieldState } from '../feed/fieldEdits'
+import { FieldHistory, deleteWordBackward, isBoundary, isLetterKey, type FieldState } from '../feed/fieldEdits'
 
 type TextField = HTMLInputElement | HTMLTextAreaElement
 
@@ -66,9 +66,8 @@ export const useFieldHistory = (
     const modifier = event.metaKey || event.ctrlKey
     if (!modifier || event.altKey) return
 
-    // By the key's code as well as its name: with a Cyrillic layout the Z key names itself "я".
-    const isZ = event.key.toLowerCase() === 'z' || event.code === 'KeyZ'
-    const isY = event.key.toLowerCase() === 'y' || event.code === 'KeyY'
+    const isZ = isLetterKey(event, 'z')
+    const isY = isLetterKey(event, 'y')
 
     if (isZ) {
       event.preventDefault()

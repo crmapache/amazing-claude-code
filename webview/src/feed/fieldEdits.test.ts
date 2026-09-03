@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FieldHistory, UNDO_COALESCE_MS, deleteWordBackward, isBoundary } from './fieldEdits'
+import { FieldHistory, UNDO_COALESCE_MS, deleteWordBackward, isBoundary, isLetterKey } from './fieldEdits'
 
 const at = (value: string, caret = value.length) => ({ value, start: caret, end: caret })
 
@@ -71,5 +71,30 @@ describe('the history coalesces typing and keeps everything else apart', () => {
     expect(isBoundary(at('fin'), at('fi'), 'insert')).toBe(true)
     expect(isBoundary(at('fi'), at('f'), 'delete')).toBe(false)
     expect(isBoundary(at('fi'), at('fi socket'), 'insert')).toBe(true)
+  })
+})
+
+describe('the letter of a shortcut is read off the key, not off the layout', () => {
+  it('knows the letter by its name', () => {
+    expect(isLetterKey({ key: 'z', code: 'KeyZ' }, 'z')).toBe(true)
+    expect(isLetterKey({ key: 'Z', code: 'KeyZ' }, 'z')).toBe(true)
+    expect(isLetterKey({ key: 'y', code: 'KeyY' }, 'z')).toBe(false)
+  })
+
+  it('knows it by the key itself when the layout names it otherwise', () => {
+    // A Ukrainian and a Russian layout print "я" on the Z key and "н" on the Y one.
+    expect(isLetterKey({ key: 'я', code: 'KeyZ' }, 'z')).toBe(true)
+    expect(isLetterKey({ key: 'н', code: 'KeyY' }, 'y')).toBe(true)
+    expect(isLetterKey({ key: 'я', code: 'KeyZ' }, 'y')).toBe(false)
+  })
+
+  it('follows the letter a layout has moved elsewhere', () => {
+    // Dvorak writes Z on the physical slash key - the person means the letter they see.
+    expect(isLetterKey({ key: 'z', code: 'Slash' }, 'z')).toBe(true)
+  })
+
+  it('takes the character of a dead key for the key underneath', () => {
+    // Alt held on a Mac turns C into "ç"; the key itself is the only thing left to go by.
+    expect(isLetterKey({ key: 'ç', code: 'KeyC' }, 'c')).toBe(true)
   })
 })
