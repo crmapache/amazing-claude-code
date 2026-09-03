@@ -9,6 +9,15 @@ commits.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-09-02
+
+- Fixed: a message copied out of the panel arrived as one long paragraph anywhere that draws formatting - an editor, a task tracker, a messenger. A line break is not a line break in formatted text, it is ordinary space, and those applications take the formatted half of the clipboard over the plain one lying beside it. Paste into a terminal and the lines were there, paste into anything that renders and they were gone.
+- Fixed: remote access could be switched off from outside, and it stayed off. The address your IDE connects with travels in the pairing QR code, and anyone who has seen it can take the line simply by connecting with it - which the plugin read as a refusal it could do nothing about, so it stopped for good until somebody noticed and turned it back on by hand. It now waits and comes back, and only gives up after several rounds of losing the address - which is what two IDEs started from the same settings actually look like, and the one case worth giving up on.
+- Fixed: three ways for the server in the middle to break the line between a phone and an IDE, all of them silent. A stream of message pieces that never ended was collected whole before anything looked at its size, so the IDE could be made to run out of memory. A made-up frame number moved the record of what had already been seen before the frame proved it came from your phone at all, after which every real frame was thrown away as too old. And "your keys are stale" - a message that by its nature cannot be sealed - was taken at face value by both ends, so anything carrying frames could keep them re-doing key exchanges for as long as it liked. The proof is now checked before anything is believed, new keys wait beside the working ones until a frame arrives that only your phone could have sent, and both ends refuse to be walked through this more than a few times a minute.
+- Changed: your phone no longer keeps the key that identifies it in the browser's database. It is worked out, each time it reconnects, from a key the browser will use but never hand back - so a copy of it cannot be taken out of the phone by anything that manages to run on that page. Nothing to re-pair: the key that comes out is the same one.
+- Added: the list of paired devices says when each one was last on the line. Revoking is by hand and stays that way, so a phone you stopped using is worth being able to see.
+- Fixed: for anyone running their own relay - it accepted a notification subscription from anyone, for any address, pointing anywhere, and would then post to that address on request. It now takes one only for a device holding a live connection, only for the push services browsers actually hand out, and it caps what a single caller can open and how much a single request may weigh. The files it serves no longer follow a link out of their folder, and hidden files are not served at all.
+
 ## [0.10.0] - 2026-09-02
 
 - Added: search over the project's conversations - the magnifier in the row under the field, or Cmd/Ctrl+F while the panel has the keyboard. One query, two scopes - this chat and every chat of the project - and both counts arrive in the same answer, so switching a tab is never how you find out whether there is anything there. A third tab asks a model to find it by description instead of by words, for when what you remember is what the conversation was about and not a word that was in it. A result opens the message inside its own conversation: the window folds into a capsule in the corner of the feed, its arrows step through the hits of that chat in the order they were said, and the words themselves are lit in the feed. The searching is done by the IDE, not by the panel - a transcript is a hundred times heavier than the words spoken in it, so the words are kept in an index beside the statistics and refreshed from the tail of the file rather than reread. A word is found by its beginning, through a typo or two and by a shortened stem, a phrase in quotes stands as written, and Cc and W match case and whole words the way Find in Files does. The phone has all three tabs as well.
@@ -505,7 +514,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.10.0...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.10.1...HEAD
+[0.10.1]: https://github.com/crmapache/amazing-claude-code/compare/0.10.0...0.10.1
 [0.10.0]: https://github.com/crmapache/amazing-claude-code/compare/0.9.7...0.10.0
 [0.9.7]: https://github.com/crmapache/amazing-claude-code/compare/0.9.6...0.9.7
 [0.9.6]: https://github.com/crmapache/amazing-claude-code/compare/0.9.5...0.9.6
