@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-09-03
+
+- Fixed: undo in the input field did nothing on a Ukrainian or Russian keyboard layout, and what happened instead was worse than nothing - the browser's own undo stepped in, peeling typed words off the message while leaving every attachment standing. A layout renames the key: the same key that writes Z in English writes another letter there, and the panel was asking for the letter rather than for the key. Undo, redo and the redo on its own key now answer whatever the layout writes on them.
+- Fixed: two dozen wordings in the Ukrainian panel. Some were Russian words left standing, some were phrases built the way Russian builds them and not Ukrainian, and one was a verb that does not exist in either. The whole dictionary was read against the English one, so this is the lot of them rather than the ones that were reported.
+
 ## [0.10.2] - 2026-09-02
 
 - Fixed: a workflow's card and its agent screen filled with hundreds of identical lines - "756 earlier steps trimmed" over a wall of agent labels - and pushed the one useful thing off the screen: the fleet itself, with every agent's state, time, tokens and tool count. Between two full reports the CLI keeps sending bare progress notes that carry nothing but the name of whichever agent moved last, and those were being written down one by one. A workflow now takes nothing from that channel and keeps its log for what its own ending puts there.
@@ -518,7 +523,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.10.2...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.10.3...HEAD
+[0.10.3]: https://github.com/crmapache/amazing-claude-code/compare/0.10.2...0.10.3
 [0.10.2]: https://github.com/crmapache/amazing-claude-code/compare/0.10.1...0.10.2
 [0.10.1]: https://github.com/crmapache/amazing-claude-code/compare/0.10.0...0.10.1
 [0.10.0]: https://github.com/crmapache/amazing-claude-code/compare/0.9.7...0.10.0
