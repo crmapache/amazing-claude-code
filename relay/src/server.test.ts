@@ -177,4 +177,88 @@ describe('the relay', () => {
     expect(info.wireMax).toEqual(WIRE_VERSION)
     expect(info.maxFrameBytes).toBeGreaterThan(0)
   })
+
+  /**
+   * A websocket ignores the same-origin policy, so without this any page anybody has open could dial
+   * this server through their browser. The plugin sends no Origin at all and must not be caught by it -
+   * every other test in this file relies on that, since the client here sends none either.
+   */
+  it('refuses a browser page from an origin it does not serve', async () => {
+    const socket = new WebSocket(`ws://127.0.0.1:${listening}/v1/device?id=${encodeAddress(device)}`, {
+      origin: 'https://somebody-elses-page.example',
+    })
+    opened.push(socket)
+
+    await expect(
+      new Promise((resolve, reject) => {
+        socket.once('open', () => resolve('opened'))
+        socket.once('error', reject)
+      }),
+    ).rejects.toThrow()
+  })
+
+  /**
+   * The ceiling belongs to the transport, not to a check made afterwards: the library's own default is
+   * a hundred megabytes and it holds all of them before anything here gets to measure.
+   */
+  it('closes a socket that sends more than a frame is allowed to be', async () => {
+    const d = await open(listening, '/v1/device', device)
+    opened.push(d)
+
+    const closing = closedWith(d)
+    d.send(Buffer.alloc(300 * 1024))
+
+    expect(await closing).toEqual(1009)
+  })
+
+  describe('subscribing to be woken', () => {
+    const subscribe = (body: unknown): Promise<Response> =>
+      fetch(`http://127.0.0.1:${listening}/v1/push/subscribe`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      })
+
+    const real = {
+      deviceId: encodeAddress(device),
+      endpoint: 'https://web.push.apple.com/QWERTY',
+      keys: { p256dh: 'a'.repeat(88), auth: 'b'.repeat(22) },
+    }
+
+    /**
+     * The only thing this server can honestly ask of a stranger. It cannot know who is paired with
+     * whom - that is the point of it - but a phone subscribing has its own line open at that moment,
+     * and filling this map with invented devices then costs a socket apiece.
+     */
+    it('refuses an address nobody is holding a socket for', async () => {
+      expect((await subscribe(real)).status).toEqual(403)
+    })
+
+    it('takes one from a device that is here', async () => {
+      opened.push(await open(listening, '/v1/device', device))
+
+      expect((await subscribe(real)).status).toEqual(204)
+    })
+
+    /** The endpoint is a URL this server will later post to, so an unknown one is one it declines. */
+    it('refuses an endpoint that is not a push service', async () => {
+      opened.push(await open(listening, '/v1/device', device))
+
+      expect((await subscribe({ ...real, endpoint: 'http://169.254.169.254/latest/meta-data/' })).status).toEqual(400)
+      expect((await subscribe({ ...real, endpoint: 'https://somewhere-else.example/x' })).status).toEqual(400)
+    })
+
+    it('refuses an id that is not an address', async () => {
+      expect((await subscribe({ ...real, deviceId: '../../etc' })).status).toEqual(400)
+    })
+
+    /** A subscription is a few hundred bytes. Nothing else is a subscription. */
+    it('stops reading a body that will not stop', async () => {
+      const response = await fetch(`http://127.0.0.1:${listening}/v1/push/subscribe`, {
+        method: 'POST',
+        body: 'x'.repeat(64 * 1024),
+      })
+
+      expect(response.status).toEqual(413)
+    })
+  })
 })

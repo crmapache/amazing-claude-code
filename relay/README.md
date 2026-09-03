@@ -139,7 +139,12 @@ server's whole value is that it is small enough to read in one sitting.
 | `RELAY_MAILBOX_MAX_FRAMES` | `200` | Per address; past it the buffer is replaced by a "resynchronise" note |
 | `RELAY_MAILBOX_MAX_BYTES` | `4194304` | The same, by weight |
 | `RELAY_RATE_FRAMES_PER_MINUTE` | `6000` | A ceiling against a stuck loop, not a quota |
-| `RELAY_MAX_CONNECTIONS_PER_IP` | `32` | |
+| `RELAY_MAX_CONNECTIONS_PER_IP` | `32` | Sockets from one caller. Counted only when this server can see who called - behind a proxy that does not say, every caller looks like the proxy |
+| `RELAY_MAX_CONNECTIONS` | `2000` | Sockets in total. The ceiling that holds whoever is in front of this server |
+| `RELAY_ALLOWED_ORIGINS` | — | Browser origins that may open a socket, comma separated. Empty means "the one this server serves the client from"; the plugin sends no origin and is never turned away |
+| `RELAY_SUBSCRIBE_MAX_BYTES` | `8192` | The biggest a push subscription may be |
+| `RELAY_MAX_SUBSCRIPTIONS` | `10000` | How many are held at once |
+| `RELAY_PUSH_HOSTS` | — | Extra push service hosts, comma separated. The known browsers' are built in |
 | `RELAY_STATIC_DIR` | `./public` | Where the phone's own files are. Empty turns serving them off |
 | `RELAY_LOG_LEVEL` | `info` | `silent` says nothing at all |
 | `VAPID_PUBLIC_KEY` | — | Push notifications. Absent means the relay works but cannot ring anybody |
@@ -160,7 +165,8 @@ One rule, and it is not negotiable: **the body of a frame is never logged.** Not
 either — that is exactly where "attach the bytes so we can see what broke" gets written. What a log
 line may contain is what happened, the first four bytes of an address, a size and a time.
 
-IP addresses are used for the per-IP connection limit and are held in memory for that alone.
+IP addresses are used for the per-IP connection limit and are held in memory for that alone - never
+written to a log line, including the one that refuses a caller for being over it.
 
 ## Endpoints
 

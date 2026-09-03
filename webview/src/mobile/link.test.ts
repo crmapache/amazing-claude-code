@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { reconnectAfter } from './link'
+import { handshakeBudget, reconnectAfter } from './link'
 
 /**
  * When to connect again after the line dropped.
@@ -34,5 +34,34 @@ describe('deciding when to reconnect', () => {
 
     expect(later).toBeGreaterThan(first)
     expect(reconnectAfter(1006, true, 99)).toBe(30_000)
+  })
+})
+
+/**
+ * Two frames ask this phone to throw its keys away and start again - the relay's "there was a break"
+ * and the agent's "your keys are stale" - and neither can be sealed, because both are about not having
+ * keys. So anything carrying frames can send either, at any rate it likes.
+ */
+describe('how often an unsealed frame may start a handshake', () => {
+  it('lets a genuine run of them through', () => {
+    let asked: number[] = []
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const next = handshakeBudget(asked, 1_000 + attempt * 100)
+      expect(next).not.toBeNull()
+      asked = next as number[]
+    }
+  })
+
+  it('stops a stream of them', () => {
+    const asked = [1, 2, 3, 4, 5, 6].map((at) => at * 100)
+
+    expect(handshakeBudget(asked, 1_000)).toBeNull()
+  })
+
+  it('forgets the old ones, so a phone off all morning still reconnects', () => {
+    const asked = [1, 2, 3, 4, 5, 6].map((at) => at * 100)
+
+    expect(handshakeBudget(asked, 10 * 60_000)).toEqual([10 * 60_000])
   })
 })

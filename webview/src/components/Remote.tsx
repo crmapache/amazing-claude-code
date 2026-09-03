@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { describeWhen } from '../feed/when'
 import type { RemoteDevice } from '../protocol'
 import { QrCode } from './QrCode'
 import s from './sideMenu.module.css'
@@ -243,7 +244,12 @@ export const Remote = ({
             <div key={device.id} className={s.device}>
               <span className={s.deviceText}>
                 <span className={s.deviceLabel}>{device.label}</span>
-                <span className={s.deviceMeta}>{device.fingerprint}</span>
+                {/* When it was last heard from, because revoking is by hand and stays that way: the key
+                    a phone keeps has no expiry, so the only thing that makes a stale one noticeable is
+                    a list that says which of these has not been near this machine in a month. */}
+                <span className={s.deviceMeta}>
+                  {device.lastSeenAt > 0 ? `${device.fingerprint} · ${describeWhen(device.lastSeenAt)}` : device.fingerprint}
+                </span>
               </span>
               {/* Immediate, and it works while the phone is switched off: with the secret gone its frames
                   simply stop opening. Nothing has to reach it. */}

@@ -12,9 +12,11 @@ import javax.crypto.spec.SecretKeySpec
  * matters most here. The relay forwards bytes it cannot read; without a tag it could still alter them,
  * and an altered frame that decrypts into something plausible is worse than one that fails.
  *
- * The frame's own header goes in as additional data rather than being ignored. It is not secret - the
- * relay routes by it - but it is covered by the tag, so nobody can take a frame addressed to one
- * device and re-address it to another: the tag stops matching, and the frame is dropped.
+ * The frame's own header goes in as additional data rather than being ignored - all of it, the wire
+ * version and the kind of frame included. It is not secret, the relay routes by it, but it is covered
+ * by the tag: nobody can take a frame addressed to one device and re-address it to another, and nobody
+ * can relabel an envelope as "wake this phone" to have it handed to a push service instead. The tag
+ * stops matching, and the frame is dropped.
  *
  * The one rule this scheme dies of if broken: a key and a nonce must never be used twice together.
  * That is why the nonce is a per-direction prefix plus a counter, why each direction has a key of its

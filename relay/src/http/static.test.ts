@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Writable } from 'node:stream'
@@ -60,5 +60,29 @@ describe('what the relay lets a client keep', () => {
 
   it('keeps a hashed asset forever, because its name changes when it does', () => {
     expect(answer('/assets/mobile-abc123.js').cache).toBe('public, max-age=31536000, immutable')
+  })
+})
+
+/**
+ * What may be read at all.
+ *
+ * The prefix check reads a string; a link satisfies it and still points somewhere else. This folder is
+ * a build artifact, so neither of these should ever fire - which is exactly what makes them cheap.
+ */
+describe('what the relay refuses to read', () => {
+  it('does not follow a link out of the folder it serves', () => {
+    const secret = join(root, '..', `acc-secret-${process.pid}`)
+    writeFileSync(secret, 'not for the internet')
+    symlinkSync(secret, join(root, 'escape.txt'))
+
+    // Not a 404: an address that is not a file belongs to the client's own routing, so what comes
+    // back is the shell. What matters is that it is the shell and not the file the link pointed at.
+    expect(answer('/escape.txt')).toMatchObject({ status: 200, cache: 'no-store', type: 'text/html; charset=utf-8' })
+  })
+
+  it('does not serve what a build left behind by accident', () => {
+    writeFileSync(join(root, '.env'), 'VAPID_PRIVATE_KEY=nope')
+
+    expect(answer('/.env').status).toEqual(403)
   })
 })

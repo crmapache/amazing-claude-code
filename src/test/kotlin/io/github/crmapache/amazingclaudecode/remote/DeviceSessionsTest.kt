@@ -19,6 +19,10 @@ class DeviceSessionsTest {
     private val agent = ByteArray(Frame.ADDRESS_BYTES) { 0xa1.toByte() }
     private val device = ByteArray(Frame.ADDRESS_BYTES) { 0xd1.toByte() }
 
+    /** The body, or null for either of the two ways a frame can fail to become one. */
+    private fun DeviceSessions.body(deviceId: String, envelope: Frame.Envelope): ByteArray? =
+        (open(deviceId, envelope) as? DeviceSessions.Opened.Body)?.bytes
+
     /**
      * The device's view of the same session: what one end seals to the other, the other opens - so its
      * "to device" key is the one it reads with.
@@ -47,7 +51,7 @@ class DeviceSessionsTest {
         onDevice.open("agent", mirror(session()))
 
         val frame = onAgent.seal("phone", device, agent, "the feed".toByteArray())!!
-        val opened = onDevice.open("agent", Frame.parse(frame, 4096))
+        val opened = onDevice.body("agent", Frame.parse(frame, 4096))
 
         assertEquals("the feed", String(opened!!))
     }
@@ -71,7 +75,7 @@ class DeviceSessionsTest {
         val frame = onDevice.seal("agent", agent, device, "a command".toByteArray())!!
         onAgent.close("phone")
 
-        assertNull(onAgent.open("phone", Frame.parse(frame, 4096)))
+        assertNull(onAgent.body("phone", Frame.parse(frame, 4096)))
     }
 
     /**
@@ -102,8 +106,8 @@ class DeviceSessionsTest {
         val frame = onDevice.seal("agent", agent, device, "allow it".toByteArray())!!
         val envelope = Frame.parse(frame, 4096)
 
-        assertNotNull(onAgent.open("phone", envelope))
-        assertNull(onAgent.open("phone", envelope))
+        assertNotNull(onAgent.body("phone", envelope))
+        assertEquals(DeviceSessions.Opened.Replayed, onAgent.open("phone", envelope))
     }
 
     @Test
@@ -116,7 +120,7 @@ class DeviceSessionsTest {
         val frame = onDevice.seal("agent", agent, device, "a command".toByteArray())!!
         frame[frame.size - 1] = (frame[frame.size - 1] + 1).toByte()
 
-        assertNull(onAgent.open("phone", Frame.parse(frame, 4096)))
+        assertNull(onAgent.body("phone", Frame.parse(frame, 4096)))
     }
 
     /**
@@ -141,7 +145,45 @@ class DeviceSessionsTest {
             body = envelope.body,
         )
 
-        assertNull(onAgent.open("phone", readdressed))
+        assertNull(onAgent.body("phone", readdressed))
+    }
+
+    /**
+     * The kind of frame is covered too, and it is an instruction to whoever carries it: an envelope
+     * relabelled "wake this phone" would be handed to a push service instead of to a socket.
+     */
+    @Test
+    fun `a frame relabelled on the way does not open`() {
+        val onAgent = DeviceSessions()
+        val onDevice = DeviceSessions()
+        onAgent.open("phone", session())
+        onDevice.open("agent", mirror(session()))
+
+        val frame = onDevice.seal("agent", agent, device, "a command".toByteArray())!!
+        val envelope = Frame.parse(frame, 4096)
+        val relabelled = Frame.Envelope(
+            envelope.version,
+            type = Frame.TYPE_PUSH,
+            to = envelope.to,
+            from = envelope.from,
+            counter = envelope.counter,
+            body = envelope.body,
+        )
+
+        assertNull(onAgent.body("phone", relabelled))
+    }
+
+    @Test
+    fun `a push sealed as a push opens as one`() {
+        val onAgent = DeviceSessions()
+        val onDevice = DeviceSessions()
+        onAgent.open("phone", session())
+        onDevice.open("agent", mirror(session()))
+
+        val frame = onAgent.seal("phone", device, agent, "wake up".toByteArray(), type = Frame.TYPE_PUSH)!!
+
+        assertEquals(Frame.TYPE_PUSH, Frame.parse(frame, 4096).type)
+        assertEquals("wake up", String(onDevice.body("agent", Frame.parse(frame, 4096))!!))
     }
 
     @Test
@@ -153,7 +195,73 @@ class DeviceSessionsTest {
 
         val frame = stranger.seal("agent", agent, device, "a command".toByteArray())!!
 
-        assertNull(onAgent.open("phone", Frame.parse(frame, 4096)))
+        assertNull(onAgent.body("phone", Frame.parse(frame, 4096)))
+    }
+
+    /**
+     * The counter is a plaintext field, so whoever carries the frame writes it. Moving the window on
+     * one that never proved itself is how a made-up number pins the window at its maximum and every
+     * real frame afterwards falls off the bottom of it - the channel going deaf, in silence.
+     */
+    @Test
+    fun `a counter nobody proved does not move the window`() {
+        val onAgent = DeviceSessions()
+        val onDevice = DeviceSessions()
+        onAgent.open("phone", session())
+        onDevice.open("agent", mirror(session()))
+
+        val forged = Frame.Envelope(
+            Frame.WIRE_VERSION,
+            Frame.TYPE_SEALED,
+            to = agent,
+            from = device,
+            counter = Long.MAX_VALUE,
+            body = ByteArray(64) { 0x33 },
+        )
+
+        assertEquals(DeviceSessions.Opened.Unreadable, onAgent.open("phone", forged))
+
+        val real = onDevice.seal("agent", agent, device, "still here".toByteArray())!!
+
+        assertEquals("still here", String(onAgent.body("phone", Frame.parse(real, 4096))!!))
+    }
+
+    /**
+     * Anyone carrying frames can say "it is me, I have lost my keys" - the handshake that says it
+     * travels in the open. So new keys wait beside the ones in use, and what promotes them is the one
+     * thing only the device can produce: a frame sealed under them.
+     */
+    @Test
+    fun `keys offered while others are in use wait to be proved`() {
+        val onAgent = DeviceSessions()
+        val onDevice = DeviceSessions()
+        onAgent.open("phone", session(seed = 1))
+        onDevice.open("agent", mirror(session(seed = 1)))
+
+        onAgent.offer("phone", session(seed = 60))
+
+        // The device still holds the older keys, and they still work: nothing it sends is lost while
+        // somebody else's offer sits waiting.
+        val old = onDevice.seal("agent", agent, device, "from the old keys".toByteArray())!!
+        assertEquals("from the old keys", String(onAgent.body("phone", Frame.parse(old, 4096))!!))
+
+        // And when the device does prove the new ones, they take over.
+        val proving = DeviceSessions()
+        proving.open("agent", mirror(session(seed = 60)))
+        val fresh = proving.seal("agent", agent, device, "from the new keys".toByteArray())!!
+        assertEquals("from the new keys", String(onAgent.body("phone", Frame.parse(fresh, 4096))!!))
+
+        val stale = onDevice.seal("agent", agent, device, "too late".toByteArray())!!
+        assertNull(onAgent.body("phone", Frame.parse(stale, 4096)))
+    }
+
+    /** With nothing in use there is nothing to protect, so an offer is simply taken. */
+    @Test
+    fun `keys offered to a device that has none are taken at once`() {
+        val sessions = DeviceSessions()
+        sessions.offer("phone", session())
+
+        assertTrue(sessions.isOpen("phone"))
     }
 
     @Test

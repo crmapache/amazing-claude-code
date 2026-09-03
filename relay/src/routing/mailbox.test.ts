@@ -91,3 +91,56 @@ describe('what is held for a side that blinked', () => {
     expect(held.size()).toEqual(1)
   })
 })
+
+/**
+ * The note left when a box breaks.
+ *
+ * It is the one thing here that used to have no end: written when a buffer overflows or times out,
+ * cleared only when that address comes back - and an address that never comes back is exactly what a
+ * frame sent to nobody leaves behind.
+ */
+describe('the note that a box broke', () => {
+  const overflowing = () => boxes({ maxFrames: 1, ttlMs: 1_000 })
+
+  it('is forgotten if nobody ever comes for it', () => {
+    const held = overflowing()
+    held.hold(key, sender, frame(), 0)
+    held.hold(key, sender, frame(), 0)
+
+    expect(held.notes()).toEqual(1)
+
+    held.sweep(60_000)
+
+    expect(held.notes()).toEqual(0)
+  })
+
+  it('is still there for somebody who comes back in time', () => {
+    const held = overflowing()
+    held.hold(key, sender, frame(), 0)
+    held.hold(key, sender, frame(), 0)
+
+    held.sweep(2_000)
+
+    expect(parse(held.take(key, 2_000)[0] as Buffer, 1024).type).toEqual(FrameType.CONTROL)
+  })
+
+  /**
+   * Sixteen bytes must cost sixteen bytes. `parse` hands out views into the frame it read, so keeping
+   * one as it arrived keeps the whole envelope it came in alive for as long as the note lives.
+   */
+  it('keeps a copy of the address rather than the frame it arrived in', () => {
+    const held = overflowing()
+    const envelope = Buffer.alloc(4096, 0x22)
+    const from = envelope.subarray(18, 34)
+
+    held.hold(key, from, envelope, 0)
+    held.hold(key, from, envelope, 0)
+
+    const note = (held as unknown as { broken: Map<string, { from: Buffer }> }).broken.get(key)
+
+    // Not the same memory: a view would hold the 4 KB envelope (and up to a whole frame in life) for
+    // as long as the note lives, which is what the note's own lifetime is there to bound.
+    expect(note?.from.buffer).not.toBe(envelope.buffer)
+    expect(note?.from).toEqual(from)
+  })
+})

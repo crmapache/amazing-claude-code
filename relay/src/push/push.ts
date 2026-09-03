@@ -31,12 +31,68 @@ export interface PushKeys {
   subject: string
 }
 
+/**
+ * Where a notification may be sent.
+ *
+ * An allowlist rather than a list of forbidden addresses, and that is the whole of the defence. This
+ * endpoint is the one place where somebody else's string turns into an outgoing request from this
+ * server, and the legitimate set of strings is tiny, public and named by the browsers themselves - so
+ * "these hosts and nothing else" is both exact and short. A blocklist of private ranges would have to
+ * be re-checked at connect time to mean anything (a name resolves when it is dialled, not when it is
+ * stored), and it would still leave this server willing to post whatever it is handed at any address
+ * on the internet.
+ *
+ * Add to it through RELAY_PUSH_HOSTS rather than by editing this: a browser this list has not heard of
+ * is a subscription refused, and refusing one is better than a relay that can be pointed anywhere.
+ */
+const PUSH_HOSTS = [
+  // Chrome and everything else built on it.
+  'fcm.googleapis.com',
+  'android.googleapis.com',
+  // Firefox.
+  'updates.push.services.mozilla.com',
+  // Safari, on the phone and on the desktop.
+  'web.push.apple.com',
+  // Edge.
+  'notify.windows.com',
+]
+
+const extraHosts = (process.env.RELAY_PUSH_HOSTS ?? '')
+  .split(',')
+  .map((host) => host.trim().toLowerCase())
+  .filter(Boolean)
+
+/**
+ * Whether this is an address a push service answers on: https, a known host or a subdomain of one,
+ * and nothing clever in between. Anything else is refused before it is written down, because what is
+ * written down is what this server will later dial.
+ */
+export const isPushEndpoint = (endpoint: string): boolean => {
+  if (endpoint.length > 512) return false
+
+  let url: URL
+  try {
+    url = new URL(endpoint)
+  } catch {
+    return false
+  }
+
+  if (url.protocol !== 'https:') return false
+  if (url.username || url.password) return false
+
+  const host = url.hostname.toLowerCase()
+
+  return [...PUSH_HOSTS, ...extraHosts].some((known) => host === known || host.endsWith(`.${known}`))
+}
+
 export class Pushes {
   private readonly subscriptions = new Map<string, Subscription>()
 
   constructor(
     private readonly keys: PushKeys | null,
     private readonly log: (line: string) => void,
+    /** How many are held at once. One per paired phone - see the config's note. */
+    private readonly ceiling = 10_000,
   ) {
     if (keys) webpush.setVapidDetails(keys.subject, keys.publicKey, keys.privateKey)
   }
@@ -51,12 +107,30 @@ export class Pushes {
     return this.keys?.publicKey ?? ''
   }
 
-  remember(subscription: Omit<Subscription, 'createdAt' | 'failures'>): void {
+  /**
+   * Hold a subscription, or refuse it.
+   *
+   * Refusing rather than making room is deliberate: the oldest entries are the phones that have been
+   * paired longest, so evicting them would turn somebody else's flood into "notifications quietly
+   * stopped working" for the people who use this most. A full map is not a busy server - one entry
+   * per paired phone is the honest size - so it means somebody is filling it, and the answer to that
+   * is no.
+   */
+  remember(subscription: Omit<Subscription, 'createdAt' | 'failures'>): boolean {
+    if (!isPushEndpoint(subscription.endpoint)) return false
+
+    if (!this.subscriptions.has(subscription.deviceId) && this.subscriptions.size >= this.ceiling) {
+      this.log(`push subscriptions are at their ceiling (${this.ceiling}) - refusing a new one`)
+      return false
+    }
+
     this.subscriptions.set(subscription.deviceId, {
       ...subscription,
       createdAt: Date.now(),
       failures: 0,
     })
+
+    return true
   }
 
   forget(deviceId: string): void {

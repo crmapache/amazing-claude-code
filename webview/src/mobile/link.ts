@@ -3,12 +3,12 @@ import {
   agree,
   base64,
   base64url,
-  deriveSession,
   deviceProof,
   exportPublic,
   fingerprint,
   generateKeyPair,
   importPublic,
+  longLivedAuth,
   resumeSession,
   sameBytes,
   seal,
@@ -112,6 +112,25 @@ const CLOSE_DISPLACED = 4009
 
 /** How long the displaced side waits before taking the connection back. */
 const DISPLACED_PAUSE_MS = 3_000
+
+/** How many handshakes an unsealed frame may set off, and over what stretch - see [Link.mayHandshake]. */
+const HANDSHAKE_BURST = 6
+
+const HANDSHAKE_WINDOW_MS = 60_000
+
+/**
+ * What is left of the allowance after asking for one more, or null for "not this time".
+ *
+ * Apart from the class because it is the kind of rule that breaks in silence: too tight and a phone
+ * that genuinely lost its keys stops reconnecting, too loose and anybody carrying frames can spend
+ * this phone's battery on key exchanges.
+ */
+export const handshakeBudget = (asked: number[], now: number): number[] | null => {
+  const fresh = asked.filter((at) => now - at < HANDSHAKE_WINDOW_MS)
+  if (fresh.length >= HANDSHAKE_BURST) return null
+
+  return [...fresh, now]
+}
 
 export class Link {
   private socket: WebSocket | null = null
@@ -338,6 +357,25 @@ export class Link {
    * long-lived key from pairing. The session keys are new every time, so recording today's traffic and
    * stealing a key later opens nothing.
    */
+  /**
+   * Whether a frame that proved nothing may start a handshake.
+   *
+   * Two frames ask this side to throw its keys away and start again - the relay's "there was a break"
+   * and the agent's "your keys are stale" - and neither can be sealed, because both are about not
+   * having keys. So anything carrying frames can send either, at any rate it likes, and each one costs
+   * a key pair, a key agreement and a round trip. A few a minute is more than the honest case ever
+   * needs; past that the line stays as it is.
+   */
+  private mayHandshake(): boolean {
+    const next = handshakeBudget(this.handshakes, Date.now())
+    if (!next) return false
+
+    this.handshakes = next
+    return true
+  }
+
+  private handshakes: number[] = []
+
   private async resume(): Promise<void> {
     const ephemeral = await generateKeyPair(true)
     const ephemeralPub = await exportPublic(ephemeral.publicKey)
@@ -382,8 +420,9 @@ export class Link {
 
     if (envelope.type === FRAME_CONTROL) {
       // The relay's own word, and the only one it says: there was a break, ask again. Advice, never
-      // content - which is why it arrives as a different kind of frame rather than as a message.
-      void this.resume()
+      // content - which is why it arrives as a different kind of frame rather than as a message. It
+      // carries no proof of anything and cannot: rate limited for the same reason as sessionStale.
+      if (this.mayHandshake()) void this.resume()
       return
     }
 
@@ -407,6 +446,12 @@ export class Link {
       const plain = this.parse(envelope.body) as { k?: string; ephemeralPub?: string; for?: string } | null
 
       if (plain?.k === 'sessionStale') {
+        // Rate limited, because this frame is not sealed and cannot be: it is what says the keys are
+        // gone. Anything carrying frames can send one, and every one of them costs a key pair, a key
+        // agreement and a round trip - on a phone, that is somebody else deciding how fast its battery
+        // goes. The keys in hand are let go only when a handshake is actually started.
+        if (!this.mayHandshake()) return
+
         this.keys = null
         void this.resume()
         return
@@ -418,11 +463,19 @@ export class Link {
       }
     }
 
-    if (!this.accept(envelope.counter)) return
+    // The tag is checked before the window is touched, and the order is the whole point: the counter
+    // is a plaintext field whoever carries the frame can write, so a made-up one would otherwise pin
+    // the window at its maximum and every real frame afterwards would fall off the bottom of it - the
+    // line going deaf, in silence. The header goes in as it arrived, kind of frame included, so a
+    // frame relabelled on the way no longer matches what was sealed.
+    const keys = this.keys
+    const header = headerOf(envelope.type, envelope.to, envelope.from, envelope.counter)
+    const opened = await unseal(keys.fromAgent, keys.noncePrefixFromAgent, envelope.counter, header, envelope.body)
 
-    const header = headerOf(FRAME_SEALED, envelope.to, envelope.from, envelope.counter)
-    const opened = await unseal(this.keys.fromAgent, this.keys.noncePrefixFromAgent, envelope.counter, header, envelope.body)
-    if (!opened) return
+    // The keys can be replaced while this is in flight - a handshake finishing resets the window with
+    // them - and a frame opened under the old ones must not stamp the new window.
+    if (!opened || this.keys !== keys) return
+    if (!this.accept(envelope.counter)) return
 
     const payload = this.parse(opened) as { k?: string; pj?: string; b?: unknown } | null
     if (!payload) return
@@ -463,7 +516,8 @@ export class Link {
     const agentEphemeral = await importPublic(ack.ephemeralPub)
 
     this.keys = await resumeSession(
-      this.agent.auth,
+      // Worked out from the static key rather than read back from the database - see longLivedAuth.
+      await longLivedAuth(this.agent.staticPrivate, this.agent.agentStaticPublic),
       await agree(pending.ephemeral.privateKey, agentEphemeral),
       this.agent.agentId,
       this.agent.deviceId,
@@ -659,7 +713,12 @@ export const reconnectAfter = (code: number, visible: boolean, attempts: number)
  * somewhere other than its relay.
  */
 export const relayAddress = (known = ''): string => {
-  const override = new URLSearchParams(window.location.search).get('relay')
+  // Only where the client is being developed. A link is a thing anyone can send, and this one decides
+  // which server a phone talks to: on the real client it would be enough to open a link to the right
+  // host with the wrong query to move somebody's line onto somebody else's relay. Nothing inside it
+  // would be readable there - the keys are not the relay's - but who talks to whom, when, and how
+  // much, is exactly what this design promises the relay operator cannot choose to learn.
+  const override = import.meta.env.DEV ? new URLSearchParams(window.location.search).get('relay') : null
   if (override) return override.replace(/\/$/, '')
 
   const origin = window.location.origin.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')
@@ -761,23 +820,19 @@ export const pair = async (
         return
       }
 
-      const session = await deriveSession(
-        await agree(deviceStatic.privateKey, await importPublic(payload.staticPub)),
-        await agree(ephemeral.privateKey, await importPublic(payload.ephemeralPub)),
-        secret,
-        agentId,
-        deviceId,
-        payload.ephemeralPub,
-        ephemeralPub,
-      )
-
+      // Nothing is derived here any more. The keys this connection would have used are never used: the
+      // pairing socket closes at the end of this function, and the line that follows starts with a
+      // handshake of its own. What pairing actually leaves behind is the static pair, which is what
+      // the long-lived key is worked out from every time (see longLivedAuth) - and the QR secret,
+      // whose whole job was to prove that these two ends are the two on the screen.
       const paired: PairedAgent = {
         agentId,
         // What the IDE calls itself - "WebStorm on max-mbp". The name this device gave itself went the
         // other way, in pairInit, and belongs in the IDE's list rather than in this one.
         label: payload.label || label,
         relay,
-        auth: session.auth,
+        // The long-lived key is not written down: it is worked out from the static key on every
+        // reconnect (see longLivedAuth), so there is no copy of it here for anything to read.
         staticPrivate: deviceStatic.privateKey,
         staticPublic,
         deviceId,

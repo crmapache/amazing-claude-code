@@ -93,6 +93,50 @@ class BackoffTest {
         }
     }
 
+    /**
+     * Being displaced is not a refusal on the merits: the address travels in the QR code and the relay
+     * sees it on every connect, so anybody who learned it can take this line away. Treating one such
+     * frame as final meant a stranger could switch somebody's remote access off until they noticed.
+     */
+    @Test
+    fun `being displaced is retried, and not forever`() {
+        val backoff = backoff()
+
+        assertEquals(Backoff.Failure.DISPLACED, backoff.classify(Backoff.DISPLACED, hadHttpResponse = false))
+
+        repeat(Backoff.DISPLACED_LIMIT) {
+            assertNotNull(backoff.next(Backoff.Failure.DISPLACED), "gave up after $it")
+        }
+
+        // Two IDEs started from one configuration take each other's place in turn, and the honest end
+        // of that is to stop rather than to churn.
+        assertNull(backoff.next(Backoff.Failure.DISPLACED))
+    }
+
+    @Test
+    fun `a line that stood counts a later displacement as a new event`() {
+        val backoff = backoff()
+        repeat(Backoff.DISPLACED_LIMIT) { backoff.next(Backoff.Failure.DISPLACED) }
+
+        backoff.heldOn()
+
+        assertNotNull(backoff.next(Backoff.Failure.DISPLACED))
+    }
+
+    /**
+     * Deliberately not part of `succeeded`, which is called the instant a socket opens - before whoever
+     * is taking this address has had time to take it again.
+     */
+    @Test
+    fun `a socket that merely opened does not count as one that stood`() {
+        val backoff = backoff()
+        repeat(Backoff.DISPLACED_LIMIT) { backoff.next(Backoff.Failure.DISPLACED) }
+
+        backoff.succeeded()
+
+        assertNull(backoff.next(Backoff.Failure.DISPLACED))
+    }
+
     @Test
     fun `a server error is read as the relay being unwell`() {
         val backoff = backoff()

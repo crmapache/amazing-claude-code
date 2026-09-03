@@ -97,6 +97,21 @@ export const deriveSession = async (
   }
 }
 
+/**
+ * The long-lived key, worked out again rather than kept.
+ *
+ * It is what proves this device on every reconnect, so a copy of it is a copy of the device - and a
+ * copy left in the database is one any script on this page could read and take away, which is exactly
+ * the class of theft the unextractable static key exists to remove. The static key is the only thing
+ * needed to arrive at it again, and the browser will use that key without ever handing back its bytes.
+ *
+ * Byte for byte what pairing derived, and it has to stay that way: the agent holds the same value in
+ * its keychain and never derives it again. The empty salt, the label and the length are the whole of
+ * the agreement - change any of them and every paired phone goes quietly dead.
+ */
+export const longLivedAuth = async (staticPrivate: CryptoKey, agentStaticPublic: string): Promise<Uint8Array> =>
+  hkdf(new Uint8Array(0), await agree(staticPrivate, await importPublic(agentStaticPublic)), 'acc/v1/auth', KEY_BYTES)
+
 /** Reconnecting: fresh ephemeral keys, vouched for by the long-lived one. No QR code. */
 export const resumeSession = async (
   auth: Uint8Array,
@@ -237,7 +252,20 @@ export const concat = (...parts: Uint8Array[]): Uint8Array => {
   return out
 }
 
-export const base64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes))
+/**
+ * In pieces rather than in one call: spreading an array into arguments is a stack frame per byte, and
+ * past somewhere around a hundred thousand of them the browser refuses outright. Everything encoded
+ * here is small today - keys and addresses - which is precisely why the limit would be found by
+ * whatever is encoded here tomorrow.
+ */
+export const base64 = (bytes: Uint8Array): string => {
+  let text = ''
+  for (let at = 0; at < bytes.length; at += 0x8000) {
+    text += String.fromCharCode(...bytes.subarray(at, at + 0x8000))
+  }
+
+  return btoa(text)
+}
 
 export const unbase64 = (text: string): Uint8Array =>
   Uint8Array.from(atob(text), (character) => character.charCodeAt(0))

@@ -187,10 +187,15 @@ internal class SessionPermissions(private val hub: ClaudeSessionHub) {
      * mode on next: the plan card was the one question worth asking.
      *
      * Which mode it switches to depends on where the decision came from. At the desk it is the full
-     * "no questions", as it always was. From a phone that mode is not allowed at all (a channel that
-     * can send a message is a channel that can run commands on the work machine), so approval there
-     * goes to "edits without questions" instead: file edits are exactly what the plan approved, while
-     * shell commands and the network still ask - and those questions the phone can answer.
+     * "no questions", as it always was. From a phone approval goes to "edits without questions"
+     * instead: file edits are exactly what the plan approved, while shell commands and the network
+     * still ask - and those questions the phone can answer.
+     *
+     * The line here is not "a phone may not have that mode" - it may, and `newSession` carries it
+     * deliberately (see RemoteCommands). The line is that this decision lands in a conversation
+     * somebody may be sitting in front of at the desk, and a button that quietly widened what that
+     * conversation is allowed to do would be answering a question nobody there was asked. Starting one
+     * of your own in any mode you like is a different act, and it is allowed.
      */
     fun decidePlan(sessionId: String, itemId: String, decision: String, message: String = "", local: Boolean = true) {
         val pending = plans.remove(itemId)?.takeIf { awaited(it) } ?: run {

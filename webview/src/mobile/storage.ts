@@ -23,9 +23,14 @@ export interface PairedAgent {
   /** What to call it in a list - "WebStorm on max-mbp" rather than 22 characters of base64. */
   label: string
   relay: string
-  /** The long-lived key from pairing. Proves who the parties are; never encrypts anything. */
-  auth: Uint8Array
-  /** This device's own long-lived pair, kept unextractable. */
+  /**
+   * This device's own long-lived pair, kept unextractable.
+   *
+   * Load-bearing rather than kept for form's sake: the long-lived key that proves this device on every
+   * reconnect is worked out from it each time (see longLivedAuth) instead of being written down here.
+   * A key the browser will use but never hand back cannot be copied out of this database by anything
+   * that gets to run on this page - which is the whole reason it is stored this way.
+   */
   staticPrivate: CryptoKey
   staticPublic: string
   /** This device's address on the relay. */
@@ -61,8 +66,21 @@ const run = async <T>(store: string, mode: IDBTransactionMode, work: (store: IDB
   })
 }
 
-export const listAgents = (): Promise<PairedAgent[]> =>
-  run<PairedAgent[]>(AGENTS, 'readonly', (store) => store.getAll() as IDBRequest<PairedAgent[]>)
+export const listAgents = async (): Promise<PairedAgent[]> => {
+  const agents = await run<PairedAgent[]>(AGENTS, 'readonly', (store) => store.getAll() as IDBRequest<PairedAgent[]>)
+
+  // Older records carried the long-lived key as plain bytes. It is worked out from the static key now
+  // (see longLivedAuth), so what is left here is a copy of a credential nobody needs - and it is
+  // written out of the database on the first read rather than left to age out, because a copy that
+  // stays until somebody pairs again is a copy that stays.
+  const stale = agents.filter((agent) => 'auth' in agent)
+  for (const agent of stale) {
+    delete (agent as { auth?: unknown }).auth
+    await rememberAgent(agent)
+  }
+
+  return agents
+}
 
 export const rememberAgent = async (agent: PairedAgent): Promise<void> => {
   await run(AGENTS, 'readwrite', (store) => store.put(agent))

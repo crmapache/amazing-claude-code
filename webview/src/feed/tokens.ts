@@ -190,9 +190,26 @@ export const CLIPBOARD_ATTRIBUTE = 'data-acc-tokens'
 const escapeHtml = (text: string): string =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
+/**
+ * The readable half of what goes into the clipboard - the same text, but said in markup.
+ *
+ * A newline is not a line break in HTML: it is whitespace, and whitespace there collapses into a single
+ * space. So a message written in lines arrived in whoever was pasted into as one long paragraph - and
+ * that is most of the places a person carries a message to, because an editor, a messenger, a task
+ * tracker all prefer text/html over the plain text lying beside it. The plain half was right all along,
+ * which is why this broke quietly: paste into a terminal and the lines are there, paste into anything
+ * that renders and they are gone.
+ *
+ * Breaks are spelled out with <br> rather than left to `white-space`: the property is set here too, but
+ * it is the first thing an application strips when it cleans up someone else's markup, and a <br> is the
+ * one thing every one of them understands. The property earns its place on what is left - the runs of
+ * spaces and the indentation of a list, which without it collapse just as the newlines did.
+ */
+const clipboardBody = (text: string): string => escapeHtml(text).replace(/\n/g, '<br>')
+
 /** What goes into text/html: the attachments' description in an attribute, the readable text inside. */
 export const clipboardHtml = (tokens: UserToken[]): string =>
-  `<span ${CLIPBOARD_ATTRIBUTE}="${encodeURIComponent(JSON.stringify(tokens))}">${escapeHtml(tokensText(tokens))}</span>`
+  `<span style="white-space:pre-wrap" ${CLIPBOARD_ATTRIBUTE}="${encodeURIComponent(JSON.stringify(tokens))}">${clipboardBody(tokensText(tokens))}</span>`
 
 const CHIP_KINDS: ChipKind[] = ['file', 'img', 'dir', 'cmd', 'ref', 'quote', 'paste']
 

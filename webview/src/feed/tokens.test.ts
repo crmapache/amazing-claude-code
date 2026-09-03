@@ -110,6 +110,15 @@ describe('the clipboard', () => {
     expect(clipboardHtml(tokens)).toContain('look [Image #1] here')
   })
 
+  it('says the line breaks in markup - html would swallow them as ordinary whitespace', () => {
+    const html = clipboardHtml([text('line one\nline two\n\n  indented')])
+
+    expect(html).toContain('line one<br>line two<br><br>  indented')
+    expect(html).not.toContain('line one\n')
+    expect(html).toContain('white-space:pre-wrap')
+    expect(clipboardTokens(html)).toEqual([text('line one\nline two\n\n  indented')])
+  })
+
   it('does not break on angle brackets in the text', () => {
     const html = clipboardHtml([text('a < b > c')])
     expect(html).toContain('a &lt; b &gt; c')

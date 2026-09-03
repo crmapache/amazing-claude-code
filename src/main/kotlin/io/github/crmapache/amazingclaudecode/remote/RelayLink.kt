@@ -64,6 +64,10 @@ internal class RelayLink(
     @Volatile
     private var lastHeard = 0L
 
+    /** When the line in hand came up - see [checkAlive] for the only thing it is used for. */
+    @Volatile
+    private var connectedAt = 0L
+
     /**
      * Frames arrive in pieces. A websocket message can be split across several callbacks, and putting
      * an envelope together out of them is the receiver's job, not the sender's.
@@ -96,6 +100,15 @@ internal class RelayLink(
         val live = socket.get() ?: return
 
         for (frame in outbox.drain(resyncFrames)) {
+            // A frame over the ceiling is one the relay will refuse anyway, and now that it refuses by
+            // closing the socket rather than by dropping the message, sending it would cost every
+            // device on this line a reconnect. Dropped here, the outcome is the one it always was -
+            // that frame does not arrive - minus the collateral.
+            if (frame.size > MAX_FRAME_BYTES) {
+                thisLogger().info("A frame of ${frame.size} bytes is over what the relay takes - dropped")
+                continue
+            }
+
             runCatching { live.sendBinary(ByteBuffer.wrap(frame), true).join() }
                 .onFailure {
                     thisLogger().info("The relay would not take a frame: ${it.message}")
@@ -111,6 +124,11 @@ internal class RelayLink(
      */
     fun checkAlive(now: Long) {
         val live = socket.get() ?: return
+
+        // A line that has stood this long is not a fight over the address: whoever took it last time
+        // is not taking it now. Counted here rather than at the moment the socket opened, because a
+        // connection about to be displaced looks exactly like a healthy one for its first seconds.
+        if (connectedAt != 0L && now - connectedAt > STEADY_MS) backoff.heldOn()
 
         // The JDK's client answers a ping but never sends one, and a relay with nothing to say says
         // nothing - so without this the line would look silent while being perfectly healthy, and get
@@ -145,10 +163,25 @@ internal class RelayLink(
 
                     socket.set(connected)
                     lastHeard = System.currentTimeMillis()
+                    connectedAt = lastHeard
                     backoff.succeeded()
                     move(State.CONNECTED)
                 }
         }.onFailure { retry(Backoff.Failure.NETWORK) }
+    }
+
+    /**
+     * Hang up on a relay that is misbehaving.
+     *
+     * `abort` closes both halves at once and calls nothing back afterwards - no onClose, no onError -
+     * so the bookkeeping that those two would have done has to happen here. As the ordinary weather
+     * rather than as a refusal: one bad message must not cost somebody their remote access until they
+     * notice and switch it back on.
+     */
+    private fun drop(webSocket: WebSocket) {
+        runCatching { webSocket.abort() }
+        socket.set(null)
+        retry(Backoff.Failure.NETWORK)
     }
 
     private fun retry(failure: Backoff.Failure) {
@@ -195,11 +228,23 @@ internal class RelayLink(
     private inner class Listener : WebSocket.Listener {
 
         override fun onOpen(webSocket: WebSocket) {
+            // Whatever the last line left half-said is not the beginning of what this one says.
+            partial = ByteArray(0)
             webSocket.request(1)
         }
 
         override fun onBinary(webSocket: WebSocket, data: ByteBuffer, last: Boolean): CompletionStage<*>? {
             lastHeard = System.currentTimeMillis()
+
+            // Past the ceiling this can no longer become a frame of ours, and waiting for the sender to
+            // say it has finished means holding as many bytes as it cares to send. The relay carries
+            // this IDE's traffic; it is not trusted with its memory.
+            if (partial.size.toLong() + data.remaining() > MAX_FRAME_BYTES) {
+                thisLogger().info("The relay sent more than a frame's worth without ending it - dropping the line")
+                partial = ByteArray(0)
+                drop(webSocket)
+                return null
+            }
 
             val chunk = ByteArray(data.remaining()).also { data.get(it) }
             partial = if (partial.isEmpty()) chunk else partial + chunk
@@ -244,6 +289,9 @@ internal class RelayLink(
 
         /** Past this much silence the line is treated as dead - see [checkAlive]. */
         const val SILENCE_MS = 45_000L
+
+        /** How long a line has to stand before a displacement counts as a new event rather than a fight. */
+        const val STEADY_MS = 60_000L
 
         /** The relay's own ceiling is higher; ours is what we are willing to take in. */
         const val MAX_FRAME_BYTES = 256 * 1024

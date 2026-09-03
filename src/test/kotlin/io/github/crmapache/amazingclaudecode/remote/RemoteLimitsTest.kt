@@ -64,9 +64,10 @@ class RemoteLimitsTest {
 
     @Test
     fun `many merely large messages are refused together`() {
-        val each = RemoteLimits.MAX_BYTES_PER_MINUTE / 4
+        val each = RemoteLimits.MAX_MESSAGE_BYTES
+        val room = RemoteLimits.MAX_BYTES_PER_MINUTE / each
 
-        repeat(4) { assertTrue(limits.allowBytes("phone", each, now = 1000L)) }
+        repeat(room) { assertTrue(limits.allowBytes("phone", each, now = 1000L)) }
 
         assertFalse(limits.allowBytes("phone", each, now = 1000L))
     }

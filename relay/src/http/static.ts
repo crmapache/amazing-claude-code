@@ -1,5 +1,5 @@
-import { createReadStream, statSync } from 'node:fs'
-import { extname, join, normalize, resolve, sep } from 'node:path'
+import { createReadStream, realpathSync, statSync } from 'node:fs'
+import { extname, join, normalize, relative, resolve, sep } from 'node:path'
 import type { ServerResponse } from 'node:http'
 
 /**
@@ -34,7 +34,7 @@ export const serveStatic = (root: string, path: string, response: ServerResponse
   // the internet, and it must not be the way to read this server's disk.
   const target = resolve(join(base, normalize(path)))
 
-  if (target !== base && !target.startsWith(base + sep)) {
+  if (!inside(target, base) || hidden(target, base)) {
     response.writeHead(403, { 'content-type': 'text/plain' })
     response.end('forbidden')
     return
@@ -76,21 +76,49 @@ const cacheControl = (file: string): string => {
 }
 
 const pick = (target: string, base: string): string | null => {
-  const direct = readable(target)
+  const direct = readable(target, base)
   if (direct) return direct
 
-  const indexed = readable(join(target, 'index.html'))
+  const indexed = readable(join(target, 'index.html'), base)
   if (indexed) return indexed
 
   // Every other address belongs to the client's own routing rather than to a file: hand it the shell
   // and let it read the address itself.
-  return readable(join(base, 'index.html'))
+  return readable(join(base, 'index.html'), base)
 }
 
-const readable = (path: string): string | null => {
+/**
+ * A file, and one that is really where it appears to be.
+ *
+ * The prefix check above reads a string; this one reads the disk. A link inside the folder pointing
+ * out of it satisfies every check that only looks at the path - it is spelled entirely inside the
+ * folder - and would be read all the same. What is served here is a build artifact, so this should
+ * never fire; that is exactly why it is cheap to insist on.
+ */
+const readable = (path: string, base: string): string | null => {
   try {
-    return statSync(path).isFile() ? path : null
+    if (!statSync(path).isFile()) return null
+
+    // Both sides resolved, because the folder itself is often reached through a link and comparing a
+    // resolved file against an unresolved folder would refuse everything: /var is a link to
+    // /private/var on macOS, and a container's mount is a link about as often as not.
+    const real = realpathSync(path)
+    return inside(real, realpathSync(base)) ? real : null
   } catch {
     return null
   }
 }
+
+const inside = (path: string, base: string): boolean => path === base || path.startsWith(base + sep)
+
+/**
+ * Anything whose name begins with a dot, at any depth.
+ *
+ * Not because a dotted name is dangerous in itself, but because everything that ends up in a folder
+ * by accident wears one: an `.env` left from a test, a macOS `._name`, a source map's `.map` beside
+ * an editor's `.swp`. The one exception is the folder the web itself reserves.
+ */
+const hidden = (target: string, base: string): boolean =>
+  relative(base, target)
+    .split(sep)
+    .some((part) => part.startsWith('.') && part !== '.well-known' && part !== '')

@@ -68,8 +68,27 @@ internal class RemoteAgent : Disposable {
      */
     private data class Subscription(val projectKey: String, val sessionId: String, val since: Long)
 
-    /** When each device last said anything - what decides between sending and ringing. */
+    /**
+     * When each device last said anything - what decides between sending and ringing.
+     *
+     * Written only for a frame that opened, which is to say only for a device that proved it is one.
+     * The sender's address is a plaintext field anyone carrying frames can fill in, so a note written
+     * before that proof is a note anyone can leave: an entry per invented address, and a map that
+     * grows for as long as somebody keeps writing.
+     */
     private val lastHeard = ConcurrentHashMap<String, Long>()
+
+    /**
+     * How much each device has sent lately, by weight.
+     *
+     * Held here rather than per project, because a device is one device however many projects this IDE
+     * has open: a budget handed out again per window is not a budget.
+     */
+    private val volume = RemoteLimits()
+
+    /** When a frame from an address this agent does not know was last written down - see [mayLog]. */
+    private val strangers = ConcurrentHashMap<String, Long>()
+
 
     /** A push of the inventory is already scheduled - see [scheduleInventory]. */
     private val inventoryDue = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -111,6 +130,17 @@ internal class RemoteAgent : Disposable {
      */
     @Volatile
     private var offer: Pairing.Offer? = null
+
+    /**
+     * The one thing about pairing that two threads can reach at once.
+     *
+     * The offer is read, judged and written back - counting a wrong proof, spending the code on a right
+     * one - and that is three steps rather than one. Two frames arriving together could each read the
+     * same count and write back the same increment, so five wrong guesses cost fewer than five; a code
+     * cancelled at the desk mid-verification could be written back alive. Neither is reachable by
+     * guessing a 128-bit secret, and both are cheap to close: every move the offer makes happens here.
+     */
+    private val pairingLock = Any()
 
     /**
      * A device that has proved it saw the QR code and is waiting for a person to say yes in the IDE.
@@ -286,35 +316,51 @@ internal class RemoteAgent : Disposable {
         }
 
         val deviceId = Frame.encodeAddress(envelope.from)
-        lastHeard[deviceId] = System.currentTimeMillis()
 
         // A paired device: the body is sealed, and opening it is also what proves who sent it. A frame
         // that does not open is one from a revoked device or one altered on the way, and both are
         // answered the same way - by dropping it.
         if (sessions.isOpen(deviceId)) {
-            val opened = sessions.open(deviceId, envelope)
+            when (val opened = sessions.open(deviceId, envelope)) {
+                is DeviceSessions.Opened.Body -> {
+                    // Only now: a frame that opened is a frame from this device, and until one does,
+                    // "when we last heard from it" would be a note anybody could write (see [lastHeard]).
+                    lastHeard[deviceId] = System.currentTimeMillis()
 
-            if (opened != null) {
-                handle(envelope.from, deviceId, parse(opened) ?: return)
-                return
+                    // Weight as well as count. The rate limit further in answers "how often"; a device
+                    // sending few enormous frames is the other half of the same question.
+                    if (!volume.allowBytes(deviceId, opened.bytes.size)) {
+                        thisLogger().info("A device is sending more than its share - dropped")
+                        return
+                    }
+
+                    handle(envelope.from, deviceId, parse(opened.bytes) ?: return)
+                }
+
+                // Ordinary after a reconnect: the relay hands over what it buffered while the socket
+                // was down. Answering it with "start again" would burn a key exchange over a frame
+                // that arrived exactly as it should have.
+                DeviceSessions.Opened.Replayed -> return
+
+                DeviceSessions.Opened.Unreadable -> {
+                    // It did not open. Usually that means a revoked device or an altered frame, and
+                    // dropping it is the whole answer. But it is also what a reconnect looks like: the
+                    // device's socket dropped, its session keys went with it, and it is asking for new
+                    // ones in the open. That request is the one thing worth reading here - and reading
+                    // it costs nothing, because it still has to prove itself with the key from pairing.
+                    val reopening = parse(envelope.body)
+                    if (reopening?.get("k")?.jsonPrimitive?.contentOrNull == "sessionInit") {
+                        sessionInit(envelope.from, reopening)
+                        return
+                    }
+
+                    // Sealed with something this side cannot open, and not a request to start again.
+                    // The honest reading is that the two halves have drifted apart, and the only thing
+                    // that gets them back is somebody saying so: dropped in silence, this looks to a
+                    // person like a button that does nothing.
+                    askForNewSession(envelope.from, deviceId)
+                }
             }
-
-            // It did not open. Usually that means a revoked device or an altered frame, and dropping it
-            // is the whole answer. But it is also what a reconnect looks like: the device's socket
-            // dropped, its session keys went with it, and it is asking for new ones in the open. That
-            // request is the one thing worth reading here - and reading it costs nothing, because it
-            // still has to prove itself with the key from pairing.
-            val reopening = parse(envelope.body)
-            if (reopening?.get("k")?.jsonPrimitive?.contentOrNull == "sessionInit") {
-                sessionInit(envelope.from, reopening)
-                return
-            }
-
-            // Sealed with something this side cannot open, and not a request to start again. The
-            // honest reading is that the two halves have drifted apart, and the only thing that gets
-            // them back is somebody saying so: dropped in silence, this looks to a person like a
-            // button that does nothing.
-            askForNewSession(envelope.from, deviceId)
 
             return
         }
@@ -326,7 +372,11 @@ internal class RemoteAgent : Disposable {
         when (payload["k"]?.jsonPrimitive?.contentOrNull) {
             "pairInit" -> pairInit(envelope.from, deviceId, payload)
             "sessionInit" -> sessionInit(envelope.from, payload)
-            else -> thisLogger().info("A frame from an address this agent has never paired with - dropped")
+            // Rate limited, because it is free to send and this line is the one thing an address on a
+            // public relay buys: without it, a stream of rubbish from anywhere is a stream of log.
+            else -> if (mayLog(deviceId)) {
+                thisLogger().info("A frame from an address this agent has never paired with - dropped")
+            }
         }
     }
 
@@ -388,6 +438,17 @@ internal class RemoteAgent : Disposable {
             return
         }
 
+        // A new offer costs a key pair and a key agreement, and this frame arrives in the open: what
+        // sends it is not necessarily the device, and asking is free for whoever asks. Counted rather
+        // than spaced out, because the honest case comes in bursts - a phone on a train reconnects
+        // three times in a second and must be answered every time - while a flood does not stop. The
+        // repeat above is answered without being counted at all: a request the relay buffered and
+        // delivered twice was asked once.
+        if (!volume.allow(deviceId, "sessionInit")) {
+            thisLogger().info("A device is asking to resume far too often - ignored")
+            return
+        }
+
         val deviceEphemeral = RemoteKeys.decodePublic(devicePub) ?: return
         val ephemeral = RemoteKeys.generate()
         val agentPub = RemoteKeys.encodePublic(ephemeral.public)
@@ -401,7 +462,11 @@ internal class RemoteAgent : Disposable {
             deviceEphemeralPub = devicePub,
         )
 
-        sessions.open(deviceId, session)
+        // Offered rather than installed: the keys in use go on working until a frame arrives that only
+        // this device could have sealed (see DeviceSessions.offer). This frame is not that proof - it
+        // travels in the open, so anyone carrying frames can send one, and taking it at its word would
+        // let them cut a working phone off by saying "it is me, I have lost my keys".
+        sessions.offer(deviceId, session)
         handshakes[deviceId] = Handshake(devicePub, agentPub)
 
         // In the open, because the device has no key for this connection yet - this frame is what gives
@@ -468,7 +533,7 @@ internal class RemoteAgent : Disposable {
         val identity = RemoteKeys.identity(state.agentId()) ?: return null
         val secret = Pairing.newSecret()
 
-        offer = Pairing.Offer(secret, System.currentTimeMillis() + Pairing.OFFER_LIFETIME_MS)
+        synchronized(pairingLock) { offer = Pairing.Offer(secret, System.currentTimeMillis() + Pairing.OFFER_LIFETIME_MS) }
         offerUrl = Pairing.offerUrl(
             relayUrl = relayUrl(),
             agentId = state.agentId(),
@@ -487,7 +552,7 @@ internal class RemoteAgent : Disposable {
     @Volatile
     private var offerUrl: String = ""
 
-    fun cancelPairing() {
+    fun cancelPairing() = synchronized(pairingLock) {
         offer = null
         awaitingApproval = null
     }
@@ -503,7 +568,7 @@ internal class RemoteAgent : Disposable {
      * tell anybody how nearly right it was. A wrong one does not burn the code either - noise on a
      * public relay should not cost a person their pairing - but a run of them does.
      */
-    private fun pairInit(address: ByteArray, deviceId: String, payload: JsonObject) {
+    private fun pairInit(address: ByteArray, deviceId: String, payload: JsonObject) = synchronized(pairingLock) {
         val live = offer
 
         if (live == null || live.used || System.currentTimeMillis() > live.expiresAt) {
@@ -605,8 +670,10 @@ internal class RemoteAgent : Disposable {
             },
         )
 
-        awaitingApproval = null
-        offer = null
+        synchronized(pairingLock) {
+            awaitingApproval = null
+            offer = null
+        }
 
         // A phone paired is an achievement of its own - the one thing here the statistics count.
         runCatching { StatsLedger.getInstance().notePaired() }
@@ -620,8 +687,10 @@ internal class RemoteAgent : Disposable {
     }
 
     fun refusePairing() {
-        awaitingApproval = null
-        offer = null
+        synchronized(pairingLock) {
+            awaitingApproval = null
+            offer = null
+        }
         announceRemoteState()
     }
 
@@ -639,6 +708,11 @@ internal class RemoteAgent : Disposable {
         RemoteKeys.forgetDevice(state.agentId(), deviceId)
         state.forget(deviceId)
         subscriptions.remove(deviceId)
+        // Everything else keyed by this device, so a revoked one leaves no slot behind in any of them.
+        lastHeard.remove(deviceId)
+        handshakes.remove(deviceId)
+        resyncAsked.remove(deviceId)
+        volume.forget(deviceId)
         countWatchers()
         announceRemoteState()
     }
@@ -681,6 +755,27 @@ internal class RemoteAgent : Disposable {
                 put("k", "sessionStale")
             },
         )
+    }
+
+    /**
+     * Whether a frame from an address this agent has never paired with is worth a line in the log.
+     *
+     * Once a minute per address, and the addresses themselves are forgotten as they age. The line is
+     * worth having - it is the only sign that something is knocking - but writing one per frame turns
+     * anybody's stream of rubbish into a stream of somebody else's log file.
+     */
+    private fun mayLog(deviceId: String): Boolean {
+        val now = System.currentTimeMillis()
+
+        if (strangers.size > STRANGERS_REMEMBERED) {
+            strangers.entries.removeIf { now - it.value > STRANGER_QUIET_MS }
+        }
+
+        val said = strangers[deviceId] ?: 0
+        if (now - said < STRANGER_QUIET_MS) return false
+
+        strangers[deviceId] = now
+        return true
     }
 
     private fun sendPlain(device: ByteArray, body: JsonObject) {
@@ -1307,19 +1402,19 @@ internal class RemoteAgent : Disposable {
                 put("sessionId", sessionId)
             }
 
-            val sealed = sessions.seal(
+            // Sealed as a push from the start, rather than sealed as an envelope and relabelled after.
+            // The header is what the tag covers, so the two are not the same frame: the worker on the
+            // phone reads the header it received back as the additional data, and one that says
+            // "envelope" where the seal said "push" opens nothing.
+            val push = sessions.seal(
                 device.id,
                 to = address,
                 from = state.address(),
                 body = body.toString().toByteArray(StandardCharsets.UTF_8),
+                type = Frame.TYPE_PUSH,
             ) ?: continue
 
-            // The push frame carries the same sealed body under a type of its own, so the relay knows
-            // to hand it to a push service rather than to a socket - without being able to read it.
-            val envelope = Frame.parse(sealed, RelayLink.MAX_FRAME_BYTES)
-            outbox.offerUrgent(
-                Frame.build(Frame.TYPE_PUSH, envelope.to, envelope.from, envelope.counter, envelope.body),
-            )
+            outbox.offerUrgent(push)
         }
 
         link?.flush(::resyncFrames)
@@ -1357,6 +1452,11 @@ internal class RemoteAgent : Disposable {
 
         /** How often a device may be told to start a new session - see [askForNewSession]. */
         private const val RESYNC_INTERVAL_MS = 5_000L
+
+        /** How often a stranger's frame is worth a line, and how many strangers are remembered at all. */
+        private const val STRANGER_QUIET_MS = 60_000L
+
+        private const val STRANGERS_REMEMBERED = 256
 
         /**
          * The one answer that belongs to the project rather than to a conversation: its past ones.

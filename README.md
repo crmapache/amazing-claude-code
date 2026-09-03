@@ -340,16 +340,22 @@ phone shows, which catches the one case the cryptography cannot: somebody who ph
 screen and scanned it first.
 
 **What a phone may do:** read the feed, send messages, answer permissions, approve or send back plans,
-answer questions, stop a turn, open a new conversation.
+answer questions, stop a turn, search your conversations, open a new conversation - and choose the
+model, the effort and the permission mode that new conversation starts in.
 
-**What it may not:** run shell commands, install plugins or MCP servers, change the permission mode,
-change the path to the executable, touch your clipboard, open files or links on your machine, or pair
-and revoke devices. That list is enforced on your machine, and anything not on it - including kinds of
-message that do not exist yet - is refused rather than passed through.
+**What it may not:** run shell commands, install plugins or MCP servers, reach into the permission mode
+of a conversation you are working in at the desk, change what future ones start in, change the path to
+the executable, touch your clipboard, open files or links on your machine, or pair and revoke devices.
+That list is enforced on your machine, and anything not on it - including kinds of message that do not
+exist yet - is refused rather than passed through.
 
-Approving a plan from the phone is the one exception worth knowing: it puts that conversation into
-"accept edits" rather than the full no-questions mode the same button uses at your desk. File edits go
-ahead, while shell commands and network access still ask - and those you can answer from the phone.
+Two things about permission modes are worth being precise about, because they point opposite ways. A
+conversation **started from the phone** may begin in any mode, including the ones that never ask - it
+is your own device, and starting one is no more than sending a message, which starts a process too.
+But **approving a plan** from the phone puts that conversation into "accept edits" rather than the full
+no-questions mode the same button uses at your desk: file edits go ahead, while shell commands and
+network access still ask - and those you can answer from the phone. The difference is that the second
+one reaches into a conversation somebody may be sitting in front of.
 
 **What the relay can see:** two random addresses, message sizes and times, your IP. Not the contents -
 those are sealed between your IDE and your phone, and the relay has no code that could read them. It

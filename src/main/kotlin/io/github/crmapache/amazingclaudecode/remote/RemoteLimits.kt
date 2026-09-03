@@ -26,9 +26,11 @@ internal class RemoteLimits {
     /**
      * Whether this device may do this now.
      *
-     * The refusal is answered rather than swallowed: a phone that has been told "too fast, try again"
-     * looks like a phone that is working, while one that silently does nothing looks broken - and
-     * whoever is holding it will simply press harder.
+     * A refusal is not silent where there is anyone to tell: a phone that has been told "too fast, try
+     * again" looks like a phone that is working, while one that silently does nothing looks broken -
+     * and whoever is holding it will simply press harder. Where the refusal happens below the
+     * conversation - a frame too heavy, a handshake asked for too often - there is no one to answer,
+     * and it is a log line instead.
      */
     @Synchronized
     fun allow(deviceId: String, kind: String, now: Long = System.currentTimeMillis()): Boolean {
@@ -109,9 +111,23 @@ internal class RemoteLimits {
 
         const val DEFAULT_PER_MINUTE = 30
 
-        /** Nothing a phone legitimately sends is this big. Images travel in a message, hence the room. */
-        const val MAX_MESSAGE_BYTES = 3 * 1024 * 1024
+        /**
+         * Nothing a phone legitimately sends is this big.
+         *
+         * The same number the transport already refuses above (RelayLink.MAX_FRAME_BYTES), so on the
+         * relay's own path this is a second lock on a door that is already locked - which is the point
+         * of it: the frame ceiling belongs to the transport, and a message that ever arrives another
+         * way should not be the first to find out that nothing else was checking. A picture from a
+         * phone is scaled down long before this (see mobile/images.ts); it does not travel in
+         * megabytes.
+         */
+        const val MAX_MESSAGE_BYTES = 256 * 1024
 
+        /**
+         * And how much of it a minute. A hundred small messages and one enormous one are different
+         * problems, and the count above answers only the first: at the rates it allows, searching as
+         * one types could carry thirty megabytes a minute and stay inside every one of them.
+         */
         const val MAX_BYTES_PER_MINUTE = 8 * 1024 * 1024
     }
 }

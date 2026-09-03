@@ -9,6 +9,7 @@ import {
   fingerprint,
   generateKeyPair,
   importPublic,
+  longLivedAuth,
   resumeSession,
   sameBytes,
   seal,
@@ -66,7 +67,7 @@ describe('the sealed channel, from the phone', () => {
       deviceEphemeralPub,
     )
 
-    return { onDevice, onAgent, qrSecret }
+    return { onDevice, onAgent, qrSecret, deviceStatic, agentStaticPub: await exportPublic(agentStatic.publicKey) }
   }
 
   it('both ends arrive at the same keys without either travelling', async () => {
@@ -183,6 +184,20 @@ describe('the sealed channel, from the phone', () => {
     const second = await deviceProof(secret, 'a', 'bcd', 'ef', 'gh')
 
     expect(sameBytes(first, second)).toBe(false)
+  })
+
+  /**
+   * The long-lived key is not kept anywhere on the phone - it is worked out again from the static key,
+   * which the browser will use and never hand back. That only holds while the two ways of arriving at
+   * it agree byte for byte: the agent keeps its copy in a keychain and never derives it a second time,
+   * so a difference here is every paired phone going quietly dead.
+   */
+  it('the long-lived key can be worked out again instead of kept', async () => {
+    const { onDevice, deviceStatic, agentStaticPub } = await pairing()
+
+    const again = await longLivedAuth(deviceStatic.privateKey, agentStaticPub)
+
+    expect(hex(again)).toEqual(hex(onDevice.auth))
   })
 
   it('reconnecting derives fresh keys from the long-lived one', async () => {
