@@ -33,6 +33,7 @@ export const de: Dict = {
       defaultMode: { title: 'STANDARDMODUS', hint: 'womit neue Tabs starten' },
       composerLayout: { title: 'LAYOUT DES EINGABEFELDS', hint: 'wo das Eingabefeld sitzt' },
       pasteCollapse: { title: 'EINGEFÜGTER TEXT', hint: 'wann eine Einfügung zum Chip wird' },
+      sendKey: { title: 'NACHRICHT SENDEN', hint: 'welche Taste sendet' },
       improvePrompt: { title: 'PROMPT VERBESSERN', hint: 'worum der Stern-Button bittet' },
       voice: { title: 'SPRACHEINGABE', hint: 'diktieren statt tippen' },
       voiceLanguage: { title: 'GESPROCHENE SPRACHE', hint: 'worauf das Diktat hört' },
@@ -73,6 +74,7 @@ export const de: Dict = {
       defaultMode: { label: 'Standardmodus', sub: 'Womit neue Tabs starten' },
       composerLayout: { label: 'Layout des Eingabefelds', sub: 'Wo das Eingabefeld sitzt' },
       pasteCollapse: { label: 'Eingefügter Text', sub: 'Wann eine Einfügung zum Chip wird' },
+      sendKey: { label: 'Nachricht senden', sub: 'Welche Taste sendet' },
       improvePrompt: { label: 'Prompt verbessern', sub: 'Worum der Stern-Button bittet' },
       voice: { label: 'Spracheingabe', sub: 'Diktieren mit deinem eigenen Deepgram-Schlüssel' },
       language: { label: 'Sprache', sub: 'Welche Sprache das Panel spricht' },
@@ -175,6 +177,14 @@ export const de: Dict = {
     from: (lines) => `Ab ${lines} Zeilen`,
     foldLabel: 'Lange Einfügungen zusammenfalten',
     foldSub: (min, max) => `Ab wie vielen Zeilen - ${min} bis ${max}`,
+  },
+
+  sendKey: {
+    note: 'Welche Taste die Nachricht losschickt. Die andere bricht die Zeile um - eine Nachricht aus mehreren Absätzen wird also in beiden Fällen mit derselben Taste getippt.',
+    enter: 'Enter',
+    enterSub: 'Shift+Enter bricht die Zeile um',
+    modEnter: (mod: string): string => `${mod}+Enter`,
+    modEnterSub: 'Enter bricht die Zeile um',
   },
 
   improvePrompt: {
@@ -418,6 +428,15 @@ export const de: Dict = {
     jumpToLatest: 'Zur neuesten Nachricht',
     copyBlock: 'Diesen Block kopieren',
     copyReply: 'Die ganze Antwort kopieren',
+    copyMessage: 'Diese Nachricht kopieren - mit den Pfaden der Anhänge',
+    reuse: {
+      label: 'Bearbeiten und neu senden',
+      hint: 'Diese Nachricht zurück ins Eingabefeld holen, um sie zu bearbeiten und neu zu senden',
+      lostImages: (n: number): string =>
+        n === 1
+          ? 'Geht zurück ins Eingabefeld, das eingefügte Bild aber nicht - hänge es neu an'
+          : `Geht zurück ins Eingabefeld, die ${n} eingefügten Bilder aber nicht - hänge sie neu an`,
+    },
     pastedLines: (n) => `${n} ${n === 1 ? 'Zeile' : 'Zeilen'} eingefügt`,
     pasteClose: 'Wieder einklappen',
     copyPaste: 'Eingefügten Text kopieren',

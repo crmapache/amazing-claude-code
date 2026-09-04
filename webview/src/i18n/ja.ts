@@ -32,6 +32,7 @@ export const ja: Dict = {
       defaultMode: { title: 'デフォルトのモード', hint: '新しいタブが始まるモード' },
       composerLayout: { title: '入力欄のレイアウト', hint: '入力欄を置く場所' },
       pasteCollapse: { title: '貼り付けたテキスト', hint: '貼り付けをチップにまとめる条件' },
+      sendKey: { title: 'メッセージの送信', hint: 'どのキーで送るか' },
       improvePrompt: { title: 'プロンプトの改善', hint: '星ボタンが出す指示' },
       voice: { title: '音声入力', hint: '打つかわりに話す' },
       voiceLanguage: { title: '話す言語', hint: '音声入力が聞き取る言語' },
@@ -72,6 +73,7 @@ export const ja: Dict = {
       defaultMode: { label: 'デフォルトのモード', sub: '新しいタブが始まるモード' },
       composerLayout: { label: '入力欄のレイアウト', sub: '入力欄を置く場所' },
       pasteCollapse: { label: '貼り付けたテキスト', sub: '貼り付けをチップにまとめる条件' },
+      sendKey: { label: 'メッセージの送信', sub: 'どのキーで送るか' },
       improvePrompt: { label: 'プロンプトの改善', sub: '星ボタンが出す指示' },
       voice: { label: '音声入力', sub: '自分の Deepgram キーで口述する' },
       language: { label: '言語', sub: 'パネルが話す言語' },
@@ -173,6 +175,14 @@ export const ja: Dict = {
     from: (lines) => `${lines} 行から`,
     foldLabel: '長い貼り付けをまとめる',
     foldSub: (min, max) => `何行からまとめるか - ${min}〜${max}`,
+  },
+
+  sendKey: {
+    note: 'どのキーでメッセージを送るか。もう一方は改行になります - 段落をいくつも書くメッセージは、どちらを選んでも同じキーで書けます。',
+    enter: 'Enter',
+    enterSub: 'Shift+Enter で改行',
+    modEnter: (mod: string): string => `${mod}+Enter`,
+    modEnterSub: 'Enter で改行',
   },
 
   improvePrompt: {
@@ -414,6 +424,15 @@ export const ja: Dict = {
     jumpToLatest: '最新へ移動',
     copyBlock: 'このブロックをコピー',
     copyReply: '返信全体をコピー',
+    copyMessage: 'このメッセージをコピー（添付はパスとして）',
+    reuse: {
+      label: '直して送り直す',
+      hint: 'このメッセージを入力欄に戻して、直して送り直します',
+      lostImages: (n: number): string =>
+        n === 1
+          ? '入力欄に戻りますが、貼り付けた画像は戻りません。もう一度添付してください'
+          : `入力欄に戻りますが、貼り付けた画像 ${n} 枚は戻りません。もう一度添付してください`,
+    },
     pastedLines: (n) => `${n} 行を貼り付け`,
     pasteClose: '折りたたむ',
     copyPaste: '貼り付けたテキストをコピー',

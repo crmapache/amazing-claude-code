@@ -637,7 +637,13 @@ const answerResume = (message: WebviewMessage): void => {
     line({
       type: 'user',
       uuid: uuid(1),
-      message: { role: 'user', content: [{ type: 'text', text: `Where did we leave off on ${name}?` }] },
+      // With a pasted image in it, because a transcript keeps only the caption for one: the bytes stayed
+      // in the panel that sent them. That is what the reuse button has to warn about before it is pressed
+      // (see feed/reuse.ts), and a replay is the only place to see the warning.
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text: `Where did we leave off on ${name}? [Image #1]` }],
+      },
     })
     line({
       type: 'assistant',

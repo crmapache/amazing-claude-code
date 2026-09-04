@@ -30,6 +30,7 @@ export const zh: Dict = {
       defaultMode: { title: '默认模式', hint: '新标签页从哪种模式开始' },
       composerLayout: { title: '输入框布局', hint: '输入框放在哪里' },
       pasteCollapse: { title: '粘贴的文本', hint: '何时把粘贴折叠成小卡片' },
+      sendKey: { title: '发送消息', hint: '用哪个键发送' },
       improvePrompt: { title: '优化提示词', hint: '星标按钮按什么要求改写' },
       voice: { title: '语音输入', hint: '用说的，不用打字' },
       voiceLanguage: { title: '口述语言', hint: '听写要听哪种语言' },
@@ -70,6 +71,7 @@ export const zh: Dict = {
       defaultMode: { label: '默认模式', sub: '新标签页从哪种模式开始' },
       composerLayout: { label: '输入框布局', sub: '输入框放在哪里' },
       pasteCollapse: { label: '粘贴的文本', sub: '何时把粘贴折叠成小卡片' },
+      sendKey: { label: '发送消息', sub: '用哪个键发送' },
       improvePrompt: { label: '优化提示词', sub: '星标按钮按什么要求改写' },
       voice: { label: '语音输入', sub: '用你自己的 Deepgram 密钥听写' },
       language: { label: '语言', sub: '面板使用的语言' },
@@ -171,6 +173,14 @@ export const zh: Dict = {
     from: (lines) => `${lines} 行起`,
     foldLabel: '长粘贴折叠',
     foldSub: (min, max) => `从多少行起 - ${min} 到 ${max}`,
+  },
+
+  sendKey: {
+    note: '用哪个键把消息发出去。另一个键换行 - 所以分成几段的消息，无论选哪种都用同一个键来写。',
+    enter: 'Enter',
+    enterSub: 'Shift+Enter 换行',
+    modEnter: (mod: string): string => `${mod}+Enter`,
+    modEnterSub: 'Enter 换行',
   },
 
   improvePrompt: {
@@ -412,6 +422,15 @@ export const zh: Dict = {
     jumpToLatest: '回到最新',
     copyBlock: '复制这段代码',
     copyReply: '复制整条回复',
+    copyMessage: '复制这条消息，附件以路径形式复制',
+    reuse: {
+      label: '修改后重新发送',
+      hint: '把这条消息放回输入框，修改后重新发送',
+      lostImages: (n: number): string =>
+        n === 1
+          ? '会回到输入框，但粘贴的图片带不回来，请重新附上'
+          : `会回到输入框，但 ${n} 张粘贴的图片带不回来，请重新附上`,
+    },
     pastedLines: (n) => `粘贴了 ${n} 行`,
     pasteClose: '重新折叠',
     copyPaste: '复制粘贴的文本',

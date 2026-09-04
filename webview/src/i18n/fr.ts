@@ -34,6 +34,7 @@ export const fr: Dict = {
       defaultMode: { title: 'MODE PAR DÉFAUT', hint: 'ce avec quoi démarrent les nouveaux onglets' },
       composerLayout: { title: 'DISPOSITION DU CHAMP', hint: 'où se place le champ de saisie' },
       pasteCollapse: { title: 'TEXTE COLLÉ', hint: 'quand un collage se replie en pastille' },
+      sendKey: { title: 'ENVOYER UN MESSAGE', hint: 'quelle touche envoie' },
       improvePrompt: { title: 'AMÉLIORER LE PROMPT', hint: 'ce que demande le bouton étoile' },
       voice: { title: 'SAISIE VOCALE', hint: 'dicter au lieu de taper' },
       voiceLanguage: { title: 'LANGUE PARLÉE', hint: 'ce que la dictée écoute' },
@@ -74,6 +75,7 @@ export const fr: Dict = {
       defaultMode: { label: 'Mode par défaut', sub: 'Ce avec quoi démarrent les nouveaux onglets' },
       composerLayout: { label: 'Disposition du champ', sub: 'Où se place le champ de saisie' },
       pasteCollapse: { label: 'Texte collé', sub: 'Quand un collage se replie en pastille' },
+      sendKey: { label: 'Envoyer un message', sub: 'Quelle touche envoie' },
       improvePrompt: { label: 'Améliorer le prompt', sub: 'Ce que demande le bouton étoile' },
       voice: { label: 'Saisie vocale', sub: 'Dicter avec votre propre clé Deepgram' },
       language: { label: 'Langue', sub: 'La langue que parle le panneau' },
@@ -176,6 +178,14 @@ export const fr: Dict = {
     from: (lines) => `À partir de ${lines} lignes`,
     foldLabel: 'Replier les collages longs',
     foldSub: (min, max) => `À partir de combien de lignes - ${min} à ${max}`,
+  },
+
+  sendKey: {
+    note: 'Quelle touche laisse partir le message. L’autre passe à la ligne - un message écrit en plusieurs paragraphes se tape donc avec la même touche dans les deux cas.',
+    enter: 'Enter',
+    enterSub: 'Shift+Enter passe à la ligne',
+    modEnter: (mod: string): string => `${mod}+Enter`,
+    modEnterSub: 'Enter passe à la ligne',
   },
 
   improvePrompt: {
@@ -419,6 +429,15 @@ export const fr: Dict = {
     jumpToLatest: 'Aller au plus récent',
     copyBlock: 'Copier ce bloc',
     copyReply: 'Copier toute la réponse',
+    copyMessage: 'Copier ce message, avec les chemins des pièces jointes',
+    reuse: {
+      label: 'Corriger et renvoyer',
+      hint: 'Remettre ce message dans le champ de saisie, pour le corriger et le renvoyer',
+      lostImages: (n: number): string =>
+        n === 1
+          ? 'Revient dans le champ de saisie, mais pas l’image collée - joignez-la à nouveau'
+          : `Revient dans le champ de saisie, mais pas les ${n} images collées - joignez-les à nouveau`,
+    },
     pastedLines: (n) => `${n} ${n === 1 ? 'ligne collée' : 'lignes collées'}`,
     pasteClose: 'Replier',
     copyPaste: 'Copier le texte collé',

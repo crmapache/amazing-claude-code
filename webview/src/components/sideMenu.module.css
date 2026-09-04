@@ -272,6 +272,13 @@
   color: var(--acc-fg-dim);
 }
 
+/* The key shares that same neutral: which key sends is about the input field's behaviour, exactly as the
+   two rows above it are. */
+.rowIconSend {
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-dim);
+}
+
 /* The same rose as the heart in the status row: both entries lead to the same person, and the colour is
    what says so without a word of explanation. */
 .rowIconImprove {

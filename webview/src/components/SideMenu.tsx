@@ -25,6 +25,7 @@ export type MenuScreen =
   | 'defaultMode'
   | 'composerLayout'
   | 'pasteCollapse'
+  | 'sendKey'
   | 'improvePrompt'
   | 'voice'
   | 'voiceLanguage'
@@ -59,6 +60,8 @@ export interface MenuSummary {
   composerLayout: string
   /** From how many lines a pasted text folds into a chip, or that it never does. */
   pasteCollapse: string
+  /** Which key sends a message - the key itself ("Enter", "Cmd+Enter"), not a sentence about it. */
+  sendKey: string
   /** Whether the improve button asks by a text of one's own - "Default" or "Custom". */
   improvePrompt: string
   /** Dictation: the language it listens in, or that it is switched off. */
@@ -108,17 +111,18 @@ const AUTHOR_URL =
 const AUTHOR_PRODUCT = 'Snakein'
 
 /**
- * The five screens that live behind "Settings" rather than in the root list.
+ * The screens that live behind "Settings" rather than in the root list.
  *
- * They used to stand in the root as a group of four, which made the first thing anybody saw a list of
- * ten rows - and the four of them are the same kind of thing: a preference, set once and rarely
- * revisited. One row instead of four, and the language joins them rather than making the root longer.
+ * They used to stand in the root as a group of their own, which made the first thing anybody saw a list
+ * of ten rows - and all of them are the same kind of thing: a preference, set once and rarely revisited.
+ * One row instead of that group, and every new preference joins them rather than making the root longer.
  */
 const SETTINGS_SCREENS: MenuScreen[] = [
   'sounds',
   'defaultMode',
   'composerLayout',
   'pasteCollapse',
+  'sendKey',
   'improvePrompt',
   'voice',
   'language',
@@ -259,6 +263,15 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M6 3.2H4.4a1.2 1.2 0 0 0-1.2 1.2v8a1.2 1.2 0 0 0 1.2 1.2h7.2a1.2 1.2 0 0 0 1.2-1.2v-8a1.2 1.2 0 0 0-1.2-1.2H10" />
       <rect x="6" y="1.9" width="4" height="2.6" rx="0.9" />
       <path d="M5.9 8h4.2M5.9 10.6h2.6" />
+    </svg>
+  ),
+  /* A key with a corner arrow on it - the Enter key itself, which is what the row is about. Drawn rather
+     than lettered: the row has to say "a key" at a glance, and ⏎ is not in the panel's font. */
+  sendKey: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3.4" width="12" height="9.2" rx="1.6" />
+      <path d="M11 6.2v2.2a0.9 0.9 0 0 1-0.9 0.9H5.4" />
+      <path d="M6.9 7.9L5.2 9.3l1.7 1.4" />
     </svg>
   ),
   feedback: (
@@ -581,6 +594,14 @@ export const SettingsScreen = ({
           sub={t.settings.rows.pasteCollapse.sub}
           value={summary.pasteCollapse}
           onClick={() => onPick('pasteCollapse')}
+        />
+        <Row
+          icon="sendKey"
+          iconClass={s.rowIconSend}
+          label={t.settings.rows.sendKey.label}
+          sub={t.settings.rows.sendKey.sub}
+          value={summary.sendKey}
+          onClick={() => onPick('sendKey')}
         />
         <Row
           icon="improvePrompt"

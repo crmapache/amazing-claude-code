@@ -30,6 +30,7 @@ export const es: Dict = {
       defaultMode: { title: 'MODO POR DEFECTO', hint: 'con qué empiezan las pestañas nuevas' },
       composerLayout: { title: 'DISPOSICIÓN DEL CAMPO', hint: 'dónde se coloca el campo de entrada' },
       pasteCollapse: { title: 'TEXTO PEGADO', hint: 'cuándo un pegado se pliega en una ficha' },
+      sendKey: { title: 'ENVIAR UN MENSAJE', hint: 'qué tecla lo envía' },
       improvePrompt: { title: 'MEJORAR EL PROMPT', hint: 'qué pide el botón de la estrella' },
       voice: { title: 'ENTRADA POR VOZ', hint: 'dictar en lugar de escribir' },
       voiceLanguage: { title: 'IDIOMA HABLADO', hint: 'qué escucha el dictado' },
@@ -70,6 +71,7 @@ export const es: Dict = {
       defaultMode: { label: 'Modo por defecto', sub: 'Con qué empiezan las pestañas nuevas' },
       composerLayout: { label: 'Disposición del campo', sub: 'Dónde se coloca el campo de entrada' },
       pasteCollapse: { label: 'Texto pegado', sub: 'Cuándo un pegado se pliega en una ficha' },
+      sendKey: { label: 'Enviar un mensaje', sub: 'Qué tecla lo envía' },
       improvePrompt: { label: 'Mejorar el prompt', sub: 'Qué pide el botón de la estrella' },
       voice: { label: 'Entrada por voz', sub: 'Dicta con tu propia clave de Deepgram' },
       language: { label: 'Idioma', sub: 'En qué idioma habla el panel' },
@@ -172,6 +174,14 @@ export const es: Dict = {
     from: (lines) => `Desde ${lines} líneas`,
     foldLabel: 'Plegar los pegados largos',
     foldSub: (min, max) => `A partir de cuántas líneas: ${min} a ${max}`,
+  },
+
+  sendKey: {
+    note: 'Qué tecla suelta el mensaje. La otra salta de línea, así que un mensaje de varios párrafos se escribe con la misma tecla en cualquier caso.',
+    enter: 'Enter',
+    enterSub: 'Shift+Enter salta de línea',
+    modEnter: (mod: string): string => `${mod}+Enter`,
+    modEnterSub: 'Enter salta de línea',
   },
 
   improvePrompt: {
@@ -415,6 +425,15 @@ export const es: Dict = {
     jumpToLatest: 'Ir a lo más reciente',
     copyBlock: 'Copiar este bloque',
     copyReply: 'Copiar toda la respuesta',
+    copyMessage: 'Copiar este mensaje, con las rutas de lo adjunto',
+    reuse: {
+      label: 'Editar y enviar de nuevo',
+      hint: 'Devolver este mensaje al campo de entrada, para editarlo y enviarlo de nuevo',
+      lostImages: (n: number): string =>
+        n === 1
+          ? 'Vuelve al campo de entrada, pero la imagen pegada no: adjúntala otra vez'
+          : `Vuelve al campo de entrada, pero las ${n} imágenes pegadas no: adjúntalas otra vez`,
+    },
     pastedLines: (n) => `${n} ${n === 1 ? 'línea pegada' : 'líneas pegadas'}`,
     pasteClose: 'Volver a plegarlo',
     copyPaste: 'Copiar el texto pegado',

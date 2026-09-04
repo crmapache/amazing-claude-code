@@ -183,6 +183,9 @@
 /* --- The user's message ---------------------------------------------------- */
 
 .user {
+  /* For the pair of buttons in the corner - they stand where the reply's copy button stands, see
+     .userActions. */
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -215,6 +218,62 @@
 
 .spacer {
   flex: 1;
+}
+
+/*
+ * The pair of them, in the card's top right corner - at the very same 7px from the edges as the copy
+ * button on a reply (see .textCopy).
+ *
+ * Absolute rather than a child of the head, and that is what makes the two kinds of card agree: in the
+ * flow they sat at the head's own padding, 11px in, so the buttons jumped sideways as the pointer went
+ * from a message of one's own to the answer under it - and being 20px squares four pixels apart, the
+ * jump was the most visible thing about them. Out of the flow they take no room from the head either,
+ * so nothing about the label and the time depends on how many buttons there are.
+ *
+ * The gap is 4px rather than the head's own 8: they are one pair doing one kind of thing, and that is
+ * the distance the bubble and the heart keep down by the input field (see .endPair in shell.module.css).
+ */
+.userActions {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/*
+ * The two buttons in a sent message's head: copy it out, and take it back into the input field.
+ *
+ * Always visible rather than appearing on hover, unlike the one on a code block. Two reasons, and the
+ * second is the stronger: there is no hover on a phone, where the copy button is the only way to get a
+ * message out at all; and the whole reason these exist is that a person could not find the ways back to
+ * their own message that the panel already had (the up arrow in the field, a selection copied with the
+ * chips resolved) - a button that hides until the pointer finds it would keep that problem.
+ *
+ * Faint, and lit only under the pointer: the head is a label and a time, and two bright squares beside
+ * them would read as the loudest thing in a message the person wrote themselves.
+ */
+.userAction {
+  /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
+  min-height: var(--acc-hit);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: var(--acc-r-sm);
+  background: none;
+  color: var(--acc-fg-faint);
+  font-size: 11px;
+}
+
+@media (hover: hover) {
+  .userAction:hover {
+    background: var(--acc-bg-control);
+    color: var(--acc-fg);
+  }
 }
 
 /*

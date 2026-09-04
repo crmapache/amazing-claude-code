@@ -35,6 +35,7 @@ import {
 import { clipboardHtml, clipboardTextOf, clipboardTokens, tokensText } from '../feed/tokens'
 import type { Chip, DraftEdit, UserToken } from '../feed/types'
 import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
+import { enterAction, sendKeyCap, type SendKey } from '../sendKey'
 import type { ModelInfo } from '../protocol'
 import { SlashSuggest } from './SlashSuggest'
 import { collapsesPaste } from '../feed/reference'
@@ -250,6 +251,12 @@ interface ComposerProps {
    * for a hundred-line log and wrong for a two-line one meant to be edited before sending.
    */
   pasteCollapseLines: number
+  /**
+   * Which key sends a message - Enter, or Cmd/Ctrl+Enter (see sendKey.ts, where the rule itself lives).
+   * A setting of the person's too, and asked for by everyone who drafts a message as several paragraphs:
+   * with Enter sending, a typed list goes out at its first line break.
+   */
+  sendKey: SendKey
   /** The panel's and the agent's commands as one list. */
   commands: CommandEntry[]
   /**
@@ -405,6 +412,7 @@ export const Composer = ({
   planMode,
   contextPercent,
   pasteCollapseLines,
+  sendKey,
   commands,
   models,
   meters,
@@ -1318,6 +1326,24 @@ export const Composer = ({
   }, [registerApply])
 
   /**
+   * Letting go of the message - one door for the key, for Send and for Queue.
+   *
+   * The buttons used to call their handlers straight, which left the history of sent messages (the up
+   * arrow, see sentHistory) blind to them: whoever sends with the mouse had no history at all, and the
+   * one thing that history is for is getting a message back to correct a slip in it. The send-key setting
+   * makes that worse rather than better - with Cmd/Ctrl+Enter sending, the button is the ordinary way to
+   * send. A queued message counts too: it was let go of, and it is as likely to have a slip in it.
+   */
+  const letGo = (go: () => void) => {
+    // Silent at exactly the times the buttons are dimmed: there is nothing to send.
+    if (!canSubmit) return
+    if (tokens.length > 0) sentHistory.current.push(tokens)
+    historyIndex.current = null
+    historyDraft.current = null
+    go()
+  }
+
+  /**
    * A file or a folder dropped into the field we take for ourselves: without that the embedded browser
    * would simply open the file in place of the panel's page. The contents themselves we do not need - only
    * the path, out of which the shell assembles the chip.
@@ -1487,7 +1513,12 @@ export const Composer = ({
           ? argumentMatches.length === 1 && argumentMatches[0]?.id === argument.query
           : matches.length === 1 && matches[0]?.id === query && !requiresArgument(matches[0].id)
 
-      if ((event.key === 'Enter' && !exact) || event.key === 'Tab') {
+      // The Enter the hint owns is the bare one. Held with Cmd/Ctrl it is the send key of the modEnter
+      // setting, and taking it for the hint would leave that setting unable to send while a list is open -
+      // and the list is open for most of what one types after a slash.
+      const bare = !event.metaKey && !event.ctrlKey
+
+      if ((event.key === 'Enter' && bare && !exact) || event.key === 'Tab') {
         event.preventDefault()
         const picked = suggestionItems[highlight] ?? suggestionItems[0]
         if (picked) {
@@ -1538,20 +1569,15 @@ export const Composer = ({
       }
     }
 
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (event.key === 'Enter') {
       event.preventDefault()
-      // Enter is the Send button, so it stays silent at exactly the times the button is dimmed: there is
-      // nothing to send.
-      if (!canSubmit) return
-      if (tokens.length > 0) sentHistory.current.push(tokens)
-      historyIndex.current = null
-      historyDraft.current = null
-      onSubmit()
-      return
-    }
 
-    if (event.key === 'Enter' && event.shiftKey) {
-      event.preventDefault()
+      // Which of the two this press is - the rule is in sendKey.ts rather than here: it breaks silently,
+      // and either half of it broken means a field that sends half a sentence or one that cannot send.
+      if (enterAction(sendKey, event) === 'send') {
+        letGo(onSubmit)
+        return
+      }
       // A line break is insertLineBreak, the browser's own command for exactly this. The neighbouring
       // options will not do: insertText with '\n' splits the field into a separate <div> for the second
       // line (checked live), and a text node of our own through a Range loses the caret.
@@ -1723,7 +1749,7 @@ export const Composer = ({
     <button
       type="button"
       className={`${s.send} ${s.sendQueued}`}
-      onClick={onQueue}
+      onClick={() => letGo(onQueue)}
       disabled={!canSubmit || !streaming}
       data-tooltip={t.composer.queueHint}
       data-tooltip-at="top"
@@ -1736,9 +1762,12 @@ export const Composer = ({
     <button
       type="button"
       className={`${s.send} ${bash ? s.sendRun : ''}`}
-      onClick={onSubmit}
+      onClick={() => letGo(onSubmit)}
       disabled={!canSubmit}
-      data-tooltip={bash ? t.composer.runHint : undefined}
+      /* The key and nothing else: the button already says "Send", and a hover that repeats what it is
+         hovering over is a wasted hover (the rule the file's chips follow too). What it does add is the
+         one thing not on the screen anywhere - which key the setting settled on. */
+      data-tooltip={bash ? t.composer.runHint : sendKeyCap(sendKey)}
       data-tooltip-at="top"
     >
       {bash ? t.composer.run : t.composer.send}

@@ -45,6 +45,7 @@ export const en = {
       defaultMode: { title: 'DEFAULT MODE', hint: 'what new tabs start in' },
       composerLayout: { title: 'COMPOSER LAYOUT', hint: 'where the input sits' },
       pasteCollapse: { title: 'PASTED TEXT', hint: 'when a paste folds into a chip' },
+      sendKey: { title: 'SENDING A MESSAGE', hint: 'which key sends it' },
       improvePrompt: { title: 'IMPROVE PROMPT', hint: 'what the sparkle button asks for' },
       voice: { title: 'VOICE INPUT', hint: 'dictate instead of typing' },
       voiceLanguage: { title: 'SPOKEN LANGUAGE', hint: 'what dictation listens for' },
@@ -98,6 +99,7 @@ export const en = {
       defaultMode: { label: 'Default mode', sub: 'What new tabs start in' },
       composerLayout: { label: 'Composer layout', sub: 'Where the input sits' },
       pasteCollapse: { label: 'Pasted text', sub: 'When a paste folds into a chip' },
+      sendKey: { label: 'Sending a message', sub: 'Which key sends it' },
       improvePrompt: { label: 'Improve prompt', sub: 'What the sparkle button asks for' },
       voice: { label: 'Voice input', sub: 'Dictate with your own Deepgram key' },
       language: { label: 'Language', sub: 'What the panel speaks' },
@@ -221,6 +223,15 @@ export const en = {
     /** The other row of that screen: the one carrying the number field. */
     foldLabel: 'Fold long pastes',
     foldSub: (min: number, max: number): string => `From how many lines - ${min} to ${max}`,
+  },
+
+  sendKey: {
+    note: 'Which key lets a message go. The other one breaks the line - so a message written as several paragraphs is typed with the same key either way.',
+    enter: 'Enter',
+    enterSub: 'Shift+Enter breaks the line',
+    /** The modifier is named by the system - Cmd on a Mac, Ctrl elsewhere (see modifierName). */
+    modEnter: (mod: string): string => `${mod}+Enter`,
+    modEnterSub: 'Enter breaks the line',
   },
 
   improvePrompt: {
@@ -481,6 +492,20 @@ export const en = {
     jumpToLatest: 'Jump to latest',
     copyBlock: 'Copy this block',
     copyReply: 'Copy the whole reply',
+    /** The two buttons in the head of a message of one's own - see UserCard. */
+    copyMessage: 'Copy this message, with the paths of what was attached',
+    reuse: {
+      label: 'Edit and send again',
+      hint: 'Put this message back into the input field, to edit and send again',
+      /**
+       * Said instead of the hint when a pasted picture cannot come back: only the caption for it is left
+       * in a conversation read off the disk, and the bytes are what the agent was actually shown.
+       */
+      lostImages: (n: number): string =>
+        n === 1
+          ? 'Back into the input field - but the pasted image cannot come with it, attach it again'
+          : `Back into the input field - but the ${n} pasted images cannot come with it, attach them again`,
+    },
     pastedLines: (n: number): string => `${n} ${n === 1 ? 'line' : 'lines'} pasted`,
     /** A collapsed paste opens on a click - the hover hint shows only its first lines. */
     pasteClose: 'Collapse it back',

@@ -73,6 +73,17 @@ export const clipboardText = (token: UserToken): string => {
 export const clipboardTextOf = (tokens: UserToken[]): string => tokens.map(clipboardText).join('')
 
 /**
+ * A sent message copied out of the feed, quotes and all.
+ *
+ * The quotes stand above the message with `> ` in front of them, exactly where they stood in what the
+ * agent was given (see composePrompt): they are part of what was said, and a copy without them is a
+ * question with its subject cut off. What is inside travels as paths rather than as the captions the
+ * chips wear - see clipboardText for why.
+ */
+export const clipboardMessage = ({ tokens, quotes }: { tokens: UserToken[]; quotes: string[] }): string =>
+  [...quotes.map((quote) => `> ${quote}`), clipboardTextOf(tokens)].filter((part) => part !== '').join('\n')
+
+/**
  * The text of a sequence of attachments, with the images numbered.
  *
  * An image's number is recounted from its place in the sequence rather than taken from the chip: the

@@ -106,6 +106,10 @@ internal class ProjectCatalog(
                     // Sent only when chosen, like the layout above: an absent value means the panel's own
                     // default rather than "never fold", and the two must not be confused.
                     if (preferences.pasteCollapse.isNotEmpty()) put("pasteCollapse", preferences.pasteCollapse)
+                    // And which key sends. Sent unconditionally, unlike the two above: an empty value
+                    // says "Enter", which is a real answer here rather than an absent one - a panel
+                    // that has never been asked sends on Enter (see normalizeSendKey).
+                    put("sendKey", preferences.sendKey)
                     // Two values rather than one, and the empty one is not the useless one: `language`
                     // is the explicit choice and is usually empty, `ideLanguage` is what the IDE itself
                     // is set to. Empty means "speak whatever the IDE speaks", and the picker needs the

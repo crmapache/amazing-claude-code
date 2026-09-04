@@ -30,6 +30,7 @@ export const pt: Dict = {
       defaultMode: { title: 'MODO PADRÃO', hint: 'com o que as novas abas começam' },
       composerLayout: { title: 'LAYOUT DO CAMPO', hint: 'onde fica o campo de escrita' },
       pasteCollapse: { title: 'TEXTO COLADO', hint: 'quando uma colagem vira um chip' },
+      sendKey: { title: 'ENVIAR UMA MENSAGEM', hint: 'qual tecla envia' },
       improvePrompt: { title: 'MELHORAR O PROMPT', hint: 'o que o botão da estrela pede' },
       voice: { title: 'ENTRADA POR VOZ', hint: 'ditar em vez de digitar' },
       voiceLanguage: { title: 'IDIOMA FALADO', hint: 'o que o ditado escuta' },
@@ -70,6 +71,7 @@ export const pt: Dict = {
       defaultMode: { label: 'Modo padrão', sub: 'Com o que as novas abas começam' },
       composerLayout: { label: 'Layout do campo', sub: 'Onde fica o campo de escrita' },
       pasteCollapse: { label: 'Texto colado', sub: 'Quando uma colagem vira um chip' },
+      sendKey: { label: 'Enviar uma mensagem', sub: 'Qual tecla envia' },
       improvePrompt: { label: 'Melhorar o prompt', sub: 'O que o botão da estrela pede' },
       voice: { label: 'Entrada por voz', sub: 'Dite com a sua própria chave da Deepgram' },
       language: { label: 'Idioma', sub: 'Em que idioma o painel fala' },
@@ -172,6 +174,14 @@ export const pt: Dict = {
     from: (lines) => `A partir de ${lines} linhas`,
     foldLabel: 'Recolher colagens longas',
     foldSub: (min, max) => `A partir de quantas linhas - ${min} a ${max}`,
+  },
+
+  sendKey: {
+    note: 'Qual tecla solta a mensagem. A outra quebra a linha, então uma mensagem de vários parágrafos é digitada com a mesma tecla de qualquer forma.',
+    enter: 'Enter',
+    enterSub: 'Shift+Enter quebra a linha',
+    modEnter: (mod: string): string => `${mod}+Enter`,
+    modEnterSub: 'Enter quebra a linha',
   },
 
   improvePrompt: {
@@ -415,6 +425,15 @@ export const pt: Dict = {
     jumpToLatest: 'Ir para a mais recente',
     copyBlock: 'Copiar este bloco',
     copyReply: 'Copiar a resposta inteira',
+    copyMessage: 'Copiar esta mensagem, com os caminhos do que foi anexado',
+    reuse: {
+      label: 'Editar e enviar de novo',
+      hint: 'Devolver esta mensagem ao campo de entrada, para editar e enviar de novo',
+      lostImages: (n: number): string =>
+        n === 1
+          ? 'Volta ao campo de entrada, mas a imagem colada não - anexe-a de novo'
+          : `Volta ao campo de entrada, mas as ${n} imagens coladas não - anexe-as de novo`,
+    },
     pastedLines: (n) => `${n} ${n === 1 ? 'linha colada' : 'linhas coladas'}`,
     pasteClose: 'Recolher de novo',
     copyPaste: 'Copiar o texto colado',

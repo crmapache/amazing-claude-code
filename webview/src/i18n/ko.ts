@@ -30,6 +30,7 @@ export const ko: Dict = {
       defaultMode: { title: '기본 모드', hint: '새 탭이 시작하는 모드' },
       composerLayout: { title: '입력창 배치', hint: '입력창을 두는 자리' },
       pasteCollapse: { title: '붙여넣은 텍스트', hint: '붙여넣기를 칩으로 접는 기준' },
+      sendKey: { title: '메시지 보내기', hint: '어떤 키로 보낼지' },
       improvePrompt: { title: '프롬프트 다듬기', hint: '별 버튼이 요청하는 내용' },
       voice: { title: '음성 입력', hint: '타이핑 대신 말하기' },
       voiceLanguage: { title: '말하는 언어', hint: '받아쓰기가 알아들을 언어' },
@@ -70,6 +71,7 @@ export const ko: Dict = {
       defaultMode: { label: '기본 모드', sub: '새 탭이 시작하는 모드' },
       composerLayout: { label: '입력창 배치', sub: '입력창을 두는 자리' },
       pasteCollapse: { label: '붙여넣은 텍스트', sub: '붙여넣기를 칩으로 접는 기준' },
+      sendKey: { label: '메시지 보내기', sub: '어떤 키로 보낼지' },
       improvePrompt: { label: '프롬프트 다듬기', sub: '별 버튼이 요청하는 내용' },
       voice: { label: '음성 입력', sub: '내 Deepgram 키로 받아쓰기' },
       language: { label: '언어', sub: '패널이 쓰는 언어' },
@@ -171,6 +173,14 @@ export const ko: Dict = {
     from: (lines) => `${lines}줄부터`,
     foldLabel: '긴 붙여넣기 접기',
     foldSub: (min, max) => `몇 줄부터 접을지 - ${min}~${max}`,
+  },
+
+  sendKey: {
+    note: '어떤 키로 메시지를 보낼지. 다른 키는 줄을 바꿉니다 - 여러 단락으로 쓰는 메시지는 어느 쪽을 골라도 같은 키로 씁니다.',
+    enter: 'Enter',
+    enterSub: 'Shift+Enter는 줄바꿈',
+    modEnter: (mod: string): string => `${mod}+Enter`,
+    modEnterSub: 'Enter는 줄바꿈',
   },
 
   improvePrompt: {
@@ -412,6 +422,15 @@ export const ko: Dict = {
     jumpToLatest: '최신으로 이동',
     copyBlock: '이 블록 복사',
     copyReply: '답변 전체 복사',
+    copyMessage: '이 메시지 복사 - 첨부는 경로로',
+    reuse: {
+      label: '고쳐서 다시 보내기',
+      hint: '이 메시지를 입력창으로 되돌려 고쳐서 다시 보냅니다',
+      lostImages: (n: number): string =>
+        n === 1
+          ? '입력창으로 돌아가지만 붙여넣은 이미지는 함께 오지 않습니다. 다시 첨부하세요'
+          : `입력창으로 돌아가지만 붙여넣은 이미지 ${n}장은 함께 오지 않습니다. 다시 첨부하세요`,
+    },
     pastedLines: (n) => `${n}줄 붙여넣음`,
     pasteClose: '다시 접기',
     copyPaste: '붙여넣은 텍스트 복사',

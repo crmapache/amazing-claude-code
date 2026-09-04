@@ -17,6 +17,7 @@ internal object ClaudePreferences {
         val mode: String,
         val composerLayout: String,
         val pasteCollapse: String,
+        val sendKey: String,
         val improveInstructions: String,
         val language: String,
     )
@@ -27,6 +28,7 @@ internal object ClaudePreferences {
         mode = mode,
         composerLayout = composerLayout,
         pasteCollapse = pasteCollapse,
+        sendKey = sendKey,
         improveInstructions = improveInstructions,
         language = language,
     )
@@ -64,6 +66,18 @@ internal object ClaudePreferences {
     var pasteCollapse: String
         get() = read(PASTE_COLLAPSE_KEY)
         set(value) = write(PASTE_COLLAPSE_KEY, value.trim())
+
+    /**
+     * Which key sends a message out of the input field: "modEnter" for Cmd/Ctrl+Enter, anything else -
+     * an empty value included - for Enter, which is what the panel did before the setting existed (see
+     * normalizeSendKey in sendKey.ts).
+     *
+     * Machine-wide beside the layout and the paste above, and for the same reason: which key sends is a
+     * habit of the person's hands, not a property of the repository.
+     */
+    var sendKey: String
+        get() = read(SEND_KEY_KEY)
+        set(value) = write(SEND_KEY_KEY, value.trim())
 
     /**
      * What the improve button asks for, in the person's own words. Empty means the built-in text (see
@@ -220,6 +234,7 @@ internal object ClaudePreferences {
     private const val MODE_KEY = "acc.mode"
     private const val COMPOSER_LAYOUT_KEY = "acc.composerLayout"
     private const val PASTE_COLLAPSE_KEY = "acc.pasteCollapse"
+    private const val SEND_KEY_KEY = "acc.sendKey"
     private const val IMPROVE_INSTRUCTIONS_KEY = "acc.improve.instructions"
     private const val LANGUAGE_KEY = "acc.language"
     private const val EXECUTABLE_KEY = "acc.executable"

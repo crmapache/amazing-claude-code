@@ -141,6 +141,11 @@ internal object RemoteCommands {
          */
         "setPasteCollapse",
         /**
+         * Which key sends a message - the same kind of setting as the two above, and about a keyboard the
+         * phone does not have: there a message goes by a button held under the thumb (see sendKey.ts).
+         */
+        "setSendKey",
+        /**
          * The language of the interface, which is a machine-wide setting like the ones above it: the panel
          * on the desk speaks it too, and so do the push notifications this side writes. A phone that could
          * change it would be changing the language of a screen its owner is not looking at.

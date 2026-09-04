@@ -346,6 +346,9 @@ internal class ClaudePanel(
             // is a value here too: it puts the panel's own default back (see setPasteCollapse in App).
             "setPasteCollapse" -> ClaudePreferences.pasteCollapse = field("lines")
 
+            // Which key sends a message out of the input field - "enter" or "modEnter" (see sendKey.ts).
+            "setSendKey" -> ClaudePreferences.sendKey = field("key")
+
             // An empty value is a value here: it means "follow the IDE", which is what the picker's own
             // first entry sets (see the language screen in SideMenu). Told to everyone afterwards rather
             // than only to whoever asked: the setting is machine-wide, and a second window - or a phone -

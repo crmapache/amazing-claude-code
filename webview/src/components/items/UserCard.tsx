@@ -4,7 +4,8 @@ import { Caret } from './Caret'
 import { CopyButton } from './CopyButton'
 import { chipFile, chipLabel, chipTitle, pasteBlockPreview, pasteBody, pasteLineCount } from '../../feed/reference'
 import { COPY_ATTRIBUTE } from '../../feed/copy'
-import { clipboardText } from '../../feed/tokens'
+import { clipboardMessage, clipboardText } from '../../feed/tokens'
+import { reusableMessage } from '../../feed/reuse'
 import type { Chip, ChipKind, UserItem } from '../../feed/types'
 import type { CardState } from '../../hooks/useCardState'
 import { useOpenFile } from '../../hooks/useOpenFile'
@@ -27,10 +28,25 @@ interface UserCardProps {
   cards: CardState
   /** Open a link from one's own message in the system browser. */
   onOpenLink: (url: string) => void
+  /**
+   * Put this message back into the input field, chips and quotes and all (see feed/reuse.ts).
+   *
+   * Absent where there is no field to put it into - the phone has one, but its own, holding plain text
+   * and its own pictures rather than the panel's tokens (see mobile/screens/Composer). There the copy
+   * button beside this one is the whole answer.
+   */
+  onReuse?: (item: UserItem) => void
 }
 
-export const UserCard = ({ item, cards, onOpenLink }: UserCardProps) => {
+export const UserCard = ({ item, cards, onOpenLink, onReuse }: UserCardProps) => {
   const t = useT()
+  /*
+   * What the two buttons in the head do, worked out here rather than on the press: the tooltip has to
+   * say beforehand that a picture cannot come back (its bytes are not in a conversation read off the
+   * disk), and a person who learns that after pressing has already lost the field they were typing in.
+   */
+  const reuse = useMemo(() => reusableMessage(item), [item])
+  const copied = useMemo(() => clipboardMessage(item), [item])
 
   return (
   <div className={s.user}>
@@ -38,6 +54,29 @@ export const UserCard = ({ item, cards, onOpenLink }: UserCardProps) => {
       <span className={s.label}>{t.feed.you}</span>
       <span className={s.time}>{item.time}</span>
       <div className={s.spacer} />
+
+      {/* The two of them in a box of their own rather than as two more children of the head: the head
+          spaces its children out for a label and a time standing apart, and two little squares set that
+          far from each other read as two unrelated buttons. The gap is the pair's own, the same one the
+          bubble and the heart stand at down by the field (see .endPair). */}
+      <div className={s.userActions}>
+        {/* The message itself, and the paths of what was attached to it rather than the captions the
+            chips wear: a caption means something inside this panel and nothing in a terminal or a task
+            (see clipboardText). This is the button the feedback asked for by name. */}
+        <CopyButton text={copied} className={s.userAction} title={t.feed.copyMessage} />
+
+        {onReuse ? (
+          <button
+            type="button"
+            className={s.userAction}
+            aria-label={t.feed.reuse.label}
+            data-tooltip={reuse.lostImages > 0 ? t.feed.reuse.lostImages(reuse.lostImages) : t.feed.reuse.hint}
+            onClick={() => onReuse(item)}
+          >
+            <ReuseArrow />
+          </button>
+        ) : null}
+      </div>
     </div>
 
     {/* The quote is shown whole right here: without it a question like "but why?" hangs in the air -
@@ -70,6 +109,20 @@ export const UserCard = ({ item, cards, onOpenLink }: UserCardProps) => {
   </div>
   )
 }
+
+/**
+ * An arrow curving back into a field - "take this back to where it was written".
+ *
+ * A drawing rather than a character: ↩ and ⤺ are not in the panel's font and fall through to whatever
+ * the system has, at a size and weight of their own beside a letter set in ours (the same reason a
+ * hotkey's caps are drawn - see HotkeyCaps).
+ */
+const ReuseArrow = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3.4 6.6h6.4a3 3 0 0 1 0 6H6.2" />
+    <path d="M5.8 4.2 3.4 6.6l2.4 2.4" />
+  </svg>
+)
 
 /**
  * The text is shown exactly as it was typed - without markup and without rewrapping of ours: the lines

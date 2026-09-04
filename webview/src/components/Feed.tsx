@@ -6,7 +6,7 @@ import { parseParagraphs } from '../feed/markdown'
 import { placeShift, rowAtEdge, type FeedMemory } from '../feed/place'
 import { matchSpans } from '../feed/searchText'
 import type { PaintedTerm } from '../protocol'
-import type { FeedItem, FeedRowItem, ToolItem } from '../feed/types'
+import type { FeedItem, FeedRowItem, ToolItem, UserItem } from '../feed/types'
 import type { CardState } from '../hooks/useCardState'
 import s from './feed.module.css'
 import { BashCard } from './items/BashCard'
@@ -81,6 +81,11 @@ interface FeedProps {
   /** Open a link from the agent's answer in the system browser. */
   onOpenLink: (url: string) => void
   /**
+   * Take a sent message back into the input field, to be corrected and sent again (see feed/reuse.ts).
+   * Absent on the phone: the field there is its own and holds plain text rather than the panel's tokens.
+   */
+  onReuse?: (item: UserItem) => void
+  /**
    * A page of this conversation further back than the EARLIER mark - see historyPage in feed/build.ts.
    * Both screens want it: a tab opens a past conversation with its end rather than the whole of it (see
    * ClaudeHistory.opening), and a phone is handed the end of a live one. Undefined leaves the mark a
@@ -138,6 +143,7 @@ export const Feed = ({
   onPlanDecision,
   onDismissError,
   onOpenLink,
+  onReuse,
   onLoadEarlier,
   earlierPages,
   scrollRef,
@@ -642,6 +648,7 @@ export const Feed = ({
               onPlanDecision={onPlanDecision}
               onDismissError={onDismissError}
               onOpenLink={onOpenLink}
+              onReuse={onReuse}
               onLoadEarlier={onLoadEarlier}
             />
           </div>
@@ -701,6 +708,7 @@ interface ItemViewProps {
   onPlanDecision: (itemId: string, decision: 'approve' | 'keepPlanning') => void
   onDismissError: (id: string) => void
   onOpenLink: (url: string) => void
+  onReuse?: (item: UserItem) => void
   onLoadEarlier?: () => void
 }
 
@@ -725,11 +733,12 @@ const ItemView = memo(({
   onPlanDecision,
   onDismissError,
   onOpenLink,
+  onReuse,
   onLoadEarlier,
 }: ItemViewProps) => {
   switch (item.kind) {
     case 'user':
-      return <UserCard item={item} cards={cards} onOpenLink={onOpenLink} />
+      return <UserCard item={item} cards={cards} onOpenLink={onOpenLink} onReuse={onReuse} />
 
     case 'bash':
       return <BashCard item={item} />

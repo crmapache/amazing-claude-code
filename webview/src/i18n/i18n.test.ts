@@ -90,6 +90,8 @@ const SHARED_WITH_ENGLISH: Record<string, Locale[]> = {
   'menu.footer': ['ru', 'uk', 'es', 'pt-BR', 'zh-Hans', 'de', 'fr', 'ja', 'ko'],
   'effort.tags.ultra': ['ru', 'uk', 'es', 'pt-BR', 'zh-Hans', 'de', 'fr', 'ja', 'ko'],
   'selectors.modeHint': ['ru', 'uk', 'es', 'pt-BR', 'zh-Hans', 'de', 'fr', 'ja', 'ko'],
+  // The name of a key, which every keyboard prints the same way - the sentence under it is translated.
+  'sendKey.enter': ['ru', 'uk', 'es', 'pt-BR', 'zh-Hans', 'de', 'fr', 'ja', 'ko'],
   // Words the Latin languages happen to write exactly as English does.
   'menu.titles.menu.title': ['pt-BR', 'fr'],
   'menu.titles.plugins.title': ['es', 'pt-BR', 'de', 'fr'],

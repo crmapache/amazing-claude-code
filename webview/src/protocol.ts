@@ -323,6 +323,11 @@ type ShellMessageBody =
          */
         pasteCollapse?: string
         /**
+         * Which key sends a message - 'enter' or 'modEnter'. Unset means Enter, which is what the panel
+         * did before the setting existed (see normalizeSendKey).
+         */
+        sendKey?: string
+        /**
          * The language chosen by hand. Empty - which is the usual case - means "whatever the IDE
          * speaks", so that a Chinese IDE gets a Chinese panel without anyone having to find the switch.
          */
@@ -1268,6 +1273,8 @@ export type WebviewMessage =
   | { type: 'setComposerLayout'; layout: string }
   /** From how many lines a paste folds into a chip; '0' never folds, an empty string restores the default. */
   | { type: 'setPasteCollapse'; lines: string }
+  /** Which key sends a message - 'enter' or 'modEnter'. Machine-wide, like the layout (see sendKey.ts). */
+  | { type: 'setSendKey'; key: string }
   /**
    * What language the panel speaks. An empty string is a value, not a missing one: it means "follow the
    * IDE", which is what the picker's first entry sets and what a panel nobody has touched already does.

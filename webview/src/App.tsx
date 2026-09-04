@@ -74,6 +74,8 @@ import { bashCommand, shellText, type ShellRun } from './feed/bash'
 import { contextOf, initialPanelState, reducePanel, type PanelState } from './feed/build'
 import { deferFollowUpForCompact } from './feed/compact'
 import { PASTE_COLLAPSE_DEFAULT, PASTE_COLLAPSE_NEVER, pasteCollapseLines, referenceChip } from './feed/reference'
+import { normalizeSendKey, sendKeyOptions, sendKeySummary, type SendKey } from './sendKey'
+import { reusableMessage } from './feed/reuse'
 import { isUntouchedTab, tabHolding } from './feed/resume'
 import { chatHits, rowOf } from './feed/search'
 import { deriveSessionTitle } from './feed/title'
@@ -406,6 +408,14 @@ export const App = () => {
    * screen: the screen is thrown away every time the menu goes back a step.
    */
   const [pasteCollapseLast, setPasteCollapseLast] = useState(PASTE_COLLAPSE_DEFAULT)
+  /**
+   * Which key sends a message out of the input field - Enter, or Cmd/Ctrl+Enter (see sendKey.ts).
+   *
+   * Enter until the IDE says otherwise, for the same reason the folding above starts at its default: the
+   * harness has no IDE behind it, and a field that sent on a different key there would be a different
+   * field from the one in the plugin.
+   */
+  const [sendKey, setSendKeyState] = useState<SendKey>('enter')
   /**
    * And what the panel is drawn with: a panel dragged down to a strip has no height for the default
    * layout, and compact is what exists for that room (see layoutForRoom). The choice above is what the
@@ -1396,6 +1406,9 @@ export const App = () => {
               const folds = pasteCollapseLines(message.preferences.pasteCollapse)
               setPasteCollapseState(folds)
               if (folds !== PASTE_COLLAPSE_NEVER) setPasteCollapseLast(folds)
+              // Read unconditionally as well: an empty value means Enter, which is an answer rather than
+              // a silence - it is what a panel nobody has asked already does.
+              setSendKeyState(normalizeSendKey(message.preferences.sendKey))
               setLanguage({
                 chosen: message.preferences.language ?? '',
                 ide: message.preferences.ideLanguage ?? '',
@@ -2233,6 +2246,12 @@ export const App = () => {
     if (lines !== PASTE_COLLAPSE_NEVER) setPasteCollapseLast(lines)
   }, [])
 
+  /** And which key sends it - the third setting the field itself is made of. */
+  const setSendKey = useCallback((key: SendKey) => {
+    send({ type: 'setSendKey', key })
+    setSendKeyState(key)
+  }, [])
+
   /**
    * The decision on a plan card - one point for both buttons: it marks the plan decided (after that the
    * card is not drawn, see Feed) and answers the agent, which stands at this very place.
@@ -3051,7 +3070,7 @@ export const App = () => {
    * improve chain (see improveSources), which is right: the draft is no longer the one that was
    * rewritten.
    */
-  const applyTokens = (sessionId: string, tokens: UserToken[], ours = false) => {
+  const applyTokens = useCallback((sessionId: string, tokens: UserToken[], ours = false) => {
     const apply = applyToComposer.current
 
     if (!apply || sessionId !== activeRef.current) {
@@ -3065,7 +3084,34 @@ export const App = () => {
     } finally {
       applyingImprove.current = false
     }
-  }
+  }, [editDraft])
+
+  /**
+   * A sent message, taken back into the input field to be corrected and sent again (the button in its
+   * card - see UserCard and feed/reuse.ts).
+   *
+   * It goes in through the field, like a rewrite, so it is one step of the undo history: a press over a
+   * half-written draft is a Cmd+Z away rather than a loss. What was in the field before is not merged
+   * with it - the two are different messages, and glueing them together would make a third nobody wrote.
+   *
+   * A stable callback because the feed memoizes its rows by their props (see ItemView): a fresh handler
+   * on every render would rebuild every card of the conversation on every chunk of a printing answer,
+   * which is the very cost that memo is there to avoid.
+   */
+  const reuseMessage = useCallback(
+    (item: UserItem) => {
+      const session = activeRef.current
+      const { tokens } = reusableMessage(item)
+
+      // The quotes travel beside the tokens rather than inside them (see the composer's own quotes
+      // above the field), so they are put back the same way - as a draft of this tab's.
+      editDraft(session, {
+        quotes: item.quotes.map((text, index) => ({ id: `r-${Date.now()}-${index}`, text })),
+      })
+      applyTokens(session, tokens)
+    },
+    [applyTokens, editDraft],
+  )
 
   /**
    * The way back: what stands in the field is a rewrite nobody has touched, and this puts the person's own
@@ -3590,6 +3636,7 @@ export const App = () => {
       modeMenuOptions(t, availableModes).find((option) => option.id === normalizeMode(prefs.mode))?.label ?? '',
     composerLayout: composerLayoutOptions(t).find((option) => option.id === chosenLayout)?.label ?? '',
     pasteCollapse: pasteCollapseSummary(t, pasteCollapse),
+    sendKey: sendKeySummary(sendKey),
     improvePrompt: improveInstructions.instructions.trim()
       ? t.settings.improveSummary.custom
       : t.settings.improveSummary.builtIn,
@@ -3923,6 +3970,7 @@ export const App = () => {
               onPlanDecision={decidePlan}
               onDismissError={dismissError}
               onOpenLink={openLink}
+              onReuse={reuseMessage}
               onLoadEarlier={loadEarlier}
               earlierPages={panel.earlierPages}
               focus={feedFocus?.session === active ? feedFocus : undefined}
@@ -3977,6 +4025,7 @@ export const App = () => {
             planMode={mode === 'plan'}
             contextPercent={context.percent}
             pasteCollapseLines={pasteCollapse}
+            sendKey={sendKey}
             commands={commands}
             models={models}
             meters={metersNode}
@@ -4320,6 +4369,15 @@ export const App = () => {
 
         {sideMenu.open && sideMenu.screen === 'pasteCollapse' ? (
           <PasteCollapse t={t} lines={pasteCollapse} last={pasteCollapseLast} onPick={setPasteCollapse} />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'sendKey' ? (
+          <ChoiceList
+            options={sendKeyOptions(t)}
+            selected={sendKey}
+            note={t.sendKey.note}
+            onPick={(id) => setSendKey(normalizeSendKey(id))}
+          />
         ) : null}
 
         {sideMenu.open && sideMenu.screen === 'improvePrompt' ? (
