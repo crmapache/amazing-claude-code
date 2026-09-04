@@ -8,6 +8,7 @@ import com.intellij.execution.process.ProcessOutputTypes
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Key
 import com.intellij.util.concurrency.AppExecutorUtil
+import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -42,6 +43,26 @@ internal object ClaudeControlPing {
     fun request(
         workingDirectory: String?,
         subtype: String,
+        /**
+         * Whose subscription to ask about. Empty is the CLI's ordinary sign-in.
+         *
+         * This is what lets an account be asked for its limits WITHOUT switching to it: the credential
+         * travels per process, so a ping in that account's environment answers about that account while
+         * the person goes on working on another. It is also the only honest way to put figures beside a
+         * row on the accounts screen - a stored credential proves nothing about what is left in it.
+         */
+        accountId: String = "",
+        /**
+         * Whether this question gets a config directory of its own.
+         *
+         * For the usage it must. The CLI keeps the figures it last fetched in a file every account
+         * shares and answers out of it, silently, whenever a fetch does not come back - so a shared
+         * config directory is how one account's percentages end up under another account's name (see
+         * AccountStore.usageProbeEnvironment). For the model catalogue it must not: that answer is about
+         * the account rather than about a moment, there is nothing to borrow, and a directory of its own
+         * would only be one more thing to go wrong.
+         */
+        isolated: Boolean = false,
         onResult: (JsonObject) -> Unit,
         onError: (String) -> Unit,
     ) {
@@ -52,6 +73,22 @@ internal object ClaudeControlPing {
         }
 
         AppExecutorUtil.getAppExecutorService().submit {
+            // A named account that will not resolve asks nothing: the alternative is a process that
+            // answers truthfully about the wrong subscription, and figures on the wrong row are worse
+            // than none. Off the caller's thread, because an isolated question makes its directory here
+            // and whoever asked may be carrying a conversation for the whole line (see ProjectUsage).
+            val accounts = ClaudeAccounts.getInstance()
+            val environment = if (isolated) {
+                accounts.usageProbeVariables(accountId, workingDirectory)
+            } else {
+                accounts.variablesFor(accountId, workingDirectory)
+            }
+
+            if (environment == null) {
+                onError("That account is unavailable.")
+                return@submit
+            }
+
             val commandLine = GeneralCommandLine(executable.absolutePath)
                 .withParameters(
                     "--print",
@@ -62,7 +99,7 @@ internal object ClaudeControlPing {
                     "--safe-mode",
                     "--permission-mode", "bypassPermissions",
                 )
-                .withEnvironment(ClaudeExecutable.environment())
+                .withEnvironment(environment)
                 .withCharset(Charsets.UTF_8)
                 .apply { workingDirectory?.let { withWorkingDirectory(Path.of(it)) } }
 

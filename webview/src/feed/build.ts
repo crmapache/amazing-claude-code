@@ -133,11 +133,31 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
       // agent frees itself without sending a result at all. Then this status is the only trace of the
       // stop, and without a line of its own the feed would say nothing about it: the work simply froze
       // mid-sentence.
-      const stoppedSilently = action.status === 'idle' && state.stopRequestedAt !== undefined
+      // Either kind of stop: the person's, or the IDE's own to move the conversation to another
+      // account (see stoppedForAccount). The second has no result at all when the turn would not stop
+      // and the process was taken down, and then this status is the only trace there is.
+      const stoppedSilently =
+        action.status === 'idle' && (state.stopRequestedAt !== undefined || state.stoppedForAccount === true)
       // Reconnecting to a background turn (see below) counts as a new turn for the pause as well -
       // otherwise it would drag along a wait from a completely different turn, one this tab knew nothing
       // about.
       const turnReconnected = action.status === 'running' && state.turnStartedAt === undefined
+
+      // What was running when the process went is closed with it - cards AND their counters, which live
+      // apart in startedAt: a record left behind there goes on recomputing a duration for a call that
+      // ended, on every tick, for as long as the tab is open.
+      // Background subagents survive the person's own Stop - that stops what the turn stood for, while
+      // they were launched to run apart from it. They do NOT survive a move to another account: the
+      // process is replaced, and everything it was running goes with it, so a chip left ticking is a
+      // clock against a CLI that is gone.
+      const settled = stoppedSilently
+        ? closeUnfinished(
+            state,
+            now,
+            { reason: 'stopped', tone: 'bad' },
+            state.stoppedForAccount === true ? 'none' : 'background',
+          )
+        : null
 
       const next: PanelState = {
         ...state,
@@ -145,6 +165,7 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         // Since a status genuinely arrived, there is nothing left to wait for - the optimistic Stop and
         // an old crash mark (if the process is working again) lose their meaning.
         stopRequestedAt: undefined,
+        stoppedForAccount: undefined,
         crashed: action.status === 'running' ? false : state.crashed,
         // Usually the turn is already marked through 'prompt' - this is only the fallback route: the
         // 'running' status caught the panel up by itself, without a local prompt (after reconnecting to a
@@ -157,14 +178,21 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         pausedMs: action.status === 'idle' || turnReconnected ? 0 : state.pausedMs,
         waitStartedAt: action.status === 'idle' ? undefined : state.waitStartedAt,
         seq: stoppedSilently ? state.seq + 1 : state.seq,
-        items: stoppedSilently
+        startedAt: settled?.startedAt ?? state.startedAt,
+        items: settled
           ? [
-              ...state.items,
+              // Without this the tool cards and the subagent chips of the broken-off turn keep their
+              // live clocks against a process that no longer exists, until somebody closes the tab - the
+              // same hole the result route below has always covered and this one never did.
+              ...settled.items,
               {
                 id: `meta-${state.seq}`,
                 kind: 'meta',
                 stats: [STOPPED_BY_YOU],
-                outcome: { state: 'stopped' as const, duration: '' },
+                outcome: {
+                  state: state.stoppedForAccount === true ? ('movedAccount' as const) : ('stopped' as const),
+                  duration: '',
+                },
               },
             ]
           : state.items,
@@ -204,6 +232,9 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
 
     case 'stopRequested':
       return { ...state, stopRequestedAt: now }
+
+    case 'stoppedForAccount':
+      return { ...state, stoppedForAccount: true }
 
     case 'processExited':
       // The process is gone right in the middle of a pause before a retry - there is nobody left to
@@ -1067,8 +1098,8 @@ const applyAgentEvent = (
       // turn with an ordinary result a little before its time (see ClaudeSession.interrupt). The only
       // trace that this is not a natural end but a Stop/Escape is that the stop request is still standing
       // uncleared at this moment.
-      const cancelled = state.stopRequestedAt !== undefined
-      const outcome = resultOutcome(event, cancelled)
+      const cancelled = state.stopRequestedAt !== undefined || state.stoppedForAccount === true
+      const outcome = resultOutcome(event, cancelled, state.stoppedForAccount === true)
       const stats = resultStats(outcome)
 
       // The refusal goes into the feed BEFORE the turn's result: it happened earlier, and "Worked 3s"
@@ -1101,7 +1132,8 @@ const applyAgentEvent = (
               reason: 'turnEnded' as const,
               tone: 'bad',
             },
-        cancelled ? 'background' : 'all',
+        // The same rule as the silent stop above: a move takes the process down with everything on it.
+        !cancelled ? 'all' : state.stoppedForAccount === true ? 'none' : 'background',
       )
 
       return {
@@ -1112,6 +1144,7 @@ const applyAgentEvent = (
         streamingId: undefined,
         streamingThinking: '',
         stopRequestedAt: undefined,
+        stoppedForAccount: undefined,
         // The turn ended here and now with a real result - we do not wait for a separate status:'idle'
         // from the backend to clear turnStartedAt: until it arrived the setInterval in App.tsx would tick
         // for nothing a while longer.
@@ -2057,8 +2090,9 @@ export const STOPPED_BY_YOU = 'Stopped by you'
 const resultOutcome = (
   event: Extract<AgentEvent, { type: 'result' }>,
   cancelled: boolean,
+  forAccount: boolean,
 ): MetaItem['outcome'] => ({
-  state: cancelled ? 'stopped' : 'worked',
+  state: !cancelled ? 'worked' : forAccount ? 'movedAccount' : 'stopped',
   duration: typeof event.duration_ms === 'number' ? formatDuration(event.duration_ms) : '',
 })
 
@@ -2075,10 +2109,12 @@ const resultStats = (outcome: MetaItem['outcome']): string[] => {
   if (!outcome) return []
 
   const { state, duration } = outcome
-  if (state !== 'stopped') return duration ? [`Worked ${duration}`] : []
+  if (state === 'worked') return duration ? [`Worked ${duration}`] : []
 
   // Not "Worked": the turn did not work through, it was broken off halfway, and the caption is obliged to
-  // say exactly that - otherwise an interrupted turn is indistinguishable from a finished one.
+  // say exactly that - otherwise an interrupted turn is indistinguishable from a finished one. One
+  // marker for both ways of being broken off, because what reads it wants one thing - that this turn is
+  // not worth a notification (see MetaItem.stats). Which of the two it was, the row says in words.
   return [duration ? `${STOPPED_BY_YOU} · ${duration}` : STOPPED_BY_YOU]
 }
 

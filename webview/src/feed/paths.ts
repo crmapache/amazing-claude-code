@@ -31,6 +31,17 @@ export interface FileRef {
    */
   endLine?: number
   endColumn?: number
+  /**
+   * This names a folder rather than a file, and a click on it shows the folder instead of opening it.
+   *
+   * Carried because the hover has to say what the click does, and only this side can say it before the
+   * click: the IDE learns what the path is by asking the disk, which is a question with an answer far
+   * too late for a tooltip. So the panel marks only what is a folder beyond doubt - a trailing separator,
+   * a dot-name the list of known dotfiles does not have - and leaves everything else to be called a file
+   * (see fileRef). The IDE decides for real regardless: whatever turns out to be a folder is shown as one
+   * (see OpenInEditor).
+   */
+  folder?: true
 }
 
 /** Characters no filename carries, and which are how a path gets smuggled past the eye. */
@@ -105,10 +116,21 @@ const KNOWN_EXTENSIONS = new Set([
 export interface KnownFiles {
   /** Whether this, as written - a bare name or a relative path - names one of the project's files. */
   has(path: string): boolean
+  /**
+   * Whether it names one of the project's folders - `webview/src/feed`, with or without the slash at
+   * the end.
+   *
+   * Asked for the same reason as [has], and answering a question shape cannot: a folder has no
+   * extension to be recognised by, so `src/components` and `и/или` are the same shape and only the list
+   * tells them apart. The list leaves out what it never walks into - the dot-folders, `node_modules`,
+   * the build output (see ClaudeFileSearch) - so a folder it does not have simply stays plain text
+   * unless the path itself starts at a root (see fileRef).
+   */
+  folder(path: string): boolean
 }
 
 /** No list at all: the harness, the phone, the panel before the shell has answered. */
-export const NOTHING_KNOWN: KnownFiles = { has: () => false }
+export const NOTHING_KNOWN: KnownFiles = { has: () => false, folder: () => false }
 
 /**
  * A lookup over the shell's list: relative paths with forward slashes, folders with a slash at the end.
@@ -120,25 +142,32 @@ export const NOTHING_KNOWN: KnownFiles = { has: () => false }
  */
 export const knownFiles = (files: readonly string[]): KnownFiles => {
   const byName = new Map<string, string[]>()
+  const folders = new Map<string, string[]>()
 
   for (const file of files) {
-    if (file.endsWith('/')) continue
-    const name = file.slice(file.lastIndexOf('/') + 1)
+    const folder = file.endsWith('/')
+    const entry = folder ? file.slice(0, -1) : file
+    const name = entry.slice(entry.lastIndexOf('/') + 1)
     if (!name) continue
-    const paths = byName.get(name)
-    if (paths) paths.push(file)
-    else byName.set(name, [file])
+    const into = folder ? folders : byName
+    const paths = into.get(name)
+    if (paths) paths.push(entry)
+    else into.set(name, [entry])
+  }
+
+  /** The same tail match for both halves: the name has to be the same, and the folders in front of it too. */
+  const lookup = (index: Map<string, string[]>, path: string): boolean => {
+    const written = path.replace(/\\/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, '')
+    const name = written.slice(written.lastIndexOf('/') + 1)
+    const paths = index.get(name)
+    if (!paths) return false
+    if (!written.includes('/')) return true
+    return paths.some((candidate) => candidate === written || candidate.endsWith(`/${written}`))
   }
 
   return {
-    has(path) {
-      const written = path.replace(/\\/g, '/').replace(/^(?:\.\/)+/, '')
-      const name = written.slice(written.lastIndexOf('/') + 1)
-      const paths = byName.get(name)
-      if (!paths) return false
-      if (!written.includes('/')) return true
-      return paths.some((candidate) => candidate === written || candidate.endsWith(`/${written}`))
-    },
+    has: (path) => lookup(byName, path),
+    folder: (path) => lookup(folders, path),
   }
 }
 
@@ -160,6 +189,19 @@ const DRIVE = /^[A-Za-z]:[\\/]/
 
 /** What a path may not contain anywhere: whitespace, a glob's wildcards, a shell's redirections. */
 const FORBIDDEN = /[\s*?"<>|]/
+
+/**
+ * A name that is nothing but a dot and a word: `.claude`, `.venv`, `.ssh` - and `.gitignore` too.
+ *
+ * Which of those is a folder cannot be told apart by shape at all, so it is told apart by the list of
+ * known dotfiles above: what is in it is a file, and everything else with this shape is a folder. That
+ * is the whole of the case in the report this rule was written for - `~/.claude` read as a file with a
+ * `claude` extension, offered to the editor, and silently opening nothing.
+ */
+const DOT_NAME = /^\.[A-Za-z][A-Za-z0-9]{0,14}$/
+
+/** A path that begins somewhere absolute rather than in the project: `/var/log`, `C:\Users`, `~/.claude`. */
+const ROOTED = /^(?:[/\\]|~[/\\]|[A-Za-z]:[\\/])/
 
 /**
  * The dot and what follows it in the last segment: letters, then letters or digits - never a version's
@@ -201,19 +243,27 @@ export const fileRef = (text: string, bare = true, known: KnownFiles = NOTHING_K
   // A colon anywhere else is not a path's - it is a label, a time, a ratio.
   if (path.slice(drive ? 2 : 0).includes(':')) return null
 
-  const lastSegment = path.split(/[/\\]/).at(-1) ?? ''
+  const pieces = path.split(/[/\\]/)
+  const separated = pieces.length > 1
+  // A separator at the very end is a folder said outright - `webview/src/feed/` - and leaves the piece
+  // after it empty, so the name to look at is the one before.
+  const trailing = pieces.at(-1) === '' && pieces.some((piece) => piece !== '' && piece !== '.' && piece !== '..')
+  const lastSegment = (trailing ? pieces.at(-2) : pieces.at(-1)) ?? ''
   const extension = EXTENSION.exec(lastSegment)?.[1]?.toLowerCase()
 
   // The project's own list first: a file it has is a file, and no rule about shape gets a say.
-  const listed = (bare || extension !== undefined) && known.has(path)
+  const listed = !trailing && (bare || extension !== undefined) && known.has(path)
 
   if (!listed) {
+    if (folderNamed(path, lastSegment, extension, trailing, separated, named, known)) {
+      return { path, folder: true }
+    }
+
     // A last segment without an extension is a directory, or a word we cannot tell from one.
     if (!extension) return null
 
     // A separator or a line number makes the shape a path by itself; a bare name has to earn it by its
     // extension, or every `state.items` in an answer becomes a link to a file that was never there.
-    const separated = /[/\\]/.test(path)
     const shaped = separated || named || (bare && KNOWN_EXTENSIONS.has(extension))
     if (!shaped) return null
   }
@@ -229,6 +279,38 @@ export const fileRef = (text: string, bare = true, known: KnownFiles = NOTHING_K
     // its end is a line rather than a character in one.
     ...(column === undefined || endColumn === undefined ? {} : { endColumn }),
   }
+}
+
+/**
+ * Whether this path names a folder - and one worth a click, which is a stricter question.
+ *
+ * The project's own list answers first, exactly as it does for a file: a folder it has is a folder,
+ * whatever the name looks like, and that is the only way `webview/src/feed` written without a slash at
+ * the end is told from `и/или`. A separator is still required, so that a bare `utils` does not turn the
+ * word into a link across an answer.
+ *
+ * Past the list two shapes say "folder" plainly: a separator at the end, and a dot-name the list of known
+ * dotfiles does not have. Neither is enough on its own, because a link that leads nowhere is worse than
+ * plain text and `foo/bar/` inside a comment is a shape rather than a place - so the path has to start at
+ * a root as well, and then the IDE can go and look (see OpenInEditor).
+ *
+ * A line number wins over all of it: nobody writes one after a folder, and `Foo.kt:12` is an edit
+ * someone wants to see.
+ */
+const folderNamed = (
+  path: string,
+  lastSegment: string,
+  extension: string | undefined,
+  trailing: boolean,
+  separated: boolean,
+  named: boolean,
+  known: KnownFiles,
+): boolean => {
+  if (named) return false
+  if (separated && known.folder(path)) return true
+
+  const shaped = trailing || (DOT_NAME.test(lastSegment) && !KNOWN_EXTENSIONS.has(extension ?? ''))
+  return shaped && ROOTED.test(path)
 }
 
 /** A figure a person wrote, or nothing: a zero and a nonsense are the same as unsaid. */

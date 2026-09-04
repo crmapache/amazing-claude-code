@@ -35,14 +35,12 @@ export const zh: Dict = {
       voiceLanguage: { title: '口述语言', hint: '听写要听哪种语言' },
       voiceDevice: { title: '麦克风', hint: '用哪一个来听' },
       language: { title: '语言', hint: '面板使用的语言' },
+      accounts: { title: 'Claude 账号', hint: '这些工作由哪个订阅付费' },
       feedback: { title: '反馈', hint: '问题、想法，或者只是打个招呼' },
       feedbackLog: { title: '将要附带的内容', hint: '发送之前的完整报告' },
     },
 
     groups: {
-      project: '本项目',
-      devices: '设备',
-      plugin: '插件本身',
       author: '来自作者',
     },
 
@@ -52,6 +50,7 @@ export const zh: Dict = {
       mcp: { label: 'MCP 服务器', sub: '状态、登录、重新连接' },
       plugins: { label: '插件', sub: '已安装、浏览、市场' },
       remote: { label: '远程访问', sub: '状态、中继、已配对设备' },
+      accounts: { label: 'Claude 账号', sub: '不用退出登录也能切换' },
       settings: { label: '设置', sub: '提示音、模式、布局、语言' },
       feedback: { label: '发送反馈', sub: '问题、想法，或者只是打个招呼' },
     },
@@ -378,6 +377,7 @@ export const zh: Dict = {
     useThis: '用这个',
     whereLooked: '面板找过哪些地方',
     checkAgain: '再检查一次',
+    orSwitch: '或切换到其他账号：',
     signIn: '登录 Claude Code',
     signInText:
       '登录只做一次，在 IDE 的终端里：Claude 会打开浏览器并等你回来。面板会自己接上。',
@@ -510,6 +510,7 @@ export const zh: Dict = {
     result: {
       worked: (duration) => (duration ? `用时 ${duration}` : '已完成'),
       stopped: (duration) => (duration ? `你停止了 · ${duration}` : '你停止了'),
+      movedAccount: (duration) => (duration ? `已停止以切换账号 · ${duration}` : '已停止以切换账号'),
     },
 
     modelSwitch: { label: '模型', note: '这是 Claude Code 自己换的，不是你' },
@@ -559,7 +560,7 @@ export const zh: Dict = {
       unconfirmed: '未确认',
     },
 
-    copy: { copied: '已复制', click: '点击复制', openFile: '在编辑器中打开' },
+    copy: { copied: '已复制', click: '点击复制', openFile: '在编辑器中打开', openFolder: '显示文件夹' },
   },
 
   chrome: {
@@ -591,6 +592,56 @@ export const zh: Dict = {
       text: '重新加载是安全的：对话保存在面板背后的 Claude Code 进程里，不会随面板一起消失。',
       button: '重新加载面板',
     },
+  },
+
+  accounts: {
+    empty: { title: '工作与个人，并行使用', body: '在多个 Claude 账号之间切换，无需退出登录。技能、钩子、设置和历史记录保持共享。' },
+    intro: '一切都在这里选择的账号上运行 - 所有打开的对话都会转到它上面，正在进行一轮的对话会被停止以便转移。',
+    unnamed: '登录中…',
+    defaultName: 'Claude Code 登录',
+    current: '使用中',
+    signingIn: '正在登录',
+    use: '选择',
+    switching: '切换中…',
+    rename: '重命名',
+    save: '保存',
+    logout: '退出登录',
+    logoutConfirm: '退出 Claude Code？',
+    forget: '忘记',
+    add: '添加账号',
+    adding: '等待登录完成…',
+    cancel: '取消',
+    addHint: '会打开一个终端来完成登录。你现有的账号不会被动到。',
+    mcpNote:
+      'MCP 服务器按账号分别登录，所以新账号要重新授权一次。技能、钩子、设置和历史记录是共用的。',
+    designAuthorize: '授权 Claude Design',
+    designNote:
+      'Claude Design 也是按账号登录的，而且只能在终端里完成。这会为你正在用的账号打开一个终端；之后 DesignSync 在面板里就能自己用了。',
+    aliasPlaceholder: '工作、家里、某个客户…',
+    absent: '没有存下来的登录凭据。要用这个账号，请重新登录一次。',
+    fiveHour: '5 小时',
+    weekly: '每周',
+    row: {
+      one: '只有一个账号',
+      adding: '登录中…',
+    },
+    unavailable: {
+      ignored: '这个 Claude Code 分不开两个登录。请先更新它，再打开这个页面。',
+      wsl: 'WSL 里的项目用不了：Claude Code 跑在 WSL 里，不在这台机器上。',
+      not_signed_in: '请先登录 Claude Code，然后在这里添加第二个账号。',
+      api_key: '这台机器用 API 密钥登录，它对每个对话都生效。只要设了它，就换不了账号。',
+    },
+    outcome: {
+      'did-not-land': '这次登录没有完成，所以什么都没添加。',
+      'no-terminal': '终端没能打开，登录也就没开始。',
+      'no-executable': '在这台机器上没找到 Claude Code。',
+      'no-store': '没能为新账号建好文件夹。',
+      'design-no-account': '认不出你正在用的是哪个账号，所以什么也没打开。',
+      'not-supported': '此 Claude Code 无法区分两个登录，因此未添加任何账号。',
+      'logout-failed': '退出失败。请在终端中尝试。',
+      'already-running': '已经有一个登录在进行中了。',
+      unknown: '这次没成功。',
+    } as Record<string, string>,
   },
 
   remote: {
@@ -898,6 +949,7 @@ export const zh: Dict = {
     fork: '在新标签页里继续这个对话',
     login: '在 IDE 终端里登录 Claude Code',
     logout: '退出登录 - 会打开 IDE 终端',
+    designLogin: '在 IDE 终端里授权 Claude Design',
     model: '切换本次会话使用的模型',
     effort: '设置 Claude 动手前思考多久',
     context: '当前上下文窗口里装了什么',

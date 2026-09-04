@@ -49,6 +49,18 @@ const harnessLanguage = (): string => new URLSearchParams(window.location.search
 /** Signing in and opening the project - the shared start for every scenario. */
 export const bootstrap: ScenarioStep[] = [
   shell({ type: 'auth', installed: true, loggedIn: true, email: 'you@example.com', plan: 'Max' }),
+  // The accounts arrive by themselves, like every other project fact, so the menu row carries the
+  // account in force before anybody opens the screen behind it.
+  shell({
+    type: 'accounts',
+    capability: 'supported',
+    current: '',
+    accounts: [
+      { id: '', alias: '', email: 'you@company.com', plan: 'max', health: 'present', isDefault: true },
+      { id: 'a2', alias: 'Personal', email: 'you@personal.com', plan: 'pro', health: 'present' },
+      { id: 'a3', alias: 'Old client', email: 'me@client.com', plan: 'pro', health: 'absent' },
+    ],
+  }),
   shell({
     type: 'init',
     projectName: 'demo-project',

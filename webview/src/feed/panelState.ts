@@ -201,6 +201,20 @@ export interface PanelState {
    * still does not answer.
    */
   stopRequestedAt?: number
+  /**
+   * The IDE is stopping this turn so the conversation can move to another Claude account.
+   *
+   * Kept apart from [stopRequestedAt] rather than folded into it, and the reason is on screen: that one
+   * also arms the red "kill the process" button once the stop has gone unanswered for eight seconds -
+   * which is the very deadline the move itself waits out. Folded together, a person who pressed nothing
+   * would be offered a frightening button for a stop they did not ask for, and in the case that matters
+   * most - a switch made in another IDE window entirely - they would have no idea what it was about.
+   *
+   * What it does share is everything else: the turn is captioned as stopped rather than finished, the
+   * sound and the phone's push are held back, and the tool calls it was in the middle of are closed
+   * instead of being left running against a process that is gone.
+   */
+  stoppedForAccount?: boolean
   /** The conversation's process has died on its own since the last turn - the tab has something to point at. */
   crashed: boolean
   /** A context compaction is running right now - the status line should name that rather than "working". */
@@ -394,6 +408,8 @@ export type PanelAction =
   | { kind: 'tick' }
   /** Stop was pressed - the status is genuinely awaited rather than assumed. */
   | { kind: 'stopRequested' }
+  /** The IDE is stopping this turn to move the conversation to another account - see stoppedForAccount. */
+  | { kind: 'stoppedForAccount' }
   /**
    * The process died on its own. Everything that was "running" would hang like that forever unless it is
    * closed outright and the user told what happened.

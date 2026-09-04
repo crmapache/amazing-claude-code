@@ -29,10 +29,13 @@ internal class ExtraUsageAnnouncements {
      * was about cannot be told apart from the next one, and a call not made is worse than one made twice.
      */
     @Synchronized
-    fun claim(window: String, resetsAt: Long?): Boolean {
+    fun claim(account: String, window: String, resetsAt: Long?): Boolean {
         if (window.isEmpty() && resetsAt == null) return true
 
-        if (!announced.add("$window:${resetsAt ?: 0}")) return false
+        // The account is part of the key, and it has to be: five-hour windows are aligned to the wall
+        // clock, so two accounts can run out in the same second - and without it the second person to
+        // start spending money is never told, because the first one's claim already covered that key.
+        if (!announced.add("$account:$window:${resetsAt ?: 0}")) return false
 
         while (announced.size > KEPT) announced.remove(announced.first())
         return true

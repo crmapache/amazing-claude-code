@@ -64,6 +64,138 @@ const SAMPLE_REPORT = [
   '11:04:23 panel    uncaught TypeError',
 ].join('\n')
 
+
+/**
+ * The accounts screen, played by the harness.
+ *
+ * Three invented accounts so every state on the screen is reachable without an IDE: the one in use, a
+ * second healthy one to switch to and move a chat onto, and a third whose credential is gone. Adding a
+ * fourth takes a moment and every third attempt fails, so the waiting state and the failure line are
+ * both visible. Their figures ride the ordinary `usage` messages, keyed by account, exactly as they do
+ * in the plugin - which is what makes the per-account limits on the rows real here too.
+ */
+let harnessAccounts = [
+  // The sign-in Claude Code already had, first and always: it is what a person who has never touched this
+  // screen is actually running on, and leaving it out is what made the screen claim they had no account.
+  { id: '', alias: '', email: 'you@company.com', plan: 'max', health: 'present' as const, isDefault: true },
+  { id: 'a2', alias: 'Personal', email: 'you@personal.com', plan: 'pro', health: 'present' as const },
+  { id: 'a3', alias: 'Old client', email: 'me@client.com', plan: 'pro', health: 'absent' as const },
+]
+
+let harnessCurrent = ''
+let harnessAdds = 0
+let harnessAdding = false
+/** How many Claude Design sign-ins have been asked for - every second one is played as a refusal. */
+let harnessDesignLogins = 0
+
+/** Invented shares, so the rows carry real-looking figures rather than a bare tick. */
+const ACCOUNT_USAGE: Record<string, { session: number; week: number }> = {
+  '': { session: 34, week: 61 },
+  a2: { session: 88, week: 12 },
+  a3: { session: 5, week: 5 },
+}
+
+const sendAccounts = (): void => {
+  window.__accReceive?.({
+    type: 'accounts',
+    accounts: harnessAccounts,
+    capability: 'supported',
+    current: harnessCurrent,
+    pending: harnessAdding,
+  })
+
+  // The figures arrive the way they really do - one `usage` message per account.
+  for (const account of harnessAccounts) {
+    const share = ACCOUNT_USAGE[account.id] ?? { session: 20, week: 20 }
+    window.__accReceive?.({
+      type: 'usage',
+      account: account.id,
+      session: { percent: share.session, resets: new Date(Date.now() + 2 * 3600_000).toISOString() },
+      week: { percent: share.week, resets: new Date(Date.now() + 4 * 86_400_000).toISOString() },
+    })
+  }
+}
+
+const answerAccounts = (message: WebviewMessage): void => {
+  if (message.type === 'accountList') sendAccounts()
+
+  if (message.type === 'accountUse') {
+    harnessCurrent = message.id
+    sendAccounts()
+  }
+
+  if (message.type === 'accountRename') {
+    harnessAccounts = harnessAccounts.map((one) => (one.id === message.id ? { ...one, alias: message.alias } : one))
+    sendAccounts()
+  }
+
+  // Logging out removes the CLI's own sign-in and moves to whatever else is signed in here.
+  if (message.type === 'accountLogout') {
+    harnessAccounts = harnessAccounts.filter((one) => one.id !== message.id)
+    if (harnessCurrent === message.id) harnessCurrent = harnessAccounts[0]?.id ?? ''
+    sendAccounts()
+  }
+
+  if (message.type === 'accountForget') {
+    harnessAccounts = harnessAccounts.filter((one) => one.id !== message.id)
+    if (harnessCurrent === message.id) harnessCurrent = harnessAccounts[0]?.id ?? ''
+
+    sendAccounts()
+  }
+
+  // Giving up on a sign-in halfway: the drawer goes, the list comes back without it.
+  if (message.type === 'accountCancel') {
+    harnessAdding = false
+    sendAccounts()
+  }
+
+  if (message.type === 'accountAdd') {
+    harnessAdding = true
+    harnessAdds += 1
+    sendAccounts()
+
+    const failing = harnessAdds % 3 === 0
+    const mine = harnessAdds
+
+    window.setTimeout(() => {
+      // Cancelled while this was in flight, or another sign-in started since: neither one is this one.
+      if (!harnessAdding || harnessAdds !== mine) return
+
+      harnessAdding = false
+
+      if (failing) {
+        sendAccounts()
+        window.__accReceive?.({ type: 'accountOutcome', code: 'did-not-land' })
+        return
+      }
+
+      harnessAccounts = [
+        ...harnessAccounts,
+        {
+          id: `new${harnessAdds}`,
+          alias: '',
+          email: `added${harnessAdds}@example.com`,
+          plan: 'pro',
+          health: 'present' as const,
+        },
+      ]
+      sendAccounts()
+    }, 1_800)
+  }
+
+  /*
+   * Authorizing Claude Design. In the IDE this opens a terminal and says nothing back when it works, so
+   * the only thing there is to play here is the road where it does not: every second press answers with
+   * a refusal, which is what opens the accounts screen when the command was typed into the field.
+   */
+  if (message.type === 'designLogin') {
+    harnessDesignLogins += 1
+    if (harnessDesignLogins % 2 === 0) {
+      window.__accReceive?.({ type: 'accountOutcome', code: 'no-terminal' })
+    }
+  }
+}
+
 const answerFeedback = (message: WebviewMessage): void => {
   const state = (note?: string): void => {
     window.__accReceive?.({
@@ -788,6 +920,7 @@ const listenToPanel = () => {
     if (message) answerImprove(message)
     if (message) answerVoice(message)
     if (message) answerSearch(message)
+    if (message) answerAccounts(message)
   }
 
   window.dispatchEvent(new Event('acc:ready'))

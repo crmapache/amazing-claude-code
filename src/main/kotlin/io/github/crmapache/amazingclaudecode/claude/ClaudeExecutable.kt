@@ -4,6 +4,7 @@ import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.util.EnvironmentUtil
+import io.github.crmapache.amazingclaudecode.claude.accounts.AccountStore
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -39,7 +40,26 @@ internal object ClaudeExecutable {
      */
     fun systemAnswer(): String = askSystem() ?: "${lookupCommand().joinToString(" ")}: not found"
 
-    fun environment(): Map<String, String> = EnvironmentUtil.getEnvironmentMap()
+    /**
+     * The environment as a login shell sees it, untouched.
+     *
+     * The base every other environment here is built over, and the one the account register starts from
+     * (see AccountStore.environmentFor). Nothing but that register should need it raw.
+     */
+    fun rawEnvironment(): Map<String, String> = EnvironmentUtil.getEnvironmentMap()
+
+    /**
+     * The environment for the CLI's ordinary sign-in - the account every machine has had all along.
+     *
+     * Identical to what this returned before accounts existed, apart from one fill: on macOS `USER` is
+     * supplied when the environment does not carry it, because without it the CLI cannot name the
+     * keychain item it filed its own credential under and reports `loggedIn:false` on a perfectly
+     * signed-in machine (see AccountStore.withUserName). Nothing is ever overridden.
+     *
+     * A process that belongs to a NAMED account does not use this - it asks the register, which can
+     * refuse. See ClaudeAccounts.environmentFor.
+     */
+    fun environment(): Map<String, String> = AccountStore.withUserName(rawEnvironment())
 
     /**
      * Whether the CLI we found knows such a launch flag.

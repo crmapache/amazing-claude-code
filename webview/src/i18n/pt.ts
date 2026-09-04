@@ -35,14 +35,12 @@ export const pt: Dict = {
       voiceLanguage: { title: 'IDIOMA FALADO', hint: 'o que o ditado escuta' },
       voiceDevice: { title: 'MICROFONE', hint: 'por qual escutar' },
       language: { title: 'IDIOMA', hint: 'em que idioma o painel fala' },
+      accounts: { title: 'CONTAS DO CLAUDE', hint: 'qual assinatura paga o trabalho' },
       feedback: { title: 'FEEDBACK', hint: 'um bug, uma ideia ou só um oi' },
       feedbackLog: { title: 'O QUE VAI ANEXADO', hint: 'o relatório inteiro, antes de ir' },
     },
 
     groups: {
-      project: 'ESTE PROJETO',
-      devices: 'DISPOSITIVOS',
-      plugin: 'O PLUGIN',
       author: 'DO AUTOR',
     },
 
@@ -52,6 +50,7 @@ export const pt: Dict = {
       mcp: { label: 'Servidores MCP', sub: 'Estado, entrada, reconexão' },
       plugins: { label: 'Plugins', sub: 'Instalados, explorar, marketplaces' },
       remote: { label: 'Acesso remoto', sub: 'Estado, relay, dispositivos pareados' },
+      accounts: { label: 'Contas do Claude', sub: 'Trocar sem sair da conta' },
       settings: { label: 'Configurações', sub: 'Sons, modo, layout, idioma' },
       feedback: { label: 'Enviar feedback', sub: 'Um bug, uma ideia ou só um oi' },
     },
@@ -381,6 +380,7 @@ export const pt: Dict = {
     useThis: 'Usar este',
     whereLooked: 'Onde o painel procurou',
     checkAgain: 'Verificar de novo',
+    orSwitch: 'Ou troque para outra conta:',
     signIn: 'Entre no Claude Code',
     signInText:
       'O login é feito uma vez, no terminal da IDE: o Claude abre um navegador e espera você voltar. O painel percebe sozinho.',
@@ -513,6 +513,7 @@ export const pt: Dict = {
     result: {
       worked: (duration) => (duration ? `Trabalhou ${duration}` : 'Trabalhou'),
       stopped: (duration) => (duration ? `Você parou · ${duration}` : 'Você parou'),
+      movedAccount: (duration) => (duration ? `Interrompido para trocar de conta · ${duration}` : 'Interrompido para trocar de conta'),
     },
 
     modelSwitch: { label: 'MODELO', note: 'quem trocou foi o Claude Code, não você' },
@@ -563,7 +564,7 @@ export const pt: Dict = {
       unconfirmed: 'não confirmado',
     },
 
-    copy: { copied: 'Copiado', click: 'Clique para copiar', openFile: 'Abrir no editor' },
+    copy: { copied: 'Copiado', click: 'Clique para copiar', openFile: 'Abrir no editor', openFolder: 'Mostrar a pasta' },
   },
 
   chrome: {
@@ -595,6 +596,55 @@ export const pt: Dict = {
       text: 'Recarregar é seguro: suas conversas vivem nos processos do Claude Code atrás do painel e sobrevivem a ele.',
       button: 'Recarregar o painel',
     },
+  },
+
+  accounts: {
+    empty: { title: 'O do trabalho e o pessoal, lado a lado', body: 'Troque entre contas do Claude sem sair. Skills, hooks, configurações e histórico continuam compartilhados.' },
+    intro:
+      'Tudo funciona na conta escolhida aqui: todas as conversas abertas passam para ela, e a que estiver no meio de um turno é interrompida para poder passar.',
+    unnamed: 'Fazendo login…',
+    defaultName: 'Login do Claude Code',
+    current: 'em uso',
+    signingIn: 'fazendo login',
+    use: 'Selecionar',
+    switching: 'Trocando…',
+    rename: 'Renomear',
+    save: 'Salvar',
+    logout: 'Sair',
+    logoutConfirm: 'Sair do Claude Code?',
+    forget: 'Esquecer',
+    add: 'Adicionar uma conta',
+    adding: 'Esperando o login…',
+    cancel: 'Cancelar',
+    addHint: 'Um terminal abre para o login. Sua conta atual não é tocada.',
+    mcpNote: 'Os servidores MCP entram por conta, então uma conta nova autentica todos uma vez. Skills, hooks, configurações e histórico são compartilhados.',
+    designAuthorize: 'Autorizar o Claude Design',
+    designNote: 'O Claude Design também entra por conta, e só um terminal consegue fazer isso. Ele abre para a conta em uso; depois o DesignSync funciona sozinho no painel.',
+    aliasPlaceholder: 'Trabalho, casa, um cliente…',
+    absent: 'Nenhuma credencial guardada. Entre de novo para usar esta conta.',
+    fiveHour: '5h',
+    weekly: 'semana',
+    row: {
+      one: 'Uma conta',
+      adding: 'Fazendo login…',
+    },
+    unavailable: {
+      ignored: 'Este Claude Code não consegue separar dois logins. Atualize-o e abra esta tela de novo.',
+      wsl: 'Indisponível para um projeto dentro do WSL: o Claude Code roda lá, não nesta máquina.',
+      not_signed_in: 'Entre no Claude Code primeiro, depois adicione uma segunda conta aqui.',
+      api_key: 'Esta máquina entra com uma chave de API, que vale para todas as conversas. Não dá para trocar de conta enquanto ela estiver definida.',
+    },
+    outcome: {
+      'did-not-land': 'Esse login não terminou, então nada foi adicionado.',
+      'no-terminal': 'O terminal não abriu, então o login nem começou.',
+      'no-executable': 'O Claude Code não foi encontrado nesta máquina.',
+      'no-store': 'Não deu para criar uma pasta para a nova conta.',
+      'design-no-account': 'Não deu para saber qual é a conta em uso, então nada foi aberto.',
+      'not-supported': 'Este Claude Code não consegue separar dois logins, então nada foi adicionado.',
+      'logout-failed': 'Não foi possível sair. Tente em um terminal.',
+      'already-running': 'Já tem um login em andamento.',
+      unknown: 'Isso não funcionou.',
+    } as Record<string, string>,
   },
 
   remote: {
@@ -897,6 +947,7 @@ export const pt: Dict = {
     fork: 'continuar esta conversa numa aba nova',
     login: 'entrar no Claude Code pelo terminal da IDE',
     logout: 'sair - abre o terminal da IDE',
+    designLogin: 'autorizar o Claude Design no terminal da IDE',
     model: 'trocar o modelo desta sessão',
     effort: 'definir quanto o Claude pensa antes de agir',
     context: 'o que ocupa a janela de contexto agora',

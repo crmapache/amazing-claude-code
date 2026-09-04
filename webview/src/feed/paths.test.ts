@@ -252,3 +252,66 @@ describe('files the project is known to have', () => {
     ])
   })
 })
+
+/**
+ * A folder is a destination of its own - the IDE shows it rather than opening it (see OpenInEditor) - and
+ * the report that asked for this was `~/.claude` in an answer: read as a file with a `claude` extension,
+ * offered to the editor, and doing nothing at all when clicked.
+ *
+ * The rule is narrower than the one for files, because a folder has no extension to be recognised by: a
+ * shape alone is never enough, the path has to be somewhere as well.
+ */
+describe('folders named in an answer', () => {
+  const known = knownFiles(['src/utils/', 'webview/src/feed/', 'notes.md'])
+
+  it('reads a dot-name outside the list of known dotfiles as a folder', () => {
+    expect(fileRef('~/.claude')).toEqual({ path: '~/.claude', folder: true })
+    expect(fileRef('/home/ivan/.config')).toEqual({ path: '/home/ivan/.config', folder: true })
+  })
+
+  it('keeps the dotfiles it knows files', () => {
+    expect(fileRef('~/.gitignore')).toEqual({ path: '~/.gitignore' })
+    expect(fileRef('~/.claude/settings.json')).toEqual({ path: '~/.claude/settings.json' })
+  })
+
+  it('reads a separator at the end as a folder', () => {
+    expect(fileRef('/var/log/')).toEqual({ path: '/var/log/', folder: true })
+    expect(fileRef('~/Downloads/')).toEqual({ path: '~/Downloads/', folder: true })
+  })
+
+  /** A shape is not a place: the same words inside a comment must stay words. */
+  it('refuses a shape that starts nowhere and the project does not have', () => {
+    expect(fileRef('foo/bar/')).toBeNull()
+    expect(fileRef('src/utils')).toBeNull()
+  })
+
+  it('takes a folder the project has, written with a separator and with or without the slash', () => {
+    expect(fileRef('src/utils', true, known)).toEqual({ path: 'src/utils', folder: true })
+    expect(fileRef('src/utils/', true, known)).toEqual({ path: 'src/utils/', folder: true })
+    expect(fileRef('webview/src/feed', false, known)).toEqual({ path: 'webview/src/feed', folder: true })
+  })
+
+  it('does not turn a folder\'s bare name into a link', () => {
+    expect(fileRef('utils', true, known)).toBeNull()
+    expect(withFileRefs('the utils in question', known)).toEqual([{ text: 'the utils in question' }])
+  })
+
+  /** Two words with a slash between them are the shape of a path and nothing else about it. */
+  it('leaves a slash inside prose alone', () => {
+    expect(withFileRefs('и/или, w/e', known)).toEqual([{ text: 'и/или, w/e' }])
+  })
+
+  /** Nobody writes a line inside a folder, so the number is what the reference is about. */
+  it('keeps a line number a file, whatever the name looks like', () => {
+    expect(fileRef('~/.claude:12')).toEqual({ path: '~/.claude', line: 12 })
+    expect(fileRef('/home/ivan/.claude/hooks.ts:12')).toEqual({ path: '/home/ivan/.claude/hooks.ts', line: 12 })
+  })
+
+  it('marks the folder in ordinary prose too', () => {
+    expect(withFileRefs('lives in ~/.claude, next to the rest')).toEqual([
+      { text: 'lives in ' },
+      { text: '~/.claude', ref: { path: '~/.claude', folder: true } },
+      { text: ', next to the rest' },
+    ])
+  })
+})

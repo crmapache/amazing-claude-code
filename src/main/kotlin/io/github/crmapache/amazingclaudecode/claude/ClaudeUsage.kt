@@ -29,6 +29,24 @@ internal object ClaudeUsage {
 
         /** Whether this share is about the present window: the reset is still ahead, so it is. */
         fun isCurrent(now: Instant): Boolean = resetsAt?.isAfter(now) == true
+
+        /**
+         * Whether two shares are about one and the same window - to within minutes, rather than by
+         * string. The reset time is fixed, but the routes give it differently: a live conversation
+         * rounds to seconds ("20:30:00.000Z"), the server's summary carries microseconds of the moment
+         * it answered ("20:30:00.464237+00:00"), and two answers minutes apart differ in them. Compared
+         * as strings these would count as different windows, while real windows differ by five hours or
+         * a week.
+         *
+         * Two readers: the memory below, which must not reset itself at every step, and UsageProbes,
+         * which recognises one account's window turning up under another account's name.
+         */
+        fun sameWindowAs(other: Window): Boolean {
+            val here = resetsAt ?: return false
+            val there = other.resetsAt ?: return false
+
+            return abs(here.toEpochMilli() - there.toEpochMilli()) <= SAME_WINDOW_TOLERANCE_MS
+        }
     }
 
     /**
@@ -149,12 +167,9 @@ internal object ClaudeUsage {
             val currentAt = current?.resetsAt ?: return incoming
 
             return when {
-                // One and the same window to within minutes, rather than by string: the reset time is
-                // fixed, but the routes give it differently - a live conversation rounds to seconds
-                // ("20:30:00.000Z"), the server's summary carries microseconds
-                // ("20:30:00.464237+00:00"). Comparing strings would count these as different windows
-                // and reset the memory at every step, while real windows differ by five hours or a week.
-                abs(currentAt.toEpochMilli() - incomingAt.toEpochMilli()) <= SAME_WINDOW_TOLERANCE_MS ->
+                // One and the same window (see Window.sameWindowAs): the disagreement between the two
+                // routes is one of them lagging, so the larger share is the true one.
+                current.sameWindowAs(incoming) ->
                     incoming.copy(percent = maxOf(current.percent, incoming.percent))
                 // A window newer than the known one - the reset happened, we count afresh from it.
                 incomingAt.isAfter(currentAt) -> incoming

@@ -686,9 +686,24 @@
 
 /* --- The question before the irreversible ---------------------------------- */
 
+/* Its own backdrop rather than the menu's, and above it.
+   A confirmation shares the menu's rung (41) only until something is confirmed FROM the menu - the
+   accounts screen asks before logging out - and then the two are level, so the one drawn later wins and
+   the question hides behind the surface that raised it. A question about something irreversible is the
+   one thing that may never be covered, so it sits above every panel surface, the search window (45)
+   included. */
+.confirmScrim {
+  position: absolute;
+  top: var(--header-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 46;
+}
+
 .confirm {
   position: absolute;
-  z-index: 41;
+  z-index: 47;
   top: calc(var(--header-height) + 48px);
   left: 50%;
   transform: translateX(-50%);

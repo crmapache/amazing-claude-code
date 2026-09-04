@@ -116,6 +116,16 @@ describe('localCommand', () => {
     expect(localCommand(en, '/pr-review')).toBeNull()
   })
 
+  /*
+   * The one command here that is the panel's because the CLI will not run it: a streaming session does
+   * not have `/design-login` in its command list at all, so sent onwards it comes back as "isn't
+   * available in this environment" - a refusal to something the panel's own hint had just offered.
+   * Hyphens are the reason this is worth a test of its own: every other name here is one word.
+   */
+  it('takes over the Claude Design sign-in, which a streaming session cannot run', () => {
+    expect(localCommand(en, '/design-login')).toEqual({ name: 'design-login', argument: '' })
+  })
+
   it('recognises its own command when it has become a chip too', () => {
     const tokens: UserToken[] = [{ kind: 'chip', chip: { kind: 'cmd', value: 'fork' } }, { kind: 'text', value: ' ' }]
     expect(localCommand(en, tokensText(tokens))).toEqual({ name: 'fork', argument: '' })

@@ -50,6 +50,15 @@ internal class StatsCollector(
     private val ledger: StatsLedger = StatsLedger.getInstance(),
     /** Where "now" comes from - a test moves the clock; the IDE reads the wall. */
     private val clock: () -> Long = System::currentTimeMillis,
+    /**
+     * Which Claude account a conversation runs on - asked rather than held, because the conversations
+     * belong to the hub and this counter must not start owning them.
+     *
+     * Used for one thing: telling two accounts' exhausted windows apart (see [noteRateLimit]). The book
+     * itself is deliberately NOT split by account - it counts the person at the keyboard, and per-account
+     * books would visibly reset their streaks and hours on the first switch.
+     */
+    private val accountOf: (String) -> String = { "" },
 ) {
 
     /** A tool call whose result has not arrived: what it would count for, if it lands. */
@@ -172,7 +181,7 @@ internal class StatsCollector(
             "user" -> noteToolResults(conversation, event)
             "result" -> noteResult(sessionId, conversation, event)
             "system" -> noteSystem(conversation, event)
-            "rate_limit_event" -> noteRateLimit(line, event)
+            "rate_limit_event" -> noteRateLimit(sessionId, line, event)
         }
     }
 
@@ -346,13 +355,16 @@ internal class StatsCollector(
      * window running out is not counted: the "Ceiling" achievement is about the one that runs out several
      * times a day.
      */
-    private fun noteRateLimit(line: String, event: JsonObject) {
+    private fun noteRateLimit(sessionId: String, line: String, event: JsonObject) {
         val verdict = ClaudeRateLimit.of(line, now = clock()) ?: return
         if (!verdict.stopped || verdict.window.startsWith("seven_day")) return
 
         val info = event["rate_limit_info"] as? JsonObject
         val resetsAt = info?.get("resetsAt")?.jsonPrimitive?.contentOrNull.orEmpty()
-        val mark = "${verdict.window}:$resetsAt"
+        // The account is part of the mark: five-hour windows are aligned to the wall clock, so two
+        // accounts can run out in the same second, and without it the second one would not be counted
+        // at all. Adding to the key can only raise the count, never take a tier back.
+        val mark = "${accountOf(sessionId)}:${verdict.window}:$resetsAt"
 
         update { day -> if (day.ranOutWindows.add(mark)) day.ranOutFiveHour++ }
     }

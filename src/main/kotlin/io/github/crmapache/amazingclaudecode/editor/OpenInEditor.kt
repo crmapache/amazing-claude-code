@@ -1,5 +1,7 @@
 package io.github.crmapache.amazingclaudecode.editor
 
+import com.intellij.ide.actions.RevealFileAction
+import com.intellij.ide.projectView.ProjectView
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.thisLogger
@@ -8,12 +10,15 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.wm.ToolWindowId
+import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.ui.SimpleListCellRenderer
@@ -33,6 +38,11 @@ import java.io.File
  * that. What guards this is the door rather than the destination: the request is served by the panel's
  * own handler, which a network client never reaches, `openFile` is refused outright to anyone remote (see
  * RemoteCommands), and a network path is refused on both sides (see below and isOpenablePath).
+ *
+ * A folder is a destination too, and the one thing it cannot be is opened in the editor: it is shown
+ * instead - in the project's tree when it belongs to the project, in the system's file manager when it
+ * does not (see [reveal]). Before that a click on one did nothing at all, which is the answer a link must
+ * never give: `~/.claude` in an answer looked exactly like a file and behaved like plain text.
  *
  * A name is found the way "go to file" finds it. Half of what the agent writes in backticks is a bare
  * name - `Button.js`, `UserService.java` - and the first release of this looked for it at the project's
@@ -83,7 +93,9 @@ internal object OpenInEditor {
                     thisLogger().info("A file link from the panel pointed at nothing")
                 }
 
-                1 -> show(project, files.single(), place)
+                1 -> files.single().let { file ->
+                    if (file.isDirectory) reveal(project, file) else show(project, file, place)
+                }
 
                 else -> ApplicationManager.getApplication().invokeLater {
                     if (project.isDisposed) return@invokeLater
@@ -112,6 +124,56 @@ internal object OpenInEditor {
             FileEditorManager.getInstance(project).openTextEditor(descriptor, true)
                 ?.let { editor -> select(editor, line, place) }
         }
+    }
+
+    /**
+     * A folder, shown rather than opened - the editor has nothing to open for one.
+     *
+     * Inside the project it is shown in the project's own tree, which is where a folder is looked at in
+     * an IDE and where the rest of it is already visible; the tool window is raised for it, because
+     * asking to see a folder and being shown it behind a hidden panel is the same as not being shown it.
+     * Outside the project there is no tree it belongs to, so it goes to the system's file manager - the
+     * same road a saved picture takes (see ImageDownloads).
+     */
+    private fun reveal(project: Project, folder: VirtualFile) {
+        if (underProject(project, folder)) {
+            ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed) return@invokeLater
+
+                val select = Runnable { ProjectView.getInstance(project).select(null, folder, true) }
+                val window = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.PROJECT_VIEW)
+                if (window == null) select.run() else window.activate(select, true)
+            }
+            return
+        }
+
+        // A Linux without a desktop has nowhere to send it, and there is nothing to fall back on: the
+        // folder is outside the project by definition, so the tree has no row for it either.
+        if (!RevealFileAction.isSupported()) {
+            thisLogger().info("There is no file manager to show a folder in")
+            return
+        }
+
+        RevealFileAction.openDirectory(File(folder.path))
+    }
+
+    /**
+     * Whether the folder is one the project's tree has a row for.
+     *
+     * By the roots rather than by the index: an excluded folder - `build`, `node_modules` - is still
+     * drawn in the tree and still worth selecting there, while the index answers that it is not part of
+     * the project at all. The base directory is asked alongside them because a project may have no
+     * content roots configured yet, and its own folder is the one place a path most often points at.
+     */
+    private fun underProject(project: Project, file: VirtualFile): Boolean {
+        val roots = runCatching {
+            ReadAction.compute<List<VirtualFile>, RuntimeException> {
+                ProjectRootManager.getInstance(project).contentRoots.toList()
+            }
+        }.getOrDefault(emptyList())
+
+        val base = project.basePath?.let { LocalFileSystem.getInstance().findFileByPath(it) }
+        return (roots + listOfNotNull(base)).any { root -> VfsUtilCore.isAncestor(root, file, false) }
     }
 
     /**
@@ -211,12 +273,17 @@ internal object OpenInEditor {
      * panel refuses those too (see isOpenablePath) - both sides, because this one is the side that would
      * actually go there.
      *
-     * A directory is nothing here as well: the agent names those too (`Glob` over `src/`), and an editor
-     * has nothing to open for one.
+     * A directory is one of the answers: the agent names those too (`Glob` over `src/`, `~/.claude` in a
+     * sentence), and what happens to it afterwards is [reveal] rather than the editor.
      *
      * An absolute path, or one that resolves from the project's root, is the file it says. Anything else
      * relative is a name to look up (see [byName]): the agent writes `Button.js` for a file three folders
      * down, and `src/App.tsx` for `webview/src/App.tsx` when that is the folder it was working in.
+     *
+     * A `~` is expanded first (see [expandHome]) - and a path that started with one never goes on to the
+     * lookup by name, whether it expanded or not. It names a place outside the project, so a project file
+     * of the same name is not a worse answer than none: it is the wrong file, opened confidently.
+     * `~/.claude/settings.json` used to offer the project's own settings.json files to choose between.
      */
     private fun resolve(project: Project, path: String): List<VirtualFile> {
         val trimmed = path.trim()
@@ -225,17 +292,52 @@ internal object OpenInEditor {
         if (trimmed.any { it.isISOControl() }) return emptyList()
 
         val base = project.basePath
-        val absolute = File(trimmed).isAbsolute
-        val candidate = if (absolute || base == null) File(trimmed) else File(base, trimmed)
+        val written = expandHome(trimmed, homeFor(base))
+        val absolute = File(written).isAbsolute
+        val candidate = if (absolute || base == null) File(written) else File(base, written)
 
-        if (candidate.isFile) {
-            // refreshAndFind rather than find: a file the agent has just written may not be in the IDE's
-            // picture of the disk yet, and the one moment it is asked for is right after it appeared.
+        // refreshAndFind rather than find: a file the agent has just written may not be in the IDE's
+        // picture of the disk yet, and the one moment it is asked for is right after it appeared.
+        if (candidate.isFile || candidate.isDirectory) {
             return listOfNotNull(LocalFileSystem.getInstance().refreshAndFindFileByPath(candidate.absolutePath))
         }
 
-        if (absolute) return emptyList()
+        if (absolute || trimmed.startsWith("~")) return emptyList()
         return byName(project, trimmed)
+    }
+
+    /**
+     * `~` turned into the home directory it stands for, and everything else left exactly as written.
+     *
+     * The agent writes the home this way constantly - `~/.claude/settings.json` is the single most named
+     * path outside any project - and without this the panel handed the IDE a path that resolves from the
+     * project's root, found nothing there, and went looking for the name among the project's own files.
+     *
+     * `~user` is left alone: another person's home is not this one's, and guessing where it is by pasting
+     * a name after the home's parent is a guess this has no need to make.
+     *
+     * The arithmetic and nothing else, so that it can be asked without an IDE (see OpenInEditorTest).
+     */
+    fun expandHome(path: String, home: String?): String {
+        if (home.isNullOrBlank()) return path
+        if (path == "~") return home
+        if (!path.startsWith("~/") && !path.startsWith("~\\")) return path
+
+        return home.trimEnd('/', '\\') + path.substring(1)
+    }
+
+    /**
+     * The home a `~` in this project's conversation means, or null when it means one we cannot open.
+     *
+     * A project on a WSL share is another machine's disk: the CLI runs inside the distribution and its
+     * `~` is the distribution's home, while this JVM's is a Windows profile which may perfectly well have
+     * a `.claude` of its own in it (see ClaudeHome). Expanding to that one would open a real file that
+     * nobody named. Nothing is expanded then, and the path stays as written - which reaches the share
+     * check above and stops there.
+     */
+    private fun homeFor(basePath: String?): String? {
+        if (basePath != null && (basePath.startsWith("//") || basePath.startsWith("\\\\"))) return null
+        return System.getProperty("user.home")
     }
 
     /**

@@ -17,6 +17,16 @@ export interface AuthState {
 interface LoginGateProps {
   /** Empty until the shell has answered: we say so honestly. */
   auth: AuthState | null
+  /**
+   * The machine's other Claude accounts, when there are any - offered right here as a way out.
+   *
+   * This gate is an early return in front of the whole panel, the side menu included. So a person whose
+   * current account lost its credential would be locked out of the one screen that could fix it, with
+   * nothing on offer but signing that same dead account in again. One row of buttons is the difference
+   * between a dead end and a switch.
+   */
+  otherAccounts?: { id: string; label: string }[]
+  onSwitchAccount?: (id: string) => void
   /** The sign-in is already open in the terminal and we are waiting for it to finish. */
   waiting: boolean
   onLogin: () => void
@@ -31,7 +41,15 @@ interface LoginGateProps {
  * Showing an input field without a sign-in would be dishonest: the agent answers every question with a
  * single line about /login, while that command itself is unavailable in streaming mode.
  */
-export const LoginGate = ({ auth, waiting, onLogin, onRecheck, onSetExecutablePath }: LoginGateProps) => {
+export const LoginGate = ({
+  auth,
+  waiting,
+  otherAccounts,
+  onSwitchAccount,
+  onLogin,
+  onRecheck,
+  onSetExecutablePath,
+}: LoginGateProps) => {
   const t = useT()
   /**
    * The field holds what the person typed, and while they have typed nothing - the path already saved
@@ -106,6 +124,24 @@ export const LoginGate = ({ auth, waiting, onLogin, onRecheck, onSetExecutablePa
       <button type="button" className={s.gateButton} onClick={onLogin}>
         {waiting ? t.login.openTerminalAgain : t.login.logIn}
       </button>
+
+      {otherAccounts && otherAccounts.length > 0 && onSwitchAccount ? (
+        <>
+          <p className={s.gateText}>{t.login.orSwitch}</p>
+          <div className={s.gateRow}>
+            {otherAccounts.map((account) => (
+              <button
+                key={account.id}
+                type="button"
+                className={s.gateGhost}
+                onClick={() => onSwitchAccount(account.id)}
+              >
+                {account.label}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
 
       {waiting ? (
         <p className={s.gateWaiting}>{t.login.finishInTerminal}</p>

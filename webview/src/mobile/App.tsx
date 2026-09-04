@@ -4,7 +4,7 @@ import { deriveSessionTitle } from '../feed/title'
 import type { HistoryEntry, ShellMessage } from '../protocol'
 import { ClockContext } from '../hooks/useNow'
 import { planDecisionOf, useCardState } from '../hooks/useCardState'
-import { applyFact, emptyFacts, isFact, type ProjectFacts } from './facts'
+import { applyFact, emptyFacts, factsFor, isFact, type ProjectFacts } from './facts'
 import { LocaleProvider, activeLocale } from '../i18n'
 import { RemoteClock } from './clock'
 import { applyMessage, emptyFeed, feedTicks, tickFeed, type MobileFeed } from './feed'
@@ -92,6 +92,16 @@ export const App = () => {
    * somebody looks.
    */
   const [facts, setFacts] = useState<Record<string, ProjectFacts>>({})
+
+  /**
+   * Which Claude account each conversation runs on, by `chatKey`.
+   *
+   * Needed for one thing and it is not cosmetic: the subscription's figures belong to an account (see
+   * ProjectFacts.usage), two of them can be at work on that machine at the same moment, and the rings
+   * above this field answer "how much of MY subscription is left" - which has two answers unless the
+   * one paying for the conversation on screen is known. The empty string is the CLI's ordinary sign-in.
+   */
+  const [chatAccounts, setChatAccounts] = useState<Record<string, string>>({})
 
   /**
    * The conversations this phone has put away, by `agentId:sessionId`.
@@ -380,6 +390,14 @@ export const App = () => {
     // agent knows nothing about which cards a screen still counts as open, so it has no place in the
     // conversation's own state. Either device may have been the one that answered, and the other has to
     // stop saying that something is waiting for a person who has already dealt with it.
+    // Whose subscription pays for this conversation. It carries a session, so it arrives here rather
+    // than among the project's facts - and it is an opaque id, which is all a phone is ever told about
+    // an account (see ClaudeSessionHub.sendAccount).
+    if (message.type === 'account') {
+      const key = chatKey(agentId, projectKey ?? current.projectKey, message.sessionId)
+      setChatAccounts((held) => ({ ...held, [key]: message.accountId }))
+    }
+
     if (message.type === 'planResolved') {
       cards.decidePlan(message.id, planDecisionOf(message.decision))
     }
@@ -1176,7 +1194,10 @@ export const App = () => {
             cards={cards}
             title={entry?.title ?? NEW_SESSION_TITLE}
             project={entry?.projectName ?? ''}
-            facts={facts[`${screen.agentId}:${screen.projectKey}`] ?? emptyFacts()}
+            facts={factsFor(
+              facts[`${screen.agentId}:${screen.projectKey}`] ?? emptyFacts(),
+              chatAccounts[chatKey(screen.agentId, screen.projectKey, screen.sessionId)] ?? '',
+            )}
             connected={states[screen.agentId] === 'connected'}
             loading={!feed.loaded}
             voice={dictation}

@@ -19,9 +19,11 @@ import com.intellij.openapi.wm.WindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
+import com.intellij.util.Alarm
 import com.intellij.util.ui.JBUI
 import io.github.crmapache.amazingclaudecode.AccBundle
 import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
+import io.github.crmapache.amazingclaudecode.claude.accounts.AccountDesk
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.claude.SessionClient
 import io.github.crmapache.amazingclaudecode.editor.OpenInEditor
@@ -38,6 +40,10 @@ import io.github.crmapache.amazingclaudecode.webview.WebviewClipboard
 import io.github.crmapache.amazingclaudecode.webview.WebviewFileDrop
 import io.github.crmapache.amazingclaudecode.webview.WebviewHost
 import java.awt.BorderLayout
+import java.awt.Component
+import javax.swing.Box
+import javax.swing.BoxLayout
+import javax.swing.JButton
 import javax.swing.JComponent
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -84,6 +90,37 @@ internal class ClaudePanel(
     fun voiceSettingsChanged() = voice.sendConfig()
 
     /**
+     * The set of Claude accounts, or which one is current, changed somewhere on this machine.
+     *
+     * The register is the machine's while the figures hang off each project's own hub, so a window that
+     * is not told goes on drawing the previous account's rings and plan - for five minutes, until the
+     * sign-in round comes round, or indefinitely with its panel closed.
+     */
+    fun accountsChanged() {
+        accounts.sendList()
+        hub.auth.check()
+    }
+
+    /**
+     * The same list, without asking the CLI who is signed in again.
+     *
+     * Called when that answer has just arrived by itself (see ClaudeSessionHub, onSignedIn): the row in
+     * the menu needs the account's name, and re-checking here would only start the process that has this
+     * very moment finished.
+     */
+    fun accountsRefresh() = accounts.sendList()
+
+    /**
+     * The register was changed in another IDE on this machine - see AccountsWatch.
+     *
+     * The list as it stands and nothing else. `accountsChanged` above re-asks the CLI who is signed in
+     * and puts a usage question to every account, which is right when the change was made here and
+     * pointless when it was read out of a file: nothing about this machine's sign-in has moved, and the
+     * cost would be a process per account per project per open IDE on every press of Select next door.
+     */
+    fun accountsChangedElsewhere() = accounts.sendList(withHealth = false)
+
+    /**
      * Whether the panel is still alive. The platform answers that same question only in a deprecated
      * way, while a checked disposable answers it itself: it dies with its parent and from that moment
      * on honestly says "I am gone".
@@ -125,6 +162,9 @@ internal class ClaudePanel(
      */
     private val voice = VoiceDesk(project) { message -> webview?.send(message) }
 
+    /** The accounts screen behind the side menu - see AccountDesk. */
+    private val accounts = AccountDesk(project, hub, parentDisposable)
+
     /** When something was last dropped into the panel with the mouse - see [attachDropped]. */
     @Volatile
     private var lastDropAt = 0L
@@ -153,6 +193,19 @@ internal class ClaudePanel(
         watchIdeActivation()
     }
 
+    /** Whether the interface has said a single word to us - see [watchForSilence]. */
+    private var pageSpoke = false
+
+    /**
+     * The panel's own frame, holding either the interface or the notice about it never arriving.
+     *
+     * An ordinary BorderLayout with one child, and the child is swapped by hand. A CardLayout was the
+     * obvious way to hold two faces and is the wrong one here: it hides every card but the shown one,
+     * and an embedded browser hidden at the moment it is being built comes up as an empty rectangle -
+     * which is precisely the failure this whole notice exists to explain. Verified live, both ways.
+     */
+    private var frame: JBPanel<JBPanel<*>>? = null
+
     private fun buildWebview(parentDisposable: Disposable): JComponent {
         val host = WebviewHost(parentDisposable) { message -> handleWebviewMessage(message) }
         webview = host
@@ -166,7 +219,11 @@ internal class ClaudePanel(
             onDropped = ::attachDropped,
         )
 
-        return host.component
+        val frame = JBPanel<JBPanel<*>>(BorderLayout()).apply { add(host.component, BorderLayout.CENTER) }
+        this.frame = frame
+        watchForSilence(parentDisposable)
+
+        return frame
     }
 
     private fun buildUnsupportedNotice(): JComponent =
@@ -174,6 +231,67 @@ internal class ClaudePanel(
             border = JBUI.Borders.empty(16)
             add(JBLabel(AccBundle["webview.unsupported.text"]).apply { setAllowAutoWrapping(true) })
         }
+
+    /**
+     * What is shown when the interface never arrives.
+     *
+     * The one case worth naming by hand is an update applied to a running IDE: the handler that serves
+     * the interface to the embedded browser is registered for the whole IDE process and cannot be taken
+     * back (see the note at the top of plugin.xml), so after a live swap the page is asked of a plugin
+     * that is no longer there and nothing is served. What that leaves on screen is a grey rectangle with
+     * no word on it - and no way to report it either, since the feedback button lives inside the very
+     * panel that is missing. This is that word.
+     */
+    private fun buildStalledNotice(): JComponent =
+        JBPanel<JBPanel<*>>(BorderLayout()).apply {
+            border = JBUI.Borders.empty(16)
+
+            val column = JBPanel<JBPanel<*>>(null).apply {
+                layout = BoxLayout(this, BoxLayout.Y_AXIS)
+                add(
+                    JBLabel(AccBundle["webview.stalled.text"]).apply {
+                        setAllowAutoWrapping(true)
+                        alignmentX = Component.LEFT_ALIGNMENT
+                    },
+                )
+                add(Box.createVerticalStrut(JBUI.scale(12)))
+                add(
+                    JButton(AccBundle["webview.stalled.restart"]).apply {
+                        alignmentX = Component.LEFT_ALIGNMENT
+                        addActionListener { ApplicationManager.getApplication().restart() }
+                    },
+                )
+            }
+
+            add(column, BorderLayout.NORTH)
+        }
+
+    /**
+     * The panel is given a while to come up, and is asked about afterwards.
+     *
+     * The signal is a word from the page itself rather than the browser's own "loaded": a page served as
+     * a 404 loads perfectly well and stays empty, which is precisely the failure being watched for here.
+     */
+    private fun watchForSilence(parentDisposable: Disposable) {
+        val alarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, parentDisposable)
+        alarm.addRequest({
+            if (pageSpoke) return@addRequest
+
+            thisLogger().warn("The panel's interface never reported ready")
+            DiagnosticsLog.note(DiagnosticsLog.PANEL, "interface silent for ${STALL_MS / 1000}s")
+            show(buildStalledNotice())
+        }, STALL_MS)
+    }
+
+    /** Put one thing in the frame in place of whatever is there - the browser, or the notice about it. */
+    private fun show(face: JComponent) {
+        val frame = frame ?: return
+
+        frame.removeAll()
+        frame.add(face, BorderLayout.CENTER)
+        frame.revalidate()
+        frame.repaint()
+    }
 
     /**
      * A message from the page.
@@ -198,11 +316,22 @@ internal class ClaudePanel(
         when (field("type")) {
             "ready" -> {
                 thisLogger().info("Webview reported ready")
+                // Back from the notice, for a page that took its time rather than never came. Only then:
+                // putting the browser back on every ready would take it out of the tree and return it on
+                // an ordinary page reload, and a browser taken out of the tree is the empty rectangle
+                // above.
+                val late = !pageSpoke && frame?.componentCount == 1 && frame?.getComponent(0) !== webview?.component
+                pageSpoke = true
+                if (late) webview?.component?.let { show(it) }
                 // Whatever the page already has: after a reload of the page alone (the conversations
                 // outlive it now) only the tail is worth sending.
                 hub.attach(client.id, seenSequences(payload))
                 sendDockAnchor()
                 sendTypography()
+                // The menu's row carries the account in force, so the list has to be there before anybody
+                // opens the screen behind it - otherwise that row sits blank next to a full one for
+                // remote access, and the screen it opens jumps from a skeleton to its content mid-slide.
+                accounts.sendList()
             }
 
             "pick" -> pickAttachment()
@@ -221,6 +350,33 @@ internal class ClaudePanel(
             // first entry sets (see the language screen in SideMenu). Told to everyone afterwards rather
             // than only to whoever asked: the setting is machine-wide, and a second window - or a phone -
             // left speaking the old language would be showing a setting that is no longer true.
+            /*
+             * The accounts screen.
+             *
+             * Handled here rather than in SessionCommands, beside setLanguage and the voice family and
+             * for the same guarantee: a network client does not physically reach this door. They are in
+             * RemoteCommands.DENIED as well, but that list is a second lock rather than the only one -
+             * choosing whose subscription pays for the work is not a decision a phone may make.
+             */
+            "accountList" -> accounts.sendList()
+
+            "accountUse" -> accounts.use(field("id"))
+
+            "accountAdd" -> accounts.add()
+
+            "accountCancel" -> accounts.cancelAdd()
+
+            "accountForget" -> accounts.forget(field("id"))
+
+            "accountLogout" -> accounts.logout(field("id"))
+
+            "accountRename" -> accounts.rename(field("id"), field("alias"))
+
+            // Authorizing Claude Design. At this door for the same reason as its neighbours: it opens a
+            // terminal and a browser sign-in on this machine, in the credential drawer of the account in
+            // force (see DesignLogin).
+            "designLogin" -> accounts.designLogin()
+
             "setLanguage" -> {
                 ClaudePreferences.language = field("language")
                 ClaudePanels.everyPanel { it.localeChanged() }
@@ -705,5 +861,15 @@ internal class ClaudePanel(
     private companion object {
         /** Within this window a repeated drop counts as an echo of the first rather than a second file. */
         const val DROP_ECHO_MS = 700L
+
+        /**
+         * How long the interface is given to say its first word before the panel says one instead.
+         *
+         * Long enough that a machine busy with its own startup is never accused - the page is served
+         * from the plugin's own archive and normally speaks within a second or two - and short enough
+         * that nobody sits in front of an empty rectangle deciding the plugin is dead.
+         */
+        const val STALL_MS = 20_000
+
     }
 }

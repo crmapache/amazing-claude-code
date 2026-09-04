@@ -35,14 +35,12 @@ export const uk: Dict = {
       voiceLanguage: { title: 'МОВА ДИКТУВАННЯ', hint: 'яку мову розпізнавати' },
       voiceDevice: { title: 'МІКРОФОН', hint: 'через який слухати' },
       language: { title: 'МОВА', hint: 'якою мовою говорить панель' },
+      accounts: { title: 'АКАУНТИ CLAUDE', hint: 'яка підписка платить за роботу' },
       feedback: { title: 'ЗВОРОТНИЙ ЗВ’ЯЗОК', hint: 'баг, ідея або просто привіт' },
       feedbackLog: { title: 'ЩО ДОДАЄТЬСЯ', hint: 'увесь звіт цілком, до відправлення' },
     },
 
     groups: {
-      project: 'ЦЕЙ ПРОЄКТ',
-      devices: 'ПРИСТРОЇ',
-      plugin: 'САМ ПЛАГІН',
       author: 'ВІД АВТОРА',
     },
 
@@ -52,6 +50,7 @@ export const uk: Dict = {
       mcp: { label: 'Сервери MCP', sub: 'Стан, вхід, перепідключення' },
       plugins: { label: 'Плагіни', sub: 'Встановлені, каталог, маркетплейси' },
       remote: { label: 'Віддалений доступ', sub: 'Стан, релей, пристрої' },
+      accounts: { label: 'Акаунти Claude', sub: 'Перемкнутися, не виходячи' },
       settings: { label: 'Налаштування', sub: 'Звуки, режим, поле введення, мова' },
       feedback: { label: 'Написати нам', sub: 'Баг, ідея або просто привіт' },
     },
@@ -413,6 +412,7 @@ export const uk: Dict = {
     useThis: 'Використати',
     whereLooked: 'Де панель шукала',
     checkAgain: 'Перевірити ще раз',
+    orSwitch: 'Або перемкніться на інший акаунт:',
     signIn: 'Увійдіть у Claude Code',
     signInText:
       'Вхід робиться один раз, у терміналі IDE: Claude відкриє браузер і зачекає, поки ви повернетеся. Панель підхопить вхід сама.',
@@ -581,6 +581,7 @@ export const uk: Dict = {
     result: {
       worked: (duration) => (duration ? `Працював ${duration}` : 'Працював'),
       stopped: (duration) => (duration ? `Зупинено вами · ${duration}` : 'Зупинено вами'),
+      movedAccount: (duration) => (duration ? `Зупинено для зміни акаунта · ${duration}` : 'Зупинено для зміни акаунта'),
     },
 
     modelSwitch: { label: 'МОДЕЛЬ', note: 'перемкнув Claude Code, а не ви' },
@@ -643,7 +644,7 @@ export const uk: Dict = {
       unconfirmed: 'не підтверджено',
     },
 
-    copy: { copied: 'Скопійовано', click: 'Натисніть, щоб скопіювати', openFile: 'Відкрити в редакторі' },
+    copy: { copied: 'Скопійовано', click: 'Натисніть, щоб скопіювати', openFile: 'Відкрити в редакторі', openFolder: 'Показати теку' },
   },
 
   chrome: {
@@ -675,6 +676,74 @@ export const uk: Dict = {
       text: 'Перезавантажити безпечно: розмови живуть у процесах Claude Code за панеллю і переживуть її.',
       button: 'Перезавантажити панель',
     },
+  },
+
+  /**
+   * Several Claude accounts on one machine.
+   *
+   * The plan names (`max`, `pro`, `team`), the address and the organisation's name are DATA and are
+   * deliberately absent from here: they are the same word in every language, and putting them in a
+   * dictionary would mean nine entries in SHARED_WITH_ENGLISH for each (see the note on AUTHOR_PRODUCT).
+   */
+  accounts: {
+    empty: { title: 'Робочий і особистий — поруч', body: 'Перемикайтеся між акаунтами Claude без виходу. Скіли, хуки, налаштування та історія лишаються спільними.' },
+    intro:
+      'Усе працює на вибраному тут акаунті - на нього переїжджають усі відкриті розмови, а той, де триває хід, для цього зупиняється.',
+    /** An account whose sign-in has not landed, so nobody knows its address yet. */
+    unnamed: 'Входимо…',
+    defaultName: 'Вхід у Claude Code',
+    current: 'у роботі',
+    signingIn: 'входимо',
+    use: 'Вибрати',
+    switching: 'Перемикаємо…',
+    rename: 'Перейменувати',
+    save: 'Зберегти',
+    logout: 'Вийти',
+    logoutConfirm: 'Вийти з Claude Code?',
+    forget: 'Забути',
+    add: 'Додати акаунт',
+    adding: 'Чекаємо на вхід…',
+    cancel: 'Скасувати',
+    addHint: 'Для входу відкриється термінал. Ваш нинішній акаунт лишиться недоторканим.',
+    mcpNote: 'Сервери MCP входять окремо на кожному акаунті, тож новий доведеться авторизувати один раз. Скіли, хуки, налаштування та історія - спільні.',
+    designAuthorize: 'Авторизувати Claude Design',
+    designNote: 'Claude Design теж входить окремо на кожному акаунті, і зробити це може лише термінал. Він відкриється для того акаунта, на якому ви працюєте; далі DesignSync працює в панелі сам.',
+    aliasPlaceholder: 'Робота, дім, клієнт…',
+    /**
+     * Presence, not validity: the CLI answers "signed in" for any credential it can read, including one
+     * revoked last week. So the words say what is actually known.
+     */
+    absent: 'Збережених даних входу немає. Увійдіть знову, щоб користуватися цим акаунтом.',
+    /** The figures beside a row - short, because they sit on one line under the name. */
+    fiveHour: '5 год',
+    weekly: 'тиждень',
+    row: {
+      /** The value on the menu row when there is nothing to switch between. */
+      one: 'Один акаунт',
+      adding: 'Входимо…',
+    },
+    /**
+     * Why the machine cannot keep two sign-ins apart. One sentence each, and each names the real reason
+     * rather than "unavailable" - a person who reads why can usually do something about it.
+     */
+    unavailable: {
+      ignored: 'Цей Claude Code не вміє тримати два входи окремо. Оновіть його і відкрийте цей екран знову.',
+      wsl: 'Недоступно для проєкту всередині WSL: Claude Code працює там, а не на цій машині.',
+      not_signed_in: 'Спершу увійдіть у Claude Code, а тоді додайте тут другий акаунт.',
+      api_key: 'Ця машина входить за ключем API, а він діє на всі розмови. Поки він заданий, акаунти перемкнути не можна.',
+    },
+    /** How a request went. Codes rather than sentences from the IDE, which speaks one language. */
+    outcome: {
+      'did-not-land': 'Той вхід не завершився, тож нічого не додано.',
+      'no-terminal': 'Термінал не відкрився, тож вхід так і не почався.',
+      'no-executable': 'Claude Code не знайдено на цій машині.',
+      'no-store': 'Не вдалося створити теку для нового акаунта.',
+      'design-no-account': 'Акаунт, на якому ви працюєте, не вдалося визначити, тож нічого не відкрилося.',
+      'not-supported': 'Цей Claude Code не вміє тримати два входи окремо, тож нічого не додано.',
+      'logout-failed': 'Вийти не вдалося. Спробуйте в терміналі.',
+      'already-running': 'Вхід уже триває.',
+      unknown: 'Не вийшло.',
+    } as Record<string, string>,
   },
 
   remote: {
@@ -986,6 +1055,7 @@ export const uk: Dict = {
     fork: 'продовжити цю розмову в новій вкладці',
     login: 'увійти в Claude Code через термінал IDE',
     logout: 'вийти - відкриється термінал IDE',
+    designLogin: 'авторизувати Claude Design у терміналі IDE',
     model: 'змінити модель для цієї сесії',
     effort: 'задати, скільки Claude думає перед дією',
     context: 'чим зайняте вікно контексту просто зараз',

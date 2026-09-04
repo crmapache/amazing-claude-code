@@ -9,6 +9,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Key
 import com.intellij.util.concurrency.AppExecutorUtil
+import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
 import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import java.nio.file.Path
 import java.util.UUID
@@ -47,8 +48,12 @@ internal class ClaudeSession(
     /**
      * The conversation this one branches off. A branch gets the parent's whole transcript and an
      * identifier of its own, so continuing inside it leaves the parent untouched.
+     *
+     * Readable from outside for one reason: a fork nobody has spoken in yet owes its whole conversation
+     * to this parent and to nothing else, so a tab replaced under it - an account chosen, say - has to
+     * be raised as a fork again (see ClaudeSessions.switchAllTo).
      */
-    private val forkFrom: String? = null,
+    val forkFrom: String? = null,
     /** A past conversation being continued: it comes up with its own transcript. */
     resumeFrom: String? = null,
     /**
@@ -62,6 +67,20 @@ internal class ClaudeSession(
     model: String = "",
     effort: String = "",
     permissionMode: String = "",
+    /**
+     * Which Claude account this conversation runs on. Empty is the CLI's ordinary sign-in.
+     *
+     * `val`, unlike the model and the effort above, and that is load-bearing rather than tidy: the CLI
+     * reads its credentials once, when the process comes up, so this cannot be changed on a running
+     * conversation at all. Were it a `var`, [restart] - which happens on its own, after a crash or an
+     * MCP reconnect - would raise the new process on whatever account is current NOW, quietly moving a
+     * conversation onto another subscription halfway through.
+     *
+     * Readable from outside for the reason the model is: a fork has to start on what its parent runs on,
+     * and the parent's own account lives here rather than in the register - the two disagree the moment
+     * the current account is changed while an older tab is still open.
+     */
+    val accountId: String = "",
     private val onEvent: (String) -> Unit,
     private val onError: (String) -> Unit,
     /**
@@ -126,10 +145,10 @@ internal class ClaudeSession(
     /**
      * When the process behind this conversation came up.
      *
-     * The CLI reads the credentials once, at its start: a process raised before an account switch goes
-     * on working - and answering about the usage - as the previous account. Its figures have no business
-     * on the rings afterwards, and telling such a process from a fresh one is possible by nothing but
-     * this (see ProjectUsage.refreshLimits).
+     * It used to be how a process was told apart from the account it belonged to: raised before a
+     * switch, it went on answering about the usage as the previous account. That guess is gone - a
+     * conversation now carries its account outright (see [accountId]), which is the honest answer and
+     * the only one that works when two accounts run at the same time.
      */
     @Volatile
     var startedAt: Long = 0
@@ -798,7 +817,9 @@ internal class ClaudeSession(
         // - and a card still counted as "waiting" would swallow what the person writes onto it rather
         // than send it on (see the same reasoning at processTerminated).
         awaitingPermission.clear()
-        NEW_CONVERSATION_ID.find(line)?.groupValues?.get(1)?.let { conversationId = it }
+        NEW_CONVERSATION_ID.find(line)?.groupValues?.get(1)?.let {
+            conversationId = it
+        }
     }
 
     /** The turn has ended: the panel should clear its work. */
@@ -1097,6 +1118,20 @@ internal class ClaudeSession(
             return null
         }
 
+        // Which account pays for this conversation travels in the environment and nowhere else - never
+        // in an argument, so the no-newline, no-quote rule ClaudeLaunch enforces is untouched.
+        //
+        // A refusal stops the launch. There is deliberately no fallback to the ordinary sign-in here: a
+        // conversation that started on somebody else's subscription would run, answer and be billed
+        // without anything looking wrong, and that is the one failure this must not have.
+        val environment = ClaudeAccounts.getInstance().variablesFor(accountId, workingDirectory)
+
+        if (environment == null) {
+            DiagnosticsLog.note(DiagnosticsLog.ACCOUNTS, "a conversation was not started: its account would not resolve")
+            onError("ACCOUNT_UNAVAILABLE")
+            return null
+        }
+
         val commandLine = GeneralCommandLine(executable.absolutePath)
             .withParameters(
                 ClaudeLaunch.arguments(
@@ -1112,7 +1147,7 @@ internal class ClaudeSession(
                 ),
             )
             .withWorkingDirectory(workingDirectory?.let { Path.of(it) })
-            .withEnvironment(ClaudeExecutable.environment())
+            .withEnvironment(environment)
             .withCharset(Charsets.UTF_8)
 
         val process = runCatching { OSProcessHandler(commandLine) }

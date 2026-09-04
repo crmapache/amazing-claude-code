@@ -39,14 +39,12 @@ export const fr: Dict = {
       voiceLanguage: { title: 'LANGUE PARLÉE', hint: 'ce que la dictée écoute' },
       voiceDevice: { title: 'MICROPHONE', hint: 'par lequel écouter' },
       language: { title: 'LANGUE', hint: 'la langue que parle le panneau' },
+      accounts: { title: 'COMPTES CLAUDE', hint: 'quel abonnement paie le travail' },
       feedback: { title: 'RETOURS', hint: 'un bug, une idée ou juste un bonjour' },
       feedbackLog: { title: 'CE QUI EST JOINT', hint: 'le rapport entier, avant l’envoi' },
     },
 
     groups: {
-      project: 'CE PROJET',
-      devices: 'APPAREILS',
-      plugin: 'LE PLUGIN',
       author: 'DE L’AUTEUR',
     },
 
@@ -56,6 +54,7 @@ export const fr: Dict = {
       mcp: { label: 'Serveurs MCP', sub: 'État, connexion, reconnexion' },
       plugins: { label: 'Plugins', sub: 'Installés, parcourir, marketplaces' },
       remote: { label: 'Accès à distance', sub: 'État, relais, appareils appairés' },
+      accounts: { label: 'Comptes Claude', sub: 'Changer sans se déconnecter' },
       settings: { label: 'Réglages', sub: 'Sons, mode, disposition, langue' },
       feedback: { label: 'Envoyer un retour', sub: 'Un bug, une idée ou juste un bonjour' },
     },
@@ -385,6 +384,7 @@ export const fr: Dict = {
     useThis: 'Prendre celui-ci',
     whereLooked: 'Où le panneau a cherché',
     checkAgain: 'Vérifier à nouveau',
+    orSwitch: 'Ou basculez vers un autre compte :',
     signIn: 'Connecte-toi à Claude Code',
     signInText:
       'La connexion se fait une fois, dans le terminal de l’IDE : Claude ouvre un navigateur et attend que tu reviennes. Le panneau s’en aperçoit tout seul.',
@@ -517,6 +517,7 @@ export const fr: Dict = {
     result: {
       worked: (duration) => (duration ? `A travaillé ${duration}` : 'A travaillé'),
       stopped: (duration) => (duration ? `Arrêté par toi · ${duration}` : 'Arrêté par toi'),
+      movedAccount: (duration) => (duration ? `Arrêté pour changer de compte · ${duration}` : 'Arrêté pour changer de compte'),
     },
 
     modelSwitch: { label: 'MODÈLE', note: 'changé par Claude Code, pas par toi' },
@@ -567,7 +568,7 @@ export const fr: Dict = {
       unconfirmed: 'non confirmé',
     },
 
-    copy: { copied: 'Copié', click: 'Cliquer pour copier', openFile: "Ouvrir dans l'éditeur" },
+    copy: { copied: 'Copié', click: 'Cliquer pour copier', openFile: "Ouvrir dans l'éditeur", openFolder: 'Afficher le dossier' },
   },
 
   chrome: {
@@ -599,6 +600,73 @@ export const fr: Dict = {
       text: 'Recharger est sans risque : tes conversations vivent dans les processus Claude Code derrière le panneau et lui survivent.',
       button: 'Recharger le panneau',
     },
+  },
+
+  /**
+   * Several Claude accounts on one machine.
+   *
+   * The plan names (`max`, `pro`, `team`), the address and the organisation's name are DATA and are
+   * deliberately absent from here: they are the same word in every language, and putting them in a
+   * dictionary would mean nine entries in SHARED_WITH_ENGLISH for each (see the note on AUTHOR_PRODUCT).
+   */
+  accounts: {
+    empty: { title: 'Pro et perso, côte à côte', body: "Passez d'un compte Claude à l'autre sans vous déconnecter. Skills, hooks, réglages et historique restent partagés." },
+    intro: 'Tout tourne sur le compte choisi ici : toutes les conversations ouvertes y passent, et celle qui est en plein tour est arrêtée pour pouvoir passer.',
+    /** An account whose sign-in has not landed, so nobody knows its address yet. */
+    unnamed: 'Connexion…',
+    defaultName: 'Connexion Claude Code',
+    current: 'utilisé',
+    signingIn: 'connexion en cours',
+    use: 'Choisir',
+    switching: 'Changement…',
+    rename: 'Renommer',
+    save: 'Enregistrer',
+    logout: 'Se déconnecter',
+    logoutConfirm: 'Se déconnecter de Claude Code ?',
+    forget: 'Oublier',
+    add: 'Ajouter un compte',
+    adding: 'En attente de la connexion…',
+    cancel: 'Annuler',
+    addHint: 'Un terminal s’ouvre pour la connexion. Ton compte actuel n’est pas touché.',
+    mcpNote: 'Les serveurs MCP se connectent compte par compte : un nouveau compte les authentifie une fois. Skills, hooks, réglages et historique restent partagés.',
+    designAuthorize: 'Autoriser Claude Design',
+    designNote: 'Claude Design se connecte lui aussi compte par compte, et seul un terminal peut le faire. Il s’ouvre pour le compte en cours ; ensuite DesignSync fonctionne tout seul dans le panneau.',
+    aliasPlaceholder: 'Travail, Perso, un client…',
+    /**
+     * Presence, not validity: the CLI answers "signed in" for any credential it can read, including one
+     * revoked last week. So the words say what is actually known.
+     */
+    absent: 'Aucun identifiant enregistré. Reconnecte-toi pour utiliser ce compte.',
+    /** The figures beside a row - short, because they sit on one line under the name. */
+    fiveHour: '5 h',
+    weekly: 'sem.',
+    row: {
+      /** The value on the menu row when there is nothing to switch between. */
+      one: 'Un seul compte',
+      adding: 'Connexion…',
+    },
+    /**
+     * Why the machine cannot keep two sign-ins apart. One sentence each, and each names the real reason
+     * rather than "unavailable" - a person who reads why can usually do something about it.
+     */
+    unavailable: {
+      ignored: 'Ce Claude Code ne sait pas distinguer deux connexions. Mets-le à jour, puis rouvre cet écran.',
+      wsl: 'Indisponible pour un projet dans WSL : Claude Code tourne là-bas, pas sur cette machine.',
+      not_signed_in: 'Connecte-toi d’abord à Claude Code, puis ajoute un second compte ici.',
+      api_key: 'Cette machine se connecte avec une clé API, valable pour toutes les conversations. Impossible de changer de compte tant qu’elle est définie.',
+    },
+    /** How a request went. Codes rather than sentences from the IDE, which speaks one language. */
+    outcome: {
+      'did-not-land': 'Cette connexion n’est pas allée au bout, donc rien n’a été ajouté.',
+      'no-terminal': 'Le terminal n’a pas voulu s’ouvrir, la connexion n’a donc pas démarré.',
+      'no-executable': 'Claude Code est introuvable sur cette machine.',
+      'no-store': 'Impossible de créer un dossier pour le nouveau compte.',
+      'design-no-account': 'Impossible de déterminer le compte en cours : rien n’a été ouvert.',
+      'not-supported': "Ce Claude Code ne sait pas séparer deux connexions, donc rien n'a été ajouté.",
+      'logout-failed': 'La déconnexion a échoué. Essayez dans un terminal.',
+      'already-running': 'Une connexion est déjà en cours.',
+      unknown: 'Ça n’a pas marché.',
+    } as Record<string, string>,
   },
 
   remote: {
@@ -903,6 +971,7 @@ export const fr: Dict = {
     fork: 'continuer cette conversation dans un nouvel onglet',
     login: 'se connecter à Claude Code depuis le terminal de l’IDE',
     logout: 'se déconnecter - ouvre le terminal de l’IDE',
+    designLogin: 'autoriser Claude Design dans le terminal de l’IDE',
     model: 'changer le modèle de cette session',
     effort: 'régler combien de temps Claude réfléchit avant d’agir',
     context: 'ce qui remplit la fenêtre de contexte en ce moment',

@@ -174,6 +174,43 @@ export interface McpServerInfo {
   error: string
 }
 
+/**
+ * One Claude account the panel may run conversations on.
+ *
+ * What the panel is told is who, never how: there is no store directory here, no keychain service name
+ * and no credential. It could not leak one if it wanted to - the plugin does not hold any (the CLI
+ * files each account's own, in the system's store), and this shape is the whole of what crosses into
+ * the page.
+ */
+export interface AccountInfo {
+  /** Opaque and stable - a digest of the address and the organisation, not a counter. */
+  id: string
+  /**
+   * The person's own name for it - "Work", "Home". Empty when none was given, and then the address is
+   * shown instead. A name given on purpose beats one Anthropic assigned.
+   */
+  alias: string
+  email: string
+  /** `max`, `pro`, `team` - the CLI's own word. Data, never translated. */
+  plan: string
+  /** A sign-in still going: the terminal is open and nothing has landed in its drawer yet. */
+  pending?: boolean
+  /**
+   * The sign-in Claude Code already had - the one every machine has before this feature is touched.
+   *
+   * It has no credential drawer of its own (its id is the empty string): it IS the CLI's own store. So it
+   * can be switched back to and renamed, but never forgotten - the only thing that could mean is signing
+   * the person out of Claude Code altogether.
+   */
+  isDefault?: boolean
+  /**
+   * Whether a credential is filed for it - PRESENCE, not validity, and the words on screen say so.
+   * The CLI answers "signed in" for any credential that parses, including one revoked last week; only
+   * spending it proves anything, which is what the figures beside the row do.
+   */
+  health?: 'present' | 'absent' | 'unknown'
+}
+
 /** An installed plugin: the id already holds the marketplace - "name@marketplace". */
 export interface InstalledPluginInfo {
   id: string
@@ -316,6 +353,17 @@ type ShellMessageBody =
   | { type: 'locale'; language?: string; ideLanguage?: string }
   | {
       type: 'usage'
+      /**
+       * Whose figures these are - empty for the CLI's ordinary sign-in.
+       *
+       * The panel keeps a set of rings per account and draws the ones belonging to the tab on screen.
+       * Without this two accounts running side by side merge into one picture: one account's five-hour
+       * window beside the other's weekly one, permanently, with no switch needed to produce it.
+       *
+       * Absent means the figure belongs to no account in particular - `todayTokens` is the only such
+       * one, because it is counted by reading a transcripts folder that has no account marker in it.
+       */
+      account?: string
       session?: UsageWindow
       week?: UsageWindow
       /**
@@ -360,8 +408,13 @@ type ShellMessageBody =
       /** Filled in only when the request was raised by a tool call inside a subagent. */
       agentId?: string
     }
-  /** The model catalogue from the CLI itself - see ModelInfo. */
-  | { type: 'models'; models: ModelInfo[] }
+  /**
+   * The model catalogue from the CLI itself - see ModelInfo.
+   *
+   * Carries the account it belongs to: which models exist is decided by the plan, so a Pro account's tab
+   * offered the Max account's list would let a person pick a model the CLI refuses before the first turn.
+   */
+  | { type: 'models'; models: ModelInfo[]; account?: string }
   /**
    * How much of this conversation's context window is taken - a figure from the CLI itself (the same
    * one `/context` prints). Counting it on our side is not an option: the window's size depends on the
@@ -567,6 +620,8 @@ type ShellMessageBody =
       loggedIn: boolean
       email?: string
       plan?: string
+      /** Which account this describes - empty for the CLI's ordinary sign-in. */
+      accountId?: string
       /** The path to the CLI given by hand, if one is set. */
       executablePath?: string
       /** Where the executable was looked for - arrives only when it was not found. */
@@ -599,6 +654,63 @@ type ShellMessageBody =
    * message says what is, not how the request went.
    */
   | { type: 'effort'; sessionId: string; effort: string }
+  /**
+   * Which Claude account a conversation runs on - said at its birth, like the effort and the model.
+   *
+   * The opaque id and nothing else. This message is per-conversation, so a subscribed phone receives it,
+   * and a phone has no words for an account and no business with somebody's address. What the accounts
+   * screen needs travels separately, as a project fact that never leaves the window.
+   */
+  | { type: 'account'; sessionId: string; accountId: string }
+  /**
+   * The IDE is stopping this turn itself, so the conversation can move to the account now chosen.
+   *
+   * Said out loud because no client could work it out. An interrupt looks from the outside exactly like
+   * a turn ending a little early: the feed captioned it "Worked 3s", the finished sound played, a push
+   * went to the phone about work nobody completed, and the tool calls the turn was in the middle of were
+   * left running with live clocks against a process about to be destroyed.
+   *
+   * `reason` has one value today and is spelled out anyway: the panel words the row from it, and a turn
+   * the IDE stopped for its own reasons must never be captioned "Stopped by you".
+   */
+  | { type: 'turnStopped'; sessionId: string; reason: 'account' }
+  /**
+   * The machine's Claude accounts, and whether it can keep two of them apart at all.
+   *
+   * `capability` is proven on the machine rather than assumed: the mechanism rests on an undocumented
+   * environment variable, and the plugin refuses the whole feature unless it can show that the variable
+   * moved the credential AND left the configuration folder alone.
+   *
+   * - `supported` - both halves proven; accounts may be added and switched.
+   * - `ignored` - this Claude Code does not keep the drawers apart, or moves more than the credential.
+   * - `wsl` - the project is inside WSL, where the CLI runs on the other side of a share.
+   * - `notSignedIn` - nobody is signed in yet, so there is nothing to keep apart.
+   * - `apiKey` - the sign-in is an API key or a key helper, which outranks any drawer.
+   *
+   * On anything but `supported` the screen shows the one account there is and a sentence naming the
+   * reason, and offers no way to add another: a button that would overwrite the existing sign-in must
+   * not exist.
+   *
+   * Absent means "not proven yet". Proving it starts processes, so the IDE never does it on the thread
+   * that carries these messages: the list goes out at once with whatever is known and again a moment
+   * later with the answer (see AccountDesk.broadcast). Until then the screen shows neither the sentence
+   * nor the button - saying "unsupported" of a machine nobody has asked about would be a guess, and an
+   * Add button offered on one is the single press that can overwrite the account in use.
+   */
+  | {
+      type: 'accounts'
+      accounts: AccountInfo[]
+      capability?: 'supported' | 'ignored' | 'wsl' | 'not_signed_in' | 'api_key'
+      /** Which account new conversations start on. */
+      current: string
+      /** A sign-in is in flight: a terminal is open somewhere and its drawer is being watched. */
+      pending?: boolean
+    }
+  /**
+   * How an account request went, as a code rather than a sentence: the panel speaks ten languages and
+   * the IDE speaks one (the `voiceMessage` precedent).
+   */
+  | { type: 'accountOutcome'; code: string }
   /**
    * The conversation a tab holds, said by the shell: after a reset, which wipes everything the panel
    * knew about the tab, and to a client joining. The panel writes it down itself the moment a past
@@ -1240,6 +1352,62 @@ export type WebviewMessage =
   | { type: 'resumeSession'; sessionId: string; conversationId: string; title?: string; titleSource?: TitleSource }
   /** Open the IDE's terminal with a Claude Code sign-in or sign-out. */
   | { type: 'login' }
+  /*
+   * The accounts screen. Every one of these is refused to a phone (RemoteCommands.DENIED) and handled at
+   * the window's own door, which a network client does not physically reach: adding an account opens a
+   * terminal and a browser sign-in on somebody's machine, and choosing one decides whose subscription
+   * pays for every conversation started afterwards.
+   */
+  | { type: 'accountList' }
+  /**
+   * Choose an account: new conversations start on it, and the ones already open move onto it too.
+   *
+   * All of them, not only the next one, and a chat opened from the history afterwards runs on it too.
+   * Choosing an account means "this is what I am working on now", and a chat open in front of the person
+   * going on being billed elsewhere is not that.
+   *
+   * A conversation in the middle of a turn is STOPPED so that it can move - the same interrupt the Stop
+   * button sends, announced to every client as `turnStopped` so nothing calls it a finished turn. What it
+   * had already written stays in the chat: the CLI closes the interrupted call and writes it into the
+   * transcript, which the new process resumes onto (see ClaudeSessions.switchAllTo).
+   */
+  | { type: 'accountUse'; id: string }
+  /** Sign in to another account: a terminal opens with a credential drawer of its own. */
+  | { type: 'accountAdd' }
+  /**
+   * Stop waiting for a sign-in that is under way.
+   *
+   * The wait is generous on purpose - a browser, a password manager and an SSO detour all fit inside it
+   * - and until this existed there was no way out of it at all: the drawer stayed minted and the "Add"
+   * button stayed shut for the ten minutes the wait had left. The terminal is not touched; it is the
+   * person's window to close.
+   */
+  | { type: 'accountCancel' }
+  | { type: 'accountForget'; id: string }
+  /**
+   * Sign out of Claude Code entirely, and move to another account if one is signed in here.
+   *
+   * Offered only for the sign-in the CLI already had, because it is the only removal that account has:
+   * it holds no drawer to delete. Unlike forgetting, this revokes the credential on Anthropic's side -
+   * which is what "Log out" means, and why the panel asks before sending it.
+   */
+  | { type: 'accountLogout'; id: string }
+  /** The person's own name for an account - "Work", "Home". Empty clears it back to the address. */
+  | { type: 'accountRename'; id: string; alias: string }
+  /**
+   * Authorize Claude Design for the account in force: a terminal opens with `/design-login` already
+   * running in that account's credential drawer.
+   *
+   * It cannot happen in the panel, and that is the CLI's doing rather than an omission here. The command
+   * draws an interactive screen, so a streaming session does not merely refuse it - the command is left
+   * out of the session's list altogether ("isn't available in this environment"). DesignSync's other road
+   * to the same authorization, straight out of a permission prompt, is shut by the same condition. See
+   * DesignLogin for both, and for why the drawer has to travel with the terminal.
+   *
+   * Answered only when it fails, as an `accountOutcome` like every other request on this screen: when it
+   * works, the terminal is in front of the person with the sign-in already under way.
+   */
+  | { type: 'designLogin' }
   | { type: 'logout' }
   | { type: 'checkAuth' }
   /**

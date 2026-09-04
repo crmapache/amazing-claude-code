@@ -88,4 +88,43 @@ class OpenInEditorTest {
         assertEquals(emptyList(), OpenInEditor.rank("", files))
         assertEquals(emptyList(), OpenInEditor.rank("/", files))
     }
+
+    /**
+     * The other half that can be asked without an IDE: `~/.claude/settings.json` is the path the agent
+     * names most often outside any project, and until it was expanded it resolved from the project's root,
+     * found nothing, and went looking for `settings.json` among the project's own files.
+     */
+    @Test
+    fun `a tilde becomes the home directory`() {
+        assertEquals("/home/ivan/.claude/settings.json", OpenInEditor.expandHome("~/.claude/settings.json", "/home/ivan"))
+        assertEquals("/home/ivan", OpenInEditor.expandHome("~", "/home/ivan"))
+        assertEquals("C:\\Users\\Ivan\\.claude", OpenInEditor.expandHome("~\\.claude", "C:\\Users\\Ivan"))
+    }
+
+    /** A home written with a separator at the end must not leave two of them in the middle. */
+    @Test
+    fun `the separators do not double up`() {
+        assertEquals("/home/ivan/.claude", OpenInEditor.expandHome("~/.claude", "/home/ivan/"))
+    }
+
+    /**
+     * Everything else is left exactly as written - including another person's home, which is not this
+     * one's and is not somewhere to guess at.
+     */
+    @Test
+    fun `only this home is expanded`() {
+        assertEquals("~ivan/.claude", OpenInEditor.expandHome("~ivan/.claude", "/home/ivan"))
+        assertEquals("~stuff", OpenInEditor.expandHome("~stuff", "/home/ivan"))
+        assertEquals("src/App.tsx", OpenInEditor.expandHome("src/App.tsx", "/home/ivan"))
+    }
+
+    /**
+     * No home to expand to is the answer for a project on a WSL share: the `~` there is the
+     * distribution's, and this machine's home may well have a `.claude` of its own in it (see ClaudeHome).
+     */
+    @Test
+    fun `without a home nothing is expanded`() {
+        assertEquals("~/.claude", OpenInEditor.expandHome("~/.claude", null))
+        assertEquals("~/.claude", OpenInEditor.expandHome("~/.claude", "  "))
+    }
 }

@@ -1,4 +1,5 @@
 import { isInsideIde, send } from './bridge'
+import { isPasteShortcut, isTyping, servesPaste, typedNothing, type LastKey } from './clipboardKeys'
 import type { ShellMessage } from './protocol'
 
 /**
@@ -105,12 +106,16 @@ export const installClipboardBridge = (): (() => void) => {
   // through - the input field's handler would take it for "nothing was pasted".
   document.addEventListener('paste', onPaste, true)
   window.addEventListener('keydown', onKeyDown, true)
+  // What the keyboard actually typed - the one witness that tells a press meant for the field from a
+  // press the browser turned into a paste (see clipboardKeys).
+  document.addEventListener('beforeinput', onBeforeInput, true)
 
   return () => {
     document.removeEventListener('copy', onCopy)
     document.removeEventListener('cut', onCopy)
     document.removeEventListener('paste', onPaste, true)
     window.removeEventListener('keydown', onKeyDown, true)
+    document.removeEventListener('beforeinput', onBeforeInput, true)
   }
 }
 
@@ -143,11 +148,44 @@ const onPaste = (event: ClipboardEvent): void => {
   awaitingPaste = false
   if (!bridged() || hasContent(event.clipboardData)) return
 
+  // Nobody asked for this one: an ordinary key press arrived across the browser boundary carrying
+  // modifiers that were never held, and the browser read it as a paste. Filling it in would be putting
+  // the clipboard into a message under the hands of somebody typing a capital letter.
+  if (!servesPaste(lastKey, Date.now())) {
+    restoreTyped(lastKey, event)
+    return
+  }
+
   event.preventDefault()
   event.stopImmediatePropagation()
 
   const target = event.target instanceof Element ? event.target : document.activeElement
   void readClipboard().then((content) => deliverPaste(target, content))
+}
+
+/**
+ * Put back the character whose press the browser turned into a paste.
+ *
+ * Only if nothing else typed it: where the browser both inserted the character and invented the paste
+ * beside it, there is nothing to restore, and restoring anyway would write the letter twice. So the
+ * event is stopped (the field would otherwise handle an empty paste and swallow the keystroke with it),
+ * and the decision is taken one task later, once the browser has done whatever it was going to do.
+ */
+const restoreTyped = (last: LastKey | null, event: ClipboardEvent): void => {
+  if (!last?.text) return
+
+  const target = event.target instanceof Element ? event.target : document.activeElement
+  if (!isEditable(target)) return
+
+  event.preventDefault()
+  event.stopImmediatePropagation()
+
+  const { at, text } = last
+  setTimeout(() => {
+    if (!typedNothing(at, typedAt)) return
+
+    insertText(target, text)
+  }, 0)
 }
 
 /**
@@ -159,8 +197,27 @@ const onPaste = (event: ClipboardEvent): void => {
  */
 let awaitingPaste = false
 
+/** The last press and whether it was a real paste shortcut - see servesPaste. */
+let lastKey: LastKey | null = null
+
+/** When the keyboard last typed a character into a field - see typedNothing. */
+let typedAt: number | null = null
+
+const onBeforeInput = (event: InputEvent): void => {
+  if (!bridged() || !isTyping(event.inputType)) return
+
+  typedAt = Date.now()
+}
+
 const onKeyDown = (event: KeyboardEvent): void => {
-  if (!bridged() || !isPasteShortcut(event)) return
+  if (!bridged()) return
+
+  const shortcut = isPasteShortcut(event)
+  const at = Date.now()
+  // A single character is what a press writes; "Shift", "Enter" and the rest name themselves and write
+  // nothing, and there is nothing to put back for them.
+  lastKey = { at, shortcut, text: event.key.length === 1 ? event.key : '' }
+  if (!shortcut) return
 
   const target = document.activeElement
   if (!isEditable(target)) return
@@ -171,16 +228,15 @@ const onKeyDown = (event: KeyboardEvent): void => {
   setTimeout(() => {
     if (!awaitingPaste) return
     awaitingPaste = false
+    // The press typed a character, so it was typing: the modifiers it claimed to carry were not the
+    // ones held down, and this is the same misreading servesPaste refuses above.
+    if (!typedNothing(at, typedAt)) return
 
-    void readClipboard().then((content) => deliverPaste(target, content))
+    void readClipboard().then((content) => {
+      if (!typedNothing(at, typedAt)) return
+      deliverPaste(target, content)
+    })
   }, 0)
-}
-
-/** Ctrl/Cmd+V and Shift+Insert - a habit from Linux, where the latter is just as common. */
-const isPasteShortcut = (event: KeyboardEvent): boolean => {
-  if (event.altKey) return false
-  if (event.code === 'KeyV') return (event.ctrlKey || event.metaKey) && !event.shiftKey
-  return event.code === 'Insert' && event.shiftKey && !event.ctrlKey && !event.metaKey
 }
 
 /**

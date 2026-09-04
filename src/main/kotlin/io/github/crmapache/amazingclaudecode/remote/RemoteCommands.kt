@@ -180,6 +180,35 @@ internal object RemoteCommands {
         "checkAuth",
         "login",
         "logout",
+        /*
+         * Which Claude account the work is billed to, and the list of them.
+         *
+         * Denied for three reasons already written into this file. Adding one opens a terminal on that
+         * machine and hands it a browser sign-in - `login` and `logout` right above are denied for
+         * exactly that, and adding an account is that plus a folder created on somebody's disk. Choosing
+         * one decides what every future conversation starts on, which is why `setDefaultMode` and the
+         * model family are denied. And forgetting one is a revocation - the same question `revokeDevice`
+         * must never let a device answer about itself.
+         *
+         * The list is not sent outwards either: it carries addresses and organisation names, and the
+         * phone is told about a conversation's account by an opaque id at most (see
+         * ClaudeSessionHub.sendAccount). `accounts` is deliberately absent from
+         * RemoteFeed.PROJECT_FACTS, so the default-deny there keeps it off the wire even though the
+         * panel receives it as a project fact.
+         */
+        "accountList",
+        "accountUse",
+        "accountAdd",
+        "accountCancel",
+        "accountForget",
+        "accountLogout",
+        "accountRename",
+        /*
+         * Authorizing Claude Design. A terminal and a browser sign-in on somebody's machine, in that
+         * account's credential drawer - the same thing `accountAdd` above is denied for, and the phone
+         * has no terminal to finish it in either.
+         */
+        "designLogin",
         "trace",
         "sound",
         "soundSettings",

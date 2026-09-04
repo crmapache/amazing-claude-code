@@ -303,21 +303,25 @@ const InlineCode = ({ text, reveal }: { text: string; reveal: boolean }) => {
    * stands two panes away from the editor it belongs to. Everything else in backticks keeps the copy: a
    * flag, a branch's name, an identifier are wanted in the clipboard and nowhere else.
    *
-   * The tooltip says which of the two this piece is before it is clicked, so nothing here is a surprise.
-   * Where there is no editor at all - the phone - there is no reference either (see useOpenFile), and the
-   * path goes on copying exactly as it did.
+   * The tooltip says which of the two this piece is before it is clicked, so nothing here is a surprise -
+   * and for a folder it says that too, because the click shows it rather than opens it (see FileRef and
+   * OpenInEditor). Where there is no editor at all - the phone - there is no reference either (see
+   * useOpenFile), and the path goes on copying exactly as it did.
    */
   const ref = openFile ? fileRef(text, true, known) : null
+  const opens = ref?.folder ? t.feed.copy.openFolder : t.feed.copy.openFile
 
   return (
     <span
       className={copied ? `${s.code} ${s.codeCopied}` : ref ? `${s.code} ${s.codeFile}` : s.code}
-      data-tooltip={copied ? t.feed.copy.copied : ref ? t.feed.copy.openFile : t.feed.copy.click}
+      data-tooltip={copied ? t.feed.copy.copied : ref ? opens : t.feed.copy.click}
       onClick={() => {
         if (window.getSelection()?.isCollapsed === false) return
 
         if (ref && openFile) {
-          openFile(ref)
+          // The flag stays on this side: what the path is, is a question for the disk (see OpenInEditor).
+          const { folder: _folder, ...request } = ref
+          openFile(request)
           return
         }
 

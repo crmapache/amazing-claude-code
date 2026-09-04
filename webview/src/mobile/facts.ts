@@ -1,6 +1,6 @@
 import type { CommandEntry, CommandHint } from '../feed/slash'
 import { buildCommands } from '../feed/slash'
-import { mergeUsage, type UsageFacts } from '../feed/usage'
+import { emptyUsageBook, mergeUsageBook, usageOf, type UsageBook, type UsageFacts } from '../feed/usage'
 import type { Dict } from '../i18n/en'
 import type { ShellMessage } from '../protocol'
 
@@ -17,6 +17,20 @@ import type { ShellMessage } from '../protocol'
  * blank the branch while the IDE gets round to saying them again.
  */
 export interface ProjectFacts extends UsageFacts {
+  /**
+   * The subscription's figures of every account this machine runs, not just one set.
+   *
+   * The same book the panel keeps, and for the same reason (see UsageBook): two accounts genuinely run
+   * at once, both answer about their own subscription, and both send `usage` here. Folded into one
+   * picture they interleave - one account's five-hour window beside the other's weekly one, permanently
+   * and without any switching to produce it - and a reset meant for one of them blanked whichever the
+   * phone happened to be showing.
+   *
+   * The flat fields above are what the screens read: the book resolved for the conversation in front of
+   * the person (see [factsFor]). Kept flat because every screen under the thread reads them directly,
+   * and a shape that differs from the desk's for no reason is a shape that drifts from it.
+   */
+  usage: UsageBook
   gitBranch?: string
   pullRequest?: string
   pullRequestUrl?: string
@@ -44,7 +58,19 @@ export interface ProjectFacts extends UsageFacts {
   locale?: { chosen: string; ide: string }
 }
 
-export const emptyFacts = (): ProjectFacts => ({ files: [], hints: {}, commands: [] })
+export const emptyFacts = (): ProjectFacts => ({ files: [], hints: {}, commands: [], usage: emptyUsageBook() })
+
+/**
+ * The project's facts as one conversation sees them: its own account's figures on top.
+ *
+ * Resolved here rather than when a `usage` message lands, because the account is a property of the
+ * conversation on screen and the message belongs to the project. The empty string is the CLI's ordinary
+ * sign-in, which is what every machine that never touches the accounts screen has.
+ */
+export const factsFor = (facts: ProjectFacts, account: string): ProjectFacts => ({
+  ...facts,
+  ...usageOf(facts.usage, account),
+})
 
 /**
  * Whether this is one of the project's facts rather than a line of somebody's conversation.
@@ -63,14 +89,15 @@ export const isFact = (message: ShellMessage): boolean =>
 /**
  * One fact folded into what is already known.
  *
- * The usage is folded by the shared rules rather than by a copy of them here (see mergeUsage): the same
- * message reaches the panel at the desk, and the two screens disagreeing about what a percentage means
- * would be worse than either of them saying nothing.
+ * The usage is folded by the shared rules rather than by a copy of them here (see mergeUsageBook): the
+ * same message reaches the panel at the desk, and the two screens disagreeing about what a percentage
+ * means would be worse than either of them saying nothing.
  */
 export const applyFact = (facts: ProjectFacts, message: ShellMessage): ProjectFacts => {
   switch (message.type) {
     case 'usage':
-      return { ...facts, ...mergeUsage(facts, message) }
+      // Into the account it names, never over the picture on screen - see [ProjectFacts.usage].
+      return { ...facts, usage: mergeUsageBook(facts.usage, message) }
 
     case 'project':
       // Replaced rather than merged, unlike the usage: this one message is the whole answer about the

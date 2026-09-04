@@ -37,14 +37,12 @@ export const ja: Dict = {
       voiceLanguage: { title: '話す言語', hint: '音声入力が聞き取る言語' },
       voiceDevice: { title: 'マイク', hint: 'どれで聞くか' },
       language: { title: '言語', hint: 'パネルが話す言語' },
+      accounts: { title: 'Claude アカウント', hint: 'どのサブスクリプションで支払うか' },
       feedback: { title: 'フィードバック', hint: '不具合、アイデア、ひとことでも' },
       feedbackLog: { title: '添付される内容', hint: '送る前のレポート全文' },
     },
 
     groups: {
-      project: 'このプロジェクト',
-      devices: '端末',
-      plugin: 'プラグイン本体',
       author: '作者から',
     },
 
@@ -54,6 +52,7 @@ export const ja: Dict = {
       mcp: { label: 'MCP サーバー', sub: '状態、サインイン、再接続' },
       plugins: { label: 'プラグイン', sub: 'インストール済み、一覧、マーケットプレイス' },
       remote: { label: 'リモートアクセス', sub: '状態、リレー、ペアリング済みの端末' },
+      accounts: { label: 'Claude アカウント', sub: 'サインアウトせずに切り替え' },
       settings: { label: '設定', sub: '通知音、モード、レイアウト、言語' },
       feedback: { label: 'フィードバックを送る', sub: '不具合、アイデア、ひとことでも' },
     },
@@ -380,6 +379,7 @@ export const ja: Dict = {
     useThis: 'これを使う',
     whereLooked: 'パネルが探した場所',
     checkAgain: 'もう一度確認',
+    orSwitch: 'または別のアカウントに切り替える:',
     signIn: 'Claude Code にサインイン',
     signInText:
       'サインインは IDE のターミナルで一度だけです。Claude がブラウザーを開いて、あなたが戻るのを待ちます。パネルはそれを自分で受け取ります。',
@@ -512,6 +512,7 @@ export const ja: Dict = {
     result: {
       worked: (duration) => (duration ? `作業時間 ${duration}` : '完了'),
       stopped: (duration) => (duration ? `あなたが停止 · ${duration}` : 'あなたが停止'),
+      movedAccount: (duration) => (duration ? `アカウント切り替えのため停止 · ${duration}` : 'アカウント切り替えのため停止'),
     },
 
     modelSwitch: { label: 'モデル', note: '切り替えたのは Claude Code で、あなたではありません' },
@@ -561,7 +562,7 @@ export const ja: Dict = {
       unconfirmed: '未確認',
     },
 
-    copy: { copied: 'コピーしました', click: 'クリックでコピー', openFile: 'エディタで開く' },
+    copy: { copied: 'コピーしました', click: 'クリックでコピー', openFile: 'エディタで開く', openFolder: 'フォルダーを表示' },
   },
 
   chrome: {
@@ -593,6 +594,69 @@ export const ja: Dict = {
       text: '再読み込みしても安全です。会話はパネルの裏側にある Claude Code のプロセスにあり、パネルより長生きします。',
       button: 'パネルを再読み込み',
     },
+  },
+
+  accounts: {
+    empty: { title: '仕事用と個人用を並べて', body: 'サインアウトせずに Claude アカウントを切り替えられます。スキル、フック、設定、履歴は共有されたままです。' },
+    intro: 'すべてがここで選んだアカウントで動きます。開いている会話はすべてそこへ移り、実行中のものは移るためにいったん停止します。',
+    /** An account whose sign-in has not landed, so nobody knows its address yet. */
+    unnamed: 'サインイン中…',
+    defaultName: 'Claude Code のサインイン',
+    current: '使用中',
+    signingIn: 'サインインしています',
+    use: '選択',
+    switching: '切り替えています…',
+    rename: '名前を変更',
+    save: '保存',
+    logout: 'ログアウト',
+    logoutConfirm: 'Claude Code からログアウトしますか？',
+    forget: '削除',
+    add: 'アカウントを追加',
+    adding: 'サインインを待っています…',
+    cancel: 'キャンセル',
+    addHint: 'サインイン用にターミナルが開きます。今のアカウントはそのままです。',
+    mcpNote:
+      'MCP サーバーはアカウントごとにサインインするので、新しいアカウントでは一度だけ認証が必要です。スキル、フック、設定、履歴は共通です。',
+    designAuthorize: 'Claude Design を認証する',
+    designNote:
+      'Claude Design もアカウントごとのサインインで、これができるのはターミナルだけです。いま使っているアカウント用にターミナルが開き、そのあとは DesignSync がパネルの中で動きます。',
+    aliasPlaceholder: '仕事、自宅、お客さま…',
+    /**
+     * Presence, not validity: the CLI answers "signed in" for any credential it can read, including one
+     * revoked last week. So the words say what is actually known.
+     */
+    absent: '認証情報が保存されていません。このアカウントを使うには、もう一度サインインしてください。',
+    /** The figures beside a row - short, because they sit on one line under the name. */
+    fiveHour: '5時間',
+    weekly: '週',
+    row: {
+      /** The value on the menu row when there is nothing to switch between. */
+      one: 'アカウント 1 つ',
+      adding: 'サインイン中…',
+    },
+    /**
+     * Why the machine cannot keep two sign-ins apart. One sentence each, and each names the real reason
+     * rather than "unavailable" - a person who reads why can usually do something about it.
+     */
+    unavailable: {
+      ignored: 'この Claude Code は 2 つのサインインを区別できません。更新してから、この画面をもう一度開いてください。',
+      wsl: 'WSL の中のプロジェクトでは使えません。Claude Code はこのマシンではなく、WSL の中で動いています。',
+      not_signed_in: 'まず Claude Code にサインインしてから、ここで 2 つ目のアカウントを追加してください。',
+      api_key:
+        'このマシンは API キーでサインインしていて、キーはすべての会話に効きます。設定されている間はアカウントを切り替えられません。',
+    },
+    /** How a request went. Codes rather than sentences from the IDE, which speaks one language. */
+    outcome: {
+      'did-not-land': 'サインインが終わらなかったので、何も追加されませんでした。',
+      'no-terminal': 'ターミナルが開かなかったので、サインインを始められませんでした。',
+      'no-executable': 'このマシンでは Claude Code が見つかりませんでした。',
+      'no-store': '新しいアカウント用のフォルダーを作れませんでした。',
+      'design-no-account': 'いま使っているアカウントを特定できなかったので、何も開いていません。',
+      'not-supported': 'この Claude Code は 2 つのサインインを区別できないため、何も追加されませんでした。',
+      'logout-failed': 'ログアウトできませんでした。ターミナルで試してください。',
+      'already-running': 'すでにサインインが進んでいます。',
+      unknown: 'うまくいきませんでした。',
+    } as Record<string, string>,
   },
 
   remote: {
@@ -895,6 +959,7 @@ export const ja: Dict = {
     fork: 'この会話を新しいタブで続ける',
     login: 'IDE のターミナルで Claude Code にサインインする',
     logout: 'サインアウトする - IDE のターミナルが開きます',
+    designLogin: 'IDE のターミナルで Claude Design を認証する',
     model: 'このセッションのモデルを切り替える',
     effort: 'Claude が動く前にどれだけ考えるかを決める',
     context: 'いまコンテキストウィンドウに入っているもの',

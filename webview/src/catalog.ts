@@ -263,6 +263,13 @@ export const panelCommands = (t: Dict): CommandOption[] => [
   { id: 'fork', hint: t.commands.fork, local: true },
   { id: 'login', hint: t.commands.login, local: true },
   { id: 'logout', hint: t.commands.logout, local: true },
+  /*
+   * The panel's, and not because it would rather run it: the CLI leaves `/design-login` out of a
+   * streaming session's command list altogether, so typed here it used to come back as "isn't available
+   * in this environment" - a refusal to a command the hint itself had offered. Taken over, it opens the
+   * terminal where the sign-in does work, in the drawer of the account in force (see DesignLogin).
+   */
+  { id: 'design-login', hint: t.commands.designLogin, local: true },
 ]
 
 export const builtinCommands = (t: Dict): CommandOption[] => [

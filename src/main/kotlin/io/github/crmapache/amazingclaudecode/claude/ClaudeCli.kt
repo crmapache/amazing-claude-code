@@ -5,6 +5,7 @@ import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.execution.process.ProcessHandler
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.util.concurrency.AppExecutorUtil
+import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
 import java.nio.file.Path
 
 /**
@@ -26,6 +27,20 @@ internal object ClaudeCli {
         args: List<String>,
         input: String? = null,
         timeoutMs: Int = DEFAULT_TIMEOUT_MS,
+        /**
+         * Whose subscription pays, for the runs that are billed.
+         *
+         * Passed by the two that spend real money on the person's behalf - rewriting a draft
+         * (PromptImprover) and searching the conversations with a model (AiSearch) - because those must
+         * be charged to the account whose tab asked, and because an account without Opus has to fall to
+         * its own fallback model rather than fail.
+         *
+         * Deliberately NOT passed by `claude mcp`, `claude plugin` or the version probe: those read and
+         * write the shared ~/.claude, which every account has in common, and nothing about them is
+         * billed. Handing them a drawer would only mean the panel showed MCP state that did not match
+         * the one the CLI actually uses.
+         */
+        accountId: String = "",
         onStarted: ((ProcessHandler) -> Unit)? = null,
         onError: (String) -> Unit,
         onResult: (String) -> Unit,
@@ -36,11 +51,17 @@ internal object ClaudeCli {
             return
         }
 
+        val environment = ClaudeAccounts.getInstance().variablesFor(accountId, workingDirectory)
+        if (environment == null) {
+            onError("That account is unavailable.")
+            return
+        }
+
         AppExecutorUtil.getAppExecutorService().submit {
             runCatching {
                 val commandLine = GeneralCommandLine(executable.absolutePath)
                     .withParameters(args)
-                    .withEnvironment(ClaudeExecutable.environment())
+                    .withEnvironment(environment)
                     .withCharset(Charsets.UTF_8)
                     .apply { workingDirectory?.let { withWorkingDirectory(Path.of(it)) } }
 

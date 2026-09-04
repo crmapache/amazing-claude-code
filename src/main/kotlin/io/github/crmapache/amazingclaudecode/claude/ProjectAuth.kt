@@ -5,6 +5,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.util.concurrency.AppExecutorUtil
+import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.add
@@ -30,7 +31,7 @@ internal class ProjectAuth(
      * previous one and has to be thrown away rather than merged with what the new one says (see
      * ProjectUsage.forget).
      */
-    private val onAccountChanged: () -> Unit = {},
+    private val onAccountChanged: (accountId: String) -> Unit = {},
 ) {
 
     /**
@@ -41,16 +42,41 @@ internal class ProjectAuth(
     var loggedIn = false
         private set
 
+    /**
+     * The whole of the CLI's last answer about the ordinary sign-in - who, on what plan.
+     *
+     * Kept so the accounts screen can name that account without starting a second `auth status` of its
+     * own: this round already asked, at warm-up, and the answer is the same one.
+     */
+    @Volatile
+    var lastStatus: ClaudeAuth.Status? = null
+        private set
+
     /** Polling of the sign-in state while the user goes through it in the terminal. */
     private var polling: ScheduledFuture<*>? = null
 
     /**
-     * The account last named by the CLI - what a fresh answer is compared against (see
-     * [ClaudeAuth.switchedAccount]). Kept here rather than in the usage itself: the sign-in is asked
-     * about in one place, and the figures are only one of the things that belong to an account.
+     * The account last named - what a fresh answer is compared against (see [ClaudeAuth.switchedAccount]).
+     * Kept here rather than in the usage itself: the sign-in is asked about in one place, and the figures
+     * are only one of the things that belong to an account.
+     *
+     * Null for "nothing named yet", never an empty string, and that distinction is load-bearing. Empty
+     * is a perfectly good NAME here - it is the CLI's ordinary sign-in - so reading it as "unknown" made
+     * the one move away from that account invisible: nothing followed it, the rings went on showing the
+     * previous subscription's shares and the new account's model catalogue was never asked for.
      */
     @Volatile
-    private var account = ""
+    private var account: String? = null
+
+    /**
+     * Whether [account] holds an id of ours or the CLI's own notion of who is signed in.
+     *
+     * The two are different alphabets - a digest against "address|org|method" - and which one is in use
+     * changes the moment the first account is added or the last is forgotten. Compared across that
+     * change, any two answers differ, which is not a switch but a change of subject.
+     */
+    @Volatile
+    private var accountIsOurs = false
 
     /** Which outcome the polling is waiting for: signed in, or on the contrary signed out. */
     @Volatile
@@ -59,18 +85,50 @@ internal class ProjectAuth(
     /** We ask the CLI in the background: this starts a process, which has no place on the interface thread. */
     fun check() {
         ApplicationManager.getApplication().executeOnPooledThread {
-            val status = ClaudeAuth.status()
+            val accounts = ClaudeAccounts.getInstance()
+            val chosen = accounts.currentId
+
+            // Asked under the current account's own environment, so `loggedIn` and the plan describe the
+            // account the panel claims to be on rather than whatever the CLI's default drawer holds.
+            val status = accounts.variablesFor(chosen, project.basePath)
+                ?.let { ClaudeAuth.status(it, project.basePath) }
+                ?: ClaudeAuth.Status(installed = true, loggedIn = false)
 
             val before = loggedIn
             loggedIn = status.loggedIn
-            send(status)
+            // Only the ordinary sign-in's own answer is worth keeping: asked under a drawer, `email` is
+            // still the shared file's and names whoever signed in last (see ClaudeAuth.Status.identity).
+            if (chosen.isEmpty()) lastStatus = status
+            send(status, chosen)
 
-            // Before anything is asked of the new account: what is told about the switch clears the
-            // memory of the previous one, and a fresh answer arriving into an uncleared memory would be
-            // merged with somebody else's figures instead of replacing them.
-            val switched = ClaudeAuth.switchedAccount(account, status)
-            if (status.identity.isNotEmpty()) account = status.identity
-            if (switched) onAccountChanged()
+            /*
+             * Which account we are on.
+             *
+             * Once accounts exist this is OUR record, not the CLI's. Its `email` and `orgId` come from
+             * the shared ~/.claude.json, which no drawer partitions, so under two accounts they name
+             * whoever signed in last - and a background token refresh by the idle account would read as a
+             * switch here and throw away the working account's figures (see ClaudeAuth.Status.identity).
+             *
+             * With no accounts of our own the CLI's notion is the only one there is, and it is still the
+             * right answer: that is a person who switched accounts in a terminal, which this round exists
+             * to notice.
+             */
+            val ours = accounts.list().isNotEmpty()
+            val identity = if (ours) chosen else status.identity
+            // Only an answer in the same alphabet is worth comparing against - see [accountIsOurs].
+            val known = account.takeIf { accountIsOurs == ours }
+
+            val switched = if (ours) {
+                known != null && known != identity
+            } else {
+                known != null && ClaudeAuth.switchedAccount(known, status)
+            }
+
+            if (ours || identity.isNotEmpty()) {
+                account = identity
+                accountIsOurs = ours
+            }
+            if (switched) onAccountChanged(chosen)
 
             if (status.loggedIn == awaited) {
                 awaited = null
@@ -188,14 +246,19 @@ internal class ProjectAuth(
         )
     }
 
-    private fun send(status: ClaudeAuth.Status) {
+    private fun send(status: ClaudeAuth.Status, accountId: String) {
+        // The account's own label rather than what the CLI answered: with several accounts its `email`
+        // is the shared config file's and names whoever signed in last.
+        val named = ClaudeAccounts.getInstance().account(accountId)
+
         hub.broadcastProject(
             buildJsonObject {
                 put("type", "auth")
                 put("installed", status.installed)
                 put("loggedIn", status.loggedIn)
-                put("email", status.email)
-                put("plan", status.plan)
+                put("email", named?.email?.ifEmpty { status.email } ?: status.email)
+                put("plan", named?.plan?.ifEmpty { status.plan } ?: status.plan)
+                put("accountId", accountId)
                 put("executablePath", ClaudePreferences.executablePath)
                 // Not found - we show where we looked and what the system itself answered. Those two
                 // lists show why we missed, even when the machine is someone else's and cannot be looked

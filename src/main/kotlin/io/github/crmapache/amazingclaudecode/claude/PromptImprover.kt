@@ -133,6 +133,13 @@ internal object PromptImprover {
      */
     fun improve(
         workingDirectory: String?,
+        /**
+         * Whose subscription pays for the rewrite - the account of the tab whose composer was pressed.
+         *
+         * A real billed run, so it belongs to that account rather than to whichever is current; and an
+         * account whose plan has no Opus has to fall to its own fallback model instead of failing.
+         */
+        accountId: String,
         draft: String,
         attachments: List<String>,
         rejected: List<String>,
@@ -179,6 +186,7 @@ internal object PromptImprover {
                 args = args,
                 input = body(draft, attachments, rejected),
                 timeoutMs = TIMEOUT_MS,
+                accountId = accountId,
                 onError = onError,
                 onResult = { output -> onResult(output.trim()) },
             )

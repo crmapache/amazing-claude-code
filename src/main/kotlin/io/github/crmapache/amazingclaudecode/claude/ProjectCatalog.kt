@@ -372,6 +372,7 @@ internal class ProjectCatalog(
 
         PromptImprover.improve(
             workingDirectory = project.basePath,
+            accountId = hub.conversations.accountOf(sessionId),
             draft = draft,
             attachments = attachments,
             rejected = rejected,

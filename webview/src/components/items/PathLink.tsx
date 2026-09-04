@@ -4,7 +4,8 @@ import { useT } from '../../i18n'
 import s from '../feed.module.css'
 
 /**
- * A path inside ordinary text: a click opens the file in the editor.
+ * A path inside ordinary text: a click opens the file in the editor - or shows the folder, when the path
+ * names one (see FileRef.folder and OpenInEditor).
  *
  * A button rather than a link with an address: there is no address here, and the panel has no browser of
  * its own to be carried off by one. Dotted under the pointer, exactly as a path in backticks is (see
@@ -21,13 +22,18 @@ export const PathLink = ({ run, children }: { run: TextRun; children?: React.Rea
 
   if (!ref || !openFile) return <>{children ?? run.text}</>
 
+  // What the click does, in the words of the thing it does it to - the hover on a path is the one place
+  // that says so before it happens. The flag itself stays here: the IDE asks the disk rather than us.
+  const { folder, ...request } = ref
+  const does = folder ? t.feed.copy.openFolder : t.feed.copy.openFile
+
   return (
     <button
       type="button"
       className={s.pathLink}
-      aria-label={`${t.feed.copy.openFile}: ${run.text}`}
-      data-tooltip={t.feed.copy.openFile}
-      onClick={() => openFile(ref)}
+      aria-label={`${does}: ${run.text}`}
+      data-tooltip={does}
+      onClick={() => openFile(request)}
     >
       {children ?? run.text}
     </button>

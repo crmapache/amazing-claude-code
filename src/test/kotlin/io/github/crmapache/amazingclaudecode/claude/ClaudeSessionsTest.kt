@@ -1,6 +1,8 @@
 package io.github.crmapache.amazingclaudecode.claude
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import io.github.crmapache.amazingclaudecode.claude.accounts.AccountsState
+import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
 
 /**
  * A conversation's settings answer two different questions, and they are allowed to disagree: what THIS
@@ -16,7 +18,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
  */
 class ClaudeSessionsTest : BasePlatformTestCase() {
 
-    private fun sessions(onBorn: (String, String, String) -> Unit = { _, _, _ -> }) = ClaudeSessions(
+    private fun sessions(onBorn: (String, String, String, String) -> Unit = { _, _, _, _ -> }) = ClaudeSessions(
         workingDirectory = null,
         parentDisposable = testRootDisposable,
         onEvent = { _, _ -> },
@@ -94,7 +96,7 @@ class ClaudeSessionsTest : BasePlatformTestCase() {
     fun testAResumedConversationAdoptsItsOwnModelBeforeItWakes() {
         ClaudePreferences.model = "haiku"
         val born = mutableMapOf<String, String>()
-        val sessions = sessions { sessionId, _, model -> born[sessionId] = model }
+        val sessions = sessions { sessionId, _, model, _ -> born[sessionId] = model }
 
         sessions.resume("old", "conversation-1")
         assertEquals("haiku", born["old"])
@@ -111,7 +113,7 @@ class ClaudeSessionsTest : BasePlatformTestCase() {
 
     fun testEachConversationIsBornAtWhatWasChosenByThen() {
         val born = mutableMapOf<String, String>()
-        val sessions = sessions { sessionId, effort, _ -> born[sessionId] = effort }
+        val sessions = sessions { sessionId, effort, _, _ -> born[sessionId] = effort }
 
         ClaudePreferences.effort = "high"
         sessions.setPermissionMode("first", PermissionModes.PLAN) {}
@@ -192,10 +194,58 @@ class ClaudeSessionsTest : BasePlatformTestCase() {
         assertEquals(PermissionModes.PLAN, sessions.permissionMode("branch-1"))
     }
 
+    /**
+     * Choosing an account is not only about the next conversation: the ones already open move onto it.
+     *
+     * A conversation cannot be told to change account - the CLI reads its credentials once, at start - so
+     * this is a new process over the same transcript, and everything the tab was set to has to be carried
+     * across by hand. Missed, the moved tab falls back to the machine's defaults and the model changes
+     * out from under the person, which is not what pressing Select says.
+     */
+    fun testChoosingAnAccountMovesTheTabsAlreadyOpen() {
+        ClaudePreferences.model = "haiku"
+        ClaudePreferences.effort = "high"
+
+        val sessions = sessions()
+        sessions.setModel("main", "sonnet") {}
+        sessions.setEffort("main", "low")
+        sessions.setPermissionMode("main", PermissionModes.PLAN) {}
+
+        register("work")
+        sessions.switchAllTo()
+
+        assertEquals("work", sessions.accountOf("main"))
+        assertEquals("sonnet", sessions.model("main"))
+        assertEquals("low", sessions.effort("main"))
+        assertEquals(PermissionModes.PLAN, sessions.permissionMode("main"))
+    }
+
+    /** A tab with no process has nothing to move, and no process is raised to move it. */
+    fun testATabThatWasNeverOpenedIsLeftAlone() {
+        val sessions = sessions()
+
+        register("work")
+        sessions.switchAllTo()
+
+        // No conversation was made for it: a tab nobody has written into reads the register itself
+        // whenever it does start, which by then says exactly this.
+        assertNull(sessions.model("main"))
+    }
+
+    /** The account register is machine-wide and outlives a test, so what a test adds it takes away. */
+    private fun register(id: String) {
+        AccountsState.getInstance().remember(AccountsState.Account().apply { this.id = id })
+        ClaudeAccounts.getInstance().currentId = id
+    }
+
     override fun tearDown() {
         ClaudePreferences.mode = ""
         ClaudePreferences.effort = ""
         ClaudePreferences.model = ""
+        runCatching {
+            AccountsState.getInstance().accounts().forEach { AccountsState.getInstance().forget(it.id) }
+            ClaudeAccounts.getInstance().currentId = ""
+        }
         super.tearDown()
     }
 }

@@ -549,6 +549,52 @@ describe('building the feed out of the agent stream', () => {
     expect(state.stopRequestedAt).toBeUndefined()
   })
 
+  /**
+   * A turn the IDE stopped itself, to move the conversation to the account now chosen.
+   *
+   * Nobody pressed anything, so the row must not say "Stopped by you" - but the MARKER beside it must,
+   * because what reads that marker (the push on the phone, the sound) wants one thing: that this turn
+   * was cut short and is not worth announcing.
+   */
+  it('tells a stop made for an account switch from one the person made', () => {
+    let state = reducePanel(initialPanelState, { kind: 'stoppedForAccount' }, 1_700_000_000_000)
+    state = reducePanel(state, { kind: 'agent', event: resultEvent(400) }, 1_700_000_000_400)
+
+    const meta = state.items.filter((item) => item.kind === 'meta')
+    expect(meta[0]?.outcome).toEqual({ state: 'movedAccount', duration: '0.4s' })
+    expect(meta[0]?.stats).toEqual(['Stopped by you · 0.4s'])
+    // And it is spent: the next, ordinary turn is not an interrupted one.
+    expect(state.stoppedForAccount).toBeUndefined()
+    // It never arms the panel's own "kill the process" offer - that one belongs to a stop somebody asked
+    // for, and its eight seconds are the same eight this move waits out.
+    expect(state.stopRequestedAt).toBeUndefined()
+  })
+
+  /**
+   * And when the turn would not stop at all, so the process was taken down: no result ever arrives, and
+   * this status is the only trace. What was running has to be closed with it, or the tool cards keep
+   * live clocks against a process that is gone.
+   */
+  it('closes what was running when a turn was taken down for an account switch', () => {
+    let state = reducePanel(
+      initialPanelState,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'do it' }], quotes: [] },
+      1_700_000_000_000,
+    )
+    state = play([toolUseEvent('t1', 'Bash', { command: 'sleep 300' })], state)
+    state = reducePanel(state, { kind: 'stoppedForAccount' }, 1_700_000_002_000)
+    state = reducePanel(state, { kind: 'status', status: 'idle' }, 1_700_000_002_500)
+
+    const groups = state.items.filter((item): item is ToolGroupItem => item.kind === 'toolGroup')
+    expect(groups[0]?.tools.at(-1)?.pending).toBe(false)
+    expect(groups[0]?.tools.at(-1)?.meta).toEqual({ kind: 'closed', reason: 'stopped' })
+    expect(state.startedAt.t1).toBeUndefined()
+
+    const meta = state.items.filter((item) => item.kind === 'meta')
+    expect(meta.at(-1)?.outcome).toEqual({ state: 'movedAccount', duration: '' })
+    expect(meta.at(-1)?.stats).toEqual(['Stopped by you'])
+  })
+
   it('does not zero the context gauge on a service turn: it never went to the model at all', () => {
     // That is how a /model closes, for instance: the CLI runs the command itself, without a request to the
     // model, and sends zeroes in the result - taken for a snapshot of the window, the gauge fell to zero

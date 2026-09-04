@@ -22,6 +22,15 @@ internal data class SessionLaunch(
     val mode: String = "",
 ) {
 
+    /**
+     * Whether there is anything here worth remembering.
+     *
+     * The account is deliberately NOT among these three. Which subscription pays is not a property of a
+     * launch at all any more: it is read from the register at the moment the process comes up, and it is
+     * the same answer for every conversation on the machine (see ClaudeAccounts.currentId). A field here
+     * would be a second opinion, and the one thing a second opinion about the account can do is bill the
+     * wrong subscription without a word.
+     */
     val isEmpty: Boolean
         get() = model.isEmpty() && effort.isEmpty() && mode.isEmpty()
 }

@@ -265,6 +265,25 @@ internal class SessionPermissions(private val hub: ClaudeSessionHub) {
         }
     }
 
+    /**
+     * Everything this conversation was waiting on, taken back at once.
+     *
+     * For the one moment when the process dies without the CLI saying a word about the questions it was
+     * holding: a turn taken down so the conversation can move to another account. The cards are pinned
+     * above the input field and are the only thing on screen that says a conversation is waiting for a
+     * person, so nothing else would ever take them off it - the tab would go on promising a decision
+     * that has nobody left to make it.
+     */
+    fun withdrawAll(sessionId: String) {
+        val requests = buildList {
+            channelPermissions.entries.filter { it.value.sessionId == sessionId }.forEach { add(it.key) }
+            plans.values.filter { it.sessionId == sessionId }.forEach { add(it.requestId) }
+            asks.values.filter { it.sessionId == sessionId }.forEach { add(it.requestId) }
+        }
+
+        requests.forEach { withdraw(sessionId, it) }
+    }
+
     /** The card a request was waiting under, by the request's own number. */
     private fun cardOf(cards: ConcurrentHashMap<String, Pending>, requestId: String): Pair<String, Pending>? =
         cards.entries.firstOrNull { it.value.requestId == requestId }?.let { it.key to it.value }

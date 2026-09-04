@@ -28,6 +28,57 @@ export interface UsageFacts {
 type UsageMessage = Extract<ShellMessage, { type: 'usage' }>
 
 /**
+ * The usage figures of every account at once.
+ *
+ * Two accounts genuinely run at the same time - a conversation carries its account for its whole life -
+ * so both answer about their own subscription, and both send `usage` messages. Folded into one picture
+ * they interleave: one account's five-hour window beside the other's weekly one, permanently, with no
+ * switch needed to produce it. So each account has its own set of figures and the screen draws the ones
+ * belonging to the tab in front of the person.
+ *
+ * `shared` is for what belongs to no account. There is exactly one such figure - today's tokens - and it
+ * is counted by reading a transcripts folder that has no account marker anywhere in it (see
+ * ProjectUsage.refreshTodayTokens).
+ */
+export interface UsageBook {
+  byAccount: Record<string, UsageFacts>
+  shared: UsageFacts
+}
+
+export const emptyUsageBook = (): UsageBook => ({ byAccount: {}, shared: {} })
+
+/** One `usage` message folded into the account it names, or into the shared slot when it names none. */
+export const mergeUsageBook = (book: UsageBook, message: UsageMessage): UsageBook =>
+  message.account === undefined
+    ? { ...book, shared: mergeUsage(book.shared, message) }
+    : {
+        ...book,
+        byAccount: {
+          ...book.byAccount,
+          [message.account]: mergeUsage(book.byAccount[message.account] ?? {}, message),
+        },
+      }
+
+/**
+ * What one account's screen shows: its own windows, and the shared figures underneath.
+ *
+ * Written out field by field rather than as a spread of one over the other, because `mergeUsage` leaves
+ * its keys present-and-undefined: spread, an account that has never heard of today's tokens would
+ * overwrite the shared answer with `undefined` and the figure would vanish from the screen.
+ */
+export const usageOf = (book: UsageBook, account: string): UsageFacts => {
+  const own = book.byAccount[account] ?? {}
+
+  return {
+    session: own.session,
+    week: own.week,
+    extra: own.extra,
+    contextWindow: own.contextWindow ?? book.shared.contextWindow,
+    todayTokens: own.todayTokens ?? book.shared.todayTokens,
+  }
+}
+
+/**
  * One `usage` message folded into what is already known.
  *
  * Merged rather than taken whole: the figures arrive by two independent routes - the windows out of the

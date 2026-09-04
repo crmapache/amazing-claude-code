@@ -595,8 +595,15 @@ export interface MetaItem {
    * What is drawn on screen comes from [outcome] below instead.
    */
   stats: string[]
-  /** How the turn ended and how long it took - the card's own words are chosen from these. */
-  outcome?: { state: 'worked' | 'stopped'; duration: string }
+  /**
+   * How the turn ended and how long it took - the card's own words are chosen from these.
+   *
+   * `movedAccount` is a stop like `stopped`, and differs only in what the row says: nobody pressed
+   * anything, the IDE stopped the turn so the conversation could move to the account now chosen. The
+   * marker in [stats] stays the same English "Stopped by you" for both, because what reads it wants to
+   * know one thing - that this turn was cut short and is not worth a notification.
+   */
+  outcome?: { state: 'worked' | 'stopped' | 'movedAccount'; duration: string }
 }
 
 /** How a chain of retries ended: the request went through, the CLI gave up, or the turn was interrupted. */

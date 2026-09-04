@@ -6,6 +6,8 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectManager
+import io.github.crmapache.amazingclaudecode.claude.accounts.AccountsWatch
 import io.github.crmapache.amazingclaudecode.editor.DiskRefresh
 import io.github.crmapache.amazingclaudecode.editor.UnsavedEdits
 import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
@@ -73,11 +75,36 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             // same words. A stand-in or a guess off the first line is another matter: those are exactly
             // what the question exists to replace.
             titleWanted = { sessionId -> tabs.titleSource(sessionId) != SessionSnapshot.TITLE_LLM },
-            onTurnEnded = { sessionId -> sendStatus(sessionId, SessionSnapshot.STATUS_IDLE) },
+            onTurnEnded = { sessionId ->
+                // Before the status goes out, and the order is load-bearing twice over. The status is
+                // what drains this tab's queue (see runQueued), and a message queued while the turn ran
+                // must go into the process the person's choice named rather than into the one it
+                // replaces. And this is the first moment the move can be made at all: the raw-line
+                // listener below runs while `busy` is still true, so a move applied from there saw the
+                // tab as working and put itself straight back into the waiting list, for ever.
+                conversations.applyPendingAccount(sessionId)
+                sendStatus(sessionId, SessionSnapshot.STATUS_IDLE)
+            },
             onTurnStarted = { sessionId -> sendStatus(sessionId, SessionSnapshot.STATUS_RUNNING) },
-            onBorn = { sessionId, effort, model ->
+            onMoveStopping = { sessionId -> sendTurnStopped(sessionId) },
+            // The tab stands ready on the new account: idle, and with whatever was queued while the old
+            // turn ran now free to go into the process the person's choice named.
+            onMoved = { sessionId -> sendStatus(sessionId, SessionSnapshot.STATUS_IDLE) },
+            onMoveForced = { sessionId ->
+                // The questions it was holding die with the process, and only this takes their cards off
+                // the screen: the CLI says nothing when it is killed rather than when it changes its mind.
+                permissions.withdrawAll(sessionId)
+                sendTurnStopped(sessionId)
+            },
+            onBorn = { sessionId, effort, model, accountId ->
                 sendEffort(sessionId, effort)
                 sendModel(sessionId, model)
+                sendAccount(sessionId, accountId)
+                // And the models that account may run. Once per account rather than per tab (see
+                // ProjectUsage.refreshModels): a conversation resumed onto the account it was billed to
+                // is the ordinary way a tab ends up on one nobody has asked about, and without this its
+                // model menu falls back to the built-in list for the rest of the project's life.
+                usage.refreshModels(sessionId, accountId)
             },
         )
     }
@@ -98,9 +125,12 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             usage.refreshLimits(urgent = true)
             usage.refreshTodayTokens()
             usage.refreshModels(ClaudeSessions.MAIN_SESSION)
+            // Who that sign-in belongs to is what the accounts row is drawn from, and this is the moment
+            // it becomes known (see ProjectAuth.lastStatus).
+            io.github.crmapache.amazingclaudecode.toolwindow.ClaudePanels.everyPanel { it.accountsRefresh() }
         },
         // The figures on the rings belong to the account they were asked about - see ProjectUsage.forget.
-        onAccountChanged = { usage.forget() },
+        onAccountChanged = { account -> usage.forget(account) },
     )
 
     val catalog: ProjectCatalog = ProjectCatalog(project, this)
@@ -129,6 +159,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         projectName = project.name,
         workingDirectory = project.basePath,
         parentDisposable = this,
+        accountOf = { sessionId -> conversations.accountOf(sessionId) },
     )
 
     private val clients = ConcurrentHashMap<String, SessionClient>()
@@ -184,6 +215,11 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // the history, the settings and the hint all ask it soon: paid now, off every thread anybody
         // waits on (see ClaudeHome). A project on this machine returns from this at once.
         ClaudeHome.warmUp(project.basePath)
+        // The account register is one book for the whole machine, and a running IDE holds it in memory:
+        // without this, a switch made in the window next door would not reach this one until a restart.
+        // Started from the hub rather than from the panel - a project a phone attached to has
+        // conversations and no tool window, and they follow the account too.
+        AccountsWatch.getInstance().start()
         catalog.scheduleUpdates(this, usage)
         usage.scheduleUpdates(this)
         auth.scheduleUpdates(this)
@@ -221,10 +257,21 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             // ask the very process that has just finished for a fresh figure.
             if (line.contains(RESULT_MARKER)) {
                 usage.refreshContext(sessionId)
-                // And the subscription usage along with it: the turn has just cost some of the limit,
-                // and the freshest share is precisely at this process - it got it in the answer. A past
-                // conversation's replay does not count: everything there has already happened.
-                if (!replay) usage.refreshLimits(preferred = sessionId)
+                if (!replay) {
+                    // The subscription usage: the turn has just cost some of the limit, and the freshest
+                    // share is precisely at this process - it got it in the answer. A past conversation's
+                    // replay does not count: everything there has already happened.
+                    //
+                    // Filed under the account THIS conversation runs on rather than the current one. They
+                    // differ whenever a tab works on an account that is not the one new tabs start on, and
+                    // then the question went to the wrong subscription: the working tab's own figures never
+                    // moved, while a process was raised to ask about an account nothing had happened to.
+                    //
+                    // Asked BEFORE the move below, and the order is the whole of it: the account that just
+                    // paid for this turn is the one the tab is on now, not the one it is about to become,
+                    // and the process holding the freshest answer is the one the move is about to replace.
+                    usage.refreshLimits(preferred = sessionId, account = conversations.accountOf(sessionId))
+                }
             }
         }
     }
@@ -319,6 +366,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             conversations.effort(sessionId)?.let { batch += effortMessage(sessionId, it) }
             conversations.model(sessionId)?.let { batch += modelMessage(sessionId, it) }
             conversations.conversationIdOf(sessionId)?.let { batch += conversationMessage(sessionId, it) }
+            batch += accountMessage(sessionId, conversations.accountOf(sessionId))
         }
 
         client.deliver(batch)
@@ -622,7 +670,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // plan. It is announced from here rather than from the notification rules, because "it has just
         // begun" is a change of state and the state lives there - the event itself repeats on every
         // turn while it holds (see NotificationReasons.EXTRA_USAGE).
-        if (!replay && usage.noteRateLimit(line)) {
+        if (!replay && usage.noteRateLimit(sessionId, line)) {
             notificationListener?.invoke(sessionId, NotificationReasons.EXTRA_USAGE, "")
         }
 
@@ -940,6 +988,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      */
     private fun runQueued(sessionId: String) {
         if (snapshot(sessionId).get().status == SessionSnapshot.STATUS_RUNNING) return
+        // Between a tab's two processes there is nothing to send into: the old conversation is gone and
+        // the new one is not in yet, so this would raise a bare third one on no transcript at all. The
+        // move says so itself the moment it is done (see ClaudeSessions.onMoved).
+        if (conversations.isMoving(sessionId)) return
 
         val (entry, rest) = queued.take(sessionId) ?: return
         sendQueue(sessionId, rest)
@@ -1104,6 +1156,50 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         }.toString()
 
     /**
+     * Which Claude account a conversation runs on - said at its birth, like the effort and the model,
+     * live rather than into the journal and for the same reason: it is what the conversation IS.
+     *
+     * The opaque id and nothing else. The label, the address and the organisation are not in here on
+     * purpose: this message is per-conversation, so a subscribed phone receives it, and a phone has no
+     * words for an account and no business with somebody's address. What the accounts screen needs to
+     * draw a row travels separately, through the window's own door (see ClaudePanel).
+     */
+    private fun sendAccount(sessionId: String, accountId: String) {
+        emitLive(accountMessage(sessionId, accountId))
+    }
+
+    /**
+     * This turn is being stopped by the IDE rather than by the person, so that the conversation can move
+     * to another account.
+     *
+     * Every client needs telling, and none of them could work it out. An interrupt looks from the
+     * outside exactly like a turn ending early: the feed captioned it "Worked 3s", the finished sound
+     * played, a push went to the phone, and the tool cards the turn was in the middle of stayed running
+     * with live clocks against a process about to be destroyed.
+     *
+     * Deliberately NOT the panel's own stop mark. That one also arms the red "kill the process" button
+     * after eight seconds - which is the same eight seconds this move's own deadline uses, so a person
+     * who pressed nothing would be offered a frightening button for a stop they did not ask for.
+     */
+    private fun sendTurnStopped(sessionId: String) {
+        broadcast(
+            sessionId,
+            buildJsonObject {
+                put("type", "turnStopped")
+                put("sessionId", sessionId)
+                put("reason", "account")
+            }.toString(),
+        )
+    }
+
+    private fun accountMessage(sessionId: String, accountId: String): String =
+        buildJsonObject {
+            put("type", "account")
+            put("sessionId", sessionId)
+            put("accountId", accountId)
+        }.toString()
+
+    /**
      * Opening a past conversation: the process comes up with its transcript, and its saved events are
      * replayed into the feed - otherwise the tab would look empty although the agent remembers
      * everything.
@@ -1154,8 +1250,11 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
              * tells the panel which one it is, before the replay names it.
              */
             if (page.model.isNotEmpty()) {
-                conversations.adoptModel(sessionId, page.model)
-                sendModel(sessionId, page.model)
+                // What was adopted rather than what was written in the transcript: the account paying
+                // today may have no access to that model, and then the conversation comes up on another
+                // one (see ClaudeSessions.adoptModel). Saying the transcript's would leave the chip
+                // naming a model the process is not running.
+                sendModel(sessionId, conversations.adoptModel(sessionId, page.model))
             }
 
             page.lines.forEach { line -> onAgentLine(sessionId, line, replay = true) }
@@ -1228,6 +1327,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // choice made in another tab.
         conversations.effort(sessionId)?.let { sendEffort(sessionId, it) }
         conversations.model(sessionId)?.let { sendModel(sessionId, it) }
+        // And whose subscription pays for it now - the account chosen on this machine, whatever this
+        // conversation was billed to when it was written. Said again because the reset wiped it, and a
+        // tab left undrawn here would claim whatever the client happened to hold before.
+        sendAccount(sessionId, conversations.accountOf(sessionId))
         // And which conversation the tab holds now - the panel wrote that down the moment the past
         // conversation was picked, and this reset has just wiped it. The process names it again only
         // once it is up, seconds later or never (no executable, a sign-in needed), and until then a
@@ -1381,6 +1484,28 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
 
         fun getInstance(project: Project): ClaudeSessionHub = project.service()
 
+        /**
+         * Every conversation hub already alive on this machine.
+         *
+         * For the one decision that belongs to the machine rather than to a window - which account pays
+         * (see AccountDesk.use). ClaudePanels.everyPanel is not enough for it: a hub exists for every
+         * project a phone has attached to (see RemoteAgent.attach), tool window or no tool window, and
+         * those conversations were walking straight past the switch and going on being billed to the
+         * account just left.
+         *
+         * Already alive is the point of getServiceIfCreated: raising a hub for a project nobody has
+         * opened the panel in would start its schedules, its warm-up and its bridge for a conversation
+         * that does not exist.
+         */
+        fun everyHub(tell: (ClaudeSessionHub) -> Unit) {
+            for (project in ProjectManager.getInstance().openProjects) {
+                if (project.isDisposed) continue
+
+                runCatching { project.getServiceIfCreated(ClaudeSessionHub::class.java)?.let(tell) }
+                    .onFailure { thisLogger().warn("A hub could not be told about the account", it) }
+            }
+        }
+
         private const val RESET_MARKER = "\"type\":\"conversation_reset\""
 
         /** The end of a turn - the one moment the context window and the usage have genuinely moved. */
@@ -1408,6 +1533,11 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             "locale",
             "init",
             "auth",
+            // Right after the sign-in it qualifies: a client that joins without it cannot draw the menu
+            // row, and a fact not listed here never reaches one at all. Deliberately NOT in
+            // RemoteFeed.PROJECT_FACTS - a phone is not told about accounts, and the default-deny there
+            // is what keeps it that way.
+            "accounts",
             "modeAvailability",
             "project",
             "models",

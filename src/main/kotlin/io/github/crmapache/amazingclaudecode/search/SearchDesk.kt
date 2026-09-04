@@ -138,6 +138,8 @@ internal class SearchDesk(private val project: Project, private val hub: ClaudeS
             AiSearch.find(
                 corpus,
                 query,
+                // The account of the tab that asked, so the run is billed where the person is working.
+                accountId = hub.conversations.accountOf(asker),
                 onStarted = { handler -> runs.started(id, handler) },
                 onStep = { step -> if (!runs.isCancelled(id)) sendStep(clientId, asker, id, step) },
                 onError = { message ->

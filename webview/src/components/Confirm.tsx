@@ -40,7 +40,7 @@ export const Confirm = ({ title, subject, confirmLabel, onConfirm, onCancel }: C
 
   return (
     <>
-      <div className={s.menuScrim} onClick={onCancel} />
+      <div className={s.confirmScrim} onClick={onCancel} />
       <div className={s.confirm} role="dialog" aria-modal="true" aria-label={title}>
         <div className={s.confirmTitle}>{title}</div>
         <div className={s.confirmSubject}>{subject}</div>

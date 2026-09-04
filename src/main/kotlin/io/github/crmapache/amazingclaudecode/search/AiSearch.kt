@@ -123,6 +123,11 @@ internal object AiSearch {
     fun find(
         corpus: Path,
         query: String,
+        /**
+         * Whose subscription pays. Measured at two to seven cents a run, which makes this the most
+         * expensive thing in the plugin to charge to the wrong account by accident.
+         */
+        accountId: String,
         onStarted: (ProcessHandler) -> Unit,
         onStep: (AiStep) -> Unit,
         onError: (String) -> Unit,
@@ -175,6 +180,7 @@ internal object AiSearch {
                 args = args,
                 input = body(query),
                 timeoutMs = TIMEOUT_MS,
+                accountId = accountId,
                 onStarted = { handler ->
                     handler.addProcessListener(StepReader(onStep))
                     onStarted(handler)

@@ -59,6 +59,7 @@ import { Quotes, type Quote } from './components/Quotes'
 import { SelectionMenu } from './components/SelectionMenu'
 import { Tooltips } from './components/Tooltips'
 import { Remote, RemoteAbout, remoteState, type RemoteStatus } from './components/Remote'
+import { Accounts, accountState, type AccountsState } from './components/Accounts'
 import { Sounds } from './components/Sounds'
 import { StatusBar, UsageMeters, type Anchor, type SelectorKind } from './components/StatusBar'
 import { SHARE, shareText, thanksMenu, thanksUrl } from './components/Thanks'
@@ -109,7 +110,7 @@ import {
 import { voiceAppend, voiceGhost, voiceMessage } from './feed/voice'
 import { composePrompt, countSessionImages, imageAttachments, tokensText, trimTrailingSpace } from './feed/tokens'
 import type { FeedItem, TaskItem, TodoItem, UserItem, UserToken } from './feed/types'
-import { mergeUsage, type UsageFacts } from './feed/usage'
+import { emptyUsageBook, mergeUsageBook, usageOf, type UsageBook } from './feed/usage'
 import type {
   AvailablePluginInfo,
   HistoryEntry,
@@ -189,6 +190,15 @@ const LIST_STALE_MS = 60_000
 
 /** How often the figures are asked for again while the statistics tab is being looked at. */
 const STATISTICS_REFRESH_MS = 30_000
+
+/**
+ * How often the accounts screen asks for the list again while it is open.
+ *
+ * Twenty seconds because that is about how long an answer takes to travel: a process per account, and
+ * the IDE's own pace under it holds each account to one question in fifteen (see UsageProbes). Asking
+ * faster would only queue requests behind that pace.
+ */
+const ACCOUNTS_REFRESH_MS = 20_000
 
 /** How often at most a hand on the keyboard is reported - the ledger counts by the minute anyway. */
 const ACTIVITY_REPORT_MS = 30_000
@@ -408,7 +418,46 @@ export const App = () => {
   const [loginWaiting, setLoginWaiting] = useState(false)
   /** Grows whenever the input field has to be given the focus back: after a link from the editor, say. */
   const [focusToken, setFocusToken] = useState(0)
-  const [usage, setUsage] = useState<UsageFacts>({})
+  /**
+   * The usage figures of every account, not just one set.
+   *
+   * Two accounts can be running at once - a conversation carries its account for its whole life - and
+   * both answer about their own subscription. Held as one picture they interleave: one account's
+   * five-hour window beside the other's weekly one (see UsageBook). The rings draw the account of the
+   * tab in front of the person.
+   */
+  const [usageBook, setUsageBook] = useState<UsageBook>(emptyUsageBook)
+  /**
+   * Which Claude account each conversation runs on, by tab - it is said at the tab's birth and again
+   * whenever a client joins (see ClaudeSessionHub.sendAccount). Empty is the CLI's ordinary sign-in,
+   * which is what every machine that never touches this feature has.
+   */
+  const [tabAccounts, setTabAccounts] = useState<Record<string, string>>({})
+  /** The machine's accounts, as the screen behind the menu draws them - null until the IDE says. */
+  const [accounts, setAccounts] = useState<AccountsState | null>(null)
+  /** How the last account request went, as a code. Cleared by the next answer, never by a timer. */
+  const [accountNote, setAccountNote] = useState('')
+  /**
+   * A `/design-login` was typed into the field, so the answer to it has nowhere to be read.
+   *
+   * Every other request on the accounts screen is answered onto that screen, where the person already is.
+   * This one comes from the input field, and a Claude Design sign-in that refuses itself would otherwise
+   * be a message that vanished on Enter: the terminal never appeared, and nothing said why. So the screen
+   * where the refusal is written - and where the button to try again lives - is opened along with it.
+   *
+   * Only a failure is ever answered (see the `designLogin` message), which is what leaves the flag raised
+   * on the ordinary road. It costs nothing: every other answer here follows a press made ON that screen,
+   * so opening it again is opening what is already open.
+   */
+  const designAsked = useRef(false)
+  /**
+   * The account whose logout is waiting to be confirmed.
+   *
+   * Asked before sending, because this one is genuinely irreversible: it revokes the credential, and
+   * coming back means a browser sign-in. The panel already asks before stopping a background task, and
+   * this is a good deal further than that.
+   */
+  const [loggingOut, setLoggingOut] = useState<{ id: string; label: string } | null>(null)
   /**
    * Which of the modal panels is open - one value rather than three independent booleans. That way they
    * are mutually exclusive by construction: opening the plugins closes the history by itself rather than
@@ -507,11 +556,18 @@ export const App = () => {
    */
   const [feedback, setFeedback] = useState<FeedbackDraft>(emptyFeedback)
   /**
-   * The catalogue of models from the CLI itself: null means it has not arrived yet, and then the menu shows
-   * the built-in list (see modelOptions). Keeping a list of our own is not an option - the available models
-   * depend on the account and on the organisation's policy.
+   * The catalogue of models from the CLI itself, per account - the same shape and the same reason as the
+   * usage figures beside it (see UsageBook).
+   *
+   * Which models exist is decided by the plan and by the organisation's policy, so the answer belongs to
+   * the account it was asked about. Held as one list, the last answer to arrive overwrote every other:
+   * switch the current account and the tab of another one offered its neighbour's models - at best names
+   * that are not there, at worst a pick the CLI refuses before the first turn.
+   *
+   * Missing means the answer for that account has not arrived, and then the menu shows the built-in list
+   * (see modelOptions) - exactly what it did before any answer at all.
    */
-  const [models, setModels] = useState<ModelInfo[] | null>(null)
+  const [modelBook, setModelBook] = useState<Record<string, ModelInfo[]>>({})
   /** The project's files for the "@" hint - they arrive by themselves, the panel asks for nothing. */
   const [files, setFiles] = useState<string[]>([])
   /** The slash commands' descriptions and argument syntax - of the same nature as files. */
@@ -750,6 +806,16 @@ export const App = () => {
 
   const panel = panels[active] ?? initialPanelState
   const draft = drafts[active] ?? EMPTY_DRAFT
+  /**
+   * The account of the tab on screen, and the figures that belong to it.
+   *
+   * The rings answer "how much of MY subscription is left", and with two accounts running that question
+   * has two answers at once: the one that belongs here is the one paying for the tab being looked at.
+   */
+  const activeAccount = tabAccounts[active] ?? accounts?.current ?? ''
+  const usage = usageOf(usageBook, activeAccount)
+  /** And its models: the catalogue belongs to the account, exactly as the figures do. */
+  const models = modelBook[activeAccount] ?? null
   const sessionQueue = panel.queue
   const running = panel.status === 'running'
   /**
@@ -908,6 +974,22 @@ export const App = () => {
   }, [loadMcp, loadPlugins])
 
   /**
+   * The accounts screen is open and the shares under it move: a turn ends on one of them, a five-hour
+   * window resets. Asked for again while it is on screen, because the answers cost a process each and
+   * are therefore not kept warm - opened once and left open, the screen used to hold whatever it learned
+   * at the moment it was opened, which on a screen people open to read shares is the whole of it.
+   *
+   * How often an account is really asked is not decided here: the IDE holds one pace for every window
+   * (see UsageProbes), so this is a request to look again rather than an order to start a process.
+   */
+  useEffect(() => {
+    if (!sideMenu.open || sideMenu.screen !== 'accounts') return
+
+    const timer = setInterval(() => send({ type: 'accountList' }), ACCOUNTS_REFRESH_MS)
+    return () => clearInterval(timer)
+  }, [sideMenu.open, sideMenu.screen])
+
+  /**
    * The statistics tab is looked at and the figures grow under it: a turn ends, a minute passes. Asked
    * for again every half-minute while it is the active tab - the ticker on the IDE's side marks minutes
    * at the same pace, so asking more often would show nothing new.
@@ -1049,9 +1131,14 @@ export const App = () => {
    * The same reason as panelsRef: the subscription to the shell's messages is held once at mount and has no
    * render of its own, while which model genuinely runs in a tab that got refused (see autoRefusedModels)
    * has to be known fresh rather than as it was at the moment of subscribing.
+   *
+   * The whole book and the tabs' accounts rather than the active tab's catalogue: the refusal names a
+   * conversation, and that conversation may be running on another account than the one on screen.
    */
-  const modelsRef = useRef(models)
-  modelsRef.current = models
+  const modelBookRef = useRef(modelBook)
+  modelBookRef.current = modelBook
+  const tabAccountsRef = useRef(tabAccounts)
+  tabAccountsRef.current = tabAccounts
   const prefsRef = useRef(prefs)
   prefsRef.current = prefs
 
@@ -1789,7 +1876,9 @@ export const App = () => {
             break
 
           case 'models':
-            setModels(message.models)
+            // Filed under the account it belongs to. The field is the shell's own (see ProjectUsage
+            // sendModels); a catalogue that names nobody is the ordinary sign-in's, whose id is empty.
+            setModelBook((current) => ({ ...current, [message.account ?? '']: message.models }))
             break
 
           case 'context':
@@ -1858,7 +1947,38 @@ export const App = () => {
 
           case 'usage':
             // Folded rather than replaced whole, and by the same rules as on the phone - see mergeUsage.
-            setUsage((current) => mergeUsage(current, message))
+            // Into the account it names, so two accounts running at once do not mix their windows.
+            setUsageBook((current) => mergeUsageBook(current, message))
+            break
+
+          /** Which account a tab runs on - live state, like the effort beside it. */
+          case 'turnStopped':
+            feed({ session: message.sessionId, action: { kind: 'stoppedForAccount' } })
+            break
+
+          case 'account':
+            setTabAccounts((current) => ({ ...current, [message.sessionId]: message.accountId }))
+            break
+
+          case 'accounts':
+            setAccounts({
+              accounts: message.accounts,
+              capability: message.capability,
+              current: message.current,
+              pending: message.pending === true,
+            })
+            // An answer has arrived, so whatever the previous request had to say is spent.
+            setAccountNote('')
+            break
+
+          case 'accountOutcome':
+            setAccountNote(message.code)
+            // A Claude Design sign-in asked for from the input field has no screen to be answered on - see
+            // designAsked.
+            if (designAsked.current) {
+              designAsked.current = false
+              setSideMenu({ open: true, screen: 'accounts' })
+            }
             break
 
           /*
@@ -1985,7 +2105,8 @@ export const App = () => {
                 // Resolved by the same formula as in the render (see resolvePanelModel), otherwise
                 // "did the agent name a model" would be decided differently in two places.
                 const sessionPanel = panelsRef.current[message.sessionId]
-                const refusedModel = resolvePanelModel(sessionPanel ?? {}, modelsRef.current, sessionPanel?.ownModel ?? prefsRef.current.model)
+                const sessionModels = modelBookRef.current[tabAccountsRef.current[message.sessionId] ?? ''] ?? null
+                const refusedModel = resolvePanelModel(sessionPanel ?? {}, sessionModels, sessionPanel?.ownModel ?? prefsRef.current.model)
                 setAutoRefusedModels((current) => (current.includes(refusedModel) ? current : [...current, refusedModel]))
               } else {
                 setRefusedModes((current) => withRefusedMode(current, message.mode))
@@ -2799,6 +2920,12 @@ export const App = () => {
         return
       }
 
+      if (name === 'design-login') {
+        designAsked.current = true
+        send({ type: 'designLogin' })
+        return
+      }
+
       if (name === 'resume') {
         openHistory()
         return
@@ -3304,6 +3431,12 @@ export const App = () => {
               setLoginWaiting(true)
             }}
             onRecheck={() => send({ type: 'checkAuth' })}
+            // The way out when the account in force has lost its credential: this gate stands in front
+            // of the side menu, so without these buttons the screen that fixes it is unreachable.
+            otherAccounts={(accounts?.accounts ?? [])
+              .filter((one) => one.id !== accounts?.current && one.health !== 'absent')
+              .map((one) => ({ id: one.id, label: one.alias.trim() !== '' ? one.alias : one.email }))}
+            onSwitchAccount={(id) => send({ type: 'accountUse', id })}
             onSetExecutablePath={(path) => send({ type: 'setExecutablePath', path })}
           />
         </div>
@@ -3385,6 +3518,10 @@ export const App = () => {
     setSideMenu({ open: true, screen })
 
     if (screen === 'history') send({ type: 'history' })
+
+    // Asked afresh every time it is opened: the health of each account and its remaining share both cost
+    // a process, so they are not kept warm - and both are exactly what somebody opens this screen to read.
+    if (screen === 'accounts') send({ type: 'accountList' })
 
     if (screen === 'mcp') {
       setMcpMessage(null)
@@ -3470,6 +3607,9 @@ export const App = () => {
       label: remoteState(t, remote.state).label,
       tone: remoteState(t, remote.state).tone,
     },
+    // The same shape as remote above, and for the same reason: the row and the screen must not disagree
+    // about which account is in force (see accountState).
+    accounts: accountState(t, accounts),
     version: pluginVersion,
   }
 
@@ -3654,6 +3794,19 @@ export const App = () => {
           onConfirm={() => {
             send({ type: 'stopTask', sessionId: active, taskId: stopping.id })
             setStopping(null)
+          }}
+        />
+      ) : null}
+
+      {loggingOut ? (
+        <Confirm
+          title={t.accounts.logoutConfirm}
+          subject={loggingOut.label}
+          confirmLabel={t.accounts.logout}
+          onCancel={() => setLoggingOut(null)}
+          onConfirm={() => {
+            send({ type: 'accountLogout', id: loggingOut.id })
+            setLoggingOut(null)
           }}
         />
       ) : null}
@@ -4111,6 +4264,26 @@ export const App = () => {
             onRefuse={() => send({ type: 'refusePairing' })}
             onRevoke={(deviceId) => send({ type: 'revokeDevice', deviceId })}
             onAbout={() => setSideMenu({ open: true, screen: 'remoteAbout' })}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'accounts' ? (
+          <Accounts
+            state={accounts}
+            // Each account's own figures, drawn beside its name. They are keyed by account already -
+            // the rings above the field read the very same book (see UsageBook).
+            usage={(id) => usageOf(usageBook, id)}
+            note={accountNote}
+            onUse={(id) => send({ type: 'accountUse', id })}
+            onAdd={() => send({ type: 'accountAdd' })}
+            onCancelAdd={() => send({ type: 'accountCancel' })}
+            onForget={(id) => send({ type: 'accountForget', id })}
+            onLogout={(id) => {
+              const account = accounts?.accounts.find((one) => one.id === id)
+              setLoggingOut({ id, label: account?.alias.trim() || account?.email || '' })
+            }}
+            onRename={(id, alias) => send({ type: 'accountRename', id, alias })}
+            onDesignLogin={() => send({ type: 'designLogin' })}
           />
         ) : null}
 

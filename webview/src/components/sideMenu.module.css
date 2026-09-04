@@ -149,7 +149,10 @@
  * That is what tells the eye the screen came from here rather than from nowhere, and it is why the way
  * back is a step rather than a fresh start.
  */
+/* The top gap used to come from the first group's caption. With the captions gone the list would
+   otherwise start flush against the header. */
 .levelRoot {
+  padding-top: 13px;
   padding-bottom: 14px;
 }
 
@@ -184,10 +187,6 @@
   font: 600 9px/1 var(--acc-mono);
   letter-spacing: 0.09em;
   color: var(--acc-fg-faint);
-}
-
-.groupFirst {
-  padding-top: 13px;
 }
 
 /* A hair of space between the rows: each lights up as a rounded block of its own, and flush against
@@ -344,7 +343,13 @@
 
 /* Coloured from the component, not from here: the colour is the state, and the states are known there.
    Two rows raise one - MCP when every server is up, remote access whenever the line has a state at all. */
+/* The same measured pixel as .cardDot, for the same reason: the row centres the dot on the line box,
+   the eye centres it on the letters, and this mono face sits low in its box. Checked against the
+   x-height rather than against one word's ink - "Connected" has no descender and "you" does, and
+   fitting the dot to whichever word happens to be there moves it about between rows. */
 .rowValueDot {
+  position: relative;
+  top: 1px;
   width: 6px;
   height: 6px;
   border-radius: 9px;
@@ -641,7 +646,15 @@
   gap: 8px;
 }
 
+/* Nudged a pixel down, and the pixel is measured rather than guessed.
+   The row centres the dot on the line BOX, which is what CSS can see; the eye centres it on the letters.
+   JetBrains Mono has an ascent of 13 against a descent of 4, so at 12.5px the text sits low in its box
+   and its ink centre lands exactly 1px below the box centre - which is where the dot has to be, or it
+   reads as floating above the name. `top` rather than a margin: a margin is shared out by the centring
+   and would move it half as far. */
 .cardDot {
+  position: relative;
+  top: 1px;
   flex: none;
   width: 6px;
   height: 6px;
@@ -754,10 +767,23 @@
   color: var(--acc-on-accent);
 }
 
+/* Red standing, not only under the cursor.
+   Every other danger button in the panel - Forget, Remove, Revoke - reaches no further than this
+   machine, and wears its colour on hover like the rest of the system. Logging out is the one that goes
+   past it: it revokes the credential on Anthropic's side, so the person is signed out everywhere. A
+   button that only admits to that when the mouse is already on it admits it too late. */
+.buttonDangerStrong:not(:disabled) {
+  border-color: var(--acc-bad-32);
+  background: var(--acc-bad-10);
+  color: var(--acc-bad-text);
+}
+
+.buttonDangerStrong:hover:not(:disabled),
+.buttonDangerStrong[data-hover]:not(:disabled),
 .buttonDanger:hover:not(:disabled),
 .buttonDanger[data-hover]:not(:disabled) {
   border-color: var(--acc-bad-40);
-  background: var(--acc-bad-12);
+  background: var(--acc-bad-16);
   color: var(--acc-bad-text);
 }
 
@@ -1757,4 +1783,150 @@
 .hotkeyClear[data-hover] {
   background: var(--acc-neutral-12);
   color: var(--acc-fg);
+}
+
+/* --- The accounts screen with nothing on it yet ----------------------------------
+   An empty screen is an invitation to act, so this one is a single centred block: the glyph, one line
+   saying what the feature buys, and the action. Deliberately NOT a bordered card - a card here would
+   repeat the shape of an account row and read as one empty account rather than as an offer.
+   The boldness is spent on the glyph alone; everything under it is quiet. */
+.accountsEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 26px 10px 8px;
+  text-align: center;
+}
+
+.accountsGlyph {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-accent-12);
+  color: var(--acc-accent-light);
+}
+
+.accountsHeadline {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--acc-fg-body);
+}
+
+/* Held well short of the panel's width: a line running the full 350px reads as a paragraph to get
+   through rather than as a sentence to take in. */
+.accountsBody {
+  max-width: 30ch;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--acc-fg-faint);
+  text-wrap: pretty;
+}
+
+/* The one thing to press on this screen, so it takes the width rather than hugging the left edge the
+   way a secondary button does. */
+.accountsAction {
+  width: 100%;
+  padding: 7px 10px;
+}
+
+/* Waiting for a sign-in: what is happening on the left, the way out of it on the right.
+
+   One row rather than a disabled button with the word inside it, because the two are different things -
+   a sentence about the wait, and something to press. The wait is generous (ten minutes: a browser, a
+   password manager, an SSO detour), and without the button beside it there was no way out of it at all. */
+.accountsWaiting {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.accountsWaitingText {
+  font-size: 11.5px;
+  color: var(--acc-fg-ghost);
+}
+
+/* Claude Design's sign-in: a section of its own rather than one more thing under the Add button.
+
+   Everything above this line is about which Claude account is in force; this is about a second
+   authorization filed inside that account, and it is offered whether or not the machine can keep two
+   accounts apart. The screen's own 14px gap does not say "a different subject" - a rule does, and it is
+   the only one on this screen for exactly that reason. */
+.accountsDesign {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--acc-line);
+}
+
+.accountsFinePrint {
+  max-width: 32ch;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--acc-fg-ghost);
+  text-wrap: pretty;
+}
+
+/* The cards line up with the text above them rather than sitting further in.
+   `.screenList` is not usable here: elsewhere it REPLACES the screen's padding (applied beside .screen),
+   while this list lives inside .screen, so its 6px would stack on the screen's 12 and inset the cards by
+   half again as much as the paragraph over them. */
+.accountList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* --- One account's card ----------------------------------------------------------
+   Its own lines rather than .cardMeta, which is a single right-aligned nowrap label: three spans put
+   inside it ran together into one word and were pushed against the right edge. */
+/* The address sits on the plan's line, so it takes that line's size and gives way when it runs out. */
+.accountAddress {
+  font-family: var(--acc-mono);
+  color: var(--acc-fg-faint);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* One line, never two: a card that grows a row when an address is long reads as a different card. */
+.accountFacts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--acc-fg-ghost);
+}
+
+/* The plan is the one word here worth reading at a glance - it is what the limits below belong to. */
+.accountPlan {
+  padding: 0 5px;
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-control);
+  color: var(--acc-fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* What is left of each window, side by side. The figure carries the colour and the name stays quiet:
+   two coloured words next to each other cancel each other out. */
+.accountMeters {
+  display: flex;
+  gap: 12px;
+  font: 10.5px var(--acc-mono);
+}
+
+.accountMeter {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.accountMeterName {
+  color: var(--acc-fg-ghost);
 }

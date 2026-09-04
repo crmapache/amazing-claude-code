@@ -35,14 +35,12 @@ export const ko: Dict = {
       voiceLanguage: { title: '말하는 언어', hint: '받아쓰기가 알아들을 언어' },
       voiceDevice: { title: '마이크', hint: '어느 것으로 들을지' },
       language: { title: '언어', hint: '패널이 쓰는 언어' },
+      accounts: { title: 'Claude 계정', hint: '어느 구독으로 일하는지' },
       feedback: { title: '피드백', hint: '버그, 아이디어, 그냥 인사도 좋아요' },
       feedbackLog: { title: '함께 보내는 내용', hint: '보내기 전 전체 보고서' },
     },
 
     groups: {
-      project: '이 프로젝트',
-      devices: '기기',
-      plugin: '플러그인 자체',
       author: '만든 사람',
     },
 
@@ -52,6 +50,7 @@ export const ko: Dict = {
       mcp: { label: 'MCP 서버', sub: '상태, 로그인, 다시 연결' },
       plugins: { label: '플러그인', sub: '설치됨, 둘러보기, 마켓플레이스' },
       remote: { label: '원격 접속', sub: '상태, 릴레이, 연결된 기기' },
+      accounts: { label: 'Claude 계정', sub: '로그아웃 없이 전환하기' },
       settings: { label: '설정', sub: '알림음, 모드, 배치, 언어' },
       feedback: { label: '피드백 보내기', sub: '버그, 아이디어, 그냥 인사도 좋아요' },
     },
@@ -378,6 +377,7 @@ export const ko: Dict = {
     useThis: '이걸로 쓰기',
     whereLooked: '패널이 찾아본 곳',
     checkAgain: '다시 확인',
+    orSwitch: '또는 다른 계정으로 전환하세요:',
     signIn: 'Claude Code에 로그인',
     signInText:
       '로그인은 IDE 터미널에서 한 번만 하면 돼요. Claude가 브라우저를 열고 당신이 돌아오길 기다립니다. 패널은 알아서 이어받아요.',
@@ -510,6 +510,7 @@ export const ko: Dict = {
     result: {
       worked: (duration) => (duration ? `작업 ${duration}` : '완료'),
       stopped: (duration) => (duration ? `직접 멈춤 · ${duration}` : '직접 멈춤'),
+      movedAccount: (duration) => (duration ? `계정 전환을 위해 중지됨 · ${duration}` : '계정 전환을 위해 중지됨'),
     },
 
     modelSwitch: { label: '모델', note: 'Claude Code가 바꾼 거예요, 당신이 아니라' },
@@ -559,7 +560,7 @@ export const ko: Dict = {
       unconfirmed: '미확인',
     },
 
-    copy: { copied: '복사됨', click: '클릭해서 복사', openFile: '편집기에서 열기' },
+    copy: { copied: '복사됨', click: '클릭해서 복사', openFile: '편집기에서 열기', openFolder: '폴더 표시' },
   },
 
   chrome: {
@@ -591,6 +592,54 @@ export const ko: Dict = {
       text: '새로 고쳐도 안전해요. 대화는 패널 뒤의 Claude Code 프로세스에 있고 패널보다 오래 남아요.',
       button: '패널 새로 고침',
     },
+  },
+
+  accounts: {
+    empty: { title: '업무용과 개인용을 나란히', body: '로그아웃 없이 Claude 계정을 전환하세요. 스킬, 훅, 설정, 기록은 그대로 공유됩니다.' },
+    intro: '모든 것이 여기서 선택한 계정에서 실행됩니다. 열려 있는 대화는 모두 그 계정으로 옮겨지고, 진행 중인 것은 옮기기 위해 중지됩니다.',
+    unnamed: '로그인하는 중…',
+    defaultName: 'Claude Code 로그인',
+    current: '사용 중',
+    signingIn: '로그인 중',
+    use: '선택',
+    switching: '바꾸는 중…',
+    rename: '이름 바꾸기',
+    save: '저장',
+    logout: '로그아웃',
+    logoutConfirm: 'Claude Code에서 로그아웃할까요?',
+    forget: '지우기',
+    add: '계정 추가',
+    adding: '로그인을 기다리는 중…',
+    cancel: '취소',
+    addHint: '로그인용 터미널이 열려요. 지금 쓰는 계정은 그대로예요.',
+    mcpNote: 'MCP 서버는 계정마다 따로 로그인해서, 새 계정에서는 한 번씩 인증해야 해요. 스킬, 훅, 설정, 기록은 함께 씁니다.',
+    designAuthorize: 'Claude Design 인증하기',
+    designNote: 'Claude Design도 계정마다 따로 로그인하고, 이건 터미널에서만 할 수 있어요. 지금 쓰는 계정으로 터미널이 열리고, 그다음부터는 DesignSync가 패널 안에서 알아서 동작합니다.',
+    aliasPlaceholder: '회사, 집, 어느 고객사…',
+    absent: '저장된 로그인 정보가 없어요. 이 계정을 쓰려면 다시 로그인하세요.',
+    fiveHour: '5시간',
+    weekly: '주간',
+    row: {
+      one: '계정 하나',
+      adding: '로그인하는 중…',
+    },
+    unavailable: {
+      ignored: '이 Claude Code는 로그인 두 개를 구분하지 못해요. 업데이트한 뒤 이 화면을 다시 열어 주세요.',
+      wsl: 'WSL 안의 프로젝트에서는 쓸 수 없어요. Claude Code가 이 컴퓨터가 아니라 그 안에서 돌아가거든요.',
+      not_signed_in: '먼저 Claude Code에 로그인하고, 여기서 두 번째 계정을 추가하세요.',
+      api_key: '이 컴퓨터는 API 키로 로그인하고, 그 키는 모든 대화에 적용돼요. 키가 설정돼 있는 동안에는 계정을 바꿀 수 없어요.',
+    },
+    outcome: {
+      'did-not-land': '로그인이 끝나지 않아서 아무것도 추가되지 않았어요.',
+      'no-terminal': '터미널이 열리지 않아서 로그인을 시작하지 못했어요.',
+      'no-executable': '이 컴퓨터에서 Claude Code를 찾지 못했어요.',
+      'no-store': '새 계정을 담을 폴더를 만들지 못했어요.',
+      'design-no-account': '지금 쓰는 계정을 알아내지 못해서 아무것도 열지 않았어요.',
+      'not-supported': '이 Claude Code는 두 로그인을 구분하지 못해 아무것도 추가되지 않았습니다.',
+      'logout-failed': '로그아웃하지 못했습니다. 터미널에서 시도해 보세요.',
+      'already-running': '이미 로그인이 진행 중이에요.',
+      unknown: '잘 되지 않았어요.',
+    } as Record<string, string>,
   },
 
   remote: {
@@ -893,6 +942,7 @@ export const ko: Dict = {
     fork: '이 대화를 새 탭에서 이어가기',
     login: 'IDE 터미널에서 Claude Code에 로그인',
     logout: '로그아웃 - IDE 터미널이 열려요',
+    designLogin: 'IDE 터미널에서 Claude Design 인증하기',
     model: '이 세션의 모델 바꾸기',
     effort: 'Claude가 움직이기 전에 얼마나 생각할지 정하기',
     context: '지금 컨텍스트 창에 무엇이 들어 있는지',

@@ -134,6 +134,16 @@ internal class DiagnosticsLog {
         /** The search over the conversations: a run started, found, failed - never a query or a hit. */
         const val SEARCH = "search"
 
+        /**
+         * Switching between Claude accounts: what the isolation probe answered, that the current account
+         * changed, that a drawer would not resolve.
+         *
+         * Shapes only, and this one is stricter than most: never an address, never an organisation,
+         * never a store directory and never a keychain service name. The buffer leaves the machine
+         * inside a feedback report, and an account id is the most identifying thing the plugin holds.
+         */
+        const val ACCOUNTS = "accounts"
+
         fun getInstance(): DiagnosticsLog = service()
 
         /**

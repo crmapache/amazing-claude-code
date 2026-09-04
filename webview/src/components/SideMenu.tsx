@@ -21,6 +21,7 @@ export type MenuScreen =
   | 'sounds'
   | 'remote'
   | 'remoteAbout'
+  | 'accounts'
   | 'defaultMode'
   | 'composerLayout'
   | 'pasteCollapse'
@@ -65,6 +66,12 @@ export interface MenuSummary {
   /** The language in force, written in itself - "简体中文" rather than "Chinese". */
   language: string
   remote: RemoteSummary
+  /**
+   * The Claude account in force, and a tone for its dot - the same shape remote has above, and drawn by
+   * the same rules. The label is the person's own name for the account, or the local part of its
+   * address: a full address here pushes the description onto a second row.
+   */
+  accounts: RemoteSummary
   version: string
 }
 
@@ -216,6 +223,15 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M11.1 4.9a4.4 4.4 0 010 6.2" />
       <path d="M2.6 13.4a7.6 7.6 0 010-10.8" />
       <path d="M13.4 2.6a7.6 7.6 0 010 10.8" />
+    </svg>
+  ),
+  /* Two overlapping heads: one account in front, another behind it - the whole idea in one glyph. */
+  accounts: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="6.2" cy="6" r="2.5" />
+      <path d="M1.9 13.2a4.6 4.6 0 018.6 0" />
+      <path d="M10.6 4a2.5 2.5 0 010 4" />
+      <path d="M12.1 9.6a4.6 4.6 0 012 2.6" />
     </svg>
   ),
   sounds: (
@@ -391,7 +407,6 @@ export const SideMenu = ({
             // and Tab has to agree with it.
             inert={inDetail}
           >
-            <div className={`${s.group} ${s.groupFirst}`}>{t.menu.groups.project}</div>
             <div className={s.rows}>
               <Row
                 icon="history"
@@ -400,14 +415,6 @@ export const SideMenu = ({
                 sub={t.menu.rows.history.sub}
                 value={summary.history === null ? '' : String(summary.history)}
                 onClick={() => onPick('history')}
-              />
-              <Row
-                icon="statistics"
-                iconClass={s.rowIconStatistics}
-                label={t.menu.rows.statistics.label}
-                sub={t.menu.rows.statistics.sub}
-                value={summary.statistics}
-                onClick={onOpenStatistics}
               />
               <Row
                 icon="mcp"
@@ -432,15 +439,22 @@ export const SideMenu = ({
                 value={summary.plugins === null ? '' : String(summary.plugins)}
                 onClick={() => onPick('plugins')}
               />
-            </div>
-
-            <div className={s.group}>{t.menu.groups.devices}</div>
-            <div className={s.rows}>
-              {/* A row like the four above it, not the tinted card it used to be. The card carried a whole
-                  sentence about the state and stood three lines tall for it - at the top of a list whose
-                  every other entry says its piece in one. What the sentence explained is on the screen
-                  behind the row; what is worth knowing without opening it is the state itself, and that
-                  fits where the other rows keep their counts. */}
+              <Row
+                icon="accounts"
+                // Tinted like remote below rather than fixed like the rest, and for the same reason: the
+                // colour answers "is this working" from across the panel, without being read.
+                iconStyle={TONE_ICON[summary.accounts.tone]}
+                label={t.menu.rows.accounts.label}
+                sub={t.menu.rows.accounts.sub}
+                value={summary.accounts.label}
+                valueTone={TONE_VALUE[summary.accounts.tone]}
+                onClick={() => onPick('accounts')}
+              />
+              {/* A row like the ones above it, not the tinted card it used to be. The card carried a whole
+                  sentence about the state and stood three lines tall for it - in a list whose every other
+                  entry says its piece in one. What the sentence explained is on the screen behind the row;
+                  what is worth knowing without opening it is the state itself, and that fits where the
+                  other rows keep their counts. */}
               <Row
                 icon="remote"
                 iconStyle={TONE_ICON[summary.remote.tone]}
@@ -450,13 +464,19 @@ export const SideMenu = ({
                 valueTone={TONE_VALUE[summary.remote.tone]}
                 onClick={() => onPick('remote')}
               />
-            </div>
-
-            {/* The plugin itself, rather than the work done in it - which is why it stands apart from the
-                groups above and right against the version in the footer. Both rows belong to it: the
-                settings configure the plugin, and the feedback is about the plugin. */}
-            <div className={s.group}>{t.menu.groups.plugin}</div>
-            <div className={s.rows}>
+              {/* Not a screen of the menu but a tab of the strip: the row opens that tab and the menu
+                  closes behind it (see the note on onOpenStatistics). It stands down here with the
+                  settings rather than up with the history because it is read now and then, not worked in. */}
+              <Row
+                icon="statistics"
+                iconClass={s.rowIconStatistics}
+                label={t.menu.rows.statistics.label}
+                sub={t.menu.rows.statistics.sub}
+                value={summary.statistics}
+                onClick={onOpenStatistics}
+              />
+              {/* The plugin's own two, last before the version in the footer: the settings configure the
+                  plugin and the feedback is about it, so neither belongs among the rows above. */}
               <Row
                 icon="settings"
                 iconClass={s.rowIconSettings}

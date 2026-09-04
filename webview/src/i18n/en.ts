@@ -50,14 +50,20 @@ export const en = {
       voiceLanguage: { title: 'SPOKEN LANGUAGE', hint: 'what dictation listens for' },
       voiceDevice: { title: 'MICROPHONE', hint: 'which one to listen through' },
       language: { title: 'LANGUAGE', hint: 'what the panel speaks' },
+      accounts: { title: 'CLAUDE ACCOUNTS', hint: 'which subscription pays for the work' },
       feedback: { title: 'FEEDBACK', hint: 'a bug, an idea, or just hello' },
       feedbackLog: { title: 'WHAT GETS ATTACHED', hint: 'the whole report, before it goes' },
     },
 
+    /**
+     * The only caption left over the root list.
+     *
+     * The rest - the project, the devices, the account, the plugin - used to have one each and no longer
+     * do: the groups are told apart by the gap between them, which is enough, and four shouted headings
+     * over seven rows read as more structure than there is. This one stays because the card under it is
+     * an advertisement, and it has to say so before it is looked at.
+     */
     groups: {
-      project: 'THIS PROJECT',
-      devices: 'DEVICES',
-      plugin: 'THE PLUGIN',
       author: 'FROM THE AUTHOR',
     },
 
@@ -67,6 +73,7 @@ export const en = {
       mcp: { label: 'MCP servers', sub: 'Status, sign-in, reconnect' },
       plugins: { label: 'Plugins', sub: 'Installed, browse, marketplaces' },
       remote: { label: 'Remote access', sub: 'State, relay, paired devices' },
+      accounts: { label: 'Claude accounts', sub: 'Switch without signing out' },
       settings: { label: 'Settings', sub: 'Sounds, mode, layout, language' },
       feedback: { label: 'Send feedback', sub: 'A bug, an idea, or just hello' },
     },
@@ -437,6 +444,7 @@ export const en = {
     useThis: 'Use this',
     whereLooked: 'Where the panel looked',
     checkAgain: 'Check again',
+    orSwitch: 'Or switch to another account:',
     signIn: 'Sign in to Claude Code',
     signInText:
       'Signing in happens once, in the IDE terminal: Claude opens a browser and waits for you to come back. The panel picks it up on its own.',
@@ -603,6 +611,14 @@ export const en = {
     result: {
       worked: (duration: string): string => (duration ? `Worked ${duration}` : 'Worked'),
       stopped: (duration: string): string => (duration ? `Stopped by you · ${duration}` : 'Stopped by you'),
+      /**
+       * The IDE stopped the turn itself, to move the conversation to the account now chosen.
+       *
+       * A separate wording from `stopped` because nobody pressed anything: the same sentence would
+       * be a lie locally, and doubly so when the switch was made in another IDE window.
+       */
+      movedAccount: (duration: string): string =>
+        duration ? `Stopped to switch account · ${duration}` : 'Stopped to switch account',
     },
 
     modelSwitch: { label: 'MODEL', note: 'switched by Claude Code, not by you' },
@@ -660,7 +676,7 @@ export const en = {
       unconfirmed: 'unconfirmed',
     },
 
-    copy: { copied: 'Copied', click: 'Click to copy', openFile: 'Open in the editor' },
+    copy: { copied: 'Copied', click: 'Click to copy', openFile: 'Open in the editor', openFolder: 'Show the folder' },
   },
 
   chrome: {
@@ -693,6 +709,86 @@ export const en = {
       text: 'Reloading is safe: your conversations live in the Claude Code processes behind the panel and survive it.',
       button: 'Reload the panel',
     },
+  },
+
+  /**
+   * Several Claude accounts on one machine.
+   *
+   * The plan names (`max`, `pro`, `team`), the address and the organisation's name are DATA and are
+   * deliberately absent from here: they are the same word in every language, and putting them in a
+   * dictionary would mean nine entries in SHARED_WITH_ENGLISH for each (see the note on AUTHOR_PRODUCT).
+   */
+  accounts: {
+    /** Nothing added yet: what the feature buys, and one thing to press. */
+    empty: { title: 'Work and personal, side by side', body: 'Switch between Claude accounts without signing out. Skills, hooks, settings and history stay shared.' },
+    intro:
+      'Everything runs on the account chosen here - every open chat moves onto it, and one in the middle of a turn is stopped so it can move.',
+    /** An account whose sign-in has not landed, so nobody knows its address yet. */
+    unnamed: 'Signing in…',
+    /**
+     * The row for the sign-in the CLI already had, when its address cannot be told from the added
+     * accounts' - see ClaudeAccounts.defaultIdentity. Naming it by what it is beats naming it by an
+     * address that belongs to the row below.
+     */
+    defaultName: 'Claude Code sign-in',
+    current: 'in use',
+    signingIn: 'signing in',
+    use: 'Select',
+    switching: 'Switching…',
+    rename: 'Rename',
+    save: 'Save',
+    /** The default sign-in has no drawer to drop, so the only removal it has is ending the session. */
+    logout: 'Log out',
+    logoutConfirm: 'Log out of Claude Code?',
+    forget: 'Forget',
+    add: 'Add an account',
+    adding: 'Waiting for the sign-in…',
+    /** The way out of a wait that lasts ten minutes - see AddButton. */
+    cancel: 'Cancel',
+    addHint: 'A terminal opens for the sign-in. Your existing account is not touched.',
+    mcpNote: 'MCP servers sign in per account, so a new one authenticates them once. Skills, hooks, settings and history are shared.',
+    /**
+     * Claude Design's sign-in, which lives here because its credential lives in the account's drawer -
+     * and which only a terminal can run (see DesignLogin).
+     */
+    designAuthorize: 'Authorize Claude Design',
+    designNote: 'Claude Design signs in per account too, and only a terminal can do it. This opens one for the account in use; DesignSync then works in the panel by itself.',
+    aliasPlaceholder: 'Work, Home, a client…',
+    /**
+     * Presence, not validity: the CLI answers "signed in" for any credential it can read, including one
+     * revoked last week. So the words say what is actually known.
+     */
+    absent: 'No stored credential. Sign in again to use this account.',
+    /** The figures beside a row - short, because they sit on one line under the name. */
+    fiveHour: '5h',
+    weekly: 'week',
+    row: {
+      /** The value on the menu row when there is nothing to switch between. */
+      one: 'One account',
+      adding: 'Signing in…',
+    },
+    /**
+     * Why the machine cannot keep two sign-ins apart. One sentence each, and each names the real reason
+     * rather than "unavailable" - a person who reads why can usually do something about it.
+     */
+    unavailable: {
+      ignored: 'This Claude Code cannot keep two sign-ins apart. Update it and open this screen again.',
+      wsl: 'Not available for a project inside WSL: Claude Code runs there, not on this machine.',
+      not_signed_in: 'Sign in to Claude Code first, then add a second account here.',
+      api_key: 'This machine signs in with an API key, which applies to every conversation. Accounts cannot be switched while it is set.',
+    },
+    /** How a request went. Codes rather than sentences from the IDE, which speaks one language. */
+    outcome: {
+      'did-not-land': 'That sign-in did not finish, so nothing was added.',
+      'no-terminal': 'The terminal would not open, so the sign-in was not started.',
+      'no-executable': 'Claude Code was not found on this machine.',
+      'no-store': 'A folder for the new account could not be created.',
+      'design-no-account': 'The account in use could not be resolved, so nothing was opened.',
+      'not-supported': 'This Claude Code cannot keep two sign-ins apart, so nothing was added.',
+      'logout-failed': 'Logging out did not work. Try it in a terminal.',
+      'already-running': 'A sign-in is already under way.',
+      unknown: 'That did not work.',
+    } as Record<string, string>,
   },
 
   remote: {
@@ -1024,6 +1120,7 @@ export const en = {
     fork: 'continue this conversation in a new tab',
     login: 'sign in to Claude Code in the IDE terminal',
     logout: 'sign out - opens the IDE terminal',
+    designLogin: 'authorize Claude Design in the IDE terminal',
     model: 'switch the model for this session',
     effort: 'set how long Claude thinks before acting',
     context: 'what fills the context window right now',

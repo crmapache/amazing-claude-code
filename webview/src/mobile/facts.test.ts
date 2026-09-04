@@ -1,9 +1,17 @@
 import { en } from '../i18n/en'
 import { describe, expect, it } from 'vitest'
 import type { ShellMessage } from '../protocol'
-import { applyFact, emptyFacts, isFact, phoneCommands } from './facts'
+import { applyFact, emptyFacts, factsFor, isFact, phoneCommands } from './facts'
 
 const window = (percent: number) => ({ percent, resets: '' })
+
+/**
+ * The figures as one conversation sees them - the ordinary sign-in here, whose id is the empty string.
+ *
+ * They are kept per account rather than as one picture (see ProjectFacts.usage): two accounts run at
+ * once and both answer about their own subscription, so a screen has to say whose it is showing.
+ */
+const shown = (facts: ReturnType<typeof emptyFacts>) => factsFor(facts, '')
 
 describe('isFact', () => {
   it('takes the ones the composer is drawn from', () => {
@@ -33,12 +41,13 @@ describe('applyFact', () => {
   it('merges the usage rather than replacing it, so the two routes do not erase each other', () => {
     const withWindows = applyFact(emptyFacts(), {
       type: 'usage',
+      account: '',
       session: window(12),
       week: window(38),
       contextWindow: 1_000_000,
     } as ShellMessage)
 
-    const withTokens = applyFact(withWindows, { type: 'usage', todayTokens: '4.2M' } as ShellMessage)
+    const withTokens = shown(applyFact(withWindows, { type: 'usage', todayTokens: '4.2M' } as ShellMessage))
 
     expect(withTokens.session?.percent).toBe(12)
     expect(withTokens.week?.percent).toBe(38)
@@ -52,7 +61,33 @@ describe('applyFact', () => {
    */
   it('ignores a context window of zero rather than storing it', () => {
     const known = applyFact(emptyFacts(), { type: 'usage', contextWindow: 200_000 } as ShellMessage)
-    expect(applyFact(known, { type: 'usage', contextWindow: 0 } as ShellMessage).contextWindow).toBe(200_000)
+    expect(shown(applyFact(known, { type: 'usage', contextWindow: 0 } as ShellMessage)).contextWindow).toBe(200_000)
+  })
+
+  /**
+   * The report this was written for: two accounts at work on one machine, both answering about their
+   * own subscription. Folded into one picture the phone showed one account's five-hour window beside
+   * the other's weekly one - with no switching at all to produce it.
+   */
+  it('keeps each account\'s figures apart', () => {
+    const work = applyFact(emptyFacts(), { type: 'usage', account: 'work', week: window(70) } as ShellMessage)
+    const both = applyFact(work, { type: 'usage', account: 'home', week: window(4) } as ShellMessage)
+
+    expect(factsFor(both, 'work').week?.percent).toBe(70)
+    expect(factsFor(both, 'home').week?.percent).toBe(4)
+  })
+
+  /**
+   * And a reset is one account's own: signing out of one must not blank the rings of the conversation
+   * the person is actually looking at.
+   */
+  it('resets only the account it names', () => {
+    const work = applyFact(emptyFacts(), { type: 'usage', account: 'work', week: window(70) } as ShellMessage)
+    const both = applyFact(work, { type: 'usage', account: 'home', week: window(4) } as ShellMessage)
+    const after = applyFact(both, { type: 'usage', account: 'home', reset: true } as ShellMessage)
+
+    expect(factsFor(after, 'work').week?.percent).toBe(70)
+    expect(factsFor(after, 'home').week).toBeUndefined()
   })
 
   /**

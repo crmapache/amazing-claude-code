@@ -154,6 +154,16 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
     case 'status':
       return collect({ kind: 'status', status: message.state })
 
+    /*
+     * The IDE stopped this turn to move the conversation to another account (see turnStopped).
+     *
+     * The phone needs it as much as the desk does, and rather more: the switch was made somewhere it
+     * cannot see. Without it the turn is captioned as one that worked through and the tool cards it was
+     * in the middle of keep their clocks running against a process that is gone.
+     */
+    case 'turnStopped':
+      return collect({ kind: 'stoppedForAccount' })
+
     case 'error':
       return collect({ kind: 'error', message: message.message })
 

@@ -177,6 +177,41 @@ microphone on your work machine.
 The plugin installs no system-wide hook and asks for no accessibility permission: a key pressed in
 another application is never seen by it.
 
+## Several Claude accounts
+
+You can add more than one Claude account and switch between them without signing out of any of them.
+Doing so adds nothing to what leaves your machine.
+
+**The plugin stores no credential of its own.** There is no vault, nothing sealed, and nothing in the
+settings file: each account is an ordinary `claude auth login`, and Claude Code itself keeps, refreshes
+and reads its credential the way it always has - in your login keychain on macOS, in a file with
+owner-only permissions on Windows and Linux. What the plugin keeps beside it is a label: the name you
+gave the account, the address, the organisation, the plan, and the name of the folder Claude Code was
+pointed at. That list lives in one plain file in your home directory (`~/.amazing-claude-code/`), beside
+the folders it names, so that every JetBrains IDE on the machine reads the same one. It holds no
+credential and never has - only the labels above.
+
+**`~/.claude` stays one folder.** Switching accounts moves the credential and nothing else, so your
+skills, hooks, MCP servers, settings, personal commands and the whole conversation history are the same
+whichever account is in force. What does travel with an account is the sign-ins kept in that same
+credential store: the MCP servers, so a newly added account authenticates them once, and the Claude
+Design authorization behind `/design-login`. The panel can start that one for you - it opens the IDE's
+terminal, pointed at the credential store of the account in force - and the sign-in itself happens in
+Claude Code and your browser, as it does in any terminal. Nothing about it is stored by the plugin.
+
+**Nothing about accounts is sent anywhere.** The list is not on the wire, and it is not in a feedback
+report: the debug buffer records shapes only - that an account was added, that the current one changed,
+that it changed in another IDE, that a turn was stopped so a conversation could move, that a Claude
+Design sign-in was opened, that the machine cannot keep two sign-ins apart - never an address, an
+organisation, a folder or a credential. Today's token count remains a figure for the whole machine rather than per account, because
+it is counted by reading a folder of transcripts that carries no account marker.
+
+**Your phone is not told about accounts and cannot touch them.** It cannot list them, add one, switch,
+rename or forget one, nor start the Claude Design sign-in; adding an account opens a terminal and a
+browser sign-in on your machine, and
+choosing one decides whose subscription pays for the work. The only thing about accounts that reaches a
+paired phone is an opaque identifier saying that two conversations belong to different accounts.
+
 ## Your choices
 
 - Remote access is off by default; the plugin does nothing over the network until you turn it on.
