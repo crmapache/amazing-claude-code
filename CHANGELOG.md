@@ -9,6 +9,13 @@ commits.
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-09-04
+
+- Added: a choice of which key sends a message - Enter, or Cmd/Ctrl+Enter with Enter breaking the line ("Sending a message" in the settings). Asked for by everyone who drafts a prompt as several paragraphs: with Enter sending, a list you are typing goes out at its first line break. The Send button's hover shows the key in force, so a choice just made is visible without sending anything to test it.
+- Added: a message you sent can be taken back into the input field to be corrected and sent again - the arrow in its top right corner. Files, images, folders, quotes and collapsed pastes come back as they were, so a slip in a long prompt costs a word rather than retyping every attachment by hand. It lands as one step of the field's undo history: pressed over a half-written draft, it is one Cmd+Z away from being taken back. An image pasted into a conversation you opened from the history cannot come with it - the transcript keeps only its caption - and the hover says so before you press.
+- Added: a button beside it that copies the whole message, attachments included as their real paths rather than the captions the chips wear - a copy that means something in a terminal, a task or somebody else's chat. It works on a phone too, where copying a message out was not possible at all.
+- Fixed: messages sent with the mouse were missing from the field's own history, so the up arrow brought back nothing for anyone who presses Send instead of Enter. Deferred messages are in it now as well: a queued message was let go of just the same, and is as likely to have a slip in it.
+
 ## [0.12.0] - 2026-09-04
 
 - Added: several Claude accounts on one machine, switched without signing out of any of them. Work and personal side by side: pick the one everything runs on, and give each a name of your own - "Work", "Home" - instead of reading addresses. Nothing else moves with it: your skills, hooks, settings, MCP servers and the whole history stay exactly where they are, and only the subscription that pays changes.
@@ -537,7 +544,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.0...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.1...HEAD
+[0.12.1]: https://github.com/crmapache/amazing-claude-code/compare/0.12.0...0.12.1
 [0.12.0]: https://github.com/crmapache/amazing-claude-code/compare/0.10.3...0.12.0
 [0.10.3]: https://github.com/crmapache/amazing-claude-code/compare/0.10.2...0.10.3
 [0.10.2]: https://github.com/crmapache/amazing-claude-code/compare/0.10.1...0.10.2
