@@ -9,6 +9,20 @@ commits.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-04
+
+- Added: several Claude accounts on one machine, switched without signing out of any of them. Work and personal side by side: pick the one everything runs on, and give each a name of your own - "Work", "Home" - instead of reading addresses. Nothing else moves with it: your skills, hooks, settings, MCP servers and the whole history stay exactly where they are, and only the subscription that pays changes.
+- Added: what is left of each account's limits, on its own row - the five-hour window and the week, as real figures rather than a tick. They are asked of each account separately, without switching to it, which is also how you can tell an account that still has room from one that has none before choosing.
+- Added: the account you were already signed in to is listed first, with a Log out button of its own. Logging out moves you straight to another account when one is signed in here, so work carries on instead of meeting the sign-in screen.
+- Added: a way to authorize Claude Design, which could not be reached from the panel at all until now. `/design-login` draws an interactive screen, so a streaming session - which is how the panel runs Claude Code - does not have that command in the first place: typed into the field it came back with "isn't available in this environment", and DesignSync failed every call telling you to go and run it. Typing it now opens the IDE's terminal with the sign-in already running, and there is a button for the same thing at the bottom of the accounts screen. Which account it signs in for matters and is the reason this is not something to do by hand: the Design credential is filed with that account's own, so a sign-in run in an ordinary terminal lands beside whichever account Claude Code would open by itself - and DesignSync in the panel goes on failing exactly as before, with nothing anywhere saying why.
+- Changed: an account's card is down to what is asked of it - the plan and the address on one line. The organisation is gone from it: the plan already says whether it is a team, and the name beside it was either the company the address names anyway or Anthropic's "somebody's Organization".
+- Changed: choosing an account applies to everything, not only to the next chat. Every open conversation moves onto it, in every open project, and a chat you open from the history afterwards runs on it too rather than on whatever it happened to be billed to when it was written. A conversation in the middle of a turn is stopped so that it can move - what it had already written stays in the chat, and it carries on from there on the account you chose. Each account's card is down to a single Select button because of it.
+- Changed: the list of accounts and the one in force are now one book for the whole machine rather than one per IDE. Add an account in WebStorm and it is there in IntelliJ; switch in one and every conversation in the other follows within a couple of seconds. The credential drawers were always shared - only the list pointing at them was not, so one IDE could hold the only pointer to an account the other could not see.
+- Changed: a conversation moved to another account keeps its model only when that account's plan can actually run it, and otherwise switches to one it can. Claude Code does not refuse a model your plan has no access to when the conversation starts: it comes up, replays and looks perfectly well, and then answers your first message with an error that mentions no account at all.
+- Changed: the menu behind the burger is one list now, in the order things are actually opened - history, MCP, plugins, accounts, remote access - with what is read now and then below it. The four headings over it are gone: eight rows are one short page, and the headings promised more structure than there was.
+- Fixed: on Linux, typing a capital V pasted the clipboard into the message. The panel's input field sits in an embedded browser whose clipboard is cut off from the system's one, so the plugin bridges it through the IDE - and the browser there was reporting an ordinary key press as a paste, carrying modifiers nobody held down. The bridge filled that empty paste in, and yesterday's copied text landed in a message under the hands of somebody writing a letter. A press that types a character is now typing, whatever modifiers it claims: what the keyboard actually put into the field decides, not what the event says about itself.
+- Fixed: a panel that never came up showed a grey rectangle and not a single word - no reason, and no way to report it either, since the feedback button lives inside the missing panel. The usual cause is an update applied while the IDE was running: the interface is served to the embedded browser by a handler registered for the whole IDE process, and after a live swap it is asked of a plugin that is no longer there. The panel now says so and offers to restart the IDE, and takes it back by itself if the interface turns up late.
+
 ## [0.10.3] - 2026-09-03
 
 - Fixed: undo in the input field did nothing on a Ukrainian or Russian keyboard layout, and what happened instead was worse than nothing - the browser's own undo stepped in, peeling typed words off the message while leaving every attachment standing. A layout renames the key: the same key that writes Z in English writes another letter there, and the panel was asking for the letter rather than for the key. Undo, redo and the redo on its own key now answer whatever the layout writes on them.
@@ -523,7 +537,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.10.3...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.0...HEAD
+[0.12.0]: https://github.com/crmapache/amazing-claude-code/compare/0.10.3...0.12.0
 [0.10.3]: https://github.com/crmapache/amazing-claude-code/compare/0.10.2...0.10.3
 [0.10.2]: https://github.com/crmapache/amazing-claude-code/compare/0.10.1...0.10.2
 [0.10.1]: https://github.com/crmapache/amazing-claude-code/compare/0.10.0...0.10.1
