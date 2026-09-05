@@ -104,7 +104,12 @@ export interface Paragraph {
   quote?: boolean
   /** A code block is drawn as a monospaced slab whole, without being broken into parts. */
   codeBlock?: boolean
-  language?: string
+  /**
+   * What the agent wrote after the backticks, whole rather than cut to its first word - `ts`, but also
+   * `markdown ultracode`. Nothing on screen reads it; a copy does, and a copy that drops the second word
+   * is a copy of another prompt (see blockLines in markdown.ts).
+   */
+  info?: string
   /** A table - a `| a | b |` row with a `|---|---|` separator after it. parts is then empty. */
   table?: TableData
   parts: TextPart[]

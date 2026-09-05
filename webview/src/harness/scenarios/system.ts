@@ -433,6 +433,77 @@ export const scenariosSystem: Scenario[] = [
       ),
       turnResult(2400),
     ]),
+    /**
+     * A ready prompt handed over whole - one block that holds another, which is the only way to put an
+     * example of markdown inside markdown. Worth looking at: the outer fence carries two words
+     * ("markdown ultracode"), the inner three-backtick block stays text inside the slab, and the whole
+     * prompt has exactly one "copy" button on it.
+     *
+     * It used to come out inside out: the outer fence stayed text, the headings of the prompt turned into
+     * headings of the answer, and the template nested in it became the only code block on the screen.
+     */
+    checkpoint('The user asks for a prompt to take elsewhere', [
+      user('Write me a prompt for a full audit, ready to paste into a new session'),
+      wait(500),
+    ]),
+    checkpoint('A ready prompt, a block inside a block', [
+      ...textReply(
+        [
+          'Here it is, copy the whole block:',
+          '',
+          '````markdown ultracode',
+          '# A full audit of the codebase',
+          '',
+          'Find the defects, check them, describe them. Change nothing.',
+          '',
+          'Report in this shape:',
+          '',
+          '```',
+          '## Findings',
+          '### [BUG-01] A short name',
+          'Where: path:line',
+          '```',
+          '',
+          'Sort by severity.',
+          '````',
+          '',
+          'The word `ultracode` on the first line is enough to turn the mode on for that run.',
+        ].join('\n'),
+      ),
+      turnResult(3100),
+    ]),
+    /**
+     * An answer about fences, which is where an unbalanced one comes from in real life: the agent writes a
+     * five-backtick example inside an ordinary block, and the block it opens is never closed the same way.
+     * Worth looking at: the example stands inside one slab, and everything after it - the headings, the
+     * bold leads, the numbered list - is prose. It used to be swallowed whole and drawn as monospaced text
+     * with its asterisks and hashes bare.
+     */
+    checkpoint('An answer that quotes fences inside a block', [
+      user('Check how the panel reads a fence longer than the one that opened the block'),
+      wait(500),
+    ]),
+    checkpoint('An unbalanced fence costs its own line and nothing more', [
+      ...textReply(
+        [
+          '**The input:**',
+          '',
+          '```',
+          '`````',
+          'plain text',
+          '`````',
+          '```',
+          '',
+          '- **Seen:** the copy comes back with a shorter fence',
+          '- **Verdict:** the block is the same block',
+          '',
+          '## What is left unchecked',
+          '',
+          '1. **Speed** on a long answer',
+        ].join('\n'),
+      ),
+      turnResult(1900),
+    ]),
   ]),
 
   /**

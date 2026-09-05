@@ -262,6 +262,105 @@ describe('parseParagraphs', () => {
     expect(paragraphs[0]?.quote).toBe(true)
     expect(paragraphs[1]?.quote).toBeUndefined()
   })
+
+  // What the agent writes after the backticks is a whole info string rather than one word of a language:
+  // "markdown ultracode" says which mode the prompt it hands over asks for. Read as one word, the fence
+  // was not a fence at all, and the prompt spilled into the answer as headings and bold text.
+  it('opens a block on an info string of several words and keeps it whole', () => {
+    const paragraphs = parseParagraphs(['Copy this:', '```markdown ultracode', '# A heading', '```'].join('\n'))
+
+    expect(paragraphs).toHaveLength(2)
+    expect(paragraphs[1]?.codeBlock).toBe(true)
+    expect(paragraphs[1]?.info).toBe('markdown ultracode')
+    expect(paragraphs[1]?.parts[0]?.text).toBe('# A heading')
+    expect(paragraphs[1]?.heading).toBeUndefined()
+  })
+
+  // The whole point of the fix: a longer fence is how a block holds a block, and a ready prompt with an
+  // example inside it is the commonest thing of that shape.
+  it('lets a four-backtick block hold a three-backtick one', () => {
+    const paragraphs = parseParagraphs(
+      ['````markdown', 'Report in this shape:', '```', '# Audit', '```', '````', 'and that is all'].join('\n'),
+    )
+
+    expect(paragraphs).toHaveLength(2)
+    expect(paragraphs[0]?.codeBlock).toBe(true)
+    expect(paragraphs[0]?.info).toBe('markdown')
+    expect(paragraphs[0]?.parts[0]?.text).toBe(['Report in this shape:', '```', '# Audit', '```'].join('\n'))
+    expect(paragraphs[1]?.codeBlock).toBeUndefined()
+    expect(paragraphs[1]?.parts[0]?.text).toBe('and that is all')
+  })
+
+  // Measured against a real answer: an agent describing this parser wrote a five-backtick example inside an
+  // ordinary three-backtick block. By the letter of CommonMark the example ends the block and its second
+  // half opens another one - and that one swallowed every finding, heading and line the agent wrote after
+  // it. An answer in a chat is written in one pass and never previewed, so an unbalanced fence costs the
+  // line it is on rather than the rest of the answer.
+  it('does not let a longer fence close a block - the rest of the answer is not its text', () => {
+    const paragraphs = parseParagraphs(
+      ['```', '`````', 'plain text', '`````', '```', 'and the rest of the answer'].join('\n'),
+    )
+
+    expect(paragraphs).toHaveLength(2)
+    expect(paragraphs[0]?.codeBlock).toBe(true)
+    expect(paragraphs[0]?.parts[0]?.text).toBe(['`````', 'plain text', '`````'].join('\n'))
+    expect(paragraphs[1]?.codeBlock).toBeUndefined()
+    expect(paragraphs[1]?.parts[0]?.text).toBe('and the rest of the answer')
+  })
+
+  // The same answer once more, in the shape it actually arrived in: an example inside a block, and prose
+  // with headings after it. Everything below the block used to end up inside a block of its own, drawn as
+  // monospaced text with its asterisks and hashes bare.
+  it('leaves the prose after such a block prose, headings and all', () => {
+    const paragraphs = parseParagraphs(
+      ['```', '`````', 'plain text', '`````', '```', '', '## What is left', '', '**Speed:** not measured'].join('\n'),
+    )
+
+    expect(paragraphs.filter((paragraph) => paragraph.codeBlock)).toHaveLength(1)
+    expect(paragraphs[1]?.heading).toBe(true)
+    expect(paragraphs[2]?.parts[0]).toEqual({ text: 'Speed:', strong: true })
+  })
+
+  // A closing fence carries nothing after it. Otherwise the line that opens the nested block inside a
+  // prompt - "```json" - would end the outer one halfway through.
+  it('does not let a fence with an info string close a block', () => {
+    const paragraphs = parseParagraphs(['````', 'the shape:', '```json', '{}', '```', '````'].join('\n'))
+
+    expect(paragraphs).toHaveLength(1)
+    expect(paragraphs[0]?.parts[0]?.text).toBe(['the shape:', '```json', '{}', '```'].join('\n'))
+  })
+
+  // Mid-answer the closing fence has not arrived yet, and the block has to be a block already - otherwise
+  // the code flickers as prose while it is being typed.
+  it('keeps an unfinished block a block', () => {
+    const paragraphs = parseParagraphs(['```ts', 'const a = 1'].join('\n'))
+
+    expect(paragraphs).toHaveLength(1)
+    expect(paragraphs[0]?.codeBlock).toBe(true)
+    expect(paragraphs[0]?.info).toBe('ts')
+  })
+
+  // The answer arrives letter by letter, so every prefix of it is parsed in turn. The inner fence must not
+  // end the block at any of them: mid-stream that turned the rest of the prompt into headings of the
+  // answer, and the feed reshuffled itself as the typing went on.
+  it('holds the block through every prefix of a streaming answer', () => {
+    const answer = ['````markdown ultracode', '# Audit', '', 'In this shape:', '```', '## Findings', '```', '', 'Sort them.', '````'].join('\n')
+
+    for (let length = answer.indexOf('\n') + 1; length <= answer.length; length++) {
+      const paragraphs = parseParagraphs(answer.slice(0, length))
+      expect(paragraphs[0]?.codeBlock, `at ${length} characters`).toBe(true)
+      expect(paragraphs.some((paragraph) => paragraph.heading), `at ${length} characters`).toBe(false)
+    }
+  })
+
+  // A fence inside a list item is indented as often as not, and those blocks have always read correctly.
+  it('reads an indented fence as a fence', () => {
+    const paragraphs = parseParagraphs(['    ```bash', '    pnpm test', '    ```'].join('\n'))
+
+    expect(paragraphs).toHaveLength(1)
+    expect(paragraphs[0]?.codeBlock).toBe(true)
+    expect(paragraphs[0]?.info).toBe('bash')
+  })
 })
 
 describe('linkify', () => {
@@ -361,5 +460,40 @@ describe('paragraphsText', () => {
   it('keeps a quote a quote and leaves ordinary text as it is', () => {
     expect(copied(['> he said so', 'and I checked'].join('\n'))).toBe('> he said so\n\nand I checked')
     expect(copied('fixing `build.ts` and **that is all**')).toBe('fixing build.ts and that is all')
+  })
+
+  // The copy is the reason the info string is kept whole: a prompt copied without the word that turns the
+  // mode on is a copy of another prompt.
+  it('writes the info string back whole', () => {
+    const source = ['```markdown ultracode', '# Audit', '```'].join('\n')
+
+    expect(copied(source)).toBe(source)
+  })
+
+  // A fence longer than it needs to be is not carried over, and that is the intent rather than a loss: the
+  // copy is read as markdown, and five backticks around a text with no backticks in it say what three say.
+  it('shortens a fence that was longer than it had to be, and the block stays the same block', () => {
+    const source = ['`````', 'plain text', '`````'].join('\n')
+
+    expect(copied(source)).toBe(['```', 'plain text', '```'].join('\n'))
+    expect(parseParagraphs(copied(source))).toEqual(parseParagraphs(source))
+  })
+
+  // And where the length does carry meaning it is counted back from the text: a four-backtick block inside
+  // needs a five-backtick fence around it, however the answer was written.
+  it('keeps a fence long enough for the longest run of backticks inside the block', () => {
+    const source = ['`````md', 'a', '````', 'inner', '````', '`````'].join('\n')
+
+    expect(copied(source)).toBe(source)
+  })
+
+  // Copied out with three backticks, a block that holds a block ended on the first inner fence, and the
+  // rest of it turned back into prose wherever the copy was pasted.
+  it('fences a block that holds a block with a longer fence', () => {
+    const source = ['````markdown', 'the shape:', '```', '# Audit', '```', '````'].join('\n')
+
+    expect(copied(source)).toBe(source)
+    // And it survives the round trip: the copy parses back into the same single block.
+    expect(parseParagraphs(copied(source))).toEqual(parseParagraphs(source))
   })
 })

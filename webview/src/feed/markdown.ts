@@ -7,6 +7,33 @@ import type { Paragraph, TableAlign, TableData, TextPart } from './types'
 const MAX_LIST_DEPTH = 3
 
 /**
+ * The line that opens or closes a code block: three backticks or more, and whatever was written after
+ * them. Both halves of that were missing, and the pair of them is what lets a block hold a block - a
+ * ```` fence closes on ```` and keeps a ``` inside it as text.
+ *
+ * An answer that hands over a ready prompt is exactly that shape, and it is among the most useful things
+ * an agent writes into the feed. Read as "exactly three backticks and one word of a language" it came out
+ * inside out: the outer fence stayed text, the headings inside the prompt turned into headings, and the
+ * template nested in it became the only code block on the screen - with the only "copy" button of the
+ * answer sitting on the one piece nobody needed.
+ *
+ * The closing fence has to be exactly as long as the one that opened the block, where CommonMark allows a
+ * longer one to close it too. That reading is measured against a real answer: an agent describing this very
+ * parser wrote a five-backtick example inside an ordinary three-backtick block, and by the letter of the
+ * standard the example ended the block, its second half opened another one, and everything the agent said
+ * afterwards - the rest of the findings, the headings, the whole tail of the answer - was swallowed by that
+ * block as raw text. A chat answer is written in one pass and never previewed, so an unbalanced fence has to
+ * cost the line it is on rather than the rest of the answer. Nothing is lost by the stricter reading either:
+ * before all this the panel closed a block on three backticks alone, so a longer closing fence never worked
+ * here in the first place.
+ *
+ * The indent is left as loose as it was (any run of spaces or tabs, where CommonMark allows three): a
+ * fence written inside a list item is indented by four as often as not, and those blocks read correctly
+ * today.
+ */
+const FENCE = /^[ \t]*(`{3,})([^`]*)$/
+
+/**
  * Parsing the agent's answer into the design's paragraphs.
  *
  * Full markdown here is neither needed nor useful: the panel draws six things - a paragraph, a list
@@ -17,7 +44,7 @@ export const parseParagraphs = (source: string): Paragraph[] => {
   const paragraphs: Paragraph[] = []
   const lines = source.split('\n')
 
-  let codeFence: { language: string; lines: string[] } | null = null
+  let codeFence: { length: number; info: string; lines: string[] } | null = null
   let plain: string[] = []
   let quoteLines: string[] = []
 
@@ -35,26 +62,26 @@ export const parseParagraphs = (source: string): Paragraph[] => {
 
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index]!
-    const fence = /^\s*```(\w*)\s*$/.exec(line)
+    const fence = FENCE.exec(line)
 
-    if (fence) {
-      if (codeFence) {
-        paragraphs.push({
-          codeBlock: true,
-          language: codeFence.language,
-          parts: [{ text: codeFence.lines.join('\n') }],
-        })
+    if (codeFence) {
+      // Only a fence of the same length, with nothing written after it, ends the block. Everything else is
+      // the text of the block - that is what lets a block hold a block.
+      const closes = fence !== null && fence[1]!.length === codeFence.length && (fence[2] ?? '').trim().length === 0
+
+      if (closes) {
+        paragraphs.push({ codeBlock: true, info: codeFence.info, parts: [{ text: codeFence.lines.join('\n') }] })
         codeFence = null
       } else {
-        flushPlain()
-        flushQuote()
-        codeFence = { language: fence[1] ?? '', lines: [] }
+        codeFence.lines.push(line)
       }
       continue
     }
 
-    if (codeFence) {
-      codeFence.lines.push(line)
+    if (fence) {
+      flushPlain()
+      flushQuote()
+      codeFence = { length: fence[1]!.length, info: (fence[2] ?? '').trim(), lines: [] }
       continue
     }
 
@@ -132,7 +159,7 @@ export const parseParagraphs = (source: string): Paragraph[] => {
   }
 
   if (codeFence) {
-    paragraphs.push({ codeBlock: true, language: codeFence.language, parts: [{ text: codeFence.lines.join('\n') }] })
+    paragraphs.push({ codeBlock: true, info: codeFence.info, parts: [{ text: codeFence.lines.join('\n') }] })
   }
 
   flushPlain()
@@ -397,7 +424,11 @@ const blockLines = (paragraph: Paragraph): string[] => {
   const text = paragraph.parts.map((part) => part.text).join('')
 
   if (paragraph.table) return tableLines(paragraph.table)
-  if (paragraph.codeBlock) return ['```' + (paragraph.language ?? ''), text, '```']
+  if (paragraph.codeBlock) {
+    const fence = '`'.repeat(fenceLength(text))
+    return [fence + (paragraph.info ?? ''), text, fence]
+  }
+
   if (paragraph.quote) return [`> ${text}`]
 
   if (paragraph.bullet) {
@@ -409,6 +440,21 @@ const blockLines = (paragraph: Paragraph): string[] => {
   }
 
   return [text]
+}
+
+/**
+ * How long the fence around a copied block has to be: longer than the longest run of backticks inside it,
+ * and never shorter than three. A block that holds a block was written out with three, so the first inner
+ * fence ended it and the rest of the prompt turned back into prose wherever the copy was pasted.
+ *
+ * The length the agent actually typed is deliberately not remembered: five backticks around a text with no
+ * backticks in it say exactly what three say, and the copy is read by a markdown parser rather than
+ * compared letter by letter with the answer. Where the length carries meaning - a block inside a block -
+ * it is counted back from the text itself.
+ */
+const fenceLength = (code: string): number => {
+  const runs = code.match(/`+/g) ?? []
+  return runs.reduce((longest, run) => Math.max(longest, run.length + 1), 3)
 }
 
 /** A table as it was written: the head, the separator with the alignment, the rows. */
