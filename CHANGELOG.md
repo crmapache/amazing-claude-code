@@ -9,6 +9,12 @@ commits.
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-09-04
+
+- Added: any message of yours, or any answer of Claude's, can be pinned to the top of the chat - the pin in its top right corner. Up to three of them stand there as a shelf over the conversation, one line each, and a click on a line takes the chat straight back to that message and lights it up for a moment. Meant for the long ones, where the errand you were given sits an hour of scrolling above what you are doing about it now. What did not fit on the line is shown whole on hover.
+- Added: with three pinned, the pin on everything else goes dim and says why - a mark you put there on purpose is not dropped to make room for a fourth.
+- Changed: the shelf lies over the top of the conversation rather than above it, so pinning something moves nothing you are reading - not by a pixel, whether you are in the middle of a chat or at its end.
+
 ## [0.12.1] - 2026-09-04
 
 - Added: a choice of which key sends a message - Enter, or Cmd/Ctrl+Enter with Enter breaking the line ("Sending a message" in the settings). Asked for by everyone who drafts a prompt as several paragraphs: with Enter sending, a list you are typing goes out at its first line break. The Send button's hover shows the key in force, so a choice just made is visible without sending anything to test it.
@@ -544,7 +550,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.1...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.2...HEAD
+[0.12.2]: https://github.com/crmapache/amazing-claude-code/compare/0.12.1...0.12.2
 [0.12.1]: https://github.com/crmapache/amazing-claude-code/compare/0.12.0...0.12.1
 [0.12.0]: https://github.com/crmapache/amazing-claude-code/compare/0.10.3...0.12.0
 [0.10.3]: https://github.com/crmapache/amazing-claude-code/compare/0.10.2...0.10.3
