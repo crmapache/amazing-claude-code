@@ -2,6 +2,7 @@ import { memo, useMemo } from 'react'
 import { LinkedText } from './LinkedText'
 import { Caret } from './Caret'
 import { CopyButton } from './CopyButton'
+import { PinButton } from './PinButton'
 import { chipFile, chipLabel, chipTitle, pasteBlockPreview, pasteBody, pasteLineCount } from '../../feed/reference'
 import { COPY_ATTRIBUTE } from '../../feed/copy'
 import { clipboardMessage, clipboardText } from '../../feed/tokens'
@@ -36,12 +37,20 @@ interface UserCardProps {
    * button beside this one is the whole answer.
    */
   onReuse?: (item: UserItem) => void
+  /**
+   * Pin this message over the conversation, or unpin it (see feed/pins.ts). Absent where there is no
+   * strip to pin it to - the phone, the same way the reuse button is absent there.
+   */
+  onPin?: () => void
+  pinned: boolean
+  /** Whether the strip is already full - the hint says so before the press (see PinButton). */
+  pinsFull: boolean
 }
 
-export const UserCard = ({ item, cards, onOpenLink, onReuse }: UserCardProps) => {
+export const UserCard = ({ item, cards, onOpenLink, onReuse, onPin, pinned, pinsFull }: UserCardProps) => {
   const t = useT()
   /*
-   * What the two buttons in the head do, worked out here rather than on the press: the tooltip has to
+   * What the copy and reuse buttons do, worked out here rather than on the press: the tooltip has to
    * say beforehand that a picture cannot come back (its bytes are not in a conversation read off the
    * disk), and a person who learns that after pressing has already lost the field they were typing in.
    */
@@ -55,11 +64,15 @@ export const UserCard = ({ item, cards, onOpenLink, onReuse }: UserCardProps) =>
       <span className={s.time}>{item.time}</span>
       <div className={s.spacer} />
 
-      {/* The two of them in a box of their own rather than as two more children of the head: the head
-          spaces its children out for a label and a time standing apart, and two little squares set that
-          far from each other read as two unrelated buttons. The gap is the pair's own, the same one the
+      {/* The three of them in a box of their own rather than as three more children of the head: the head
+          spaces its children out for a label and a time standing apart, and little squares set that
+          far from each other read as unrelated buttons. The gap is the group's own, the same one the
           bubble and the heart stand at down by the field (see .endPair). */}
       <div className={s.userActions}>
+        {/* First of the three, because it is the one that changes what is on screen above rather than
+            taking this message somewhere: a pin puts a line over the whole conversation. */}
+        {onPin ? <PinButton pinned={pinned} full={pinsFull} className={s.userAction} onPin={onPin} /> : null}
+
         {/* The message itself, and the paths of what was attached to it rather than the captions the
             chips wear: a caption means something inside this panel and nothing in a terminal or a task
             (see clipboardText). This is the button the feedback asked for by name. */}

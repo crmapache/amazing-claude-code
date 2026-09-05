@@ -438,6 +438,11 @@ export const fr: Dict = {
           ? 'Revient dans le champ de saisie, mais pas l’image collée - joignez-la à nouveau'
           : `Revient dans le champ de saisie, mais pas les ${n} images collées - joignez-les à nouveau`,
     },
+    pin: {
+      add: 'Épingler en haut du chat',
+      crowded: 'Trois au maximum - détachez-en un avant de pouvoir épingler celui-ci',
+      remove: 'Détacher',
+    },
     pastedLines: (n) => `${n} ${n === 1 ? 'ligne collée' : 'lignes collées'}`,
     pasteClose: 'Replier',
     copyPaste: 'Copier le texte collé',

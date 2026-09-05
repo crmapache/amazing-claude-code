@@ -49,7 +49,15 @@
      on a touchscreen that is what turns the end of a feed into a bounce of the whole screen. */
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 14px 0 18px;
+  /*
+   * The slack at the top is the pinned strip's own height (see --acc-pins-height, written by Feed).
+   *
+   * The strip lies OVER the feed rather than above it, so without this the first lines of a conversation
+   * would sit under it with nothing left to scroll and no way to reach them at all. With it the strip
+   * covers a piece of the scroll that has nothing in it, and the conversation passes under the shelf
+   * only while it is scrolled past.
+   */
+  padding: calc(14px + var(--acc-pins-height, 0px)) 0 18px;
   position: relative;
   /* A floating thumb of our own is drawn by ScrollThumb - the native scrollbar is not wanted here even as
      something visible, it would reserve width and move the content when it appeared. */
@@ -113,6 +121,135 @@
   color: var(--acc-on-accent);
   font: 600 10px/17px var(--acc-mono);
   text-align: center;
+}
+
+/* --- The messages pinned over the feed ------------------------------------- */
+
+/*
+ * The strip of pinned messages, lying OVER the top of the feed (see PinnedBar).
+ *
+ * Over rather than above it, so that pinning moves nothing on screen: a strip in the flow takes its
+ * height out of the scroller, and everything being read slides by that much the moment a pin goes up or
+ * comes off. What it costs instead is a piece of the scroll's top, and that is given back as slack in
+ * .feed - so the shelf covers empty room rather than the first message.
+ *
+ * Below everything already on the ladder over the feed: the veil and the capsule of a search (21 and 22)
+ * and the "down" button (20). The veil is meant to hide the feed whole, this strip included; the capsule
+ * is the control of the moment and may not be buried under a shelf.
+ *
+ * It carries the feed's own background rather than the panel's - it belongs to the conversation, not to
+ * the chrome around it - and it is opaque: text sliding under half-transparent text is unreadable twice
+ * over. The line and the shadow under it are what say the conversation passes beneath rather than ends.
+ */
+.pins {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 19;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px var(--acc-feed-gutter, 16px);
+  background: var(--acc-bg);
+  border-bottom: 1px solid var(--acc-line);
+  box-shadow: var(--acc-shadow-popover);
+}
+
+.pin {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+/*
+ * The line itself is the button: the whole of it is the target, not the few words that happen to be
+ * legible. What is on it is fixed in width except the text, which takes whatever is left and ends in an
+ * ellipsis the browser places - a count of characters could not follow the panel being resized.
+ */
+.pinGo {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--acc-hit);
+  padding: 3px 5px;
+  border-radius: var(--acc-r-sm);
+  text-align: left;
+  /*
+   * One line box for everything on the row, and that is what makes the letters line up.
+   *
+   * Left to themselves the caption and the line would each get a line box of their own, and two boxes
+   * merely centred against each other put their letters a pixel apart - which on a row of two words is
+   * the one thing the eye catches. The same trouble .userHead answers with baseline alignment, and that
+   * is not open here: .pinText clips its overflow to get its ellipsis, and a clipping box reports its own
+   * bottom edge as its baseline rather than its text's. So the row hands both the same line, and the
+   * caption takes the same size as well (see .pinWho); the pin is centred in that same box.
+   */
+  line-height: 14px;
+}
+
+@media (hover: hover) {
+  .pinGo:hover {
+    background: var(--acc-bg-control);
+  }
+}
+
+.pinMark {
+  flex: none;
+  color: var(--acc-fg-fainter);
+}
+
+/*
+ * Who said it - the caption a message of one's own wears in its head (see .label), only at the size of
+ * the line it stands on rather than at its own.
+ *
+ * That size is the whole of the alignment. Two font sizes on one row put their baselines a pixel apart
+ * whatever the line-height, because the ascent goes with the size - and no nudge of a fixed number of
+ * pixels can fix it, since the feed is set in whatever console font the IDE is configured with. Same
+ * font, same size, same line: the baselines coincide exactly, in every font.
+ */
+.pinWho {
+  flex: none;
+  font-family: var(--acc-mono);
+  font-size: var(--acc-fs-meta, 11px);
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  color: var(--acc-fg-faint);
+}
+
+.pinText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--acc-fs-meta, 11px);
+  line-height: inherit;
+  color: var(--acc-fg-body);
+}
+
+.pinOff {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  min-height: var(--acc-hit);
+  border-radius: var(--acc-r-sm);
+  color: var(--acc-fg-fainter);
+  font-size: 13px;
+  line-height: 1;
+}
+
+@media (hover: hover) {
+  .pinOff:hover {
+    background: var(--acc-bg-control);
+    color: var(--acc-fg);
+  }
 }
 
 .row {
@@ -222,7 +359,7 @@
 
 /*
  * The pair of them, in the card's top right corner - at the very same 7px from the edges as the copy
- * button on a reply (see .textCopy).
+ * buttons on a reply (see .textActions).
  *
  * Absolute rather than a child of the head, and that is what makes the two kinds of card agree: in the
  * flow they sat at the head's own padding, 11px in, so the buttons jumped sideways as the pointer went
@@ -564,27 +701,76 @@
   overflow-wrap: anywhere;
 }
 
-.textCopy {
-  /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
-  min-height: var(--acc-hit);
+/* Two buttons in the corner instead of one, so the room they stand in is that much wider. */
+.textPinnable {
+  padding-right: calc(58px + var(--acc-card-grow, 0px));
+}
+
+/*
+ * The buttons in an answer's top right corner - copy it out, and pin it over the conversation.
+ *
+ * An answer has no head to hang them off the way a message of one's own does (see .userActions), so the
+ * room they stand in is the card's own right padding. That is why the second one is paid for only where
+ * it exists: .textPinnable widens the padding, and an answer on a screen with no pinning (the phone) is
+ * laid out exactly as it always was.
+ */
+.textActions {
   position: absolute;
   top: 7px;
   right: 7px;
   display: flex;
   align-items: center;
+  gap: 4px;
+}
+
+.textAction {
+  /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
+  min-height: var(--acc-hit);
+  display: flex;
+  align-items: center;
   justify-content: center;
   width: 20px;
   height: 20px;
+  flex: none;
   border-radius: var(--acc-r-sm);
   color: var(--acc-fg-faint);
   font-size: 11px;
 }
 
 @media (hover: hover) {
-  .textCopy:hover {
+  .textAction:hover {
     background: var(--acc-bg-control);
     color: var(--acc-fg);
   }
+}
+
+/*
+ * The pin button of a card while its message is pinned - in both corners it stands in (.userAction and
+ * .textAction).
+ *
+ * Lit rather than merely filled: the strip is at the top of the feed and the card may be a screen away
+ * from it, so this button is the only thing that answers "is this the one up there?" without scrolling.
+ * It stands after both of those on purpose - all three are single classes, and the last one written is
+ * the one that decides the colour.
+ */
+.pinOn,
+.pinOn:hover {
+  color: var(--acc-accent);
+}
+
+/*
+ * A pin button with nowhere to pin to: three are up already (see PIN_LIMIT).
+ *
+ * Dimmed and inert rather than gone - the hint on it is the only line that says why it will not work and
+ * what to do about it, and a button that disappears takes that line with it. It answers to nothing under
+ * the pointer either: a square that lights up and then does nothing reads as something broken.
+ */
+.pinDead,
+.pinDead:hover {
+  background: none;
+  color: var(--acc-fg-faint);
+  opacity: 0.4;
+  cursor: default;
 }
 
 /*
@@ -2014,7 +2200,7 @@
  * copy buttons would otherwise be unreachable rather than merely subtle.
  */
 [data-acc-density='touch'] .codeCopy,
-[data-acc-density='touch'] .textCopy {
+[data-acc-density='touch'] .textAction {
   opacity: 1;
 }
 

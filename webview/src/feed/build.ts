@@ -12,6 +12,7 @@ import type {
 import { normalizeMode, sameModel } from '../catalog'
 import { parseParagraphs } from './markdown'
 import { initialPanelState, push, type PanelAction, type PanelState } from './panelState'
+import { togglePin } from './pins'
 import { applyApiRetry, closeRetry, closeRetryFor } from './retry'
 import {
   appendAgentLog,
@@ -219,6 +220,13 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
 
     case 'dismissError':
       return { ...state, items: state.items.filter((item) => item.id !== action.id) }
+
+    case 'pin': {
+      // Unchanged when the strip is full and this one is not on it (see togglePin): a state left alone is
+      // a feed not rebuilt.
+      const pins = togglePin(state.pins, action.id)
+      return pins === state.pins ? state : { ...state, pins }
+    }
 
     // Deliberately idempotent: App.tsx sends them on every change of awaitsYou without tracking whether
     // the same one has already been sent - leaning on the reducer is simpler than keeping a ref for it.

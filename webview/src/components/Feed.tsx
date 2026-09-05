@@ -1,8 +1,9 @@
 import { useSmoothStream } from 'smooth-stream-text/react'
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { drawnInFeed, openThought, spokenAnswer } from '../feed/build'
 import { copiedText } from '../feed/copy'
 import { parseParagraphs } from '../feed/markdown'
+import { PIN_LIMIT, pinnedRows } from '../feed/pins'
 import { placeShift, rowAtEdge, type FeedMemory } from '../feed/place'
 import { matchSpans } from '../feed/searchText'
 import type { PaintedTerm } from '../protocol'
@@ -27,6 +28,7 @@ import {
 import { TextCard } from './items/TextCard'
 import { ToolGroupCard } from './items/ToolGroupCard'
 import { UserCard } from './items/UserCard'
+import { PinnedBar } from './PinnedBar'
 import { ScrollThumb } from './ScrollThumb'
 import { useT } from '../i18n'
 
@@ -129,6 +131,18 @@ interface FeedProps {
    * which is what it did for everyone before.
    */
   place?: FeedMemory
+  /**
+   * The messages pinned over this conversation, by their number in the feed - see feed/pins.ts.
+   *
+   * The strip is built from what stands in the feed right now rather than from remembered text, so a pin
+   * naming a row that is no longer there simply falls out of it.
+   */
+  pins?: readonly string[]
+  /**
+   * Pin this message, or unpin it. Absent where there is nothing to pin with - the phone, which has no
+   * pin button and so no strip either (the same way the reuse button is absent there).
+   */
+  onPin?: (id: string) => void
 }
 
 export const Feed = ({
@@ -151,6 +165,8 @@ export const Feed = ({
   onFocused,
   paint,
   place,
+  pins,
+  onPin,
 }: FeedProps) => {
   const view = useRef<HTMLElement | null>(null)
   const t = useT()
@@ -503,13 +519,20 @@ export const Feed = ({
    * and the question it answers usually stands right above it. The feed stops sticking to the bottom for
    * it - the person has gone somewhere on purpose, and an answer arriving below must not drag them back.
    */
-  const [litRow, setLitRow] = useState<string | undefined>(undefined)
+  const [lit, setLit] = useState<{ row: string; at: number } | undefined>(undefined)
+  const litRow = lit?.row
 
-  useLayoutEffect(() => {
-    if (!focus) return
+  /**
+   * Take the feed to a row and light it up - what a chosen search hit does, and what a pinned message
+   * does when it is clicked (see PinnedBar).
+   *
+   * Says whether it managed to: a row that is not in this feed is a hit above the pages loaded so far,
+   * and whoever asked has its own answer for that (see showHit in App.tsx).
+   */
+  const goToRow = useCallback((rowId: string): boolean => {
     const element = view.current
-    const row = element?.querySelector<HTMLElement>(`[data-acc-id="${CSS.escape(focus.row)}"]`)
-    if (!element || !row) return
+    const row = element?.querySelector<HTMLElement>(`[data-acc-id="${CSS.escape(rowId)}"]`)
+    if (!element || !row) return false
 
     // The same reason as in [jumpToBottom]: a jump asked for by hand outranks any pinned row, including
     // the one this feed restored itself to a moment ago.
@@ -517,14 +540,24 @@ export const Feed = ({
     stick.current = false
     setStuck(false)
     element.scrollTop += row.getBoundingClientRect().top - element.getBoundingClientRect().top - element.clientHeight * 0.3
-    setLitRow(focus.row)
-    onFocused?.()
+    // Stamped rather than named alone, so that asking for the same row twice restarts the wait below
+    // instead of letting the first jump's timer put the light out under the second.
+    setLit({ row: rowId, at: performance.now() })
+    return true
+  }, [])
 
-    const timer = setTimeout(() => setLitRow(undefined), LIT_MS)
-    return () => clearTimeout(timer)
+  useLayoutEffect(() => {
+    if (!focus) return
+    if (goToRow(focus.row)) onFocused?.()
     // Only the request itself: whoever asked is told once per jump, not once per change of the callback.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus])
+
+  useEffect(() => {
+    if (!lit) return
+    const timer = setTimeout(() => setLit(undefined), LIT_MS)
+    return () => clearTimeout(timer)
+  }, [lit])
 
   /*
    * The words a search matched, painted wherever they stand in the feed - see [FeedProps.paint].
@@ -591,8 +624,75 @@ export const Feed = ({
 
   const isEmpty = rows.length === 0
 
+  /**
+   * How tall the strip of pinned messages is, and the slack the feed keeps at its top for it.
+   *
+   * The strip lies OVER the feed (see .pins), so the room it covers has to be empty room: without the
+   * slack the first lines of a conversation would sit under the shelf with nothing left to scroll and no
+   * way to reach them. Measured rather than counted from the number of rows: the row's height is the
+   * IDE's console font and the screen's density, neither of which this knows.
+   */
+  const [pinsHeight, setPinsHeight] = useState(0)
+  const pinsWatch = useRef<ResizeObserver | null>(null)
+
+  const measurePins = useCallback((element: HTMLElement | null) => {
+    if (!element) {
+      setPinsHeight(0)
+      pinsWatch.current?.disconnect()
+      pinsWatch.current = null
+      return
+    }
+
+    setPinsHeight(element.offsetHeight)
+    pinsWatch.current?.disconnect()
+    // The rows themselves never reflow (one line each, clipped), but the font under them can change and
+    // the density with it - and the slack is wrong the moment it stops matching what is on screen.
+    pinsWatch.current = new ResizeObserver(() => setPinsHeight(element.offsetHeight))
+    pinsWatch.current.observe(element)
+  }, [])
+
+  useEffect(() => () => pinsWatch.current?.disconnect(), [])
+
+  /**
+   * The slack changing must not move what is being read.
+   *
+   * That is the whole point of the strip lying over the feed rather than above it: pinning something is
+   * not an event in the conversation, and a conversation that slides by thirty pixels every time a mark
+   * goes up or comes off is the thing this replaced. The scroll moves by exactly what the padding did, so
+   * the two cancel out. Nothing to cancel while the feed sticks to its bottom - the bottom is where it
+   * goes anyway - and nothing on the first measurement, when there is no reading to keep.
+   */
+  const padded = useRef<number | undefined>(undefined)
+
+  useLayoutEffect(() => {
+    const element = view.current
+    const before = padded.current
+    padded.current = pinsHeight
+    if (!element || before === undefined || before === pinsHeight || stick.current) return
+
+    element.scrollTop += pinsHeight - before
+  }, [pinsHeight])
+
+  /**
+   * The pinned messages, resolved against what stands in the feed right now (see pinnedRows).
+   *
+   * Over [rows] rather than over [items] so that an answer still being printed can be pinned as it goes:
+   * it takes the very number it will have once it settles (see streamingId), and it is simply not in
+   * [items] yet.
+   */
+  const pinnedItems = useMemo(() => pinnedRows(rows, pins ?? []), [rows, pins])
+  const pinsFull = (pins?.length ?? 0) >= PIN_LIMIT
+
   return (
-    <div className={s.feedWrap}>
+    <div
+      className={s.feedWrap}
+      // How much slack the feed keeps at its top for the strip lying over it - see .pins and .feed.
+      style={{ ['--acc-pins-height']: `${pinsHeight}px` } as CSSProperties}
+    >
+      {onPin ? (
+        <PinnedBar items={pinnedItems} onJump={goToRow} onUnpin={onPin} boxRef={measurePins} />
+      ) : null}
+
       <main
         className={s.feed}
         ref={(element) => {
@@ -650,6 +750,9 @@ export const Feed = ({
               onOpenLink={onOpenLink}
               onReuse={onReuse}
               onLoadEarlier={onLoadEarlier}
+              onPin={onPin}
+              pinned={pins?.includes(item.id) ?? false}
+              pinsFull={pinsFull}
             />
           </div>
         ))}
@@ -710,6 +813,11 @@ interface ItemViewProps {
   onOpenLink: (url: string) => void
   onReuse?: (item: UserItem) => void
   onLoadEarlier?: () => void
+  /** Pin this row over the conversation, or unpin it - absent where there is no strip (see FeedProps). */
+  onPin?: (id: string) => void
+  pinned: boolean
+  /** Whether the strip is already full: the pin button says so before it is pressed - see PinButton. */
+  pinsFull: boolean
 }
 
 /**
@@ -735,16 +843,33 @@ const ItemView = memo(({
   onOpenLink,
   onReuse,
   onLoadEarlier,
+  onPin,
+  pinned,
+  pinsFull,
 }: ItemViewProps) => {
+  // Built here rather than handed down as a prop: a fresh closure in the props of a memoized card would
+  // undo the memo for every card in the feed on every chunk of a printing answer.
+  const pin = onPin ? () => onPin(item.id) : undefined
+
   switch (item.kind) {
     case 'user':
-      return <UserCard item={item} cards={cards} onOpenLink={onOpenLink} onReuse={onReuse} />
+      return (
+        <UserCard
+          item={item}
+          cards={cards}
+          onOpenLink={onOpenLink}
+          onReuse={onReuse}
+          onPin={pin}
+          pinned={pinned}
+          pinsFull={pinsFull}
+        />
+      )
 
     case 'bash':
       return <BashCard item={item} />
 
     case 'text':
-      return <TextCard item={item} onOpenLink={onOpenLink} />
+      return <TextCard item={item} onOpenLink={onOpenLink} onPin={pin} pinned={pinned} pinsFull={pinsFull} />
 
     case 'think':
       return <ThinkRow item={item} open={cards.isOpen(item.id)} onToggle={() => cards.toggle(item.id)} />

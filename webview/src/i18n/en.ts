@@ -506,6 +506,16 @@ export const en = {
           ? 'Back into the input field - but the pasted image cannot come with it, attach it again'
           : `Back into the input field - but the ${n} pasted images cannot come with it, attach them again`,
     },
+    /**
+     * The pin button in the corner of a message, and the strip it puts the message into (see
+     * feed/pins.ts). `crowded` stands in for `add` on a button gone dead because three are pinned
+     * already - it is the one line that says why it will not work and what to do about it.
+     */
+    pin: {
+      add: 'Pin it to the top of the chat',
+      crowded: 'Three is the most - unpin one of them before pinning this',
+      remove: 'Unpin it',
+    },
     pastedLines: (n: number): string => `${n} ${n === 1 ? 'line' : 'lines'} pasted`,
     /** A collapsed paste opens on a click - the hover hint shows only its first lines. */
     pasteClose: 'Collapse it back',

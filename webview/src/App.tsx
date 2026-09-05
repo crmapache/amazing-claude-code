@@ -2305,6 +2305,18 @@ export const App = () => {
   )
 
   /**
+   * Pin a message over the conversation, or take the pin off - see feed/pins.ts.
+   *
+   * Through the tab's own state rather than a state of App's own: the pins belong to a conversation, they
+   * are gone when it is, and the numbers they name start over when its feed is replayed afresh (see
+   * PanelState.pins).
+   */
+  const togglePinned = useCallback(
+    (id: string) => dispatchPanel({ session: active, action: { kind: 'pin', id } }),
+    [active],
+  )
+
+  /**
    * The question was dismissed without choosing a single option: the person will say it in their own words.
    * To the agent that travels as a refusal to its call - by the same route as a "deny" on a permission
    * request: the turn goes on while the question stops holding the panel. Staying silent is not an option -
@@ -3977,6 +3989,8 @@ export const App = () => {
               onFocused={forgetFeedFocus}
               paint={capsule?.session === active ? capsule.terms : undefined}
               place={feedPlace}
+              pins={panel.pins}
+              onPin={togglePinned}
             />
           ) : (
             <AgentStreamView item={activeTask} />

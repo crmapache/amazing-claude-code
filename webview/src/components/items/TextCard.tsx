@@ -3,6 +3,7 @@ import { paragraphsText } from '../../feed/markdown'
 import { useT } from '../../i18n'
 import type { TextItem } from '../../feed/types'
 import { CopyButton } from './CopyButton'
+import { PinButton } from './PinButton'
 import { Markdown } from './Markdown'
 import s from '../feed.module.css'
 
@@ -10,6 +11,14 @@ interface TextCardProps {
   item: TextItem
   /** Open a link from the agent's answer in the system browser rather than inside the webview. */
   onOpenLink: (url: string) => void
+  /**
+   * Pin this answer over the conversation, or unpin it (see feed/pins.ts). Absent where there is no strip
+   * to pin it to - the phone, the same way the reuse button is absent from a message of one's own.
+   */
+  onPin?: () => void
+  pinned: boolean
+  /** Whether the strip is already full - the hint says so before the press (see PinButton). */
+  pinsFull: boolean
 }
 
 /**
@@ -63,7 +72,7 @@ const isTouchDensity = (): boolean =>
  * technical logs (thoughts, tool calls) ended and the real answer began - the same trick as with a user's
  * message, only from the other side.
  */
-export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
+export const TextCard = ({ item, onOpenLink, onPin, pinned, pinsFull }: TextCardProps) => {
   const t = useT()
 
   /**
@@ -81,8 +90,15 @@ export const TextCard = ({ item, onOpenLink }: TextCardProps) => {
   const reveal = length <= REVEAL_LIMIT
 
   return (
-    <div className={s.text} data-copyable>
-      <CopyButton text={paragraphsText(item.paragraphs)} className={s.textCopy} title={t.feed.copyReply} />
+    <div className={onPin ? `${s.text} ${s.textPinnable}` : s.text} data-copyable>
+      {/* In the corner where the copy button has always stood, and beside it rather than instead of it.
+          The card has no head to hang them off (a message of one's own has one - see .userActions), so
+          the room for them is the card's own right padding, and the second button widens it: hence
+          .textPinnable, rather than paying for a button that is not there on every answer. */}
+      <div className={s.textActions}>
+        {onPin ? <PinButton pinned={pinned} full={pinsFull} className={s.textAction} onPin={onPin} /> : null}
+        <CopyButton text={paragraphsText(item.paragraphs)} className={s.textAction} title={t.feed.copyReply} />
+      </div>
 
       {/* One wave for the whole card: otherwise every paragraph would start the reveal afresh and the
           text would light up in steps rather than in one motion. */}

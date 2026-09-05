@@ -434,6 +434,11 @@ export const pt: Dict = {
           ? 'Volta ao campo de entrada, mas a imagem colada não - anexe-a de novo'
           : `Volta ao campo de entrada, mas as ${n} imagens coladas não - anexe-as de novo`,
     },
+    pin: {
+      add: 'Fixar no topo da conversa',
+      crowded: 'Três é o máximo - desafixe um deles antes de fixar este',
+      remove: 'Desafixar',
+    },
     pastedLines: (n) => `${n} ${n === 1 ? 'linha colada' : 'linhas coladas'}`,
     pasteClose: 'Recolher de novo',
     copyPaste: 'Copiar o texto colado',

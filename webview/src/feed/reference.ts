@@ -190,8 +190,14 @@ const TITLE_LINES = 5
 const TITLE_LINE_CHARS = 70
 const QUOTE_TITLE_CHARS = 400
 
-/** The first few lines, each of them short enough to stay a line rather than wrap into a paragraph. */
-const titlePreview = (text: string): string => {
+/**
+ * The first few lines, each of them short enough to stay a line rather than wrap into a paragraph.
+ *
+ * Shared with everything else that puts text of a person's own into a hover hint (a pinned message, see
+ * feed/pins.ts): one element draws every hint in the panel, and how much text a hint may hold is a fact
+ * about that element rather than about a chip.
+ */
+export const hintPreview = (text: string): string => {
   const body = text.trim()
   const lines: string[] = []
 
@@ -222,7 +228,7 @@ export const chipTitle = (chip: Chip): string => {
     return text.length > QUOTE_TITLE_CHARS ? `${text.slice(0, QUOTE_TITLE_CHARS)}…` : text
   }
 
-  if (chip.kind === 'paste') return titlePreview(chip.text ?? '')
+  if (chip.kind === 'paste') return hintPreview(chip.text ?? '')
 
   /**
    * A file's chip usually needs no hint at all: the caption is the file's own name, and the hint would

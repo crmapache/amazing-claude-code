@@ -437,6 +437,11 @@ export const de: Dict = {
           ? 'Geht zurück ins Eingabefeld, das eingefügte Bild aber nicht - hänge es neu an'
           : `Geht zurück ins Eingabefeld, die ${n} eingefügten Bilder aber nicht - hänge sie neu an`,
     },
+    pin: {
+      add: 'Oben im Chat anheften',
+      crowded: 'Mehr als drei geht nicht - erst eines davon lösen, dann dieses anheften',
+      remove: 'Lösen',
+    },
     pastedLines: (n) => `${n} ${n === 1 ? 'Zeile' : 'Zeilen'} eingefügt`,
     pasteClose: 'Wieder einklappen',
     copyPaste: 'Eingefügten Text kopieren',

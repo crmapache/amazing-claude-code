@@ -49,6 +49,17 @@ export interface ApiRetry {
 
 export interface PanelState {
   items: FeedItem[]
+  /**
+   * The messages pinned to the top of this conversation, by their number in the feed and in the order
+   * they were pinned - see feed/pins.ts.
+   *
+   * Here rather than in a state of App's own for the sake of two things that come free with it: the pins
+   * belong to a tab and travel with it while other tabs print into their own feeds, and they are gone
+   * the moment the conversation is (a tab closed, a journal replayed afresh). That last one is not a
+   * nicety - the numbers of the rows start over from one when the feed is reset, so a pin outliving its
+   * feed would point at a different message with a straight face.
+   */
+  pins: readonly string[]
   /** The text of the answer being printed right now. It lives until the finished message arrives. */
   streamingText: string
   /**
@@ -417,6 +428,8 @@ export type PanelAction =
   | { kind: 'processExited'; exitCode: number }
   /** An error was removed from the feed by hand - it has been read, and keeping it serves nothing. */
   | { kind: 'dismissError'; id: string }
+  /** A message pinned to the top of the conversation, or unpinned - see togglePin in feed/pins.ts. */
+  | { kind: 'pin'; id: string }
   /**
    * The turn has stopped on a person's decision (a permission/ask/plan of the main stream) - from this
    * moment on the time goes into pausedMs rather than into the "Claude is thinking" counter.
@@ -427,6 +440,7 @@ export type PanelAction =
 
 export const initialPanelState: PanelState = {
   items: [],
+  pins: [],
   streamingText: '',
   streamingThinking: '',
   status: 'idle',

@@ -434,6 +434,11 @@ export const es: Dict = {
           ? 'Vuelve al campo de entrada, pero la imagen pegada no: adjúntala otra vez'
           : `Vuelve al campo de entrada, pero las ${n} imágenes pegadas no: adjúntalas otra vez`,
     },
+    pin: {
+      add: 'Fijar arriba del chat',
+      crowded: 'Tres es el máximo - quita uno de arriba antes de fijar este',
+      remove: 'Quitar de arriba',
+    },
     pastedLines: (n) => `${n} ${n === 1 ? 'línea pegada' : 'líneas pegadas'}`,
     pasteClose: 'Volver a plegarlo',
     copyPaste: 'Copiar el texto pegado',
