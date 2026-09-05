@@ -473,6 +473,25 @@ export const rebuildDom = (root: HTMLElement, tokens: UserToken[]) => {
     root.appendChild(node)
   }
 
+  /*
+   * The spare last line, put in here rather than left to placeCaretAtEnd below.
+   *
+   * It is guesswork down there and a fact up here: a message never carries a spare (withoutCaretLine
+   * takes it off), so a field just built from one has none, whereas a live field's text cannot say which
+   * of its trailing breaks is markup and which the person typed. The guess reads a pair of them as
+   * "already spare" - true of a field the browser has just padded, false of a message that ends on a
+   * blank line, and a list written with an empty line at the end is exactly that.
+   *
+   * Read as spare, that blank line was dropped on every rebuild - a tab switched, the layout changed, a
+   * rewrite come back - and the caret came back to the end of the line above it, where the next character
+   * was then typed.
+   */
+  const last = root.lastChild
+  if (last?.nodeType === Node.TEXT_NODE) {
+    const tail = last.textContent ?? ''
+    if (tail.endsWith('\n')) last.textContent = `${tail}\n`
+  }
+
   placeCaretAtEnd(root)
 }
 
@@ -565,6 +584,34 @@ export const wrappedLineCount = (field: HTMLElement, text: string, atLeast = 1):
 /** No glyph is thinner than this, whatever the font - see the ceiling above. */
 const NARROWEST_CHARACTER = 4
 
+/**
+ * What an element of the field that is not a chip puts into the message.
+ *
+ * Every such element is the browser's own doing: against our intentions it splits the field into blocks
+ * (see handleKeyDown about Shift+Enter), and it writes a <br> of its own wherever the caret needs a line
+ * to stand on. Both draw a line, so both are read as one - a line break, and after it whatever text the
+ * element holds.
+ *
+ * An EMPTY one is that line break and nothing else, and skipping it is what this is here to stop. Chromium
+ * leaves one behind whenever a delete takes the last character off the spare last line (see
+ * padTrailingBreak): the <br> it puts in place of the spare newline draws exactly the line that newline
+ * drew - `one` + `\n` + `<br>` and `one` + `\n` + `\n` are the same two lines on screen, measured. Read as
+ * nothing, it made the message one break shorter than the field was showing, and withoutCaretLine below
+ * then took the person's own last break for the spare and ate it too.
+ *
+ * What that cost was the line itself, one rebuild later. The field is rebuilt from the message whenever
+ * anything comes from outside - a tab switched, the layout changed under a resized panel, a rewrite come
+ * back - and it was rebuilt one line shorter: the empty last line went, and the caret went with it, to the
+ * end of the line above. The next character was then typed there, a line up from where it was asked for.
+ *
+ * Nothing at all is put in while nothing has been read yet: an empty field is a lone <br> in Chromium, and
+ * a break read out of that one would be a draft that is never empty again (see applyEdit).
+ */
+export const blockText = (text: string, hasEarlier: boolean): string | null => {
+  if (hasEarlier) return `\n${text}`
+  return text || null
+}
+
 export const extractTokens = (root: HTMLElement): UserToken[] => {
   const tokens: UserToken[] = []
 
@@ -583,11 +630,10 @@ export const extractTokens = (root: HTMLElement): UserToken[] => {
       }
 
       // Losing a whole node silently is not an option - that is how a second line used to disappear when
-      // the browser, against our intentions, split the field into blocks (see handleKeyDown about
-      // Shift+Enter). Such a block is an implied line break, so we read its text as it is, with a newline
-      // before it.
-      const value = node.textContent ?? ''
-      if (value) tokens.push({ kind: 'text', value: tokens.length > 0 ? `\n${value}` : value })
+      // the browser, against our intentions, split the field into blocks, and how the spare last line's
+      // <br> used to take the person's last break down with it. The rule is in blockText above.
+      const value = blockText(node.textContent ?? '', tokens.length > 0)
+      if (value !== null) tokens.push({ kind: 'text', value })
     }
   }
 
@@ -668,11 +714,11 @@ export const splitTokens = (
   const asText = (value: string): UserToken | null => (value ? { kind: 'text', value } : null)
 
   /**
-   * Not our node - the same implied line break as in extractTokens: we read it as text, with a newline
-   * before it, but only when there is something for it to be separated from.
+   * Not our node - read by the same rule as in extractTokens (see blockText), so that the two walks say
+   * the same thing about the same field: an empty one is a line break of its own rather than nothing.
    */
   const asBlock = (value: string, into: UserToken[]): UserToken | null =>
-    asText(value && into.length > 0 ? `\n${value}` : value)
+    asText(blockText(value, into.length > 0) ?? '')
 
   Array.from(root.childNodes).forEach((node, index) => {
     if (node instanceof HTMLElement) {

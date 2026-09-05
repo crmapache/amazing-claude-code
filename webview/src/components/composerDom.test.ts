@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { caretScrollShift } from './composerDom'
+import { blockText, caretScrollShift } from './composerDom'
 
 /**
  * How far the input field scrolls to keep the line being typed in sight - see scrollCaretIntoView.
@@ -30,5 +30,32 @@ describe('the shift that brings the caret into view', () => {
     expect(caretScrollShift(line(150), field)).toBe(-74)
     // The line is inside the field but under the opaque backing at its top: not seen means not in sight.
     expect(caretScrollShift(line(205), field)).toBe(-19)
+  })
+})
+
+/**
+ * What the browser's own elements inside the field say - see blockText.
+ *
+ * Checked here for the same reason as the shift above: it is wrong silently. A break read as nothing does
+ * not show up until the field is next rebuilt from the message, and by then it looks like the caret
+ * jumping a line by itself.
+ */
+describe('an element of the browser own making, read as a message', () => {
+  it('is a line break and its text, once there is something before it', () => {
+    expect(blockText('two', true)).toBe('\ntwo')
+  })
+
+  it('is a line break even with nothing to say - that is the spare last line the caret stands on', () => {
+    // Chromium leaves a <br> here as soon as a delete empties that line; before, it was read as nothing
+    // and the person's own last break was eaten in its place.
+    expect(blockText('', true)).toBe('\n')
+  })
+
+  it('is nothing while nothing has been read yet - an empty field is a lone <br>', () => {
+    expect(blockText('', false)).toBe(null)
+  })
+
+  it('opens the message with its own text, without a break before it', () => {
+    expect(blockText('one', false)).toBe('one')
   })
 })
