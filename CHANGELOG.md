@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.12.3] - 2026-09-05
+
+- Fixed: an answer that hands you a ready prompt came out inside out. A prompt is written with an example of markdown inside it, which means a code block inside a code block, and the panel did not read the outer one as a block at all: its backticks stayed on screen as text, the headings of the prompt became headings of the answer, and the template nested in it turned into the only code block there - with the answer's only copy button sitting on the one piece nobody needed. A block is now read the way markdown describes it, by a fence of three backticks or more, which is exactly what lets a block hold a block. Copying the answer keeps the nesting as well, so the prompt is still one piece wherever it is pasted.
+- Fixed: a fence with more than one word after it - "markdown ultracode", the shape a prompt for an orchestrated run arrives in - was not read as a fence either, so there was no block to copy and the whole prompt spilled into the answer as prose.
+
 ## [0.12.2] - 2026-09-04
 
 - Added: any message of yours, or any answer of Claude's, can be pinned to the top of the chat - the pin in its top right corner. Up to three of them stand there as a shelf over the conversation, one line each, and a click on a line takes the chat straight back to that message and lights it up for a moment. Meant for the long ones, where the errand you were given sits an hour of scrolling above what you are doing about it now. What did not fit on the line is shown whole on hover.
@@ -550,7 +555,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.2...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.3...HEAD
+[0.12.3]: https://github.com/crmapache/amazing-claude-code/compare/0.12.2...0.12.3
 [0.12.2]: https://github.com/crmapache/amazing-claude-code/compare/0.12.1...0.12.2
 [0.12.1]: https://github.com/crmapache/amazing-claude-code/compare/0.12.0...0.12.1
 [0.12.0]: https://github.com/crmapache/amazing-claude-code/compare/0.10.3...0.12.0
