@@ -9,6 +9,22 @@ commits.
 
 ## [Unreleased]
 
+## [0.12.5] - 2026-09-06
+
+- Added: the phone can now see and manage the MCP servers of the project it is looking at - which are up, which want a sign-in, which fell over and why - and reconnect, add or remove one. A server that goes down stops the work, and until now there was no way to find that out from anywhere but the desk. Signing a server in stays at the desk, and the screen says so rather than offering a button that cannot finish: Claude Code catches the browser's answer on that machine.
+- Added: the phone can switch which Claude account pays for the work, rename one, and see how much of each subscription is left. Running a five-hour window dry in the evening with a second account signed in and no way to reach it was the exact situation the remote access exists for. Switching says what it costs before you press it - every open conversation on that machine moves across and a turn in the middle of running is stopped - and asks again.
+- Added: a project's plugins can be read from the phone - which skills and commands a conversation actually has, and which somebody switched off. Installing and disabling stay at the desk: they run somebody else's code on that machine.
+- Added: the strip of conversations above the chat on the phone, forks included. A project with a fork in it had more than one conversation and no way to reach the others at all; a fork is indented under what it grew out of and carries its group's colour, as at the desk.
+- Added: a screen on the phone for what the turn is actually doing - the task list, the subagents with what each one is working on, and the commands left running in the background, which can be stopped from there. A turn with a dozen agents behind it used to say "working" and nothing else.
+- Added: the model and the effort of the conversation on screen can be changed from the phone, from one chip under the field. Finding a refactor grinding along on the small model, or a one-line fix burning the subscription on the largest, was the one thing about a run that could not be fixed from a sofa. Neither writes anything into the machine's settings: what the next tab opened at that keyboard starts on is not a decision to take from away.
+- Added: any message in a chat on the phone can be quoted into the next one, forked from, copied or pinned - the three dots in its corner.
+- Added: a side menu on the phone, and the first screen now opens with a band of everything that is stopped waiting for you, across every project and every paired IDE, each named by what it wants - a permission is one tap, a plan is a page to read.
+- Added: a conversation in the list now says what it is doing under its title - "working · 2m 40s", "done · 14:02" - and a project card carries its branch and pull request. Colour answered whether something needs you; it did not answer how long it had been going.
+- Fixed: on the phone, Send and Queue were pushed off the right edge of the screen while a turn was running. Six controls were sharing one row; Stop has moved up into the row about the run itself, where it belongs, and the rest now wrap instead of overflowing.
+- Fixed: on the phone, the name of a conversation was eaten by the name of its project - the two shared one line, and on a project with a long name the conversation always lost. The header is two lines now.
+- Added: an agent of an orchestrated run can be opened from its row - the whole errand it was given, the steps it took and the answer it returned, read from the transcript Claude Code writes for it. The run's own report carries only the first few hundred characters of each, which for an agent answering with structured data is an opening bracket.
+- Fixed: a notification's wording was never actually being checked, so nothing would have caught it saying the wrong thing.
+
 ## [0.12.4] - 2026-09-05
 
 - Fixed: you left a half-written message in the input field, went off somewhere else, came back, put the caret at the end and started typing - and the letters landed a line above, where a line break was. The empty last line a message ends on is held up by a spare line break the field keeps for the caret to stand on, and the field could mistake that spare for a break you typed yourself. It then remembered your message one line shorter than it was showing, and the next time the field was rebuilt from what it remembered - a tab switched, the panel resized into another layout, a rewritten prompt come back - the empty last line went, and the caret with it, to the end of the line above. Nothing on screen changed at the moment it broke, which is why the typing looked like it jumped by itself minutes later.
@@ -560,7 +576,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.4...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.5...HEAD
+[0.12.5]: https://github.com/crmapache/amazing-claude-code/compare/0.12.4...0.12.5
 [0.12.4]: https://github.com/crmapache/amazing-claude-code/compare/0.12.3...0.12.4
 [0.12.3]: https://github.com/crmapache/amazing-claude-code/compare/0.12.2...0.12.3
 [0.12.2]: https://github.com/crmapache/amazing-claude-code/compare/0.12.1...0.12.2
