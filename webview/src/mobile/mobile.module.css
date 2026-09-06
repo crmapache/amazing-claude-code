@@ -603,23 +603,28 @@
  * Everything here is looked at rather than pressed - except the rings, which open what the panel keeps
  * in a tooltip (see Limits), and the PR, which opens in this phone's own browser.
  */
+/*
+ * A minimum rather than a fixed height, so the vertical padding is real: at a fixed height the row
+ * would swallow it and the meters would stand flat against the rules above and below.
+ */
 .strip {
   display: flex;
   align-items: center;
   gap: var(--acc-sp-3);
-  height: 38px;
-  padding: 0 var(--acc-sp-5);
+  min-height: 38px;
+  padding: var(--acc-sp-1) var(--acc-sp-5);
   border-bottom: 1px solid var(--acc-line);
 }
 
 /* A ring, its percentage and the room around the pair to hit: the mark is twenty pixels, the target is a
-   thumb's worth of height. The wording - which window, when it resets - is still a tap away in Limits. */
+   thumb's worth of height. The wording - which window, when it resets - is still a tap away in Limits.
+   Its height no longer sets the row's: the row has padding of its own now (see .strip). */
 .meter {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   flex: none;
-  height: 38px;
+  height: 34px;
   padding: 0 var(--acc-sp-1);
   border: none;
   background: none;
@@ -900,23 +905,30 @@
   opacity: 0.4;
 }
 
+/*
+ * Stop: a thin pill of a word, not a thumb-sized square.
+ *
+ * It used to be a full hit target with the mark above the caption, and on a narrow screen the two
+ * stacked - which made the whole amber row as tall as a button plus a line of text, for a control that
+ * is one word long. The mark is gone with it: "Stop" already says the thing, and the square only
+ * repeated it while paying for the height.
+ *
+ * Below the usual target on purpose, and it is fine here: the row is its own, nothing sits within a
+ * thumb's width of the button, and a mis-tap costs a turn that is running rather than one that is not.
+ */
 .stop {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--acc-hit);
-  height: var(--acc-hit);
-  border: 1px solid var(--acc-line-strong);
-  border-radius: var(--acc-r-2xl);
-  background: none;
+  height: 26px;
+  padding: 0 var(--acc-sp-3);
+  border: 1px solid rgb(var(--acc-ch-rose) / 34%);
+  border-radius: var(--acc-r-pill);
+  background: rgb(var(--acc-ch-rose) / 12%);
   color: var(--acc-bad-light);
-}
-
-/* A third of the button, which is the proportion the panel's own "■ Stop" has at the desk. */
-.stop svg {
-  width: 14px;
-  height: 14px;
+  font: 12.5px/1 var(--acc-mono);
+  cursor: pointer;
 }
 
 /* --- The two hints, and the sheet they share ---------------------------------- */
@@ -1920,11 +1932,12 @@
 /* The turn in progress and the button that ends it - a row of its own, which is
    what took Stop out of the row of actions and stopped Send being squeezed off
    the edge of the screen. */
+/* The height is the pill's now, not a hit target's - see .stop. */
 .runRow {
   display: flex;
   align-items: center;
   gap: var(--acc-sp-3);
-  padding: var(--acc-sp-2) var(--acc-sp-4);
+  padding: var(--acc-sp-1) var(--acc-sp-4);
   border-bottom: 1px solid var(--acc-bg-panel);
   background: rgb(var(--acc-ch-sand) / 6%);
 }
@@ -1942,7 +1955,7 @@
 .runRowQueue {
   flex: none;
   padding: 0 var(--acc-sp-2);
-  min-height: 32px;
+  min-height: 26px;
   border: none;
   background: none;
   font: 12.5px/1 var(--acc-mono);
@@ -1950,11 +1963,6 @@
   text-decoration: underline;
   text-underline-offset: 3px;
   cursor: pointer;
-}
-
-.stopGlyph {
-  width: 10px;
-  height: 10px;
 }
 
 /* --- Quotes waiting above the field ---------------------------------------- */

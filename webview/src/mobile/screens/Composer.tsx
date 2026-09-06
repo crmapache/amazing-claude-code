@@ -500,7 +500,6 @@ export const Composer = ({
           )}
 
           <button type="button" className={m.stop} onClick={onStop}>
-            <StopSquare />
             {t.mobile.composer.stop}
           </button>
         </div>
@@ -773,18 +772,6 @@ const Paperclip = () => (
       strokeLinecap="round"
       strokeLinejoin="round"
     />
-  </svg>
-)
-
-/**
- * The stop mark as a square rather than as "■".
- *
- * The typographic one is missing from the interface font and gets substituted from another, where it
- * has a seat of its own - it lands off-centre in a round button and at a size nobody chose.
- */
-const StopSquare = () => (
-  <svg viewBox="0 0 16 16" className={m.stopGlyph} aria-hidden="true">
-    <rect x="0" y="0" width="16" height="16" rx="2" fill="currentColor" />
   </svg>
 )
 
