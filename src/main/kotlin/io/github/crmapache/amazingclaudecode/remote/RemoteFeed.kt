@@ -1,7 +1,9 @@
 package io.github.crmapache.amazingclaudecode.remote
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
+import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -45,8 +47,17 @@ internal object RemoteFeed {
      * ClaudeFileSearch), so this is one more notch on the same compromise rather than a new kind of
      * one.
      */
-    fun forPhone(type: String, message: String): String {
-        if (type != FILES || message.length <= PHONE_FILES_BUDGET) return message
+    fun forPhone(type: String, message: String): String =
+        when (type) {
+            FILES -> trimmedFiles(message)
+            MCP_SERVERS -> serversWithoutCommands(message)
+            PLUGINS -> trimmedPlugins(message)
+            MARKETPLACES -> marketplacesWithoutPaths(message)
+            else -> message
+        }
+
+    private fun trimmedFiles(message: String): String {
+        if (message.length <= PHONE_FILES_BUDGET) return message
 
         val files = runCatching {
             Json.parseToJsonElement(message).jsonObject["files"]?.jsonArray.orEmpty()
@@ -64,6 +75,105 @@ internal object RemoteFeed {
             putJsonArray("files") { kept.forEach { add(it) } }
         }.toString()
     }
+
+    /**
+     * The MCP list with every server's command line taken out.
+     *
+     * That field is what a server is started by, and on a `stdio` server it is a command line off this
+     * machine: absolute paths through somebody's home directory, and now and then a token sitting in an
+     * argument. It is the one thing this side does not send outwards, and the phone has no use for it -
+     * the screen there names a server by what it is and what state it is in (see mobile/screens/Mcp),
+     * which is the question somebody away from the machine is asking. The transport survives, because
+     * "stdio" and "http" are a kind rather than a place.
+     *
+     * A server that fails still says why: the CLI's error is about the connection, not about the disk.
+     */
+    private fun serversWithoutCommands(message: String): String {
+        val servers = runCatching {
+            Json.parseToJsonElement(message).jsonObject["servers"]?.jsonArray.orEmpty()
+        }.getOrNull() ?: return message
+
+        return buildJsonObject {
+            put("type", MCP_SERVERS)
+            putJsonArray("servers") {
+                for (element in servers) {
+                    val server = element as? JsonObject ?: continue
+                    addJsonObject {
+                        for ((name, value) in server) if (name != "command") put(name, value)
+                        put("command", "")
+                    }
+                }
+            }
+        }.toString()
+    }
+
+    /**
+     * The plugin catalogue cut to what a frame will carry.
+     *
+     * The installed list is a handful and always travels; the available one is whatever the connected
+     * marketplaces hold, which on an ordinary machine is hundreds of entries with descriptions. Over the
+     * cap the relay does not shorten a frame, it throws it away - so the screen would show nothing at
+     * all rather than most of it, and the installed half would go down with the catalogue it was
+     * bundled with. Trimmed here, the phone gets everything it came for and a browse list it can search
+     * inside, which is the same compromise the file list is already under.
+     */
+    private fun trimmedPlugins(message: String): String {
+        if (message.length <= PHONE_PLUGINS_BUDGET) return message
+
+        val root = runCatching { Json.parseToJsonElement(message).jsonObject }.getOrNull() ?: return message
+        val installed = root["installed"]?.jsonArray.orEmpty()
+        val available = root["available"]?.jsonArray.orEmpty()
+
+        var spent = installed.sumOf { it.toString().length }
+        val kept = available.takeWhile { entry ->
+            spent += entry.toString().length + 1
+            spent <= PHONE_PLUGINS_BUDGET
+        }
+
+        return buildJsonObject {
+            put("type", PLUGINS)
+            putJsonArray("installed") { installed.forEach { add(it) } }
+            putJsonArray("available") { kept.forEach { add(it) } }
+        }.toString()
+    }
+
+    /**
+     * The marketplaces with a folder on this machine named as a folder rather than by its path.
+     *
+     * A marketplace's source is a repository, an address, or a directory somebody cloned - and the third
+     * is a path, which never leaves. The phone is told which kind it is, which is all its row says.
+     */
+    private fun marketplacesWithoutPaths(message: String): String {
+        val marketplaces = runCatching {
+            Json.parseToJsonElement(message).jsonObject["marketplaces"]?.jsonArray.orEmpty()
+        }.getOrNull() ?: return message
+
+        return buildJsonObject {
+            put("type", MARKETPLACES)
+            putJsonArray("marketplaces") {
+                for (element in marketplaces) {
+                    val marketplace = element as? JsonObject ?: continue
+                    val source = marketplace["source"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                    addJsonObject {
+                        for ((name, value) in marketplace) if (name != "source") put(name, value)
+                        put("source", if (isPath(source)) LOCAL_SOURCE else source)
+                    }
+                }
+            }
+        }.toString()
+    }
+
+    /**
+     * Whether this source is a place on the disk rather than something on the network.
+     *
+     * By what it is not: the CLI writes a repository as `github: org/repo` and an address with its
+     * scheme, so anything left that starts at a root or at a home directory is a folder. Erring towards
+     * "a path" costs a marketplace's name being replaced by a word; erring the other way sends a
+     * directory listing of somebody's disk across the city.
+     */
+    private fun isPath(source: String): Boolean =
+        source.startsWith("/") || source.startsWith("~") || source.startsWith(".") ||
+            (source.length > 1 && source[1] == ':')
 
     /**
      * Whether this message is one of the project's own facts a phone is allowed to have, and which.
@@ -87,10 +197,31 @@ internal object RemoteFeed {
 
     /**
      * The branch and its pull request, the subscription's usage windows, the slash commands with their
-     * descriptions and the project's file list - what the composer on the phone is drawn from and
-     * nothing besides.
+     * descriptions, the project's file list - what the composer on the phone is drawn from - and the
+     * answers of the three screens a phone may now drive: the MCP servers, the plugins and the Claude
+     * accounts (see RemoteCommands, where the decision to open them is argued).
+     *
+     * Two of those carry something this side does not send outwards, and neither is on this list
+     * untouched: a server's command line and a marketplace's local folder are taken out in [forPhone]
+     * before the message leaves. The accounts do carry the person's own addresses, and that is the
+     * point - it is the owner's address on the owner's own paired device, and a screen that cannot say
+     * which account it is about to switch away from is not a screen anybody should press.
      */
-    private val PROJECT_FACTS = listOf("project", "usage", "commandHints", "commands", FILES, LOCALE)
+    private val PROJECT_FACTS = listOf(
+        "project",
+        "usage",
+        "commandHints",
+        "commands",
+        FILES,
+        LOCALE,
+        MCP_SERVERS,
+        "mcpActionResult",
+        PLUGINS,
+        "pluginActionResult",
+        MARKETPLACES,
+        "accounts",
+        "accountOutcome",
+    )
 
     /**
      * A line of a past conversation being replayed into a tab.
@@ -111,6 +242,13 @@ internal object RemoteFeed {
 
     private const val FILES = "files"
 
+    private const val MCP_SERVERS = "mcpServers"
+    private const val PLUGINS = "plugins"
+    private const val MARKETPLACES = "marketplaces"
+
+    /** What a marketplace kept in a folder on that machine is called instead of by its path. */
+    const val LOCAL_SOURCE = "a local path"
+
     /**
      * The language the panel speaks, so the phone speaks it too.
      *
@@ -126,6 +264,13 @@ internal object RemoteFeed {
      * comfortably inside the relay's 256 KB rather than near it.
      */
     private const val PHONE_FILES_BUDGET = 48 * 1024
+
+    /**
+     * How much of the plugin catalogue a phone is sent. The same order as the file list and for the same
+     * reason: it leaves the sealed frame well inside the relay's 256 KB, and what is cut is the tail of
+     * a catalogue nobody scrolls to the end of.
+     */
+    private const val PHONE_PLUGINS_BUDGET = 48 * 1024
 
     private const val REPLAY_LINE = "\"replay\":true,\"event\":"
 

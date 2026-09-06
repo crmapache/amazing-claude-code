@@ -104,25 +104,133 @@ internal object RemoteCommands {
          * carry - and it would arrive late, having gone twice as far.
          */
         "voiceToken",
+        /**
+         * How this conversation thinks: the model it runs and how long it deliberates.
+         *
+         * Both are about the cost and the quality of the next turn and about nothing else - neither one
+         * widens what the agent may touch, which is what every other refusal on this list is guarding.
+         * A person who picks up a phone to unblock a run and finds it grinding through a refactor on
+         * Haiku, or burning a subscription on `max` for a one-line fix, is looking at the one thing
+         * about the run they can neither see nor change from here.
+         *
+         * `setMode` stays refused right below, and the difference is the whole line: the mode decides
+         * whether the agent asks before it writes, and the conversation may have somebody sitting in
+         * front of it. Choosing how a conversation of one's OWN begins - mode included - travels with
+         * `newSession` above.
+         *
+         * Neither writes this machine's settings when it comes from here. At the desk both are also a
+         * choice about what the next tab starts on; from a sofa that would be deciding the shape of
+         * work somebody else may be about to begin at the keyboard, and it is the same objection
+         * `setDefaultMode` is refused for (see SessionCommands, which passes `remember = local`).
+         */
+        "setModel",
+        "setEffort",
+        /**
+         * The MCP servers of the conversation on screen: which are up, which want a sign-in, which
+         * failed and why - and adding and removing one.
+         *
+         * The reading half needs no argument: `/mcp` is a question asked of a running conversation, and
+         * this device may already send that conversation anything at all. Reconnecting is the same
+         * question asked twice.
+         *
+         * Adding is the one on this list that genuinely runs code on the work machine - the config it
+         * writes is read at the next launch, and a `stdio` server IS a command line. It is allowed
+         * anyway, and the reason is the one that governs the whole channel: what is on the other end is
+         * not "a phone" but this machine's owner, holding a device they paired by carrying a fingerprint
+         * across the room and confirming it at the keyboard. `prompt`, allowed since the first day,
+         * hands that same person a shell through the agent - a door incomparably wider than a line in
+         * `.mcp.json`. Refusing this one bought no safety; it bought a screen that could see a server
+         * was down and nothing else.
+         *
+         * `mcpAuthenticate` is the one left refused below, and not out of caution: the CLI catches the
+         * browser's callback on a port of its own on THAT machine, so a sign-in opened from here would
+         * send the person to a page whose redirect lands on a port their phone does not have. The screen
+         * says "at the desk" instead of offering a button that cannot work.
+         *
+         * What comes back is cut down on the way out - a server's command line is a path on that machine
+         * and sometimes a secret in an argument, and the phone is never shown either (see
+         * RemoteFeed.forPhone).
+         */
+        "mcpList",
+        "mcpReconnect",
+        "mcpAdd",
+        "mcpRemove",
+        /**
+         * The installed plugins and the marketplaces they came from - reading only.
+         *
+         * What it buys is the question a person actually has in front of a conversation: which skills
+         * and commands this agent has at all. Installing, enabling and disabling stay refused below -
+         * they fetch and run somebody else's code, and unlike an MCP line in a config that is not a
+         * decision with a visible blast radius.
+         *
+         * A marketplace names where it came from, and that is sometimes a folder on the machine - it is
+         * replaced on the way out, and the catalogue is cut to the frame's budget (see
+         * RemoteFeed.forPhone): a frame over the cap is thrown away whole rather than shortened, so a
+         * machine with two hundred plugins available would leave the screen with nothing at all.
+         */
+        "pluginList",
+        "marketplaceList",
+        /**
+         * Which Claude account the work is billed to.
+         *
+         * This used to be refused whole, on three arguments. Two of them survive and keep their own
+         * messages refused below - adding an account opens a terminal and a browser sign-in on that
+         * machine, which a sofa cannot finish. The third was that choosing an account decides what
+         * every future conversation runs on, and that one was simply the wrong comparison: an account
+         * is not a preference like the permission mode, it is the answer to "whose subscription is
+         * paying", and the person paying is the person holding the phone. Running out of a five-hour
+         * window mid-evening with a second account signed in and no way to reach it is the exact
+         * situation this channel exists for.
+         *
+         * The list travels with it, which is the part that changed on this side: it carries addresses
+         * and plans (see AccountInfo), and until now the phone was told about a conversation's account
+         * by an opaque id alone. It is the owner's own address on the owner's own paired device, sealed
+         * end to end - and without it the screen cannot say which account it is about to switch away
+         * from. `accounts` and `accountOutcome` are on RemoteFeed.PROJECT_FACTS to match.
+         *
+         * `accountForget` and `accountLogout` are destructive and are allowed, with the difference said
+         * out loud on the screen that offers them: forgetting drops a credential drawer from THAT
+         * machine and leaves the account alone, while logging out revokes the credential everywhere the
+         * person is signed in. The phone asks before either (see mobile/screens/Accounts).
+         */
+        "accountList",
+        "accountUse",
+        "accountRename",
+        "accountForget",
+        "accountLogout",
     )
 
     /**
      * Named rather than left to fall through, so that the test above can tell "decided against" from
      * "never looked at". The reasons differ and are worth keeping:
      *
-     * - `bash`, `setExecutablePath`, `mcpAdd`, `plugin*`, `marketplace*` run or install code on the
-     *   work machine outright;
+     * - `bash`, `setExecutablePath`, `plugin*` (bar the list), `marketplaceAdd`/`marketplaceRemove` run
+     *   or install code on the work machine outright;
      * - `clipboardRead`/`clipboardWrite`, `pick`, `dropped`, `openExternal`, `openDevTools`, `cursor`
      *   reach for the machine's own surfaces - a phone asking to open a URL on someone's desktop is a
      *   small primitive of remote control;
      * - `setMode`/`setDefaultMode` reach a conversation somebody may be working in at the desk, or
      *   decide what every future one starts in. Choosing how a conversation of one's own begins is a
-     *   different act and travels with `newSession` above;
+     *   different act and travels with `newSession` above, and the model and the effort of the one on
+     *   screen travel above too - they change what a turn costs, not what it may touch;
      * - `closeSession` kills a live process, and destroying work from another device is not among the
      *   things a phone is for;
-     * - `login`/`logout` open a terminal on that machine and hand it a browser sign-in;
+     * - `login`/`logout`, `accountAdd` and `designLogin` open a terminal on that machine and hand it a
+     *   browser sign-in - a thing a sofa cannot finish, whoever asked for it;
+     * - `mcpAuthenticate` is the same shape: the CLI catches the browser's callback on a port of that
+     *   machine, so the browser has to be that machine's.
      */
     val DENIED = setOf(
+        /**
+         * What one agent of a workflow said, read off its transcript on disk (see WorkflowAgents).
+         *
+         * Refused for the plain reason that nothing over there asks for it: a fold on the phone shows
+         * what the run's own report carries, and the panel that reads the disk is the one standing on
+         * the machine the files are on. On its merits the door is narrow - one file the CLI wrote about
+         * a run this device may already read the feed of - so this is a door left shut until something
+         * needs to walk through it, not a refusal on principle.
+         */
+        "agentTranscript",
         "bash",
         "closeSession",
         "reorderGroups",
@@ -131,8 +239,6 @@ internal object RemoteCommands {
         "reorderTabs",
         "setMode",
         "setDefaultMode",
-        "setModel",
-        "setEffort",
         "setComposerLayout",
         /**
          * How a pasted text behaves in the input field - a machine-wide setting like the layout above,
@@ -186,28 +292,17 @@ internal object RemoteCommands {
         "login",
         "logout",
         /*
-         * Which Claude account the work is billed to, and the list of them.
+         * Adding an account, and stopping halfway through adding one.
          *
-         * Denied for three reasons already written into this file. Adding one opens a terminal on that
-         * machine and hands it a browser sign-in - `login` and `logout` right above are denied for
-         * exactly that, and adding an account is that plus a folder created on somebody's disk. Choosing
-         * one decides what every future conversation starts on, which is why `setDefaultMode` and the
-         * model family are denied. And forgetting one is a revocation - the same question `revokeDevice`
-         * must never let a device answer about itself.
-         *
-         * The list is not sent outwards either: it carries addresses and organisation names, and the
-         * phone is told about a conversation's account by an opaque id at most (see
-         * ClaudeSessionHub.sendAccount). `accounts` is deliberately absent from
-         * RemoteFeed.PROJECT_FACTS, so the default-deny there keeps it off the wire even though the
-         * panel receives it as a project fact.
+         * The rest of that screen is allowed above; these two are not, and it is not a matter of degree.
+         * Adding opens a terminal on the work machine and runs `claude auth login` in it, which sends a
+         * browser there for the sign-in - and a person on a sofa has no way to finish it. What they would
+         * get for the press is a terminal tab waiting on somebody's desk, a credential drawer on
+         * somebody's disk and a screen stuck on "Signing in…" for ten minutes. Cancelling has no meaning
+         * without it.
          */
-        "accountList",
-        "accountUse",
         "accountAdd",
         "accountCancel",
-        "accountForget",
-        "accountLogout",
-        "accountRename",
         /*
          * Authorizing Claude Design. A terminal and a browser sign-in on somebody's machine, in that
          * account's credential drawer - the same thing `accountAdd` above is denied for, and the phone
@@ -283,17 +378,30 @@ internal object RemoteCommands {
         "voiceCaptureHotkey",
         "voiceStopCapture",
         "voiceClearHotkey",
-        "mcpList",
-        "mcpAdd",
-        "mcpRemove",
-        "mcpReconnect",
+        /*
+         * Signing in to an MCP server. The CLI hands back an address, and whoever asked opens it - but
+         * the code from that browser comes back to a handler the CLI raised inside the conversation's
+         * own process, on that machine's loopback. A phone that opened the address would sign in and
+         * then be redirected to a port it does not have.
+         *
+         * So the screen names the state and says where it is finished, which is the honest answer; the
+         * rest of that screen - the list, reconnecting, adding and removing - is allowed above.
+         */
         "mcpAuthenticate",
-        "pluginList",
+        /*
+         * Installing a plugin, and adding the marketplace that supplies them.
+         *
+         * These fetch and run somebody else's code on the work machine - hooks and skills execute - so
+         * they belong with `bash` rather than with the list above them. Uninstalling, enabling and
+         * disabling are refused alongside them: they run nothing, but they silently change what the
+         * agent at the desk can do, and the person there would learn of it from a broken workflow rather
+         * than from any line on any screen. Reading the list is allowed (see `pluginList` above) - that
+         * is the question somebody in front of a conversation actually has.
+         */
         "pluginInstall",
         "pluginUninstall",
         "pluginEnable",
         "pluginDisable",
-        "marketplaceList",
         "marketplaceAdd",
         "marketplaceRemove",
         // The statistics are about the whole machine - every project by name, the phones paired, the

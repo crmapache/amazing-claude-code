@@ -220,6 +220,33 @@ class ClaudeSessionsTest : BasePlatformTestCase() {
         assertEquals(PermissionModes.PLAN, sessions.permissionMode("main"))
     }
 
+    /**
+     * A tab whose process is replaced while it says nothing has to announce it all the same.
+     *
+     * A turn would be interrupted and every client told; a silent swap used to say nothing at all - and
+     * a workflow's fleet, a background subagent and a background command all outlive the TURN that
+     * started them and none of them outlives the process. Their cards were left ticking against a CLI
+     * that no longer existed. A tab with no process is the other half of the same rule: nothing to lose,
+     * so nothing to say.
+     */
+    fun testATabWithNoProcessAnnouncesNothingWhenTheAccountChanges() {
+        var dropped = 0
+        val sessions = ClaudeSessions(
+            workingDirectory = null,
+            parentDisposable = testRootDisposable,
+            onEvent = { _, _ -> },
+            onError = { _, _ -> },
+            onFinished = {},
+            onMoveDropping = { dropped += 1 },
+        )
+        sessions.setEffort("main", "low")
+
+        register("work")
+        sessions.switchAllTo()
+
+        assertEquals(0, dropped)
+    }
+
     /** A tab with no process has nothing to move, and no process is raised to move it. */
     fun testATabThatWasNeverOpenedIsLeftAlone() {
         val sessions = sessions()

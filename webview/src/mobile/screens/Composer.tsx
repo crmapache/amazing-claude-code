@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Microphone } from '../../components/Microphone'
 import { Ring } from '../../components/StatusBar'
+import { effortShortLabel, modeShortLabel, modelLabel } from '../../catalog'
 import { atQueryInText, matchFiles } from '../../feed/files'
 import { appendChip, matchCommands, slashQuery, type CommandEntry } from '../../feed/slash'
 import { composePrompt, imageAttachments, trimTrailingSpace } from '../../feed/tokens'
+import { formatDuration } from '../../feed/tools'
+import type { QueuedMessage } from '../../protocol'
 import type { UserToken } from '../../feed/types'
 import type { UsageWindow } from '../../protocol'
 import {
@@ -15,6 +18,7 @@ import {
   WEEK_MS,
   weekBudgetToday,
 } from '../../feed/usage'
+import { useNow } from '../../hooks/useNow'
 import { encodeImage, IMAGE_BUDGET, IMAGE_MINIMUM, type PickedImage } from '../images'
 import { phoneCommands, type ProjectFacts } from '../facts'
 import { Limits } from './Limits'
@@ -28,19 +32,35 @@ export interface OutgoingPrompt {
   text: string
   tokens: UserToken[]
   images: { mediaType: string; data: string }[]
+  /** What was quoted out of the conversation before it was written - see feed/tokens.composePrompt. */
+  quotes: string[]
 }
 
 interface ComposerProps {
   facts: ProjectFacts
   /** This conversation's context fill and what it is made of - see contextOf in feed/build. */
   context: { percent: number; used: number; limit: number }
+  /** How the turn runs, for the one chip that says so and opens the sheet behind it. */
+  run: { model: string; effort: string; mode: string }
   running: boolean
+  /** When the turn on screen began, by the IDE's clock - zero when none is running. */
+  since: number
+  /** What this conversation will say next, in order, once the run in progress ends. */
+  queue: readonly QueuedMessage[]
+  queueOpen: boolean
+  onQueueOpen: (open: boolean) => void
+  onUnqueue: (id: string) => void
   connected: boolean
   /** How many images have already travelled in this conversation - the numbering carries on from it. */
   imageBase: number
+  /** Quoted out of the feed and waiting above the field - see the message sheet. */
+  quotes: string[]
+  onDropQuote: (index: number) => void
   onSend: (prompt: OutgoingPrompt) => void
   onQueue: (prompt: OutgoingPrompt) => void
   onStop: () => void
+  /** The model, the effort and the permission mode of this conversation - the sheet behind the chip. */
+  onRun: () => void
   /** Dictation - the state lives in the application, because the token for it arrives there. */
   voice: PhoneDictation
 }
@@ -93,15 +113,15 @@ const MeterValue = ({ ring }: { ring: RingFacts }) =>
 /**
  * The phone's composer.
  *
- * Three rows, and the division between them is the whole idea: what is read never moves, and what is
+ * Four rows, and the division between them is the whole idea: what is read never moves, and what is
  * pressed is never where a thumb might brush it by accident.
  *
- * The top row is read - the five-hour window, the weekly one, the branch and its pull request. The
- * middle is the field, full width, with the context bar on its own top edge exactly as in the panel.
- * The bottom row is the actions, and while the agent is working it carries three of them rather than
- * one: Send reaches the turn in progress, Queue waits it out, Stop ends it. Send never leaves - the
- * phone used to offer Queue alone mid-run, and "I have changed my mind, now" was a thing one simply
- * could not say from a sofa.
+ * The first row is read - the two windows, and how this turn runs. The second appears only while a turn
+ * is running and carries the one thing that ends it: Stop used to sit in the row of actions, which is
+ * how a row of six controls came to be wider than a phone and pushed Send and Queue off the edge. The
+ * third is the field, full width, with the context bar on its own top edge exactly as in the panel. The
+ * fourth is the actions, and it wraps rather than scrolls: a control a thumb cannot reach is not a
+ * control.
  *
  * Everything the two hints know - which commands exist, which files, how a query narrows them - is the
  * panel's own (see feed/slash and feed/files). What differs is the shape they are shown in: two lines
@@ -111,20 +131,35 @@ const MeterValue = ({ ring }: { ring: RingFacts }) =>
 export const Composer = ({
   facts,
   context,
+  run,
   running,
+  since,
+  queue,
+  queueOpen,
+  onQueueOpen,
+  onUnqueue,
   connected,
   imageBase,
+  quotes,
+  onDropQuote,
   onSend,
   onQueue,
   onStop,
+  onRun,
   voice,
 }: ComposerProps) => {
   const t = useT()
+  const now = useNow()
   const [draft, setDraft] = useState('')
   const [caret, setCaret] = useState(0)
   const [attached, setAttached] = useState<PickedImage[]>([])
   const [focused, setFocused] = useState(false)
   const [limitsOpen, setLimitsOpen] = useState(false)
+
+  /** When the press began, and whether a tap has latched it on - see the dictation button below. */
+  const pressedAt = useRef(0)
+  const held = useRef(false)
+  const listening = voice.phase === 'listening'
 
   /*
    * Where a dictated phrase lands.
@@ -133,11 +168,6 @@ export const Composer = ({
    * arrive from a socket the application holds (see useDictation). The rule for joining them to what is
    * already written is the panel's own - one rule for both screens (see feed/voice.ts).
    */
-  /** When the press began, and whether a tap has latched it on - see the button below. */
-  const pressedAt = useRef(0)
-  const held = useRef(false)
-  const listening = voice.phase === 'listening'
-
   const registerInsert = voice.registerInsert
   useEffect(() => {
     registerInsert((phrase) => setDraft((current) => voiceJoin(current, phrase)))
@@ -192,10 +222,6 @@ export const Composer = ({
   /**
    * What each of the two rings is, figure and all - the same three answers as in the panel (see
    * UsageMeters), gathered here rather than spelled out twice inside the markup below.
-   *
-   * The figure is left out in the two cases where it would say nothing: a burning ring is stuck at a
-   * hundred and what matters about it is that the work is being paid for, and a window nothing is known
-   * about yet gets an empty track rather than an honest-looking "0%".
    */
   const sessionRing = burning === 'session' ? BURNING_RING : windowRing(facts.session, FIVE_HOUR_MS)
   const weekRing = burning === 'week' ? BURNING_RING : windowRing(facts.week, WEEK_MS)
@@ -223,15 +249,12 @@ export const Composer = ({
   const showing = suggesting && dismissedAt !== suggestQuery
 
   /** Put text in place of a piece of the field, and leave the caret after it. */
-  const replace = useCallback(
-    (from: number, to: number, text: string) => {
-      setDraft((current) => current.slice(0, from) + text + current.slice(to))
-      pendingCaret.current = from + text.length
-      setDismissedAt(null)
-      field.current?.focus()
-    },
-    [],
-  )
+  const replace = useCallback((from: number, to: number, text: string) => {
+    setDraft((current) => current.slice(0, from) + text + current.slice(to))
+    pendingCaret.current = from + text.length
+    setDismissedAt(null)
+    field.current?.focus()
+  }, [])
 
   const pickCommand = useCallback(
     (command: CommandEntry) => {
@@ -280,13 +303,11 @@ export const Composer = ({
       if (added.length > 0) setAttached((current) => [...current, ...added])
       if (refused > 0) {
         setAttachError(
-          added.length > 0
-            ? t.mobile.composer.photosDropped(refused)
-            : t.mobile.composer.photoTooBig,
+          added.length > 0 ? t.mobile.composer.photosDropped(refused) : t.mobile.composer.photoTooBig,
         )
       }
     },
-    [attached],
+    [attached, t],
   )
 
   /**
@@ -312,11 +333,12 @@ export const Composer = ({
     tokens = trimTrailingSpace(tokens)
 
     return {
-      text: composePrompt({ tokens, quotes: [] }, imageBase),
+      text: composePrompt({ tokens, quotes: quotes.map((text) => ({ text })) }, imageBase),
       tokens,
       images: imageAttachments(tokens),
+      quotes,
     }
-  }, [draft, attached, imageBase])
+  }, [draft, attached, imageBase, quotes])
 
   const submit = useCallback(
     (queued: boolean) => {
@@ -342,8 +364,10 @@ export const Composer = ({
         <div className={m.suggest}>
           <div className={m.sheetGrab} />
           <div className={m.sheetHead}>
-            <span className={m.sheetTitle}>
-              {commandMatches.length > 0 ? t.mobile.composer.commands : t.mobile.composer.projectFiles}
+            <span className={m.sheetTitleGroup}>
+              <span className={m.sheetTitle}>
+                {commandMatches.length > 0 ? t.mobile.composer.commands : t.mobile.composer.projectFiles}
+              </span>
             </span>
             <span className={m.sheetCount}>
               {commandMatches.length > 0
@@ -400,14 +424,9 @@ export const Composer = ({
         </div>
       )}
 
-      {/* What is read: the two windows, the branch and its pull request. A tap on either ring opens the
-          rest of the figures - which window this is, when it resets - because the panel keeps those in a
-          tooltip and a phone has no hover to put one under.
-
-          Each ring carries its percentage beside it, as in the panel: the shape of a ring says "filling
-          up", but "how much" is what one actually looks down at the row for, and having to tap to see a
-          figure that fits in three characters was a tap for nothing. What stays behind the tap is the
-          wording - which limit, how long until it resets. */}
+      {/* What is read: the two windows, and how this turn runs. A tap on either ring opens the rest of
+          the figures - which window this is, when it resets - because the panel keeps those in a tooltip
+          and a phone has no hover to put one under. */}
       <div className={m.strip}>
         <button
           type="button"
@@ -416,16 +435,7 @@ export const Composer = ({
           disabled={!facts.session && !facts.week && !facts.extra?.active}
           onClick={() => setLimitsOpen(true)}
         >
-          {/* Nothing known yet - an empty track rather than a dash: the row keeps its shape, and the
-              button stays dead until there is something to open. Extra usage closes the ring, takes its
-              own paint and burns - but only on the ring whose window actually ran out (the same
-              substitution as in the panel - see UsageMeters). */}
-          <Ring
-            percent={sessionRing.percent}
-            color={sessionRing.color}
-            flame={sessionRing.flame}
-            size={20}
-          />
+          <Ring percent={sessionRing.percent} color={sessionRing.color} flame={sessionRing.flame} size={20} />
           <MeterValue ring={sessionRing} />
         </button>
 
@@ -446,32 +456,97 @@ export const Composer = ({
           <MeterValue ring={weekRing} />
         </button>
 
-        {facts.gitBranch ? (
-          <>
-            <span className={m.stripRule} />
-            <span className={m.branch}>
-              <BranchIcon />
-              <span className={m.branchName}>{facts.gitBranch}</span>
-            </span>
-            {facts.pullRequest ? (
+        <span className={m.stripRule} />
+
+        {/*
+          Model, effort and mode in one chip rather than as three selectors.
+
+          At the desk they are three buttons because there is a row to put them in; here that row is the
+          one a thumb reaches, and three of them left no width for any of the three to say what it holds.
+          One chip says all three and opens the sheet where they are changed - which is also where the
+          mode explains why it cannot be.
+        */}
+        <button type="button" className={m.runChip} onClick={onRun}>
+          <Gear />
+          <span className={m.runChipText}>
+            {modelLabel(run.model)}
+            {run.effort ? ` · ${effortShortLabel(run.effort)}` : ''}
+            {run.mode ? ' · ' : ''}
+            {run.mode ? <span className={m.runChipMode}>{modeShortLabel(t, run.mode)}</span> : null}
+          </span>
+          <span className={m.runChipChevron}>›</span>
+        </button>
+      </div>
+
+      {/*
+        The turn in progress, and the one button that ends it.
+
+        Its own row, and that is the fix: Stop used to stand in the row of actions beside Queue and Send,
+        and six controls in one row on a 390-point screen pushed the two that send a message off the
+        edge. Here it is alone with the thing it is about, and it exists only while there is a turn.
+      */}
+      {running && (
+        <div className={m.runRow}>
+          <span className={`${m.dot} ${m.dotRunning}`} />
+          <span className={m.runRowText}>
+            {t.mobile.composer.running}
+            {since > 0 ? ` · ${formatDuration(Math.max(0, now() - since))}` : ''}
+          </span>
+
+          {queue.length > 0 && (
+            <button type="button" className={m.runRowQueue} onClick={() => onQueueOpen(!queueOpen)}>
+              {t.mobile.composer.queued(queue.length)}
+            </button>
+          )}
+
+          <button type="button" className={m.stop} onClick={onStop}>
+            <StopSquare />
+            {t.mobile.composer.stop}
+          </button>
+        </div>
+      )}
+
+      {/* What is waiting to be said, and the cross that takes one back. Folded away by default while a
+          turn runs - the row above already says how many there are, and the list is opened to change it
+          rather than to be reminded of it. */}
+      {queue.length > 0 && (!running || queueOpen) && (
+        <div className={m.queueList}>
+          {queue.map((item, index) => (
+            <div key={item.id} className={m.queueRow}>
+              <span className={m.queueBadge}>{index + 1}</span>
+              <span className={m.queueText}>{item.text}</span>
               <button
                 type="button"
-                className={m.pr}
-                // Opened here rather than on the machine with the IDE: asking that machine to open a
-                // URL is a small primitive of remote control, and it is refused over the wire anyway
-                // (see RemoteCommands).
-                onClick={() =>
-                  facts.pullRequestUrl && window.open(facts.pullRequestUrl, '_blank', 'noopener,noreferrer')
-                }
+                className={m.queueRemove}
+                aria-label={t.mobile.removeFromQueue}
+                onClick={() => onUnqueue(item.id)}
               >
-                PR #{facts.pullRequest}
+                ×
               </button>
-            ) : (
-              <span className={m.prNone}>no PR</span>
-            )}
-          </>
-        ) : null}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* What was quoted out of the conversation, above the field exactly as at the desk: without it a
+          question like "but why?" goes out with nothing to say what it is about. */}
+      {quotes.length > 0 && (
+        <div className={m.quoteList}>
+          {quotes.map((quote, index) => (
+            <div key={index} className={m.quoteRow}>
+              <span className={m.quoteText}>{quote}</span>
+              <button
+                type="button"
+                className={m.queueRemove}
+                aria-label={t.mobile.composer.dropQuote}
+                onClick={() => onDropQuote(index)}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {attached.length > 0 && (
         <div className={m.attachRow}>
@@ -535,84 +610,102 @@ export const Composer = ({
       {voice.interim ? <p className={m.voiceTail}>{voice.interim}</p> : null}
       {voice.error ? <p className={m.attachError}>{voiceMessage(t, voice.error, true)}</p> : null}
 
+      {/*
+        The row of actions, as a grid that wraps rather than a line that scrolls.
+
+        Four icons on the left, the two words on the right, and if a language or a font makes them too
+        wide for one line they take two - a control pushed off the edge of a phone is a control that
+        does not exist, which is exactly what happened to Send while Stop still lived here.
+      */}
       <div className={m.tools}>
-        {/* The button does not open a catalogue but puts a slash into the field: the command is typed
-            on from there and the list narrows by itself, exactly as at the desk. */}
-        <button
-          type="button"
-          className={`${m.iconBtn} ${commandMatches.length > 0 ? m.iconBtnOn : ''}`}
-          aria-label={t.mobile.composer.slash}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => replace(0, 0, '/')}
-        >
-          <span className={m.iconSlash}>/</span>
-        </button>
+        <div className={m.toolIcons}>
+          {/* The button does not open a catalogue but puts a slash into the field: the command is typed
+              on from there and the list narrows by itself, exactly as at the desk. */}
+          <button
+            type="button"
+            className={`${m.iconBtn} ${commandMatches.length > 0 ? m.iconBtnOn : ''}`}
+            aria-label={t.mobile.composer.slash}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => replace(0, 0, '/')}
+          >
+            <span className={m.iconSlash}>/</span>
+          </button>
 
-        <button
-          type="button"
-          className={m.iconBtn}
-          aria-label={t.mobile.composer.attachPhoto}
-          onClick={() => picker.current?.click()}
-        >
-          <Paperclip />
-        </button>
+          {/* And the same for a file: an "@" at the caret, which the hint answers as it is typed on. */}
+          <button
+            type="button"
+            className={`${m.iconBtn} ${fileMatches.length > 0 ? m.iconBtnOn : ''}`}
+            aria-label={t.mobile.composer.projectFiles}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => replace(caret, caret, '@')}
+          >
+            <span className={m.iconSlash}>@</span>
+          </button>
 
-        {/*
-          Dictation. Held down it records and stops when the finger lifts; tapped it stays on until the
-          next tap. That is the gesture every messenger already taught everybody, and it is the one that
-          suits a phone: holding a button for a two-minute thought is not a thing a hand wants to do.
+          <button
+            type="button"
+            className={m.iconBtn}
+            aria-label={t.mobile.composer.attachPhoto}
+            onClick={() => picker.current?.click()}
+          >
+            <Paperclip />
+          </button>
 
-          Pointer events rather than mouse or touch ones: one set that covers a finger, a stylus and the
-          desktop browser this is debugged in. The press is claimed with setPointerCapture so that a
-          finger sliding off the button still ends the dictation on release rather than leaving it
-          recording for ever.
-        */}
-        <button
-          type="button"
-          className={`${m.iconBtn} ${listening ? m.iconBtnLive : ''}`}
-          aria-label={listening ? t.mobile.composer.voiceStop : t.mobile.composer.voice}
-          aria-pressed={listening}
-          /*
-             Greyed out with no link, but never while it is recording.
+          {/*
+            Dictation. Held down it records and stops when the finger lifts; tapped it stays on until the
+            next tap. That is the gesture every messenger already taught everybody, and it is the one that
+            suits a phone: holding a button for a two-minute thought is not a thing a hand wants to do.
 
-             The socket to Deepgram is the phone's own and outlives a relay that flaps, so disabling a
-             running dictation would be a recording nothing could stop: a disabled control gets no
-             pointer events, so even letting go would not reach it. Idle is different - starting needs
-             the link, because the token comes from the IDE, and a button that looks ready and answers a
-             press with nothing at all is worse than one that says it cannot.
-          */
-          disabled={voice.phase === 'finishing' || (!connected && !listening)}
-          onPointerDown={(event) => {
-            if (listening) return
-            // Belt and braces with the disabled state above: no link, no token, and a microphone
-            // opened for nothing would only light the indicator.
-            if (!connected) return
-            event.currentTarget.setPointerCapture(event.pointerId)
-            pressedAt.current = Date.now()
-            voice.start()
-          }}
-          onPointerUp={() => {
-            if (!listening) return
-            // A tap rather than a hold: leave it running, and let the next tap end it.
-            if (Date.now() - pressedAt.current < TAP_MS) {
-              held.current = true
-              return
-            }
-            voice.stop()
-          }}
-          onPointerCancel={() => voice.cancel()}
-          onClick={() => {
-            // The click that follows a tap-to-latch is the same press; the one after that is the stop.
-            if (!listening) return
-            if (held.current) {
-              held.current = false
-              return
-            }
-            voice.stop()
-          }}
-        >
-          <Microphone className={m.iconMic} />
-        </button>
+            Pointer events rather than mouse or touch ones: one set that covers a finger, a stylus and the
+            desktop browser this is debugged in. The press is claimed with setPointerCapture so that a
+            finger sliding off the button still ends the dictation on release rather than leaving it
+            recording for ever.
+          */}
+          <button
+            type="button"
+            className={`${m.iconBtn} ${listening ? m.iconBtnLive : ''}`}
+            aria-label={listening ? t.mobile.composer.voiceStop : t.mobile.composer.voice}
+            aria-pressed={listening}
+            /*
+               Greyed out with no link, but never while it is recording.
+
+               The socket to Deepgram is the phone's own and outlives a relay that flaps, so disabling a
+               running dictation would be a recording nothing could stop: a disabled control gets no
+               pointer events, so even letting go would not reach it.
+            */
+            disabled={voice.phase === 'finishing' || (!connected && !listening)}
+            onPointerDown={(event) => {
+              if (listening) return
+              // Belt and braces with the disabled state above: no link, no token, and a microphone
+              // opened for nothing would only light the indicator.
+              if (!connected) return
+              event.currentTarget.setPointerCapture(event.pointerId)
+              pressedAt.current = Date.now()
+              voice.start()
+            }}
+            onPointerUp={() => {
+              if (!listening) return
+              // A tap rather than a hold: leave it running, and let the next tap end it.
+              if (Date.now() - pressedAt.current < TAP_MS) {
+                held.current = true
+                return
+              }
+              voice.stop()
+            }}
+            onPointerCancel={() => voice.cancel()}
+            onClick={() => {
+              // The click that follows a tap-to-latch is the same press; the one after that is the stop.
+              if (!listening) return
+              if (held.current) {
+                held.current = false
+                return
+              }
+              voice.stop()
+            }}
+          >
+            <Microphone className={m.iconMic} />
+          </button>
+        </div>
 
         {/*
           An ordinary file input, which is what opens the phone's own chooser: the photo library, the
@@ -633,27 +726,21 @@ export const Composer = ({
           }}
         />
 
-        <span className={m.spacer} />
-
-        {running ? (
-          <>
-            <button type="button" className={m.stop} aria-label={t.mobile.composer.stop} onClick={onStop}>
-              <StopSquare />
+        <div className={m.toolSend}>
+          {/* Queue only while there is a turn to wait out. Off a run it would be the same button as Send
+              with a longer word on it. */}
+          {running ? (
+            <button type="button" className={m.queue} disabled={!canSubmit} onClick={() => submit(true)}>
+              {t.mobile.composer.queue}
             </button>
-            <button
-              type="button"
-              className={m.queue}
-              disabled={!canSubmit}
-              onClick={() => submit(true)}
-            >
-              Queue
-            </button>
-          </>
-        ) : null}
+          ) : null}
 
-        <button type="button" className={m.send} disabled={!canSubmit} onClick={() => submit(false)}>
-          Send
-        </button>
+          {/* Send never leaves, running or not: "I have changed my mind, now" is a thing one says from a
+              sofa, and for a while it was the one thing this screen could not say. */}
+          <button type="button" className={m.send} disabled={!canSubmit} onClick={() => submit(false)}>
+            {t.mobile.composer.send}
+          </button>
+        </div>
       </div>
 
       {limitsOpen && <Limits facts={facts} context={context} onClose={() => setLimitsOpen(false)} />}
@@ -672,7 +759,6 @@ const folderOf = (path: string): string => {
   const parts = path.split('/').filter(Boolean)
   return parts.slice(0, -1).join('/')
 }
-
 
 /** How long a press counts as a tap rather than as holding the button down. */
 const TAP_MS = 350
@@ -697,17 +783,21 @@ const Paperclip = () => (
  * has a seat of its own - it lands off-centre in a round button and at a size nobody chose.
  */
 const StopSquare = () => (
-  <svg viewBox="0 0 16 16" aria-hidden="true">
+  <svg viewBox="0 0 16 16" className={m.stopGlyph} aria-hidden="true">
     <rect x="0" y="0" width="16" height="16" rx="2" fill="currentColor" />
   </svg>
 )
 
-const BranchIcon = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-    <circle cx="4.5" cy="3.5" r="1.75" />
-    <circle cx="4.5" cy="12.5" r="1.75" />
-    <circle cx="11.5" cy="3.5" r="1.75" />
-    <path d="M4.5 5.25v5.5" />
-    <path d="M11.5 5.25v1.25a3 3 0 0 1-3 3H6.25" />
+const Gear = () => (
+  <svg
+    viewBox="0 0 16 16"
+    className={m.runChipIcon}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.4"
+    aria-hidden="true"
+  >
+    <circle cx="8" cy="8" r="2.4" />
+    <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4" />
   </svg>
 )

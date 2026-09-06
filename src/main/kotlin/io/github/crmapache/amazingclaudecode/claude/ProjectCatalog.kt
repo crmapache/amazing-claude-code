@@ -351,6 +351,42 @@ internal class ProjectCatalog(
         }
     }
 
+    /**
+     * What one agent of a workflow did, read off that agent's own transcript (see [WorkflowAgents]).
+     *
+     * Addressed at whoever asked, like the page above: one person unfolded one line, and the other
+     * windows watching this project are not showing it. Off the event thread for the same reason too -
+     * an agent of a code review writes a megabyte, and the thread this arrived on carries every message
+     * the panel has.
+     *
+     * The conversation is the tab's own, and it may well have none: a workflow that ran in a tab
+     * emptied since has left its files under the conversation it ran in, which is what the search below
+     * falls back to.
+     */
+    fun sendAgentTranscript(clientId: String, sessionId: String, agentId: String) {
+        val conversationId = hub.conversations.conversationIdOf(sessionId)
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val transcript = WorkflowAgents.of(project.basePath, conversationId, agentId)
+
+            hub.emitTo(
+                clientId,
+                buildJsonObject {
+                    put("type", "agentTranscript")
+                    put("sessionId", sessionId)
+                    put("agentId", agentId)
+                    put("found", transcript.found)
+                    if (transcript.prompt.isNotEmpty()) put("prompt", transcript.prompt)
+                    if (transcript.steps.isNotEmpty()) {
+                        putJsonArray("steps") { for (step in transcript.steps) add(step) }
+                    }
+                    if (transcript.output.isNotEmpty()) put("output", transcript.output)
+                    if (transcript.truncated) put("truncated", true)
+                }.toString(),
+            )
+        }
+    }
+
     // --- The improve button --------------------------------------------------------
 
     /**

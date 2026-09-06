@@ -90,11 +90,15 @@ export const Pairing = ({ offer, onPaired, onCancel }: PairingProps) => {
 
   return (
     <div className={m.screen}>
-      <header className={m.header}>
-        {onCancel && (
-          <Back onClick={onCancel} />
-        )}
-        <span className={m.headerTitle}>{t.mobile.pairing.title}</span>
+      <header className={m.threadHeader}>
+        <div className={m.threadHeadRow}>
+          {/* No way back while nothing is paired: an empty list with no way out of it is the worst first
+              screen an application can have, and this screen IS the way out. */}
+          {onCancel && <Back onClick={onCancel} />}
+          <span className={m.threadTitles}>
+            <span className={m.threadTitle}>{t.mobile.pairing.title}</span>
+          </span>
+        </div>
       </header>
 
       <div className={m.decisionBody}>

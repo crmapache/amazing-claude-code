@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { LinkState } from './link'
-import { buildProjects, chatState, type Inventory } from './projects'
+import { buildProjects, chatState, waitingFor, type Inventory } from './projects'
 
 /**
  * The first screen's order.
@@ -171,6 +171,10 @@ describe("a conversation's mark", () => {
     awaitsYou: false,
     worked: false,
     crashed: false,
+    groupId: 'main',
+    depth: 0,
+    awaits: '',
+    since: 0,
     seq: 0,
     online: true,
   })
@@ -193,5 +197,66 @@ describe("a conversation's mark", () => {
 
   it('shows a dead process above all of it', () => {
     expect(chatState(row({ crashed: true, awaitsYou: true, status: 'running', worked: true }))).toBe('crashed')
+  })
+})
+
+/**
+ * The band at the top of the first screen.
+ *
+ * Its own test because it is the reason the screen was redrawn: a phone is picked up to unblock
+ * something, and having to find which of four project cards holds the one thing that needs an answer is
+ * the work the band takes away. It has to gather across every project and every paired IDE, and it has
+ * to keep the order the cards under it are already argued into - a band that disagrees with the list it
+ * stands over is worse than no band.
+ */
+describe('what is waiting, across every project', () => {
+  const inventory = (): Inventory => ({
+    projects: [
+      {
+        key: 'quiet',
+        name: 'quiet',
+        sessions: [{ id: 'main', title: 'nothing here', status: 'idle', awaitsYou: false, q: 0 }],
+      },
+      {
+        key: 'busy',
+        name: 'busy',
+        sessions: [
+          { id: 'main', title: 'a plan', status: 'idle', awaitsYou: true, awaits: 'plan', q: 0 },
+          { id: 'b', title: 'merely running', status: 'running', awaitsYou: false, q: 0 },
+          { id: 'c', title: 'a permission', status: 'idle', awaitsYou: true, awaits: 'perm', q: 0 },
+        ],
+      },
+    ],
+  })
+
+  const states: Record<string, LinkState> = { one: 'connected' }
+
+  it('gathers only what is stopped for a person', () => {
+    const projects = buildProjects([{ agentId: 'one', label: 'laptop' }], { one: inventory() }, states)
+
+    expect(waitingFor(projects).map((session) => session.title)).toEqual(['a plan', 'a permission'])
+  })
+
+  it('carries what each one is stopped for, so the band can say which is one tap and which is a page', () => {
+    const projects = buildProjects([{ agentId: 'one', label: 'laptop' }], { one: inventory() }, states)
+
+    expect(waitingFor(projects).map((session) => session.awaits)).toEqual(['plan', 'perm'])
+  })
+
+  it('keeps the order of the list it stands over', () => {
+    const projects = buildProjects([{ agentId: 'one', label: 'laptop' }], { one: inventory() }, states)
+
+    // "busy" ranks above "quiet" because something in it waits - and the band follows, rather than
+    // sorting itself and disagreeing with the cards below.
+    expect(projects[0]?.name).toBe('busy')
+    expect(waitingFor(projects)[0]?.projectName).toBe('busy')
+  })
+
+  it('says nothing when nothing is stopped', () => {
+    const idle: Inventory = {
+      projects: [{ key: 'p', name: 'p', sessions: [{ id: 'main', title: 'x', status: 'running', awaitsYou: false, q: 0 }] }],
+    }
+
+    expect(waitingFor(buildProjects([{ agentId: 'one', label: 'laptop' }], { one: idle }, states))).toEqual([])
   })
 })

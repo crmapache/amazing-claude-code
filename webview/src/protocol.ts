@@ -615,6 +615,34 @@ type ShellMessageBody =
       before?: string
     }
   /**
+   * What one agent of a workflow actually did - read off its own transcript on disk (see
+   * WorkflowAgents.kt), because nothing about it ever reaches the stream.
+   *
+   * A fleet's agents are invisible by every ordinary route: their events carry no subagent mark, the CLI
+   * writes their conversations straight into its own folder, and the report that does arrive holds 400
+   * characters of the errand and 400 of the answer. For an agent sent to find bugs in the billing code
+   * those 400 characters are the opening brace of its JSON - which is why a line unfolds into this.
+   *
+   * `found` false means the file is not there (a swept run, a conversation opened from the history on
+   * another machine): the previews from the report are then all there is, and the panel says so rather
+   * than showing an empty body.
+   */
+  | {
+      type: 'agentTranscript'
+      sessionId: string
+      /** Whose transcript this is - the CLI's own name for the agent, echoed back (see WorkflowAgent). */
+      agentId: string
+      found: boolean
+      /** The errand in full, as the run handed it over - not the report's 400 characters. */
+      prompt?: string
+      /** Its tool calls in order, as short lines: "Read src/App.tsx". */
+      steps?: string[]
+      /** The last thing it said - its structured answer, or its closing text. */
+      output?: string
+      /** The output was longer than the budget and was cut - the card says so under it. */
+      truncated?: boolean
+    }
+  /**
    * The Claude Code sign-in. Without it the agent answers every question with a line about /login, so
    * the panel shows a sign-in button rather than an input field.
    */
@@ -679,6 +707,17 @@ type ShellMessageBody =
    * the IDE stopped for its own reasons must never be captioned "Stopped by you".
    */
   | { type: 'turnStopped'; sessionId: string; reason: 'account' }
+  /**
+   * The tab's process is being replaced while nothing was being said in it - the quiet half of an account
+   * change, and of a second sign-in to the account already in use.
+   *
+   * Not a turn ending, which is why it is not `turnStopped`: the tab was idle, and there is nothing to
+   * caption. What it does say is that everything the process was holding is gone - a workflow's fleet, a
+   * background subagent, a background command. All three outlive the TURN that started them and none of
+   * them outlives the process, so their cards were left ticking against a CLI that no longer existed:
+   * forty agents at work an hour ago, still counting up at the end of the day.
+   */
+  | { type: 'processReplaced'; sessionId: string }
   /**
    * The machine's Claude accounts, and whether it can keep two of them apart at all.
    *
@@ -1350,6 +1389,12 @@ export type WebviewMessage =
   | { type: 'history' }
   /** A page further back than the journal's own catch-up reaches - see ShellMessageBody's historyPage. */
   | { type: 'historyPage'; sessionId: string; before?: string }
+  /**
+   * What one agent of a workflow did, asked for when its line is unfolded - see the answer of the same
+   * name above. Asked rather than pushed: a fleet of forty holds forty transcripts of a megabyte each,
+   * and what is read is the one line somebody opened.
+   */
+  | { type: 'agentTranscript'; sessionId: string; agentId: string }
   /** Continue a past conversation in this tab. */
   /**
    * Continue a past conversation in this tab - the shell opens the tab too when there is none under this

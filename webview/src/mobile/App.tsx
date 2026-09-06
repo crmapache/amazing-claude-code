@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { unbase64url } from '../core/crypto'
 import { deriveSessionTitle } from '../feed/title'
-import type { HistoryEntry, ShellMessage } from '../protocol'
+import type {
+  AvailablePluginInfo,
+  HistoryEntry,
+  InstalledPluginInfo,
+  McpServerInfo,
+  PluginMarketplaceInfo,
+  ShellMessage,
+} from '../protocol'
 import { ClockContext } from '../hooks/useNow'
 import { planDecisionOf, useCardState } from '../hooks/useCardState'
 import { applyFact, emptyFacts, factsFor, isFact, type ProjectFacts } from './facts'
@@ -9,17 +16,37 @@ import { LocaleProvider, activeLocale } from '../i18n'
 import { RemoteClock } from './clock'
 import { applyMessage, emptyFeed, feedTicks, tickFeed, type MobileFeed } from './feed'
 import { Link, type LinkState, type SessionLaunch } from './link'
-import { buildProjects, chatKey, type Inventory } from './projects'
+import {
+  buildProjects,
+  chatKey,
+  waitingFor,
+  type AgentEntry,
+  type Inventory,
+  type ProjectEntry,
+  type SessionEntry,
+} from './projects'
 import { tabHolding } from '../feed/resume'
+import { PIN_LIMIT, togglePin } from '../feed/pins'
+import type { FeedItem, TaskItem } from '../feed/types'
+import { usageOf, type UsageFacts } from '../feed/usage'
 import { chatHits, rowOf } from '../feed/search'
 import type { PaintedTerm, SearchHit, SearchProgressStep, SearchScope } from '../protocol'
 import { Search, type SearchTab } from '../components/Search'
 import { useEarlierPages } from '../hooks/useEarlierPages'
+import { Accounts, type AccountsState } from './screens/Accounts'
+import { AgentScreen } from './screens/AgentScreen'
 import { Decision } from './screens/Decision'
+import { Drawer } from './screens/Drawer'
 import { History } from './screens/History'
+import { Mcp } from './screens/Mcp'
+import { MessageSheet } from './screens/MessageSheet'
 import { NewSession } from './screens/NewSession'
 import { Pairing, type PairingOffer } from './screens/Pairing'
-import { Sessions, type AgentEntry, type ProjectEntry, type SessionEntry } from './screens/Sessions'
+import { Plugins } from './screens/Plugins'
+import { Projects } from './screens/Projects'
+import { RunSheet } from './screens/RunSheet'
+import { TabsSheet } from './screens/TabsSheet'
+import { Tasks } from './screens/Tasks'
 import { Thread } from './screens/Thread'
 import type { OutgoingPrompt } from './screens/Composer'
 import { useDictation } from './useDictation'
@@ -29,11 +56,16 @@ import m from './mobile.module.css'
 /**
  * The phone's whole application.
  *
- * Four screens and nothing else: what is waiting, one conversation, one decision, and starting
- * something new. The panel in the IDE is where work is done; this is where work is unblocked and, when
- * an editor has just been started and has nothing open, begun. Everything that would make it a second
- * panel - the tabs, the plugins, the settings - is deliberately absent, and most of it is not even
- * permitted over the wire (see RemoteCommands on the plugin's side).
+ * It used to be four screens and a promise that it would never be a second panel: what is waiting, one
+ * conversation, one decision, and starting something new. The promise stands - this is still where work
+ * is unblocked rather than where it is done - but four screens turned out to be fewer than the promise
+ * needs. A conversation with a fork in it had no way to reach the fork. A turn running twelve subagents
+ * said "working" and nothing else. A server that fell over stopped the work with no way to see it, and
+ * an account whose window ran dry could not be swapped for the one signed in beside it.
+ *
+ * So there are more screens, and each of them earns its place by a question somebody away from the desk
+ * genuinely has. What is still absent is absent on purpose and mostly on the other side of the wire as
+ * well (see RemoteCommands): installing plugins, signing in to anything, and every machine-wide setting.
  */
 
 type Screen =
@@ -42,7 +74,23 @@ type Screen =
   | { at: 'history'; agentId: string; projectKey: string }
   | { at: 'thread'; agentId: string; projectKey: string; sessionId: string }
   | { at: 'decide'; agentId: string; projectKey: string; sessionId: string }
+  /** The task list, the subagents and the background commands of one conversation. */
+  | { at: 'tasks'; agentId: string; projectKey: string; sessionId: string }
+  /** One subagent's own stream - reached from the screen above it. */
+  | { at: 'agent'; agentId: string; projectKey: string; sessionId: string; taskId: string }
+  /**
+   * The three screens that are about the machine rather than about a conversation.
+   *
+   * They still carry a project, because that is who answers: every one of these is asked of an IDE, and
+   * a phone talks to several of them.
+   */
+  | { at: 'mcp'; agentId: string; projectKey: string }
+  | { at: 'plugins'; agentId: string; projectKey: string }
+  | { at: 'accounts'; agentId: string; projectKey: string }
   | { at: 'pairing' }
+
+/** What is folded up over the screen, if anything - the six sheets and the drawer. */
+type Sheet = '' | 'tabs' | 'run' | 'message'
 
 /** A conversation being started in a project that has to be opened first - see [startSession]. */
 interface Opening {
@@ -60,6 +108,51 @@ export const App = () => {
   const [states, setStates] = useState<Record<string, LinkState>>({})
   const [feed, setFeed] = useState<MobileFeed>(emptyFeed())
   const [opening, setOpening] = useState<Opening | null>(null)
+
+  /** Whether the side menu is out, and which sheet is folded up over the screen. */
+  const [drawer, setDrawer] = useState(false)
+  const [sheet, setSheet] = useState<Sheet>('')
+
+  /** Which message the actions sheet is about - it outlives no conversation but its own. */
+  const [acting, setActing] = useState<FeedItem | null>(null)
+
+  /**
+   * What has been quoted out of a conversation and is waiting above the field, by chat.
+   *
+   * Beside the conversations rather than inside the composer, for the reason the queue is in the IDE:
+   * a quote is picked in the feed and used in the field, and those are two different places on this
+   * screen. By chat, because a quote taken in one conversation has no business standing over another.
+   */
+  const [quotes, setQuotes] = useState<Record<string, string[]>>({})
+
+  /**
+   * Which messages are held over the top of a conversation, by chat (see feed/pins.ts).
+   *
+   * On this device rather than in the IDE, and lost when the browser throws the page out - which is the
+   * price and it is the right one: a pin is a bookmark in something being read, not work. The panel
+   * keeps its own the same way, in the tab's state.
+   */
+  const [pins, setPins] = useState<Record<string, readonly string[]>>({})
+
+  /**
+   * The three screens about the machine, by the IDE they were asked of.
+   *
+   * By agent rather than one of each: this phone talks to several machines, and an MCP list belongs to
+   * the one that answered it. Kept between visits for the reason the histories are - each answer costs
+   * that machine a process, and a screen that says "Loading…" over something already known is worse
+   * than one a minute old.
+   */
+  const [mcp, setMcp] = useState<Record<string, McpServerInfo[]>>({})
+  const [mcpNote, setMcpNote] = useState<{ ok: boolean; text: string } | null>(null)
+  const [plugins, setPlugins] = useState<
+    Record<string, { installed: InstalledPluginInfo[]; available: AvailablePluginInfo[] }>
+  >({})
+  const [markets, setMarkets] = useState<Record<string, PluginMarketplaceInfo[]>>({})
+  const [accounts, setAccounts] = useState<Record<string, AccountsState>>({})
+  const [accountNote, setAccountNote] = useState('')
+
+  /** Moves the counters on the list of conversations once a second - see the effect below. */
+  const [tick, setTick] = useState(0)
 
   /**
    * Which plans have been decided and which questions answered - here rather than inside the screen that
@@ -274,7 +367,7 @@ export const App = () => {
    * phone left on the list of conversations would otherwise re-render the whole application once a
    * second over counters nobody is looking at.
    */
-  const showingFeed = screen.at === 'thread' || screen.at === 'decide'
+  const showingFeed = screen.at === 'thread' || screen.at === 'decide' || screen.at === 'tasks' || screen.at === 'agent'
   const ticking = feedTicks(feed) && showingFeed
   useEffect(() => {
     if (!ticking) return
@@ -287,6 +380,43 @@ export const App = () => {
 
     return () => window.clearInterval(id)
   }, [ticking, clockOf])
+
+  /**
+   * And the same second on the list of conversations, which counts too.
+   *
+   * A row says "working · 2m 40s" against the clock of the machine it lives on, and without this it
+   * only moved when the IDE next sent an inventory - which it does when something changes and every
+   * half minute besides. A counter that jumps thirty seconds at a time reads as a screen that has
+   * stopped, on exactly the screen somebody picks up to see whether anything is still going.
+   *
+   * Only while that screen is up, and only while something is actually running on it: a phone left on a
+   * quiet list would otherwise re-render the whole application once a second for nothing.
+   */
+  const counting =
+    screen.at === 'sessions' &&
+    Object.values(inventories).some((inventory) =>
+      inventory.projects.some((project) => project.sessions.some((session) => session.status === 'running')),
+    )
+
+  useEffect(() => {
+    if (!counting) return
+
+    const id = window.setInterval(() => setTick((value) => value + 1), 1000)
+    return () => window.clearInterval(id)
+  }, [counting])
+
+  /**
+   * What time it is on one paired IDE, for the list of conversations.
+   *
+   * Rebuilt on every tick above, and that is the point rather than a side effect: the durations on that
+   * screen are worked out while it renders, so nothing moves unless the function that answers "what
+   * time is it there" is a new one. `clockOf` returns the same object for the life of the connection.
+   */
+  const nowOf = useCallback(
+    (agentId: string) => clockOf(agentId).now(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [clockOf, tick],
+  )
 
   /**
    * The IDE threw away what it had queued for this phone and asked it to come back for it.
@@ -361,6 +491,59 @@ export const App = () => {
     // no conversation, so it too is taken before the guard below.
     if (message.type === 'voiceGrant') {
       grantArrived.current(message)
+      return
+    }
+
+    /*
+     * The three screens about the machine rather than about a conversation.
+     *
+     * Taken before the guard below for the same reason the history is: none of these carries a session,
+     * so the rule that turns away everything not addressed to the conversation on screen would throw
+     * every one of them out. They arrive because the plugin lets them (see RemoteFeed.PROJECT_FACTS) -
+     * cut down on the way: a server's command line and a marketplace's local folder never leave that
+     * machine, and the plugin catalogue is trimmed to what a frame carries.
+     */
+    if (message.type === 'mcpServers') {
+      setMcp((current) => ({ ...current, [agentId]: message.servers }))
+      return
+    }
+
+    if (message.type === 'mcpActionResult') {
+      setMcpNote({ ok: message.ok, text: message.message })
+      return
+    }
+
+    if (message.type === 'plugins') {
+      setPlugins((current) => ({
+        ...current,
+        [agentId]: { installed: message.installed, available: message.available },
+      }))
+      return
+    }
+
+    if (message.type === 'marketplaces') {
+      setMarkets((current) => ({ ...current, [agentId]: message.marketplaces }))
+      return
+    }
+
+    if (message.type === 'accounts') {
+      setAccounts((current) => ({
+        ...current,
+        [agentId]: {
+          accounts: message.accounts,
+          capability: message.capability,
+          current: message.current,
+          pending: message.pending === true,
+        },
+      }))
+      // Any answer at all ends the wait a press put up: the list is sent after every one of these
+      // requests and already says what became of the row (see Accounts at the desk, same rule).
+      setAccountNote('')
+      return
+    }
+
+    if (message.type === 'accountOutcome') {
+      setAccountNote(message.code)
       return
     }
 
@@ -613,6 +796,79 @@ export const App = () => {
   const command = useCallback((agentId: string, projectKey: string, message: unknown) => {
     links.current[agentId]?.command(projectKey, message)
   }, [])
+
+  /**
+   * Ask an IDE about its MCP servers.
+   *
+   * The status is a question put to a running conversation - the servers are held by its process, and
+   * only it knows their live state, exactly as `/mcp` in a terminal is asked of a session (see
+   * ProjectCatalog.refreshMcp). So the request has to name one, and any of the project's will do:
+   * whichever it names, the answer is about the project's servers.
+   *
+   * A project with no conversation at all in it has nothing to ask, and the screen says so by staying
+   * empty rather than by sending a request that names a tab which does not exist.
+   */
+  const askMcp = useCallback(
+    (agentId: string, projectKey: string) => {
+      const sessionId = anySessionOf(projects, agentId, projectKey)
+      if (!sessionId) return
+
+      setMcpNote(null)
+      command(agentId, projectKey, { type: 'mcpList', sessionId })
+    },
+    [projects, command],
+  )
+
+  /**
+   * Open one of the three screens about the machine, asking for what it draws on the way in.
+   *
+   * Asked on every visit rather than once: each answer is read off that machine as it stands now - a
+   * server that fell over a minute ago, an account whose window has moved - and a screen showing what
+   * was true when the app started is the screen somebody came here to get away from. What is already
+   * known stays on it meanwhile, so the visit does not begin with a blank.
+   */
+  /**
+   * A conversation of one's own, carrying everything up to the message it was forked from.
+   *
+   * The same request the panel's "/fork" makes, and allowed over the wire for the same reason starting
+   * a conversation is: it is no more than sending a message, which starts a process too (see
+   * RemoteCommands). The name is guessed from the message it grew out of, by the panel's own rule -
+   * a fork called "new session" is one nobody can tell from the next one.
+   */
+  const forkFrom = useCallback(
+    (agentId: string, projectKey: string, parentId: string, item: FeedItem) => {
+      const sessionId = newSessionId()
+
+      command(agentId, projectKey, {
+        type: 'newSession',
+        kind: 'fork',
+        sessionId,
+        parentId,
+        title: deriveSessionTitle(forkTitle(item)),
+      })
+
+      enter(agentId, projectKey, sessionId, false)
+    },
+    [command, enter],
+  )
+
+  const openMachineScreen = useCallback(
+    (at: 'mcp' | 'plugins' | 'accounts', agentId: string, projectKey: string) => {
+      setDrawer(false)
+      setScreen({ at, agentId, projectKey })
+
+      if (at === 'mcp') askMcp(agentId, projectKey)
+      if (at === 'plugins') {
+        command(agentId, projectKey, { type: 'pluginList' })
+        command(agentId, projectKey, { type: 'marketplaceList' })
+      }
+      if (at === 'accounts') {
+        setAccountNote('')
+        command(agentId, projectKey, { type: 'accountList' })
+      }
+    },
+    [askMcp, command],
+  )
 
   /*
    * Where a request for a dictation token goes: to whichever IDE the conversation on screen belongs to.
@@ -1040,7 +1296,7 @@ export const App = () => {
     />
   ) : null
 
-  const back = useCallback(() => {
+  const home = useCallback(() => {
     watching.current = null
     setOpening(null)
     setScreen({ at: 'sessions' })
@@ -1049,6 +1305,40 @@ export const App = () => {
     // is for this moment alone: walking back onto a list one has just changed, where a frame in flight
     // and a frame not yet sent look the same and neither deserves a person's doubt.
     for (const link of Object.values(links.current)) link.refreshInventory()
+  }, [])
+
+  /**
+   * One step back, by where the step is taken from.
+   *
+   * A stack of screens rather than a list of them, because that is what the back arrow promises: a
+   * subagent came from the task list, the task list came from the conversation, the conversation came
+   * from the list of projects. Written out rather than kept as a history of visits: a history remembers
+   * the way in, and the way in is not always the way out - a conversation opened straight onto its
+   * decision from the band at the top of the first screen belongs back at that screen, not at a thread
+   * nobody asked for.
+   *
+   * The three screens about the machine go back to the menu they were opened from, which is where the
+   * next one is: closing the drawer to open it again would be the app forgetting where it just was.
+   */
+  const back = useCallback(() => {
+    setSheet('')
+
+    setScreen((current) => {
+      if (current.at === 'agent') return { ...current, at: 'tasks' }
+      if (current.at === 'tasks') return { ...current, at: 'thread' }
+      if (current.at === 'decide') return { ...current, at: 'thread' }
+
+      if (current.at === 'mcp' || current.at === 'plugins' || current.at === 'accounts') {
+        setDrawer(true)
+        return { at: 'sessions' }
+      }
+
+      watching.current = null
+      setOpening(null)
+      for (const link of Object.values(links.current)) link.refreshInventory()
+
+      return { at: 'sessions' }
+    })
   }, [])
 
   /*
@@ -1079,14 +1369,17 @@ export const App = () => {
 
     const list = (
       <div className={m.screen}>
-        <Sessions
+        <Projects
           agents={paired}
           projects={projects}
+          facts={facts}
           reach={reach}
+          now={nowOf}
           onOpen={open}
+          onDecide={(entry) => enter(entry.agentId, entry.projectKey, entry.sessionId, true)}
           onNew={(project) => setScreen({ at: 'new', agentId: project.agentId, projectKey: project.key })}
-          onPair={() => setScreen({ at: 'pairing' })}
-          onForget={forget}
+          onMenu={() => setDrawer(true)}
+          onSearch={(project) => openSearch(project.agentId, project.key, '')}
           onHide={hide}
           onShowHidden={showHidden}
           onHistory={(project) => {
@@ -1100,6 +1393,82 @@ export const App = () => {
     )
 
     if (screen.at === 'sessions') return list
+
+    if (screen.at === 'mcp') {
+      return (
+        <div className={m.screen}>
+          <Mcp
+            servers={mcp[screen.agentId] ?? null}
+            message={mcpNote}
+            project={projectNameOf(projects, screen.agentId, screen.projectKey)}
+            onRefresh={() => askMcp(screen.agentId, screen.projectKey)}
+            onReconnect={(name) =>
+              command(screen.agentId, screen.projectKey, {
+                type: 'mcpReconnect',
+                sessionId: anySessionOf(projects, screen.agentId, screen.projectKey),
+                name,
+              })
+            }
+            onRemove={(name) =>
+              command(screen.agentId, screen.projectKey, {
+                type: 'mcpRemove',
+                sessionId: anySessionOf(projects, screen.agentId, screen.projectKey),
+                name,
+              })
+            }
+            onAdd={(name, cmd, transport) =>
+              command(screen.agentId, screen.projectKey, {
+                type: 'mcpAdd',
+                sessionId: anySessionOf(projects, screen.agentId, screen.projectKey),
+                name,
+                command: cmd,
+                transport,
+              })
+            }
+            onBack={back}
+          />
+        </div>
+      )
+    }
+
+    if (screen.at === 'plugins') {
+      const held = plugins[screen.agentId]
+
+      return (
+        <div className={m.screen}>
+          <Plugins
+            installed={held?.installed ?? null}
+            available={held?.available ?? []}
+            marketplaces={markets[screen.agentId] ?? null}
+            project={projectNameOf(projects, screen.agentId, screen.projectKey)}
+            onBack={back}
+          />
+        </div>
+      )
+    }
+
+    if (screen.at === 'accounts') {
+      const book = facts[`${screen.agentId}:${screen.projectKey}`]?.usage
+      const held = accounts[screen.agentId] ?? null
+
+      return (
+        <div className={m.screen}>
+          <Accounts
+            state={held}
+            usage={(id): UsageFacts => (book ? usageOf(book, id) : {})}
+            note={accountNote}
+            paying={paying(held, chatAccounts, projects, screen.agentId)}
+            onUse={(id) => command(screen.agentId, screen.projectKey, { type: 'accountUse', id })}
+            onRename={(id, alias) =>
+              command(screen.agentId, screen.projectKey, { type: 'accountRename', id, alias })
+            }
+            onForget={(id) => command(screen.agentId, screen.projectKey, { type: 'accountForget', id })}
+            onLogout={(id) => command(screen.agentId, screen.projectKey, { type: 'accountLogout', id })}
+            onBack={back}
+          />
+        </div>
+      )
+    }
 
     if (screen.at === 'history') {
       const project = projects.find((one) => one.agentId === screen.agentId && one.key === screen.projectKey)
@@ -1149,6 +1518,61 @@ export const App = () => {
       .find((project) => project.agentId === screen.agentId && project.key === screen.projectKey)
       ?.sessions.find((one) => one.sessionId === screen.sessionId)
 
+    /** Every conversation of this project - the strip of tabs, and the sheet that holds the rest of it. */
+    const siblings =
+      projects.find((project) => project.agentId === screen.agentId && project.key === screen.projectKey)
+        ?.sessions ?? []
+
+    const key = chatKey(screen.agentId, screen.projectKey, screen.sessionId)
+
+    if (screen.at === 'tasks') {
+      return (
+        <div className={m.screen}>
+          <ClockContext.Provider value={clockOf(screen.agentId).now}>
+            <Tasks
+              feed={feed.state}
+              cards={cards}
+              title={entry?.title ?? NEW_SESSION_TITLE}
+              onAgent={(taskId) => setScreen({ ...screen, at: 'agent', taskId })}
+              onStopTask={(taskId) =>
+                command(screen.agentId, screen.projectKey, {
+                  type: 'stopTask',
+                  sessionId: screen.sessionId,
+                  taskId,
+                })
+              }
+              onBack={back}
+            />
+          </ClockContext.Provider>
+        </div>
+      )
+    }
+
+    if (screen.at === 'agent') {
+      const task = feed.state.items.find(
+        (item): item is TaskItem => item.kind === 'task' && item.id === screen.taskId,
+      )
+
+      return (
+        <div className={m.screen}>
+          <ClockContext.Provider value={clockOf(screen.agentId).now}>
+            <AgentScreen
+              task={task}
+              onStop={() => {
+                if (!task?.taskId) return
+                command(screen.agentId, screen.projectKey, {
+                  type: 'stopTask',
+                  sessionId: screen.sessionId,
+                  taskId: task.taskId,
+                })
+              }}
+              onBack={back}
+            />
+          </ClockContext.Provider>
+        </div>
+      )
+    }
+
     if (screen.at === 'decide') {
       return (
         <div className={m.screen}>
@@ -1192,8 +1616,11 @@ export const App = () => {
           <Thread
             feed={feed.state}
             cards={cards}
+            chat={chatKey(screen.agentId, screen.projectKey, screen.sessionId)}
             title={entry?.title ?? NEW_SESSION_TITLE}
             project={entry?.projectName ?? ''}
+            siblings={siblings}
+            sessionId={screen.sessionId}
             facts={factsFor(
               facts[`${screen.agentId}:${screen.projectKey}`] ?? emptyFacts(),
               chatAccounts[chatKey(screen.agentId, screen.projectKey, screen.sessionId)] ?? '',
@@ -1221,11 +1648,15 @@ export const App = () => {
                 // echoes them back, which is how this screen - and the panel at the desk - shows what was
                 // asked rather than only what was answered.
                 tokens: prompt.tokens,
-                quotes: [],
+                // What was quoted out of the conversation before this was written - the same field the
+                // panel sends, so the card reads the same on both screens (see feed/tokens).
+                quotes: prompt.quotes,
                 // Photos from the phone travel as bytes: there is no path on this device the agent could
                 // read (see prompt.images in protocol.ts).
                 images: prompt.images,
               })
+
+              setQuotes((current) => ({ ...current, [key]: [] }))
             }}
             // Queued in the IDE rather than on this device: the page holding it is thrown out while the
             // phone sits in a pocket, and that is exactly when a queued message matters (see SessionQueue).
@@ -1236,9 +1667,11 @@ export const App = () => {
                 id: `q-${Date.now().toString(36)}-${queueCounter.current++}`,
                 text: prompt.text,
                 tokens: prompt.tokens,
-                quotes: [],
+                quotes: prompt.quotes,
                 images: prompt.images,
               })
+
+              setQuotes((current) => ({ ...current, [key]: [] }))
             }}
             onUnqueue={(id: string) =>
               command(screen.agentId, screen.projectKey, {
@@ -1257,6 +1690,25 @@ export const App = () => {
             onLoadEarlier={loadEarlier}
             onDecide={() => setScreen({ ...screen, at: 'decide' })}
             onBack={back}
+            onTasks={() => setScreen({ ...screen, at: 'tasks' })}
+            onTabs={() => setSheet('tabs')}
+            onPickTab={(session) => enter(session.agentId, session.projectKey, session.sessionId, false)}
+            onRun={() => setSheet('run')}
+            onMessage={(item) => {
+              setActing(item)
+              setSheet('message')
+            }}
+            pins={pins[key] ?? EMPTY_PINS}
+            onPin={(id) =>
+              setPins((current) => ({ ...current, [key]: togglePin(current[key] ?? EMPTY_PINS, id) }))
+            }
+            quotes={quotes[key] ?? EMPTY_QUOTES}
+            onDropQuote={(index) =>
+              setQuotes((current) => ({
+                ...current,
+                [key]: (current[key] ?? []).filter((_, at) => at !== index),
+              }))
+            }
             onSearch={() => openSearch(screen.agentId, screen.projectKey, screen.sessionId)}
             capsule={capsuleProps}
             focus={feedFocus?.key === threadKey ? feedFocus : undefined}
@@ -1268,13 +1720,239 @@ export const App = () => {
     )
   })()
 
+  /**
+   * Which conversation the sheets are about.
+   *
+   * The three of them belong to a thread and are opened from it, but the state that holds them lives
+   * here - so a sheet left open while the screen changed would stand over a conversation it says
+   * nothing about. Named once rather than narrowed at each of the three.
+   */
+  const onThread =
+    screen.at === 'thread' || screen.at === 'decide' || screen.at === 'tasks' || screen.at === 'agent'
+      ? screen
+      : undefined
+
+  const sheetSiblings = onThread
+    ? (projects.find((one) => one.agentId === onThread.agentId && one.key === onThread.projectKey)?.sessions ??
+      [])
+    : []
+
+  const sheetKey = onThread ? chatKey(onThread.agentId, onThread.projectKey, onThread.sessionId) : ''
+
+  /** Which project the menu's three machine screens would be about: the one in view, else the first open. */
+  const menuProject = onThread
+    ? projects.find((one) => one.agentId === onThread.agentId && one.key === onThread.projectKey)
+    : (screen.at === 'history' || screen.at === 'new'
+        ? projects.find((one) => one.agentId === screen.agentId && one.key === screen.projectKey)
+        : undefined) ?? projects.find((one) => !one.closed)
+
   return (
     <LocaleProvider locale={locale}>
       {body}
+
+      {drawer && (
+        <Drawer
+          agents={paired}
+          waiting={waitingFor(projects).length}
+          live={onThread ? feed.state.items.filter((item) => item.kind === 'task' && item.pending).length : 0}
+          account={
+            menuProject
+              ? currentAccountName(accounts[menuProject.agentId] ?? null)
+              : ''
+          }
+          mcpTone={mcpTone(menuProject ? mcp[menuProject.agentId] : undefined)}
+          onProjects={() => {
+            setDrawer(false)
+            home()
+          }}
+          onTasks={
+            onThread
+              ? () => {
+                  setDrawer(false)
+                  setScreen({ ...onThread, at: 'tasks' })
+                }
+              : undefined
+          }
+          onMcp={menuProject ? () => openMachineScreen('mcp', menuProject.agentId, menuProject.key) : undefined}
+          onPlugins={
+            menuProject ? () => openMachineScreen('plugins', menuProject.agentId, menuProject.key) : undefined
+          }
+          onAccounts={
+            menuProject ? () => openMachineScreen('accounts', menuProject.agentId, menuProject.key) : undefined
+          }
+          onPair={() => {
+            setDrawer(false)
+            setScreen({ at: 'pairing' })
+          }}
+          onForget={forget}
+          onClose={() => setDrawer(false)}
+        />
+      )}
+
+      {sheet === 'tabs' && onThread && (
+        <TabsSheet
+          project={projectNameOf(projects, onThread.agentId, onThread.projectKey)}
+          sessions={sheetSiblings}
+          sessionId={onThread.sessionId}
+          onPick={(session) => {
+            setSheet('')
+            if (session.sessionId !== onThread.sessionId) {
+              enter(session.agentId, session.projectKey, session.sessionId, false)
+            }
+          }}
+          onNew={() => {
+            setSheet('')
+            setScreen({ at: 'new', agentId: onThread.agentId, projectKey: onThread.projectKey })
+          }}
+          onClose={() => setSheet('')}
+        />
+      )}
+
+      {sheet === 'run' && onThread && (
+        <RunSheet
+          models={inventories[onThread.agentId]?.models ?? null}
+          model={feed.state.model ?? ''}
+          effort={feed.state.effort ?? ''}
+          mode={feed.state.permissionMode ?? ''}
+          onApply={(change) => {
+            setSheet('')
+            if (change.model !== undefined) {
+              command(onThread.agentId, onThread.projectKey, {
+                type: 'setModel',
+                sessionId: onThread.sessionId,
+                model: change.model,
+              })
+            }
+            if (change.effort !== undefined) {
+              command(onThread.agentId, onThread.projectKey, {
+                type: 'setEffort',
+                sessionId: onThread.sessionId,
+                effort: change.effort,
+              })
+            }
+          }}
+          onClose={() => setSheet('')}
+        />
+      )}
+
+      {sheet === 'message' && onThread && acting && (
+        <MessageSheet
+          item={acting}
+          pinned={(pins[sheetKey] ?? EMPTY_PINS).includes(acting.id)}
+          pinsFull={(pins[sheetKey] ?? EMPTY_PINS).length >= PIN_LIMIT}
+          onQuote={(text) =>
+            setQuotes((current) => ({ ...current, [sheetKey]: [...(current[sheetKey] ?? []), text] }))
+          }
+          onFork={() => {
+            setSheet('')
+            forkFrom(onThread.agentId, onThread.projectKey, onThread.sessionId, acting)
+          }}
+          onPin={() =>
+            setPins((current) => ({
+              ...current,
+              [sheetKey]: togglePin(current[sheetKey] ?? EMPTY_PINS, acting.id),
+            }))
+          }
+          onClose={() => setSheet('')}
+        />
+      )}
+
       {searchWindow}
     </LocaleProvider>
   )
 }
+
+/**
+ * A conversation of this project to address a question about the project to.
+ *
+ * The MCP status is asked of a running conversation rather than of the project (see askMcp), so the
+ * request has to name one - and which one does not matter, because the answer is about the project's
+ * servers whichever it was. The one already in front of the person would be the tidiest choice and is
+ * not available here: this screen is reached from the menu, which does not belong to a conversation.
+ */
+const anySessionOf = (projects: ProjectEntry[], agentId: string, projectKey: string): string =>
+  projects.find((one) => one.agentId === agentId && one.key === projectKey)?.sessions[0]?.sessionId ?? ''
+
+/** What that project is called, for the line under a screen's title. */
+const projectNameOf = (projects: ProjectEntry[], agentId: string, projectKey: string): string =>
+  projects.find((one) => one.agentId === agentId && one.key === projectKey)?.name ?? ''
+
+/**
+ * Which account is paying for the conversation this phone was last in, named the way its row is.
+ *
+ * The question the accounts screen is opened with, answered at the top of it rather than by reading
+ * four rows to find the one marked "in use" - and it is not the same question: the account in force is
+ * what the NEXT conversation starts on, while a conversation already open goes on being billed to the
+ * one it was born under until somebody switches (see ClaudeSessions.moveTo).
+ *
+ * Nothing at all when this phone has not been inside a conversation of that machine yet: a line that
+ * names an account and no conversation is a line about nothing.
+ */
+const paying = (
+  state: AccountsState | null,
+  chatAccounts: Record<string, string>,
+  projects: ProjectEntry[],
+  agentId: string,
+): { account: string; title: string } | null => {
+  if (!state) return null
+
+  for (const project of projects) {
+    if (project.agentId !== agentId) continue
+
+    for (const session of project.sessions) {
+      const id = chatAccounts[chatKey(agentId, project.key, session.sessionId)]
+      if (id === undefined) continue
+
+      const account = state.accounts.find((one) => one.id === id)
+      if (!account) continue
+
+      return {
+        account: account.alias.trim() || account.email.split('@')[0] || account.email,
+        title: `${project.name} · ${session.title}`,
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * What to call a fork, out of the message it grew from.
+ *
+ * The message itself for one's own, the answer's text for the agent's - either way it is the sentence
+ * the branch is about, which is what `deriveSessionTitle` is written to shorten (see feed/title.ts).
+ */
+const forkTitle = (item: FeedItem): string => {
+  if (item.kind === 'user') return item.tokens.find((token) => token.kind === 'text')?.value ?? ''
+  if (item.kind === 'text') return item.source
+
+  return ''
+}
+
+/** Which account this machine is working on, named the way its row is - for the menu's line. */
+const currentAccountName = (state: AccountsState | null): string => {
+  const account = state?.accounts.find((one) => one.id === state.current)
+  if (!account) return ''
+
+  return account.alias.trim() || account.email.split('@')[0] || account.email
+}
+
+/**
+ * The dot beside the menu's MCP row: the worst state any of that project's servers is in.
+ *
+ * A dot rather than a count, because the question the row is glanced at with is "is anything wrong
+ * there" - and a green one would be one more thing lit up on a menu where everything is fine.
+ */
+const mcpTone = (servers: McpServerInfo[] | undefined): 'none' | 'warn' | 'bad' => {
+  if (!servers) return 'none'
+  if (servers.some((server) => server.status === 'failed')) return 'bad'
+
+  return servers.some((server) => server.status === 'needs-auth') ? 'warn' : 'none'
+}
+
+/** Stable empties, so a card that reads them is not re-rendered by a new array on every pass. */
+const EMPTY_PINS: readonly string[] = []
+const EMPTY_QUOTES: string[] = []
 
 /** What a search that has not been asked anything yet has found. */
 const EMPTY_COUNTS = { chat: 0, project: 0, conversations: 0 }

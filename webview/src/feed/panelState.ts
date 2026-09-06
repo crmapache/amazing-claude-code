@@ -422,6 +422,12 @@ export type PanelAction =
   /** The IDE is stopping this turn to move the conversation to another account - see stoppedForAccount. */
   | { kind: 'stoppedForAccount' }
   /**
+   * The tab's process is being replaced while the tab itself was saying nothing - see processReplaced in
+   * protocol.ts. Everything the process was holding apart from a turn (a workflow's fleet, a background
+   * subagent, a background command) dies with it, and nothing else would ever say so.
+   */
+  | { kind: 'processReplaced' }
+  /**
    * The process died on its own. Everything that was "running" would hang like that forever unless it is
    * closed outright and the user told what happened.
    */

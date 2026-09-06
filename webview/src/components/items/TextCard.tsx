@@ -4,6 +4,7 @@ import { useT } from '../../i18n'
 import type { TextItem } from '../../feed/types'
 import { CopyButton } from './CopyButton'
 import { PinButton } from './PinButton'
+import { MoreButton } from './MoreButton'
 import { Markdown } from './Markdown'
 import s from '../feed.module.css'
 
@@ -19,6 +20,11 @@ interface TextCardProps {
   pinned: boolean
   /** Whether the strip is already full - the hint says so before the press (see PinButton). */
   pinsFull: boolean
+  /**
+   * Everything else this answer can do, behind three dots (see MoreButton). Handed in by the phone
+   * alone: at the desk each of those actions has a better home than a menu.
+   */
+  onActions?: () => void
 }
 
 /**
@@ -72,7 +78,7 @@ const isTouchDensity = (): boolean =>
  * technical logs (thoughts, tool calls) ended and the real answer began - the same trick as with a user's
  * message, only from the other side.
  */
-export const TextCard = ({ item, onOpenLink, onPin, pinned, pinsFull }: TextCardProps) => {
+export const TextCard = ({ item, onOpenLink, onPin, pinned, pinsFull, onActions }: TextCardProps) => {
   const t = useT()
 
   /**
@@ -98,6 +104,7 @@ export const TextCard = ({ item, onOpenLink, onPin, pinned, pinsFull }: TextCard
       <div className={s.textActions}>
         {onPin ? <PinButton pinned={pinned} full={pinsFull} className={s.textAction} onPin={onPin} /> : null}
         <CopyButton text={paragraphsText(item.paragraphs)} className={s.textAction} title={t.feed.copyReply} />
+        {onActions ? <MoreButton className={s.textAction} label={t.feed.moreActions} onClick={onActions} /> : null}
       </div>
 
       {/* One wave for the whole card: otherwise every paragraph would start the reveal afresh and the

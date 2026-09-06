@@ -614,6 +614,72 @@ const answerHistoryPage = (message: WebviewMessage): void => {
   }, 400)
 }
 
+/** How many agents of a fleet have been unfolded here - the third one has no transcript, see below. */
+let agentsRead = 0
+
+/**
+ * One agent of a workflow, unfolded.
+ *
+ * In the IDE the shell reads that agent's own transcript off the disk (see WorkflowAgents.kt) - here
+ * there is no disk, so the harness invents an answer long enough to see it wrap, and refuses every third
+ * one: a swept run is a state the card has words for, and words nobody ever sees are words nobody checks.
+ */
+const answerAgentTranscript = (message: WebviewMessage): void => {
+  if (message.type !== 'agentTranscript') return
+
+  agentsRead += 1
+  const missing = agentsRead % 3 === 0
+
+  setTimeout(() => {
+    window.__accReceive?.({
+      type: 'agentTranscript',
+      sessionId: message.sessionId,
+      agentId: message.agentId,
+      found: !missing,
+      ...(missing
+        ? {}
+        : {
+            prompt: [
+              '## Review the checkout, one angle only',
+              '',
+              'Diff command: git diff main...HEAD',
+              'Changed files (12): src/checkout/totals.ts, src/checkout/summary.tsx, …',
+              '',
+              'Report every finding as an object with file, line, summary and a failure scenario.',
+            ].join('\n'),
+            steps: [
+              'Bash git diff main...HEAD --stat',
+              'Read src/checkout/totals.ts',
+              'Grep discount',
+              'Read src/checkout/summary.tsx',
+              'StructuredOutput',
+            ],
+            output: JSON.stringify(
+              {
+                findings: [
+                  {
+                    file: 'src/checkout/totals.ts',
+                    line: 41,
+                    summary: 'A discount larger than the subtotal makes the total negative.',
+                    failure_scenario:
+                      'Cart of 900, a 1000-off coupon: the total comes out at -100 and the charge is created for it.',
+                  },
+                  {
+                    file: 'src/checkout/summary.tsx',
+                    line: 66,
+                    summary: 'The summary rounds twice, so the line items do not add up to the total shown.',
+                    failure_scenario: 'Three items at 3.335 each: the lines read 3.34 and the total reads 10.00.',
+                  },
+                ],
+              },
+              null,
+              2,
+            ),
+          }),
+    } as never)
+  }, 350)
+}
+
 /**
  * A conversation chosen in the history screen.
  *
@@ -922,6 +988,7 @@ const listenToPanel = () => {
 
     if (message) answerFeedback(message)
     if (message) answerHistoryPage(message)
+    if (message) answerAgentTranscript(message)
     if (message) answerResume(message)
     if (message) answerImprove(message)
     if (message) answerVoice(message)

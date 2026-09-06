@@ -49,7 +49,7 @@ export const AgentLog = ({ item }: { item: TaskItem }) => {
     <>
       {/* A workflow's fleet stands above its log: the log here is the CLI's own preamble about where the
           transcripts went, while the agents are what one opened this screen for (see WorkflowRun). */}
-      {item.workflow ? <WorkflowRun run={item.workflow} /> : null}
+      {item.workflow ? <WorkflowRun run={item.workflow} id={item.id} live={item.pending} /> : null}
 
       {item.log.map((line, index) => (
         <div

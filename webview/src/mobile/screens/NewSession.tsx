@@ -3,7 +3,7 @@ import { effortOptions, modeOptions, modelOptions } from '../../catalog'
 import type { MenuOption } from '../../components/Menu'
 import type { ModelInfo } from '../../protocol'
 import type { SessionLaunch } from '../link'
-import type { ProjectEntry } from './Sessions'
+import type { ProjectEntry } from '../projects'
 import { Back } from './Back'
 import m from '../mobile.module.css'
 import { useT } from '../../i18n'
@@ -64,10 +64,14 @@ export const NewSession = ({ project, models, prefs, busy, error, onStart, onBac
 
   return (
     <>
-      <header className={m.header}>
-        <Back onClick={onBack} />
-        <span className={m.headerTitle}>{t.mobile.newSession.title}</span>
-        <span className={m.headerMeta}>{project.name}</span>
+      <header className={m.threadHeader}>
+        <div className={m.threadHeadRow}>
+          <Back onClick={onBack} />
+          <span className={m.threadTitles}>
+            <span className={m.threadTitle}>{t.mobile.newSession.title}</span>
+            <span className={m.threadWhere}>{project.name}</span>
+          </span>
+        </div>
       </header>
 
       <div className={m.list}>

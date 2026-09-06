@@ -23,7 +23,6 @@ import com.intellij.util.Alarm
 import com.intellij.util.ui.JBUI
 import io.github.crmapache.amazingclaudecode.AccBundle
 import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
-import io.github.crmapache.amazingclaudecode.claude.accounts.AccountDesk
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.claude.SessionClient
 import io.github.crmapache.amazingclaudecode.editor.OpenInEditor
@@ -90,37 +89,6 @@ internal class ClaudePanel(
     fun voiceSettingsChanged() = voice.sendConfig()
 
     /**
-     * The set of Claude accounts, or which one is current, changed somewhere on this machine.
-     *
-     * The register is the machine's while the figures hang off each project's own hub, so a window that
-     * is not told goes on drawing the previous account's rings and plan - for five minutes, until the
-     * sign-in round comes round, or indefinitely with its panel closed.
-     */
-    fun accountsChanged() {
-        accounts.sendList()
-        hub.auth.check()
-    }
-
-    /**
-     * The same list, without asking the CLI who is signed in again.
-     *
-     * Called when that answer has just arrived by itself (see ClaudeSessionHub, onSignedIn): the row in
-     * the menu needs the account's name, and re-checking here would only start the process that has this
-     * very moment finished.
-     */
-    fun accountsRefresh() = accounts.sendList()
-
-    /**
-     * The register was changed in another IDE on this machine - see AccountsWatch.
-     *
-     * The list as it stands and nothing else. `accountsChanged` above re-asks the CLI who is signed in
-     * and puts a usage question to every account, which is right when the change was made here and
-     * pointless when it was read out of a file: nothing about this machine's sign-in has moved, and the
-     * cost would be a process per account per project per open IDE on every press of Select next door.
-     */
-    fun accountsChangedElsewhere() = accounts.sendList(withHealth = false)
-
-    /**
      * Whether the panel is still alive. The platform answers that same question only in a deprecated
      * way, while a checked disposable answers it itself: it dies with its parent and from that moment
      * on honestly says "I am gone".
@@ -161,9 +129,6 @@ internal class ClaudePanel(
      * to no conversation, and this is the one door a paired phone cannot reach.
      */
     private val voice = VoiceDesk(project) { message -> webview?.send(message) }
-
-    /** The accounts screen behind the side menu - see AccountDesk. */
-    private val accounts = AccountDesk(project, hub, parentDisposable)
 
     /** When something was last dropped into the panel with the mouse - see [attachDropped]. */
     @Volatile
@@ -331,7 +296,7 @@ internal class ClaudePanel(
                 // The menu's row carries the account in force, so the list has to be there before anybody
                 // opens the screen behind it - otherwise that row sits blank next to a full one for
                 // remote access, and the screen it opens jumps from a skeleton to its content mid-slide.
-                accounts.sendList()
+                hub.accounts.sendList()
             }
 
             "pick" -> pickAttachment()
@@ -354,31 +319,20 @@ internal class ClaudePanel(
             // than only to whoever asked: the setting is machine-wide, and a second window - or a phone -
             // left speaking the old language would be showing a setting that is no longer true.
             /*
-             * The accounts screen.
+             * The two halves of the accounts screen that stay at this door, and the reason is no longer
+             * "a network client cannot reach it" - the rest of that screen has moved to SessionCommands,
+             * where a phone reaches it (see RemoteCommands).
              *
-             * Handled here rather than in SessionCommands, beside setLanguage and the voice family and
-             * for the same guarantee: a network client does not physically reach this door. They are in
-             * RemoteCommands.DENIED as well, but that list is a second lock rather than the only one -
-             * choosing whose subscription pays for the work is not a decision a phone may make.
+             * These two end in a terminal window and a browser sign-in on THIS machine: adding an account
+             * runs `claude auth login` in a drawer of its own, and Claude Design is the same thing for its
+             * own credential. Neither can be finished from anywhere but the keyboard in front of them, so
+             * the door they are behind is the honest one.
              */
-            "accountList" -> accounts.sendList()
+            "accountAdd" -> hub.accounts.add()
 
-            "accountUse" -> accounts.use(field("id"))
+            "accountCancel" -> hub.accounts.cancelAdd()
 
-            "accountAdd" -> accounts.add()
-
-            "accountCancel" -> accounts.cancelAdd()
-
-            "accountForget" -> accounts.forget(field("id"))
-
-            "accountLogout" -> accounts.logout(field("id"))
-
-            "accountRename" -> accounts.rename(field("id"), field("alias"))
-
-            // Authorizing Claude Design. At this door for the same reason as its neighbours: it opens a
-            // terminal and a browser sign-in on this machine, in the credential drawer of the account in
-            // force (see DesignLogin).
-            "designLogin" -> accounts.designLogin()
+            "designLogin" -> hub.accounts.designLogin()
 
             "setLanguage" -> {
                 ClaudePreferences.language = field("language")

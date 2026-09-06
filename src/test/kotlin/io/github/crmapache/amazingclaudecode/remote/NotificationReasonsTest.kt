@@ -1,6 +1,7 @@
 package io.github.crmapache.amazingclaudecode.remote
 
 import io.github.crmapache.amazingclaudecode.claude.SessionSnapshot
+import io.github.crmapache.amazingclaudecode.claude.IdeLanguage
 import io.github.crmapache.amazingclaudecode.sound.AlertSounds
 import java.io.File
 import kotlin.test.Test
@@ -159,13 +160,28 @@ class NotificationReasonsTest {
         assertTrue(NotificationReasons.EXTRA_USAGE in NotificationReasons.DEFAULT_ON)
     }
 
+    /**
+     * The language is named rather than left to be looked up: the three-argument call reads a
+     * machine-wide setting, which asks the platform for a service that a plain unit test has none of.
+     * That one line used to take the whole test down with it, so the mapping checked here - a reason to
+     * the sentence a lock screen shows - was not in fact being checked at all.
+     */
     @Test
     fun `what a notification says names the thing rather than the event`() {
-        assertEquals("Permission: src/auth.ts", NotificationReasons.title("permission", "demo", "src/auth.ts"))
-        assertEquals("Something broke in demo", NotificationReasons.title("trouble", "demo", ""))
+        assertEquals(
+            "Permission: src/auth.ts",
+            NotificationReasons.title("permission", "demo", "src/auth.ts", IdeLanguage.DEFAULT),
+        )
+        assertEquals("Something broke in demo", NotificationReasons.title("trouble", "demo", "", IdeLanguage.DEFAULT))
         assertEquals(
             "The plan is used up - the work is now billed",
-            NotificationReasons.title(NotificationReasons.EXTRA_USAGE, "demo", ""),
+            NotificationReasons.title(NotificationReasons.EXTRA_USAGE, "demo", "", IdeLanguage.DEFAULT),
         )
+    }
+
+    /** And that it does speak the setting's language rather than always the English one. */
+    @Test
+    fun `a notification is written in the language the panel speaks`() {
+        assertEquals("План готов - ждёт вас", NotificationReasons.title("plan", "demo", "", "ru"))
     }
 }

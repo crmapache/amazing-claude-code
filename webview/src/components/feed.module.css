@@ -1465,12 +1465,29 @@
   color: var(--acc-fg-fainter);
 }
 
+/* A button rather than a div: the line opens a window with everything its agent said (see AgentLine),
+   and the whole line is the target - forty of these stand in a column, and a caret alone would be a 12px
+   target. */
 .workflowAgent {
   display: flex;
   align-items: baseline;
   gap: 7px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
   font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
   color: var(--acc-fg-dim);
+  cursor: pointer;
+}
+
+.workflowAgent:disabled {
+  cursor: default;
+}
+
+.workflowAgent:not(:disabled):hover .workflowLabel {
+  color: var(--acc-fg);
 }
 
 /* The state is a dot rather than a word: nine words down a column are read one by one, nine dots are
@@ -1483,21 +1500,27 @@
   background: var(--acc-fg-fainter);
 }
 
-.workflowAgent[data-state='running'] .workflowDot {
+.workflowAgent[data-state='running'] .workflowDot,
+.agentWindowDot[data-state='running'] {
   background: var(--acc-accent);
 }
 
-.workflowAgent[data-state='done'] .workflowDot {
+.workflowAgent[data-state='done'] .workflowDot,
+.agentWindowDot[data-state='done'] {
   background: var(--acc-ok);
 }
 
-.workflowAgent[data-state='failed'] .workflowDot {
+.workflowAgent[data-state='failed'] .workflowDot,
+.agentWindowDot[data-state='failed'] {
   background: var(--acc-bad);
 }
 
-/* Queued and skipped keep the faint dot: neither is work, and neither is a result. */
+/* Queued, skipped and dropped keep the faint dot: none of them is work, and none is a result. Dropped is
+   the one that arrives after the fact - the run ended under an agent the report still calls running (see
+   WorkflowRun) - and it deliberately does not borrow the red of a failure: nothing about it failed. */
 .workflowAgent[data-state='queued'],
-.workflowAgent[data-state='skipped'] {
+.workflowAgent[data-state='skipped'],
+.workflowAgent[data-state='dropped'] {
   color: var(--acc-fg-fainter);
 }
 
@@ -1518,6 +1541,173 @@
 .workflowMeta {
   flex: none;
   color: var(--acc-fg-fainter);
+}
+
+/* The panel's own word inside the window - that the answer was cut, that the record is gone. Set apart
+   from the agent's own text by colour: what the panel says is not what the agent said. */
+.workflowNote {
+  margin-top: 10px;
+  font: var(--acc-fs-meta, 11px) var(--acc-mono);
+  color: var(--acc-fg-fainter);
+}
+
+/* --- One agent of a fleet, over the output area -----------------------------
+   What an agent returns is a page - forty findings as JSON, a report, a diff - and a page has to be read
+   at the width of the panel rather than in a column indented under its own line (see WorkflowAgentView).
+   The ladder is the one written down in holiday.module.css: above the search veil (21) and its capsule
+   (22), below the selection menu (30) and everything one reaches for over the whole panel. */
+
+.agentScrim {
+  position: absolute;
+  inset: 0;
+  z-index: 23;
+  background: rgb(var(--acc-ch-shade) / 55%);
+}
+
+/* Stretched to the output area rather than hung from its top, unlike the search window: a list of hits
+   is read from its first line and ends, while an agent's answer runs on - and the room under a short one
+   is not worth the reading it takes away from a long one. */
+.agentWindow {
+  position: absolute;
+  z-index: 24;
+  inset: 10px;
+  display: flex;
+  flex-direction: column;
+  background: var(--acc-bg-panel);
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-2xl);
+  box-shadow: var(--acc-shadow-menu);
+  overflow: hidden;
+}
+
+/* A narrow panel: the window is the area. Same rule as the search window, and for the same reason - a
+   dialog with margins inside 350 pixels is the panel with a frame drawn around it. */
+@media (max-width: 480px) {
+  .agentWindow {
+    inset: 0;
+    border: none;
+    border-radius: 0;
+  }
+}
+
+.agentWindowHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 12px;
+  min-height: 34px;
+  border-bottom: 1px solid var(--acc-line);
+}
+
+.agentWindowDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--acc-fg-fainter);
+}
+
+.agentWindowLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
+  color: var(--acc-fg);
+}
+
+/* How long, how much - the line's own facts, which the window is standing on top of. */
+.agentWindowFacts {
+  flex: none;
+  font: var(--acc-fs-meta, 11px) var(--acc-mono);
+  color: var(--acc-fg-fainter);
+}
+
+/* The model is set faint and shrinks away first: it answers "who ran this" for whoever asks, and it is
+   not what the window was opened for. In a narrow panel it goes altogether - the facts beside it are
+   what a person came to compare, and the label is what tells one agent from another. */
+@media (max-width: 480px) {
+  .agentWindowModel {
+    display: none;
+  }
+}
+
+.agentWindowModel {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--acc-fs-meta, 11px) var(--acc-mono);
+  color: var(--acc-fg-fainter);
+}
+
+.agentWindowClose {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--acc-r-md);
+  background: none;
+  color: var(--acc-fg-faint);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.agentWindowClose:hover {
+  background: var(--acc-bg-hover);
+  color: var(--acc-fg);
+}
+
+.agentWindowBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.agentWindowBody .taskPromptLabel:not(:first-child) {
+  margin-top: 16px;
+}
+
+/* The agent's own words, wrapped and selectable: this is the text somebody came here to read, and often
+   to copy out of. */
+.agentWindowText {
+  font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
+  line-height: var(--acc-code-leading, 18px);
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--acc-fg-body);
+}
+
+.agentWindowSteps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agentWindowStep {
+  font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
+  line-height: var(--acc-code-leading, 18px);
+  color: var(--acc-fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Why this one failed, at the top of the window: the run went on without it, and nothing else on screen
+   says what happened to it. */
+.agentWindowError {
+  margin-bottom: 12px;
+  font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
+  line-height: var(--acc-code-leading, 18px);
+  color: var(--acc-bad-light);
 }
 
 /* A line the script printed itself - it narrates the fleet above it. */

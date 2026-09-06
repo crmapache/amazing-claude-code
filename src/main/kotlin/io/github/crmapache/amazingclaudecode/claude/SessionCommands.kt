@@ -219,11 +219,40 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
              */
             "setDefaultMode" -> ClaudePreferences.mode = PermissionModes.normalize(field("mode"))
 
-            // Another model's context window has a size of its own - we ask for it again without
-            // waiting for the next turn to end.
-            "setModel" -> hub.changeModel(sessionId, field("model"))
+            /*
+             * The model and the effort of this conversation.
+             *
+             * `remember` is what separates the two doors, and it is the whole reason a phone may send
+             * these at all. At the desk each of them is two decisions in one press: this conversation
+             * changes, and the next tab opened here starts on the choice. From a sofa only the first of
+             * those is anybody's business - the second would settle the shape of work somebody may be
+             * about to begin at the keyboard, which is exactly what `setDefaultMode` is refused for.
+             *
+             * Another model's context window has a size of its own, so we ask for it again without
+             * waiting for the next turn to end.
+             */
+            "setModel" -> hub.changeModel(sessionId, field("model"), remember = local)
 
-            "setEffort" -> hub.changeEffort(sessionId, field("effort"))
+            "setEffort" -> hub.changeEffort(sessionId, field("effort"), remember = local)
+
+            /*
+             * The accounts screen, bar the two halves that end in a terminal on that machine (see
+             * ClaudePanel, which keeps `accountAdd`, `accountCancel` and `designLogin`).
+             *
+             * Here rather than at the window's door because a phone drives this screen now, and because
+             * of where the desk lives: it belongs to the hub, so a project a phone attached to without
+             * anybody opening a tool window in it can still answer about accounts (see
+             * ClaudeSessionHub.accounts).
+             */
+            "accountList" -> hub.accounts.sendList()
+
+            "accountUse" -> hub.accounts.use(field("id"))
+
+            "accountForget" -> hub.accounts.forget(field("id"))
+
+            "accountLogout" -> hub.accounts.logout(field("id"))
+
+            "accountRename" -> hub.accounts.rename(field("id"), field("alias"))
 
             "refreshUsage" -> hub.usage.refreshAll()
 
@@ -310,6 +339,10 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
             "voiceToken" -> VoiceGrant.send(field("id")) { answer ->
                 hub.emitTo(clientId, answer.toString(), asker)
             }
+
+            // What one agent of a workflow said, read off its own transcript when its line is
+            // unfolded - see WorkflowAgents.
+            "agentTranscript" -> hub.catalog.sendAgentTranscript(clientId, sessionId, field("agentId"))
 
             // A page further back than what the journal's own catch-up handed over - see
             // ClaudeHistory.page. "before" absent asks for the transcript's own last page.

@@ -1,6 +1,59 @@
 import type { LinkState, SessionLaunch } from './link'
-import type { ProjectEntry, SessionEntry } from './screens/Sessions'
 import type { ModelInfo } from '../protocol'
+
+export interface SessionEntry {
+  agentId: string
+  agentLabel: string
+  projectKey: string
+  projectName: string
+  sessionId: string
+  title: string
+  /** Where that title came from: 'default' means nobody has named this conversation yet. */
+  titleSource: string
+  /** The conversation this chain grew out of - see Inventory. Its own id for a root. */
+  groupId: string
+  /** How deep into that chain: 0 a root, 1 a fork, 2 a fork of a fork. */
+  depth: number
+  status: string
+  awaitsYou: boolean
+  /** Which of the three it is stopped for - see Inventory. Empty when it is stopped for none. */
+  awaits: string
+  /** When it last changed what it is doing, by the IDE's clock. Zero when the IDE has not said. */
+  since: number
+  /** Work in this one has been finished at least once, and its process died under it - see ChatRow. */
+  worked: boolean
+  crashed: boolean
+  /** The conversation behind the tab - what tells the history that it is already open (see tabHolding). */
+  conversation?: string
+  seq: number
+  online: boolean
+}
+
+/**
+ * One project, as the first screen groups it.
+ *
+ * Closed ones are on the list too - the projects this IDE remembers rather than the ones it happens to
+ * have on screen. A phone is picked up to start something as often as to answer something, and "the
+ * project I was in yesterday" is never among the open windows of an editor that has been restarted.
+ */
+export interface ProjectEntry {
+  agentId: string
+  agentLabel: string
+  /** The key the IDE names this project by - a closed one is named by a key of its own (see recents). */
+  key: string
+  name: string
+  closed: boolean
+  online: boolean
+  /** How many of this project's conversations this phone has put away - see ChatRow. */
+  hiddenCount: number
+  sessions: SessionEntry[]
+}
+
+export interface AgentEntry {
+  agentId: string
+  label: string
+  state: LinkState
+}
 
 /**
  * What one IDE says it has, as it arrives on the wire (see RemoteAgent.inventoryBody).
@@ -17,8 +70,26 @@ export interface Inventory {
       id: string
       title: string
       titleSource?: string
+      /**
+       * The conversation this chain grew out of, and how deep into it this tab is: 0 is a root, 1 a
+       * fork, 2 a fork of a fork (see SessionRegistry.Tab). What the strip of tabs is grouped and
+       * indented by - a fork carries its parent's whole transcript, and a list that draws it like an
+       * ordinary conversation is lying about where an answer would go.
+       */
+      groupId?: string
+      depth?: number
       status: string
       awaitsYou: boolean
+      /**
+       * Which of the three answers it is stopped for - 'perm', 'ask' or 'plan' (see
+       * SessionSnapshot.awaits). Absent when it is not stopped for one.
+       */
+      awaits?: string
+      /**
+       * When it last changed what it is doing, by the IDE's clock - what "working · 2m 40s" and
+       * "done · 14:02" are counted and named from (see SessionSnapshot.changedAt and mobile/clock.ts).
+       */
+      since?: number
       /** A turn in this one has been carried through to its end - see SessionSnapshot.worked. */
       worked?: boolean
       /** Its process died under it. */
@@ -115,12 +186,20 @@ export const buildProjects = (
         sessionId: session.id,
         title: session.title,
         titleSource: session.titleSource ?? 'default',
+        // An IDE too old to send them leaves every tab a root of its own, which is what the strip drew
+        // before forks were on it at all.
+        groupId: session.groupId ?? session.id,
+        depth: session.depth ?? 0,
         status: session.status,
         awaitsYou: session.awaitsYou,
         // Absent on an IDE too old to send them - and absent means the quiet state, which is what a
         // conversation looked like on this screen before either existed.
         worked: session.worked === true,
         crashed: session.crashed === true,
+        // Absent on an IDE too old to send them, and absent is drawn as silence rather than as a guess:
+        // a row that says nothing about how long it has been working is better than one that says zero.
+        awaits: session.awaits ?? '',
+        since: session.since ?? 0,
         conversation: session.conversation,
         seq: session.q,
         online,
@@ -167,6 +246,22 @@ export const buildProjects = (
   // IDE listed them - open ones as the platform holds them, remembered ones newest first.
   return entries.sort((first, second) => rank(first) - rank(second))
 }
+
+/**
+ * Everything stopped waiting for a person, across every project on every paired IDE.
+ *
+ * The band at the top of the first screen is built from this, and it is the reason the screen exists:
+ * a phone is picked up to unblock something, and having to find which of four project cards holds the
+ * one thing that needs an answer is the work the band takes away.
+ *
+ * In the same order the projects themselves are in - which is the order the list already argues for -
+ * so the band and the cards under it never disagree about which is the more pressing.
+ *
+ * A function of its own rather than a `flatMap` inside the screen, so the ordering can be checked
+ * without a running IDE and a phone, like the ordering it borrows.
+ */
+export const waitingFor = (projects: ProjectEntry[]): SessionEntry[] =>
+  projects.flatMap((project) => project.sessions.filter((session) => session.awaitsYou))
 
 /**
  * Where a project stands in the list. Lower comes first: something waiting for a person, then work in

@@ -107,6 +107,32 @@ internal class RemoteLimits {
             // counted like a message.
             "search" to 120,
             "searchAi" to 10,
+            /*
+             * The three screens about the machine, and every one of them is dearer than it looks.
+             *
+             * Asking about the MCP servers wakes the conversation's process if it is asleep, and adding
+             * or removing one restarts it outright. Listing the plugins is a CLI run that goes out to
+             * the marketplaces over the network. Listing the accounts is a process PER ACCOUNT - the
+             * health of each drawer and a usage question in each one (see AccountDesk.sendList).
+             *
+             * Each of these is one press on a screen somebody opened deliberately, so a handful a minute
+             * is more than a person can want and far less than a loop would take.
+             */
+            "mcpList" to 20,
+            "mcpReconnect" to 10,
+            "mcpAdd" to 5,
+            "mcpRemove" to 5,
+            "pluginList" to 10,
+            "marketplaceList" to 10,
+            "accountList" to 20,
+            /*
+             * And the three that change something. Switching accounts moves every open conversation on
+             * that machine and stops any turn mid-run: at more than a few a minute the machine would
+             * spend its time replacing processes rather than working in them.
+             */
+            "accountUse" to 5,
+            "accountForget" to 5,
+            "accountLogout" to 5,
         )
 
         const val DEFAULT_PER_MINUTE = 30

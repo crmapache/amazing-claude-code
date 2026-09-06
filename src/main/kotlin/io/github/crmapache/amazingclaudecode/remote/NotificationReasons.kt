@@ -124,13 +124,22 @@ internal object NotificationReasons {
      * Short because a lock screen is short, and specific because "something happened" is worth less
      * than nothing: the whole value of the notification is knowing whether to reach for the phone.
      */
-    fun title(reason: String, project: String, target: String): String {
+    fun title(reason: String, project: String, target: String): String =
         // The language the panel speaks, resolved the same way the panel resolves it (see IdeLanguage).
         // Read at the moment of writing rather than kept: the setting is machine-wide and can change
         // between one notification and the next.
-        val language = IdeLanguage.inForce(ClaudePreferences.language)
+        title(reason, project, target, IdeLanguage.inForce(ClaudePreferences.language))
 
-        return when (reason) {
+    /**
+     * The same, in a language named rather than looked up.
+     *
+     * Apart from the call above so that the choice of words can be checked at all. Reading the setting
+     * asks the platform for a service, and a plain unit test has no platform behind it - the whole of
+     * this used to fail on that one line, which left the mapping from a reason to its sentence untested
+     * while looking as though it were tested.
+     */
+    fun title(reason: String, project: String, target: String, language: String): String =
+        when (reason) {
             "permission" -> PushWords.permission(language, target)
             "question" -> PushWords.question(language)
             "plan" -> PushWords.plan(language)
@@ -139,7 +148,6 @@ internal object NotificationReasons {
             "trouble" -> PushWords.trouble(language, project)
             else -> PushWords.turnFinished(language)
         }
-    }
 
     private fun isTurnEnd(message: String): Boolean =
         message.contains("\"type\":\"agent\"") && message.contains("\"type\":\"result\"")

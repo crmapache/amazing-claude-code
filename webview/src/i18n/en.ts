@@ -25,6 +25,7 @@ export const en = {
     close: 'Close',
     closeMenu: 'Close menu',
     loading: 'Loading…',
+    cancel: 'Cancel',
     /** The percentage a switched-off sound shows instead of its volume. */
     muted: 'muted',
     /** "7 on" beside the sound row - how many of the alerts are still switched on. */
@@ -492,6 +493,8 @@ export const en = {
     jumpToLatest: 'Jump to latest',
     copyBlock: 'Copy this block',
     copyReply: 'Copy the whole reply',
+    /** The three dots on a card, which open everything else it can do - the phone's alone. */
+    moreActions: 'More',
     /** The two buttons in the head of a message of one's own - see UserCard. */
     copyMessage: 'Copy this message, with the paths of what was attached',
     reuse: {
@@ -535,10 +538,23 @@ export const en = {
       /** Waiting for a slot: a fleet larger than the concurrency cap mostly stands in a queue. */
       queued: 'queued',
       skipped: 'skipped',
+      /**
+       * An agent the report still calls running or queued, in a run that is over: its process was
+       * taken down under it (see WorkflowRun's `live`).
+       */
+      dropped: 'dropped',
       /** Shown only past the first - see workflowView. */
       attempt: (n: number): string => `try ${n}`,
       /** A resumed run gave this one back out of the journal instead of running it again. */
       cached: 'cached',
+      /** The heading over the tool calls an unfolded agent made - see AgentBody. */
+      steps: 'WHAT IT DID',
+      /** And over what it came back with: its structured answer, or its closing words. */
+      returned: 'WHAT IT RETURNED',
+      cut: 'Cut here - the answer runs on past what fits.',
+      /** The agent's own transcript is not on disk: a swept run, or somebody else's machine. */
+      noTranscript: "Its own record is gone from disk - this is the run report's own preview.",
+      reading: 'Reading its record…',
     },
 
     tool: {
@@ -561,6 +577,7 @@ export const en = {
         stopped: 'Stopped before it finished.',
         turnEnded: 'The turn ended before this finished.',
         untracked: 'Still running in the background - the panel no longer follows it.',
+        restarted: 'Claude Code was restarted here, and this did not survive it.',
       },
       /** The same four seen from a subagent's card: it returns rather than finishes. */
       closedMeta: {
@@ -569,6 +586,7 @@ export const en = {
         stopped: '· interrupted',
         turnEnded: '· unfinished',
         untracked: '· let go',
+        restarted: '· lost in the restart',
       },
     },
 
@@ -583,6 +601,7 @@ export const en = {
         stopped: 'Stopped before it returned.',
         turnEnded: 'The turn ended before this returned.',
         untracked: 'Still running - the panel no longer follows it.',
+        restarted: 'Claude Code was restarted here, and this agent did not survive it.',
       },
     },
 
@@ -654,6 +673,11 @@ export const en = {
        */
       movedAccount: (duration: string): string =>
         duration ? `Stopped to switch account · ${duration}` : 'Stopped to switch account',
+      /**
+       * The tab's process was replaced under it while nothing was being said - see
+       * processReplaced. No turn was cut short, so there is no duration to name.
+       */
+      restarted: 'Claude Code restarted - whatever was still running was dropped',
     },
 
     modelSwitch: { label: 'MODEL', note: 'switched by Claude Code, not by you' },
@@ -990,8 +1014,41 @@ export const en = {
       projectClosed: 'Not open in the IDE right now.',
       noConversations: 'No conversations yet.',
       hidden: (n: number): string => `${n} hidden · show`,
+      /** The button uncovered by swiping a conversation aside - it stops taking up a row, nothing more. */
+      hide: 'Hide',
       pastConversations: 'Past conversations',
       newChat: 'New chat',
+      /** On a project the IDE has closed: the tap opens the project as well as starting something in it. */
+      openAndStart: 'Open & start',
+      /** The band at the top: everything stopped waiting for a person, out of its project. */
+      waitingForYou: 'Waiting for you',
+      answer: 'Answer',
+      /** The corner of a project's card: what is stopped, else what is merely open. */
+      countWaiting: (n: number): string => `${n} waiting`,
+      countOpen: (n: number): string => `${n} open`,
+      /** What a stopped conversation is stopped for, in the two words the band has room for. */
+      kind: {
+        permission: 'Permission',
+        question: 'Question',
+        plan: 'Plan',
+        unknown: 'Waiting',
+      },
+      /**
+       * The line under a conversation's title - what it is doing.
+       *
+       * The times beside them are two different kinds and are added by the row: work in progress is
+       * measured ("2m 40s") because the question is how long it has been going, work that is over is
+       * named ("14:02") because the question is when it stopped.
+       */
+      state: {
+        crashed: 'stopped - the process died',
+        waiting: 'waiting on you',
+        waitingPermission: 'waiting on you · permission',
+        waitingQuestion: 'waiting on you · question',
+        waitingPlan: 'waiting on you · plan',
+        working: 'working',
+        done: 'done',
+      },
       /** Why the list looks the way it does - said about the phone's whole situation. */
       reach: {
         connecting: 'Connecting…',
@@ -1026,6 +1083,110 @@ export const en = {
       waitingPerm: 'Permission needed - answer it',
       waitingAsk: 'A question is waiting - answer it',
       waitingPlan: 'A plan is waiting - decide',
+      /** Asked before a subagent or a background command is killed - it cannot be undone. */
+      stopAgent: (what: string): string => `Stop ${what}?`,
+    },
+
+    /** The side menu, behind the burger on the first screen. */
+    drawer: {
+      menu: 'Menu',
+      projects: 'Projects',
+      tasks: 'Tasks & agents',
+      mcp: 'MCP servers',
+      plugins: 'Plugins',
+      accounts: 'Claude accounts',
+      pair: 'Pair an IDE',
+      /** Only on an IDE that has stopped answering - see the note on the row. */
+      forget: 'Forget',
+      waiting: (n: number): string => `${n} waiting`,
+      live: (n: number): string => `${n} live`,
+      sealed: 'Sealed between your IDE and this phone.',
+    },
+
+    /** The strip of tabs above the feed, and the sheet behind it. */
+    tabs: {
+      title: 'Conversations',
+      note: 'A fork keeps its group: the colour bar and the indent say which conversation it grew out of. Reordering stays at the desk.',
+    },
+
+    /** The task list, the subagents and the background commands of one conversation. */
+    tasks: {
+      title: 'Tasks & agents',
+      label: 'Task list',
+      doneOf: (done: number, total: number): string => `${done} / ${total} done`,
+      running: 'RUNNING',
+      agents: 'Agents',
+      agent: 'Subagent',
+      background: 'Background',
+      nothing: 'Nothing is running in this conversation.',
+      agentGone: 'This agent is no longer in the conversation on screen.',
+    },
+
+    /** How the turn on screen runs - the sheet behind the chip beside the two rings. */
+    run: {
+      title: 'How this turn runs',
+      subtitle: 'applies to this conversation only',
+      apply: 'Apply',
+      locked: 'locked',
+      inForce: 'in force right now',
+      modeNote:
+        'This conversation was started at the desk, and somebody may be sitting in front of it - so its permission mode is not reachable from here. A conversation you start from the phone begins in any mode you pick.',
+    },
+
+    /** One message's own actions, behind the three dots on its card. */
+    message: {
+      title: 'This message',
+      quote: 'Quote into my next message',
+      fork: 'Fork from here',
+      forkHint: 'A new conversation with everything up to this point.',
+      copy: 'Copy',
+      pin: 'Pin over the feed',
+      unpin: 'Unpin',
+      pinsFull: 'Three are already pinned - unpin one first.',
+    },
+
+    /** The MCP servers of the project on screen. */
+    mcp: {
+      /** A sign-in ends in a browser on the machine with the IDE - see the screen's own note. */
+      addServer: 'Add a server',
+      atDesk: 'At the desk',
+      removeAsk: (name: string): string =>
+        `Remove ${name}? The conversation restarts to pick that up, and whatever is running in it stops.`,
+      restartNote:
+        'A server is read at launch, so the conversation restarts to pick it up - whatever is running in it stops.',
+      deskNote:
+        'Signing a server in stays at the desk: Claude Code catches the browser’s answer on that machine, so a sign-in begun here would end nowhere.',
+    },
+
+    /** The plugins of the project on screen - read only. */
+    plugins: {
+      tabs: { installed: 'Installed', browse: 'Browse', markets: 'Markets' },
+      readOnly:
+        'Installing a plugin and switching one off stay at the desk - they run somebody else’s code on that machine. What this is for is seeing which skills and commands a conversation actually has.',
+      noneInstalled: 'No plugins installed.',
+      nothingFound: 'Nothing matches.',
+      noMarkets: 'No marketplaces connected.',
+      search: 'Search the catalogue',
+      on: 'on',
+      off: 'off',
+      trimmed: 'The catalogue is cut to what one message can carry - the rest is at the desk.',
+    },
+
+    /** Which Claude account pays for the work. */
+    accounts: {
+      subtitle: 'which subscription pays for the work',
+      paying: 'Paying for this conversation',
+      none: 'Only the sign-in Claude Code already had.',
+      switchAsk: (name: string): string =>
+        `Work on ${name} from now on? Every open conversation on that machine moves onto it, and a turn in the middle of running is stopped.`,
+      switchNote:
+        'Switching moves every open conversation on that machine onto the new account and stops any turn mid-run.',
+      addNote:
+        'Adding an account and authorizing Claude Design stay at the desk: both open a terminal and a browser sign-in on that machine.',
+      forgetAsk: (name: string): string =>
+        `Forget ${name}? Its credential is removed from that machine - the account itself is untouched, and signing in again brings it back.`,
+      logoutAsk:
+        'Sign out of Claude Code? This revokes the credential at Anthropic - every machine you are signed in on goes with it.',
     },
 
     newSession: {
@@ -1067,7 +1228,13 @@ export const en = {
       attachPhoto: 'Attach a photo',
       voice: 'Dictate',
       voiceStop: 'Stop dictating',
-      stop: 'Stop the run',
+      stop: 'Stop',
+      send: 'Send',
+      queue: 'Queue',
+      /** The row that appears only while a turn is running. */
+      running: 'running',
+      queued: (n: number): string => `${n} queued`,
+      dropQuote: 'Remove the quote',
       whatTravels: 'What travels between your IDE and this phone',
       projectFiles: 'Project files',
       ofTotal: (shown: number, total: number): string => `${shown} of ${total}`,

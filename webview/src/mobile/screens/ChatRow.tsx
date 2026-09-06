@@ -1,10 +1,20 @@
 import { useRef, useState } from 'react'
-import { chatState, type ChatState } from '../projects'
-import type { SessionEntry } from './Sessions'
+import { chatState, type ChatState, type SessionEntry } from '../projects'
+import { formatDuration } from '../../feed/tools'
 import m from '../mobile.module.css'
+import { useT } from '../../i18n'
+import type { Dict } from '../../i18n/en'
 
 interface ChatRowProps {
   session: SessionEntry
+  /**
+   * What time it is on the IDE this conversation lives on, in milliseconds.
+   *
+   * Handed in rather than read from the clock context the thread uses: this list shows several machines
+   * at once, and they disagree with this phone by different amounts and with each other (see
+   * mobile/clock.ts). One context could only ever hold one of them.
+   */
+  now: number
   onOpen: () => void
   onHide: () => void
 }
@@ -37,7 +47,8 @@ const DOT: Record<ChatState, string> = {
  * The gesture is written by hand rather than taken from a library because it is twenty lines and the
  * library would be forty kilobytes over the mobile data of somebody answering one question.
  */
-export const ChatRow = ({ session, onOpen, onHide }: ChatRowProps) => {
+export const ChatRow = ({ session, now, onOpen, onHide }: ChatRowProps) => {
+  const t = useT()
   const [offset, setOffset] = useState(0)
 
   /**
@@ -102,6 +113,8 @@ export const ChatRow = ({ session, onOpen, onHide }: ChatRowProps) => {
     across.current = null
   }
 
+  const state = chatState(session)
+
   return (
     <div className={m.chatSlot}>
       <button
@@ -115,7 +128,7 @@ export const ChatRow = ({ session, onOpen, onHide }: ChatRowProps) => {
           onHide()
         }}
       >
-        Hide
+        {t.mobile.sessions.hide}
       </button>
 
       <button
@@ -148,17 +161,65 @@ export const ChatRow = ({ session, onOpen, onHide }: ChatRowProps) => {
             work in progress, then work that is done, and unlit for a conversation that has never done
             anything yet.
 
-            It used to be a word on the right - "waiting", "working" - and a word is what the eye reads
-            last on a list of titles; whether anything on this screen needs answering is a question of
-            colour, answered before a single title is read.
-
             Unlit is drawn rather than left out, so a title starts at the same place on every row: a list
             whose text steps left and right by nine pixels reads as broken.
         */}
-        <span className={`${m.chatDot} ${DOT[chatState(session)]}`} />
+        <span className={`${m.chatDot} ${DOT[state]}`} />
 
-        <span className={m.chatTitle}>{session.title}</span>
+        <span className={m.chatText}>
+          <span className={m.chatTitle}>{session.title}</span>
+
+          {/*
+              What it is doing, under the title.
+
+              It used to be colour and nothing else, and colour answers "does this need me" but not "how
+              long has this been going" - which is the question somebody who left the desk an hour ago
+              actually has. The line is short enough to sit under a title without turning the list into
+              paragraphs, and it is absent altogether for a conversation that has never done anything:
+              there is nothing to say about it, and a row saying so would be a row of noise.
+          */}
+          <span className={`${m.chatState} ${state === 'attention' ? m.chatStateWaiting : ''}`}>
+            {stateLine(t, session, state, now)}
+          </span>
+        </span>
+
+        <span className={m.chatChevron}>›</span>
       </button>
     </div>
   )
 }
+
+/**
+ * The line under a title, by what the conversation is doing.
+ *
+ * Every branch says a state and, where there is one, a time - and the two times are different kinds:
+ * work in progress is measured ("2m 40s") because the question is how long it has been going, while
+ * work that is over is named ("14:02") because the question is when it stopped. A conversation the IDE
+ * has said nothing about the timing of gets the state alone.
+ */
+const stateLine = (t: Dict, session: SessionEntry, state: ChatState, now: number): string => {
+  const words = t.mobile.sessions.state
+
+  if (state === 'crashed') return words.crashed
+  if (state === 'attention') {
+    return session.awaits === 'perm'
+      ? words.waitingPermission
+      : session.awaits === 'ask'
+        ? words.waitingQuestion
+        : session.awaits === 'plan'
+          ? words.waitingPlan
+          : words.waiting
+  }
+
+  if (state === 'running') {
+    return session.since > 0 ? `${words.working} · ${formatDuration(Math.max(0, now - session.since))}` : words.working
+  }
+
+  if (state === 'done') return session.since > 0 ? `${words.done} · ${clock(session.since)}` : words.done
+
+  return ''
+}
+
+/** The wall-clock time a turn ended, on the machine it ended on - "14:02". */
+const clock = (at: number): string =>
+  new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })

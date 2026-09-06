@@ -3,6 +3,7 @@ import { LinkedText } from './LinkedText'
 import { Caret } from './Caret'
 import { CopyButton } from './CopyButton'
 import { PinButton } from './PinButton'
+import { MoreButton } from './MoreButton'
 import { chipFile, chipLabel, chipTitle, pasteBlockPreview, pasteBody, pasteLineCount } from '../../feed/reference'
 import { COPY_ATTRIBUTE } from '../../feed/copy'
 import { clipboardMessage, clipboardText } from '../../feed/tokens'
@@ -45,9 +46,15 @@ interface UserCardProps {
   pinned: boolean
   /** Whether the strip is already full - the hint says so before the press (see PinButton). */
   pinsFull: boolean
+  /**
+   * Everything else this message can do - quoting it, forking from it - behind three dots (see
+   * MoreButton). Handed in by the phone alone: at the desk a quote is a selection and a fork is a
+   * command, and neither of those exists under a thumb.
+   */
+  onActions?: () => void
 }
 
-export const UserCard = ({ item, cards, onOpenLink, onReuse, onPin, pinned, pinsFull }: UserCardProps) => {
+export const UserCard = ({ item, cards, onOpenLink, onReuse, onPin, pinned, pinsFull, onActions }: UserCardProps) => {
   const t = useT()
   /*
    * What the copy and reuse buttons do, worked out here rather than on the press: the tooltip has to
@@ -89,6 +96,8 @@ export const UserCard = ({ item, cards, onOpenLink, onReuse, onPin, pinned, pins
             <ReuseArrow />
           </button>
         ) : null}
+
+        {onActions ? <MoreButton className={s.userAction} label={t.feed.moreActions} onClick={onActions} /> : null}
       </div>
     </div>
 

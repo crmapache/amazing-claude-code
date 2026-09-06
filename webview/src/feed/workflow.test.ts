@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { workflowView } from './workflow'
+import { openedAgentOf, workflowView } from './workflow'
+import type { FeedItem, TaskItem } from './types'
 import type { WorkflowProgress } from '../protocol'
 
 const agent = (over: Partial<Extract<WorkflowProgress, { type: 'workflow_agent' }>>): WorkflowProgress => ({
@@ -106,5 +107,59 @@ describe('workflowView', () => {
     ])
 
     expect(view?.log).toEqual(['12 of 40 found', '31 of 40 found'])
+  })
+})
+
+/**
+ * The window over the output area is opened on a place in the feed rather than on a copy of an agent -
+ * see OpenedAgent. Everything here is about that difference.
+ */
+describe('openedAgentOf', () => {
+  const card = (over: Partial<TaskItem> = {}): TaskItem => ({
+    id: 'c1',
+    kind: 'task',
+    target: 'workflow',
+    meta: '',
+    duration: '',
+    percent: 0,
+    log: [],
+    pending: true,
+    workflow: workflowView([agent({ index: 1 }), agent({ index: 2, label: 'review:perf' })]),
+    ...over,
+  })
+
+  it('finds the agent by its number in the card it belongs to', () => {
+    const found = openedAgentOf([card()], { card: 'c1', index: 2 })
+
+    expect(found?.agent.label).toBe('review:perf')
+    expect(found?.live).toBe(true)
+  })
+
+  /*
+   * The run reports as it goes, and the agent that was running when its window was opened finishes a
+   * minute later with an answer in hand - which is the whole reason it was opened. A copy taken at the
+   * press would still be showing an agent at work.
+   */
+  it('answers with the agent as the newest report has it', () => {
+    const later = card({
+      workflow: workflowView([
+        agent({ index: 1 }),
+        agent({ index: 2, label: 'review:perf', state: 'done', resultPreview: '{"findings":[]}' }),
+      ]),
+    })
+
+    expect(openedAgentOf([later], { card: 'c1', index: 2 })?.agent.result).toBe('{"findings":[]}')
+  })
+
+  /* What the report calls running is only running while the task holding it is - see WorkflowRun. */
+  it('carries the task\'s own state, so a dead fleet is not drawn as a working one', () => {
+    expect(openedAgentOf([card({ pending: false })], { card: 'c1', index: 2 })?.live).toBe(false)
+  })
+
+  it('answers with nothing when the card or the agent is gone from the feed', () => {
+    expect(openedAgentOf([card()], { card: 'c9', index: 1 })).toBeUndefined()
+    expect(openedAgentOf([card()], { card: 'c1', index: 9 })).toBeUndefined()
+    expect(openedAgentOf([] as FeedItem[], { card: 'c1', index: 1 })).toBeUndefined()
+    expect(openedAgentOf([card()], undefined)).toBeUndefined()
   })
 })

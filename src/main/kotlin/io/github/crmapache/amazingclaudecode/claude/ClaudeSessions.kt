@@ -65,6 +65,21 @@ internal class ClaudeSessions(
      */
     private val onMoveForced: (sessionId: String) -> Unit = {},
     /**
+     * A live process is about to be replaced while nothing is being said in it.
+     *
+     * The quiet half of a move, and the half that used to go unannounced. A tab whose turn is running is
+     * interrupted, and every client is told (see [onMoveStopping]); a tab standing idle is simply swapped,
+     * and nobody hears a word - which is right about the turn and wrong about everything else the process
+     * was holding. A workflow's fleet, a background subagent, a background command all outlive the turn
+     * that started them and none of them outlives the process: forty agents launched an hour ago die on
+     * the swap, and the cards for them went on ticking for the rest of the day, with a clock counting
+     * against a CLI that no longer existed. That is the complaint this exists for.
+     *
+     * Fired for a renewal too (see [relaunchOn]): the account is the same on both sides of it, but the
+     * process is not, and what dies is exactly the same.
+     */
+    private val onMoveDropping: (sessionId: String) -> Unit = {},
+    /**
      * The conversation has been replaced and stands ready on the account now chosen.
      *
      * The tab is idle from this moment, and on the forced path there is nobody else to say it: a message
@@ -263,9 +278,13 @@ internal class ClaudeSessions(
         // at once - a drawer replaced while a move was already waiting for the same turn - and one move
         // settles both: what it does is raise the process on whatever the register says now.
         val renew = pendingRenewals.remove(sessionId)
-        if (pendingAccounts.remove(sessionId) == null && !renew) return
+        // A move that was waiting for a turn is a move the clients have already been told about: the turn
+        // was interrupted for it and [onMoveStopping] said so. A renewal has told them nothing - no turn
+        // was taken from anybody - so it still owes them the word about what dies with the process.
+        val told = pendingAccounts.remove(sessionId) != null
+        if (!told && !renew) return
 
-        moveTo(sessionId, renew = renew)
+        moveTo(sessionId, renew = renew, told = told)
     }
 
     /**
@@ -283,6 +302,12 @@ internal class ClaudeSessions(
          * been replaced under it (see [relaunchOn]).
          */
         renew: Boolean = false,
+        /**
+         * The clients have already been told that this conversation is losing its process - because a
+         * turn was interrupted for the move (see [onMoveStopping] and [onMoveForced]). Said twice, the
+         * feed would carry two lines about one swap: an interrupted turn AND a dropped process.
+         */
+        told: Boolean = false,
     ) {
         val session = sessions[sessionId] ?: return
         val accountId = ClaudeAccounts.getInstance().currentId
@@ -327,6 +352,12 @@ internal class ClaudeSessions(
         }
 
         forcedMoves.remove(sessionId)?.cancel(false)
+
+        // The process is alive and about to be thrown away, and it is holding work that will not survive
+        // it - see [onMoveDropping]. Only a live one: a tab that never started a process, or whose
+        // process is already gone, has nothing to lose and nothing to announce. And only when nobody has
+        // said it yet - see [told].
+        if (session.isRunning && !told) onMoveDropping(sessionId)
 
         // Continued only if there is something to continue. The CLI mints an identifier the moment a
         // process comes up, before a single word has been said, and asking it to resume that identifier
@@ -387,7 +418,7 @@ internal class ClaudeSessions(
                 DiagnosticsLog.note(DiagnosticsLog.AGENT, "a turn would not stop for an account change")
                 // Whatever it was holding is about to die with it, and only this says so.
                 onMoveForced(sessionId)
-                moveTo(sessionId, force = true)
+                moveTo(sessionId, force = true, told = true)
                 // And only here: every other way into a move has a caller that speaks for the tab a line
                 // later - the end of a turn sends the status itself, a prompt sends the message. Said
                 // twice, the queue drains twice, and the second message is written into the turn the
@@ -623,7 +654,19 @@ internal class ClaudeSessions(
      * be lost silently just because the process is not up. No process needs raising for it: a sleeping
      * conversation simply remembers the choice and starts with it (see ClaudeSession.setModel).
      */
-    fun setModel(sessionId: String, model: String, onApplied: (ClaudeSession.ModelChange) -> Unit = {}) {
+    fun setModel(
+        sessionId: String,
+        model: String,
+        /**
+         * Whether this also becomes what the NEXT tab starts on.
+         *
+         * False for a choice made over the wire (see SessionCommands): from a phone the promise is
+         * about the conversation on screen and nothing else, and writing the machine's settings from a
+         * sofa would decide the shape of work somebody is about to begin at the keyboard.
+         */
+        remember: Boolean = true,
+        onApplied: (ClaudeSession.ModelChange) -> Unit = {},
+    ) {
         session(sessionId).setModel(model) { change ->
             // We remember only what the agent genuinely took - as with the permission mode. Writing the
             // wish down straight away would leave a rejected model in the settings forever: every next
@@ -632,7 +675,7 @@ internal class ClaudeSessions(
             // Against the account as well as the machine, and the account is the one that matters: plans
             // differ in which models they have, so a pick made on one account must not decide what a tab
             // on another starts with (see newSession).
-            if (change.applied) {
+            if (remember && change.applied) {
                 ClaudePreferences.model = change.model
                 ClaudeAccounts.getInstance().rememberChoice(accountOf(sessionId), model = change.model)
             }
@@ -643,10 +686,14 @@ internal class ClaudeSessions(
     /**
      * The effort, and unlike the model the setting is written straight away: this channel never refuses
      * (see ClaudeSession.setEffort), so there is nothing to hold it back for.
+     *
+     * [remember] is the same switch [setModel] carries, and for the same reason.
      */
-    fun setEffort(sessionId: String, effort: String) {
-        ClaudePreferences.effort = effort
-        ClaudeAccounts.getInstance().rememberChoice(accountOf(sessionId), effort = effort)
+    fun setEffort(sessionId: String, effort: String, remember: Boolean = true) {
+        if (remember) {
+            ClaudePreferences.effort = effort
+            ClaudeAccounts.getInstance().rememberChoice(accountOf(sessionId), effort = effort)
+        }
         session(sessionId).setEffort(effort)
     }
 

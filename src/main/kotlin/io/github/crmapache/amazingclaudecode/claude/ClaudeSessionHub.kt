@@ -7,6 +7,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
+import io.github.crmapache.amazingclaudecode.claude.accounts.AccountDesk
 import io.github.crmapache.amazingclaudecode.claude.accounts.AccountsWatch
 import io.github.crmapache.amazingclaudecode.editor.DiskRefresh
 import io.github.crmapache.amazingclaudecode.editor.UnsavedEdits
@@ -96,6 +97,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
                 permissions.withdrawAll(sessionId)
                 sendTurnStopped(sessionId)
             },
+            onMoveDropping = { sessionId ->
+                permissions.withdrawAll(sessionId)
+                sendProcessReplaced(sessionId)
+            },
             onBorn = { sessionId, effort, model, accountId ->
                 sendEffort(sessionId, effort)
                 sendModel(sessionId, model)
@@ -126,14 +131,30 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             usage.refreshTodayTokens()
             usage.refreshModels(ClaudeSessions.MAIN_SESSION)
             // Who that sign-in belongs to is what the accounts row is drawn from, and this is the moment
-            // it becomes known (see ProjectAuth.lastStatus).
-            io.github.crmapache.amazingclaudecode.toolwindow.ClaudePanels.everyPanel { it.accountsRefresh() }
+            // it becomes known (see ProjectAuth.lastStatus). The list as it stands: re-checking here
+            // would start the very process that has this moment finished.
+            accounts.sendList()
         },
         // The figures on the rings belong to the account they were asked about - see ProjectUsage.forget.
         onAccountChanged = { account -> usage.forget(account) },
     )
 
     val catalog: ProjectCatalog = ProjectCatalog(project, this)
+
+    /**
+     * The accounts screen - which subscription pays for the work (see AccountDesk).
+     *
+     * It used to belong to the panel, next to the voice and feedback desks, and its own comment said why:
+     * the window is the one door a paired phone does not physically reach. That is no longer the rule it
+     * is under - the phone drives this screen now (see RemoteCommands) - and the old place was wrong for
+     * a second reason besides. A hub exists for every project a phone has attached to, tool window or
+     * no tool window, and a desk owned by the window simply did not exist there: the very project a
+     * person reaches from a sofa was the one that could not answer about accounts at all.
+     *
+     * Lazy for the reason [conversations] is: building one probes the CLI, and a hub is created by
+     * things that have nothing to do with accounts.
+     */
+    val accounts: AccountDesk by lazy { AccountDesk(project, this, this) }
 
     /** Permissions, plans and questions - everything that stops a turn to wait for a person. */
     val permissions: SessionPermissions = SessionPermissions(this)
@@ -594,7 +615,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // permission appeared" rather than "here is a permission". Only this line knows both sides of
         // it, so it is worked out here and handed on - anywhere else it would be guesswork.
         val before = snapshot(sessionId).get()
-        val after = snapshot(sessionId).updateAndGet { current -> SessionSnapshots.apply(current, trimmed) }
+        val after = snapshot(sessionId).updateAndGet { current -> SessionSnapshots.apply(current, trimmed, at) }
         val reason = NotificationReasons.of(trimmed, before, after)
 
         deliver(stamped)
@@ -1083,8 +1104,8 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      * The context window is asked for anew only on a real change: another model's is a different size,
      * and waiting for the turn's end for that figure serves nothing.
      */
-    fun changeModel(sessionId: String, model: String) {
-        conversations.setModel(sessionId, model) { change ->
+    fun changeModel(sessionId: String, model: String, remember: Boolean = true) {
+        conversations.setModel(sessionId, model, remember) { change ->
             broadcast(
                 sessionId,
                 buildJsonObject {
@@ -1110,8 +1131,8 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      * not in an answer to a question (see ClaudeSession.setEffort). What the panel knows about a
      * conversation's effort, it knows from here and from nowhere else.
      */
-    fun changeEffort(sessionId: String, effort: String) {
-        conversations.setEffort(sessionId, effort)
+    fun changeEffort(sessionId: String, effort: String, remember: Boolean = true) {
+        conversations.setEffort(sessionId, effort, remember)
         sendEffort(sessionId, effort)
     }
 
@@ -1188,6 +1209,25 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
                 put("type", "turnStopped")
                 put("sessionId", sessionId)
                 put("reason", "account")
+            }.toString(),
+        )
+    }
+
+    /**
+     * A live process is being replaced under a tab that was not saying anything - see
+     * ClaudeSessions.onMoveDropping.
+     *
+     * Deliberately not `turnStopped`: no turn is being stopped here, and a client that captioned this as
+     * an interrupted turn would be inventing one. What this actually says is narrower and enough - the
+     * process is gone, so everything that was running inside it is gone with it, whatever the tab's own
+     * status happens to be.
+     */
+    private fun sendProcessReplaced(sessionId: String) {
+        broadcast(
+            sessionId,
+            buildJsonObject {
+                put("type", "processReplaced")
+                put("sessionId", sessionId)
             }.toString(),
         )
     }
@@ -1475,6 +1515,28 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         val to = json.indexOf('"', from)
         return if (to < 0) "" else json.substring(from, to)
     }
+
+    /**
+     * The set of Claude accounts, or which one is current, changed somewhere on this machine.
+     *
+     * The register is the machine's while the figures hang off each project's own hub, so a hub that is
+     * not told goes on drawing the previous account's rings and plan - for five minutes, until the
+     * sign-in round comes round, or indefinitely with nothing else to prompt it.
+     */
+    fun accountsChanged() {
+        accounts.sendList()
+        auth.check()
+    }
+
+    /**
+     * The register was changed in another IDE on this machine - see AccountsWatch.
+     *
+     * The list as it stands and nothing else. [accountsChanged] above re-asks the CLI who is signed in
+     * and puts a usage question to every account, which is right when the change was made here and
+     * pointless when it was read out of a file: nothing about this machine's sign-in has moved, and the
+     * cost would be a process per account per project per open IDE on every press of Select next door.
+     */
+    fun accountsChangedElsewhere() = accounts.sendList(withHealth = false)
 
     override fun dispose() {
         clients.clear()

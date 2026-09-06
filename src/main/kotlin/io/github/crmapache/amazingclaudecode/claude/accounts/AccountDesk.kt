@@ -9,7 +9,6 @@ import io.github.crmapache.amazingclaudecode.claude.ClaudeAuth
 import io.github.crmapache.amazingclaudecode.claude.ClaudeCli
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessions
-import io.github.crmapache.amazingclaudecode.toolwindow.ClaudePanels
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.serialization.json.addJsonObject
@@ -18,15 +17,21 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 
 /**
- * The accounts screen, from the plugin's side: the list it draws and the five things it can ask for.
+ * The accounts screen, from the plugin's side: the list it draws and the things it can ask for.
  *
- * One per panel, beside VoiceDesk and FeedbackDesk and for the same reason - the register itself
- * ([ClaudeAccounts]) is the machine's and knows nothing about screens, while everything here is about
- * one window: which project's directory to probe from, whom to answer.
+ * One per project hub, because the register itself ([ClaudeAccounts]) is the machine's and knows
+ * nothing about screens, while everything here is about one project: whose directory to probe from,
+ * whom to answer.
  *
- * **Nothing here reaches a network client.** The messages are handled at the window's own door (see
- * ClaudePanel), which a phone does not physically reach, and they are listed in RemoteCommands.DENIED
- * besides. What travels to a phone about accounts is one opaque id per conversation and nothing else.
+ * It used to be one per panel, beside VoiceDesk and FeedbackDesk, and the reason written here was that
+ * a network client does not physically reach the window's door. That is no longer the rule this screen
+ * is under - a paired phone drives it now, and the argument for opening it is in RemoteCommands. The
+ * old place was also wrong on its own terms: a hub exists for every project a phone attached to,
+ * whether or not a tool window was ever opened in it, so the projects reached from a sofa were exactly
+ * the ones with no desk to answer them.
+ *
+ * Two things are still refused over the wire and stay so: adding an account and authorizing Claude
+ * Design both end in a terminal and a browser on THIS machine, which nobody on a sofa can finish.
  */
 internal class AccountDesk(
     private val project: Project,
@@ -311,7 +316,7 @@ internal class AccountDesk(
      */
     private fun moveEverything() {
         ClaudeSessionHub.everyHub { it.conversations.switchAllTo() }
-        ClaudePanels.everyPanel { it.accountsChanged() }
+        ClaudeSessionHub.everyHub { it.accountsChanged() }
     }
 
     /** Sign in to another account, in a terminal of this project. */
@@ -350,7 +355,7 @@ internal class AccountDesk(
                         // are re-asked, not just the newcomer's.
                         accounts.list().forEach { hub.usage.forget(it.id) }
                         invalidate()
-                        ClaudePanels.everyPanel { it.accountsChanged() }
+                        ClaudeSessionHub.everyHub { it.accountsChanged() }
                     }
 
                     is AccountSignIn.Outcome.Failed -> {
@@ -416,7 +421,7 @@ internal class AccountDesk(
                 // Conversations still open on the account just signed out of are moved along with the
                 // choice: their credential has been revoked, so the next turn in them would not start at
                 // all. Signing out of an account nobody was working on changes nothing but the list.
-                if (moved) moveEverything() else ClaudePanels.everyPanel { it.accountsChanged() }
+                if (moved) moveEverything() else ClaudeSessionHub.everyHub { it.accountsChanged() }
             },
         )
     }

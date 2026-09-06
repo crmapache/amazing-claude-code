@@ -1,4 +1,5 @@
 import type { WorkflowProgress } from '../protocol'
+import type { FeedItem, TaskItem } from './types'
 
 /**
  * The inside of a running workflow, read out of the CLI's report - see `workflow_progress` in
@@ -21,6 +22,13 @@ export interface WorkflowAgent {
   index: number
   label: string
   state: WorkflowAgentState
+  /**
+   * The name the CLI files this agent's own transcript under - `agent-<agentId>.jsonl` beside the
+   * conversation on disk (checked against a recorded run). It is the only way to reach what this agent
+   * actually said: its events never enter the panel's stream, so without this the fleet is nine labels
+   * and nine durations. See WorkflowAgents.kt, which reads that file when a line is unfolded.
+   */
+  agentId?: string
   model?: string
   /** Milliseconds it took, once it is over. */
   durationMs?: number
@@ -33,6 +41,13 @@ export interface WorkflowAgent {
   /** A resumed run handed this one back from the journal instead of running it again. */
   cached?: boolean
   error?: string
+  /**
+   * The first 400 characters of what it was sent to do, and of what it returned - the CLI cuts both to
+   * that length itself. They are what an unfolded line shows before (or instead of) its transcript: the
+   * whole of it lives on disk, and a run whose files have been swept still has this much.
+   */
+  prompt?: string
+  result?: string
 }
 
 export interface WorkflowPhase {
@@ -91,6 +106,7 @@ export const workflowView = (entries: WorkflowProgress[] | undefined): WorkflowV
       label: entry.label || entry.promptPreview || `#${entry.index}`,
       state: stateOf(entry),
       phaseIndex: entry.phaseIndex,
+      ...(entry.agentId ? { agentId: entry.agentId } : {}),
       ...(entry.model ? { model: entry.model } : {}),
       ...(entry.durationMs !== undefined ? { durationMs: entry.durationMs } : {}),
       ...(entry.startedAt !== undefined ? { startedAt: entry.startedAt } : {}),
@@ -99,6 +115,8 @@ export const workflowView = (entries: WorkflowProgress[] | undefined): WorkflowV
       ...(entry.attempt !== undefined && entry.attempt > 1 ? { attempt: entry.attempt } : {}),
       ...(entry.cached === true ? { cached: true } : {}),
       ...(entry.error ? { error: entry.error } : {}),
+      ...(entry.promptPreview ? { prompt: entry.promptPreview } : {}),
+      ...(entry.resultPreview ? { result: entry.resultPreview } : {}),
     })
   }
 
@@ -146,4 +164,26 @@ const intoPhases = (
   }
 
   return phases
+}
+
+/**
+ * The agent a window is open on, found in the feed as it stands now - see OpenedAgent.
+ *
+ * Looked up rather than copied: the run keeps reporting, and the agent that was running when its window
+ * was opened finishes a minute later with an answer in hand, which is the whole reason it was opened. It
+ * comes back with the task's own state as well, because what the report calls "running" is only running
+ * while the task holding it is (see WorkflowRun's `live`).
+ */
+export const openedAgentOf = (
+  items: FeedItem[],
+  opened: { card: string; index: number } | undefined,
+): { agent: WorkflowAgent; live: boolean } | undefined => {
+  if (!opened) return undefined
+
+  const card = items.find(
+    (item): item is TaskItem => item.kind === 'task' && item.id === opened.card,
+  )
+  const agent = card?.workflow?.phases.flatMap((phase) => phase.agents).find((one) => one.index === opened.index)
+
+  return card && agent ? { agent, live: card.pending } : undefined
 }

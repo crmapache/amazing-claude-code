@@ -249,6 +249,9 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
       // retry, and the card has to stop waiting along with it.
       return applyProcessExited(closeRetry(finishCompacting(state), 'stopped', now), action.exitCode, now)
 
+    case 'processReplaced':
+      return applyProcessReplaced(state, now)
+
     case 'streamPrimed': {
       // The same identifier the first delta would have handed out, and for the same reason: the card
       // being printed and the finished one have to be one node to React, or the reveal animation breaks
@@ -747,21 +750,24 @@ const applyReplayFinished = (state: PanelState, now: number): PanelState => {
  * would otherwise hang there forever - we close them outright and leave an unambiguous note in the feed
  * about what happened.
  */
-const applyProcessExited = (state: PanelState, exitCode: number, now: number): PanelState => {
-  const { items, startedAt } = closeUnfinished(
-    state,
-    now,
-    { reason: 'exited', tone: 'bad' },
-    'none',
-  )
-
-  /**
-   * Background commands outlive this process: a dev server raised by a turn is not going anywhere. But
-   * there is nobody left to report about them - the notifications came from the same CLI that is gone -
-   * and leaving chips with a running clock means showing a knowingly dead counter. The chips are removed,
-   * and into the command's card goes exactly what is true: the panel no longer follows it.
-   */
-  const withBackground = state.background.reduce((current, task) => {
+/**
+ * The background commands, let go of.
+ *
+ * They outlive the process that started them - a dev server raised by a turn is not going anywhere - but
+ * there is nobody left to report about them, because the notifications came from that same CLI. So the
+ * chips are dropped by the caller and into each command's card goes exactly what is true: the panel no
+ * longer follows it. Saying it was interrupted would be a lie about a process that is alive.
+ *
+ * [startedAt] is emptied of them in place, the way [closeUnfinished] empties it: a record left there goes
+ * on recomputing a duration on every tick for as long as the tab is open.
+ */
+const letGoBackground = (
+  items: FeedItem[],
+  background: PanelState['background'],
+  startedAt: Record<string, number>,
+  now: number,
+): FeedItem[] =>
+  background.reduce((current, task) => {
     const started = startedAt[task.id]
     delete startedAt[task.id]
     const duration = started ? formatDuration(now - started) : task.duration
@@ -777,6 +783,16 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
         }))
       : current
   }, items)
+
+const applyProcessExited = (state: PanelState, exitCode: number, now: number): PanelState => {
+  const { items, startedAt } = closeUnfinished(
+    state,
+    now,
+    { reason: 'exited', tone: 'bad' },
+    'none',
+  )
+
+  const withBackground = letGoBackground(items, state.background, startedAt, now)
 
   return {
     ...state,
@@ -805,6 +821,52 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
     ],
   }
 }
+
+/**
+ * The tab's process has been swapped under it - an account chosen, or a second sign-in to the one already
+ * in use - while the tab itself was saying nothing.
+ *
+ * A turn is not what dies here; a turn would have been interrupted, and every client told (see
+ * stoppedForAccount above). What dies is everything that outlives a turn and not the process that holds
+ * it: a workflow's fleet, a background subagent, a background command. Nobody was going to say so - the
+ * old process is not crashing, it is being replaced on purpose - and the cards for them went on ticking
+ * for the rest of the day against a CLI that no longer existed. Forty agents of a review, launched an
+ * hour before the switch, read afterwards as forty agents still at work.
+ *
+ * Silent when there was nothing running: a swap that cost nothing is not news, and a line in the feed
+ * about it would appear on every account change in every idle tab.
+ */
+const applyProcessReplaced = (state: PanelState, now: number): PanelState => {
+  if (!isRunningSomething(state)) return state
+
+  const { items, startedAt } = closeUnfinished(state, now, { reason: 'restarted', tone: 'bad' }, 'none')
+
+  return {
+    ...state,
+    startedAt,
+    // The chips go, like they do on a process's death: a background command may well outlive the CLI
+    // that started it (a dev server does not die with it), but the notifications about it came from
+    // that CLI - so the panel says it has let go rather than showing a clock nobody is winding.
+    background: [],
+    seq: state.seq + 1,
+    items: [
+      ...letGoBackground(items, state.background, startedAt, now),
+      {
+        id: `meta-${state.seq}`,
+        kind: 'meta',
+        // Not the English marker its neighbours carry (see MetaItem.stats): that one travels to the IDE
+        // to say "this turn was cut short, do not push about it", and no turn was cut short here.
+        stats: [],
+        outcome: { state: 'restarted' as const, duration: '' },
+      },
+    ],
+  }
+}
+
+/** Whether anything in this tab is still counting - a call, an agent, a background command. */
+const isRunningSomething = (state: PanelState): boolean =>
+  state.background.length > 0 ||
+  state.items.some((item) => (item.kind === 'task' || item.kind === 'toolGroup') && item.pending)
 
 /**
  * A message's content as a list of blocks - however it arrived.

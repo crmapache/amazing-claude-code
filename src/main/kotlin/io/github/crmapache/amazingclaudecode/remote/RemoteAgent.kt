@@ -1010,6 +1010,18 @@ internal class RemoteAgent : Disposable {
                                 addJsonObject {
                                     put("id", tab.id)
                                     put("title", tab.title)
+                                    /*
+                                     * Where this tab sits in its family: the conversation the chain grew
+                                     * out of, and how deep into it this one is.
+                                     *
+                                     * A fork is not a conversation like the others and a list that draws
+                                     * it like one is lying about what it is: it carries its parent's
+                                     * whole transcript, and answering in it is answering somewhere else.
+                                     * The two fields are what the strip of tabs is grouped and indented
+                                     * by, exactly as at the desk (see tabs.ts and the Header).
+                                     */
+                                    put("groupId", tab.groupId)
+                                    put("depth", tab.depth)
                                     // Whether that name means anything yet. A phone writing the first
                                     // message into a tab has to name it, exactly as the panel does -
                                     // and this is what tells it the tab is still called "new session"
@@ -1017,6 +1029,21 @@ internal class RemoteAgent : Disposable {
                                     put("titleSource", tab.titleSource)
                                     put("status", snapshot.status)
                                     put("awaitsYou", snapshot.awaitsYou)
+                                    /*
+                                     * What it is stopped for, and since when.
+                                     *
+                                     * The list on a phone is read to decide whether to get up, and
+                                     * "waiting on you" alone does not answer that: a permission is one
+                                     * tap and a plan is a page. The moment is what lets the same row say
+                                     * "working · 2m 40s" or "done · 14:02" - counted against the clock
+                                     * sent as `at` above, never against the phone's own (see
+                                     * mobile/clock.ts).
+                                     *
+                                     * Both are a word and a number; what is actually being asked stays
+                                     * inside the conversation, which is where somebody goes to read it.
+                                     */
+                                    if (snapshot.awaits.isNotEmpty()) put("awaits", snapshot.awaits)
+                                    if (snapshot.changedAt > 0) put("since", snapshot.changedAt)
                                     // The other two states the panel's own dot has, so that one mark
                                     // means the same thing on both screens: work that is done, and a
                                     // conversation whose process died under it. Neither can be worked

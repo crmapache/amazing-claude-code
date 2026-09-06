@@ -241,7 +241,9 @@ export const MetaRow = ({ item }: { item: MetaItem }) => {
       ? t.feed.result.stopped(item.outcome.duration)
       : item.outcome.state === 'movedAccount'
         ? t.feed.result.movedAccount(item.outcome.duration)
-        : t.feed.result.worked(item.outcome.duration)
+        : item.outcome.state === 'restarted'
+          ? t.feed.result.restarted
+          : t.feed.result.worked(item.outcome.duration)
     : ''
 
   return <div className={s.meta}>{text ? <span>{text}</span> : null}</div>

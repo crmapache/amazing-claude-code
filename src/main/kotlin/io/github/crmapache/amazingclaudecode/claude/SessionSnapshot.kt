@@ -49,6 +49,19 @@ internal data class SessionSnapshot(
      * "work finished while this tab was alive" rather than "this conversation has ever done anything".
      */
     val worked: Boolean = false,
+    /**
+     * When this conversation last changed what it is doing, by this machine's clock.
+     *
+     * What the list on a phone writes beside a row: "working · 2m 40s" while a turn runs, "done · 14:02"
+     * once it has stopped. Neither can be worked out on the other side - a phone is told the state of a
+     * conversation it is not watching, never its feed, so it has no moment to count from and no moment
+     * to name (see RemoteAgent.inventoryBody, which sends this alongside the machine's own clock).
+     *
+     * Stamped on a change of status alone rather than on every message: a running turn that printed a
+     * hundred lines began when it began, and a counter restarted by each of them would read as a turn
+     * that never gets anywhere.
+     */
+    val changedAt: Long = 0,
     /** Permission cards this conversation is stopped on, by request id. */
     val pendingPermissions: Set<String> = emptySet(),
     /** Plans awaiting a decision, by the id of the card in the feed. */
@@ -66,7 +79,30 @@ internal data class SessionSnapshot(
     val awaitsYou: Boolean
         get() = pendingPermissions.isNotEmpty() || pendingPlans.isNotEmpty() || pendingAsks.isNotEmpty()
 
+    /**
+     * What kind of answer it is stopped for, when it is stopped for one.
+     *
+     * A list on a phone is read to decide whether to get up, and the three cost very different things:
+     * a permission is one tap, a question is a choice between two lines, a plan is a page to read. The
+     * order is that of what is cheapest to settle, which is also the order they tend to arrive in.
+     *
+     * A word rather than the request itself - what exactly is being asked lives in the conversation, and
+     * the list is not the place to read it.
+     */
+    val awaits: String
+        get() = when {
+            pendingPermissions.isNotEmpty() -> AWAITS_PERMISSION
+            pendingAsks.isNotEmpty() -> AWAITS_QUESTION
+            pendingPlans.isNotEmpty() -> AWAITS_PLAN
+            else -> ""
+        }
+
     companion object {
+
+        const val AWAITS_PERMISSION = "perm"
+        const val AWAITS_QUESTION = "ask"
+        const val AWAITS_PLAN = "plan"
+
         const val STATUS_IDLE = "idle"
         const val STATUS_RUNNING = "running"
 
@@ -94,7 +130,7 @@ internal object SessionSnapshots {
      * The snapshot after this message. Returns the same instance when nothing in it is affected -
      * which is the usual case, because most of what travels is feed content.
      */
-    fun apply(snapshot: SessionSnapshot, json: String): SessionSnapshot {
+    fun apply(snapshot: SessionSnapshot, json: String, at: Long = 0): SessionSnapshot {
         if (!touches(json)) return snapshot
 
         val payload = runCatching { Json.parseToJsonElement(json).jsonObject }.getOrNull() ?: return snapshot
@@ -105,6 +141,10 @@ internal object SessionSnapshots {
                 val state = text("state").ifEmpty { snapshot.status }
                 snapshot.copy(
                     status = state,
+                    // Only when it genuinely moved: the same status said twice is not a new beginning,
+                    // and a running turn re-stamped by every repeat would count from the wrong second
+                    // (see SessionSnapshot.changedAt).
+                    changedAt = if (state == snapshot.status) snapshot.changedAt else at,
                     // A turn that was running and is not any more is a turn that ended - whether the agent
                     // finished it or the person stopped it, both leave work behind them. A process that
                     // died mid-turn does not come through here (see "processExited" below), so a crash
@@ -149,7 +189,7 @@ internal object SessionSnapshots {
 
             // A dead process leaves nothing running: saying so now is cheaper than letting a client
             // work it out from a feed that simply stops.
-            "processExited" -> snapshot.copy(crashed = true, status = SessionSnapshot.STATUS_IDLE)
+            "processExited" -> snapshot.copy(crashed = true, status = SessionSnapshot.STATUS_IDLE, changedAt = at)
 
             "agent" -> applyAgentEvent(snapshot, payload)
 

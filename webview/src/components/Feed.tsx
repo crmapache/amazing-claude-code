@@ -143,6 +143,15 @@ interface FeedProps {
    * pin button and so no strip either (the same way the reuse button is absent there).
    */
   onPin?: (id: string) => void
+  /**
+   * Everything else one message can do - quoting it, forking from it - opened from three dots on the
+   * card (see MoreButton and mobile/screens/MessageSheet).
+   *
+   * The phone's alone. At the desk each of those actions already has a better home: a quote is made by
+   * selecting the words it should be, a fork is a slash command. Under a thumb there is no selection
+   * menu and no way to type a command without losing the draft, so the card carries the way in.
+   */
+  onActions?: (item: FeedItem) => void
 }
 
 export const Feed = ({
@@ -167,6 +176,7 @@ export const Feed = ({
   place,
   pins,
   onPin,
+  onActions,
 }: FeedProps) => {
   const view = useRef<HTMLElement | null>(null)
   const t = useT()
@@ -753,6 +763,7 @@ export const Feed = ({
               onPin={onPin}
               pinned={pins?.includes(item.id) ?? false}
               pinsFull={pinsFull}
+              onActions={onActions}
             />
           </div>
         ))}
@@ -818,6 +829,8 @@ interface ItemViewProps {
   pinned: boolean
   /** Whether the strip is already full: the pin button says so before it is pressed - see PinButton. */
   pinsFull: boolean
+  /** The three dots on a card, and what they open - the phone's alone (see FeedProps). */
+  onActions?: (item: FeedItem) => void
 }
 
 /**
@@ -846,10 +859,12 @@ const ItemView = memo(({
   onPin,
   pinned,
   pinsFull,
+  onActions,
 }: ItemViewProps) => {
   // Built here rather than handed down as a prop: a fresh closure in the props of a memoized card would
   // undo the memo for every card in the feed on every chunk of a printing answer.
   const pin = onPin ? () => onPin(item.id) : undefined
+  const actions = onActions ? () => onActions(item) : undefined
 
   switch (item.kind) {
     case 'user':
@@ -862,6 +877,7 @@ const ItemView = memo(({
           onPin={pin}
           pinned={pinned}
           pinsFull={pinsFull}
+          onActions={actions}
         />
       )
 
@@ -869,7 +885,16 @@ const ItemView = memo(({
       return <BashCard item={item} />
 
     case 'text':
-      return <TextCard item={item} onOpenLink={onOpenLink} onPin={pin} pinned={pinned} pinsFull={pinsFull} />
+      return (
+        <TextCard
+          item={item}
+          onOpenLink={onOpenLink}
+          onPin={pin}
+          pinned={pinned}
+          pinsFull={pinsFull}
+          onActions={actions}
+        />
+      )
 
     case 'think':
       return <ThinkRow item={item} open={cards.isOpen(item.id)} onToggle={() => cards.toggle(item.id)} />

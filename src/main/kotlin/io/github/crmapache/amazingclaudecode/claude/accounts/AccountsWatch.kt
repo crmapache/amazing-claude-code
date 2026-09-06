@@ -7,7 +7,6 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.util.concurrency.AppExecutorUtil
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
-import io.github.crmapache.amazingclaudecode.toolwindow.ClaudePanels
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -65,7 +64,7 @@ internal class AccountsWatch {
         // and puts a usage question to every account; from here there is nothing to ask - the answer came
         // out of the file - and doing it anyway would mean a process per account per project per IDE
         // every time somebody in the next window presses Select.
-        ClaudePanels.everyPanel { it.accountsChangedElsewhere() }
+        ClaudeSessionHub.everyHub { it.accountsChangedElsewhere() }
     }
 
     companion object {

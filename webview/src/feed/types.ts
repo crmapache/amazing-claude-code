@@ -183,6 +183,15 @@ export type ClosedReason =
    * was interrupted would be a lie about a process that is alive.
    */
   | 'untracked'
+  /**
+   * The tab's process was replaced on purpose - an account chosen, a second sign-in to the one already
+   * in use - and this did not survive the swap.
+   *
+   * Apart from 'exited' because nothing broke, and apart from 'stopped' because nobody pressed anything:
+   * what was running was running outside any turn (a workflow's fleet, a background agent), and it was
+   * the process under it that went (see processReplaced in protocol.ts).
+   */
+  | 'restarted'
 
 /**
  * The short summary at the end of a tool's line - "· 42 lines", "· no matches", "· +12 −4".
@@ -608,7 +617,7 @@ export interface MetaItem {
    * marker in [stats] stays the same English "Stopped by you" for both, because what reads it wants to
    * know one thing - that this turn was cut short and is not worth a notification.
    */
-  outcome?: { state: 'worked' | 'stopped' | 'movedAccount'; duration: string }
+  outcome?: { state: 'worked' | 'stopped' | 'movedAccount' | 'restarted'; duration: string }
 }
 
 /** How a chain of retries ended: the request went through, the CLI gave up, or the turn was interrupted. */

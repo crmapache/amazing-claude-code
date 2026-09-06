@@ -36,83 +36,6 @@
   color: var(--acc-fg);
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  gap: var(--acc-sp-2);
-  padding: calc(env(safe-area-inset-top) + var(--acc-sp-3)) var(--acc-sp-5) var(--acc-sp-3);
-  border-bottom: 1px solid var(--acc-line);
-  background: var(--acc-bg-raised);
-}
-
-/* The mark, at the size of the line it stands in rather than of a heading: this screen's subject is the
-   list under it, and an icon big enough to be noticed twice would be one more thing to look past. */
-.headerLogo {
-  flex: none;
-  width: 26px;
-  height: 26px;
-  /* The asset carries its own rounded corners; the radius is here for the day it stops doing that. */
-  border-radius: 7px;
-  display: block;
-}
-
-.headerTitle {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 15px;
-  font-weight: 500;
-}
-
-.headerMeta {
-  font-size: 11px;
-  color: var(--acc-fg-dim);
-}
-
-.headerAction {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  min-height: var(--acc-hit);
-  /* Pulled back out by as much as it is padded, so the word lands on the gutter while the target a
-     thumb has to hit stays the size of a thumb. */
-  margin: 0 calc(var(--acc-sp-2) * -1);
-  padding: 0 var(--acc-sp-2);
-  color: var(--acc-accent);
-  font-size: 15px;
-  background: none;
-}
-
-/* --- Which machines are reachable ------------------------------------------- */
-
-/*
- * The first question this screen answers, above everything it lists: is the machine on.
- *
- * A dot rather than a sentence because it is read every time and read at a glance, and a word beside it
- * whenever the answer is anything other than plain yes - a colour alone cannot say the difference
- * between "reconnecting" and "asleep", and those are the two a person actually acts on differently.
- */
-.agents {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--acc-sp-2) var(--acc-sp-5);
-  border-bottom: 1px solid var(--acc-line);
-  background: var(--acc-bg-raised);
-}
-
-.agent {
-  display: flex;
-  align-items: center;
-  gap: var(--acc-sp-2);
-  min-width: 0;
-  font-size: 12px;
-  color: var(--acc-fg-dim);
-}
-
 .dot {
   flex: none;
   width: 8px;
@@ -127,30 +50,6 @@
   background: var(--acc-ok);
   /* A faint halo, so the lit state reads as lit on a phone held at arm's length in daylight. */
   box-shadow: 0 0 0 3px var(--acc-ok-12);
-}
-
-.agentLabel {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agentState {
-  flex: none;
-  color: var(--acc-fg-fainter);
-}
-
-/* Small and set apart from the name it belongs to: it is worth having and not worth finding by accident. */
-.agentForget {
-  flex: none;
-  min-height: 28px;
-  margin-left: auto;
-  padding: 0 var(--acc-sp-2);
-  border: 1px solid var(--acc-line);
-  border-radius: var(--acc-r-pill);
-  color: var(--acc-fg-dim);
-  font-size: 11px;
-  background: none;
 }
 
 /*
@@ -323,73 +222,6 @@
  * are the same height because they stand next to each other - one target 44 tall beside one 52 tall is
  * the kind of mismatch a hand notices before an eye does.
  */
-.projectFoot {
-  display: grid;
-  grid-template-columns: 1fr var(--acc-tap);
-  gap: var(--acc-sp-2);
-  margin-top: var(--acc-sp-3);
-}
-
-.projectNew {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: var(--acc-tap);
-  height: var(--acc-tap);
-  border: 1px solid var(--acc-accent-line);
-  border-radius: var(--acc-r-pill);
-  background: var(--acc-accent-12);
-}
-
-/*
- * The plus, drawn as two lines rather than typed as a character.
- *
- * A glyph sits on a font's baseline, so "+" in a box this size stands a pixel or two above the middle
- * of it and no amount of line-height puts it back honestly - and the fonts a phone falls back to draw
- * it at different weights besides.
- */
-.projectNew::before,
-.projectNew::after {
-  content: '';
-  position: absolute;
-  border-radius: 1px;
-  background: var(--acc-accent);
-}
-
-.projectNew::before {
-  width: 17px;
-  height: 1.5px;
-}
-
-.projectNew::after {
-  width: 1.5px;
-  height: 17px;
-}
-
-/* A closed project's only way in, so it keeps its words and the whole row: a bare plus over "not open
-   in the IDE right now" says nothing about the tap opening the project too. */
-.projectOpen {
-  grid-column: 1 / -1;
-  min-height: var(--acc-tap);
-  padding: 0 var(--acc-sp-3);
-  border: 1px solid var(--acc-accent-line);
-  border-radius: var(--acc-r-pill);
-  color: var(--acc-accent);
-  font-size: 13px;
-  background: var(--acc-accent-12);
-}
-
-.projectNew:disabled,
-.projectOpen:disabled {
-  border-color: var(--acc-line);
-  color: var(--acc-fg-fainter);
-  background: none;
-}
-
-.projectNew:disabled::before,
-.projectNew:disabled::after {
-  background: var(--acc-fg-fainter);
-}
 
 /* What was put away. Quieter than anything it stands under: it is a way back, not an invitation. */
 .projectHidden {
@@ -403,25 +235,6 @@
   font-size: 12px;
   background: none;
   text-align: left;
-}
-
-/* Quieter than the plus beside it: going back to something is a second thought, not the first. */
-.projectHistory {
-  min-width: 0;
-  height: var(--acc-tap);
-  padding: 0 var(--acc-sp-4);
-  border: 1px solid var(--acc-line-strong);
-  border-radius: var(--acc-r-pill);
-  color: var(--acc-fg-dim);
-  font-size: 13px;
-  /* The same surface as the conversations above it: on this card everything that can be tapped stands
-     one step up from it, and only the plus beside this one is tinted (see .projectNew). */
-  background: var(--acc-bg-card);
-  text-align: left;
-}
-
-.projectHistory:disabled {
-  color: var(--acc-fg-fainter);
 }
 
 .projectQuiet {
@@ -587,17 +400,6 @@
   font-size: 15px;
 }
 
-/* The heading over the projects that are merely remembered. Small and quiet: it separates two kinds of
-   thing rather than announcing anything. */
-.sectionTitle {
-  margin: var(--acc-sp-3) 0 var(--acc-sp-2);
-  padding: 0 var(--acc-sp-5);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--acc-fg-fainter);
-}
-
 /* --- Choosing what a conversation starts on ---------------------------------- */
 
 /* One card holding the three choices, in the same shape a project is drawn in: on a screen this size,
@@ -751,6 +553,18 @@
   gap: 8px;
 }
 
+.queueBadge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--acc-r-round);
+  background: var(--acc-bg-control);
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-dim);
+}
+
 .queueText {
   flex: 1 1 auto;
   overflow: hidden;
@@ -835,47 +649,6 @@
   width: 1px;
   height: 16px;
   background: var(--acc-line);
-}
-
-.branch {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex: 1 1 auto;
-  min-width: 0;
-  font: var(--acc-fs-meta, 12px) / 1.4 var(--acc-mono);
-  color: var(--acc-ok-light);
-}
-
-.branch svg {
-  flex: none;
-  width: 12px;
-  height: 12px;
-}
-
-/* The branch gives way rather than pushing the PR off the row: which branch one is on is usually
-   readable from its first few characters, while "PR #12" is unreadable a character short. */
-.branchName {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pr {
-  flex: none;
-  height: 38px;
-  padding: 0 0 0 var(--acc-sp-2);
-  border: none;
-  background: none;
-  font: var(--acc-fs-meta, 12px) / 1.4 var(--acc-mono);
-  color: var(--acc-branch-light);
-}
-
-.prNone {
-  flex: none;
-  padding-left: var(--acc-sp-2);
-  font: var(--acc-fs-meta, 12px) / 1.4 var(--acc-mono);
-  color: var(--acc-fg-ghost);
 }
 
 /* --- The photos waiting to go with the message ------------------------------- */
@@ -1020,10 +793,6 @@
   align-items: center;
   gap: var(--acc-sp-2);
   padding: var(--acc-sp-2) var(--acc-sp-5) var(--acc-sp-4);
-}
-
-.spacer {
-  flex: 1 1 auto;
 }
 
 .iconBtn {
@@ -1567,4 +1336,1654 @@
   margin: 10px 0 0;
   font-size: 13px;
   color: var(--acc-danger, #e06c75);
+}
+
+/* ===========================================================================
+   The shell the rebuild added: a header of two lines, a strip of tabs, a side
+   menu, and the screens behind it.
+
+   Everything here paints with the panel's own tokens rather than with values of
+   its own (see tokens.css). The design these screens were drawn from is written
+   in raw hex, and every one of those colours turned out to be a token already -
+   which is the point: a phone that quietly drifts half a shade from the desk is
+   a phone that reads as a different product.
+   =========================================================================== */
+
+/* --- Headers ---------------------------------------------------------------
+   Two shapes, and they differ in what they are for. The home screen's carries a
+   title and, under it, which machines are reachable. A screen inside carries a
+   back arrow, a title with what it belongs to under it, and at most two actions.
+   Neither puts a title on the same line as anything that could squeeze it: that
+   was the fault the whole header was redrawn for. */
+
+.homeHeader,
+.threadHeader {
+  flex: none;
+  padding: calc(env(safe-area-inset-top) + var(--acc-sp-3)) var(--acc-sp-3) 0;
+  border-bottom: 1px solid var(--acc-line);
+  background: var(--acc-bg-raised);
+}
+
+.homeHeadRow,
+.threadHeadRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--acc-sp-1);
+}
+
+.homeHeadRow {
+  align-items: center;
+}
+
+.homeTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* The title and what it belongs to, stacked. The second line is the one that used
+   to lose: a project with a long name ate the conversation's name beside it. */
+.threadTitles {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--acc-sp-1) 0 var(--acc-sp-2);
+}
+
+.threadTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15.5px;
+  font-weight: 600;
+}
+
+.threadWhere {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 11px/1.3 var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+/* A square the size of a thumb with a glyph in the middle - the target stays 44
+   wide however small the drawing inside it is. */
+.headerIcon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--acc-hit);
+  height: var(--acc-hit);
+  border: none;
+  border-radius: var(--acc-r-pill);
+  background: none;
+  color: var(--acc-fg-body);
+  cursor: pointer;
+}
+
+.headerIconGlyph {
+  width: 18px;
+  height: 18px;
+}
+
+/* The one header action that is a word rather than a shape: "refresh" has no
+   drawing everybody already knows. */
+.headerWord {
+  flex: none;
+  min-height: var(--acc-hit);
+  padding: 0 var(--acc-sp-2);
+  border: none;
+  background: none;
+  color: var(--acc-accent);
+  font: 13px var(--acc-font);
+  cursor: pointer;
+}
+
+.homeAgents {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--acc-sp-2) var(--acc-sp-4);
+  padding: 0 0 var(--acc-sp-3) calc(var(--acc-hit) - var(--acc-sp-3));
+}
+
+.homeAgent {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+  min-width: 0;
+}
+
+.homeAgentLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 11.5px/1 var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.homeAgentState {
+  font: 11.5px/1 var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+/* --- The band headings and the cards under them ---------------------------- */
+
+.bandTitle {
+  margin: var(--acc-sp-5) 0 var(--acc-sp-2);
+  font: 600 10px/1 var(--acc-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--acc-fg-fainter);
+}
+
+.bandTitle:first-child {
+  margin-top: 0;
+}
+
+.bandHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--acc-sp-2);
+  margin: var(--acc-sp-5) 0 var(--acc-sp-2);
+}
+
+.bandHead:first-child {
+  margin-top: 0;
+}
+
+.bandTitleInline {
+  flex: 1 1 auto;
+  font: 600 10px/1 var(--acc-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--acc-fg-fainter);
+}
+
+.bandCount {
+  flex: none;
+  font: 11.5px var(--acc-mono);
+  color: var(--acc-c-mint-4);
+}
+
+/* The plain card every list on these screens is made of - a bordered box whose
+   children draw their own separators. */
+.card {
+  margin-bottom: var(--acc-sp-3);
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-card);
+  background: var(--acc-bg-raised);
+  overflow: hidden;
+}
+
+.screenNote {
+  margin: var(--acc-sp-3) 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--acc-fg-dim);
+}
+
+.noteOk,
+.noteBad {
+  margin: 0 0 var(--acc-sp-3);
+  padding: var(--acc-sp-3);
+  border-radius: var(--acc-r-pill);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.noteOk {
+  background: var(--acc-branch-10);
+  color: var(--acc-branch-light);
+}
+
+.noteBad {
+  background: rgb(var(--acc-ch-rose) / 12%);
+  color: var(--acc-c-rose-4);
+}
+
+/* --- The band of what is waiting, at the top of the first screen ------------ */
+
+.waitCard {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  width: 100%;
+  padding: var(--acc-sp-4);
+  margin-bottom: var(--acc-sp-2);
+  border: 1px solid var(--acc-accent-line);
+  border-radius: var(--acc-r-card);
+  background: var(--acc-accent-12);
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.waitMain {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.waitKind {
+  font: 600 10px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--acc-accent-light);
+}
+
+.waitTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--acc-fg);
+}
+
+.waitWhere {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--acc-fg-faint);
+}
+
+.waitAction {
+  flex: none;
+  display: grid;
+  place-items: center;
+  height: 36px;
+  padding: 0 var(--acc-sp-3);
+  border-radius: var(--acc-r-pill);
+  background: var(--acc-accent);
+  color: var(--acc-on-accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* --- A project's card ------------------------------------------------------ */
+
+.projectBranch {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+  min-width: 0;
+  font: 11px/1 var(--acc-mono);
+  color: var(--acc-c-mint-4);
+}
+
+.projectBranchIcon {
+  flex: none;
+  width: 11px;
+  height: 11px;
+}
+
+.projectBranchName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projectPr {
+  flex: none;
+  color: var(--acc-branch-light);
+}
+
+.countWaiting,
+.countOpen {
+  flex: none;
+  padding: 4px var(--acc-sp-2);
+  border-radius: var(--acc-r-round);
+  font: 11px/1 var(--acc-mono);
+}
+
+.countWaiting {
+  background: var(--acc-accent-12);
+  color: var(--acc-accent-light);
+}
+
+.countOpen {
+  background: rgb(var(--acc-ch-mist) / 12%);
+  color: var(--acc-fg-dim);
+}
+
+/* The two ways out of a project's card, on one row at its foot. Equal halves
+   rather than a word and a square: at this width a square with a plus in it read
+   as the card's own title bar rather than as the way into a conversation. */
+.projectFoot {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--acc-sp-2);
+  padding: var(--acc-sp-3) var(--acc-sp-4);
+  border-top: 1px solid var(--acc-bg-panel);
+}
+
+.projectFoot:only-child,
+.projectFoot > :only-child {
+  grid-column: 1 / -1;
+}
+
+.footButton {
+  min-width: 0;
+  min-height: var(--acc-hit);
+  padding: 0 var(--acc-sp-3);
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-pill);
+  background: var(--acc-bg-card);
+  color: var(--acc-fg-body);
+  font: 13px var(--acc-font);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.footButton:disabled {
+  opacity: 0.45;
+}
+
+.footButtonAccent {
+  border-color: var(--acc-accent-line);
+  background: var(--acc-accent-12);
+  color: var(--acc-accent);
+  font-weight: 600;
+}
+
+/* --- A conversation's row -------------------------------------------------- */
+
+.chatText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chatState {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--acc-fg-faint);
+}
+
+.chatStateWaiting {
+  color: var(--acc-accent-light);
+}
+
+.chatChevron {
+  flex: none;
+  color: var(--acc-fg-ghost);
+  font-size: 15px;
+}
+
+/* --- The strip of tabs, under the thread's title --------------------------- */
+
+.tabStrip {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+  padding: 0 0 var(--acc-sp-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabStrip::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  max-width: 60vw;
+  padding: 0 var(--acc-sp-3);
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-pill);
+  background: var(--acc-bg-card);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.tabOn {
+  border-color: var(--acc-accent-40);
+  background: var(--acc-accent-16);
+}
+
+/* The group's colour, as at the desk: a fork and its parent carry one bar. */
+.tabBar {
+  flex: none;
+  width: 2px;
+  height: 14px;
+  border-radius: 1px;
+}
+
+.tabDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--acc-r-round);
+  background: var(--acc-fg-ghost);
+}
+
+.tabFork {
+  flex: none;
+  color: var(--acc-branch-light);
+  font-size: 12px;
+}
+
+.tabLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 12.5px/1 var(--acc-font);
+  color: var(--acc-fg-dim);
+}
+
+.tabOn .tabLabel {
+  color: var(--acc-fg);
+}
+
+.tabPlus {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px dashed var(--acc-line-strong);
+  border-radius: var(--acc-r-pill);
+  background: none;
+  color: var(--acc-fg-dim);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+/* --- The banner that says something is waiting ----------------------------- */
+
+.waitingBannerText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waitingBannerChevron {
+  flex: none;
+  font-size: 15px;
+}
+
+/* --- The task-list row above the field ------------------------------------- */
+
+.taskRow {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  width: 100%;
+  padding: var(--acc-sp-2) var(--acc-sp-4);
+  border: none;
+  border-bottom: 1px solid var(--acc-bg-panel);
+  background: none;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.taskRowLabel {
+  flex: none;
+  font: 600 10px/1 var(--acc-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--acc-fg-faint);
+}
+
+.taskRowText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--acc-fg-body);
+}
+
+.taskRowCount {
+  flex: none;
+  font: 11.5px/1 var(--acc-mono);
+  color: var(--acc-c-mint-4);
+}
+
+.taskRowChevron {
+  flex: none;
+  color: var(--acc-fg-ghost);
+  font-size: 14px;
+}
+
+/* --- How the turn runs: the chip in the meter row, and the row under it ----- */
+
+.runChip {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 var(--acc-sp-3);
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-pill);
+  background: var(--acc-bg-card);
+  cursor: pointer;
+}
+
+.runChipIcon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--acc-fg-fainter);
+}
+
+.runChipText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  font: 12px/1 var(--acc-mono);
+  color: var(--acc-fg-body);
+}
+
+.runChipMode {
+  color: var(--acc-c-sand-4);
+}
+
+.runChipChevron {
+  flex: none;
+  color: var(--acc-fg-ghost);
+  font-size: 13px;
+}
+
+/* The turn in progress and the button that ends it - a row of its own, which is
+   what took Stop out of the row of actions and stopped Send being squeezed off
+   the edge of the screen. */
+.runRow {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  padding: var(--acc-sp-2) var(--acc-sp-4);
+  border-bottom: 1px solid var(--acc-bg-panel);
+  background: rgb(var(--acc-ch-sand) / 6%);
+}
+
+.runRowText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 12.5px/1 var(--acc-mono);
+  color: var(--acc-c-sand-4);
+}
+
+.runRowQueue {
+  flex: none;
+  padding: 0 var(--acc-sp-2);
+  min-height: 32px;
+  border: none;
+  background: none;
+  font: 12.5px/1 var(--acc-mono);
+  color: var(--acc-fg-dim);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.stopGlyph {
+  width: 10px;
+  height: 10px;
+}
+
+/* --- Quotes waiting above the field ---------------------------------------- */
+
+.quoteList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--acc-sp-2) var(--acc-sp-4) 0;
+}
+
+.quoteRow {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+  padding: var(--acc-sp-2) var(--acc-sp-3);
+  border-left: 2px solid var(--acc-c-orchid);
+  border-radius: 0 var(--acc-r-pill) var(--acc-r-pill) 0;
+  background: var(--acc-bg-card);
+}
+
+.quoteText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--acc-fg-dim);
+}
+
+/* --- The row of actions, as a grid that wraps ------------------------------ */
+
+.toolIcons {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.toolSend {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+}
+
+/* --- The side menu ---------------------------------------------------------
+   Over the screen rather than beside it: at this width a drawer that pushes the
+   content aside leaves neither of them readable. */
+
+.drawerScrim {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: rgb(var(--acc-ch-shade) / 55%);
+}
+
+.drawer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(314px, 86%);
+  display: flex;
+  flex-direction: column;
+  background: var(--acc-bg-raised);
+  border-right: 1px solid var(--acc-line);
+  box-shadow: 18px 0 44px rgb(var(--acc-ch-shade) / 62%);
+}
+
+.drawerHead {
+  flex: none;
+  padding: calc(env(safe-area-inset-top) + var(--acc-sp-3)) var(--acc-sp-4) var(--acc-sp-3);
+  border-bottom: 1px solid var(--acc-bg-panel);
+}
+
+.drawerBrand {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  margin-bottom: var(--acc-sp-3);
+}
+
+.drawerLogo {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: block;
+}
+
+.drawerName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.drawerAgents {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.drawerAgent {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+  min-width: 0;
+}
+
+.drawerAgentLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 12px var(--acc-mono);
+  color: var(--acc-fg-body);
+}
+
+.drawerAgentState {
+  flex: none;
+  font: 11px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.drawerForget {
+  flex: none;
+  padding: 0 var(--acc-sp-2);
+  /* The target is a thumb's while the row stays the height of its text: the negative margin gives the
+     press its 44 pixels back without pushing the two status lines apart. */
+  min-height: var(--acc-hit);
+  margin-block: -8px;
+  border: none;
+  background: none;
+  font: 11px var(--acc-mono);
+  color: var(--acc-c-rose-4);
+  cursor: pointer;
+}
+
+.drawerNav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--acc-sp-2) var(--acc-sp-2) var(--acc-sp-5);
+}
+
+.drawerRow {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  width: 100%;
+  min-height: 48px;
+  padding: 0 var(--acc-sp-3);
+  border: none;
+  border-radius: var(--acc-r-pill);
+  background: none;
+  color: var(--acc-fg-body);
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.drawerRowOn {
+  background: var(--acc-accent-12);
+  color: var(--acc-fg);
+}
+
+.drawerIcon {
+  flex: none;
+  width: 18px;
+  text-align: center;
+  color: var(--acc-fg-fainter);
+}
+
+.drawerRowOn .drawerIcon {
+  color: var(--acc-accent);
+}
+
+.drawerLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+
+.drawerBadge {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: var(--acc-r-round);
+  background: var(--acc-accent-20);
+  color: var(--acc-accent-light);
+  font: 10.5px var(--acc-mono);
+}
+
+.drawerValue,
+.drawerValueAgent {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 11px var(--acc-mono);
+}
+
+.drawerValue {
+  color: var(--acc-fg-fainter);
+}
+
+.drawerValueAgent {
+  color: var(--acc-agent-light);
+}
+
+.drawerRule {
+  height: 1px;
+  margin: var(--acc-sp-2) var(--acc-sp-3);
+  background: var(--acc-bg-panel);
+}
+
+.drawerFoot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--acc-sp-2);
+  padding: var(--acc-sp-3) var(--acc-sp-4) calc(env(safe-area-inset-bottom) + var(--acc-sp-5));
+  border-top: 1px solid var(--acc-bg-panel);
+}
+
+.drawerFootLine {
+  font: 11px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.drawerFootLink {
+  font-size: 12.5px;
+  color: var(--acc-accent);
+  text-decoration: none;
+}
+
+/* --- The sheets ------------------------------------------------------------ */
+
+.sheetTitleGroup {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sheetMeta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 11px var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+/* The row of buttons at a sheet's foot, inside the safe area. Equal halves where
+   there are two of them, full width where there is one. */
+.sheetFooter {
+  flex: none;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--acc-sp-3);
+  padding: var(--acc-sp-3) var(--acc-sp-4) calc(env(safe-area-inset-bottom) + var(--acc-sp-5));
+}
+
+.sheetLabel {
+  margin: var(--acc-sp-3) 0 var(--acc-sp-2);
+  font: 600 10px/1 var(--acc-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--acc-fg-fainter);
+}
+
+.sheetLabelRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--acc-sp-2);
+  margin: var(--acc-sp-3) 0 var(--acc-sp-2);
+}
+
+.sheetLabelInline {
+  flex: 1 1 auto;
+  font: 600 10px/1 var(--acc-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--acc-fg-fainter);
+}
+
+.sheetNote {
+  margin: var(--acc-sp-2) 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--acc-fg-fainter);
+}
+
+/* One line of a menu inside a sheet: a glyph, a name, and a reason under it. */
+.sheetAction {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  width: 100%;
+  min-height: var(--acc-tap);
+  padding: var(--acc-sp-2) var(--acc-sp-3);
+  border: none;
+  border-radius: var(--acc-r-pill);
+  background: none;
+  color: var(--acc-fg);
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.sheetActionOff {
+  opacity: 0.45;
+}
+
+.sheetActionGlyph {
+  flex: none;
+  width: 20px;
+  text-align: center;
+  color: var(--acc-fg-fainter);
+  font-size: 15px;
+}
+
+.sheetActionText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sheetActionName {
+  font-size: 15.5px;
+}
+
+.sheetActionHint {
+  font-size: 12px;
+  color: var(--acc-fg-faint);
+}
+
+/* What the message sheet is about, quoted under its heading. */
+.selectedLine {
+  margin: 0 var(--acc-sp-3) var(--acc-sp-3);
+  padding-left: var(--acc-sp-3);
+  border-left: 2px solid var(--acc-accent);
+  font: 13px/1.5 var(--acc-mono);
+  color: var(--acc-fg-body);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* --- The tabs sheet -------------------------------------------------------- */
+
+.tabRow {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  width: 100%;
+  min-height: var(--acc-tap);
+  padding: 0 var(--acc-sp-3);
+  margin-bottom: 2px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-pill);
+  background: var(--acc-bg-card);
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.tabRowOn {
+  border-color: var(--acc-accent-40);
+  background: var(--acc-accent-16);
+}
+
+.tabRowBar {
+  flex: none;
+  width: 2px;
+  height: 24px;
+  border-radius: 1px;
+}
+
+.tabRowTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14.5px;
+  color: var(--acc-fg-body);
+}
+
+.tabRowOn .tabRowTitle {
+  color: var(--acc-fg);
+}
+
+/* --- The run sheet --------------------------------------------------------- */
+
+.chipWrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--acc-sp-2);
+}
+
+.pickChip {
+  height: 42px;
+  padding: 0 var(--acc-sp-4);
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-pill);
+  background: var(--acc-bg-card);
+  color: var(--acc-fg-dim);
+  font: 13px var(--acc-mono);
+  cursor: pointer;
+}
+
+.pickChip:disabled {
+  opacity: 0.4;
+}
+
+.pickChipOn {
+  border-color: var(--acc-accent-40);
+  background: var(--acc-accent-16);
+  color: var(--acc-fg);
+}
+
+.lockedTag {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-c-sand-2);
+}
+
+.lockedRow {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  padding: var(--acc-sp-3);
+  border: 1px solid rgb(var(--acc-ch-sand) / 35%);
+  border-radius: var(--acc-r-pill);
+  background: rgb(var(--acc-ch-sand) / 8%);
+}
+
+.lockedName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14.5px;
+  color: var(--acc-c-sand-4);
+}
+
+.lockedNow {
+  flex: none;
+  font-size: 12px;
+  color: var(--acc-fg-faint);
+}
+
+/* --- Tasks, agents and background commands --------------------------------- */
+
+.todoRow {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  padding: var(--acc-sp-3);
+  border-top: 1px solid var(--acc-bg-panel);
+}
+
+.todoRow:first-child {
+  border-top: none;
+}
+
+.todoRowActive {
+  background: rgb(var(--acc-ch-sand) / 6%);
+}
+
+.todoBox {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border: 1.5px solid var(--acc-line-strong);
+  border-radius: 5px;
+  color: var(--acc-on-accent);
+  font-size: 12px;
+}
+
+.todoBoxDone {
+  border-color: var(--acc-c-mint-2);
+  background: var(--acc-c-mint-2);
+}
+
+.todoBoxActive {
+  border-color: var(--acc-c-sand-2);
+}
+
+.todoText {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--acc-fg);
+}
+
+.todoTextDone {
+  color: var(--acc-fg-fainter);
+  text-decoration: line-through;
+}
+
+.todoRunning {
+  flex: none;
+  font: 600 9.5px/1 var(--acc-mono);
+  letter-spacing: 0.1em;
+  color: var(--acc-c-sand-2);
+}
+
+.agentRow {
+  display: flex;
+  align-items: stretch;
+  margin-bottom: var(--acc-sp-2);
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-card);
+  background: var(--acc-bg-raised);
+  overflow: hidden;
+}
+
+.agentRowLive {
+  border-color: var(--acc-agent-line);
+  background: var(--acc-agent-12);
+}
+
+.agentMain {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  padding: var(--acc-sp-3);
+  border: none;
+  background: none;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.agentText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.agentName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14.5px;
+  color: var(--acc-fg-body);
+}
+
+.agentRowLive .agentName {
+  color: var(--acc-agent-light);
+}
+
+.agentMeta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 11px var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.agentStop {
+  flex: none;
+  width: var(--acc-hit);
+  border: none;
+  border-left: 1px solid var(--acc-bg-panel);
+  background: none;
+  color: var(--acc-c-rose-4);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.agentStopWide {
+  flex: none;
+  height: 36px;
+  padding: 0 var(--acc-sp-3);
+  margin-top: var(--acc-sp-2);
+  border: 1px solid rgb(var(--acc-ch-rose) / 40%);
+  border-radius: var(--acc-r-pill);
+  background: none;
+  color: var(--acc-c-rose-4);
+  font: 12.5px var(--acc-font);
+  cursor: pointer;
+}
+
+.agentHeadName {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--acc-agent-light);
+}
+
+.dotAgentLive {
+  background: var(--acc-agent);
+  animation: acc-pulse 1.5s ease-in-out infinite;
+}
+
+.bgRow {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  padding: var(--acc-sp-3);
+  margin-bottom: var(--acc-sp-2);
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-card);
+  background: var(--acc-bg-raised);
+}
+
+.bgChip {
+  flex: none;
+  padding: 1px 7px 2px;
+  border-radius: 4px;
+  background: rgb(var(--acc-ch-sand) / 16%);
+  color: var(--acc-c-sand-4);
+  font: 600 10.5px/1.5 var(--acc-mono);
+}
+
+.bgCommand {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 12.5px var(--acc-mono);
+  color: var(--acc-fg-body);
+}
+
+.bgTime {
+  flex: none;
+  font: 11px var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.bgStop {
+  flex: none;
+  height: 34px;
+  padding: 0 var(--acc-sp-3);
+  border: 1px solid rgb(var(--acc-ch-rose) / 40%);
+  border-radius: var(--acc-r-pill);
+  background: none;
+  color: var(--acc-c-rose-4);
+  font: 12.5px var(--acc-font);
+  cursor: pointer;
+}
+
+/* --- MCP servers ----------------------------------------------------------- */
+
+.serverRow {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  padding: var(--acc-sp-3);
+  border-top: 1px solid var(--acc-bg-panel);
+}
+
+.serverRow:first-child {
+  border-top: none;
+}
+
+/* A server somebody switched off is drawn as switched off rather than left out: absent, it reads as a
+   server that was never configured. */
+.serverRowOff {
+  opacity: 0.6;
+}
+
+.serverText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.serverName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 14px var(--acc-mono);
+  color: var(--acc-fg);
+}
+
+.serverState {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 11px var(--acc-mono);
+  color: var(--acc-fg-fainter);
+}
+
+.serverStateWarn {
+  color: var(--acc-c-sand-2);
+}
+
+.serverStateBad {
+  color: var(--acc-c-rose-4);
+}
+
+/* An action that happens somewhere else, drawn as a fact rather than as a button:
+   a control that cannot work is worse than a sentence saying where it lives. */
+.atDesk {
+  flex: none;
+  display: grid;
+  place-items: center;
+  height: 34px;
+  padding: 0 var(--acc-sp-3);
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-pill);
+  color: var(--acc-fg-ghost);
+  font: 12.5px var(--acc-font);
+}
+
+.rowButton,
+.rowButtonPrimary,
+.rowButtonDanger {
+  flex: none;
+  min-height: 34px;
+  padding: 0 var(--acc-sp-3);
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-pill);
+  background: var(--acc-bg-card);
+  color: var(--acc-fg-body);
+  font: 12.5px var(--acc-font);
+  cursor: pointer;
+}
+
+.rowButtonPrimary {
+  border-color: transparent;
+  background: var(--acc-accent);
+  color: var(--acc-on-accent);
+  font-weight: 600;
+}
+
+.rowButtonDanger {
+  border-color: rgb(var(--acc-ch-rose) / 40%);
+  background: none;
+  color: var(--acc-c-rose-4);
+}
+
+.wideButton {
+  width: 100%;
+  min-height: var(--acc-tap);
+  margin-bottom: var(--acc-sp-3);
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-card);
+  background: var(--acc-bg-card);
+  color: var(--acc-fg-body);
+  font: 14px var(--acc-font);
+  cursor: pointer;
+}
+
+/* --- Forms ----------------------------------------------------------------- */
+
+.formRow {
+  padding: var(--acc-sp-3) var(--acc-sp-3) 0;
+}
+
+.input {
+  width: 100%;
+  min-height: var(--acc-hit);
+  padding: 0 var(--acc-sp-3);
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-pill);
+  background: var(--acc-bg);
+  color: var(--acc-fg);
+  font: 15px var(--acc-mono);
+}
+
+.formNote {
+  margin: var(--acc-sp-3) var(--acc-sp-3) 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--acc-c-sand-4);
+}
+
+.formActions {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+  padding: var(--acc-sp-3);
+}
+
+.formActions > * {
+  flex: 1 1 auto;
+}
+
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 4px;
+  padding: 3px;
+  margin: var(--acc-sp-3);
+  border-radius: var(--acc-r-card);
+  background: var(--acc-bg-deep);
+}
+
+.segment {
+  min-width: 0;
+  min-height: 38px;
+  border: none;
+  border-radius: var(--acc-r-pill);
+  background: none;
+  color: var(--acc-fg-dim);
+  font: 13px var(--acc-font);
+  cursor: pointer;
+}
+
+.segmentOn {
+  background: var(--acc-bg-control);
+  color: var(--acc-fg);
+  font-weight: 600;
+}
+
+/* --- Plugins --------------------------------------------------------------- */
+
+.pluginRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--acc-sp-3);
+  padding: var(--acc-sp-3);
+  border-top: 1px solid var(--acc-bg-panel);
+}
+
+.pluginRow:first-child {
+  border-top: none;
+}
+
+.pluginRowOff {
+  opacity: 0.6;
+}
+
+.pluginText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pluginName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 14px var(--acc-mono);
+  color: var(--acc-fg);
+}
+
+.pluginMeta {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--acc-fg-faint);
+}
+
+.pluginOn,
+.pluginOff {
+  flex: none;
+  padding: 3px var(--acc-sp-2);
+  border-radius: var(--acc-r-round);
+  font: 10.5px var(--acc-mono);
+}
+
+.pluginOn {
+  background: rgb(var(--acc-ch-mint) / 12%);
+  color: var(--acc-c-mint-4);
+}
+
+.pluginOff {
+  background: rgb(var(--acc-ch-mist) / 12%);
+  color: var(--acc-fg-fainter);
+}
+
+/* --- Claude accounts ------------------------------------------------------- */
+
+.payingCard {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--acc-sp-3);
+  margin-bottom: var(--acc-sp-3);
+  border: 1px solid var(--acc-accent-line);
+  border-radius: var(--acc-r-card);
+  background: var(--acc-accent-08);
+}
+
+.payingLabel {
+  font: 600 10px/1 var(--acc-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--acc-accent-light);
+  margin-bottom: 5px;
+}
+
+.payingName {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.payingWhere {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 11.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.accountRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--acc-sp-2);
+  padding: var(--acc-sp-3);
+  border-top: 1px solid var(--acc-bg-panel);
+}
+
+.accountRow:first-child {
+  border-top: none;
+}
+
+.accountHead {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+  min-width: 0;
+}
+
+.accountName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.accountCurrent,
+.accountPending {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: var(--acc-r-round);
+  font: 10px var(--acc-mono);
+}
+
+.accountCurrent {
+  background: var(--acc-accent-16);
+  color: var(--acc-accent-light);
+}
+
+.accountPending {
+  background: rgb(var(--acc-ch-sand) / 16%);
+  color: var(--acc-c-sand-4);
+}
+
+/* The plan and the address, in that order and on every row - the shape that makes
+   two rows comparable without being read. */
+.accountFacts {
+  display: flex;
+  align-items: baseline;
+  gap: var(--acc-sp-2);
+  min-width: 0;
+  font: 11px var(--acc-mono);
+}
+
+.accountPlan {
+  flex: none;
+  color: var(--acc-fg-dim);
+}
+
+.accountAddress {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--acc-fg-fainter);
+}
+
+.accountMeters {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-4);
+}
+
+.accountMeter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 11px var(--acc-mono);
+}
+
+.accountMeterName,
+.accountMeterEmpty {
+  color: var(--acc-fg-fainter);
+}
+
+.accountActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--acc-sp-2);
 }

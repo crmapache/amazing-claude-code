@@ -201,6 +201,15 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
     case 'processExited':
       return collect({ kind: 'processExited', exitCode: message.exitCode })
 
+    /*
+     * The tab's process was replaced while the tab was idle (see processReplaced). The phone needs this
+     * for the same reason as the desk and rather more: a workflow's fleet is the one thing here that
+     * runs for half an hour with nobody looking, and the switch that killed it was made somewhere this
+     * screen cannot see.
+     */
+    case 'processReplaced':
+      return collect({ kind: 'processReplaced' })
+
     case 'replayFinished':
       return collect({ kind: 'replayFinished' })
 

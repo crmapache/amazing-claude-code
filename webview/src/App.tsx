@@ -15,6 +15,7 @@ import {
   withRefusedMode,
 } from './catalog'
 import { AgentStreamView } from './components/AgentStreamView'
+import { WorkflowAgentView } from './components/items/WorkflowAgentView'
 import { AskPanel } from './components/AskPanel'
 import { Composer } from './components/Composer'
 import {
@@ -78,6 +79,7 @@ import { normalizeSendKey, sendKeyOptions, sendKeySummary, type SendKey } from '
 import { reusableMessage } from './feed/reuse'
 import { isUntouchedTab, tabHolding } from './feed/resume'
 import { chatHits, rowOf } from './feed/search'
+import { openedAgentOf } from './feed/workflow'
 import { deriveSessionTitle } from './feed/title'
 import {
   appendChip,
@@ -142,6 +144,12 @@ import {
   type SoundMemory,
   type SoundPrefs,
 } from './sounds'
+import {
+  AgentTranscriptContext,
+  type AgentTranscript,
+  type AgentTranscripts,
+} from './hooks/useAgentTranscript'
+import { OpenAgentContext, type OpenedAgent } from './hooks/useOpenAgent'
 import { planDecisionOf, useCardState, type CardState } from './hooks/useCardState'
 import { useEarlierPages } from './hooks/useEarlierPages'
 import { Search, type SearchTab } from './components/Search'
@@ -1803,11 +1811,42 @@ export const App = () => {
             })
             break
 
+          /** What one agent of a workflow did, read off its own transcript - see WorkflowAgents.kt. */
+          case 'agentTranscript':
+            setAgentTranscripts((current) => ({
+              ...current,
+              // `of` is carried over from the request this answers - it is what keeps a finished agent
+              // from being read again on every repaint.
+              [message.agentId]: {
+                of: current[message.agentId]?.of,
+                ...(message.found
+                  ? {
+                      state: 'ready' as const,
+                      prompt: message.prompt,
+                      steps: message.steps,
+                      output: message.output,
+                      truncated: message.truncated,
+                    }
+                  : { state: 'missing' as const }),
+              },
+            }))
+            break
+
           case 'processExited':
             feed({
               session: message.sessionId,
               action: { kind: 'processExited', exitCode: message.exitCode },
             })
+            break
+
+          /**
+           * The tab's process was swapped under it while it was saying nothing - see processReplaced.
+           *
+           * Not the same as a stopped turn beside it: there was no turn. What it closes is the work that
+           * outlives a turn and dies with the process - a workflow's fleet above all.
+           */
+          case 'processReplaced':
+            feed({ session: message.sessionId, action: { kind: 'processReplaced' } })
             break
 
           case 'picked':
@@ -2297,6 +2336,54 @@ export const App = () => {
   const openFile = useCallback(
     (request: OpenFileRequest) => send({ type: 'openFile', ...request }),
     [],
+  )
+
+  /**
+   * What the fleet's agents said, for the lines that show them (see useAgentTranscript).
+   *
+   * Kept by agent rather than by tab: the identifier is the CLI's own and unique across the machine, so
+   * a card read again - in this tab, in another one, after the workflow has long finished - is answered
+   * out of what was already read. Asked for one line at a time and never in advance: a fleet of forty
+   * holds forty transcripts of a megabyte each, and what is worth reading is the one somebody opened.
+   */
+  const [agentTranscripts, setAgentTranscripts] = useState<Record<string, AgentTranscript>>({})
+
+  /**
+   * The agent whose window is open over the output area, named by where it stands - see OpenedAgent.
+   *
+   * By the tab as well, like the search capsule beside it: a window opened in one conversation has no
+   * business standing over another, and the numbers a card is named by start again in every feed.
+   */
+  const [openedAgent, setOpenedAgent] = useState<OpenedAgent | undefined>(undefined)
+
+  const openAgent = useCallback(
+    (card: string, index: number) => setOpenedAgent({ session: active, card, index }),
+    [active],
+  )
+
+  const closeAgent = useCallback(() => setOpenedAgent(undefined), [])
+
+  const shownAgent = useMemo(
+    () => openedAgentOf(panel.items, openedAgent?.session === active ? openedAgent : undefined),
+    [panel.items, openedAgent, active],
+  )
+
+  const transcripts = useMemo<AgentTranscripts>(
+    () => ({
+      of: (agentId: string) => agentTranscripts[agentId],
+      request: (agentId: string, state: string) => {
+        const known = agentTranscripts[agentId]
+        // Not while an answer is on its way, and not twice for the same state of the same agent: the
+        // caller's effect re-runs on every answer that arrives for anybody (see AgentLine).
+        if (known && (known.state === 'loading' || known.of === state)) return
+        setAgentTranscripts((current) => ({
+          ...current,
+          [agentId]: { ...current[agentId], state: 'loading', of: state },
+        }))
+        send({ type: 'agentTranscript', sessionId: active, agentId })
+      },
+    }),
+    [agentTranscripts, active],
   )
 
   const dismissError = useCallback(
@@ -3825,6 +3912,8 @@ export const App = () => {
     <LocaleProvider locale={locale}>
     <OpenFileContext.Provider value={openFile}>
     <KnownFilesContext.Provider value={known}>
+    <AgentTranscriptContext.Provider value={transcripts}>
+    <OpenAgentContext.Provider value={openAgent}>
     <div
       className={s.panel}
       ref={setPanelNode}
@@ -3995,6 +4084,12 @@ export const App = () => {
           ) : (
             <AgentStreamView item={activeTask} />
           )}
+
+          {/* One agent of a fleet, over the whole output area - the feed and the agent screen alike, since
+              a workflow's card is read in both (see WorkflowAgentView). */}
+          {shownAgent ? (
+            <WorkflowAgentView agent={shownAgent.agent} live={shownAgent.live} onClose={closeAgent} />
+          ) : null}
 
           {selection && resolvedStream === 'main' ? (
             <SelectionMenu
@@ -4477,6 +4572,8 @@ export const App = () => {
         />
       ) : null}
     </div>
+    </OpenAgentContext.Provider>
+    </AgentTranscriptContext.Provider>
     </KnownFilesContext.Provider>
     </OpenFileContext.Provider>
     </LocaleProvider>

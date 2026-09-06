@@ -595,6 +595,54 @@ describe('building the feed out of the agent stream', () => {
     expect(meta.at(-1)?.stats).toEqual(['Stopped by you'])
   })
 
+  /**
+   * The quiet half of an account switch: the tab was saying nothing, so no turn is interrupted and none
+   * of the machinery above fires - while the fleet a workflow launched an hour ago dies with the process
+   * all the same. Before this its card ticked on for the rest of the day against a CLI that was gone.
+   */
+  it('closes the work a swapped process was holding, even with no turn running', () => {
+    const launched = play([
+      toolUseEvent('w1', 'Workflow', { description: 'Review the checkout' }),
+      {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'wf-1',
+        tool_use_id: 'w1',
+        description: 'Review the checkout',
+        task_type: 'local_workflow',
+      },
+      toolResultEvent('w1', 'Workflow launched in background. Task ID: wf-1\nSummary: Review the checkout'),
+      { type: 'result', subtype: 'success', duration_ms: 3000, usage: {} } as AgentEvent,
+    ])
+
+    const running = launched.items.find((item): item is TaskItem => item.kind === 'task')
+    expect(running?.pending).toBe(true)
+
+    const swapped = reducePanel(launched, { kind: 'processReplaced' }, 1_700_000_010_000)
+    const task = swapped.items.find((item): item is TaskItem => item.kind === 'task')
+
+    expect(task?.pending).toBe(false)
+    expect(task?.outcome).toBe('stopped')
+    expect(task?.log.at(-1)?.note).toEqual({ kind: 'closed', reason: 'restarted' })
+    // The clock goes with the card: a record left here recomputes a duration on every tick, for ever.
+    expect(swapped.startedAt['wf-1']).toBeUndefined()
+
+    // And a line in the feed, because a card nobody has open says nothing to somebody looking at the
+    // conversation - which is exactly the state this arrives in.
+    const meta = swapped.items.filter((item) => item.kind === 'meta')
+    expect(meta.at(-1)?.outcome).toEqual({ state: 'restarted', duration: '' })
+    // Not the English marker its neighbours carry: no turn was cut short, so there is nothing to keep a
+    // push from announcing (see MetaItem.stats).
+    expect(meta.at(-1)?.stats).toEqual([])
+  })
+
+  it('says nothing about a swapped process when nothing was running in it', () => {
+    // An account switch touches every tab of every project, and most of them are sitting idle: a line in
+    // the feed for each would be a line about nothing, in every conversation at once.
+    const quiet = play(streamEvents())
+    expect(reducePanel(quiet, { kind: 'processReplaced' }, 1_700_000_010_000)).toBe(quiet)
+  })
+
   it('does not zero the context gauge on a service turn: it never went to the model at all', () => {
     // That is how a /model closes, for instance: the CLI runs the command itself, without a request to the
     // model, and sends zeroes in the result - taken for a snapshot of the window, the gauge fell to zero

@@ -66,8 +66,39 @@ const wfAgent = (
   phaseIndex: 1,
   model: 'claude-opus-5',
   state: 'start',
+  // The name its own transcript is filed under - what an unfolded line is read by (see WorkflowRun and
+  // WorkflowAgents.kt). The CLI mints a hex string of its own; here the number will do.
+  agentId: `a${index}fbb0c1de2f3a4b5c`,
+  // Both cut to 400 characters, exactly as the CLI cuts them (measured on recorded runs). They are what
+  // an unfolded line shows where the transcript cannot be read, so a fleet without them would leave that
+  // half of the card untried.
+  promptPreview: WF_PROMPT_PREVIEW,
+  ...(over.state === 'done' ? { resultPreview: WF_RESULT_PREVIEW } : {}),
   ...over,
 })
+
+/** The errand as the report carries it: the first 400 characters and a mark that it goes on. */
+const WF_PROMPT_PREVIEW = `${[
+  '## Code-review finder',
+  '',
+  '## Review scope',
+  'Diff command: git diff main...HEAD',
+  'Changed files (12): src/checkout/totals.ts, src/checkout/summary.tsx, src/checkout/cart.ts, src/checkout/env.ts, src/checkout/guard.ts, src/api/orders.ts',
+  '',
+  'Report every finding as an object with file, line, summary and a failure scenario. Say nothing about style.',
+].join('\n').slice(0, 400)}…`
+
+/** And the answer - which for an agent with a schema is the opening of its JSON, and nothing more. */
+const WF_RESULT_PREVIEW = `${JSON.stringify({
+  findings: [
+    {
+      file: 'src/checkout/totals.ts',
+      line: 41,
+      summary: 'A discount larger than the subtotal makes the total negative.',
+      failure_scenario: 'Cart of 900, a 1000-off coupon: the total comes out at -100 and the charge is created for it.',
+    },
+  ],
+}).slice(0, 400)}…`
 
 export const scenariosCards: Scenario[] = [
   /**
@@ -1280,6 +1311,48 @@ export const scenariosCards: Scenario[] = [
       }),
       ...textReply('Five findings survived the verification pass - the worst of them is in the totals, where a discount can go negative.'),
       turnResult(184000),
+    ]),
+    /**
+     * A second fleet, and the account switched while it works.
+     *
+     * The turn is over by then - a workflow runs as a background task, and the answer above is written
+     * long before the fleet finishes - so nothing here is an interrupted turn: the process is simply
+     * replaced under a tab that is saying nothing, and everything it was holding goes with it. Before
+     * this the panel said nothing at all, and the card counted up for the rest of the day against a CLI
+     * that no longer existed (see processReplaced in protocol.ts).
+     */
+    checkpoint('A second fleet goes out', [
+      toolUse('Workflow', { description: 'Verify the fixes across the same four dimensions' }, 'c14-wf2'),
+      agent({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'c14-wf2-id',
+        tool_use_id: 'c14-wf2',
+        description: 'Verify the fixes across the same four dimensions',
+        task_type: 'local_workflow',
+      }),
+      toolResult(
+        'c14-wf2',
+        'Workflow launched in background. Task ID: c14-wf2-id\nSummary: Verify the fixes across the same four dimensions',
+      ),
+      agent({
+        type: 'system',
+        subtype: 'task_progress',
+        task_id: 'c14-wf2-id',
+        description: 'Verify: totals',
+        workflow_progress: [
+          { type: 'workflow_phase', index: 1, title: 'Verify' },
+          wfAgent(1, 'verify:totals', { state: 'start', startedAt: Date.now() - 3100 }),
+          wfAgent(2, 'verify:summary', { state: 'start', startedAt: Date.now() - 1400 }),
+          wfAgent(3, 'verify:cart', {}),
+        ],
+      }),
+      turnResult(9000),
+      wait(1500),
+    ]),
+    checkpoint('The account is switched under it, and the fleet does not survive it', [
+      shell({ type: 'processReplaced', sessionId: SESSION }),
+      wait(1200),
     ]),
   ]),
 

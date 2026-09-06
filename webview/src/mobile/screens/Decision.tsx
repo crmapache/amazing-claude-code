@@ -87,9 +87,14 @@ export const Decision = ({
 
   return (
     <>
-      <header className={m.header}>
-        <Back onClick={onBack} />
-        <span className={m.headerTitle}>{title}</span>
+      <header className={m.threadHeader}>
+        <div className={m.threadHeadRow}>
+          <Back onClick={onBack} />
+          <span className={m.threadTitles}>
+            <span className={m.threadTitle}>{title}</span>
+            <span className={m.threadWhere}>{project}</span>
+          </span>
+        </div>
       </header>
 
       <div className={m.decisionBody}>

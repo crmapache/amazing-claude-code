@@ -1,6 +1,6 @@
 import { describeWhen } from '../../feed/when'
 import type { HistoryEntry } from '../../protocol'
-import type { ProjectEntry } from './Sessions'
+import type { ProjectEntry } from '../projects'
 import { Back } from './Back'
 import { Magnifier } from '../../components/SearchCapsule'
 import m from '../mobile.module.css'
@@ -30,13 +30,17 @@ export const History = ({ project, conversations, onOpen, onBack, onSearch }: Hi
 
   return (
   <>
-    <header className={m.header}>
-      <Back onClick={onBack} />
-      <span className={m.headerTitle}>{t.mobile.history.title}</span>
-      <span className={m.headerMeta}>{project.name}</span>
-      <button type="button" className={m.headerAction} onClick={onSearch} aria-label={t.search.title}>
-        <Magnifier size={18} />
-      </button>
+    <header className={m.threadHeader}>
+      <div className={m.threadHeadRow}>
+        <Back onClick={onBack} />
+        <span className={m.threadTitles}>
+          <span className={m.threadTitle}>{t.mobile.history.title}</span>
+          <span className={m.threadWhere}>{project.name}</span>
+        </span>
+        <button type="button" className={m.headerIcon} onClick={onSearch} aria-label={t.search.title}>
+          <Magnifier size={18} />
+        </button>
+      </div>
     </header>
 
     <div className={m.list}>
