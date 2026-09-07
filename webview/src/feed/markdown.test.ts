@@ -401,6 +401,14 @@ describe('plainLine', () => {
     expect(plainLine('')).toBe('')
     expect(plainLine('\n\n')).toBe('')
   })
+
+  // A display formula carries `math` on the paragraph rather than on the one part holding its text, and
+  // partsText only reads the flag off a part - so this used to come back as bare TeX with no dollars at
+  // all, unlike the same formula written inline a few lines below.
+  it('keeps the dollars around a formula standing on its own', () => {
+    expect(plainLine('$$E = mc^2$$')).toBe('$$E = mc^2$$')
+    expect(plainLine('so $E = mc^2$ follows')).toBe('so $E = mc^2$ follows')
+  })
 })
 
 /** What the "copy the whole reply" button puts in the clipboard. */
@@ -450,6 +458,27 @@ describe('paragraphsText', () => {
     )
   })
 
+  /**
+   * A formula is the one inline piece that keeps its markup in a copy - see partsText. Everything else
+   * loses it, and a formula stripped of its dollars is a piece of TeX nothing reads back as a formula.
+   */
+  it('carries a formula out as the formula it was', () => {
+    const source = ['$$', 'E = mc^2', '$$'].join('\n')
+    expect(copied(source)).toBe(source)
+    expect(parseParagraphs(copied(source))).toEqual(parseParagraphs(source))
+  })
+
+  it('carries a formula inside a line out with its dollars', () => {
+    expect(copied('so $E = mc^2$ follows')).toBe('so $E = mc^2$ follows')
+    expect(parseParagraphs(copied('so $E = mc^2$ follows'))).toEqual(parseParagraphs('so $E = mc^2$ follows'))
+  })
+
+  it('spells a one-line formula out on three, and reads back the same', () => {
+    const source = '$$E = mc^2$$'
+    expect(copied(source)).toBe(['$$', 'E = mc^2', '$$'].join('\n'))
+    expect(parseParagraphs(copied(source))).toEqual(parseParagraphs(source))
+  })
+
   // On a single newline two paragraphs became one wherever the copied text is read as markdown.
   it('separates the paragraphs with an empty line', () => {
     expect(copied(['First I will look at the file.', '', 'Then I will fix it.'].join('\n'))).toBe(
@@ -495,5 +524,291 @@ describe('paragraphsText', () => {
     expect(copied(source)).toBe(source)
     // And it survives the round trip: the copy parses back into the same single block.
     expect(parseParagraphs(copied(source))).toEqual(parseParagraphs(source))
+  })
+})
+
+/**
+ * The dollar is an ordinary character in an answer about code, so most of what is checked here is the
+ * other half: where a formula must NOT be read. The measurement behind it is in markdown.ts - across
+ * every transcript on this machine not one run of `$$` was mathematics.
+ */
+describe('formulas inside a line', () => {
+  it('reads a formula written between dollars', () => {
+    expect(parseInline('so $E = mc^2$ follows')).toEqual([
+      { text: 'so ' },
+      { text: 'E = mc^2', math: true },
+      { text: ' follows' },
+    ])
+  })
+
+  it('reads a formula written the TeX way', () => {
+    expect(parseInline('so \\(a^2 + b^2\\) follows')).toEqual([
+      { text: 'so ' },
+      { text: 'a^2 + b^2', math: true },
+      { text: ' follows' },
+    ])
+  })
+
+  // Unlike a bare dollar, `\(...\)` cannot be mistaken for a price or a shell variable, so it is not held
+  // to the "not glued to a letter" rule at all - a formula written this way and stuck to the word beside
+  // it is still read as a formula rather than left as text with its backslashes bare.
+  it('reads a formula written the TeX way even glued to the word beside it', () => {
+    expect(parseInline('written as a\\(x\\)b in the file')).toEqual([
+      { text: 'written as a' },
+      { text: 'x', math: true },
+      { text: 'b in the file' },
+    ])
+  })
+
+  it('reads two formulas in one line', () => {
+    expect(parseInline('$x$ and $y$')).toEqual([
+      { text: 'x', math: true },
+      { text: ' and ' },
+      { text: 'y', math: true },
+    ])
+  })
+
+  // The one that would have hurt daily. A price is written with a dollar in front of it, twice in a
+  // sentence as often as once.
+  it('leaves prices alone', () => {
+    expect(parseInline('it costs $5 and $10 a month')).toEqual([{ text: 'it costs $5 and $10 a month' }])
+  })
+
+  // Two prices glued together with no space between them: the closing dollar of the first sits right
+  // against the digit that opens the second. Refused by `beside`, in every alphabet the panel writes
+  // numbers in, rather than by a second, ASCII-only digit check inside the pattern itself.
+  it('leaves two prices stuck together with no space between them alone', () => {
+    expect(parseInline('$5$10')).toEqual([{ text: '$5$10' }])
+  })
+
+  it('leaves shell variables alone', () => {
+    expect(parseInline('read $HOME and $PATH')).toEqual([{ text: 'read $HOME and $PATH' }])
+  })
+
+  it('leaves a template literal alone', () => {
+    expect(parseInline('written as $${cost} in the string')).toEqual([{ text: 'written as $${cost} in the string' }])
+  })
+
+  it('leaves an escaped dollar alone', () => {
+    expect(parseInline('costs \\$5 today')).toEqual([{ text: 'costs \\$5 today' }])
+  })
+
+  // Backticks win by standing first in the line, so a dollar inside code is code as it always was.
+  it('leaves a dollar inside backticks to the code span', () => {
+    expect(parseInline('run `echo $PATH` first')).toEqual([
+      { text: 'run ' },
+      { text: 'echo $PATH', code: true },
+      { text: ' first' },
+    ])
+  })
+
+  /**
+   * The one the harness caught, and the shape of it is ordinary prose: a price, a comma, and a path in
+   * backticks a few words later. The closing dollar was the one in front of HOME, and everything between
+   * went to the renderer - the code span along with it.
+   */
+  it('leaves a price alone when a path in backticks follows it', () => {
+    expect(parseInline('the retry $10, `$HOME` and $PATH are read the same')).toEqual([
+      { text: 'the retry $10, ' },
+      { text: '$HOME', code: true },
+      { text: ' and $PATH are read the same' },
+    ])
+  })
+
+  // The same trap as the backtick one above, minus the word character next to the close that catches
+  // that one: nothing but digits and punctuation sits on either side, so a code span or a bold run
+  // between two accidental dollars used to be handed to KaTeX whole, backticks or asterisks and all.
+  it('leaves a code span or bold text alone when nothing but punctuation sits against the dollars', () => {
+    expect(parseInline('cost $10,`config`$ done')).toEqual([
+      { text: 'cost $10,' },
+      { text: 'config', code: true },
+      { text: '$ done' },
+    ])
+    expect(parseInline('cost $10,**config**$ done')).toEqual([
+      { text: 'cost $10,' },
+      { text: 'config', strong: true },
+      { text: '$ done' },
+    ])
+  })
+
+  // A single asterisk is left alone on purpose: it is also how multiplication is written inside a formula,
+  // and there is no telling the two apart from the shape alone - unlike a backtick or a genuine `**bold**`
+  // pair, neither of which has a meaning in LaTeX.
+  it('still reads a formula that multiplies with a bare asterisk', () => {
+    expect(parseInline('so $a*b*c$ follows')).toEqual([
+      { text: 'so ' },
+      { text: 'a*b*c', math: true },
+      { text: ' follows' },
+    ])
+  })
+
+  it('refuses a formula with a letter against it', () => {
+    expect(parseInline('written as a$b$c in the file')).toEqual([{ text: 'written as a$b$c in the file' }])
+  })
+
+  // A letter outside the Basic Multilingual Plane - a math double-struck capital, here - is a surrogate
+  // pair, two UTF-16 code units for one character. Read one code unit at a time, either half looks like
+  // no letter at all, and a formula glued right onto one of these used to be drawn as a formula anyway.
+  it('refuses a formula with a letter outside the basic multilingual plane against it', () => {
+    expect(parseInline('written as \u{1d54f}$b$c in the file')).toEqual([
+      { text: 'written as \u{1d54f}$b$c in the file' },
+    ])
+    expect(parseInline('written as a$b$\u{1d54f} in the file')).toEqual([
+      { text: 'written as a$b$\u{1d54f} in the file' },
+    ])
+  })
+
+  it('reads a formula against a bracket or a comma', () => {
+    expect(parseInline('for ($x$), then')).toEqual([
+      { text: 'for (' },
+      { text: 'x', math: true },
+      { text: '), then' },
+    ])
+  })
+
+  // The standard LaTeX way to print a literal dollar sign inside a formula. Read naively, that `\$`
+  // looked like the close, and the formula broke in half with the tail spilled into the surrounding text.
+  it('keeps an escaped dollar inside a formula together with the rest of it', () => {
+    expect(parseInline('it is $\\text{costs } \\$5$ a month')).toEqual([
+      { text: 'it is ' },
+      { text: '\\text{costs } \\$5', math: true },
+      { text: ' a month' },
+    ])
+  })
+
+  // The same escaped dollar, but sitting right at the edge of the body rather than in the middle: the
+  // border check used to see only half of the `\$` pair and closed the formula one character early.
+  it('keeps an escaped dollar at the start of a formula together with the rest of it', () => {
+    expect(parseInline('it is $\\$5 \\text{today}$ a month')).toEqual([
+      { text: 'it is ' },
+      { text: '\\$5 \\text{today}', math: true },
+      { text: ' a month' },
+    ])
+  })
+
+  it('keeps an escaped dollar at the end of a formula together with the rest of it', () => {
+    expect(parseInline('it is $\\text{costs } 5\\$$ a month')).toEqual([
+      { text: 'it is ' },
+      { text: '\\text{costs } 5\\$', math: true },
+      { text: ' a month' },
+    ])
+  })
+
+  it('reads a formula that is nothing but an escaped dollar', () => {
+    expect(parseInline('it is $\\$$ a month')).toEqual([
+      { text: 'it is ' },
+      { text: '\\$', math: true },
+      { text: ' a month' },
+    ])
+  })
+
+  // Nothing sits between the two closing/opening dollars, but each formula still stands on its own: the
+  // content class refuses a bare `$` inside a body, so the search cannot stretch from the first into the
+  // second.
+  it('reads two formulas written back to back with no space between them', () => {
+    expect(parseInline('$x$$y$')).toEqual([
+      { text: 'x', math: true },
+      { text: 'y', math: true },
+    ])
+  })
+
+  it('refuses a formula longer than a formula ever is', () => {
+    const long = 'x'.repeat(2001)
+    expect(parseInline(`$${long}$`)).toEqual([{ text: `$${long}$` }])
+  })
+})
+
+describe('formulas standing on their own', () => {
+  it('reads one written over three lines', () => {
+    expect(parseParagraphs(['Then:', '', '$$', 'E = mc^2', '$$'].join('\n'))).toEqual([
+      { parts: [{ text: 'Then:' }] },
+      { math: true, parts: [{ text: 'E = mc^2' }] },
+    ])
+  })
+
+  it('reads one written on a single line', () => {
+    expect(parseParagraphs('$$E = mc^2$$')).toEqual([{ math: true, parts: [{ text: 'E = mc^2' }] }])
+  })
+
+  it('reads the TeX brackets too', () => {
+    expect(parseParagraphs(['\\[', 'a^2 + b^2 = c^2', '\\]'].join('\n'))).toEqual([
+      { math: true, parts: [{ text: 'a^2 + b^2 = c^2' }] },
+    ])
+  })
+
+  /**
+   * The rule the printing of an answer rests on: a formula exists only once it has closed. Halfway
+   * through it is the text it looks like, so nothing is parsed, drawn and thrown away on every frame -
+   * and nothing flickers on the way.
+   */
+  it('leaves an unfinished formula as text', () => {
+    expect(parseParagraphs(['$$', '\\frac{a}{b'].join('\n'))).toEqual([
+      { parts: [{ text: '$$ \\frac{a}{b' }] },
+    ])
+  })
+
+  it('does not look for the closing delimiter past a blank line', () => {
+    expect(parseParagraphs(['$$', 'a = b', '', 'Never mind.', '$$'].join('\n'))).toEqual([
+      { parts: [{ text: '$$ a = b' }] },
+      { parts: [{ text: 'Never mind. $$' }] },
+    ])
+  })
+
+  it('does not swallow a code block below it', () => {
+    const source = ['$$', '```ts', 'const a = 1', '```'].join('\n')
+    expect(parseParagraphs(source)).toEqual([
+      { parts: [{ text: '$$' }] },
+      { codeBlock: true, info: 'ts', parts: [{ text: 'const a = 1' }] },
+    ])
+  })
+
+  it('leaves a dollar pair inside a code block alone', () => {
+    const source = ['```ts', 'const s = `$${cost}`', '```'].join('\n')
+    expect(parseParagraphs(source)).toEqual([
+      { codeBlock: true, info: 'ts', parts: [{ text: 'const s = `$${cost}`' }] },
+    ])
+  })
+
+  /**
+   * Two formulas on one line used to let the lazy quantifier backtrack past the first close, and the
+   * capture ran from the first `$$` to the last - "and" included - one garbled string handed to the
+   * renderer instead of two clean ones. Barred from doing that, the line no longer reads as a single
+   * formula at all, and is left as text rather than shown mangled.
+   */
+  it('does not merge two formulas written on the same line into one', () => {
+    // Not a display formula (the whole line is not one), so it falls to inline parsing - which reads the
+    // doubled dollars as two ordinary single-dollar formulas each, sharing the boundary between them: "a^2"
+    // and "b^2" both come out as clean, separate formulas rather than one string with "and" inside it.
+    expect(parseParagraphs('$$a^2$$ and $$b^2$$')).toEqual([
+      {
+        parts: [
+          { text: '$' },
+          { text: 'a^2', math: true },
+          { text: '$ and $' },
+          { text: 'b^2', math: true },
+          { text: '$' },
+        ],
+      },
+    ])
+    // `\[...\]` has no inline reading at all, so a line that is not a formula on its own stays plain text.
+    expect(parseParagraphs('\\[a^2\\] and \\[b^2\\]')).toEqual([{ parts: [{ text: '\\[a^2\\] and \\[b^2\\]' }] }])
+  })
+
+  // A table cell is parsed with the same parseInline as any other piece of text (see parseTableAt), so a
+  // formula written inside one already works - checked here so a future change to tables or to inline
+  // parsing cannot break it silently.
+  it('reads a formula written inside a table cell', () => {
+    const source = ['| name | formula |', '|---|---|', '| energy | $E = mc^2$ |'].join('\n')
+    const [table] = parseParagraphs(source)
+
+    expect(table?.table?.rows).toEqual([[[{ text: 'energy' }], [{ text: 'E = mc^2', math: true }]]])
+  })
+
+  it('carries a formula inside a table cell out through a copy and back', () => {
+    const source = ['| name | formula |', '|---|---|', '| energy | $E = mc^2$ |'].join('\n')
+    const copied = paragraphsText(parseParagraphs(source))
+
+    expect(copied).toBe(['| name | formula |', '| --- | --- |', '| energy | $E = mc^2$ |'].join('\n'))
+    expect(parseParagraphs(copied)).toEqual(parseParagraphs(source))
   })
 })

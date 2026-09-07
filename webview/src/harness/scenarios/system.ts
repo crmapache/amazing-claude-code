@@ -504,6 +504,51 @@ export const scenariosSystem: Scenario[] = [
       ),
       turnResult(1900),
     ]),
+    /**
+     * Mathematics, and the half of it that matters more: the dollars that are only dollars.
+     *
+     * Worth looking at, in this order. The formula standing on its own is a slab of its own, and in a
+     * narrow panel it scrolls sideways rather than being cut off. The one inside a line sits in the line
+     * without pushing it apart. And the paragraph under them - a price twice in one sentence, two shell
+     * variables, a template literal - stays exactly the text it was typed as, which is what every
+     * conversation in this panel that never mentions mathematics depends on.
+     *
+     * The answer arrives in pieces, as they all do here, so the half-written formula is on screen for a
+     * moment on the way. It has to stand there as its own source and turn into a formula in one step, in
+     * the frame the closing dollars arrive - never as a red parse error blinking through the printing.
+     *
+     * The library itself is fetched the first time this checkpoint draws and never before: open any other
+     * scenario and none of it is loaded at all.
+     */
+    checkpoint('The user asks about a formula', [
+      user('Remind me what the loss looks like for logistic regression'),
+      wait(500),
+    ]),
+    checkpoint('An answer with mathematics in it', [
+      ...textReply(
+        [
+          'For one example it is the negative log-likelihood:',
+          '',
+          '$$',
+          'L(y, \\hat{y}) = -\\bigl[ y \\log \\hat{y} + (1 - y) \\log (1 - \\hat{y}) \\bigr]',
+          '$$',
+          '',
+          'where $\\hat{y} = \\sigma(z)$ and $\\sigma(z) = \\frac{1}{1 + e^{-z}}$, so the gradient',
+          'collapses to $\\hat{y} - y$ and that is the whole trick.',
+          '',
+          'Over a batch you average it:',
+          '',
+          '$$\\mathcal{L} = \\frac{1}{n} \\sum_{i=1}^{n} L(y_i, \\hat{y}_i)$$',
+          '',
+          // The other half of the feature, and the one every conversation here pays for: none of this is
+          // mathematics, and all of it would have been under a looser reading.
+          'On the billing side nothing changed: the run still costs $5 and the retry $10, `$HOME` and',
+          '$PATH are read the same way, and the log line is still written as $${cost.toFixed(2)} in the',
+          'template string.',
+        ].join('\n'),
+      ),
+      turnResult(2600),
+    ]),
   ]),
 
   /**

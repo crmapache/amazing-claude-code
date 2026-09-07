@@ -26,12 +26,33 @@ export const copiedText = (selection: Selection | null, doc: Document): string |
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null
 
   const fragment = doc.createDocumentFragment()
+  let sawEnclosing = false
+
   for (let index = 0; index < selection.rangeCount; index += 1) {
-    fragment.append(selection.getRangeAt(index).cloneContents())
+    const range = selection.getRangeAt(index)
+
+    /**
+     * A range that lies wholly inside a chip - a formula, most of all, since a formula is large enough to
+     * select part of rather than as a whole - has that chip trimmed off by cloneContents below: the clone
+     * begins at the range's own common ancestor and never reaches above it, so the attribute never reaches
+     * the fragment no matter how far up the tree it is set. The range's common ancestor is asked directly
+     * instead: by definition it sits entirely inside anything that contains it, however deep the chip's own
+     * markup goes - a formula's rendered tree included.
+     */
+    const anchor = range.commonAncestorContainer
+    const element = anchor.nodeType === Node.ELEMENT_NODE ? (anchor as Element) : anchor.parentElement
+    const enclosing = element?.closest(`[${COPY_ATTRIBUTE}]`)
+
+    if (enclosing) {
+      fragment.append(doc.createTextNode(enclosing.getAttribute(COPY_ATTRIBUTE) ?? ''))
+      sawEnclosing = true
+    } else {
+      fragment.append(range.cloneContents())
+    }
   }
 
   const chips = fragment.querySelectorAll(`[${COPY_ATTRIBUTE}]`)
-  if (chips.length === 0) return null
+  if (!sawEnclosing && chips.length === 0) return null
 
   chips.forEach((chip) => chip.replaceWith(doc.createTextNode(chip.getAttribute(COPY_ATTRIBUTE) ?? '')))
 

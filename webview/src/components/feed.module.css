@@ -951,6 +951,56 @@
   overflow-x: auto;
 }
 
+/* Formulas.
+
+   KaTeX's own stylesheet travels with the library and therefore reaches the page AFTER this file, so a
+   rule of equal weight here loses to it. Every override below reaches through its wrapper on purpose -
+   `.formulaBlock :global(.katex-display)` is 0,2,0 against katex's 0,1,0 - rather than naming the foreign
+   class on its own. `:global` appears nowhere else in the panel: it is what a CSS module needs in order to
+   name a class somebody else wrote, the same trap the head of this file describes for keyframes.
+
+   Nothing here sets a size or a colour. `.katex` is 1.21em of whatever it stands in and takes its colour
+   from currentColor, so a formula follows the console font the IDE hands down, the phone's density and
+   both themes without being told about any of them. */
+.formulaBlock {
+  /* The rhythm the blocks of an answer stand in - the same as .codeBlockWrap and .tableWrap. KaTeX asks
+     for 1em above and below, which at the feed's body size stands a formula noticeably further from its
+     neighbours than the code block right beside it. */
+  margin: 2px 0 8px;
+  /* .katex neither wraps nor scrolls, so a formula wider than the panel - 350px at its narrowest - is
+     simply cut off, with nothing to reach its right half by. The padding pays for the same overflow: a box
+     that scrolls clips a tall fraction or the limits of a sum at its own edge. */
+  overflow-x: auto;
+  padding: 2px 0;
+}
+
+.formulaBlock :global(.katex-display) {
+  margin: 0;
+}
+
+/* Centred content in a box that scrolls loses its left edge first, and left is also where the code block
+   and the table above and below it start. */
+.formulaBlock :global(.katex-display),
+.formulaBlock :global(.katex-display) > :global(.katex) {
+  text-align: left;
+}
+
+/* The hidden half of a formula is hidden by a clip rather than taken out of the layout, so a selection
+   carries it and the formula comes out of the clipboard twice over. The feed answers that by swapping the
+   whole node for its source (see COPY_ATTRIBUTE in Formula.tsx); this is the second line, for the copy
+   paths that never reach that swap. The MathML stays in the accessibility tree either way - it is the only
+   half a screen reader can read. */
+.math :global(.katex-mathml) {
+  user-select: none;
+}
+
+/* The formula as it was written: while the library is still on its way, and for one KaTeX would not take.
+   In the console font, because that is what it is at that moment - text. */
+.formulaSource {
+  font-family: var(--acc-mono);
+  white-space: pre-wrap;
+}
+
 /* The wrapper holds the border and the rounding and scrolls horizontally itself - an answer may hold more
    columns than the panel's width can show without wrapping the headings sideways. */
 .tableWrap {

@@ -34,6 +34,113 @@ const MAX_LIST_DEPTH = 3
 const FENCE = /^[ \t]*(`{3,})([^`]*)$/
 
 /**
+ * A formula, and the reason the rules around it are as tight as they are.
+ *
+ * The dollar is an ordinary character in an answer about code: a shell variable, a template literal, a
+ * price. Measured rather than guessed - across every transcript this machine holds (6754 of them) not one
+ * run of `$$` was mathematics; all of them were `$${cost.toFixed(2)}` inside a template string. So the
+ * cost of reading a dollar too eagerly is paid by everyone who never writes a formula, and the rules
+ * below are deliberately stricter than any TeX-aware markdown: a formula that stays text is a line read
+ * as it was written, while prose turned into a formula is a line nobody can read at all. It is the same
+ * reasoning already written down for the italic asterisk.
+ *
+ * The second rule is that only a CLOSED formula is a formula. An answer arrives a piece at a time, so
+ * `$$\frac{a}{b` is an ordinary state of the text rather than a broken formula: read as one it would be
+ * re-parsed, re-rendered and thrown away on every frame of the printing, and it would flicker on screen
+ * as it went. Left as text it becomes a formula in one step, in the frame the closing delimiter arrives.
+ */
+const MATH_MAX_CHARS = 2000
+
+/**
+ * How far the closing `$$` is looked for. A display formula is a handful of lines; a lookahead without a
+ * ceiling would read the rest of a long answer on every stray `$$` in it.
+ */
+const MATH_MAX_LINES = 40
+
+/**
+ * A display formula's two written forms - `$$`, closed by itself, and `\[`, closed by `\]` - kept in one
+ * place rather than spelled out separately everywhere they are used (MATH_ONE_LINE, MATH_OPENS and
+ * MATH_CLOSES below are all built from this list): three copies of the same pair is three places that can
+ * drift from each other, and a third form written here is a third form everywhere that reads this list.
+ */
+const MATH_PAIRS: ReadonlyArray<{ open: string; close: string }> = [
+  { open: '$$', close: '$$' },
+  { open: '\\[', close: '\\]' },
+]
+
+const escapeForRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * `$$ a^2 $$` or `\[ a^2 \]` written on one line.
+ *
+ * Each body is barred from holding its own closing delimiter, the same way the inline `$...$` body is
+ * barred from holding a bare `$` (see `parseInline` below). Without that, two formulas on one line -
+ * `$$a^2$$ and $$b^2$$` - let the lazy quantifier backtrack past the first close, and the capture ran
+ * from the first `$$` to the last, "and" included: one garbled string handed to the renderer instead of
+ * two clean ones.
+ *
+ * One capturing group per pair, in MATH_PAIRS's order - only the alternative that actually matched
+ * captures anything, so parseMathAt below reads whichever of them is not undefined.
+ */
+const MATH_ONE_LINE = new RegExp(
+  `^[ \\t]*(?:${MATH_PAIRS.map(({ open, close }) => {
+    const o = escapeForRegExp(open)
+    const c = escapeForRegExp(close)
+    return `${o}((?:(?!${c})[^\\n])+)${c}`
+  }).join('|')})[ \\t]*$`,
+)
+
+/** `$$` or `\[` alone on a line - the formula's body starts on the next one. */
+const MATH_OPENS = new RegExp(`^[ \\t]*(${MATH_PAIRS.map(({ open }) => escapeForRegExp(open)).join('|')})[ \\t]*$`)
+
+/** What closes what: `$$` is closed by itself, `\[` by `\]`. */
+const MATH_CLOSES: Record<string, RegExp> = Object.fromEntries(
+  MATH_PAIRS.map(({ open, close }) => [open, new RegExp(`^[ \\t]*${escapeForRegExp(close)}[ \\t]*$`)]),
+)
+
+/**
+ * A display formula starting at line `index`, or nothing.
+ *
+ * The closing delimiter is looked for ahead rather than remembered as an open fence, because an unclosed
+ * formula must stay ordinary text (see MATH_MAX_CHARS above) - and a fence that has to be undone later is
+ * a fence that has already been drawn. The search stops at an empty line and at a code fence: a formula
+ * does not span a blank line, and a `$$` swallowing a block of code below it is the one way this could
+ * eat an answer.
+ */
+const parseMathAt = (lines: string[], index: number): { latex: string; nextIndex: number } | null => {
+  const line = lines[index]!
+  // Two regular expressions per line of every answer is a price worth refusing when the line holds
+  // neither delimiter, and almost every line does not.
+  if (!line.includes('$$') && !line.includes('\\[')) return null
+
+  const fits = (latex: string): boolean => latex.length > 0 && latex.length <= MATH_MAX_CHARS
+
+  const single = MATH_ONE_LINE.exec(line)
+  if (single) {
+    const latex = (single.slice(1).find((group) => group !== undefined) ?? '').trim()
+    return fits(latex) ? { latex, nextIndex: index + 1 } : null
+  }
+
+  const opens = MATH_OPENS.exec(line)
+  if (!opens) return null
+
+  const closes = MATH_CLOSES[opens[1]!]!
+  const body: string[] = []
+
+  for (let cursor = index + 1; cursor < lines.length && body.length <= MATH_MAX_LINES; cursor += 1) {
+    const next = lines[cursor]!
+    if (closes.test(next)) {
+      const latex = body.join('\n').trim()
+      return fits(latex) ? { latex, nextIndex: cursor + 1 } : null
+    }
+    if (next.trim().length === 0 || FENCE.test(next)) return null
+    body.push(next)
+  }
+
+  return null
+}
+
+/**
  * Parsing the agent's answer into the design's paragraphs.
  *
  * Full markdown here is neither needed nor useful: the panel draws six things - a paragraph, a list
@@ -82,6 +189,18 @@ export const parseParagraphs = (source: string): Paragraph[] => {
       flushPlain()
       flushQuote()
       codeFence = { length: fence[1]!.length, info: (fence[2] ?? '').trim(), lines: [] }
+      continue
+    }
+
+    // A formula of its own, before the table: `\[` opens one and `|` never does, so nothing here can be
+    // mistaken for the other.
+    const math = parseMathAt(lines, index)
+
+    if (math) {
+      flushPlain()
+      flushQuote()
+      paragraphs.push({ math: true, parts: [{ text: math.latex }] })
+      index = math.nextIndex - 1
       continue
     }
 
@@ -283,10 +402,114 @@ export const linkify = (text: string): TextPart[] => {
  * were written as. An underscore is stricter still: it lives inside identifiers (`MAX_LIST_DEPTH`), so a
  * pair with a word character against it on either side is left alone as text.
  */
+/**
+ * A run of bold text on its own - `**...**` - named rather than left as two hand-written copies: one below
+ * in parseInlineFormula, refusing a formula whose dollars landed around real markup by accident, and one
+ * further down as a fragment of parseInline's own pattern (see there) - the same rule read from one place
+ * instead of copied by hand into two.
+ */
+const BOLD_RUN = /\*\*([^*]+)\*\*/
+
+/**
+ * A formula written inline - `$...$` or `\(...\)` - once its delimiters have already matched: the piece
+ * to draw it as, or how much of the match to give back as text when it turns out not to be one after all.
+ *
+ * Its own named function for the same reason the display formula above (parseMathAt) already has one: the
+ * checks a formula needs are long enough on their own to make every other branch of parseInline's dispatch
+ * below - a handful of lines each - harder to read next to it.
+ */
+const parseInlineFormula = (
+  line: string,
+  match: RegExpExecArray,
+): { part: TextPart; end: number } | { opening: number } => {
+  const end = match.index + match[0].length
+  const latex = (match[10] ?? match[11] ?? '').trim()
+
+  /**
+   * A bare dollar does not stand on its own in a sentence about code the way `\(...\)` does: it is
+   * also a price and a shell variable, and only a letter or a digit sitting right against it tells the
+   * two apart. Checked here rather than in the pattern for the reason the italic underscore is checked
+   * here, which is that this has to hold for every alphabet the panel writes in, and \w in a regular
+   * expression knows only the Latin one.
+   *
+   * `\(...\)` carries no such ambiguity - there is nothing else it could be - so it is not held to this
+   * rule at all: a formula written that way and glued to the word beside it is still a formula.
+   *
+   * Without the half about what FOLLOWS, "the retry $10, `$HOME` and" read as a formula: the closing
+   * dollar was the one in front of HOME, and the piece between them - a price, a comma and a backtick -
+   * was handed to KaTeX. It ate the code span with it. Caught in the harness rather than by a test,
+   * which is the sort of line this rule exists for: written by anybody talking about money and paths
+   * in one breath, and mangled without a word.
+   *
+   * Longer than a formula ever is means the same thing - two dollars far apart in a sentence about
+   * money - and goes back as text too.
+   */
+  const beside = match[10] !== undefined && wordAdjacent(line, match.index, end)
+
+  /**
+   * The same trap as "the retry $10, `$HOME`" above, just without a word character next to the close
+   * for `beside` to catch: "cost $10,**config**$ done" has nothing but digits and punctuation on
+   * either side, and the bold or the code span in between was handed to KaTeX whole, asterisks and
+   * backticks included, instead of being drawn as the markup it is.
+   *
+   * A single asterisk is left alone on purpose - it is also how multiplication is written inside a
+   * formula (`$a*b*c$`), and there is no telling the two apart from the shape alone. A backtick and a
+   * genuine `**bold**` pair are not ambiguous: neither has a meaning in LaTeX, so either one inside a
+   * formula's body means the dollars landed around ordinary text by accident.
+   */
+  const crossesMarkup = latex.includes('`') || BOLD_RUN.test(latex)
+
+  if (!beside && !crossesMarkup && latex.length > 0 && latex.length <= MATH_MAX_CHARS) {
+    return { part: { text: latex, math: true }, end }
+  }
+
+  // Only the opening delimiter is given up, and the search starts again right after it. Handing back
+  // the whole run instead would take with it whatever stood inside: in "the retry $10, `$HOME`" the
+  // run reaches past the backtick, so the code span was eaten by the refusal rather than by a match.
+  return { opening: match[10] !== undefined ? 1 : 2 }
+}
+
 export const parseInline = (line: string): TextPart[] => {
   const parts: TextPart[] = []
-  const pattern =
-    /\[\[(.+?)\]\]|`([^`]+)`|\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|\*([^*\s](?:[^*]*[^*\s])?)\*|_([^_\s](?:[^_]*[^_\s])?)_|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/\S+)/g
+  // A formula's body may hold its own escaped dollar - the standard LaTeX way to print a literal one -
+  // and that `\$` must not read as the close: `(?:\\\$|[^$\n])*` takes it as one unit rather than letting
+  // the bare `[^$\n]` stop dead on the `$` half of it, which used to cut the formula in two and spill the
+  // tail into the surrounding text.
+  //
+  // The same pair is let through at the very first and last position too, not only in the middle: a body
+  // written `\$5` or ending `5\$` is an escaped dollar sitting right at the edge, and the plain `[^$\s]`
+  // that edge used to be checked against sees only the backslash or only the trailing `$` of the pair - it
+  // does not know the two belong together. Read a character at a time like that, the formula closed one
+  // character early and left the real closing dollar stranded as text next to it.
+  //
+  // Neither side excludes a plain `$` neighbour, only an escaped one. Two formulas written back to back
+  // with no space between them - "$x$$y$" - close on the boundary they share, and each stands on its own
+  // once matched: the content class already refuses a bare `$` as part of either body, so nothing can
+  // stretch across the pair. A price stuck to another price - "$5$10" - is refused too, but that refusal
+  // belongs to `beside` below rather than to this pattern: a digit right after the close is exactly the
+  // shape `beside` already catches, in every alphabet the panel writes numbers in rather than only `\d`'s
+  // ASCII ten, so writing the same, narrower refusal a second time into the pattern itself answered a
+  // question already answered further down and never changed what came out the other end.
+  //
+  // Built from named fragments rather than written whole: BOLD_RUN is one of them, shared with
+  // parseInlineFormula above, and a fragment here is exactly what it says wherever it is read from.
+  const pattern = new RegExp(
+    [
+      /\[\[(.+?)\]\]/,
+      /`([^`]+)`/,
+      /\*\*\*([^*]+)\*\*\*/,
+      BOLD_RUN,
+      /\*([^*\s](?:[^*]*[^*\s])?)\*/,
+      /_([^_\s](?:[^_]*[^_\s])?)_/,
+      /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/,
+      /(https?:\/\/\S+)/,
+      /(?<!\\)\$((?:\\\$|[^$\s])(?:(?:\\\$|[^$\n])*(?:\\\$|[^$\s]))?)\$/,
+      /\\\(([^\n]+?)\\\)/,
+    ]
+      .map((fragment) => fragment.source)
+      .join('|'),
+    'g',
+  )
 
   let last = 0
   let match: RegExpExecArray | null
@@ -315,7 +538,7 @@ export const parseInline = (line: string): TextPart[] => {
     } else if (match[6] !== undefined) {
       const end = match.index + match[0].length
       // Inside a word this is no italic at all but a name written as it is spelled in the code.
-      if (WORD_CHARACTER.test(line[match.index - 1] ?? '') || WORD_CHARACTER.test(line[end] ?? '')) {
+      if (wordAdjacent(line, match.index, end)) {
         parts.push({ text: match[0] })
       } else {
         for (const part of emphasized(match[6], { em: true })) parts.push(part)
@@ -328,6 +551,16 @@ export const parseInline = (line: string): TextPart[] => {
       const href = trimUrlPunctuation(match[9])
       parts.push({ text: href, href })
       last = match.index + href.length
+    } else if (match[10] !== undefined || match[11] !== undefined) {
+      const formula = parseInlineFormula(line, match)
+      if ('part' in formula) {
+        parts.push(formula.part)
+        last = formula.end
+      } else {
+        parts.push({ text: match[0].slice(0, formula.opening) })
+        last = match.index + formula.opening
+        pattern.lastIndex = last
+      }
     }
   }
 
@@ -336,6 +569,41 @@ export const parseInline = (line: string): TextPart[] => {
 }
 
 const WORD_CHARACTER = /[\p{L}\p{N}_]/u
+
+const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xdbff
+const isLowSurrogate = (code: number): boolean => code >= 0xdc00 && code <= 0xdfff
+
+/**
+ * The character standing right before `index`, whole rather than one UTF-16 code unit of it.
+ *
+ * Most letters fit in one code unit and `line[index - 1]` already is the character, but a few - the
+ * double-struck and blackboard-bold letters mathematics is written in, and part of the CJK repertoire -
+ * are a surrogate pair, two code units for one character. Read as one code unit each, a surrogate half is
+ * neither letter nor digit on its own (it belongs to a category of its own, not \p{L}), and a delimiter
+ * standing against a letter like that was read as standing against nothing.
+ */
+const charBefore = (line: string, index: number): string => {
+  if (index >= 2 && isLowSurrogate(line.charCodeAt(index - 1)) && isHighSurrogate(line.charCodeAt(index - 2))) {
+    return line.slice(index - 2, index)
+  }
+  return line[index - 1] ?? ''
+}
+
+/** The character standing right at `index`, whole - see charBefore above. */
+const charAfter = (line: string, index: number): string => {
+  if (isHighSurrogate(line.charCodeAt(index)) && isLowSurrogate(line.charCodeAt(index + 1))) {
+    return line.slice(index, index + 2)
+  }
+  return line[index] ?? ''
+}
+
+/**
+ * Whether a letter, a digit or an underscore sits right against a match - the underscore italic and the
+ * formula both refuse to close on one, each for its own reason, and both used to check it with the same
+ * line written out twice.
+ */
+const wordAdjacent = (line: string, start: number, end: number): boolean =>
+  WORD_CHARACTER.test(charBefore(line, start)) || WORD_CHARACTER.test(charAfter(line, end))
 
 /**
  * Plain neighbours back into one piece.
@@ -384,12 +652,25 @@ export const plainLine = (source: string): string =>
     .filter((text) => text.length > 0)
     .join(' ')
 
+/**
+ * The pieces of a line back into the text they were written as.
+ *
+ * A formula is the one piece that keeps its delimiters, against the rule its neighbours follow. Bold and
+ * code lose their asterisks and backticks because those single nothing out once the markup is gone; a
+ * formula's dollars are not decoration but the only spelling it has - stripped of them `\frac{a}{b}`
+ * is a piece of TeX nothing will read back as a formula, here or anywhere it is pasted.
+ */
+const partsText = (parts: TextPart[]): string =>
+  parts.map((part) => (part.math ? `$${part.text}$` : part.text)).join('')
+
 const plainParagraph = (paragraph: Paragraph): string => {
-  const text = paragraph.parts
-    .map((part) => part.text)
-    .join('')
-    .replace(/\s+/g, ' ')
-    .trim()
+  // A formula standing on its own carries `math` on the PARAGRAPH, not on the one part that holds its
+  // text - partsText only reads the flag off a part, so a display formula came out of a preview as bare
+  // TeX with no dollars at all, unlike the very same formula written inline. Wrapped here on one line
+  // rather than the three lines blockLines uses for a full copy: a preview is one line by the same rule
+  // that already collapses its whitespace below.
+  const raw = partsText(paragraph.parts)
+  const text = (paragraph.math ? `$$${raw}$$` : raw).replace(/\s+/g, ' ').trim()
 
   return paragraph.marker ? `${paragraph.marker} ${text}`.trim() : text
 }
@@ -421,9 +702,13 @@ export const paragraphsText = (paragraphs: Paragraph[]): string => {
 }
 
 const blockLines = (paragraph: Paragraph): string[] => {
-  const text = paragraph.parts.map((part) => part.text).join('')
+  const text = partsText(paragraph.parts)
 
   if (paragraph.table) return tableLines(paragraph.table)
+  // Always on three lines, whichever way it was written: `$$ a^2 $$` and the same thing spread over
+  // three read back as one and the same formula, and the spread one is what a formula longer than a
+  // couple of symbols is written as anyway.
+  if (paragraph.math) return ['$$', text, '$$']
   if (paragraph.codeBlock) {
     const fence = '`'.repeat(fenceLength(text))
     return [fence + (paragraph.info ?? ''), text, fence]
@@ -459,8 +744,7 @@ const fenceLength = (code: string): number => {
 
 /** A table as it was written: the head, the separator with the alignment, the rows. */
 const tableLines = (table: TableData): string[] => {
-  const row = (cells: TextPart[][]): string =>
-    `| ${cells.map((cell) => cell.map((part) => part.text).join('').trim()).join(' | ')} |`
+  const row = (cells: TextPart[][]): string => `| ${cells.map((cell) => partsText(cell).trim()).join(' | ')} |`
 
   const separator = table.header.map((_, index) => SEPARATOR_SPEC[table.align[index] ?? 'none'])
 

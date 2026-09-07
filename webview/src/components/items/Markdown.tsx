@@ -5,6 +5,7 @@ import { parseInline } from '../../feed/markdown'
 import type { Paragraph, TableAlign, TableData, TextPart } from '../../feed/types'
 import { copyToClipboard } from '../../clipboard'
 import { CopyButton } from './CopyButton'
+import { Formula } from './Formula'
 import { PathLink, withPathLinks } from './PathLink'
 import s from '../feed.module.css'
 import { useKnownFiles, useOpenFile } from '../../hooks/useOpenFile'
@@ -61,6 +62,12 @@ const ParagraphView = ({
       </div>
     )
   }
+
+  // A formula of its own, before the table and after the code block - it is a slab across the answer just
+  // as they are, and it carries its whole text in one part just as a code block does, so there is nothing
+  // here to join: reaching for that one part directly saves an array walk on every frame of a printing
+  // answer.
+  if (paragraph.math) return <Formula latex={paragraph.parts[0]?.text ?? ''} display />
 
   if (paragraph.table) return <TableView table={paragraph.table} reveal={reveal} onOpenLink={onOpenLink} />
 
@@ -186,6 +193,12 @@ const PartView = ({
   onOpenLink: (url: string) => void
 }) => {
   const emphasis = [part.strong ? s.strong : '', part.em ? s.em : ''].filter(Boolean).join(' ')
+
+  // First of all the kinds: a formula is drawn by KaTeX rather than set in the panel's own type, so bold
+  // and italic laid over it by a surrounding `**` have nothing to apply to. The reveal wave is given up
+  // here for the reason it is given up on a code block holding paths - it runs over a plain string, and
+  // this is a tree.
+  if (part.math) return <Formula latex={part.text} display={false} />
 
   if (part.href) {
     const href = part.href

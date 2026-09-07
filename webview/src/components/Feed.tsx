@@ -1,11 +1,22 @@
 import { useSmoothStream } from 'smooth-stream-text/react'
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+} from 'react'
 import { drawnInFeed, openThought, spokenAnswer } from '../feed/build'
 import { copiedText } from '../feed/copy'
 import { parseParagraphs } from '../feed/markdown'
 import { PIN_LIMIT, pinnedRows } from '../feed/pins'
 import { placeShift, rowAtEdge, type FeedMemory } from '../feed/place'
 import { matchSpans } from '../feed/searchText'
+import { mathVersion, subscribeMath } from '../math'
 import type { PaintedTerm } from '../protocol'
 import type { FeedItem, FeedRowItem, ToolItem, UserItem } from '../feed/types'
 import type { CardState } from '../hooks/useCardState'
@@ -580,6 +591,15 @@ export const Feed = ({
   /** What the paint on screen was built for, and when - see [PAINT_INTERVAL_MS]. */
   const painted = useRef<{ paint: readonly PaintedTerm[]; at: number } | undefined>(undefined)
 
+  /**
+   * The library for formulas lands once, long after the first draw - the same signal Formula.tsx itself
+   * subscribes to. A formula painted before it arrived is painted over its visible source text
+   * (.formulaSource); the moment the library lands, that text node is replaced by KaTeX's own tree, and a
+   * highlight range still pointing at the removed node simply stops showing anything, with nothing here
+   * to notice or repaint it. Read here too so the paint below runs again the instant a formula is drawn.
+   */
+  const mathReady = useSyncExternalStore(subscribeMath, mathVersion)
+
   useEffect(() => {
     const registry = highlightRegistry()
     if (!registry) return
@@ -594,7 +614,30 @@ export const Feed = ({
       if (!element) return
 
       const ranges: Range[] = []
-      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+      // A drawn formula is stepped over whole. KaTeX draws it twice - a hidden MathML half beside the
+      // glyphs - so a walk that went in would paint letters nobody can see; and what the words were found
+      // in is the source the IDE indexed (`$\alpha$`), which after drawing is not on screen at all.
+      //
+      // Not yet drawn is a different state: the library still loading, or a formula KaTeX would not take
+      // (see Formula.tsx). Both leave the source standing as ordinary, visible text (.formulaSource), and
+      // a search for a word sitting right there in the open must find it rather than treat the block as
+      // though the glyphs it does not yet - or ever - have were already on screen.
+      //
+      // A conversation without a single formula in it - by far the common case - has nothing here to step
+      // over, and paid for walking every element as well as every run of text anyway. One query settles it
+      // before the walk starts, and the ordinary text-only walker from before this feature is used as is.
+      const hasFormula = element.querySelector(`.${s.math}`) !== null
+      const walker = hasFormula
+        ? document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+            acceptNode: (node) => {
+              if (node.nodeType !== Node.ELEMENT_NODE) return NodeFilter.FILTER_ACCEPT
+              const el = node as Element
+              if (!el.classList.contains(s.math)) return NodeFilter.FILTER_SKIP
+              const drawn = !el.firstElementChild?.classList.contains(s.formulaSource)
+              return drawn ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP
+            },
+          })
+        : document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         const text = node.textContent ?? ''
         if (!text.trim()) continue
@@ -622,7 +665,7 @@ export const Feed = ({
     }
     const timer = setTimeout(apply, wait)
     return () => clearTimeout(timer)
-  }, [paint, rows.length, pacedText, items])
+  }, [paint, rows.length, pacedText, items, mathReady])
 
   // The paint goes with the feed it was painted over.
   useEffect(

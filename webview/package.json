@@ -11,6 +11,7 @@
     "build:mobile": "tsc --noEmit && vite build -c vite.mobile.config.ts && ! grep -rqil 'harness\\|__fixtures__' dist-mobile"
   },
   "dependencies": {
+    "katex": "0.18.5",
     "qrcode-generator": "^2.0.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",

@@ -70,6 +70,12 @@ export interface TextPart {
   strong?: boolean
   /** Italic - `*so*` or `_so_`. Bold and italic are not exclusive: `***so***` is both. */
   em?: boolean
+  /**
+   * A formula written inside a line - `$a^2$` or `\(a^2\)`. [text] is the TeX of it, without the
+   * delimiters it was written with: they say where the formula ends and nothing about the formula
+   * itself, and the one place that needs them back - a copy - puts them back (see partsText).
+   */
+  math?: boolean
   /** The URL, when the piece is a link (a markdown link or a bare http/https address in the text). */
   href?: string
 }
@@ -110,6 +116,12 @@ export interface Paragraph {
    * is a copy of another prompt (see blockLines in markdown.ts).
    */
   info?: string
+  /**
+   * A formula standing on its own, between `$$` or `\[` and `\]`. Drawn the way a code block is - a slab
+   * of its own across the answer - and like a code block it keeps its whole text in one part, without
+   * the delimiters.
+   */
+  math?: boolean
   /** A table - a `| a | b |` row with a `|---|---|` separator after it. parts is then empty. */
   table?: TableData
   parts: TextPart[]
