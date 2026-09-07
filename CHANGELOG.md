@@ -9,6 +9,12 @@ commits.
 
 ## [Unreleased]
 
+## [0.12.6] - 2026-09-06
+
+- Added: mathematics in an answer is now drawn as a formula rather than left as the TeX it was written in - a formula of its own between `$$` or `\[ \]`, and one inside a sentence between single dollars or `\( \)`. A formula too wide for the panel scrolls sideways instead of being cut off, and copying one gives back the source it was written as, so it can be pasted anywhere that reads TeX.
+- Added: what is not mathematics stays exactly as typed. A dollar in an answer about code is usually a price, a shell variable or a template string, so the rules for reading one are deliberately strict: a run of dollars around a space, around a line break, or with a letter or a digit against it is left alone, and so is one that would swallow a piece of code or a bold word standing beside it. The library that draws formulas is fetched the first time one appears and never before, so a conversation without mathematics in it pays nothing.
+- Fixed: on the phone, the Stop button while a turn is running was as tall as a button with a caption under it, for a control that says one word. It is a thin pill now, and the row of meters above it has room to breathe instead of standing flat against the lines on either side.
+
 ## [0.12.5] - 2026-09-06
 
 - Added: the phone can now see and manage the MCP servers of the project it is looking at - which are up, which want a sign-in, which fell over and why - and reconnect, add or remove one. A server that goes down stops the work, and until now there was no way to find that out from anywhere but the desk. Signing a server in stays at the desk, and the screen says so rather than offering a button that cannot finish: Claude Code catches the browser's answer on that machine.
@@ -576,7 +582,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.5...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.6...HEAD
+[0.12.6]: https://github.com/crmapache/amazing-claude-code/compare/0.12.5...0.12.6
 [0.12.5]: https://github.com/crmapache/amazing-claude-code/compare/0.12.4...0.12.5
 [0.12.4]: https://github.com/crmapache/amazing-claude-code/compare/0.12.3...0.12.4
 [0.12.3]: https://github.com/crmapache/amazing-claude-code/compare/0.12.2...0.12.3
