@@ -9,6 +9,26 @@ commits.
 
 ## [Unreleased]
 
+## [0.12.7] - 2026-09-07
+
+- Added: scenarios - a round of work you repeat, written down once and then run for you. A few cards, each said to a Claude session of its own, in stages that can go round more than once; a main thread walks them, tells each card what the ones before found out, decides whether a card is finished and answers the questions it stops on. Kept in the repository a scenario travels with it and everyone working there has it; kept in your own folder it is yours alone and follows you from project to project. A run opens in a tab of its own with every step in order - pause it, carry on, or stop it, and press any step to read the whole conversation it had. The section is new and says so at the top: if something goes wrong there, the feedback form is one tap from it.
+- Added: a new scenario starts with a sentence rather than an empty form. Describe the round of work and Claude reads the project and writes the form for you - what to do, in what order, and what has to be true at the end. Nothing is saved by that: it opens in the editor for you to read, and Save is still yours to press.
+- Added: a scenario can be put on a clock - at nine, every weekday, with the answers to its own questions given in advance, since at that hour there is nobody to ask. An hour that passes with the IDE closed is never made up for later in the day: the row says it was missed, and the Run button is where it always was.
+- Added: a running scenario can be watched from the phone and unblocked from it - the whole timeline, what the main thread said between the cards, and how far along it is. A card that stopped to ask can be answered from there, and the run held or stopped. A scenario runs for hours unattended, which is exactly why nobody is at the machine when it stops: until now a run that stopped at ten past nine waited until somebody walked back to the keyboard. Writing one and starting one stay at the desk, in front of the diff they produce.
+- Added: "No-stress colours" in the settings. The context bar, the two limit rings with their figures and the percentages on the accounts screen stop changing colour with the reading and are drawn in one calm tone at any level. What is measured stays on the screen; the verdict on it goes. Asked for by people who read a red bar as an alarm all day long while simply working, with the panel in the corner of the eye from morning till night.
+- Added: models can be added by hand - "Add a model…" at the end of the MODEL menu. It exists for one case: your own key and your own server address, where the models on the other side are ones Claude Code has never heard of. The screen says plainly who does not need it.
+- Fixed: the time under an answer measured the last turn rather than the work. One request is not one turn - an agent that raises background agents falls silent, and each of their reports starts another turn - so thirty-eight minutes of work were signed "Worked 3m 38s". The counter beside "Claude is thinking" restarted the same way and said "12s" half an hour in. Both now run from your message until the work actually stops, background agents included, with the time it stood waiting on you subtracted.
+- Fixed: the phone was pushed "the work is ready" on every one of those turns - fifteen notifications for one request. The IDE now counts the background agents too and says nothing until the last of them has reported.
+- Fixed: a slash command typed while a turn was running disappeared without a trace. Claude Code hands the agent the bare text of it as a remark made in passing rather than running it, so nothing happened and nothing on the screen said so. Such a message now waits in the queue and goes the moment the turn ends - and a command that was swallowed is no longer counted as delivered, so it is not quietly lost.
+- Fixed: the task list above the input field was empty for anyone working on the default model. Claude Code stopped handing those tools to its newer models unless the account had been let into an experiment, so the strip was full for somebody who had switched to Haiku and empty for everybody else, with nothing on screen to say why.
+- Fixed: the conversation jumped every few seconds while a turn was running. A group of tool calls folds and unfolds by itself as the work goes on, and the row it lives in was a pixel taller with a chip in it than without - enough to shift everything above it, over and over.
+- Fixed: a question with several options lost the answers already picked if you glanced at another tab or the window came back a different height. Six questions answered down to the last one, gone because somebody checked what the agent was doing; they now outlive the card.
+- Fixed: Fable was missing from the MODEL menu until Claude Code's own list of models arrived, and on a machine where that list never arrives it was missing for good.
+- Fixed: signing in from the "session has expired" screen went into the default account rather than the one in force. With a second account added those are two different places, so the browser said the sign-in was done, the panel went on offering the same button, and there was no way out of it.
+- Fixed: on the phone, the sheet that says how a conversation thinks showed none of the seven effort levels ticked, which reads as a conversation running at nothing. Nobody but the IDE knows the effort, and it was not being told.
+- Fixed: on the phone, a project the IDE has closed now offers its past conversations, read straight off that machine's disk, and opens the window only on the one you pick. A project is closed because the day ended, and what you want from it in the morning is yesterday's conversation rather than a blank one.
+- Fixed: in Russian, the number of open conversations on a project card came out as a fragment of code rather than a count.
+
 ## [0.12.6] - 2026-09-06
 
 - Added: mathematics in an answer is now drawn as a formula rather than left as the TeX it was written in - a formula of its own between `$$` or `\[ \]`, and one inside a sentence between single dollars or `\( \)`. A formula too wide for the panel scrolls sideways instead of being cut off, and copying one gives back the source it was written as, so it can be pasted anywhere that reads TeX.
@@ -582,7 +602,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.6...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.7...HEAD
+[0.12.7]: https://github.com/crmapache/amazing-claude-code/compare/0.12.6...0.12.7
 [0.12.6]: https://github.com/crmapache/amazing-claude-code/compare/0.12.5...0.12.6
 [0.12.5]: https://github.com/crmapache/amazing-claude-code/compare/0.12.4...0.12.5
 [0.12.4]: https://github.com/crmapache/amazing-claude-code/compare/0.12.3...0.12.4
