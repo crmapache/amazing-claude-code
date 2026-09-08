@@ -49,6 +49,7 @@ import type {
   TodoItem,
   ToolGroupItem,
   MetaItem,
+  TaskItem,
   ToolItem,
   UserItem,
 } from './types'
@@ -139,10 +140,12 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
       // and the process was taken down, and then this status is the only trace there is.
       const stoppedSilently =
         action.status === 'idle' && (state.stopRequestedAt !== undefined || state.stoppedForAccount === true)
-      // Reconnecting to a background turn (see below) counts as a new turn for the pause as well -
-      // otherwise it would drag along a wait from a completely different turn, one this tab knew nothing
-      // about.
+      // A turn that came up without a prompt of ours. Two different things arrive this way: one the CLI
+      // started by itself while the work asked for is still going (a background agent reported back), and
+      // one of somebody else's this tab has only just reconnected to. The stint tells them apart - the
+      // first continues a stint, the second has none to continue and starts one, pause and all.
       const turnReconnected = action.status === 'running' && state.turnStartedAt === undefined
+      const stintStarts = turnReconnected && state.stintStartedAt === undefined
 
       // What was running when the process went is closed with it - cards AND their counters, which live
       // apart in startedAt: a record left behind there goes on recomputing a duration for a call that
@@ -160,6 +163,11 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
           )
         : null
 
+      // The end of the work rather than the end of a turn: nothing running and not one background agent
+      // left. A turn that ended with agents still going keeps the stint open - the CLI will start the
+      // next turn itself the moment one of them reports back.
+      const stintOver = action.status === 'idle' && !workGoesOn(settled?.items ?? state.items)
+
       const next: PanelState = {
         ...state,
         status: action.status,
@@ -173,10 +181,13 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         // background turn already under way, for instance). We do not touch what is already ticking -
         // otherwise the same status arriving again would move the count backwards.
         turnStartedAt: action.status === 'running' ? (state.turnStartedAt ?? now) : undefined,
-        // The turn has ended (or this is really a new one) - the pause counter is cleared along with
-        // turnStartedAt, or the setInterval in App.tsx would tick for nothing until the next message,
-        // while the next turn would start with someone else's pause.
-        pausedMs: action.status === 'idle' || turnReconnected ? 0 : state.pausedMs,
+        // The work asked for outlives this turn while a background agent is still running - and only
+        // when nothing is left of it does the count go back to zero (see PanelState.stintStartedAt).
+        stintStartedAt:
+          action.status === 'running' ? (state.stintStartedAt ?? now) : stintOver ? undefined : state.stintStartedAt,
+        // The pause counter belongs to the stint, not to the turn: cleared at every turn's end, it would
+        // charge the agent with the minutes spent waiting for a decision earlier in the same work.
+        pausedMs: stintOver || stintStarts ? 0 : state.pausedMs,
         waitStartedAt: action.status === 'idle' ? undefined : state.waitStartedAt,
         seq: stoppedSilently ? state.seq + 1 : state.seq,
         startedAt: settled?.startedAt ?? state.startedAt,
@@ -292,6 +303,8 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         ...state,
         status: 'running',
         turnStartedAt: now,
+        // A new request - a new count, whatever was going on before it (see PanelState.stintStartedAt).
+        stintStartedAt: now,
         pausedMs: 0,
         waitStartedAt: undefined,
         streamingText: '',
@@ -405,15 +418,16 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
     // build without a model list (or if the request for it never arrived) there would be nothing to
     // expand the choice with, and the caption under the panel would go on naming the previous model.
     case 'modelApplied': {
-      // streamModel is dropped along with it: the count of "what the stream last named" starts anew from
-      // a choice of the person's own, or the first answer after the change would be taken for a swap
-      // behind their back (see noteStreamModel).
+      // What the stream last named is left standing: the request in flight goes on answering in the
+      // model being left, and wiping the count here made that echo the thing the next signature was
+      // compared against (see PanelState.ownSwap). What is remembered instead is that a swap of the
+      // person's own is on its way - refused ones are not, there is nothing coming.
       const applied: PanelState = {
         ...state,
         pendingModel: undefined,
         model: action.model,
         ownModel: action.model,
-        streamModel: undefined,
+        ownSwap: expectingOwnSwap(state, action.model, action.error),
         // Whatever the agent had swapped before is answered by a choice of the person's own: the accent
         // on the button says "you did not pick this", and now they have (see PanelState.switchedFrom).
         switchedFrom: undefined,
@@ -803,8 +817,10 @@ const applyProcessExited = (state: PanelState, exitCode: number, now: number): P
     crashed: true,
     stopRequestedAt: undefined,
     // The turn broke off - without this turnStartedAt would hang until the next message, and the
-    // setInterval in App.tsx would tick for nothing (the next turn may be a long way off).
+    // setInterval in App.tsx would tick for nothing (the next turn may be a long way off). The stint goes
+    // with it: everything the request had running died with the process.
     turnStartedAt: undefined,
+    stintStartedAt: undefined,
     pausedMs: 0,
     waitStartedAt: undefined,
     startedAt,
@@ -869,6 +885,44 @@ const isRunningSomething = (state: PanelState): boolean =>
   state.items.some((item) => (item.kind === 'task' || item.kind === 'toolGroup') && item.pending)
 
 /**
+ * The background agents that have not reported back yet.
+ *
+ * One rule for the three places that ask the same question - has the work stopped, or has only this turn
+ * stopped: the status line over the input field, the sound at the end of a turn, and the time under the
+ * answer. A turn that ended with agents still running has not ended the work: the CLI starts the next
+ * turn itself the moment one of them reports (see isTurnAnnouncement in AgentStream.kt).
+ *
+ * Background commands run through "!" are deliberately not counted. A dev server started that way outlives
+ * everything and never reports back at all - counted here, it would keep the stint open for the rest of
+ * the day and the time under the answer would grow with it.
+ */
+export const pendingAgents = (items: FeedItem[]): TaskItem[] =>
+  items.filter((item): item is TaskItem => item.kind === 'task' && item.pending)
+
+/** Whether anything the request asked for is still running once this turn has ended. */
+export const workGoesOn = (items: FeedItem[]): boolean => pendingAgents(items).length > 0
+
+/**
+ * How long the work asked for has been going - the waits for the person's decisions taken out.
+ *
+ * The same arithmetic answers the live counter beside "Claude is thinking" and the caption under the
+ * answer, so that the two cannot disagree: a counter that ran for thirty-eight minutes and a caption
+ * saying three is exactly the complaint this came from.
+ */
+export const stintElapsed = (state: PanelState, now: number): number => {
+  // The turn's own start as a fallback and nothing worse than that: a stint is opened by every route a
+  // turn can begin by, so the two are set together - but a counter that answers zero because one field
+  // was missed is a counter that looks broken, while one running from this turn is merely short.
+  const from = state.stintStartedAt ?? state.turnStartedAt
+  if (from === undefined) return 0
+
+  // A decision taken this very moment: the effect that carries waitStartedAt into pausedMs has not run
+  // yet (it fires after the render), so the pause under way is counted in right here.
+  const ongoingWait = state.waitStartedAt ? now - state.waitStartedAt : 0
+  return Math.max(0, now - from - state.pausedMs - ongoingWait)
+}
+
+/**
  * A message's content as a list of blocks - however it arrived.
  *
  * A bare string instead of a list arrives with the summary after `/compact`, for instance, and the whole
@@ -931,6 +985,21 @@ const realModel = (model: string | undefined): string | undefined =>
   model && !model.startsWith('<') ? model : undefined
 
 /**
+ * Is there an answer on a new model on its way, put there by the person themselves?
+ *
+ * Only when there is something for it to catch: a refusal moves nothing, a choice of the model already
+ * at work moves nothing either, and a tab whose stream has never named a model has no signature to be
+ * compared against - a fork, for one, is told its parent's model before its own process is up (see App).
+ * A flag raised in any of those cases would wait forever and swallow the first real swap that came.
+ */
+const expectingOwnSwap = (state: PanelState, model: string, error?: string): boolean | undefined => {
+  if (error) return state.ownSwap
+  if (!state.streamModel || sameModel(state.streamModel, model)) return state.ownSwap
+
+  return true
+}
+
+/**
  * The stream has named a model - remember it, and if it is not the one that was working, say so in the
  * feed.
  *
@@ -951,6 +1020,10 @@ const noteStreamModel = (state: PanelState, named: string, reason = '', replay =
   // next - with a build date, with or without the window mark - and every such difference would otherwise
   // be announced as a swap (see modelKey in catalog.ts).
   if (!previous || sameModel(previous, named)) return moved
+
+  // The person asked for this themselves a moment ago, and this signature is the request coming true -
+  // the first one that names anything but the model being left (see PanelState.ownSwap).
+  if (state.ownSwap) return { ...moved, ownSwap: false }
 
   return push(swapNoted(moved, previous, replay), (id) => ({ id, kind: 'model', from: previous, to: named, reason }))
 }
@@ -1044,6 +1117,7 @@ const applyAgentEvent = (
         // wiped.
         status: 'idle',
         turnStartedAt: undefined,
+        stintStartedAt: undefined,
         pausedMs: 0,
         waitStartedAt: undefined,
         stopRequestedAt: undefined,
@@ -1169,8 +1243,6 @@ const applyAgentEvent = (
       // trace that this is not a natural end but a Stop/Escape is that the stop request is still standing
       // uncleared at this moment.
       const cancelled = state.stopRequestedAt !== undefined || state.stoppedForAccount === true
-      const outcome = resultOutcome(event, cancelled, state.stoppedForAccount === true)
-      const stats = resultStats(outcome)
 
       // The refusal goes into the feed BEFORE the turn's result: it happened earlier, and "Worked 3s"
       // under it reads as the end of this very turn rather than of the next one.
@@ -1206,6 +1278,21 @@ const applyAgentEvent = (
         !cancelled ? 'all' : state.stoppedForAccount === true ? 'none' : 'background',
       )
 
+      // Whether the work asked for ends here, or only this turn of it: a background agent still running
+      // means the CLI will start the next turn itself the moment it reports back (see
+      // PanelState.stintStartedAt).
+      const stintOver = !workGoesOn(settled)
+      const outcome = resultOutcome(
+        event,
+        cancelled,
+        state.stoppedForAccount === true,
+        // The whole stint's time, and only where that is the truth. A turn ending mid-work speaks for
+        // itself alone - the figure from the CLI - and in a replay there is no stint at all: a past
+        // conversation's events carry the moment they are replayed, not the moment they happened.
+        stintOver && !replay && state.stintStartedAt !== undefined ? stintElapsed(state, now) : undefined,
+      )
+      const stats = resultStats(outcome)
+
       return {
         ...withError,
         startedAt,
@@ -1219,7 +1306,10 @@ const applyAgentEvent = (
         // from the backend to clear turnStartedAt: until it arrived the setInterval in App.tsx would tick
         // for nothing a while longer.
         turnStartedAt: undefined,
-        pausedMs: 0,
+        // The stint, though, is only over when the work is: the next turn of the same request must go on
+        // counting from the person's message rather than start afresh.
+        stintStartedAt: stintOver ? undefined : state.stintStartedAt,
+        pausedMs: stintOver ? 0 : state.pausedMs,
         waitStartedAt: undefined,
         starting: false,
         usage,
@@ -1262,7 +1352,9 @@ const applyModelFallback = (state: PanelState, event: AgentSystemEvent, replay: 
   if (!to) return state
 
   const from = realModel(event.originalModel) ?? state.streamModel
-  const moved: PanelState = { ...state, model: to, streamModel: to }
+  // Announced with a reason, so it is drawn whoever asked for what: a choice of the person's own is
+  // answered by this event too, and the flag it left has nothing to wait for any more.
+  const moved: PanelState = { ...state, model: to, streamModel: to, ownSwap: false }
   if (from === to) return moved
 
   return push(from ? swapNoted(moved, from, replay) : moved, (id) => ({
@@ -2161,9 +2253,20 @@ const resultOutcome = (
   event: Extract<AgentEvent, { type: 'result' }>,
   cancelled: boolean,
   forAccount: boolean,
+  stintMs?: number,
 ): MetaItem['outcome'] => ({
   state: !cancelled ? 'worked' : forAccount ? 'movedAccount' : 'stopped',
-  duration: typeof event.duration_ms === 'number' ? formatDuration(event.duration_ms) : '',
+  // The whole work's time when this end is the work's end, and the CLI's figure for this turn otherwise.
+  // The CLI knows one turn and nothing above it: a request that started background agents ends in as many
+  // turns as there were agents, and its last one - the one carrying the answer - is a couple of minutes
+  // long after half an hour of work. Which of the two this is, is decided where the feed is known (see
+  // stintOver in case 'result'); here only the figure is dressed.
+  duration:
+    stintMs !== undefined
+      ? formatDuration(stintMs)
+      : typeof event.duration_ms === 'number'
+        ? formatDuration(event.duration_ms)
+        : '',
 })
 
 /**

@@ -460,7 +460,14 @@ interface SelectorProps {
 }
 
 /** One selector's button (MODEL/EFFORT/MODE). What is exported is the whole row - see [Selectors]. */
-const Selector = ({ label, value, sample, hint, className = '', onOpen }: SelectorProps) => (
+/**
+ * The panel's own picker: a label, the value chosen, and a chevron that opens a menu.
+ *
+ * Exported because there is now a second place that picks one thing out of several - the scenario editor,
+ * whose form is eight of these. A native `select` is not an option there and not merely for the look: in
+ * the IDE's offscreen browser its list does not open at all.
+ */
+export const Selector = ({ label, value, sample, hint, className = '', onOpen }: SelectorProps) => (
   <button
     type="button"
     className={`${s.selector} ${className}`}
@@ -583,8 +590,14 @@ const extraTooltip = (t: Dict, extra: ExtraUsage): string => {
   return `${t.status.extraUsage(named)}${spent}`
 }
 
-/** An accent of its own for every permission mode - see .selectorPlan and its neighbours. */
-const modeClass = (mode: string): string => {
+/**
+ * An accent of its own for every permission mode - see .selectorPlan and its neighbours.
+ *
+ * Exported because the selector is worn in more than one place: the scenario editor chooses a mode with
+ * the very same button (see Picker), and a MODE there that stayed grey while the one under the field
+ * turned red for the same choice read as two different controls rather than one.
+ */
+export const modeClass = (mode: string): string => {
   if (mode === 'plan') return s.selectorPlan ?? ''
   if (mode === 'acceptEdits') return s.selectorAccept ?? ''
   if (mode === 'bypassPermissions') return s.selectorDanger ?? ''

@@ -236,6 +236,23 @@ internal class AccountsState(private val file: Path) {
     }
 
     /**
+     * Drop a model nobody offers any more, wherever an account still names it - see [Account.model].
+     *
+     * The other half of taking a hand-added model off the list. The machine's default is cleared at the
+     * same door (see ClaudePanel), and clearing only that one leaves the weaker record standing over the
+     * stronger: what a new tab launches with is the ACCOUNT's memory first and the machine's second (see
+     * ClaudeSessions.newSession). The clamp is no help here - a name that was hand-added is in no
+     * catalogue at all, so until the account has answered with one the check says "I do not know", which
+     * reads as a yes, and the process comes up looking perfectly well and dies on the first message.
+     *
+     * By plain name rather than by family, exactly as at that door: these are the strings the person
+     * typed, and the same strings are what an applied pick wrote down (see ClaudeSessions.setModel).
+     */
+    fun forgetModels(names: Set<String>) = update { held ->
+        held.accounts.forEach { if (it.model in names) it.model = "" }
+    }
+
+    /**
      * Every change goes through here: read what is on the disk NOW, apply, write it back.
      *
      * Read-modify-write rather than a merge of two snapshots, and the difference is not academic. The

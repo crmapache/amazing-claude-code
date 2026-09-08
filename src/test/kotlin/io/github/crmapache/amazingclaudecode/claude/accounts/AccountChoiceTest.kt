@@ -52,12 +52,16 @@ class AccountChoiceTest : BasePlatformTestCase() {
         AccountsState.getInstance().accounts().forEach { AccountsState.getInstance().forget(it.id) }
         accounts.currentId = ""
         ClaudePreferences.model = ""
+        // Machine-wide like the register above, and it lifts the clamp where it is set - a leftover from
+        // another test would make this one pass for the wrong reason.
+        ClaudePreferences.customModels = emptyList()
     }
 
     override fun tearDown() {
         runCatching {
             AccountsState.getInstance().accounts().forEach { AccountsState.getInstance().forget(it.id) }
             accounts.currentId = ""
+            ClaudePreferences.customModels = emptyList()
             ClaudePreferences.model = ""
         }
         super.tearDown()
@@ -189,6 +193,29 @@ class AccountChoiceTest : BasePlatformTestCase() {
 
         assertEquals("home", sessions.accountOf("main"))
         assertEquals("sonnet", sessions.model("main"))
+    }
+
+    /**
+     * A model somebody added by hand is not clamped away, whatever the catalogue says.
+     *
+     * The catalogue answers for what Claude Code itself offers, and a hand-added model exists precisely
+     * because that is not the whole truth on this machine (a proxy router, a gateway). Clamped by it, the
+     * one model the provider actually serves would be quietly swapped for one it does not.
+     */
+    fun testAHandAddedModelIsNotClampedByTheCatalogue() {
+        AccountsState.getInstance().remember(account("home", model = "sonnet"))
+        accounts.noteModels("home", setOf("sonnet"))
+        working("work")
+        accounts.noteModels("work", setOf("sonnet"))
+        ClaudePreferences.customModels = listOf("glm-4.6")
+
+        val sessions = sessions()
+        sessions.setModel("main", "glm-4.6") {}
+
+        accounts.currentId = "home"
+        sessions.switchAllTo()
+
+        assertEquals("glm-4.6", sessions.model("main"))
     }
 
     /** And one it can run is left exactly where it was: the move is about the subscription, not the model. */

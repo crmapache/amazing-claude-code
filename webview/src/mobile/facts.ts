@@ -2,15 +2,15 @@ import type { CommandEntry, CommandHint } from '../feed/slash'
 import { buildCommands } from '../feed/slash'
 import { emptyUsageBook, mergeUsageBook, usageOf, type UsageBook, type UsageFacts } from '../feed/usage'
 import type { Dict } from '../i18n/en'
-import type { ShellMessage } from '../protocol'
+import type { Scenario, ScenarioRun, ScenarioRunSummary, ScenarioSchedule, ShellMessage } from '../protocol'
 
 /**
  * What a phone knows about a project rather than about one conversation in it.
  *
  * The branch and its pull request, the subscription's windows, the descriptions of the slash commands,
- * the project's files. All four arrive by themselves - nobody asks for them (see
- * ClaudeSessionHub.PROJECT_ORDER and RemoteFeed.projectFact) - and the composer cannot be drawn
- * without them.
+ * the project's files, and the rounds of work it has written down. All of them arrive by themselves -
+ * nobody asks for them (see ClaudeSessionHub.PROJECT_ORDER and RemoteFeed.projectFact) - and neither
+ * the composer nor the scenarios screen can be drawn without them.
  *
  * Per project rather than per conversation, and that is the whole reason this is a file of its own:
  * they outlive the screen. Walking out of a chat and back into it must not empty the limit rings and
@@ -56,9 +56,59 @@ export interface ProjectFacts extends UsageFacts {
    * argument that could never mean anything.
    */
   locale?: { chosen: string; ide: string }
+  /**
+   * The no-stress colour mode set at the desk, so the gauges here are as calm as the ones there.
+   *
+   * A property of the person like the language above it, and it travels the same way and for the same
+   * reason: there is no other route to a phone that is never sent `init`. Absent until the IDE says -
+   * and then the ladder, which is what the screen has always drawn.
+   */
+  calmColors?: boolean
+  /**
+   * The models added by hand at that desk (see CustomModels.tsx), so this screen offers the same list
+   * the panel does.
+   *
+   * It travels as a fact for the same reason as the two above - the phone is never sent `init` - and it
+   * cannot be set from here either (see RemoteCommands): a model is added on the machine whose Claude
+   * Code will be launched with it.
+   */
+  customModels?: string[]
+  /**
+   * The project's scenarios and which run is going in it right now (see ScenarioDesk).
+   *
+   * A fact rather than an answer, exactly as at the desk: a round of work started in the morning runs
+   * for hours with nobody in front of it, and a phone that had to ask would show a project as quiet
+   * until somebody thought to look. Cut down on the way out - what a card actually says to its agent is
+   * pages of prose and is read where it is written (see RemoteFeed.trimmedScenarios).
+   */
+  scenarios?: ScenarioShelves
+  /**
+   * The runs this phone has been handed whole, by their id.
+   *
+   * By id rather than one slot, because two of them arrive by different roads and must not overwrite
+   * each other: the live one is pushed as it moves, while a past one comes back because this phone
+   * asked for it (see the `scenarioOpen` request). Held between visits for the reason the histories
+   * are - a screen showing what it knew a minute ago beats one that says "Loading…" over it.
+   */
+  runs: Record<string, ScenarioRun>
 }
 
-export const emptyFacts = (): ProjectFacts => ({ files: [], hints: {}, commands: [], usage: emptyUsageBook() })
+/** Both shelves of a project, the runs that came of them, and the one that may be going. */
+export interface ScenarioShelves {
+  list: Scenario[]
+  past: ScenarioRunSummary[]
+  /** The run going right now, or empty. One at a time per project, by design. */
+  live: string
+  schedules: ScenarioSchedule[]
+}
+
+export const emptyFacts = (): ProjectFacts => ({
+  files: [],
+  hints: {},
+  commands: [],
+  runs: {},
+  usage: emptyUsageBook(),
+})
 
 /**
  * The project's facts as one conversation sees them: its own account's figures on top.
@@ -84,7 +134,11 @@ export const isFact = (message: ShellMessage): boolean =>
   message.type === 'files' ||
   message.type === 'commandHints' ||
   message.type === 'commands' ||
-  message.type === 'locale'
+  message.type === 'locale' ||
+  message.type === 'calmColors' ||
+  message.type === 'customModels' ||
+  message.type === 'scenarios' ||
+  message.type === 'scenarioRun'
 
 /**
  * One fact folded into what is already known.
@@ -126,6 +180,38 @@ export const applyFact = (facts: ProjectFacts, message: ShellMessage): ProjectFa
      */
     case 'locale':
       return { ...facts, locale: { chosen: message.language ?? '', ide: message.ideLanguage ?? '' } }
+
+    /* The gauges' paint, as the desk has it - the phone obeys it and cannot set it (see RemoteCommands). */
+    case 'calmColors':
+      return { ...facts, calmColors: message.on }
+
+    /* And the hand-added models, on the same terms: shown here, added only at the desk. */
+    case 'customModels':
+      return { ...facts, customModels: message.models }
+
+    /*
+     * The shelves, replaced whole: this one message is the entire answer about what the project has,
+     * and a scenario deleted at the desk is said by its absence. `canShare` is left behind - it answers
+     * "is there a repository to put a new one in", and new ones are not written from here.
+     */
+    case 'scenarios':
+      return {
+        ...facts,
+        scenarios: {
+          list: message.scenarios,
+          past: message.runs,
+          live: message.live,
+          schedules: message.schedules,
+        },
+      }
+
+    /*
+     * One run, under its own id. Both the live one arriving on its own and an old one that was asked
+     * for land here, and keeping them apart is the whole point of the key: an old run opened for
+     * reading must not stand in for the one that is going.
+     */
+    case 'scenarioRun':
+      return { ...facts, runs: { ...facts.runs, [message.run.id]: message.run } }
 
     default:
       return facts

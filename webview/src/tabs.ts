@@ -1,14 +1,36 @@
 import type { Session } from './components/Header'
 
 /**
- * The statistics tab's place in the strip - an id no conversation will ever carry.
+ * The strip holds two kinds of tab, and only one of them is a conversation.
  *
- * The strip rearranges by group (a conversation together with its forks), and the statistics is a group
- * of one: that way the hand drags it by the same arithmetic as everything else rather than by a second
- * one written beside it. The same string is what `active` holds while the tab is the one being looked at
- * - the strip and the body name that tab the same way.
+ * The other kind - the statistics, the scenarios, a scenario run being watched - holds no conversation
+ * and belongs to this screen alone: the shell's list of tabs has no line for any of them. They take part
+ * in the strip as groups of one, so the hand drags them by the same arithmetic as everything else rather
+ * than by a second one written beside it. The same string is what `active` holds while such a tab is the
+ * one being looked at - the strip and the body name a tab the same way.
  */
 export const STATISTICS_GROUP = '__statistics__'
+
+/** The hub: both shelves of scenarios, and the runs that came of them. */
+export const SCENARIOS_GROUP = '__scenarios__'
+
+/**
+ * One run being watched, by its own identifier.
+ *
+ * A tab each rather than one that swaps its contents, because that is what a run is: it goes on for
+ * hours whether or not anybody is looking at it, and two of them - the one going now and the one from
+ * last night somebody is reading - are two different things to have open at once.
+ */
+const RUN_TAB = '__scenario_run__'
+
+export const runTabId = (runId: string): string => `${RUN_TAB}${runId}`
+
+/** The run a tab is watching, or an empty string when the tab is not one. */
+export const runOfTab = (id: string): string => (id.startsWith(RUN_TAB) ? id.slice(RUN_TAB.length) : '')
+
+/** Whether this identifier belongs to the strip rather than to any conversation. */
+export const isPanelTab = (id: string): boolean =>
+  id === STATISTICS_GROUP || id === SCENARIOS_GROUP || id.startsWith(RUN_TAB)
 
 /**
  * The groups in the order the strip draws them: a conversation with its forks counts once. A group's tabs
@@ -46,16 +68,43 @@ export const placeIn = (place: TabPlace, groups: string[]): number => {
 /** Where a tab goes when it opens: the end of the strip, after every conversation. */
 export const placeAtEnd = (groups: string[]): TabPlace => ({ at: groups.length, among: groups })
 
+/** Where a tab that holds no conversation stands - see [TabPlace]. */
+export interface PanelTabPlace {
+  id: string
+  place: TabPlace
+}
+
 export interface TabMove {
   /** The tabs in their new order. The same array when nothing moved - there is nothing to redraw. */
   sessions: Session[]
-  /** Where the statistics stands afterwards, or null when its tab is not in the strip at all. */
-  statistics: TabPlace | null
+  /** The tabs that hold no conversation, in the order the strip now draws them. */
+  panels: PanelTabPlace[]
   /**
    * What the shell is told, if anything. It keeps the conversations' order and knows nothing of the
-   * statistics, so a drag that only carried that tab past a neighbour is this screen's business alone.
+   * tabs that hold none, so a drag that only carried one of those past a neighbour is this screen's
+   * business alone.
    */
   shell: { groupId: string; beforeGroupId: string | null } | null
+}
+
+/**
+ * The strip as it is drawn: the conversation groups with the panel's own tabs standing among them.
+ *
+ * One list rather than "the conversations, and then the others after them" - otherwise those tabs could
+ * be dragged anywhere and would still snap back to the end.
+ */
+export const stripOrder = (sessions: Session[], panels: PanelTabPlace[]): string[] => {
+  const groups = groupOrder(sessions)
+  const order = [...groups]
+
+  // Their own order breaks a tie: two tabs that work out to the same place keep the order they were
+  // already drawn in, rather than swapping every time a conversation beside them closes.
+  const placed = panels
+    .map((panel, index) => ({ id: panel.id, index, at: placeIn(panel.place, groups) }))
+    .sort((one, two) => one.at - two.at || one.index - two.index)
+
+  placed.forEach((panel, shift) => order.splice(panel.at + shift, 0, panel.id))
+  return order
 }
 
 /**
@@ -66,42 +115,49 @@ export interface TabMove {
  * the middle of someone else's topic would mean nothing but confusion. The order inside a group is left
  * alone too: a fork follows its parent, and swapping them would be a lie about where it came from.
  *
- * The statistics takes part as a group of its own (see STATISTICS_GROUP): it is dragged like the rest and
- * the rest are dragged past it. What it does not do is reach the shell - the conversations' order there
- * is a list this tab has no line in.
+ * The panel's own tabs take part as groups of one (see [STATISTICS_GROUP]): they are dragged like the
+ * rest and the rest are dragged past them. What they do not do is reach the shell - the conversations'
+ * order there is a list they have no line in.
  *
  * `beforeGroupId` is the group we will stand BEFORE, or null for the very end.
  */
 export const moveTab = (
   sessions: Session[],
-  statistics: TabPlace | null,
+  panels: PanelTabPlace[],
   groupId: string,
   beforeGroupId: string | null,
 ): TabMove => {
   const groups = groupOrder(sessions)
-  const statsAt = statistics ? placeIn(statistics, groups) : null
-
-  const order = [...groups]
-  if (statsAt !== null) order.splice(statsAt, 0, STATISTICS_GROUP)
+  const order = stripOrder(sessions, panels)
+  const held = new Set(panels.map((panel) => panel.id))
 
   const from = order.indexOf(groupId)
-  if (from < 0 || groupId === beforeGroupId) return { sessions, statistics, shell: null }
+  if (from < 0 || groupId === beforeGroupId) return { sessions, panels, shell: null }
 
   const rest = order.filter((id) => id !== groupId)
   const at = beforeGroupId === null ? -1 : rest.indexOf(beforeGroupId)
   const index = at < 0 ? rest.length : at
   const next = [...rest.slice(0, index), groupId, ...rest.slice(index)]
 
-  const nextGroups = next.filter((id) => id !== STATISTICS_GROUP)
-  // The statistics moving past a neighbour leaves the conversations exactly as they were: their order is
+  const nextGroups = next.filter((id) => !held.has(id))
+  // A panel tab moving past a neighbour leaves the conversations exactly as they were: their order is
   // the same list, and there is nothing to tell the shell or to redraw in the tabs themselves.
   const sameOrder = nextGroups.every((id, place) => groups[place] === id)
 
+  // Counted in conversation groups rather than in strip positions: that is what [placeIn] reads back,
+  // and what makes the place survive a neighbour closing (see TabPlace).
+  const nextPanels: PanelTabPlace[] = []
+  let passed = 0
+  for (const id of next) {
+    if (held.has(id)) nextPanels.push({ id, place: { at: passed, among: nextGroups } })
+    else passed += 1
+  }
+
   return {
     sessions: sameOrder ? sessions : nextGroups.flatMap((id) => sessions.filter((s) => s.groupId === id)),
-    statistics: statsAt === null ? null : { at: next.indexOf(STATISTICS_GROUP), among: nextGroups },
+    panels: nextPanels,
     shell:
-      sameOrder || groupId === STATISTICS_GROUP
+      sameOrder || held.has(groupId)
         ? null
         : { groupId, beforeGroupId: nextGroups[nextGroups.indexOf(groupId) + 1] ?? null },
   }

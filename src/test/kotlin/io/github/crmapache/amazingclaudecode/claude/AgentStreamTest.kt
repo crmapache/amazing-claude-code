@@ -98,6 +98,37 @@ class AgentStreamTest {
     }
 
     /**
+     * A turn the CLI starts by itself - a background task finishing is enough for one - announces
+     * itself before the agent says a word. Reading that announcement is what keeps a message sent right
+     * then out of a turn nobody knew was running (see ClaudeSession.noteTurnActivity).
+     */
+    @Test
+    fun `the CLI announces a turn with its init`() {
+        assertTrue(AgentStream.isTurnAnnouncement("""{"type":"system","subtype":"init","tools":[]}"""))
+    }
+
+    /** A subagent comes up with an init of its own, and it is not the conversation's turn. */
+    @Test
+    fun `a subagent's start-up is not the conversation's turn`() {
+        assertFalse(AgentStream.isTurnAnnouncement("""{"type":"system","subtype":"init","task_id":"b1"}"""))
+    }
+
+    /** Everything else the process says, including its other system events. */
+    @Test
+    fun `other events announce nothing`() {
+        assertFalse(AgentStream.isTurnAnnouncement("""{"type":"system","subtype":"task_notification","task_id":"b1"}"""))
+        assertFalse(AgentStream.isTurnAnnouncement("""{"type":"assistant","message":{"content":[]}}"""))
+        assertFalse(AgentStream.isTurnAnnouncement("""{"type":"result","subtype":"success"}"""))
+    }
+
+    /** The same event quoted inside an answer - the panel talks about this protocol all day. */
+    @Test
+    fun `an init quoted inside an answer announces nothing`() {
+        val line = """{"type":"assistant","message":{"content":[{"type":"text","text":"it sends {\"type\":\"system\",\"subtype\":\"init\"}"}]}}"""
+        assertFalse(AgentStream.isTurnAnnouncement(line))
+    }
+
+    /**
      * The conversation's name is read out of the same event by both the live stream and the history
      * list - the panel must not name one and the same conversation differently in the two places.
      */

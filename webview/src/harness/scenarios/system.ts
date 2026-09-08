@@ -278,6 +278,41 @@ export const scenariosSystem: Scenario[] = [
     ]),
   ]),
 
+  /**
+   * The token of the account in force has expired, and the panel is a sign-in screen again.
+   *
+   * The screen is here because it used to be a dead end. The sign-in fills the credential drawer of the
+   * account in force (see ClaudeLogin), and it used to open a plain terminal instead - that is, the
+   * CLI's default drawer. With an added account current those are two different places: the person
+   * signed in, the browser said "you are all set up", and the panel went on offering to open the
+   * terminal again, for ever.
+   *
+   * So the title names the account the button fills, and the press is answered: every third one refuses,
+   * which is the state that used to leave the screen waiting on a terminal that never opened.
+   */
+  scenario('signed-out', 'The sign-in has expired', 'system', [
+    checkpoint('The panel is locked out, and it says whose sign-in it wants', [
+      shell({
+        type: 'accounts',
+        capability: 'supported',
+        current: 'a2',
+        accounts: [
+          { id: '', alias: '', email: 'you@company.com', plan: 'max', health: 'present', isDefault: true },
+          { id: 'a2', alias: 'Personal', email: 'you@personal.com', plan: 'pro', health: 'present' },
+          { id: 'a4', alias: 'Work', email: 'you@work.com', plan: 'team', health: 'present' },
+        ],
+      }),
+      shell({ type: 'auth', installed: true, loggedIn: false }),
+      wait(700),
+    ]),
+    // By itself: nobody tells the panel that the browser came back, so it keeps asking the CLI until it
+    // sees the sign-in (see ProjectAuth.poll).
+    checkpoint('The sign-in lands, and the panel comes back on its own', [
+      shell({ type: 'auth', installed: true, loggedIn: true, email: 'you@personal.com', plan: 'Pro' }),
+      wait(500),
+    ]),
+  ]),
+
   scenario('clear-conversation', '/clear wipes the conversation', 'system', [
     checkpoint('The user asks about the history', [user('Tell me what we have already discussed'), wait(500)]),
     checkpoint('The finished answer', [

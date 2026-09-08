@@ -138,6 +138,21 @@ internal class ClaudeSession(
      * [checkDeliveries]).
      */
     private val onTurnStarted: () -> Unit = {},
+    /**
+     * What this conversation is told about where it is running - see [ClaudeLaunch.arguments].
+     *
+     * A tab is a person watching an answer being written; a scenario's head and its cards are neither,
+     * and the default line would tell them somebody is sitting there ready to press a button. Passed at
+     * construction because it is decided once and cannot change under a running process.
+     */
+    private val briefing: String = ClaudeLaunch.PANEL_BRIEFING,
+    /**
+     * Whether the CLI is asked to name this conversation by its first message.
+     *
+     * True for a tab, where the name is what the strip shows. False for anything the panel raises without
+     * a tab: a name costs a small model's turn and there is nothing to put it on.
+     */
+    private val nameWanted: Boolean = true,
 ) : Disposable {
 
     private var handler: OSProcessHandler? = null
@@ -166,6 +181,17 @@ internal class ClaudeSession(
     /** Whether the process's death is our own request rather than a crash. */
     @Volatile
     private var stopRequested = false
+
+    /**
+     * Whether this process has already announced a turn - see [noteTurnActivity].
+     *
+     * Per process rather than per conversation: the first `system:init` is the process itself coming
+     * up, and a process comes up for a wake-up (an MCP question, say) as readily as for a message. A
+     * new process starts this over, which is why it is reset where the handler is set rather than where
+     * a conversation is.
+     */
+    @Volatile
+    private var announcedOnce = false
 
     /**
      * The model this conversation runs on.
@@ -275,11 +301,17 @@ internal class ClaudeSession(
         // send: the error message is in the feed while work still looks like it is happening.
         val process = handler ?: start() ?: run { endTurn(); return false }
 
-        // Writing into a running turn is the only thing the CLI loses: an idle process always takes a
-        // message, and re-reading the conversation's file for it is pointless (see [checkDeliveries]).
-        // A repeat is watched in any case: vanishing twice in a row is no longer the known race, and
-        // that will have to be said out loud.
-        val watched = (busy || repeat) && PromptDelivery.traceable(text)
+        // Writing into a running turn is the only thing the CLI loses: a process we know to be idle
+        // takes a message, and re-reading the conversation's file for it is pointless (see
+        // [checkDeliveries]). A repeat is watched in any case: vanishing twice in a row is no longer the
+        // known race, and that will have to be said out loud.
+        //
+        // A command is watched whether or not we think a turn is running, and that is the whole
+        // difference: "idle" here is our own reckoning, and the CLI starts turns we did not ask for -
+        // a background task finishing is one (see [noteTurnActivity]). An ordinary message that lands
+        // in such a turn is still delivered; a command lands there as bare text and does nothing, with
+        // nothing on the screen to say so.
+        val watched = repeat || busy || PromptDelivery.isCommand(text)
         // The time is taken before the write: a record in the conversation cannot turn out to be older
         // than the send itself, and the whole check rests on that.
         val sentAt = System.currentTimeMillis()
@@ -322,7 +354,7 @@ internal class ClaudeSession(
      * name kept only in the tab would be lost the moment the panel is closed.
      */
     private fun requestTitle(text: String) {
-        if (titleAsked || lastSentTitle != null || !titleWanted()) return
+        if (!nameWanted || titleAsked || lastSentTitle != null || !titleWanted()) return
 
         // Nothing worth a name in this message - the next one may well be the one (see SessionTitle).
         val description = SessionTitle.describe(text) ?: return
@@ -835,12 +867,32 @@ internal class ClaudeSession(
     /**
      * A turn started on its own - without a send of ours.
      *
-     * The only sign of it is events of a working agent in a session that by our reckoning is free: that
-     * is what a turn looks like when the CLI takes up a person's deferred message. Without this signal
-     * the panel would stand "free" for the whole of such a turn: no spinner, the counter still, the
-     * answer typing itself out of nowhere.
+     * Two things start one: the CLI taking up a person's deferred message, and a background task
+     * reporting that it has finished. Without this signal the panel would stand "free" for the whole of
+     * such a turn: no spinner, the counter still, the answer typing itself out of nowhere.
+     *
+     * Two signs of it, and the order matters. The CLI announces such a turn before anything happens in
+     * it (see AgentStream.isTurnAnnouncement) - that is the one that closes the gap: for the seconds
+     * between a background task finishing and the agent's first word, a message sent from the panel
+     * used to go into a turn nobody knew was running, and a slash command sent there was silently
+     * dropped. The agent's own work is the second sign and the surer one: an announcement is a shape of
+     * the CLI's protocol and may change, work cannot be anything else.
      */
     private fun noteTurnActivity(line: String) {
+        if (AgentStream.isTurnAnnouncement(line)) {
+            // The first announcement of a process is the process itself: it says the same thing when it
+            // is woken for an MCP question, and a turn lit up by that would never be cleared. An
+            // announcement inside a turn of ours is that turn's own - a conversation wiped by /clear
+            // announces itself anew.
+            val startedItself = announcedOnce && !busy
+            announcedOnce = true
+            if (!startedItself) return
+
+            busy = true
+            onTurnStarted()
+            return
+        }
+
         if (busy) return
         if (!AgentStream.isTurnActivity(line)) return
 
@@ -862,7 +914,11 @@ internal class ClaudeSession(
      * should for its record in the conversation, and go to the agent a second time simply because the
      * CLI had not managed to write it yet.
      */
-    private fun scheduleDeliveryCheck(watched: List<PromptDeliveries.Delivery>, attempt: Int) {
+    private fun scheduleDeliveryCheck(
+        watched: List<PromptDeliveries.Delivery>,
+        attempt: Int,
+        delay: Long = DELIVERY_CHECK_DELAY_MS * attempt,
+    ) {
         if (watched.isEmpty()) return
 
         AppExecutorUtil.getAppScheduledExecutorService().schedule(
@@ -874,14 +930,34 @@ internal class ClaudeSession(
             // wakes up and hands the work on, the same way the token scan does (see
             // PanelUsage.refreshTodayTokens).
             { AppExecutorUtil.getAppExecutorService().submit { checkDeliveries(watched, attempt) } },
-            DELIVERY_CHECK_DELAY_MS * attempt,
+            delay,
             TimeUnit.MILLISECONDS,
         )
     }
 
-    /** A new chain of checks - over everything awaiting confirmation right now. */
+    /**
+     * A new chain of checks - over everything awaiting confirmation right now.
+     *
+     * Two chains rather than one, because the two kinds of message are decided by different looks and a
+     * look is a whole conversation's file read off the disk - tens of megabytes on a working day, and
+     * largest of all right after the `/compact` that was typed to make it smaller.
+     *
+     * Ordinary text is looked at early and repeatedly: its record appears a fraction of a second after
+     * the turn ends, an early look settles it, and only its absence at the last look means a resend.
+     *
+     * A command is decided by the last look alone. Absence of a record says nothing about one - a known
+     * command the CLI rewrites with tags, an unknown one it does not write down at all (see
+     * PromptDelivery.verdict) - so the only thing any look can find is the `queued_command` record of a
+     * command that was absorbed, and by the end of the turn that could have absorbed it, that record is
+     * written. The two earlier looks could therefore only ever confirm what the third was going to say,
+     * and they said it three times over for every command sent into a tab that was plainly idle. So one
+     * look, taken where the chain of three would have arrived at the one that decides: the same grace
+     * for a late record, a third of the reading.
+     */
     private fun startDeliveryCheck() {
-        scheduleDeliveryCheck(undelivered.snapshot(), attempt = 1)
+        val (commands, ordinary) = undelivered.snapshot().partition { PromptDelivery.isCommand(it.text) }
+        scheduleDeliveryCheck(ordinary, attempt = 1)
+        scheduleDeliveryCheck(commands, attempt = DELIVERY_ATTEMPTS, delay = COMMAND_LOOK_DELAY_MS)
     }
 
     private fun checkDeliveries(watched: List<PromptDeliveries.Delivery>, attempt: Int) {
@@ -906,14 +982,35 @@ internal class ClaudeSession(
             return
         }
 
-        val missing = undelivered.settle(pending, lookup.found.map { pending[it] })
-        if (missing.isEmpty()) return
-
-        // There are attempts left - we wait: the record may simply not have appeared yet.
-        if (attempt < DELIVERY_ATTEMPTS) {
-            scheduleDeliveryCheck(missing, attempt + 1)
-            return
+        // The verdict is per message rather than per lookup: one and the same record means different
+        // things for a command and for ordinary text, and so does the absence of one (see
+        // PromptDelivery.verdict).
+        //
+        // The last look is the one after the turn has ended, not merely the last attempt. A message
+        // taken into a running turn is written into the conversation when the CLI shows it to the agent
+        // - at its next step, which is a whole tool call away and may be a minute off. Judged before
+        // that, an absorbed command looks like one that left no record, that is, like a command that
+        // ran.
+        val lastLook = attempt >= DELIVERY_ATTEMPTS && !busy
+        val byVerdict = pending.indices.groupBy {
+            PromptDelivery.verdict(pending[it].text, lookup.landed[it], lastLook)
         }
+
+        val open = undelivered.settle(
+            pending,
+            byVerdict[PromptDelivery.Verdict.DELIVERED].orEmpty().map { pending[it] },
+        )
+        if (open.isEmpty()) return
+
+        // Nothing can be said about these yet. While a turn is running we do not keep looking: nothing
+        // is resent into a running turn anyway, and its end starts a chain of its own (see [endTurn]),
+        // whereas attempts of our own would re-read a conversation's file - tens of megabytes of it -
+        // for as long as the turn lasts.
+        val waiting = byVerdict[PromptDelivery.Verdict.WAIT].orEmpty().map { pending[it] }.filter { it in open }
+        if (waiting.isNotEmpty() && !busy && attempt < DELIVERY_ATTEMPTS) scheduleDeliveryCheck(waiting, attempt + 1)
+
+        val missing = byVerdict[PromptDelivery.Verdict.LOST].orEmpty().map { pending[it] }.filter { it in open }
+        if (missing.isEmpty()) return
 
         undelivered.resendLost(missing, isTurnRunning = { busy }, resend = ::resend)
     }
@@ -1144,10 +1241,13 @@ internal class ClaudeSession(
                         executable,
                         ClaudeLaunch.ALLOW_BYPASS_FLAG,
                     ),
+                    briefing = briefing,
                 ),
             )
             .withWorkingDirectory(workingDirectory?.let { Path.of(it) })
-            .withEnvironment(environment)
+            // Over the account's own map, never instead of it: what the conversation needs on top of
+            // whose credential it opens lives in ClaudeLaunch, beside everything else decided at launch.
+            .withEnvironment(ClaudeLaunch.environment(environment))
             .withCharset(Charsets.UTF_8)
 
         val process = runCatching { OSProcessHandler(commandLine) }
@@ -1197,6 +1297,7 @@ internal class ClaudeSession(
 
         process.startNotify()
         startedAt = System.currentTimeMillis()
+        announcedOnce = false
         handler = process
         return process
     }
@@ -1296,6 +1397,17 @@ internal class ClaudeSession(
 
         /** How many times we ask before considering a message lost. */
         const val DELIVERY_ATTEMPTS = 3
+
+        /**
+         * When a command's one look falls (see [startDeliveryCheck]).
+         *
+         * Where the chain of three would have arrived at the look that decides - 700 plus 1400 plus 2100
+         * - so a record written late has exactly the grace it had before. Added up rather than written
+         * down, because a number written down here would stay behind the first time either of the two
+         * above is moved.
+         */
+        const val COMMAND_LOOK_DELAY_MS =
+            DELIVERY_CHECK_DELAY_MS * DELIVERY_ATTEMPTS * (DELIVERY_ATTEMPTS + 1) / 2
 
         /**
          * How many last diagnostic lines are kept. The reason a process died is its last words, not the

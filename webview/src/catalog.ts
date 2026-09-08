@@ -21,6 +21,11 @@ export const modelCatalogue = (t: Dict): MenuOption[] => [
   { id: DEFAULT_MODEL, label: t.models.default.label, sub: t.models.default.sub },
   { id: 'opus', label: 'Opus', sub: t.models.opus.sub },
   { id: 'opus[1m]', label: t.models.opus1m.label, sub: t.models.opus1m.sub },
+  // Verified against a live CLI (2.1.261) rather than taken from the announcement: `fable` is accepted
+  // as a model on its own, the way `opus` and `sonnet` are. Missing here, it was missing from every
+  // panel whose catalogue request had not come back yet - and from every panel whose CLI does not offer
+  // it at all, which is how somebody working through a proxy router first reported it.
+  { id: 'fable', label: 'Fable', sub: t.models.fable.sub },
   { id: 'sonnet', label: 'Sonnet', sub: t.models.sonnet.sub },
   { id: 'sonnet[1m]', label: t.models.sonnet1m.label, sub: t.models.sonnet1m.sub },
   { id: 'haiku', label: 'Haiku', sub: t.models.haiku.sub },
@@ -28,29 +33,42 @@ export const modelCatalogue = (t: Dict): MenuOption[] => [
 ]
 
 /**
- * The CLI's catalogue in the shape the menu understands. An unavailable line is shown - exactly as the
- * terminal does - but marked: seeing that a model exists and why it cannot be chosen is more useful
- * than not seeing it at all.
+ * The CLI's catalogue in the shape the menu understands, with the hand-added models after it. An
+ * unavailable line is shown - exactly as the terminal does - but marked: seeing that a model exists and
+ * why it cannot be chosen is more useful than not seeing it at all.
  *
  * The CLI's own descriptions come in English and cannot be anything else - it does not know what
  * language this panel is in. So where its list names a model we have words for, ours are used: what the
  * catalogue decides is *which* models exist, which is the part only it can know. Anything unfamiliar
  * keeps the description the CLI gave it - an English line for one model reads better than no line.
+ *
+ * [custom] stands apart from all of that and is added to whichever of the two lists is in force,
+ * including the built-in one: a model somebody typed in exists because they said so, and a panel still
+ * waiting for its catalogue must not be a panel that has lost it. A name the catalogue already carries
+ * is not repeated - it is the same model, and the CLI's own line about it says more.
  */
-export const modelOptions = (t: Dict, models: ModelInfo[] | null): MenuOption[] => {
+export const modelOptions = (t: Dict, models: ModelInfo[] | null, custom: string[] = []): MenuOption[] => {
   const ours = modelCatalogue(t)
-  if (models === null || models.length === 0) return ours
 
-  return models.map((model) => {
-    const known = ours.find((option) => option.id === model.value)
+  const base: MenuOption[] =
+    models === null || models.length === 0
+      ? ours
+      : models.map((model) => {
+          const known = ours.find((option) => option.id === model.value)
 
-    return {
-      id: model.value,
-      label: known?.label ?? (model.label || model.value),
-      sub: known?.sub ?? model.description,
-      ...(model.disabled ? { tag: t.models.unavailable } : {}),
-    }
-  })
+          return {
+            id: model.value,
+            label: known?.label ?? (model.label || model.value),
+            sub: known?.sub ?? model.description,
+            ...(model.disabled ? { tag: t.models.unavailable } : {}),
+          }
+        })
+
+  const added = custom
+    .filter((name) => !base.some((option) => option.id === name))
+    .map((name) => ({ id: name, label: name, sub: t.models.custom }))
+
+  return added.length === 0 ? base : [...base, ...added]
 }
 
 /**
@@ -155,20 +173,53 @@ export const modelInForce = (
 export const modelMenu = (
   t: Dict,
   models: ModelInfo[] | null,
+  /** The models added by hand - see modelOptions, which merges them into whichever list is in force. */
+  custom: string[],
   selected: string,
   switched: string | undefined,
 ): { options: MenuOption[]; selected: string } => {
-  const options = modelOptions(t, models)
-  if (!switched) return { options, selected: selected || DEFAULT_MODEL }
+  const options = modelOptions(t, models, custom)
+
+  // The way to the screen where a model is added, and the only way anybody finds it: the settings list
+  // is where the entries are managed, but nobody goes looking there for a model that is missing from
+  // this menu. Last, after everything the menu is actually for, and it is not a value - App answers this
+  // id by opening the screen rather than by choosing anything (see the sentinel's use there).
+  const add: MenuOption = { id: ADD_MODEL, label: t.models.add, icon: '+', sub: t.models.addSub }
+
+  if (!switched) return { options: [...options, add], selected: selected || DEFAULT_MODEL }
 
   const known = models?.find((option) => option.resolved === switched || option.value === switched)
-  if (known) return { options, selected: known.value }
+  if (known) return { options: [...options, add], selected: known.value }
 
   return {
-    options: [...options, { id: switched, label: modelLabel(switched), sub: t.models.switchedItself }],
+    options: [...options, { id: switched, label: modelLabel(switched), sub: t.models.switchedItself }, add],
     selected: switched,
   }
 }
+
+/**
+ * The menu entry that leads to the screen instead of choosing a model.
+ *
+ * A sentinel rather than an empty id, and prefixed so that it can never be a model: it travels through
+ * the same `onPick` every model does, and a name the CLI might one day use would be launched as one.
+ */
+export const ADD_MODEL = 'acc:add-model'
+
+/**
+ * Whether this is usable as a model name at all.
+ *
+ * Not a guess at what a provider will accept - nobody here can know that, and the whole point of a
+ * hand-added model is that Claude Code does not know it either. It is the one thing that IS knowable:
+ * the name travels as a launch argument, and an argument holding a line feed or a quotation mark is cut
+ * short by a shell we never asked for, silently, taking the rest of the command line with it (see
+ * ClaudeLaunch). A space would do the same by splitting one argument into two, and a comma is out for a
+ * smaller reason: it separates the entries where the IDE keeps this list.
+ *
+ * The IDE drops the same names on the way in (see ClaudePreferences.customModels) - this half only keeps
+ * the button from promising something that will be thrown away.
+ */
+export const isModelName = (name: string): boolean =>
+  name.length > 0 && name.length <= 120 && !/[\s"'`\\,]/.test(name)
 
 /**
  * Strongest first, and `auto` above them all - the way the list is read rather than the way the values

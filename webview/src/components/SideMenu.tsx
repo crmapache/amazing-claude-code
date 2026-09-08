@@ -19,6 +19,7 @@ export type MenuScreen =
   | 'plugins'
   | 'settings'
   | 'sounds'
+  | 'calmColors'
   | 'remote'
   | 'remoteAbout'
   | 'accounts'
@@ -30,6 +31,7 @@ export type MenuScreen =
   | 'voice'
   | 'voiceLanguage'
   | 'voiceDevice'
+  | 'customModels'
   | 'language'
   | 'feedback'
   | 'feedbackLog'
@@ -56,6 +58,8 @@ export interface MenuSummary {
   mcp: { connected: number; total: number } | null
   plugins: number | null
   sounds: string
+  /** Whether the gauges are drawn calm rather than by the green-to-red ladder - "On" or "Off". */
+  calmColors: string
   defaultMode: string
   composerLayout: string
   /** From how many lines a pasted text folds into a chip, or that it never does. */
@@ -66,6 +70,8 @@ export interface MenuSummary {
   improvePrompt: string
   /** Dictation: the language it listens in, or that it is switched off. */
   voice: string
+  /** How many models have been added by hand, or that none have. */
+  customModels: string
   /** The language in force, written in itself - "简体中文" rather than "Chinese". */
   language: string
   remote: RemoteSummary
@@ -119,12 +125,14 @@ const AUTHOR_PRODUCT = 'Snakein'
  */
 const SETTINGS_SCREENS: MenuScreen[] = [
   'sounds',
+  'calmColors',
   'defaultMode',
   'composerLayout',
   'pasteCollapse',
   'sendKey',
   'improvePrompt',
   'voice',
+  'customModels',
   'language',
 ]
 
@@ -250,6 +258,14 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M8 2.2l4.6 1.7v3.9c0 3-2.1 4.9-4.6 6-2.5-1.1-4.6-3-4.6-6V3.9z" />
     </svg>
   ),
+  /* A gauge at rest: the track and a short reading inside it. The row is about how the gauges are
+     painted, and a palette or a half-filled disc would have promised a theme instead. */
+  calmColors: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+      <rect x="1.9" y="5.6" width="12.2" height="4.8" rx="2.4" />
+      <path d="M4.6 8h2.8" strokeWidth="2" />
+    </svg>
+  ),
   composerLayout: (
     <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
       <rect x="2.4" y="3.2" width="11.2" height="9.6" rx="1.4" />
@@ -296,6 +312,15 @@ const ICONS: Record<string, ReactNode> = {
   /* The same microphone the composer's button wears: one drawing for one feature, so the row and the
      button recognise each other without being read. */
   voice: <Microphone size={16} />,
+  /* A chip with its legs out. The row is about which models exist for this machine, and a chip is the
+     one drawing that says "a model" without a word - a brain or a spark would have promised the agent
+     itself. */
+  customModels: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4.7" y="4.7" width="6.6" height="6.6" rx="1.3" />
+      <path d="M6.7 2.5v2.2M9.3 2.5v2.2M6.7 11.3v2.2M9.3 11.3v2.2M2.5 6.7h2.2M2.5 9.3h2.2M11.3 6.7h2.2M11.3 9.3h2.2" />
+    </svg>
+  ),
   /* A globe rather than a letter: the row has to be recognisable from inside a language one cannot read,
      which is exactly the case somebody looking for this row is in. */
   language: (
@@ -511,8 +536,7 @@ export const SideMenu = ({
             {/* An advertisement standing where one can be walked past: at the foot of a menu, under
                 everything the menu is actually opened for. The card itself is shared with the voice
                 screen, which carries the other one (see AuthorCard). */}
-            <div className={s.group}>{t.menu.groups.author}</div>
-            <div className={s.rows}>
+            <div className={`${s.rows} ${s.authorRows}`}>
               <AuthorCard
                 title={t.menu.author.title}
                 body={t.menu.author.body}
@@ -571,6 +595,17 @@ export const SettingsScreen = ({
           value={summary.sounds}
           onClick={() => onPick('sounds')}
         />
+        {/* Beside the sounds rather than beside the layout: both rows answer the same question - how
+            loudly does the panel address the person sitting in front of it all day - while the three
+            below are one run about the input field and are better left unbroken. */}
+        <Row
+          icon="calmColors"
+          iconClass={s.rowIconCalm}
+          label={t.settings.rows.calmColors.label}
+          sub={t.settings.rows.calmColors.sub}
+          value={summary.calmColors}
+          onClick={() => onPick('calmColors')}
+        />
         <Row
           icon="defaultMode"
           iconClass={s.rowIconMode}
@@ -618,6 +653,17 @@ export const SettingsScreen = ({
           sub={t.settings.rows.voice.sub}
           value={summary.voice}
           onClick={() => onPick('voice')}
+        />
+        {/* Near the end rather than beside the mode: this is the one row here most people never open,
+            and the two it stands between are of the same kind - set up once, on the machine where the
+            setting up is being done. */}
+        <Row
+          icon="customModels"
+          iconClass={s.rowIconModels}
+          label={t.settings.rows.customModels.label}
+          sub={t.settings.rows.customModels.sub}
+          value={summary.customModels}
+          onClick={() => onPick('customModels')}
         />
         <Row
           icon="language"

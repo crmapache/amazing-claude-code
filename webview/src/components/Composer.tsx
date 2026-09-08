@@ -15,6 +15,7 @@ import { isLetterKey } from '../feed/fieldEdits'
 import { useT } from '../i18n'
 import { Microphone } from './Microphone'
 import { Magnifier } from './SearchCapsule'
+import { ScenariosMark } from './scenarios/ScenariosMark'
 import { matchFiles } from '../feed/files'
 import { improveRequest, type ImproveRequest } from '../feed/improve'
 import {
@@ -102,7 +103,7 @@ export const contextCaption = (percent: number): string => `ctx ${Math.round(per
  * indicator the panel had had all along. It is coloured by the same thresholds as the fill, so the pair
  * still reads at a glance and the number is there for the moment one wants it ("is it time to compact").
  */
-const ContextMeter = ({ percent }: { percent: number }) => {
+export const ContextMeter = ({ percent, className = '' }: { percent: number; className?: string }) => {
   const color = contextColor(percent)
 
   return (
@@ -110,7 +111,12 @@ const ContextMeter = ({ percent }: { percent: number }) => {
     // along with the text, and in a long message the lines slid under the bar - which read as a
     // strikethrough. A separate row is physically outside the scrolling, and nothing can slide under
     // it.
-    <div className={s.contextMeterRow}>
+    //
+    // `className` exists for the one place that shows this bar outside the composer - the sample on the
+    // no-stress colours screen (see CalmColors), which has to cancel the padding this row wears for the
+    // field's sake. Exported for the same reason the ring is: a sample drawn by hand is the one thing on
+    // that screen able to lie about what the switch does.
+    <div className={className ? `${s.contextMeterRow} ${className}` : s.contextMeterRow}>
       <div className={s.contextMeter} aria-hidden="true">
         {/* A flat fill, no halo: the glow it used to carry made the lit part read as a thicker bar than
             the track it lies on, and a meter whose two halves look like two different lines does not read
@@ -265,6 +271,11 @@ interface ComposerProps {
    */
   models: ModelInfo[] | null
   /**
+   * The models added by hand (see CustomModels.tsx). Beside the catalogue rather than in it: `/model`
+   * hints at them too, and without that the panel would send `/model glm-4.6` on to the agent as prose.
+   */
+  customModels: string[]
+  /**
    * The usage row (5h/wk/tok) - see UsageMeters. Compact keeps it among the buttons and the side rail in
    * a row of its own; the ordinary layout draws it in the status line under the field (see StatusBar) and
    * does not use this at all.
@@ -403,6 +414,14 @@ interface ComposerProps {
   railContainer?: HTMLElement | null
   /** The search window (see Search.tsx). Absent means no button: a client without the search has no use for one. */
   onOpenSearch?: () => void
+  /**
+   * The scenarios hub (see ScenariosTab). Absent means no button, the same way the search's is.
+   *
+   * Beside the magnifier rather than in the menu, and that is the whole reason it is here: a scenario is
+   * started rather than configured, and the thing one starts belongs where the other things one does to a
+   * message are - within reach of the hand that is already on the field.
+   */
+  onOpenScenarios?: () => void
 }
 
 export const Composer = ({
@@ -415,6 +434,7 @@ export const Composer = ({
   sendKey,
   commands,
   models,
+  customModels,
   meters,
   files,
   imageBaseCount,
@@ -452,6 +472,7 @@ export const Composer = ({
   onOpenFeedback,
   railContainer,
   onOpenSearch,
+  onOpenScenarios,
 }: ComposerProps) => {
   const t = useT()
   const compact = layout === 'compact'
@@ -649,15 +670,15 @@ export const Composer = ({
     if (dismissed || commandMatches.length > 0) return null
 
     if (command !== null) {
-      const options = argumentOptions(t, command, models)
+      const options = argumentOptions(t, command, models, customModels)
       const value = argumentText.trim()
       // A space inside the value means the argument is no longer one word from a list but free text -
       // there is nothing to choose there.
       return options && !/\s/.test(value) ? { command, query: value, options } : null
     }
 
-    return head === null ? null : argumentQuery(t, head, models)
-  }, [t, head, dismissed, commandMatches, command, argumentText, models])
+    return head === null ? null : argumentQuery(t, head, models, customModels)
+  }, [t, head, dismissed, commandMatches, command, argumentText, models, customModels])
 
   const argumentMatches = useMemo(
     () => (argument ? matchArguments(argument.options, argument.query) : []),
@@ -1808,6 +1829,26 @@ export const Composer = ({
     </button>
   ) : null
 
+  /*
+   * The scenarios, in the same group as the search and for the same reason.
+   *
+   * Neither of them does anything to the message being written: one looks back over what was said, the
+   * other opens a round of work written down once. In a pair with the slash they would read as one more
+   * way of putting something into the field.
+   */
+  const scenariosButton = onOpenScenarios ? (
+    <button
+      type="button"
+      className={s.attach}
+      data-tooltip={t.scenarios.button}
+      data-tooltip-at="top"
+      aria-label={t.scenarios.button}
+      onClick={onOpenScenarios}
+    >
+      <ScenariosMark size={14} />
+    </button>
+  ) : null
+
   const writingTools = (
     <div className={s.toolGroups}>
       <div className={s.toolGroup}>
@@ -1818,7 +1859,12 @@ export const Composer = ({
         {attachButton}
         {slashButton}
       </div>
-      {searchButton ? <div className={s.toolGroup}>{searchButton}</div> : null}
+      {searchButton || scenariosButton ? (
+        <div className={s.toolGroup}>
+          {searchButton}
+          {scenariosButton}
+        </div>
+      ) : null}
     </div>
   )
 

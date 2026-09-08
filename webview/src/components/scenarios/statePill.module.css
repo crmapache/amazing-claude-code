@@ -1,0 +1,72 @@
+/**
+ * The one word that says what a run, or one step of it, is doing.
+ *
+ * A module of its own rather than a corner of scenarios.module.css, and that is the whole reason this
+ * file exists: the pill is drawn on a phone too (see mobile/screens/ScenarioRun), and a component that
+ * imports the hub's stylesheet drags the whole of it - a thousand lines of an editor no phone has -
+ * into the phone's bundle.
+ *
+ * Nothing here is a fixed size that a thumb would meet: the type is --acc-fs-label, which grows on a
+ * touch screen along with everything else (see tokens.css).
+ */
+
+.pill {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  /* A chip's corner, not a lozenge: the panel's own chips round this much and no more. */
+  border-radius: var(--acc-r-sm);
+  border: 1px solid var(--acc-line);
+  background: var(--acc-bg-raised);
+  font: var(--acc-fs-label) var(--acc-mono);
+  color: var(--acc-fg-dim);
+  white-space: nowrap;
+}
+
+.pillDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.pillRunning {
+  border-color: var(--acc-accent-32);
+  color: var(--acc-accent);
+}
+
+.pillRunning .pillDot {
+  animation: acc-scenario-pulse 1.6s ease-in-out infinite;
+}
+
+.pillDone {
+  border-color: var(--acc-ok-32);
+  color: var(--acc-ok);
+}
+
+.pillFailed {
+  border-color: var(--acc-bad-32);
+  color: var(--acc-bad);
+}
+
+.pillWaiting {
+  border-color: var(--acc-warn-16);
+  color: var(--acc-warn);
+}
+
+.pillPaused {
+  color: var(--acc-fg-faint);
+}
+
+@keyframes acc-scenario-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
+}

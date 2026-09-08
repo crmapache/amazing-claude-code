@@ -61,6 +61,22 @@ export const accountState = (
 }
 
 /**
+ * What to call the account the panel is working on, or empty when there is nothing to call it.
+ *
+ * The sign-in screen's: the login fills the drawer of the account in force (see ClaudeLogin), and on a
+ * machine with several of them that is the one thing that screen has to say - "Log in" above a list of
+ * other names otherwise reads as a choice nobody made.
+ *
+ * Empty is the ordinary answer on a machine with a single sign-in: the CLI's own account has a row only
+ * while it IS signed in, and a screen that stands there because nobody is has nothing to name.
+ */
+export const currentAccountName = (t: Dict, state: AccountsState | null): string => {
+  const current = state?.accounts.find((one) => one.id === state.current)
+
+  return current === undefined ? '' : shortName(current, t)
+}
+
+/**
  * What an account is called: the person's own word for it, or the local part of the address.
  *
  * Never the whole address, in either place it is used. A menu row is one line with an ellipsis, and a

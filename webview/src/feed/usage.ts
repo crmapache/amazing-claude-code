@@ -188,7 +188,15 @@ const paceSeverity = (usedPercent: number, resets: string, windowMs: number): nu
   return severity
 }
 
-const SEVERITY_COLOR = ['var(--acc-meter-green)', 'var(--acc-warn)', 'var(--acc-orange)', 'var(--acc-bad-light)']
+/**
+ * The four steps of the gauges' ladder, and the one thing every gauge is painted through.
+ *
+ * The roles are numbered rather than named by colour on purpose: what colour a step actually is, is
+ * decided by tokens.css - and in the no-stress mode all four are one calm tone (see [data-acc-calm]
+ * there). Were the paint itself written here - `var(--acc-bad-light)` and the rest - every gauge would
+ * have to be taught about that mode one at a time, and the ones added later would not be taught at all.
+ */
+const SEVERITY_COLOR = ['var(--acc-gauge-1)', 'var(--acc-gauge-2)', 'var(--acc-gauge-3)', 'var(--acc-gauge-4)']
 
 export const paceColor = (usedPercent: number, resets: string, windowMs: number): string =>
   SEVERITY_COLOR[paceSeverity(usedPercent, resets, windowMs)] ?? SEVERITY_COLOR[0]!
@@ -199,30 +207,30 @@ export const paceColor = (usedPercent: number, resets: string, windowMs: number)
  * scale beside a narrow field and the phone's own bar are coloured and lit by the same levels -
  * duplicating 50/70/85 in a second place would mean parting them sooner or later.
  */
-type ContextLevel = 'green' | 'warn' | 'orange' | 'bad'
+type ContextLevel = 1 | 2 | 3 | 4
 
 const contextLevel = (percent: number): ContextLevel => {
-  if (percent < 50) return 'green'
-  if (percent < 70) return 'warn'
-  if (percent < 85) return 'orange'
-  return 'bad'
+  if (percent < 50) return 1
+  if (percent < 70) return 2
+  if (percent < 85) return 3
+  return 4
 }
 
 const CONTEXT_LEVEL_COLOR: Record<ContextLevel, string> = {
-  green: 'var(--acc-meter-green)',
-  warn: 'var(--acc-warn)',
-  orange: 'var(--acc-orange)',
-  bad: 'var(--acc-bad-light)',
+  1: 'var(--acc-gauge-1)',
+  2: 'var(--acc-gauge-2)',
+  3: 'var(--acc-gauge-3)',
+  4: 'var(--acc-gauge-4)',
 }
 
 export const contextColor = (percent: number): string => CONTEXT_LEVEL_COLOR[contextLevel(percent)]
 
 /** The same pair of glow intensities (80% + 35%) as in the context bar itself. */
 const CONTEXT_LEVEL_GLOW: Record<ContextLevel, { strong: string; soft: string }> = {
-  green: { strong: 'var(--acc-meter-green-80)', soft: 'var(--acc-meter-green-35)' },
-  warn: { strong: 'var(--acc-warn-80)', soft: 'var(--acc-warn-35)' },
-  orange: { strong: 'var(--acc-orange-80)', soft: 'var(--acc-orange-35)' },
-  bad: { strong: 'var(--acc-bad-light-80)', soft: 'var(--acc-bad-light-35)' },
+  1: { strong: 'var(--acc-gauge-1-80)', soft: 'var(--acc-gauge-1-35)' },
+  2: { strong: 'var(--acc-gauge-2-80)', soft: 'var(--acc-gauge-2-35)' },
+  3: { strong: 'var(--acc-gauge-3-80)', soft: 'var(--acc-gauge-3-35)' },
+  4: { strong: 'var(--acc-gauge-4-80)', soft: 'var(--acc-gauge-4-35)' },
 }
 
 export const contextGlow = (percent: number): { strong: string; soft: string } =>

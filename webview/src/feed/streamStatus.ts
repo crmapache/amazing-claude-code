@@ -1,5 +1,6 @@
 import type { AgentStatus, AgentTab } from '../components/StreamSwitcher'
 import type { CardState, PlanDecision } from '../hooks/useCardState'
+import { pendingAgents, stintElapsed } from './build'
 import type { PanelState } from './panelState'
 import { formatDuration } from './tools'
 import type { AskItem, FeedItem, PermItem, PlanItem, TaskItem } from './types'
@@ -48,11 +49,12 @@ export const awaiting = (items: FeedItem[], cards: CardState): PermItem | PlanIt
  *
  * The elapsed time is written right here rather than waiting for the turn's outcome: the "Worked Ns" under a
  * finished answer arrives only with its end, and until then how much had already passed was not visible at
- * all. It is counted from turnStartedAt less pausedMs - the total time of every such wait over this turn
- * (see attentionStarted/attentionEnded in feed/build.ts and the effect in App that sends them): otherwise
- * after a decision the idle seconds would be charged to the agent retroactively, as though it had been
- * "thinking" all that time. It is updated once a second by the same tick that moves the tool calls'
- * durations (see tickDurations in feed/build.ts).
+ * all. It is counted from the person's request less pausedMs - the total time of every such wait over this
+ * work (see attentionStarted/attentionEnded in feed/build.ts and the effect in App that sends them):
+ * otherwise after a decision the idle seconds would be charged to the agent retroactively, as though it had
+ * been "thinking" all that time. From the request rather than from the turn because one request is many
+ * turns whenever background agents are in it - see PanelState.stintStartedAt. It is updated once a second by
+ * the same tick that moves the tool calls' durations (see tickDurations in feed/build.ts).
  *
  * `now` is a parameter because the two clients do not share a clock. The panel counts against its own
  * Date.now() and everything in the state was written by that same clock, so it passes nothing. The
@@ -96,7 +98,7 @@ export const streamStatus = (
    * first has to notice and then work out what it means.
    */
   if (panel.status !== 'running') {
-    const pending = panel.items.filter((item) => item.kind === 'task' && item.pending).length
+    const pending = pendingAgents(panel.items).length
     if (pending === 0) return ''
     return pending === 1 ? t.stream.waitingForSubagent : t.stream.waitingForSubagents(pending)
   }
@@ -111,11 +113,12 @@ export const streamStatus = (
   const label = t.stream.thinking
   if (!panel.turnStartedAt) return label
 
-  // A decision has just been taken: awaitingDecision is already false, but the effect that carries
-  // waitStartedAt into pausedMs has not run yet (it fires after this render) - we count the current pause in
-  // right here so that the number does not jump on the next tick.
-  const ongoingWait = panel.waitStartedAt ? now - panel.waitStartedAt : 0
-  const elapsed = formatDuration(now - panel.turnStartedAt - panel.pausedMs - ongoingWait)
+  // Counted from the person's request rather than from this turn's start (see PanelState.stintStartedAt):
+  // a request that started background agents ends in a dozen turns, and a counter restarted by each of
+  // them says "12s" half an hour into the work. The pauses come out of it inside stintElapsed - the
+  // current one included, because the effect carrying waitStartedAt into pausedMs fires after this
+  // render and the number would otherwise jump on the next tick.
+  const elapsed = formatDuration(stintElapsed(panel, now))
   return t.stream.withElapsed(label, elapsed)
 }
 

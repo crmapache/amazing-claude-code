@@ -1,7 +1,10 @@
 package io.github.crmapache.amazingclaudecode.remote
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -53,6 +56,8 @@ internal object RemoteFeed {
             MCP_SERVERS -> serversWithoutCommands(message)
             PLUGINS -> trimmedPlugins(message)
             MARKETPLACES -> marketplacesWithoutPaths(message)
+            SCENARIOS -> trimmedScenarios(message)
+            SCENARIO_RUN -> trimmedRun(message)
             else -> message
         }
 
@@ -176,6 +181,140 @@ internal object RemoteFeed {
             (source.length > 1 && source[1] == ':')
 
     /**
+     * The scenarios of a project, with everything only the editor reads taken out.
+     *
+     * The shelves are the phone's answer to "what rounds of work does this project have and which of
+     * them is going" - names, shapes and the list of past runs. What a card actually says to its agent
+     * is pages of prose, it is written and read at the desk (see RemoteCommands, where the editor is
+     * refused from here), and it is the whole weight of this message.
+     *
+     * The past runs are cut to a screenful and a bit. A project run every morning for a year carries
+     * three hundred summaries, and the row somebody wants is one of the first ten.
+     */
+    private fun trimmedScenarios(message: String): String {
+        val root = runCatching { Json.parseToJsonElement(message).jsonObject }.getOrNull() ?: return message
+
+        return buildJsonObject {
+            for ((name, value) in root) {
+                when (name) {
+                    "scenarios" -> put(name, mapObjects(value, ::scenarioBody))
+                    "runs" -> put(name, JsonArray((value as? JsonArray).orEmpty().take(PHONE_RUNS)))
+                    else -> put(name, value)
+                }
+            }
+        }.toString()
+    }
+
+    /**
+     * One run, cut to what a phone draws.
+     *
+     * This is the only message on the list that a machine sends by itself several times a second: a run
+     * moves on every word its agents write, and the panel at the desk wants exactly that (see
+     * ScenarioDesk's heartbeat). What is dropped here is therefore not only weight but CHANGE - and the
+     * change is what would cost somebody's mobile data for the hours a run lasts.
+     *
+     * `said` - what the card's agent is saying this second - is the field that changes on every beat and
+     * the only one that does. Emptied, the trimmed run is identical from one beat to the next until
+     * something genuinely happens, and the fingerprint that decides whether a fact is worth sending at
+     * all then does the throttling for nothing (see RemoteAgent.newFacts, which fingerprints what comes
+     * out of here rather than what went in). What the phone loses by it is a line of prose; what it
+     * keeps is every state, every time and every verdict, which is what the screen is read for.
+     *
+     * Everything else is a length rather than a field: a step's prompt is written once when the step
+     * starts and never moves again, so it is cheap to carry and it is the only thing a card that has not
+     * spoken yet has to show.
+     *
+     * Emptied rather than removed, the way a server's command line is above: the shape a client parses
+     * must not depend on which side of the wire it came from.
+     */
+    private fun trimmedRun(message: String): String {
+        val root = runCatching { Json.parseToJsonElement(message).jsonObject }.getOrNull() ?: return message
+        val run = root["run"] as? JsonObject ?: return message
+
+        val trimmed = envelope(runBody(run, words = true))
+        if (trimmed.length <= PHONE_RUN_BUDGET) return trimmed
+
+        // A run of a hundred cards, over the cap even with the prose cut. The shape goes on without the
+        // words: a timeline with no lines on it is still a timeline, and a frame over the cap is not
+        // shortened by the relay but thrown away whole - which is no timeline at all.
+        return envelope(runBody(run, words = false))
+    }
+
+    private fun envelope(run: JsonObject): String =
+        buildJsonObject {
+            put("type", SCENARIO_RUN)
+            put("run", run)
+        }.toString()
+
+    private fun runBody(run: JsonObject, words: Boolean): JsonObject = buildJsonObject {
+        for ((name, value) in run) {
+            when (name) {
+                "snapshot" -> put(name, (value as? JsonObject)?.let(::scenarioBody) ?: value)
+                "steps" -> put(name, mapObjects(value) { step -> stepBody(step, words) })
+                "notes" -> put(name, mapObjects(value) { note -> JsonObject(note + ("text" to cut(note["text"], words, NOTE_CHARS))) })
+                else -> put(name, value)
+            }
+        }
+    }
+
+    private fun stepBody(step: JsonObject, words: Boolean): JsonObject = buildJsonObject {
+        for ((name, value) in step) {
+            when (name) {
+                // The two that no screen on a phone draws, and the first of them is the reason this
+                // whole function exists - see the note above.
+                "said", "handoff" -> put(name, "")
+                "prompt", "summary", "verdictReason", "error" -> put(name, cut(value, words, LINE_CHARS))
+                "nudges" -> put(
+                    name,
+                    JsonArray((value as? JsonArray).orEmpty().map { one -> cut(one, words, NUDGE_CHARS) }),
+                )
+                "slots" -> put(
+                    name,
+                    JsonObject((value as? JsonObject).orEmpty().mapValues { (_, slot) -> cut(slot, words, SLOT_CHARS) }),
+                )
+                else -> put(name, value)
+            }
+        }
+    }
+
+    /**
+     * A scenario with everything only its editor reads emptied out.
+     *
+     * A card's prompt, what has to be true at the end and what to carry forward, and the head's own
+     * briefing: between them they are all the weight a scenario has, and none of them is drawn anywhere
+     * but in the editor - which is at the desk. What is left is the skeleton a timeline is built from
+     * (see scenarios/timeline.ts): the stages in order, how many passes each is given, and the titles.
+     */
+    private fun scenarioBody(scenario: JsonObject): JsonObject = buildJsonObject {
+        for ((name, value) in scenario) {
+            when (name) {
+                "head" -> put(name, JsonObject((value as? JsonObject).orEmpty() + ("briefing" to BLANK)))
+                "stages" -> put(
+                    name,
+                    mapObjects(value) { stage -> JsonObject(stage + ("cards" to mapObjects(stage["cards"], ::cardBody))) },
+                )
+                else -> put(name, value)
+            }
+        }
+    }
+
+    private fun cardBody(card: JsonObject): JsonObject =
+        JsonObject(card + mapOf("prompt" to BLANK, "dod" to BLANK, "after" to BLANK))
+
+    /** Every object of an array through one rule, and anything that is not an array left alone. */
+    private fun mapObjects(value: JsonElement?, transform: (JsonObject) -> JsonObject): JsonElement {
+        val array = value as? JsonArray ?: return value ?: JsonArray(emptyList())
+        return JsonArray(array.map { element -> (element as? JsonObject)?.let(transform) ?: element })
+    }
+
+    /** A string shortened to what a small screen shows of it - or dropped entirely, when even that is too much. */
+    private fun cut(value: JsonElement?, words: Boolean, max: Int): JsonPrimitive {
+        if (!words) return BLANK
+        val text = (value as? JsonPrimitive)?.contentOrNull.orEmpty()
+        return JsonPrimitive(if (text.length <= max) text else text.take(max))
+    }
+
+    /**
      * Whether this message is one of the project's own facts a phone is allowed to have, and which.
      *
      * These belong to no conversation at all, so the rule above leaves them with no address and they
@@ -197,7 +336,9 @@ internal object RemoteFeed {
 
     /**
      * The branch and its pull request, the subscription's usage windows, the slash commands with their
-     * descriptions, the project's file list - what the composer on the phone is drawn from - and the
+     * descriptions, the project's file list - what the composer on the phone is drawn from - the two
+     * machine-wide facts the phone obeys without being able to set them (the language, the colour mode
+     * and the hand-added models), and the
      * answers of the three screens a phone may now drive: the MCP servers, the plugins and the Claude
      * accounts (see RemoteCommands, where the decision to open them is argued).
      *
@@ -206,6 +347,12 @@ internal object RemoteFeed {
      * before the message leaves. The accounts do carry the person's own addresses, and that is the
      * point - it is the owner's address on the owner's own paired device, and a screen that cannot say
      * which account it is about to switch away from is not a screen anybody should press.
+     *
+     * The scenarios and the one run that may be going are on it for a reason of their own: a round of
+     * work started at the desk goes on for hours with nobody in front of it, which is the definition of
+     * something worth seeing from elsewhere. They are the heaviest things on this list and the only ones
+     * a machine sends by itself several times a second, so both are cut down in [forPhone] - and the
+     * run's trimming is what makes it a fact a phone can afford at all.
      */
     private val PROJECT_FACTS = listOf(
         "project",
@@ -214,6 +361,8 @@ internal object RemoteFeed {
         "commands",
         FILES,
         LOCALE,
+        CALM_COLORS,
+        CUSTOM_MODELS,
         MCP_SERVERS,
         "mcpActionResult",
         PLUGINS,
@@ -221,6 +370,8 @@ internal object RemoteFeed {
         MARKETPLACES,
         "accounts",
         "accountOutcome",
+        SCENARIOS,
+        SCENARIO_RUN,
     )
 
     /**
@@ -259,6 +410,22 @@ internal object RemoteFeed {
     private const val LOCALE = "locale"
 
     /**
+     * The no-stress colour mode, so the gauges on the phone are as calm as the ones at the desk. A
+     * single boolean, and on this list for the same reason the language is: it says nothing about the
+     * machine it came from.
+     */
+    private const val CALM_COLORS = "calmColors"
+
+    /**
+     * The models added by hand at the desk (see CustomModels.tsx), so the sheet on the phone offers the
+     * same list the menu there does. On this list beside the two above and on the same terms: shown on
+     * the phone, set only at the machine whose Claude Code will be launched with the name.
+     *
+     * It is a handful of short strings and carries nothing about the machine - no path, no account.
+     */
+    private const val CUSTOM_MODELS = "customModels"
+
+    /**
      * How much of the file list a phone is sent. Forty-eight kilobytes is upwards of a thousand paths
      * - more than the "@" hint on a small screen can usefully offer - and it leaves the sealed frame
      * comfortably inside the relay's 256 KB rather than near it.
@@ -271,6 +438,36 @@ internal object RemoteFeed {
      * a catalogue nobody scrolls to the end of.
      */
     private const val PHONE_PLUGINS_BUDGET = 48 * 1024
+
+    /** The two scenario messages. Public because the run is trimmed on its answering road too - see ScenarioDesk.sendRun. */
+    const val SCENARIOS = "scenarios"
+    const val SCENARIO_RUN = "scenarioRun"
+
+    /**
+     * How much of a run a phone is sent. The same order as the lists above and for the same reason: it
+     * leaves the sealed frame well inside the relay's 256 KB rather than near it.
+     *
+     * Reached only by a run of some dozens of cards - an ordinary one of five is a couple of kilobytes -
+     * and what happens then is that the prose goes and the shape stays (see [trimmedRun]).
+     */
+    private const val PHONE_RUN_BUDGET = 48 * 1024
+
+    /** How many past runs travel. A year of a morning routine is three hundred; the row wanted is near the top. */
+    private const val PHONE_RUNS = 40
+
+    /**
+     * How much of each line of a step a phone is shown.
+     *
+     * Two hundred and forty characters is three or four lines under a thumb, which is as much of a card's
+     * prompt or of its summary as anybody reads on a list; the rest is read at the desk, where the step's
+     * whole conversation can be opened.
+     */
+    private const val LINE_CHARS = 240
+    private const val NOTE_CHARS = 400
+    private const val NUDGE_CHARS = 160
+    private const val SLOT_CHARS = 160
+
+    private val BLANK = JsonPrimitive("")
 
     private const val REPLAY_LINE = "\"replay\":true,\"event\":"
 

@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AskItem, AskQuestion } from '../feed/types'
+import {
+  answersOf,
+  askAnswered,
+  firstUnanswered,
+  openOwnAnswer,
+  pasteIntoOwnAnswer,
+  togglePick,
+  writeOwnAnswer,
+  type AskDraft,
+} from '../feed/askDraft'
 import { Chevron } from './Chevron'
 import { MAX_DIGIT_HOTKEYS, useDigitHotkey } from '../hooks/useDigitHotkey'
 import { savePastedFiles } from '../pasted'
@@ -17,6 +27,16 @@ const typedOutside = (target: HTMLElement | null, panel: HTMLElement | null): bo
 interface AskPanelProps {
   /** The last question the agent asked that has not been answered yet - or nothing. */
   item: AskItem | undefined
+  /**
+   * What has been ticked and written into this very question so far - held outside the card (see
+   * feed/askDraft and App.askDrafts).
+   *
+   * Kept inside, it went with the card, and the card is taken down by ordinary things: a look at the
+   * next tab, the composer changing its layout under a window that came back a different height. The
+   * answers a person had already assembled disappeared with it.
+   */
+  draft: AskDraft
+  onDraft: (next: AskDraft) => void
   /** Whether the message field is empty: who gets a pressed digit depends on it. */
   composerEmpty: boolean
   /** False when the digits are taken by the permission panel - it holds the turn more firmly. */
@@ -39,94 +59,91 @@ interface AskPanelProps {
  * turn, so it must not get lost somewhere in the middle of the feed: it disappears as soon as the answer
  * is sent rather than hanging there inactive.
  */
-export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: AskPanelProps) => {
+export const AskPanel = ({ item, draft, onDraft, composerEmpty, hotkeys, onSubmit, onDismiss }: AskPanelProps) => {
   const t = useT()
-  /** The options picked per question: no more than one for an ordinary question, any number for multiSelect. */
-  const [picks, setPicks] = useState<Record<string, string[]>>({})
-  const [custom, setCustom] = useState<Record<string, string>>({})
+  const questions = item?.questions ?? []
   /**
    * Which question the digits belong to. One call may hold up to six of them, and without this it would
    * be unclear what a pressed "2" picks. It walks the list from top to bottom: an ordinary question lets
    * it move on by itself as soon as it has been answered, while one with several options (multiSelect)
    * keeps it until Enter is pressed - otherwise a second tick could no longer be set with a hotkey.
+   *
+   * It starts wherever the draft left off rather than at the top: a card built again over answers already
+   * given (another tab was looked at, the layout moved the whole stack of cards) would otherwise point
+   * the digits at a question that has been answered.
    */
-  const [activeIndex, setActiveIndex] = useState(0)
+  const [activeIndex, setActiveIndex] = useState(() => Math.max(firstUnanswered(questions, draft), 0))
   /** Hides the body and the foot, leaving only the head - a temporary "out of my way", not a decision. */
   const [collapsed, setCollapsed] = useState(false)
   /** The panel itself: by it we tell our own "your answer" field from someone else's form on the page. */
   const panel = useRef<HTMLDivElement>(null)
+  /**
+   * The Other rows opened by hand in this life of the card - the only ones whose field takes the focus.
+   *
+   * A row restored out of the draft must not: the card is built again when somebody comes back to the
+   * tab, and a field that grabs the focus then takes it away from the message field they were heading
+   * for.
+   */
+  const openedByHand = useRef(new Set<string>())
 
-  const questions = item?.questions ?? []
   const active = questions[activeIndex]
 
-  const toggle = useCallback((question: AskQuestion, optionId: string) => {
-    setPicks((current) => {
-      const selected = current[question.id] ?? []
+  /**
+   * The draft as it stands right now.
+   *
+   * Written down here as well as sent out, and that is the whole point of the ref: a change is built out
+   * of the previous draft, while the new one comes back from the parent only with the next repaint. Two
+   * presses inside one frame - and they happen, a digit held down, a click landing while a pasted file is
+   * being written in - would both be built on the draft from before the first, and the first would be
+   * gone without a trace of it anywhere.
+   */
+  const held = useRef(draft)
+  held.current = draft
 
-      if (!question.multiSelect) return { ...current, [question.id]: [optionId] }
+  /** A change to the draft: kept here at once, and handed to whoever owns it. */
+  const write = useCallback(
+    (next: AskDraft) => {
+      held.current = next
+      onDraft(next)
+    },
+    [onDraft],
+  )
 
-      const next = selected.includes(optionId)
-        ? selected.filter((id) => id !== optionId)
-        : [...selected, optionId]
-      return { ...current, [question.id]: next }
-    })
-
-    // An ordinary option is not "your answer": if the Other row was switched on before, its text no
-    // longer has the right to be the answer to a single-choice question. In multiSelect, Other is a tick
-    // like any other, so it lives alongside ordinary options and is not cleared.
-    if (!question.multiSelect) {
-      setCustom((current) => {
-        if (current[question.id] === undefined) return current
-        const next = { ...current }
-        delete next[question.id]
-        return next
-      })
-    }
-  }, [])
+  const toggle = useCallback(
+    (question: AskQuestion, optionId: string) => write(togglePick(held.current, question, optionId)),
+    [write],
+  )
 
   /* Other is not a separate form off to the side but an option in the same row: AskUserQuestion promises
      it itself (see the tool's description), so the panel adds it rather than the calling agent. Pressing
      it opens an input field in its place - the digit and the highlight behave like an ordinary option's,
      only instead of a ready caption the circle carries one's own text. */
-  const pickOther = useCallback((question: AskQuestion) => {
-    setCustom((current) => (current[question.id] !== undefined ? current : { ...current, [question.id]: '' }))
-    if (!question.multiSelect) {
-      setPicks((current) => ({ ...current, [question.id]: [] }))
-    }
-  }, [])
-
-  const answerFor = useCallback(
-    (question: AskQuestion): string => {
-      const typed = custom[question.id]?.trim()
-      if (typed) return typed
-
-      const selected = picks[question.id] ?? []
-      const labels = selected
-        .map((optionId) => question.options.find((candidate) => candidate.id === optionId)?.label)
-        .filter((label): label is string => Boolean(label))
-      return labels.join(', ')
+  const pickOther = useCallback(
+    (question: AskQuestion) => {
+      openedByHand.current.add(question.id)
+      write(openOwnAnswer(held.current, question))
     },
-    [custom, picks],
+    [write],
   )
 
-  const answers = questions.map((question) => ({ question: question.title, answer: answerFor(question) }))
-  const answered = answers.length > 0 && answers.every((entry) => entry.answer.length > 0)
+  const answers = answersOf(questions, draft)
+  const answered = askAnswered(questions, draft)
 
   /** Further down the list - to the first question still waiting for an answer. */
   const advance = useCallback(() => {
     setActiveIndex((current) => {
-      const next = questions.findIndex((question, index) => index > current && answerFor(question).length === 0)
+      const next = firstUnanswered(questions, held.current, current)
       return next < 0 ? current : next
     })
-  }, [questions, answerFor])
+  }, [questions])
 
   const pick = useCallback(
     (index: number) => {
       if (!active) return
 
       // Other is the last option in the count, on the digit after all the real ones. It opens an input
-      // field and stops there: there is nothing to answer with until text is typed - advance() would move
-      // on with an empty answer.
+      // field and stops there: there is nothing to answer with until text is typed - moving on would
+      // leave an empty answer behind.
       if (index === active.options.length) {
         pickOther(active)
         return
@@ -135,11 +152,20 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
       const option = active.options[index]
       if (!option) return
 
-      toggle(active, option.id)
+      // Where the digits go next is decided by the draft this very press makes rather than by the one on
+      // screen: the new one comes back from the parent a repaint later.
+      const next = togglePick(held.current, active, option.id)
+      write(next)
+
       // An ordinary question is closed by this very press - the digits move on to the next one.
-      if (!active.multiSelect) advance()
+      if (active.multiSelect) return
+
+      setActiveIndex((current) => {
+        const ahead = firstUnanswered(questions, next, current)
+        return ahead < 0 ? current : ahead
+      })
     },
-    [active, toggle, advance, pickOther],
+    [active, write, pickOther, questions],
   )
 
   useDigitHotkey(Math.min(active ? active.options.length + 1 : 0, MAX_DIGIT_HOTKEYS), pick, {
@@ -237,7 +263,7 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
       {!collapsed && (
         <div className={s.askBody}>
           {item.questions.map((question, questionIndex) => {
-            const selected = picks[question.id] ?? []
+            const selected = draft.picks[question.id] ?? []
             // The digits pick an option in one question at a time - in the rest they are dimmed, so as not
             // to promise a press that would go elsewhere.
             const keyed = hotkeys && questionIndex === activeIndex
@@ -285,7 +311,7 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
                   })}
 
                   {(() => {
-                    const otherOn = custom[question.id] !== undefined
+                    const otherOn = draft.custom[question.id] !== undefined
                     // It continues the same numbering as the real options above - Other reads as one more
                     // of them rather than a separate thing.
                     const otherDigit = question.options.length < MAX_DIGIT_HOTKEYS ? String(question.options.length + 1) : ''
@@ -295,9 +321,11 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
                         <div className={`${s.option} ${s.optionOn} ${s.optionOther}`}>
                           <span className={`${s.optionKey} ${s.optionKeyOn} ${keyed ? '' : s.optionKeyIdle}`}>✓</span>
                           <OwnAnswer
-                            value={custom[question.id] ?? ''}
+                            value={draft.custom[question.id] ?? ''}
+                            // Only a row just opened by hand takes the focus - see openedByHand.
+                            grabFocus={openedByHand.current.has(question.id)}
                             onFocus={() => setActiveIndex(questionIndex)}
-                            onChange={(value) => setCustom((current) => ({ ...current, [question.id]: value }))}
+                            onChange={(value) => write(writeOwnAnswer(held.current, question, value))}
                             /**
                              * A screenshot or a document pasted into the answer.
                              *
@@ -313,23 +341,16 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
 
                               event.preventDefault()
                               const field = event.currentTarget
+                              // Where the caret was when the paste happened - the answer may well be half
+                              // written, and appending to its end would put the file after words it has
+                              // nothing to do with (see pasteIntoOwnAnswer).
                               const at = field.selectionStart ?? field.value.length
                               const to = field.selectionEnd ?? at
 
                               void savePastedFiles(files).then((paths) => {
                                 if (paths.length === 0) return
 
-                                setCustom((current) => {
-                                  const value = current[question.id] ?? ''
-                                  // Where the caret was when the paste happened - the answer may well be
-                                  // half written, and appending to its end would put the file after words
-                                  // it has nothing to do with.
-                                  const head = value.slice(0, Math.min(at, value.length))
-                                  const tail = value.slice(Math.min(to, value.length))
-                                  const inserted = joinPaths(head, paths, tail)
-
-                                  return { ...current, [question.id]: inserted }
-                                })
+                                write(pasteIntoOwnAnswer(held.current, question, paths, at, to))
                               })
                             }}
                           />
@@ -377,29 +398,25 @@ export const AskPanel = ({ item, composerEmpty, hotkeys, onSubmit, onDismiss }: 
 }
 
 /**
- * The pasted paths put into an answer that is being written, without gluing them to the words around
- * them: a path stuck to the end of a sentence is a path nothing can open.
- */
-const joinPaths = (head: string, paths: string[], tail: string): string => {
-  const body = paths.join(' ')
-  const before = head && !/\s$/.test(head) ? `${head} ` : head
-  const after = tail && !/^\s/.test(tail) ? ` ${tail}` : tail
-
-  return `${before}${body}${after}`
-}
-
-/**
  * The field of an answer in one's own words. A component of its own for the sake of one hook: the word
  * before the caret and the undo history the browser inside the IDE does not give a plain field (see
  * useFieldHistory), and a hook cannot be called from inside the list of questions.
  */
 const OwnAnswer = ({
   value,
+  grabFocus,
   onChange,
   onFocus,
   onPaste,
 }: {
   value: string
+  /**
+   * Whether the field takes the focus as it appears. True for a row just opened by hand - that press was
+   * a request to write something. False for a row restored out of a draft: the card is built again when
+   * somebody comes back to the tab, and grabbing the focus then takes it away from wherever they were
+   * heading.
+   */
+  grabFocus: boolean
   onChange: (value: string) => void
   onFocus: () => void
   onPaste: (event: ClipboardEvent<HTMLInputElement>) => void
@@ -410,7 +427,7 @@ const OwnAnswer = ({
   return (
     <input
       className={s.otherInput}
-      autoFocus
+      autoFocus={grabFocus}
       placeholder={t.feed.ask.ownAnswer}
       value={value}
       onFocus={onFocus}

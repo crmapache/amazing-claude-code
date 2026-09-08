@@ -496,6 +496,16 @@
   line-height: 1.5;
 }
 
+/* "The IDE is opening the project" over a list of past conversations - the same words the screen that
+   starts one uses, and the same measurements as the line above, so the two read as one kind of note. */
+.historyOpening {
+  margin: 0;
+  padding: var(--acc-sp-4) var(--acc-sp-5);
+  color: var(--acc-fg-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 /* --- One conversation ------------------------------------------------------- */
 
 /*
@@ -1501,6 +1511,15 @@
   margin-top: 0;
 }
 
+/* The same caption on the list of projects, where the cards stand inset (see .project). A heading that
+   begins at the screen's edge over cards that begin eighteen pixels in reads as a heading of the screen
+   rather than of the list under it. Not put on .bandTitle itself: the task screen shares that class and
+   its cards do run to the wall. */
+.homeBand {
+  margin-left: var(--acc-sp-5);
+  margin-right: var(--acc-sp-5);
+}
+
 .bandHead {
   display: flex;
   align-items: baseline;
@@ -1568,9 +1587,11 @@
   display: flex;
   align-items: center;
   gap: var(--acc-sp-3);
-  width: 100%;
   padding: var(--acc-sp-4);
-  margin-bottom: var(--acc-sp-2);
+  /* Inset like the project cards below it, and by the same token: this band and they are one list, and
+     one list has one left edge. The width is left to the box - a full one plus these margins is a card
+     wider than the screen. */
+  margin: 0 var(--acc-sp-5) var(--acc-sp-2);
   border: 1px solid var(--acc-accent-line);
   border-radius: var(--acc-r-card);
   background: var(--acc-accent-12);
@@ -2994,4 +3015,531 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--acc-sp-2);
+}
+
+/* --- Scenarios: the rounds of work, and the one that may be going right now --- */
+
+/*
+ * The live run, on the list of scenarios: the whole card is the way into it.
+ *
+ * A card rather than a row, and above everything else on the screen, because it is the one thing on it
+ * that is happening: the shelves are a list of what exists, and what exists is not what somebody picked
+ * up a phone to look at.
+ */
+.runCard {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--acc-sp-3);
+  padding: var(--acc-sp-4);
+  border: 1px solid var(--acc-accent-32);
+  border-radius: var(--acc-r-card);
+  background: var(--acc-bg-raised);
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.runCardHead {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+}
+
+.runCardName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--acc-fg);
+}
+
+/*
+ * The run's own figures, wrapping rather than scrolling sideways.
+ *
+ * Five of them - the state, how far, how long, the tokens, the money - and at 390 points they do not
+ * fit on one line however short the words are. Wrapped they take a second line and stay readable; kept
+ * on one they would either shrink below reading size or push the money off the edge.
+ */
+.runFacts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--acc-sp-2) var(--acc-sp-3);
+  margin-top: var(--acc-sp-3);
+}
+
+.runFact {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  font: var(--acc-fs-meta) var(--acc-mono);
+  color: var(--acc-fg-body);
+}
+
+.runFactKey {
+  color: var(--acc-fg-ghost);
+}
+
+/* How far along, as a bar. The one figure on the card that is read without reading. */
+.runTrack {
+  height: 5px;
+  margin-top: var(--acc-sp-3);
+  border-radius: var(--acc-r-pill);
+  background: var(--acc-meter-track);
+  overflow: hidden;
+}
+
+.runFill {
+  height: 100%;
+  border-radius: var(--acc-r-pill);
+  background: var(--acc-accent);
+  transition: width 0.3s ease;
+}
+
+.runFillDone {
+  background: var(--acc-ok);
+}
+
+.runFillFailed {
+  background: var(--acc-bad);
+}
+
+/*
+ * A card has stopped to ask, said on the card rather than left to the pill.
+ *
+ * "Waiting for you" in a pill is a state; this is the sentence that says a person is what the run is
+ * waiting for, and it is the whole reason somebody would open this screen from a sofa.
+ */
+.runAsk {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+  margin-top: var(--acc-sp-3);
+  padding: var(--acc-sp-2) var(--acc-sp-3);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-warn-16);
+  font-size: 13px;
+  color: var(--acc-warn);
+}
+
+.runAskText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- The shelves: past runs, and the scenarios themselves -------------------- */
+
+.pastRun {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  width: 100%;
+  min-height: var(--acc-hit);
+  padding: var(--acc-sp-3) var(--acc-sp-4);
+  border: none;
+  border-bottom: 1px solid var(--acc-bg-panel);
+  background: none;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.pastRun:last-child {
+  border-bottom: none;
+}
+
+.pastRunText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--acc-sp-1);
+}
+
+/*
+ * The state under the name rather than beside it.
+ *
+ * A failure with a name of its own is a phrase - "ran past its time" - and beside a scenario's name it
+ * took most of the row: the name, which is the only thing that tells one run from another, was cut to
+ * three words while the pill stood whole. On its own line neither has to give way.
+ */
+.pastRunFacts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--acc-sp-1) var(--acc-sp-2);
+}
+
+.pastRunName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14.5px;
+  color: var(--acc-fg);
+}
+
+.pastRunMeta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--acc-fs-meta) var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+/*
+ * A scenario on the shelf. Not a button: there is nothing to open.
+ *
+ * Writing one, running one and putting one on a clock are all at the desk (see RemoteCommands), so a
+ * row that could be pressed would promise a screen that does not exist here. What it says instead is
+ * what the row is for from a distance - that this project has this round of work written down, and
+ * when it starts by itself.
+ */
+.scenarioRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--acc-sp-3) var(--acc-sp-4);
+  border-bottom: 1px solid var(--acc-bg-panel);
+}
+
+.scenarioRow:last-child {
+  border-bottom: none;
+}
+
+.scenarioName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14.5px;
+  color: var(--acc-fg);
+}
+
+.scenarioMeta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--acc-fs-meta) var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.scenarioWhen {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--acc-fs-meta) var(--acc-mono);
+  color: var(--acc-c-iris-2);
+}
+
+/* Not due any more and never made up for: the hour passed with the IDE closed (see ScenarioSchedule). */
+.scenarioMissed {
+  color: var(--acc-warn);
+}
+
+/* --- One run: the strip under the header, and the timeline ------------------- */
+
+/*
+ * The run's figures, under the two-line title and inside the header block.
+ *
+ * In the header rather than at the top of the list because they are about the run rather than a step
+ * of it: scrolled away, "how far along" and "how long" would be answers one has to scroll back for,
+ * and on a phone that is the pair of numbers the screen is opened with.
+ */
+.runStrip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--acc-sp-2) var(--acc-sp-3);
+  padding: 0 0 var(--acc-sp-3);
+}
+
+/* The danger of the two header words. Red standing rather than red on a press: it ends a run. */
+.headerWordDanger {
+  color: var(--acc-danger, #e06c75);
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--acc-sp-5);
+}
+
+/* The name of a stage, drawn only where there is more than one to tell apart (see timelineOf). */
+.stageRow {
+  margin: var(--acc-sp-5) 0 var(--acc-sp-2);
+  font: 600 var(--acc-fs-label) var(--acc-mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--acc-fg-ghost);
+}
+
+.stageRow:first-child {
+  margin-top: 0;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--acc-sp-2);
+  padding: var(--acc-sp-3);
+  margin-bottom: var(--acc-sp-1);
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-raised);
+}
+
+/* A step nobody has reached yet is drawn, but drawn as a plan rather than as work. */
+.stepWaiting {
+  background: transparent;
+  border-style: dashed;
+  opacity: 0.72;
+}
+
+.stepSkipped {
+  background: transparent;
+  border-style: dashed;
+  opacity: 0.45;
+}
+
+.stepRunning {
+  border-color: var(--acc-accent-32);
+}
+
+.stepFailed {
+  border-color: var(--acc-bad-32);
+}
+
+.stepNumber {
+  flex: none;
+  width: 18px;
+  padding-top: 2px;
+  font: var(--acc-fs-label) var(--acc-mono);
+  color: var(--acc-fg-ghost);
+  text-align: right;
+}
+
+.stepText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--acc-sp-1);
+}
+
+/*
+ * The title, the pill and the clock, wrapping.
+ *
+ * At the desk these three sit on one line with the clock pushed to the right end. Under a thumb the
+ * title alone can be the width of the screen, and a pill squeezed off the end of it says nothing -
+ * so the row wraps and the clock follows the pill rather than the far edge.
+ */
+.stepHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--acc-sp-1) var(--acc-sp-2);
+}
+
+.stepTitle {
+  flex: 1 1 100%;
+  min-width: 0;
+  font: var(--acc-fs-mono) var(--acc-mono);
+  color: var(--acc-fg);
+  overflow-wrap: anywhere;
+}
+
+.stepPass {
+  flex: none;
+  font: var(--acc-fs-label) var(--acc-mono);
+  color: var(--acc-fg-ghost);
+  white-space: nowrap;
+}
+
+.stepTime {
+  flex: none;
+  font: var(--acc-fs-label) var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.stepTimeGoing {
+  color: var(--acc-accent);
+}
+
+.stepLine {
+  font-family: var(--acc-mono);
+  font-size: var(--acc-fs-meta);
+  line-height: 1.5;
+  color: var(--acc-fg-faint);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.stepVerdict {
+  font-family: var(--acc-mono);
+  font-size: var(--acc-fs-meta);
+  line-height: 1.5;
+  color: var(--acc-ok-text);
+  overflow-wrap: anywhere;
+}
+
+.stepVerdictBad {
+  color: var(--acc-bad-text);
+}
+
+.stepSlots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--acc-sp-1);
+}
+
+.slot {
+  max-width: 100%;
+  padding: 2px var(--acc-sp-2);
+  border-radius: var(--acc-r-xs);
+  background: var(--acc-bg-control);
+  font: var(--acc-fs-label) var(--acc-mono);
+  color: var(--acc-fg-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * What the main thread said, between the cards, where it said it.
+ *
+ * Not a card of its own: it is not a step of the round of work, and a block in the same clothes as a
+ * step would read as one. Its own left edge and its own tint instead.
+ */
+.note {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0 0 var(--acc-sp-2);
+  padding: var(--acc-sp-2) 0 var(--acc-sp-2) var(--acc-sp-3);
+  border-left: 2px solid var(--acc-c-iris-1);
+  font-family: var(--acc-mono);
+  font-size: var(--acc-fs-meta);
+  line-height: 1.55;
+  color: var(--acc-fg-faint);
+}
+
+.noteWho {
+  align-self: flex-start;
+  color: var(--acc-c-iris-2);
+}
+
+.noteText {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* --- The question a run is standing on --------------------------------------- */
+
+/*
+ * What is being asked, at the top of the list rather than in the footer with the answers.
+ *
+ * The footer is where a thumb is and holds one thing: the choice. What is being decided is read first
+ * and read once, so it goes where reading happens - and it scrolls, because a permission's arguments
+ * can be a paragraph and a fixed block of one would leave no timeline underneath it.
+ */
+.askCard {
+  margin: 0 var(--acc-sp-5) var(--acc-sp-4);
+  padding: var(--acc-sp-4);
+  border: 1px solid var(--acc-warn-16);
+  border-radius: var(--acc-r-card);
+  background: var(--acc-bg-raised);
+}
+
+.askTitle {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--acc-fg);
+  overflow-wrap: anywhere;
+}
+
+.askDetail {
+  margin: var(--acc-sp-3) 0 0;
+  font-family: var(--acc-mono);
+  font-size: var(--acc-fs-meta);
+  line-height: 1.5;
+  color: var(--acc-fg-dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  /* A command can be a screenful. Enough of it to recognise, and the rest at the desk. */
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+/* The field for an answer in one's own words, above the buttons that send it. */
+.askField {
+  width: 100%;
+  min-height: var(--acc-tap);
+  margin-top: var(--acc-sp-3);
+  padding: 0 var(--acc-sp-3);
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg);
+  color: var(--acc-fg);
+  font: 16px var(--acc-font);
+}
+
+/*
+ * The round of work going in a project, on the project's own card.
+ *
+ * A scenario is the one kind of work in this plugin that goes on with nobody in front of it, so "is
+ * anything running here" is a question about the project rather than about a conversation - and the
+ * card is where the answer belongs. A row rather than a card of its own: what it says fits on one line,
+ * and it is not what most cards on this screen ever have.
+ */
+.projectRun {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+  width: 100%;
+  min-height: var(--acc-hit);
+  margin-top: var(--acc-sp-2);
+  padding: var(--acc-sp-1) var(--acc-sp-3);
+  border: 1px solid var(--acc-accent-32);
+  border-radius: var(--acc-r-pill);
+  background: none;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* Standing on a question is the state this row exists for: it is the only one a person can end. */
+.projectRunAsking {
+  border-color: var(--acc-warn-16);
+}
+
+.projectRunName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  color: var(--acc-fg-body);
+}
+
+.projectRunCount {
+  flex: none;
+  font: var(--acc-fs-meta) var(--acc-mono);
+  color: var(--acc-accent);
+}
+
+.projectRunWaiting {
+  color: var(--acc-warn);
 }

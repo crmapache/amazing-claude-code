@@ -182,13 +182,6 @@
 
 /* --- The root list --------------------------------------------------------- */
 
-.group {
-  padding: 15px 12px 5px;
-  font: 600 9px/1 var(--acc-mono);
-  letter-spacing: 0.09em;
-  color: var(--acc-fg-faint);
-}
-
 /* A hair of space between the rows: each lights up as a rounded block of its own, and flush against
    its neighbour that block reads as a seam rather than as a row. */
 .rows {
@@ -196,6 +189,15 @@
   flex-direction: column;
   gap: 2px;
   padding: 0 6px;
+}
+
+/* The break between the list and the advertisement at its foot. It used to be given by the caption
+   standing over the card ("FROM THE AUTHOR"), and the caption is gone: the card has its own border and
+   its own background, so it names itself as something other than a row without a word above it. The gap
+   has to be written here because two .rows in a row leave none - the 2px belongs to the container, not
+   to the seam between two of them. */
+.authorRows {
+  margin-top: 16px;
 }
 
 .row {
@@ -255,6 +257,13 @@
   color: var(--acc-warn);
 }
 
+/* The gauges keep the neutral even when the mode is off: the icon is a picture of an instrument, and an
+   instrument painted red in a list would be the very thing the row exists to take away. */
+.rowIconCalm {
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-dim);
+}
+
 .rowIconMode {
   background: rgb(var(--acc-ch-copper) / 12%);
   color: var(--acc-orange);
@@ -294,6 +303,13 @@
 /* The gear stands for the whole group that moved behind it, so it takes the neutral of the interface
    itself rather than borrowing the colour of any one setting inside. */
 .rowIconSettings {
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-dim);
+}
+
+/* The chip takes the neutral of the interface, like the send key above it: the row is about a list, and
+   a colour of its own would promise that something on it is switched on. */
+.rowIconModels {
   background: var(--acc-neutral-12);
   color: var(--acc-fg-dim);
 }
@@ -1011,6 +1027,53 @@
   overflow-wrap: anywhere;
 }
 
+/* --- The no-stress colour mode ---------------------------------------------
+   A sample of the ladder: one gauge per step, drawn by the very component the status row uses (see
+   CalmColors.tsx). It sits above the switch rather than below it - the row is read as an answer to what
+   is shown, and a sample under a switch is a sample nobody looks at before pressing. */
+.calmSample {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-card);
+}
+
+/* Two classes rather than one, and not out of habit: this cancels a rule in another module
+   (.contextMeterRow in composer.module.css), and a single class would be settling the matter by
+   whichever file the bundler happened to write last. */
+.calmSample .calmBarRow {
+  padding: 0;
+  /* The ticks at the fifths do not paint themselves - they cut through whatever is under the bar, and
+     over the field that is the field's own fill (see --acc-field-bg in composer.module.css). Unnamed
+     here, they would come out invisible and the sample would show a bar the panel never draws. */
+  --acc-field-bg: var(--acc-bg-card);
+}
+
+/* Spread across the card rather than pressed into a row: four rings shoulder to shoulder read as one
+   control, and what is being compared here is the paint of each. */
+.calmLadder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.calmStep {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* The same figure the status row writes beside its own rings, and set the same way: tabular, so the
+   four steps stand in one rhythm however wide their digits are. */
+.calmStepValue {
+  font: var(--acc-fs-meta) / 1 var(--acc-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- A switch -------------------------------------------------------------- */
 
 .switchRow {
@@ -1219,6 +1282,19 @@
 .deviceMeta {
   font: 10.5px var(--acc-mono);
   color: var(--acc-fg-ghost);
+}
+
+/* A model identifier in the list of the hand-added ones (see CustomModels.tsx). Mono, because it is a
+   machine's string and read character by character; one line with an ellipsis, because a row that grows
+   taller on a long name reads as a different row. */
+.modelName {
+  flex: 1;
+  min-width: 0;
+  font: 12px var(--acc-mono);
+  color: var(--acc-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .fingerprint {

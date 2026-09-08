@@ -32,15 +32,18 @@ class PromptDeliveryTest {
         assertTrue(arrived(lines, "fix the tests"))
     }
 
-    // The mid-turn message went to the running turn: it has a record of its own, and the agent saw it -
-    // sending such a thing again means carrying out the request twice.
+    // The mid-turn message went to the running turn: it has a record of its own, and its shape is what
+    // the verdict turns on - the agent saw ordinary text, while a command in that shape did nothing.
     @Test
-    fun `a message written into a running turn counts as delivery`() {
+    fun `a message written into a running turn is found as an absorbed one`() {
         val lines = sequenceOf(
             """{"type":"attachment","attachment":{"type":"queued_command","prompt":[{"type":"text","text":"fix the tests"}],"commandMode":"prompt"},"timestamp":"${at(1)}"}""",
         )
 
-        assertTrue(arrived(lines, "fix the tests"))
+        assertEquals(
+            mapOf(0 to PromptDelivery.Landing.ABSORBED),
+            PromptDelivery.match(lines, listOf(sent("fix the tests"))),
+        )
     }
 
     // A bare string instead of blocks - that is how the CLI writes a message without attachments.
@@ -97,17 +100,88 @@ class PromptDeliveryTest {
         assertFalse(arrived(lines, "fix the tests"))
     }
 
-    // A slash command leaves no verbatim trace in the conversation: a known one the CLI rewrites with
-    // tags, an unknown one it does not write at all. There is nothing to check such a delivery against,
-    // and a mistaken repeat of `/compact` costs more than the loss itself.
+    // A command is told from ordinary text by the slash it starts with, and by nothing else.
     @Test
-    fun `a slash command is not checked for delivery`() {
-        assertFalse(PromptDelivery.traceable("/compact"))
-        assertFalse(PromptDelivery.traceable("  /clear"))
-        assertTrue(PromptDelivery.traceable("fix the tests"))
-        // A path at the start of a message is not a command, and watching it does no harm: what matters
-        // is that ordinary text does get checked.
-        assertTrue(PromptDelivery.traceable("look at src/main and fix it"))
+    fun `a slash command is told apart from ordinary text`() {
+        assertTrue(PromptDelivery.isCommand("/compact"))
+        assertTrue(PromptDelivery.isCommand("  /clear"))
+        assertFalse(PromptDelivery.isCommand("fix the tests"))
+        // A path in the middle of a message is not a command - only the very first character decides.
+        assertFalse(PromptDelivery.isCommand("look at src/main and fix it"))
+    }
+
+    // Send means "reach the agent now" for ordinary text, and the CLI delivers it: the agent is asked to
+    // take it up as it carries on. For a command that same place is a dead end, so it waits instead.
+    @Test
+    fun `only a command waits for the running turn`() {
+        assertTrue(PromptDelivery.waitsForTheTurn("/compact", turnRunning = true))
+        assertFalse(PromptDelivery.waitsForTheTurn("/compact", turnRunning = false))
+        assertFalse(PromptDelivery.waitsForTheTurn("fix the tests", turnRunning = true))
+    }
+
+    // The whole point of telling the two records apart: a command absorbed into a running turn reached
+    // the agent as bare text and carried out nothing, so it has to go again.
+    @Test
+    fun `a command absorbed into a running turn is lost`() {
+        assertEquals(
+            PromptDelivery.Verdict.LOST,
+            PromptDelivery.verdict("/compact", PromptDelivery.Landing.ABSORBED, lastLook = false),
+        )
+    }
+
+    // Ordinary text in that same place is delivered: the CLI shows it to the agent at its next step, and
+    // sending it again means carrying the same request out twice.
+    @Test
+    fun `ordinary text absorbed into a running turn is delivered`() {
+        assertEquals(
+            PromptDelivery.Verdict.DELIVERED,
+            PromptDelivery.verdict("fix the tests", PromptDelivery.Landing.ABSORBED, lastLook = false),
+        )
+    }
+
+    // A command that ran leaves no verbatim record at all - the CLI rewrites a known one with tags and
+    // does not write an unknown one down. Silence is therefore no evidence, and a repeat on a guess is a
+    // second compaction of the context.
+    @Test
+    fun `a command without a record is left alone`() {
+        assertEquals(
+            PromptDelivery.Verdict.DELIVERED,
+            PromptDelivery.verdict("/compact", landing = null, lastLook = true),
+        )
+    }
+
+    // Ordinary text always leaves a record, so its absence after the last look is the loss this whole
+    // check exists for.
+    @Test
+    fun `ordinary text without a record is lost`() {
+        assertEquals(
+            PromptDelivery.Verdict.LOST,
+            PromptDelivery.verdict("fix the tests", landing = null, lastLook = true),
+        )
+    }
+
+    // Before the last look nothing is decided: the record may simply not have been written yet - a
+    // message taken into a running turn is written when the CLI shows it to the agent, a tool call later.
+    @Test
+    fun `without a record and with looks left nothing is decided`() {
+        assertEquals(
+            PromptDelivery.Verdict.WAIT,
+            PromptDelivery.verdict("fix the tests", landing = null, lastLook = false),
+        )
+        assertEquals(
+            PromptDelivery.Verdict.WAIT,
+            PromptDelivery.verdict("/compact", landing = null, lastLook = false),
+        )
+    }
+
+    // A message that became a turn of its own is delivered whatever it was - a command in that shape is
+    // a command the CLI expanded and carried out.
+    @Test
+    fun `a message that became a turn is delivered`() {
+        assertEquals(
+            PromptDelivery.Verdict.DELIVERED,
+            PromptDelivery.verdict("/compact", PromptDelivery.Landing.NEW_TURN, lastLook = false),
+        )
     }
 
     // A tool result arrives as the same `user` record, but is not a person's message.
@@ -130,7 +204,7 @@ class PromptDeliveryTest {
 
         val matched = PromptDelivery.match(lines, listOf(sent("go on"), sent("go on", 1)))
 
-        assertEquals(setOf(0), matched)
+        assertEquals(mapOf(0 to PromptDelivery.Landing.NEW_TURN), matched)
     }
 
     // Both arrived - both sends are closed, and there is nothing to resend.
@@ -143,7 +217,10 @@ class PromptDeliveryTest {
 
         val matched = PromptDelivery.match(lines, listOf(sent("go on"), sent("go on", 1)))
 
-        assertEquals(setOf(0, 1), matched)
+        assertEquals(
+            mapOf(0 to PromptDelivery.Landing.NEW_TURN, 1 to PromptDelivery.Landing.ABSORBED),
+            matched,
+        )
     }
 
     // Different messages are checked in one pass over the file: each has its own record, and what is not
@@ -160,7 +237,10 @@ class PromptDeliveryTest {
             listOf(sent("fix the tests"), sent("vanished entirely"), sent("and build it", 1)),
         )
 
-        assertEquals(setOf(0, 2), matched)
+        assertEquals(
+            mapOf(0 to PromptDelivery.Landing.NEW_TURN, 2 to PromptDelivery.Landing.NEW_TURN),
+            matched,
+        )
     }
 
     // The one thing a resend must never confuse: "the record is not in the conversation" and "the
@@ -189,6 +269,6 @@ class PromptDeliveryTest {
     // Nothing was asked about, so nothing is missing - that is an answer rather than a failure to look.
     @Test
     fun `an empty list of sends is answered rather than refused`() {
-        assertEquals(PromptDelivery.Lookup.Read(emptySet()), PromptDelivery.arrived(null, null, emptyList()))
+        assertEquals(PromptDelivery.Lookup.Read(emptyMap()), PromptDelivery.arrived(null, null, emptyList()))
     }
 }

@@ -131,10 +131,26 @@ export interface PanelState {
    * the previous signature answers exactly the question asked: has the conversation moved to another
    * model without anyone choosing it (see ModelSwitchItem).
    *
-   * A choice of the person's own resets it: from that moment the count starts anew, and the first
-   * signature after it is the answer to the request rather than a swap behind one's back.
+   * A choice of the person's own does NOT reset it, and used to: see [ownSwap] for what that cost.
    */
   streamModel?: string
+  /**
+   * The person has chosen another model for this tab and the stream has not caught up yet.
+   *
+   * A model chosen in the middle of a turn is applied by the CLI at once, but the request already in
+   * flight is not recalled: one, two, three more answers arrive signed by the model being left. So the
+   * choice used to clear [streamModel] - "the count starts anew" - and the count started with that very
+   * echo: the old model was written down as the last one named, and the first genuine answer on the new
+   * one was then read as a swap behind the person's back. Recorded live: a model picked while a turn ran
+   * put "Fable 5.1 -> Opus 5, switched by Claude Code, not by you" into the feed of the person who had
+   * just picked Opus by hand.
+   *
+   * So what is remembered is the request rather than a clean slate: while it stands, the first signature
+   * that names something other than the model being left is the answer to it, and it is that signature
+   * that clears the flag. Everything after is judged as before, so a real swap right after a choice is
+   * still announced.
+   */
+  ownSwap?: boolean
   project?: PanelProject
   usage: Required<AgentUsage>
   /**
@@ -167,12 +183,32 @@ export interface PanelState {
    */
   turnStartedAt?: number
   /**
-   * How much of the current turn has gone into waiting for a person's decision - a permission,
+   * When the work asked for by the person began - and it outlives a single turn.
+   *
+   * One request is not one turn. An agent that started background subagents falls silent at that: its
+   * turn ends, and each time one of them reports back the CLI starts a turn of its own accord (see
+   * isTurnAnnouncement in AgentStream.kt). A review of a branch measured on a live run went that way
+   * fourteen times over: one message from the person, thirty-eight minutes of work, and the caption
+   * under the answer said "Worked 3m 38s" - the last of those turns, truthfully, and nothing at all
+   * about the work.
+   *
+   * So the count belongs to the request rather than to the turn: it starts with the person's message
+   * and is cleared when everything has genuinely stopped - no turn running and not one background agent
+   * left (see workGoesOn in build.ts, the same reading the finished sound and the status line go by).
+   * A turn that comes up on its own with no work under way starts a stint of its own.
+   */
+  stintStartedAt?: number
+  /**
+   * How much of the current stint has gone into waiting for a person's decision - a permission,
    * ExitPlanMode, AskUserQuestion. It is subtracted from elapsed in streamStatus (App.tsx): while such a
    * card hangs there, the turn is not thinking but standing, and after the decision those seconds must
    * not retroactively become "Claude is thinking". It accumulates through attentionStarted/
    * attentionEnded - App.tsx sends those, having noticed by awaitsYou that the main stream's cards
    * changed state.
+   *
+   * It lives as long as the stint does, not as long as one turn: the caption at the end counts by it
+   * too, and cleared at every turn's end it would charge the agent with the minutes spent waiting for
+   * the person somewhere in the middle of the work.
    */
   pausedMs: number
   /** When the current wait for a person's decision began - undefined when we are not waiting. */

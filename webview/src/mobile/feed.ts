@@ -190,6 +190,17 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
     case 'model':
       return collect({ kind: 'modelApplied', model: message.model, error: message.error })
 
+    /*
+     * What this conversation works at (see ClaudeSessionHub.sendEffort). Nobody but the IDE knows it -
+     * the CLI says nothing about the effort anywhere - so a phone that does not take this message shows
+     * a sheet with none of the seven marked, which reads as "this conversation runs at nothing".
+     *
+     * Live rather than journalled, like the queue below it: it is what the conversation runs at now, not
+     * something it said. A phone joining is handed it in the catch-up batch (see the attach in the hub).
+     */
+    case 'effort':
+      return collect({ kind: 'effortApplied', effort: message.effort })
+
     // What this conversation is waiting to say. Held and fired by the IDE, so both screens show the same
     // list and a phone put back in a pocket does not take it along (see SessionQueue.kt).
     case 'queue':

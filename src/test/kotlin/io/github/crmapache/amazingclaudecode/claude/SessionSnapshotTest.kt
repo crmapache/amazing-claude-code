@@ -166,6 +166,62 @@ class SessionSnapshotTest {
         assertSame(snapshot, SessionSnapshots.apply(snapshot, message))
     }
 
+    // --- Background agents ---------------------------------------------------
+    //
+    // The one thing that tells "this turn ended" from "the work ended": a request that raised background
+    // agents ends in as many turns as there were agents, and the phone was told the work was done after
+    // each of them (see NotificationReasons).
+
+    private fun taskStarted(id: String, type: String = "local_agent"): String =
+        """{"type":"agent","sessionId":"main","event":{"type":"system","subtype":"task_started",""" +
+            """"task_id":"$id","task_type":"$type"}}"""
+
+    private fun taskDone(id: String): String =
+        """{"type":"agent","sessionId":"main","event":{"type":"system","subtype":"task_notification",""" +
+            """"task_id":"$id","status":"completed"}}"""
+
+    @Test
+    fun `an agent is counted from its launch until it reports back`() {
+        assertEquals(setOf("a1"), apply(taskStarted("a1")).pendingAgents)
+        assertEquals(setOf("a2"), apply(taskStarted("a1"), taskStarted("a2"), taskDone("a1")).pendingAgents)
+        assertTrue(apply(taskStarted("a1"), taskDone("a1")).pendingAgents.isEmpty())
+    }
+
+    // A dev server raised through "!" travels the same channel and never reports back at all - counted as
+    // work, it would silence the notification for the rest of the day.
+    @Test
+    fun `a terminal command on the same channel is not an agent`() {
+        assertTrue(apply(taskStarted("b1", type = "local_bash")).pendingAgents.isEmpty())
+    }
+
+    // An old CLI sent only subagents this way and named no type at all.
+    @Test
+    fun `a launch with no type at all still counts as an agent`() {
+        val message = """{"type":"agent","sessionId":"main","event":{"type":"system",""" +
+            """"subtype":"task_started","task_id":"a1"}}"""
+
+        assertEquals(setOf("a1"), apply(message).pendingAgents)
+    }
+
+    @Test
+    fun `agents of a past conversation being replayed are not running now`() {
+        val message = """{"type":"agent","sessionId":"main","replay":true,"event":{"type":"system",""" +
+            """"subtype":"task_started","task_id":"old","task_type":"local_agent"}}"""
+
+        assertTrue(apply(message).pendingAgents.isEmpty())
+    }
+
+    // They have no closing event of their own, so without this the count would stand for as long as the
+    // conversation lives - and the notification with it.
+    @Test
+    fun `a process taking its agents down clears the count`() {
+        val died = apply(taskStarted("a1"), """{"type":"processExited","sessionId":"main","exitCode":1}""")
+        assertTrue(died.pendingAgents.isEmpty())
+
+        val swapped = apply(taskStarted("a1"), """{"type":"processReplaced","sessionId":"main"}""")
+        assertTrue(swapped.pendingAgents.isEmpty())
+    }
+
     @Test
     fun `a malformed message changes nothing`() {
         val snapshot = SessionSnapshot(status = SessionSnapshot.STATUS_RUNNING)

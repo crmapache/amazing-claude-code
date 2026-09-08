@@ -13,6 +13,8 @@ interface NewSessionProps {
   project: ProjectEntry
   /** The catalogue as the CLI on that machine reports it, or null until it has said (see catalog.ts). */
   models: ModelInfo[] | null
+  /** And the models added by hand at that desk - they stand in this list too (see modelOptions). */
+  customModels: string[]
   /** What is chosen at the desk - where this screen starts from rather than from an invention of ours. */
   prefs: SessionLaunch
   /** The project is being opened - only possible for a closed one, and it takes a while. */
@@ -47,7 +49,16 @@ const asConfiguredOption = (t: Dict): MenuOption => ({
  * The choice reaches this conversation and nothing else. It is not written into the machine's settings
  * (see SessionLaunch), so a tab started here decides nothing about the next one opened at the keyboard.
  */
-export const NewSession = ({ project, models, prefs, busy, error, onStart, onBack }: NewSessionProps) => {
+export const NewSession = ({
+  project,
+  models,
+  customModels,
+  prefs,
+  busy,
+  error,
+  onStart,
+  onBack,
+}: NewSessionProps) => {
   const t = useT()
   const asConfigured = asConfiguredOption(t)
   const [launch, setLaunch] = useState<SessionLaunch>(prefs)
@@ -57,7 +68,7 @@ export const NewSession = ({ project, models, prefs, busy, error, onStart, onBac
   const [open, setOpen] = useState<keyof SessionLaunch | null>(null)
 
   const choices: Array<{ field: keyof SessionLaunch; title: string; options: MenuOption[] }> = [
-    { field: 'model', title: t.mobile.newSession.model, options: [asConfigured, ...modelOptions(t, models)] },
+    { field: 'model', title: t.mobile.newSession.model, options: [asConfigured, ...modelOptions(t, models, customModels)] },
     { field: 'effort', title: t.mobile.newSession.effort, options: [asConfigured, ...effortOptions(t)] },
     { field: 'mode', title: t.mobile.newSession.mode, options: [asConfigured, ...modeOptions(t)] },
   ]

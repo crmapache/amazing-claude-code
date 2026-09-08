@@ -28,25 +28,84 @@ import kotlinx.serialization.json.jsonPrimitive
  * - `type: attachment` with `queued_command` - it went to the running turn, and the agent saw it at its
  *   next step.
  *
- * Neither of the two means the message was swallowed and has to be sent again (see
- * ClaudeSession.checkDeliveries).
+ * Which of the two it was matters: an ordinary message is delivered either way, while a slash command
+ * absorbed into a running turn carried out nothing at all - see [verdict] and
+ * ClaudeSession.checkDeliveries.
  */
 internal object PromptDelivery {
 
     /**
-     * Whether this text's delivery can be checked at all.
+     * A slash command rather than an ordinary message from a person.
      *
-     * A slash command has nothing to check against: it is not in the conversation word for word. A
-     * known one the CLI rewrites into an internal record with tags
-     * (`<command-name>/context</command-name>`), and an unknown one it does not record at all - it
-     * answers "Unknown command" and that is that. Counting such a send as lost means repeating commands
-     * over nothing, and a repeated `/compact` is an extra compaction of the context, that is, a worse
-     * break than the original one.
+     * The two are told apart because a command only means anything as the first word of a turn. Written
+     * into a turn already running it is not expanded at all: the CLI hands the agent the bare text
+     * "/compact" as a remark made mid-work, and the agent - quite rightly - does nothing with it. An
+     * ordinary message in that same place is delivered properly: the agent is asked to take it up as it
+     * carries on.
      *
-     * So commands are left unwatched, honestly at the CLI's mercy: what gets lost when written into a
-     * running turn is an ordinary message from a person, and that is what we check.
+     * Hence the rule in two places: a command is not written into a running turn at all (see
+     * ClaudeSessionHub.prompt), and one that got in there all the same is not delivered but lost (see
+     * [verdict]).
      */
-    fun traceable(text: String): Boolean = !text.trimStart().startsWith("/")
+    fun isCommand(text: String): Boolean = text.trimStart().startsWith("/")
+
+    /**
+     * Whether this message has to wait for the running turn rather than go into it.
+     *
+     * The rule of the two places above, in one line and under a test, because it breaks silently: sent
+     * into a running turn a command does nothing at all, and nothing on the screen says so - the person
+     * sees their "/compact" in the feed, the work carries on, and the context is never compacted.
+     */
+    fun waitsForTheTurn(text: String, turnRunning: Boolean): Boolean = turnRunning && isCommand(text)
+
+    /** Where a send's record landed - the shape of the record in the conversation says which. */
+    enum class Landing {
+        /** `type: user` - the message became a turn of its own, and a command in it was carried out. */
+        NEW_TURN,
+
+        /** `attachment` with `queued_command` - it went into the turn that was already running. */
+        ABSORBED,
+    }
+
+    /** What is to be done about one send. */
+    enum class Verdict {
+        /** It reached the conversation, and nothing more is owed to it. */
+        DELIVERED,
+
+        /** It did not, or it did in a shape that carried out nothing: send it again. */
+        LOST,
+
+        /** Nothing can be said yet - the record may simply not have been written. */
+        WAIT,
+    }
+
+    /**
+     * The verdict on one send, by where its record landed and whether this look is the last one.
+     *
+     * The last look is not simply the last attempt: it is a look taken after the turn has ended (see
+     * ClaudeSession.checkDeliveries). A message taken into a running turn reaches the conversation's
+     * file only when the CLI shows it to the agent, a whole tool call later - judged before that, it is
+     * indistinguishable from one that left no record at all.
+     *
+     * The two kinds of message part ways here, and both directions of the difference cost something.
+     * An ordinary message absorbed into a running turn is delivered: the CLI shows it to the agent at
+     * its next step, and sending it again means carrying the same request out twice. A command in that
+     * same place did nothing at all, and staying quiet about it is what a person sees as "I asked for a
+     * compaction and nothing happened".
+     *
+     * With no record at all the two part ways again. Ordinary text always leaves one, so its absence
+     * after the last look is a loss. A command leaves none: a known one the CLI rewrites into a record
+     * with tags (`<command-name>/compact</command-name>`), an unknown one it does not write down at
+     * all. So silence about a command is not evidence of anything, and a repeat on a guess is a second
+     * compaction of the context - worse than the break it was meant to mend.
+     */
+    fun verdict(text: String, landing: Landing?, lastLook: Boolean): Verdict =
+        when {
+            landing == Landing.NEW_TURN -> Verdict.DELIVERED
+            landing == Landing.ABSORBED -> if (isCommand(text)) Verdict.LOST else Verdict.DELIVERED
+            !lastLook -> Verdict.WAIT
+            else -> if (isCommand(text)) Verdict.DELIVERED else Verdict.LOST
+        }
 
     /** Something sent whose record we are looking for in the conversation: what went out and when. */
     internal data class Sent(val text: String, val sentAt: Long)
@@ -62,8 +121,12 @@ internal object PromptDelivery {
      * "the message was swallowed" means resending something that already ran.
      */
     internal sealed interface Lookup {
-        /** The conversation was read: [found] holds the indices in `sent` whose records are in it. */
-        data class Read(val found: Set<Int>) : Lookup
+        /**
+         * The conversation was read: [landed] holds, for the sends whose records are in it, where each
+         * one landed. What is not in the map has no record at all - which means different things for a
+         * command and for ordinary text (see [verdict]).
+         */
+        data class Read(val landed: Map<Int, Landing>) : Lookup
 
         /** Nothing can be said about anything: the conversation itself could not be read. */
         data object Unreadable : Lookup
@@ -88,7 +151,7 @@ internal object PromptDelivery {
      */
     fun arrived(workingDirectory: String?, conversationId: String?, sent: List<Sent>): Lookup {
         // Nothing was asked about, so nothing is missing: this is an answer, not a failure to look.
-        if (sent.isEmpty()) return Lookup.Read(emptySet())
+        if (sent.isEmpty()) return Lookup.Read(emptyMap())
 
         val id = conversationId ?: return Lookup.Unreadable
         val file = ClaudeHistory.transcriptFile(workingDirectory, id) ?: return Lookup.Unreadable
@@ -100,9 +163,9 @@ internal object PromptDelivery {
     }
 
     /** Parsing the conversation file's lines - apart from the disk, so a test can check it. */
-    internal fun match(lines: Sequence<String>, sent: List<Sent>): Set<Int> {
+    internal fun match(lines: Sequence<String>, sent: List<Sent>): Map<Int, Landing> {
         val wanted = sent.map { it.text.trim() }
-        val matched = mutableSetOf<Int>()
+        val matched = mutableMapOf<Int, Landing>()
 
         for (line in lines) {
             // Everything found - no reason to read the file to the end.
@@ -114,9 +177,10 @@ internal object PromptDelivery {
             if (!line.contains(USER_MARK) && !line.contains(QUEUED_MARK)) continue
 
             val payload = runCatching { Json.parseToJsonElement(line).jsonObject }.getOrNull() ?: continue
+            val record = record(payload) ?: continue
             val at = timestampOf(payload)
 
-            for (text in promptText(payload)) {
+            for (text in record.texts) {
                 val trimmed = text.trim()
                 if (trimmed.isEmpty()) continue
 
@@ -126,35 +190,38 @@ internal object PromptDelivery {
                     i !in matched && wanted[i] == trimmed && at >= sent[i].sentAt - CLOCK_SLACK_MS
                 } ?: continue
 
-                matched += index
+                matched[index] = record.landing
             }
         }
 
         return matched
     }
 
-    /** The person's message text - in whichever of the two shapes the record came. */
-    private fun promptText(payload: JsonObject): List<String> =
+    /** One record of a person's message: how it got into the conversation, and what it said. */
+    private data class Record(val landing: Landing, val texts: List<String>)
+
+    /** The person's message - in whichever of the two shapes the record came, or nothing. */
+    private fun record(payload: JsonObject): Record? =
         when (payload["type"]?.jsonPrimitive?.contentOrNull) {
             "user" -> {
                 val message = payload["message"]?.jsonObject
                 if (message?.get("role")?.jsonPrimitive?.contentOrNull != "user") {
-                    emptyList()
+                    null
                 } else {
-                    textBlocks(message["content"])
+                    Record(Landing.NEW_TURN, textBlocks(message["content"]))
                 }
             }
 
             "attachment" -> {
                 val attachment = payload["attachment"]?.jsonObject
                 if (attachment?.get("type")?.jsonPrimitive?.contentOrNull != "queued_command") {
-                    emptyList()
+                    null
                 } else {
-                    textBlocks(attachment["prompt"])
+                    Record(Landing.ABSORBED, textBlocks(attachment["prompt"]))
                 }
             }
 
-            else -> emptyList()
+            else -> null
         }
 
     /**

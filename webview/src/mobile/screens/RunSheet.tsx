@@ -8,6 +8,8 @@ import { useT } from '../../i18n'
 interface RunSheetProps {
   /** The catalogue as the CLI on that machine reports it, or null until it has said (see catalog.ts). */
   models: ModelInfo[] | null
+  /** And the models added by hand at that desk - they stand in this list too (see modelOptions). */
+  customModels: string[]
   /** What this conversation runs on right now. */
   model: string
   effort: string
@@ -34,7 +36,7 @@ interface RunSheetProps {
  * opened at that keyboard starts on is not a decision to take from a sofa (see SessionCommands, which
  * passes `remember = local`).
  */
-export const RunSheet = ({ models, model, effort, mode, onApply, onClose }: RunSheetProps) => {
+export const RunSheet = ({ models, customModels, model, effort, mode, onApply, onClose }: RunSheetProps) => {
   const t = useT()
   const [pickedModel, setPickedModel] = useState(model)
   const [pickedEffort, setPickedEffort] = useState(effort)
@@ -70,7 +72,7 @@ export const RunSheet = ({ models, model, effort, mode, onApply, onClose }: RunS
     >
       <p className={m.sheetLabel}>{t.selectors.model}</p>
       <div className={m.chipWrap}>
-        {modelOptions(t, models).map((option) => (
+        {modelOptions(t, models, customModels).map((option) => (
           <button
             key={option.id}
             type="button"

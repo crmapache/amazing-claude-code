@@ -1,0 +1,62 @@
+{
+    "version": 1,
+    "id": "smoke",
+    "name": "Two notes in a row",
+    "createdAt": 1757000000000,
+    "updatedAt": 1757000000000,
+    "inputs": [
+        {
+            "id": "i1",
+            "name": "topic",
+            "label": "What the note is about",
+            "placeholder": "the retry delay in src/useSocket.js",
+            "required": true
+        }
+    ],
+    "head": {
+        "briefing": "A tiny round of work for trying the panel out. Nothing here matters and nothing outside this folder may be touched.",
+        "model": "",
+        "effort": "low",
+        "permissionMode": "acceptEdits",
+        "onQuestion": "head",
+        "retries": 1
+    },
+    "stages": [
+        {
+            "id": "s1",
+            "title": "Write and read",
+            "repeat": 1,
+            "untilDone": false,
+            "cards": [
+                {
+                    "id": "c1",
+                    "title": "Write the note",
+                    "prompt": "Create a file called note.txt in this project. Write one single sentence into it about {{topic}}. Then say the absolute path of the file you wrote.",
+                    "slots": [],
+                    "dod": "note.txt exists and holds one sentence about the topic.",
+                    "after": "",
+                    "model": "",
+                    "effort": "",
+                    "permissionMode": ""
+                },
+                {
+                    "id": "c2",
+                    "title": "Read it back",
+                    "prompt": "Read the file at [[note]] and reply with exactly the sentence it contains, and nothing else.",
+                    "slots": [
+                        {
+                            "id": "sl1",
+                            "name": "note",
+                            "description": "The absolute path the previous card said it wrote"
+                        }
+                    ],
+                    "dod": "The reply is the sentence that is in the file.",
+                    "after": "",
+                    "model": "",
+                    "effort": "",
+                    "permissionMode": ""
+                }
+            ]
+        }
+    ]
+}

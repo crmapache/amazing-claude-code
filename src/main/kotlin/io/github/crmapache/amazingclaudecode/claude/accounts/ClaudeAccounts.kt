@@ -6,6 +6,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import io.github.crmapache.amazingclaudecode.claude.ClaudeAuth
 import io.github.crmapache.amazingclaudecode.claude.ClaudeExecutable
 import io.github.crmapache.amazingclaudecode.claude.ClaudeHome
+import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.claude.HostOs
 import io.github.crmapache.amazingclaudecode.claude.ModelNames
@@ -231,6 +232,18 @@ internal class ClaudeAccounts {
     fun canRun(accountId: String, model: String): Boolean? {
         if (model.isEmpty()) return true
 
+        // A model somebody added by hand cannot be in any catalogue - the catalogue answers for what
+        // Claude Code itself offers, and that list is precisely what this feature exists beside (see
+        // ClaudePreferences.customModels). Here the rule above inverts: absence is ignorance rather than
+        // a refusal, and the clamp built on it would quietly replace the one model that was chosen on
+        // purpose - on the very machine whose provider serves nothing else.
+        //
+        // By name rather than by string, as below: a conversation resumed from the history asks about
+        // the identifier its transcript signs answers with, which need not be the spelling that was
+        // typed in. The cost is a name whose family collides with a real one ("opus-legacy") lifting the
+        // clamp off that family; adding such a name is saying that this provider serves it.
+        if (ClaudePreferences.customModels.any { ModelNames.same(it, model) }) return true
+
         // By name rather than by string: one model reaches this from three directions under three
         // spellings, and a plain comparison answered "no" about models the account runs perfectly well -
         // a transcript's `claude-opus-5` against a catalogue's `opus` (see ModelNames).
@@ -240,6 +253,13 @@ internal class ClaudeAccounts {
     /** What this account was last left on, so a new tab on it does not launch with another plan's model. */
     fun rememberChoice(id: String, model: String? = null, effort: String? = null) {
         state.rememberChoice(id, model, effort)
+    }
+
+    /** Forget a model that has just been taken off the hand-added list - see [AccountsState.forgetModels]. */
+    fun forgetModels(names: Set<String>) {
+        if (names.isEmpty()) return
+
+        state.forgetModels(names)
     }
 
     // --- The environment a process runs in ----------------------------------------

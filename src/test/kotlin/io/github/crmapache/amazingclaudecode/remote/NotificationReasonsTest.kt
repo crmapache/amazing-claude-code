@@ -22,6 +22,8 @@ class NotificationReasonsTest {
 
     private val quiet = SessionSnapshot()
 
+    private val TURN_END = """{"type":"agent","event":{"type":"result"}}"""
+
     private fun waiting(permissions: Int = 0, asks: Int = 0, plans: Int = 0) = SessionSnapshot(
         pendingPermissions = (1..permissions).map { "perm-$it" }.toSet(),
         pendingAsks = (1..asks).map { "ask-$it" }.toSet(),
@@ -83,6 +85,20 @@ class NotificationReasonsTest {
             "turnFinished",
             NotificationReasons.of("""{"type":"agent","event":{"type":"result"}}""", quiet, quiet),
         )
+    }
+
+    /**
+     * A turn that ended while background agents work on has finished nothing: the CLI starts the next
+     * turn itself the moment one of them reports back, so one request becomes a dozen turns. Measured
+     * live: one message, fifteen ends of a turn, and a phone told "done" after each of them.
+     */
+    @Test
+    fun `a turn that ends with agents still running is not the end of the work`() {
+        val working = SessionSnapshot(pendingAgents = setOf("a1"))
+
+        assertNull(NotificationReasons.of(TURN_END, working, working))
+        // The last agent has reported back, the agent said its piece, the turn ended: this one is real.
+        assertEquals("turnFinished", NotificationReasons.of(TURN_END, working, quiet))
     }
 
     /** Calling someone back to a turn they stopped themselves a moment ago serves nothing. */

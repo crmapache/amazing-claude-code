@@ -365,6 +365,61 @@ describe('the model swapped by the CLI itself', () => {
   })
 
   /**
+   * Recorded live: a model chosen while a turn was running. The CLI applies it at once but does not
+   * recall the request already in flight, so more answers arrive signed by the model being left - and
+   * the card said "switched by Claude Code, not by you" to the person who had just chosen Opus by hand.
+   */
+  it('keeps quiet even when the turn goes on answering in the model being left', () => {
+    let state = play([initEvent('claude-fable-5'), signedTextEvent('claude-fable-5', 'Looking.')])
+    state = reducePanel(state, { kind: 'modelRequested', model: 'opus[1m]' })
+    state = reducePanel(state, { kind: 'modelApplied', model: 'opus[1m]' })
+    state = play([signedTextEvent('claude-fable-5', 'Still on the old request.')], state)
+    state = play([signedTextEvent('claude-opus-5', 'On Opus now.')], state)
+
+    expect(state.model).toBe('claude-opus-5')
+    expect(state.switchedFrom).toBeUndefined()
+    expect(modelSwitches(state)).toEqual([])
+  })
+
+  // The silence is for the one swap that was asked for, and not a moment longer.
+  it('still announces a swap the agent makes after the chosen model has arrived', () => {
+    let state = play([initEvent('claude-fable-5'), signedTextEvent('claude-fable-5', 'Looking.')])
+    state = reducePanel(state, { kind: 'modelApplied', model: 'opus' })
+    state = play([signedTextEvent('claude-opus-5', 'On Opus now.')], state)
+    state = play([signedTextEvent('claude-sonnet-5', 'And now here.')], state)
+
+    expect(modelSwitches(state)).toEqual([
+      { id: expect.any(String), kind: 'model', from: 'claude-opus-5', to: 'claude-sonnet-5', reason: '' },
+    ])
+  })
+
+  // A refusal moves nothing, so there is no answer on a new model to keep quiet about.
+  it('announces a swap all the same when the model asked for was refused', () => {
+    let state = play([initEvent('claude-fable-5'), signedTextEvent('claude-fable-5', 'Looking.')])
+    state = reducePanel(state, { kind: 'modelApplied', model: 'claude-fable-5', error: 'Not on this plan.' })
+    state = play([signedTextEvent('claude-opus-4-8', 'Carrying on.')], state)
+
+    expect(state.switchedFrom).toBe('claude-fable-5')
+    expect(modelSwitches(state)).toEqual([
+      { id: expect.any(String), kind: 'model', from: 'claude-fable-5', to: 'claude-opus-4-8', reason: '' },
+    ])
+  })
+
+  /**
+   * A fork is told its parent's model before a process of its own is up (see App): nothing is moving,
+   * and a flag raised there would wait forever and swallow the first real swap.
+   */
+  it('announces a swap in a tab that was only told which model it starts on', () => {
+    let state = reducePanel(initialPanelState, { kind: 'modelApplied', model: 'claude-fable-5' })
+    state = play([initEvent('claude-fable-5'), signedTextEvent('claude-fable-5', 'Looking.')], state)
+    state = play([signedTextEvent('claude-opus-4-8', 'Carrying on.')], state)
+
+    expect(modelSwitches(state)).toEqual([
+      { id: expect.any(String), kind: 'model', from: 'claude-fable-5', to: 'claude-opus-4-8', reason: '' },
+    ])
+  })
+
+  /**
    * The accent on the MODEL button is drawn by this and by nothing else - see PanelState.switchedFrom.
    * It used to be worked out by comparing the running model against the setting, which is one for every
    * tab: a tab left on the model chosen in it earlier wore the accent for no reason at all.
@@ -3280,5 +3335,114 @@ describe('a code review', () => {
 
     expect(state.items.some((item) => item.kind === 'findings')).toBe(false)
     expect(state.items.some((item) => item.kind === 'text')).toBe(true)
+  })
+})
+
+/**
+ * One request is not one turn.
+ *
+ * An agent that starts background agents falls silent at that - its turn ends with the work only
+ * beginning - and every time one of them reports back the CLI starts a turn of its own accord. Taken
+ * off a live run of a branch review: one message from the person, fourteen self-started turns, and
+ * thirty-eight minutes of work under a caption saying "Worked 3m 38s" - the last turn, truthfully, and
+ * nothing about the work.
+ */
+describe('the time under an answer counts the request rather than its last turn', () => {
+  const START = 1_700_000_000_000
+  const minute = (n: number): number => START + n * 60_000
+
+  const askedFor = (text: string): PanelState =>
+    reducePanel(initialPanelState, { kind: 'prompt', tokens: [{ kind: 'text', value: text }], quotes: [] }, minute(0))
+
+  const durations = (state: PanelState): (string | undefined)[] =>
+    state.items.filter((item) => item.kind === 'meta').map((item) => item.outcome?.duration)
+
+  it('adds the turns of one request up: the caption at the end names the whole work', () => {
+    let state = askedFor('/review')
+
+    // The agent starts a background agent and closes its turn on that - a minute in, with the work ahead.
+    state = reducePanel(
+      state,
+      { kind: 'agent', event: toolUseEvent('toolu-1', 'Agent', { prompt: 'look around', subagent_type: 'reviewer' }) },
+      minute(1),
+    )
+    state = reducePanel(state, { kind: 'agent', event: agentTaskStartedEvent('task-1', 'toolu-1', 'reviewer') }, minute(1))
+    state = reducePanel(state, { kind: 'agent', event: resultEvent(60_000) }, minute(1))
+    state = reducePanel(state, { kind: 'status', status: 'idle' }, minute(1))
+
+    // The work has not stopped: the agent is still going, so the count carries on.
+    expect(state.stintStartedAt).toBe(minute(0))
+
+    // Half an hour later it reports back, and the CLI raises a turn by itself to say what came of it.
+    state = reducePanel(state, { kind: 'agent', event: taskNotificationEvent('task-1', 'completed', 'Reviewed') }, minute(31))
+    state = reducePanel(state, { kind: 'status', status: 'running' }, minute(31))
+    state = reducePanel(state, { kind: 'agent', event: textEvent('Here is what I found') }, minute(32))
+    state = reducePanel(state, { kind: 'agent', event: resultEvent(120_000) }, minute(33))
+
+    // The first turn speaks for itself, the last one for the whole request.
+    expect(durations(state)).toEqual(['1m 00s', '33m 00s'])
+    expect(state.stintStartedAt).toBeUndefined()
+  })
+
+  it('starts afresh on the next thing the person asks', () => {
+    let state = askedFor('/review')
+    state = reducePanel(state, { kind: 'agent', event: resultEvent(1_000) }, minute(5))
+    state = reducePanel(
+      state,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: 'and now the tests' }], quotes: [] },
+      minute(20),
+    )
+    state = reducePanel(state, { kind: 'agent', event: resultEvent(1_000) }, minute(21))
+
+    expect(durations(state)).toEqual(['5m 00s', '1m 00s'])
+  })
+
+  // The same rule the live counter beside "Claude is thinking" has always gone by: the minutes spent
+  // waiting for the person are not the agent's work.
+  it('leaves out the time the work stood waiting for a decision', () => {
+    let state = askedFor('do it')
+    state = reducePanel(state, { kind: 'attentionStarted' }, minute(1))
+    state = reducePanel(state, { kind: 'attentionEnded' }, minute(11))
+    state = reducePanel(state, { kind: 'agent', event: resultEvent(720_000) }, minute(12))
+
+    expect(durations(state)).toEqual(['2m 00s'])
+  })
+
+  it('keeps the pause across the turns of one request', () => {
+    let state = askedFor('/review')
+    state = reducePanel(state, { kind: 'attentionStarted' }, minute(1))
+    state = reducePanel(state, { kind: 'attentionEnded' }, minute(6))
+    state = reducePanel(
+      state,
+      { kind: 'agent', event: toolUseEvent('toolu-1', 'Agent', { prompt: 'go', subagent_type: 'reviewer' }) },
+      minute(7),
+    )
+    state = reducePanel(state, { kind: 'agent', event: agentTaskStartedEvent('task-1', 'toolu-1', 'reviewer') }, minute(7))
+    state = reducePanel(state, { kind: 'agent', event: resultEvent(420_000) }, minute(7))
+    state = reducePanel(state, { kind: 'status', status: 'idle' }, minute(7))
+    state = reducePanel(state, { kind: 'agent', event: taskNotificationEvent('task-1', 'completed', 'Done') }, minute(20))
+    state = reducePanel(state, { kind: 'status', status: 'running' }, minute(20))
+    state = reducePanel(state, { kind: 'agent', event: resultEvent(30_000) }, minute(21))
+
+    // Twenty-one minutes less the five the agent stood waiting for an answer.
+    expect(durations(state)).toEqual(['7m 00s', '16m 00s'])
+  })
+
+  // A past conversation's events carry the moment they are replayed, not the moment they happened -
+  // counting a stint against them would caption every old turn with the age of the tab.
+  it('keeps the figure from the CLI in a replay', () => {
+    let state = askedFor('/review')
+    state = reducePanel(state, { kind: 'agent', event: resultEvent(400), replay: true }, minute(9))
+
+    expect(durations(state)).toEqual(['0.4s'])
+  })
+
+  // A turn nobody in this tab asked for - the tab reconnected to work already under way - has no request
+  // of ours to count from, so it counts from itself.
+  it('opens a stint of its own for a turn that came up without a prompt', () => {
+    let state = reducePanel(initialPanelState, { kind: 'status', status: 'running' }, minute(4))
+    state = reducePanel(state, { kind: 'agent', event: resultEvent(60_000) }, minute(5))
+
+    expect(durations(state)).toEqual(['1m 00s'])
   })
 })

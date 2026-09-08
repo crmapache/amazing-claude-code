@@ -72,6 +72,39 @@ internal class ProjectCatalog(
         )
     }
 
+    /**
+     * The no-stress colour mode, as a fact of its own beside the language above - and for the same two
+     * reasons. A phone is never sent `init`, so it would never learn the mode at all and would go on
+     * showing a red bar to somebody who switched the red off; and the setting is machine-wide, so a
+     * second window has to hear about the change without waiting for a restart.
+     */
+    fun sendCalmColors() {
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "calmColors")
+                put("on", ClaudePreferences.calmColors)
+            }.toString(),
+        )
+    }
+
+    /**
+     * The models added by hand, as a fact of their own beside the two above - and for the same two
+     * reasons: a phone is never sent `init`, and a list changed in one window has to reach the others
+     * without waiting for a restart.
+     *
+     * Beside the CLI's catalogue rather than inside it (see ProjectUsage.sendModels). The catalogue is
+     * answered by an account and may never arrive at all - which is exactly the machine this list exists
+     * for - and a list folded into a message that never comes is a list nobody ever sees.
+     */
+    fun sendCustomModels() {
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "customModels")
+                putJsonArray("models") { ClaudePreferences.customModels.forEach { add(it) } }
+            }.toString(),
+        )
+    }
+
     fun sendInit() {
         val preferences = ClaudePreferences.snapshot()
 
@@ -110,6 +143,9 @@ internal class ProjectCatalog(
                     // says "Enter", which is a real answer here rather than an absent one - a panel
                     // that has never been asked sends on Enter (see normalizeSendKey).
                     put("sendKey", preferences.sendKey)
+                    // And whether the gauges are drawn calm. Unconditional like the send key: false is
+                    // an answer rather than a missing one - a panel nobody has asked draws the ladder.
+                    put("calmColors", preferences.calmColors)
                     // Two values rather than one, and the empty one is not the useless one: `language`
                     // is the explicit choice and is usually empty, `ideLanguage` is what the IDE itself
                     // is set to. Empty means "speak whatever the IDE speaks", and the picker needs the

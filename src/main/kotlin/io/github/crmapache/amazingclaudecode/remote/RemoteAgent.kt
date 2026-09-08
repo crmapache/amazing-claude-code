@@ -12,10 +12,12 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.util.concurrency.AppExecutorUtil
+import io.github.crmapache.amazingclaudecode.claude.ClaudeHistory
 import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.claude.SessionClient
 import io.github.crmapache.amazingclaudecode.claude.SessionLaunch
+import io.github.crmapache.amazingclaudecode.claude.SessionSnapshot
 import io.github.crmapache.amazingclaudecode.stats.StatsLedger
 import io.github.crmapache.amazingclaudecode.net.IdeHttp
 import java.net.http.HttpClient
@@ -390,6 +392,14 @@ internal class RemoteAgent : Disposable {
             "cmd" -> command(address, payload)
             "inventory" -> sendInventory(address)
             "openProject" -> openProject(address, payload)
+            // Read off that machine's disk without opening anything - see [recentHistory]. Rate limited
+            // like a command rather than left free: it walks a folder of transcripts, and this is the one
+            // kind here a phone can ask for as fast as a finger moves.
+            "recentHistory" -> if (volume.allow(deviceId, "recentHistory")) {
+                recentHistory(address, payload)
+            } else {
+                thisLogger().info("A device asked for a closed project's history too often - dropped")
+            }
             else -> thisLogger().info("A frame of a kind this agent does not know from $deviceId")
         }
     }
@@ -823,11 +833,88 @@ internal class RemoteAgent : Disposable {
     }
 
     /**
-     * Open a project this IDE remembers, and start a conversation in it.
+     * The past conversations of a project this IDE has closed.
+     *
+     * Read straight off the disk, without opening anything: Claude Code keeps its transcripts in a
+     * folder of its own named after the working directory (see ClaudeHistory), and this agent knows
+     * where a remembered project sits ([recents]). Opening the window to answer "what did I talk about
+     * in here" would put a window on somebody's screen for a question, and the answer to the question
+     * is usually "not that one".
+     *
+     * The window opens when a conversation is actually picked, and it opens straight into it - see
+     * [openProject], which takes the conversation to resume.
+     *
+     * Bounded exactly as [openProject] is: the project must be one the recent list already offered, so
+     * a key that was never sent reads no folder. The path itself never travels - the answer carries
+     * conversations, and the key it came under.
+     */
+    private fun recentHistory(device: ByteArray, payload: JsonObject) {
+        val key = payload["pj"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val path = recents[key]
+
+        if (path == null) {
+            // A phone holding a list from before this IDE restarted. Answered with an empty list rather
+            // than with silence: a screen waiting for something that is not coming looks like a screen
+            // that is loading, forever.
+            thisLogger().info("A device asked for the history of a project this agent is not offering")
+            send(device, historyBody(key, emptyList()))
+            return
+        }
+
+        // Off the frame-reading thread: this walks a folder and reads the head and tail of every file
+        // in it, and the socket has frames to carry meanwhile.
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val entries = runCatching { ClaudeHistory.list(path) }
+                .onFailure { thisLogger().warn("The history of a remembered project could not be read", it) }
+                .getOrDefault(emptyList())
+
+            send(device, historyBody(key, entries))
+        }
+    }
+
+    /**
+     * The same message the panel gets for an open project (see ProjectCatalog.sendHistory), under the
+     * key the phone asked with.
+     *
+     * Deliberately the same shape: the screen that draws it is the same screen, and a second shape for
+     * the closed case would be a second thing to keep in step for no gain.
+     */
+    private fun historyBody(projectKey: String, entries: List<ClaudeHistory.Entry>): JsonObject =
+        buildJsonObject {
+            put("p", PROTOCOL_VERSION)
+            put("k", "event")
+            put("pj", projectKey)
+            putJsonObject("b") {
+                put("type", "history")
+                putJsonArray("conversations") {
+                    for (entry in entries) {
+                        addJsonObject {
+                            put("id", entry.id)
+                            put("title", entry.title)
+                            put("updatedAt", entry.updatedAt)
+                            put("messages", entry.messages)
+                            put(
+                                "titleSource",
+                                if (entry.named) SessionSnapshot.TITLE_LLM else SessionSnapshot.TITLE_HEURISTIC,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+    /**
+     * Open a project this IDE remembers, and put a conversation in it - a new one, or one it already
+     * had.
      *
      * The one thing here that a phone cannot already do through an open project, and it is deliberate
      * rather than convenient: an IDE that has been restarted has no project open at all, and a phone
      * that can only reach what is already on screen is useless at exactly the moment it is picked up.
+     *
+     * Resuming travels with the request rather than following it. The conversation named here is
+     * resumed in the tab this request opens, in one go: sent as a second request it would have to wait
+     * for the window, and a phone that has to hold a request until a laptop finishes opening a project
+     * is a phone that loses it the moment the screen goes off.
      *
      * Two things bound it. The project must be one the platform's own Recent Projects list already
      * offers - a key that was never sent opens nothing, so no request can name a directory of its own.
@@ -849,6 +936,13 @@ internal class RemoteAgent : Disposable {
 
         val title = payload["title"]?.jsonPrimitive?.contentOrNull.orEmpty()
         val launch = payload["launch"] as? JsonObject
+        // Empty means "start a fresh one" - the request this used to be, and still the usual one.
+        val conversationId = payload["c"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val titleSource = if (payload["titleSource"]?.jsonPrimitive?.contentOrNull == SessionSnapshot.TITLE_LLM) {
+            SessionSnapshot.TITLE_LLM
+        } else {
+            SessionSnapshot.TITLE_HEURISTIC
+        }
 
         // Off the frame-reading thread: opening a project loads a whole IDE window, and the socket has
         // frames to carry in the meantime.
@@ -874,17 +968,29 @@ internal class RemoteAgent : Disposable {
                 return@executeOnPooledThread
             }
 
-            attachment.hub.openSession(
-                id = sessionId,
-                parentId = null,
-                title = title,
-                quote = "",
-                launch = SessionLaunch(
-                    model = launch?.get("model")?.jsonPrimitive?.contentOrNull.orEmpty(),
-                    effort = launch?.get("effort")?.jsonPrimitive?.contentOrNull.orEmpty(),
-                    mode = launch?.get("mode")?.jsonPrimitive?.contentOrNull.orEmpty(),
-                ),
-            )
+            if (conversationId.isEmpty()) {
+                attachment.hub.openSession(
+                    id = sessionId,
+                    parentId = null,
+                    title = title,
+                    quote = "",
+                    launch = SessionLaunch(
+                        model = launch?.get("model")?.jsonPrimitive?.contentOrNull.orEmpty(),
+                        effort = launch?.get("effort")?.jsonPrimitive?.contentOrNull.orEmpty(),
+                        mode = launch?.get("mode")?.jsonPrimitive?.contentOrNull.orEmpty(),
+                    ),
+                )
+            } else {
+                // No launch here, and that is the point of resuming: a past conversation comes up on the
+                // model it was held on rather than on anything chosen now (see ClaudeSessions.adoptModel),
+                // and the tab it opens in is opened by the same call (see resumeConversation).
+                attachment.hub.resumeConversation(
+                    sessionId = sessionId,
+                    conversationId = conversationId,
+                    title = title,
+                    titleSource = titleSource,
+                )
+            }
 
             // Its key now that it is open - which is what the phone subscribes with. The key it asked
             // under names a project on the recent list and is of no use once it is open.
@@ -1256,6 +1362,9 @@ internal class RemoteAgent : Disposable {
          * costs megabytes to save the same megabytes. Length together with the hash, so that two
          * different lists collide only by accident of both at once - and a collision costs a minute of
          * a stale branch, not a wrong one.
+         *
+         * Of the message as it LEAVES, cut down for a phone, rather than as it arrived - see the note
+         * where the facts are gathered in [deliver].
          */
         private val sentFacts = ConcurrentHashMap<String, Long>()
 
@@ -1272,8 +1381,23 @@ internal class RemoteAgent : Disposable {
             // phone is handed the result (see below).
             val sendable = if (live) messages.filterNot(RemoteFeed::isReplayLine) else messages
 
-            val facts = sendable.mapNotNull { message ->
-                RemoteFeed.projectFact(message)?.let { type -> type to message }
+            /*
+             * The project's facts, cut down for a phone once rather than once per device - and cut down
+             * BEFORE the fingerprint below rather than after it, because what decides whether a fact is
+             * worth sending has to be what actually goes out.
+             *
+             * A live scenario run is the case that makes the difference and the reason this moved. The
+             * whole record changes four times a second - a word of a card's answer is a change - while
+             * the trimmed one changes only when a step does (see RemoteFeed.trimmedRun). Fingerprinted
+             * as it arrives, every beat of an hours-long run would be sealed and sent to a phone in
+             * somebody's pocket; fingerprinted as it leaves, a run costs a frame per thing that happens.
+             */
+            val facts = if (subscriptions.isEmpty()) {
+                emptyList()
+            } else {
+                sendable.mapNotNull { message ->
+                    RemoteFeed.projectFact(message)?.let { type -> type to RemoteFeed.forPhone(type, message) }
+                }
             }
 
             for ((address, subscription) in subscriptions) {
@@ -1301,11 +1425,7 @@ internal class RemoteAgent : Disposable {
         private fun newFacts(address: String, facts: List<Pair<String, String>>): List<String> =
             facts.mapNotNull { (type, message) ->
                 val fingerprint = message.length.toLong() shl 32 or (message.hashCode().toLong() and 0xffffffffL)
-                if (sentFacts.put("$address\u0000$type", fingerprint) == fingerprint) {
-                    null
-                } else {
-                    RemoteFeed.forPhone(type, message)
-                }
+                if (sentFacts.put("$address\u0000$type", fingerprint) == fingerprint) null else message
             }
 
         /**

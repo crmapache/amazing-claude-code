@@ -186,6 +186,8 @@ export const localCommand = (
   t: Dict,
   text: string,
   models: ModelInfo[] | null = null,
+  /** The models added by hand: `/model` names them too, or the panel would send them on as prose. */
+  custom: string[] = [],
 ): LocalCommand | null => {
   const trimmed = text.trim()
   if (!trimmed.startsWith('/')) return null
@@ -197,7 +199,7 @@ export const localCommand = (
 
   // The values come from the same list as the hint and the menu in the bottom line - there would be
   // nothing for those three to drift over.
-  const known = argumentOptions(t, name, models)?.some((option) => option.id === argument)
+  const known = argumentOptions(t, name, models, custom)?.some((option) => option.id === argument)
   return known ? { name, argument } : null
 }
 
@@ -224,9 +226,10 @@ export const argumentOptions = (
   t: Dict,
   command: string,
   models: ModelInfo[] | null = null,
+  custom: string[] = [],
 ): CommandOption[] | undefined =>
   command === 'model'
-    ? modelOptions(t, models).map((option) => ({ id: option.id, hint: option.sub ?? '' }))
+    ? modelOptions(t, models, custom).map((option) => ({ id: option.id, hint: option.sub ?? '' }))
     : argumentSets(t)[command]
 
 /** The name of a command typed in full and exactly one space after it - the field's start up to the caret. */
@@ -380,12 +383,13 @@ export const argumentQuery = (
   t: Dict,
   draft: string,
   models: ModelInfo[] | null = null,
+  custom: string[] = [],
 ): ArgumentQuery | null => {
   const match = /^\/([a-z]+) ([^\s]*)$/.exec(draft)
   if (!match) return null
 
   const command = match[1] ?? ''
-  const options = argumentOptions(t, command, models)
+  const options = argumentOptions(t, command, models, custom)
   if (!options) return null
 
   return { command, query: match[2] ?? '', options }

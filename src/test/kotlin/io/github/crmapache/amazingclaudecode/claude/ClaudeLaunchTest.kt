@@ -142,6 +142,43 @@ class ClaudeLaunchTest {
         assertEquals("xhigh", full[full.indexOf("--effort") + 1])
     }
 
+    // The strip above the input field is drawn from what the agent says, and since 2.1.257 the CLI hands
+    // the task tools out only to the models it has not moved on from - or to whoever is inside its
+    // server-side experiment. The panel starts on Opus, so without this the list was empty for the person
+    // running the default and full for the person running Haiku, with nothing on screen saying why.
+    @Test
+    fun `the conversation is given the task tools whatever the model`() {
+        assertEquals("1", ClaudeLaunch.environment(emptyMap())[ClaudeLaunch.TODO_TOOLS_VARIABLE])
+    }
+
+    // The map that comes in is the account's: it says whose credential the process opens and therefore
+    // whose subscription pays for the turn. A variable of theirs dropped here would be a conversation
+    // that runs, answers and is billed to somebody else, with nothing looking wrong.
+    @Test
+    fun `nothing the account asked for is dropped on the way`() {
+        val account = mapOf(
+            "CLAUDE_SECURESTORAGE_CONFIG_DIR" to "/store/one",
+            "ANTHROPIC_API_KEY" to "",
+            "PATH" to "/usr/bin",
+        )
+
+        val environment = ClaudeLaunch.environment(account)
+
+        for ((name, value) in account) assertEquals(value, environment[name], "the account's $name")
+    }
+
+    // Asking for the tools by name would also rewrite what the CLI auto-approves - a decision about
+    // permissions, which belongs to the person and not to a task list.
+    @Test
+    fun `the task tools are asked for in the environment, never in the command line`() {
+        val args = arguments(model = "opus", effort = "high")
+
+        assertFalse("--allowed-tools" in args)
+        assertFalse("--allowedTools" in args)
+        assertFalse("--tools" in args)
+        assertFalse(args.any { ClaudeLaunch.TODO_TOOLS_VARIABLE in it })
+    }
+
     // The panel no longer substitutes permissions with a PreToolUse hook of its own: it stood earlier
     // than any of the CLI's checks and therefore asked even where there was nothing to ask about - in
     // "Don't ask", in "Auto", about something a rule already allowed. Settings of our own are no longer

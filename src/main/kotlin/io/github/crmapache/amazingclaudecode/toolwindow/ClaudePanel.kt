@@ -25,6 +25,7 @@ import io.github.crmapache.amazingclaudecode.AccBundle
 import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.claude.SessionClient
+import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
 import io.github.crmapache.amazingclaudecode.editor.OpenInEditor
 import io.github.crmapache.amazingclaudecode.editor.SelectionReference
 import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
@@ -313,6 +314,50 @@ internal class ClaudePanel(
 
             // Which key sends a message out of the input field - "enter" or "modEnter" (see sendKey.ts).
             "setSendKey" -> ClaudePreferences.sendKey = field("key")
+
+            // The no-stress colour mode. Told to every hub rather than only to this panel: the setting
+            // is the machine's, so a second window must not go on showing the ladder - and a project
+            // reached from a phone has no tool window at all, which is exactly the screen somebody
+            // switches the red off for (see ClaudeSessionHub.everyHub).
+            "setCalmColors" -> {
+                ClaudePreferences.calmColors = payload["on"]?.jsonPrimitive?.booleanOrNull == true
+                ClaudeSessionHub.everyHub { it.catalog.sendCalmColors() }
+            }
+
+            /*
+             * The models somebody added by hand (see CustomModels.tsx). The whole list every time - an
+             * addition and a removal are the same message - and told to every hub afterwards, exactly
+             * like the colour mode above: the setting is the machine's, so a second window must not go
+             * on offering a model that has just been removed, and a project reached from a phone has no
+             * tool window to hear it any other way.
+             *
+             * What cannot be a launch argument is dropped on the way in (see
+             * ClaudePreferences.customModels): this is the door such a name would come through.
+             */
+            "setCustomModels" -> {
+                val dropped = ClaudePreferences.customModels
+                ClaudePreferences.customModels =
+                    payload["models"]?.jsonArray.orEmpty().mapNotNull { it.jsonPrimitive.contentOrNull }
+
+                // A model taken off the list stops being what the NEXT tab starts on. Every applied pick
+                // writes that default (see ClaudeSessions.setModel), so removing the one it names would
+                // otherwise leave new tabs launching with a name nobody offers any more - and the CLI does
+                // not refuse an unknown model at launch, it dies on the first message (see
+                // ClaudeAccounts.canRun). Only a name that was on this list is touched: what the CLI's own
+                // catalogue names is none of this list's business.
+                val gone = dropped - ClaudePreferences.customModels.toSet()
+                if (ClaudePreferences.model in gone) ClaudePreferences.model = ""
+
+                // And the same name wherever an account still holds it, because that record is the
+                // STRONGER of the two: a new tab launches on what the account was last left on and only
+                // then on the machine's default (see ClaudeSessions.newSession). Clearing one half left
+                // the other standing, and nothing downstream catches it - the clamp knows a hand-added
+                // model by this very list, so a name just taken off it is in no catalogue at all and the
+                // check answers "unknown", which the launch reads as a yes.
+                ClaudeAccounts.getInstance().forgetModels(gone.toSet())
+
+                ClaudeSessionHub.everyHub { it.catalog.sendCustomModels() }
+            }
 
             // An empty value is a value here: it means "follow the IDE", which is what the picker's own
             // first entry sets (see the language screen in SideMenu). Told to everyone afterwards rather

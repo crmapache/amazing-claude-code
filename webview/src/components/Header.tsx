@@ -1,6 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
-import { STATISTICS_GROUP } from '../tabs'
 import { BranchChip } from './StatusBar'
 import s from './shell.module.css'
 import { useT } from '../i18n'
@@ -95,8 +94,9 @@ interface HeaderProps {
    * one by one and someone else's tab cannot be inserted inside: a group is one topic, and a tab in the
    * middle of someone else's topic would mean nothing but confusion.
    *
-   * The statistics travels through here too, as a group of one under STATISTICS_GROUP: the strip knows a
-   * single kind of rearrangement, and whoever is above sorts out what of it the shell should hear.
+   * The tabs that hold no conversation travel through here too, each as a group of one (see tabs.ts):
+   * the strip knows a single kind of rearrangement, and whoever is above sorts out what of it the shell
+   * should hear.
    */
   onReorderGroups: (groupId: string, beforeGroupId: string | null) => void
   /**
@@ -138,24 +138,35 @@ interface HeaderProps {
    */
   watchers?: number
   /**
-   * The statistics tab: a tab of its own in the strip, standing wherever it was last dragged to.
+   * The tabs of the strip that hold no conversation: the statistics, the scenarios, a run being watched.
    *
-   * Not a session and not in the sessions list on purpose: the shell owns that list and overwrites it
-   * whole, while this tab is this screen's alone - it holds no conversation, and closing it kills
-   * nothing. Dragged it is all the same, as a group of one (see STATISTICS_GROUP): `at` is how many
-   * conversation groups stand to its left, `active` whether it is the one being looked at. Absent
-   * entirely when the tab is not in the strip.
+   * Not sessions and not in the sessions list on purpose: the shell owns that list and overwrites it
+   * whole, while these belong to this screen alone - they hold no conversation, and closing one kills
+   * nothing. Dragged they are all the same, each a group of one (see tabs.ts): `at` is how many
+   * conversation groups stand to its left, and the order of this array breaks a tie between two that
+   * work out to the same place.
    */
-  statistics?: { at: number; active: boolean }
-  onPickStatistics?: () => void
-  onCloseStatistics?: () => void
+  panelTabs?: PanelTab[]
+  onPickPanelTab?: (id: string) => void
+  onClosePanelTab?: (id: string) => void
 }
 
-/**
- * The stripe over the statistics tab. A colour of its own out of the same cool arc the groups draw
- * from, but fixed rather than hashed: the tab is always the same tab, and it should always look it.
- */
-const STATISTICS_COLOR = 'hsl(220, 62%, 70%)'
+/** One of those tabs, as the strip needs it - see [HeaderProps.panelTabs]. */
+export interface PanelTab {
+  id: string
+  title: string
+  at: number
+  active: boolean
+  /**
+   * The stripe over it. A colour out of the same cool arc the groups draw from, but fixed rather than
+   * hashed: the statistics is always the statistics, and it should always look it.
+   */
+  color: string
+  closeLabel: string
+}
+
+/** A stable empty default, so a header without such tabs does not rebuild its list on every draw. */
+const EMPTY_PANEL_TABS: PanelTab[] = []
 
 /** Past this offset a press stops being a click and becomes a drag. */
 const DRAG_THRESHOLD_PX = 4
@@ -251,9 +262,9 @@ export const Header = ({
   watchers = 0,
   pullRequest,
   onOpenPullRequest,
-  statistics,
-  onPickStatistics,
-  onCloseStatistics,
+  panelTabs = EMPTY_PANEL_TABS,
+  onPickPanelTab,
+  onClosePanelTab,
 }: HeaderProps) => {
   const t = useT()
   const compact = layout === 'compact' || isSideComposerLayout(layout)
@@ -580,7 +591,8 @@ export const Header = ({
   /**
    * How far a tab stands from its place in the layout while a gesture lasts: the group under the hand
    * travels with it, the rest step aside to make room (see shifts). One and the same for a conversation
-   * and for the statistics - as far as the strip is concerned they are the same kind of thing.
+   * and for the tabs that hold no conversation - as far as the strip is concerned they are one kind of
+   * thing.
    */
   const dragStyle = (groupId: string, tabId?: string) => {
     // The gesture in progress decides what the row is made of: while a fork travels inside its group, the
@@ -594,9 +606,9 @@ export const Header = ({
   }
 
   /**
-   * The strip block by block: a conversation with its forks, and the statistics standing wherever it was
-   * left. Drawn from one list rather than from "the sessions, and then the statistics after them" -
-   * otherwise that tab could be dragged anywhere and would still snap back to the end.
+   * The strip block by block: a conversation with its forks, and the panel's own tabs standing wherever
+   * they were left. Drawn from one list rather than from "the sessions, and then the others after them" -
+   * otherwise those tabs could be dragged anywhere and would still snap back to the end.
    */
   const groups: { groupId: string; tabs: Session[] }[] = []
   for (const session of sessions) {
@@ -604,7 +616,8 @@ export const Header = ({
     if (last?.groupId === session.groupId) last.tabs.push(session)
     else groups.push({ groupId: session.groupId, tabs: [session] })
   }
-  const statsAt = statistics ? Math.min(Math.max(statistics.at, 0), groups.length) : -1
+  /** Every such tab clamped to the strip it is actually in - a stale place must not point past its end. */
+  const panels = panelTabs.map((tab) => ({ ...tab, at: Math.min(Math.max(tab.at, 0), groups.length) }))
 
   const sessionTab = (session: Session, startsGroup: boolean, groupSize: number) => {
     const color = colorForGroup(session.groupId)
@@ -680,70 +693,69 @@ export const Header = ({
   }
 
   // A data-group of its own and the same press handler as the rest: the strip's drag arithmetic walks
-  // [data-group], and this tab is a group of one in it (see STATISTICS_GROUP).
-  const statisticsTab = statistics ? (
+  // [data-group], and each of these is a group of one in it (see tabs.ts).
+  const panelTab = (tab: PanelTab) => (
     <div
-      data-group={STATISTICS_GROUP}
+      key={tab.id}
+      data-group={tab.id}
       role="tab"
       tabIndex={0}
-      aria-selected={statistics.active}
+      aria-selected={tab.active}
       className={[
         s.tab,
         s.tabStatistics,
         s.tabGroupStart,
-        statistics.active ? s.tabActive : '',
-        dragging?.id === STATISTICS_GROUP ? s.tabDragging : '',
+        tab.active ? s.tabActive : '',
+        dragging?.id === tab.id ? s.tabDragging : '',
       ]
         .filter(Boolean)
         .join(' ')}
-      style={dragStyle(STATISTICS_GROUP)}
-      onMouseDown={(event) =>
-        startDrag(event, { kind: 'group', id: STATISTICS_GROUP, groupId: STATISTICS_GROUP })
-      }
+      style={dragStyle(tab.id)}
+      onMouseDown={(event) => startDrag(event, { kind: 'group', id: tab.id, groupId: tab.id })}
       onClick={() => {
         if (dragged.current) return
-        onPickStatistics?.()
+        onPickPanelTab?.(tab.id)
       }}
       onKeyDown={(event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return
         event.preventDefault()
-        onPickStatistics?.()
+        onPickPanelTab?.(tab.id)
       }}
     >
-      <span className={s.tabGroupBar} style={{ background: STATISTICS_COLOR }} />
+      <span className={s.tabGroupBar} style={{ background: tab.color }} />
       {/* No hint on this dot, unlike a conversation's: there the dot says what the tab is busy with, which
           is written nowhere else, while here it would answer with the word standing next to it. */}
       <span className={s.dot} />
-      <span className={s.tabTitle}>{t.header.statistics}</span>
+      <span className={s.tabTitle}>{tab.title}</span>
       <button
         type="button"
         className={s.tabClose}
-        aria-label={t.header.closeStatistics}
+        aria-label={tab.closeLabel}
         onClick={(event) => {
           event.stopPropagation()
-          onCloseStatistics?.()
+          onClosePanelTab?.(tab.id)
         }}
       >
         ×
       </button>
     </div>
-  ) : null
+  )
 
   return (
     <header className={`${s.header} ${compact ? s.headerCompact : ''}`} ref={header}>
       {/* A strip of tabs, and said to be one: without it a screen reader announces a row of nameless
           boxes, and nothing in here could be reached by keyboard at all - neither a conversation nor the
-          statistics beside them. */}
+          panel's own tabs beside them. */}
       <div className={s.tabs} ref={tabs} role="tablist" aria-label={t.header.conversations}>
         {groups.map((group, index) => (
           <Fragment key={group.groupId}>
-            {index === statsAt ? statisticsTab : null}
+            {panels.filter((tab) => tab.at === index).map(panelTab)}
             {/* A group is set off from its neighbour by a gap: colour is not enough when the tabs are
                 stuck together. The first tab of the strip gets no gap - the styles see to that. */}
             {group.tabs.map((session, place) => sessionTab(session, place === 0, group.tabs.length))}
           </Fragment>
         ))}
-        {statsAt >= groups.length ? statisticsTab : null}
+        {panels.filter((tab) => tab.at >= groups.length).map(panelTab)}
 
         <button type="button" className={s.tabAdd} data-tooltip={t.header.newSession} onClick={onNewSession}>
           +

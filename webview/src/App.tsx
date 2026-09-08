@@ -4,6 +4,7 @@ import { send, subscribe } from './bridge'
 import { copyToClipboard, installClipboardBridge, resolveClipboard } from './clipboard'
 import { resolvePastedFile } from './pasted'
 import {
+  ADD_MODEL,
   effortOptions,
   modeMenuOptions,
   modelMenu,
@@ -37,7 +38,7 @@ import {
   feedbackProblem,
   type FeedbackDraft,
 } from './components/Feedback'
-import { Header, type Session, type SessionState } from './components/Header'
+import { Header, type PanelTab, type Session, type SessionState } from './components/Header'
 import { History } from './components/History'
 import { Garland, Snowfall } from './components/Holiday'
 import { LoginGate, type AuthState } from './components/LoginGate'
@@ -52,6 +53,8 @@ import type { Dict } from './i18n/en'
 import { StatisticsTab, type StatisticsView } from './components/stats/StatisticsTab'
 import { dressAll, summarize } from './stats/achievements'
 import { ChoiceList, LayoutChoice } from './components/Choices'
+import { CalmColors } from './components/CalmColors'
+import { CustomModels } from './components/CustomModels'
 import { PasteCollapse } from './components/PasteCollapse'
 import { PermissionPanel } from './components/PermissionPanel'
 import { Plugins } from './components/Plugins'
@@ -60,10 +63,11 @@ import { Quotes, type Quote } from './components/Quotes'
 import { SelectionMenu } from './components/SelectionMenu'
 import { Tooltips } from './components/Tooltips'
 import { Remote, RemoteAbout, remoteState, type RemoteStatus } from './components/Remote'
-import { Accounts, accountState, type AccountsState } from './components/Accounts'
+import { Accounts, accountState, currentAccountName, type AccountsState } from './components/Accounts'
 import { Sounds } from './components/Sounds'
 import { StatusBar, UsageMeters, type Anchor, type SelectorKind } from './components/StatusBar'
 import { SHARE, shareText, thanksMenu, thanksUrl } from './components/Thanks'
+import { useCalmColors } from './hooks/useCalmColors'
 import { useHoliday } from './hooks/useHoliday'
 import { useHoverTarget } from './hooks/useHoverTarget'
 import { useLowPanel } from './hooks/useLowPanel'
@@ -71,9 +75,11 @@ import { StreamSwitcher } from './components/StreamSwitcher'
 import { TaskListPanel } from './components/TaskListPanel'
 import composer from './components/composer.module.css'
 import s from './components/shell.module.css'
+import { EMPTY_ASK_DRAFT, type AskDraft } from './feed/askDraft'
 import { bashCommand, shellText, type ShellRun } from './feed/bash'
 import { contextOf, initialPanelState, reducePanel, type PanelState } from './feed/build'
 import { deferFollowUpForCompact } from './feed/compact'
+import { waitsForTheTurn } from './feed/delivery'
 import { PASTE_COLLAPSE_DEFAULT, PASTE_COLLAPSE_NEVER, pasteCollapseLines, referenceChip } from './feed/reference'
 import { normalizeSendKey, sendKeyOptions, sendKeySummary, type SendKey } from './sendKey'
 import { reusableMessage } from './feed/reuse'
@@ -116,6 +122,7 @@ import { composePrompt, countSessionImages, imageAttachments, tokensText, trimTr
 import type { FeedItem, TaskItem, TodoItem, UserItem, UserToken } from './feed/types'
 import { emptyUsageBook, mergeUsageBook, usageOf, type UsageBook } from './feed/usage'
 import type {
+  AgentEvent,
   AvailablePluginInfo,
   HistoryEntry,
   InstalledPluginInfo,
@@ -126,6 +133,10 @@ import type {
   McpServerInfo,
   ModelInfo,
   PluginMarketplaceInfo,
+  Scenario,
+  ScenarioRun,
+  ScenarioRunSummary,
+  ScenarioSchedule,
   SoundId,
   VoiceBalance,
   VoiceHotkeySlot,
@@ -156,10 +167,35 @@ import { Search, type SearchTab } from './components/Search'
 import { SearchCapsule, type CapsuleNote } from './components/SearchCapsule'
 import { KnownFilesContext, OpenFileContext, type OpenFileRequest } from './hooks/useOpenFile'
 import { knownFiles } from './feed/paths'
-import { groupOrder, moveTab, moveWithinGroup, placeAtEnd, placeIn, STATISTICS_GROUP, type TabPlace } from './tabs'
+import {
+  groupOrder,
+  isPanelTab,
+  moveTab,
+  moveWithinGroup,
+  placeAtEnd,
+  placeIn,
+  runOfTab,
+  runTabId,
+  SCENARIOS_GROUP,
+  STATISTICS_GROUP,
+  type PanelTabPlace,
+} from './tabs'
+import { RUNS_PAGE, ScenariosTab, type ScenariosView } from './components/scenarios/ScenariosTab'
+import { ScenarioRunTab } from './components/scenarios/ScenarioRunTab'
 import { useSelection } from './hooks/useSelection'
 
 const MAIN_SESSION = 'main'
+
+/**
+ * The stripes over the tabs that hold no conversation.
+ *
+ * Out of the same cool arc the conversation groups draw from, but fixed rather than hashed: the
+ * statistics is always the statistics, and a scenario tab is always a scenario tab. The runs share one
+ * colour with the hub they were started from - they are one subject, and a rainbow of runs in the strip
+ * would say a difference that is not there.
+ */
+const STATISTICS_COLOR = 'hsl(220, 62%, 70%)'
+const SCENARIO_COLOR = 'hsl(268, 52%, 72%)'
 
 /**
  * Where a Deepgram key comes from. The console rather than the marketing page: somebody sent here is
@@ -316,8 +352,28 @@ export const App = () => {
   const [sessions, setSessions] = useState<Session[]>([
     { id: MAIN_SESSION, title: defaultTitle(MAIN_SESSION), state: 'idle', groupId: MAIN_SESSION, depth: 0, titleSource: 'default' },
   ])
+  /**
+   * The strip as it stands right now, for a reader that has no render of its own.
+   *
+   * The same reason as panelsRef further down: [openPanelTab] is reached from the subscription to the
+   * shell's messages, which is held once at mount, so the list it closed over is the one this screen
+   * opened with - a single chat. A started run's tab was placed after that one chat rather than after all
+   * of them, however many had been opened since, which is what its own comment already promises.
+   */
+  const sessionsRef = useRef(sessions)
+  sessionsRef.current = sessions
   const [active, setActive] = useState(MAIN_SESSION)
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
+  /**
+   * What has been ticked and written into the agent's question, by tab and by the call that asked it.
+   *
+   * Here beside the drafts rather than inside the card, and for the same reason the drafts are here: this
+   * is the person's unsent words, and the card that shows them is taken down by ordinary things - a look
+   * at the next tab (the panel above the field belongs to the tab on screen), the composer changing its
+   * layout, which moves the whole stack of cards between the dock and the side rail. What they had
+   * already assembled went with it. The rules themselves live in feed/askDraft with a test.
+   */
+  const [askDrafts, setAskDrafts] = useState<Record<string, Record<string, AskDraft>>>({})
 
   /**
    * What the person has run in bash mode since their last message - per tab, each with a conversation of
@@ -425,6 +481,21 @@ export const App = () => {
    */
   const [sendKey, setSendKeyState] = useState<SendKey>('enter')
   /**
+   * Whether the gauges are drawn in one calm tone rather than by the green-to-red ladder.
+   *
+   * Off until the IDE says otherwise, for the same reason as the two settings above: the harness has no
+   * IDE behind it, and the ladder is what the panel has always shown.
+   */
+  const [calmColors, setCalmColorsState] = useState(false)
+  /**
+   * The models somebody added by hand, because Claude Code does not offer them (see CustomModels.tsx).
+   *
+   * Beside the settings above rather than inside the model catalogue: the catalogue belongs to an
+   * account and is answered by the CLI, while this list is the machine's and is answered by nobody but
+   * the person. They meet in the menu (see modelOptions) and nowhere else.
+   */
+  const [customModels, setCustomModelsState] = useState<string[]>([])
+  /**
    * And what the panel is drawn with: a panel dragged down to a strip has no height for the default
    * layout, and compact is what exists for that room (see layoutForRoom). The choice above is what the
    * menu shows and what the shell keeps - this is only how it is rendered right now.
@@ -433,7 +504,17 @@ export const App = () => {
   const composerLayout = layoutForRoom(chosenLayout, lowPanel)
   /** The turn of the year: the garland, the snow and the frozen Send button - see holiday.ts. */
   const holiday = useHoliday()
+  // The whole of what the calm mode does to the screen: the gauges are painted through roles the root
+  // swaps under this attribute (see useCalmColors and tokens.css).
+  useCalmColors(calmColors)
   const [loginWaiting, setLoginWaiting] = useState(false)
+  /**
+   * Why the sign-in could not even be started, when it could not (see protocol.ts).
+   *
+   * Held beside the waiting rather than inside the gate: the gate is an early return, so it is built
+   * afresh on every render and has nowhere of its own to keep an answer that arrives seconds later.
+   */
+  const [loginProblem, setLoginProblem] = useState<'no-drawer' | 'no-terminal' | ''>('')
   /** Grows whenever the input field has to be given the focus back: after a link from the editor, say. */
   const [focusToken, setFocusToken] = useState(0)
   /**
@@ -520,11 +601,105 @@ export const App = () => {
    * Its place is dragged like any other tab's, and is kept as neighbours rather than as a number so that
    * a conversation closing beside it does not shove it along - see TabPlace.
    */
-  const [statsTab, setStatsTab] = useState<{ open: boolean; view: StatisticsView; place: TabPlace }>({
+  const [statsTab, setStatsTab] = useState<{ open: boolean; view: StatisticsView }>({
     open: false,
     view: 'overview',
-    place: { at: 0, among: [] },
   })
+  /**
+   * The tabs of the strip that hold no conversation, in the order the strip draws them.
+   *
+   * One list for all of them - the statistics, the scenarios, every run being watched - because the strip
+   * treats them as one kind of thing and a second list would be a second set of places to keep in step
+   * (see tabs.ts). Their places are kept as neighbours rather than as numbers, so a conversation closing
+   * beside one does not shove it along.
+   */
+  const [panelTabs, setPanelTabs] = useState<PanelTabPlace[]>([])
+
+  /**
+   * Put one of the panel's own tabs into the strip and look at it.
+   *
+   * A tab already there keeps the place it was dragged to; a fresh one opens at the end, after every
+   * conversation. One door for all of them, because opening the statistics and opening a run are the same
+   * act as far as the strip is concerned.
+   *
+   * Declared here, above the message handler, rather than beside the other openers below it. A run
+   * started from the hub opens its tab when the IDE answers, and in the harness that answer comes back
+   * inside the very send that asked - a handler reaching down the file for this would find it not yet
+   * initialised.
+   */
+  const openPanelTab = (id: string) => {
+    setPanelTabs((current) =>
+      current.some((tab) => tab.id === id)
+        ? current
+        : [...current, { id, place: placeAtEnd(groupOrder(sessionsRef.current)) }],
+    )
+    setActive(id)
+  }
+
+  const closePanelTab = (id: string) => {
+    setPanelTabs((current) => current.filter((tab) => tab.id !== id))
+    if (id === STATISTICS_GROUP) setStatsTab({ open: false, view: 'overview' })
+    if (active === id) setActive(sessions[0]?.id ?? MAIN_SESSION)
+  }
+
+  /**
+   * The scenarios and the runs that came of them: null means the list has never arrived.
+   *
+   * Asked for when the hub is first opened rather than at startup, unlike the MCP servers and the
+   * plugins beside it: those cost a run of `claude` each and are wanted the instant a screen opens, while
+   * this is two directories read off the disk and a project that has no scenarios should not read them at
+   * all. The IDE keeps the latest list and hands it to a panel that opens later, so it is asked once.
+   */
+  const [scenarios, setScenarios] = useState<Scenario[] | null>(null)
+  const [scenarioRuns, setScenarioRuns] = useState<ScenarioRunSummary[]>([])
+  const [liveRunId, setLiveRunId] = useState('')
+  /** The hours these scenarios start at by themselves - see ScenarioSchedule in protocol.ts. */
+  const [scenarioSchedules, setScenarioSchedules] = useState<ScenarioSchedule[]>([])
+  const [canShareScenarios, setCanShareScenarios] = useState(false)
+  const [scenarioOutcome, setScenarioOutcome] = useState('')
+  /**
+   * The scenario a model is writing right now, and what came of the last one it wrote.
+   *
+   * The request carries a number of its own so that a late answer is nobody's: Cancel and a second press
+   * both leave an earlier run's answer on its way, and a draft opening over a form somebody has started
+   * filling in is the one thing this button must not do. `scenario` is handed to the hub once and taken
+   * from here the moment it opens the editor (see ScenariosTab).
+   *
+   * `at` is when the request went out, and it is kept here rather than in the form for the reason the
+   * form's own draft is: a glance at a chat unmounts the tab, and a start remembered inside it would
+   * begin counting again on the way back, under a model that has been working the whole time.
+   */
+  const [scenarioDraft, setScenarioDraft] = useState<{
+    id: string
+    at: number
+    error: string
+    scenario: Scenario | null
+  }>({ id: '', at: 0, error: '', scenario: null })
+  /**
+   * What the scenarios tab is showing, and how much of its past runs is unfolded.
+   *
+   * Kept here rather than inside the tab because the tab is unmounted the moment another one is looked
+   * at: a description typed into the new-scenario form, or a scenario half written in the editor, used
+   * to be lost to a glance at a chat - while the model asked to write it went on working behind an empty
+   * screen. The same reasoning the feedback draft above lives by.
+   */
+  const [scenariosView, setScenariosView] = useState<ScenariosView>({ kind: 'list' })
+  const [scenariosShown, setScenariosShown] = useState(RUNS_PAGE)
+  /**
+   * The runs whose tabs are open, whole, by their own identifier.
+   *
+   * A map rather than one at a time: the run going now and the one from last night somebody is reading
+   * are two tabs at once, and each is pushed and answered on its own.
+   */
+  const [runRecords, setRunRecords] = useState<Record<string, ScenarioRun>>({})
+  /** The log of the one step somebody has opened - see scenarioLog in protocol.ts. */
+  const [runLog, setRunLog] = useState<{
+    runId: string
+    key: string
+    found: boolean
+    truncated: boolean
+    events: AgentEvent[]
+  } | null>(null)
   /**
    * The work someone asked to kill with the cross on a chip - still without an answer to "are you sure?".
    * We ask because a miss on that cross costs dearly: for an agent it is tens of minutes of work, for a
@@ -909,6 +1084,37 @@ export const App = () => {
     },
     [],
   )
+
+  /** A tick or a word put into the agent's question - see askDrafts. */
+  const editAskDraft = useCallback((session: string, askId: string, next: AskDraft) => {
+    setAskDrafts((current) => ({ ...current, [session]: { ...current[session], [askId]: next } }))
+  }, [])
+
+  /**
+   * A question that is over: answered here, answered from the phone, or taken back by the agent. What was
+   * being written into it has nobody left to travel to.
+   */
+  const forgetAskDraft = useCallback((session: string, askId: string) => {
+    setAskDrafts((current) => {
+      const held = current[session]
+      if (!held || held[askId] === undefined) return current
+
+      const next = { ...held }
+      delete next[askId]
+      return { ...current, [session]: next }
+    })
+  }, [])
+
+  /** And the whole tab's worth of them: it was closed, or now holds a different conversation. */
+  const forgetAskDrafts = useCallback((session: string) => {
+    setAskDrafts((current) => {
+      if (current[session] === undefined) return current
+
+      const next = { ...current }
+      delete next[session]
+      return next
+    })
+  }, [])
 
   /**
    * "Replace the whole field", handed over by the composer (see Composer.registerApply). A rewritten draft
@@ -1417,6 +1623,8 @@ export const App = () => {
               // Read unconditionally as well: an empty value means Enter, which is an answer rather than
               // a silence - it is what a panel nobody has asked already does.
               setSendKeyState(normalizeSendKey(message.preferences.sendKey))
+              // The same: false is an answer, and it is the one that puts the ladder back.
+              setCalmColorsState(message.preferences.calmColors === true)
               setLanguage({
                 chosen: message.preferences.language ?? '',
                 ide: message.preferences.ideLanguage ?? '',
@@ -1445,6 +1653,19 @@ export const App = () => {
            */
           case 'locale':
             setLanguage({ chosen: message.language ?? '', ide: message.ideLanguage ?? '' })
+            break
+
+          /** The no-stress colour mode, told again outside `init` and for the same two reasons. */
+          case 'calmColors':
+            setCalmColorsState(message.on)
+            break
+
+          /**
+           * The hand-added models, on the same route as the two above and for the same two reasons: a
+           * phone never sees `init`, and a list changed in one window has to reach the other one.
+           */
+          case 'customModels':
+            setCustomModelsState(message.models)
             break
 
           case 'project':
@@ -1480,10 +1701,12 @@ export const App = () => {
                 titleSource: info.titleSource,
               })),
             )
-            // The tab this screen had open may have been closed from another one. The statistics tab is
-            // not on the shell's list and never will be - it stays put.
+            // The tab this screen had open may have been closed from another one. This screen's own tabs
+            // are on no such list and never will be - statistics, the scenarios hub, a run being watched -
+            // so they stay put. Naming only the statistics one here threw a person off a running scenario
+            // every time a chat elsewhere was renamed, opened or forked, which is several times a minute.
             setActive((current) =>
-              current === STATISTICS_GROUP || known.includes(current) ? current : (known[0] ?? MAIN_SESSION),
+              isPanelTab(current) || known.includes(current) ? current : (known[0] ?? MAIN_SESSION),
             )
             break
           }
@@ -1551,6 +1774,8 @@ export const App = () => {
 
           case 'sessionReset':
             dispatchPanel({ session: message.sessionId, reset: true })
+            // The tab holds a different conversation now, and a question of the old one is not in it.
+            forgetAskDrafts(message.sessionId)
             break
 
           // The conversation the tab holds, said by the shell after the reset above wiped the panel's own
@@ -1615,6 +1840,9 @@ export const App = () => {
 
           case 'askResolved':
             cards.answerAsk(message.id)
+            // Answered from the phone, or taken back by the agent (Stop over the card, a hook that
+            // decided first): what was being written into it has nowhere left to go.
+            forgetAskDraft(message.sessionId, message.id)
             break
 
           case 'status':
@@ -1898,6 +2126,77 @@ export const App = () => {
             break
           }
 
+          /**
+           * Both shelves and the runs that came of them (see ScenarioDesk).
+           *
+           * Told to everyone in the project rather than answered to whoever asked, so a second window on
+           * the same project sees a scenario just written and knows which run is live.
+           */
+          case 'scenarios':
+            setScenarios(message.scenarios)
+            setScenarioRuns(message.runs)
+            setLiveRunId(message.live)
+            setScenarioSchedules(message.schedules ?? [])
+            setCanShareScenarios(message.canShare)
+            break
+
+          case 'scenarioRun':
+            setRunRecords((current) => ({ ...current, [message.run.id]: message.run }))
+            break
+
+          /*
+           * A run has been started, and its tab opens on the answer rather than on the press.
+           *
+           * The identifier is the IDE's to give - it is what files the run on disk - so there is nothing
+           * to open a tab for until it answers. A refusal comes back as an outcome instead, and then no
+           * tab opens at all.
+           */
+          case 'scenarioStarted':
+            setLiveRunId(message.runId)
+            /*
+             * A run somebody pressed play on opens in front of them; one the clock started does not.
+             *
+             * At nine in the morning the person is in the middle of something else, and a tab that takes
+             * the screen for work they set up yesterday is the panel interrupting rather than reporting.
+             * The hub's row says a run is going, and the IDE's own notification says it out loud.
+             */
+            if (!message.scheduled) {
+              openPanelTab(runTabId(message.runId))
+              send({ type: 'scenarioOpen', runId: message.runId })
+            }
+            break
+
+          case 'scenarioSaved':
+            break
+
+          /*
+           * What a model wrote out of a described round of work - or why it did not.
+           *
+           * An answer to a request nobody is waiting for any more is dropped without a word: the person
+           * pressed Cancel, or asked again, and the screen has moved on (see ScenarioDesk.draft).
+           */
+          case 'scenarioDrafted':
+            setScenarioDraft((current) => {
+              if (message.id !== current.id) return current
+              if (message.scenario) return { id: '', at: 0, error: '', scenario: message.scenario }
+              return { id: '', at: 0, error: message.error ?? '', scenario: null }
+            })
+            break
+
+          case 'scenarioLog':
+            setRunLog({
+              runId: message.runId,
+              key: message.key,
+              found: message.found,
+              truncated: message.truncated,
+              events: message.events,
+            })
+            break
+
+          case 'scenarioOutcome':
+            setScenarioOutcome(message.ok ? '' : message.code)
+            break
+
           case 'mcpServers':
             setMcpServers(message.servers)
             setMcpLoading(false)
@@ -2115,6 +2414,13 @@ export const App = () => {
             wasLoggedIn.current = message.loggedIn
             break
 
+          // No terminal, no sign-in: the waiting is called off along with saying why, or the screen
+          // would go on promising that it closes by itself.
+          case 'authProblem':
+            setLoginWaiting(false)
+            setLoginProblem(message.code)
+            break
+
           case 'modeAvailability':
             setBypassAvailable(message.bypassPermissions)
             break
@@ -2292,6 +2598,38 @@ export const App = () => {
   }, [])
 
   /**
+   * The no-stress colour mode, kept by the IDE beside the settings above.
+   *
+   * Set here as well as sent, like every other machine-wide preference: the IDE answers by telling
+   * every window (see setCalmColors in ClaudePanel), but the switch under the finger must move on the
+   * press rather than on the round trip.
+   */
+  const setCalmColors = useCallback((on: boolean) => {
+    send({ type: 'setCalmColors', on })
+    setCalmColorsState(on)
+  }, [])
+
+  /**
+   * The hand-added models, kept by the IDE beside the settings above and set here as well for the same
+   * reason: the row the finger just pressed has to answer before the round trip does.
+   */
+  const setCustomModels = useCallback(
+    (models: string[]) => {
+      send({ type: 'setCustomModels', models })
+      setCustomModelsState(models)
+
+      // A model taken off the list stops being the choice new tabs are drawn with, exactly as it stops
+      // being the one the IDE launches them on (see setCustomModels in ClaudePanel). Both halves or
+      // neither: left standing here, the chip would go on naming a model that is in no menu until the
+      // first message of a tab brought the real one back. Only what was on THIS list is touched - a
+      // model out of the CLI's own catalogue is none of its business.
+      const gone = customModels.filter((name) => !models.includes(name))
+      if (gone.includes(prefs.model)) setPrefs((current) => ({ ...current, model: '' }))
+    },
+    [customModels, prefs.model],
+  )
+
+  /**
    * The decision on a plan card - one point for both buttons: it marks the plan decided (after that the
    * card is not drawn, see Feed) and answers the agent, which stands at this very place.
    *
@@ -2412,9 +2750,10 @@ export const App = () => {
   const dismissAsk = useCallback(
     (itemId: string) => {
       cards.answerAsk(itemId)
+      forgetAskDraft(active, itemId)
       send({ type: 'askDismiss', sessionId: active, id: itemId })
     },
-    [cards, active],
+    [cards, active, forgetAskDraft],
   )
 
   /**
@@ -2430,6 +2769,7 @@ export const App = () => {
       // tool call, say) cannot be closed at all: there is nothing to send, and the button would then do
       // nothing forever.
       cards.answerAsk(itemId)
+      forgetAskDraft(active, itemId)
 
       const answered = answers.filter((entry) => entry.answer.trim().length > 0)
       if (answered.length === 0) return
@@ -2465,7 +2805,7 @@ export const App = () => {
         },
       })
     },
-    [cards, active],
+    [cards, active, forgetAskDraft],
   )
 
   const decidePermission = useCallback(
@@ -2658,12 +2998,10 @@ export const App = () => {
    */
   const reorderGroups = useCallback(
     (groupId: string, beforeGroupId: string | null) => {
-      const moved = moveTab(sessions, statsTab.open ? statsTab.place : null, groupId, beforeGroupId)
+      const moved = moveTab(sessions, panelTabs, groupId, beforeGroupId)
 
       setSessions(moved.sessions)
-
-      const place = moved.statistics
-      if (place) setStatsTab((current) => ({ ...current, place }))
+      setPanelTabs(moved.panels)
 
       if (moved.shell) {
         // The order lives on the shell's side too: it is what a second client lists the tabs in.
@@ -2674,7 +3012,7 @@ export const App = () => {
         })
       }
     },
-    [sessions, statsTab.open, statsTab.place],
+    [sessions, panelTabs],
   )
 
   /**
@@ -3307,7 +3645,7 @@ export const App = () => {
     // Through tokensText rather than plainText: a command in the field is a chip, and plain text does not
     // see it at all (see captureCommand). To the agent it means exactly "/name" anyway, and that is what we
     // recognise it by.
-    const local = localCommand(t, tokensText(typed), models)
+    const local = localCommand(t, tokensText(typed), models, customModels)
     if (local) {
       runLocal(local)
       if (!isOverride) editDraft(active, { tokens: [] })
@@ -3351,7 +3689,7 @@ export const App = () => {
     // Into the queue while the agent is busy and someone explicitly asked to wait, or while compacting
     // runs: /compact swallows stdin and does not run these messages once it ends (see
     // deferFollowUpForCompact). A free agent has nothing to wait for.
-    if ((queued && running) || deferFollowUpForCompact(panel.compacting, running, lastUserText(panel.items))) {
+    const intoTheQueue = () => {
       send({
         type: 'queuePrompt',
         sessionId: active,
@@ -3365,6 +3703,10 @@ export const App = () => {
         images,
       })
       if (!isOverride) setDrafts((current) => ({ ...current, [active]: EMPTY_DRAFT }))
+    }
+
+    if ((queued && running) || deferFollowUpForCompact(panel.compacting, running, lastUserText(panel.items))) {
+      intoTheQueue()
       return
     }
 
@@ -3410,6 +3752,22 @@ export const App = () => {
       return
     }
 
+    /**
+     * A command written into a running turn is not carried out at all, so the shell holds it back until
+     * the turn ends (see waitsForTheTurn). The panel obeys the same rule rather than sending and hoping:
+     * drawn optimistically, such a message stands in the feed as though it had been said while it is
+     * still waiting in the queue above the field, and when its turn finally comes its card is left
+     * sitting in the middle of somebody else's turn.
+     *
+     * Below the plan branch on purpose. A plan holds the turn open until it is answered, and a command
+     * put in the queue there would wait for an end that only an answer can bring - the one message that
+     * would have released it, gone.
+     */
+    if (waitsForTheTurn(text, running)) {
+      intoTheQueue()
+      return
+    }
+
     // A follow-up continues what was begun, so the feed stays as it is: there is nothing to hide this
     // same turn's subagent cards for, they are still at work.
     if (!running) {
@@ -3447,6 +3805,7 @@ export const App = () => {
     editDraft,
     imageBaseCount,
     models,
+    customModels,
     panel,
     cards.planDecisions,
     decidePlan,
@@ -3562,6 +3921,32 @@ export const App = () => {
    */
   const achievementsEarned = useMemo(() => (statistics ? achievementsCount(statistics) : ''), [statistics])
 
+  /**
+   * Have a model write a scenario out of a sentence (see ScenarioAuthor on the IDE's side).
+   *
+   * The request is numbered here and the number is what the answer is matched against: this runs for half
+   * a minute, and in half a minute somebody presses Cancel, describes it differently and asks again. An
+   * answer that names an older request is dropped rather than opened over what is on the screen now.
+   */
+  const draftScenario = useCallback((description: string) => {
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+    setScenarioDraft({ id, at: Date.now(), error: '', scenario: null })
+    send({ type: 'scenarioDraft', id, description })
+  }, [])
+
+  /** Stopped waiting: the process ends, and an answer already on its way answers nobody (see AiRuns). */
+  const cancelScenarioDraft = useCallback(() => {
+    setScenarioDraft((current) => {
+      if (current.id) send({ type: 'scenarioDraftCancel', id: current.id })
+      return { id: '', at: 0, error: '', scenario: null }
+    })
+  }, [])
+
+  /** The hub has opened what the model wrote; it is not to be opened a second time. */
+  const takeScenarioDraft = useCallback(() => {
+    setScenarioDraft((current) => (current.scenario ? { ...current, scenario: null } : current))
+  }, [])
+
   // Without a login the input field is meaningless: the agent answers any question with a line about
   // /login, and that command itself is out of reach in streaming mode.
   if (!auth || !auth.loggedIn) {
@@ -3571,9 +3956,15 @@ export const App = () => {
           <LoginGate
             auth={auth}
             waiting={loginWaiting}
+            problem={loginProblem}
+            // Which account the button fills. The sign-in goes into the drawer of the account in force
+            // (see ClaudeLogin), and on a machine with several of them that is the one thing the screen
+            // has to say: otherwise "Log in" over a list of names reads as a choice nobody made.
+            account={currentAccountName(t, accounts)}
             onLogin={() => {
               send({ type: 'login' })
               setLoginWaiting(true)
+              setLoginProblem('')
             }}
             onRecheck={() => send({ type: 'checkAuth' })}
             // The way out when the account in force has lost its credential: this gate stands in front
@@ -3636,18 +4027,38 @@ export const App = () => {
    *
    * A tab already in the strip keeps the place it was dragged to; a fresh one opens at the end.
    */
+  /**
+   * The hub, and the list behind it.
+   *
+   * Asked for on the first opening only: the IDE keeps the latest and tells everyone when it changes, so
+   * asking again on every press would be a directory read for a list already on the screen. Pressing it
+   * with the tab already open still asks - that is the way back for a scenario written into the folder
+   * from outside the panel, by a git checkout or by an editor window.
+   */
+  const openScenarios = () => {
+    setSideMenu((current) => ({ ...current, open: false }))
+    setMenu(null)
+    send({ type: 'scenarios' })
+    openPanelTab(SCENARIOS_GROUP)
+  }
+
+  /**
+   * One run, in a tab of its own.
+   *
+   * Every run gets its own rather than sharing one that swaps its contents: a run goes on for hours
+   * whether or not anybody is looking, and the one going now and the one from last night being read are
+   * two different things to have open at once.
+   */
+  const openRun = (runId: string) => {
+    send({ type: 'scenarioOpen', runId })
+    openPanelTab(runTabId(runId))
+  }
+
   const openStatistics = () => {
     setSideMenu((current) => ({ ...current, open: false }))
     setMenu(null)
-    setStatsTab((current) =>
-      current.open ? current : { ...current, open: true, place: placeAtEnd(groupOrder(sessions)) },
-    )
-    setActive(STATISTICS_GROUP)
-  }
-
-  const closeStatistics = () => {
-    setStatsTab({ open: false, view: 'overview', place: { at: 0, among: [] } })
-    if (active === STATISTICS_GROUP) setActive(sessions[0]?.id ?? MAIN_SESSION)
+    setStatsTab((current) => (current.open ? current : { ...current, open: true }))
+    openPanelTab(STATISTICS_GROUP)
   }
 
   /**
@@ -3736,9 +4147,11 @@ export const App = () => {
     composerLayout: composerLayoutOptions(t).find((option) => option.id === chosenLayout)?.label ?? '',
     pasteCollapse: pasteCollapseSummary(t, pasteCollapse),
     sendKey: sendKeySummary(sendKey),
+    calmColors: calmColors ? t.calmColors.on : t.calmColors.off,
     improvePrompt: improveInstructions.instructions.trim()
       ? t.settings.improveSummary.custom
       : t.settings.improveSummary.builtIn,
+    customModels: customModels.length > 0 ? t.customModels.count(customModels.length) : t.customModels.none,
     // The language it listens in, written in itself as in the picker - or that there is nothing to
     // listen with yet, which is the answer somebody opening this row for the first time needs.
     voice: voice.enabled
@@ -3797,6 +4210,45 @@ export const App = () => {
     if (url) send({ type: 'openExternal', url })
   }
 
+  /**
+   * The panel's own tabs as the strip wants them: a name, a colour and how many conversation groups stand
+   * to the left of each.
+   *
+   * Worked out rather than memoised, and that is not an oversight: this stands below the screen's early
+   * returns (the login gate, the crash notice), where a hook would be called on some renders and not on
+   * others. It is a handful of entries mapped over a handful of tabs.
+   *
+   * A run carries the name of the scenario it is a run of rather than a word of its own: two runs of two
+   * scenarios open at once are told apart by nothing else, and "Run" twice in the strip says nothing.
+   */
+  const headerPanelTabs = ((): PanelTab[] => {
+    const groups = groupOrder(sessions)
+
+    return panelTabs.map((tab) => {
+      const runId = runOfTab(tab.id)
+      const run = runId ? scenarioRuns.find((one) => one.id === runId) : undefined
+
+      return {
+        id: tab.id,
+        at: placeIn(tab.place, groups),
+        active: active === tab.id,
+        title:
+          tab.id === STATISTICS_GROUP
+            ? t.header.statistics
+            : tab.id === SCENARIOS_GROUP
+              ? t.header.scenarios
+              : run?.scenarioName || t.scenarios.run.title,
+        color: tab.id === STATISTICS_GROUP ? STATISTICS_COLOR : SCENARIO_COLOR,
+        closeLabel:
+          tab.id === STATISTICS_GROUP
+            ? t.header.closeStatistics
+            : tab.id === SCENARIOS_GROUP
+              ? t.header.closeScenarios
+              : t.header.closeRun,
+      }
+    })
+  })()
+
   const header = (
     <Header
         sessions={tabs}
@@ -3828,6 +4280,8 @@ export const App = () => {
             return next
           })
           forgetImproveSource(id)
+          // And what was being answered to a question of that conversation - see askDrafts.
+          forgetAskDrafts(id)
           // Where a feed nobody can open again was left standing.
           feedPlaces.current.delete(id)
           dispatchPanel({ session: id, closed: true })
@@ -3839,16 +4293,9 @@ export const App = () => {
         onReorderGroups={reorderGroups}
         onReorderTabs={reorderTabs}
         onOpenMenu={openMenu}
-        statistics={
-          statsTab.open
-            ? {
-                at: placeIn(statsTab.place, groupOrder(sessions)),
-                active: active === STATISTICS_GROUP,
-              }
-            : undefined
-        }
-        onPickStatistics={() => setActive(STATISTICS_GROUP)}
-        onCloseStatistics={closeStatistics}
+        panelTabs={headerPanelTabs}
+        onPickPanelTab={setActive}
+        onClosePanelTab={closePanelTab}
         watchers={watchers}
         gitBranch={panels[MAIN_SESSION]?.project?.gitBranch}
         pullRequest={panels[MAIN_SESSION]?.project?.pullRequest}
@@ -3880,6 +4327,12 @@ export const App = () => {
       <AskPanel
         key={ask?.id ?? 'none'}
         item={ask}
+        // The ticks and the words live outside the card, so being built again over them - a tab switched,
+        // the layout moved this whole stack - costs nothing (see askDrafts).
+        draft={(ask ? askDrafts[active]?.[ask.id] : undefined) ?? EMPTY_ASK_DRAFT}
+        onDraft={(next) => {
+          if (ask) editAskDraft(active, ask.id, next)
+        }}
         composerEmpty={!draftReady}
         // While an unanswered permission hangs beside it, the digits belong to that one: two panels
         // listening to the same key would both answer at once.
@@ -4001,6 +4454,65 @@ export const App = () => {
           view={statsTab.view}
           onView={(view) => setStatsTab((current) => ({ ...current, view }))}
           version={pluginVersion}
+        />
+      ) : active === SCENARIOS_GROUP ? (
+        <ScenariosTab
+          scenarios={scenarios}
+          runs={scenarioRuns}
+          liveRunId={liveRunId}
+          schedules={scenarioSchedules}
+          onSchedule={(scenario, hour, inputs) =>
+            send({
+              type: 'scenarioSchedule',
+              id: scenario.id,
+              scope: scenario.scope,
+              at: hour.at,
+              repeat: hour.repeat,
+              weekday: hour.weekday,
+              inputs,
+            })
+          }
+          onUnschedule={(id, scope) => send({ type: 'scenarioUnschedule', id, scope })}
+          canShare={canShareScenarios}
+          models={models}
+          customModels={customModels}
+          outcome={scenarioOutcome}
+          onDismissOutcome={() => setScenarioOutcome('')}
+          onFeedback={openFeedback}
+          view={scenariosView}
+          onView={setScenariosView}
+          shownRuns={scenariosShown}
+          onShownRuns={setScenariosShown}
+          draftingSince={scenarioDraft.at}
+          draftError={scenarioDraft.error}
+          drafted={scenarioDraft.scenario}
+          onDraft={draftScenario}
+          onCancelDraft={cancelScenarioDraft}
+          onDraftTaken={takeScenarioDraft}
+          onSave={(scenario, scope) => send({ type: 'scenarioSave', scenario, scope })}
+          onDelete={(id, scope) => send({ type: 'scenarioDelete', id, scope })}
+          onDuplicate={(id, scope) => send({ type: 'scenarioDuplicate', id, scope })}
+          onRun={(scenario, inputs) => {
+            setScenarioOutcome('')
+            send({ type: 'scenarioRun', id: scenario.id, scope: scenario.scope, inputs })
+          }}
+          onOpenRun={openRun}
+          onDeleteRun={(runId) => send({ type: 'scenarioRunDelete', runId })}
+        />
+      ) : runOfTab(active) ? (
+        <ScenarioRunTab
+          run={runRecords[runOfTab(active)] ?? null}
+          log={runLog && runLog.runId === runOfTab(active) ? runLog : null}
+          onOpenLog={(key, conversationId) => {
+            setRunLog(null)
+            send({ type: 'scenarioLog', runId: runOfTab(active), key, conversationId })
+          }}
+          onCloseLog={() => setRunLog(null)}
+          onPause={() => send({ type: 'scenarioPause', runId: runOfTab(active) })}
+          onResume={() => send({ type: 'scenarioResume', runId: runOfTab(active) })}
+          onStop={() => send({ type: 'scenarioStop', runId: runOfTab(active) })}
+          onAnswer={(allow, text) => send({ type: 'scenarioAnswer', runId: runOfTab(active), allow, text })}
+          onOpenLink={openLink}
         />
       ) : sessions.length === 0 ? (
         <div className={s.emptyState}>
@@ -4137,6 +4649,7 @@ export const App = () => {
             sendKey={sendKey}
             commands={commands}
             models={models}
+            customModels={customModels}
             meters={metersNode}
             files={files}
             imageBaseCount={imageBaseCount}
@@ -4150,6 +4663,7 @@ export const App = () => {
             onOpenThanks={openThanks}
             onOpenFeedback={openFeedback}
             onOpenSearch={openSearch}
+            onOpenScenarios={openScenarios}
             railContainer={railNode}
             fileDragOver={fileDragOver}
             onTokensChange={(tokens, from) => {
@@ -4480,6 +4994,14 @@ export const App = () => {
           <PasteCollapse t={t} lines={pasteCollapse} last={pasteCollapseLast} onPick={setPasteCollapse} />
         ) : null}
 
+        {sideMenu.open && sideMenu.screen === 'calmColors' ? (
+          <CalmColors on={calmColors} onToggle={setCalmColors} />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'customModels' ? (
+          <CustomModels models={customModels} onChange={setCustomModels} />
+        ) : null}
+
         {sideMenu.open && sideMenu.screen === 'sendKey' ? (
           <ChoiceList
             options={sendKeyOptions(t)}
@@ -4546,7 +5068,17 @@ export const App = () => {
         <Menu
           {...(menu.kind === 'thanks'
             ? thanksMenu(t, shared)
-            : menuProps(t, menu.kind, models, panel.ownModel ?? prefs.model, tickedModel, effort, mode, availableModes))}
+            : menuProps(
+                t,
+                menu.kind,
+                models,
+                customModels,
+                panel.ownModel ?? prefs.model,
+                tickedModel,
+                effort,
+                mode,
+                availableModes,
+              ))}
           anchor={menu.anchor}
           onClose={() => setMenu(null)}
           onPick={(id) => {
@@ -4555,7 +5087,11 @@ export const App = () => {
             // so the menu has to still be there to answer in.
             if (kind !== 'thanks' || id !== SHARE) setMenu(null)
 
-            if (kind === 'model') pickModel(id)
+            // The last entry of the model menu is a way out of it, not a model: it leads to the screen
+            // where one is added (see ADD_MODEL), and choosing it as a model would launch the CLI with
+            // the sentinel's own name.
+            if (kind === 'model' && id === ADD_MODEL) setSideMenu({ open: true, screen: 'customModels' })
+            else if (kind === 'model') pickModel(id)
             if (kind === 'effort') pickEffort(id)
             if (kind === 'mode') setMode(id)
             // The page has no browser of its own to open anything with: the address goes out to the shell,
@@ -4704,6 +5240,8 @@ const menuProps = (
   t: Dict,
   kind: SelectorKind,
   models: ModelInfo[] | null,
+  /** The models added by hand - they stand in this menu beside the catalogue (see modelOptions). */
+  customModels: string[],
   /** The chosen value rather than what the agent resolved it into: the tick has to stand on the choice. */
   selectedModel: string,
   /** The model the agent moved the conversation to itself - then the tick stands on it (see modelMenu). */
@@ -4716,7 +5254,7 @@ const menuProps = (
     return {
       title: t.selectors.model,
       width: 344,
-      ...modelMenu(t, models, selectedModel, switched),
+      ...modelMenu(t, models, customModels, selectedModel, switched),
     }
   }
 

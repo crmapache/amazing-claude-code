@@ -152,15 +152,32 @@ internal class ProjectAuth(
      * The sign-in happens in the built-in terminal: a browser opens there and a return is awaited. When
      * it finishes, nobody will tell us - so we simply ask the CLI again until we see the sign-in, or
      * until we tire of it.
+     *
+     * The waiting starts only once there is a terminal to wait on. A refusal used to be invisible from
+     * here: the screen went into "finish it in the terminal" over a terminal that never opened, and the
+     * only way out of it was to restart the IDE.
      */
-    fun login() {
-        ClaudeLogin.login(project)
-        poll(expected = true)
-    }
+    fun login() = ClaudeLogin.login(project, hub) { answer(it, expected = true) }
 
-    fun logout() {
-        ClaudeLogin.logout(project)
-        poll(expected = false)
+    fun logout() = ClaudeLogin.logout(project, hub) { answer(it, expected = false) }
+
+    /**
+     * Either the person is now in front of a terminal - and we start watching for the outcome - or they
+     * are not, and the screen is told why instead of being left waiting on nothing.
+     */
+    private fun answer(outcome: ClaudeLogin.Outcome, expected: Boolean) {
+        if (outcome == ClaudeLogin.Outcome.OPENED) {
+            poll(expected)
+            return
+        }
+
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "authProblem")
+                // A code, not a sentence: the panel speaks ten languages and the IDE speaks one.
+                put("code", if (outcome == ClaudeLogin.Outcome.NO_DRAWER) "no-drawer" else "no-terminal")
+            }.toString(),
+        )
     }
 
     fun stopPolling() {

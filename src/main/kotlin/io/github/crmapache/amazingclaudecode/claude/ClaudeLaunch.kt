@@ -54,6 +54,49 @@ internal object ClaudeLaunch {
      */
     const val PERMISSION_CHANNEL_FLAG = "--permission-prompt-tool"
 
+    /**
+     * The CLI's own switch for the task tools - the only thing that keeps the strip above the input
+     * field alive.
+     *
+     * The list over the field is drawn from what the agent says: TaskCreate and TaskUpdate, and the
+     * older TodoWrite before them (see feed/build.ts). Since 2.1.257 the CLI switches all five OFF for
+     * the models it has moved on to - Opus 4.8 and up, Sonnet 5, Fable 5, Mythos 5 - unless the account
+     * happens to be inside a server-side experiment (tengu_rosy_wren) or this variable is set. Measured
+     * on 2.1.261 by reading the tool list the CLI announces at launch: on Haiku the four Task tools are
+     * there, on Opus 5 they are gone, and with this variable they are back. Opus is what the panel
+     * starts on, so the task strip was empty for the person running the default and full for the person
+     * running Haiku, with nothing on screen to explain the difference.
+     *
+     * Nobody's choice is overridden by setting it. The CLI reads the variable as a plain truth check,
+     * so "0" and "not set" mean one and the same thing to it - both fall through to the experiment -
+     * and there is no way at all to say "off" through it. What the variable buys is that the strip stops
+     * depending on which side of a rollout an account happened to fall.
+     *
+     * It travels in the environment and not in --allowed-tools, and not only because of the rule about
+     * arguments below: naming a tool there also rewrites what the CLI auto-approves, and that is a
+     * decision about permissions, which belongs to the person rather than to a task list.
+     *
+     * Which of the two sets arrives is left to the CLI: without CLAUDE_CODE_ENABLE_TASKS it hands over
+     * TaskCreate/TaskUpdate/TaskList/TaskGet, and that is the road the panel is actually built for - the
+     * list is assembled out of separate calls, held by the number TaskCreate answers with, and a line
+     * can be deleted (see PanelState.pendingTasks). Asking for TodoWrite instead would pin the panel to
+     * a shape the CLI is walking away from, in exchange for nothing.
+     */
+    const val TODO_TOOLS_VARIABLE = "CLAUDE_CODE_ENABLE_TODO_TOOLS"
+
+    /**
+     * The environment a conversation's process runs in, over the one its account handed us.
+     *
+     * Only ever adds. What came in decides whose subscription pays for the turn (see AccountStore), and
+     * a variable of theirs dropped here is a conversation that runs, answers and is billed to somebody
+     * else, with nothing looking wrong - so the test holds that every entry survives.
+     *
+     * The one-off runs are deliberately not given this: rewriting a draft, searching with a model and
+     * writing a scenario all start with --tools "" and have no task list to keep (see ClaudeCli).
+     */
+    fun environment(account: Map<String, String>): Map<String, String> =
+        account + mapOf(TODO_TOOLS_VARIABLE to "1")
+
     /** How a line of ours joins the CLI's own system prompt instead of replacing it. */
     const val BRIEFING_FLAG = "--append-system-prompt"
 
@@ -144,6 +187,16 @@ internal object ClaudeLaunch {
         conversationId: String?,
         forkFrom: String?,
         allowBypassSwitch: Boolean,
+        /**
+         * What this particular conversation is told about the place it runs in.
+         *
+         * A parameter rather than the constant below, because not every conversation this plugin raises
+         * is a tab somebody is looking at: a scenario's head and its cards run with nobody in front of
+         * them, and telling them a person is watching and can press a button is the one thing about the
+         * panel they must not believe (see scenario/HeadTalk). Whatever is passed here goes through
+         * [oneLine] like everything else and must carry no quotation marks - see the rule above.
+         */
+        briefing: String = PANEL_BRIEFING,
     ): List<String> = buildList {
         add("--print")
         // Without --verbose the event stream is not handed over at all; that is the CLI's own demand.
@@ -156,7 +209,7 @@ internal object ClaudeLaunch {
 
         // The CLI takes a streaming launch for an unattended script and tells the agent so; the panel
         // is neither, and the agent has to hear it from us (see PANEL_BRIEFING).
-        addAll(listOf(BRIEFING_FLAG, oneLine(PANEL_BRIEFING)))
+        addAll(listOf(BRIEFING_FLAG, oneLine(briefing)))
 
         if (model.isNotEmpty()) addAll(listOf("--model", model))
         if (effort.isNotEmpty()) addAll(listOf("--effort", effort))

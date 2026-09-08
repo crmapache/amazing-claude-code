@@ -113,6 +113,41 @@ button:disabled {
 }
 
 /*
+ * The two corners the browser draws by itself: the grip on a field that can be dragged taller, and the
+ * square where a vertical scrollbar meets a horizontal one.
+ *
+ * Both are drawn for a white page - a pale grey stack of lines on an even paler fill - and on a dark
+ * panel they read as a chip of somebody else's interface stuck into the bottom corner of a field. The
+ * grip is kept rather than hidden: the field genuinely drags, and taking the handle away takes the only
+ * sign of it. It is simply drawn in our own line colour, in the same two strokes.
+ *
+ * Here at the root beside the scrollbars, not beside each field: a textarea added tomorrow gets this for
+ * free, and every one of them today (the scenario's cards, the feedback, the improve instructions) was
+ * showing the same corner.
+ */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-resizer {
+  background-color: transparent;
+  background-image: linear-gradient(
+    315deg,
+    transparent 0 28%,
+    var(--acc-line-strong) 28% 42%,
+    transparent 42% 56%,
+    var(--acc-line-strong) 56% 70%,
+    transparent 70% 100%
+  );
+  /* Drawn smaller than the handle it sits in and pushed into the very corner: the grab area stays the
+     width of a scrollbar (that is what the pointer needs), while the mark itself is a hint, not a
+     control - at the full 12px it read as a torn corner of the field. */
+  background-size: 7px 7px;
+  background-position: right bottom;
+  background-repeat: no-repeat;
+}
+
+/*
  * Letter-spacing belongs to the small capitalised labels of the design, and it is a latin idea: a Han
  * character, a kana or a hangul syllable is drawn in its own square box, and prising those apart reads as
  * a rendering fault rather than as a style. The rule is here, at the root, so it reaches every module

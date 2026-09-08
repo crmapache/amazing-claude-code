@@ -585,13 +585,42 @@ export class Link {
   }
 
   /**
-   * Open a project this IDE has closed, and start a conversation in it.
+   * Open a project this IDE has closed, and put a conversation in it.
    *
    * The project is named by the opaque key the inventory offered rather than by a path: where a
    * project sits on disk never leaves the machine (see RemoteAgent.recentProjects).
+   *
+   * [resume] names a past conversation to carry on instead of starting a fresh one. It travels with
+   * this request rather than after it: opening a window takes seconds, and a phone that had to hold a
+   * second request until the laptop was ready would lose it the moment the screen went off.
    */
-  openProject(projectKey: string, sessionId: string, title: string, launch: SessionLaunch): void {
-    this.send({ p: PROTOCOL_VERSION, k: 'openProject', pj: projectKey, s: sessionId, title, launch })
+  openProject(
+    projectKey: string,
+    sessionId: string,
+    title: string,
+    launch: SessionLaunch,
+    resume?: { conversationId: string; titleSource: string },
+  ): void {
+    this.send({
+      p: PROTOCOL_VERSION,
+      k: 'openProject',
+      pj: projectKey,
+      s: sessionId,
+      title,
+      launch,
+      ...(resume ? { c: resume.conversationId, titleSource: resume.titleSource } : {}),
+    })
+  }
+
+  /**
+   * The past conversations of a project this IDE has closed.
+   *
+   * A kind of its own rather than the ordinary command, because a command is handed to a project's hub
+   * and a closed project has none. The IDE reads them off its disk without opening anything (see
+   * RemoteAgent.recentHistory) - the window comes when a conversation is picked.
+   */
+  recentHistory(projectKey: string): void {
+    this.send({ p: PROTOCOL_VERSION, k: 'recentHistory', pj: projectKey })
   }
 
   /** Anything the person does: a message, an answer, a stop. The agent decides what it will accept. */

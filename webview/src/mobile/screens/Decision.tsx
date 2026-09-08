@@ -14,6 +14,13 @@ interface DecisionProps {
   cards: CardState
   title: string
   project: string
+  /**
+   * The questions answered so far, by the call that asked them - kept by the application as well, and
+   * for the same reason (see mobile/App.askAnswers): this screen is taken down by a step back into the
+   * conversation, and five answers out of six went with it.
+   */
+  answers: Record<string, Record<string, string>>
+  onAnswers: (next: (held: Record<string, Record<string, string>>) => Record<string, Record<string, string>>) => void
   onDecide: (id: string, decision: 'once' | 'deny') => void
   onPlan: (id: string, decision: 'approve' | 'keepPlanning') => void
   onAsk: (id: string, answers: Record<string, string>, text: string) => void
@@ -34,11 +41,16 @@ interface DecisionProps {
  * granting that from a sofa is a different act from unblocking one step - the plugin refuses it over
  * the wire as well (see RemoteCommands.soften).
  */
+/** Nothing answered yet - one object rather than a fresh one per repaint. */
+const EMPTY_ANSWERS: Record<string, string> = {}
+
 export const Decision = ({
   feed,
   cards,
   title,
   project,
+  answers: gathering,
+  onAnswers,
   onDecide,
   onPlan,
   onAsk,
@@ -49,13 +61,13 @@ export const Decision = ({
   const [expanded, setExpanded] = useState(false)
 
   /**
-   * The answers gathered so far, by the question they answer.
-   *
    * A call may carry several questions, and they are answered one after another rather than all at once:
    * a phone has room for one question's options at thumb size and no more. The answer travels only when
    * the last of them has been picked - the agent is given one reply to its call, exactly as at the desk.
+   *
+   * Which is exactly why what has been gathered is not kept here: the screen goes away every time
+   * somebody steps back to read the conversation, and the questions started over.
    */
-  const [answers, setAnswers] = useState<Record<string, string>>({})
 
   /**
    * What is holding the turn, by the shared rule rather than "the last one of its kind in the feed".
@@ -70,6 +82,9 @@ export const Decision = ({
   const plan: PlanItem | undefined = waiting?.kind === 'plan' ? waiting : undefined
   const ask: AskItem | undefined = waiting?.kind === 'ask' ? waiting : undefined
 
+  /** What has been answered of the call on screen - the rest of the application holds it by call. */
+  const answers = (ask ? gathering[ask.id] : undefined) ?? EMPTY_ANSWERS
+
   const question: AskQuestion | undefined = ask?.questions.find((one) => answers[one.title] === undefined)
 
   const doing = lastWords(feed.items)
@@ -77,7 +92,7 @@ export const Decision = ({
   /** One question answered. The whole call is answered once nothing is left unanswered. */
   const pick = (item: AskItem, one: AskQuestion, label: string) => {
     const gathered = { ...answers, [one.title]: label }
-    setAnswers(gathered)
+    onAnswers((held) => ({ ...held, [item.id]: gathered }))
 
     if (item.questions.some((other) => gathered[other.title] === undefined)) return
 

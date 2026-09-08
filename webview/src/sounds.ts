@@ -10,7 +10,7 @@
  * dot on its tab.
  */
 
-import { STOPPED_BY_YOU } from './feed/build'
+import { STOPPED_BY_YOU, workGoesOn } from './feed/build'
 import type { FeedItem } from './feed/types'
 import type { Dict } from './i18n/en'
 import type { AgentStatus, SoundId } from './protocol'
@@ -178,7 +178,7 @@ export const soundForPanel = (panel: PanelView, memory: SoundMemory): SoundId | 
   // the panel busy even once the main stream's own turn has ended - see streamStatus.ts for the same
   // reading of pending task cards. Chiming on every such intermediate "result" would mean one chime per
   // subagent notification rather than one for the work as a whole.
-  const stillWorking = panel.items.some((item) => item.kind === 'task' && item.pending)
+  const stillWorking = workGoesOn(panel.items)
 
   const sounds = new Set(
     fresh

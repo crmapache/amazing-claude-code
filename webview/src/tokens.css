@@ -104,6 +104,10 @@
   --acc-ch-green: 77 194 134;
   --acc-ch-orchid: 214 145 196;
   --acc-ch-mist: 148 158 178;
+  /* The channels of --acc-c-ink-18, the one paint the gauges wear in the no-stress mode. Written out
+     rather than derived: the ladder above is what the transparencies are made of, and ink has no
+     channel entry of its own. */
+  --acc-ch-calm: 165 173 192;
   --acc-ch-shade: 8 10 16;
 
   /* ======================================================================
@@ -213,6 +217,29 @@
   --acc-meter-pace: var(--acc-c-ink-13);
   --acc-meter-green-35: rgb(var(--acc-ch-green) / 35%);
   --acc-meter-green-80: rgb(var(--acc-ch-green) / 80%);
+
+  /* --- The gauges' ladder --------------------------------------------------
+     The four steps a reading is painted by - the context bar and the usage rings alike (see
+     paceColor/contextColor in feed/usage.ts, which name these and nothing else).
+
+     A layer of its own over the paints above rather than the paints themselves, and numbered rather
+     than named by colour, because one switch collapses the whole ladder onto one calm tone (see
+     [data-acc-calm] at the foot of this file). Named "green" and "bad", the roles would go on
+     promising a colour the mode has just taken away, and every gauge would have to be taught about
+     the mode one by one instead. */
+  --acc-gauge-1: var(--acc-meter-green);
+  --acc-gauge-2: var(--acc-warn);
+  --acc-gauge-3: var(--acc-orange);
+  --acc-gauge-4: var(--acc-bad-light);
+  /* The halo the phone draws around its context bar - the same pair of intensities on every step. */
+  --acc-gauge-1-35: var(--acc-meter-green-35);
+  --acc-gauge-1-80: var(--acc-meter-green-80);
+  --acc-gauge-2-35: var(--acc-warn-35);
+  --acc-gauge-2-80: var(--acc-warn-80);
+  --acc-gauge-3-35: var(--acc-orange-35);
+  --acc-gauge-3-80: var(--acc-orange-80);
+  --acc-gauge-4-35: var(--acc-bad-light-35);
+  --acc-gauge-4-80: var(--acc-bad-light-80);
 
   /* --- Success and added lines -------------------------------------------- */
   --acc-ok: var(--acc-c-mint-2);
@@ -391,6 +418,15 @@
   --acc-fs-meta: 11px;
   --acc-fs-label: 10px;
 
+  /* The chip at the head of a card - READ, BASH, THINK. Its size, its leading and its own padding are
+     named here because two rules live by them: the chip itself, and the invisible strut that holds a
+     head's row at one height when there is no chip in that row (see .toolHead::before in
+     feed.module.css). A strut measured by anything other than the chip stops holding the one thing it
+     was put there for. */
+  --acc-chip-size: 9.5px;
+  --acc-chip-leading: 13px;
+  --acc-chip-pad: 2px;
+
   /* Code and diff lines are leaded by a fixed number rather than a ratio: the lines have to sit on one
      grid, and a ratio of a fractional size lands between pixels. */
   --acc-code-leading: 18px;
@@ -427,6 +463,39 @@
   --acc-fs-label: 11px;
 
   --acc-code-leading: 20px;
+}
+
+/*
+ * The no-stress colour mode: the gauges stop shouting.
+ *
+ * The ladder of four collapses onto one calm tone - a reading at 87% is drawn exactly like a reading at
+ * 12%, only longer. What is measured stays on the screen; what is dropped is the verdict on it. Asked
+ * for because the red is read as an alarm all day long by somebody who is simply working, and the panel
+ * sits in the corner of the eye from morning till night.
+ *
+ * A step lighter than the panel's dimmest text rather than grey on grey: an instrument nobody can read
+ * is not calmer than a red one, it is only useless. And the only paints touched are the gauges' own -
+ * an error stays red, because that one is not a mood, it is something that happened.
+ *
+ * Here rather than in the components: the whole feature is a swap of four roles, and every gauge that
+ * ever gets added is drawn by the mode without being told about it. The panel and the phone alike put
+ * the attribute on the root (see hooks/useCalmColors.ts).
+ */
+[data-acc-calm] {
+  --acc-gauge-calm: var(--acc-c-ink-18);
+
+  --acc-gauge-1: var(--acc-gauge-calm);
+  --acc-gauge-2: var(--acc-gauge-calm);
+  --acc-gauge-3: var(--acc-gauge-calm);
+  --acc-gauge-4: var(--acc-gauge-calm);
+  --acc-gauge-1-35: rgb(var(--acc-ch-calm) / 35%);
+  --acc-gauge-1-80: rgb(var(--acc-ch-calm) / 80%);
+  --acc-gauge-2-35: var(--acc-gauge-1-35);
+  --acc-gauge-2-80: var(--acc-gauge-1-80);
+  --acc-gauge-3-35: var(--acc-gauge-1-35);
+  --acc-gauge-3-80: var(--acc-gauge-1-80);
+  --acc-gauge-4-35: var(--acc-gauge-1-35);
+  --acc-gauge-4-80: var(--acc-gauge-1-80);
 }
 
 /*

@@ -1,5 +1,7 @@
 import { memo, useMemo } from 'react'
 import { LinkedText } from './LinkedText'
+import { Markdown } from './Markdown'
+import { parseParagraphs } from '../../feed/markdown'
 import { Caret } from './Caret'
 import { CopyButton } from './CopyButton'
 import { PinButton } from './PinButton'
@@ -112,7 +114,13 @@ export const UserCard = ({ item, cards, onOpenLink, onReuse, onPin, pinned, pins
     <div className={s.userBody}>
       {item.tokens.map((token, index) =>
         token.kind === 'text' ? (
-          <TextToken key={index} value={token.value} echo={token.echo === true} onOpenLink={onOpenLink} />
+          <TextToken
+            key={index}
+            value={token.value}
+            echo={token.echo === true}
+            machine={item.machine === true}
+            onOpenLink={onOpenLink}
+          />
         ) : token.chip.kind === 'paste' ? (
           // A paste with nothing after it in the message takes a whole line: the room is free anyway,
           // and seven words in a narrow chip are not enough to recall what exactly was sent.
@@ -151,6 +159,12 @@ const ReuseArrow = () => (
  * are preserved by .userBody itself (white-space: pre-wrap). An address in the text stays a live link: it
  * is clicked rather than retyped by hand.
  *
+ * Unless nobody typed it (see UserItem.machine): a message the plugin wrote itself is read as markdown,
+ * because that is what it was written as. This is the log of a scenario, where the whole "you" side is
+ * the engine's - and the longest thing on it is a card's report, handed to the head as the model wrote
+ * it. Shown as typed, a report of headings, lists and bold lines turned into a wall of asterisks, and
+ * reading the run's own answer meant unpicking the markup by eye.
+ *
  * We dim only what the panel put in itself - the agent's question repeated beside the chosen answer (see
  * UserToken.echo). What a person typed never fades, however it happens to end: the repeat used to be
  * guessed by a question mark at the end of the line, and an ordinary question to the agent ("did you
@@ -159,16 +173,34 @@ const ReuseArrow = () => (
 const TextToken = ({
   value,
   echo,
+  machine,
   onOpenLink,
 }: {
   value: string
   echo: boolean
+  machine: boolean
   onOpenLink: (url: string) => void
-}) => (
-  <span className={echo ? s.userEcho : undefined}>
-    <LinkedText text={value} onOpenLink={onOpenLink} />
-  </span>
-)
+}) => {
+  // Parsed here rather than in the reducer, for the reason the panel parses every other piece of markup
+  // at drawing time: the feed holds what was said, and how it is read is the card's business.
+  const paragraphs = useMemo(() => (machine ? parseParagraphs(value) : []), [machine, value])
+
+  if (machine) {
+    // A box of its own to undo .userBody's pre-wrap: markdown has its own idea of where a line ends, and
+    // under pre-wrap every break the parser had already taken out was drawn a second time.
+    return (
+      <div className={s.userMarkdown}>
+        <Markdown paragraphs={paragraphs} onOpenLink={onOpenLink} />
+      </div>
+    )
+  }
+
+  return (
+    <span className={echo ? s.userEcho : undefined}>
+      <LinkedText text={value} onOpenLink={onOpenLink} />
+    </span>
+  )
+}
 
 /**
  * An attachment chip inside a sent message.

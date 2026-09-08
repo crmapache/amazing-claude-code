@@ -1,4 +1,5 @@
 import type { PaintedTerm, SearchHit, ShellMessage, VoiceHotkey, VoiceHotkeySlot, WebviewMessage } from '../protocol'
+import { answerScenarios } from './scenarioDesk'
 import { bootstrap, SESSION } from './events'
 import { SHOWCASE_HISTORY } from './scenarios/showcase'
 import type { Scenario, ScenarioStep } from './types'
@@ -114,6 +115,37 @@ const sendAccounts = (): void => {
       week: { percent: share.week, resets: new Date(Date.now() + 4 * 86_400_000).toISOString() },
     })
   }
+}
+
+/** How many sign-ins have been asked for - every third one is played as a refusal (see below). */
+let harnessLogins = 0
+
+/**
+ * The sign-in screen's button, played the way the IDE plays it.
+ *
+ * Two answers, because there are two in life. Usually the person comes back from the browser and the
+ * panel notices by itself - that is the whole promise the screen makes. Every third press refuses
+ * instead: a terminal that would not open, or an account whose credential store is out of reach, which
+ * is the state that used to leave this screen waiting on a terminal that never existed.
+ */
+const answerLogin = (message: WebviewMessage): void => {
+  if (message.type !== 'login') return
+
+  harnessLogins += 1
+
+  if (harnessLogins % 3 === 0) {
+    window.setTimeout(() => {
+      window.__accReceive?.({
+        type: 'authProblem',
+        code: harnessLogins % 2 === 0 ? 'no-drawer' : 'no-terminal',
+      })
+    }, 900)
+    return
+  }
+
+  window.setTimeout(() => {
+    window.__accReceive?.({ type: 'auth', installed: true, loggedIn: true, email: 'you@personal.com', plan: 'Pro' })
+  }, 1800)
 }
 
 const answerAccounts = (message: WebviewMessage): void => {
@@ -986,6 +1018,14 @@ const listenToPanel = () => {
       window.__accReceive?.({ type: 'effort', sessionId: message.sessionId, effort: message.effort })
     }
 
+    // The hand-added models are kept by the IDE and told back to every window (see ClaudePanel), so the
+    // harness plays that half too: without the answer the screen would still fill - the panel sets its
+    // own state on the press - and the one thing that could go wrong, a list that never comes back,
+    // would be invisible here.
+    if (message?.type === 'setCustomModels') {
+      window.__accReceive?.({ type: 'customModels', models: message.models })
+    }
+
     if (message) answerFeedback(message)
     if (message) answerHistoryPage(message)
     if (message) answerAgentTranscript(message)
@@ -994,6 +1034,8 @@ const listenToPanel = () => {
     if (message) answerVoice(message)
     if (message) answerSearch(message)
     if (message) answerAccounts(message)
+    if (message) answerLogin(message)
+    if (message) answerScenarios(message)
   }
 
   window.dispatchEvent(new Event('acc:ready'))

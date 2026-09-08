@@ -95,6 +95,28 @@ class RemoteCommandsTest {
     }
 
     /**
+     * A scenario runs for hours with nobody in front of it, so the two things that happen while nobody
+     * is there - it stops on a question, and it goes wrong - are the two this channel is for. What
+     * decides what a run IS stays at the desk: a scenario is a file in somebody's repository, and
+     * pressing play is agents editing a working copy for the rest of the evening.
+     */
+    @Test
+    fun `a run can be watched and unblocked, and nothing decides what it is`() {
+        assertTrue(RemoteCommands.allows("scenarios"))
+        assertTrue(RemoteCommands.allows("scenarioOpen"))
+        assertTrue(RemoteCommands.allows("scenarioAnswer"))
+        assertTrue(RemoteCommands.allows("scenarioPause"))
+        assertTrue(RemoteCommands.allows("scenarioStop"))
+
+        assertFalse(RemoteCommands.allows("scenarioRun"))
+        assertFalse(RemoteCommands.allows("scenarioSave"))
+        assertFalse(RemoteCommands.allows("scenarioDelete"))
+        assertFalse(RemoteCommands.allows("scenarioSchedule"))
+        // A step's whole conversation is megabytes off a disk, and a frame over the cap is thrown away.
+        assertFalse(RemoteCommands.allows("scenarioLog"))
+    }
+
+    /**
      * "Always allow" writes a permanent rule into the machine's settings - the agent's reach grows by
      * it for good. From a sofa that is a different act from unblocking one step.
      */

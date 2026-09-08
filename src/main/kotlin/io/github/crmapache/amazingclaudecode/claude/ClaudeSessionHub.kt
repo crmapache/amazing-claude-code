@@ -16,9 +16,11 @@ import io.github.crmapache.amazingclaudecode.remote.LocalBridgeServer
 import io.github.crmapache.amazingclaudecode.remote.NotificationReasons
 import io.github.crmapache.amazingclaudecode.remote.RemoteAgent
 import io.github.crmapache.amazingclaudecode.search.SearchDesk
+import io.github.crmapache.amazingclaudecode.scenario.ScenarioDesk
 import io.github.crmapache.amazingclaudecode.remote.RemoteKeys
 import io.github.crmapache.amazingclaudecode.remote.RemoteState
 import io.github.crmapache.amazingclaudecode.stats.StatsCollector
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.serialization.json.JsonObject
@@ -164,6 +166,15 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
 
     /** The search over this project's conversations - the three tabs behind the magnifier (see SearchDesk). */
     val search: SearchDesk = SearchDesk(project, this)
+
+    /**
+     * The rounds of work somebody wrote down once, and the runs that came of them (see ScenarioDesk).
+     *
+     * Lazy, unlike the search beside it: the search pays for its index at every project's opening because
+     * the first keystroke has to answer, while a project that has no scenarios in it should not so much as
+     * read a directory to find that out.
+     */
+    val scenarios: ScenarioDesk by lazy { ScenarioDesk(project, this) }
 
     /**
      * What the agent changes on disk, read back into the IDE - the other half of [UnsavedEdits]. One
@@ -470,6 +481,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             // Chinese IDE the whole setting exists for, where nothing is ever chosen by hand and the
             // only other caller (the language screen) is therefore never reached.
             "the language" to { catalog.sendLocale() },
+            // And the models added by hand, for the same reason: `init` does not carry them, so without
+            // this a phone would never learn them - and the panel would draw an empty settings row over
+            // a list that is not empty.
+            "the custom models" to { catalog.sendCustomModels() },
         )) {
             runCatching(collect).onFailure { thisLogger().warn("Could not collect $what", it) }
         }
@@ -905,6 +920,15 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      * The status is set optimistically, before the process has said a word: the interface has to answer
      * the press at once, and a turn that turns out never to have started is closed by the result that
      * arrives all the same.
+     *
+     * One kind of message never goes in at once, whatever the person pressed: a slash command while a
+     * turn is running. Sent mid-turn it is not expanded into a command at all - the CLI hands the agent
+     * the bare text "/compact" as a remark made while it works, the agent rightly does nothing with it,
+     * and the panel has nothing to show for the press (measured on a recorded conversation: the record
+     * is an `attachment` marked `absorbed_mid_turn`). Ordinary text in that place does work, so Send
+     * keeps meaning "reach the agent now" for everything else; a command means "do this to the
+     * conversation", and the conversation is busy - so it waits its turn (see [queuePrompt] and
+     * PromptDelivery.isCommand).
      */
     fun prompt(
         sessionId: String,
@@ -924,6 +948,33 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     ) {
         if (text.isBlank()) return
 
+        val running = snapshot(sessionId).get().status == SessionSnapshot.STATUS_RUNNING
+        if (PromptDelivery.waitsForTheTurn(text, running)) {
+            // An identifier of our own: the message came as a send rather than as a queued one, so
+            // nobody has named it. What it does not get is the "3 refs" beside the row - that is worked
+            // out of the chips in the field, and a second answer to what counts as an attachment would
+            // drift from the first (see SessionQueue.Entry).
+            queuePrompt(sessionId, UUID.randomUUID().toString(), text, images = images, echo = echo, remote = remote)
+            return
+        }
+
+        deliverPrompt(sessionId, text, images, echo, remote)
+    }
+
+    /**
+     * The message into the process itself, with nothing decided about it any more.
+     *
+     * Apart from [prompt] because the queue sends through here: a message let out of the queue has
+     * already waited for its turn, and asking again whether it should wait would put it back at the end
+     * of a queue it has just left.
+     */
+    private fun deliverPrompt(
+        sessionId: String,
+        text: String,
+        images: List<ImageAttachment>,
+        echo: JsonObject?,
+        remote: Boolean,
+    ) {
         stats.notePrompt(sessionId, text, images = images.size, remote = remote)
 
         // A message into a conversation nobody opened a tab for.
@@ -1016,7 +1067,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
 
         val (entry, rest) = queued.take(sessionId) ?: return
         sendQueue(sessionId, rest)
-        prompt(sessionId, entry.text, entry.images, entry.echo, entry.remote)
+        deliverPrompt(sessionId, entry.text, entry.images, entry.echo, entry.remote)
     }
 
     private fun sendQueue(sessionId: String, items: List<SessionQueue.Entry>) {
@@ -1549,11 +1600,12 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         /**
          * Every conversation hub already alive on this machine.
          *
-         * For the one decision that belongs to the machine rather than to a window - which account pays
-         * (see AccountDesk.use). ClaudePanels.everyPanel is not enough for it: a hub exists for every
-         * project a phone has attached to (see RemoteAgent.attach), tool window or no tool window, and
-         * those conversations were walking straight past the switch and going on being billed to the
-         * account just left.
+         * For the decisions that belong to the machine rather than to a window - which account pays (see
+         * AccountDesk.use) and the no-stress colour mode (see ProjectCatalog.sendCalmColors).
+         * ClaudePanels.everyPanel is not enough for them: a hub exists for every project a phone has
+         * attached to (see RemoteAgent.attach), tool window or no tool window, and those conversations
+         * were walking straight past the switch - being billed to the account just left, and, for the
+         * colour, drawing a red gauge on a phone whose owner had just turned the red off.
          *
          * Already alive is the point of getServiceIfCreated: raising a hub for a project nobody has
          * opened the panel in would start its schedules, its warm-up and its bridge for a conversation
@@ -1564,7 +1616,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
                 if (project.isDisposed) continue
 
                 runCatching { project.getServiceIfCreated(ClaudeSessionHub::class.java)?.let(tell) }
-                    .onFailure { thisLogger().warn("A hub could not be told about the account", it) }
+                    .onFailure { thisLogger().warn("A hub could not be told about a machine-wide change", it) }
             }
         }
 
@@ -1612,6 +1664,16 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             "mcpServers",
             "plugins",
             "marketplaces",
+            /*
+             * The shelves and the run that may be going, so that a window - or a phone - joining while
+             * one is running is caught up with it rather than told nothing until the next thing happens.
+             *
+             * The run stays in the cache after it ends, and that is right: it is the last state that run
+             * reached. Which of them is LIVE is said by the shelves beside it and by nothing else, and
+             * every screen that draws one reads both (see mobile/App.liveRunOf).
+             */
+            "scenarios",
+            "scenarioRun",
         )
     }
 }

@@ -7,11 +7,13 @@ import type {
   InstalledPluginInfo,
   McpServerInfo,
   PluginMarketplaceInfo,
+  ScenarioRun as ScenarioRunRecord,
   ShellMessage,
 } from '../protocol'
 import { ClockContext } from '../hooks/useNow'
 import { planDecisionOf, useCardState } from '../hooks/useCardState'
 import { applyFact, emptyFacts, factsFor, isFact, type ProjectFacts } from './facts'
+import { useCalmColors } from '../hooks/useCalmColors'
 import { LocaleProvider, activeLocale } from '../i18n'
 import { RemoteClock } from './clock'
 import { applyMessage, emptyFeed, feedTicks, tickFeed, type MobileFeed } from './feed'
@@ -44,6 +46,8 @@ import { NewSession } from './screens/NewSession'
 import { Pairing, type PairingOffer } from './screens/Pairing'
 import { Plugins } from './screens/Plugins'
 import { Projects } from './screens/Projects'
+import { ScenarioRun } from './screens/ScenarioRun'
+import { Scenarios } from './screens/Scenarios'
 import { RunSheet } from './screens/RunSheet'
 import { TabsSheet } from './screens/TabsSheet'
 import { Tasks } from './screens/Tasks'
@@ -87,6 +91,16 @@ type Screen =
   | { at: 'mcp'; agentId: string; projectKey: string }
   | { at: 'plugins'; agentId: string; projectKey: string }
   | { at: 'accounts'; agentId: string; projectKey: string }
+  /**
+   * The project's rounds of work, and one run of one of them.
+   *
+   * About the project rather than about the machine or a conversation, and they earn their place by the
+   * question a scenario creates: it runs unattended for hours, which means the person it belongs to is
+   * by definition not in front of it. A run that stopped to ask stood still until somebody walked back
+   * to the keyboard.
+   */
+  | { at: 'scenarios'; agentId: string; projectKey: string }
+  | { at: 'scenarioRun'; agentId: string; projectKey: string; runId: string }
   | { at: 'pairing' }
 
 /** What is folded up over the screen, if anything - the six sheets and the drawer. */
@@ -135,6 +149,16 @@ export const App = () => {
   const [pins, setPins] = useState<Record<string, readonly string[]>>({})
 
   /**
+   * The questions of one call answered so far, by the call that asked them (see screens/Decision).
+   *
+   * Here rather than in that screen for the reason the panel keeps its own outside the card: a phone
+   * answers one question at a time, and the screen is taken down by everything ordinary - a step back to
+   * the conversation, a look at the task list. Six questions answered down to the last one, gone because
+   * somebody checked what the agent was doing.
+   */
+  const [askAnswers, setAskAnswers] = useState<Record<string, Record<string, string>>>({})
+
+  /**
    * The three screens about the machine, by the IDE they were asked of.
    *
    * By agent rather than one of each: this phone talks to several machines, and an MCP list belongs to
@@ -150,6 +174,15 @@ export const App = () => {
   const [markets, setMarkets] = useState<Record<string, PluginMarketplaceInfo[]>>({})
   const [accounts, setAccounts] = useState<Record<string, AccountsState>>({})
   const [accountNote, setAccountNote] = useState('')
+
+  /**
+   * What a scenario request came back refused as, by name (see the outcomes block of the dictionary).
+   *
+   * Here rather than in either scenario screen because both can raise it and neither owns it: asking
+   * for a run that has been swept is answered on the list, while a stop that arrived too late is
+   * answered on the run.
+   */
+  const [scenarioNote, setScenarioNote] = useState('')
 
   /** Moves the counters on the list of conversations once a second - see the effect below. */
   const [tick, setTick] = useState(0)
@@ -547,6 +580,18 @@ export const App = () => {
       return
     }
 
+    /*
+     * A scenario request that could not be done, as a name this side has words for.
+     *
+     * Taken here with the screens above and for their reason: it belongs to no conversation, so the
+     * guard below would throw it away. The shelves and the runs themselves are project facts and are
+     * folded in further down (see isFact).
+     */
+    if (message.type === 'scenarioOutcome') {
+      setScenarioNote(message.ok ? '' : message.code)
+      return
+    }
+
     // The project's own facts, which belong to no conversation at all and so must be taken before the
     // guard below turns everything without a matching sessionId away.
     if (isFact(message)) {
@@ -584,7 +629,17 @@ export const App = () => {
     if (message.type === 'planResolved') {
       cards.decidePlan(message.id, planDecisionOf(message.decision))
     }
-    if (message.type === 'askResolved') cards.answerAsk(message.id)
+    if (message.type === 'askResolved') {
+      cards.answerAsk(message.id)
+      // Answered - here, at the desk, or taken back by the agent: what was gathered has nowhere to go.
+      setAskAnswers((held) => {
+        if (held[message.id] === undefined) return held
+
+        const next = { ...held }
+        delete next[message.id]
+        return next
+      })
+    }
 
     setFeed((previous) => applyMessage(previous, message, clockOf(agentId).now()))
   }, [clockOf, cards])
@@ -852,6 +907,40 @@ export const App = () => {
     [command, enter],
   )
 
+  /**
+   * The project's scenarios, asking for the shelves on the way in.
+   *
+   * Asked on every visit even though they arrive by themselves: a phone that paired after the last one
+   * was broadcast has never been told, and a screen that waits for the next change to a shelf would be
+   * blank until somebody wrote a scenario at the desk. The live run needs no asking at all - it is
+   * pushed as it moves (see RemoteFeed.PROJECT_FACTS).
+   */
+  const openScenarios = useCallback(
+    (agentId: string, projectKey: string) => {
+      setDrawer(false)
+      setScenarioNote('')
+      setScreen({ at: 'scenarios', agentId, projectKey })
+      command(agentId, projectKey, { type: 'scenarios' })
+    },
+    [command],
+  )
+
+  /**
+   * One run, asked for by name.
+   *
+   * The live one is already here - it arrives by itself - and asking for it again costs nothing and
+   * saves the case that matters: a run opened straight from the list of past ones, which is a file on
+   * that machine nobody has read yet.
+   */
+  const openRun = useCallback(
+    (agentId: string, projectKey: string, runId: string) => {
+      setScenarioNote('')
+      setScreen({ at: 'scenarioRun', agentId, projectKey, runId })
+      command(agentId, projectKey, { type: 'scenarioOpen', runId })
+    },
+    [command],
+  )
+
   const openMachineScreen = useCallback(
     (at: 'mcp' | 'plugins' | 'accounts', agentId: string, projectKey: string) => {
       setDrawer(false)
@@ -1013,13 +1102,29 @@ export const App = () => {
       }
 
       const sessionId = newSessionId()
+      const title = deriveSessionTitle(entry.title, 40)
+      const titleSource = entry.titleSource === 'heuristic' ? 'heuristic' : 'llm'
+
+      // A project the IDE is not holding open has to be opened first, and the conversation travels with
+      // that request rather than after it - the window takes seconds, and a phone waiting to send the
+      // second half loses it the moment the screen goes off (see RemoteAgent.openProject). The screen
+      // waits the same way it waits for a conversation started in a closed project, and is answered by
+      // the same frame (see projectOpened).
+      if (project?.closed) {
+        setOpening({ agentId, sessionId, error: '' })
+        links.current[agentId]?.openProject(projectKey, sessionId, title, EMPTY_LAUNCH, {
+          conversationId: entry.id,
+          titleSource,
+        })
+        return
+      }
 
       command(agentId, projectKey, {
         type: 'resumeSession',
         sessionId,
         conversationId: entry.id,
-        title: deriveSessionTitle(entry.title, 40),
-        titleSource: entry.titleSource === 'heuristic' ? 'heuristic' : 'llm',
+        title,
+        titleSource,
       })
 
       enter(agentId, projectKey, sessionId, false)
@@ -1328,7 +1433,15 @@ export const App = () => {
       if (current.at === 'tasks') return { ...current, at: 'thread' }
       if (current.at === 'decide') return { ...current, at: 'thread' }
 
-      if (current.at === 'mcp' || current.at === 'plugins' || current.at === 'accounts') {
+      // A run came from the list of them, which is where the next one is - and where the shelves are.
+      if (current.at === 'scenarioRun') return { ...current, at: 'scenarios' }
+
+      if (
+        current.at === 'mcp' ||
+        current.at === 'plugins' ||
+        current.at === 'accounts' ||
+        current.at === 'scenarios'
+      ) {
         setDrawer(true)
         return { at: 'sessions' }
       }
@@ -1351,6 +1464,14 @@ export const App = () => {
    */
   const spoken = localeOf(facts, screen)
   const locale = activeLocale(spoken?.chosen, spoken?.ide)
+
+  /*
+   * And the gauges' paint, by the same rule and for the same reason: the mode belongs to the person, is
+   * set at the desk and cannot be set from here (see RemoteCommands). Answered by any project that has
+   * said, like the language above - somebody who switched the red off on their machine should not meet
+   * it on the list of chats, which belongs to no project at all.
+   */
+  useCalmColors(calmOf(facts, screen) === true)
 
   const body = (() => {
     if (screen.at === 'pairing') {
@@ -1380,12 +1501,22 @@ export const App = () => {
           onNew={(project) => setScreen({ at: 'new', agentId: project.agentId, projectKey: project.key })}
           onMenu={() => setDrawer(true)}
           onSearch={(project) => openSearch(project.agentId, project.key, '')}
+          onRun={(project, runId) => openRun(project.agentId, project.key, runId)}
           onHide={hide}
           onShowHidden={showHidden}
           onHistory={(project) => {
             // Asked for on every visit: it is read off that machine's disk, and a conversation held at the
             // desk five minutes ago should be on the list rather than one refresh away.
-            command(project.agentId, project.key, { type: 'history' })
+            //
+            // A closed project asks by a kind of its own: an ordinary command is handed to that project's
+            // hub, and a project the IDE is not holding open has none. The disk has the transcripts
+            // either way (see RemoteAgent.recentHistory).
+            if (project.closed) {
+              links.current[project.agentId]?.recentHistory(project.key)
+            } else {
+              command(project.agentId, project.key, { type: 'history' })
+            }
+
             setScreen({ at: 'history', agentId: project.agentId, projectKey: project.key })
           }}
         />
@@ -1470,6 +1601,43 @@ export const App = () => {
       )
     }
 
+    if (screen.at === 'scenarios') {
+      const held = facts[`${screen.agentId}:${screen.projectKey}`]
+
+      return (
+        <div className={m.screen}>
+          <Scenarios
+            shelves={held?.scenarios ?? null}
+            live={liveRunOf(held)}
+            project={projectNameOf(projects, screen.agentId, screen.projectKey)}
+            problem={scenarioNote}
+            onOpenRun={(runId) => openRun(screen.agentId, screen.projectKey, runId)}
+            onBack={back}
+          />
+        </div>
+      )
+    }
+
+    if (screen.at === 'scenarioRun') {
+      const at = screen
+
+      return (
+        <div className={m.screen}>
+          <ScenarioRun
+            run={facts[`${at.agentId}:${at.projectKey}`]?.runs?.[at.runId] ?? null}
+            problem={scenarioNote}
+            onPause={() => command(at.agentId, at.projectKey, { type: 'scenarioPause', runId: at.runId })}
+            onResume={() => command(at.agentId, at.projectKey, { type: 'scenarioResume', runId: at.runId })}
+            onStop={() => command(at.agentId, at.projectKey, { type: 'scenarioStop', runId: at.runId })}
+            onAnswer={(allow, text) =>
+              command(at.agentId, at.projectKey, { type: 'scenarioAnswer', runId: at.runId, allow, text })
+            }
+            onBack={back}
+          />
+        </div>
+      )
+    }
+
     if (screen.at === 'history') {
       const project = projects.find((one) => one.agentId === screen.agentId && one.key === screen.projectKey)
       if (!project) return list
@@ -1479,9 +1647,15 @@ export const App = () => {
           <History
             project={project}
             conversations={histories[`${screen.agentId}:${screen.projectKey}`] ?? null}
+            busy={opening !== null && opening.error === ''}
+            error={opening?.error ?? ''}
             onOpen={(entry) => openPast(screen.agentId, screen.projectKey, entry)}
             onBack={back}
-            onSearch={() => openSearch(screen.agentId, screen.projectKey, '')}
+            onSearch={
+              // A closed project has no hub, so nothing on that machine holds an index of it to search
+              // (see SearchDesk): the button is left off rather than left dead.
+              project.closed ? undefined : () => openSearch(screen.agentId, screen.projectKey, '')
+            }
           />
         </div>
       )
@@ -1501,6 +1675,7 @@ export const App = () => {
           <NewSession
             project={project}
             models={inventory?.models ?? null}
+            customModels={customModelsOf(facts, screen.agentId, screen.projectKey)}
             prefs={inventory?.prefs ?? EMPTY_LAUNCH}
             busy={opening !== null && opening.error === ''}
             error={opening?.error ?? ''}
@@ -1582,6 +1757,10 @@ export const App = () => {
               cards={cards}
               title={entry?.title ?? 'A conversation'}
               project={entry?.projectName ?? ''}
+              // The answers gathered so far are kept here, so stepping back into the conversation and
+              // returning does not start the questions over - see askAnswers.
+              answers={askAnswers}
+              onAnswers={setAskAnswers}
               onDecide={(id, decision) =>
                 command(screen.agentId, screen.projectKey, { type: 'permissionDecision', id, decision })
               }
@@ -1773,6 +1952,8 @@ export const App = () => {
                 }
               : undefined
           }
+          onScenarios={menuProject ? () => openScenarios(menuProject.agentId, menuProject.key) : undefined}
+          scenarioRun={menuProject ? liveRunOf(facts[`${menuProject.agentId}:${menuProject.key}`]) : null}
           onMcp={menuProject ? () => openMachineScreen('mcp', menuProject.agentId, menuProject.key) : undefined}
           onPlugins={
             menuProject ? () => openMachineScreen('plugins', menuProject.agentId, menuProject.key) : undefined
@@ -1811,6 +1992,7 @@ export const App = () => {
       {sheet === 'run' && onThread && (
         <RunSheet
           models={inventories[onThread.agentId]?.models ?? null}
+          customModels={customModelsOf(facts, onThread.agentId, onThread.projectKey)}
           model={feed.state.model ?? ''}
           effort={feed.state.effort ?? ''}
           mode={feed.state.permissionMode ?? ''}
@@ -1982,6 +2164,42 @@ const localeOf = (facts: Record<string, ProjectFacts>, screen: Screen): ProjectF
   return facts[key]?.locale ?? Object.values(facts).find((fact) => fact.locale)?.locale
 }
 
+/**
+ * Whether the gauges should be drawn calm, out of everything the paired IDEs have said.
+ *
+ * The same rule as the language above, written out rather than reused because a boolean needs asking
+ * differently: an explicit `false` is an answer, and a search for the first truthy fact would walk
+ * straight past a machine that has just switched the mode off.
+ */
+const calmOf = (facts: Record<string, ProjectFacts>, screen: Screen): boolean | undefined => {
+  const key = 'agentId' in screen ? `${screen.agentId}:${screen.projectKey}` : ''
+  return facts[key]?.calmColors ?? Object.values(facts).find((fact) => fact.calmColors !== undefined)?.calmColors
+}
+
+/**
+ * The models added by hand on the machine this project belongs to (see CustomModels.tsx).
+ *
+ * Asked of that machine alone, unlike the language and the colour mode above: those are about the person
+ * and any answer will do, while a model is about a Claude Code - a name added on one machine says nothing
+ * about what another one can launch, and offering it would be offering a turn that dies on its first
+ * message.
+ */
+const customModelsOf = (facts: Record<string, ProjectFacts>, agentId: string, projectKey: string): string[] =>
+  facts[`${agentId}:${projectKey}`]?.customModels ?? []
+
+/**
+ * The one run going in a project, when there is one and this phone has been handed it.
+ *
+ * Two facts have to agree before anything is called live: the shelves name which run it is, and the run
+ * itself has arrived. The last run of a project stays in the IDE's own cache after it ends and reaches
+ * a phone that joins later (see ClaudeSessionHub.PROJECT_ORDER), so a record on its own says nothing
+ * about whether anything is happening.
+ */
+export const liveRunOf = (facts: ProjectFacts | undefined): ScenarioRunRecord | null => {
+  const live = facts?.scenarios?.live
+  return live ? facts?.runs?.[live] ?? null : null
+}
+
 /** Where the put-away conversations are remembered on this device - see the note on the state. */
 const HIDDEN_KEY = 'hiddenChats'
 
@@ -2009,7 +2227,12 @@ export const readPairingFragment = (): PairingOffer | null => {
 
   // Cleared from the address bar before anything else happens: it must not sit in history, and it must
   // not travel anywhere if this page is shared or restored.
-  window.history.replaceState(null, '', window.location.pathname)
+  //
+  // The FRAGMENT, and only it. The query travels on: in development it carries which relay to talk to
+  // (see relayAddress), and this runs before anything asks - so wiping it here left a client paired
+  // against a link and then dialling the Vite server it was served from, which answers nothing. The
+  // secret is in the fragment; there is nothing in the query worth taking away.
+  window.history.replaceState(null, '', window.location.pathname + window.location.search)
 
   return { agentId, secret: unbase64url(secret), fingerprint }
 }

@@ -1,5 +1,7 @@
 import type { AgentEntry } from '../projects'
 import type { LinkState } from '../link'
+import type { ScenarioRun } from '../../protocol'
+import { runBadge } from '../scenarios'
 import m from '../mobile.module.css'
 import { useT } from '../../i18n'
 import type { Dict } from '../../i18n/en'
@@ -14,9 +16,17 @@ interface DrawerProps {
   account: string
   /** Whether any MCP server of the project on screen wants attention - the dot on that row. */
   mcpTone: 'none' | 'warn' | 'bad'
+  /**
+   * The round of work going in that project right now, if one is.
+   *
+   * The run rather than a line about it: how far along it is is said in the same words the card on the
+   * screen behind this row uses, and two places writing that sentence would be two places to change it.
+   */
+  scenarioRun: ScenarioRun | null
   /** Absent where there is no conversation on screen to have tasks, or no project to ask about. */
   onProjects: () => void
   onTasks?: () => void
+  onScenarios?: () => void
   onMcp?: () => void
   onPlugins?: () => void
   onAccounts?: () => void
@@ -55,8 +65,10 @@ export const Drawer = ({
   live,
   account,
   mcpTone,
+  scenarioRun,
   onProjects,
   onTasks,
+  onScenarios,
   onMcp,
   onPlugins,
   onAccounts,
@@ -111,6 +123,18 @@ export const Drawer = ({
               <span className={m.drawerIcon}>◷</span>
               <span className={m.drawerLabel}>{t.mobile.drawer.tasks}</span>
               {live > 0 && <span className={m.drawerValueAgent}>{t.mobile.drawer.live(live)}</span>}
+            </button>
+          )}
+
+          {/* The project's rounds of work, beside the task list rather than below the rule with the
+              machine's screens: both of these rows answer "what is being worked on", and a scenario is
+              the one kind of work that goes on with nobody in front of it. It needs a project rather
+              than a conversation, so it stands where the task list does but survives without one. */}
+          {onScenarios && (
+            <button type="button" className={m.drawerRow} onClick={onScenarios}>
+              <span className={m.drawerIcon}>⌸</span>
+              <span className={m.drawerLabel}>{t.scenarios.button}</span>
+              {scenarioRun && <span className={m.drawerValueAgent}>{runBadge(t, scenarioRun)}</span>}
             </button>
           )}
 

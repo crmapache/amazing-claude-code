@@ -18,6 +18,7 @@ internal object ClaudePreferences {
         val composerLayout: String,
         val pasteCollapse: String,
         val sendKey: String,
+        val calmColors: Boolean,
         val improveInstructions: String,
         val language: String,
     )
@@ -29,6 +30,7 @@ internal object ClaudePreferences {
         composerLayout = composerLayout,
         pasteCollapse = pasteCollapse,
         sendKey = sendKey,
+        calmColors = calmColors,
         improveInstructions = improveInstructions,
         language = language,
     )
@@ -80,6 +82,18 @@ internal object ClaudePreferences {
         set(value) = write(SEND_KEY_KEY, value.trim())
 
     /**
+     * The no-stress colour mode: the context bar and the usage rings drawn in one calm tone instead of
+     * the green-to-red ladder (see tokens.css and hooks/useCalmColors.ts). Off unless it is turned on -
+     * the ladder is what the panel has always shown, and it is what most people read the gauges by.
+     *
+     * Machine-wide beside the send key above: whether a red gauge presses on somebody all day is a
+     * property of the person, not of the repository they happen to have open.
+     */
+    var calmColors: Boolean
+        get() = read(CALM_COLORS_KEY) == "true"
+        set(value) = write(CALM_COLORS_KEY, if (value) "true" else "")
+
+    /**
      * What the improve button asks for, in the person's own words. Empty means the built-in text (see
      * PromptImprover.BUILT_IN_INSTRUCTIONS), which is also what the screen shows while it is empty - a
      * setting whose default is invisible is a setting nobody edits.
@@ -104,6 +118,44 @@ internal object ClaudePreferences {
     var language: String
         get() = read(LANGUAGE_KEY)
         set(value) = write(LANGUAGE_KEY, value.trim())
+
+    /**
+     * The models somebody named by hand, because Claude Code does not name them (see CustomModels.tsx).
+     *
+     * Machine-wide beside the model and the mode above: which models exist is decided by how this
+     * machine's Claude Code is set up - a proxy router, a gateway, a base URL of one's own - and not by
+     * the repository that happens to be open.
+     *
+     * Filtered on the way in AND on the way out, and that is not belt and braces: what is stored was
+     * written by an earlier version of this list, and one unusable name in it would go out as a launch
+     * argument (see [usableModelNames]).
+     */
+    var customModels: List<String>
+        get() = usableModelNames(read(CUSTOM_MODELS_KEY).split(','))
+        set(value) = write(CUSTOM_MODELS_KEY, usableModelNames(value).joinToString(","))
+
+    /**
+     * The names of that list that can actually be launched with, in the order they were given.
+     *
+     * Not an opinion about what a provider will accept - nobody on this side knows that, and the whole
+     * point of the list is that Claude Code does not know either. It is the one thing that IS knowable:
+     * the name travels as an argument to the CLI, and an argument holding a line feed or a quotation
+     * mark is cut short by a shell nobody asked for - silently, taking the rest of the command line with
+     * it (see ClaudeLaunch). Whitespace would split one argument into two. A comma is out for a smaller
+     * reason: it is what separates the entries in this setting.
+     *
+     * The panel refuses the same names at the button (see isModelName in catalog.ts), so that nothing is
+     * offered here that would be dropped there. This half is the one that decides.
+     */
+    fun usableModelNames(names: List<String>): List<String> = names
+        .map { it.trim() }
+        .filter { name ->
+            name.isNotEmpty() &&
+                name.length <= MAX_MODEL_NAME &&
+                name.none { it.isWhitespace() || it.isISOControl() || it in UNUSABLE_IN_MODEL }
+        }
+        .distinct()
+        .take(MAX_CUSTOM_MODELS)
 
     /**
      * The path to the executable, given by hand. Empty means we look for it ourselves (see
@@ -221,6 +273,11 @@ internal object ClaudePreferences {
         get() = read(VOICE_HOLD_MOUSE_KEY)
         set(value) = write(VOICE_HOLD_MOUSE_KEY, value.trim())
 
+    /** What a model name may not hold, and how much of it there may be - see [usableModelNames]. */
+    private const val UNUSABLE_IN_MODEL = "\"'`\\,"
+    private const val MAX_MODEL_NAME = 120
+    private const val MAX_CUSTOM_MODELS = 30
+
     private fun read(key: String): String = PropertiesComponent.getInstance().getValue(key).orEmpty()
 
     private fun write(key: String, value: String) {
@@ -235,8 +292,10 @@ internal object ClaudePreferences {
     private const val COMPOSER_LAYOUT_KEY = "acc.composerLayout"
     private const val PASTE_COLLAPSE_KEY = "acc.pasteCollapse"
     private const val SEND_KEY_KEY = "acc.sendKey"
+    private const val CALM_COLORS_KEY = "acc.calmColors"
     private const val IMPROVE_INSTRUCTIONS_KEY = "acc.improve.instructions"
     private const val LANGUAGE_KEY = "acc.language"
+    private const val CUSTOM_MODELS_KEY = "acc.models.custom"
     private const val EXECUTABLE_KEY = "acc.executable"
     private const val MUTED_SOUNDS_KEY = "acc.sounds.muted"
     private const val SOUND_VOLUMES_KEY = "acc.sounds.volumes"

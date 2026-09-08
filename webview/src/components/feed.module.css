@@ -431,6 +431,14 @@
   overflow-wrap: anywhere;
 }
 
+/* Markdown inside a message nobody typed (see UserItem.machine).
+ *
+ * Its own box only to take .userBody's pre-wrap off: the parser has already decided where the lines and
+ * the paragraphs are, and preserved whitespace on top of that drew every break a second time. */
+.userMarkdown {
+  white-space: normal;
+}
+
 /* A piece the panel filled in itself - a repeat of the agent's question beside the answer to it (see
    UserToken.echo). The same dimming trick as .userQuote: the question has been read above, the attention
    has to go to the answer. */
@@ -1079,20 +1087,47 @@
   /* The height of one line of the head - the chip is the tallest thing on its baseline. The caret keeps
      to it (see .caret), and .toolHead's own floor below is built from the same number. */
   --acc-head-line: 17px;
+  /* The gap between the row's captions. Named because the strut below has to take its own back. */
+  --acc-head-gap: 8px;
   /* Auto on a desktop, a fingertip on a touchscreen - see --acc-hit in tokens.css. */
   min-height: var(--acc-hit);
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--acc-head-gap);
   width: 100%;
   padding: 4px 7px;
-  /* A collapsed group ("N tools") does without a chip (.toolChip) - and that one is 1px taller than the
-     row's ordinary text because of its own padding. Without this floor the card's height jumps by that 1px
-     back and forth on every collapse of the group, dragging everything below it in the feed along. 25px =
-     our own 8px (padding top and bottom) + the chip's 17px height. */
-  min-height: 25px;
+  /* The floor under the caret: an arrow is an icon rather than a caption and stands outside the baseline
+     (see .caret), so a row whose letters are shorter than it would come out shorter than its own arrow.
+     One line plus our own 8px of padding, top and bottom. */
+  min-height: calc(var(--acc-head-line) + 8px);
   border-radius: var(--acc-r-md);
   text-align: left;
+}
+
+/* A zero-width copy of the chip, always in the row.
+ *
+ * The height of the row is settled by the baseline: the tallest ascent plus the deepest descent among
+ * what stands in it, and the deepest descent is the chip's - it hangs below the letters by its own
+ * padding. A collapsed group ("N tools") carries no chip (see ToolGroupCard), so without the strut the
+ * row loses those pixels, and everything being read above it in the feed jumps by them at every collapse
+ * and every new call - which is exactly what a burst of calls does, once every few seconds, for as long
+ * as the turn runs.
+ *
+ * The floor above hid this at a console font of exactly 13px and only there: any other size scales the
+ * whole page (see IdeTypography), and at any scale but one the content outgrows a floor written in round
+ * pixels. Measured: at a scale of 0.9 the row with a chip stood 1.2px taller than the same row without.
+ *
+ * The zero-width space is what gives the strut a baseline of its own - an empty box has none and would
+ * align by its bottom edge, holding nothing.
+ */
+.toolHead::before {
+  content: '\200b';
+  flex: none;
+  width: 0;
+  /* The strut is not a caption: it takes back the gap the row would leave after it. */
+  margin-right: calc(-1 * var(--acc-head-gap));
+  padding: var(--acc-chip-pad) 0;
+  font: 600 var(--acc-chip-size) / var(--acc-chip-leading) var(--acc-mono);
 }
 
 /* Only a head that opens something is entitled to a pointer - the same rule base.css keeps for a dimmed
@@ -1160,11 +1195,12 @@
    row's height and leaves the caption inside the chip exactly at its centre. */
 .toolChip {
   flex: none;
-  padding: 2px 6px;
+  /* The same three numbers the strut is built from (see .toolHead::before): they are one measurement,
+     and written twice by hand they part company at the first edit. */
+  padding: var(--acc-chip-pad) 6px;
   border-radius: var(--acc-r-xs);
-  font: 600 9.5px/1.35 var(--acc-mono);
+  font: 600 var(--acc-chip-size) / var(--acc-chip-leading) var(--acc-mono);
   letter-spacing: 0.05em;
-  line-height: 13px;
 }
 
 .chipThink {

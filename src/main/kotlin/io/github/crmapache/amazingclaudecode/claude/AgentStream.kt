@@ -23,8 +23,9 @@ internal object AgentStream {
      * Whether this line is the agent working right now.
      *
      * Needed for a turn that started on its own: that is how the CLI picks up a message written into
-     * the previous turn, and such a turn has no "I have started" of its own - it simply begins to
-     * answer (see ClaudeSession.noteTurnActivity).
+     * the previous turn. Such a turn does announce itself first (see [isTurnAnnouncement]), but the
+     * announcement is the CLI's and can be missed, while work cannot be anything else (see
+     * ClaudeSession.noteTurnActivity).
      *
      * The agent's reply and its own stream are the only events that cannot be anything else. System
      * events will not do: the process sends those just for being woken up, and the panel would light
@@ -39,6 +40,30 @@ internal object AgentStream {
     fun isTurnActivity(line: String): Boolean {
         val payload = topLevel(line, "assistant", "stream_event") ?: return false
         return (payload["parent_tool_use_id"] as? JsonPrimitive)?.contentOrNull == null
+    }
+
+    /**
+     * Whether this line is the CLI announcing a turn - the `system:init` it puts at the head of one.
+     *
+     * A turn we did not send anything for is a real thing rather than a curiosity: a background task
+     * finishing is enough for the CLI to start one by itself, and it does so at once, before the agent
+     * has said a word (measured on a recorded stream: `task_notification`, then `init`, then the
+     * agent). Until this was read, the panel stood free for those seconds - so a message sent into that
+     * gap went into a turn nobody knew was running, and a slash command sent there did nothing at all
+     * (see ClaudeSessionHub.prompt).
+     *
+     * Announcing is not the same as starting: the very first `init` of a process is the process coming
+     * up, which happens for a wake-up as much as for a send. Telling the two apart is the session's
+     * business - it knows which init this is and whether a turn of ours is already running (see
+     * ClaudeSession.noteTurnActivity).
+     *
+     * A subagent's own start-up carries a `task_id` and is not the conversation's turn - the same mark
+     * the command list is read by (see ClaudeCommandNames).
+     */
+    fun isTurnAnnouncement(line: String): Boolean {
+        val payload = topLevel(line, "system") ?: return false
+        if (payload["subtype"]?.jsonPrimitive?.contentOrNull != "init") return false
+        return payload["task_id"] == null
     }
 
     /**

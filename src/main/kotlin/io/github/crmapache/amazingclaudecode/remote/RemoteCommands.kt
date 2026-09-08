@@ -193,6 +193,37 @@ internal object RemoteCommands {
          * machine and leaves the account alone, while logging out revokes the credential everywhere the
          * person is signed in. The phone asks before either (see mobile/screens/Accounts).
          */
+        /**
+         * Watching a round of work go, and unblocking it.
+         *
+         * A scenario runs for hours with nobody in front of it - that is what it is for - and the two
+         * things that happen while nobody is there are the two this opens: it stops on a question, and
+         * it goes wrong. Neither of them could be seen from anywhere but the desk, so a run begun in the
+         * morning and stopped at ten past waited until somebody walked back to the machine.
+         *
+         * `scenarios` and `scenarioOpen` are reading: the shelves, the past runs, and one run's timeline.
+         * The live one arrives by itself as a fact of the project (see RemoteFeed) - it is cut down hard
+         * on the way, because the whole record moves four times a second and a phone cannot pay for that.
+         *
+         * `scenarioAnswer` is the reason the rest is worth having. A card that stopped to ask is a run
+         * standing still, and answering it is exactly what this channel exists for - narrower than
+         * `permissionDecision`, which has been allowed since the first day: the answer goes to one card
+         * of one run, and the modes the cards run under were decided in the scenario, at the desk.
+         *
+         * `scenarioPause`, `scenarioResume` and `scenarioStop` are the other half of the same need, and
+         * they only ever make a run do less. Stopping one is destructive and is asked about first (see
+         * mobile/screens/ScenarioRun) - but a round of work gone wrong over somebody's working copy is
+         * the case where being away from the keyboard is the whole problem.
+         *
+         * What stays refused below is everything that decides what a run IS: writing a scenario, and
+         * pressing play. Both are read before they are trusted, and what comes out of them is a diff.
+         */
+        "scenarios",
+        "scenarioOpen",
+        "scenarioAnswer",
+        "scenarioPause",
+        "scenarioResume",
+        "scenarioStop",
         "accountList",
         "accountUse",
         "accountRename",
@@ -232,6 +263,34 @@ internal object RemoteCommands {
          */
         "agentTranscript",
         "bash",
+        /**
+         * The half of the scenarios that decides what a run is, rather than watches one.
+         *
+         * Writing one writes a file into the person's repository - the plugin's only writer of a folder
+         * the agent is editing at the same moment - and pressing play raises a head and a card that work
+         * unattended for hours with whatever the scenario trusts them with. The whole point of a round
+         * of work written down once is that it is read and reviewed before it is run, and what comes out
+         * of it is a diff somebody has to be at a keyboard to look at. Deleting a scenario or a past run
+         * is the same shelf being written, and it goes with them.
+         *
+         * `scenarioLog` is refused for a different reason and a plainer one: it reads a step's whole
+         * conversation off the disk - megabytes for a card that walked a repository - while the relay
+         * throws away a frame over 256 KB rather than shortening it. The phone's screen carries what the
+         * run itself says about a step, which is the state, the times and the verdict; the words the
+         * agent used are read where the file is.
+         *
+         * Watching a run and unblocking it are allowed above, where the case for them is argued.
+         */
+        "scenarioSave",
+        "scenarioDelete",
+        "scenarioDuplicate",
+        "scenarioDraft",
+        "scenarioDraftCancel",
+        "scenarioRun",
+        "scenarioSchedule",
+        "scenarioUnschedule",
+        "scenarioRunDelete",
+        "scenarioLog",
         "closeSession",
         "reorderGroups",
         // The same list, one step finer: the order the tabs at the desk are drawn in, which a phone has
@@ -251,6 +310,20 @@ internal object RemoteCommands {
          * phone does not have: there a message goes by a button held under the thumb (see sendKey.ts).
          */
         "setSendKey",
+        /**
+         * The no-stress colour mode - a machine-wide setting beside the ones above, and settled the same
+         * way as the language below it: the phone obeys it without being able to set it. It is handed the
+         * mode as a fact of the project (see RemoteFeed), so somebody who switched the red off at the desk
+         * does not meet it again on the sofa.
+         */
+        "setCalmColors",
+        /**
+         * The models added by hand (see CustomModels.tsx) - a machine-wide setting beside the ones above,
+         * and settled the same way: the phone is handed the list as a fact of the project (see
+         * RemoteFeed) and offers it in the run sheet, but a model is added on the machine whose Claude
+         * Code will be launched with the name, in front of the provider it was set up for.
+         */
+        "setCustomModels",
         /**
          * The language of the interface, which is a machine-wide setting like the ones above it: the panel
          * on the desk speaks it too, and so do the push notifications this side writes. A phone that could

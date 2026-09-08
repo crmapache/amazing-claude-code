@@ -52,6 +52,28 @@ class AccountsBookTest : BasePlatformTestCase() {
         assertEquals("low", reopened?.effort)
     }
 
+    /**
+     * A model taken off the hand-added list has to go from the accounts too, and this is the half that
+     * used to be missed. The account's memory is what a new tab launches on FIRST, so clearing only the
+     * machine's default left the stronger record naming a model nobody offers - and nothing further down
+     * catches it, because a hand-added name is in no catalogue and the clamp reads "unknown" as a yes.
+     */
+    fun testAModelTakenOffTheListIsForgottenByEveryAccountThatNamedIt() {
+        val first = book()
+        first.remember(account("work"))
+        first.remember(account("home"))
+        first.rememberChoice("work", model = "my-provider/lyra", effort = "low")
+        first.rememberChoice("home", model = "opus", effort = "high")
+
+        first.forgetModels(setOf("my-provider/lyra"))
+
+        val reopened = book()
+        assertEquals("", reopened.account("work")?.model)
+        // Only the name that went away: the effort beside it, and any other account, are untouched.
+        assertEquals("low", reopened.account("work")?.effort)
+        assertEquals("opus", reopened.account("home")?.model)
+    }
+
     fun testTheChosenAccountSurvivesAReopen() {
         val first = book()
         first.remember(account("work"))

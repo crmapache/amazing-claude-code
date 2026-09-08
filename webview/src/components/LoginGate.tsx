@@ -27,8 +27,18 @@ interface LoginGateProps {
    */
   otherAccounts?: { id: string; label: string }[]
   onSwitchAccount?: (id: string) => void
+  /**
+   * What the account in force is called, or empty when there is nothing to call it.
+   *
+   * The sign-in goes into that account's credential drawer (see ClaudeLogin), so with several accounts
+   * on the machine this is the screen's whole subject: a bare "Log in" above a list of other names does
+   * not say which of them the button fills.
+   */
+  account: string
   /** The sign-in is already open in the terminal and we are waiting for it to finish. */
   waiting: boolean
+  /** Why it could not even be started, when it could not - see the `authProblem` message. */
+  problem: 'no-drawer' | 'no-terminal' | ''
   onLogin: () => void
   onRecheck: () => void
   /** Point the panel at the CLI's file by hand - when it did not find it itself. */
@@ -43,7 +53,9 @@ interface LoginGateProps {
  */
 export const LoginGate = ({
   auth,
+  account,
   waiting,
+  problem,
   otherAccounts,
   onSwitchAccount,
   onLogin,
@@ -118,33 +130,41 @@ export const LoginGate = ({
 
   return (
     <div className={s.gate}>
-      <p className={s.gateTitle}>{t.login.signIn}</p>
+      {/* Which account, whenever there is one to name: the button fills that account's drawer. */}
+      <p className={s.gateTitle}>{account !== '' ? t.login.signInAs(account) : t.login.signIn}</p>
       <p className={s.gateText}>{t.login.signInText}</p>
 
       <button type="button" className={s.gateButton} onClick={onLogin}>
         {waiting ? t.login.openTerminalAgain : t.login.logIn}
       </button>
 
+      {/* Directly under the button, both of them: what the press came to is not news about the screen. */}
+      {problem !== '' ? (
+        <p className={s.gateProblem}>
+          {problem === 'no-drawer' ? t.login.noDrawer : t.login.noTerminal}
+        </p>
+      ) : null}
+
+      {waiting ? <p className={s.gateWaiting}>{t.login.finishInTerminal}</p> : null}
+
       {otherAccounts && otherAccounts.length > 0 && onSwitchAccount ? (
-        <>
+        <div className={s.gateSwitch}>
           <p className={s.gateText}>{t.login.orSwitch}</p>
-          <div className={s.gateRow}>
-            {otherAccounts.map((account) => (
+          {/* Not .gateRow: that one is the width of the field it was written for, and names left-aligned
+              inside it stood off to one side of a screen centred to the pixel. */}
+          <div className={s.gateAccounts}>
+            {otherAccounts.map((one) => (
               <button
-                key={account.id}
+                key={one.id}
                 type="button"
-                className={s.gateGhost}
-                onClick={() => onSwitchAccount(account.id)}
+                className={s.gateAccount}
+                onClick={() => onSwitchAccount(one.id)}
               >
-                {account.label}
+                {one.label}
               </button>
             ))}
           </div>
-        </>
-      ) : null}
-
-      {waiting ? (
-        <p className={s.gateWaiting}>{t.login.finishInTerminal}</p>
+        </div>
       ) : null}
 
       <button type="button" className={s.gateGhost} onClick={onRecheck}>

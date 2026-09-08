@@ -1,0 +1,1119 @@
+/*
+ * The scenarios: the hub where they are written, and the timeline of one run of one.
+ *
+ * The same surfaces, type and paints as the rest of the panel - a card is the card the menu's screens
+ * use, a label is the label they use. What is new here is the timeline, and it is drawn the way the feed
+ * draws a conversation: a rail down the left, rows hanging off it, and the head's own words set in
+ * between them rather than in a column of their own.
+ *
+ * The panel is a tool window and may be a third as wide as a design would like, so everything folds by
+ * the tab's own width (container queries) rather than by the window's.
+ */
+
+.root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--acc-bg);
+  container-type: inline-size;
+}
+
+/* --- The head of both screens --------------------------------------------------- */
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px 10px;
+  border-bottom: 1px solid var(--acc-line);
+}
+
+.headBack {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--acc-r-sm);
+  color: var(--acc-fg-soft);
+}
+
+.headBack:hover,
+.headBack[data-hover] {
+  background: var(--acc-bg-menu-hover);
+  color: var(--acc-fg);
+}
+
+.headTitles {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.title {
+  font: 600 9.5px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-fg-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hint {
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.headSpace {
+  flex: 1;
+  min-width: 4px;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px 24px;
+}
+
+/* --- Buttons, shared by both screens --------------------------------------------- */
+
+.button {
+  flex: none;
+  min-height: var(--acc-hit);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-control);
+  color: var(--acc-fg-body);
+  font: 11px var(--acc-mono);
+  white-space: nowrap;
+}
+
+.button:hover:not(:disabled),
+.button[data-hover]:not(:disabled) {
+  background: var(--acc-bg-control-hover);
+  border-color: var(--acc-line-hover);
+  color: var(--acc-fg);
+}
+
+.button:disabled {
+  opacity: 0.45;
+}
+
+.buttonMain {
+  border-color: var(--acc-accent-line);
+  background: var(--acc-accent-12);
+  color: var(--acc-accent-light);
+}
+
+.buttonMain:hover:not(:disabled),
+.buttonMain[data-hover]:not(:disabled) {
+  background: var(--acc-accent-20);
+  border-color: var(--acc-accent-40);
+  color: var(--acc-accent-light);
+}
+
+/* Stop is the only irreversible thing on either screen, and it says so before the pointer arrives. */
+.buttonDanger {
+  border-color: var(--acc-bad-32);
+  background: var(--acc-bad-12);
+  color: var(--acc-bad-light);
+}
+
+.buttonDanger:hover:not(:disabled),
+.buttonDanger[data-hover]:not(:disabled) {
+  background: var(--acc-bad-24);
+  border-color: var(--acc-bad-40);
+  color: var(--acc-bad-text);
+}
+
+/*
+ * The question mark beside the button that makes a scenario: the very same button, with a mark where the
+ * word goes.
+ *
+ * Laid over .button rather than drawn again. A second set of numbers for the same capsule is a second set
+ * to keep in step with the first, and the first thing that drifted was its height - two buttons side by
+ * side in one row are read as a pair, and a pair of different heights reads as one of them being broken.
+ * All this adds is a square shape: one character needs no room either side of it.
+ */
+/*
+ * The two of them stand closer to each other than to anything else in the head.
+ *
+ * A pair rather than two neighbours: one makes a scenario and the other says what a scenario is, and the
+ * head's own 10px between them read as two unrelated buttons that happen to be side by side.
+ */
+.headButtons {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.helpSquare {
+  width: 26px;
+  padding-left: 0;
+  padding-right: 0;
+  justify-content: center;
+}
+
+.iconButton {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  min-height: var(--acc-hit);
+  min-width: var(--acc-hit);
+  border-radius: var(--acc-r-sm);
+  color: var(--acc-fg-ghost);
+  font: 11px var(--acc-mono);
+}
+
+.iconButton:hover:not(:disabled),
+.iconButton[data-hover]:not(:disabled) {
+  background: var(--acc-bg-menu-hover);
+  color: var(--acc-fg);
+}
+
+.iconButton:disabled {
+  opacity: 0.35;
+}
+
+.iconDanger:hover:not(:disabled),
+.iconDanger[data-hover]:not(:disabled) {
+  background: var(--acc-bad-16);
+  color: var(--acc-bad-light);
+}
+
+/*
+ * What scenarios are, behind a question mark beside the button that makes one.
+ *
+ * Behind a button rather than written on the screen: the answer is wanted once, by somebody who has just
+ * met the word, and a paragraph of explanation over an empty shelf is a paragraph everybody else reads
+ * past for the rest of the year. The same steps of the ladder the confirmation uses (46 and 47 - see
+ * holiday.module.css): the two are never open at once.
+ */
+.helpScrim {
+  position: absolute;
+  top: var(--header-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 46;
+  background: rgb(0 0 0 / 40%);
+}
+
+.help {
+  position: absolute;
+  z-index: 47;
+  top: calc(var(--header-height) + 40px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(420px, calc(100% - 32px));
+  max-height: calc(100% - var(--header-height) - 80px);
+  overflow-y: auto;
+  padding: 14px 16px 15px;
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-panel);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 45%);
+}
+
+.helpHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.helpTitle {
+  flex: 1;
+  min-width: 0;
+  font: 600 12px var(--acc-font);
+  color: var(--acc-fg);
+}
+
+.helpList {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  font: 11px/1.6 var(--acc-mono);
+  color: var(--acc-fg-body);
+}
+
+/* The gap above is the whole of the spacing: a paragraph's own margin on top of it doubled every one. */
+.helpList p {
+  margin: 0;
+}
+
+/* The lead word of a line, so four of them read as four answers rather than as a paragraph. */
+.helpLead {
+  color: var(--acc-accent-light);
+}
+
+/* --- The hub: two shelves and the runs -------------------------------------------- */
+
+.section {
+  margin-bottom: 18px;
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+  font: 600 9px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-fg-ghost);
+}
+
+.labelLine {
+  flex: 1;
+  height: 1px;
+  background: var(--acc-line);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 9px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-card);
+  text-align: left;
+}
+
+.row:hover,
+.row[data-hover] {
+  border-color: var(--acc-line-hover);
+  background: var(--acc-bg-panel);
+}
+
+/* A button, so the whole line opens the row - and left-aligned, because a button centres by default. */
+.rowText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  text-align: left;
+}
+
+.rowTitle {
+  max-width: 100%;
+  font: 12px var(--acc-mono);
+  color: var(--acc-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rowFacts {
+  max-width: 100%;
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rowActions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/*
+ * The one button on the row that does something, set apart from the two that only tidy up.
+ *
+ * Two pixels between "run this round of work" and "delete it" is not a gap anybody can aim inside.
+ */
+.rowRun {
+  margin-right: 8px;
+}
+
+/*
+ * An empty shelf drawn as the row that is missing from it, rather than as a line of prose.
+ *
+ * Three sentences one under another with nothing between them read as a wall of grey text and say
+ * nothing about the shape of the screen. A dashed capsule the size of a row says what a row is and that
+ * there is none here, which is the whole of what an empty shelf has to say.
+ */
+.empty {
+  display: flex;
+  align-items: center;
+  /* No margin of its own: what stands around it is the gap of whatever list it is standing in for. */
+  margin: 0;
+  min-height: 40px;
+  padding: 8px 11px;
+  border: 1px dashed var(--acc-line);
+  border-radius: var(--acc-r-md);
+  font: 10.5px/1.5 var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+/* The mark on a scenario that cannot be run as it stands - the editor says what is wrong. */
+.broken {
+  color: var(--acc-warn);
+}
+
+/* --- The run's own strip ------------------------------------------------------------ */
+
+.runBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--acc-line);
+  background: var(--acc-bg-deep);
+}
+
+.runSegment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.runKey {
+  color: var(--acc-fg-ghost);
+}
+
+.runValue {
+  color: var(--acc-fg-soft);
+}
+
+.progress {
+  position: relative;
+  width: 84px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--acc-bg-control);
+  overflow: hidden;
+}
+
+.progressFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--acc-accent);
+  transition: width 0.25s ease;
+}
+
+.progressDone {
+  background: var(--acc-ok);
+}
+
+.progressFailed {
+  background: var(--acc-bad);
+}
+
+/* --- The question a run stands on ---------------------------------------------------- */
+
+.question {
+  margin-bottom: 14px;
+  padding: 10px 11px;
+  border: 1px solid var(--acc-warn-16);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-warn-06);
+}
+
+.questionTitle {
+  font: 11.5px var(--acc-mono);
+  color: var(--acc-warn-light);
+  margin-bottom: 6px;
+}
+
+.questionDetail {
+  max-height: 120px;
+  overflow: auto;
+  margin-bottom: 8px;
+  padding: 6px 7px;
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-sunken);
+  font: 10.5px/1.5 var(--acc-mono);
+  color: var(--acc-fg-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/*
+ * What the card offered, as the buttons they are.
+ *
+ * Wrapping rather than one row: an option is a sentence often enough ("keep the old behaviour"), and a
+ * row that scrolls sideways hides the choice nobody scrolled to.
+ */
+.questionOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.questionRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.field {
+  flex: 1;
+  min-width: 120px;
+  padding: 5px 8px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-sunken);
+  color: var(--acc-fg);
+  font: 11px var(--acc-mono);
+}
+
+.field:focus {
+  outline: none;
+  border-color: var(--acc-accent-line);
+}
+
+/* --- The timeline --------------------------------------------------------------------- */
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * The name of a stage, drawn only where there is more than one to tell apart (see timelineOf).
+ *
+ * Over a run of one stage it was a line and an indent spent on repeating a name that nothing needed:
+ * everything under it belonged to it, and there was nothing to separate it from.
+ */
+.stageRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 7px;
+  font: 600 9px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-fg-ghost);
+}
+
+.stageRow:first-child {
+  margin-top: 0;
+}
+
+/** Which pass a row is, on the row - faint, so the name it stands beside stays the loudest thing. */
+.stagePass {
+  flex: none;
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+  white-space: nowrap;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  margin-bottom: 3px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-card);
+  text-align: left;
+}
+
+.step:hover,
+.step[data-hover] {
+  border-color: var(--acc-line-hover);
+  background: var(--acc-bg-panel);
+}
+
+/* A step nobody has reached yet is drawn, but drawn as a plan rather than as work. */
+.stepWaiting {
+  background: transparent;
+  border-style: dashed;
+  opacity: 0.72;
+}
+
+.stepSkipped {
+  background: transparent;
+  border-style: dashed;
+  opacity: 0.45;
+}
+
+.stepRunning {
+  border-color: var(--acc-accent-32);
+}
+
+.stepFailed {
+  border-color: var(--acc-bad-32);
+}
+
+.stepNumber {
+  flex: none;
+  width: 18px;
+  padding-top: 1px;
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+  text-align: right;
+}
+
+.stepText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stepHead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.stepTitle {
+  min-width: 0;
+  font: 12px var(--acc-mono);
+  color: var(--acc-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stepSpace {
+  flex: 1;
+  min-width: 4px;
+}
+
+.stepTime {
+  flex: none;
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.stepTimeGoing {
+  color: var(--acc-accent);
+}
+
+.stepLine {
+  font: 10.5px/1.5 var(--acc-mono);
+  color: var(--acc-fg-faint);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* What the agent is saying at this moment reads differently from what it said and finished with. */
+.stepSaying {
+  color: var(--acc-fg-dim);
+}
+
+.stepVerdict {
+  font: 10.5px/1.5 var(--acc-mono);
+  color: var(--acc-ok-text);
+}
+
+.stepVerdictBad {
+  color: var(--acc-bad-text);
+}
+
+.stepSlots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.slot {
+  max-width: 100%;
+  padding: 1px 6px;
+  border-radius: var(--acc-r-xs);
+  background: var(--acc-bg-control);
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * What the main thread said, between the cards, where it said it.
+ *
+ * Not a card of its own: it is not a step of the round of work, and a row in the same clothes as a step
+ * would read as one. Marked with its own tint and its own left edge instead.
+ *
+ * Who said it stands ABOVE the words rather than in front of them. Beside them it took its width off
+ * every line of a paragraph that is already narrow - a panel is a third of a window wide, and a label
+ * of six characters is six characters off every one of a dozen lines.
+ */
+.note {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 10px 8px 12px;
+  margin: 0 0 6px;
+  border-left: 2px solid var(--acc-c-iris-1);
+  font: 10.5px/1.55 var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.noteWho {
+  align-self: flex-start;
+  color: var(--acc-c-iris-2);
+}
+
+.noteText {
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* --- One step's whole log, in place of the timeline ------------------------------------ */
+
+.logFacts {
+  flex: none;
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.logBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.logNote {
+  flex: none;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--acc-line);
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.logPrompt {
+  flex: none;
+  max-height: 30%;
+  overflow: auto;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--acc-line);
+  font: 10.5px/1.6 var(--acc-mono);
+  color: var(--acc-fg-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.logEmpty {
+  padding: 16px 12px;
+  font: 11px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+/* --- The editor ------------------------------------------------------------------------ */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.formRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.formLabel {
+  flex: none;
+  width: 96px;
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.area {
+  width: 100%;
+  min-height: 54px;
+  /* A ceiling on the drag: past this the field is taller than the panel is tall, and everything the form
+     is about - the buttons under it, the shelves below - goes off the bottom of the screen. Longer text
+     scrolls inside the field, which is what a field of this size does anyway. */
+  max-height: 300px;
+  resize: vertical;
+  padding: 7px 8px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-sunken);
+  color: var(--acc-fg);
+  font: 11px/1.6 var(--acc-mono);
+}
+
+/*
+ * A row of the panel's own selectors - the same buttons MODEL, EFFORT and MODE are (see Picker).
+ *
+ * A native `select` stood here first and was wrong twice over: it looks like nothing else in the panel,
+ * and in the IDE's offscreen browser its list does not open at all. Wrapping rather than one to a line
+ * because each carries its own caption, so a row of them reads without a column of labels beside it.
+ */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--acc-hit);
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+/*
+ * A field that takes no keystrokes has to look like one.
+ *
+ * While the model writes, the description is disabled - and disabled in silence it looked exactly like a
+ * field being typed into: same text, same border, only the caret quietly gone. Typing into it then reads
+ * as a panel that has frozen rather than as a wait. Dimmed rather than faded the way the disabled buttons
+ * are: half a minute is spent rereading what you asked for, so the text stays legible; the drag handle
+ * goes, because the one thing it changes is a size the field cannot be given right now anyway.
+ */
+.area:disabled {
+  color: var(--acc-fg-dim);
+  cursor: not-allowed;
+  resize: none;
+}
+
+.area:focus,
+.field:focus {
+  outline: none;
+  border-color: var(--acc-accent-line);
+}
+
+.card {
+  padding: 9px 10px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-card);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+}
+
+.stageBlock {
+  margin-bottom: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-raised);
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/*
+ * The button that adds a slot, standing in the same column as the slots it adds.
+ *
+ * Only so it does not take the whole width: a flex item stretches across its column unless it is told
+ * not to, and a full-width button here would read as the end of the card rather than one more row of it.
+ */
+.addSlot {
+  align-self: flex-start;
+}
+
+.subLabel {
+  margin: 8px 0 5px;
+  font: 600 9px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-fg-ghost);
+}
+
+/* --- The hour a scenario starts at by itself ------------------------------------------ */
+
+/*
+ * The line under a row's facts when it has an hour. Its own row rather than another `·` in the facts
+ * above: those describe the scenario and never change, this describes what is about to happen, and a
+ * missed night has to be able to stand out in the colour of a thing that did not happen.
+ */
+.rowHour {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  margin-top: 3px;
+  font: 10px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.rowHourNext {
+  color: var(--acc-fg-dim);
+}
+
+.rowHourMissed {
+  color: var(--acc-warn-light);
+}
+
+/* An icon button whose thing is switched on - the clock of a row that has an hour. */
+.iconOn {
+  color: var(--acc-accent-light);
+}
+
+/* The hour: two of the panel's own menus with a colon between them (see WhenForm). */
+.timeRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.timeColon {
+  font: 12px var(--acc-mono);
+  color: var(--acc-fg-dim);
+}
+
+/* What the form says before the button - see WhenForm: the IDE has to be running at that hour. */
+.formNote {
+  margin: 2px 0 0;
+  font: 10px/1.5 var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+/*
+ * The strip under the field where a scenario was described, when the model would not write one.
+ *
+ * Words rather than a coloured box: the description is still standing above it, untouched, and the way
+ * out of this is to press the button again - the same reason the improve button's failure is a line and
+ * not a banner (see composer.module.css).
+ */
+.draftError {
+  margin: 6px 0 0;
+  font: 10.5px/1.5 var(--acc-mono);
+  color: var(--acc-bad-light);
+}
+
+/*
+ * Said beside Cancel, so the row does not go empty while a model reads the project for half a minute.
+ *
+ * The words shimmer the way the feed's own "Claude is thinking" does, and for the same reason: this is
+ * the one place on this screen where a press is answered in tens of seconds rather than at once, and a
+ * line of still grey text is indistinguishable from a screen where nothing happened. The panel already
+ * says "under way" in this language - a second one would only have to be learnt.
+ */
+.draftGoing {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--acc-hit);
+  font: 10.5px var(--acc-mono);
+  background: linear-gradient(
+    100deg,
+    var(--acc-stream-1) 0%,
+    var(--acc-stream-2) 30%,
+    var(--acc-stream-3) 45%,
+    var(--acc-stream-2) 55%,
+    var(--acc-stream-1) 70%,
+    var(--acc-stream-1) 100%
+  );
+  background-size: 260% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: acc-scenario-shimmer 2.6s linear infinite alternate;
+}
+
+/*
+ * How long the wait has been going, beside the caption and quiet.
+ *
+ * Still rather than shimmering with the words next to it: digits that fade in and out are digits read
+ * twice, and this is the only thing on the row anybody checks against their own patience.
+ */
+.draftElapsed {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--acc-hit);
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Cancel keeps to the right edge, whatever the caption before it says.
+ *
+ * A step behind a sentence that is a different length in each of ten languages, the one control on the
+ * row sat in a different place every time it appeared - and the row it appears on is where the eye is
+ * already looking, because the caption on it moves.
+ */
+.draftCancel {
+  margin-left: auto;
+}
+
+/* The bar under the field while it is being written.
+ *
+ * Indeterminate on purpose: nothing on this side knows how far along a model is, and a bar that
+ * pretended to would be a lie told at every press. What it is here for is the one thing a caption cannot
+ * do - move, so that the screen answers the press before the answer itself arrives.
+ *
+ * Room under it as well as over it: sitting straight on the row of buttons it read as a border of
+ * theirs, and a progress bar taken for a rule says nothing at all. */
+.draftBar {
+  position: relative;
+  height: 2px;
+  margin: 8px 0 8px;
+  border-radius: 2px;
+  background: var(--acc-line);
+  overflow: hidden;
+}
+
+.draftBar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 34%;
+  border-radius: 2px;
+  background: var(--acc-accent);
+  animation: acc-scenario-sweep 1.5s ease-in-out infinite;
+}
+
+@keyframes acc-scenario-shimmer {
+  from {
+    background-position: 160% 0;
+  }
+
+  to {
+    background-position: -60% 0;
+  }
+}
+
+@keyframes acc-scenario-sweep {
+  from {
+    transform: translateX(-110%);
+  }
+
+  to {
+    transform: translateX(400%);
+  }
+}
+
+.problems {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--acc-warn-16);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-warn-06);
+  font: 10.5px/1.7 var(--acc-mono);
+  color: var(--acc-warn-light);
+}
+
+.problemsList {
+  margin: 4px 0 0;
+  padding-left: 15px;
+}
+
+/* The strip under the head of the hub, where a refusal from the IDE is said. */
+.outcome {
+  margin-bottom: 12px;
+  padding: 7px 10px;
+  border: 1px solid var(--acc-bad-32);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bad-12);
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-bad-text);
+}
+
+/* The strip at the top of the hub while this part is still being tried out - see t.scenarios.untested.
+ *
+ * In the warning tone rather than the failing one (.outcome above): nothing has gone wrong, this is a
+ * caution about ground nobody has walked over yet, and it stands there on every visit - a refusal's
+ * colour, worn all day, stops meaning "something is broken".
+ *
+ * A column rather than a row: the panel is 350px across at its narrowest, and a button beside this much
+ * text would leave the text a word wide.
+ */
+.untested {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--acc-warn-32);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-warn-06);
+}
+
+.untestedText {
+  font: 10.5px/1.7 var(--acc-mono);
+  color: var(--acc-warn-light);
+}
+
+/* The way to the feedback screen from here: without it the strip ends in "tell somebody" and leaves the
+   where of it to be hunted through the menu. */
+.untestedReport {
+  flex: none;
+  min-height: var(--acc-hit);
+  padding: 3px 8px;
+  border: 1px solid var(--acc-warn-32);
+  border-radius: var(--acc-r-sm);
+  background: transparent;
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-warn-light);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .untestedReport:hover {
+    background: var(--acc-warn-12);
+  }
+}
+
+/* The row at the foot of the past runs that opens the next screenful of them - see RUNS_PAGE.
+   Dashed and quiet, like the placeholder of an empty shelf (.empty): it is the list saying there is more
+   of it, not another run. */
+.moreRuns {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 8px 11px;
+  border: 1px dashed var(--acc-line);
+  border-radius: var(--acc-r-md);
+  background: transparent;
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .moreRuns:hover {
+    border-color: var(--acc-line-strong);
+    color: var(--acc-fg-soft);
+  }
+}

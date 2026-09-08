@@ -132,6 +132,13 @@ const SHARED_WITH_ENGLISH: Record<string, Locale[]> = {
   'voice.mouse': ['pt-BR'],
   'voice.device': ['fr'],
   'menu.titles.voiceDevice.title': ['fr'],
+  // "Pause" is the same word in German and French; "Name" is German for name, and "Effort" is French
+  // for effort. All three are the word itself rather than a line that was skipped.
+  'scenarios.run.pause': ['de', 'fr'],
+  'scenarios.editor.name': ['de'],
+  'scenarios.editor.effort': ['fr'],
+  // "tokens" is the word itself in Spanish and Portuguese - the CLI's own term, borrowed whole.
+  'scenarios.run.tokens': ['es', 'pt-BR'],
 }
 
 describe('a language that is left untranslated', () => {

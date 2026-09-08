@@ -7,7 +7,10 @@ import io.github.crmapache.amazingclaudecode.remote.RemoteAgent
 import io.github.crmapache.amazingclaudecode.remote.RemoteCommands
 import io.github.crmapache.amazingclaudecode.voice.VoiceGrant
 import io.github.crmapache.amazingclaudecode.remote.RemoteLimits
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -329,6 +332,68 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
             "searchCancel" -> hub.search.cancel(field("id"))
 
             /*
+             * The scenarios: the two shelves, the runs, and the one run that may be going (see
+             * ScenarioDesk).
+             *
+             * Every one of them is refused to anything that is not this IDE (see RemoteCommands). Writing
+             * a scenario writes a file into the repository, and running one raises a head and a card in
+             * the project with whatever the scenario trusts them with - both are things somebody decides
+             * at the keyboard, in front of the diff they are about to get.
+             */
+            "scenarios" -> hub.scenarios.sendList()
+
+            "scenarioSave" -> hub.scenarios.save(clientId, payload)
+
+            "scenarioDelete" -> hub.scenarios.delete(clientId, field("id"), field("scope"))
+
+            "scenarioDuplicate" -> hub.scenarios.duplicate(clientId, field("id"), field("scope"))
+
+            // A model writes one out of a sentence, and the answer goes to whoever asked rather than to
+            // the project: nothing has been saved yet (see ScenarioDesk.draft).
+            "scenarioDraft" -> hub.scenarios.draft(clientId, field("id"), field("description"))
+
+            "scenarioDraftCancel" -> hub.scenarios.cancelDraft(field("id"))
+
+            "scenarioRun" -> hub.scenarios.start(clientId, field("id"), field("scope"), values(payload["inputs"]))
+
+            // The hour a scenario starts at by itself, and taking it back (see ScenarioSchedule).
+            "scenarioSchedule" -> hub.scenarios.schedule(
+                clientId,
+                field("id"),
+                field("scope"),
+                number(payload["at"]),
+                field("repeat"),
+                number(payload["weekday"]),
+                values(payload["inputs"]),
+            )
+
+            "scenarioUnschedule" -> hub.scenarios.unschedule(field("id"), field("scope"))
+
+            "scenarioPause" -> hub.scenarios.pause(field("runId"))
+
+            "scenarioResume" -> hub.scenarios.resume(field("runId"))
+
+            "scenarioStop" -> hub.scenarios.stop(field("runId"))
+
+            "scenarioAnswer" -> hub.scenarios.answer(
+                field("runId"),
+                allow = payload["allow"]?.jsonPrimitive?.booleanOrNull != false,
+                text = field("text"),
+            )
+
+            "scenarioOpen" -> hub.scenarios.sendRun(clientId, field("runId"))
+
+            "scenarioRunDelete" -> hub.scenarios.deleteRun(clientId, field("runId"))
+
+            // What one step of a run said, read off the conversation it said it in - see ScenarioDesk.
+            "scenarioLog" -> hub.scenarios.sendLog(
+                clientId,
+                runId = field("runId"),
+                key = field("key"),
+                conversationId = field("conversationId"),
+            )
+
+            /*
              * A phone asking to dictate (see VoiceGrant).
              *
              * Handled here rather than by the panel's window, unlike every other voice message: this is
@@ -419,6 +484,21 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
         payload["since"]?.jsonObject.orEmpty()
             .mapNotNull { (sessionId, value) -> value.jsonPrimitive.longOrNull?.let { sessionId to it } }
             .toMap()
+
+    /** The answers to a scenario's inputs: a flat object of name to what was typed (see ScenarioDesk). */
+    private fun values(element: JsonElement?): Map<String, String> =
+        (element as? JsonObject).orEmpty()
+            .mapNotNull { (name, value) -> value.jsonPrimitive.contentOrNull?.let { name to it } }
+            .toMap()
+
+    /**
+     * A whole number out of the request - an hour of the day, a day of the week (see ScenarioSchedule).
+     *
+     * Zero for anything that is not one: what a number means is decided where it is used, and every user
+     * of this clamps its own range. A page can say anything.
+     */
+    private fun number(element: JsonElement?): Int =
+        (element as? JsonPrimitive)?.let { it.intOrNull ?: it.contentOrNull?.toIntOrNull() } ?: 0
 
     /** A plain list of strings out of the request - the markers' legend, for one (see improvePrompt). */
     private fun strings(payload: JsonObject, name: String): List<String> =

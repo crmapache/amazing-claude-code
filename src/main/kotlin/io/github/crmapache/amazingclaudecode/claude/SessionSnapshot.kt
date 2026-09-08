@@ -68,6 +68,20 @@ internal data class SessionSnapshot(
     val pendingPlans: Set<String> = emptySet(),
     /** Questions awaiting an answer, by the id of the card in the feed. */
     val pendingAsks: Set<String> = emptySet(),
+    /**
+     * Background agents this conversation started and has not heard back from, by task id.
+     *
+     * The one thing that tells "this turn ended" from "the work ended". An agent that raised background
+     * subagents falls silent the moment it has raised them - its turn ends with the work only beginning -
+     * and every report from one of them starts a turn of the CLI's own accord (see isTurnAnnouncement in
+     * AgentStream.kt). Recorded off a live run: one message from the person, fourteen self-started turns,
+     * and a phone that said "the work is done" fifteen times, fourteen of them untrue.
+     *
+     * Kept here because the notification is decided here, with no feed to read: the panel works the same
+     * thing out of its own task cards (see workGoesOn in feed/build.ts, which the finished sound and the
+     * time under the answer go by), and the panel can be closed while the phone is not.
+     */
+    val pendingAgents: Set<String> = emptySet(),
 ) {
 
     /**
@@ -188,8 +202,19 @@ internal object SessionSnapshots {
                 ?: snapshot
 
             // A dead process leaves nothing running: saying so now is cheaper than letting a client
-            // work it out from a feed that simply stops.
-            "processExited" -> snapshot.copy(crashed = true, status = SessionSnapshot.STATUS_IDLE, changedAt = at)
+            // work it out from a feed that simply stops. Its background agents die with it - and unlike a
+            // turn, they have no closing event of their own, so the count has to be cleared here or the
+            // "work is done" notification is silenced for the rest of this conversation's life.
+            "processExited" -> snapshot.copy(
+                crashed = true,
+                status = SessionSnapshot.STATUS_IDLE,
+                changedAt = at,
+                pendingAgents = emptySet(),
+            )
+
+            // The process was swapped under the conversation (an account chosen) - the same thing happens
+            // to everything it was running, and nobody else will say so (see ClaudeSessionHub).
+            "processReplaced" -> snapshot.copy(pendingAgents = emptySet())
 
             "agent" -> applyAgentEvent(snapshot, payload)
 
@@ -206,14 +231,40 @@ internal object SessionSnapshots {
         val event = payload["event"] as? JsonObject ?: return snapshot
         val field = { name: String -> event[name]?.jsonPrimitive?.contentOrNull.orEmpty() }
 
-        if (field("type") != "system" || field("subtype") != "init") return snapshot
+        if (field("type") != "system") return snapshot
 
-        return snapshot.copy(
-            model = field("model").ifEmpty { snapshot.model },
-            permissionMode = field("permissionMode").ifEmpty { snapshot.permissionMode },
-            // A live process again: whatever crashed before it is over.
-            crashed = false,
-        )
+        // A past conversation read off disk rather than a live turn (see onAgentLine). Whatever it says
+        // about agents, they finished long ago - counted as running, they would silence the notification
+        // for a tab that is merely showing history.
+        val replayed = payload["replay"]?.jsonPrimitive?.booleanOrNull == true
+
+        return when (field("subtype")) {
+            "init" -> snapshot.copy(
+                model = field("model").ifEmpty { snapshot.model },
+                permissionMode = field("permissionMode").ifEmpty { snapshot.permissionMode },
+                // A live process again: whatever crashed before it is over.
+                crashed = false,
+            )
+
+            "task_started" -> {
+                val id = field("task_id")
+                // A terminal command is not an agent, although the CLI leads it down the same channel. A
+                // dev server raised through "!" never reports back at all: counted as work, it would
+                // silence the notification for the rest of the day. Same rule as isBashTask in the
+                // panel's feed/tasks.ts, unknown type included - an old CLI sent only subagents this way.
+                if (replayed || id.isEmpty() || field("task_type") == LOCAL_BASH) snapshot
+                else snapshot.copy(pendingAgents = snapshot.pendingAgents + id)
+            }
+
+            // An agent reporting back. Taken from a replay as well: removing is safe in a way that adding
+            // is not, and a stale id left standing costs the notification it was meant to hold.
+            "task_notification" -> {
+                val id = field("task_id")
+                if (id.isEmpty()) snapshot else snapshot.copy(pendingAgents = snapshot.pendingAgents - id)
+            }
+
+            else -> snapshot
+        }
     }
 
     /**
@@ -226,9 +277,10 @@ internal object SessionSnapshots {
             if (json.contains(marker)) return true
         }
 
-        // Agent events are almost all of the traffic, and out of them only the process's own "I have
-        // started" says anything here.
-        return json.contains(AGENT_MARKER) && json.contains(INIT_MARKER)
+        // Agent events are almost all of the traffic, and out of them only three say anything here: the
+        // process's own "I have started" and the two ends of a background agent's life.
+        if (!json.contains(AGENT_MARKER)) return false
+        return json.contains(INIT_MARKER) || json.contains(TASK_STARTED_MARKER) || json.contains(TASK_DONE_MARKER)
     }
 
     private val STATE_MARKERS = listOf(
@@ -240,8 +292,14 @@ internal object SessionSnapshots {
         "\"type\":\"permission\"",
         "\"type\":\"permissionResolved\"",
         "\"type\":\"processExited\"",
+        "\"type\":\"processReplaced\"",
     )
 
     private const val AGENT_MARKER = "\"type\":\"agent\""
     private const val INIT_MARKER = "\"subtype\":\"init\""
+    private const val TASK_STARTED_MARKER = "\"subtype\":\"task_started\""
+    private const val TASK_DONE_MARKER = "\"subtype\":\"task_notification\""
+
+    /** What the CLI calls a terminal command on the task channel - see applyAgentEvent. */
+    private const val LOCAL_BASH = "local_bash"
 }

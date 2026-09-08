@@ -274,6 +274,241 @@ export interface QueuedMessage {
 }
 
 /**
+ * A scenario: the round of work somebody repeats, written down once so the panel can walk it.
+ *
+ * The same shape the IDE keeps on disk (see scenario/Scenario.kt) - one description of one thing, read
+ * by the editor that writes it and by the timeline that draws a run of it.
+ */
+export interface Scenario {
+  version: number
+  id: string
+  name: string
+  createdAt: number
+  updatedAt: number
+  /** What the person is asked for when they press play - written into card text as {{name}}. */
+  inputs: ScenarioInput[]
+  /** The session that runs the whole thing and decides what the cards were asking about. */
+  head: ScenarioHead
+  stages: ScenarioStage[]
+  /**
+   * Which shelf it was read off: the repository, or the person's own Claude home.
+   *
+   * Not part of the file - the shelf is where the file lies, not what it says. It travels with the
+   * scenario because everything that names one has to name the shelf too: two scenarios on two shelves
+   * are allowed to carry the same identifier, and a delete that did not say which one it meant would be
+   * a delete of whichever was found first.
+   */
+  scope: ScenarioScope
+}
+
+export type ScenarioScope = 'project' | 'user'
+
+export interface ScenarioInput {
+  id: string
+  /** What a card's text writes as {{name}}. */
+  name: string
+  label: string
+  placeholder: string
+  required: boolean
+}
+
+/** What runs the show: one session for the whole run, and how much it is allowed to decide. */
+export interface ScenarioHead {
+  briefing: string
+  /** Empty means whatever a new tab would start with, for both. */
+  model: string
+  effort: string
+  /** What a card is trusted with before it has to stop and ask - the default every card falls back to. */
+  permissionMode: string
+  /** 'head' answers a card's question itself; 'stop' stands the run still and waits for a person. */
+  onQuestion: 'head' | 'stop'
+  /** How many times the head may send one card back to work before giving up on it. */
+  retries: number
+}
+
+export interface ScenarioStage {
+  id: string
+  title: string
+  /** How many passes, the first included. */
+  repeat: number
+  /** Whether `repeat` is a ceiling the head may stop short of, rather than an exact count. */
+  untilDone: boolean
+  cards: ScenarioCard[]
+}
+
+/**
+ * One thing said to one session of its own.
+ *
+ * `prompt` is the work and is said to the card's own session. `dod` and `after` are read by the head:
+ * they are how it knows the card is finished and what to carry forward. Which of the two a field speaks
+ * to is the whole of understanding a card.
+ */
+export interface ScenarioCard {
+  id: string
+  title: string
+  prompt: string
+  slots: ScenarioCardSlot[]
+  dod: string
+  after: string
+  /** Empty means "the same as the head" for all three. */
+  model: string
+  effort: string
+  permissionMode: string
+}
+
+export interface ScenarioCardSlot {
+  id: string
+  /** Written in the prompt as [[name]] and filled by the head from what the cards above found out. */
+  name: string
+  description: string
+}
+
+export type ScenarioRunState =
+  | 'starting'
+  | 'running'
+  | 'paused'
+  | 'blocked'
+  | 'done'
+  | 'failed'
+  | 'stopped'
+
+export type ScenarioStepState =
+  | 'waiting'
+  | 'running'
+  | 'asking'
+  | 'judging'
+  | 'paused'
+  | 'done'
+  | 'failed'
+  | 'skipped'
+
+/**
+ * A scenario set to start by itself at an hour somebody chose (see ScenarioSchedule on the IDE's side).
+ *
+ * Kept on the machine rather than in the scenario's file: the round of work is worth sharing through the
+ * repository, "at nine, on my machine, with this branch" is one person's arrangement with their own day.
+ */
+export interface ScenarioSchedule {
+  scenarioId: string
+  scope: ScenarioScope
+  /** Minutes from midnight in the machine's own timezone: 9:30 is 570. */
+  at: number
+  repeat: ScenarioRepeat
+  /** For a weekly hour: the day, as java.time numbers them - Monday is 1, Sunday is 7. */
+  weekday: number
+  /** The answers to the scenario's own questions: at the hour there is nobody to ask. */
+  inputs: Record<string, string>
+  /** When it is next due, in epoch millis, or 0 when nothing is - a one-off that has already fired. */
+  nextAt: number
+  /** When it last started something. */
+  lastAt: number
+  /** When its hour came and nothing happened: the IDE was closed, or a run was already going. */
+  missedAt: number
+}
+
+export type ScenarioRepeat = 'once' | 'daily' | 'weekdays' | 'weekly'
+
+/**
+ * One run of one scenario: the timeline as it happens and as the history keeps it.
+ *
+ * `snapshot` is the scenario exactly as it was when the button was pressed, and it is what the timeline
+ * is drawn from. A run drawn against today's scenario would be a picture of work that never happened -
+ * and a scenario somebody deleted would leave its runs with no picture at all, which is exactly when
+ * anybody wants to look at them.
+ */
+export interface ScenarioRun {
+  id: string
+  scenarioId: string
+  scenarioName: string
+  scope: ScenarioScope
+  snapshot: Scenario
+  startedAt: number
+  finishedAt: number
+  state: ScenarioRunState
+  inputs: Record<string, string>
+  /** How many cards this run intended to start, every pass counted - what the bar is drawn from. */
+  total: number
+  /** The head's own conversation, once it has one. Its log is opened like any step's. */
+  headConversationId: string
+  /** Every card of every pass, in the order they were planned - loops written out flat. */
+  steps: ScenarioRunStep[]
+  /** What the head said in words as it went, wedged into the timeline where it was said. */
+  notes: ScenarioRunNote[]
+  question: ScenarioRunQuestion | null
+  failure: string
+  error: string
+  cost: number
+  /**
+   * How many tokens it has burnt, the head's own turns included.
+   *
+   * Beside the money rather than instead of it: what it cost is what came off the plan, while the tokens
+   * are the size of the work - the figure that says whether a step read half the repository.
+   */
+  tokens: number
+}
+
+export interface ScenarioRunStep {
+  /** stage:card:pass - one go at one card, which is not the same as one card. */
+  key: string
+  cardId: string
+  stageId: string
+  pass: number
+  title: string
+  state: ScenarioStepState
+  /** The conversation it spoke in. Also how its log is found - a step is an ordinary conversation. */
+  conversationId: string
+  startedAt: number
+  finishedAt: number
+  slots: Record<string, string>
+  /** The prompt as it was actually said, with the inputs and the slots written in. */
+  prompt: string
+  /** What the agent is saying right now, cut short. Empty once the turn is over. */
+  said: string
+  summary: string
+  /** What the head said each time it sent this card back to work. */
+  nudges: string[]
+  verdict: '' | 'done' | 'undone'
+  verdictReason: string
+  handoff: string
+  failure: string
+  error: string
+  cost: number
+  tokens: number
+}
+
+export interface ScenarioRunNote {
+  at: number
+  /** The card the head was busy with when it said this. */
+  stepKey: string
+  text: string
+}
+
+export interface ScenarioRunQuestion {
+  stepKey: string
+  title: string
+  tool: string
+  detail: string
+  options: string[]
+  askedAt: number
+}
+
+/** A run as the list of past runs draws it - without the steps, which are the expensive part. */
+export interface ScenarioRunSummary {
+  id: string
+  scenarioId: string
+  scenarioName: string
+  scope: ScenarioScope
+  startedAt: number
+  finishedAt: number
+  state: ScenarioRunState
+  total: number
+  done: number
+  failure: string
+  cost: number
+  inputs: Record<string, string>
+}
+
+/**
  * An occasion to call the person with a sound. The shell knows exactly these names: each has a file of
  * its own there (see AlertSounds.kt).
  */
@@ -328,6 +563,12 @@ type ShellMessageBody =
          */
         sendKey?: string
         /**
+         * The no-stress colour mode: the gauges drawn in one calm tone rather than by a ladder of four
+         * (see hooks/useCalmColors.ts). Unset means off, which is what the panel did before the setting
+         * existed.
+         */
+        calmColors?: boolean
+        /**
          * The language chosen by hand. Empty - which is the usual case - means "whatever the IDE
          * speaks", so that a Chinese IDE gets a Chinese panel without anyone having to find the switch.
          */
@@ -356,6 +597,20 @@ type ShellMessageBody =
    * so a change made in one window has to reach the other one, which is already past its own `init`.
    */
   | { type: 'locale'; language?: string; ideLanguage?: string }
+  /**
+   * The no-stress colour mode, on its own for the same two readers as the language above: a phone never
+   * sees `init`, and a machine-wide setting switched in one window has to reach the other.
+   */
+  | { type: 'calmColors'; on: boolean }
+  /**
+   * The models somebody added by hand, on its own for the same two readers as the two above.
+   *
+   * They stand beside the catalogue rather than inside it, and that is the whole point: the catalogue
+   * names what Claude Code itself offers, and this list exists for the machines where that is not the
+   * whole truth - a proxy router or a gateway serving models the CLI has never heard of. Merged into the
+   * menu by the panel and by the phone alike (see modelOptions), so both screens name the same models.
+   */
+  | { type: 'customModels'; models: string[] }
   | {
       type: 'usage'
       /**
@@ -661,6 +916,14 @@ type ShellMessageBody =
       searched?: string[]
     }
   /**
+   * The sign-in could not even be started: there was no terminal to run it in, or the account in force
+   * has no credential store here to run it into. A code rather than a sentence - the panel speaks ten
+   * languages and the IDE speaks one.
+   *
+   * Without this the gate sat in "finish it in the terminal" over a terminal that never opened.
+   */
+  | { type: 'authProblem'; code: 'no-drawer' | 'no-terminal' }
+  /**
    * The applied permission mode: the agent may have refused, and then applied is false while error
    * holds the reason - "auto", for instance, is not available on every model.
    */
@@ -795,6 +1058,57 @@ type ShellMessageBody =
   /** Where a pasted file was written - the answer to `savePastedFile`. */
   | { type: 'pastedFile'; id: string; path: string }
   /** The answer to mcpList - and to mcpAdd/mcpRemove, so that the list refreshes at once. */
+  /**
+   * Both shelves and the runs that came of them (see ScenarioDesk).
+   *
+   * Told to everyone in the project rather than answered to whoever asked: a second window on the same
+   * project has the same two shelves, and which run is live is a fact about the project. The IDE keeps
+   * the latest of these, so a panel opened while a run is going is caught up without asking.
+   */
+  | {
+      type: 'scenarios'
+      scenarios: Scenario[]
+      runs: ScenarioRunSummary[]
+      /** The run going right now, or empty. One at a time per project, by design. */
+      live: string
+      /** The hours these scenarios start at by themselves - see ScenarioSchedule. */
+      schedules: ScenarioSchedule[]
+      /** Whether there is a repository to put a shared scenario in at all. */
+      canShare: boolean
+    }
+  /** One run, whole. Pushed while it is live, answered when an old one is opened. */
+  | { type: 'scenarioRun'; run: ScenarioRun }
+  | { type: 'scenarioSaved'; scenario: Scenario }
+  /**
+   * What a model wrote out of a described round of work (see ScenarioAuthor on the IDE's side).
+   *
+   * Nothing has been saved: this opens in the editor as a fresh scenario, and Save is still the person's
+   * to press. `id` is the request it answers - a screen that has moved on, or pressed Cancel, ignores an
+   * answer that names something else.
+   */
+  | { type: 'scenarioDrafted'; id: string; scenario?: Scenario; error?: string }
+  /**
+   * A run has begun. `scheduled` means the clock started it and nobody pressed anything - then no screen
+   * jumps to its tab: the person may be in the middle of something else entirely.
+   */
+  | { type: 'scenarioStarted'; runId: string; scheduled?: boolean }
+  /**
+   * What one step said, as the events of its own conversation.
+   *
+   * The panel builds a feed out of them with the same reducer the live one uses (see feed/build.ts), so
+   * a step's log reads exactly as a conversation does. `truncated` says the beginning is not shown - a
+   * log that silently begins in the middle reads as a step that began in the middle.
+   */
+  | {
+      type: 'scenarioLog'
+      runId: string
+      key: string
+      found: boolean
+      truncated: boolean
+      events: AgentEvent[]
+    }
+  /** Something could not be done, as a name the panel has words for in ten languages. */
+  | { type: 'scenarioOutcome'; ok: boolean; code: string }
   | { type: 'mcpServers'; servers: McpServerInfo[] }
   /** The outcome of mcpAdd/mcpRemove - not to be mistaken for a `/mcp` inside the conversation. */
   | { type: 'mcpActionResult'; ok: boolean; message: string }
@@ -1315,6 +1629,20 @@ export type WebviewMessage =
   /** Which key sends a message - 'enter' or 'modEnter'. Machine-wide, like the layout (see sendKey.ts). */
   | { type: 'setSendKey'; key: string }
   /**
+   * The no-stress colour mode. Machine-wide beside the layout and the send key: whether a red gauge
+   * presses on somebody is a property of the person rather than of the repository.
+   */
+  | { type: 'setCalmColors'; on: boolean }
+  /**
+   * The whole list of hand-added models, never a single addition or removal.
+   *
+   * Machine-wide beside the colour mode above it, and the whole list because that is what the screen
+   * holds: an addition and a removal are the same message, and a list is the one shape that cannot
+   * arrive out of order. What is unusable as a launch argument the IDE drops on the way in - see
+   * ClaudePreferences.customModels.
+   */
+  | { type: 'setCustomModels'; models: string[] }
+  /**
    * What language the panel speaks. An empty string is a value, not a missing one: it means "follow the
    * IDE", which is what the picker's first entry sets and what a panel nobody has touched already does.
    */
@@ -1591,6 +1919,69 @@ export type WebviewMessage =
   | { type: 'searchAi'; id: string; sessionId: string; query: string }
   /** The person stopped waiting for the model's search: its process ends, its answer is dropped. */
   | { type: 'searchCancel'; id: string }
+  /**
+   * The scenarios (see ScenarioDesk on the IDE's side): both shelves, the runs that came of them, and
+   * whichever run is going right now.
+   *
+   * Every one of these is refused to a remote client (see RemoteCommands). Writing one writes a file
+   * into the repository and running one raises agents that work unattended for hours - both are decided
+   * at a keyboard, in front of the diff they produce.
+   */
+  | { type: 'scenarios' }
+  /** Write one down. `scope` is the shelf it goes on, which is also how one is moved between the two. */
+  | { type: 'scenarioSave'; scenario: Scenario; scope: ScenarioScope }
+  | { type: 'scenarioDelete'; id: string; scope: ScenarioScope }
+  | { type: 'scenarioDuplicate'; id: string; scope: ScenarioScope }
+  /**
+   * Have a model write one out of a sentence about the round of work.
+   *
+   * The form of a scenario is what nobody wants to fill in the first time, and describing the work is
+   * what anybody can do - so this is what the button that makes a new scenario offers first, with the
+   * empty form beside it. `id` is this request's own, so the answer and a Cancel both name it.
+   */
+  | { type: 'scenarioDraft'; id: string; description: string }
+  /** The person stopped waiting for it: the process ends and its answer is dropped. */
+  | { type: 'scenarioDraftCancel'; id: string }
+  /** Press play. `inputs` are the answers to the scenario's own questions, by name. */
+  | { type: 'scenarioRun'; id: string; scope: ScenarioScope; inputs: Record<string, string> }
+  /**
+   * Set the hour this scenario starts at by itself, or move the one it has - one hour per scenario.
+   *
+   * The answers to its questions travel with it: when the hour comes there is nobody at the keyboard to
+   * ask for them.
+   */
+  | {
+      type: 'scenarioSchedule'
+      id: string
+      scope: ScenarioScope
+      /** Minutes from midnight, machine time. */
+      at: number
+      repeat: ScenarioRepeat
+      /** Monday is 1, Sunday is 7. Read only for a weekly hour. */
+      weekday: number
+      inputs: Record<string, string>
+    }
+  | { type: 'scenarioUnschedule'; id: string; scope: ScenarioScope }
+  /**
+   * Everything stops where it stands and nothing dies: the turn running right now is interrupted the
+   * way Escape interrupts one at the desk, and both processes stay up with everything they remember.
+   */
+  | { type: 'scenarioPause'; runId: string }
+  /** Carry on: the head is asked its question again, and the card is told to continue. */
+  | { type: 'scenarioResume'; runId: string }
+  | { type: 'scenarioStop'; runId: string }
+  /** An answer to the question a run is standing on - only when the scenario said to wait for a person. */
+  | { type: 'scenarioAnswer'; runId: string; allow: boolean; text: string }
+  /** The whole record of one run: the live one from memory, an older one off the disk. */
+  | { type: 'scenarioOpen'; runId: string }
+  | { type: 'scenarioRunDelete'; runId: string }
+  /**
+   * What one step said, read off the conversation it said it in.
+   *
+   * The run keeps none of it: a step is an ordinary conversation of the CLI's and its transcript is
+   * already on the disk, so this is read when somebody opens a step and never for the rest.
+   */
+  | { type: 'scenarioLog'; runId: string; key: string; conversationId: string }
   /**
    * Voice input (see VoiceDesk on the IDE's side).
    *

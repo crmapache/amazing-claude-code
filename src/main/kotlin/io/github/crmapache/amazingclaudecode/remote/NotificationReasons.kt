@@ -104,7 +104,16 @@ internal object NotificationReasons {
         // The end of a turn - unless the person ended it themselves a moment ago. Calling someone back
         // to a turn they just stopped serves nothing.
         if (isTurnEnd(message)) {
-            return if (message.contains(STOPPED_BY_YOU)) null else "turnFinished"
+            if (message.contains(STOPPED_BY_YOU)) return null
+
+            // And unless the work goes on without it. A turn that ended with background agents still
+            // running has finished nothing: the CLI starts the next turn by itself the moment one of them
+            // reports back (see isTurnAnnouncement in AgentStream.kt), so one request becomes a dozen
+            // turns. Measured on a live run of a branch review: fifteen "the work is done" pushes for one
+            // message, fourteen of them untrue. The panel has always known this - its finished sound goes
+            // by the same reading of its own task cards (see workGoesOn in feed/build.ts) - and the phone
+            // did not, because there is no feed on this side to read it from.
+            return if (after.pendingAgents.isNotEmpty()) null else "turnFinished"
         }
 
         return null

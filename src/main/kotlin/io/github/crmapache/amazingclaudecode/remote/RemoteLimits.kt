@@ -130,9 +130,27 @@ internal class RemoteLimits {
              * that machine and stops any turn mid-run: at more than a few a minute the machine would
              * spend its time replacing processes rather than working in them.
              */
+            // A closed project's history: a folder walked and a head and a tail read out of every file
+            // in it (see RemoteAgent.recentHistory). Asked once per screen opened, so the default is
+            // already generous - it is here to be a number rather than an oversight.
+            "recentHistory" to 20,
             "accountUse" to 5,
             "accountForget" to 5,
             "accountLogout" to 5,
+            /*
+             * Watching a round of work, and unblocking it.
+             *
+             * Asking for the shelves walks two directories and reads a summary out of every past run, so
+             * it is a screen's worth a minute rather than a poll; one run is one file. The three that
+             * move a run are one press each on a screen somebody opened on purpose - and stopping one is
+             * asked about first, so a loop of them is not a person.
+             */
+            "scenarios" to 20,
+            "scenarioOpen" to 20,
+            "scenarioAnswer" to 20,
+            "scenarioPause" to 10,
+            "scenarioResume" to 10,
+            "scenarioStop" to 10,
         )
 
         const val DEFAULT_PER_MINUTE = 30

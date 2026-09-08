@@ -16,6 +16,8 @@ import {
   modeLabel,
   modeMenuOptions,
   modelLabel,
+  ADD_MODEL,
+  isModelName,
   modelMenu,
   modelOptions,
   resolvePanelModel,
@@ -200,21 +202,82 @@ describe('the model the agent moved to itself', () => {
   })
 
   it('keeps the tick on the choice while the conversation is on the chosen model', () => {
-    expect(modelMenu(en, models, 'sonnet', undefined)).toMatchObject({ selected: 'sonnet' })
-    expect(modelMenu(en, models, '', undefined)).toMatchObject({ selected: 'default' })
+    expect(modelMenu(en, models, [], 'sonnet', undefined)).toMatchObject({ selected: 'sonnet' })
+    expect(modelMenu(en, models, [], '', undefined)).toMatchObject({ selected: 'default' })
   })
 
   it('moves the tick onto the catalogue model with the same identifier after a move', () => {
-    expect(modelMenu(en, models, 'default', 'claude-sonnet-5')).toMatchObject({ selected: 'sonnet' })
+    expect(modelMenu(en, models, [], 'default', 'claude-sonnet-5')).toMatchObject({ selected: 'sonnet' })
   })
 
   it('starts a row of its own for a model missing from the catalogue - otherwise there is nothing to mark', () => {
-    const menu = modelMenu(en, models, 'default', 'claude-opus-4-8')
+    const menu = modelMenu(en, models, [], 'default', 'claude-opus-4-8')
 
     expect(menu.selected).toBe('claude-opus-4-8')
-    expect(menu.options.at(-1)).toMatchObject({ id: 'claude-opus-4-8', label: 'Opus 4.8' })
+    expect(menu.options.map((option) => option.id)).toContain('claude-opus-4-8')
+    expect(menu.options.find((option) => option.id === 'claude-opus-4-8')?.label).toBe('Opus 4.8')
     // The catalogue is left alone meanwhile: it is shared by every tab, while one of them moved.
     expect(models).toHaveLength(2)
+  })
+
+  /* The way to the screen, and the last thing in the menu whatever else is in it - including the row a
+     move to an unknown model adds after the catalogue. */
+  it('ends the menu with the way to add a model, always', () => {
+    expect(modelMenu(en, models, [], 'sonnet', undefined).options.at(-1)?.id).toBe(ADD_MODEL)
+    expect(modelMenu(en, models, ['glm-4.6'], 'sonnet', undefined).options.at(-1)?.id).toBe(ADD_MODEL)
+    expect(modelMenu(en, models, [], 'default', 'claude-opus-4-8').options.at(-1)?.id).toBe(ADD_MODEL)
+  })
+})
+
+/**
+ * A model somebody named themselves - the whole of what a person on a proxy router or a gateway can do
+ * about a catalogue that does not name what their provider serves.
+ */
+describe('the models added by hand', () => {
+  const models = [
+    { value: 'default', label: 'Default', description: '', resolved: 'claude-opus-5[1m]' },
+    { value: 'sonnet', label: 'Sonnet', description: '', resolved: 'claude-sonnet-5' },
+  ]
+
+  it('puts them after the CLI catalogue', () => {
+    const options = modelOptions(en, models, ['glm-4.6'])
+
+    expect(options.map((option) => option.id)).toEqual(['default', 'sonnet', 'glm-4.6'])
+    expect(options.at(-1)).toMatchObject({ label: 'glm-4.6', sub: en.models.custom })
+  })
+
+  /* The catalogue is what a panel is still waiting for in its first seconds, and the machine somebody
+     adds a model on is exactly the machine whose catalogue may never come back at all. */
+  it('puts them after the built-in list too, while no catalogue has arrived', () => {
+    const ids = modelOptions(en, null, ['glm-4.6']).map((option) => option.id)
+
+    expect(ids).toContain('glm-4.6')
+    expect(ids.slice(0, -1)).toEqual(modelCatalogue(en).map((option) => option.id))
+  })
+
+  it('does not repeat a model the catalogue already names', () => {
+    expect(modelOptions(en, models, ['sonnet']).map((option) => option.id)).toEqual(['default', 'sonnet'])
+  })
+
+  it('lets the tick stand on one of them', () => {
+    expect(modelMenu(en, models, ['glm-4.6'], 'glm-4.6', undefined)).toMatchObject({ selected: 'glm-4.6' })
+  })
+
+  /*
+   * Not an opinion about what a provider accepts - nobody here knows that. It is the one thing that is
+   * knowable: the name goes out as a launch argument, and a shell we never asked for cuts an argument
+   * short at a line feed or a quotation mark, taking the rest of the command line with it.
+   */
+  it('refuses a name that could not survive being a launch argument', () => {
+    expect(isModelName('glm-4.6')).toBe(true)
+    expect(isModelName('claude-fable-5-1[1m]')).toBe(true)
+    expect(isModelName('')).toBe(false)
+    expect(isModelName('two words')).toBe(false)
+    expect(isModelName('with"quote')).toBe(false)
+    expect(isModelName('with\nfeed')).toBe(false)
+    // And a comma, for a smaller reason: it separates the entries where the IDE keeps this list.
+    expect(isModelName('with,comma')).toBe(false)
+    expect(isModelName('x'.repeat(200))).toBe(false)
   })
 })
 

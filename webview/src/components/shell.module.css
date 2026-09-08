@@ -731,6 +731,12 @@
   white-space: nowrap;
 }
 
+/* A sentence rather than a name, so it wraps - see the note prop in Confirm. */
+.confirmNote {
+  font: 10.5px/1.55 var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
 .confirmActions {
   display: flex;
   justify-content: flex-end;
@@ -1561,6 +1567,13 @@
   text-align: center;
 }
 
+/* A paragraph carries the browser's own margin, and this screen is laid out on the gap above: with both
+   in force every line stood a line and a half from the next, and a screen of five short lines read as
+   five unrelated ones. Zeroed the same way .emptyState below zeroes them, and for the same reason. */
+.gate p {
+  margin: 0;
+}
+
 .gateTitle {
   font-size: 15px;
   font-weight: 600;
@@ -1606,8 +1619,65 @@
   text-decoration: underline;
 }
 
+/* The last line of the screen and the least of it: without a gap of its own it read as one more way to
+   switch accounts, sitting as close to that row as the names sit to each other. */
+.gate > .gateGhost {
+  margin-top: 6px;
+}
+
 .gateGhost:hover {
   color: var(--acc-fg);
+}
+
+/* The offer of another account, kept together and set apart from the button above it: one gap for the
+   whole screen made "Or switch to another account" read as the next line of the sign-in itself. */
+.gateSwitch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/*
+ * The machine's other accounts - the way out when the one in force cannot be signed in.
+ *
+ * Buttons rather than the underlined ghosts they used to be: those are the same thing "Check again" is,
+ * and three identical links one under another say nothing about which of them switches an account. And a
+ * row of their own rather than .gateRow - that one is as wide as the field it was written for and holds
+ * its contents at the left edge, so on a wide panel the names sat off to one side of a screen that is
+ * centred to the pixel.
+ */
+.gateAccounts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  max-width: 380px;
+}
+
+.gateAccount {
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-lg);
+  background: var(--acc-bg-control);
+  color: var(--acc-fg-dim);
+  font: 11.5px var(--acc-font);
+}
+
+.gateAccount:hover {
+  border-color: var(--acc-line-hover);
+  background: var(--acc-bg-control-hover);
+  color: var(--acc-fg);
+}
+
+/* The sign-in could not even start (see the `authProblem` message). Wrapped to the same width as the
+   text above it, because it is a sentence and not a status line. */
+.gateProblem {
+  max-width: 380px;
+  font: 11.5px/1.6 var(--acc-font);
+  color: var(--acc-warn-light);
 }
 
 .gateWaiting {
