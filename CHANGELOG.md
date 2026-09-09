@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.12.11] - 2026-09-09
+
+- Fixed: on the phone, picking a repository the IDE does not hold open answered "That project is no longer on this IDE's list" - about a project plainly on it. The phone's client is served by the relay and reaches a phone the day it is deployed, while the plugin on the machine is whatever version has been installed there, so the phone was asking for something the machine did not yet understand and the refusal it got back was written for a different cause. A machine now says what it can do, and a repository it cannot open for you stays greyed with the plain reason instead.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.12.10] - 2026-09-09
 
 - Changed: on the phone, a repository the IDE does not hold open can now be picked - for its scenarios, and as the shelf a scenario is kept on. It used to stand greyed with "the project is closed", which was the whole difficulty: a shelf is read through the project's own window, so the one repository you wanted was the one you could not reach. Picking it opens the project in the IDE, the way "Open & start" on a project's card does, and the row says so before you press it.
@@ -648,7 +653,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.10...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.11...HEAD
+[0.12.11]: https://github.com/crmapache/amazing-claude-code/compare/0.12.10...0.12.11
 [0.12.10]: https://github.com/crmapache/amazing-claude-code/compare/0.12.9...0.12.10
 [0.12.9]: https://github.com/crmapache/amazing-claude-code/compare/0.12.8...0.12.9
 [0.12.8]: https://github.com/crmapache/amazing-claude-code/compare/0.12.7...0.12.8
