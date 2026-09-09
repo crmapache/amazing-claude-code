@@ -86,8 +86,9 @@ interface ThreadProps {
   onBack: () => void
   /** The task list and the agents of this turn, on a screen of their own. */
   onTasks: () => void
-  /** The strip of tabs, and the "+" at its end. */
+  /** The strip of tabs: the sheet behind the tab already open, and the "+" at its end. */
   onTabs: () => void
+  onNewChat: () => void
   onPickTab: (session: SessionEntry) => void
   /** The model, the effort and the mode of this conversation - the sheet behind the chip. */
   onRun: () => void
@@ -155,6 +156,7 @@ export const Thread = ({
   onBack,
   onTasks,
   onTabs,
+  onNewChat,
   onPickTab,
   onRun,
   onMessage,
@@ -291,7 +293,10 @@ export const Thread = ({
             </button>
           ))}
 
-          <button type="button" className={m.tabPlus} aria-label={t.mobile.sessions.newChat} onClick={onTabs}>
+          {/* Straight to a new chat, as the "+" at the desk: it used to open the list of conversations
+              first, and a list with a note about forks under a "+" read as the way to make a fork. The
+              list is behind the open tab; a fork is in it, and in every message's own sheet. */}
+          <button type="button" className={m.tabPlus} aria-label={t.mobile.sessions.newChat} onClick={onNewChat}>
             +
           </button>
         </div>

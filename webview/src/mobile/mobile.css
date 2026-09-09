@@ -36,6 +36,9 @@
 html {
   /* A tap should not paint a grey box over a card the moment a finger lands on it. */
   -webkit-tap-highlight-color: transparent;
+  /* The controls the browser draws itself - the arrows of a select, a scrollbar - drawn for a dark page:
+     without this iOS painted the hour pickers' arrows black on a black field. The phone has one theme. */
+  color-scheme: dark;
 }
 
 body {

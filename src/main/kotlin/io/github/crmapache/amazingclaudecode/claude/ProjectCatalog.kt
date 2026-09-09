@@ -17,6 +17,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -606,19 +607,27 @@ internal class ProjectCatalog(
     /**
      * Signing in to a server that requires it - the same as "Authenticate" in the terminal's `/mcp`.
      *
-     * The CLI hands over an address, the panel opens it for the person, and the code from the browser is
-     * caught by the CLI itself: it has raised a local handler for that inside the conversation's
-     * process. So all that is left is to ask for the status again - about the sign-in's end it sends no
-     * separate event.
+     * The CLI hands over an address and says whether it is waiting for the browser's callback itself: for
+     * an OAuth server it raises a handler inside the conversation's process, on this machine's loopback,
+     * and the page has to be opened here - so the panel opens it, and a phone is told the sign-in stays
+     * at the desk. A claude.ai connector is different (`callbackExpected: false` - measured on 2.1.263):
+     * it is signed in on claude.ai itself and nothing comes back to this machine, so the address goes to
+     * whoever asked, and a phone opens it in its own browser.
+     *
+     * About the sign-in's end the CLI sends no separate event either way, so the status is asked for
+     * again a few times afterwards.
      */
-    fun authenticateMcp(sessionId: String, server: String) {
+    fun authenticateMcp(sessionId: String, server: String, clientId: String = "", asker: String = clientId) {
         if (server.isEmpty()) return
+
+        val local = clientId.isEmpty() || hub.isLocal(clientId)
 
         hub.conversations.mcpAuthenticate(
             sessionId,
             server,
             onResult = { response ->
                 val url = response["authUrl"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val callbackHere = response["callbackExpected"]?.jsonPrimitive?.booleanOrNull != false
 
                 if (url.isEmpty()) {
                     // No sign-in was needed - the server let it through, and the status will show that.
@@ -627,8 +636,31 @@ internal class ProjectCatalog(
                     return@mcpAuthenticate
                 }
 
-                BrowserUtil.browse(url)
-                sendMcpActionResult(true, "Finish signing in to $server in the browser - the list updates itself.")
+                if (!local && callbackHere) {
+                    // The page would send the person's browser back to a port of this machine, which a
+                    // phone does not have. Said rather than attempted: a sign-in that ends on a dead
+                    // redirect looks like a sign-in that failed for no reason.
+                    sendMcpActionResult(false, "Signing in to $server ends in a browser on the machine with the IDE - finish it at the desk.")
+                    return@mcpAuthenticate
+                }
+
+                if (local) {
+                    BrowserUtil.browse(url)
+                    sendMcpActionResult(true, "Finish signing in to $server in the browser - the list updates itself.")
+                } else {
+                    // The address to the one device that asked, not to the room: it is a sign-in somebody
+                    // opened, of no interest to the other phones watching this project.
+                    hub.emitTo(
+                        clientId,
+                        buildJsonObject {
+                            put("type", "mcpSignIn")
+                            put("name", server)
+                            put("url", url)
+                        }.toString(),
+                        asker,
+                    )
+                }
+
                 for (delay in MCP_AUTH_REFRESH_SECONDS) scheduleMcpRefresh(sessionId, delay)
             },
             onFailure = { error -> sendMcpActionResult(false, error) },

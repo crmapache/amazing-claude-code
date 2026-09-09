@@ -142,10 +142,13 @@ internal object RemoteCommands {
          * `.mcp.json`. Refusing this one bought no safety; it bought a screen that could see a server
          * was down and nothing else.
          *
-         * `mcpAuthenticate` is the one left refused below, and not out of caution: the CLI catches the
-         * browser's callback on a port of its own on THAT machine, so a sign-in opened from here would
-         * send the person to a page whose redirect lands on a port their phone does not have. The screen
-         * says "at the desk" instead of offering a button that cannot work.
+         * `mcpAuthenticate` is allowed with a condition the IDE checks rather than the phone: the CLI
+         * answers a sign-in with an address and says whether it expects the browser's callback on a port
+         * of its own on THIS machine. For an OAuth server it does, and a page opened on a phone would be
+         * redirected to a port the phone does not have - so that answer is refused out loud and the row
+         * stays "at the desk". A claude.ai connector is signed in on claude.ai itself
+         * (`callbackExpected: false`, measured on 2.1.263), and its address is handed to the phone to
+         * open (see ProjectCatalog.authenticateMcp).
          *
          * What comes back is cut down on the way out - a server's command line is a path on that machine
          * and sometimes a secret in an argument, and the phone is never shown either (see
@@ -153,6 +156,7 @@ internal object RemoteCommands {
          */
         "mcpList",
         "mcpReconnect",
+        "mcpAuthenticate",
         "mcpAdd",
         "mcpRemove",
         /**
@@ -268,8 +272,8 @@ internal object RemoteCommands {
      *   things a phone is for;
      * - `login`/`logout`, `accountAdd` and `designLogin` open a terminal on that machine and hand it a
      *   browser sign-in - a thing a sofa cannot finish, whoever asked for it;
-     * - `mcpAuthenticate` is the same shape: the CLI catches the browser's callback on a port of that
-     *   machine, so the browser has to be that machine's.
+     * - a sign-in whose callback the CLI catches on a port of that machine is refused by the IDE at the
+     *   moment the CLI says so, not by this list - see `mcpAuthenticate` above.
      */
     val DENIED = setOf(
         /**
@@ -454,16 +458,6 @@ internal object RemoteCommands {
         "voiceCaptureHotkey",
         "voiceStopCapture",
         "voiceClearHotkey",
-        /*
-         * Signing in to an MCP server. The CLI hands back an address, and whoever asked opens it - but
-         * the code from that browser comes back to a handler the CLI raised inside the conversation's
-         * own process, on that machine's loopback. A phone that opened the address would sign in and
-         * then be redirected to a port it does not have.
-         *
-         * So the screen names the state and says where it is finished, which is the honest answer; the
-         * rest of that screen - the list, reconnecting, adding and removing - is allowed above.
-         */
-        "mcpAuthenticate",
         /*
          * Installing a plugin, and adding the marketplace that supplies them.
          *

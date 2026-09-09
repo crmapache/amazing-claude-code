@@ -217,7 +217,7 @@ export const ja: Dict = {
       subtitle: 'どんな一連の作業かを言えば、Claude が書き起こします',
       label: 'どんな作業か',
       hint: '一連の作業を説明すると、Claude が書き起こします。何を、どの順で、最後に何が成り立っていればよいか。',
-      keys: '先にプロジェクトを読むので、30 秒ほどかかります。',
+      keys: '先にプロジェクトとスキルを読むので、高い労力の設定では数分かかることがあります。',
       write: 'Claude に書いてもらう',
       byHand: '自分で組む',
       going: 'プロジェクトを読んで書いています…',
@@ -1270,6 +1270,8 @@ export const ja: Dict = {
 
     scenarios: {
       running: '実行中',
+      repository: 'リポジトリ',
+      inRepository: (name: string): string => `${name} 内`,
       nothingRunning: 'このプロジェクトでいま動いているものはありません。',
       none: 'このプロジェクトには一連の作業が書き留められていません。',
       create: '新規',
@@ -1304,6 +1306,7 @@ export const ja: Dict = {
 
     tabs: {
       title: '会話',
+      fork: 'この会話をフォーク',
       note: 'フォークは自分のグループに残ります。色の帯と字下げが、どの会話から生まれたかを示します。並べ替えは机の上のままです。',
     },
 
@@ -1342,9 +1345,11 @@ export const ja: Dict = {
     mcp: {
       addServer: 'サーバーを追加',
       atDesk: '机の上で',
+      continueSignIn: 'claude.ai で続ける',
       removeAsk: (name) => `${name} を削除しますか？反映のため会話が再起動し、そこで動いているものはすべて止まります。`,
       restartNote: 'サーバーは起動時に読まれるので会話が再起動します。そこで動いているものはすべて止まります。',
-      deskNote: 'サーバーへのサインインは机の上のままです。Claude Code はそのマシンでブラウザの応答を受け取るので、ここから始めたサインインは終わらせようがありません。',
+      deskNote:
+        'claude.ai のコネクタは claude.ai 上でサインインするので、ここから完了できます。それ以外のサーバーのサインインは IDE のあるマシンのブラウザで終わるため、デスクで行います。',
     },
 
     plugins: {

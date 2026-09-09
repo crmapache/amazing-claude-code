@@ -12,6 +12,7 @@ import {
 } from '../../feed/usage'
 import type { ExtraUsage, UsageWindow } from '../../protocol'
 import type { ProjectFacts } from '../facts'
+import { Sheet } from './Sheet'
 import m from '../mobile.module.css'
 import { useT } from '../../i18n'
 
@@ -38,49 +39,39 @@ export const Limits = ({ facts, context, onClose }: LimitsProps) => {
   const burning = facts.extra?.active ? limitWindowRing(facts.extra.window) : null
 
   return (
-    <div className={m.sheetScrim} onClick={onClose}>
-      {/* The sheet is not the scrim: a tap inside it must not count as a tap outside. */}
-      <div className={m.sheet} onClick={(event) => event.stopPropagation()}>
-        <div className={m.sheetGrab} />
-        <div className={m.sheetHead}>
-          <span className={m.sheetTitle}>{t.mobile.limits.title}</span>
-          <button type="button" className={m.sheetClose} aria-label={t.common.close} onClick={onClose}>
-            ×
-          </button>
-        </div>
+    <Sheet title={t.mobile.limits.title} bodyClassName={m.limBody} onClose={onClose}>
+      <>
+      {/* Extra usage stands instead of the window that ran out - that window's percentage cannot move
+          any more, and what is worth knowing is that the work is being billed (the same substitution
+          as on the rings - see UsageMeters). Which window it replaces is said by the event, so an
+          exhausted week does not report itself in the five-hour row. */}
+      {burning === 'session' ? (
+        <ExtraWindow extra={facts.extra!} />
+      ) : facts.session ? (
+        <Window
+          name={t.mobile.limits.fiveHourWindow}
+          usage={facts.session}
+          color={paceColor(facts.session.percent, facts.session.resets, FIVE_HOUR_MS)}
+        />
+      ) : null}
 
-        <div className={m.limBody}>
-          {/* Extra usage stands instead of the window that ran out - that window's percentage cannot move
-              any more, and what is worth knowing is that the work is being billed (the same substitution
-              as on the rings - see UsageMeters). Which window it replaces is said by the event, so an
-              exhausted week does not report itself in the five-hour row. */}
-          {burning === 'session' ? (
-            <ExtraWindow extra={facts.extra!} />
-          ) : facts.session ? (
-            <Window
-              name={t.mobile.limits.fiveHourWindow}
-              usage={facts.session}
-              color={paceColor(facts.session.percent, facts.session.resets, FIVE_HOUR_MS)}
-            />
-          ) : null}
-
-          {burning === 'week' ? (
-            <>
-              <div className={m.limDivider} />
-              <ExtraWindow extra={facts.extra!} />
+      {burning === 'week' ? (
+        <>
+          <div className={m.limDivider} />
+          <ExtraWindow extra={facts.extra!} />
             </>
           ) : facts.week ? (
             <>
-              <div className={m.limDivider} />
-              <Window
-                name={t.mobile.limits.weeklyWindow}
-                usage={facts.week}
-                color={paceColor(facts.week.percent, facts.week.resets, WEEK_MS)}
-                pace={budget}
-              />
-              {budget === null ? null : (
-                <p className={m.limNote}>{t.mobile.limits.paceNote(budget)}</p>
-              )}
+          <div className={m.limDivider} />
+          <Window
+            name={t.mobile.limits.weeklyWindow}
+            usage={facts.week}
+            color={paceColor(facts.week.percent, facts.week.resets, WEEK_MS)}
+            pace={budget}
+          />
+          {budget === null ? null : (
+            <p className={m.limNote}>{t.mobile.limits.paceNote(budget)}</p>
+          )}
             </>
           ) : null}
 
@@ -110,16 +101,16 @@ export const Limits = ({ facts, context, onClose }: LimitsProps) => {
 
           {facts.todayTokens ? (
             <>
-              <div className={m.limDivider} />
-              <div className={m.limRow}>
-                <span className={m.limText}>
-                  <span className={m.limName}>{t.mobile.limits.spentToday}</span>
-                  <span className={m.limMeta}>{t.mobile.limits.acrossProjects}</span>
-                </span>
-                <span className={m.limValue} style={{ color: 'var(--acc-branch-light)' }}>
-                  {facts.todayTokens}
-                </span>
-              </div>
+          <div className={m.limDivider} />
+          <div className={m.limRow}>
+            <span className={m.limText}>
+              <span className={m.limName}>{t.mobile.limits.spentToday}</span>
+              <span className={m.limMeta}>{t.mobile.limits.acrossProjects}</span>
+            </span>
+            <span className={m.limValue} style={{ color: 'var(--acc-branch-light)' }}>
+              {facts.todayTokens}
+            </span>
+          </div>
             </>
           ) : null}
 
@@ -128,9 +119,8 @@ export const Limits = ({ facts, context, onClose }: LimitsProps) => {
             // started IDE has asked nobody anything. Saying so beats an empty sheet.
             <p className={m.limEmpty}>{t.mobile.limits.noWindows}</p>
           ) : null}
-        </div>
-      </div>
-    </div>
+      </>
+    </Sheet>
   )
 }
 

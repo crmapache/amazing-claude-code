@@ -50,7 +50,7 @@ export const ScenarioStep = ({
         </div>
       </header>
 
-      <div className={m.scenarioList}>
+      <div className={m.pageList}>
         {step?.verdictReason || step?.error ? (
           <div className={`${m.card} ${m.stepVerdictCard}`}>
             <span className={m.stepVerdictLabel}>{t.mobile.scenarios.step.verdict}</span>

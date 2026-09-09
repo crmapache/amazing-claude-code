@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { formatDuration } from '../../feed/tools'
 import { useNow } from '../../hooks/useNow'
 import { useLocale, useT } from '../../i18n'
-import type { Scenario, ScenarioRunSummary, ScenarioSchedule, ScenarioScope } from '../../protocol'
+import type { Scenario, ScenarioRunSummary, ScenarioSchedule } from '../../protocol'
 import { StatePill } from '../../components/scenarios/StatePill'
 import { BANDS, type ScenariosBand } from '../../components/scenarios/view'
 import { clockLabel, defaultHour, nextNote, schedulesOf, weekdayName, whenLabel } from '../../scenarios/schedule'
@@ -13,9 +13,10 @@ import { cardRuns, passesOf, problemsOf, blocking } from '../../scenarios/rules'
 import { pastRuns, runMarks, runningRuns } from '../../scenarios/runs'
 import { startedLabel } from '../../scenarios/moments'
 import type { ScenarioShelves } from '../facts'
-import { outcomeText } from '../scenarios'
+import { outcomeText, type RepositoryChoice, type ShelfChoice } from '../scenarios'
 import { Back } from './Back'
 import { HourSheet, NewScenarioSheet, ScenarioActionsSheet, StartSheet } from './ScenarioSheets'
+import { PickSheet } from './ScenarioPick'
 import m from '../mobile.module.css'
 
 interface ScenariosProps {
@@ -31,6 +32,11 @@ interface ScenariosProps {
    */
   live: ScenarioRunSummary[]
   project: string
+  /** The project whose shelf this screen shows - the one named by the row over the shelf. */
+  repository: { agentId: string; projectKey: string }
+  /** Every project of every paired IDE, for the row that picks one - see RepositoryChoice. */
+  repositories: RepositoryChoice[]
+  onPickRepository: (agentId: string, projectKey: string) => void
   /** What the IDE said it could not do, as a name there are words for. Empty when there is nothing. */
   problem: string
   /** When a model started writing a scenario, or 0 - the sheet counts the wait out loud. */
@@ -46,8 +52,9 @@ interface ScenariosProps {
   ) => void
   onUnschedule: (scheduleId: string) => void
   onEdit: (scenario: Scenario) => void
-  onNew: (draft: Scenario) => void
-  onDraft: (description: string, scope: ScenarioScope) => void
+  /** A blank one, and where it is to be kept - the shelf is chosen before the editor opens. */
+  onNew: (draft: Scenario, shelf: ShelfChoice) => void
+  onDraft: (description: string, shelf: ShelfChoice) => void
   onCancelDraft: () => void
   onDuplicate: (scenario: Scenario) => void
   onDelete: (scenario: Scenario) => void
@@ -77,6 +84,9 @@ export const Scenarios = ({
   shelves,
   live,
   project,
+  repository,
+  repositories,
+  onPickRepository,
   problem,
   draftingSince,
   draftError,
@@ -118,6 +128,32 @@ export const Scenarios = ({
   const lastAnswers = (scenario: Scenario): Record<string, string> =>
     (shelves?.past ?? []).find((run) => run.scenarioId === scenario.id && run.scope === scenario.scope)?.inputs ?? {}
 
+  const shared = list.filter((one) => one.scope === 'user')
+  const own = list.filter((one) => one.scope === 'project')
+
+  const card = (scenario: Scenario) => (
+    <ScenarioCard
+      key={`${scenario.scope}:${scenario.id}`}
+      scenario={scenario}
+      hours={schedulesOf(schedules, scenario)}
+      onOpen={() => setSheet({ kind: 'row', scenario })}
+      onRun={() =>
+        scenario.inputs.length === 0
+          ? onRun(scenario, {})
+          : setSheet({ kind: 'run', scenario, values: lastAnswers(scenario) })
+      }
+      onSchedule={() =>
+        setSheet({
+          kind: 'when',
+          scenario,
+          scheduleId: '',
+          hour: { at: defaultHour(), repeat: 'once', weekday: 1 },
+          values: lastAnswers(scenario),
+        })
+      }
+    />
+  )
+
   return (
     <>
       <header className={m.threadHeader}>
@@ -130,7 +166,9 @@ export const Scenarios = ({
           <button
             type="button"
             className={m.headerWord}
-            onClick={() => setSheet({ kind: 'new', description: '', scope: shelves?.canShare ? 'project' : 'user' })}
+            // The shared shelf by default: a scenario that follows the person around is the likelier
+            // thing to want from a phone, and the repository is one chip away.
+            onClick={() => setSheet({ kind: 'new', description: '', shelf: { scope: 'user' } })}
           >
             {t.mobile.scenarios.create}
           </button>
@@ -154,7 +192,7 @@ export const Scenarios = ({
         </div>
       </header>
 
-      <div className={m.scenarioList}>
+      <div className={m.pageList}>
         {problem ? <p className={m.noteBad}>{outcomeText(t, problem)}</p> : null}
         {shelves === null && <p className={m.empty}>{t.common.loading}</p>}
 
@@ -210,42 +248,35 @@ export const Scenarios = ({
                 could not be read draws exactly what an empty one does - see ScenarioShelves. */}
             {shelves.schedulesUnread && <p className={m.empty}>{t.scenarios.when.unread}</p>}
 
-            {(['project', 'user'] as const).map((scope) => {
-              const shelf = list.filter((one) => one.scope === scope)
-              if (shelf.length === 0) return null
+            {/*
+              The shelf every project shares comes first: it is the same whichever project this screen was
+              opened from, and it is the one a phone most often wants. The repository's shelf follows,
+              under a row that names the repository and changes it - "in this repository" used to stand
+              there alone, and from a sofa there was no telling which one, nor any way to look at another.
+            */}
+            <p className={m.bandTitle}>{t.scenarios.shelves.user}</p>
+            {shared.length === 0 ? (
+              <p className={m.empty}>{t.scenarios.shelves.userEmpty}</p>
+            ) : (
+              shared.map(card)
+            )}
 
-              return (
-                <div key={scope}>
-                  <p className={m.bandTitle}>
-                    {scope === 'project' ? t.scenarios.shelves.project : t.scenarios.shelves.user}
-                  </p>
-                  {shelf.map((scenario) => (
-                    <ScenarioCard
-                      key={`${scenario.scope}:${scenario.id}`}
-                      scenario={scenario}
-                      hours={schedulesOf(schedules, scenario)}
-                      onOpen={() => setSheet({ kind: 'row', scenario })}
-                      onRun={() =>
-                        scenario.inputs.length === 0
-                          ? onRun(scenario, {})
-                          : setSheet({ kind: 'run', scenario, values: lastAnswers(scenario) })
-                      }
-                      onSchedule={() =>
-                        setSheet({
-                          kind: 'when',
-                          scenario,
-                          scheduleId: '',
-                          hour: { at: defaultHour(), repeat: 'once', weekday: 1 },
-                          values: lastAnswers(scenario),
-                        })
-                      }
-                    />
-                  ))}
-                </div>
-              )
-            })}
+            <div className={m.card}>
+              <button type="button" className={m.foldRow} onClick={() => setSheet({ kind: 'repo' })}>
+                <span className={m.foldName}>{t.mobile.scenarios.repository}</span>
+                <span className={m.foldValue}>{project}</span>
+                <span className={m.taskRowChevron}>›</span>
+              </button>
+            </div>
 
-            {list.length === 0 ? <p className={m.empty}>{t.mobile.scenarios.none}</p> : null}
+            <p className={m.bandTitle}>{t.mobile.scenarios.inRepository(project)}</p>
+            {!shelves.canShare ? (
+              <p className={m.empty}>{t.scenarios.shelves.noProject}</p>
+            ) : own.length === 0 ? (
+              <p className={m.empty}>{t.scenarios.shelves.projectEmpty}</p>
+            ) : (
+              own.map(card)
+            )}
           </>
         ) : null}
 
@@ -349,19 +380,47 @@ export const Scenarios = ({
       {sheet.kind === 'new' ? (
         <NewScenarioSheet
           description={sheet.description}
-          scope={sheet.scope}
-          canShare={shelves?.canShare === true}
+          shelf={sheet.shelf}
+          repositories={repositories}
           since={draftingSince}
           error={draftError}
           onChange={(description) => setSheet({ ...sheet, description })}
-          onScope={(scope) => setSheet({ ...sheet, scope })}
-          onDraft={() => onDraft(sheet.description, sheet.scope)}
+          onShelf={(shelf) => setSheet({ ...sheet, shelf })}
+          onDraft={() => onDraft(sheet.description, sheet.shelf)}
           onCancelDraft={onCancelDraft}
           onByHand={() => {
             // The words are chosen here, where the dictionary is: a blank scenario carries the name it
             // and its first stage go by, and the app above has no words of its own.
-            onNew(blankScenario(t.scenarios.newName, t.scenarios.stage, sheet.scope))
+            onNew(blankScenario(t.scenarios.newName, t.scenarios.stage, sheet.shelf.scope), sheet.shelf)
             setSheet({ kind: 'none' })
+          }}
+          onClose={() => setSheet({ kind: 'none' })}
+        />
+      ) : null}
+
+      {sheet.kind === 'repo' ? (
+        <PickSheet
+          title={t.mobile.scenarios.repository}
+          value={String(
+            repositories.findIndex(
+              (one) => one.agentId === repository.agentId && one.projectKey === repository.projectKey,
+            ),
+          )}
+          // Numbered rather than keyed by the two ids joined: neither id promises to be free of the
+          // character that would join them.
+          options={repositories.map((one, index) => ({
+            id: String(index),
+            label: one.name,
+            // A closed project cannot show its shelf from here - the shelves are facts of a project the
+            // IDE holds open (see RemoteFeed) - and is listed greyed rather than left out, so that a
+            // repository somebody is looking for is seen to be closed rather than missing.
+            hint: one.closed ? t.mobile.sessions.projectClosed : undefined,
+            disabled: one.closed,
+          }))}
+          onPick={(id) => {
+            const chosen = repositories[Number(id)]
+            setSheet({ kind: 'none' })
+            if (chosen) onPickRepository(chosen.agentId, chosen.projectKey)
           }}
           onClose={() => setSheet({ kind: 'none' })}
         />
@@ -382,7 +441,8 @@ type Sheet =
       hour: { at: number; repeat: ScenarioSchedule['repeat']; weekday: number }
       values: Record<string, string>
     }
-  | { kind: 'new'; description: string; scope: ScenarioScope }
+  | { kind: 'new'; description: string; shelf: ShelfChoice }
+  | { kind: 'repo' }
 
 /**
  * One run that is going: what it is doing, and the two or three things to do about it.

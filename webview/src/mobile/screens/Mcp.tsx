@@ -10,9 +10,17 @@ interface McpProps {
   servers: McpServerInfo[] | null
   /** How the last request went, in the IDE's own words. Empty when there is nothing to say. */
   message: { ok: boolean; text: string } | null
+  /**
+   * The address a sign-in is finished at, by server - see the `mcpSignIn` message.
+   *
+   * Held rather than opened: it arrives a moment after the press, and a page a phone opens outside a
+   * press is a page the browser blocks. So the row grows a link, and the link is the press.
+   */
+  signIns: Record<string, string>
   project: string
   onRefresh: () => void
   onReconnect: (name: string) => void
+  onAuthenticate: (name: string) => void
   onRemove: (name: string) => void
   onAdd: (name: string, command: string, transport: string) => void
   onBack: () => void
@@ -50,17 +58,23 @@ const DOT: Record<string, string> = {
  * person away from the desk actually needs: a run that has stopped because a server fell over, and no
  * way to see it or bring it back.
  *
- * Two things are honestly missing rather than hidden. A server's command line is not sent here at all -
+ * One thing is honestly missing rather than hidden: a server's command line is not sent here at all -
  * it is a path on that machine and sometimes a secret in an argument (see RemoteFeed.forPhone) - so a
- * row is named by what it is and what state it is in. And signing one in stays at the desk: the CLI
- * catches the browser's callback on a port of that machine, so a sign-in begun here would end nowhere.
+ * row is named by what it is and what state it is in.
+ *
+ * Signing in is split by where it ends. An OAuth server's sign-in comes back to a port the CLI opened on
+ * that machine, so a page opened on a phone would be redirected nowhere - those rows say "at the desk".
+ * A claude.ai connector is signed in on claude.ai itself and nothing comes back to the machine, so the
+ * IDE hands the phone the address and the phone opens it (see ProjectCatalog.authenticateMcp).
  */
 export const Mcp = ({
   servers,
   message,
+  signIns,
   project,
   onRefresh,
   onReconnect,
+  onAuthenticate,
   onRemove,
   onAdd,
   onBack,
@@ -94,7 +108,7 @@ export const Mcp = ({
         </div>
       </header>
 
-      <div className={m.list}>
+      <div className={m.pageList}>
         {message ? (
           <p className={message.ok ? m.noteOk : m.noteBad}>{message.text}</p>
         ) : null}
@@ -108,7 +122,9 @@ export const Mcp = ({
               <ServerRow
                 key={server.name}
                 server={server}
+                signIn={signIns[server.name]}
                 onReconnect={() => onReconnect(server.name)}
+                onAuthenticate={() => onAuthenticate(server.name)}
                 onRemove={
                   removable(server)
                     ? () => {
@@ -205,13 +221,28 @@ export const Mcp = ({
 const removable = (server: McpServerInfo): boolean =>
   server.scope === 'project' || server.scope === 'user' || server.scope === 'local'
 
+/**
+ * Whether a sign-in to this server can be finished from a phone at all.
+ *
+ * The CLI is the one that knows - it says with the address whether it waits for a callback on the
+ * machine - and the IDE refuses the other kind out loud. This is the same answer read off the row, so
+ * that the button is offered only where pressing it can end well: the connectors of the claude.ai account
+ * are the ones signed in on claude.ai.
+ */
+const signsInHere = (server: McpServerInfo): boolean => server.transport === 'claudeai-proxy'
+
 const ServerRow = ({
   server,
+  signIn,
   onReconnect,
+  onAuthenticate,
   onRemove,
 }: {
   server: McpServerInfo
+  /** Where its sign-in is finished, once the IDE has said - see McpProps.signIns. */
+  signIn?: string
   onReconnect: () => void
+  onAuthenticate: () => void
   onRemove?: () => void
 }) => {
   const t = useT()
@@ -231,9 +262,21 @@ const ServerRow = ({
         </span>
       </span>
 
-      {/* A sign-in is the one action this screen names but does not offer: it ends in a browser on the
-          machine with the IDE, and a button here would send somebody to a page that cannot come back. */}
-      {needsAuth ? (
+      {/* A sign-in that ends on claude.ai is offered; one that ends in a browser on the machine with the
+          IDE is named and left there - a button that sends somebody to a page that cannot come back is
+          worse than a word. Once the IDE has answered with the address, the row's button IS the address:
+          a page has to be opened by a press, and the press that asked for it is long over. */}
+      {needsAuth && signsInHere(server) ? (
+        signIn ? (
+          <a className={m.rowButtonPrimary} href={signIn} target="_blank" rel="noopener noreferrer">
+            {t.mobile.mcp.continueSignIn}
+          </a>
+        ) : (
+          <button type="button" className={m.rowButtonPrimary} onClick={onAuthenticate}>
+            {t.mcp.authenticate}
+          </button>
+        )
+      ) : needsAuth ? (
         <span className={m.atDesk}>{t.mobile.mcp.atDesk}</span>
       ) : (
         <button type="button" className={m.rowButton} onClick={onReconnect}>

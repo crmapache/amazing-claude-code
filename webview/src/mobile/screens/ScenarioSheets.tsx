@@ -1,12 +1,14 @@
 import { formatDuration } from '../../feed/tools'
 import { useTicking } from '../../hooks/useTicking'
 import { useLocale, useT } from '../../i18n'
-import type { Scenario, ScenarioRepeat, ScenarioSchedule, ScenarioScope } from '../../protocol'
+import type { Scenario, ScenarioRepeat, ScenarioSchedule } from '../../protocol'
 import { missingInputs } from '../../scenarios/rules'
 import { HOURS, MINUTES, pad2, WEEKDAYS, weekdayName, whenLabel } from '../../scenarios/schedule'
 import { nextDue } from '../../scenarios/due'
 import { countdown } from '../../scenarios/timetable'
 import { Sheet } from './Sheet'
+import { ShelfChips } from './ShelfChips'
+import type { RepositoryChoice, ShelfChoice } from '../scenarios'
 import m from '../mobile.module.css'
 
 /**
@@ -315,25 +317,26 @@ export const HourSheet = ({
  */
 export const NewScenarioSheet = ({
   description,
-  scope,
-  canShare,
+  shelf,
+  repositories,
   since,
   error,
   onChange,
-  onScope,
+  onShelf,
   onDraft,
   onCancelDraft,
   onByHand,
   onClose,
 }: {
   description: string
-  scope: ScenarioScope
-  canShare: boolean
+  /** Where it will be kept - the shared shelf, or one repository by name (see ShelfChips). */
+  shelf: ShelfChoice
+  repositories: RepositoryChoice[]
   /** When the model started writing, or 0 when nobody is. */
   since: number
   error: string
   onChange: (description: string) => void
-  onScope: (scope: ScenarioScope) => void
+  onShelf: (shelf: ShelfChoice) => void
   onDraft: () => void
   onCancelDraft: () => void
   onByHand: () => void
@@ -393,24 +396,9 @@ export const NewScenarioSheet = ({
       {error ? <p className={m.noteBad}>{error}</p> : null}
 
       <div className={m.sheetLabel}>{t.scenarios.editor.shelf}</div>
-      <div className={m.segmented}>
-        <button
-          type="button"
-          className={`${m.segment} ${scope === 'project' ? m.segmentOn : ''}`}
-          disabled={!canShare || drafting}
-          onClick={() => onScope('project')}
-        >
-          {t.scenarios.editor.inRepository}
-        </button>
-        <button
-          type="button"
-          className={`${m.segment} ${scope === 'user' ? m.segmentOn : ''}`}
-          disabled={drafting}
-          onClick={() => onScope('user')}
-        >
-          {t.scenarios.editor.mine}
-        </button>
-      </div>
+      {/* Chosen here rather than in the editor afterwards, because the model reads the repository it is
+          writing for (see ScenarioAuthor): which one has to be known before it starts. */}
+      <ShelfChips shelf={shelf} repositories={repositories} disabled={drafting} onPick={onShelf} />
     </Sheet>
   )
 }

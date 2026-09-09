@@ -120,6 +120,9 @@ internal class RemoteLimits {
              */
             "mcpList" to 20,
             "mcpReconnect" to 10,
+            // A sign-in is a control request to the conversation's process and, for a connector, a page
+            // opened on the phone: one press per server, a handful a minute.
+            "mcpAuthenticate" to 5,
             "mcpAdd" to 5,
             "mcpRemove" to 5,
             "pluginList" to 10,

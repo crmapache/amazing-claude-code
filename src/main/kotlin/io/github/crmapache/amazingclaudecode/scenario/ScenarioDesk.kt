@@ -8,15 +8,21 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.util.concurrency.AppExecutorUtil
+import io.github.crmapache.amazingclaudecode.claude.ClaudeCommandHints
 import io.github.crmapache.amazingclaudecode.claude.ClaudeExecutable
 import io.github.crmapache.amazingclaudecode.claude.ClaudeHistory
+import io.github.crmapache.amazingclaudecode.claude.ClaudeHome
+import io.github.crmapache.amazingclaudecode.claude.ClaudePlugin
 import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
+import io.github.crmapache.amazingclaudecode.claude.EffortLevels
+import io.github.crmapache.amazingclaudecode.claude.InstalledPlugin
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
 import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import io.github.crmapache.amazingclaudecode.remote.RemoteFeed
 import io.github.crmapache.amazingclaudecode.search.AiRuns
 import com.intellij.execution.process.ProcessHandler
+import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.util.concurrent.ConcurrentHashMap
@@ -310,11 +316,59 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
         if (id.isBlank()) return
         drafts.asked(id)
 
+        /*
+         * What there is to call is read off the disk now, not remembered from the slash hint: the list is
+         * the whole of what the writer knows about skills, and the rule beside each name is what decides
+         * whether a card can start at all (see ScenarioAuthor). The plugins' folders come from the CLI
+         * itself, and that run can fail or dawdle - then the project's and the person's own skills are
+         * still listed, exactly as the hint under the field does it (see ProjectCatalog).
+         */
+        ClaudePlugin.installed(
+            project.basePath,
+            onResult = { installed -> askTheWriter(clientId, id, description, installed) },
+            onError = { message ->
+                thisLogger().info("Writing a scenario without the plugins' skills: $message")
+                askTheWriter(clientId, id, description, emptyList())
+            },
+        )
+    }
+
+    /** Everything the writer is handed, gathered once the plugins have answered (see [draft]). */
+    private fun askTheWriter(clientId: String, id: String, description: String, installed: List<InstalledPlugin>) {
+        // Taken back while the plugins were being listed: nothing is raised for a form nobody is watching.
+        if (drafts.isCancelled(id)) return
+
+        // The account the scenarios themselves run on, so the writing is billed where the running is.
+        val accountId = ClaudeAccounts.getInstance().currentId
+        val home = ClaudeHome.of(project.basePath)
+        val skills = ClaudeCommandHints.scan(project.basePath, installed)
+
+        /*
+         * Where those skills are defined, so the writer may read them: the person's own folders and the
+         * installed plugins' - the project's are under the working directory already. Only what exists,
+         * and only on this machine: a CLI inside WSL has no use for a path of this JVM's, and a file it
+         * cannot open is better left unnamed than named and failed on. Each once: a plugin installed in
+         * two scopes is listed twice with one path (seen live), and the flag would be repeated with it.
+         */
+        val readable = if (home.remote) {
+            emptyList()
+        } else {
+            buildList {
+                add(File(home.configDirectory, "skills"))
+                add(File(home.configDirectory, "commands"))
+                installed.mapNotNull { it.installPath }.forEach { add(home.hostPath(it)) }
+            }.filter { it.isDirectory }.map { it.absolutePath }.distinct()
+        }
+        val listed = if (home.remote) skills.mapValues { (_, hint) -> hint.copy(file = "") } else skills
+
         ScenarioAuthor.write(
             workingDirectory = project.basePath,
             description = description,
-            // The account the scenarios themselves run on, so the writing is billed where the running is.
-            accountId = ClaudeAccounts.getInstance().currentId,
+            accountId = accountId,
+            model = writingModel(accountId),
+            effort = EffortLevels.normalize(ClaudePreferences.startingEffort()),
+            skills = listed,
+            readableDirectories = readable,
             onStarted = { handler -> drafts.started(id, handler) },
             onError = { message ->
                 if (drafts.finished(id)) return@write
@@ -332,6 +386,25 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
     /** The person stopped waiting: the process goes, and its answer with it (see AiRuns). */
     fun cancelDraft(id: String) {
         drafts.cancel(id)
+    }
+
+    /**
+     * What the writing runs on: the model a new tab of this panel starts with, unless this account is
+     * known not to run it.
+     *
+     * The same clamp a conversation gets (see ClaudeSessions.modelFor), for the same reason: a model the
+     * account has no access to is not refused at launch, the process dies on its first message, and here
+     * that is a strip over the field saying the answer could not be read. Unknown counts as yes - the
+     * catalogue is asked for lazily, and an unasked one is the ordinary state of a project's first
+     * minutes. Empty leaves the choice to the CLI.
+     */
+    private fun writingModel(accountId: String): String {
+        val accounts = ClaudeAccounts.getInstance()
+        val wanted = ClaudePreferences.startingModel()
+        if (accounts.canRun(accountId, wanted) != false) return wanted
+
+        val own = accounts.account(accountId)?.model.orEmpty()
+        return if (own.isNotEmpty() && accounts.canRun(accountId, own) != false) own else ""
     }
 
     private fun drafted(clientId: String, id: String, scenario: Scenario?, error: String?) {
@@ -455,8 +528,8 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
         val walker = ScenarioEngine(
             workingDirectory = project.basePath,
             accountId = ClaudeAccounts.getInstance().currentId,
-            defaultModel = ClaudePreferences.model,
-            defaultEffort = ClaudePreferences.effort,
+            defaultModel = ClaudePreferences.startingModel(),
+            defaultEffort = ClaudePreferences.startingEffort(),
             start = record,
             onChange = { moved(record.id) },
             onFinished = { finished -> ended(finished) },
@@ -652,8 +725,8 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             val walker = ScenarioEngine(
                 workingDirectory = project.basePath,
                 accountId = ClaudeAccounts.getInstance().currentId,
-                defaultModel = ClaudePreferences.model,
-                defaultEffort = ClaudePreferences.effort,
+                defaultModel = ClaudePreferences.startingModel(),
+                defaultEffort = ClaudePreferences.startingEffort(),
                 start = record,
                 onChange = { moved(runId) },
                 onFinished = { finished -> ended(finished) },

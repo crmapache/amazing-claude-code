@@ -2314,10 +2314,33 @@ const formatClock = (ms: number): string => {
 }
 
 /**
+ * What a model's window is before the CLI has said - read off the model's own name.
+ *
+ * The exact figure arrives at a turn's end (see PanelState.context), so this only ever answers for a tab
+ * that has not spoken yet, and for one opened from the history before its first message. The answer it
+ * replaces was the account's last known window (see UsageFacts.contextWindow) - the largest of every
+ * model that account had run, which is a fact about the account and not about this tab: a fresh tab on
+ * "Opus 1M" opened at "0 of 200K" after a day on plain Opus, and a fresh Sonnet tab at "0 of 1M" after a
+ * day on the large one.
+ *
+ * Only what the name genuinely says. A "[1m]" mark is the CLI's own way of naming the large window, and
+ * the three families named here have the ordinary one; a model this cannot place keeps the fallback
+ * rather than a guess, and the CLI corrects all of it with the first turn.
+ */
+export const modelContextWindow = (model: string | undefined): number | undefined => {
+  if (!model) return undefined
+  if (/\[1m\]/i.test(model)) return 1_000_000
+  if (/opus|sonnet|haiku/i.test(model)) return 200_000
+  return undefined
+}
+
+/**
  * What the context meter shows: taken, total and the share.
  *
  * The window's size comes from the CLI itself (see PanelState.context): it depends on the model, with
- * "1M" models it is five times the usual, and arithmetic of ours cannot guess it.
+ * "1M" models it is five times the usual, and arithmetic of ours cannot guess it. Until it has said, the
+ * tab's own model is the next best answer (see modelContextWindow), and only then the fallback the
+ * caller brings - which is the account's last known window, and may be about another model entirely.
  *
  * What is taken, though, is chosen by freshness. The exact figure from the CLI arrives only at a turn's
  * end, so while a turn runs we show the estimate from the agent's latest answer (liveContextUsed):
@@ -2332,9 +2355,10 @@ export const contextOf = (
   const context = state.context
   const known = context && context.max > 0 ? context : undefined
   const live = state.liveContextUsed
+  const guessed = modelContextWindow(state.pendingModel ?? state.model) ?? (fallbackLimit > 0 ? fallbackLimit : 200_000)
 
   if (known || live !== undefined) {
-    const limit = known?.max ?? (fallbackLimit > 0 ? fallbackLimit : 200_000)
+    const limit = known?.max ?? guessed
     const used = live ?? known?.used ?? 0
 
     return { percent: Math.min(Math.round((used / limit) * 100), 100), used, limit }
@@ -2342,9 +2366,8 @@ export const contextOf = (
 
   const used =
     state.usage.input_tokens + state.usage.cache_read_input_tokens + state.usage.cache_creation_input_tokens
-  const limit = fallbackLimit > 0 ? fallbackLimit : 200_000
 
-  return { percent: contextUsage(state.usage, limit), used, limit }
+  return { percent: contextUsage(state.usage, guessed), used, limit: guessed }
 }
 
 /**

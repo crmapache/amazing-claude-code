@@ -14,6 +14,7 @@ import type {
 import { ClockContext } from '../hooks/useNow'
 import { planDecisionOf, useCardState } from '../hooks/useCardState'
 import { applyFact, emptyFacts, factsFor, isFact, liveRunsOf, type ProjectFacts } from './facts'
+import { shelfHome, type RepositoryChoice, type ShelfChoice } from './scenarios'
 import { useCalmColors } from '../hooks/useCalmColors'
 import { LocaleProvider, activeLocale } from '../i18n'
 import { RemoteClock } from './clock'
@@ -33,7 +34,7 @@ import { PIN_LIMIT, togglePin } from '../feed/pins'
 import type { FeedItem, TaskItem } from '../feed/types'
 import { usageOf, type UsageFacts } from '../feed/usage'
 import { chatHits, rowOf } from '../feed/search'
-import type { PaintedTerm, SearchHit, SearchProgressStep, SearchScope } from '../protocol'
+import type { PaintedTerm, ScenarioScope, SearchHit, SearchProgressStep, SearchScope } from '../protocol'
 import { Search, type SearchTab } from '../components/Search'
 import { useEarlierPages } from '../hooks/useEarlierPages'
 import { Accounts, type AccountsState } from './screens/Accounts'
@@ -182,6 +183,8 @@ export const App = () => {
    */
   const [mcp, setMcp] = useState<Record<string, McpServerInfo[]>>({})
   const [mcpNote, setMcpNote] = useState<{ ok: boolean; text: string } | null>(null)
+  /** The addresses connectors are signed in at, by server, once the IDE has answered (see `mcpSignIn`). */
+  const [mcpSignIns, setMcpSignIns] = useState<Record<string, string>>({})
   const [plugins, setPlugins] = useState<
     Record<string, { installed: InstalledPluginInfo[]; available: AvailablePluginInfo[] }>
   >({})
@@ -213,6 +216,16 @@ export const App = () => {
     tooBig: boolean
     /** The answer came back without one: it is on neither shelf any more. */
     gone: boolean
+    /**
+     * Where it was fetched from - which project's shelf - or null for one never saved.
+     *
+     * Saved somewhere else, the copy there has to go, as the store takes a scenario off its other shelf
+     * when it is moved between the two (see ScenarioStore.save): two files under one identifier is a
+     * scenario edited in one place and run from another.
+     */
+    origin: { agentId: string; projectKey: string; scope: ScenarioScope } | null
+    /** The project a shared copy is written through - see ShelfChoice and shelfHome. */
+    home: { agentId: string; projectKey: string }
   } | null>(null)
 
   /**
@@ -221,11 +234,19 @@ export const App = () => {
    * The moment rather than a yes-or-no, because the sheet counts the wait out loud - this reads the
    * project before it writes, so it takes half a minute.
    */
-  const [drafting, setDrafting] = useState<{ id: string; since: number; error: string }>({
-    id: '',
-    since: 0,
-    error: '',
-  })
+  const [drafting, setDrafting] = useState<{
+    id: string
+    since: number
+    error: string
+    /** Where what the model writes is to be kept - chosen before it starts, because it reads that project. */
+    shelf: ShelfChoice
+    /** The project the request went to, and the one a cancel has to go to as well. */
+    home: { agentId: string; projectKey: string }
+  }>({ id: '', since: 0, error: '', shelf: { scope: 'user' }, home: { agentId: '', projectKey: '' } })
+
+  /** The same, for the handler below, which is built once and would otherwise hold the first value it saw. */
+  const draftingRef = useRef(drafting)
+  draftingRef.current = drafting
 
   /** The log of the one step whose screen is open - see scenarioLog in protocol.ts. */
   const [stepLog, setStepLog] = useState<{
@@ -608,6 +629,12 @@ export const App = () => {
       return
     }
 
+    // Where a connector's sign-in is finished - to this phone alone, for the row that asked (see Mcp).
+    if (message.type === 'mcpSignIn') {
+      setMcpSignIns((current) => ({ ...current, [message.name]: message.url }))
+      return
+    }
+
     if (message.type === 'plugins') {
       setPlugins((current) => ({
         ...current,
@@ -663,13 +690,19 @@ export const App = () => {
      * place on this road where shortening is forbidden: what the editor is shown is what it saves back.
      */
     if (message.type === 'scenarioFetched') {
-      setEdit({
-        draft: message.scenario ?? null,
-        fresh: false,
-        tooBig: message.tooBig === true,
-        // The answer arrived, so a screen still holding nothing is holding nothing for a reason.
-        gone: !message.scenario && message.tooBig !== true,
-      })
+      // Onto what the editor already knows - where it came from and where it goes (see openEditor).
+      setEdit((current) =>
+        current
+          ? {
+              ...current,
+              draft: message.scenario ?? null,
+              fresh: false,
+              tooBig: message.tooBig === true,
+              // The answer arrived, so a screen still holding nothing is holding nothing for a reason.
+              gone: !message.scenario && message.tooBig !== true,
+            }
+          : current,
+      )
       return
     }
 
@@ -679,9 +712,21 @@ export const App = () => {
      * it is what they meant.
      */
     if (message.type === 'scenarioDrafted') {
-      setDrafting((current) => (current.id === message.id ? { id: '', since: 0, error: message.error ?? '' } : current))
+      const asked = draftingRef.current
+      if (asked.id !== message.id) return
+
+      setDrafting((current) => ({ ...current, id: '', since: 0, error: message.error ?? '' }))
       if (message.scenario) {
-        setEdit({ draft: message.scenario, fresh: true, tooBig: false, gone: false })
+        // On the shelf the sheet chose, whatever the machine's own choice was: the desk keeps a shelf of
+        // its own for what a model writes (see ScenarioDesk.shelfFor), and it is not this phone's.
+        setEdit({
+          draft: { ...message.scenario, scope: asked.shelf.scope },
+          fresh: true,
+          tooBig: false,
+          gone: false,
+          origin: null,
+          home: asked.home,
+        })
         setScreen((current) =>
           current.at === 'scenarios'
             ? { at: 'scenarioEditor', agentId: current.agentId, projectKey: current.projectKey }
@@ -1003,6 +1048,34 @@ export const App = () => {
    * known stays on it meanwhile, so the visit does not begin with a blank.
    */
   /**
+   * A fork of a whole conversation - the panel's `/fork`, from the sheet behind the open tab.
+   *
+   * Named after its parent: what the fork is about is what the parent was about, and the group's colour
+   * bar and the indent already say which one grew out of which (see TabsSheet). The panel names a
+   * bare fork by its number in the group; here the parent's title says more than "fork 2".
+   */
+  const forkWhole = useCallback(
+    (agentId: string, projectKey: string, parentId: string) => {
+      const sessionId = newSessionId()
+      const parent = projects
+        .find((item) => item.agentId === agentId && item.key === projectKey)
+        ?.sessions.find((session) => session.sessionId === parentId)
+
+      command(agentId, projectKey, {
+        type: 'newSession',
+        kind: 'fork',
+        sessionId,
+        parentId,
+        // Empty when there is no parent to read: the IDE names such a tab itself, as it does a "+".
+        title: deriveSessionTitle(parent?.title ?? '', 40),
+      })
+
+      enter(agentId, projectKey, sessionId, false)
+    },
+    [command, enter, projects],
+  )
+
+  /**
    * A conversation of one's own, carrying everything up to the message it was forked from.
    *
    * The same request the panel's "/fork" makes, and allowed over the wire for the same reason starting
@@ -1085,7 +1158,14 @@ export const App = () => {
   const openEditor = useCallback(
     (agentId: string, projectKey: string, scenario: Scenario) => {
       setScenarioNote('')
-      setEdit({ draft: null, fresh: false, tooBig: false, gone: false })
+      setEdit({
+        draft: null,
+        fresh: false,
+        tooBig: false,
+        gone: false,
+        origin: { agentId, projectKey, scope: scenario.scope },
+        home: { agentId, projectKey },
+      })
       setScreen({ at: 'scenarioEditor', agentId, projectKey })
       command(agentId, projectKey, { type: 'scenarioFetch', id: scenario.id, scope: scenario.scope })
     },
@@ -1100,18 +1180,51 @@ export const App = () => {
    * panel speaks ten languages and every one of its screens picks its own).
    */
   const openBlankEditor = useCallback(
-    (agentId: string, projectKey: string, draft: Scenario) => {
+    (agentId: string, projectKey: string, draft: Scenario, shelf: ShelfChoice) => {
       setScenarioNote('')
-      setEdit({ draft, fresh: true, tooBig: false, gone: false })
+      setEdit({
+        draft,
+        fresh: true,
+        tooBig: false,
+        gone: false,
+        origin: null,
+        home: shelfHome(shelf, { agentId, projectKey }),
+      })
       setScreen({ at: 'scenarioEditor', agentId, projectKey })
     },
     [],
+  )
+
+  /**
+   * Every project of every paired IDE, as a place a scenario may be kept - see RepositoryChoice.
+   *
+   * Whether one can take a shared scenario is known only once its shelves have arrived; until then it is
+   * taken to be able to, and the machine answers with a refusal if it cannot - which is what it would
+   * have answered anyway.
+   */
+  const repositories = useMemo<RepositoryChoice[]>(
+    () =>
+      projects.map((project) => ({
+        agentId: project.agentId,
+        projectKey: project.key,
+        name: project.name,
+        canShare: facts[`${project.agentId}:${project.key}`]?.scenarios?.canShare ?? true,
+        closed: project.closed,
+      })),
+    [projects, facts],
   )
 
   const openMachineScreen = useCallback(
     (at: 'mcp' | 'plugins' | 'accounts', agentId: string, projectKey: string) => {
       setDrawer(false)
       setScreen({ at, agentId, projectKey })
+
+      // Watching the PROJECT, with no conversation named - the same line as openScenarios and for the
+      // same reason: every one of these answers is a fact of the project (see RemoteFeed.PROJECT_FACTS),
+      // and a fact is delivered to what a device has subscribed to. Opened from the list of projects,
+      // before any conversation had been entered, these three screens were subscribed to nothing and
+      // waited on "Loading…" for an answer the IDE had sent to nobody.
+      links.current[agentId]?.watch(projectKey, '', 0)
 
       if (at === 'mcp') askMcp(agentId, projectKey)
       if (at === 'plugins') {
@@ -1715,6 +1828,7 @@ export const App = () => {
           <Mcp
             servers={mcp[screen.agentId] ?? null}
             message={mcpNote}
+            signIns={mcpSignIns}
             project={projectNameOf(projects, screen.agentId, screen.projectKey)}
             onRefresh={() => askMcp(screen.agentId, screen.projectKey)}
             onReconnect={(name) =>
@@ -1724,6 +1838,14 @@ export const App = () => {
                 name,
               })
             }
+            onAuthenticate={(name) => {
+              setMcpNote(null)
+              command(screen.agentId, screen.projectKey, {
+                type: 'mcpAuthenticate',
+                sessionId: anySessionOf(projects, screen.agentId, screen.projectKey),
+                name,
+              })
+            }}
             onRemove={(name) =>
               command(screen.agentId, screen.projectKey, {
                 type: 'mcpRemove',
@@ -1795,6 +1917,11 @@ export const App = () => {
             shelves={held?.scenarios ?? null}
             live={liveRunsOf(held)}
             project={projectNameOf(projects, at.agentId, at.projectKey)}
+            repository={{ agentId: at.agentId, projectKey: at.projectKey }}
+            repositories={repositories}
+            // Another repository is the same screen opened over another project: its shelves are that
+            // project's facts, and watching it is how they arrive (see openScenarios).
+            onPickRepository={openScenarios}
             problem={scenarioNote}
             draftingSince={drafting.since}
             draftError={drafting.error}
@@ -1823,15 +1950,21 @@ export const App = () => {
               command(at.agentId, at.projectKey, { type: 'scenarioUnschedule', scheduleId })
             }
             onEdit={(scenario) => openEditor(at.agentId, at.projectKey, scenario)}
-            onNew={(draft) => openBlankEditor(at.agentId, at.projectKey, draft)}
-            onDraft={(description) => {
+            onNew={(draft, shelf) => openBlankEditor(at.agentId, at.projectKey, draft, shelf)}
+            onDraft={(description, shelf) => {
               const id = `draft-${Date.now().toString(36)}`
-              setDrafting({ id, since: Date.now(), error: '' })
-              command(at.agentId, at.projectKey, { type: 'scenarioDraft', id, description })
+              // Asked of the project it is to be kept in: the model reads that project while it writes
+              // (see ScenarioAuthor), and a scenario for one repository written by reading another is a
+              // plausible round of work for a project that does not exist.
+              const home = shelfHome(shelf, { agentId: at.agentId, projectKey: at.projectKey })
+              setDrafting({ id, since: Date.now(), error: '', shelf, home })
+              command(home.agentId, home.projectKey, { type: 'scenarioDraft', id, description })
             }}
             onCancelDraft={() => {
-              if (drafting.id) command(at.agentId, at.projectKey, { type: 'scenarioDraftCancel', id: drafting.id })
-              setDrafting({ id: '', since: 0, error: '' })
+              if (drafting.id) {
+                command(drafting.home.agentId, drafting.home.projectKey, { type: 'scenarioDraftCancel', id: drafting.id })
+              }
+              setDrafting((current) => ({ ...current, id: '', since: 0, error: '' }))
             }}
             onDuplicate={(scenario) =>
               command(at.agentId, at.projectKey, {
@@ -1929,16 +2062,56 @@ export const App = () => {
             fresh={edit?.fresh === true}
             tooBig={edit?.tooBig === true}
             gone={edit?.gone === true}
-            canShare={held?.scenarios?.canShare === true}
+            shelf={
+              edit?.draft?.scope === 'project' && edit.home
+                ? { scope: 'project', agentId: edit.home.agentId, projectKey: edit.home.projectKey }
+                : { scope: 'user' }
+            }
+            repositories={repositories}
             models={inventories[at.agentId]?.models ?? null}
             customModels={held?.customModels ?? []}
             onChange={(draft) => setEdit((current) => (current ? { ...current, draft } : current))}
+            onShelf={(shelf) =>
+              setEdit((current) =>
+                current && current.draft
+                  ? {
+                      ...current,
+                      draft: { ...current.draft, scope: shelf.scope },
+                      home: shelfHome(shelf, { agentId: at.agentId, projectKey: at.projectKey }),
+                    }
+                  : current,
+              )
+            }
             onOpenCard={(stageId, cardId) =>
               setScreen({ at: 'scenarioCard', agentId: at.agentId, projectKey: at.projectKey, stageId, cardId })
             }
             onSave={(draft) => {
-              command(at.agentId, at.projectKey, { type: 'scenarioSave', scenario: draft, scope: draft.scope })
-              setScreen({ at: 'scenarios', agentId: at.agentId, projectKey: at.projectKey })
+              // Through the project that holds the shelf: a repository's own, or this screen's for the
+              // shelf every project shares - which is the same folder from any of that machine's.
+              const target =
+                draft.scope === 'project' && edit?.home ? edit.home : { agentId: at.agentId, projectKey: at.projectKey }
+
+              command(target.agentId, target.projectKey, { type: 'scenarioSave', scenario: draft, scope: draft.scope })
+
+              /*
+               * Moved off another project's shelf: the copy there goes.
+               *
+               * Only where the store that saves it cannot reach the copy itself. Between its own two
+               * shelves it does the moving (see ScenarioStore.save) - and the shared shelf is one folder
+               * for every project of a machine, so a copy there is that store's to remove too. A copy in
+               * another repository, or on another machine, is not.
+               */
+              const from = edit?.origin
+              const elsewhere =
+                from !== null &&
+                from !== undefined &&
+                (from.agentId !== target.agentId || (from.scope === 'project' && from.projectKey !== target.projectKey))
+              if (from && elsewhere) {
+                command(from.agentId, from.projectKey, { type: 'scenarioDelete', id: draft.id, scope: from.scope })
+              }
+
+              // Landing where it was put, so that the saved scenario is on the screen that opens.
+              openScenarios(target.agentId, target.projectKey)
             }}
             onBack={back}
           />
@@ -2200,6 +2373,7 @@ export const App = () => {
             onBack={back}
             onTasks={() => setScreen({ ...screen, at: 'tasks' })}
             onTabs={() => setSheet('tabs')}
+            onNewChat={() => setScreen({ at: 'new', agentId: screen.agentId, projectKey: screen.projectKey })}
             onPickTab={(session) => enter(session.agentId, session.projectKey, session.sessionId, false)}
             onRun={() => setSheet('run')}
             onMessage={(item) => {
@@ -2313,6 +2487,10 @@ export const App = () => {
           onNew={() => {
             setSheet('')
             setScreen({ at: 'new', agentId: onThread.agentId, projectKey: onThread.projectKey })
+          }}
+          onFork={() => {
+            setSheet('')
+            forkWhole(onThread.agentId, onThread.projectKey, onThread.sessionId)
           }}
           onClose={() => setSheet('')}
         />

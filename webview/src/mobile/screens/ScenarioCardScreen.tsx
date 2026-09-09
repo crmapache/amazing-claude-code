@@ -66,7 +66,7 @@ export const ScenarioCardScreen = ({
             </span>
           </div>
         </header>
-        <div className={m.scenarioList}>
+        <div className={m.pageList}>
           <p className={m.empty}>{t.scenarios.problems.emptyStage}</p>
         </div>
       </>
@@ -90,7 +90,7 @@ export const ScenarioCardScreen = ({
         </div>
       </header>
 
-      <div className={m.scenarioList}>
+      <div className={m.pageList}>
         <div className={m.formRow}>
           <input
             className={m.input}

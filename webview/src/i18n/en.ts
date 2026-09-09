@@ -299,7 +299,7 @@ export const en = {
       label: 'WHAT THE WORK IS',
       hint: 'Describe the round of work and Claude writes it down: what to do, in what order, and what has to be true at the end.',
       /** Under the field: why the wait is what it is. */
-      keys: 'It reads the project first, so this takes about half a minute.',
+      keys: 'It reads the project and your skills first; at a high effort this can take a few minutes.',
       write: 'Write it for me',
       byHand: 'Build it myself',
       going: 'Reading the project and writing it…',
@@ -1576,6 +1576,9 @@ export const en = {
     scenarios: {
       /** Over the card of the run that is happening right now. */
       running: 'RUNNING NOW',
+      /** The row that names the repository whose shelf stands under it, and the heading over that shelf. */
+      repository: 'Repository',
+      inRepository: (name: string): string => `In ${name}`,
       nothingRunning: 'Nothing is running in this project right now.',
       none: 'No rounds of work have been written down in this project.',
       /** The button in the header: one door to both ways of making a scenario. */
@@ -1629,6 +1632,8 @@ export const en = {
     /** The strip of tabs above the feed, and the sheet behind it. */
     tabs: {
       title: 'Conversations',
+      /** The second button under the list: a fork of the conversation on screen, with everything said so far. */
+      fork: 'Fork this conversation',
       note: 'A fork keeps its group: the color bar and the indent say which conversation it grew out of. Reordering stays at the desk.',
     },
 
@@ -1673,12 +1678,14 @@ export const en = {
       /** A sign-in ends in a browser on the machine with the IDE - see the screen's own note. */
       addServer: 'Add a server',
       atDesk: 'At the desk',
+      /** The button a connector's row grows once the IDE has answered with the address - the press that opens it. */
+      continueSignIn: 'Continue on claude.ai',
       removeAsk: (name: string): string =>
         `Remove ${name}? The conversation restarts to pick that up, and whatever is running in it stops.`,
       restartNote:
         'A server is read at launch, so the conversation restarts to pick it up - whatever is running in it stops.',
       deskNote:
-        'Signing a server in stays at the desk: Claude Code catches the browser’s answer on that machine, so a sign-in begun here would end nowhere.',
+        'A claude.ai connector is signed in on claude.ai and can be finished from here. Any other server’s sign-in ends in a browser on the machine with the IDE, so it stays at the desk.',
     },
 
     /** The plugins of the project on screen - read only. */

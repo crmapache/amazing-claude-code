@@ -63,7 +63,7 @@ export const Plugins = ({ installed, available, marketplaces, project, onBack }:
         </div>
       </header>
 
-      <div className={m.list}>
+      <div className={m.pageList}>
         <p className={m.screenNote}>{t.mobile.plugins.readOnly}</p>
 
         {installed === null && <p className={m.empty}>{t.common.loading}</p>}

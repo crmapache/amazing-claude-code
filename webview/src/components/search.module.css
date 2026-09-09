@@ -50,6 +50,12 @@
   }
 }
 
+/* On a phone the screen begins under the clock and the battery: the tabs sat under them, and the cross
+   at their end was under the battery itself. The same inset every header of the phone's shell carries. */
+[data-acc-density='touch'] .window {
+  padding-top: env(safe-area-inset-top);
+}
+
 /* --- The tabs ------------------------------------------------------------------- */
 
 /*
@@ -225,6 +231,13 @@
 
 .input::placeholder {
   color: var(--acc-fg-ghost);
+}
+
+/* Sixteen under a thumb, as every field of the phone's own shell: below it iOS zooms the page on focus
+   and never zooms back, and the window came up magnified and cut off at the right. */
+[data-acc-density='touch'] .input,
+[data-acc-density='touch'] .area {
+  font-size: 16px;
 }
 
 /*

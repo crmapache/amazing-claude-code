@@ -83,7 +83,7 @@ export const ScenarioRun = ({
           </div>
         </header>
 
-        <div className={m.scenarioList}>
+        <div className={m.pageList}>
           {problem ? <p className={m.noteBad}>{outcomeText(t, problem)}</p> : <p className={m.empty}>{t.common.loading}</p>}
         </div>
       </>
@@ -169,7 +169,7 @@ export const ScenarioRun = ({
         </div>
       </header>
 
-      <div className={m.scenarioList}>
+      <div className={m.pageList}>
         {problem ? <p className={m.noteBad}>{outcomeText(t, problem)}</p> : null}
         {run.error ? <p className={m.noteBad}>{run.error}</p> : null}
 
@@ -193,7 +193,7 @@ export const ScenarioRun = ({
                 </button>
               )}
               {run.headConversationId.length > 0 && (
-                <button type="button" className={m.buttonOption} onClick={onOpenChat}>
+                <button type="button" className={`${m.buttonOption} ${m.buttonOptionAccent}`} onClick={onOpenChat}>
                   <span className={m.buttonOptionLabel}>{t.scenarios.run.after.chat}</span>
                   <span className={m.buttonOptionHint}>{t.scenarios.run.after.chatHint}</span>
                 </button>

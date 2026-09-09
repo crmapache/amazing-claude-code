@@ -1810,6 +1810,16 @@
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: break-word;
+  /*
+   * The scrollbar's lane is kept on both boxes whether or not there is anything to scroll.
+   *
+   * In the IDE the scrollbars are the panel's own (see base.css) and take their width out of the box
+   * rather than floating over it: once a prompt grew past the field, the field's lines wrapped a
+   * scrollbar's width earlier than the backdrop's, and from the third line down every lit name sat
+   * under the wrong words. A headless browser hides its scrollbars, which is why the harness never
+   * showed it.
+   */
+  scrollbar-gutter: stable;
 }
 
 .promptBack {

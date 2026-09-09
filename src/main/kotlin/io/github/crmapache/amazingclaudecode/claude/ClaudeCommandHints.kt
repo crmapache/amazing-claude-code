@@ -2,7 +2,22 @@ package io.github.crmapache.amazingclaudecode.claude
 
 import java.io.File
 
-internal data class CommandHint(val description: String, val argumentHint: String)
+internal data class CommandHint(
+    val description: String,
+    val argumentHint: String,
+    /**
+     * Whether the model may start this one itself, through the Skill tool - false when the frontmatter
+     * says `disable-model-invocation: true`. The CLI is strict about it: asked for such a skill the model
+     * is refused and told not to imitate the workflow either, so the only way in is a person typing the
+     * slash command. A scenario card is "a person typing" exactly when its prompt begins with the command
+     * (see ScenarioAuthor, which is what this is read for).
+     */
+    val modelInvocable: Boolean = true,
+    /** Whether a person may type it as a slash command at all - false under `user-invocable: false`. */
+    val userInvocable: Boolean = true,
+    /** The file that defines it, for whoever wants more than the frontmatter. Empty when nothing is on disk. */
+    val file: String = "",
+)
 
 /**
  * The description and argument syntax of slash commands - the same thing the terminal's hint shows
@@ -72,7 +87,7 @@ internal object ClaudeCommandHints {
 
         for (entry in entries) {
             if (entry.isFile && entry.extension == "md") {
-                remember(into, "$prefix${entry.nameWithoutExtension}", parseFrontmatter(entry))
+                remember(into, "$prefix${entry.nameWithoutExtension}", hintOf(entry))
                 continue
             }
 
@@ -86,7 +101,7 @@ internal object ClaudeCommandHints {
         val dirs = runCatching { dir.listFiles { file -> file.isDirectory } }.getOrNull()
         dirs?.forEach { skillDir ->
             val skill = File(skillDir, "SKILL.md")
-            if (skill.isFile) remember(into, "$prefix${skillDir.name}", parseFrontmatter(skill))
+            if (skill.isFile) remember(into, "$prefix${skillDir.name}", hintOf(skill))
         }
     }
 
@@ -95,12 +110,10 @@ internal object ClaudeCommandHints {
      * precedence: the project's own command outranks a personal one of the same name, and both outrank a
      * plugin's.
      */
-    private fun remember(into: MutableMap<String, CommandHint>, id: String, hint: CommandHint?) {
+    private fun remember(into: MutableMap<String, CommandHint>, id: String, hint: CommandHint) {
         if (into.containsKey(id)) return
-        into[id] = hint ?: EMPTY
+        into[id] = hint
     }
-
-    private val EMPTY = CommandHint(description = "", argumentHint = "")
 
     private val FRONTMATTER = Regex("""(?s)\A---\s*\n(.*?)\n---""")
     private val FIELD = Regex("""^([A-Za-z0-9_-]+):(.*)$""")
@@ -110,20 +123,28 @@ internal object ClaudeCommandHints {
      *
      * Nothing found is not the same as nothing there: a command file needs no frontmatter at all (the CLI
      * runs it just the same, verified live), and such a file used to fall out of the scan entirely - name
-     * and all. So the absence of a description is answered with an empty hint by the caller rather than
-     * with a refusal here.
+     * and all. So a file without one is a hint with the name and the file and nothing else, and the two
+     * flags fall to the CLI's own defaults: callable by the model, typeable by a person.
      */
-    private fun parseFrontmatter(file: File): CommandHint? {
-        if (!file.isFile) return null
-        val text = runCatching { file.readText() }.getOrNull() ?: return null
-        val frontmatter = FRONTMATTER.find(text)?.groupValues?.get(1) ?: return null
+    private fun hintOf(file: File): CommandHint {
+        val bare = CommandHint(description = "", argumentHint = "", file = file.absolutePath)
+        val text = runCatching { file.readText() }.getOrNull() ?: return bare
+        val frontmatter = FRONTMATTER.find(text)?.groupValues?.get(1) ?: return bare
         val fields = readFields(frontmatter)
 
-        val description = fields["description"].orEmpty()
-        val argumentHint = fields["argument-hint"].orEmpty()
-
-        return if (description.isEmpty() && argumentHint.isEmpty()) null else CommandHint(description, argumentHint)
+        return CommandHint(
+            description = fields["description"].orEmpty(),
+            argumentHint = fields["argument-hint"].orEmpty(),
+            modelInvocable = !isTrue(fields["disable-model-invocation"]),
+            userInvocable = !isFalse(fields["user-invocable"]),
+            file = file.absolutePath,
+        )
     }
+
+    /** The two spellings of yes a hand-written frontmatter uses. Anything else is the default. */
+    private fun isTrue(value: String?): Boolean = value?.trim()?.lowercase() in setOf("true", "yes")
+
+    private fun isFalse(value: String?): Boolean = value?.trim()?.lowercase() in setOf("false", "no")
 
     /**
      * The frontmatter's field values, multi-line ones included.

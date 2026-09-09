@@ -481,7 +481,10 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
 
             "mcpReconnect" -> hub.catalog.reconnectMcp(sessionId, field("name"))
 
-            "mcpAuthenticate" -> hub.catalog.authenticateMcp(sessionId, field("name"))
+            // Who asked travels with it: a sign-in that has to end in a browser on this machine is opened
+            // here for the panel and refused for a phone, while one that ends on claude.ai is handed to
+            // whoever asked as an address (see ProjectCatalog.authenticateMcp).
+            "mcpAuthenticate" -> hub.catalog.authenticateMcp(sessionId, field("name"), clientId, asker)
 
             "mcpRemove" -> hub.catalog.removeMcp(sessionId, field("name"))
 

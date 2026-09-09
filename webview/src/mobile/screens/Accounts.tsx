@@ -114,7 +114,7 @@ export const Accounts = ({
         </div>
       </header>
 
-      <div className={m.list}>
+      <div className={m.pageList}>
         {state === null && <p className={m.empty}>{t.common.loading}</p>}
 
         {note !== '' && <p className={m.noteBad}>{t.accounts.outcome[note] ?? t.accounts.outcome.unknown}</p>}

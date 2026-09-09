@@ -754,6 +754,24 @@ describe('building the feed out of the agent stream', () => {
     expect(contextOf(state, 200_000)).toEqual({ used: 236_192, limit: 1_000_000, percent: 24 })
   })
 
+  it('sizes a fresh tab by its own model before the CLI has said', () => {
+    // The fallback the caller brings is the account's last known window - the largest of every model it
+    // ran - and it is about the account rather than this tab: a fresh "Opus 1M" tab opened at 200K after a
+    // day on plain Opus, and a fresh Sonnet tab at 1M after a day on the large one. The name says more.
+    let state = reducePanel(initialPanelState, { kind: 'modelApplied', model: 'claude-opus-5[1m]' }, 1_700_000_000_000)
+    expect(contextOf(state, 200_000).limit).toBe(1_000_000)
+
+    state = reducePanel(initialPanelState, { kind: 'modelApplied', model: 'sonnet' }, 1_700_000_000_000)
+    expect(contextOf(state, 1_000_000).limit).toBe(200_000)
+
+    // A name that says nothing keeps the fallback; the exact figure from the CLI beats them all.
+    state = reducePanel(initialPanelState, { kind: 'modelApplied', model: 'my-proxy-model' }, 1_700_000_000_000)
+    expect(contextOf(state, 500_000).limit).toBe(500_000)
+
+    state = reducePanel(state, { kind: 'context', used: 10_000, max: 1_000_000 }, 1_700_000_000_100)
+    expect(contextOf(state, 500_000)).toEqual({ used: 10_000, limit: 1_000_000, percent: 1 })
+  })
+
   it('lets the exact number from the CLI crowd out the estimate made during the turn', () => {
     const answering: AgentEvent = {
       type: 'assistant',

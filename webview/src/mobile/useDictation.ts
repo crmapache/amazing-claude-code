@@ -140,6 +140,16 @@ export const useDictation = ({ requestToken }: { requestToken: (id: string) => v
       const early = waiting.current
       waiting.current = null
       if (early) started.authorise(early)
+    }).catch(() => {
+      // Belt and braces with the guards inside startDictation: nothing there is meant to reject any
+      // more, and a rejection that slipped through used to be a red button that wrote nothing until the
+      // ceiling let go of it two minutes later.
+      if (attempt.current !== mine) return
+      clearTimeout(ceiling.current)
+      live.current = null
+      setError('mic')
+      setInterim('')
+      setPhase('idle')
     })
   }, [requestToken])
 

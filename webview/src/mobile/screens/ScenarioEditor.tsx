@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useT } from '../../i18n'
-import type { ModelInfo, Scenario, ScenarioScope, ScenarioStage } from '../../protocol'
+import type { ModelInfo, Scenario, ScenarioStage } from '../../protocol'
 import { effortOptions, modeOptions, modelOptions } from '../../catalog'
 import { blankCard, blankInput, blankStage } from '../../scenarios/blank'
 import { cardRuns, MAX_CARD_RETRIES, MAX_STAGE_REPEAT, passesOf, problemsOf } from '../../scenarios/rules'
 import { Back } from './Back'
 import { PickSheet } from './ScenarioPick'
+import { ShelfChips } from './ShelfChips'
+import { shelfLabel, type RepositoryChoice, type ShelfChoice } from '../scenarios'
 import m from '../mobile.module.css'
 
 /**
@@ -24,10 +26,12 @@ export const ScenarioEditor = ({
   fresh,
   tooBig,
   gone,
-  canShare,
+  shelf,
+  repositories,
   models,
   customModels,
   onChange,
+  onShelf,
   onOpenCard,
   onSave,
   onBack,
@@ -40,10 +44,13 @@ export const ScenarioEditor = ({
   tooBig: boolean
   /** The machine answered and had none: it is on neither shelf any more. */
   gone: boolean
-  canShare: boolean
+  /** Where it is kept, and the repositories it could be kept in instead - see ShelfChips. */
+  shelf: ShelfChoice
+  repositories: RepositoryChoice[]
   models: ModelInfo[] | null
   customModels: string[]
   onChange: (draft: Scenario) => void
+  onShelf: (shelf: ShelfChoice) => void
   onOpenCard: (stageId: string, cardId: string) => void
   onSave: (draft: Scenario) => void
   onBack: () => void
@@ -64,7 +71,7 @@ export const ScenarioEditor = ({
             </span>
           </div>
         </header>
-        <div className={m.scenarioList}>
+        <div className={m.pageList}>
           {tooBig ? (
             <p className={m.noteBad}>{t.mobile.scenarios.editor.tooBig}</p>
           ) : gone ? (
@@ -94,7 +101,7 @@ export const ScenarioEditor = ({
               {fresh
                 ? t.scenarios.unsaved
                 : [
-                    draft.scope === 'project' ? t.scenarios.editor.inRepository : t.scenarios.editor.mine,
+                    shelfLabel(shelf, repositories, t.scenarios.editor.mine),
                     t.scenarios.stages(draft.stages.length),
                     t.scenarios.cards(cardRuns(draft)),
                   ].join(' · ')}
@@ -106,7 +113,7 @@ export const ScenarioEditor = ({
         </div>
       </header>
 
-      <div className={m.scenarioList}>
+      <div className={m.pageList}>
         {problems.length > 0 ? (
           <div className={`${m.noteBad} ${m.tidyNote}`}>
             <span className={m.tidyCount}>{t.mobile.scenarios.editor.tidy(problems.length)}</span>
@@ -136,27 +143,11 @@ export const ScenarioEditor = ({
 
           <FoldRow
             name={t.scenarios.editor.shelf}
-            value={draft.scope === 'project' ? t.scenarios.editor.inRepository : t.scenarios.editor.mine}
+            value={shelfLabel(shelf, repositories, t.scenarios.editor.mine)}
             open={open === 'shelf'}
             onOpen={() => fold('shelf')}
           >
-            <div className={m.segmented}>
-              <button
-                type="button"
-                className={`${m.segment} ${draft.scope === 'project' ? m.segmentOn : ''}`}
-                disabled={!canShare}
-                onClick={() => onChange({ ...draft, scope: 'project' as ScenarioScope })}
-              >
-                {t.scenarios.editor.inRepository}
-              </button>
-              <button
-                type="button"
-                className={`${m.segment} ${draft.scope === 'user' ? m.segmentOn : ''}`}
-                onClick={() => onChange({ ...draft, scope: 'user' as ScenarioScope })}
-              >
-                {t.scenarios.editor.mine}
-              </button>
-            </div>
+            <ShelfChips shelf={shelf} repositories={repositories} onPick={onShelf} />
           </FoldRow>
 
           <FoldRow
@@ -293,15 +284,13 @@ export const ScenarioEditor = ({
               </button>
 
               {on ? (
-                <>
-                  <div className={m.formRow}>
-                    <input
-                      className={m.input}
-                      value={stage.title}
-                      placeholder={t.scenarios.stage}
-                      onChange={(event) => editStage(stage.id, (one) => ({ ...one, title: event.target.value }))}
-                    />
-                  </div>
+                <div className={m.stageBody}>
+                  <input
+                    className={m.input}
+                    value={stage.title}
+                    placeholder={t.scenarios.stage}
+                    onChange={(event) => editStage(stage.id, (one) => ({ ...one, title: event.target.value }))}
+                  />
 
                   <div className={m.chipWrap}>
                     {Array.from({ length: Math.min(MAX_STAGE_REPEAT, 5) }, (_, n) => n + 1).map((count) => (
@@ -325,17 +314,21 @@ export const ScenarioEditor = ({
                     ) : null}
                   </div>
 
-                  {stage.cards.map((card) => (
-                    <button
-                      key={card.id}
-                      type="button"
-                      className={m.cardFold}
-                      onClick={() => onOpenCard(stage.id, card.id)}
-                    >
-                      <span className={m.cardFoldName}>{card.title || t.scenarios.editor.untitledCard}</span>
-                      <span className={m.taskRowChevron}>›</span>
-                    </button>
-                  ))}
+                  {stage.cards.length > 0 ? (
+                    <div className={m.stageCards}>
+                      {stage.cards.map((card) => (
+                        <button
+                          key={card.id}
+                          type="button"
+                          className={m.cardFold}
+                          onClick={() => onOpenCard(stage.id, card.id)}
+                        >
+                          <span className={m.cardFoldName}>{card.title || t.scenarios.editor.untitledCard}</span>
+                          <span className={m.taskRowChevron}>›</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
 
                   <button
                     type="button"
@@ -354,7 +347,7 @@ export const ScenarioEditor = ({
                   >
                     {t.scenarios.editor.remove}
                   </button>
-                </>
+                </div>
               ) : null}
             </div>
           )

@@ -219,7 +219,7 @@ export const de: Dict = {
       subtitle: 'sag, was der Arbeitsablauf ist - Claude schreibt ihn auf',
       label: 'WORUM ES GEHT',
       hint: 'Beschreibe den Arbeitsablauf, und Claude schreibt ihn auf: was zu tun ist, in welcher Reihenfolge und was am Ende stimmen muss.',
-      keys: 'Es liest zuerst das Projekt, darum dauert das etwa eine halbe Minute.',
+      keys: 'Es liest zuerst das Projekt und Ihre Skills; bei hohem Aufwand kann das ein paar Minuten dauern.',
       write: 'Claude schreiben lassen',
       byHand: 'Selbst bauen',
       going: 'Liest das Projekt und schreibt…',
@@ -1267,6 +1267,8 @@ export const de: Dict = {
 
     scenarios: {
       running: 'LÄUFT GERADE',
+      repository: 'Repository',
+      inRepository: (name: string): string => `In ${name}`,
       nothingRunning: 'In diesem Projekt läuft gerade nichts.',
       none: 'In diesem Projekt ist kein Arbeitsablauf aufgeschrieben.',
       create: 'Neu',
@@ -1304,6 +1306,7 @@ export const de: Dict = {
 
     tabs: {
       title: 'Gespräche',
+      fork: 'Diese Unterhaltung forken',
       note: 'Ein Fork bleibt in seiner Gruppe: Farbbalken und Einzug sagen, aus welchem Gespräch er gewachsen ist. Umsortieren bleibt am Schreibtisch.',
     },
 
@@ -1342,9 +1345,11 @@ export const de: Dict = {
     mcp: {
       addServer: 'Einen Server hinzufügen',
       atDesk: 'Am Schreibtisch',
+      continueSignIn: 'Auf claude.ai fortfahren',
       removeAsk: (name) => `${name} entfernen? Das Gespräch startet neu, um das zu übernehmen, und alles, was darin läuft, hört auf.`,
       restartNote: 'Ein Server wird beim Start gelesen, also startet das Gespräch neu - alles, was darin läuft, hört auf.',
-      deskNote: 'Die Anmeldung an einem Server bleibt am Schreibtisch: Claude Code fängt die Antwort des Browsers auf jener Maschine ab, eine hier begonnene Anmeldung hätte kein Ziel.',
+      deskNote:
+        'Ein claude.ai-Connector wird auf claude.ai selbst angemeldet und lässt sich von hier abschließen. Die Anmeldung jedes anderen Servers endet in einem Browser auf dem Rechner mit der IDE - sie bleibt am Schreibtisch.',
     },
 
     plugins: {

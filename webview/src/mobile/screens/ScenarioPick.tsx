@@ -16,7 +16,8 @@ export const PickSheet = ({
 }: {
   title: string
   value: string
-  options: { id: string; label: string; hint?: string }[]
+  /** A row that cannot be chosen is still shown, greyed and with its reason under it - see the callers. */
+  options: { id: string; label: string; hint?: string; disabled?: boolean }[]
   onPick: (id: string) => void
   onClose: () => void
 }) => (
@@ -25,7 +26,8 @@ export const PickSheet = ({
       <button
         key={option.id}
         type="button"
-        className={`${m.sheetAction} ${option.id === value ? m.sheetActionOn : ''}`}
+        className={`${m.sheetAction} ${option.id === value ? m.sheetActionOn : ''} ${option.disabled ? m.sheetActionOff : ''}`}
+        disabled={option.disabled}
         onClick={() => onPick(option.id)}
       >
         <span className={m.sheetActionText}>

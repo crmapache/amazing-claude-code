@@ -215,7 +215,7 @@ export const ko: Dict = {
       subtitle: '어떤 작업 한 바퀴인지 말하면 Claude가 적어 줍니다',
       label: '어떤 작업인가',
       hint: '작업 한 바퀴를 설명하면 Claude가 적어 줍니다. 무엇을, 어떤 순서로, 마지막에 무엇이 참이어야 하는지.',
-      keys: '먼저 프로젝트를 읽기 때문에 30초쯤 걸립니다.',
+      keys: '먼저 프로젝트와 스킬을 읽기 때문에 높은 노력 설정에서는 몇 분 걸릴 수 있습니다.',
       write: 'Claude가 쓰게 하기',
       byHand: '직접 만들기',
       going: '프로젝트를 읽고 쓰는 중…',
@@ -1253,6 +1253,8 @@ export const ko: Dict = {
 
     scenarios: {
       running: '지금 실행 중',
+      repository: '저장소',
+      inRepository: (name: string): string => `${name} 안`,
       nothingRunning: '지금 이 프로젝트에서 돌고 있는 것은 없습니다.',
       none: '이 프로젝트에는 적어 둔 작업 한 바퀴가 없습니다.',
       create: '새로',
@@ -1287,6 +1289,7 @@ export const ko: Dict = {
 
     tabs: {
       title: '대화',
+      fork: '이 대화를 포크',
       note: '포크는 자기 그룹에 남습니다. 색 막대와 들여쓰기가 어느 대화에서 갈라져 나왔는지 알려줍니다. 순서 바꾸기는 책상에 남습니다.',
     },
 
@@ -1325,9 +1328,11 @@ export const ko: Dict = {
     mcp: {
       addServer: '서버 추가',
       atDesk: '책상에서',
+      continueSignIn: 'claude.ai에서 계속',
       removeAsk: (name) => `${name}을(를) 제거할까요? 반영을 위해 대화가 재시작되고, 그 안에서 돌던 것은 모두 멈춥니다.`,
       restartNote: '서버는 시작할 때 읽히므로 대화가 재시작됩니다 - 그 안에서 돌던 것은 모두 멈춥니다.',
-      deskNote: '서버 로그인은 책상에 남습니다. Claude Code가 그 기계에서 브라우저의 응답을 받으므로, 여기서 시작한 로그인은 끝낼 곳이 없습니다.',
+      deskNote:
+        'claude.ai 커넥터는 claude.ai에서 로그인하므로 여기서 마칠 수 있습니다. 다른 서버의 로그인은 IDE가 있는 컴퓨터의 브라우저에서 끝나므로 책상에서 합니다.',
     },
 
     plugins: {

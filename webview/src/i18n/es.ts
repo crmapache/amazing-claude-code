@@ -216,7 +216,7 @@ export const es: Dict = {
       subtitle: 'di cuál es la ronda de trabajo y Claude la escribe',
       label: 'DE QUÉ TRATA EL TRABAJO',
       hint: 'Describe la ronda de trabajo y Claude la escribe: qué hacer, en qué orden y qué tiene que ser cierto al final.',
-      keys: 'Primero lee el proyecto, así que tarda medio minuto.',
+      keys: 'Primero lee el proyecto y tus skills; con un esfuerzo alto puede tardar unos minutos.',
       write: 'Que lo escriba Claude',
       byHand: 'Lo armo yo',
       going: 'Leyendo el proyecto y escribiéndolo…',
@@ -1263,6 +1263,8 @@ export const es: Dict = {
 
     scenarios: {
       running: 'AHORA EN MARCHA',
+      repository: 'Repositorio',
+      inRepository: (name: string): string => `En ${name}`,
       nothingRunning: 'Ahora mismo no hay nada en marcha en este proyecto.',
       none: 'En este proyecto no hay ninguna ronda de trabajo escrita.',
       create: 'Nuevo',
@@ -1300,6 +1302,7 @@ export const es: Dict = {
 
     tabs: {
       title: 'Conversaciones',
+      fork: 'Bifurcar esta conversación',
       note: 'Una bifurcación se queda en su grupo: la barra de color y la sangría dicen de qué conversación salió. Reordenar se queda en el escritorio.',
     },
 
@@ -1338,9 +1341,11 @@ export const es: Dict = {
     mcp: {
       addServer: 'Añadir un servidor',
       atDesk: 'En el escritorio',
+      continueSignIn: 'Continuar en claude.ai',
       removeAsk: (name) => `¿Quitar ${name}? La conversación se reinicia para recogerlo y se detiene todo lo que corra en ella.`,
       restartNote: 'Un servidor se lee al arrancar, así que la conversación se reinicia - se detiene todo lo que corra en ella.',
-      deskNote: 'Iniciar sesión en un servidor se queda en el escritorio: Claude Code recoge la respuesta del navegador en esa máquina, así que un inicio empezado aquí no acabaría en ninguna parte.',
+      deskNote:
+        'Un conector de claude.ai se autoriza en el propio claude.ai y puede terminarse desde aquí. El inicio de sesión de cualquier otro servidor termina en un navegador en la máquina con el IDE, así que se queda en el escritorio.',
     },
 
     plugins: {

@@ -11,6 +11,8 @@ interface TabsSheetProps {
   sessionId: string
   onPick: (session: SessionEntry) => void
   onNew: () => void
+  /** A fork of the conversation on screen, with everything said in it so far - the panel's `/fork`. */
+  onFork: () => void
   onClose: () => void
 }
 
@@ -25,7 +27,7 @@ interface TabsSheetProps {
  * the panel's own tabs use, and for the same reason: a fork holds its parent's whole transcript, so
  * answering in one rather than the other is answering somewhere else entirely.
  */
-export const TabsSheet = ({ project, sessions, sessionId, onPick, onNew, onClose }: TabsSheetProps) => {
+export const TabsSheet = ({ project, sessions, sessionId, onPick, onNew, onFork, onClose }: TabsSheetProps) => {
   const t = useT()
 
   return (
@@ -35,9 +37,17 @@ export const TabsSheet = ({ project, sessions, sessionId, onPick, onNew, onClose
       height="78%"
       onClose={onClose}
       footer={
-        <button type="button" className={m.buttonPrimary} onClick={onNew}>
-          {t.mobile.sessions.newChat}
-        </button>
+        <>
+          <button type="button" className={m.buttonPrimary} onClick={onNew}>
+            {t.mobile.sessions.newChat}
+          </button>
+          {/* The fork stands beside the new chat with its own mark: the two used to be told apart by
+              nothing, and the "+" on the strip was read as the way to a fork. It is not - a fork is made
+              here, or from a message's own sheet. */}
+          <button type="button" className={m.buttonSecondary} onClick={onFork}>
+            <span className={m.tabFork} aria-hidden="true">⑂</span> {t.mobile.tabs.fork}
+          </button>
+        </>
       }
     >
       {sessions.map((session) => (

@@ -127,6 +127,28 @@ class ClaudeCommandHintsTest {
         assertEquals("deep one", hints["demo:deep:twice"]?.description)
     }
 
+    /**
+     * The two doors into a skill, as the CLI keeps them (see CommandHint): `disable-model-invocation`
+     * shuts the Skill tool, `user-invocable: false` shuts the slash command. Both default to open, and a
+     * skill's file is named so that whoever reads the rule can read the rest.
+     */
+    @Test
+    fun `the invocation flags are read, and default to open`() {
+        val hints = projectWith(
+            ".claude/skills/person-only/SKILL.md" to "---\ndescription: only by hand\ndisable-model-invocation: true\n---\nbody\n",
+            ".claude/skills/model-only/SKILL.md" to "---\ndescription: only by the model\nuser-invocable: false\n---\nbody\n",
+            ".claude/skills/open/SKILL.md" to "---\ndescription: either\n---\nbody\n",
+        )
+
+        assertEquals(false, hints["person-only"]?.modelInvocable)
+        assertEquals(true, hints["person-only"]?.userInvocable)
+        assertEquals(true, hints["model-only"]?.modelInvocable)
+        assertEquals(false, hints["model-only"]?.userInvocable)
+        assertEquals(true, hints["open"]?.modelInvocable)
+        assertEquals(true, hints["open"]?.userInvocable)
+        assertTrue(hints["open"]?.file.orEmpty().endsWith("SKILL.md"))
+    }
+
     @Test
     fun `a command without frontmatter keeps its name`() {
         // Frontmatter is optional for the CLI, and such a command used to fall out of the scan whole -
@@ -137,6 +159,8 @@ class ClaudeCommandHintsTest {
         assertNotNull(plain)
         assertEquals("", plain.description)
         assertEquals("", plain.argumentHint)
+        assertTrue(plain.modelInvocable)
+        assertTrue(plain.file.endsWith("plain.md"))
     }
 
     @Test

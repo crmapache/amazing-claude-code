@@ -1241,6 +1241,14 @@ type ShellMessageBody =
   | { type: 'mcpServers'; servers: McpServerInfo[] }
   /** The outcome of mcpAdd/mcpRemove - not to be mistaken for a `/mcp` inside the conversation. */
   | { type: 'mcpActionResult'; ok: boolean; message: string }
+  /**
+   * The address a sign-in is finished at, for a client that has to open it itself - the phone.
+   *
+   * Only for a server whose sign-in ends on that page rather than on this machine's loopback (a claude.ai
+   * connector, in practice - see ProjectCatalog.authenticateMcp): the panel opens such addresses in the
+   * machine's browser and never sees this message. To the one device that asked, not to the room.
+   */
+  | { type: 'mcpSignIn'; name: string; url: string }
   /** The answer to pluginList: the installed ones plus the catalogue available from the marketplaces. */
   | { type: 'plugins'; installed: InstalledPluginInfo[]; available: AvailablePluginInfo[] }
   /** The outcome of install/uninstall/enable/disable - all of them direct CLI subcommands. */

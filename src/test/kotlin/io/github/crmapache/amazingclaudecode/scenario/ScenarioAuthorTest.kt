@@ -1,5 +1,6 @@
 package io.github.crmapache.amazingclaudecode.scenario
 
+import io.github.crmapache.amazingclaudecode.claude.CommandHint
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -147,6 +148,27 @@ class ScenarioAuthorTest {
         assertEquals(listOf("files"), scenario?.stages?.first()?.cards?.first()?.slots?.map { it.name })
     }
 
+    /**
+     * Seen live from a smaller model: the one input the scenario asks for, written in a prompt with the
+     * slot's brackets. That is a card the editor refuses and the run never starts, for a mistake with one
+     * possible meaning.
+     */
+    @Test
+    fun `an input written with slot brackets is mended, a real slot is not`() {
+        val scenario = written(
+            """
+            {"name": "R", "inputs": [{"name": "task"}, {"name": "notes"}], "stages": [{"title": "T", "cards": [
+              {"prompt": "/task [[ task ]] - wishes: [[notes]] - and [[findings]]", "slots": [{"name": "findings", "description": "d"}]},
+              {"prompt": "read [[notes]]", "slots": [{"name": "notes", "description": "the head's own notes"}]}
+            ]}]}
+            """.trimIndent(),
+        )
+
+        val cards = scenario?.stages?.first()?.cards.orEmpty()
+        assertEquals("/task {{task}} - wishes: {{notes}} - and [[findings]]", cards[0].prompt)
+        assertEquals("read [[notes]]", cards[1].prompt)
+    }
+
     @Test
     fun `a card with nothing to say and a stage with no card left are dropped`() {
         val scenario = written(
@@ -220,6 +242,23 @@ class ScenarioAuthorTest {
     }
 
     /**
+     * The person's choice is honoured upwards only (see ScenarioAuthor.atTheFloor): Haiku, under any of
+     * its names, becomes Sonnet; an effort under xhigh becomes xhigh; everything at or above stands, and
+     * so does a model of somebody's own provider, whose family nobody knows.
+     */
+    @Test
+    fun `the writing runs on no less than Sonnet at xhigh`() {
+        assertEquals("sonnet" to "xhigh", ScenarioAuthor.atTheFloor("haiku", "low"))
+        assertEquals("sonnet" to "xhigh", ScenarioAuthor.atTheFloor("claude-haiku-4-5-20251001", "medium"))
+        assertEquals("sonnet" to "xhigh", ScenarioAuthor.atTheFloor("sonnet", "auto"))
+        assertEquals("" to "xhigh", ScenarioAuthor.atTheFloor("", ""))
+        assertEquals("opus[1m]" to "max", ScenarioAuthor.atTheFloor("opus[1m]", "max"))
+        assertEquals("opus" to "ultracode", ScenarioAuthor.atTheFloor("opus", "ultracode"))
+        assertEquals("fable" to "xhigh", ScenarioAuthor.atTheFloor("fable", "high"))
+        assertEquals("my-own-model" to "xhigh", ScenarioAuthor.atTheFloor("my-own-model", "low"))
+    }
+
+    /**
      * The description travels as material between markers, never as instructions: it is a person's text,
      * and one of them will one day begin with "ignore the above".
      */
@@ -230,5 +269,72 @@ class ScenarioAuthorTest {
         assertTrue(body.contains("<<<DESCRIPTION"))
         assertTrue(body.contains("DESCRIPTION>>>"))
         assertTrue(body.indexOf("<<<DESCRIPTION") > body.indexOf(ScenarioAuthor.INSTRUCTIONS.trim().take(40)))
+    }
+
+    /**
+     * The rule beside each skill is the difference between a card that runs and one that never starts
+     * (see the note on ScenarioAuthor.INSTRUCTIONS): a skill the CLI refuses to the Skill tool has to be
+     * the first line of a prompt, and the model is told so by name rather than left to find out.
+     */
+    @Test
+    fun `the catalogue names each skill with the door the CLI leaves open`() {
+        val body = ScenarioAuthor.body(
+            "review the branch",
+            linkedMapOf(
+                "task" to CommandHint(
+                    description = "Take a task to delivery",
+                    argumentHint = "[the task]",
+                    modelInvocable = false,
+                    file = "/home/me/.claude/skills/task/SKILL.md",
+                ),
+                "save" to CommandHint(description = "Write the findings down", argumentHint = ""),
+                "review-log" to CommandHint(description = "The journal's format", argumentHint = "", userInvocable = false),
+            ),
+        )
+
+        assertTrue(body.contains("- /task - PERSON ONLY - arguments: [the task] - Take a task to delivery - file: /home/me/.claude/skills/task/SKILL.md"))
+        assertTrue(body.contains("- /save - MODEL MAY CALL - Write the findings down"))
+        assertTrue(body.contains("- /review-log - NOT A SLASH COMMAND - The journal's format"))
+        // The built-in review is always there, and the description still stands last, as material.
+        assertTrue(body.contains("- /code-review - arguments:"))
+        assertTrue(body.indexOf("<<<DESCRIPTION") > body.indexOf("- /task - PERSON ONLY"))
+    }
+
+    /**
+     * The rules the catalogue's labels refer to have to be in the instructions under those very names,
+     * and the two that decide whether a scenario runs anywhere - the first-line door and the shelf that
+     * follows a person from project to project - are the ones a rewrite must not lose.
+     */
+    @Test
+    fun `the instructions carry the rules the catalogue points at`() {
+        val instructions = ScenarioAuthor.INSTRUCTIONS
+
+        assertTrue(instructions.contains("PERSON ONLY"))
+        assertTrue(instructions.contains("MODEL MAY CALL"))
+        assertTrue(instructions.contains("first line of the prompt"))
+        assertTrue(instructions.contains("for every project"))
+        assertTrue(instructions.contains("ONLY the card's final message"))
+    }
+
+    /** A page of a description in a folded block is one bounded line here: the list is read, not studied. */
+    @Test
+    fun `a long description is flattened and cut`() {
+        val body = ScenarioAuthor.body(
+            "x",
+            mapOf("long" to CommandHint(description = "line one\n  line two " + "word ".repeat(200), argumentHint = "")),
+        )
+        val line = body.lines().first { it.startsWith("- /long") }
+
+        assertTrue(line.contains("line one line two"))
+        assertTrue(line.endsWith("..."))
+        assertTrue(line.length < 420)
+    }
+
+    @Test
+    fun `no skills on disk is said out loud rather than left as an empty list`() {
+        val body = ScenarioAuthor.body("x", emptyMap())
+
+        assertTrue(body.contains("Found on disk in this project and for this person: nothing."))
+        assertTrue(body.contains("- /code-review - arguments:"))
     }
 }

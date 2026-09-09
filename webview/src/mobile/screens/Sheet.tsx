@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import m from '../mobile.module.css'
 import { useT } from '../../i18n'
+import { useSheetDrag } from '../useSheetDrag'
 
 interface SheetProps {
   title: string
@@ -10,6 +11,12 @@ interface SheetProps {
   count?: string
   /** How tall it may grow, as a share of the screen. The lists want more of it than the short ones do. */
   height?: string
+  /**
+   * The body's own class, for a sheet whose rows bring their own insets (the limits, whose rows and
+   * dividers are inset by the row). It replaces the default rather than adding to it, so the scroll and
+   * the flex belong to the class named here - see .limBody for what one has to carry.
+   */
+  bodyClassName?: string
   /** The row of buttons along the bottom, inside the safe area. Absent on a sheet that only lists. */
   footer?: ReactNode
   onClose: () => void
@@ -19,23 +26,36 @@ interface SheetProps {
 /**
  * The one bottom sheet every sheet in this app is.
  *
- * Six of them now (tabs, the run's settings, a message's actions, commands, files, limits) and they
- * were on their way to being six copies of the same forty lines: a scrim, a grab handle, a header with
- * a cross, a body that scrolls, a footer that respects the home indicator. What differs between them is
- * the content, and everything that does not differ belongs in one place - the first thing to drift
- * otherwise is the one that matters, which is that the sheet stops short of the bottom of the screen.
+ * Seven of them now (tabs, the run's settings, a message's actions, commands, files, limits, the
+ * scenarios' four) and they were on their way to being seven copies of the same forty lines: a scrim, a
+ * grab handle, a header with a cross, a body that scrolls, a footer that respects the home indicator.
+ * What differs between them is the content, and everything that does not differ belongs in one place -
+ * the first thing to drift otherwise is the one that matters, which is that the sheet stops short of the
+ * bottom of the screen.
+ *
+ * Pulling it down closes it (see useSheetDrag): the handle at the top promises that gesture, and a sheet
+ * that draws the handle and ignores the pull reads as stuck. The scrim and the cross remain.
  *
  * A sheet rather than a screen wherever the answer is "pick one of these and come back". A screen costs
  * the way back and the loss of what is behind it; the two things a phone is worst at.
  */
-export const Sheet = ({ title, meta, count, height, footer, onClose, children }: SheetProps) => {
+export const Sheet = ({ title, meta, count, height, bodyClassName, footer, onClose, children }: SheetProps) => {
   const t = useT()
+  const panel = useRef<HTMLDivElement>(null)
+  const body = useRef<HTMLDivElement>(null)
+
+  useSheetDrag(panel, body, onClose)
 
   return (
     // The scrim closes it, which is the gesture everyone already has. It is not the sheet: a tap inside
     // the sheet must not count as a tap outside it.
     <div className={m.sheetScrim} onClick={onClose}>
-      <div className={m.sheet} style={height ? { maxHeight: height } : undefined} onClick={(event) => event.stopPropagation()}>
+      <div
+        ref={panel}
+        className={m.sheet}
+        style={height ? { maxHeight: height } : undefined}
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className={m.sheetGrab} />
 
         <div className={m.sheetHead}>
@@ -49,7 +69,9 @@ export const Sheet = ({ title, meta, count, height, footer, onClose, children }:
           </button>
         </div>
 
-        <div className={m.sheetBody}>{children}</div>
+        <div ref={body} className={bodyClassName ?? m.sheetBody}>
+          {children}
+        </div>
 
         {footer ? <div className={m.sheetFooter}>{footer}</div> : null}
       </div>

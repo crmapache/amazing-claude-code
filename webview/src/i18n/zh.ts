@@ -215,7 +215,7 @@ export const zh: Dict = {
       subtitle: '说说这轮工作是什么 - Claude 来写下来',
       label: '这是什么工作',
       hint: '描述这轮工作，Claude 会写下来：做什么、按什么顺序、最后什么必须成立。',
-      keys: '它会先读项目，所以要花上半分钟。',
+      keys: '它会先读项目和你的技能，在高投入档位下可能要花几分钟。',
       write: '让 Claude 来写',
       byHand: '我自己搭',
       going: '正在读项目并写下来…',
@@ -1260,6 +1260,8 @@ export const zh: Dict = {
 
     scenarios: {
       running: '正在运行',
+      repository: '仓库',
+      inRepository: (name: string): string => `在 ${name}`,
       nothingRunning: '这个项目现在没有在跑的东西。',
       none: '这个项目里没有写下任何一轮工作。',
       create: '新建',
@@ -1294,6 +1296,7 @@ export const zh: Dict = {
 
     tabs: {
       title: '对话',
+      fork: '分叉此对话',
       note: '分叉留在自己的组里：色条和缩进说明它是从哪段对话长出来的。调整顺序仍留在电脑上。',
     },
 
@@ -1332,9 +1335,11 @@ export const zh: Dict = {
     mcp: {
       addServer: '添加服务器',
       atDesk: '在电脑上',
+      continueSignIn: '在 claude.ai 上继续',
       removeAsk: (name) => `移除 ${name}？对话会重启以生效，其中正在跑的一切都会停下。`,
       restartNote: '服务器在启动时读取，所以对话会重启 - 其中正在跑的一切都会停下。',
-      deskNote: '登录服务器仍留在电脑上：Claude Code 在那台机器上接收浏览器的回调，从这里开始的登录无处收尾。',
+      deskNote:
+        'claude.ai 连接器在 claude.ai 上完成登录，可以从这里完成。其他服务器的登录在装有 IDE 的机器的浏览器里结束，所以留在桌面上完成。',
     },
 
     plugins: {

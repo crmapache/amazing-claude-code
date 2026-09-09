@@ -220,7 +220,7 @@ export const fr: Dict = {
       subtitle: 'dites en quoi consiste le tour de travail - Claude l\'écrit',
       label: 'DE QUOI IL S\'AGIT',
       hint: 'Décrivez le tour de travail et Claude l\'écrit : quoi faire, dans quel ordre, et ce qui doit être vrai à la fin.',
-      keys: 'Il lit d\'abord le projet, donc cela prend environ une demi-minute.',
+      keys: 'Il lit d\'abord le projet et vos skills ; avec un effort élevé, cela peut prendre quelques minutes.',
       write: 'Laisser Claude l\'écrire',
       byHand: 'Le construire moi-même',
       going: 'Lit le projet et l\'écrit…',
@@ -1285,6 +1285,8 @@ export const fr: Dict = {
 
     scenarios: {
       running: 'EN COURS',
+      repository: 'Dépôt',
+      inRepository: (name: string): string => `Dans ${name}`,
       nothingRunning: 'Rien ne tourne dans ce projet en ce moment.',
       none: 'Aucun tour de travail n\'est écrit dans ce projet.',
       create: 'Nouveau',
@@ -1322,6 +1324,7 @@ export const fr: Dict = {
 
     tabs: {
       title: 'Conversations',
+      fork: 'Forker cette conversation',
       note: 'Une bifurcation reste dans son groupe : la barre de couleur et le retrait disent de quelle conversation elle est née. Réordonner reste au bureau.',
     },
 
@@ -1360,9 +1363,11 @@ export const fr: Dict = {
     mcp: {
       addServer: 'Ajouter un serveur',
       atDesk: 'Au bureau',
+      continueSignIn: 'Continuer sur claude.ai',
       removeAsk: (name) => `Retirer ${name} ? La conversation redémarre pour en tenir compte, et tout ce qui y tourne s’arrête.`,
       restartNote: 'Un serveur est lu au démarrage, donc la conversation redémarre - tout ce qui y tourne s’arrête.',
-      deskNote: 'La connexion à un serveur reste au bureau : Claude Code récupère la réponse du navigateur sur cette machine, une connexion commencée ici n’aurait nulle part où finir.',
+      deskNote:
+        'Un connecteur claude.ai se connecte sur claude.ai même et peut être terminé d’ici. La connexion à tout autre serveur se termine dans un navigateur sur la machine avec l’IDE, elle reste donc au bureau.',
     },
 
     plugins: {

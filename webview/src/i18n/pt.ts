@@ -216,7 +216,7 @@ export const pt: Dict = {
       subtitle: 'diga qual é a rodada de trabalho - o Claude escreve',
       label: 'DO QUE SE TRATA',
       hint: 'Descreva a rodada de trabalho e o Claude a escreve: o que fazer, em que ordem e o que precisa ser verdade no fim.',
-      keys: 'Primeiro ele lê o projeto, então isso leva meio minuto.',
+      keys: 'Primeiro ele lê o projeto e suas skills; com esforço alto isso pode levar alguns minutos.',
       write: 'Deixar o Claude escrever',
       byHand: 'Montar eu mesmo',
       going: 'Lendo o projeto e escrevendo…',
@@ -1262,6 +1262,8 @@ export const pt: Dict = {
 
     scenarios: {
       running: 'AGORA EM ANDAMENTO',
+      repository: 'Repositório',
+      inRepository: (name: string): string => `Em ${name}`,
       nothingRunning: 'Agora não há nada em andamento neste projeto.',
       none: 'Neste projeto não há nenhuma rodada de trabalho escrita.',
       create: 'Novo',
@@ -1299,6 +1301,7 @@ export const pt: Dict = {
 
     tabs: {
       title: 'Conversas',
+      fork: 'Bifurcar esta conversa',
       note: 'Um fork fica no seu grupo: a barra de cor e o recuo dizem de qual conversa ele saiu. Reordenar continua na mesa.',
     },
 
@@ -1337,9 +1340,11 @@ export const pt: Dict = {
     mcp: {
       addServer: 'Adicionar um servidor',
       atDesk: 'Na mesa',
+      continueSignIn: 'Continuar no claude.ai',
       removeAsk: (name) => `Remover ${name}? A conversa reinicia para pegar isso e tudo o que estiver rodando nela para.`,
       restartNote: 'Um servidor é lido na largada, então a conversa reinicia - tudo o que estiver rodando nela para.',
-      deskNote: 'Entrar num servidor continua na mesa: o Claude Code recebe a resposta do navegador naquela máquina, então um login começado aqui não teria onde terminar.',
+      deskNote:
+        'Um conector do claude.ai é autorizado no próprio claude.ai e pode ser concluído daqui. O login de qualquer outro servidor termina num navegador na máquina com o IDE, então fica na mesa.',
     },
 
     plugins: {

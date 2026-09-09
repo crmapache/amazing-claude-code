@@ -54,6 +54,9 @@ internal object ModelNames {
         }
     }
 
+    /** The family alone - `haiku` for `claude-haiku-4-5-20251001` - and a name with no known family as it is. */
+    fun familyOf(model: String): String = family(key(model))
+
     private fun family(key: String): String = key.substringBefore('-')
 
     /** `claude-opus-4-8` is 4.8, `claude-haiku-4-5-20251001` is 4.5 - the dated tail is not a version. */

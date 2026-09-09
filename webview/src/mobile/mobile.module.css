@@ -1699,7 +1699,9 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--acc-sp-2);
-  padding: var(--acc-sp-3) var(--acc-sp-4);
+  /* No inset of its own: the card already has one, and the pair used to stand a step inside the chats
+     above them - two left edges a few pixels apart, which reads as sloppy rather than as dense. */
+  padding: var(--acc-sp-3) 0 0;
   border-top: 1px solid var(--acc-bg-panel);
 }
 
@@ -2781,7 +2783,8 @@
   border-radius: var(--acc-r-pill);
   background: var(--acc-bg);
   color: var(--acc-fg);
-  font: 15px var(--acc-mono);
+  /* Sixteen exactly, as in the composer: below it iOS zooms the page on focus and never zooms back. */
+  font: 16px var(--acc-mono);
 }
 
 .formNote {
@@ -3301,7 +3304,6 @@
 .timeline {
   display: flex;
   flex-direction: column;
-  padding: 0 var(--acc-sp-5);
 }
 
 /* The name of a stage, drawn only where there is more than one to tell apart (see timelineOf). */
@@ -3484,7 +3486,7 @@
  */
 /* What a finished run says first, and the two doors out of it - see the panel's .after. */
 .afterCard {
-  margin: 0 var(--acc-sp-5) var(--acc-sp-4);
+  margin: 0 0 var(--acc-sp-4);
   padding: var(--acc-sp-4);
   border: 1px solid var(--acc-line);
   border-radius: var(--acc-r-card);
@@ -3505,8 +3507,30 @@
   gap: var(--acc-sp-2);
 }
 
+/* The door into the main thread's chat, lit: on a bordered box of two lines of text nobody saw a button,
+   and the way on from a finished run was reported missing while it stood on the screen. */
+.buttonOptionAccent {
+  border-color: var(--acc-accent-line);
+  background: var(--acc-accent-12);
+}
+
+.buttonOptionAccent .buttonOptionLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+  color: var(--acc-accent);
+  font-weight: 600;
+}
+
+.buttonOptionAccent .buttonOptionLabel::after {
+  content: '›';
+  margin-left: auto;
+  font-size: 18px;
+  color: var(--acc-accent);
+}
+
 .askCard {
-  margin: 0 var(--acc-sp-5) var(--acc-sp-4);
+  margin: 0 0 var(--acc-sp-4);
   padding: var(--acc-sp-4);
   border: 1px solid var(--acc-warn-16);
   border-radius: var(--acc-r-card);
@@ -3612,7 +3636,7 @@
  * of things to choose between - a shelf, a table of nights, a timetable - and a card that runs into the
  * edge reads as the screen itself rather than as one of several.
  */
-.scenarioList {
+.pageList {
   composes: list;
   padding-inline: var(--acc-feed-gutter);
 }
@@ -3935,6 +3959,23 @@
   border-bottom: 1px solid var(--acc-bg-panel);
 }
 
+/* Inside an opened row the forms drop their own insets: the row already has one. */
+.foldBody .formRow {
+  padding: 0;
+}
+
+.foldBody .segmented {
+  margin: 0;
+}
+
+.foldBody .wideButton {
+  margin-bottom: 0;
+}
+
+.foldBody .formNote {
+  margin: 0;
+}
+
 .stageFold {
   display: flex;
   align-items: center;
@@ -3984,15 +4025,46 @@
   color: var(--acc-fg-ghost);
 }
 
+/*
+ * What an open stage holds, at one inset.
+ *
+ * The name field, the repeat chips, the cards and the two buttons each used to bring their own margin -
+ * four left edges in one card, from the wall to eighteen pixels in - and a card whose contents do not
+ * line up reads as four things that happen to be near each other.
+ */
+.stageBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--acc-sp-3);
+  padding: 0 var(--acc-sp-4) var(--acc-sp-4);
+}
+
+.stageBody .wideButton {
+  margin-bottom: 0;
+}
+
+.stageCards {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-pill);
+  overflow: hidden;
+}
+
 .cardFold {
   display: flex;
   align-items: center;
   gap: var(--acc-sp-2);
   width: 100%;
   min-height: var(--acc-hit);
-  padding: var(--acc-sp-3) var(--acc-sp-4) var(--acc-sp-3) var(--acc-sp-6);
-  border-top: 1px solid var(--acc-bg-panel);
+  padding: var(--acc-sp-3) var(--acc-sp-3);
+  border-top: 1px solid var(--acc-line);
+  background: var(--acc-bg-card);
   text-align: left;
+}
+
+.cardFold:first-child {
+  border-top: none;
 }
 
 .cardFoldName {
