@@ -15,6 +15,8 @@ internal object ClaudePreferences {
         val model: String,
         val effort: String,
         val mode: String,
+        val newTabModel: String,
+        val newTabEffort: String,
         val composerLayout: String,
         val pasteCollapse: String,
         val sendKey: String,
@@ -27,6 +29,8 @@ internal object ClaudePreferences {
         model = model,
         effort = effort,
         mode = mode,
+        newTabModel = newTabModel,
+        newTabEffort = newTabEffort,
         composerLayout = composerLayout,
         pasteCollapse = pasteCollapse,
         sendKey = sendKey,
@@ -46,6 +50,48 @@ internal object ClaudePreferences {
     var mode: String
         get() = read(MODE_KEY)
         set(value) = write(MODE_KEY, value)
+
+    /**
+     * The model a new tab is pinned to. Empty - the default - means "whatever was last chosen", which is
+     * what [model] above holds and what the panel has always done.
+     *
+     * Two settings rather than one, and the empty one is the point. [model] is written by every applied
+     * pick in the MODEL chip, so it answers "what did I last work on"; this one is written only from the
+     * screen behind "New chats", so it answers "what do I want to start on". Folding them into a single
+     * value would mean a pin that any pick in any tab quietly overwrote - which is precisely the thing
+     * somebody pinning a model is asking not to happen.
+     *
+     * Filtered like [customModels], and for the same reason: the name travels as a launch argument, and
+     * an argument holding a quote or a line feed is cut short by a shell nobody asked for (see
+     * ClaudeLaunch).
+     */
+    var newTabModel: String
+        get() = usableModelNames(listOf(read(NEW_TAB_MODEL_KEY))).firstOrNull().orEmpty()
+        set(value) = write(NEW_TAB_MODEL_KEY, usableModelNames(listOf(value)).firstOrNull().orEmpty())
+
+    /**
+     * The effort a new tab is pinned to, empty meaning "whatever was last chosen" - the same pair as
+     * [newTabModel] and [model] above, for the same reason.
+     *
+     * Held to the known levels on the way in AND on the way out: this one, too, leaves as a launch
+     * argument, and what was stored here was written by an earlier version of the screen.
+     */
+    var newTabEffort: String
+        get() = EffortLevels.normalize(read(NEW_TAB_EFFORT_KEY))
+        set(value) = write(NEW_TAB_EFFORT_KEY, EffortLevels.normalize(value))
+
+    /**
+     * What a new tab genuinely starts on when nothing has been chosen for it in particular - the pin if
+     * there is one, and the last pick otherwise.
+     *
+     * Read by everything that has to SHOW that answer rather than launch by it: the chip over an empty
+     * tab in the panel, and the choice a phone opens a new conversation from. The launch itself takes a
+     * longer road, because it also knows which account is paying (see ClaudeSessions.newSession) - and
+     * an account nobody has worked on yet ends up exactly here.
+     */
+    fun startingModel(): String = newTabModel.ifEmpty { model }
+
+    fun startingEffort(): String = newTabEffort.ifEmpty { effort }
 
     /**
      * Where the input field sits: 'left' | 'bottom' | 'right' | 'compact'. Empty means a panel opened
@@ -289,6 +335,8 @@ internal object ClaudePreferences {
     private const val MODEL_KEY = "acc.model"
     private const val EFFORT_KEY = "acc.effort"
     private const val MODE_KEY = "acc.mode"
+    private const val NEW_TAB_MODEL_KEY = "acc.newTab.model"
+    private const val NEW_TAB_EFFORT_KEY = "acc.newTab.effort"
     private const val COMPOSER_LAYOUT_KEY = "acc.composerLayout"
     private const val PASTE_COLLAPSE_KEY = "acc.pasteCollapse"
     private const val SEND_KEY_KEY = "acc.sendKey"

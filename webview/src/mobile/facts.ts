@@ -91,15 +91,37 @@ export interface ProjectFacts extends UsageFacts {
    * are - a screen showing what it knew a minute ago beats one that says "Loading…" over it.
    */
   runs: Record<string, ScenarioRun>
+  /**
+   * The runs going right now, as summaries - see the `scenarioLive` message.
+   *
+   * Summaries rather than records because that is all any list needs, and because there may be several:
+   * one scenario can be started as many times as somebody wants. The whole record of one is only worth
+   * carrying for the run whose timeline is open (see [runs] above).
+   */
+  liveRuns?: ScenarioRunSummary[]
 }
 
-/** Both shelves of a project, the runs that came of them, and the one that may be going. */
+/** Both shelves of a project, the runs that came of them, and the ones waiting for their hour. */
 export interface ScenarioShelves {
   list: Scenario[]
   past: ScenarioRunSummary[]
-  /** The run going right now, or empty. One at a time per project, by design. */
-  live: string
   schedules: ScenarioSchedule[]
+  /**
+   * The file of scheduled runs could not be read at all, which is not the same as having none.
+   *
+   * Carried here as well as at the desk because the screen is the same screen: read as "there are none",
+   * a damaged file tells somebody every morning they set up is gone while the arrangements sit unharmed
+   * on the machine - and from here there is not even a button to try to fix it with.
+   */
+  schedulesUnread: boolean
+  /**
+   * Whether that project has a repository to put a shared scenario in at all.
+   *
+   * It used to be dropped on the way in, because nothing was written from here. Now the editor is here,
+   * and without this the shelf offered for a new scenario would be one the machine cannot write to - a
+   * form that cannot be submitted, chosen from a phone and refused on a desk nobody is at.
+   */
+  canShare: boolean
 }
 
 export const emptyFacts = (): ProjectFacts => ({
@@ -138,6 +160,7 @@ export const isFact = (message: ShellMessage): boolean =>
   message.type === 'calmColors' ||
   message.type === 'customModels' ||
   message.type === 'scenarios' ||
+  message.type === 'scenarioLive' ||
   message.type === 'scenarioRun'
 
 /**
@@ -146,8 +169,11 @@ export const isFact = (message: ShellMessage): boolean =>
  * The usage is folded by the shared rules rather than by a copy of them here (see mergeUsageBook): the
  * same message reaches the panel at the desk, and the two screens disagreeing about what a percentage
  * means would be worse than either of them saying nothing.
+ *
+ * `watching` is the run whose screen is open, and it decides what is done with the heaviest fact of all -
+ * see the `scenarioRun` case.
  */
-export const applyFact = (facts: ProjectFacts, message: ShellMessage): ProjectFacts => {
+export const applyFact = (facts: ProjectFacts, message: ShellMessage, watching = ''): ProjectFacts => {
   switch (message.type) {
     case 'usage':
       // Into the account it names, never over the picture on screen - see [ProjectFacts.usage].
@@ -191,8 +217,7 @@ export const applyFact = (facts: ProjectFacts, message: ShellMessage): ProjectFa
 
     /*
      * The shelves, replaced whole: this one message is the entire answer about what the project has,
-     * and a scenario deleted at the desk is said by its absence. `canShare` is left behind - it answers
-     * "is there a repository to put a new one in", and new ones are not written from here.
+     * and a scenario deleted at the desk is said by its absence.
      */
     case 'scenarios':
       return {
@@ -200,18 +225,41 @@ export const applyFact = (facts: ProjectFacts, message: ShellMessage): ProjectFa
         scenarios: {
           list: message.scenarios,
           past: message.runs,
-          live: message.live,
-          schedules: message.schedules,
+          schedules: message.schedules ?? [],
+          schedulesUnread: message.schedulesUnread === true,
+          canShare: message.canShare === true,
         },
       }
 
     /*
-     * One run, under its own id. Both the live one arriving on its own and an old one that was asked
-     * for land here, and keeping them apart is the whole point of the key: an old run opened for
-     * reading must not stand in for the one that is going.
+     * What is going right now, as summaries.
+     *
+     * The only answer to "is anything running here", and it arrives about once a second while something
+     * is. It used to be one identifier inside the shelves, which was true while a project could only
+     * have one run; a phone that had to have the whole record before it could draw a card also had to
+     * wait for that record, and a run standing on a question never sends another beat at all.
+     */
+    case 'scenarioLive':
+      return { ...facts, liveRuns: message.runs }
+
+    /*
+     * One run, whole - and only the one whose screen is open.
+     *
+     * The record is the heaviest thing this page holds, and it arrives for runs nobody here asked for:
+     * a machine may have several rounds of work going at once, and every one of them is pushed to every
+     * paired device several times a second (see ScenarioDesk's heartbeat). Kept as they arrive, a page
+     * left open all day holds one per run the machine ever raised, including the ones its clock started
+     * at nine in the morning while this phone was asleep. The panel keeps the same rule against its open
+     * tabs; here there is one screen, so there is one run.
+     *
+     * Still a map under an id rather than a single slot, because two of them arrive by different roads
+     * and must not overwrite each other: the live one is pushed as it moves, while an old one comes back
+     * because this phone asked for it (see the `scenarioOpen` request).
      */
     case 'scenarioRun':
-      return { ...facts, runs: { ...facts.runs, [message.run.id]: message.run } }
+      return message.run.id === watching
+        ? { ...facts, runs: { [message.run.id]: message.run } }
+        : facts
 
     default:
       return facts
@@ -232,3 +280,18 @@ export const applyFact = (facts: ProjectFacts, message: ShellMessage): ProjectFa
  */
 export const phoneCommands = (t: Dict, facts: ProjectFacts): CommandEntry[] =>
   buildCommands(t, facts.commands, facts.hints).filter((command) => command.group !== 'panel')
+
+/**
+ * The runs going in a project right now, or nothing.
+ *
+ * Beside the shape of the facts rather than in a screen, because three of them ask: the list, the card on
+ * the project screen and the badge in the drawer. It used to be written twice - once here, once by hand
+ * inside the project card - and a rule written twice is a rule that disagrees with itself on the first
+ * change.
+ *
+ * Summaries, so a run that is standing on a question counts like any other. The old rule waited for two
+ * facts to agree - the shelves naming a run and its whole record having arrived - which was honest with
+ * one run and quietly wrong with several: the record of only one of them can be cached for a phone
+ * joining late, and a paused run sends no beat at all.
+ */
+export const liveRunsOf = (facts: ProjectFacts | undefined): ScenarioRunSummary[] => facts?.liveRuns ?? []

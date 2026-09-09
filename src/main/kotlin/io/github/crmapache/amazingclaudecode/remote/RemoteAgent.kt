@@ -807,13 +807,34 @@ internal class RemoteAgent : Disposable {
         val sessionId = payload["s"]?.jsonPrimitive?.contentOrNull.orEmpty()
         val since = payload["q"]?.jsonPrimitive?.longOrNull ?: 0
 
-        if (projectKey.isEmpty() || sessionId.isEmpty()) return
+        if (projectKey.isEmpty()) return
 
-        subscriptions[Frame.encodeAddress(device)] = Subscription(projectKey, sessionId, since)
+        val address = Frame.encodeAddress(device)
+        subscriptions[address] = Subscription(projectKey, sessionId, since)
         countWatchers()
-        thisLogger().info("A device is now watching $sessionId from $since")
+
+        // The page that said this has nothing yet, whatever its predecessor under the same address was
+        // sent (see RelayClient.forgetFacts).
+        for (attached in projects.values) attached.client.forgetFacts(address)
+        thisLogger().info("A device is now watching ${sessionId.ifEmpty { "the project" }} from $since")
 
         val attachment = projects[projectKey] ?: return
+
+        /*
+         * A device may watch a project without watching a conversation in it, and an empty conversation
+         * is how it says so.
+         *
+         * The scenarios screen is about the project and about no chat at all - the shelves, the runs and
+         * the hours travel as the project's facts, and those are addressed by subscription. Refused for
+         * having no conversation to catch up on, such a device was handed nothing at all: the screen
+         * waited on "Loading…" until somebody at the desk happened to change a shelf. There is no journal
+         * to replay here, so what it gets is the facts and nothing else.
+         */
+        if (sessionId.isEmpty()) {
+            attachment.client.deliver(attachment.hub.projectFacts())
+            return
+        }
+
         attachment.client.catchUp(attachment.hub, sessionId, since)
     }
 
@@ -1098,10 +1119,13 @@ internal class RemoteAgent : Disposable {
             // it rather than from an invention of its own. Empty fields travel as they are: empty means
             // "however Claude Code is configured here", which is a real answer and not a missing one.
             putJsonObject("prefs") {
-                val preferences = ClaudePreferences.snapshot()
-                put("model", preferences.model)
-                put("effort", preferences.effort)
-                put("mode", preferences.mode)
+                // What a new tab genuinely starts on rather than what was last picked in one: a phone
+                // opening a conversation names the model in the request itself, and a request naming
+                // the last pick would walk straight past a model pinned at the desk (see
+                // ClaudePreferences.startingModel).
+                put("model", ClaudePreferences.startingModel())
+                put("effort", ClaudePreferences.startingEffort())
+                put("mode", ClaudePreferences.mode)
             }
             putJsonArray("projects") {
                 for ((key, attachment) in projects) {
@@ -1365,6 +1389,9 @@ internal class RemoteAgent : Disposable {
          *
          * Of the message as it LEAVES, cut down for a phone, rather than as it arrived - see the note
          * where the facts are gathered in [deliver].
+         *
+         * Let go of by [FactMemory], because a run puts its identifier into the slot: without that this
+         * grows by a row for every run of every scenario for as long as the window is open.
          */
         private val sentFacts = ConcurrentHashMap<String, Long>()
 
@@ -1396,9 +1423,18 @@ internal class RemoteAgent : Disposable {
                 emptyList()
             } else {
                 sendable.mapNotNull { message ->
-                    RemoteFeed.projectFact(message)?.let { type -> type to RemoteFeed.forPhone(type, message) }
+                    RemoteFeed.projectFact(message)?.let { type -> RemoteFeed.forPhone(type, message) }
                 }
             }
+
+            // What a device was last sent goes with the device: a phone that was revoked or moved to
+            // another project leaves a slot behind for every run it ever watched, and nothing else here
+            // would ever take them away (see FactMemory). By what is watching THIS project, because a
+            // device that moved to another one keeps its place in the map under the same address.
+            FactMemory.prune(
+                sentFacts,
+                subscriptions.filterValues { it.projectKey == projectKey }.keys,
+            )
 
             for ((address, subscription) in subscriptions) {
                 if (subscription.projectKey != projectKey) continue
@@ -1416,16 +1452,36 @@ internal class RemoteAgent : Disposable {
         }
 
         /**
+         * A device is starting again: forget everything it was last sent.
+         *
+         * A subscription is a page saying what it has, and a page that has just been loaded has nothing.
+         * The memory below is per device and outlives the page - a phone reloaded in the morning kept
+         * every fingerprint from the night before, so the facts it needed to draw its first screen were
+         * all "already sent" and none of them went. What it cost was the screen a phone opens on: the
+         * shelves, what is running, the branch, the limits, all silent until somebody at the desk
+         * happened to change one of them.
+         */
+        fun forgetFacts(address: String) {
+            sentFacts.keys.removeAll { key -> FactMemory.address(key) == address }
+        }
+
+        /**
          * Which of the project's facts this device has not already been sent unchanged.
          *
          * They go to every device watching something in this project rather than to whoever asked:
          * nobody asked - they arrive by themselves, exactly as they do for the panel, and a phone
          * cannot draw its composer without them.
+         *
+         * Remembered under a SLOT rather than under a message type, and the difference is the whole of
+         * the saving on a scenario run (see RemoteFeed.Outgoing.slot). Two runs going side by side take
+         * turns on the wire, so under one slot every frame differs from the one before it and none of them
+         * is ever recognised as unchanged - which is four sealed frames a second into somebody's pocket
+         * for as many hours as the work takes.
          */
-        private fun newFacts(address: String, facts: List<Pair<String, String>>): List<String> =
-            facts.mapNotNull { (type, message) ->
+        private fun newFacts(address: String, facts: List<RemoteFeed.Outgoing>): List<String> =
+            facts.mapNotNull { (slot, message) ->
                 val fingerprint = message.length.toLong() shl 32 or (message.hashCode().toLong() and 0xffffffffL)
-                if (sentFacts.put("$address\u0000$type", fingerprint) == fingerprint) null else message
+                if (sentFacts.put(FactMemory.key(address, slot), fingerprint) == fingerprint) null else message
             }
 
         /**

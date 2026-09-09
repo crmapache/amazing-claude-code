@@ -42,14 +42,50 @@ internal class ScenarioStore(private val workingDirectory: String?) {
     private fun directoryOf(scope: String): File? =
         if (ScenarioScope.normalize(scope) == ScenarioScope.USER) userDirectory() else projectDirectory()
 
+    /**
+     * Whether the disk this shelf would stand on is answering at all.
+     *
+     * The shelf's own folder cannot say: a path on a share that is down and a path nobody ever created look
+     * exactly alike from here. What the folder above it says can - the project that is open in this window,
+     * and the Claude home the commands and skills are already read from. Either of those answering is proof
+     * enough that a missing `scenarios` beneath it was simply never made.
+     */
+    private fun reachable(scope: String): Boolean =
+        runCatching {
+            if (ScenarioScope.normalize(scope) == ScenarioScope.USER) {
+                ClaudeHome.of(workingDirectory).configDirectory.parentFile?.isDirectory == true
+            } else {
+                workingDirectory?.let { File(it).isDirectory } == true
+            }
+        }.getOrDefault(false)
+
     /** Everything on both shelves, project first, each in the order it was created. */
-    fun all(): List<Scenario> = read(ScenarioScope.PROJECT) + read(ScenarioScope.USER)
+    fun all(): List<Scenario> = shelf(ScenarioScope.PROJECT).orEmpty() + shelf(ScenarioScope.USER).orEmpty()
 
-    fun find(id: String, scope: String): Scenario? = read(scope).firstOrNull { it.id == id }
+    fun find(id: String, scope: String): Scenario? = shelf(scope).orEmpty().firstOrNull { it.id == id }
 
-    private fun read(scope: String): List<Scenario> {
-        val directory = directoryOf(scope) ?: return emptyList()
-        val files = runCatching { directory.listFiles() }.getOrNull() ?: return emptyList()
+    /**
+     * One shelf, or null when it could not be looked at.
+     *
+     * The two are not the same sentence, and one caller has to know the difference: pruning the scheduled
+     * runs against the scenarios that still exist (see Schedules.keepOnly). A branch checked out without a
+     * `.claude/scenarios` folder in it, a network share that did not answer, a window with no project at
+     * all - read as "there are no scenarios", each of those wipes every arrangement somebody made, and
+     * they do not come back when the branch does.
+     *
+     * A folder that exists and lists as empty IS an answer: that is what deleting the last scenario leaves
+     * behind, and its hours should go with it. So is a folder that was never made - and that half used to
+     * be missing, which turned the pruning off on the ordinary machine rather than the odd one: nobody has
+     * a `scenarios` folder of their own until they write a scenario of their own, so the person's shelf
+     * answered "no idea" for ever, and a deleted scenario went on taking its hour every morning.
+     *
+     * Told apart by the ground the shelf stands on (see [reachable]): a folder that is not there, on a disk
+     * that is, has genuinely never been made. A disk that will not answer is where the doubt belongs.
+     */
+    fun shelf(scope: String): List<Scenario>? {
+        val directory = directoryOf(scope) ?: return null
+        if (!directory.isDirectory) return if (reachable(scope)) emptyList() else null
+        val files = runCatching { directory.listFiles() }.getOrNull() ?: return null
 
         return files
             .filter { it.isFile && it.name.endsWith(".json") }

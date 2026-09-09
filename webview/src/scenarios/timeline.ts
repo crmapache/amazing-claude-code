@@ -12,8 +12,30 @@ import { passesOf } from './rules'
  * when the head ends a loop early is one whose length depends on the outcome.
  */
 
+/**
+ * Where a stage stands, as the one word its own heading carries.
+ *
+ * A chapter rather than a caption: "done in 8m", "here now", "not reached" answers what the rows under it
+ * would otherwise have to be counted to work out. `ahead` covers both a stage nothing has begun in and one
+ * a loop ended before it reached - from in front of the screen those are the same sentence.
+ */
+export type StageStanding = 'done' | 'here' | 'ahead'
+
 export type TimelineRow =
-  | { kind: 'stage'; key: string; stageId: string; title: string }
+  | {
+      kind: 'stage'
+      key: string
+      stageId: string
+      title: string
+      /** Which stage of how many, counting from one - the number in front of the heading. */
+      index: number
+      total: number
+      passes: number
+      untilDone: boolean
+      standing: StageStanding
+      /** How long the whole stage took, once every go at it is over. Zero while it is not. */
+      took: number
+    }
   | {
       kind: 'step'
       key: string
@@ -50,7 +72,20 @@ export const timelineOf = (run: ScenarioRun): TimelineRow[] => {
 
     if (many && step.stageId !== stageId) {
       stageId = step.stageId
-      rows.push({ kind: 'stage', key: `stage:${step.stageId}`, stageId: step.stageId, title: stage?.title ?? '' })
+      const of = run.steps.filter((one) => one.stageId === step.stageId)
+
+      rows.push({
+        kind: 'stage',
+        key: `stage:${step.stageId}`,
+        stageId: step.stageId,
+        title: stage?.title ?? '',
+        index: run.snapshot.stages.findIndex((one) => one.id === step.stageId) + 1,
+        total: run.snapshot.stages.length,
+        passes: stage ? passesOf(stage) : 1,
+        untilDone: stage?.untilDone ?? false,
+        standing: standingOf(of),
+        took: tookBy(of),
+      })
     }
 
     rows.push({
@@ -79,6 +114,64 @@ const notesFor = (notes: ScenarioRunNote[], stepKey: string): ScenarioRunNote[] 
   notes.filter((note) => note.stepKey === stepKey).sort((one, two) => one.at - two.at)
 
 const noteKey = (note: ScenarioRunNote): string => `note:${note.stepKey}:${note.at}`
+
+/**
+ * Where a stage stands, from its own steps and nothing else.
+ *
+ * "Here now" wins over everything: a stage with a card working in it is where the run is, whatever the
+ * rows above and below have done. A stage nothing has begun in and one whose passes were all skipped are
+ * both `ahead` - it was never reached either way, and "skipped" is a word about a row rather than about a
+ * chapter.
+ */
+const standingOf = (steps: ScenarioRunStep[]): StageStanding => {
+  if (steps.some((step) => step.state === 'running' || step.state === 'asking' || step.state === 'judging')) {
+    return 'here'
+  }
+  if (steps.some((step) => step.state === 'paused')) return 'here'
+  if (steps.some((step) => step.state === 'done' || step.state === 'failed')) {
+    return steps.every((step) => step.state !== 'waiting') ? 'done' : 'here'
+  }
+  return 'ahead'
+}
+
+/**
+ * How long a stage took, from the first go at it to the last.
+ *
+ * The span rather than the sum of its cards: a stage is a stretch of the evening, and two cards of six
+ * minutes each with the head thinking between them took more than twelve. Zero while anything in it is
+ * still open, because the number would go on changing under the heading.
+ */
+const tookBy = (steps: ScenarioRunStep[]): number => {
+  const begun = steps.filter((step) => step.startedAt > 0)
+  if (begun.length === 0 || begun.some((step) => step.finishedAt === 0)) return 0
+
+  const from = Math.min(...begun.map((step) => step.startedAt))
+  const to = Math.max(...begun.map((step) => step.finishedAt))
+  return Math.max(0, to - from)
+}
+
+/**
+ * Whether a finished run can be picked up where it stood - the screens' half of CarryOn.pointOf on
+ * the IDE's side, which decides for real: a run that was stopped or fell over, and whose main thread
+ * came up at all. A finished one has nothing to pick up, and a head that never came up remembers
+ * nothing.
+ */
+export const resumable = (run: ScenarioRun): boolean =>
+  (run.state === 'stopped' || run.state === 'failed') && run.headConversationId.length > 0
+
+/**
+ * The card a finished run got to: the last that ever began. What the sentence over the timeline names
+ * - "you stopped it at X" - and empty for a run that ended before its first card.
+ */
+export const cutCardOf = (run: ScenarioRun): string =>
+  [...run.steps].reverse().find((step) => step.startedAt > 0)?.title ?? ''
+
+/**
+ * How long the run has been a run: the clock minus the time it stood picked-up-later (see
+ * ScenarioRun.idle). `now` is the IDE's clock on a phone, not the phone's (see hooks/useNow).
+ */
+export const runElapsed = (run: { startedAt: number; finishedAt: number; idle?: number }, now: number): number =>
+  Math.max(0, (run.finishedAt > 0 ? run.finishedAt : now) - run.startedAt - (run.idle ?? 0))
 
 /** How far the run has got, as the bar over the timeline draws it. */
 export interface Progress {

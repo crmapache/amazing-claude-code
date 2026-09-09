@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Scenario, ScenarioRun, ScenarioRunStep } from '../protocol'
-import { progressOf, timelineOf } from './timeline'
+import { cutCardOf, progressOf, resumable, runElapsed, timelineOf } from './timeline'
 
 const snapshot: Scenario = {
   version: 1,
@@ -54,6 +54,7 @@ const run = (over: Partial<ScenarioRun> = {}): ScenarioRun => ({
   scenarioId: 'x',
   scenarioName: 'Round',
   scope: 'project',
+  runFrom: '',
   snapshot,
   startedAt: 0,
   finishedAt: 0,
@@ -152,5 +153,47 @@ describe('a run read top to bottom', () => {
     })
 
     expect(progressOf(counted)).toEqual({ done: 1, failed: 1, running: 1, total: 4 })
+  })
+})
+
+describe('a run that ended', () => {
+  const begun = (key: string, cardId: string, pass: number, state: ScenarioRunStep['state']): ScenarioRunStep => ({
+    ...step(key, cardId, pass, state),
+    startedAt: 1_000,
+  })
+
+  /*
+   * Picked up where it stood: only a run that was stopped or fell over, and only when its main thread came
+   * up at all - a head that never came up remembers nothing. The IDE decides for real (see CarryOn on its
+   * side); this is what the button is drawn from.
+   */
+  it('can be picked up when it was stopped or fell over and had a main thread', () => {
+    expect(resumable(run({ state: 'stopped', headConversationId: 'head' }))).toBe(true)
+    expect(resumable(run({ state: 'failed', headConversationId: 'head' }))).toBe(true)
+    expect(resumable(run({ state: 'done', headConversationId: 'head' }))).toBe(false)
+    expect(resumable(run({ state: 'running', headConversationId: 'head' }))).toBe(false)
+    expect(resumable(run({ state: 'failed', headConversationId: '' }))).toBe(false)
+  })
+
+  // The sentence over the timeline names the card it happened at - the last that ever began.
+  it('is placed by the last card that began', () => {
+    const cut = run({
+      state: 'stopped',
+      steps: [begun('s1:a:1', 'a', 1, 'done'), begun('s1:b:1', 'b', 1, 'failed'), step('s1:a:2', 'a', 2, 'skipped')],
+    })
+
+    expect(cutCardOf(cut)).toBe('b')
+    expect(cutCardOf(run({ state: 'stopped' }))).toBe('')
+  })
+
+  /*
+   * The time it stood picked-up-later does not count: a run stopped at midnight and continued after
+   * breakfast took the minutes it worked, not the night in between.
+   */
+  it('does not count the time it stood between an ending and a pick-up', () => {
+    expect(runElapsed({ startedAt: 1_000, finishedAt: 61_000, idle: 20_000 }, 0)).toBe(40_000)
+    expect(runElapsed({ startedAt: 1_000, finishedAt: 0, idle: 5_000 }, 31_000)).toBe(25_000)
+    // A record written before there was such a thing.
+    expect(runElapsed({ startedAt: 1_000, finishedAt: 4_000 }, 0)).toBe(3_000)
   })
 })

@@ -23,7 +23,10 @@ export type MenuScreen =
   | 'remote'
   | 'remoteAbout'
   | 'accounts'
-  | 'defaultMode'
+  | 'newChat'
+  | 'newChatModel'
+  | 'newChatEffort'
+  | 'newChatMode'
   | 'composerLayout'
   | 'pasteCollapse'
   | 'sendKey'
@@ -60,7 +63,12 @@ export interface MenuSummary {
   sounds: string
   /** Whether the gauges are drawn calm rather than by the green-to-red ladder - "On" or "Off". */
   calmColors: string
-  defaultMode: string
+  /**
+   * What a new tab starts with - the three values of the screen behind "New chats", each written the way
+   * its own row writes it. "As last chosen" is one of the answers here rather than an absence of one:
+   * that IS the setting, and a row saying nothing would read as a row that has not loaded.
+   */
+  newChat: { model: string; effort: string; mode: string }
   composerLayout: string
   /** From how many lines a pasted text folds into a chip, or that it never does. */
   pasteCollapse: string
@@ -126,7 +134,7 @@ const AUTHOR_PRODUCT = 'Snakein'
 const SETTINGS_SCREENS: MenuScreen[] = [
   'sounds',
   'calmColors',
-  'defaultMode',
+  'newChat',
   'composerLayout',
   'pasteCollapse',
   'sendKey',
@@ -135,6 +143,9 @@ const SETTINGS_SCREENS: MenuScreen[] = [
   'customModels',
   'language',
 ]
+
+/** The three lists behind "New chats" - one level deeper than the settings themselves (see parentOf). */
+const NEW_CHAT_SCREENS: MenuScreen[] = ['newChatModel', 'newChatEffort', 'newChatMode']
 
 /**
  * Where a step back leads from each screen. Three of them stand one level deeper than the rest: the
@@ -149,6 +160,9 @@ export const parentOf = (screen: MenuScreen): MenuScreen => {
   // own - sixty-odd languages will not fit beside a key field, and coming back from either belongs to the
   // voice screen rather than to the settings list two steps up.
   if (screen === 'voiceLanguage' || screen === 'voiceDevice') return 'voice'
+  // The three lists of "new chats" belong to that screen rather than to the settings two steps up, for
+  // the same reason: what one was in the middle of is the list of three, not the list of ten.
+  if (NEW_CHAT_SCREENS.includes(screen)) return 'newChat'
   if (SETTINGS_SCREENS.includes(screen)) return 'settings'
   return 'menu'
 }
@@ -253,9 +267,25 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M12.7 3.9a5.7 5.7 0 010 8.2" />
     </svg>
   ),
-  defaultMode: (
+  mode: (
     <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
       <path d="M8 2.2l4.6 1.7v3.9c0 3-2.1 4.9-4.6 6-2.5-1.1-4.6-3-4.6-6V3.9z" />
+    </svg>
+  ),
+  /* The same plus in a tab the header opens a new chat with: the row is about what that button produces,
+     and one mark for one thing means the row and the button recognise each other unread. */
+  newChat: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2.4" y="3.2" width="11.2" height="9.6" rx="1.6" />
+      <path d="M8 6.2v3.6M6.2 8h3.6" />
+    </svg>
+  ),
+  /* Rising bars: the row is about how hard a new tab thinks, and a level is the one thing a ladder of
+     bars says without a word. A dial would have promised a gauge - something being measured rather than
+     something being chosen. */
+  effort: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+      <path d="M3.6 11.4V9.2M8 11.4V6.4M12.4 11.4V3.9" />
     </svg>
   ),
   /* A gauge at rest: the track and a short reading inside it. The row is about how the gauges are
@@ -606,13 +636,19 @@ export const SettingsScreen = ({
           value={summary.calmColors}
           onClick={() => onPick('calmColors')}
         />
+        {/* One row for the three things a tab is born with, rather than three rows scattered down this
+            list. They are one decision - "how does my work begin" - and the model and the effort had no
+            row here at all: they were written only by picking them in a tab, which meant the way to
+            change what new tabs start on was to change the tab you were in. No value beside it on
+            purpose: three answers do not fold into one word, and naming any one of them would say the
+            other two are not there. */}
         <Row
-          icon="defaultMode"
-          iconClass={s.rowIconMode}
-          label={t.settings.rows.defaultMode.label}
-          sub={t.settings.rows.defaultMode.sub}
-          value={summary.defaultMode}
-          onClick={() => onPick('defaultMode')}
+          icon="newChat"
+          iconClass={s.rowIconNewChat}
+          label={t.settings.rows.newChat.label}
+          sub={t.settings.rows.newChat.sub}
+          value=""
+          onClick={() => onPick('newChat')}
         />
         <Row
           icon="composerLayout"
@@ -672,6 +708,58 @@ export const SettingsScreen = ({
           sub={t.settings.rows.language.sub}
           value={summary.language}
           onClick={() => onPick('language')}
+        />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * What a new tab starts with: the model, the effort and the permission mode.
+ *
+ * Three rows rather than three lists stacked on one screen, and the lists are the reason: the models
+ * alone run to a dozen entries with a sentence under each, and all three at once would be thirty of them
+ * in a panel 350 pixels wide - a screen nobody reads to the end of, to change one thing at its foot.
+ *
+ * The permission mode used to live one level up, alone, as "Default mode". It moved because the other two
+ * exist now: the three answer the same question and disagreeing about where that question is asked would
+ * be the only thing anybody had to remember here.
+ */
+export const NewChatScreen = ({
+  summary,
+  onPick,
+}: {
+  summary: MenuSummary
+  onPick: (screen: MenuScreen) => void
+}) => {
+  const t = useT()
+
+  return (
+    <div className={s.screen}>
+      <div className={s.rows}>
+        <Row
+          icon="customModels"
+          iconClass={s.rowIconModels}
+          label={t.newChat.rows.model.label}
+          sub={t.newChat.rows.model.sub}
+          value={summary.newChat.model}
+          onClick={() => onPick('newChatModel')}
+        />
+        <Row
+          icon="effort"
+          iconClass={s.rowIconEffort}
+          label={t.newChat.rows.effort.label}
+          sub={t.newChat.rows.effort.sub}
+          value={summary.newChat.effort}
+          onClick={() => onPick('newChatEffort')}
+        />
+        <Row
+          icon="mode"
+          iconClass={s.rowIconMode}
+          label={t.newChat.rows.mode.label}
+          sub={t.newChat.rows.mode.sub}
+          value={summary.newChat.mode}
+          onClick={() => onPick('newChatMode')}
         />
       </div>
     </div>

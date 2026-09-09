@@ -883,8 +883,14 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         inventoryChanged()
     }
 
-    /** The list a phone draws is out of date - see [onInventoryChanged]. */
-    private fun inventoryChanged() {
+    /**
+     * The list a phone draws is out of date - see [onInventoryChanged].
+     *
+     * Not private, because a phone's inventory carries more than the tabs: it also carries what a new
+     * conversation there starts with, and that is changed from a screen the hub knows nothing about (see
+     * announceNewTabDefaults in SessionCommands).
+     */
+    fun inventoryChanged() {
         runCatching { inventoryListener?.invoke() }
             .onFailure { thisLogger().warn("The inventory listener could not be told", it) }
     }
@@ -1527,6 +1533,16 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         PROJECT_ORDER.mapNotNull { type -> projectCache[type] }
 
     /**
+     * The same facts, for a client that is watching the PROJECT rather than a conversation in it.
+     *
+     * A phone on the scenarios screen is looking at the project and at no chat at all, and the shelves,
+     * the runs and the hours all travel as facts - which are addressed by subscription (see
+     * RemoteAgent.deliver). Without this it was handed nothing until somebody at the desk changed one of
+     * them, so a screen opened straight from the menu sat on "Loading…" for as long as it was left open.
+     */
+    fun projectFacts(): List<String> = projectMessages()
+
+    /**
      * The bracket a restored feed arrives inside. The interface applies everything between the two as
      * one change: a couple of thousand entries applied one at a time is a couple of thousand redraws,
      * and the panel already struggles with that on a long replay from disk.
@@ -1665,14 +1681,19 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             "plugins",
             "marketplaces",
             /*
-             * The shelves and the run that may be going, so that a window - or a phone - joining while
-             * one is running is caught up with it rather than told nothing until the next thing happens.
+             * The shelves, what is going right now, and the record of one run - so that a window, or a
+             * phone, joining while work is under way is caught up with it rather than told nothing until
+             * the next thing happens.
              *
-             * The run stays in the cache after it ends, and that is right: it is the last state that run
-             * reached. Which of them is LIVE is said by the shelves beside it and by nothing else, and
-             * every screen that draws one reads both (see mobile/App.liveRunOf).
+             * Three messages rather than one because they change at three different rates: the shelves
+             * when somebody writes a scenario, the live list once a second while anything runs, the
+             * record of a run several times a second. Which runs are going is said by the live list and
+             * by nothing else - one slot per type means only one RECORD can be cached, and with several
+             * runs that one would be whichever happened to beat last (see ScenarioDesk.sendLive). A
+             * screen that wants a whole timeline asks for it by name.
              */
             "scenarios",
+            "scenarioLive",
             "scenarioRun",
         )
     }

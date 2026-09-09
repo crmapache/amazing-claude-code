@@ -2,17 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { unbase64url } from '../core/crypto'
 import { deriveSessionTitle } from '../feed/title'
 import type {
+  AgentEvent,
   AvailablePluginInfo,
   HistoryEntry,
   InstalledPluginInfo,
   McpServerInfo,
   PluginMarketplaceInfo,
-  ScenarioRun as ScenarioRunRecord,
+  Scenario,
   ShellMessage,
 } from '../protocol'
 import { ClockContext } from '../hooks/useNow'
 import { planDecisionOf, useCardState } from '../hooks/useCardState'
-import { applyFact, emptyFacts, factsFor, isFact, type ProjectFacts } from './facts'
+import { applyFact, emptyFacts, factsFor, isFact, liveRunsOf, type ProjectFacts } from './facts'
 import { useCalmColors } from '../hooks/useCalmColors'
 import { LocaleProvider, activeLocale } from '../i18n'
 import { RemoteClock } from './clock'
@@ -46,7 +47,10 @@ import { NewSession } from './screens/NewSession'
 import { Pairing, type PairingOffer } from './screens/Pairing'
 import { Plugins } from './screens/Plugins'
 import { Projects } from './screens/Projects'
+import { ScenarioCardScreen } from './screens/ScenarioCardScreen'
+import { ScenarioEditor } from './screens/ScenarioEditor'
 import { ScenarioRun } from './screens/ScenarioRun'
+import { ScenarioStep } from './screens/ScenarioStep'
 import { Scenarios } from './screens/Scenarios'
 import { RunSheet } from './screens/RunSheet'
 import { TabsSheet } from './screens/TabsSheet'
@@ -101,6 +105,16 @@ type Screen =
    */
   | { at: 'scenarios'; agentId: string; projectKey: string }
   | { at: 'scenarioRun'; agentId: string; projectKey: string; runId: string }
+  /**
+   * One step's own conversation, and the editor with one of its cards.
+   *
+   * Screens rather than sheets because both are long: a step that walked a repository is pages, and a
+   * card is a prompt with two answers under it. Everything short about a scenario folds up from the
+   * bottom instead (see ScenarioSheets).
+   */
+  | { at: 'scenarioStep'; agentId: string; projectKey: string; runId: string; key: string }
+  | { at: 'scenarioEditor'; agentId: string; projectKey: string }
+  | { at: 'scenarioCard'; agentId: string; projectKey: string; stageId: string; cardId: string }
   | { at: 'pairing' }
 
 /** What is folded up over the screen, if anything - the six sheets and the drawer. */
@@ -183,6 +197,44 @@ export const App = () => {
    * answered on the run.
    */
   const [scenarioNote, setScenarioNote] = useState('')
+
+  /**
+   * The scenario the editor on this phone is holding, and how it got there.
+   *
+   * Held by the app rather than by the screen for the reason everything else on this page is: a screen
+   * is unmounted the moment somebody looks at another one, and a scenario half rewritten on a sofa is
+   * not a thing to lose to a glance at a chat. `fresh` is one that has never been saved - what a model
+   * wrote, or an empty form - and `tooBig` is one the wire would not carry, which is said out loud
+   * rather than sent short (see RemoteFeed.wholeScenario).
+   */
+  const [edit, setEdit] = useState<{
+    draft: Scenario | null
+    fresh: boolean
+    tooBig: boolean
+    /** The answer came back without one: it is on neither shelf any more. */
+    gone: boolean
+  } | null>(null)
+
+  /**
+   * A model writing one out of a sentence: which request, when it started, and why the last one failed.
+   *
+   * The moment rather than a yes-or-no, because the sheet counts the wait out loud - this reads the
+   * project before it writes, so it takes half a minute.
+   */
+  const [drafting, setDrafting] = useState<{ id: string; since: number; error: string }>({
+    id: '',
+    since: 0,
+    error: '',
+  })
+
+  /** The log of the one step whose screen is open - see scenarioLog in protocol.ts. */
+  const [stepLog, setStepLog] = useState<{
+    runId: string
+    key: string
+    found: boolean
+    truncated: boolean
+    events: AgentEvent[]
+  } | null>(null)
 
   /** Moves the counters on the list of conversations once a second - see the effect below. */
   const [tick, setTick] = useState(0)
@@ -343,6 +395,16 @@ export const App = () => {
 
   /** Which conversation the feed on screen belongs to - a late message from another one is dropped. */
   const watching = useRef<{ agentId: string; projectKey: string; sessionId: string } | null>(null)
+
+  /**
+   * Which run's timeline is on screen, where the message handler can read it.
+   *
+   * The handler is subscribed once and would go on seeing the screen this page started at. It decides
+   * what happens to the heaviest fact there is: the whole record of a run, pushed for every round of
+   * work the machine has going, several times a second (see applyFact).
+   */
+  const watchedRun = useRef('')
+  watchedRun.current = screen.at === 'scenarioRun' ? screen.runId : ''
 
   /**
    * The journal number the feed on screen has reached, where a callback can read it.
@@ -592,11 +654,69 @@ export const App = () => {
       return
     }
 
+    /*
+     * One scenario, whole, because this phone asked for it by name.
+     *
+     * The shelves travel with their prose cut out - it is the entire weight of that message - so the
+     * editor asks (see `scenarioFetch`). Absent means it is on neither shelf any more; `tooBig` means it
+     * would not fit a frame and was therefore not sent at all rather than sent short, which is the one
+     * place on this road where shortening is forbidden: what the editor is shown is what it saves back.
+     */
+    if (message.type === 'scenarioFetched') {
+      setEdit({
+        draft: message.scenario ?? null,
+        fresh: false,
+        tooBig: message.tooBig === true,
+        // The answer arrived, so a screen still holding nothing is holding nothing for a reason.
+        gone: !message.scenario && message.tooBig !== true,
+      })
+      return
+    }
+
+    /*
+     * What a model wrote out of a sentence. It opens in the editor unsaved: the person asked for a round
+     * of work in one sentence and got back stages of instructions to agents, and Save is where they say
+     * it is what they meant.
+     */
+    if (message.type === 'scenarioDrafted') {
+      setDrafting((current) => (current.id === message.id ? { id: '', since: 0, error: message.error ?? '' } : current))
+      if (message.scenario) {
+        setEdit({ draft: message.scenario, fresh: true, tooBig: false, gone: false })
+        setScreen((current) =>
+          current.at === 'scenarios'
+            ? { at: 'scenarioEditor', agentId: current.agentId, projectKey: current.projectKey }
+            : current,
+        )
+      }
+      return
+    }
+
+    /* Saved: the shelves follow by themselves, so all this has to do is close the editor's memory. */
+    if (message.type === 'scenarioSaved') {
+      setEdit(null)
+      return
+    }
+
+    /* One step's own conversation, cut to the end of it on the way over (see RemoteFeed.trimmedLog). */
+    if (message.type === 'scenarioLog') {
+      setStepLog({
+        runId: message.runId,
+        key: message.key,
+        found: message.found,
+        truncated: message.truncated,
+        events: message.events,
+      })
+      return
+    }
+
     // The project's own facts, which belong to no conversation at all and so must be taken before the
     // guard below turns everything without a matching sessionId away.
     if (isFact(message)) {
       const key = `${agentId}:${projectKey}`
-      setFacts((current) => ({ ...current, [key]: applyFact(current[key] ?? emptyFacts(), message) }))
+      setFacts((current) => ({
+        ...current,
+        [key]: applyFact(current[key] ?? emptyFacts(), message, watchedRun.current),
+      }))
       return
     }
 
@@ -920,6 +1040,17 @@ export const App = () => {
       setDrawer(false)
       setScenarioNote('')
       setScreen({ at: 'scenarios', agentId, projectKey })
+
+      /*
+       * Watching the PROJECT, with no conversation named.
+       *
+       * Everything this screen draws - the shelves, what is going, the hours - travels as the project's
+       * own facts, and those are addressed by whatever a device has subscribed to (see
+       * RemoteAgent.deliver). Opened straight from the menu, without a chat ever having been entered,
+       * the screen was addressed by nothing and waited on "Loading…" until somebody at the desk changed
+       * a shelf. An empty conversation is how a device says "the project itself".
+       */
+      links.current[agentId]?.watch(projectKey, '', 0)
       command(agentId, projectKey, { type: 'scenarios' })
     },
     [command],
@@ -935,10 +1066,46 @@ export const App = () => {
   const openRun = useCallback(
     (agentId: string, projectKey: string, runId: string) => {
       setScenarioNote('')
+      // Named before the asking, not at the next render: the answer is what the screen is opened for,
+      // and a record that arrives before the screen is known would be let go of as somebody else's.
+      watchedRun.current = runId
       setScreen({ at: 'scenarioRun', agentId, projectKey, runId })
       command(agentId, projectKey, { type: 'scenarioOpen', runId })
     },
     [command],
+  )
+
+  /**
+   * The editor, on a scenario asked for by name.
+   *
+   * Asked rather than taken off the shelves, because the shelves travel with their prose cut out: a
+   * card's prompt is the whole weight of that message and no list draws a word of it. The screen opens
+   * on nothing and fills in when the answer lands, which is the honest shape of a fetch.
+   */
+  const openEditor = useCallback(
+    (agentId: string, projectKey: string, scenario: Scenario) => {
+      setScenarioNote('')
+      setEdit({ draft: null, fresh: false, tooBig: false, gone: false })
+      setScreen({ at: 'scenarioEditor', agentId, projectKey })
+      command(agentId, projectKey, { type: 'scenarioFetch', id: scenario.id, scope: scenario.scope })
+    },
+    [command],
+  )
+
+  /**
+   * And an empty one, which needs nothing from the machine: it is a form until Save is pressed.
+   *
+   * Made by the screen rather than here, because a blank scenario carries words - what it and its first
+   * stage are called - and the words are chosen where they are drawn (this file has no dictionary; the
+   * panel speaks ten languages and every one of its screens picks its own).
+   */
+  const openBlankEditor = useCallback(
+    (agentId: string, projectKey: string, draft: Scenario) => {
+      setScenarioNote('')
+      setEdit({ draft, fresh: true, tooBig: false, gone: false })
+      setScreen({ at: 'scenarioEditor', agentId, projectKey })
+    },
+    [],
   )
 
   const openMachineScreen = useCallback(
@@ -1435,6 +1602,23 @@ export const App = () => {
 
       // A run came from the list of them, which is where the next one is - and where the shelves are.
       if (current.at === 'scenarioRun') return { ...current, at: 'scenarios' }
+      // And a step came from the run it belongs to. The log goes with it: a screen opened on the next
+      // step must not show the one before it while its own answer is on the way.
+      if (current.at === 'scenarioStep') {
+        setStepLog(null)
+        return { at: 'scenarioRun', agentId: current.agentId, projectKey: current.projectKey, runId: current.runId }
+      }
+      // A card came from the editor, which stays open behind it - nothing is saved by walking back.
+      if (current.at === 'scenarioCard') {
+        return { at: 'scenarioEditor', agentId: current.agentId, projectKey: current.projectKey }
+      }
+      // And the editor goes back to the shelves, dropping what it was holding: leaving it is the same
+      // decision as Cancel at the desk, and a draft kept behind an editor nobody is in would reopen over
+      // whatever is there the next time.
+      if (current.at === 'scenarioEditor') {
+        setEdit(null)
+        return { at: 'scenarios', agentId: current.agentId, projectKey: current.projectKey }
+      }
 
       if (
         current.at === 'mcp' ||
@@ -1602,16 +1786,66 @@ export const App = () => {
     }
 
     if (screen.at === 'scenarios') {
-      const held = facts[`${screen.agentId}:${screen.projectKey}`]
+      const at = screen
+      const held = facts[`${at.agentId}:${at.projectKey}`]
 
       return (
         <div className={m.screen}>
           <Scenarios
             shelves={held?.scenarios ?? null}
-            live={liveRunOf(held)}
-            project={projectNameOf(projects, screen.agentId, screen.projectKey)}
+            live={liveRunsOf(held)}
+            project={projectNameOf(projects, at.agentId, at.projectKey)}
             problem={scenarioNote}
-            onOpenRun={(runId) => openRun(screen.agentId, screen.projectKey, runId)}
+            draftingSince={drafting.since}
+            draftError={drafting.error}
+            onOpenRun={(runId) => openRun(at.agentId, at.projectKey, runId)}
+            onRun={(scenario, inputs) =>
+              command(at.agentId, at.projectKey, {
+                type: 'scenarioRun',
+                id: scenario.id,
+                scope: scenario.scope,
+                inputs,
+              })
+            }
+            onSchedule={(scenario, scheduleId, hour, inputs) =>
+              command(at.agentId, at.projectKey, {
+                type: 'scenarioSchedule',
+                scenarioId: scenario.id,
+                scope: scenario.scope,
+                scheduleId,
+                at: hour.at,
+                repeat: hour.repeat,
+                weekday: hour.weekday,
+                inputs,
+              })
+            }
+            onUnschedule={(scheduleId) =>
+              command(at.agentId, at.projectKey, { type: 'scenarioUnschedule', scheduleId })
+            }
+            onEdit={(scenario) => openEditor(at.agentId, at.projectKey, scenario)}
+            onNew={(draft) => openBlankEditor(at.agentId, at.projectKey, draft)}
+            onDraft={(description) => {
+              const id = `draft-${Date.now().toString(36)}`
+              setDrafting({ id, since: Date.now(), error: '' })
+              command(at.agentId, at.projectKey, { type: 'scenarioDraft', id, description })
+            }}
+            onCancelDraft={() => {
+              if (drafting.id) command(at.agentId, at.projectKey, { type: 'scenarioDraftCancel', id: drafting.id })
+              setDrafting({ id: '', since: 0, error: '' })
+            }}
+            onDuplicate={(scenario) =>
+              command(at.agentId, at.projectKey, {
+                type: 'scenarioDuplicate',
+                id: scenario.id,
+                scope: scenario.scope,
+              })
+            }
+            onDelete={(scenario) =>
+              command(at.agentId, at.projectKey, { type: 'scenarioDelete', id: scenario.id, scope: scenario.scope })
+            }
+            onPause={(runId) => command(at.agentId, at.projectKey, { type: 'scenarioPause', runId })}
+            onResume={(runId) => command(at.agentId, at.projectKey, { type: 'scenarioResume', runId })}
+            onStop={(runId) => command(at.agentId, at.projectKey, { type: 'scenarioStop', runId })}
             onBack={back}
           />
         </div>
@@ -1629,9 +1863,104 @@ export const App = () => {
             onPause={() => command(at.agentId, at.projectKey, { type: 'scenarioPause', runId: at.runId })}
             onResume={() => command(at.agentId, at.projectKey, { type: 'scenarioResume', runId: at.runId })}
             onStop={() => command(at.agentId, at.projectKey, { type: 'scenarioStop', runId: at.runId })}
+            onContinue={() => command(at.agentId, at.projectKey, { type: 'scenarioContinue', runId: at.runId })}
+            // The main thread's conversation, opened the way one is opened from the history: in a tab of
+            // its own on that machine, under the run's name (see openPast).
+            onOpenChat={() => {
+              const run = facts[`${at.agentId}:${at.projectKey}`]?.runs?.[at.runId]
+              if (!run?.headConversationId) return
+              openPast(at.agentId, at.projectKey, {
+                id: run.headConversationId,
+                title: run.scenarioName,
+                updatedAt: run.finishedAt || run.startedAt,
+                messages: 0,
+                titleSource: 'heuristic',
+              })
+            }}
             onAnswer={(allow, text) =>
               command(at.agentId, at.projectKey, { type: 'scenarioAnswer', runId: at.runId, allow, text })
             }
+            onOpenStep={(step) => {
+              setStepLog(null)
+              setScreen({
+                at: 'scenarioStep',
+                agentId: at.agentId,
+                projectKey: at.projectKey,
+                runId: at.runId,
+                key: step.key,
+              })
+              command(at.agentId, at.projectKey, {
+                type: 'scenarioLog',
+                runId: at.runId,
+                key: step.key,
+                conversationId: step.conversationId,
+              })
+            }}
+            onBack={back}
+          />
+        </div>
+      )
+    }
+
+    if (screen.at === 'scenarioStep') {
+      const at = screen
+      const run = facts[`${at.agentId}:${at.projectKey}`]?.runs?.[at.runId] ?? null
+
+      return (
+        <div className={m.screen}>
+          <ScenarioStep
+            step={run?.steps.find((one) => one.key === at.key) ?? null}
+            log={stepLog && stepLog.runId === at.runId && stepLog.key === at.key ? stepLog : null}
+            onOpenLink={(url) => window.open(url, '_blank', 'noopener')}
+            onBack={back}
+          />
+        </div>
+      )
+    }
+
+    if (screen.at === 'scenarioEditor') {
+      const at = screen
+      const held = facts[`${at.agentId}:${at.projectKey}`]
+
+      return (
+        <div className={m.screen}>
+          <ScenarioEditor
+            draft={edit?.draft ?? null}
+            fresh={edit?.fresh === true}
+            tooBig={edit?.tooBig === true}
+            gone={edit?.gone === true}
+            canShare={held?.scenarios?.canShare === true}
+            models={inventories[at.agentId]?.models ?? null}
+            customModels={held?.customModels ?? []}
+            onChange={(draft) => setEdit((current) => (current ? { ...current, draft } : current))}
+            onOpenCard={(stageId, cardId) =>
+              setScreen({ at: 'scenarioCard', agentId: at.agentId, projectKey: at.projectKey, stageId, cardId })
+            }
+            onSave={(draft) => {
+              command(at.agentId, at.projectKey, { type: 'scenarioSave', scenario: draft, scope: draft.scope })
+              setScreen({ at: 'scenarios', agentId: at.agentId, projectKey: at.projectKey })
+            }}
+            onBack={back}
+          />
+        </div>
+      )
+    }
+
+    if (screen.at === 'scenarioCard') {
+      const at = screen
+      const held = facts[`${at.agentId}:${at.projectKey}`]
+      // The editor's own draft, which is where the card lives: walking back to it must find the change.
+      if (!edit?.draft) return list
+
+      return (
+        <div className={m.screen}>
+          <ScenarioCardScreen
+            draft={edit.draft}
+            stageId={at.stageId}
+            cardId={at.cardId}
+            models={inventories[at.agentId]?.models ?? null}
+            customModels={held?.customModels ?? []}
+            onChange={(draft) => setEdit((current) => (current ? { ...current, draft } : current))}
             onBack={back}
           />
         </div>
@@ -1953,7 +2282,7 @@ export const App = () => {
               : undefined
           }
           onScenarios={menuProject ? () => openScenarios(menuProject.agentId, menuProject.key) : undefined}
-          scenarioRun={menuProject ? liveRunOf(facts[`${menuProject.agentId}:${menuProject.key}`]) : null}
+          liveRuns={menuProject ? liveRunsOf(facts[`${menuProject.agentId}:${menuProject.key}`]) : []}
           onMcp={menuProject ? () => openMachineScreen('mcp', menuProject.agentId, menuProject.key) : undefined}
           onPlugins={
             menuProject ? () => openMachineScreen('plugins', menuProject.agentId, menuProject.key) : undefined
@@ -2186,19 +2515,6 @@ const calmOf = (facts: Record<string, ProjectFacts>, screen: Screen): boolean | 
  */
 const customModelsOf = (facts: Record<string, ProjectFacts>, agentId: string, projectKey: string): string[] =>
   facts[`${agentId}:${projectKey}`]?.customModels ?? []
-
-/**
- * The one run going in a project, when there is one and this phone has been handed it.
- *
- * Two facts have to agree before anything is called live: the shelves name which run it is, and the run
- * itself has arrived. The last run of a project stays in the IDE's own cache after it ends and reaches
- * a phone that joins later (see ClaudeSessionHub.PROJECT_ORDER), so a record on its own says nothing
- * about whether anything is happening.
- */
-export const liveRunOf = (facts: ProjectFacts | undefined): ScenarioRunRecord | null => {
-  const live = facts?.scenarios?.live
-  return live ? facts?.runs?.[live] ?? null : null
-}
 
 /** Where the put-away conversations are remembered on this device - see the note on the state. */
 const HIDDEN_KEY = 'hiddenChats'

@@ -1,7 +1,6 @@
 import type { AgentEntry } from '../projects'
 import type { LinkState } from '../link'
-import type { ScenarioRun } from '../../protocol'
-import { runBadge } from '../scenarios'
+import type { ScenarioRunSummary } from '../../protocol'
 import m from '../mobile.module.css'
 import { useT } from '../../i18n'
 import type { Dict } from '../../i18n/en'
@@ -17,12 +16,13 @@ interface DrawerProps {
   /** Whether any MCP server of the project on screen wants attention - the dot on that row. */
   mcpTone: 'none' | 'warn' | 'bad'
   /**
-   * The round of work going in that project right now, if one is.
+   * The rounds of work going in that project right now.
    *
-   * The run rather than a line about it: how far along it is is said in the same words the card on the
-   * screen behind this row uses, and two places writing that sentence would be two places to change it.
+   * A count rather than one run's progress: there may be several, and a row of a menu has space for the
+   * one fact that decides whether to open the screen at all. How far along each of them is is said on
+   * the screen behind this row.
    */
-  scenarioRun: ScenarioRun | null
+  liveRuns: ScenarioRunSummary[]
   /** Absent where there is no conversation on screen to have tasks, or no project to ask about. */
   onProjects: () => void
   onTasks?: () => void
@@ -65,7 +65,7 @@ export const Drawer = ({
   live,
   account,
   mcpTone,
-  scenarioRun,
+  liveRuns,
   onProjects,
   onTasks,
   onScenarios,
@@ -134,7 +134,9 @@ export const Drawer = ({
             <button type="button" className={m.drawerRow} onClick={onScenarios}>
               <span className={m.drawerIcon}>⌸</span>
               <span className={m.drawerLabel}>{t.scenarios.button}</span>
-              {scenarioRun && <span className={m.drawerValueAgent}>{runBadge(t, scenarioRun)}</span>}
+              {liveRuns.length > 0 && (
+                <span className={m.drawerValueAgent}>{t.mobile.drawer.live(liveRuns.length)}</span>
+              )}
             </button>
           )}
 

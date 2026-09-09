@@ -299,6 +299,19 @@ export interface Scenario {
    * a delete of whichever was found first.
    */
   scope: ScenarioScope
+  /**
+   * It travelled without its prose - every prompt, definition of done and hand-on emptied.
+   *
+   * True only on the way to a phone, where the shelves carry the shape of a scenario and nothing else
+   * (see RemoteFeed.trimmedScenarios): a card's prompt is pages and no list draws a word of it.
+   *
+   * It is here because the rules would otherwise be read against a skeleton and answer confidently that
+   * every card is missing its prompt - a shelf where every row says "needs fixing before it can run"
+   * while the same scenarios run perfectly at the desk. What a screen holding one of these may say about
+   * it is what the IDE told it; what it cannot do is judge it. The editor is never handed one - it asks
+   * for the scenario whole (see `scenarioFetch`).
+   */
+  trimmed?: boolean
 }
 
 export type ScenarioScope = 'project' | 'user'
@@ -383,12 +396,18 @@ export type ScenarioStepState =
   | 'skipped'
 
 /**
- * A scenario set to start by itself at an hour somebody chose (see ScenarioSchedule on the IDE's side).
+ * A scheduled run: a scenario set to start by itself at an hour somebody chose (see ScenarioSchedule on
+ * the IDE's side).
  *
  * Kept on the machine rather than in the scenario's file: the round of work is worth sharing through the
  * repository, "at nine, on my machine, with this branch" is one person's arrangement with their own day.
+ *
+ * A scenario may have as many of these as somebody wants, which is what `id` is for. They are drawn as a
+ * list of their own under the shelves, each editable and removable on its own.
  */
 export interface ScenarioSchedule {
+  /** This arrangement's own name, and the only thing that tells two hours of one scenario apart. */
+  id: string
   scenarioId: string
   scope: ScenarioScope
   /** Minutes from midnight in the machine's own timezone: 9:30 is 570. */
@@ -398,11 +417,20 @@ export interface ScenarioSchedule {
   weekday: number
   /** The answers to the scenario's own questions: at the hour there is nobody to ask. */
   inputs: Record<string, string>
-  /** When it is next due, in epoch millis, or 0 when nothing is - a one-off that has already fired. */
+  /**
+   * When it is next due, in epoch millis, or 0 when nothing is coming.
+   *
+   * Zero means a one-off whose hour passed without starting anything. One that DID start something is not
+   * here at all any more: its trace is the run itself, in the list of past runs, and a list of what is
+   * going to happen must not fill up with things that already have.
+   */
   nextAt: number
   /** When it last started something. */
   lastAt: number
-  /** When its hour came and nothing happened: the IDE was closed, or a run was already going. */
+  /**
+   * When its hour came and nothing happened: the IDE was closed, the CLI was missing, or a run this same
+   * arrangement started was still going.
+   */
   missedAt: number
 }
 
@@ -425,11 +453,25 @@ export interface ScenarioRun {
   startedAt: number
   finishedAt: number
   state: ScenarioRunState
+  /**
+   * The scheduled arrangement that raised this, empty for a hand on the button.
+   *
+   * Nothing draws it. It is here because the whole record travels and a field quietly dropped on the way
+   * out is a shape that depends on which side of the wire it is read from; what reads it is the IDE's own
+   * clock, which will not raise a second run from an arrangement whose last one is still going.
+   */
+  runFrom: string
   inputs: Record<string, string>
   /** How many cards this run intended to start, every pass counted - what the bar is drawn from. */
   total: number
   /** The head's own conversation, once it has one. Its log is opened like any step's. */
   headConversationId: string
+  /**
+   * Time the run was not a run: the gap between an ending and the moment it was picked up again (see
+   * `scenarioContinue`). Subtracted from every clock drawn over it. Absent on a record written before
+   * there was such a thing.
+   */
+  idle?: number
   /** Every card of every pass, in the order they were planned - loops written out flat. */
   steps: ScenarioRunStep[]
   /** What the head said in words as it went, wedged into the timeline where it was said. */
@@ -492,7 +534,15 @@ export interface ScenarioRunQuestion {
   askedAt: number
 }
 
-/** A run as the list of past runs draws it - without the steps, which are the expensive part. */
+/**
+ * A run as the lists draw it - without the steps, which are the expensive part.
+ *
+ * The fields below `inputs` are what a card of a going run says about itself: where it has got to, what
+ * it has burnt, and what it has stopped to ask. They are optional because they arrived later than the
+ * rest and a page served from a relay is not deployed in lockstep with the IDE that fills them in - a
+ * screen that reads them as absent draws one line less, while a screen that trusted them would draw
+ * "stage undefined of undefined".
+ */
 export interface ScenarioRunSummary {
   id: string
   scenarioId: string
@@ -506,6 +556,22 @@ export interface ScenarioRunSummary {
   failure: string
   cost: number
   inputs: Record<string, string>
+  /** How many tokens it has burnt so far - see ScenarioRun.tokens. */
+  tokens?: number
+  /** See ScenarioRun.idle. */
+  idle?: number
+  /** Which stage of how many it is standing in, counting from one. Zero when it has not begun. */
+  stage?: number
+  stages?: number
+  /** The card it is on right now, by name. */
+  at?: string
+  /** Which pass of that stage, and how many it may have. Zero when the stage does not loop. */
+  pass?: number
+  passes?: number
+  /** How many times the main thread has sent the card it is on back to work. */
+  nudges?: number
+  /** What it has stopped to ask, when it is standing on a question. Empty otherwise. */
+  asking?: string
 }
 
 /**
@@ -549,6 +615,14 @@ type ShellMessageBody =
         model: string
         effort: string
         mode: string
+        /**
+         * What a new tab is PINNED to, beside what was last chosen above. Empty - the usual case -
+         * means "whatever was last chosen", which is what the panel did before the setting existed:
+         * then an untouched tab is drawn by `model`/`effort`, and a pinned one by these (see
+         * ClaudePreferences.newTabModel).
+         */
+        newTabModel?: string
+        newTabEffort?: string
         /** Where the input field sits. Unset means a panel opened for the first time, behaving as before (at the bottom). */
         composerLayout?: string
         /**
@@ -611,6 +685,16 @@ type ShellMessageBody =
    * menu by the panel and by the phone alike (see modelOptions), so both screens name the same models.
    */
   | { type: 'customModels'; models: string[] }
+  /**
+   * What a new tab starts with, on its own beside `init` for the same reason the three above stand
+   * apart: the setting is machine-wide, and a second window is already past its own `init`.
+   *
+   * `model` and `effort` are the pins and travel empty when nothing is pinned - empty means "whatever
+   * was last chosen". `mode` is resolved rather than raw: a mode nobody ever chose is Claude Code's own
+   * default for that directory, and the selector has to name what the process will genuinely come up
+   * with (see PermissionDefaultMode).
+   */
+  | { type: 'newTabDefaults'; model: string; effort: string; mode: string }
   | {
       type: 'usage'
       /**
@@ -1069,16 +1153,61 @@ type ShellMessageBody =
       type: 'scenarios'
       scenarios: Scenario[]
       runs: ScenarioRunSummary[]
-      /** The run going right now, or empty. One at a time per project, by design. */
-      live: string
-      /** The hours these scenarios start at by themselves - see ScenarioSchedule. */
+      /** The scheduled runs these scenarios have - see ScenarioSchedule. */
       schedules: ScenarioSchedule[]
+      /**
+       * Whether the file of scheduled runs could not be read at all - which is not an empty list.
+       *
+       * An unreadable file answered as "there are none" tells somebody every morning they set up is gone,
+       * silently, while the arrangements sit unharmed on the disk; they set them all up again, and those
+       * do not save either, because nothing writes over a list it could not read (see ScheduleStore).
+       */
+      schedulesUnread?: boolean
       /** Whether there is a repository to put a shared scenario in at all. */
       canShare: boolean
     }
-  /** One run, whole. Pushed while it is live, answered when an old one is opened. */
+  /**
+   * What is going right now, as summaries (see ScenarioDesk.sendLive).
+   *
+   * Apart from the shelves above and from the record below because the three change at three different
+   * rates: the shelves when somebody writes a scenario, this once a second while anything runs, the
+   * record several times a second. This is what every screen NOT looking at a timeline reads - the hub's
+   * live section, the phone's list, the badge on a project card - and it is a few hundred bytes.
+   */
+  | { type: 'scenarioLive'; runs: ScenarioRunSummary[] }
+  /**
+   * One run, whole. Pushed while it is live, answered when an old one is opened.
+   *
+   * With several runs going they take the push in turn, one per beat, so that the cost of it does not
+   * grow with how many somebody started. Kept only for as long as there is a tab open on it.
+   */
   | { type: 'scenarioRun'; run: ScenarioRun }
   | { type: 'scenarioSaved'; scenario: Scenario }
+  /**
+   * One scenario, whole, because somebody asked for it by name (see `scenarioFetch`).
+   *
+   * The shelves travel with their prose cut down to what a list draws, and that is the right trade for a
+   * message that carries every scenario of a project: a card's prompt is pages, and a list shows none of
+   * it. The editor needs every word of one of them, so it asks - the same shape as a run, which is listed
+   * as a summary and asked for whole.
+   *
+   * `scenario` is absent for one that is no longer on either shelf, which is a thing a screen has to be
+   * able to say rather than sit blank about.
+   */
+  | {
+      type: 'scenarioFetched'
+      id: string
+      scope: ScenarioScope
+      scenario?: Scenario
+      /**
+       * It would not fit through the wire and was therefore not sent at all.
+       *
+       * The one place on that road where shortening is forbidden: what an editor is shown is what it
+       * saves back, so a prompt quietly cut to fit a frame would take a paragraph out of somebody's
+       * repository the moment they pressed Save (see RemoteFeed.wholeScenario).
+       */
+      tooBig?: boolean
+    }
   /**
    * What a model wrote out of a described round of work (see ScenarioAuthor on the IDE's side).
    *
@@ -1086,7 +1215,7 @@ type ShellMessageBody =
    * to press. `id` is the request it answers - a screen that has moved on, or pressed Cancel, ignores an
    * answer that names something else.
    */
-  | { type: 'scenarioDrafted'; id: string; scenario?: Scenario; error?: string }
+  | { type: 'scenarioDrafted'; id: string; scenario?: Scenario; error?: string; tooBig?: boolean }
   /**
    * A run has begun. `scheduled` means the clock started it and nobody pressed anything - then no screen
    * jumps to its tab: the person may be in the middle of something else entirely.
@@ -1619,6 +1748,16 @@ export type WebviewMessage =
    * message: a mode picked once became the starting mode in every project and after every restart.
    */
   | { type: 'setDefaultMode'; mode: string }
+  /**
+   * And what a new tab starts ON - the other two thirds of the same screen.
+   *
+   * An empty string is a value here rather than a missing one: it means "whatever was last chosen",
+   * which is what the first entry of each list sets and what the panel did before the setting existed.
+   * Apart from `setModel`/`setEffort` for the reason `setDefaultMode` stands apart from `setMode`: a
+   * pick in the chip is about this tab, and this is about every tab after it.
+   */
+  | { type: 'setDefaultModel'; model: string }
+  | { type: 'setDefaultEffort'; effort: string }
   /** The model and the effort are held by the shell too: new conversations inherit them. */
   | { type: 'setModel'; sessionId: string; model: string }
   | { type: 'setEffort'; sessionId: string; effort: string }
@@ -1933,6 +2072,16 @@ export type WebviewMessage =
   | { type: 'scenarioDelete'; id: string; scope: ScenarioScope }
   | { type: 'scenarioDuplicate'; id: string; scope: ScenarioScope }
   /**
+   * One scenario, with every word of it - what the editor is opened on.
+   *
+   * Asked for rather than read off the shelves, because the shelves are cut down on their way to a phone:
+   * a card's prompt is pages of prose that no list draws, and carrying every one of them for every
+   * scenario of a project is the whole weight of that message. The panel is on the same machine and is
+   * sent the shelves whole, so it opens the editor out of what it already holds - this is the phone's
+   * road, and it exists so that the cut can stay in place rather than being undone for one screen.
+   */
+  | { type: 'scenarioFetch'; id: string; scope: ScenarioScope }
+  /**
    * Have a model write one out of a sentence about the round of work.
    *
    * The form of a scenario is what nobody wants to fill in the first time, and describing the work is
@@ -1945,15 +2094,23 @@ export type WebviewMessage =
   /** Press play. `inputs` are the answers to the scenario's own questions, by name. */
   | { type: 'scenarioRun'; id: string; scope: ScenarioScope; inputs: Record<string, string> }
   /**
-   * Set the hour this scenario starts at by itself, or move the one it has - one hour per scenario.
+   * Add a scheduled run to this scenario, or change one it already has.
    *
-   * The answers to its questions travel with it: when the hour comes there is nobody at the keyboard to
-   * ask for them.
+   * Two identifiers, named apart on purpose. A scenario may carry as many arrangements as somebody wants,
+   * so the scenario has to be named for what is being scheduled to be checked at all, and the arrangement
+   * has to be named to say which of them is being changed. Both sides read these BY NAME and a missing
+   * name reads as an empty string, so one of them called `id` would compile everywhere and quietly edit
+   * the wrong thing.
+   *
+   * An empty `scheduleId` means a new one. The answers to the scenario's questions travel with it: when
+   * the hour comes there is nobody at the keyboard to ask for them.
    */
   | {
       type: 'scenarioSchedule'
-      id: string
+      scenarioId: string
       scope: ScenarioScope
+      /** Empty for a new arrangement; otherwise the one being changed. */
+      scheduleId: string
       /** Minutes from midnight, machine time. */
       at: number
       repeat: ScenarioRepeat
@@ -1961,7 +2118,7 @@ export type WebviewMessage =
       weekday: number
       inputs: Record<string, string>
     }
-  | { type: 'scenarioUnschedule'; id: string; scope: ScenarioScope }
+  | { type: 'scenarioUnschedule'; scheduleId: string }
   /**
    * Everything stops where it stands and nothing dies: the turn running right now is interrupted the
    * way Escape interrupts one at the desk, and both processes stay up with everything they remember.
@@ -1969,6 +2126,12 @@ export type WebviewMessage =
   | { type: 'scenarioPause'; runId: string }
   /** Carry on: the head is asked its question again, and the card is told to continue. */
   | { type: 'scenarioResume'; runId: string }
+  /**
+   * Pick a finished run up where it stood - one that was stopped or fell over (see ScenarioEngine.carryOn
+   * on the IDE's side). The same record and the same tab: the main thread and the card that was cut
+   * short come back over their own transcripts, remembering everything.
+   */
+  | { type: 'scenarioContinue'; runId: string }
   | { type: 'scenarioStop'; runId: string }
   /** An answer to the question a run is standing on - only when the scenario said to wait for a person. */
   | { type: 'scenarioAnswer'; runId: string; allow: boolean; text: string }

@@ -347,6 +347,10 @@ internal class ClaudePanel(
                 // catalogue names is none of this list's business.
                 val gone = dropped - ClaudePreferences.customModels.toSet()
                 if (ClaudePreferences.model in gone) ClaudePreferences.model = ""
+                // And the pin behind "New chats", which is the STRONGEST of the three: it beats both the
+                // account's memory and the pick above (see ClaudeSessions.newSession). Left standing, it
+                // would go on launching every new tab on a name that is in no menu any more.
+                if (ClaudePreferences.newTabModel in gone) ClaudePreferences.newTabModel = ""
 
                 // And the same name wherever an account still holds it, because that record is the
                 // STRONGER of the two: a new tab launches on what the account was last left on and only
@@ -356,7 +360,10 @@ internal class ClaudePanel(
                 // check answers "unknown", which the launch reads as a yes.
                 ClaudeAccounts.getInstance().forgetModels(gone.toSet())
 
-                ClaudeSessionHub.everyHub { it.catalog.sendCustomModels() }
+                ClaudeSessionHub.everyHub {
+                    it.catalog.sendCustomModels()
+                    it.catalog.sendNewTabDefaults()
+                }
             }
 
             // An empty value is a value here: it means "follow the IDE", which is what the picker's own

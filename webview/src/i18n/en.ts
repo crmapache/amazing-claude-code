@@ -44,7 +44,10 @@ export const en = {
       calmColors: { title: 'NO-STRESS COLORS', hint: 'how the gauges are painted' },
       remote: { title: 'REMOTE ACCESS', hint: 'state · relay · paired devices' },
       remoteAbout: { title: 'WHAT TRAVELS', hint: 'read this before you turn it on' },
-      defaultMode: { title: 'DEFAULT MODE', hint: 'what new tabs start in' },
+      newChat: { title: 'NEW CHATS', hint: 'what a new tab starts with' },
+      newChatModel: { title: 'DEFAULT MODEL', hint: 'what a new tab starts on' },
+      newChatEffort: { title: 'DEFAULT EFFORT', hint: 'how hard a new tab thinks' },
+      newChatMode: { title: 'DEFAULT MODE', hint: 'what new tabs start in' },
       composerLayout: { title: 'COMPOSER LAYOUT', hint: 'where the input sits' },
       pasteCollapse: { title: 'PASTED TEXT', hint: 'when a paste folds into a chip' },
       sendKey: { title: 'SENDING A MESSAGE', hint: 'which key sends it' },
@@ -66,7 +69,7 @@ export const en = {
       plugins: { label: 'Plugins', sub: 'Installed, browse, marketplaces' },
       remote: { label: 'Remote access', sub: 'State, relay, paired devices' },
       accounts: { label: 'Claude accounts', sub: 'Switch without signing out' },
-      settings: { label: 'Settings', sub: 'Sounds, mode, layout, language' },
+      settings: { label: 'Settings', sub: 'Sounds, new chats, layout, language' },
       feedback: { label: 'Send feedback', sub: 'A bug, an idea, or just hello' },
     },
 
@@ -88,7 +91,7 @@ export const en = {
     rows: {
       sounds: { label: 'Sound alerts', sub: 'When the panel calls you' },
       calmColors: { label: 'No-stress colors', sub: 'Gauges in one calm tone' },
-      defaultMode: { label: 'Default mode', sub: 'What new tabs start in' },
+      newChat: { label: 'New chats', sub: 'Model, effort and permission mode' },
       composerLayout: { label: 'Composer layout', sub: 'Where the input sits' },
       pasteCollapse: { label: 'Pasted text', sub: 'When a paste folds into a chip' },
       sendKey: { label: 'Sending a message', sub: 'Which key sends it' },
@@ -100,6 +103,25 @@ export const en = {
 
     /** The value beside the "Improve prompt" row: whose words the button asks by. */
     improveSummary: { builtIn: 'Default', custom: 'Custom' },
+  },
+
+  /**
+   * What a new tab is born with. The three rows lead to three lists; the model and the effort share a
+   * first entry that pins nothing at all.
+   */
+  newChat: {
+    rows: {
+      model: { label: 'Model', sub: 'What a new tab starts on' },
+      effort: { label: 'Effort', sub: 'How hard a new tab thinks' },
+      mode: { label: 'Mode', sub: 'What new tabs start in' },
+    },
+    /** The first entry of the model and effort lists, and the value beside their rows. */
+    lastUsed: 'As last chosen',
+    /**
+     * Under that entry: what it amounts to right now. Without it the entry promises something unnamed -
+     * the same reason "Automatic" in the language picker says which language the IDE is set to.
+     */
+    lastUsedNow: (value: string): string => `Follows the last pick - ${value}`,
   },
 
   /**
@@ -239,46 +261,65 @@ export const en = {
    * morning speaks whatever language the panel is set to now (see the note about the reducer above).
    */
   scenarios: {
-    title: 'SCENARIOS',
+    title: 'Scenarios',
     hint: 'rounds of work written down once',
     /** The tooltip of the button beside the magnifier. */
     button: 'Scenarios',
     /**
-     * The strip at the top of the hub while this part of the panel is still young.
-     *
-     * A scenario runs agents for hours over somebody's working copy, and the shapes it can be given are
-     * more than one pair of hands walks through before a release. So the screen says as much itself and
-     * points at the one place where a report is of any use - the feedback form, from which a case can be
-     * reproduced. It comes off once the reports stop coming.
+     * The three questions the hub answers, one band each: what exists, what is happening, what will
+     * happen. Each carries its own count, so nothing has to be hunted for by scrolling.
      */
-    untested: {
-      text: 'Scenarios are new here and have not been tried from every side yet. If something goes wrong, describe it in the feedback form - that is what makes it fixable.',
-      report: 'Report a problem',
+    bands: {
+      scenarios: 'Scenarios',
+      runs: 'Runs',
+      schedule: 'Schedule',
     },
     create: 'New scenario',
     /** What a scenario and its first stage are called before anybody renames them. */
     newName: 'New scenario',
     stage: 'Stage',
     /**
+     * The strip above the shelves when a card has stopped to ask something.
+     *
+     * A run standing on a question is the one thing on this screen that is waiting for a person, and it
+     * used to be a row like any other, found by scrolling. Now it is said at the top with the way into it.
+     */
+    asks: {
+      one: 'One run has stopped to ask you something',
+      many: (n: number): string => `${n} runs have stopped to ask you something`,
+      answer: 'Answer it',
+    },
+    /**
      * A new scenario begins with a sentence rather than an empty form (see ScenarioAuthor on the IDE's
      * side). The form is what nobody wants to meet first; saying what the work is, anybody can do.
      */
     draft: {
-      title: 'NEW SCENARIO',
+      title: 'New scenario',
+      subtitle: 'say what the round of work is - Claude writes it down',
+      label: 'WHAT THE WORK IS',
       hint: 'Describe the round of work and Claude writes it down: what to do, in what order, and what has to be true at the end.',
+      /** Under the field: why the wait is what it is. */
+      keys: 'It reads the project first, so this takes about half a minute.',
       write: 'Write it for me',
       byHand: 'Build it myself',
-      going: 'Reading the project and writing it\u2026',
+      going: 'Reading the project and writing it…',
+      /** The line under the title while a model is at it - the field takes no keystrokes meanwhile. */
+      reading: 'reading the project',
     },
     play: 'Run',
+    /** Under the name of a scenario written by a model and not yet kept. */
+    unsaved: 'written by Claude · not saved yet',
+    unsavedNote: 'Read it before you keep it: you asked in one sentence and got back stages of instructions to agents.',
+    discard: 'Discard',
     /**
      * The hour a scenario starts at by itself (see ScenarioSchedule on the IDE's side). The row says the
      * rhythm and the clock; the words for "missed" have to carry, because nothing is ever started late.
      */
     when: {
-      set: 'Start it at a time',
-      change: 'Change the time',
-      clear: 'Stop starting it by itself',
+      change: 'Change this scheduled run',
+      /** On the button itself, where the row already says what it is about. */
+      changeShort: 'Change',
+      clear: 'Delete this scheduled run',
       at: 'At',
       hours: 'Hour',
       minutes: 'Minute',
@@ -292,35 +333,108 @@ export const en = {
       },
       weeklyOn: (day: string): string => `Every ${day}`,
       next: (when: string): string => `next ${when}`,
+      /** On a row that carries more than one arrangement: the soonest, then the one after it. */
+      then: (when: string): string => `then ${when}`,
       missed: (when: string): string => `missed ${when}`,
-      ran: (when: string): string => `ran ${when}`,
+      /** In the gutter of the timetable, beside the hour itself. */
+      missedShort: 'missed',
+      /** How far off an hour is, the reading coming from the timetable rather than from a dictionary. */
+      inTime: (reading: string): string => `in ${reading}`,
+      /** The heading over the arrangements of one day. */
+      today: 'TODAY',
+      tomorrow: 'TOMORROW',
+      /** And the same two days inside a row, where a date would have to be counted to be understood. */
+      todayAt: (clock: string): string => `today ${clock}`,
+      yesterdayAt: (clock: string): string => `yesterday ${clock}`,
+      /** A scenario that asks nothing, so the arrangement carries no answers with it. */
+      noAnswers: 'no answers needed',
+      /** The clock on a scenario's row: it always adds one more (see Shelf). */
+      another: 'Schedule a run',
+      /** Over the form, so that adding one and changing one are not the same screen. */
+      newTitle: 'adding one',
+      editTitle: 'changing one',
+      clearTitle: 'Delete this scheduled run?',
+      /** A scheduled run whose scenario is on neither shelf - all that is left to do is drop it. */
+      orphan: 'Its scenario is not on either shelf',
+      /** On a scenario's row, when it has more than one arrangement and no single rhythm to name. */
+      scheduled: (count: number): string => `${count} scheduled`,
+      /**
+       * The file of hours could not be read at all, which is not the same as having none in it.
+       *
+       * Said where the list would be, because an empty section says the wrong thing here: it reads as
+       * "my mornings are gone", and the ones set up again do not save either - nothing is ever written
+       * over a list that could not be read.
+       */
+      unread: 'The scheduled runs could not be read - the file on this machine may be damaged. Nothing is lost: nothing is ever written over a list that could not be read.',
       needsIde: 'It starts only while this IDE is open. An hour that passes with it closed is not run late - the row says it was missed.',
+      /** The same fact, short, beside the tabs of the schedule band. */
+      needsIdeShort: 'starts only while this IDE is open',
+      runNow: 'Run it now',
+      /** Above the answers in the form: at that hour there is nobody at the keyboard to give them. */
+      itAsksFor: 'IT ASKS FOR',
+      answeredNow: 'Answered now, because at that hour there is nobody at the keyboard to answer.',
       save: 'Set the time',
+      nothing: 'Nothing is waiting for an hour in this project.',
     },
     duplicate: 'Duplicate',
     delete: 'Delete',
     deleteTitle: 'Delete this scenario?',
     deleteRun: 'Delete this run',
     deleteRunTitle: 'Delete this run?',
-    /** On a Run button that cannot be pressed: something else is already going in this project. */
-    busy: 'A run is already going in this project',
+    /** The two bands of the runs tab: what is going, and what came of it. */
+    running: 'RUNNING NOW',
+    /** Under that heading, when there is more than one: they share a working copy and nothing warns them. */
+    runningNote: 'all of them on this working copy',
+    /** On a scenario's row, the way into the runs it has going. */
+    runningHere: (n: number): string => (n === 1 ? '1 running now' : `${n} running now`),
     /** Under the name of a scenario that cannot be run as it stands - the editor says what is wrong. */
     needsFixing: 'needs fixing before it can run',
+    problemsCount: (n: number): string => (n === 1 ? '1 problem' : `${n} problems`),
+    fix: 'Fix it',
     stages: (n: number): string => (n === 1 ? '1 stage' : `${n} stages`),
     cards: (n: number): string => (n === 1 ? '1 card' : `${n} cards`),
     /** Beside the counts, for a scenario one of whose stages goes round more than once. */
     hasLoop: 'has a loop',
+    /** And what it will ask before it starts, as one chip: "asks: ticket, branch". */
+    asksFor: (names: string): string => `asks: ${names}`,
+    /** Under a field of the start form: what the last run of this scenario was given. */
+    lastUsed: (value: string): string => `Last run used ${value}`,
+    /** In the foot of the start form, when this would not be the only run over the working copy. */
+    besideGoing: (n: number): string =>
+      n === 1
+        ? 'It will start a second run beside the one already going. Both work on the same working copy.'
+        : `It will start a run beside the ${n} already going. All of them work on the same working copy.`,
     pastRuns: 'PAST RUNS',
+    newestFirst: 'newest first',
     noRuns: 'Nothing has been run yet.',
-    /** The row at the foot of the past runs: the list is shown a screenful at a time (see ScenariosTab). */
+    nothingRunning: 'Nothing is running in this project right now.',
+    /** What the runs of this project have cost today, beside the tabs. */
+    spentToday: (amount: string): string => `${amount} today`,
+    runsKept: (n: number): string => (n === 1 ? '1 run kept' : `${n} runs kept`),
+    /** The head of the table of past runs. Columns, so twelve runs compare without being read. */
+    table: {
+      run: 'RUN',
+      started: 'STARTED',
+      cards: 'CARDS',
+      took: 'TOOK',
+      cost: 'COST',
+      state: 'STATE',
+    },
+    /** The row at the foot of the past runs: the table is shown a screenful at a time (see RUNS_PAGE). */
     moreRuns: (count: number): string => `Show ${count} more`,
     shelves: {
       project: 'IN THIS REPOSITORY',
+      /** Beside the heading: what the shelf means, in half a line. */
+      projectNote: 'travels with the repo · everyone working here has it',
       user: 'IN EVERY PROJECT',
-      projectEmpty: 'Nothing here yet. A scenario put here travels with the repository, beside the project\'s own commands and skills.',
+      userNote: 'yours alone · follows you from project to project',
+      projectEmpty: 'No shared scenario yet',
+      projectEmptyNote: 'Put one here and it sits beside the project’s own commands and skills.',
       /** When there is no project folder to write into at all. */
-      noProject: 'This window has no project folder, so there is nowhere to put a shared scenario.',
-      userEmpty: 'Nothing here yet. A scenario put here is yours alone and follows you from project to project.',
+      noProject: 'This window has no project folder',
+      noProjectNote: 'There is nowhere to put a scenario the repository would carry.',
+      userEmpty: 'Nothing of your own yet',
+      userEmptyNote: 'A scenario put here is yours alone and follows you from project to project.',
     },
     runStates: {
       starting: 'Starting',
@@ -329,7 +443,7 @@ export const en = {
       blocked: 'Waiting for you',
       done: 'Done',
       failed: 'Failed',
-      stopped: 'Stopped',
+      stopped: 'Stopped by you',
     },
     stepStates: {
       waiting: 'Not yet',
@@ -352,7 +466,7 @@ export const en = {
       refused: 'Refused',
       noVerdict: 'No verdict',
       retries: 'Out of goes',
-      stopped: 'Cut short',
+      stopped: 'Cut short by you',
       undone: 'Not done',
     },
     /** What the IDE said it could not do. */
@@ -360,38 +474,75 @@ export const en = {
       scenarioBroken: 'This scenario cannot be run as it stands - open it and see what is wrong.',
       scenarioNotWritten: 'The scenario could not be written to disk.',
       scenarioNotDeleted: 'The scenario could not be deleted.',
+      schedulesNotWritten: 'The scheduled runs could not be written to disk.',
       scenarioGone: 'That scenario is no longer there.',
-      scenarioBusy: 'A run is already going in this project. One at a time - two of them edit the same files.',
+      runBusy: 'That run is still going - stop it first.',
       scenarioMissingInput: 'Something it asks for was left empty.',
       noClaude: 'Claude Code was not found on this machine.',
       runGone: 'That run is no longer there.',
+      runNotResumable: 'This run cannot be picked up again: its main thread never came up.',
       unknown: 'Something went wrong.',
     },
     run: {
       title: 'RUN',
       startedAt: (when: string): string => `started ${when}`,
       /** The head is the only participant with no row of its own on the timeline. */
-      head: 'Main Thread',
+      head: 'Main thread',
       pause: 'Pause',
       resume: 'Resume',
       stop: 'Stop',
+      open: 'Open',
       stopTitle: 'Stop this run?',
       stopSubject: 'Whatever a card is doing right now is cut short, and the stages after it never happen.',
+      /**
+       * What a finished run says at the top of its timeline, and what can be done with it from there.
+       *
+       * A run that ended is not the end of the work: one that was stopped or fell over can be picked up where
+       * it stood (see ScenarioEngine.carryOn), and one that finished leaves a main thread that remembers the
+       * whole night and can be talked to in an ordinary chat.
+       */
+      after: {
+        stopped: (card: string): string =>
+          card ? `You stopped it at ${card}. Nothing after that card was started.` : 'You stopped it before the first card began.',
+        failed: (card: string): string =>
+          card ? `It stopped on a failure at ${card}.` : 'It stopped on a failure before the first card began.',
+        done: 'Every card is done.',
+        carryOn: 'Continue the run',
+        carryOnHint: 'Picks up where it stood: the same main thread with everything it remembers, and the card that was cut short is told to carry on.',
+        chat: 'Continue in a chat',
+        chatHint: 'Opens the main thread’s conversation in a tab of its own. It remembers the whole run, so you can go on from there.',
+      },
       cards: (done: number, total: number): string => `${done}/${total} cards`,
       running: 'running for',
-      open: 'open for',
+      /** The same, short enough for a card in a list of them. */
+      runningShort: 'for',
+      openFor: 'open for',
       took: 'took',
       cost: 'cost',
       tokens: 'tokens',
+      /** Where the run is, on the card in the list: "stage 2 of 3 · Write the tests". */
+      stageOf: (at: number, total: number): string => `stage ${at} of ${total}`,
       /** The heading of a pass of a stage that runs a set number of times, and of one that may stop early. */
       passOf: (pass: number, passes: number): string => `pass ${pass} of ${passes}`,
       passOfUpTo: (pass: number, passes: number): string => `pass ${pass} of up to ${passes}`,
       /** In front of what the head said, between the cards. */
-      headSaid: 'main',
+      headSaid: 'MAIN THREAD',
       sentBack: (n: number): string => (n === 1 ? 'sent back once' : `sent back ${n} times`),
       allow: 'Allow',
       deny: 'Refuse',
+      send: 'Send',
       answerPlaceholder: 'What to tell it…',
+      /** The question the run is standing on, at the top of the timeline where reading begins. */
+      asking: 'IT IS ASKING',
+      nothingSpent: 'nothing is being spent while this stands',
+      /** What a stage's own heading says about itself: a chapter rather than a caption. */
+      stageDone: (took: string): string => `done · ${took}`,
+      stageHere: 'here now',
+      stageNotReached: 'not reached',
+      /** In the corner of a step that has not been reached yet. */
+      notYet: 'not yet',
+      /** The way into a step's own conversation. */
+      log: 'Log',
     },
     help: {
       button: 'What scenarios are',
@@ -404,8 +555,8 @@ export const en = {
     },
     log: {
       loading: 'Reading what it said…',
-      step: 'STEP',
-      head: 'MAIN THREAD',
+      step: 'Step',
+      head: 'Main thread',
       /** The transcript is not on this machine, or the run was swept. */
       missing: 'There is no record of this step on this machine.',
       truncated: 'This is the end of it - the beginning is not shown.',
@@ -416,23 +567,30 @@ export const en = {
       save: 'Save',
       problems: 'This cannot be run until these are fixed:',
       /** Everything wrong with it is only untidy - it will still run. */
-      warnings: 'Worth tidying:',
+      warnings: 'WORTH TIDYING',
+      /** In the header, as a count: the list of them stands at the foot of the outline. */
+      issues: (n: number): string => (n === 1 ? '1 issue' : `${n} issues`),
+      /** The outline down the left: the map of the scenario, and the pin in it. */
+      outline: 'THE SCENARIO',
+      nameAndShelf: 'Name and shelf',
       name: 'NAME',
       shelf: 'KEPT IN',
-      inRepository: 'In this repository',
-      mine: 'In every project',
-      head: 'MAIN THREAD',
+      inRepository: 'This repository',
+      mine: 'Every project',
+      head: 'Main thread',
+      headNote: 'it reads this and judges every card by it',
       briefingHint: 'What this round of work is for, in your own words. The main thread reads this and judges every card by it.',
       defaultModel: 'As a new tab would',
       defaultEffort: 'As a new tab would',
       sameAsHead: 'Same as the main thread',
       onQuestion: 'ON A QUESTION',
-      questionHead: 'The main thread answers it',
-      questionStop: 'Stand still and wait for me',
+      questionHead: 'It answers',
+      questionStop: 'Stand still and wait',
       retries: 'SEND BACK',
-      noRetries: 'One go, no second chances',
-      retriesCount: (n: number): string => (n === 1 ? 'up to once' : `up to ${n} times`),
-      inputs: 'ASKED BEFORE IT STARTS',
+      noRetries: 'Never',
+      retriesCount: (n: number): string => (n === 1 ? 'Once' : n === 2 ? 'Twice' : `${n} times`),
+      inputs: 'Asks for',
+      inputsLabel: 'ASKED BEFORE IT STARTS',
       addInput: 'Add a question',
       noInputs: 'Nothing is asked before this scenario starts.',
       inputName: 'name',
@@ -441,29 +599,43 @@ export const en = {
       stages: 'STAGES',
       addStage: 'Add a stage',
       stageNumber: (n: number): string => `Stage ${n}`,
+      /** Over the pane that holds one stage: "STAGE 3 · SECOND ROUND". */
+      stageHead: (n: number, title: string): string => `STAGE ${n} · ${title}`,
       passes: 'RUNS',
       once: 'once',
       times: (n: number): string => `${n} times`,
+      /** What a looping stage says about itself beside its heading. */
+      goesRound: (n: number): string => `goes round ×${n}`,
+      goesRoundUntil: (n: number): string => `goes round ×${n}, until done`,
+      /** And the same in the outline, under the stage's name. */
+      roundsShort: (n: number): string => `×${n}`,
+      roundsUntilShort: (n: number): string => `×${n}, until done`,
       /** A loop that ends as soon as the head decides there is nothing left to do. */
       untilDone: 'or fewer, if the main thread says it is done',
       cards: 'CARDS',
       addCard: 'Add a card',
+      addCardHere: 'Add a card to this stage',
       cardTitle: 'What this card is called',
+      /** The one field here that is genuinely code, so it is the one that keeps the console font. */
+      prompt: 'WHAT ITS SESSION IS TOLD',
       promptHint: 'What this card\'s own session is told. {{name}} is answered before the run; [[name]] is filled by the main thread from what the cards above found out.',
-      slots: 'SLOTS THE MAIN THREAD FILLS',
+      promptNote: 'Slot names are highlighted. This is the only field in the console font.',
+      slots: 'SLOTS IT FILLS',
       noSlots: 'None. Write [[name]] in the prompt and describe it here.',
       slotName: 'name',
       slotHint: 'What the main thread is to put here',
       addSlot: 'Add a slot',
-      dod: 'DEFINITION OF DONE',
+      dod: 'DONE WHEN',
       dodHint: 'How the main thread is to tell this card is finished. Empty means the turn ending is enough.',
-      after: 'AFTER THE CARD',
+      after: 'HAND ON',
       afterHint: 'What the main thread should do once this card is done - check something, note something down.',
-      overrides: 'JUST FOR THIS CARD',
+      overrides: 'IT RUNS ON',
       moveUp: 'Move up',
       moveDown: 'Move down',
       remove: 'Remove',
-      untitledCard: 'an untitled card',
+      untitledCard: 'An untitled card',
+      /** In the outline, for a stage nobody has named yet. */
+      untitledStage: 'An untitled stage',
     },
     problems: {
       noStages: 'There are no stages in it.',
@@ -1406,8 +1578,52 @@ export const en = {
       running: 'RUNNING NOW',
       nothingRunning: 'Nothing is running in this project right now.',
       none: 'No rounds of work have been written down in this project.',
-      /** What is deliberately not here, said once at the foot of the screen rather than on dead buttons. */
-      deskNote: 'Scenarios are written, started and put on a clock at the desk. From here you can watch a run, answer what it asks and stop it.',
+      /** The button in the header: one door to both ways of making a scenario. */
+      create: 'New',
+      /** The sheet behind a scenario's row - everything one does to it, as words rather than icons. */
+      row: {
+        runNow: 'Run it now',
+        /** Beside it, when the scenario has questions to answer first. */
+        asksFirst: (names: string): string => `asks for ${names}`,
+        schedule: 'Schedule a run',
+        scheduled: (n: number): string => (n === 1 ? '1 set' : `${n} set`),
+        editor: 'Open the editor',
+        duplicate: 'Duplicate',
+        delete: 'Delete this scenario',
+      },
+      /** The sheet in front of a run, where the scenario asks its questions. */
+      start: {
+        title: 'Run it now',
+        required: 'required',
+        /** Under a field, so the answer the last run used is one glance away rather than a guess. */
+        lastUsed: (value: string): string => `Last run used ${value}`,
+        /** Said before the button, when this would not be the only run going over the working copy. */
+        beside: (n: number): string =>
+          n === 1
+            ? 'It will start a second run beside the one already going. Both work on the same working copy.'
+            : `It will start a run beside the ${n} already going. All of them work on the same working copy.`,
+        run: 'Run it',
+      },
+      /** The editor, as a screen rather than a pane: stages fold, a card takes the whole screen. */
+      editor: {
+        tidy: (n: number): string => (n === 1 ? '1 thing worth tidying' : `${n} things worth tidying`),
+        /**
+         * A scenario too large to carry over the wire.
+         *
+         * It is not shortened on the way, and that is deliberate: what an editor is shown is what it
+         * saves back, so a prompt cut to fit a frame would take a paragraph out of the repository the
+         * moment Save was pressed. So it is not sent at all, and this says where to open it.
+         */
+        tooBig: 'This scenario is too large to open from here. It can be edited at the desk.',
+        card: (stage: number, at: number, total: number): string => `stage ${stage} · card ${at} of ${total}`,
+        done: 'Done',
+      },
+      /** What one step said, one tap from its row on the run. */
+      step: {
+        told: 'WHAT IT WAS TOLD',
+        verdict: 'VERDICT',
+        of: (at: number, took: string): string => `step ${at} · ${took}`,
+      },
     },
 
     /** The strip of tabs above the feed, and the sheet behind it. */

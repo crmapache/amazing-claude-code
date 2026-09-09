@@ -23,6 +23,17 @@ describe('isFact', () => {
   })
 
   /**
+   * The live list above all: it is the only answer to "is anything running in this project", and three
+   * screens are drawn from it. Left off this list it was thrown away at the door, and a phone said
+   * "nothing is going here" over three rounds of work - the half of the feature the phone exists for.
+   */
+  it('takes what a project is running right now', () => {
+    expect(isFact({ type: 'scenarios', scenarios: [], runs: [] } as unknown as ShellMessage)).toBe(true)
+    expect(isFact({ type: 'scenarioLive', runs: [] } as ShellMessage)).toBe(true)
+    expect(isFact({ type: 'scenarioRun', run: { id: 'r1' } } as unknown as ShellMessage)).toBe(true)
+  })
+
+  /**
    * The other half of the list in RemoteFeed: what that one lets out, this one takes in. Nothing else
    * belongs to the project - a line of a conversation goes to the feed, and by another road.
    */
@@ -167,5 +178,36 @@ describe('phoneCommands', () => {
       argumentHint: '',
       group: 'project',
     })
+  })
+})
+
+/**
+ * The record of a run is the heaviest thing a phone holds, and it now arrives for runs nobody asked for.
+ *
+ * A machine may have several rounds of work going at once, and the whole record of each is pushed to
+ * every paired device several times a second (see ScenarioDesk's heartbeat). Kept as they arrive, a page
+ * left open all day holds one per run the machine ever raised - including the ones its clock started at
+ * nine in the morning, which nobody on this phone has ever looked at.
+ */
+describe('applyFact, the record of a run', () => {
+  const record = (id: string) => ({ type: 'scenarioRun', run: { id } }) as unknown as ShellMessage
+
+  it('keeps the one whose screen is open', () => {
+    const facts = applyFact(emptyFacts(), record('r1'), 'r1')
+
+    expect(Object.keys(facts.runs)).toEqual(['r1'])
+  })
+
+  it('lets go of the ones nobody is looking at', () => {
+    const first = applyFact(emptyFacts(), record('r1'), 'r1')
+    const second = applyFact(first, record('r2'), 'r2')
+
+    expect(Object.keys(second.runs)).toEqual(['r2'])
+  })
+
+  it('holds nothing at all while no run is open', () => {
+    const facts = applyFact(emptyFacts(), record('r1'), '')
+
+    expect(facts.runs).toEqual({})
   })
 })

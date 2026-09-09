@@ -41,6 +41,26 @@ export interface StepLogProps {
   onBack: () => void
 }
 
+/**
+ * The events of a step's own conversation, put through the reducer a live tab uses.
+ *
+ * Exported because the phone draws the same log on a screen of its own: one way of turning a transcript
+ * into a feed, so the two screens cannot come to disagree about what a step said.
+ *
+ * Marked as a replay, which is what it is: everything in it has already happened, and the panel treats
+ * the two differently on purpose - a replayed turn sets no spinner going and does not count towards how
+ * full a context window is (see feed/build.ts).
+ *
+ * Nothing else is touched on the way out. The "you" side of this conversation is the engine's rather than
+ * a person's, and it used to be drawn as markdown for that reason - headings, lists and bold lines - which
+ * made the log read as a different, larger text than the same conversation opened as a chat. It is the
+ * same feed, and it is drawn the same way: as typed.
+ */
+export const logItems = (events: AgentEvent[] | null) =>
+  (events ?? [])
+    .reduce((panel, event) => reducePanel(panel, { kind: 'agent', event, replay: true }), initialPanelState)
+    .items
+
 export const StepLog = ({
   kind,
   title,
@@ -55,25 +75,7 @@ export const StepLog = ({
   const t = useT()
   const cards = useCardState()
 
-  /*
-   * The feed built from nothing, off the events as they were read from the disk.
-   *
-   * Marked as a replay, which is what they are: everything in them has already happened, and the panel
-   * treats the two differently on purpose - a replayed turn does not set a spinner going and does not
-   * count towards how full a context window is (see feed/build.ts).
-   */
-  const items = useMemo(
-    () =>
-      (events ?? [])
-        .reduce((panel, event) => reducePanel(panel, { kind: 'agent', event, replay: true }), initialPanelState)
-        .items.map((item) =>
-          // Nobody typed a word in this conversation: the "you" side of it is the engine, and what it says
-          // is markdown - the task with its slots written in, and the card's own report handed on as the
-          // model wrote it. See UserItem.machine for what that changes on the card.
-          item.kind === 'user' ? { ...item, machine: true } : item,
-        ),
-    [events],
-  )
+  const items = useMemo(() => logItems(events), [events])
 
   return (
     <div className={s.root}>

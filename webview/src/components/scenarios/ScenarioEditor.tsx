@@ -1,36 +1,43 @@
+import { useEffect, useRef } from 'react'
 import type { ModelInfo, Scenario, ScenarioCard, ScenarioScope, ScenarioStage } from '../../protocol'
 import { effortOptions, modeOptions, modelOptions, modeShortLabel } from '../../catalog'
 import type { MenuOption } from '../Menu'
 import { modeClass } from '../StatusBar'
 import { Picker } from './Picker'
+import { PromptField } from './PromptField'
 import { blankCard, blankInput, blankSlot, blankStage } from '../../scenarios/blank'
-import { MAX_CARD_RETRIES, MAX_STAGE_REPEAT, problemsOf, type Problem } from '../../scenarios/rules'
+import { cardRuns, MAX_CARD_RETRIES, MAX_STAGE_REPEAT, passesOf, problemsOf, blocking, type Problem } from '../../scenarios/rules'
 import { useT, type Dict } from '../../i18n'
+import { CrossIcon, DuplicateIcon } from './icons'
+import type { EditorPlace } from './view'
 import s from './scenarios.module.css'
 
 /**
- * Where a round of work is written down.
+ * Where a round of work is written down: an outline on the left, and on the right only the part of it
+ * being edited.
  *
- * Everything a scenario is is on this one screen, in the order it is thought about: what the run is for,
- * what it needs to be told before it starts, and then the stages with their cards. Nothing of it appears
- * on the timeline of a run - a card whose text could be changed from inside a run would be a card whose
- * row says something the agent was never told.
+ * It used to be one column with everything in it - the name, the main thread, the questions and every
+ * card of every stage, one under another - which is a kilometre of textareas to scroll through to change
+ * one sentence in the third stage. The outline is the map: stages and their cards are a list to jump
+ * around in, and what is wrong with the scenario lives beside it rather than in a paragraph above the
+ * form, because a problem names a card and the card is one click away in the same column.
  *
- * The problems are listed at the top rather than marked in place, and they are computed here on every
- * keystroke rather than asked of the IDE (see scenarios/rules.ts). A prompt that mentions a name nobody
- * declared is a card that will reach an agent with `[[findings]]` still in it, and the moment to find
- * that out is while it is being typed.
+ * Nothing of this appears on the timeline of a run - a card whose text could be changed from inside a run
+ * would be a card whose row says something the agent was never told.
  */
 export interface ScenarioEditorProps {
   draft: Scenario
   /** A scenario that has never been saved: the shelf may still be chosen, and Cancel throws it away. */
   fresh: boolean
+  /** Which part of it the right-hand pane is holding - kept in the view, see EditorPlace. */
+  at: EditorPlace
   canShare: boolean
   /** The catalogue of the account in force, exactly as the menu under the composer gets it. */
   models: ModelInfo[] | null
   /** And the names somebody added by hand: a model exists because they said so (see CustomModels.tsx). */
   customModels: string[]
   onChange: (draft: Scenario) => void
+  onPlace: (at: EditorPlace) => void
   onSave: (draft: Scenario, scope: ScenarioScope) => void
   onCancel: () => void
 }
@@ -38,19 +45,32 @@ export interface ScenarioEditorProps {
 export const ScenarioEditor = ({
   draft,
   fresh,
+  at,
   canShare,
   models,
   customModels,
   onChange,
+  onPlace,
   onSave,
   onCancel,
 }: ScenarioEditorProps) => {
   const t = useT()
   const problems = problemsOf(draft)
-  const blockers = problems.filter((problem) => problem.kind !== 'unusedSlot')
+  const blockers = problems.filter(blocking)
 
   const editStage = (id: string, change: (stage: ScenarioStage) => ScenarioStage) =>
     onChange({ ...draft, stages: draft.stages.map((stage) => (stage.id === id ? change(stage) : stage)) })
+
+  /*
+   * A pin that has lost what it pointed at.
+   *
+   * A stage can be deleted from the outline while the pane is holding it, and a scenario written by a
+   * model arrives with stages of its own - in both cases the place remembered in the view names nothing.
+   * Falling back to the top of the outline rather than drawing an empty pane, which reads as a scenario
+   * that lost its stages.
+   */
+  const place: EditorPlace =
+    at.part === 'stage' && !draft.stages.some((stage) => stage.id === at.stageId) ? { part: 'name' } : at
 
   return (
     <div className={s.root}>
@@ -59,10 +79,30 @@ export const ScenarioEditor = ({
           ‹
         </button>
         <div className={s.headTitles}>
-          <span className={s.title}>{fresh ? t.scenarios.editor.newTitle : t.scenarios.editor.title}</span>
-          <span className={s.hint}>{draft.name}</span>
+          <span className={s.editorName}>{draft.name || t.scenarios.newName}</span>
+          <span className={s.hint}>
+            {fresh
+              ? t.scenarios.unsaved
+              : [
+                  draft.scope === 'project' ? t.scenarios.editor.inRepository : t.scenarios.editor.mine,
+                  t.scenarios.stages(draft.stages.length),
+                  t.scenarios.cards(cardRuns(draft)),
+                ].join(' · ')}
+          </span>
         </div>
         <span className={s.headSpace} />
+
+        {/* How much is worth tidying, as a count: the list of them stands at the foot of the outline,
+            where each one names the card it is about. */}
+        {problems.length > 0 ? (
+          <span className={`${s.issueCount} ${blockers.length > 0 ? s.issueCountBad : ''}`}>
+            {t.scenarios.editor.issues(problems.length)}
+          </span>
+        ) : null}
+
+        <button type="button" className={s.button} onClick={onCancel}>
+          {fresh ? t.scenarios.discard : t.common.cancel}
+        </button>
         <button
           type="button"
           className={`${s.button} ${s.buttonMain}`}
@@ -72,258 +112,337 @@ export const ScenarioEditor = ({
         </button>
       </div>
 
-      <div className={s.body}>
-        {problems.length > 0 ? (
-          <div className={s.problems}>
-            {blockers.length > 0 ? t.scenarios.editor.problems : t.scenarios.editor.warnings}
-            <ul className={s.problemsList}>
+      <div className={s.editor}>
+        <div className={s.outline}>
+          <div className={s.outlineLabel}>{t.scenarios.editor.outline}</div>
+
+          <button
+            type="button"
+            className={`${s.outlineRow} ${place.part === 'name' ? s.outlineOn : ''}`}
+            onClick={() => onPlace({ part: 'name' })}
+          >
+            {t.scenarios.editor.nameAndShelf}
+          </button>
+          <button
+            type="button"
+            className={`${s.outlineRow} ${place.part === 'head' ? s.outlineOn : ''}`}
+            onClick={() => onPlace({ part: 'head' })}
+          >
+            {t.scenarios.editor.head}
+          </button>
+          <button
+            type="button"
+            className={`${s.outlineRow} ${place.part === 'inputs' ? s.outlineOn : ''}`}
+            onClick={() => onPlace({ part: 'inputs' })}
+          >
+            {t.scenarios.editor.inputs}
+            <span className={s.outlineCount}>{draft.inputs.length}</span>
+          </button>
+
+          <div className={s.outlineLabel}>{t.scenarios.editor.stages}</div>
+
+          {draft.stages.map((stage, index) => {
+            const on = place.part === 'stage' && place.stageId === stage.id
+            const passes = passesOf(stage)
+
+            return (
+              <div key={stage.id}>
+                <button
+                  type="button"
+                  className={`${s.outlineRow} ${on ? s.outlineOn : ''}`}
+                  onClick={() => onPlace({ part: 'stage', stageId: stage.id })}
+                >
+                  <span className={s.outlineNumber}>{index + 1}</span>
+                  <span className={s.outlineText}>
+                    <span className={s.outlineTitle}>{stage.title || t.scenarios.editor.untitledStage}</span>
+                    {passes > 1 ? (
+                      <span className={s.outlineNote}>
+                        {stage.untilDone
+                          ? t.scenarios.editor.roundsUntilShort(passes)
+                          : t.scenarios.editor.roundsShort(passes)}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className={s.outlineCount}>{stage.cards.length}</span>
+                </button>
+
+                {/* The cards of the stage in the pane, so a click lands on a card rather than on the
+                    stage it happens to belong to. */}
+                {on
+                  ? stage.cards.map((card) => (
+                      <button
+                        key={card.id}
+                        type="button"
+                        className={`${s.outlineCard} ${place.cardId === card.id ? s.outlineCardOn : ''}`}
+                        onClick={() => onPlace({ part: 'stage', stageId: stage.id, cardId: card.id })}
+                      >
+                        {card.title || t.scenarios.editor.untitledCard}
+                      </button>
+                    ))
+                  : null}
+              </div>
+            )
+          })}
+
+          <button
+            type="button"
+            className={s.outlineAdd}
+            onClick={() => {
+              const stage = blankStage(t.scenarios.editor.stageNumber(draft.stages.length + 1))
+              onChange({ ...draft, stages: [...draft.stages, stage] })
+              onPlace({ part: 'stage', stageId: stage.id })
+            }}
+          >
+            {t.scenarios.editor.addStage}
+          </button>
+
+          {/*
+            What is wrong with it, beside the outline rather than above the form: every one of these
+            names a card, and the card is one click away in the same column.
+          */}
+          {problems.length > 0 ? (
+            <div className={s.tidy}>
+              <div className={s.tidyLabel}>
+                {blockers.length > 0 ? t.scenarios.editor.problems : t.scenarios.editor.warnings}
+              </div>
               {problems.map((problem, index) => (
-                <li key={`${problem.kind}:${problem.name ?? ''}:${index}`}>{describe(t, draft, problem)}</li>
+                <button
+                  key={`${problem.kind}:${problem.name ?? ''}:${index}`}
+                  type="button"
+                  className={`${s.tidyRow} ${blocking(problem) ? s.tidyBad : ''}`}
+                  onClick={() => {
+                    const stage = draft.stages.find((one) =>
+                      problem.stageId ? one.id === problem.stageId : one.cards.some((card) => card.id === problem.cardId),
+                    )
+                    if (stage) onPlace({ part: 'stage', stageId: stage.id, cardId: problem.cardId })
+                    else onPlace({ part: 'inputs' })
+                  }}
+                >
+                  {describe(t, draft, problem)}
+                </button>
               ))}
-            </ul>
-          </div>
-        ) : null}
+            </div>
+          ) : null}
+        </div>
 
-        {/*
-          The caption stands over the field rather than beside it, like every other caption on this
-          screen. A label in a column of its own put the one field here a hundred pixels to the right of
-          everything under it - the briefing, the chips, the stages all begin at the same left edge, and
-          the first field of the form was the only thing that did not.
-        */}
-        <div className={s.section}>
-          <div className={s.label}>
-            {t.scenarios.editor.name}
-            <span className={s.labelLine} />
-          </div>
-
-          <div className={s.form}>
-            <div className={s.formRow}>
+        <div className={s.pane}>
+          {place.part === 'name' ? (
+            <>
+              <div className={s.paneLabel}>{t.scenarios.editor.name}</div>
               <input
                 className={s.field}
                 value={draft.name}
                 onChange={(event) => onChange({ ...draft, name: event.target.value })}
               />
-            </div>
 
-            {/*
-              The shelf, and it is not a setting: it is which file this is. Saving under the other one
-              moves the file, so the two never hold the same scenario answering to one identifier.
-            */}
-            <div className={s.chips}>
-              <Picker
-                label={t.scenarios.editor.shelf}
-                title={t.scenarios.editor.shelf}
-                value={draft.scope}
-                options={[
-                  { id: 'project', label: t.scenarios.editor.inRepository, disabled: !canShare },
-                  { id: 'user', label: t.scenarios.editor.mine },
-                ]}
-                onPick={(scope) => onChange({ ...draft, scope: scope as ScenarioScope })}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* --- The head ------------------------------------------------------------- */}
-
-        <div className={s.section}>
-          <div className={s.label}>
-            {t.scenarios.editor.head}
-            <span className={s.labelLine} />
-          </div>
-
-          <div className={s.form}>
-            <textarea
-              className={s.area}
-              value={draft.head.briefing}
-              placeholder={t.scenarios.editor.briefingHint}
-              onChange={(event) => onChange({ ...draft, head: { ...draft.head, briefing: event.target.value } })}
-            />
-
-            <div className={s.chips}>
-              <Picker
-                label={t.selectors.model}
-                title={t.selectors.model}
-                value={draft.head.model}
-                options={modelChoices(t, models, customModels, t.scenarios.editor.defaultModel, draft.head.model)}
-                onPick={(model) => onChange({ ...draft, head: { ...draft.head, model } })}
-              />
-              <Picker
-                label={t.selectors.effort}
-                title={t.selectors.effort}
-                value={draft.head.effort}
-                options={[{ id: '', label: t.scenarios.editor.defaultEffort }, ...effortOptions(t)]}
-                onPick={(effort) => onChange({ ...draft, head: { ...draft.head, effort } })}
-              />
               {/*
-                The same word this selector carries under the input field, and the same colour: a mode
-                answers for what the agent may do without asking, and that is said by the accent before
-                anything is read (see modeClass).
+                The shelf, and it is not a setting: it is which file this is. Saving under the other one
+                moves the file, so the two never hold the same scenario answering to one identifier.
               */}
-              <Picker
-                label={t.selectors.mode}
-                title={t.selectors.mode}
-                value={draft.head.permissionMode}
-                className={modeClass(draft.head.permissionMode)}
-                short={(option) => modeShortLabel(t, option.id)}
-                options={modeOptions(t)}
-                onPick={(permissionMode) => onChange({ ...draft, head: { ...draft.head, permissionMode } })}
-              />
-              <Picker
-                label={t.scenarios.editor.onQuestion}
-                title={t.scenarios.editor.onQuestion}
-                value={draft.head.onQuestion}
-                options={[
-                  { id: 'head', label: t.scenarios.editor.questionHead },
-                  { id: 'stop', label: t.scenarios.editor.questionStop },
-                ]}
-                onPick={(onQuestion) =>
-                  onChange({ ...draft, head: { ...draft.head, onQuestion: onQuestion as 'head' | 'stop' } })
-                }
-              />
-              <Picker
-                label={t.scenarios.editor.retries}
-                title={t.scenarios.editor.retries}
-                value={String(draft.head.retries)}
-                options={Array.from({ length: MAX_CARD_RETRIES + 1 }, (_, n) => ({
-                  id: String(n),
-                  label: n === 0 ? t.scenarios.editor.noRetries : t.scenarios.editor.retriesCount(n),
-                }))}
-                onPick={(retries) => onChange({ ...draft, head: { ...draft.head, retries: Number(retries) } })}
-              />
-            </div>
-          </div>
-        </div>
+              <div className={s.paneLabel}>{t.scenarios.editor.shelf}</div>
+              <span className={s.segmented}>
+                <button
+                  type="button"
+                  className={`${s.segment} ${draft.scope === 'project' ? s.segmentOn : ''}`}
+                  disabled={!canShare}
+                  onClick={() => onChange({ ...draft, scope: 'project' })}
+                >
+                  {t.scenarios.editor.inRepository}
+                </button>
+                <button
+                  type="button"
+                  className={`${s.segment} ${draft.scope === 'user' ? s.segmentOn : ''}`}
+                  onClick={() => onChange({ ...draft, scope: 'user' })}
+                >
+                  {t.scenarios.editor.mine}
+                </button>
+              </span>
+            </>
+          ) : null}
 
-        {/* --- What it asks before it starts ---------------------------------------- */}
+          {place.part === 'head' ? (
+            <>
+              <div className={`${s.paneLabel} ${s.paneLabelPlain}`}>
+                {t.scenarios.editor.head}
+                <span className={s.paneNote}>{t.scenarios.editor.headNote}</span>
+              </div>
+              <textarea
+                className={s.area}
+                value={draft.head.briefing}
+                placeholder={t.scenarios.editor.briefingHint}
+                onChange={(event) => onChange({ ...draft, head: { ...draft.head, briefing: event.target.value } })}
+              />
 
-        <div className={s.section}>
-          <div className={s.label}>
-            {t.scenarios.editor.inputs}
-            <span className={s.labelLine} />
-            <button
-              type="button"
-              className={s.iconButton}
-              aria-label={t.scenarios.editor.addInput}
-              data-tooltip={t.scenarios.editor.addInput}
-              onClick={() => onChange({ ...draft, inputs: [...draft.inputs, blankInput()] })}
-            >
-              +
-            </button>
-          </div>
+              <div className={s.chips}>
+                <Picker
+                  label={t.selectors.model}
+                  title={t.selectors.model}
+                  value={draft.head.model}
+                  options={modelChoices(t, models, customModels, t.scenarios.editor.defaultModel, draft.head.model)}
+                  onPick={(model) => onChange({ ...draft, head: { ...draft.head, model } })}
+                />
+                <Picker
+                  label={t.selectors.effort}
+                  title={t.selectors.effort}
+                  value={draft.head.effort}
+                  options={[{ id: '', label: t.scenarios.editor.defaultEffort }, ...effortOptions(t)]}
+                  onPick={(effort) => onChange({ ...draft, head: { ...draft.head, effort } })}
+                />
+                {/*
+                  The same word this selector carries under the input field, and the same colour: a mode
+                  answers for what the agent may do without asking, and that is said by the accent before
+                  anything is read (see modeClass).
+                */}
+                <Picker
+                  label={t.selectors.mode}
+                  title={t.selectors.mode}
+                  value={draft.head.permissionMode}
+                  className={modeClass(draft.head.permissionMode)}
+                  short={(option) => modeShortLabel(t, option.id)}
+                  options={modeOptions(t)}
+                  onPick={(permissionMode) => onChange({ ...draft, head: { ...draft.head, permissionMode } })}
+                />
+                <Picker
+                  label={t.scenarios.editor.onQuestion}
+                  title={t.scenarios.editor.onQuestion}
+                  value={draft.head.onQuestion}
+                  options={[
+                    { id: 'head', label: t.scenarios.editor.questionHead },
+                    { id: 'stop', label: t.scenarios.editor.questionStop },
+                  ]}
+                  onPick={(onQuestion) =>
+                    onChange({ ...draft, head: { ...draft.head, onQuestion: onQuestion as 'head' | 'stop' } })
+                  }
+                />
+                <Picker
+                  label={t.scenarios.editor.retries}
+                  title={t.scenarios.editor.retries}
+                  value={String(draft.head.retries)}
+                  options={Array.from({ length: MAX_CARD_RETRIES + 1 }, (_, n) => ({
+                    id: String(n),
+                    label: n === 0 ? t.scenarios.editor.noRetries : t.scenarios.editor.retriesCount(n),
+                  }))}
+                  onPick={(retries) => onChange({ ...draft, head: { ...draft.head, retries: Number(retries) } })}
+                />
+              </div>
+            </>
+          ) : null}
 
-          {draft.inputs.length === 0 ? (
-            <p className={s.empty}>{t.scenarios.editor.noInputs}</p>
-          ) : (
-            <div className={s.form}>
-              {draft.inputs.map((input, index) => (
-                <div key={input.id} className={s.formRow}>
-                  <input
-                    className={s.field}
-                    style={{ maxWidth: 130 }}
-                    value={input.name}
-                    placeholder={t.scenarios.editor.inputName}
-                    onChange={(event) =>
-                      onChange({
-                        ...draft,
-                        inputs: draft.inputs.map((one, at) =>
-                          at === index ? { ...one, name: event.target.value } : one,
-                        ),
-                      })
-                    }
-                  />
-                  <input
-                    className={s.field}
-                    value={input.label}
-                    placeholder={t.scenarios.editor.inputLabel}
-                    onChange={(event) =>
-                      onChange({
-                        ...draft,
-                        inputs: draft.inputs.map((one, at) =>
-                          at === index ? { ...one, label: event.target.value } : one,
-                        ),
-                      })
-                    }
-                  />
-                  <label className={s.check}>
-                    <input
-                      type="checkbox"
-                      checked={input.required}
-                      onChange={(event) =>
-                        onChange({
-                          ...draft,
-                          inputs: draft.inputs.map((one, at) =>
-                            at === index ? { ...one, required: event.target.checked } : one,
-                          ),
-                        })
-                      }
-                    />
-                    {t.scenarios.editor.required}
-                  </label>
-                  <button
-                    type="button"
-                    className={`${s.iconButton} ${s.iconDanger}`}
-                    aria-label={t.scenarios.editor.remove}
-                    onClick={() =>
-                      onChange({ ...draft, inputs: draft.inputs.filter((one) => one.id !== input.id) })
-                    }
-                  >
-                    ×
-                  </button>
+          {place.part === 'inputs' ? (
+            <>
+              <div className={s.paneLabel}>
+                {t.scenarios.editor.inputsLabel}
+                <span className={s.paneLine} />
+                <button
+                  type="button"
+                  className={s.button}
+                  onClick={() => onChange({ ...draft, inputs: [...draft.inputs, blankInput()] })}
+                >
+                  {t.scenarios.editor.addInput}
+                </button>
+              </div>
+
+              {draft.inputs.length === 0 ? (
+                <div className={s.emptyShelf}>
+                  <span className={s.emptyTitle}>{t.scenarios.editor.noInputs}</span>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              ) : (
+                <div className={s.form}>
+                  {draft.inputs.map((input, index) => (
+                    <div key={input.id} className={s.formRow}>
+                      <input
+                        className={`${s.field} ${s.fieldName}`}
+                        value={input.name}
+                        placeholder={t.scenarios.editor.inputName}
+                        onChange={(event) =>
+                          onChange({
+                            ...draft,
+                            inputs: draft.inputs.map((one, atOne) =>
+                              atOne === index ? { ...one, name: event.target.value } : one,
+                            ),
+                          })
+                        }
+                      />
+                      <input
+                        className={s.field}
+                        value={input.label}
+                        placeholder={t.scenarios.editor.inputLabel}
+                        onChange={(event) =>
+                          onChange({
+                            ...draft,
+                            inputs: draft.inputs.map((one, atOne) =>
+                              atOne === index ? { ...one, label: event.target.value } : one,
+                            ),
+                          })
+                        }
+                      />
+                      <label className={s.check}>
+                        <input
+                          type="checkbox"
+                          checked={input.required}
+                          onChange={(event) =>
+                            onChange({
+                              ...draft,
+                              inputs: draft.inputs.map((one, atOne) =>
+                                atOne === index ? { ...one, required: event.target.checked } : one,
+                              ),
+                            })
+                          }
+                        />
+                        {t.scenarios.editor.required}
+                      </label>
+                      <button
+                        type="button"
+                        className={`${s.iconButton} ${s.iconDanger}`}
+                        aria-label={t.scenarios.editor.remove}
+                        onClick={() =>
+                          onChange({ ...draft, inputs: draft.inputs.filter((one) => one.id !== input.id) })
+                        }
+                      >
+                        <CrossIcon />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : null}
 
-        {/* --- The stages ------------------------------------------------------------ */}
-
-        <div className={s.section}>
-          <div className={s.label}>
-            {t.scenarios.editor.stages}
-            <span className={s.labelLine} />
-          </div>
-
-          {draft.stages.map((stage, index) => (
-            <StageBlock
-              key={stage.id}
-              stage={stage}
-              first={index === 0}
-              last={index === draft.stages.length - 1}
-              models={models}
-              customModels={customModels}
-              onEdit={(change) => editStage(stage.id, change)}
-              onMove={(by) =>
-                onChange({ ...draft, stages: moved(draft.stages, index, index + by) })
-              }
-              onRemove={() =>
-                onChange({ ...draft, stages: draft.stages.filter((one) => one.id !== stage.id) })
-              }
-            />
-          ))}
-
-          <button
-            type="button"
-            className={s.button}
-            onClick={() =>
-              onChange({
-                ...draft,
-                stages: [...draft.stages, blankStage(t.scenarios.editor.stageNumber(draft.stages.length + 1))],
-              })
-            }
-          >
-            {t.scenarios.editor.addStage}
-          </button>
+          {place.part === 'stage'
+            ? draft.stages
+                .filter((stage) => stage.id === place.stageId)
+                .map((stage) => (
+                  <StagePane
+                    key={stage.id}
+                    stage={stage}
+                    index={draft.stages.findIndex((one) => one.id === stage.id)}
+                    total={draft.stages.length}
+                    openCard={place.cardId}
+                    models={models}
+                    customModels={customModels}
+                    onEdit={(change) => editStage(stage.id, change)}
+                    onMove={(by) => {
+                      const from = draft.stages.findIndex((one) => one.id === stage.id)
+                      onChange({ ...draft, stages: moved(draft.stages, from, from + by) })
+                    }}
+                    onRemove={() => {
+                      onChange({ ...draft, stages: draft.stages.filter((one) => one.id !== stage.id) })
+                      onPlace({ part: 'name' })
+                    }}
+                  />
+                ))
+            : null}
         </div>
       </div>
     </div>
   )
 }
 
-const StageBlock = ({
+const StagePane = ({
   stage,
-  first,
-  last,
+  index,
+  total,
+  openCard,
   models,
   customModels,
   onEdit,
@@ -331,8 +450,10 @@ const StageBlock = ({
   onRemove,
 }: {
   stage: ScenarioStage
-  first: boolean
-  last: boolean
+  index: number
+  total: number
+  /** Which card the outline was pointing at, so the pane brings it into view. */
+  openCard?: string
   models: ModelInfo[] | null
   customModels: string[]
   onEdit: (change: (stage: ScenarioStage) => ScenarioStage) => void
@@ -340,10 +461,21 @@ const StageBlock = ({
   onRemove: () => void
 }) => {
   const t = useT()
+  const passes = passesOf(stage)
 
   return (
-    <div className={s.stageBlock}>
-      <div className={s.cardHead}>
+    <>
+      <div className={s.paneLabel}>
+        {t.scenarios.editor.stageHead(index + 1, stage.title || t.scenarios.editor.untitledStage)}
+        <span className={s.paneLine} />
+        {passes > 1 ? (
+          <span className={s.paneNote}>
+            {stage.untilDone ? t.scenarios.editor.goesRoundUntil(passes) : t.scenarios.editor.goesRound(passes)}
+          </span>
+        ) : null}
+      </div>
+
+      <div className={s.stageHead}>
         <input
           className={s.field}
           value={stage.title}
@@ -354,7 +486,8 @@ const StageBlock = ({
           type="button"
           className={s.iconButton}
           aria-label={t.scenarios.editor.moveUp}
-          disabled={first}
+          data-tooltip={t.scenarios.editor.moveUp}
+          disabled={index === 0}
           onClick={() => onMove(-1)}
         >
           ↑
@@ -363,18 +496,23 @@ const StageBlock = ({
           type="button"
           className={s.iconButton}
           aria-label={t.scenarios.editor.moveDown}
-          disabled={last}
+          data-tooltip={t.scenarios.editor.moveDown}
+          disabled={index === total - 1}
           onClick={() => onMove(1)}
         >
           ↓
         </button>
+        {/* The last stage cannot be removed, and the button says so by being dead rather than by doing
+            nothing: a scenario is its stages, and an empty one is a screen with a plus sign on it. */}
         <button
           type="button"
           className={`${s.iconButton} ${s.iconDanger}`}
           aria-label={t.scenarios.editor.remove}
+          data-tooltip={t.scenarios.editor.remove}
+          disabled={total === 1}
           onClick={onRemove}
         >
-          ×
+          <CrossIcon />
         </button>
       </div>
 
@@ -406,72 +544,95 @@ const StageBlock = ({
         ) : null}
       </div>
 
-      <div className={s.subLabel}>{t.scenarios.editor.cards}</div>
+      {stage.cards.map((card, at) => (
+        <CardBlock
+          key={card.id}
+          card={card}
+          number={at + 1}
+          first={at === 0}
+          last={at === stage.cards.length - 1}
+          open={openCard === card.id}
+          models={models}
+          customModels={customModels}
+          onEdit={(change) =>
+            onEdit((one) => ({
+              ...one,
+              cards: one.cards.map((each) => (each.id === card.id ? change(each) : each)),
+            }))
+          }
+          onMove={(by) => onEdit((one) => ({ ...one, cards: moved(one.cards, at, at + by) }))}
+          onCopy={() =>
+            onEdit((one) => ({
+              ...one,
+              cards: [
+                ...one.cards.slice(0, at + 1),
+                { ...structuredClone(card), id: blankCard().id },
+                ...one.cards.slice(at + 1),
+              ],
+            }))
+          }
+          onRemove={() => onEdit((one) => ({ ...one, cards: one.cards.filter((each) => each.id !== card.id) }))}
+        />
+      ))}
 
-      <div className={s.cards}>
-        {stage.cards.map((card, at) => (
-          <CardBlock
-            key={card.id}
-            card={card}
-            first={at === 0}
-            last={at === stage.cards.length - 1}
-            models={models}
-            customModels={customModels}
-            onEdit={(change) =>
-              onEdit((one) => ({
-                ...one,
-                cards: one.cards.map((each) => (each.id === card.id ? change(each) : each)),
-              }))
-            }
-            onMove={(by) => onEdit((one) => ({ ...one, cards: moved(one.cards, at, at + by) }))}
-            onRemove={() =>
-              onEdit((one) => ({ ...one, cards: one.cards.filter((each) => each.id !== card.id) }))
-            }
-          />
-        ))}
-
-        <button
-          type="button"
-          className={s.button}
-          onClick={() => onEdit((one) => ({ ...one, cards: [...one.cards, blankCard()] }))}
-        >
-          {t.scenarios.editor.addCard}
-        </button>
-      </div>
-    </div>
+      <button
+        type="button"
+        className={s.addCard}
+        onClick={() => onEdit((one) => ({ ...one, cards: [...one.cards, blankCard()] }))}
+      >
+        {t.scenarios.editor.addCardHere}
+      </button>
+    </>
   )
 }
 
 const CardBlock = ({
   card,
+  number,
   first,
   last,
+  open,
   models,
   customModels,
   onEdit,
   onMove,
+  onCopy,
   onRemove,
 }: {
   card: ScenarioCard
+  number: number
   first: boolean
   last: boolean
+  open: boolean
   models: ModelInfo[] | null
   customModels: string[]
   onEdit: (change: (card: ScenarioCard) => ScenarioCard) => void
   onMove: (by: number) => void
+  onCopy: () => void
   onRemove: () => void
 }) => {
   const t = useT()
+  const box = useRef<HTMLDivElement>(null)
+
+  // Brought into view when the outline pointed at it, once - a card that scrolled itself into place on
+  // every keystroke would take the screen away from whoever is typing in the one below.
+  useEffect(() => {
+    if (open) box.current?.scrollIntoView({ block: 'nearest' })
+  }, [open])
+
+  const inherits = !card.model && !card.effort && !card.permissionMode
 
   return (
-    <div className={s.card}>
+    <div className={`${s.cardBlock} ${open ? s.cardOpen : ''}`} ref={box}>
       <div className={s.cardHead}>
+        <span className={s.cardNumber}>{number}</span>
         <input
-          className={s.field}
+          className={s.cardTitle}
           value={card.title}
           placeholder={t.scenarios.editor.cardTitle}
           onChange={(event) => onEdit((one) => ({ ...one, title: event.target.value }))}
         />
+        {inherits ? <span className={s.cardInherits}>{t.scenarios.editor.sameAsHead}</span> : null}
         <button
           type="button"
           className={s.iconButton}
@@ -492,36 +653,63 @@ const CardBlock = ({
         </button>
         <button
           type="button"
+          className={s.iconButton}
+          aria-label={t.scenarios.duplicate}
+          data-tooltip={t.scenarios.duplicate}
+          onClick={onCopy}
+        >
+          <DuplicateIcon />
+        </button>
+        <button
+          type="button"
           className={`${s.iconButton} ${s.iconDanger}`}
           aria-label={t.scenarios.editor.remove}
           onClick={onRemove}
         >
-          ×
+          <CrossIcon />
         </button>
       </div>
 
-      {/* What this card's own session will be told - the only thing here that reaches an agent. */}
-      <textarea
-        className={s.area}
+      {/* What this card's own session will be told - the only thing here that reaches an agent, and the
+          only field on the screen that keeps the console font. */}
+      <div className={s.cardLabel}>{t.scenarios.editor.prompt}</div>
+      <PromptField
         value={card.prompt}
         placeholder={t.scenarios.editor.promptHint}
-        onChange={(event) => onEdit((one) => ({ ...one, prompt: event.target.value }))}
+        onChange={(prompt) => onEdit((one) => ({ ...one, prompt }))}
       />
+      <p className={s.cardNote}>{t.scenarios.editor.promptNote}</p>
 
-      <div className={s.subLabel}>{t.scenarios.editor.slots}</div>
-      {/*
-        The button that adds one lives inside the block rather than under it. On its own it sat flush
-        against the last slot - nothing at all between the row being filled in and the button that makes
-        the next one - because a lone inline-flex button under a block gets no room of its own. In here
-        it is a row of the form like the slots are, and it keeps the same 6px they keep from each other.
-      */}
+      {/* Two short answers side by side: what has to be true at the end, and what to carry forward.
+          Both are read by the main thread rather than by the card, which is why they sit together. */}
+      <div className={s.cardPair}>
+        <div className={s.cardHalf}>
+          <div className={s.cardLabel}>{t.scenarios.editor.dod}</div>
+          <textarea
+            className={`${s.area} ${s.areaShort}`}
+            value={card.dod}
+            placeholder={t.scenarios.editor.dodHint}
+            onChange={(event) => onEdit((one) => ({ ...one, dod: event.target.value }))}
+          />
+        </div>
+        <div className={s.cardHalf}>
+          <div className={s.cardLabel}>{t.scenarios.editor.after}</div>
+          <textarea
+            className={`${s.area} ${s.areaShort}`}
+            value={card.after}
+            placeholder={t.scenarios.editor.afterHint}
+            onChange={(event) => onEdit((one) => ({ ...one, after: event.target.value }))}
+          />
+        </div>
+      </div>
+
+      <div className={s.cardLabel}>{t.scenarios.editor.slots}</div>
       <div className={s.form}>
-        {card.slots.length === 0 ? <p className={s.empty}>{t.scenarios.editor.noSlots}</p> : null}
+        {card.slots.length === 0 ? <p className={s.cardNote}>{t.scenarios.editor.noSlots}</p> : null}
         {card.slots.map((slot) => (
           <div key={slot.id} className={s.formRow}>
             <input
-              className={s.field}
-              style={{ maxWidth: 120 }}
+              className={`${s.field} ${s.fieldName} ${s.fieldMono}`}
               value={slot.name}
               placeholder={t.scenarios.editor.slotName}
               onChange={(event) =>
@@ -550,11 +738,9 @@ const CardBlock = ({
               type="button"
               className={`${s.iconButton} ${s.iconDanger}`}
               aria-label={t.scenarios.editor.remove}
-              onClick={() =>
-                onEdit((one) => ({ ...one, slots: one.slots.filter((each) => each.id !== slot.id) }))
-              }
+              onClick={() => onEdit((one) => ({ ...one, slots: one.slots.filter((each) => each.id !== slot.id) }))}
             >
-              ×
+              <CrossIcon />
             </button>
           </div>
         ))}
@@ -568,25 +754,7 @@ const CardBlock = ({
         </button>
       </div>
 
-      <div className={s.subLabel}>{t.scenarios.editor.dod}</div>
-      <textarea
-        className={s.area}
-        style={{ minHeight: 40 }}
-        value={card.dod}
-        placeholder={t.scenarios.editor.dodHint}
-        onChange={(event) => onEdit((one) => ({ ...one, dod: event.target.value }))}
-      />
-
-      <div className={s.subLabel}>{t.scenarios.editor.after}</div>
-      <textarea
-        className={s.area}
-        style={{ minHeight: 40 }}
-        value={card.after}
-        placeholder={t.scenarios.editor.afterHint}
-        onChange={(event) => onEdit((one) => ({ ...one, after: event.target.value }))}
-      />
-
-      <div className={s.subLabel}>{t.scenarios.editor.overrides}</div>
+      <div className={s.cardLabel}>{t.scenarios.editor.overrides}</div>
       <div className={s.chips}>
         <Picker
           label={t.selectors.model}

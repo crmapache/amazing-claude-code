@@ -108,6 +108,72 @@ export const stripOrder = (sessions: Session[], panels: PanelTabPlace[]): string
 }
 
 /**
+ * The strip flat: every tab in the order it is drawn, the conversations and the panel's own tabs alike.
+ *
+ * [stripOrder] names groups, and a group is a conversation with its forks - the unit a drag moves. What
+ * closing a tab needs is the other unit: the tab to look at next is a tab, not a topic.
+ */
+export const stripTabs = (sessions: Session[], panels: PanelTabPlace[]): string[] => {
+  const held = new Set(panels.map((panel) => panel.id))
+  return stripOrder(sessions, panels).flatMap((id) =>
+    held.has(id) ? [id] : sessions.filter((session) => session.groupId === id).map((session) => session.id),
+  )
+}
+
+/**
+ * The tab to look at once this one is closed, or an empty string when the strip is left empty.
+ *
+ * The neighbour on the right, and the one on the left when the closed tab stood last - the answer every
+ * editor gives, and the only one that does not send the eye across the strip looking for where it landed.
+ *
+ * What it may NOT do is prefer a conversation. The statistics, the scenarios hub and a run being watched
+ * are tabs like any other, and closing the last chat beside one used to leave the panel offering to start
+ * a new conversation - over a tab standing open in the strip an inch above the offer. The empty screen
+ * belongs to an empty strip and to nothing else.
+ *
+ * `stands` is which of the strip's tabs are still open, and it is asked rather than assumed because a
+ * closing that came from another window may have taken several at once: the neighbour then has to be the
+ * first one that is still there, not the first one that used to be.
+ */
+export const tabAfterClosing = (
+  sessions: Session[],
+  panels: PanelTabPlace[],
+  id: string,
+  stands: (tab: string) => boolean = (tab) => tab !== id,
+): string => {
+  const order = stripTabs(sessions, panels)
+  const at = order.indexOf(id)
+  // Never stood here to begin with: whatever is left first will do.
+  if (at < 0) return order.find(stands) ?? ''
+
+  for (let i = at + 1; i < order.length; i += 1) if (stands(order[i]!)) return order[i]!
+  for (let i = at - 1; i >= 0; i -= 1) if (stands(order[i]!)) return order[i]!
+  return ''
+}
+
+/**
+ * Which tab to show when the one on screen was closed somewhere ELSE - another IDE window, or the phone.
+ *
+ * `before` is the strip as it stood before the news arrived, and passing it is the point of this function
+ * existing. The list that comes with the news no longer has the closed tab in it, so asked against that
+ * one "what stood next to it" has no answer at all and [tabAfterClosing] falls back to the first tab of
+ * the strip - the front of the list, every time, in exactly the case the neighbour rule was written for.
+ *
+ * `known` is the conversations the news names. This screen's own tabs - the statistics, the scenarios
+ * hub, a run being watched - are on no such list and never will be, so they stand whatever it says.
+ */
+export const tabAfterElsewhere = (
+  before: Session[],
+  panels: PanelTabPlace[],
+  known: string[],
+  current: string,
+): string => {
+  const stands = (tab: string) => isPanelTab(tab) || known.includes(tab)
+
+  return stands(current) ? current : tabAfterClosing(before, panels, current, stands)
+}
+
+/**
  * The new order of the strip after a drag.
  *
  * The unit of rearrangement is a group: a conversation together with its forks. They cannot be dragged

@@ -22,16 +22,33 @@ import { plan } from '../scenarios/rules'
 let shelves: Scenario[] = []
 let runs: ScenarioRunSummary[] = []
 let records: Record<string, ScenarioRun> = {}
-let live = ''
-let ticking: ReturnType<typeof setInterval> | null = null
+/**
+ * The runs going right now, and a walker for each of them.
+ *
+ * A map rather than one of each, because a scenario may be started as many times as somebody wants -
+ * which is the thing this harness has to be able to show. One shared timer meant the second run silently
+ * stopped the first one's timeline, and on the screen that reads as the panel being broken.
+ */
+let live: string[] = []
+const walkers: Record<string, ReturnType<typeof setInterval>> = {}
 /** The description a model is "writing" right now, by its request's number - see scenarioDraft. */
 /** The hours the scenarios are set to start at, as the IDE would keep them (see ScheduleStore). */
 let hours: ScenarioSchedule[] = []
 let drafting = ''
 /** Every third one comes back refused, so the failure is seen as often as the answer. */
 let drafted = 0
+/**
+ * Which runs have already stopped to ask something, so each one does it once.
+ *
+ * The walk used to go straight through, which meant the one state the whole screen is arranged around -
+ * a card standing on a question, with the strip at the top of the hub and the block above the timeline -
+ * could not be seen without an IDE and a scenario written to stop.
+ */
+const asked: Record<string, boolean> = {}
 /** Every third step opened answers "no record", so that state is seen rather than merely written. */
 let opened = 0
+/** Every third run picked up again is refused, so the refusal is seen as often as the pick-up. */
+let continued = 0
 
 const send = (message: unknown): void => window.__accReceive?.(message as never)
 
@@ -282,6 +299,7 @@ const blankRun = (scenario: Scenario, id: string, inputs: Record<string, string>
   startedAt: Date.now(),
   finishedAt: 0,
   state: 'running',
+  runFrom: '',
   inputs,
   total: plan(scenario).length,
   headConversationId: `head-${id}`,
@@ -406,28 +424,68 @@ const brokenRun = (): ScenarioRun => {
 }
 
 const sendList = (): void => {
-  send({ type: 'scenarios', scenarios: shelves, runs, live, schedules: hours, canShare: true })
+  send({ type: 'scenarios', scenarios: shelves, runs, schedules: hours, canShare: true })
+  sendLive()
 }
 
-const summarise = (run: ScenarioRun): ScenarioRunSummary => ({
-  id: run.id,
-  scenarioId: run.scenarioId,
-  scenarioName: run.scenarioName,
-  scope: run.scope,
-  startedAt: run.startedAt,
-  finishedAt: run.finishedAt,
-  state: run.state,
-  total: run.total,
-  done: run.steps.filter((step) => step.state === 'done').length,
-  failure: run.failure,
-  cost: run.cost,
-  inputs: run.inputs,
-})
+/**
+ * What is going, as summaries - the message the hub's live band and the phone's screen are drawn from.
+ *
+ * The records are looked up BEFORE anything is built from them. An identifier left on the live list with
+ * its record already gone is exactly the kind of thing a stand-in for the IDE gets wrong, and building
+ * first threw inside the message handler - after which the screen received nothing at all, ever again.
+ */
+const sendLive = (): void => {
+  const going = live.map((id) => records[id]).filter((run): run is ScenarioRun => run !== undefined)
+
+  send({ type: 'scenarioLive', runs: going.map(summarise) })
+}
+
+/**
+ * What the IDE's own `summarise` builds, including where the run has got to.
+ *
+ * The half under `inputs` is what a card of a going run draws - the stage it is in, the card it is on,
+ * what it has burnt and what it has stopped to ask - so a harness that left it out would show the one
+ * band of the hub that this redesign is about as a row of blanks.
+ */
+const summarise = (run: ScenarioRun): ScenarioRunSummary => {
+  const here =
+    run.steps.find((step) => step.state === 'running' || step.state === 'asking' || step.state === 'judging') ??
+    [...run.steps].reverse().find((step) => step.startedAt > 0)
+  const stage = run.snapshot.stages.findIndex((one) => one.id === here?.stageId)
+  const passes = stage >= 0 ? run.snapshot.stages[stage].repeat : 0
+
+  return {
+    id: run.id,
+    scenarioId: run.scenarioId,
+    scenarioName: run.scenarioName,
+    scope: run.scope,
+    startedAt: run.startedAt,
+    finishedAt: run.finishedAt,
+    state: run.state,
+    total: run.total,
+    done: run.steps.filter((step) => step.state === 'done').length,
+    failure: run.failure,
+    cost: run.cost,
+    inputs: run.inputs,
+    tokens: run.tokens,
+    stage: stage >= 0 ? stage + 1 : 0,
+    stages: run.snapshot.stages.length,
+    at: here?.title ?? '',
+    pass: passes > 1 ? (here?.pass ?? 0) : 0,
+    passes: passes > 1 ? passes : 0,
+    nudges: here?.nudges.length ?? 0,
+    asking: run.question ? run.question.title || run.question.tool : '',
+  }
+}
 
 const keep = (run: ScenarioRun): void => {
   records[run.id] = run
   runs = runs.map((one) => (one.id === run.id ? summarise(run) : one))
   send({ type: 'scenarioRun', run })
+  // The light frame goes with every beat here, where the IDE sends it about once a second: the harness
+  // walks a run in seconds rather than hours, and a live band a second behind would never catch up.
+  if (live.includes(run.id)) sendLive()
 }
 
 /**
@@ -437,27 +495,63 @@ const keep = (run: ScenarioRun): void => {
  * from planned to running to judged, the head wedging a line in between, the bar filling - and a real
  * run takes an hour to show it once.
  */
-const walk = (id: string): void => {
-  if (ticking) clearInterval(ticking)
+/** A walker that has nothing left to walk. Its own, so that one run ending leaves the others going. */
+const stopWalking = (id: string): void => {
+  const walker = walkers[id]
+  if (!walker) return
+  clearInterval(walker)
+  delete walkers[id]
+}
 
-  let at = 0
-  let phase: 'run' | 'judge' = 'run'
+const walk = (id: string, from = 0, startIn: 'run' | 'judge' = 'run'): void => {
+  let at = from
+  let phase: 'run' | 'judge' = startIn
 
-  ticking = setInterval(() => {
+  walkers[id] = setInterval(() => {
     const run = records[id]
     if (!run || run.state === 'stopped' || run.state === 'done' || run.state === 'failed') {
-      if (ticking) clearInterval(ticking)
-      ticking = null
+      stopWalking(id)
       return
     }
-    // A paused run is genuinely still: nothing moves and nothing is spent until it is resumed.
-    if (run.state === 'paused') return
+    // A paused run is genuinely still: nothing moves and nothing is spent until it is resumed - and one
+    // standing on a question is stiller still, because the card's turn is open and waiting for a person.
+    if (run.state === 'paused' || run.state === 'blocked') return
 
     const step = run.steps[at]
     if (!step) {
+      live = live.filter((one) => one !== id)
       keep({ ...run, state: 'done', finishedAt: Date.now() })
-      live = ''
+      stopWalking(id)
       sendList()
+      return
+    }
+
+    /*
+     * The second card of every run stops to ask, once.
+     *
+     * Not a refusal and not an error - the ordinary state a scenario set to wait for a person spends its
+     * night in (see HeadSettings.onQuestion), and the one the hub, the run and the phone are all arranged
+     * around. Answering it here is answering it for real: the walk carries on from where it stood.
+     */
+    if (phase === 'run' && at === 1 && !asked[id]) {
+      asked[id] = true
+      keep({
+        ...run,
+        state: 'blocked',
+        question: {
+          stepKey: step.key,
+          title: 'Write the decision about the rounding into the report, or keep it in the pull request only?',
+          tool: 'AskUserQuestion',
+          detail: '',
+          options: ['Into the report', 'Pull request only'],
+          askedAt: Date.now(),
+        },
+        steps: run.steps.map((one) =>
+          one.key === step.key
+            ? { ...one, state: 'asking', startedAt: Date.now(), conversationId: `conv-${one.key}` }
+            : one,
+        ),
+      })
       return
     }
 
@@ -512,9 +606,9 @@ const walk = (id: string): void => {
 /**
  * One step's log, as the events of its own conversation - the panel builds the feed out of them.
  *
- * The "you" side of it is written in markdown on purpose, because that is how it comes in life: nobody
- * types into a scenario's conversation, and the longest thing on that side is a card's own report, handed
- * on to the head as the model wrote it - headings, lists and all (see UserItem.machine).
+ * The "you" side of it is written in markdown, because that is how it comes in life: nobody types into a
+ * scenario's conversation, and the longest thing on that side is a card's own report, handed on to the
+ * head as the model wrote it. It is drawn as typed all the same, like any message in a chat.
  */
 const logEvents = (title: string): AgentEvent[] => {
   const id = `tool-${Math.random().toString(36).slice(2, 8)}`
@@ -633,28 +727,47 @@ export const answerScenarios = (message: WebviewMessage): void => {
     next.setHours(Math.floor(message.at / 60), message.at % 60, 0, 0)
     if (next.getTime() <= now) next.setDate(next.getDate() + 1)
 
-    hours = [
-      ...hours.filter((one) => !(one.scenarioId === message.id && one.scope === message.scope)),
-      {
-        scenarioId: message.id,
-        scope: message.scope,
-        at: message.at,
-        repeat: message.repeat,
-        weekday: message.weekday,
-        inputs: message.inputs,
-        nextAt: next.getTime(),
-        lastAt: 0,
-        // Every third one has a night behind it that nobody was here for, so the row's missed line is
-        // seen as often as the ordinary one.
-        missedAt: hours.length % 3 === 2 ? now - 14 * 60 * 60 * 1000 : 0,
-      },
-    ]
+    // Replaced when it names one, added when it does not - a scenario carries as many as somebody wants,
+    // and an identifier of this side's making, because a page does not name what a machine stores.
+    const wanted: ScenarioSchedule = {
+      id: message.scheduleId || `hour-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`,
+      scenarioId: message.scenarioId,
+      scope: message.scope,
+      at: message.at,
+      repeat: message.repeat,
+      weekday: message.weekday,
+      inputs: message.inputs,
+      nextAt: next.getTime(),
+      lastAt: 0,
+      // Every third one has a night behind it that nobody was here for, so the row's missed line is
+      // seen as often as the ordinary one.
+      missedAt: hours.length % 3 === 2 ? now - 14 * 60 * 60 * 1000 : 0,
+    }
+
+    hours = hours.some((one) => one.id === wanted.id)
+      ? hours.map((one) => (one.id === wanted.id ? { ...wanted, missedAt: one.missedAt } : one))
+      : [...hours, wanted]
     return sendList()
   }
 
   if (message.type === 'scenarioUnschedule') {
-    hours = hours.filter((one) => !(one.scenarioId === message.id && one.scope === message.scope))
+    hours = hours.filter((one) => one.id !== message.scheduleId)
     return sendList()
+  }
+
+  /*
+   * One scenario with every word of it, asked for by name.
+   *
+   * The panel opens the editor out of the shelves it already holds; this is the phone's road, and it is
+   * answered here so the harness can exercise it (see `scenarioFetch`). A name nothing answers to comes
+   * back without a body, which is a state the screen has to be able to say.
+   */
+  if (message.type === 'scenarioFetch') {
+    const found = shelves.find((one) => one.id === message.id && one.scope === message.scope)
+    return void setTimeout(
+      () => send({ type: 'scenarioFetched', id: message.id, scope: message.scope, scenario: found }),
+      120,
+    )
   }
 
   if (message.type === 'scenarioDelete') {
@@ -672,14 +785,13 @@ export const answerScenarios = (message: WebviewMessage): void => {
   if (message.type === 'scenarioRun') {
     const scenario = shelves.find((one) => one.id === message.id)
     if (!scenario) return
-    // One at a time, as in the IDE - and the refusal is worth seeing, since it is what the hub says.
-    if (live) return send({ type: 'scenarioOutcome', ok: false, code: 'scenarioBusy' })
+    // As many at once as somebody wants, which is the point of the whole thing: no refusal here at all.
 
-    const id = `run-${Date.now().toString(36)}`
+    const id = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`
     const run = blankRun(structuredClone(scenario), id, message.inputs)
     records[id] = run
     runs = [summarise(run), ...runs]
-    live = id
+    live = [...live, id]
     send({ type: 'scenarioStarted', runId: id })
     sendList()
     walk(id)
@@ -689,6 +801,30 @@ export const answerScenarios = (message: WebviewMessage): void => {
   if (message.type === 'scenarioOpen') {
     const run = records[message.runId]
     return run ? send({ type: 'scenarioRun', run }) : send({ type: 'scenarioOutcome', ok: false, code: 'runGone' })
+  }
+
+  /*
+   * The answer to what a card stopped to ask: the question goes and the walk carries on.
+   *
+   * Nothing is checked about the words - the CLI builds the tool result out of them, and what a stand-in
+   * for the IDE has to get right is that answering UNBLOCKS, which is the whole of what the screen
+   * promises.
+   */
+  if (message.type === 'scenarioAnswer') {
+    const run = records[message.runId]
+    if (run?.question) {
+      keep({
+        ...run,
+        state: 'running',
+        question: null,
+        steps: run.steps.map((one) => (one.state === 'asking' ? { ...one, state: 'running' } : one)),
+        notes: [
+          ...run.notes,
+          { at: Date.now(), stepKey: run.question.stepKey, text: `Told it: ${message.text || 'yes'}.` },
+        ],
+      })
+    }
+    return
   }
 
   if (message.type === 'scenarioPause') {
@@ -729,13 +865,61 @@ export const answerScenarios = (message: WebviewMessage): void => {
             : { ...one, state: one.state === 'waiting' ? 'skipped' : 'failed', failure: one.state === 'waiting' ? '' : 'stopped', finishedAt: Date.now() },
         ),
       })
-      live = ''
+      live = live.filter((one) => one !== message.runId)
+      stopWalking(message.runId)
       sendList()
     }
     return
   }
 
+  /*
+   * Picking a finished run up where it stood, the way the IDE does (see ScenarioEngine.carryOn): the
+   * card that was cut short goes back to running and the walk resumes from it; a run stopped between
+   * cards resumes at the next one.
+   */
+  if (message.type === 'scenarioContinue') {
+    const run = records[message.runId]
+    if (!run || live.includes(message.runId)) return send({ type: 'scenarioOutcome', ok: false, code: 'runBusy' })
+    continued += 1
+    if (continued % 3 === 0) return send({ type: 'scenarioOutcome', ok: false, code: 'runNotResumable' })
+
+    const lastDone = run.steps.map((one) => one.state).lastIndexOf('done')
+    const cut = run.steps.findIndex((one, index) => index > lastDone && one.state === 'failed')
+    const from = cut >= 0 ? cut : lastDone + 1
+    // The stage being picked up moves its clock past the gap, as the IDE does: every duration on the
+    // screen is the difference between two stamps, and left where they were the cut card and its stage
+    // would have worked for the three days the record stood.
+    const gap = Math.max(0, Date.now() - run.finishedAt)
+    const stageId = run.steps[from]?.stageId
+    const pastTheGap = (one: ScenarioRunStep): ScenarioRunStep =>
+      one.stageId !== stageId || one.startedAt === 0
+        ? one
+        : { ...one, startedAt: one.startedAt + gap, finishedAt: one.finishedAt > 0 ? one.finishedAt + gap : 0 }
+
+    live = [...live, message.runId]
+    keep({
+      ...run,
+      state: 'running',
+      finishedAt: 0,
+      failure: '',
+      error: '',
+      idle: (run.idle ?? 0) + gap,
+      steps: run.steps.map((one, index) =>
+        index < from
+          ? pastTheGap(one)
+          : index === cut
+            ? { ...pastTheGap(one), state: 'running', finishedAt: 0, failure: '', error: '', verdict: '', verdictReason: '' }
+            : { ...one, state: 'waiting', startedAt: 0, finishedAt: 0, failure: '', error: '', said: '', summary: '', verdict: '', verdictReason: '' },
+      ),
+      notes: [...run.notes, { at: Date.now(), stepKey: run.steps[from]?.key ?? '', text: 'Picked up where it stood.' }],
+    })
+    walk(message.runId, from, cut >= 0 ? 'judge' : 'run')
+    sendList()
+    return
+  }
+
   if (message.type === 'scenarioRunDelete') {
+    if (live.includes(message.runId)) return send({ type: 'scenarioOutcome', ok: false, code: 'runBusy' })
     runs = runs.filter((one) => one.id !== message.runId)
     delete records[message.runId]
     return sendList()

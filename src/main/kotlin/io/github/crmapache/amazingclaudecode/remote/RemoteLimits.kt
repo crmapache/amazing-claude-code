@@ -138,19 +138,36 @@ internal class RemoteLimits {
             "accountForget" to 5,
             "accountLogout" to 5,
             /*
-             * Watching a round of work, and unblocking it.
+             * The scenarios, and every one of them is a press on a screen somebody opened on purpose.
              *
              * Asking for the shelves walks two directories and reads a summary out of every past run, so
-             * it is a screen's worth a minute rather than a poll; one run is one file. The three that
-             * move a run are one press each on a screen somebody opened on purpose - and stopping one is
-             * asked about first, so a loop of them is not a person.
+             * it is a screen's worth a minute rather than a poll; one run and one scenario are one file
+             * each. The ones that move a run are a press apiece - and stopping one is asked about first,
+             * so a loop of them is not a person.
+             *
+             * The three that cost real work are lower and each for its own reason. `scenarioRun` raises a
+             * head and a card that work over the working copy for hours, so it is counted like a message.
+             * `scenarioDraft` is a paid `claude -p` that reads the project, exactly as the model's search
+             * is. `scenarioLog` reads a transcript off the disk - megabytes for a card that walked a
+             * repository - and is trimmed on the way out rather than refused, which is a cost paid on this
+             * side and worth a ceiling.
              */
             "scenarios" to 20,
+            "scenarioFetch" to 30,
             "scenarioOpen" to 20,
             "scenarioAnswer" to 20,
             "scenarioPause" to 10,
             "scenarioResume" to 10,
             "scenarioStop" to 10,
+            "scenarioSave" to 15,
+            "scenarioDelete" to 10,
+            "scenarioDuplicate" to 10,
+            "scenarioDraft" to 10,
+            "scenarioRun" to 10,
+            "scenarioSchedule" to 15,
+            "scenarioUnschedule" to 15,
+            "scenarioRunDelete" to 15,
+            "scenarioLog" to 15,
         )
 
         const val DEFAULT_PER_MINUTE = 30

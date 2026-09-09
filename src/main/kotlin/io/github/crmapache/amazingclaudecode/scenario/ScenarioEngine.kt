@@ -207,8 +207,127 @@ internal class ScenarioEngine(
         changed()
     }
 
-    private fun openHead(): ClaudeSession = ClaudeSession(
+    /** `resumeFrom` names a past conversation of the head's to come up over - see [carryOn]. */
+    /**
+     * Pick a finished run up where it stood - see CarryOn for where that is.
+     *
+     * The two conversations are raised again over their own transcripts rather than started afresh: the
+     * head remembers every card it handed over and every verdict it gave, and the card that was cut
+     * short remembers what it had already done - which is what makes "carry on" a whole instruction,
+     * exactly as it is after a pause. What the record does not carry is the engine's phase, so the run
+     * re-enters by the steps: at the cut card, told to go on; or right after the last finished one, the
+     * way a card is stepped past in the ordinary course of things.
+     *
+     * The bill is picked up too. The CLI reports a conversation's running total, and a process raised
+     * anew may count from zero or from where it was - so what the run has already charged is taken for
+     * the baseline, and a total below it is read as a fresh count (see [spentOf]).
+     */
+    @Synchronized
+    fun carryOn() {
+        val point = CarryOn.pointOf(run) ?: return
+        val now = System.currentTimeMillis()
+        // Read before the ending is wiped off the step: the head's last word against it is part of
+        // what the card is told (see [carryOnWords]).
+        val words = run.steps.getOrNull(point.at)?.let(::carryOnWords) ?: CARRY_ON
+
+        /*
+         * The gap between the ending and this moment is not time the run spent (see ScenarioRun.idle) -
+         * and the stage being picked up moves its clock past it. Every duration on the screen is the
+         * difference between two stamps: the cut card's own, and the stage's from its first card to its
+         * last. Left where they were, a card stopped at midnight and finished after breakfast worked for
+         * nine hours, and so did its stage. Nothing draws a card's stamps as a time of day, so the stamps
+         * of the stage's own cards are simply carried forward by the gap: each keeps its length, and the
+         * stage's span stops covering a night nobody worked.
+         */
+        val gap = if (run.finishedAt > 0) (now - run.finishedAt).coerceAtLeast(0) else 0
+        val stageId = run.steps.getOrNull(point.at)?.stageId
+        fun RunStep.pastTheGap(): RunStep =
+            if (stageId == null || this.stageId != stageId || startedAt == 0L) this
+            else copy(startedAt = startedAt + gap, finishedAt = if (finishedAt > 0) finishedAt + gap else 0)
+
+        run = run.copy(
+            state = RunState.RUNNING,
+            finishedAt = 0,
+            failure = "",
+            error = "",
+            question = null,
+            idle = run.idle + gap,
+            steps = run.steps.mapIndexed { index, step ->
+                when {
+                    index < point.at -> step.pastTheGap()
+                    // The cut card keeps what it had - its conversation, its slots, what it said, the goes
+                    // it was sent back for - and loses only the ending that was written over it.
+                    index == point.at && point.begun -> step.pastTheGap().copy(
+                        state = StepState.WAITING,
+                        finishedAt = 0,
+                        failure = "",
+                        error = "",
+                        said = "",
+                        verdict = "",
+                        verdictReason = "",
+                    )
+                    // Everything after it never had its go: back to the plan, as [begin] wrote it.
+                    else -> RunStep(key = step.key, cardId = step.cardId, stageId = step.stageId, pass = step.pass, title = step.title)
+                }
+            },
+        )
+
+        // The head's own running total, as the CLI keeps it: everything the run spent that no card did.
+        headCost = (run.cost - run.steps.sumOf { it.cost }).coerceAtLeast(0.0)
+        cardCost = 0.0
+        head = openHead(resumeFrom = run.headConversationId)
+        watchTheClock()
+
+        at = point.at
+        val step = run.steps.getOrNull(at)
+        val definition = step?.let { cut ->
+            scenario.stages.firstOrNull { stage -> stage.id == cut.stageId }?.cards?.firstOrNull { card -> card.id == cut.cardId }
+        }
+
+        when {
+            // Cut in the middle of its own turn: the same session, told to go on, as after a pause. The
+            // allowance of goes starts again with it - a run that ended because the head ran out of them
+            // is one somebody chose to give another chance.
+            point.begun && step != null && definition != null && step.conversationId.isNotEmpty() -> {
+                nudges = 0
+                cardCost = step.cost
+                cardTurn.setLength(0)
+                cardTurnEnded = false
+                editStep(step.key) { it.copy(state = StepState.RUNNING) }
+                card = openCard(step, definition, resumeFrom = step.conversationId)
+                phase = Phase.CARD
+                cardStartedAt = now
+                pausedFor = 0
+                pausedAt = 0
+                card?.sendPrompt(words)
+            }
+
+            // Cut before its session existed - the head was choosing its slots: handed over again.
+            point.begun -> beginStep()
+
+            // Nothing had happened yet: the opening never got its answer, so it is said again.
+            at == 0 -> {
+                phase = Phase.OPENING
+                askHead(HeadTalk.opening(scenario, workingDirectory.orEmpty(), run.inputs, run.steps.size))
+            }
+
+            // Between two cards: stepped past the last finished one, which is also where a loop is asked
+            // whether it is worth another pass.
+            else -> {
+                at -= 1
+                nextStep()
+            }
+        }
+        changed()
+    }
+
+    /** What a card cut short is told: the same words as after a pause, plus what the head held against it. */
+    private fun carryOnWords(step: RunStep): String =
+        if (step.verdictReason.isBlank()) CARRY_ON else "$CARRY_ON The main thread judged it not done yet: ${step.verdictReason}"
+
+    private fun openHead(resumeFrom: String = ""): ClaudeSession = ClaudeSession(
         workingDirectory = workingDirectory,
+        resumeFrom = resumeFrom.ifEmpty { null },
         model = scenario.head.model.ifBlank { defaultModel },
         effort = scenario.head.effort.ifBlank { defaultEffort },
         /*
@@ -230,8 +349,9 @@ internal class ScenarioEngine(
         onTurnEnded = { onHeadTurnEnded() },
     )
 
-    private fun openCard(step: RunStep, definition: Card): ClaudeSession = ClaudeSession(
+    private fun openCard(step: RunStep, definition: Card, resumeFrom: String = ""): ClaudeSession = ClaudeSession(
         workingDirectory = workingDirectory,
+        resumeFrom = resumeFrom.ifEmpty { null },
         model = definition.model.ifBlank { scenario.head.model }.ifBlank { defaultModel },
         effort = definition.effort.ifBlank { scenario.head.effort }.ifBlank { defaultEffort },
         permissionMode = definition.permissionMode.ifBlank { scenario.head.permissionMode },
@@ -254,7 +374,7 @@ internal class ScenarioEngine(
             synchronized(this) {
                 // Only a figure the CLI actually gave moves the running total: taking a missing one for
                 // zero would count the whole conversation again on the next turn that has one.
-                val spent = if (total == null) 0.0 else (total - headCost).coerceAtLeast(0.0)
+                val spent = spentOf(total, headCost)
                 if (total != null) headCost = total
                 if (spent > 0 || tokens > 0) {
                     run = run.copy(cost = run.cost + spent, tokens = run.tokens + tokens)
@@ -267,7 +387,7 @@ internal class ScenarioEngine(
     private fun onCardLine(key: String, line: String) {
         collect(line, cardTurn) { total, tokens ->
             synchronized(this) {
-                val spent = if (total == null) 0.0 else (total - cardCost).coerceAtLeast(0.0)
+                val spent = spentOf(total, cardCost)
                 if (total != null) cardCost = total
                 if (spent > 0 || tokens > 0) {
                     run = run.copy(cost = run.cost + spent, tokens = run.tokens + tokens)
@@ -286,6 +406,20 @@ internal class ScenarioEngine(
             changed()
         }
         rememberConversationIds()
+    }
+
+    /**
+     * What a turn added to the bill, out of the conversation's running total.
+     *
+     * A total below the last one is a count that started again: a process raised anew over the same
+     * conversation counts from zero (see [carryOn]), and read as growth it would charge nothing until
+     * it had caught up with a night it did not spend. The statistics read the same figure by the same
+     * rule (see StatsCollector.noteResult).
+     */
+    private fun spentOf(total: Double?, before: Double): Double = when {
+        total == null -> 0.0
+        total < before -> total
+        else -> total - before
     }
 
     /**

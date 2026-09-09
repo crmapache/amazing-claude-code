@@ -105,6 +105,36 @@ internal class ProjectCatalog(
         )
     }
 
+    /**
+     * What a new tab starts with: the two pins and the permission mode.
+     *
+     * A message of its own beside `init`, for the reason the colour mode has one - the setting is
+     * machine-wide, so a change made in one window has to reach the others without waiting for a
+     * restart (see announceNewTabDefaults in SessionCommands).
+     *
+     * The pins travel as they are, empty included: empty is the answer that means "whatever was last
+     * chosen", which is what the panel does when nothing is pinned. The mode is resolved rather than
+     * passed on, exactly as it is in `init` - the selector has to name the value the process will
+     * genuinely come up with, and never having chosen one means Claude Code's own (see
+     * PermissionDefaultMode).
+     */
+    fun sendNewTabDefaults() {
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "newTabDefaults")
+                put("model", ClaudePreferences.newTabModel)
+                put("effort", ClaudePreferences.newTabEffort)
+                put(
+                    "mode",
+                    PermissionModes.resolve(
+                        ClaudePreferences.mode,
+                        fallback = PermissionDefaultMode.of(project.basePath),
+                    ),
+                )
+            }.toString(),
+        )
+    }
+
     fun sendInit() {
         val preferences = ClaudePreferences.snapshot()
 
@@ -124,6 +154,12 @@ internal class ProjectCatalog(
                 putJsonObject("preferences") {
                     put("model", preferences.model)
                     put("effort", preferences.effort)
+                    // What a new tab is PINNED to, beside what was last chosen above. Two values rather
+                    // than one, and the empty one is the point: empty means "whatever was last chosen",
+                    // so the panel draws an untouched tab by the pick above and a pinned one by these
+                    // (see ClaudePreferences.newTabModel).
+                    put("newTabModel", preferences.newTabModel)
+                    put("newTabEffort", preferences.newTabEffort)
                     // With the same value the process will genuinely come up with: the selector in the
                     // panel has to tell the truth from the first second. Never chosen at all - we take
                     // Claude Code's own default, the way the terminal takes it (see

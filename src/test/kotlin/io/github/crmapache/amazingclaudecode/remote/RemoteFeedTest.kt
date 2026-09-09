@@ -3,6 +3,7 @@ package io.github.crmapache.amazingclaudecode.remote
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
@@ -141,7 +142,7 @@ class RemoteFeedTest {
             """"inputs":{},"steps":[$steps],""" +
             """"notes":[],"question":null,"failure":"","error":"","cost":0.0,"tokens":10}}"""
 
-    private fun sent(message: String): String = RemoteFeed.forPhone(RemoteFeed.SCENARIO_RUN, message)
+    private fun sent(message: String): String = RemoteFeed.forPhone(RemoteFeed.SCENARIO_RUN, message).message
 
     @Test
     fun `the scenarios and the run of a project are forwarded`() {
@@ -207,7 +208,7 @@ class RemoteFeedTest {
     /** The shelves: the names and the shapes stay, and every word a card says to an agent goes. */
     @Test
     fun `the shelves keep their names and lose their prose`() {
-        val message = """{"type":"scenarios","live":"","canShare":true,"schedules":[],"runs":[],""" +
+        val message = """{"type":"scenarios","canShare":true,"schedules":[],"runs":[],""" +
             """"scenarios":[{"version":1,"id":"s1","name":"Task to PR","createdAt":1,"updatedAt":2,""" +
             """"inputs":[],"head":{"briefing":"$LONG","model":"","effort":"","permissionMode":"",""" +
             """"onQuestion":"head","retries":2},""" +
@@ -215,7 +216,7 @@ class RemoteFeedTest {
             """{"id":"c1","title":"Do it","prompt":"$LONG","slots":[],"dod":"$LONG","after":"$LONG",""" +
             """"model":"","effort":"","permissionMode":""}]}],"scope":"project"}]}"""
 
-        val out = RemoteFeed.forPhone(RemoteFeed.SCENARIOS, message)
+        val out = RemoteFeed.forPhone(RemoteFeed.SCENARIOS, message).message
 
         assertFalse(out.contains(LONG))
         assertTrue(out.contains(""""name":"Task to PR""""))
@@ -229,13 +230,149 @@ class RemoteFeedTest {
         val summaries = (1..120).joinToString(",") { """{"id":"r$it","scenarioName":"Nightly"}""" }
         val out = RemoteFeed.forPhone(
             RemoteFeed.SCENARIOS,
-            """{"type":"scenarios","scenarios":[],"runs":[$summaries],"live":"","schedules":[],"canShare":true}""",
-        )
+            """{"type":"scenarios","scenarios":[],"runs":[$summaries],"schedules":[],"canShare":true}""",
+        ).message
 
         assertTrue(out.contains(""""id":"r40""""))
         assertFalse(out.contains(""""id":"r41""""))
     }
 
+    /**
+     * Two runs going side by side have to be remembered apart, and the name they are remembered under
+     * cannot depend on which field a record happens to be written with first.
+     *
+     * Pulled out of the text by a search for `"run":{"id":"`, it did: one field added above it and every
+     * run fell into one slot, so no beat was ever recognised as unchanged and an hours-long round of work
+     * went into somebody's pocket four times a second. Nothing failed while that was true - which is why
+     * this is a test rather than a comment.
+     */
+    @Test
+    fun `two runs are told apart whatever order their record is written in`() {
+        val ordinary = RemoteFeed.forPhone(RemoteFeed.SCENARIO_RUN, runMessage())
+        val moved = RemoteFeed.forPhone(
+            RemoteFeed.SCENARIO_RUN,
+            """{"type":"scenarioRun","run":{"scenarioName":"Task to PR","id":"r2","steps":[]}}""",
+        )
+        val same = RemoteFeed.forPhone(
+            RemoteFeed.SCENARIO_RUN,
+            """{"type":"scenarioRun","run":{"scenarioName":"Task to PR","id":"r1","steps":[]}}""",
+        )
+
+        assertNotEquals(ordinary.slot, moved.slot)
+        assertEquals(ordinary.slot, same.slot)
+        assertEquals(RemoteFeed.SCENARIOS, RemoteFeed.forPhone(RemoteFeed.SCENARIOS, "{}").slot)
+    }
+
+    /**
+     * The live list is a fact like any other and gets the same ceiling.
+     *
+     * Every summary on it carries the answers somebody typed at the start form - free text with no length
+     * to it - and this is the one message that is rebuilt every second for the hours a round of work
+     * takes. Over the relay's cap a frame is not shortened but thrown away whole, so the phone goes back
+     * to saying "nothing is going here" while three runs are going.
+     */
+    @Test
+    fun `the answers a live run carries are cut down like everything else`() {
+        val runs = (1..60).joinToString(",") {
+            """{"id":"r$it","scenarioName":"Nightly","inputs":{"ticket":"$PASTED"}}"""
+        }
+        val out = RemoteFeed.forPhone(RemoteFeed.SCENARIO_LIVE, """{"type":"scenarioLive","runs":[$runs]}""").message
+
+        assertFalse(out.contains(PASTED))
+        assertTrue(out.contains(""""id":"r40""""))
+        assertFalse(out.contains(""""id":"r41""""))
+    }
+
+    /** The same answers, on the summaries of runs that are over. */
+    @Test
+    fun `the answers a past run carries are cut down too`() {
+        val out = RemoteFeed.forPhone(
+            RemoteFeed.SCENARIOS,
+            """{"type":"scenarios","scenarios":[],"schedules":[],"canShare":true,""" +
+                """"runs":[{"id":"r1","scenarioName":"Nightly","inputs":{"ticket":"$PASTED"}}]}""",
+        ).message
+
+        assertFalse(out.contains(PASTED))
+        assertTrue(out.contains(""""id":"r1""""))
+    }
+
+    /*
+     * One scenario, whole - and the one place on this road where shortening is forbidden.
+     *
+     * What an editor is shown is what it saves back, so a prompt cut to fit a frame would take a
+     * paragraph out of somebody's repository the moment Save was pressed.
+     */
+    @Test
+    fun `one scenario asked for by name keeps every word`() {
+        val body = """{"type":"scenarioFetched","id":"s1","scope":"user",""" +
+            """"scenario":{"id":"s1","name":"Nightly","head":{"briefing":"$LONG"},""" +
+            """"stages":[{"id":"st","cards":[{"id":"c","prompt":"$LONG","dod":"$LONG"}]}]}}"""
+
+        val out = RemoteFeed.forPhone(RemoteFeed.SCENARIO_FETCHED, body).message
+
+        assertTrue(out.contains(LONG))
+        assertFalse(out.contains("tooBig"))
+    }
+
+    /** And one over the budget travels without its body, saying so - rather than travelling short. */
+    @Test
+    fun `a scenario too big to carry is refused rather than shortened`() {
+        val huge = "x".repeat(60 * 1024)
+        val body = """{"type":"scenarioFetched","id":"s1","scope":"user",""" +
+            """"scenario":{"id":"s1","name":"Nightly","head":{"briefing":"$huge"},"stages":[]}}"""
+
+        val out = RemoteFeed.forPhone(RemoteFeed.SCENARIO_FETCHED, body).message
+
+        assertFalse(out.contains(huge))
+        assertTrue(out.contains(""""tooBig":true"""))
+        // What it was asked about survives, so the screen knows which one it could not open.
+        assertTrue(out.contains(""""id":"s1""""))
+    }
+
+    /** What a model just wrote goes the same way: it opens in the same editor and is saved from it. */
+    @Test
+    fun `a drafted scenario is held to the same rule`() {
+        val huge = "x".repeat(60 * 1024)
+        val out = RemoteFeed.forPhone(
+            RemoteFeed.SCENARIO_DRAFTED,
+            """{"type":"scenarioDrafted","id":"d1","scenario":{"name":"$huge"}}""",
+        ).message
+
+        assertFalse(out.contains(huge))
+        assertTrue(out.contains(""""tooBig":true"""))
+    }
+
+    /*
+     * A step's conversation, cut from the END.
+     *
+     * This used to be refused outright, because a card that walked a repository leaves megabytes and an
+     * oversized frame is thrown away whole. Refusing was the wrong answer to a real problem: what
+     * somebody wants off a step at three in the morning is how it finished, which is the part that fits.
+     */
+    @Test
+    fun `a step's log is cut from the beginning and says so`() {
+        val event = """{"type":"assistant","text":"${"y".repeat(4000)}"}"""
+        val events = (1..40).joinToString(",") { event }
+        val body = """{"type":"scenarioLog","runId":"r1","key":"k","found":true,"truncated":false,"events":[$events]}"""
+
+        val out = RemoteFeed.forPhone(RemoteFeed.SCENARIO_LOG, body).message
+
+        assertTrue(out.length < body.length)
+        assertTrue(out.contains(""""truncated":true"""))
+        assertTrue(out.contains(""""runId":"r1""""))
+    }
+
+    /** A log that fits is left exactly as it was - including its own word about the beginning. */
+    @Test
+    fun `a short log travels whole`() {
+        val body = """{"type":"scenarioLog","runId":"r1","key":"k","found":true,"truncated":false,"events":[{"a":1}]}"""
+
+        assertEquals(body, RemoteFeed.forPhone(RemoteFeed.SCENARIO_LOG, body).message)
+    }
+
     /** Long enough to be recognisable in the output, and to be the weight the trimming is about. */
     private val LONG = "the whole of what this card says to its agent, at length"
+
+    /** A paragraph pasted into an answer field, which is what these have no ceiling on. */
+    private val PASTED = "the whole description of the ticket, pasted into the answer field, ".repeat(4)
 }

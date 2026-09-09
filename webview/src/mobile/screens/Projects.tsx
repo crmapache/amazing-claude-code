@@ -2,10 +2,9 @@ import { ChatRow } from './ChatRow'
 import { Magnifier } from '../../components/SearchCapsule'
 import type { AgentEntry, ProjectEntry, SessionEntry } from '../projects'
 import { waitingFor } from '../projects'
-import type { ProjectFacts } from '../facts'
+import { liveRunsOf, type ProjectFacts } from '../facts'
 import type { LinkState } from '../link'
-import type { ScenarioRun } from '../../protocol'
-import { progressOf } from '../../scenarios/timeline'
+import { runMarks } from '../../scenarios/runs'
 import m from '../mobile.module.css'
 import { useT } from '../../i18n'
 import type { Dict } from '../../i18n/en'
@@ -181,10 +180,11 @@ export const Projects = ({
           const stopped = project.sessions.filter((session) => session.awaitsYou).length
           const open = project.sessions.length
 
-          // Two facts have to agree before anything is drawn as running: the shelves name which run is
-          // live, and the run itself has arrived. A record on its own is only the last one there was.
-          const live = fact?.scenarios?.live
-          const run = live ? fact?.runs?.[live] : undefined
+          // What is going here, as summaries. There may be several - one scenario can be started as many
+          // times as somebody wants at the desk - and they are asked of one place, because this rule used
+          // to be written here by hand as well as in the facts (see liveRunsOf).
+          const going = liveRunsOf(fact)
+          const marks = runMarks(going)
 
           return (
             <div key={`${project.agentId}:${project.key}`}>
@@ -221,21 +221,30 @@ export const Projects = ({
                   ) : null}
                 </div>
 
-                {/* What is running here without anybody watching it - see the note on [onRun]. */}
-                {run && (
-                  <button
-                    type="button"
-                    className={`${m.projectRun} ${run.question ? m.projectRunAsking : ''}`}
-                    onClick={() => onRun(project, run.id)}
-                  >
-                    <span className={`${m.dot} ${run.question ? m.dotAttention : m.dotRunning}`} />
-                    <span className={m.projectRunName}>{run.scenarioName}</span>
-                    <span className={`${m.projectRunCount} ${run.question ? m.projectRunWaiting : ''}`}>
-                      {run.question ? t.mobile.sessions.answer : runCards(t, run)}
-                    </span>
-                    <span className={m.chatChevron}>›</span>
-                  </button>
-                )}
+                {/* What is running here without anybody watching it - see the note on [onRun]. One row
+                    each, because two runs of one scenario are two different pieces of work and the row
+                    is the way into one of them; what tells them apart is beside the name. */}
+                {going.map((run) => {
+                  const asking = run.state === 'blocked'
+
+                  return (
+                    <button
+                      key={run.id}
+                      type="button"
+                      className={`${m.projectRun} ${asking ? m.projectRunAsking : ''}`}
+                      onClick={() => onRun(project, run.id)}
+                    >
+                      <span className={`${m.dot} ${asking ? m.dotAttention : m.dotRunning}`} />
+                      <span className={m.projectRunName}>
+                        {[run.scenarioName, marks[run.id]].filter(Boolean).join(' · ')}
+                      </span>
+                      <span className={`${m.projectRunCount} ${asking ? m.projectRunWaiting : ''}`}>
+                        {asking ? t.mobile.sessions.answer : t.scenarios.run.cards(run.done, run.total)}
+                      </span>
+                      <span className={m.chatChevron}>›</span>
+                    </button>
+                  )
+                })}
 
                 {project.sessions.length > 0 ? (
                   <div className={m.chats}>
@@ -301,12 +310,6 @@ export const Projects = ({
 }
 
 /** What a stopped conversation is stopped for, in the two words the band has room for. */
-/** How far a run has got, in the same words its own card uses. */
-const runCards = (t: Dict, run: ScenarioRun): string => {
-  const progress = progressOf(run)
-  return t.scenarios.run.cards(progress.done, progress.total)
-}
-
 const waitKind = (t: Dict, awaits: string): string =>
   awaits === 'perm'
     ? t.mobile.sessions.kind.permission

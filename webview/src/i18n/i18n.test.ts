@@ -137,8 +137,13 @@ const SHARED_WITH_ENGLISH: Record<string, Locale[]> = {
   'scenarios.run.pause': ['de', 'fr'],
   'scenarios.editor.name': ['de'],
   'scenarios.editor.effort': ['fr'],
+  'newChat.rows.effort.label': ['fr'],
+  // The three rows there are named after the chips under the field - and "Mode" is French for mode.
+  'newChat.rows.mode.label': ['fr'],
   // "tokens" is the word itself in Spanish and Portuguese - the CLI's own term, borrowed whole.
   'scenarios.run.tokens': ['es', 'pt-BR'],
+  // "Verdict" is the word itself in French.
+  'mobile.scenarios.step.verdict': ['fr'],
 }
 
 describe('a language that is left untranslated', () => {

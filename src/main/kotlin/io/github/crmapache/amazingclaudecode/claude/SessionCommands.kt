@@ -220,7 +220,30 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
              * decision about the future, and reaching into a running turn to apply it would be the very
              * surprise this separation exists to remove.
              */
-            "setDefaultMode" -> ClaudePreferences.mode = PermissionModes.normalize(field("mode"))
+            "setDefaultMode" -> {
+                ClaudePreferences.mode = PermissionModes.normalize(field("mode"))
+                announceNewTabDefaults()
+            }
+
+            /*
+             * And what a new tab starts ON, beside what it starts IN - the other two thirds of the same
+             * screen (see ClaudePreferences.newTabModel).
+             *
+             * An empty value is the value here rather than a missing one: it means "whatever was last
+             * chosen", which is what the panel did before the setting existed and what the first entry of
+             * each list sets. So there is nothing to guard an empty string against - the guarding is over
+             * the SHAPE of the name, and it lives where the setting is stored, because what is on disk
+             * was written by an earlier version of this screen.
+             */
+            "setDefaultModel" -> {
+                ClaudePreferences.newTabModel = field("model")
+                announceNewTabDefaults()
+            }
+
+            "setDefaultEffort" -> {
+                ClaudePreferences.newTabEffort = field("effort")
+                announceNewTabDefaults()
+            }
 
             /*
              * The model and the effort of this conversation.
@@ -332,15 +355,19 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
             "searchCancel" -> hub.search.cancel(field("id"))
 
             /*
-             * The scenarios: the two shelves, the runs, and the one run that may be going (see
+             * The scenarios: the two shelves, the runs, the hours, and the ones that are going (see
              * ScenarioDesk).
              *
-             * Every one of them is refused to anything that is not this IDE (see RemoteCommands). Writing
-             * a scenario writes a file into the repository, and running one raises a head and a card in
-             * the project with whatever the scenario trusts them with - both are things somebody decides
-             * at the keyboard, in front of the diff they are about to get.
+             * All of it is open to a paired device now, and the argument is in RemoteCommands: `prompt`
+             * has handed that same person a shell through the agent since the first day, so refusing them
+             * a JSON file under `.claude/` bought nothing but a screen that could watch a round of work go
+             * wrong at three in the morning and do nothing about it.
              */
             "scenarios" -> hub.scenarios.sendList()
+
+            // One scenario with every word of it - what an editor away from this machine opens on. The
+            // shelves travel with their prose cut out, and this is the road back to it.
+            "scenarioFetch" -> hub.scenarios.sendScenario(clientId, field("id"), field("scope"))
 
             "scenarioSave" -> hub.scenarios.save(clientId, payload)
 
@@ -356,22 +383,33 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
 
             "scenarioRun" -> hub.scenarios.start(clientId, field("id"), field("scope"), values(payload["inputs"]))
 
-            // The hour a scenario starts at by itself, and taking it back (see ScenarioSchedule).
+            /*
+             * A scheduled run, and taking one back (see ScenarioSchedule).
+             *
+             * Two identifiers, named apart on purpose. A scenario may have as many arrangements as
+             * somebody wants, so the scenario has to be named to check what is being scheduled against,
+             * and the arrangement has to be named to say which of them is being changed. Both are read off
+             * the wire BY NAME, and a missing name reads as an empty string - so one of them called `id`
+             * would compile perfectly while quietly editing the wrong thing.
+             */
             "scenarioSchedule" -> hub.scenarios.schedule(
                 clientId,
-                field("id"),
-                field("scope"),
-                number(payload["at"]),
-                field("repeat"),
-                number(payload["weekday"]),
-                values(payload["inputs"]),
+                scenarioId = field("scenarioId"),
+                scope = field("scope"),
+                scheduleId = field("scheduleId"),
+                at = number(payload["at"]),
+                repeat = field("repeat"),
+                weekday = number(payload["weekday"]),
+                inputs = values(payload["inputs"]),
             )
 
-            "scenarioUnschedule" -> hub.scenarios.unschedule(field("id"), field("scope"))
+            "scenarioUnschedule" -> hub.scenarios.unschedule(clientId, field("scheduleId"))
 
             "scenarioPause" -> hub.scenarios.pause(field("runId"))
 
             "scenarioResume" -> hub.scenarios.resume(field("runId"))
+
+            "scenarioContinue" -> hub.scenarios.carryOn(clientId, field("runId"))
 
             "scenarioStop" -> hub.scenarios.stop(field("runId"))
 
@@ -467,6 +505,26 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
         }
 
         return true
+    }
+
+    /**
+     * What a new tab starts with, told to every window of every project.
+     *
+     * To all of them rather than to whoever asked, exactly like the colour mode and the hand-added
+     * models (see setCustomModels in ClaudePanel): the setting belongs to the machine, and a second
+     * window still drawing an empty tab with yesterday's model is a window showing something that is no
+     * longer true. The permission mode goes along with the other two because it is answered per project
+     * - Claude Code's own default is read from the settings that apply in that directory (see
+     * PermissionDefaultMode) - so each catalogue has to say it for itself.
+     */
+    private fun announceNewTabDefaults() {
+        ClaudeSessionHub.everyHub {
+            it.catalog.sendNewTabDefaults()
+            // And the phone, which learns this from its inventory rather than from a project fact: it
+            // names the model in the request that opens a conversation, so a stale one there would walk
+            // straight past a model just pinned here.
+            it.inventoryChanged()
+        }
     }
 
     /**

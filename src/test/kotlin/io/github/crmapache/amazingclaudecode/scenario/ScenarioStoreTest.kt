@@ -26,6 +26,15 @@ class ScenarioStoreTest {
         project.deleteRecursively()
     }
 
+    /**
+     * What is on the repository's shelf, which is the only one these tests write to.
+     *
+     * Counted here rather than through everything the store can see: the other shelf is the person's real
+     * Claude home, and on a machine where they keep a scenario of their own every count through it is one
+     * too many - which is what these assertions used to do.
+     */
+    private fun onTheShelf(): Int = store.shelf(ScenarioScope.PROJECT).orEmpty().size
+
     private fun scenario(name: String = "Round", id: String = "") = Scenario(
         id = id,
         name = name,
@@ -77,7 +86,7 @@ class ScenarioStoreTest {
         assertNotEquals(stored.stages.single().id, copy.stages.single().id)
         assertNotEquals(stored.stages.single().cards.single().id, copy.stages.single().cards.single().id)
         assertNotEquals(stored.inputs.single().id, copy.inputs.single().id)
-        assertEquals(2, store.all().size)
+        assertEquals(2, onTheShelf())
     }
 
     @Test
@@ -96,7 +105,7 @@ class ScenarioStoreTest {
         store.save(scenario(), ScenarioScope.PROJECT)
         File(store.projectDirectory(), "broken.json").writeText("{ this is not json")
 
-        assertEquals(1, store.all().size)
+        assertEquals(1, onTheShelf())
     }
 
     @Test
@@ -139,6 +148,25 @@ class ScenarioStoreTest {
         store.save(scenario(), ScenarioScope.PROJECT)
 
         assertFalse(store.delete("../..", ScenarioScope.PROJECT))
-        assertEquals(1, store.all().size)
+        assertEquals(1, onTheShelf())
+    }
+
+    /**
+     * A shelf that was never made is an EMPTY shelf, and a disk that will not answer is an unknown one.
+     *
+     * Told apart because one caller acts on the difference and acts destructively: the scheduled runs are
+     * pruned against the scenarios that still exist, and an unknown shelf stops the pruning entirely. Read
+     * as unknown, the folder nobody ever created - which is every machine with no scenarios of its own -
+     * turned the pruning off for good, and a deleted scenario went on taking its hour every morning for
+     * ever, answering "that scenario is gone" and marking the row as missed.
+     */
+    @Test
+    fun `a shelf that was never made is empty rather than unknown`() {
+        assertEquals(emptyList(), store.shelf(ScenarioScope.PROJECT))
+    }
+
+    @Test
+    fun `a shelf under a folder that is not there at all is unknown`() {
+        assertNull(ScenarioStore(File(project, "gone-with-the-branch").absolutePath).shelf(ScenarioScope.PROJECT))
     }
 }

@@ -293,17 +293,28 @@ export interface PanelState {
    * assembled out of separate create and update calls (see applyToolUse/applyTaskCreated).
    *
    * The tool itself does not separate one conversation's different requests - from its point of view
-   * this is one list for the whole session. That does not suit the panel: the list over the input field
-   * has to answer "how is what I have just asked for going" rather than grow forever with items from the
-   * request before last. So the list is reset not by the tasks' state (a deceptive signal - that same
-   * list may briefly be entirely closed in the middle of one piece of work, if the agent runs its tasks
-   * one at a time rather than in a batch) but by a new message from the person - see case 'prompt', that
-   * is the real boundary between the "previous" and the "new" request. Along with the dictionary an
-   * empty snapshot is put into the feed: the panel over the field mirrors the last todo item, and
-   * without it it would go on showing the previous request, while TaskUpdate by the old numbers would no
-   * longer find them and silently do nothing.
+   * this is one list for the whole session, and so it is kept here: the dictionary is never emptied by a
+   * message from the person (see tasksCarried below for why), only by /clear, where the conversation
+   * itself starts over.
    */
   tasks: Record<string, TodoEntry>
+  /**
+   * The list on screen was left by the previous request - a new message from the person has come in and
+   * the agent has not touched a task since.
+   *
+   * The list over the input field has to answer "how is what I have just asked for going" rather than
+   * grow forever with the items of the request before last, so a boundary is needed; the person's
+   * message is the real one (the tasks' own state is a deceptive signal - a list may briefly be entirely
+   * closed in the middle of one piece of work, if the agent runs its tasks one at a time). What the
+   * boundary must NOT do is throw the dictionary away, and that is what it used to do: an answer inside
+   * the same piece of work ("yes, go on") is a new message too, and after it every TaskUpdate by the old
+   * numbers found nothing and silently did nothing - the list vanished for good, in the middle of nine
+   * tasks with three still open, and came back only if the agent ever started planning afresh. So the
+   * boundary is a mark rather than a loss: the old tasks are dropped by the first batch of TaskCreate
+   * that follows the message (the agent is planning anew), and stay whole the moment the agent edits one
+   * of them instead (it is carrying on with the same list).
+   */
+  tasksCarried: boolean
   /**
    * A task's subject by the id of its TaskCreate call - until the number assigned to it becomes known.
    * The tool does not hand the numbers over in any structured form at all, only in the words of its
@@ -504,6 +515,7 @@ export const initialPanelState: PanelState = {
   suppressNextMeta: false,
   starting: false,
   tasks: {},
+  tasksCarried: false,
   pendingTasks: {},
   pausedMs: 0,
   queue: [],

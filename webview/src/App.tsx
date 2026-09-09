@@ -5,10 +5,13 @@ import { copyToClipboard, installClipboardBridge, resolveClipboard } from './cli
 import { resolvePastedFile } from './pasted'
 import {
   ADD_MODEL,
+  LAST_USED,
   effortOptions,
   modeMenuOptions,
   modelMenu,
   type ModeAvailability,
+  newTabEffortOptions,
+  newTabModelOptions,
   nextMode,
   resolvePanelModel,
   modelInForce,
@@ -46,7 +49,14 @@ import { Mcp } from './components/Mcp'
 import { Menu, type MenuOption } from './components/Menu'
 import { ImprovePrompt } from './components/ImprovePrompt'
 import { VoiceDevices, VoiceInput, VoiceLanguages, type VoiceSettings } from './components/VoiceInput'
-import { SettingsScreen, SideMenu, parentOf, type MenuScreen, type MenuSummary } from './components/SideMenu'
+import {
+  NewChatScreen,
+  SettingsScreen,
+  SideMenu,
+  parentOf,
+  type MenuScreen,
+  type MenuSummary,
+} from './components/SideMenu'
 import { Language } from './components/Language'
 import { LocaleProvider, activeLocale, nativeName, useDict } from './i18n'
 import type { Dict } from './i18n/en'
@@ -169,7 +179,6 @@ import { KnownFilesContext, OpenFileContext, type OpenFileRequest } from './hook
 import { knownFiles } from './feed/paths'
 import {
   groupOrder,
-  isPanelTab,
   moveTab,
   moveWithinGroup,
   placeAtEnd,
@@ -178,9 +187,18 @@ import {
   runTabId,
   SCENARIOS_GROUP,
   STATISTICS_GROUP,
+  tabAfterClosing,
+  tabAfterElsewhere,
   type PanelTabPlace,
 } from './tabs'
-import { RUNS_PAGE, ScenariosTab, type ScenariosView } from './components/scenarios/ScenariosTab'
+import {
+  ScenariosTab,
+  AT_FIRST as SCENARIOS_AT_FIRST,
+  SHOWN_AT_FIRST,
+  type ScenariosShown,
+  type ScenariosView,
+} from './components/scenarios/ScenariosTab'
+import { pressedAgain, runMarks, type Presses } from './scenarios/runs'
 import { ScenarioRunTab } from './components/scenarios/ScenarioRunTab'
 import { useSelection } from './hooks/useSelection'
 
@@ -196,6 +214,18 @@ const MAIN_SESSION = 'main'
  */
 const STATISTICS_COLOR = 'hsl(220, 62%, 70%)'
 const SCENARIO_COLOR = 'hsl(268, 52%, 72%)'
+
+/**
+ * The runs the strip currently has a tab for.
+ *
+ * What the labels on those tabs are worked out over (see runMarks). Not every run of the project: a
+ * scenario run every morning for a month has thirty of them, and the tab open on tonight's would carry a
+ * ticket beside its name for no reason anybody could see.
+ */
+const watchedRuns = (tabs: PanelTabPlace[], runs: ScenarioRunSummary[]): ScenarioRunSummary[] => {
+  const open = new Set(tabs.map((tab) => runOfTab(tab.id)).filter(Boolean))
+  return runs.filter((run) => open.has(run.id))
+}
 
 /**
  * Where a Deepgram key comes from. The console rather than the marketing page: somebody sent here is
@@ -411,7 +441,22 @@ export const App = () => {
    * The choice of model, effort and mode. It arrives from the shell at startup and is saved there too: a
    * new tab, a fork and the IDE's next start begin from it.
    */
-  const [prefs, setPrefs] = useState({ model: '', effort: 'high', mode: 'manual' })
+  /**
+   * What a new tab starts with, in two halves that are deliberately not one.
+   *
+   * `model` and `effort` are the last pick made in any tab - written by the MODEL and EFFORT chips, as
+   * they always were. `newTabModel` and `newTabEffort` are the pins from the "New chats" screen, and
+   * empty - the usual case - means "whatever was last picked". So an untouched tab is drawn by the pins
+   * where there are any and by the last pick where there are not (see startingModel below), and pinning
+   * a model is not something a pick in some other tab can quietly undo.
+   */
+  const [prefs, setPrefs] = useState({
+    model: '',
+    effort: 'high',
+    mode: 'manual',
+    newTabModel: '',
+    newTabEffort: '',
+  })
   /**
    * What language the panel speaks, in two halves: the choice somebody made and what the IDE itself is
    * set to. An empty choice means the second one - a Chinese IDE gets a Chinese panel without anyone
@@ -614,6 +659,22 @@ export const App = () => {
    * beside one does not shove it along.
    */
   const [panelTabs, setPanelTabs] = useState<PanelTabPlace[]>([])
+  // Read from the message handler, which is subscribed once and would otherwise close over an empty strip.
+  const panelTabsRef = useRef(panelTabs)
+  panelTabsRef.current = panelTabs
+
+  /**
+   * Change the strip, and let the ref know NOW rather than at the next render.
+   *
+   * Every change goes through here, because the ref is not a copy kept for convenience - it is what the
+   * message handler answers "is there a tab for this run?" with, and the answer can be needed inside the
+   * very send that opened the tab. A finished run has no second beat to correct a wrong answer: its whole
+   * record arrives once, and dropped once is dropped for good - an empty tab that stays empty.
+   */
+  const applyPanelTabs = (next: PanelTabPlace[]) => {
+    panelTabsRef.current = next
+    setPanelTabs(next)
+  }
 
   /**
    * Put one of the panel's own tabs into the strip and look at it.
@@ -628,7 +689,8 @@ export const App = () => {
    * initialised.
    */
   const openPanelTab = (id: string) => {
-    setPanelTabs((current) =>
+    const current = panelTabsRef.current
+    applyPanelTabs(
       current.some((tab) => tab.id === id)
         ? current
         : [...current, { id, place: placeAtEnd(groupOrder(sessionsRef.current)) }],
@@ -637,9 +699,14 @@ export const App = () => {
   }
 
   const closePanelTab = (id: string) => {
-    setPanelTabs((current) => current.filter((tab) => tab.id !== id))
+    applyPanelTabs(panelTabsRef.current.filter((tab) => tab.id !== id))
     if (id === STATISTICS_GROUP) setStatsTab({ open: false, view: 'overview' })
-    if (active === id) setActive(sessions[0]?.id ?? MAIN_SESSION)
+    // The record of a run is kept only while something shows it: it is the heaviest thing this page
+    // holds, and a run watched for an hour and closed would otherwise sit here till the panel reloads.
+    const watched = runOfTab(id)
+    if (watched) setRunRecords(({ [watched]: gone, ...rest }) => rest)
+    // The neighbour in the strip, whatever kind of tab it is - see tabAfterClosing.
+    if (active === id) setActive(tabAfterClosing(sessions, panelTabs, id) || MAIN_SESSION)
   }
 
   /**
@@ -652,9 +719,19 @@ export const App = () => {
    */
   const [scenarios, setScenarios] = useState<Scenario[] | null>(null)
   const [scenarioRuns, setScenarioRuns] = useState<ScenarioRunSummary[]>([])
-  const [liveRunId, setLiveRunId] = useState('')
-  /** The hours these scenarios start at by themselves - see ScenarioSchedule in protocol.ts. */
+  /**
+   * The runs going right now, as summaries.
+   *
+   * Several of them, because one scenario may be started as many times as somebody wants. They arrive on
+   * a message of their own, once a second while anything runs: what is going changes constantly and the
+   * shelves beside it do not, and the whole record of a run is far too heavy to be the answer to "what is
+   * happening" (see ScenarioDesk.sendLive).
+   */
+  const [liveRuns, setLiveRuns] = useState<ScenarioRunSummary[]>([])
+  /** The runs these scenarios have waiting for their hour - see ScenarioSchedule in protocol.ts. */
   const [scenarioSchedules, setScenarioSchedules] = useState<ScenarioSchedule[]>([])
+  /** Whether the hours could not be read off the disk at all - see the `scenarios` message. */
+  const [schedulesUnread, setSchedulesUnread] = useState(false)
   const [canShareScenarios, setCanShareScenarios] = useState(false)
   const [scenarioOutcome, setScenarioOutcome] = useState('')
   /**
@@ -683,13 +760,31 @@ export const App = () => {
    * to be lost to a glance at a chat - while the model asked to write it went on working behind an empty
    * screen. The same reasoning the feedback draft above lives by.
    */
-  const [scenariosView, setScenariosView] = useState<ScenariosView>({ kind: 'list' })
-  const [scenariosShown, setScenariosShown] = useState(RUNS_PAGE)
+  /**
+   * When each Run button was last pressed - see startScenario and pressedAgain.
+   *
+   * One moment per scenario rather than one for the panel: the guard is against a finger bouncing on ONE
+   * button, and a single moment swallowed the ordinary "start this, then start that" without a word.
+   *
+   * A ref rather than state, and up here with the rest of the screen's own memory rather than beside the
+   * function that reads it: below this point the file has early returns (the sign-in gate, the crash
+   * notice), and a hook after one of those is called on some renders and not on others.
+   */
+  const lastStart = useRef<Presses>({})
+
+  const [scenariosView, setScenariosView] = useState<ScenariosView>(SCENARIOS_AT_FIRST)
+  const [scenariosShown, setScenariosShown] = useState<ScenariosShown>(SHOWN_AT_FIRST)
   /**
    * The runs whose tabs are open, whole, by their own identifier.
    *
    * A map rather than one at a time: the run going now and the one from last night somebody is reading
    * are two tabs at once, and each is pushed and answered on its own.
+   *
+   * Only the ones with a tab. A record carries the scenario's whole snapshot and every card's prompt -
+   * hundreds of kilobytes for a night of work - and the IDE broadcasts every live one to every window,
+   * including runs the clock raised that nobody has opened. Kept as they arrived, the map grew all day
+   * and was never emptied; the list of live runs and the timeline of an open one are two different
+   * questions, and only the second needs this.
    */
   const [runRecords, setRunRecords] = useState<Record<string, ScenarioRun>>({})
   /** The log of the one step somebody has opened - see scenarioLog in protocol.ts. */
@@ -1031,14 +1126,24 @@ export const App = () => {
   // was chosen, and after that what it genuinely applied.
   const mode = panel.pendingMode ?? panel.permissionMode ?? prefs.mode
 
+  /**
+   * What a tab that has not started yet will start on - the pin if there is one, the last pick otherwise.
+   *
+   * The same formula the IDE launches by (see ClaudePreferences.startingModel), and it has to be: the
+   * chip over an empty tab is a promise about the process that tab will raise, and a chip naming the last
+   * pick while the launch used the pin would be that promise broken before the first message.
+   */
+  const startingModel = prefs.newTabModel || prefs.model
+  const startingEffort = prefs.newTabEffort || prefs.effort
+
   // Which model is genuinely running - see resolvePanelModel, and there too why it was split out into a
   // function of its own. Measured against this tab's own model where it has one (see PanelState.ownModel):
   // the setting is what a tab that has not started yet will start on.
-  const model = resolvePanelModel(panel, models, panel.ownModel ?? prefs.model)
+  const model = resolvePanelModel(panel, models, panel.ownModel ?? startingModel)
 
   // And the effort of this tab rather than of the window: the setting is only what a tab that has not
   // started yet will start on (see PanelState.effort).
-  const effort = panel.pendingEffort ?? panel.effort ?? prefs.effort
+  const effort = panel.pendingEffort ?? panel.effort ?? startingEffort
 
   // Which of the optional things the Shift+Tab cycle may reach: the permission for bypass arrives from
   // the shell, auto through a refusal of its own on the current model (see autoRefusedModels).
@@ -1055,7 +1160,7 @@ export const App = () => {
    * (see modelInForce). It lives in the tab rather than in the shared setting: the neighbouring one has a
    * conversation and a model of its own.
    */
-  const tickedModel = modelInForce(models, panel.ownModel ?? prefs.model, panel.model)
+  const tickedModel = modelInForce(models, panel.ownModel ?? startingModel, panel.model)
 
   /**
    * The drafts as they stand right now, for the shell's messages: that subscription is set up once for the
@@ -1611,6 +1716,11 @@ export const App = () => {
                 model: message.preferences?.model || current.model,
                 effort: message.preferences?.effort || current.effort,
                 mode: normalizeMode(message.preferences?.mode || current.mode),
+                // Read as they come, empty included: empty is the answer here - "nothing pinned, follow
+                // the last pick" - and falling back to what stands would keep a pin somebody has just
+                // cleared (see newTabDefaults below, which is the same read).
+                newTabModel: message.preferences?.newTabModel ?? '',
+                newTabEffort: message.preferences?.newTabEffort ?? '',
               }))
               if (message.preferences.composerLayout) {
                 setComposerLayoutState(normalizeComposerLayout(message.preferences.composerLayout))
@@ -1691,6 +1801,9 @@ export const App = () => {
            */
           case 'sessions': {
             const known = message.sessions.map((info) => info.id)
+            // The strip as it stands NOW, before the news is applied: the neighbour of a tab that has
+            // been closed cannot be found in a list the tab is already gone from (see tabAfterElsewhere).
+            const before = sessionsRef.current
             setSessions(
               message.sessions.map((info) => ({
                 id: info.id,
@@ -1705,8 +1818,11 @@ export const App = () => {
             // are on no such list and never will be - statistics, the scenarios hub, a run being watched -
             // so they stay put. Naming only the statistics one here threw a person off a running scenario
             // every time a chat elsewhere was renamed, opened or forked, which is several times a minute.
-            setActive((current) =>
-              isPanelTab(current) || known.includes(current) ? current : (known[0] ?? MAIN_SESSION),
+            // Closed from another screen: the neighbour it had here, which may well be a tab of this
+            // panel's own. Several may have gone at once, so what is still open is what this list says
+            // plus the tabs the list has no line for (see tabAfterElsewhere).
+            setActive(
+              (current) => tabAfterElsewhere(before, panelTabsRef.current, known, current) || MAIN_SESSION,
             )
             break
           }
@@ -2135,13 +2251,37 @@ export const App = () => {
           case 'scenarios':
             setScenarios(message.scenarios)
             setScenarioRuns(message.runs)
-            setLiveRunId(message.live)
             setScenarioSchedules(message.schedules ?? [])
+            setSchedulesUnread(message.schedulesUnread === true)
             setCanShareScenarios(message.canShare)
             break
 
+          /*
+           * One run's whole record, for the tab that is showing it - and for nothing else.
+           *
+           * Dropped on arrival when no tab is open on that run. The IDE tells every window about every
+           * live run, including the ones its clock raised while somebody was working elsewhere, and each
+           * of those is the scenario's whole snapshot plus every card's prompt. Kept, they piled up all
+           * day and were never let go of; what the hub actually draws is the list of summaries, which is
+           * a message of its own.
+           */
           case 'scenarioRun':
-            setRunRecords((current) => ({ ...current, [message.run.id]: message.run }))
+            setRunRecords((current) =>
+              panelTabsRef.current.some((tab) => runOfTab(tab.id) === message.run.id)
+                ? { ...current, [message.run.id]: message.run }
+                : current,
+            )
+            break
+
+          /*
+           * What is going right now, as summaries: the light half of the scenarios.
+           *
+           * The only source of "which runs are live". It arrives about once a second while anything runs
+           * and carries a state of its own, so a run that has just ended cannot be drawn as going by one
+           * screen while another says it is over.
+           */
+          case 'scenarioLive':
+            setLiveRuns(message.runs)
             break
 
           /*
@@ -2152,7 +2292,6 @@ export const App = () => {
            * tab opens at all.
            */
           case 'scenarioStarted':
-            setLiveRunId(message.runId)
             /*
              * A run somebody pressed play on opens in front of them; one the clock started does not.
              *
@@ -2195,6 +2334,11 @@ export const App = () => {
 
           case 'scenarioOutcome':
             setScenarioOutcome(message.ok ? '' : message.code)
+            // A press that was refused started nothing, so there is nothing left to guard against -
+            // otherwise the same button is dead for a second and a half with nothing on screen saying so.
+            // Any refusal, not only a refused start: every one of them travels through the disk and a
+            // process, so it lands long after the bounce this guards against could still be in flight.
+            if (!message.ok) lastStart.current = {}
             break
 
           case 'mcpServers':
@@ -2421,6 +2565,21 @@ export const App = () => {
             setLoginProblem(message.code)
             break
 
+          /**
+           * What a new tab starts with, changed somewhere else - another window of this machine, or the
+           * screen in this one answering back. Machine-wide settings arrive this way rather than only in
+           * `init` (see calmColors and customModels), and this one has a second reader beside the screen:
+           * the chip over an untouched tab draws itself from these very values.
+           */
+          case 'newTabDefaults':
+            setPrefs((current) => ({
+              ...current,
+              newTabModel: message.model,
+              newTabEffort: message.effort,
+              mode: normalizeMode(message.mode),
+            }))
+            break
+
           case 'modeAvailability':
             setBypassAvailable(message.bypassPermissions)
             break
@@ -2561,6 +2720,30 @@ export const App = () => {
   }, [])
 
   /**
+   * And what a new tab starts ON: the model and the effort it is pinned to.
+   *
+   * The sentinel means "no pin at all" and travels as an empty string - that is how the setting spells it
+   * (see LAST_USED in catalog.ts). Set here as well as sent, like every machine-wide preference: the row
+   * under the finger has to answer on the press rather than on the round trip, and the IDE's own answer
+   * (`newTabDefaults`) follows and agrees.
+   *
+   * The open tabs are left alone, exactly as the default mode leaves them: this decides how the NEXT
+   * conversation begins, and reaching into a running one to apply it would be the surprise the separate
+   * screen exists to remove.
+   */
+  const setDefaultModel = useCallback((next: string) => {
+    const pinned = next === LAST_USED ? '' : next
+    send({ type: 'setDefaultModel', model: pinned })
+    setPrefs((current) => ({ ...current, newTabModel: pinned }))
+  }, [])
+
+  const setDefaultEffort = useCallback((next: string) => {
+    const pinned = next === LAST_USED ? '' : next
+    send({ type: 'setDefaultEffort', effort: pinned })
+    setPrefs((current) => ({ ...current, newTabEffort: pinned }))
+  }, [])
+
+  /**
    * The mode in force is an optional one (auto/bypass) and has become unavailable in this very tab, while
    * nobody asked the tab anything: auto was chosen under one model, say, and then the model was changed to
    * one where the agent had already rejected it (see autoRefusedModels). It will not right itself - mode's
@@ -2625,8 +2808,11 @@ export const App = () => {
       // model out of the CLI's own catalogue is none of its business.
       const gone = customModels.filter((name) => !models.includes(name))
       if (gone.includes(prefs.model)) setPrefs((current) => ({ ...current, model: '' }))
+      // And the pin behind "New chats", which is the stronger of the two: it is what an untouched tab is
+      // drawn by and what the IDE launches one on (see startingModel).
+      if (gone.includes(prefs.newTabModel)) setPrefs((current) => ({ ...current, newTabModel: '' }))
     },
-    [customModels, prefs.model],
+    [customModels, prefs.model, prefs.newTabModel],
   )
 
   /**
@@ -2998,10 +3184,12 @@ export const App = () => {
    */
   const reorderGroups = useCallback(
     (groupId: string, beforeGroupId: string | null) => {
-      const moved = moveTab(sessions, panelTabs, groupId, beforeGroupId)
+      // From the ref rather than the state, like the other two writers: it leads the state by a step,
+      // and a reorder computed from a strip a tab was just added to would put the tab back.
+      const moved = moveTab(sessions, panelTabsRef.current, groupId, beforeGroupId)
 
       setSessions(moved.sessions)
-      setPanelTabs(moved.panels)
+      applyPanelTabs(moved.panels)
 
       if (moved.shell) {
         // The order lives on the shell's side too: it is what a second client lists the tabs in.
@@ -4043,6 +4231,24 @@ export const App = () => {
   }
 
   /**
+   * Press play - the one door a run goes out of, whichever button was pressed.
+   *
+   * Two presses inside a moment are one intention, and that guard has to live here rather than on either
+   * button: a scenario with questions is started from its form, one without them straight off its row.
+   * It matters more than it used to. The refusal "a run is already going" is gone - starting the same
+   * round of work several times over is the point of all this - so a finger that bounces on the button
+   * now buys two more agents in the working copy and a second bill, with nothing to say it was not meant.
+   */
+  const startScenario = (scenario: Scenario, inputs: Record<string, string>) => {
+    const pressed = pressedAgain(lastStart.current, `${scenario.id}:${scenario.scope}`, Date.now())
+    if (!pressed) return
+    lastStart.current = pressed
+
+    setScenarioOutcome('')
+    send({ type: 'scenarioRun', id: scenario.id, scope: scenario.scope, inputs })
+  }
+
+  /**
    * One run, in a tab of its own.
    *
    * Every run gets its own rather than sharing one that swaps its contents: a run goes on for hours
@@ -4050,8 +4256,11 @@ export const App = () => {
    * two different things to have open at once.
    */
   const openRun = (runId: string) => {
-    send({ type: 'scenarioOpen', runId })
+    // The tab first, then the asking. The record is filed only into a tab that is already there, and a run
+    // that has ended answers once and never again - asked first, its whole timeline is dropped on arrival
+    // and the tab stays empty for as long as it is open.
     openPanelTab(runTabId(runId))
+    send({ type: 'scenarioOpen', runId })
   }
 
   const openStatistics = () => {
@@ -4142,8 +4351,17 @@ export const App = () => {
       : null,
     plugins: pluginsInstalled?.length ?? null,
     sounds: t.common.countOn(SOUND_IDS.filter((sound) => !isMuted(soundPrefs, sound)).length),
-    defaultMode:
-      modeMenuOptions(t, availableModes).find((option) => option.id === normalizeMode(prefs.mode))?.label ?? '',
+    // The three values behind "New chats", each named the way its own list names it. "As last chosen" is
+    // an answer here rather than a blank: it IS what is set, and it is what most of these rows say.
+    newChat: {
+      model: prefs.newTabModel
+        ? newTabModelOptions(t, models, customModels, prefs.model).find(
+            (option) => option.id === prefs.newTabModel,
+          )?.label ?? prefs.newTabModel
+        : t.newChat.lastUsed,
+      effort: prefs.newTabEffort || t.newChat.lastUsed,
+      mode: modeMenuOptions(t, availableModes).find((option) => option.id === normalizeMode(prefs.mode))?.label ?? '',
+    },
     composerLayout: composerLayoutOptions(t).find((option) => option.id === chosenLayout)?.label ?? '',
     pasteCollapse: pasteCollapseSummary(t, pasteCollapse),
     sendKey: sendKeySummary(sendKey),
@@ -4220,7 +4438,26 @@ export const App = () => {
    *
    * A run carries the name of the scenario it is a run of rather than a word of its own: two runs of two
    * scenarios open at once are told apart by nothing else, and "Run" twice in the strip says nothing.
+   *
+   * And with two runs of ONE scenario the name is not enough either, so it is followed by whatever tells
+   * them apart - the first answer each was given, or the minute it started (see runMarks). Worked out
+   * over all the runs at once rather than for each tab on its own, because the commonest second start is
+   * the same round of work against the same ticket, and two labels computed alone would be the same
+   * words.
    */
+  /*
+   * The labels, worked out ONCE for both places that draw one.
+   *
+   * The tab in the strip and the header of the run's own screen say the same thing about the same run,
+   * and a set worked out twice is two chances to say different things - the rule is over the whole set,
+   * so it is not enough that both call the same function. It is also work: the panel redraws several
+   * times a second while a run beats, and this is quadratic in the number of runs open.
+   *
+   * A plain value rather than a remembered one, for the reason the tabs below are: this is past the
+   * file's early returns, where a hook would be called on some renders and not on others.
+   */
+  const runLabels = runMarks(watchedRuns(panelTabs, scenarioRuns))
+
   const headerPanelTabs = ((): PanelTab[] => {
     const groups = groupOrder(sessions)
 
@@ -4237,7 +4474,9 @@ export const App = () => {
             ? t.header.statistics
             : tab.id === SCENARIOS_GROUP
               ? t.header.scenarios
-              : run?.scenarioName || t.scenarios.run.title,
+              : run
+                ? [run.scenarioName, runLabels[run.id]].filter(Boolean).join(' · ')
+                : t.scenarios.run.title,
         color: tab.id === STATISTICS_GROUP ? STATISTICS_COLOR : SCENARIO_COLOR,
         closeLabel:
           tab.id === STATISTICS_GROUP
@@ -4287,7 +4526,9 @@ export const App = () => {
           dispatchPanel({ session: id, closed: true })
           const next = sessions.filter((session) => session.id !== id)
           setSessions(next)
-          if (active === id) setActive(next[0]?.id ?? MAIN_SESSION)
+          // The neighbour in the strip, and one of this panel's own tabs just as readily as a chat: the
+          // empty screen is for an empty strip (see tabAfterClosing).
+          if (active === id) setActive(tabAfterClosing(sessions, panelTabs, id) || MAIN_SESSION)
         }}
         onNewSession={() => startSession(`session-${Date.now()}`)}
         onReorderGroups={reorderGroups}
@@ -4459,30 +4700,31 @@ export const App = () => {
         <ScenariosTab
           scenarios={scenarios}
           runs={scenarioRuns}
-          liveRunId={liveRunId}
+          liveRuns={liveRuns}
           schedules={scenarioSchedules}
-          onSchedule={(scenario, hour, inputs) =>
+          schedulesUnread={schedulesUnread}
+          onSchedule={(scenario, scheduleId, hour, inputs) =>
             send({
               type: 'scenarioSchedule',
-              id: scenario.id,
+              scenarioId: scenario.id,
               scope: scenario.scope,
+              scheduleId,
               at: hour.at,
               repeat: hour.repeat,
               weekday: hour.weekday,
               inputs,
             })
           }
-          onUnschedule={(id, scope) => send({ type: 'scenarioUnschedule', id, scope })}
+          onUnschedule={(scheduleId) => send({ type: 'scenarioUnschedule', scheduleId })}
           canShare={canShareScenarios}
           models={models}
           customModels={customModels}
           outcome={scenarioOutcome}
           onDismissOutcome={() => setScenarioOutcome('')}
-          onFeedback={openFeedback}
           view={scenariosView}
           onView={setScenariosView}
-          shownRuns={scenariosShown}
-          onShownRuns={setScenariosShown}
+          shown={scenariosShown}
+          onShown={setScenariosShown}
           draftingSince={scenarioDraft.at}
           draftError={scenarioDraft.error}
           drafted={scenarioDraft.scenario}
@@ -4492,16 +4734,19 @@ export const App = () => {
           onSave={(scenario, scope) => send({ type: 'scenarioSave', scenario, scope })}
           onDelete={(id, scope) => send({ type: 'scenarioDelete', id, scope })}
           onDuplicate={(id, scope) => send({ type: 'scenarioDuplicate', id, scope })}
-          onRun={(scenario, inputs) => {
-            setScenarioOutcome('')
-            send({ type: 'scenarioRun', id: scenario.id, scope: scenario.scope, inputs })
-          }}
+          onRun={(scenario, inputs) => startScenario(scenario, inputs)}
           onOpenRun={openRun}
           onDeleteRun={(runId) => send({ type: 'scenarioRunDelete', runId })}
+          onPauseRun={(runId) => send({ type: 'scenarioPause', runId })}
+          onResumeRun={(runId) => send({ type: 'scenarioResume', runId })}
+          onStopRun={(runId) => send({ type: 'scenarioStop', runId })}
         />
       ) : runOfTab(active) ? (
         <ScenarioRunTab
           run={runRecords[runOfTab(active)] ?? null}
+          // The same label the tab carries, from the same set - it is empty unless another run of this
+          // scenario is open too (see runMarks).
+          mark={runLabels[runOfTab(active)] ?? ''}
           log={runLog && runLog.runId === runOfTab(active) ? runLog : null}
           onOpenLog={(key, conversationId) => {
             setRunLog(null)
@@ -4511,6 +4756,20 @@ export const App = () => {
           onPause={() => send({ type: 'scenarioPause', runId: runOfTab(active) })}
           onResume={() => send({ type: 'scenarioResume', runId: runOfTab(active) })}
           onStop={() => send({ type: 'scenarioStop', runId: runOfTab(active) })}
+          onContinue={() => send({ type: 'scenarioContinue', runId: runOfTab(active) })}
+          // The main thread's conversation opened the way a past conversation is opened from the history:
+          // the same rule about which tab (see resume), and the run's name on it.
+          onOpenChat={() => {
+            const run = runRecords[runOfTab(active)]
+            if (!run?.headConversationId) return
+            resume({
+              id: run.headConversationId,
+              title: run.scenarioName,
+              updatedAt: run.finishedAt || run.startedAt,
+              messages: 0,
+              titleSource: 'heuristic',
+            })
+          }}
           onAnswer={(allow, text) => send({ type: 'scenarioAnswer', runId: runOfTab(active), allow, text })}
           onOpenLink={openLink}
         />
@@ -4961,7 +5220,31 @@ export const App = () => {
 
         {sideMenu.open && sideMenu.screen === 'remoteAbout' ? <RemoteAbout /> : null}
 
-        {sideMenu.open && sideMenu.screen === 'defaultMode' ? (
+        {sideMenu.open && sideMenu.screen === 'newChat' ? (
+          <NewChatScreen summary={menuSummary} onPick={openScreen} />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'newChatModel' ? (
+          <ChoiceList
+            // The whole catalogue, hand-added models and all - the same list the MODEL chip offers, so
+            // that what can be worked in can also be started in. What the first entry currently amounts
+            // to is said under it: a pin of "as last chosen" that will not name the model is a promise
+            // about something unnamed.
+            options={newTabModelOptions(t, models, customModels, prefs.model)}
+            selected={prefs.newTabModel || LAST_USED}
+            onPick={setDefaultModel}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'newChatEffort' ? (
+          <ChoiceList
+            options={newTabEffortOptions(t, prefs.effort)}
+            selected={prefs.newTabEffort || LAST_USED}
+            onPick={setDefaultEffort}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'newChatMode' ? (
           <ChoiceList
             // The same list, availability marks and all: a mode this machine or this model cannot do is
             // no better a default than it is a current mode, and saying so in one place but not the
@@ -5073,7 +5356,7 @@ export const App = () => {
                 menu.kind,
                 models,
                 customModels,
-                panel.ownModel ?? prefs.model,
+                panel.ownModel ?? startingModel,
                 tickedModel,
                 effort,
                 mode,

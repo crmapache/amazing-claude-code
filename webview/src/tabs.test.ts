@@ -10,7 +10,10 @@ import {
   runTabId,
   SCENARIOS_GROUP,
   stripOrder,
+  stripTabs,
   STATISTICS_GROUP,
+  tabAfterClosing,
+  tabAfterElsewhere,
   type PanelTabPlace,
 } from './tabs'
 
@@ -165,6 +168,54 @@ describe('the tabs that hold no conversation', () => {
   })
 })
 
+describe('the tab to look at once one is closed', () => {
+  const stats = panel(STATISTICS_GROUP)
+
+  it('unfolds the strip into tabs, forks and all', () => {
+    expect(stripTabs(sessions, stats)).toEqual([
+      'main',
+      'fork-1',
+      'fork-2',
+      'second',
+      'third',
+      STATISTICS_GROUP,
+    ])
+  })
+
+  it('takes the neighbour on the right', () => {
+    expect(tabAfterClosing(sessions, [], 'second')).toBe('third')
+    expect(tabAfterClosing(sessions, [], 'main')).toBe('fork-1')
+  })
+
+  it('takes the one on the left when the closed tab stood last', () => {
+    expect(tabAfterClosing(sessions, [], 'third')).toBe('second')
+  })
+
+  it('holds no conversation of a tab above one that does', () => {
+    const only = [tab('main', 'main')]
+    expect(tabAfterClosing(only, panel(SCENARIOS_GROUP, only), 'main')).toBe(SCENARIOS_GROUP)
+  })
+
+  it('steps from one tab of its own to the next', () => {
+    const run = runTabId('r1')
+    const two: PanelTabPlace[] = [
+      { id: SCENARIOS_GROUP, place: { at: 0, among: [] } },
+      { id: run, place: { at: 0, among: [] } },
+    ]
+    expect(tabAfterClosing([], two, SCENARIOS_GROUP)).toBe(run)
+  })
+
+  it('skips the neighbours that went with it - several may close at once', () => {
+    const gone = new Set(['second', 'third'])
+    expect(tabAfterClosing(sessions, stats, 'second', (id) => !gone.has(id))).toBe(STATISTICS_GROUP)
+  })
+
+  it('says nothing when the strip is left empty', () => {
+    const only = [tab('main', 'main')]
+    expect(tabAfterClosing(only, [], 'main')).toBe('')
+  })
+})
+
 describe('rearranging the forks inside a group', () => {
   /** The same conversation with three forks: two of them have something to be rearranged between. */
   const withThree: Session[] = [
@@ -219,5 +270,41 @@ describe('rearranging the forks inside a group', () => {
 
   it('returns the same list when nothing moved', () => {
     expect(moveWithinGroup(withThree, 'fork-3', null)).toBe(withThree)
+  })
+})
+
+/**
+ * Which tab a screen shows when the one it had open was closed somewhere else - another IDE window, or
+ * the phone.
+ *
+ * The neighbour is worked out over the strip as it was BEFORE the news arrived, and that is the whole of
+ * this rule. The list that comes with the news no longer has the closed tab in it, so asked against that
+ * one the question "what stood next to it" has no answer at all and the screen falls back to the very
+ * first tab of the strip - which is exactly the case this was written for.
+ */
+describe('tabAfterElsewhere', () => {
+  it('moves to the neighbour on the right, not to the front of the strip', () => {
+    const known = ['main', 'fork-1', 'fork-2', 'third']
+
+    expect(tabAfterElsewhere(sessions, [], known, 'second')).toBe('third')
+  })
+
+  it('falls back to the left when the closed tab stood last', () => {
+    const known = ['main', 'fork-1', 'fork-2', 'second']
+
+    expect(tabAfterElsewhere(sessions, [], known, 'third')).toBe('second')
+  })
+
+  /** This screen's own tabs are on no such list and are never closed by it. */
+  it("leaves a tab of this panel's own alone and counts it as a neighbour", () => {
+    const known = ['main', 'fork-1', 'fork-2', 'second']
+    const panels = panel(STATISTICS_GROUP)
+
+    expect(tabAfterElsewhere(sessions, panels, known, STATISTICS_GROUP)).toBe(STATISTICS_GROUP)
+    expect(tabAfterElsewhere(sessions, panels, known, 'third')).toBe(STATISTICS_GROUP)
+  })
+
+  it('stays put when the tab is still there', () => {
+    expect(tabAfterElsewhere(sessions, [], ids(sessions), 'second')).toBe('second')
   })
 })

@@ -88,6 +88,16 @@ internal data class ScenarioRun(
     val startedAt: Long = 0,
     val finishedAt: Long = 0,
     val state: String = RunState.STARTING,
+    /**
+     * The scheduled arrangement that raised this, when one did rather than a hand on the button.
+     *
+     * Nothing draws it. It exists so that the clock can tell whether the round of work it is about to
+     * start is already going FROM THIS ARRANGEMENT - a scenario waiting on a question stands for as long
+     * as it takes somebody to answer, and a daily hour would otherwise pile up a run a day in one working
+     * copy with nothing on any screen to say why. It travels on the wire because the whole record does,
+     * and a field quietly stripped on the way out is a shape that depends on which side you read it from.
+     */
+    val runFrom: String = "",
     /** The answers the person gave to the scenario's inputs before pressing play. */
     val inputs: Map<String, String> = emptyMap(),
     /** How many cards this run intended to start, every pass counted - what the bar is drawn from. */
@@ -119,6 +129,12 @@ internal data class ScenarioRun(
      * same figure over a day).
      */
     val tokens: Long = 0,
+    /**
+     * Time the run was not a run: the gap between an ending and the moment it was picked up again (see
+     * ScenarioEngine.carryOn). Subtracted from every clock drawn over it - or a run stopped at midnight
+     * and continued after breakfast would say it took nine hours.
+     */
+    val idle: Long = 0,
 )
 
 @Serializable
@@ -198,7 +214,15 @@ internal data class RunQuestion(
     val askedAt: Long = 0,
 )
 
-/** A run as the list of past runs draws it - without the steps, which are the expensive part. */
+/**
+ * A run as the lists draw it - without the steps, which are the expensive part.
+ *
+ * The fields under [inputs] are what a CARD of a going run says about itself: where it has got to, what it
+ * has burnt, and what it has stopped to ask. They were added when the list of live runs became a band of
+ * cards rather than a row each - "2/5 cards" answers how far, and nothing answered what it is doing - and
+ * they are worked out here rather than sent as the whole record, which is tens of kilobytes and moves four
+ * times a second.
+ */
 @Serializable
 internal data class RunSummary(
     val id: String = "",
@@ -214,19 +238,60 @@ internal data class RunSummary(
     val cost: Double = 0.0,
     /** What it was run with - so the next run of the same scenario can start from the same answers. */
     val inputs: Map<String, String> = emptyMap(),
+    /** How many tokens it has burnt so far - see [ScenarioRun.tokens]. */
+    val tokens: Long = 0,
+    /** See [ScenarioRun.idle]. */
+    val idle: Long = 0,
+    /** Which stage of how many it is standing in, counting from one. Zero before anything has begun. */
+    val stage: Int = 0,
+    val stages: Int = 0,
+    /** The card it is on right now, by name. */
+    val at: String = "",
+    /** Which pass of that stage, and how many it may have. Zero when the stage does not loop. */
+    val pass: Int = 0,
+    val passes: Int = 0,
+    /** How many times the head has sent the card it is on back to work. */
+    val nudges: Int = 0,
+    /** What it has stopped to ask, in the CLI's own words. Empty when it is not standing on anything. */
+    val asking: String = "",
 )
 
-internal fun ScenarioRun.summarise(): RunSummary = RunSummary(
-    id = id,
-    scenarioId = scenarioId,
-    scenarioName = scenarioName,
-    scope = scope,
-    startedAt = startedAt,
-    finishedAt = finishedAt,
-    state = state,
-    total = total,
-    done = steps.count { it.state == StepState.DONE },
-    failure = failure,
-    cost = cost,
-    inputs = inputs,
-)
+internal fun ScenarioRun.summarise(): RunSummary {
+    /*
+     * The card the run is on: the first that is still open, and failing that the last that ever began.
+     *
+     * "The last that began" matters for a run that has finished or been stopped - the card it got to is
+     * what the row is about, and a run with nothing open would otherwise say nothing at all about where it
+     * ended.
+     */
+    val here = steps.firstOrNull { !StepState.over(it.state) && StepState.begun(it.state) }
+        ?: steps.lastOrNull { StepState.begun(it.state) }
+    val stage = snapshot.stages.indexOfFirst { it.id == here?.stageId }
+    val passes = snapshot.stages.getOrNull(stage)?.let { ScenarioRules.passesOf(it) } ?: 0
+
+    return RunSummary(
+        id = id,
+        scenarioId = scenarioId,
+        scenarioName = scenarioName,
+        scope = scope,
+        startedAt = startedAt,
+        finishedAt = finishedAt,
+        state = state,
+        total = total,
+        done = steps.count { it.state == StepState.DONE },
+        failure = failure,
+        cost = cost,
+        inputs = inputs,
+        tokens = tokens,
+        idle = idle,
+        stage = if (stage >= 0) stage + 1 else 0,
+        stages = snapshot.stages.size,
+        at = here?.title.orEmpty(),
+        pass = if (passes > 1) here?.pass ?: 0 else 0,
+        passes = if (passes > 1) passes else 0,
+        nudges = here?.nudges?.size ?: 0,
+        // The words rather than the tool's name: a row that says "Bash" has said nothing about what it is
+        // being asked. The tool is the fallback for a permission the CLI worded no other way.
+        asking = question?.let { it.title.ifBlank { it.tool } }.orEmpty(),
+    )
+}

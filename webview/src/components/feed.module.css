@@ -423,20 +423,14 @@
  * A long word without spaces (a path, a link, a hash) is broken by force in the flow: previously the
  * flex's wrapping saved us from it, and left alone it stretches the card sideways.
  */
+/* The same shade as the agent's answer (see .text), not the full foreground: the two are the same size
+   and the same face, and the brighter one read as the larger one. */
 .userBody {
   font-size: var(--acc-fs-body, 13px);
   line-height: var(--acc-leading, 1.55);
-  color: var(--acc-fg);
+  color: var(--acc-fg-body);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-/* Markdown inside a message nobody typed (see UserItem.machine).
- *
- * Its own box only to take .userBody's pre-wrap off: the parser has already decided where the lines and
- * the paragraphs are, and preserved whitespace on top of that drew every break a second time. */
-.userMarkdown {
-  white-space: normal;
 }
 
 /* A piece the panel filled in itself - a repeat of the agent's question beside the answer to it (see

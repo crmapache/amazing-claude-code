@@ -2240,7 +2240,7 @@ describe('the task list through TaskCreate/TaskUpdate', () => {
   // message from the person rather than by whether the list is closed at the moment: if the boundary were
   // "the list is empty right now", the tasks the agent leads one at a time (created - did it - closed -
   // created the next) would wipe one another at every step, exactly as the user complained on a live run.
-
+  // But the boundary only marks the list, it never throws it away - see tasksCarried in PanelState.
 
   it('lets a new message from the user start the task list afresh', () => {
     let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'An old task' })])
@@ -2254,19 +2254,70 @@ describe('the task list through TaskCreate/TaskUpdate', () => {
     expect(latestTodo(state)?.todos).toEqual([{ id: 'task-2', text: 'A new task', state: 'todo' }])
   })
 
-  it('lets a new message hide an unclosed list - otherwise the panel holds the previous request', () => {
+  /**
+   * The case the whole of tasksCarried exists for: an answer inside one piece of work ("yes, go on" to a
+   * plan the agent stopped on) is a new message too, and the agent carries on with the very same list -
+   * by numbers it was given long before that message. Thrown away at the message, they were found by
+   * nothing afterwards, and the strip over the field stayed empty for the hours that followed, in the
+   * middle of nine tasks with three of them still open.
+   */
+  it('keeps an unclosed list through a message from the user, and lets TaskUpdate carry it on', () => {
+    let state = play([
+      toolUseEvent('t1', 'TaskCreate', { subject: 'Write the plan' }),
+      toolUseEvent('t2', 'TaskCreate', { subject: 'Do the work' }),
+    ])
+    state = play([taskCreatedResult('t1', 1, 'Write the plan'), taskCreatedResult('t2', 2, 'Do the work')], state)
+    state = play([toolUseEvent('t3', 'TaskUpdate', { taskId: '1', status: 'in_progress' })], state)
+
+    state = newPrompt(state, '+')
+    expect(latestTodo(state)?.todos).toEqual([
+      { id: 'task-1', text: 'Write the plan', state: 'active' },
+      { id: 'task-2', text: 'Do the work', state: 'todo' },
+    ])
+
+    state = play([toolUseEvent('t4', 'TaskUpdate', { taskId: '1', status: 'completed' })], state)
+    state = play([toolUseEvent('t5', 'TaskUpdate', { taskId: '2', status: 'in_progress' })], state)
+    expect(latestTodo(state)?.todos).toEqual([
+      { id: 'task-1', text: 'Write the plan', state: 'done' },
+      { id: 'task-2', text: 'Do the work', state: 'active' },
+    ])
+  })
+
+  // ...and once the agent has edited one of the old tasks, the list is this request's list: a TaskCreate
+  // after that adds to it rather than replacing it. Otherwise a plan approved with "+" would lose its
+  // finished half the moment the agent thought of one more step.
+  it('does not drop a carried list once the agent has edited a task in it', () => {
     let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'An old task' })])
     state = play([taskCreatedResult('t1', 1, 'An old task')], state)
 
-    state = newPrompt(state, 'carry on after the limit')
-    expect(latestTodo(state)?.todos).toEqual([])
+    state = newPrompt(state, 'go on, and one more thing')
+    state = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'in_progress' })], state)
+    state = play([toolUseEvent('t3', 'TaskCreate', { subject: 'One more step' })], state)
+    state = play([taskCreatedResult('t3', 2, 'One more step')], state)
 
-    // The agent tries to close the old numbers - they are gone, and the panel must not come back to life.
-    state = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'completed' })], state)
-    expect(latestTodo(state)?.todos).toEqual([])
+    expect(latestTodo(state)?.todos).toEqual([
+      { id: 'task-1', text: 'An old task', state: 'active' },
+      { id: 'task-2', text: 'One more step', state: 'todo' },
+    ])
   })
 
-  it('does not duplicate a fully closed list with an empty snapshot on a new message', () => {
+  // The other half of the boundary: the agent answers the new message by planning anew, and the tasks of
+  // the previous request - unclosed ones included - step aside for the new list.
+  it('lets a fresh plan after a message replace an unclosed list', () => {
+    let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'An old task' })])
+    state = play([taskCreatedResult('t1', 1, 'An old task')], state)
+
+    state = newPrompt(state, 'forget that, do something else')
+    state = play([toolUseEvent('t2', 'TaskCreate', { subject: 'A new task' })], state)
+    state = play([taskCreatedResult('t2', 2, 'A new task')], state)
+
+    expect(latestTodo(state)?.todos).toEqual([{ id: 'task-2', text: 'A new task', state: 'todo' }])
+  })
+
+  // A message from the person puts no task item into the feed at all - neither a copy of the list nor an
+  // empty snapshot of it: the strip over the field mirrors the last one, and it hides a closed list by
+  // itself (see TaskListPanel).
+  it('puts no task item into the feed on a new message', () => {
     let state = play([toolUseEvent('t1', 'TaskCreate', { subject: 'An old task' })])
     state = play([taskCreatedResult('t1', 1, 'An old task')], state)
     state = play([toolUseEvent('t2', 'TaskUpdate', { taskId: '1', status: 'completed' })], state)

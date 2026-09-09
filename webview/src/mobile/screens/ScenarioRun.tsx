@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { formatTokens } from '../../feed/build'
 import { formatDuration } from '../../feed/tools'
-import { useNow } from '../../hooks/useNow'
+import { useTicking } from '../../hooks/useTicking'
 import { useLocale, useT } from '../../i18n'
 import type { ScenarioRun as Run, ScenarioRunStep } from '../../protocol'
 import { StatePill } from '../../components/scenarios/StatePill'
-import { finished, progressOf, timelineOf } from '../../scenarios/timeline'
-import { dayAndHour, outcomeText } from '../scenarios'
+import { cutCardOf, finished, progressOf, resumable, runElapsed, timelineOf } from '../../scenarios/timeline'
+import { dayAndHour } from '../../scenarios/moments'
+import { outcomeText } from '../scenarios'
 import { Back } from './Back'
 import m from '../mobile.module.css'
 
@@ -18,53 +19,55 @@ interface ScenarioRunProps {
   onPause: () => void
   onResume: () => void
   onStop: () => void
+  /** Pick a finished run up where it stood - see `scenarioContinue`. */
+  onContinue: () => void
+  /** Open the main thread's conversation as an ordinary chat, to go on from there by hand. */
+  onOpenChat: () => void
   onAnswer: (allow: boolean, text: string) => void
+  /** One step's own conversation, on a screen of its own (see ScenarioStep). */
+  onOpenStep: (step: ScenarioRunStep) => void
   onBack: () => void
 }
 
 /**
  * One run of one scenario, as a phone shows it.
  *
- * The same timeline the panel draws and out of the same three functions (see scenarios/timeline.ts):
- * the stages in order, every pass of a loop written out as a row of its own, and what the main thread
- * said wedged in where it said it. A folded loop cannot answer the one question anybody has at
- * midnight - which of those six goes is happening now - and that question is the whole reason this
- * screen exists away from the desk.
+ * The same timeline the panel draws and out of the same functions (see scenarios/timeline.ts): the stages
+ * in order, every pass of a loop written out as a row of its own, and what the main thread said wedged in
+ * where it said it. A folded loop cannot answer the one question anybody has at midnight - which of those
+ * six goes is happening now - and that question is the whole reason this screen exists away from the desk.
  *
- * Two things the desk has are honestly absent here rather than hidden. A step's own conversation is not
- * opened: it is read off that machine's disk and runs to megabytes, while a frame over the relay's cap
- * is thrown away whole (see RemoteCommands, where `scenarioLog` is refused). And the line of what a
- * card's agent is saying THIS SECOND does not travel: it is the one field of a run that changes four
- * times a second, and carrying it would cost somebody's mobile data for every hour a run lasts (see
- * RemoteFeed.trimmedRun). What is left is every state, every clock and every verdict, which is what
- * somebody away from the keyboard is reading for.
+ * What it is asking stands at the top, where reading begins, and its options are buttons under it: a card
+ * that stopped to ask is a run standing still, and answering it is what this channel exists for. Every
+ * step opens its own conversation, cut to the end of it on the way over (see RemoteFeed.trimmedLog).
  *
- * What can be done from here is what a run standing still needs: answer the card that stopped to ask,
- * hold it, or end it. Starting one and writing one stay at the desk.
+ * The one thing that honestly does not travel is the line of what a card's agent is saying THIS SECOND: it
+ * is the one field of a run that changes four times a second, and carrying it would cost somebody's mobile
+ * data for every hour a run lasts (see RemoteFeed.trimmedRun).
  */
-export const ScenarioRun = ({ run, problem, onPause, onResume, onStop, onAnswer, onBack }: ScenarioRunProps) => {
+export const ScenarioRun = ({
+  run,
+  problem,
+  onPause,
+  onResume,
+  onStop,
+  onContinue,
+  onOpenChat,
+  onAnswer,
+  onOpenStep,
+  onBack,
+}: ScenarioRunProps) => {
   const t = useT()
   const locale = useLocale()
-  const clock = useNow()
   const [answer, setAnswer] = useState('')
 
   /*
-   * The clock, ticking only while something is actually running.
-   *
-   * A finished run measures nothing - every duration on it is the difference between two stamps - so a
-   * timer left going would redraw a page nobody is watching change once a second.
-   *
-   * It reads the IDE's time rather than this phone's (see hooks/useNow): every stamp on a run was made
-   * on the machine it ran on, and subtracting one clock from another is how a step that began a minute
-   * ago comes out having begun in the future.
+   * The clock, ticking only while something is actually running - and reading the IDE's time rather than
+   * this phone's (see hooks/useNow): every stamp on a run was made on the machine it ran on, and
+   * subtracting one clock from another is how a step that began a minute ago comes out having begun in
+   * the future.
    */
-  const live = run !== null && !finished(run.state)
-  const [now, setNow] = useState(() => clock())
-  useEffect(() => {
-    if (!live) return
-    const timer = setInterval(() => setNow(clock()), 1000)
-    return () => clearInterval(timer)
-  }, [live, clock])
+  const now = useTicking(run !== null && !finished(run.state))
 
   const rows = useMemo(() => (run ? timelineOf(run) : []), [run])
 
@@ -80,7 +83,7 @@ export const ScenarioRun = ({ run, problem, onPause, onResume, onStop, onAnswer,
           </div>
         </header>
 
-        <div className={m.list}>
+        <div className={m.scenarioList}>
           {problem ? <p className={m.noteBad}>{outcomeText(t, problem)}</p> : <p className={m.empty}>{t.common.loading}</p>}
         </div>
       </>
@@ -90,7 +93,7 @@ export const ScenarioRun = ({ run, problem, onPause, onResume, onStop, onAnswer,
   const over = finished(run.state)
   const progress = progressOf(run)
   const share = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0
-  const elapsed = formatDuration((run.finishedAt > 0 ? run.finishedAt : now) - run.startedAt)
+  const elapsed = formatDuration(runElapsed(run, now))
   const question = run.question
 
   return (
@@ -143,24 +146,13 @@ export const ScenarioRun = ({ run, problem, onPause, onResume, onStop, onAnswer,
           */}
           <span className={m.runFact}>
             <span className={m.runFactKey}>
-              {over ? t.scenarios.run.took : run.state === 'paused' ? t.scenarios.run.open : t.scenarios.run.running}
+              {over ? t.scenarios.run.took : run.state === 'paused' ? t.scenarios.run.openFor : t.scenarios.run.runningShort}
             </span>
             {elapsed}
           </span>
 
-          {run.tokens > 0 && (
-            <span className={m.runFact}>
-              <span className={m.runFactKey}>{t.scenarios.run.tokens}</span>
-              {formatTokens(run.tokens)}
-            </span>
-          )}
-
-          {run.cost > 0 && (
-            <span className={m.runFact}>
-              <span className={m.runFactKey}>{t.scenarios.run.cost}</span>
-              {`$${run.cost.toFixed(2)}`}
-            </span>
-          )}
+          {run.tokens > 0 && <span className={m.runFact}>{formatTokens(run.tokens)}</span>}
+          {run.cost > 0 && <span className={m.runFact}>{`$${run.cost.toFixed(2)}`}</span>}
         </div>
 
         <div className={m.runTrack}>
@@ -177,9 +169,38 @@ export const ScenarioRun = ({ run, problem, onPause, onResume, onStop, onAnswer,
         </div>
       </header>
 
-      <div className={m.list}>
+      <div className={m.scenarioList}>
         {problem ? <p className={m.noteBad}>{outcomeText(t, problem)}</p> : null}
         {run.error ? <p className={m.noteBad}>{run.error}</p> : null}
+
+        {/* What a finished run says first, and the two doors out of it - the same two the panel offers
+            over its timeline (see ScenarioRunTab): pick it up where it stood, or go on with its main
+            thread in an ordinary chat. */}
+        {over && (
+          <div className={m.afterCard}>
+            <p className={m.afterText}>
+              {run.state === 'done'
+                ? t.scenarios.run.after.done
+                : run.state === 'stopped'
+                  ? t.scenarios.run.after.stopped(cutCardOf(run))
+                  : t.scenarios.run.after.failed(cutCardOf(run))}
+            </p>
+            <div className={m.afterButtons}>
+              {resumable(run) && (
+                <button type="button" className={m.buttonOption} onClick={onContinue}>
+                  <span className={m.buttonOptionLabel}>{t.scenarios.run.after.carryOn}</span>
+                  <span className={m.buttonOptionHint}>{t.scenarios.run.after.carryOnHint}</span>
+                </button>
+              )}
+              {run.headConversationId.length > 0 && (
+                <button type="button" className={m.buttonOption} onClick={onOpenChat}>
+                  <span className={m.buttonOptionLabel}>{t.scenarios.run.after.chat}</span>
+                  <span className={m.buttonOptionHint}>{t.scenarios.run.after.chatHint}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/*
           What is being asked, up here where reading happens rather than in the footer with the answers.
@@ -202,18 +223,7 @@ export const ScenarioRun = ({ run, problem, onPause, onResume, onStop, onAnswer,
               <p className={m.askDetail}>{question.detail}</p>
             ) : null}
 
-            {/*
-              An answer in one's own words, beside what is being asked rather than under the buttons.
-              A field in a fixed footer is a field a keyboard slides over, and on a question with
-              options the buttons below are the answer anybody actually gives.
-            */}
-            <input
-              className={m.askField}
-              value={answer}
-              placeholder={t.scenarios.run.answerPlaceholder}
-              autoCapitalize="sentences"
-              onChange={(event) => setAnswer(event.target.value)}
-            />
+            <p className={m.askNote}>{t.scenarios.run.nothingSpent}</p>
           </div>
         )}
 
@@ -221,8 +231,15 @@ export const ScenarioRun = ({ run, problem, onPause, onResume, onStop, onAnswer,
           {rows.map((row) => {
             if (row.kind === 'stage') {
               return (
-                <div key={row.key} className={m.stageRow}>
-                  {row.title || t.scenarios.stage}
+                <div key={row.key} className={`${m.stageRow} ${row.standing === 'here' ? m.stageHere : ''}`}>
+                  <span className={m.stageRowTitle}>{row.title || t.scenarios.stage}</span>
+                  <span className={m.stageRowVerdict}>
+                    {row.standing === 'done'
+                      ? t.scenarios.run.stageDone(formatDuration(row.took))
+                      : row.standing === 'here'
+                        ? t.scenarios.run.stageHere
+                        : t.scenarios.run.stageNotReached}
+                  </span>
                 </div>
               )
             }
@@ -240,10 +257,10 @@ export const ScenarioRun = ({ run, problem, onPause, onResume, onStop, onAnswer,
               <StepRow
                 key={row.key}
                 step={row.step}
-                index={row.index}
                 passes={row.passes}
                 untilDone={row.untilDone}
                 now={now}
+                onOpen={() => onOpenStep(row.step)}
               />
             )
           })}
@@ -270,6 +287,19 @@ export const ScenarioRun = ({ run, problem, onPause, onResume, onStop, onAnswer,
               <span className={m.buttonOptionLabel}>{option}</span>
             </button>
           ))}
+
+          {/*
+            An answer in one's own words, under the options rather than above them: on a question with
+            choices the buttons are the answer anybody actually gives, and the field is the way out when
+            neither of them is right.
+          */}
+          <input
+            className={m.askField}
+            value={answer}
+            placeholder={t.scenarios.run.answerPlaceholder}
+            autoCapitalize="sentences"
+            onChange={(event) => setAnswer(event.target.value)}
+          />
 
           {question.options.length === 0 && (
             <>
@@ -302,6 +332,19 @@ export const ScenarioRun = ({ run, problem, onPause, onResume, onStop, onAnswer,
               </button>
             </>
           )}
+
+          {question.options.length > 0 && answer.trim().length > 0 && (
+            <button
+              type="button"
+              className={m.buttonPrimary}
+              onClick={() => {
+                onAnswer(true, answer)
+                setAnswer('')
+              }}
+            >
+              {t.scenarios.run.send}
+            </button>
+          )}
         </footer>
       )}
     </>
@@ -309,61 +352,56 @@ export const ScenarioRun = ({ run, problem, onPause, onResume, onStop, onAnswer,
 }
 
 /**
- * One go at one card.
+ * One go at one card - and now a way into what it said.
  *
- * Not a button, unlike at the desk: there is nothing behind it to open from here (see the note at the
- * top about `scenarioLog`), and a row that looks pressable and answers nothing is worse than a row that
- * does not.
+ * It used to be a plain row, because there was nothing behind it to open: a step's conversation is read
+ * off the machine's disk, and that was refused over the wire. It is not any more (see RemoteCommands),
+ * so the row is a button and says so.
  */
 const StepRow = ({
   step,
-  index,
   passes,
   untilDone,
   now,
+  onOpen,
 }: {
   step: ScenarioRunStep
-  index: number
   /** How many passes its stage was given. One means the row has no loop to place itself in. */
   passes: number
   untilDone: boolean
   now: number
+  onOpen: () => void
 }) => {
   const t = useT()
   const going = step.state === 'running' || step.state === 'asking' || step.state === 'judging'
+  const ahead = step.state === 'waiting' || step.state === 'skipped'
   const elapsed =
     step.startedAt > 0 ? formatDuration((step.finishedAt > 0 ? step.finishedAt : now) - step.startedAt) : ''
 
   /*
-   * One line, and which line depends on what there is.
-   *
-   * What the card finished with once its turn is over, and what it was asked to do before that - which
-   * beats a line saying nothing is here. What the agent is saying at this very moment is the desk's
-   * third answer and does not reach a phone at all (see the note at the top of this file).
+   * One line, and which line depends on what there is: what the card finished with once its turn is over,
+   * and what it was asked to do before that - which beats a line saying nothing is here. What the agent is
+   * saying at this very moment is the desk's third answer and does not reach a phone at all.
    */
   const line = step.summary || step.prompt
-
   const slots = Object.entries(step.slots).filter(([, value]) => value.length > 0)
 
   return (
     <div
       className={[
         m.step,
-        step.state === 'waiting' ? m.stepWaiting : '',
-        step.state === 'skipped' ? m.stepSkipped : '',
+        ahead ? m.stepWaiting : '',
         going ? m.stepRunning : '',
         step.state === 'failed' ? m.stepFailed : '',
       ]
         .filter(Boolean)
         .join(' ')}
     >
-      <span className={m.stepNumber}>{index + 1}</span>
-
       <span className={m.stepText}>
         <span className={m.stepHead}>
           <span className={m.stepTitle}>{step.title}</span>
 
-          <StatePill step={step.state} failure={step.failure} />
+          {ahead ? null : <StatePill step={step.state} failure={step.failure} />}
 
           {/* Which pass this is travels with the row rather than standing in a heading over a block of
               them: six rows of a stage that goes round three times are six goes at two cards, and the
@@ -375,6 +413,15 @@ const StepRow = ({
           )}
 
           {elapsed ? <span className={`${m.stepTime} ${going ? m.stepTimeGoing : ''}`}>{elapsed}</span> : null}
+
+          {/* Only where there is one to open: a step that never ran has no conversation behind it, and a
+              row that looks pressable and answers nothing is worse than a row that does not. */}
+          {step.conversationId ? (
+            <button type="button" className={m.stepLog} onClick={onOpen}>
+              {t.scenarios.run.log}
+              <span className={m.taskRowChevron}>›</span>
+            </button>
+          ) : null}
         </span>
 
         {slots.length > 0 && (
@@ -385,7 +432,7 @@ const StepRow = ({
           </span>
         )}
 
-        {line.trim().length > 0 && <span className={m.stepLine}>{line}</span>}
+        {line.trim().length > 0 && !ahead && <span className={m.stepLine}>{line}</span>}
 
         {(step.verdictReason || step.error) && (
           <span className={`${m.stepVerdict} ${step.verdict === 'undone' || step.error ? m.stepVerdictBad : ''}`}>
@@ -400,4 +447,3 @@ const StepRow = ({
     </div>
   )
 }
-

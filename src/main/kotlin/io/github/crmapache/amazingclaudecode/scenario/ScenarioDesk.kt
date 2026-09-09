@@ -17,6 +17,9 @@ import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import io.github.crmapache.amazingclaudecode.remote.RemoteFeed
 import io.github.crmapache.amazingclaudecode.search.AiRuns
 import com.intellij.execution.process.ProcessHandler
+import java.time.Instant
+import java.time.ZoneId
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -35,12 +38,16 @@ import kotlinx.serialization.json.putJsonArray
 
 /**
  * One project's scenarios, as the clients see them: the two shelves, the runs that came of them, and
- * the one run that may be going right now.
+ * however many runs are going right now.
  *
- * One run at a time and that is the whole of the locking. Two runs in one working copy are four agents
- * editing the same files with nobody to reconcile them, and the failure that produces is not a message
- * on a screen - it is a branch with half of one round of work and half of another in it. Ordinary chat
- * tabs are not restrained at all: a person at the keyboard can see what they are doing.
+ * There used to be one at a time, refused at the door, and the argument for it was real: two runs in one
+ * working copy are four agents editing the same files with nobody to reconcile them, and what that
+ * produces is not a message on a screen but a branch with half of one round of work and half of another
+ * in it. It was asked for anyway, and the reason is the better one: the same round of work against three
+ * different tickets is three runs of one scenario, and told to take them in turn a person simply waits.
+ * So the door is open, and the cost is paid where it can be seen - each run says which one it is (see
+ * [markOf]), the hub lists them while they go, and the CLOCK still refuses to raise a second run from the
+ * same standing arrangement, because nobody chose that moment.
  *
  * Everything that touches the disk runs off the thread the request came in on, like the rest of the
  * plugin's readers: a shelf may be on a network drive, and the thread a message arrives on is the one
@@ -54,19 +61,53 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
     private val schedules = ScheduleStore(project.basePath)
 
     /**
-     * The one run this project may have going, and the whole of the locking that keeps it one.
+     * One live run and the little bookkeeping that belongs to it alone.
      *
-     * Volatile because every thread a message can arrive on reads it, and claimed inside [gate] because
-     * "is one going?" and "mine is going now" have to be one step. Apart, they are a race that two windows
-     * on one project win regularly: both found the field empty, the second's engine took the field, and the
-     * first's processes lived on with nothing left pointing at them - four agents in one working copy, no
-     * way to stop half of them, and a diff afterwards with two rounds of work mixed into it.
+     * The flag and the moment of the last write used to be fields of this class, which was right while
+     * there could only be one of them. Each run now moves at its own pace, so each carries its own; and
+     * each carries its own lock, because the race the lock is for - a beat drawing a snapshot taken just
+     * before the run ended - is about one run and nothing else. One lock for the desk would have made a
+     * slow run hold up every other one's heartbeat.
      */
-    @Volatile
-    private var engine: ScenarioEngine? = null
+    private class Live(val engine: ScenarioEngine) {
+        /** Volatile because it is raised on the agent's thread and read on the heartbeat's. */
+        @Volatile
+        var dirty = false
+        var lastWrite = 0L
+        val lock = Any()
+    }
 
-    /** Held only while the run slot is taken or given up - never while anything touches the disk. */
+    /**
+     * Every run this project has going, by its identifier.
+     *
+     * Concurrent because it is read on every thread a message can arrive on and walked by the heartbeat
+     * while runs end on their own processes' threads. Walked by a SNAPSHOT of its values, never in place:
+     * stopping a run finishes it synchronously, which takes its entry out from under the walk.
+     */
+    private val live = ConcurrentHashMap<String, Live>()
+
+    /**
+     * Held while the map is changed and while the heartbeat is started or stopped.
+     *
+     * The two belong together. Deciding to beat is "is the map empty?" plus "is there a timer?", and the
+     * ordinary moment for a race is one run ending in the same second another starts - a morning where
+     * several hours ripen at once, or a second press of Run. Apart, the new run can read a timer the old
+     * one is about to cancel, and then a live run has no heartbeat at all: its timeline stands still for
+     * hours and nothing of it reaches the disk, because that is the only place the record is written.
+     */
     private val gate = Any()
+
+    /**
+     * Whose turn it is to be sent, so that runs take the beat in turn rather than all at once.
+     *
+     * The whole record of a run goes out on each beat - the scenario's snapshot inside it, every card's
+     * prompt - which is tens of kilobytes even for a short one. Four times a second was already the
+     * ceiling of what the panel can take; multiplied by however many runs somebody starts it would be a
+     * megabyte a second into an embedded browser and a full redraw of the page for each of them. So the
+     * beat stays what it was and the runs share it: with three going, each moves a third as often, which
+     * is the honest price of watching three things at once.
+     */
+    private var lastSent = ""
 
     /**
      * The scenarios a model is writing right now, so that Cancel means something (see [draft]).
@@ -74,26 +115,10 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
      * The same bookkeeping the model's search has, and for its reason: a request is known from the moment
      * it is asked, while its process appears seconds later, and a cancel that only knew processes fell into
      * that gap - the run started anyway, worked to the end, was paid for, and its answer was thrown away by
-     * a screen that had moved on. Not the one-at-a-time gate above: writing one down costs a few cents and
-     * touches nothing, unlike a run, which is four agents in one working copy.
+     * a screen that had moved on. Nothing like the gate above: writing one down costs a few cents and
+     * touches nothing, unlike a run, which is two agents in a working copy.
      */
     private val drafts = AiRuns<ProcessHandler> { it.destroyProcess() }
-
-    /**
-     * Held while a run's state goes outwards, so that the end of a run is the last thing anybody hears.
-     *
-     * The heartbeat and the end of a run are on different threads, and the heartbeat reads the run and
-     * sends it as two steps. Between those two the run can finish: the end writes DONE and draws it, and
-     * then the beat that is already holding the previous snapshot draws RUNNING over it and writes RUNNING
-     * on top of the record. What that leaves is a tab that keeps its Pause and Stop buttons and never
-     * moves again, and a finished run on the disk that says it is still going - which the next start of
-     * the IDE dutifully repairs into a failure (see RunStore.repairAbandoned). A night's work that went
-     * well reads in the morning as a night that crashed.
-     *
-     * It covers reading the run as well as sending it, because holding it only over the sending would
-     * close nothing: the stale snapshot is taken before the lock is ever reached.
-     */
-    private val outward = Any()
 
     /** The runs left behind by an IDE that went away have to be closed before anybody sees them. */
     private val swept = AtomicBoolean(false)
@@ -108,13 +133,27 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
      */
     private var redraw: ScheduledFuture<*>? = null
 
-    /** Volatile because the tick and the work are no longer on one thread (see [tick]). */
-    @Volatile
-    private var dirty = false
-    private var lastWrite = 0L
-
     /** Whether a beat is still being worked on, so ticks do not stack up behind a slow one. */
     private val pulsing = AtomicBoolean(false)
+
+    /**
+     * When the short "what is going" frame last went out, so it goes at a pace an eye can use.
+     *
+     * A frame of its own beside the heavy record, and this is the one everybody who is NOT looking at a
+     * timeline reads: the hub's list of live runs, the phone's screen, the badge on a project card. A few
+     * hundred bytes of summaries against tens of kilobytes of prompts, so it can go to the whole project
+     * every second while the record goes to one turn at a time.
+     */
+    private var lastLive = 0L
+
+    /**
+     * Whether a look at the hours is already in flight.
+     *
+     * Set and cleared in ONE body, in a finally, and put back when the pool would not take the work -
+     * exactly as [pulsing] is, and for a sharper reason: a flag left standing here does not slow anything
+     * down, it stops every scheduled run on this machine until the IDE is restarted, silently.
+     */
+    private val hourly = AtomicBoolean(false)
 
     /** The clock that watches the hours, alive for as long as the project is open (see [tickHours]). */
     private var clock: ScheduledFuture<*>? = null
@@ -126,10 +165,21 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             {
                 // Off the scheduler's own thread, like the run's heartbeat: this pool is shared with the
                 // Stop button's watchdog and the usage polling, and starting a run takes a moment.
-                runCatching {
-                    ApplicationManager.getApplication().executeOnPooledThread {
-                        runCatching { tickHours() }.onFailure { thisLogger().warn("The scenario clock stumbled", it) }
+                if (hourly.compareAndSet(false, true)) {
+                    val handed = runCatching {
+                        ApplicationManager.getApplication().executeOnPooledThread {
+                            try {
+                                tickHours()
+                            } catch (failure: Throwable) {
+                                thisLogger().warn("The scenario clock stumbled", failure)
+                            } finally {
+                                hourly.set(false)
+                            }
+                        }
                     }
+                    // Nobody took it - the pool is going down with the IDE. Put the flag back, or the
+                    // hours are never looked at again.
+                    if (handed.isFailure) hourly.set(false)
                 }
             },
             HOURS_MS,
@@ -141,32 +191,40 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
     // --- What the clients ask for ----------------------------------------------------
 
     /**
-     * Both shelves and the list of past runs, to everyone in this project.
+     * Both shelves, the arrangements that will start them and the list of past runs, to everyone here.
      *
      * Told to everybody rather than answered to whoever asked, unlike the search or the history. A
      * scenario is not private to a window - a second window on the same project has the same two shelves
-     * and needs to see the one just written - and which run is live is a fact about the project itself.
-     * The hub keeps the latest of these, so a panel opened later is caught up without asking (see
-     * broadcastProject); a phone never sees it, because this type is not on the list of facts forwarded
-     * outwards (see RemoteFeed.PROJECT_FACTS).
+     * and needs to see the one just written. The hub keeps the latest of these, so a panel opened later is
+     * caught up without asking (see broadcastProject); a phone gets a trimmed copy (see RemoteFeed).
+     *
+     * What is deliberately NOT in it is which runs are going. That changes several times a second while
+     * this is two directories read off a disk, and the two travel apart for exactly that reason (see
+     * [sendLive]).
      */
     fun sendList() {
         off {
-            if (swept.compareAndSet(false, true)) runs.repairAbandoned()
+            if (swept.compareAndSet(false, true)) runs.repairAbandoned(live.keys.toSet())
 
-            val kept = store.all()
-            val scenarios = kept.map(::withShelf)
+            // Each shelf as it actually answered, null for one that could not be looked at: what that is
+            // for is the pruning below, where "there are no scenarios" and "no answer" must not be read as
+            // the same sentence (see Schedules.keepOnly).
+            val project = store.shelf(ScenarioScope.PROJECT)
+            val user = store.shelf(ScenarioScope.USER)
+            val scenarios = (project.orEmpty() + user.orEmpty()).map(::withShelf)
             val summaries = runs.summaries()
-            // A scenario deleted from the shelf takes its hour with it: an alarm for a round of work that
+            // A scenario deleted from the shelf takes its hours with it: an alarm for a round of work that
             // no longer exists goes on being due for ever, and nothing on the screen would explain it.
-            val hours = schedules.keepOnly(kept)
+            // Null means the file could not be read at all, which is NOT an empty list: read as one, the
+            // screen tells somebody their mornings are gone while they sit unharmed on the disk.
+            val hours = schedules.keepOnly(project, user)
             hub.broadcastProject(
                 buildJsonObject {
                     put("type", "scenarios")
                     put("scenarios", JsonArray(scenarios))
                     put("runs", json.encodeToJsonElement(summaries))
-                    put("live", engine?.run?.id.orEmpty())
-                    put("schedules", json.encodeToJsonElement(hours))
+                    put("schedules", json.encodeToJsonElement(hours.orEmpty()))
+                    put("schedulesUnread", hours == null)
                     // Whether this project has anywhere to put a shared scenario at all: a directory that
                     // is not open has no .claude to write into, and offering the choice would be a form
                     // that cannot be submitted.
@@ -174,6 +232,34 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
                 }.toString(),
             )
         }
+    }
+
+    /**
+     * What is going right now, as summaries, to everyone in this project.
+     *
+     * The light half of the wire, and the only thing most screens need. A summary carries the name, the
+     * state, how many cards of how many are done, what it cost and what it was asked - enough for the
+     * hub's list of live runs, for the phone's screen and for the badge on a project card - and it is a
+     * few hundred bytes rather than the tens of kilobytes a whole record weighs.
+     *
+     * Kept apart from the shelves for a plain reason: this changes while a run works and those do not, and
+     * put together they would either send the disk several times a second or freeze the live list at
+     * whatever it said when the run began. Kept apart from the record because the record is only of use to
+     * whoever has that run's tab open, and there is one of those at most.
+     *
+     * Built from memory, never from the disk: a run's record is written every couple of seconds, and a
+     * list of live work read from a file is a list that is always a little behind.
+     */
+    private fun sendLive() {
+        lastLive = System.currentTimeMillis()
+        val going = live.values.map { it.engine.run.summarise() }
+
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "scenarioLive")
+                put("runs", json.encodeToJsonElement(going))
+            }.toString(),
+        )
     }
 
     fun save(clientId: String, payload: JsonObject) {
@@ -249,17 +335,43 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
     }
 
     private fun drafted(clientId: String, id: String, scenario: Scenario?, error: String?) {
-        hub.emitTo(
-            clientId,
-            buildJsonObject {
-                put("type", "scenarioDrafted")
+        val body = buildJsonObject {
+            put("type", "scenarioDrafted")
+            put("id", id)
+            // The shelf is chosen on the screen the draft lands on, so it travels with one written in
+            // like any other scenario does (see [withShelf]).
+            scenario?.let { put("scenario", withShelf(it.copy(scope = shelfFor()))) }
+            error?.let { put("error", it) }
+        }.toString()
+
+        // What a model wrote opens in an editor and is SAVED from it, so a copy shortened to fit a frame
+        // would write a shortened prompt back to somebody's disk. Anything over the budget travels
+        // without its body and says so (see RemoteFeed.wholeScenario).
+        hub.emitTo(clientId, forClient(clientId, RemoteFeed.SCENARIO_DRAFTED, body))
+    }
+
+    /**
+     * One scenario, whole, because somebody asked for it by name.
+     *
+     * The shelves travel with their prose cut out - it is the entire weight of that message and no list
+     * draws a word of it (see RemoteFeed.trimmedScenarios) - so the editor asks. The panel is on this
+     * machine and is sent the shelves untouched, which is why nothing here goes near it; this road exists
+     * for the screen across the city.
+     */
+    fun sendScenario(clientId: String, id: String, scope: String) {
+        off {
+            val scenario = store.find(id, scope)
+            val body = buildJsonObject {
+                put("type", "scenarioFetched")
                 put("id", id)
-                // The shelf is chosen on the screen the draft lands on, so it travels with one written in
-                // like any other scenario does (see [withShelf]).
-                scenario?.let { put("scenario", withShelf(it.copy(scope = shelfFor()))) }
-                error?.let { put("error", it) }
-            }.toString(),
-        )
+                put("scope", scope)
+                // Absent for one that is on neither shelf - a thing the screen has to be able to say
+                // rather than sit blank about.
+                scenario?.let { put("scenario", withShelf(it)) }
+            }.toString()
+
+            hub.emitTo(clientId, forClient(clientId, RemoteFeed.SCENARIO_FETCHED, body))
+        }
     }
 
     /** Where a fresh scenario would go: the repository when there is one, and this person's own folder when not. */
@@ -278,12 +390,12 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
      * Press play, from the hub.
      *
      * The refusal goes back to whoever asked as a name they have words for; the work of actually raising
-     * a run is [launch], which the clock uses too (see [fire]) - two copies of the claim, the record and
-     * the engine would be two copies of the one thing in this file that must not be got wrong twice.
+     * a run is [launch], which the clock uses too - two copies of the record and the engine would be two
+     * copies of the one thing in this file that must not be got wrong twice.
      */
     fun start(clientId: String, id: String, scope: String, inputs: Map<String, String>) {
         off {
-            val refusal = launch(id, scope, inputs) { record ->
+            val refusal = launch(id, scope, inputs, from = "") { record ->
                 hub.emitTo(
                     clientId,
                     buildJsonObject {
@@ -297,16 +409,20 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
     }
 
     /**
-     * Raise a run, or say in one word why not.
+     * Raise a run, or say in one word why not. Null means it is going.
      *
-     * Null means it is going. Everything before the claim is a cheap early no; the claim itself is the
-     * only answer nobody can slip between, and it is taken before a single process is up.
+     * `from` is the standing arrangement this came out of, empty for a hand on the button; it is kept with
+     * the run so that the clock can tell whether the round of work it is about to raise is already going
+     * from the same arrangement (see [tickHours]).
      */
-    private fun launch(id: String, scope: String, inputs: Map<String, String>, onStarted: (ScenarioRun) -> Unit): String? {
+    private fun launch(
+        id: String,
+        scope: String,
+        inputs: Map<String, String>,
+        from: String,
+        onStarted: (ScenarioRun) -> Unit,
+    ): String? {
         val scenario = store.find(id, scope) ?: return "scenarioGone"
-        // A cheap early no, so an obviously busy project is not read off the disk. The answer that counts
-        // is the claim below.
-        if (engine != null) return "scenarioBusy"
         if (!ScenarioRules.runnable(scenario)) return "scenarioBroken"
         if (ScenarioRules.missingInputs(scenario, inputs).isNotEmpty()) return "scenarioMissingInput"
         if (ClaudeExecutable.find() == null) return "noClaude"
@@ -331,6 +447,7 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             snapshot = scenario,
             startedAt = System.currentTimeMillis(),
             state = RunState.STARTING,
+            runFrom = from,
             inputs = answers,
             total = ScenarioRules.cardRuns(scenario),
         )
@@ -341,32 +458,34 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             defaultModel = ClaudePreferences.model,
             defaultEffort = ClaudePreferences.effort,
             start = record,
-            onChange = { moved() },
+            onChange = { moved(record.id) },
             onFinished = { finished -> ended(finished) },
-            notify = { title, body -> announce(title, body) },
+            // The engine names the scenario; which RUN of it this is, is known here (see [markOf]).
+            notify = { _, body -> announceRun(record.id, body) },
         )
 
-        // Claimed before a single process is up: the engine opens nothing until begin().
-        if (!claim(walker)) return "scenarioBusy"
+        val holder = Live(walker)
+        // Taken before a single process is up: the engine opens nothing until begin().
+        claim(record.id, holder)
 
         runs.keep(record)
-        lastWrite = System.currentTimeMillis()
+        holder.lastWrite = System.currentTimeMillis()
 
         onStarted(record)
-        beat()
+        sendLive()
         runCatching { walker.begin() }.onFailure { failure ->
             thisLogger().warn("A scenario run would not start", failure)
             DiagnosticsLog.note(DiagnosticsLog.AGENT, "a scenario run would not start")
             // Down before it is forgotten: begin() raises the head before it can throw, and a process
             // nothing points at any more lives to the end of the IDE with its clock still ticking.
             walker.abandon()
-            // The heartbeat is already beating by now, so this ending is written under the same lock as
-            // any other: otherwise a beat in flight writes RUNNING over the failure (see [outward]).
-            synchronized(outward) {
+            // The heartbeat is already beating by now, so this ending is written under this run's own lock
+            // like any other: otherwise a beat in flight writes RUNNING over the failure.
+            synchronized(holder.lock) {
                 release(record.id)
-                stopBeating()
                 runs.keep(record.copy(state = RunState.FAILED, failure = RunFailure.CRASHED, finishedAt = System.currentTimeMillis()))
             }
+            sendLive()
         }
         sendList()
         return null
@@ -374,16 +493,29 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
     // --- The hours -------------------------------------------------------------------
 
     /**
-     * Set the hour this scenario starts at by itself, or move the one it has.
+     * Add a scheduled run, or change one that is already there.
+     *
+     * `scheduleId` empty means a new one; a scenario may have as many as somebody wants, so this adds
+     * rather than replaces (see Schedules.put). The scenario is still named separately, because it is what
+     * everything below is checked against.
      *
      * The answers to its questions come with it: when the hour comes there is nobody at the keyboard to
      * ask, so a schedule without them would be an alarm that rings and then asks a question of an empty
      * chair. Refused here rather than at the hour for the same reason - a scenario that cannot run is
      * something to be told about now, while somebody is still looking at the screen.
      */
-    fun schedule(clientId: String, id: String, scope: String, at: Int, repeat: String, weekday: Int, inputs: Map<String, String>) {
+    fun schedule(
+        clientId: String,
+        scenarioId: String,
+        scope: String,
+        scheduleId: String,
+        at: Int,
+        repeat: String,
+        weekday: Int,
+        inputs: Map<String, String>,
+    ) {
         off {
-            val scenario = store.find(id, scope)
+            val scenario = store.find(scenarioId, scope)
             if (scenario == null) return@off outcome(clientId, ok = false, code = "scenarioGone")
             if (!ScenarioRules.runnable(scenario)) return@off outcome(clientId, ok = false, code = "scenarioBroken")
             if (ScenarioRules.missingInputs(scenario, inputs).isNotEmpty()) {
@@ -391,6 +523,7 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             }
 
             val wanted = ScenarioSchedule(
+                id = scheduleId,
                 scenarioId = scenario.id,
                 scope = scenario.scope,
                 at = at.coerceIn(0, 24 * 60 - 1),
@@ -399,15 +532,19 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
                 inputs = ScenarioRules.answers(scenario, inputs),
             )
 
-            schedules.put(wanted.copy(nextAt = ScheduleClock.next(wanted, System.currentTimeMillis())))
+            val stored = schedules.put(wanted.copy(nextAt = ScheduleClock.next(wanted, System.currentTimeMillis())))
             sendList()
+            // Said out loud rather than left to the list: a row that is drawn and then gone at the next
+            // look reads as the panel having forgotten it, and the file is still there to be rescued.
+            if (!stored) outcome(clientId, ok = false, code = "schedulesNotWritten")
         }
     }
 
-    fun unschedule(id: String, scope: String) {
+    fun unschedule(clientId: String, scheduleId: String) {
         off {
-            schedules.remove(id, scope)
+            val gone = schedules.remove(scheduleId)
             sendList()
+            if (!gone) outcome(clientId, ok = false, code = "schedulesNotWritten")
         }
     }
 
@@ -417,6 +554,14 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
      * A beat of its own rather than the run's heartbeat, which only exists while something is running -
      * and the whole point of an hour is that it comes when nothing is. Half a minute is as coarse as it
      * can be and still start a nine o'clock run at nine o'clock.
+     *
+     * The order below is the whole of the care. The hour is TAKEN in the file before anything is started,
+     * and only then is the run raised and the outcome written back. Until runs could go side by side, the
+     * refusal "one at a time" quietly did this job: a due hour stays due for five minutes (see
+     * ScheduleClock.GRACE_MS) and the clock looks ten times in that window, so every look after the first
+     * would have raised another run of the same thing. Taking the hour first closes that, and it closes
+     * the one an in-memory check never could - a second IDE window on the same repository, with its own
+     * clock, against the same file.
      */
     private fun tickHours() {
         val now = System.currentTimeMillis()
@@ -425,14 +570,29 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
 
         var moved = false
         for (hour in hours) {
-            if (ScheduleClock.due(hour, now)) {
-                /*
-                 * A run of this project may already be going - one at a time, by design (see [claim]).
-                 * Then the hour is a miss rather than a queue: a round of work started at ten past nine
-                 * because the previous one happened to finish is a round of work nobody chose the moment
-                 * of, and the two of them share a working copy.
-                 */
-                val refused = launch(hour.scenarioId, hour.scope, hour.inputs) { record ->
+            val due = hour.nextAt
+            val ripe = ScheduleClock.due(hour, now)
+            if (!ripe && !ScheduleClock.missed(hour, now)) continue
+
+            // Take it, or leave it to whoever already has: another beat of this clock, or another window.
+            if (schedules.claimHour(hour.id, expected = due, armed = ScheduleClock.armed(hour, now)) == null) continue
+            moved = true
+
+            /*
+             * A run raised by THIS arrangement may still be going: a card can stand on a question for as
+             * long as it takes somebody to answer it, and nothing puts a ceiling on that. Then the hour is
+             * a miss rather than a queue - a daily arrangement would otherwise pile up a run a day in one
+             * working copy, with nothing on any screen to say why. A run somebody started by hand, or one
+             * from another arrangement, is no reason at all: that is what running side by side means.
+             */
+            val busy = live.values.any { it.engine.run.runFrom == hour.id }
+
+            val refused = when {
+                // The hour came while the IDE was closed or the machine asleep. Nothing is started late -
+                // agents raised hours after their hour are a surprise nobody asked for - so it is said.
+                !ripe -> "missed"
+                busy -> "busy"
+                else -> launch(hour.scenarioId, hour.scope, hour.inputs, from = hour.id) { record ->
                     DiagnosticsLog.note(DiagnosticsLog.AGENT, "a scheduled scenario started")
                     hub.broadcastProject(
                         buildJsonObject {
@@ -444,39 +604,93 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
                         }.toString(),
                     )
                 }
-                schedules.put(ScheduleClock.after(hour, now, ran = refused == null))
-                moved = true
-            } else if (ScheduleClock.missed(hour, now)) {
-                // The hour came while the IDE was closed or the machine asleep. Nothing is started late -
-                // agents raised hours after their hour are a surprise nobody asked for - so it is said.
-                schedules.put(ScheduleClock.after(hour, now, ran = false))
-                moved = true
             }
+
+            schedules.settle(hour.id, due = due, firedAt = now, ran = refused == null)
         }
 
         if (moved) sendList()
     }
 
-    /** Take the project's one run slot for this engine, or refuse because somebody already has it. */
-    private fun claim(walker: ScenarioEngine): Boolean = synchronized(gate) {
-        if (engine != null) return@synchronized false
-        engine = walker
-        true
+    /**
+     * Take a place in the map for this run, and start the heartbeat if it was not already going.
+     *
+     * Both under one lock, and that is not tidiness. Starting the beat asks "is there a timer?" while
+     * stopping it cancels one and forgets it, in two steps; the ordinary moment for those to cross is a
+     * run ending in the same second another starts - a morning where several hours ripen together, or a
+     * second press of Run. Crossed, the new run reads a timer the old one is about to cancel, and then a
+     * live run has no heartbeat at all: nothing of it is drawn and nothing of it reaches the disk.
+     */
+    private fun claim(runId: String, holder: Live) = synchronized(gate) {
+        live[runId] = holder
+        beat()
     }
 
-    /** Give the slot back, and only if it is still this run's to give: a later run must not be dropped. */
+    /** Give the place back, and only if it is still this run's to give: a later run must not be dropped. */
     private fun release(runId: String) = synchronized(gate) {
-        if (engine?.run?.id == runId) engine = null
+        live.remove(runId)
+        if (live.isEmpty()) stopBeating()
     }
 
-    fun pause(runId: String) = engine?.takeIf { it.run.id == runId }?.pause() ?: Unit
+    /**
+     * Pick a finished run up where it stood (see ScenarioEngine.carryOn and CarryOn).
+     *
+     * The same record, the same tab, the same identifier: the run goes back onto the live map and its
+     * heartbeat starts again, and the list learns that a night it had filed under "stopped" is going.
+     * The refusals are the ones a person can meet from the button - a run already going, a record that
+     * is gone, one whose main thread never came up - and each goes back as a name the screen has words
+     * for.
+     */
+    fun carryOn(clientId: String, runId: String) {
+        off {
+            if (live.containsKey(runId)) return@off outcome(clientId, ok = false, code = "runBusy")
+            val record = runs.read(runId) ?: return@off outcome(clientId, ok = false, code = "runGone")
+            if (!RunState.finished(record.state)) return@off outcome(clientId, ok = false, code = "runBusy")
+            if (CarryOn.pointOf(record) == null) return@off outcome(clientId, ok = false, code = "runNotResumable")
+            if (ClaudeExecutable.find() == null) return@off outcome(clientId, ok = false, code = "noClaude")
 
-    fun resume(runId: String) = engine?.takeIf { it.run.id == runId }?.resume() ?: Unit
+            val walker = ScenarioEngine(
+                workingDirectory = project.basePath,
+                accountId = ClaudeAccounts.getInstance().currentId,
+                defaultModel = ClaudePreferences.model,
+                defaultEffort = ClaudePreferences.effort,
+                start = record,
+                onChange = { moved(runId) },
+                onFinished = { finished -> ended(finished) },
+                notify = { _, body -> announceRun(runId, body) },
+            )
+            val holder = Live(walker)
+            claim(runId, holder)
+            holder.lastWrite = System.currentTimeMillis()
 
-    fun stop(runId: String) = engine?.takeIf { it.run.id == runId }?.stop() ?: Unit
+            sendLive()
+            runCatching { walker.carryOn() }.onFailure { failure ->
+                thisLogger().warn("A scenario run would not carry on", failure)
+                DiagnosticsLog.note(DiagnosticsLog.AGENT, "a scenario run would not carry on")
+                walker.abandon()
+                synchronized(holder.lock) {
+                    release(runId)
+                    runs.keep(record.copy(state = RunState.FAILED, failure = RunFailure.CRASHED, finishedAt = System.currentTimeMillis()))
+                }
+                sendLive()
+            }
+            // Written now rather than at the heartbeat's next write: the list is read off the disk, and
+            // read in between it would file a going run under the past ones.
+            synchronized(holder.lock) {
+                if (live.containsKey(runId)) runs.keep(walker.run)
+            }
+            sendList()
+        }
+    }
+
+    fun pause(runId: String) = live[runId]?.engine?.pause() ?: Unit
+
+    fun resume(runId: String) = live[runId]?.engine?.resume() ?: Unit
+
+    fun stop(runId: String) = live[runId]?.engine?.stop() ?: Unit
 
     fun answer(runId: String, allow: Boolean, text: String) =
-        engine?.takeIf { it.run.id == runId }?.answer(allow, text) ?: Unit
+        live[runId]?.engine?.answer(allow, text) ?: Unit
 
     /**
      * The whole record of one run: the live one from memory, an older one off the disk.
@@ -488,23 +702,25 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
      * so without this the one thing a phone asks for by name would be the one thing it never receives.
      */
     fun sendRun(clientId: String, runId: String) {
-        val live = engine?.run?.takeIf { it.id == runId }
-        if (live != null) return hub.emitTo(clientId, forClient(clientId, envelope(live)))
+        val going = live[runId]?.engine?.run
+        if (going != null) return hub.emitTo(clientId, forClient(clientId, RemoteFeed.SCENARIO_RUN, envelope(going)))
 
         off {
             val record = runs.read(runId)
             if (record == null) return@off outcome(clientId, ok = false, code = "runGone")
-            hub.emitTo(clientId, forClient(clientId, envelope(record)))
+            hub.emitTo(clientId, forClient(clientId, RemoteFeed.SCENARIO_RUN, envelope(record)))
         }
     }
 
     /** The panel gets the record whole; anything else gets what fits through the wire to it. */
-    private fun forClient(clientId: String, message: String): String =
-        if (hub.isLocal(clientId)) message else RemoteFeed.forPhone(RemoteFeed.SCENARIO_RUN, message)
+    private fun forClient(clientId: String, type: String, message: String): String =
+        if (hub.isLocal(clientId)) message else RemoteFeed.forPhone(type, message).message
 
     fun deleteRun(clientId: String, runId: String) {
         off {
-            if (engine?.run?.id == runId) return@off outcome(clientId, ok = false, code = "scenarioBusy")
+            // The only refusal left in this file that is about a run being busy - starting one no longer
+            // is - so it names the run rather than the project.
+            if (live.containsKey(runId)) return@off outcome(clientId, ok = false, code = "runBusy")
             runs.delete(runId)
             sendList()
         }
@@ -526,23 +742,25 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             val page = runCatching { ClaudeHistory.opening(project.basePath, conversationId) }.getOrNull()
             val lines = page?.lines.orEmpty()
 
-            hub.emitTo(
-                clientId,
-                buildJsonObject {
-                    put("type", "scenarioLog")
-                    put("runId", runId)
-                    put("key", key)
-                    put("found", lines.isNotEmpty())
-                    // A cursor means there is more above what is being shown - said out loud, because a
-                    // log that silently begins in the middle reads as a step that began in the middle.
-                    put("truncated", page?.cursor != null)
-                    putJsonArray("events") {
-                        for (line in lines) {
-                            runCatching { Json.parseToJsonElement(line) }.getOrNull()?.let { add(it) }
-                        }
+            val body = buildJsonObject {
+                put("type", "scenarioLog")
+                put("runId", runId)
+                put("key", key)
+                put("found", lines.isNotEmpty())
+                // A cursor means there is more above what is being shown - said out loud, because a
+                // log that silently begins in the middle reads as a step that began in the middle.
+                put("truncated", page?.cursor != null)
+                putJsonArray("events") {
+                    for (line in lines) {
+                        runCatching { Json.parseToJsonElement(line) }.getOrNull()?.let { add(it) }
                     }
-                }.toString(),
-            )
+                }
+            }.toString()
+
+            // The panel reads it off the same disk it is written on; a phone gets the end of it, cut to
+            // what a frame carries (see RemoteFeed.trimmedLog). Cutting rather than refusing, because
+            // what anybody wants off a step at three in the morning is how it finished.
+            hub.emitTo(clientId, forClient(clientId, RemoteFeed.SCENARIO_LOG, body))
         }
     }
 
@@ -559,18 +777,21 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
         put("run", json.encodeToJsonElement(record))
     }.toString()
 
-    private fun moved() {
-        dirty = true
+    private fun moved(runId: String) {
+        live[runId]?.dirty = true
     }
 
-    /** No live run, nothing to catch anybody up on: the heartbeat has nothing left to beat for. */
+    /**
+     * Nothing going, nothing to catch anybody up on: the heartbeat has nothing left to beat for.
+     *
+     * Only ever called with [gate] held, from [release], and only when the last run has left the map.
+     */
     private fun stopBeating() {
-        dirty = false
         redraw?.cancel(false)
         redraw = null
     }
 
-    /** The heartbeat of a live run: redraw often, write rarely, and stop when there is nothing going. */
+    /** The heartbeat of the live runs: redraw often, write rarely, and stop when there is nothing going. */
     private fun beat() {
         if (redraw != null) return
         redraw = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
@@ -592,7 +813,8 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
      * the same way the delivery check does (see ClaudeSession.scheduleDeliveryCheck).
      *
      * The flag is what the fixed delay used to give for nothing: two beats must not run at once. A skipped
-     * tick costs nothing, because [dirty] is still standing and the next one draws what this one would have.
+     * tick costs nothing, because the dirty flags are still standing and the next one draws what this one
+     * would have.
      */
     private fun tick() {
         if (!pulsing.compareAndSet(false, true)) return
@@ -607,33 +829,63 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
         if (handed.isFailure) pulsing.set(false)
     }
 
+    /**
+     * One beat: everybody's summary if it is time for it, everybody's record to the disk if it is due,
+     * and exactly ONE run's whole record onto the wire.
+     *
+     * The last part is the round. What goes out is the run with the snapshot of its scenario inside it and
+     * every card's prompt - tens of kilobytes - and four of those a second was already as much as the
+     * panel can take. Sent for every run at once it would be that much again for each of them, which is
+     * a full redraw of the page per message and a megabyte a second of parsing on the thread that draws
+     * the feed. So the beat is shared: whoever has waited longest goes next.
+     */
     private fun pulse() {
-        synchronized(outward) {
-            // Null once the run has ended: the slot is given back under this same lock, so a beat that
-            // gets here afterwards has nothing to say rather than yesterday's news to say (see [outward]).
-            val record = engine?.run ?: return
-            if (!dirty) return
-            dirty = false
+        val now = System.currentTimeMillis()
+        val holders = live.entries.sortedBy { it.key }
+        if (holders.isEmpty()) return
 
-            hub.broadcastProject(envelope(record))
+        // What is going, to everybody, at a pace an eye can use - and cheaply enough to send it whole.
+        if (now - lastLive >= LIVE_MS) sendLive()
 
-            if (System.currentTimeMillis() - lastWrite >= WRITE_MS) {
-                lastWrite = System.currentTimeMillis()
-                runs.keep(record)
+        for ((_, holder) in holders) {
+            synchronized(holder.lock) {
+                if (holder.dirty && now - holder.lastWrite >= WRITE_MS) {
+                    holder.lastWrite = now
+                    runs.keep(holder.engine.run)
+                }
+            }
+        }
+
+        val from = holders.indexOfFirst { it.key > lastSent }.let { if (it < 0) 0 else it }
+        for (step in holders.indices) {
+            val (runId, holder) = holders[(from + step) % holders.size]
+            synchronized(holder.lock) {
+                if (!holder.dirty) return@synchronized
+                // Gone since the snapshot of the map was taken: the end of a run gives its place back
+                // under this same lock, so a beat that gets here afterwards has nothing to say rather
+                // than yesterday's news to say.
+                if (!live.containsKey(runId)) return@synchronized
+
+                holder.dirty = false
+                lastSent = runId
+                hub.broadcastProject(envelope(holder.engine.run))
+                return
             }
         }
     }
 
     private fun ended(record: ScenarioRun) {
-        synchronized(outward) {
+        val holder = live[record.id]
+        val said = markOf(record)
+
+        synchronized(holder?.lock ?: gate) {
             release(record.id)
-            stopBeating()
             runs.keep(record)
             hub.broadcastProject(envelope(record))
         }
-        announce(record.scenarioName, ending(record))
-        // The list carries which run is live and how each of them ended: both have just changed, and
-        // nobody is going to ask again on their own.
+        sendLive()
+        announce(said, ending(record))
+        // The list carries how each run ended, and it has just changed: nobody is going to ask again.
         sendList()
     }
 
@@ -645,11 +897,53 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
      * doing something else. The panel's own sounds and the phone's pushes are about a conversation's turn
      * and know nothing about this.
      */
+    /** The same, for a run that is going: the engine names the scenario, this names which run of it. */
+    private fun announceRun(runId: String, body: String) {
+        val record = live[runId]?.engine?.run ?: return
+        announce(markOf(record), body)
+    }
+
     private fun announce(title: String, body: String) {
         NotificationGroupManager.getInstance()
             .getNotificationGroup(NOTIFICATIONS)
             .createNotification(title, body, NotificationType.INFORMATION)
             .notify(project)
+    }
+
+    /**
+     * What to call this run, when the name of its scenario is not enough.
+     *
+     * With one run at a time the scenario's name said everything; with three of one scenario going at
+     * once, two notifications reading "Nightly review / finished" say nothing at all - and a notification
+     * is the ONLY surface a run has while the panel is closed, which is most of the time a run is alive.
+     *
+     * The first answer somebody gave it, because that is what tells two starts of one round of work apart
+     * - the ticket, the branch. Two runs given the same answers, or a scenario that asks nothing, fall
+     * back to the minute they started at. The panel works the same thing out for its tabs and rows in ten
+     * languages of its own (see runMarks); this side has one language and needs it for one line.
+     */
+    private fun markOf(record: ScenarioRun): String {
+        val answer = record.inputs.values
+            .firstOrNull { it.isNotBlank() }
+            ?.lineSequence()?.firstOrNull()?.trim()?.take(MARK_CHARS)
+            .orEmpty()
+
+        // The clock is added whenever another run of the same scenario is about, and not only when there
+        // is no answer to use: the commonest second start is the same round of work against the same
+        // ticket, so the answers of the two are the same words.
+        val crowded = live.values.count { it.engine.run.scenarioId == record.scenarioId } > 1
+        // To the second, because two presses of Run land in the same minute more often than not.
+        val started = Instant.ofEpochMilli(record.startedAt)
+            .atZone(ZoneId.systemDefault())
+            .toLocalTime()
+            .withNano(0)
+            .toString()
+
+        val said = listOf(answer, if (answer.isEmpty() || crowded) started else "")
+            .filter { it.isNotEmpty() }
+            .joinToString(" · ")
+
+        return if (said.isEmpty()) record.scenarioName else "${record.scenarioName} - $said"
     }
 
     private fun ending(record: ScenarioRun): String = when (record.state) {
@@ -691,16 +985,28 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
         clock = null
         redraw?.cancel(false)
         redraw = null
-        // A run whose IDE is closing is not going anywhere: the processes go with it, and a record left
-        // saying "running" would hold this project's one-at-a-time lock against every run after it.
-        engine?.stop()
-        engine = null
+        /*
+         * A run whose IDE is closing is not going anywhere: the processes go with it, and a record left
+         * saying "running" draws a timeline with a spinner on it for ever.
+         *
+         * Over a SNAPSHOT of the map rather than the map itself. Stopping a run finishes it on this very
+         * thread, and finishing it takes its entry out - walking the map in place, the second one throws,
+         * and every run after it keeps its processes editing the working copy of a window that is gone.
+         */
+        live.values.toList().forEach { it.engine.stop() }
+        live.clear()
     }
 
     private companion object {
         const val NOTIFICATIONS = "Amazing Claude Code"
         const val REDRAW_MS = 250L
         const val WRITE_MS = 2_000L
+
+        /** How often the short "what is going" frame goes out - see [sendLive]. */
+        const val LIVE_MS = 1_000L
+
+        /** How much of an answer stands as a run's name beside its scenario's - see [markOf]. */
+        const val MARK_CHARS = 40
 
         /** How often the hours are looked at - see tickHours for why half a minute is enough. */
         const val HOURS_MS = 30_000L

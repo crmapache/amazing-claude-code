@@ -264,6 +264,21 @@
   color: var(--acc-fg-dim);
 }
 
+/* The one row here that leads to a screen of its own rather than to a value takes the accent: what a
+   new tab starts with is the thing on this list people come back to, and the shield below is one of the
+   three answers behind it rather than the whole of it. */
+.rowIconNewChat {
+  background: var(--acc-accent-12);
+  color: var(--acc-accent);
+}
+
+/* The bars share the chip's neutral: the effort is a level, and a colour of its own would read as one of
+   the levels being flagged. */
+.rowIconEffort {
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-dim);
+}
+
 .rowIconMode {
   background: rgb(var(--acc-ch-copper) / 12%);
   color: var(--acc-orange);

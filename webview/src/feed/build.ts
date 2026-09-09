@@ -46,7 +46,6 @@ import type {
   TextItem,
   ThinkItem,
   TodoEntry,
-  TodoItem,
   ToolGroupItem,
   MetaItem,
   TaskItem,
@@ -296,10 +295,7 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         return { ...state, seq: state.seq + 1, items: [...state.items, message] }
       }
 
-      const lastTodo = [...state.items].reverse().find((item): item is TodoItem => item.kind === 'todo')
-      const hideOpenList = lastTodo !== undefined && lastTodo.todos.some((todo) => todo.state !== 'done')
-
-      const next: PanelState = {
+      return {
         ...state,
         status: 'running',
         turnStartedAt: now,
@@ -314,17 +310,14 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         crashed: false,
         seq: state.seq + 1,
         items: [...state.items, message],
-        // A new request is the boundary of the new tracker's task list: see the comment on tasks in
-        // PanelState. A started task with no TaskCreate answer is nothing dreadful to break off here -
-        // pendingTasks will simply never resolve, which is right: its TaskUpdate would belong to the
-        // previous request, and there was nowhere left to look for it.
-        tasks: {},
+        // A new request is the boundary of the new tracker's task list - but a mark on it rather than a
+        // reset of it: see the comment on tasksCarried in PanelState. A started task with no TaskCreate
+        // answer is nothing dreadful to break off here - pendingTasks will simply never resolve, which is
+        // right: its TaskUpdate would belong to the previous request, and there was nowhere left to look
+        // for it.
+        tasksCarried: Object.keys(state.tasks).length > 0,
         pendingTasks: {},
       }
-
-      // An empty snapshot, so that the panel does not hold on to the previous unclosed list: the tasks
-      // dictionary has already been reset, while latestTodo looks into the feed.
-      return hideOpenList ? push(next, (id) => ({ id, kind: 'todo', todos: [] })) : next
     }
 
     /**
@@ -1106,6 +1099,7 @@ const applyAgentEvent = (
         liveContextUsed: undefined,
         cost: 0,
         tasks: {},
+        tasksCarried: false,
         pendingTasks: {},
         streamingText: '',
         streamingId: undefined,
@@ -1702,10 +1696,13 @@ const applyToolUse = (
     // nothing to touch.
     if (!existing) return state
 
+    // The agent is editing a task it had planned before the person's last message - so this is the same
+    // piece of work carrying on, and the list is this request's list after all (see tasksCarried): it is
+    // no longer up for replacement by whatever TaskCreate comes next.
     if (input.status === 'deleted') {
       const { [taskId]: _removed, ...tasks } = state.tasks
       return push(
-        { ...state, tasks },
+        { ...state, tasks, tasksCarried: false },
         (id) => ({ id, kind: 'todo', todos: orderedTasks(tasks), ...(replay ? { replayed: true } : {}) }),
       )
     }
@@ -1721,7 +1718,7 @@ const applyToolUse = (
         activeForm: activeForm || existing.activeForm,
       },
     }
-    return push({ ...state, tasks }, (id) => ({ id, kind: 'todo', todos: orderedTasks(tasks), ...(replay ? { replayed: true } : {}) }))
+    return push({ ...state, tasks, tasksCarried: false }, (id) => ({ id, kind: 'todo', todos: orderedTasks(tasks), ...(replay ? { replayed: true } : {}) }))
   }
 
   if (block.name === 'ExitPlanMode') {
@@ -2126,7 +2123,11 @@ const applyTaskCreated = (state: PanelState, results: ToolResultBlock[], replay:
   if (pendingIds.length === 0) return state
 
   const pendingTasks = { ...state.pendingTasks }
-  const tasks = { ...state.tasks }
+  // The first batch of new tasks after a message from the person: the agent is planning afresh, and the
+  // list left by the previous request steps aside for it (see tasksCarried in PanelState). Every batch
+  // after this one piles onto the same list - within one request the agent adds tasks as it goes, and
+  // sometimes leads them one at a time, created and closed one after another.
+  const tasks = state.tasksCarried ? {} : { ...state.tasks }
 
   for (const toolUseId of pendingIds) {
     const created = pendingTasks[toolUseId]
@@ -2144,7 +2145,7 @@ const applyTaskCreated = (state: PanelState, results: ToolResultBlock[], replay:
     }
   }
 
-  return push({ ...state, tasks, pendingTasks }, (id) => ({
+  return push({ ...state, tasks, tasksCarried: false, pendingTasks }, (id) => ({
     id,
     kind: 'todo',
     todos: orderedTasks(tasks),

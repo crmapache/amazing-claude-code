@@ -835,13 +835,23 @@ internal class ClaudeSessions(
         // nobody has chosen for falls back to the default.
         val remembered = accounts.account(account)
 
-        val effort = launch.effort.ifEmpty { remembered?.effort.orEmpty() }.ifEmpty { ClaudePreferences.effort }
+        // The pin stands above the account's memory and below the request, and that order is the whole
+        // of the setting: "start every new tab on this" is a decision somebody made in words, while what
+        // the account was last left on is a decision nothing was ever said about. Empty - the default -
+        // and the chain is exactly the one it has always been (see ClaudePreferences.newTabEffort).
+        val effort = launch.effort
+            .ifEmpty { ClaudePreferences.newTabEffort }
+            .ifEmpty { remembered?.effort.orEmpty() }
+            .ifEmpty { ClaudePreferences.effort }
         // A new conversation starts with whatever is chosen now: re-picking the model in every tab is
         // work over nothing. A conversation opened from the history is the exception, and it is told
         // its own model a moment later, once its transcript has been read (see adoptModel).
         val model = modelFor(
             account,
-            launch.model.ifEmpty { remembered?.model.orEmpty() }.ifEmpty { ClaudePreferences.model },
+            launch.model
+                .ifEmpty { ClaudePreferences.newTabModel }
+                .ifEmpty { remembered?.model.orEmpty() }
+                .ifEmpty { ClaudePreferences.model },
         )
 
         onBorn(sessionId, effort, model, account)

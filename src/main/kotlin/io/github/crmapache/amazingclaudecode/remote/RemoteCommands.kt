@@ -194,36 +194,55 @@ internal object RemoteCommands {
          * person is signed in. The phone asks before either (see mobile/screens/Accounts).
          */
         /**
-         * Watching a round of work go, and unblocking it.
+         * The scenarios, whole: watching a round of work, unblocking it, and writing the next one.
          *
          * A scenario runs for hours with nobody in front of it - that is what it is for - and the two
-         * things that happen while nobody is there are the two this opens: it stops on a question, and
-         * it goes wrong. Neither of them could be seen from anywhere but the desk, so a run begun in the
-         * morning and stopped at ten past waited until somebody walked back to the machine.
+         * things that happen while nobody is there are the two the watching half opens: it stops on a
+         * question, and it goes wrong. Neither could be seen from anywhere but the desk, so a run begun
+         * in the morning and stopped at ten past waited until somebody walked back to the machine.
+         * `scenarioAnswer`, `scenarioPause`, `scenarioResume` and `scenarioStop` are that half; the
+         * first is narrower than `permissionDecision`, allowed since the first day, and the other three
+         * only ever make a run do LESS. `scenarioContinue` is `scenarioResume` over a run that ended
+         * rather than paused - the same two conversations raised again over their own transcripts.
          *
-         * `scenarios` and `scenarioOpen` are reading: the shelves, the past runs, and one run's timeline.
-         * The live one arrives by itself as a fact of the project (see RemoteFeed) - it is cut down hard
-         * on the way, because the whole record moves four times a second and a phone cannot pay for that.
+         * The writing half used to be refused, on the argument that a scenario writes a file into the
+         * repository and pressing play raises agents that work unattended over somebody's working copy.
+         * Both facts are true and neither is the comparison that matters: `prompt` has been allowed
+         * since the first day and hands the person on the other end a shell through the agent, which is
+         * a door incomparably wider than a JSON file under `.claude/`. And the refusal bought nothing
+         * anybody wanted - a screen that could watch a round of work go wrong at three in the morning
+         * and not start the fixed one, or set the hour for tomorrow, or read what the card was actually
+         * told. What is on the other end is not "a phone" but this machine's owner, holding a device
+         * they paired by carrying a fingerprint across the room.
          *
-         * `scenarioAnswer` is the reason the rest is worth having. A card that stopped to ask is a run
-         * standing still, and answering it is exactly what this channel exists for - narrower than
-         * `permissionDecision`, which has been allowed since the first day: the answer goes to one card
-         * of one run, and the modes the cards run under were decided in the scenario, at the desk.
+         * So: `scenarioSave`, `scenarioDelete`, `scenarioDuplicate` and `scenarioFetch` are the editor;
+         * `scenarioDraft` and `scenarioDraftCancel` are a model writing one out of a sentence (a run
+         * with read-only tools inside the project - see ScenarioAuthor); `scenarioRun` is play;
+         * `scenarioSchedule` and `scenarioUnschedule` are the hours; `scenarioRunDelete` is the history;
+         * and `scenarioLog` is what one step actually said, cut to the frame's budget on the way out
+         * (see RemoteFeed.trimmedLog) rather than refused for being large.
          *
-         * `scenarioPause`, `scenarioResume` and `scenarioStop` are the other half of the same need, and
-         * they only ever make a run do less. Stopping one is destructive and is asked about first (see
-         * mobile/screens/ScenarioRun) - but a round of work gone wrong over somebody's working copy is
-         * the case where being away from the keyboard is the whole problem.
-         *
-         * What stays refused below is everything that decides what a run IS: writing a scenario, and
-         * pressing play. Both are read before they are trusted, and what comes out of them is a diff.
+         * The two destructive ones - deleting a scenario, stopping a run - are asked about first on the
+         * screen that offers them (see mobile/screens/Scenarios).
          */
         "scenarios",
+        "scenarioFetch",
         "scenarioOpen",
         "scenarioAnswer",
         "scenarioPause",
         "scenarioResume",
+        "scenarioContinue",
         "scenarioStop",
+        "scenarioSave",
+        "scenarioDelete",
+        "scenarioDuplicate",
+        "scenarioDraft",
+        "scenarioDraftCancel",
+        "scenarioRun",
+        "scenarioSchedule",
+        "scenarioUnschedule",
+        "scenarioRunDelete",
+        "scenarioLog",
         "accountList",
         "accountUse",
         "accountRename",
@@ -240,10 +259,11 @@ internal object RemoteCommands {
      * - `clipboardRead`/`clipboardWrite`, `pick`, `dropped`, `openExternal`, `openDevTools`, `cursor`
      *   reach for the machine's own surfaces - a phone asking to open a URL on someone's desktop is a
      *   small primitive of remote control;
-     * - `setMode`/`setDefaultMode` reach a conversation somebody may be working in at the desk, or
-     *   decide what every future one starts in. Choosing how a conversation of one's own begins is a
-     *   different act and travels with `newSession` above, and the model and the effort of the one on
-     *   screen travel above too - they change what a turn costs, not what it may touch;
+     * - `setMode`/`setDefaultMode`/`setDefaultModel`/`setDefaultEffort` reach a conversation somebody
+     *   may be working in at the desk, or decide what every future one starts with. Choosing how a
+     *   conversation of one's own begins is a different act and travels with `newSession` above, and
+     *   the model and the effort of the one on screen travel above too - they change what a turn costs,
+     *   not what it may touch;
      * - `closeSession` kills a live process, and destroying work from another device is not among the
      *   things a phone is for;
      * - `login`/`logout`, `accountAdd` and `designLogin` open a terminal on that machine and hand it a
@@ -263,34 +283,6 @@ internal object RemoteCommands {
          */
         "agentTranscript",
         "bash",
-        /**
-         * The half of the scenarios that decides what a run is, rather than watches one.
-         *
-         * Writing one writes a file into the person's repository - the plugin's only writer of a folder
-         * the agent is editing at the same moment - and pressing play raises a head and a card that work
-         * unattended for hours with whatever the scenario trusts them with. The whole point of a round
-         * of work written down once is that it is read and reviewed before it is run, and what comes out
-         * of it is a diff somebody has to be at a keyboard to look at. Deleting a scenario or a past run
-         * is the same shelf being written, and it goes with them.
-         *
-         * `scenarioLog` is refused for a different reason and a plainer one: it reads a step's whole
-         * conversation off the disk - megabytes for a card that walked a repository - while the relay
-         * throws away a frame over 256 KB rather than shortening it. The phone's screen carries what the
-         * run itself says about a step, which is the state, the times and the verdict; the words the
-         * agent used are read where the file is.
-         *
-         * Watching a run and unblocking it are allowed above, where the case for them is argued.
-         */
-        "scenarioSave",
-        "scenarioDelete",
-        "scenarioDuplicate",
-        "scenarioDraft",
-        "scenarioDraftCancel",
-        "scenarioRun",
-        "scenarioSchedule",
-        "scenarioUnschedule",
-        "scenarioRunDelete",
-        "scenarioLog",
         "closeSession",
         "reorderGroups",
         // The same list, one step finer: the order the tabs at the desk are drawn in, which a phone has
@@ -298,6 +290,17 @@ internal object RemoteCommands {
         "reorderTabs",
         "setMode",
         "setDefaultMode",
+        /**
+         * The other two thirds of the same screen: what a new tab starts ON.
+         *
+         * Refused for the reason `setDefaultMode` is, and it is the reason `setModel` and `setEffort` are
+         * allowed with `remember = local`: a pick made from a sofa is about the conversation on screen,
+         * while these settle the shape of work somebody is about to begin at the keyboard. What they
+         * resolve to the phone is told - it starts its own conversations from that (see the inventory's
+         * `prefs`) - and writing them is not its to do.
+         */
+        "setDefaultModel",
+        "setDefaultEffort",
         "setComposerLayout",
         /**
          * How a pasted text behaves in the input field - a machine-wide setting like the layout above,

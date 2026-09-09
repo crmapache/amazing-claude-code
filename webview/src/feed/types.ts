@@ -236,15 +236,6 @@ export interface UserItem {
    * the press of Send, before the CLI has written it anywhere, so a hit on it is found by its text.
    */
   uuid?: string
-  /**
-   * Whether nobody typed this - it was written by the plugin and is read as markdown (see UserCard).
-   *
-   * A conversation of a scenario's is such a case whole: nobody sits at the head thread, and everything
-   * on the "you" side of it is the engine's - the task written out with its slots filled in, and the
-   * card's own answer handed on afterwards. That answer is the model's markdown, so shown as typed it
-   * came out as a page of asterisks and hashes over a report somebody opened the log to read.
-   */
-  machine?: boolean
 }
 
 export interface TextItem {

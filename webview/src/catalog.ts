@@ -238,6 +238,43 @@ export const effortOptions = (t: Dict): MenuOption[] => [
   { id: 'low', label: 'low', sub: t.effort.low.sub },
 ]
 
+/**
+ * The first entry of both "new chats" lists: nothing pinned at all, so a new tab starts on whatever was
+ * last chosen in one - which is what the panel did before the setting existed.
+ *
+ * A sentinel rather than an empty id, and prefixed the way ADD_MODEL is, for the same reason: it travels
+ * through the same onPick every real value does, and an empty string would be indistinguishable from a
+ * model or a level the panel simply has no name for. What the IDE is sent for it IS the empty string -
+ * that is how the setting spells "nothing pinned" (see ClaudePreferences.newTabModel).
+ */
+export const LAST_USED = 'acc:last-used'
+
+/**
+ * The models a new tab may be pinned to, with "as last chosen" at the top.
+ *
+ * [lastPick] is not a choice on this list but a fact about it: the first entry has to say what it
+ * currently amounts to, or it promises something unnamed - the same reason the language picker names the
+ * IDE's language under "Automatic".
+ */
+export const newTabModelOptions = (
+  t: Dict,
+  models: ModelInfo[] | null,
+  custom: string[],
+  lastPick: string,
+): MenuOption[] => {
+  const options = modelOptions(t, models, custom)
+  const pick = lastPick || DEFAULT_MODEL
+  const named = options.find((option) => option.id === pick)?.label ?? modelLabel(pick)
+
+  return [{ id: LAST_USED, label: t.newChat.lastUsed, sub: t.newChat.lastUsedNow(named) }, ...options]
+}
+
+/** The same list for the effort, and the level's own word is its caption - see effortOptions. */
+export const newTabEffortOptions = (t: Dict, lastPick: string): MenuOption[] => [
+  { id: LAST_USED, label: t.newChat.lastUsed, sub: t.newChat.lastUsedNow(lastPick) },
+  ...effortOptions(t),
+]
+
 export const modeOptions = (t: Dict): MenuOption[] => [
   {
     // The name from the CLI's own flag. The panel called this mode `default` until the flag got a name

@@ -95,25 +95,36 @@ class RemoteCommandsTest {
     }
 
     /**
-     * A scenario runs for hours with nobody in front of it, so the two things that happen while nobody
-     * is there - it stops on a question, and it goes wrong - are the two this channel is for. What
-     * decides what a run IS stays at the desk: a scenario is a file in somebody's repository, and
-     * pressing play is agents editing a working copy for the rest of the evening.
+     * The scenarios, whole.
+     *
+     * The writing half used to be refused, on the argument that a scenario is a file in somebody's
+     * repository and that pressing play is agents editing a working copy for the rest of the evening.
+     * Both are true and neither is the comparison that matters: `prompt` has been allowed since the
+     * first day and hands the same person a shell through the agent. What the refusal bought was a
+     * screen that could watch a round of work go wrong at three in the morning and not start the fixed
+     * one - which is the situation the whole channel exists for.
      */
     @Test
-    fun `a run can be watched and unblocked, and nothing decides what it is`() {
+    fun `the scenarios travel whole`() {
+        // Watching one, and unblocking it.
         assertTrue(RemoteCommands.allows("scenarios"))
         assertTrue(RemoteCommands.allows("scenarioOpen"))
         assertTrue(RemoteCommands.allows("scenarioAnswer"))
         assertTrue(RemoteCommands.allows("scenarioPause"))
         assertTrue(RemoteCommands.allows("scenarioStop"))
+        assertTrue(RemoteCommands.allows("scenarioContinue"))
 
-        assertFalse(RemoteCommands.allows("scenarioRun"))
-        assertFalse(RemoteCommands.allows("scenarioSave"))
-        assertFalse(RemoteCommands.allows("scenarioDelete"))
-        assertFalse(RemoteCommands.allows("scenarioSchedule"))
-        // A step's whole conversation is megabytes off a disk, and a frame over the cap is thrown away.
-        assertFalse(RemoteCommands.allows("scenarioLog"))
+        // Writing one, and starting one.
+        assertTrue(RemoteCommands.allows("scenarioFetch"))
+        assertTrue(RemoteCommands.allows("scenarioSave"))
+        assertTrue(RemoteCommands.allows("scenarioDelete"))
+        assertTrue(RemoteCommands.allows("scenarioDraft"))
+        assertTrue(RemoteCommands.allows("scenarioRun"))
+        assertTrue(RemoteCommands.allows("scenarioSchedule"))
+
+        // And reading what a step said. It is cut to the frame's budget on the way out rather than
+        // refused for being large (see RemoteFeed.trimmedLog).
+        assertTrue(RemoteCommands.allows("scenarioLog"))
     }
 
     /**

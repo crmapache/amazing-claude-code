@@ -6,6 +6,8 @@ import java.time.ZonedDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -100,48 +102,114 @@ class ScheduleClockTest {
         assertFalse(ScheduleClock.missed(spent, now))
     }
 
+    /*
+     * The hour is taken first and its outcome written afterwards, so the two are tested apart.
+     *
+     * Split because the clock ticks twice a minute while a due hour stays due for five (see GRACE_MS):
+     * the moment is claimed before a single process is raised, and by the time anybody knows whether the
+     * run started, the record no longer remembers which moment it was about.
+     */
     @Test
-    fun `a daily hour moves to tomorrow once it has fired`() {
+    fun `a daily hour moves to tomorrow the moment it is taken`() {
         val due = monday(9).toInstant().toEpochMilli()
-        val fired = ScheduleClock.after(
-            schedule(at(9), ScenarioSchedule.DAILY, nextAt = due),
-            firedAt = due + 500,
-            ran = true,
-            zone = zone,
-        )
+        val armed = ScheduleClock.armed(schedule(at(9), ScenarioSchedule.DAILY, nextAt = due), firedAt = due + 500, zone = zone)
 
-        assertEquals(monday(9).plusDays(1), whenIs(fired.nextAt))
-        assertEquals(due + 500, fired.lastAt)
-        assertEquals(0, fired.missedAt)
+        assertEquals(monday(9).plusDays(1), whenIs(armed.nextAt))
+        assertEquals(0, armed.lastAt)
+        assertEquals(0, armed.missedAt)
+    }
+
+    @Test
+    fun `a daily hour that started something says when`() {
+        val due = monday(9).toInstant().toEpochMilli()
+        val armed = ScheduleClock.armed(schedule(at(9), ScenarioSchedule.DAILY, nextAt = due), firedAt = due + 500, zone = zone)
+        val settled = ScheduleClock.settled(armed, due = due, firedAt = due + 500, ran = true)
+
+        assertNotNull(settled)
+        assertEquals(monday(9).plusDays(1), whenIs(settled.nextAt))
+        assertEquals(due + 500, settled.lastAt)
+        assertEquals(0, settled.missedAt)
     }
 
     /**
-     * A one-off keeps the hour it was set for rather than disappearing: the row still has to be able to
-     * say what happened at nine, and there is nothing left to say it with once the record is gone.
+     * A one-off that actually ran is forgotten: its trace is the run itself, in the list of past runs,
+     * and a list of what is GOING to happen must not fill up with things that already have.
      */
     @Test
-    fun `a one-off has nothing due after it fires`() {
+    fun `a one-off that started something is over`() {
         val due = monday(9).toInstant().toEpochMilli()
-        val fired = ScheduleClock.after(schedule(at(9), nextAt = due), firedAt = due, ran = true, zone = zone)
+        val armed = ScheduleClock.armed(schedule(at(9), nextAt = due), firedAt = due, zone = zone)
 
-        assertEquals(0, fired.nextAt)
-        assertEquals(due, fired.lastAt)
+        assertEquals(0, armed.nextAt)
+        assertNull(ScheduleClock.settled(armed, due = due, firedAt = due, ran = true))
     }
 
-    /** An hour nobody was here for is remembered as missed, and the rhythm carries on to the next one. */
+    /**
+     * A one-off that was REFUSED stays, because then there is no run: this row is the only place the
+     * morning can say the hour came and nothing happened.
+     */
     @Test
-    fun `a missed hour is written down and the next one is set`() {
+    fun `a one-off that was refused keeps its row and says it was missed`() {
+        val due = monday(9).toInstant().toEpochMilli()
+        val armed = ScheduleClock.armed(schedule(at(9), nextAt = due), firedAt = due, zone = zone)
+        val settled = ScheduleClock.settled(armed, due = due, firedAt = due + 200, ran = false)
+
+        assertNotNull(settled)
+        assertEquals(0, settled.nextAt)
+        assertEquals(due, settled.missedAt)
+        assertEquals(0, settled.lastAt)
+    }
+
+    /**
+     * The moment written down as missed is the one that was DUE, not the one the record holds now.
+     *
+     * Read off the record, this would say "missed tomorrow at nine": by the time an outcome is known the
+     * next hour has already been claimed.
+     */
+    @Test
+    fun `a missed hour is written down against the hour that passed`() {
         val due = monday(9).toInstant().toEpochMilli()
         val now = monday(15).toInstant().toEpochMilli()
-        val moved = ScheduleClock.after(
-            schedule(at(9), ScenarioSchedule.DAILY, nextAt = due),
-            firedAt = now,
-            ran = false,
-            zone = zone,
-        )
+        val armed = ScheduleClock.armed(schedule(at(9), ScenarioSchedule.DAILY, nextAt = due), firedAt = now, zone = zone)
+        val settled = ScheduleClock.settled(armed, due = due, firedAt = now, ran = false)
 
-        assertEquals(due, moved.missedAt)
-        assertEquals(0, moved.lastAt)
-        assertEquals(monday(9).plusDays(1), whenIs(moved.nextAt))
+        assertNotNull(settled)
+        assertEquals(due, settled.missedAt)
+        assertEquals(0, settled.lastAt)
+        assertEquals(monday(9).plusDays(1), whenIs(settled.nextAt))
+    }
+
+    /**
+     * A morning that worked wipes the memory of one that did not, and that is what "missed" has to mean.
+     *
+     * The mark is drawn INSTEAD of the next hour, and it is taken across every arrangement a scenario has -
+     * so one Tuesday nobody was here for hid the coming hour on that scenario's row for months, while it
+     * ran perfectly every single morning. Kept for ever, the word stops meaning "recently did not happen"
+     * and starts meaning "once, at some point", which is not worth a line on a row that has only one.
+     */
+    @Test
+    fun `an hour that started something forgets the one that did not`() {
+        val missed = monday(9).toInstant().toEpochMilli()
+        val due = monday(9).plusDays(1).toInstant().toEpochMilli()
+        val schedule = schedule(at(9), ScenarioSchedule.DAILY, nextAt = due).copy(missedAt = missed)
+        val armed = ScheduleClock.armed(schedule, firedAt = due, zone = zone)
+        val settled = ScheduleClock.settled(armed, due = due, firedAt = due, ran = true)
+
+        assertNotNull(settled)
+        assertEquals(0, settled.missedAt)
+        assertEquals(due, settled.lastAt)
+    }
+
+    /** And a morning that did not work says so about ITSELF, not about the one before it. */
+    @Test
+    fun `an hour that was refused again names the hour that just passed`() {
+        val older = monday(9).toInstant().toEpochMilli()
+        val due = monday(9).plusDays(1).toInstant().toEpochMilli()
+        val schedule = schedule(at(9), ScenarioSchedule.DAILY, nextAt = due).copy(missedAt = older)
+        val armed = ScheduleClock.armed(schedule, firedAt = due, zone = zone)
+        val settled = ScheduleClock.settled(armed, due = due, firedAt = due, ran = false)
+
+        assertNotNull(settled)
+        assertEquals(due, settled.missedAt)
     }
 }

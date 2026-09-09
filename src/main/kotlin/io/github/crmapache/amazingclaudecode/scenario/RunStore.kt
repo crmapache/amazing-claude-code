@@ -80,13 +80,18 @@ internal class RunStore(workingDirectory: String?) {
      * A run that outlived the IDE that was walking it is neither going nor finished, and it has to be made
      * one of them.
      *
-     * Left as it was it would draw a timeline with a spinner on it for ever and hold the project's
-     * one-at-a-time lock against every run after it. Done when the list is first read rather than on a
-     * timer: that is the only moment anybody can see one of these.
+     * Left as it was it would draw a timeline with a spinner on it for ever. Done when the list is first
+     * read rather than on a timer: that is the only moment anybody can see one of these.
+     *
+     * `alive` is what this IDE is walking right now, and it has to be asked rather than assumed. The first
+     * look at the shelves can happen INSIDE a launch - the record is on the disk by then, and unfinished,
+     * which is exactly what an abandoned one looks like - so without it the sweep would write "crashed"
+     * over a run that started a moment ago and is about to draw its first card.
      */
-    fun repairAbandoned() {
+    fun repairAbandoned(alive: Set<String>) {
         for (summary in summaries()) {
             if (RunState.finished(summary.state)) continue
+            if (summary.id in alive) continue
             val run = read(summary.id) ?: continue
             keep(
                 run.copy(

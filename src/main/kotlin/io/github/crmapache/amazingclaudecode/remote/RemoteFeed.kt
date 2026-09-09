@@ -50,16 +50,46 @@ internal object RemoteFeed {
      * ClaudeFileSearch), so this is one more notch on the same compromise rather than a new kind of
      * one.
      */
-    fun forPhone(type: String, message: String): String =
+    fun forPhone(type: String, message: String): Outgoing =
         when (type) {
-            FILES -> trimmedFiles(message)
-            MCP_SERVERS -> serversWithoutCommands(message)
-            PLUGINS -> trimmedPlugins(message)
-            MARKETPLACES -> marketplacesWithoutPaths(message)
-            SCENARIOS -> trimmedScenarios(message)
+            FILES -> Outgoing(type, trimmedFiles(message))
+            MCP_SERVERS -> Outgoing(type, serversWithoutCommands(message))
+            PLUGINS -> Outgoing(type, trimmedPlugins(message))
+            MARKETPLACES -> Outgoing(type, marketplacesWithoutPaths(message))
+            SCENARIOS -> Outgoing(type, trimmedScenarios(message))
+            SCENARIO_LIVE -> Outgoing(type, trimmedLive(message))
             SCENARIO_RUN -> trimmedRun(message)
-            else -> message
+            SCENARIO_FETCHED, SCENARIO_DRAFTED -> Outgoing(type, wholeScenario(type, message))
+            SCENARIO_LOG -> Outgoing(type, trimmedLog(message))
+            else -> Outgoing(type, message)
         }
+
+    /**
+     * A fact ready to leave: what a device should remember it under, and what it is actually sent.
+     *
+     * The two travel together because the name depends on what is INSIDE the message, and reading that
+     * twice is both a second parse of a record several times a second and - the part that bit - a second
+     * way of reading it. See [Outgoing.slot].
+     */
+    data class Outgoing(
+        /**
+         * The type, for everything but a scenario run.
+         *
+         * There is one branch, one list of files, one set of limits per project, so "the last `project`
+         * this device was sent" is a complete question. There may be several runs, and they take the
+         * heartbeat in turn: remembered under one name, the frame for run A is compared against the frame
+         * for run B, never matches, and the whole point of remembering - not sealing and sending four
+         * frames a second at a phone for the hours a round of work takes - is lost exactly when a second
+         * run starts.
+         *
+         * It used to be pulled out of the text by searching for `"run":{"id":"`, which held only while
+         * `id` happened to be the first field written. One field added above it and every run fell into
+         * one slot again, silently and with nothing to fail - so it is read off the record that has
+         * already been parsed to be trimmed.
+         */
+        val slot: String,
+        val message: String,
+    )
 
     private fun trimmedFiles(message: String): String {
         if (message.length <= PHONE_FILES_BUDGET) return message
@@ -184,9 +214,13 @@ internal object RemoteFeed {
      * The scenarios of a project, with everything only the editor reads taken out.
      *
      * The shelves are the phone's answer to "what rounds of work does this project have and which of
-     * them is going" - names, shapes and the list of past runs. What a card actually says to its agent
-     * is pages of prose, it is written and read at the desk (see RemoteCommands, where the editor is
-     * refused from here), and it is the whole weight of this message.
+     * them is going" - names, shapes and the list of past runs. What a card actually says to its agent is
+     * pages of prose and no list draws a word of it, while it is the whole weight of this message: every
+     * prompt of every card of every scenario a project has.
+     *
+     * The editor on the phone is not left without it - it ASKS, by name, and gets that one scenario whole
+     * (see `scenarioFetch` and [wholeScenario]). Which is the same shape a run has: listed as a summary,
+     * fetched whole.
      *
      * The past runs are cut to a screenful and a bit. A project run every morning for a year carries
      * three hundred summaries, and the row somebody wants is one of the first ten.
@@ -198,11 +232,50 @@ internal object RemoteFeed {
             for ((name, value) in root) {
                 when (name) {
                     "scenarios" -> put(name, mapObjects(value, ::scenarioBody))
-                    "runs" -> put(name, JsonArray((value as? JsonArray).orEmpty().take(PHONE_RUNS)))
+                    "runs" -> put(
+                        name,
+                        mapObjects(JsonArray((value as? JsonArray).orEmpty().take(PHONE_RUNS)), ::summaryBody),
+                    )
+                    /*
+                     * The scheduled runs, capped in number and with their answers shortened.
+                     *
+                     * A scenario may carry as many arrangements as somebody wants, and each of them holds
+                     * the answers to its questions - free text a person typed. Left whole, a morning's
+                     * worth of them is the one thing here with no ceiling at all, and a frame over the
+                     * relay's 256 KB is not shortened but thrown away, taking the shelves and the past
+                     * runs with it.
+                     */
+                    "schedules" -> put(
+                        name,
+                        mapObjects(JsonArray((value as? JsonArray).orEmpty().take(PHONE_SCHEDULES)), ::scheduleBody),
+                    )
                     else -> put(name, value)
                 }
             }
         }.toString()
+    }
+
+    /** An arrangement with its answers shortened - emptied rather than removed, like everything else here. */
+    private fun scheduleBody(schedule: JsonObject): JsonObject = answersCut(schedule)
+
+    /**
+     * The answers to a scenario's questions, shortened wherever they are carried.
+     *
+     * One rule for the three places that carry them - a scheduled run, a live run's summary, a past run's
+     * summary - because it is one thing: free text a person typed, with no ceiling on it, on a message
+     * that goes out again and again.
+     */
+    private fun answersCut(holder: JsonObject): JsonObject {
+        val answers = (holder["inputs"] as? JsonObject) ?: return holder
+
+        return JsonObject(
+            holder + mapOf(
+                "inputs" to JsonObject(
+                    answers.entries.take(PHONE_ANSWERS)
+                        .associate { (name, value) -> name to cut(value, words = true, max = PHONE_ANSWER_CHARS) },
+                ),
+            ),
+        )
     }
 
     /**
@@ -227,18 +300,119 @@ internal object RemoteFeed {
      * Emptied rather than removed, the way a server's command line is above: the shape a client parses
      * must not depend on which side of the wire it came from.
      */
-    private fun trimmedRun(message: String): String {
-        val root = runCatching { Json.parseToJsonElement(message).jsonObject }.getOrNull() ?: return message
-        val run = root["run"] as? JsonObject ?: return message
+    private fun trimmedRun(message: String): Outgoing {
+        val root = runCatching { Json.parseToJsonElement(message).jsonObject }.getOrNull()
+            ?: return Outgoing(SCENARIO_RUN, message)
+        val run = root["run"] as? JsonObject ?: return Outgoing(SCENARIO_RUN, message)
+
+        // Off the record itself rather than out of the text around it - see Outgoing.slot.
+        val slot = "$SCENARIO_RUN\u0000${(run["id"] as? JsonPrimitive)?.contentOrNull.orEmpty()}"
 
         val trimmed = envelope(runBody(run, words = true))
-        if (trimmed.length <= PHONE_RUN_BUDGET) return trimmed
+        if (trimmed.length <= PHONE_RUN_BUDGET) return Outgoing(slot, trimmed)
 
         // A run of a hundred cards, over the cap even with the prose cut. The shape goes on without the
         // words: a timeline with no lines on it is still a timeline, and a frame over the cap is not
         // shortened by the relay but thrown away whole - which is no timeline at all.
-        return envelope(runBody(run, words = false))
+        return Outgoing(slot, envelope(runBody(run, words = false)))
     }
+
+    /**
+     * One scenario, whole - or honestly not at all.
+     *
+     * The editor on a phone is the one screen that needs every word of a card's prompt, and it is also
+     * the one screen that SAVES: whatever it was shown is what it writes back to the file. So this is the
+     * single place on the way out where shortening is forbidden. A prompt quietly cut to fit a frame and
+     * then saved would take a paragraph out of somebody's repository, and nothing on either screen would
+     * say it had happened.
+     *
+     * A scenario over the budget is therefore sent WITHOUT its body and marked as too large, which the
+     * screen says out loud and points at the desk. Reached only by something enormous - a five-stage
+     * round of work is a few kilobytes - so what this really guards is the honesty of the road, not a
+     * case anybody meets.
+     *
+     * The same rule serves what a model just wrote (`scenarioDrafted`), for the same reason: that too
+     * opens in the editor and is saved from it.
+     */
+    private fun wholeScenario(type: String, message: String): String {
+        if (message.length <= PHONE_SCENARIO_BUDGET) return message
+
+        val root = runCatching { Json.parseToJsonElement(message).jsonObject }.getOrNull() ?: return message
+
+        return buildJsonObject {
+            for ((name, value) in root) if (name != "scenario") put(name, value)
+            put("tooBig", true)
+        }.toString()
+    }
+
+    /**
+     * What one step said, cut to a frame from the END.
+     *
+     * A step that walked a repository leaves a transcript in megabytes, and this used to be the reason
+     * the phone was refused it outright - a frame over the relay's 256 KB is not shortened but thrown
+     * away whole, so asking for one was asking for silence. Refusing it was the wrong answer to a real
+     * problem: what somebody wants off a step at three in the morning is the end of it, which is exactly
+     * the part that fits.
+     *
+     * So the oldest events go until what is left fits, and the message says so - `truncated` is already
+     * the word for "the beginning is not shown", and a log that silently begins in the middle reads as a
+     * step that began in the middle.
+     */
+    private fun trimmedLog(message: String): String {
+        if (message.length <= PHONE_LOG_BUDGET) return message
+
+        val root = runCatching { Json.parseToJsonElement(message).jsonObject }.getOrNull() ?: return message
+        val events = (root["events"] as? JsonArray) ?: return message
+
+        // From the end backwards, which is the half a person is reading.
+        val kept = ArrayDeque<JsonElement>()
+        var spent = 0
+        for (event in events.asReversed()) {
+            val size = event.toString().length + 1
+            if (spent + size > PHONE_LOG_BUDGET) break
+            spent += size
+            kept.addFirst(event)
+        }
+
+        return buildJsonObject {
+            for ((name, value) in root) {
+                when (name) {
+                    "events" -> put(name, JsonArray(kept.toList()))
+                    "truncated" -> put(name, JsonPrimitive(true))
+                    else -> put(name, value)
+                }
+            }
+        }.toString()
+    }
+
+    /**
+     * The list of what is going right now, cut to the same ceiling as everything else.
+     *
+     * It looked small enough to leave alone and is not: every summary on it carries the answers somebody
+     * typed at the start form - free text with no length to it - and this is the message rebuilt every
+     * second for the hours a round of work takes. Three runs with a paragraph pasted into each is a frame
+     * over the relay's cap, and an oversized frame is not shortened but thrown away whole, which puts the
+     * phone back to saying "nothing is going here" while three things are going.
+     */
+    private fun trimmedLive(message: String): String {
+        val root = runCatching { Json.parseToJsonElement(message).jsonObject }.getOrNull() ?: return message
+
+        return buildJsonObject {
+            for ((name, value) in root) {
+                if (name == "runs") {
+                    put(name, mapObjects(JsonArray((value as? JsonArray).orEmpty().take(PHONE_RUNS)), ::summaryBody))
+                } else {
+                    put(name, value)
+                }
+            }
+        }.toString()
+    }
+
+    /**
+     * One run's summary with its answers shortened - the same cut a scheduled run's get, and the same
+     * reason: they are the same free text, typed into the same form.
+     */
+    private fun summaryBody(summary: JsonObject): JsonObject = answersCut(summary)
 
     private fun envelope(run: JsonObject): String =
         buildJsonObject {
@@ -296,6 +470,13 @@ internal object RemoteFeed {
                 else -> put(name, value)
             }
         }
+
+        /*
+         * Said out loud, because the rules on the other side would otherwise read a skeleton and answer
+         * confidently that every card is missing its prompt: a shelf where every row reads "needs fixing
+         * before it can run" while those very scenarios run perfectly at the desk.
+         */
+        put("trimmed", true)
     }
 
     private fun cardBody(card: JsonObject): JsonObject =
@@ -348,11 +529,13 @@ internal object RemoteFeed {
      * point - it is the owner's address on the owner's own paired device, and a screen that cannot say
      * which account it is about to switch away from is not a screen anybody should press.
      *
-     * The scenarios and the one run that may be going are on it for a reason of their own: a round of
-     * work started at the desk goes on for hours with nobody in front of it, which is the definition of
-     * something worth seeing from elsewhere. They are the heaviest things on this list and the only ones
-     * a machine sends by itself several times a second, so both are cut down in [forPhone] - and the
-     * run's trimming is what makes it a fact a phone can afford at all.
+     * The scenarios, what is going right now and the record of one run are on it for a reason of their
+     * own: a round of work started at the desk goes on for hours with nobody in front of it, which is the
+     * definition of something worth seeing from elsewhere. The shelves and the record are the heaviest
+     * things on this list, and the record is the only one a machine sends by itself several times a
+     * second, so both are cut down in [forPhone] - and the run's trimming is what makes it a fact a phone
+     * can afford at all. The live list is neither: it is a few summaries, which is exactly why it exists
+     * apart from the other two.
      */
     private val PROJECT_FACTS = listOf(
         "project",
@@ -371,6 +554,7 @@ internal object RemoteFeed {
         "accounts",
         "accountOutcome",
         SCENARIOS,
+        SCENARIO_LIVE,
         SCENARIO_RUN,
     )
 
@@ -439,9 +623,28 @@ internal object RemoteFeed {
      */
     private const val PHONE_PLUGINS_BUDGET = 48 * 1024
 
-    /** The two scenario messages. Public because the run is trimmed on its answering road too - see ScenarioDesk.sendRun. */
+    /** The scenario messages. Public because three of them are trimmed on their answering road too - see ScenarioDesk. */
     const val SCENARIOS = "scenarios"
     const val SCENARIO_RUN = "scenarioRun"
+
+    /** One scenario, asked for by name and answered whole - what the editor on a phone opens on. */
+    const val SCENARIO_FETCHED = "scenarioFetched"
+
+    /** And one a model just wrote, which opens in the same editor and is saved from it. */
+    const val SCENARIO_DRAFTED = "scenarioDrafted"
+
+    /** One step's own conversation, read off this machine's disk. */
+    const val SCENARIO_LOG = "scenarioLog"
+
+    /**
+     * What is going right now, as summaries - the light half of the scenarios (see ScenarioDesk.sendLive).
+     *
+     * Nothing is taken out of it here and nothing needs to be: it is a handful of names, states and
+     * counts, and it carries no prose at all. It is on the list because it is what every screen that is
+     * not looking at a timeline actually reads.
+     */
+    const val SCENARIO_LIVE = "scenarioLive"
+
 
     /**
      * How much of a run a phone is sent. The same order as the lists above and for the same reason: it
@@ -452,8 +655,27 @@ internal object RemoteFeed {
      */
     private const val PHONE_RUN_BUDGET = 48 * 1024
 
+    /**
+     * How much of one scenario a phone is sent - and the one budget here that is a REFUSAL rather than a
+     * cut, because what is shown is what gets saved back (see [wholeScenario]).
+     */
+    private const val PHONE_SCENARIO_BUDGET = 48 * 1024
+
+    /** And how much of one step's conversation. The end of it, which is the half anybody reads. */
+    private const val PHONE_LOG_BUDGET = 48 * 1024
+
     /** How many past runs travel. A year of a morning routine is three hundred; the row wanted is near the top. */
     private const val PHONE_RUNS = 40
+
+    /**
+     * How many scheduled runs travel, and how much of the answers each of them carries.
+     *
+     * The one list on this message with no natural ceiling: a scenario may be given as many arrangements
+     * as somebody wants, and each carries free text they typed.
+     */
+    private const val PHONE_SCHEDULES = 40
+    private const val PHONE_ANSWERS = 8
+    private const val PHONE_ANSWER_CHARS = 120
 
     /**
      * How much of each line of a step a phone is shown.

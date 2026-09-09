@@ -177,12 +177,20 @@ internal object ScenarioRules {
      * Filled here rather than by the form for the reason the rest of this file exists: the form is one
      * client's opinion, and the run is raised by whoever asked. A name that is NOT declared still stands -
      * that one is a typo in a prompt, and [fillInputs] says why it must be seen.
+     *
+     * In the order the scenario ASKS its questions, with anything else after them, and that order is read
+     * off this map later. What arrives from a form is ordered by whichever field somebody typed in first,
+     * so two starts of one scenario, filled in in different orders, would be labelled by different
+     * questions on the strip of tabs - and the label is there precisely to tell them apart (see runMarks
+     * on the panel's side).
      */
     fun answers(scenario: Scenario, values: Map<String, String>): Map<String, String> {
-        val declared = scenario.inputs
-            .filter { it.name.isNotBlank() }
-            .associate { it.name to values[it.name].orEmpty() }
-        return values + declared
+        val declared = scenario.inputs.map { it.name }.filter { it.isNotBlank() }.toSet()
+
+        return buildMap {
+            for (name in declared) put(name, values[name].orEmpty())
+            for ((name, value) in values) if (name !in declared) put(name, value)
+        }
     }
 
     /**

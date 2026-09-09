@@ -3194,23 +3194,57 @@
 }
 
 /*
- * A scenario on the shelf. Not a button: there is nothing to open.
+ * A scenario on the shelf, and everything one does to it.
  *
- * Writing one, running one and putting one on a clock are all at the desk (see RemoteCommands), so a
- * row that could be pressed would promise a screen that does not exist here. What it says instead is
- * what the row is for from a distance - that this project has this round of work written down, and
- * when it starts by itself.
+ * It used to be a row that could not be pressed, because writing one, running one and putting one on a
+ * clock were all at the desk. None of that is true any more (see RemoteCommands): the two things done
+ * most often are buttons on the card, and everything else is behind the chevron, in a sheet of words.
+ *
+ * The rail down the side says which shelf it is on - aqua for the repository, iris for one's own - which
+ * matters here more than at the desk: this screen has no room for two headings.
  */
-.scenarioRow {
+.scenarioCard {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: var(--acc-sp-3) var(--acc-sp-4);
-  border-bottom: 1px solid var(--acc-bg-panel);
+  gap: var(--acc-sp-1);
+  /* Clear of the rail, which is drawn on the card's own edge rather than inside its padding. */
+  padding: var(--acc-sp-3) var(--acc-sp-4) var(--acc-sp-3) calc(var(--acc-sp-4) + 3px);
+  overflow: hidden;
 }
 
-.scenarioRow:last-child {
-  border-bottom: none;
+.scenarioCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+}
+
+.scenarioCard.railProject::before {
+  background: var(--acc-branch);
+}
+
+.scenarioCard.railUser::before {
+  background: var(--acc-agent);
+}
+
+.scenarioCardHead {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+  min-height: var(--acc-hit);
+  text-align: left;
+}
+
+.scenarioCardHead .scenarioName {
+  flex: 1;
+  min-width: 0;
+}
+
+.scenarioBroken {
+  color: var(--acc-warn);
 }
 
 .scenarioName {
@@ -3272,11 +3306,19 @@
 
 /* The name of a stage, drawn only where there is more than one to tell apart (see timelineOf). */
 .stageRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--acc-sp-3);
   margin: var(--acc-sp-5) 0 var(--acc-sp-2);
-  font: 600 var(--acc-fs-label) var(--acc-mono);
+  font: 600 var(--acc-fs-label) var(--acc-font);
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--acc-fg-ghost);
+}
+
+/* The stage the run is standing in, told by its colour before its word is read. */
+.stageHere {
+  color: var(--acc-fg-soft);
 }
 
 .stageRow:first-child {
@@ -3301,11 +3343,6 @@
   opacity: 0.72;
 }
 
-.stepSkipped {
-  background: transparent;
-  border-style: dashed;
-  opacity: 0.45;
-}
 
 .stepRunning {
   border-color: var(--acc-accent-32);
@@ -3315,14 +3352,6 @@
   border-color: var(--acc-bad-32);
 }
 
-.stepNumber {
-  flex: none;
-  width: 18px;
-  padding-top: 2px;
-  font: var(--acc-fs-label) var(--acc-mono);
-  color: var(--acc-fg-ghost);
-  text-align: right;
-}
 
 .stepText {
   flex: 1 1 auto;
@@ -3453,6 +3482,29 @@
  * and read once, so it goes where reading happens - and it scrolls, because a permission's arguments
  * can be a paragraph and a fixed block of one would leave no timeline underneath it.
  */
+/* What a finished run says first, and the two doors out of it - see the panel's .after. */
+.afterCard {
+  margin: 0 var(--acc-sp-5) var(--acc-sp-4);
+  padding: var(--acc-sp-4);
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-card);
+  background: var(--acc-bg-raised);
+}
+
+.afterText {
+  margin: 0 0 var(--acc-sp-3);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--acc-fg);
+  overflow-wrap: anywhere;
+}
+
+.afterButtons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--acc-sp-2);
+}
+
 .askCard {
   margin: 0 var(--acc-sp-5) var(--acc-sp-4);
   padding: var(--acc-sp-4);
@@ -3542,4 +3594,492 @@
 
 .projectRunWaiting {
   color: var(--acc-warn);
+}
+
+/* ===========================================================================
+   The scenarios, as a phone drives them.
+
+   Everything the desk can do is here now (see RemoteCommands), so what is below is the shape that
+   gives to a thumb: three tabs in the header, cards instead of rows, sheets for the short forms and
+   screens for the two long ones. Every target is --acc-hit, which under [data-acc-density='touch'] is
+   forty-four points; nothing here has a hover state, because there is no pointer to have one.
+   =========================================================================== */
+
+/*
+ * The scenarios' own lists stand off the edges of the screen.
+ *
+ * Everywhere else here a card runs the full width, because a conversation is the screen. These are lists
+ * of things to choose between - a shelf, a table of nights, a timetable - and a card that runs into the
+ * edge reads as the screen itself rather than as one of several.
+ */
+.scenarioList {
+  composes: list;
+  padding-inline: var(--acc-feed-gutter);
+}
+
+/* The same three questions the desk asks, in the order a phone asks them: Runs first. */
+.bandTabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 2px;
+  margin-bottom: var(--acc-sp-2);
+  border-radius: var(--acc-r-lg);
+  background: var(--acc-bg-deep);
+}
+
+.bandTab {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--acc-hit);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--acc-sp-1);
+  border-radius: var(--acc-r-md);
+  color: var(--acc-fg-faint);
+  font-size: var(--acc-fs-body);
+  white-space: nowrap;
+}
+
+.bandTabOn {
+  background: var(--acc-bg-card);
+  color: var(--acc-fg);
+}
+
+.bandTabCount {
+  font: var(--acc-fs-meta) var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+/* Something is going, and the count is the only thing on the strip that says so. */
+.bandTabLive {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--acc-accent-light);
+}
+
+.bandTabLive::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--acc-accent);
+}
+
+/* A run standing on a question wears the warning tone before it is read. */
+.runCardAsks {
+  border-color: var(--acc-warn-32);
+}
+
+/* Which run of its scenario this is - a ticket, or the minute it started (see runMarks). */
+.runCardMark {
+  flex: none;
+  min-width: 0;
+  padding: 1px 6px;
+  border-radius: var(--acc-r-xs);
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-faint);
+  font: var(--acc-fs-meta) var(--acc-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The row of things to do about it, under the reading rather than over it. */
+.runCardButtons {
+  display: flex;
+  align-items: stretch;
+  gap: var(--acc-sp-2);
+  margin-top: var(--acc-sp-1);
+}
+
+.runCardButtons > * {
+  flex: 1;
+  justify-content: center;
+}
+
+/* --- The timetable ---------------------------------------------------------- */
+
+.hourRow {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  width: 100%;
+  min-height: var(--acc-hit);
+  padding: var(--acc-sp-3) var(--acc-sp-4);
+  border-bottom: 1px solid var(--acc-bg-panel);
+  text-align: left;
+}
+
+.hourRow:last-child {
+  border-bottom: none;
+}
+
+.hourMissed .hourClock {
+  color: var(--acc-warn-light);
+}
+
+.hourMissed .hourAway {
+  color: var(--acc-warn);
+}
+
+/* The hour in a gutter of its own: the question a timetable answers before anything is read. Centred
+   both ways, as on the desk (see the panel's .hourGutter). */
+.hourGutter {
+  flex: none;
+  width: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding-right: var(--acc-sp-3);
+  border-right: 1px solid var(--acc-bg-panel);
+  text-align: center;
+}
+
+.hourClock {
+  font: 15px var(--acc-mono);
+  color: var(--acc-fg);
+}
+
+.hourAway {
+  font-size: var(--acc-fs-meta);
+  color: var(--acc-fg-ghost);
+}
+
+.hourText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hourName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--acc-fs-body);
+  color: var(--acc-fg);
+}
+
+.hourFacts {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--acc-fs-meta);
+  color: var(--acc-fg-faint);
+}
+
+/* --- The sheets ------------------------------------------------------------- */
+
+/* The one irreversible action on a sheet says so before it is pressed, not after. */
+.sheetActionDanger .sheetActionName {
+  color: var(--acc-bad-light);
+}
+
+/* What is chosen right now, in a sheet of choices. */
+.sheetActionOn .sheetActionName {
+  color: var(--acc-accent-light);
+}
+
+.sheetActionTick {
+  flex: none;
+  color: var(--acc-accent);
+}
+
+.sheetRequired {
+  color: var(--acc-warn);
+  font-size: var(--acc-fs-meta);
+}
+
+.sheetArea {
+  min-height: 108px;
+  resize: none;
+  line-height: 1.5;
+}
+
+/* Two menus rather than a time field: the browser draws that one as a screen of its own. */
+.hourPickers {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+}
+
+.hourPickers > select {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font: 17px var(--acc-mono);
+}
+
+.hourColon {
+  font: 17px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+/*
+ * While a model writes a scenario: a bar that admits it does not know how long, the words, and the
+ * seconds already spent. Half a minute of silence reads as a screen that has stopped.
+ */
+.draftRow {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  flex-wrap: wrap;
+}
+
+.draftBar {
+  position: relative;
+  flex: 1 0 100%;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--acc-bg-control);
+  overflow: hidden;
+}
+
+.draftBar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 34%;
+  border-radius: 1px;
+  background: var(--acc-accent);
+  animation: accDraftSlide 1.4s ease-in-out infinite;
+}
+
+@keyframes accDraftSlide {
+  0% {
+    left: -34%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+.draftGoing {
+  color: var(--acc-accent-light);
+  font-size: var(--acc-fs-meta);
+}
+
+.draftElapsed {
+  margin-left: auto;
+  font: var(--acc-fs-meta) var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+/* --- The editor as a screen -------------------------------------------------- */
+
+/* What is worth tidying, above the outline rather than beside it: there is one column here. */
+.tidyNote {
+  display: flex;
+  flex-direction: column;
+  gap: var(--acc-sp-1);
+}
+
+.tidyCount {
+  font-weight: 600;
+}
+
+.tidyLine {
+  opacity: 0.85;
+}
+
+/*
+ * A row of the outline: what it is, what it says right now, and the whole of it when it opens.
+ *
+ * Folded rather than laid out flat, because the desk's outline needs a pane beside it and there is no
+ * beside on a phone. What is left is the same map, one line each.
+ */
+.foldRow {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  width: 100%;
+  min-height: var(--acc-hit);
+  padding: var(--acc-sp-3) var(--acc-sp-4);
+  border-bottom: 1px solid var(--acc-bg-panel);
+  text-align: left;
+}
+
+.foldRow:last-child {
+  border-bottom: none;
+}
+
+.foldName {
+  flex: none;
+  font-size: var(--acc-fs-body);
+  color: var(--acc-fg);
+}
+
+.foldValue {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--acc-fs-meta);
+  color: var(--acc-fg-faint);
+}
+
+.foldBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--acc-sp-2);
+  padding: var(--acc-sp-2) var(--acc-sp-4) var(--acc-sp-4);
+  border-bottom: 1px solid var(--acc-bg-panel);
+}
+
+.stageFold {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  width: 100%;
+  min-height: var(--acc-hit);
+  padding: var(--acc-sp-3) var(--acc-sp-4);
+  text-align: left;
+}
+
+.stageFoldNumber {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-control);
+  font: var(--acc-fs-meta) var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.stageFoldText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.stageFoldTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--acc-fs-body);
+  color: var(--acc-fg);
+}
+
+.stageFoldNote {
+  font: var(--acc-fs-meta) var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.stageFoldCount {
+  flex: none;
+  font-size: var(--acc-fs-meta);
+  color: var(--acc-fg-ghost);
+}
+
+.cardFold {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+  width: 100%;
+  min-height: var(--acc-hit);
+  padding: var(--acc-sp-3) var(--acc-sp-4) var(--acc-sp-3) var(--acc-sp-6);
+  border-top: 1px solid var(--acc-bg-panel);
+  text-align: left;
+}
+
+.cardFoldName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--acc-fs-body);
+  color: var(--acc-fg-body);
+}
+
+/* Taking a stage out: a word, and the one on this screen that is worth a colour. */
+.wideDanger {
+  color: var(--acc-bad-light);
+}
+
+/* A name written into a prompt as {{this}} or [[this]] - code, so it keeps the console font. */
+.inputMono {
+  font: var(--acc-fs-mono) var(--acc-mono);
+  color: var(--acc-branch);
+}
+
+/* --- One step's own conversation --------------------------------------------- */
+
+/*
+ * The main thread's verdict, above the conversation rather than at the foot of it: it is what somebody
+ * opened this for, and it is not something the card said.
+ */
+.stepVerdictCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--acc-sp-1);
+  padding: var(--acc-sp-3) var(--acc-sp-4);
+}
+
+.stepVerdictLabel {
+  font-size: var(--acc-fs-label);
+  letter-spacing: 0.09em;
+  color: var(--acc-fg-ghost);
+}
+
+.stepPrompt {
+  padding: var(--acc-sp-3) var(--acc-sp-4);
+  font: var(--acc-fs-mono)/1.6 var(--acc-mono);
+  color: var(--acc-fg-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* The way into it, on the step's own row. */
+.stepLog {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: var(--acc-hit);
+  padding-left: var(--acc-sp-2);
+  font-size: var(--acc-fs-meta);
+  color: var(--acc-accent-light);
+}
+
+/* --- The run's own timeline -------------------------------------------------- */
+
+/* A stage carries its own verdict, so the rows under it need not be counted. */
+.stageRowTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stageRowVerdict {
+  flex: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: var(--acc-fg-ghost);
+}
+
+.stageHere .stageRowVerdict {
+  color: var(--acc-accent-light);
+}
+
+/* Nothing is being spent while a question stands: the card's turn is open and its clock is not going. */
+.askNote {
+  margin: var(--acc-sp-1) 0 0;
+  font-size: var(--acc-fs-meta);
+  color: var(--acc-fg-ghost);
 }

@@ -1,9 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { AgentEvent, ScenarioRun, ScenarioRunStep } from '../../protocol'
 import { formatTokens } from '../../feed/build'
 import { formatDuration } from '../../feed/tools'
-import { cardOf, finished, progressOf, timelineOf } from '../../scenarios/timeline'
-import { useNow } from '../../hooks/useNow'
+import {
+  cardOf,
+  cutCardOf,
+  finished,
+  progressOf,
+  resumable,
+  runElapsed,
+  timelineOf,
+  type StageStanding,
+} from '../../scenarios/timeline'
+import { useTicking } from '../../hooks/useTicking'
 import { useT } from '../../i18n'
 import { Confirm } from '../Confirm'
 import { SkeletonBar } from '../Skeleton'
@@ -19,12 +28,25 @@ import s from './scenarios.module.css'
  * folded loop cannot answer it - which is why the rows a loop may never reach are drawn as plans rather
  * than left out (see scenarios/timeline.ts).
  *
+ * Where the run is reads as a position rather than as a word to find: a rail with a dot per step, and
+ * stage headings that carry their own verdict - done in eight minutes, here now, not reached - so a stage
+ * is a chapter rather than a caption. What the main thread said gets a tinted block with a label of its
+ * own; it is not a step, and it no longer looks like one.
+ *
  * What is deliberately NOT here is any setting of the scenario's. This screen is what happened; where
  * that was decided is the editor, and a card whose text could be changed from inside a run would be a
  * card whose row says something the agent was never told.
  */
 export interface ScenarioRunTabProps {
   run: ScenarioRun | null
+  /**
+   * Which run of its scenario this is, when there is more than one - see runMarks.
+   *
+   * Handed in rather than worked out here, because it can only be worked out over the whole set: two
+   * runs of one round of work are usually given the same answers, and a label made from one run alone
+   * would be the same words for both. Empty when the scenario's name says everything.
+   */
+  mark: string
   /** The log of the step somebody has opened, keyed by the step (see scenarioLog in protocol.ts). */
   log: { key: string; found: boolean; truncated: boolean; events: AgentEvent[] } | null
   onOpenLog: (key: string, conversationId: string) => void
@@ -32,23 +54,29 @@ export interface ScenarioRunTabProps {
   onPause: () => void
   onResume: () => void
   onStop: () => void
+  /** Pick a finished run up where it stood - see `scenarioContinue`. */
+  onContinue: () => void
+  /** Open the main thread's conversation as an ordinary chat tab, to go on from there by hand. */
+  onOpenChat: () => void
   onAnswer: (allow: boolean, text: string) => void
   onOpenLink: (url: string) => void
 }
 
 export const ScenarioRunTab = ({
   run,
+  mark,
   log,
   onOpenLog,
   onCloseLog,
   onPause,
   onResume,
   onStop,
+  onContinue,
+  onOpenChat,
   onAnswer,
   onOpenLink,
 }: ScenarioRunTabProps) => {
   const t = useT()
-  const clock = useNow()
   const [confirmStop, setConfirmStop] = useState(false)
   const [answer, setAnswer] = useState('')
   /** Which step's window is open. Held here rather than read off [log]: the log arrives a moment later. */
@@ -61,12 +89,7 @@ export const ScenarioRunTab = ({
    * timer left going would redraw a page nobody is watching change once a second.
    */
   const live = run !== null && !finished(run.state)
-  const [now, setNow] = useState(() => clock())
-  useEffect(() => {
-    if (!live) return
-    const timer = setInterval(() => setNow(clock()), 1000)
-    return () => clearInterval(timer)
-  }, [live, clock])
+  const now = useTicking(live)
 
   const rows = useMemo(() => (run ? timelineOf(run) : []), [run])
 
@@ -87,7 +110,7 @@ export const ScenarioRunTab = ({
 
   const over = finished(run.state)
   const progress = progressOf(run)
-  const elapsed = formatDuration((run.finishedAt > 0 ? run.finishedAt : now) - run.startedAt)
+  const elapsed = formatDuration(runElapsed(run, now))
   const share = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0
 
   /**
@@ -141,7 +164,10 @@ export const ScenarioRunTab = ({
     <div className={s.root}>
       <div className={s.head}>
         <div className={s.headTitles}>
-          <span className={s.title}>{run.scenarioName}</span>
+          <span className={s.editorName}>
+            {run.scenarioName}
+            {mark ? <span className={s.runMark}>{mark}</span> : null}
+          </span>
           <span className={s.hint}>{t.scenarios.run.startedAt(new Date(run.startedAt).toLocaleString())}</span>
         </div>
         <span className={s.headSpace} />
@@ -180,21 +206,19 @@ export const ScenarioRunTab = ({
       <div className={s.runBar}>
         <StatePill state={run.state} failure={run.failure} />
 
-        <span className={s.runSegment}>
-          <span className={s.progress}>
-            <span
-              className={[
-                s.progressFill,
-                run.state === 'done' ? s.progressDone : '',
-                run.state === 'failed' ? s.progressFailed : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              style={{ width: `${share}%` }}
-            />
-          </span>
-          <span className={s.runValue}>{t.scenarios.run.cards(progress.done, progress.total)}</span>
+        <span className={s.progress}>
+          <span
+            className={[
+              s.progressFill,
+              run.state === 'done' ? s.progressDone : '',
+              run.state === 'failed' ? s.progressFailed : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            style={{ width: `${share}%` }}
+          />
         </span>
+        <span className={s.runValue}>{t.scenarios.run.cards(progress.done, progress.total)}</span>
 
         {/*
           Three words for one number, because the number means three things. A finished run took that
@@ -203,7 +227,7 @@ export const ScenarioRunTab = ({
         */}
         <span className={s.runSegment}>
           <span className={s.runKey}>
-            {over ? t.scenarios.run.took : run.state === 'paused' ? t.scenarios.run.open : t.scenarios.run.running}
+            {over ? t.scenarios.run.took : run.state === 'paused' ? t.scenarios.run.openFor : t.scenarios.run.running}
           </span>
           <span className={s.runValue}>{elapsed}</span>
         </span>
@@ -227,12 +251,62 @@ export const ScenarioRunTab = ({
         {run.error ? <div className={s.outcome}>{run.error}</div> : null}
 
         {/*
-          The question the run is standing on - only ever here when the scenario said to wait for a
-          person rather than to let the head decide (see HeadSettings.onQuestion). Nothing is being spent
-          while it stands: the card's turn is open and its clock is not running.
+          What a finished run says first, and the two doors out of it.
+
+          A run that ended is not the end of the work. One that was stopped or fell over is picked up
+          where it stood - the same main thread and the same cut card, over their own transcripts (see
+          ScenarioEngine.carryOn) - and one that finished leaves a main thread that remembers the whole
+          night and can be talked to in an ordinary chat: "now open the pull request" is a sentence to
+          it, not a card. The sentence names the card it happened at, because "stopped" alone was read
+          as "broke", and the pill above already says which of the two it was.
+        */}
+        {over ? (
+          <div className={s.after}>
+            <span className={s.afterText}>
+              {run.state === 'done'
+                ? t.scenarios.run.after.done
+                : run.state === 'stopped'
+                  ? t.scenarios.run.after.stopped(cutCardOf(run))
+                  : t.scenarios.run.after.failed(cutCardOf(run))}
+            </span>
+            <span className={s.afterButtons}>
+              {resumable(run) ? (
+                <button
+                  type="button"
+                  className={`${s.button} ${s.buttonMain}`}
+                  data-tooltip={t.scenarios.run.after.carryOnHint}
+                  onClick={onContinue}
+                >
+                  {t.scenarios.run.after.carryOn}
+                </button>
+              ) : null}
+              {run.headConversationId ? (
+                <button
+                  type="button"
+                  className={resumable(run) ? s.button : `${s.button} ${s.buttonMain}`}
+                  data-tooltip={t.scenarios.run.after.chatHint}
+                  onClick={onOpenChat}
+                >
+                  {t.scenarios.run.after.chat}
+                </button>
+              ) : null}
+            </span>
+          </div>
+        ) : null}
+
+        {/*
+          The question the run is standing on, at the top where reading begins rather than buried in the
+          timeline - only ever here when the scenario said to wait for a person rather than to let the
+          head decide (see HeadSettings.onQuestion). Nothing is being spent while it stands: the card's
+          turn is open and its clock is not running.
         */}
         {run.question ? (
           <div className={s.question}>
+            <div className={s.questionLabel}>
+              {t.scenarios.run.asking}
+              <span className={s.questionNote}>{t.scenarios.run.nothingSpent}</span>
+            </div>
+
             <div className={s.questionTitle}>{run.question.title || run.question.tool}</div>
 
             {/*
@@ -246,46 +320,43 @@ export const ScenarioRunTab = ({
               <div className={s.questionDetail}>{run.question.detail}</div>
             ) : null}
 
-            {/*
-              The options as buttons, the way the panel puts the same question in an ordinary chat: what
-              was offered is what gets pressed. Typed into the field instead, the label has to be spelled
-              exactly right to be recognised as the choice (see CardQuestion.chosen) - and a question
-              with two answers on it is not a question anybody should have to write an answer to.
-            */}
-            {run.question.options.length > 0 ? (
-              <div className={s.questionOptions}>
-                {run.question.options.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    className={`${s.button} ${s.buttonMain}`}
-                    onClick={() => {
-                      onAnswer(true, option)
-                      setAnswer('')
-                    }}
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
             <div className={s.questionRow}>
+              {/*
+                The options as buttons, the way the panel puts the same question in an ordinary chat: what
+                was offered is what gets pressed. Typed into the field instead, the label has to be spelled
+                exactly right to be recognised as the choice (see CardQuestion.chosen) - and a question
+                with two answers on it is not a question anybody should have to write an answer to.
+              */}
+              {run.question.options.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  className={`${s.button} ${s.buttonMain}`}
+                  onClick={() => {
+                    onAnswer(true, option)
+                    setAnswer('')
+                  }}
+                >
+                  {option}
+                </button>
+              ))}
+
               <input
                 className={s.field}
                 value={answer}
                 placeholder={t.scenarios.run.answerPlaceholder}
                 onChange={(event) => setAnswer(event.target.value)}
               />
+
               <button
                 type="button"
-                className={`${s.button} ${s.buttonMain}`}
+                className={run.question.options.length > 0 ? s.button : `${s.button} ${s.buttonMain}`}
                 onClick={() => {
                   onAnswer(true, answer)
                   setAnswer('')
                 }}
               >
-                {t.scenarios.run.allow}
+                {run.question.options.length > 0 ? t.scenarios.run.send : t.scenarios.run.allow}
               </button>
 
               {/*
@@ -314,8 +385,28 @@ export const ScenarioRunTab = ({
           {rows.map((row) => {
             if (row.kind === 'stage') {
               return (
-                <div key={row.key} className={s.stageRow}>
-                  <span>{row.title || t.scenarios.stage}</span>
+                <div key={row.key} className={`${s.stageRow} ${standingClass(row.standing)}`}>
+                  <span className={s.stageNumber}>{row.index}</span>
+                  <span className={s.stageTitle}>
+                    {t.scenarios.editor.stageHead(row.index, row.title || t.scenarios.stage)}
+                  </span>
+                  <span className={s.stageLine} />
+                  <span className={s.stageVerdict}>
+                    {[
+                      row.passes > 1
+                        ? row.untilDone
+                          ? t.scenarios.editor.roundsUntilShort(row.passes)
+                          : t.scenarios.editor.roundsShort(row.passes)
+                        : '',
+                      row.standing === 'done'
+                        ? t.scenarios.run.stageDone(formatDuration(row.took))
+                        : row.standing === 'here'
+                          ? t.scenarios.run.stageHere
+                          : t.scenarios.run.stageNotReached,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
                 </div>
               )
             }
@@ -323,8 +414,11 @@ export const ScenarioRunTab = ({
             if (row.kind === 'note') {
               return (
                 <div key={row.key} className={s.note}>
-                  <span className={s.noteWho}>{t.scenarios.run.headSaid}</span>
-                  <span className={s.noteText}>{row.note.text}</span>
+                  <span className={s.noteRail} />
+                  <span className={s.noteBody}>
+                    <span className={s.noteWho}>{t.scenarios.run.headSaid}</span>
+                    <span className={s.noteText}>{row.note.text}</span>
+                  </span>
                 </div>
               )
             }
@@ -333,7 +427,6 @@ export const ScenarioRunTab = ({
               <StepRow
                 key={row.key}
                 step={row.step}
-                index={row.index}
                 passes={row.passes}
                 untilDone={row.untilDone}
                 now={now}
@@ -347,7 +440,9 @@ export const ScenarioRunTab = ({
       {confirmStop ? (
         <Confirm
           title={t.scenarios.run.stopTitle}
-          subject={run.scenarioName}
+          // The mark as well as the name: with two runs of one scenario going, a dialog that says only
+          // the scenario is a dialog about either of them, and one of them is an hour of work.
+          subject={[run.scenarioName, mark].filter(Boolean).join(' · ')}
           note={t.scenarios.run.stopSubject}
           confirmLabel={t.scenarios.run.stop}
           onConfirm={() => {
@@ -364,16 +459,17 @@ export const ScenarioRunTab = ({
 /** The head has no step of its own, so its log is opened under a name no step can carry. */
 const HEAD = '__head__'
 
+const standingClass = (standing: StageStanding): string =>
+  standing === 'here' ? s.stageHere : standing === 'ahead' ? s.stageAhead : s.stageDone
+
 const StepRow = ({
   step,
-  index,
   passes,
   untilDone,
   now,
   onOpen,
 }: {
   step: ScenarioRunStep
-  index: number
   /** How many passes its stage was given. One means the row has no loop to place itself in. */
   passes: number
   untilDone: boolean
@@ -396,25 +492,37 @@ const StepRow = ({
   const line = step.said || step.summary || step.prompt
 
   const slots = Object.entries(step.slots).filter(([, value]) => value.length > 0)
+  const ahead = step.state === 'waiting' || step.state === 'skipped'
 
   return (
-    <button
-      type="button"
-      className={[
-        s.step,
-        step.state === 'waiting' ? s.stepWaiting : '',
-        step.state === 'skipped' ? s.stepSkipped : '',
-        going ? s.stepRunning : '',
-        step.state === 'failed' ? s.stepFailed : '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
-      onClick={onOpen}
-    >
-      <span className={s.stepNumber}>{index + 1}</span>
-      <span className={s.stepText}>
+    <div className={s.stepRow}>
+      <span
+        className={[
+          s.stepRail,
+          ahead ? s.railAhead : '',
+          going ? s.railGoing : '',
+          step.state === 'failed' ? s.railFailed : '',
+          step.state === 'done' ? s.railDone : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+      />
+
+      <button
+        type="button"
+        className={[
+          s.step,
+          ahead ? s.stepWaiting : '',
+          going ? s.stepRunning : '',
+          step.state === 'failed' ? s.stepFailed : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        onClick={onOpen}
+      >
         <span className={s.stepHead}>
           <span className={s.stepTitle}>{step.title}</span>
+          {ahead ? null : <StatePill step={step.state} failure={step.failure} />}
           {/*
             Which pass this is travels with the row rather than standing in a heading over a block of
             them: six rows of a stage that goes round three times are six goes at two cards, and the one
@@ -425,11 +533,10 @@ const StepRow = ({
               {untilDone ? t.scenarios.run.passOfUpTo(step.pass, passes) : t.scenarios.run.passOf(step.pass, passes)}
             </span>
           ) : null}
-          <StatePill step={step.state} failure={step.failure} />
           <span className={s.stepSpace} />
-          {elapsed ? (
-            <span className={`${s.stepTime} ${going ? s.stepTimeGoing : ''}`}>{elapsed}</span>
-          ) : null}
+          <span className={`${s.stepTime} ${going ? s.stepTimeGoing : ''}`}>
+            {elapsed || (ahead ? t.scenarios.run.notYet : '')}
+          </span>
         </span>
 
         {slots.length > 0 ? (
@@ -440,7 +547,7 @@ const StepRow = ({
           </span>
         ) : null}
 
-        {line.trim().length > 0 ? (
+        {line.trim().length > 0 && !ahead ? (
           <span className={`${s.stepLine} ${step.said ? s.stepSaying : ''}`}>{line}</span>
         ) : null}
 
@@ -451,9 +558,9 @@ const StepRow = ({
         ) : null}
 
         {step.nudges.length > 0 && step.state === 'done' ? (
-          <span className={s.stepLine}>{t.scenarios.run.sentBack(step.nudges.length)}</span>
+          <span className={s.stepNudge}>{t.scenarios.run.sentBack(step.nudges.length)}</span>
         ) : null}
-      </span>
-    </button>
+      </button>
+    </div>
   )
 }
