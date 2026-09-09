@@ -7,29 +7,37 @@ Ele usa o próprio CLI do Claude Code que já está na sua máquina, então sua 
 comandos com barra, as regras de permissão, os servidores MCP e as skills vêm junto. Sem proxy no
 meio e sem nenhuma conta nossa.
 
-🌐 [English](en.md) | [简体中文](zh.md) | [Русский](ru.md) | [Español](es.md) | **Português (Brasil)** | [Deutsch](de.md) | [Français](fr.md) | [日本語](ja.md) | [한국어](ko.md)
+🌐 [English](en.md) | [简体中文](zh.md) | [Русский](ru.md) | [Українська](uk.md) | [Español](es.md) | **Português (Brasil)** | [Deutsch](de.md) | [Français](fr.md) | [日本語](ja.md) | [한국어](ko.md)
 
 ## Por que este
 
-- **Aponte para os arquivos em vez de digitá-los.** Arraste um, digite `@` para escolher, cole uma
-  captura de tela: cada um entra como uma cápsula em que não dá para errar.
-- **Mande o código com o endereço dele.** Selecione as linhas, "Send to Amazing Claude Code GUI",
-  e o agente lê o arquivo de verdade em volta delas, não um trecho sem contexto.
-- **Qualquer parte de uma resposta vira alça.** Cite-a na próxima mensagem ou ramifique a conversa
-  exatamente naquele ponto: a original continua como estava.
-- **Você vê o que está acontecendo.** Chamadas de ferramenta com a duração, diffs com os números,
-  a lista de tarefas sendo riscada, planos, subagentes, frotas inteiras de agentes dentro de uma
-  única chamada de workflow, e quanto custou o turno.
-- **Nenhum silêncio inexplicável.** Uma API sobrecarregada ou limitada vira um cartão com o
-  motivo, o número da tentativa e a contagem regressiva.
-- **Ninguém responde por você.** Um pedido de permissão, um plano ou uma pergunta esperam o tempo
-  que for preciso: sem prazo e sem continuação automática.
-- **Um painel lateral, não uma aba do editor**, em qualquer borda da janela.
-- **As conversas sobrevivem ao painel.** Recolha, troque de projeto, volte: o agente continuou
-  trabalhando e as mensagens na fila continuam na fila.
-- **Modelo, esforço e modo mudam no meio da conversa**, cada aba por si, sem reiniciar nada.
-- **Responda pelo celular.** Desligado por padrão, pareado por QR code, criptografado de ponta a
-  ponta e revogável com um toque.
+- **Uma rodada de trabalho, escrita uma vez e executada para você.** Cenários: um punhado de
+  cartões, cada um com sua própria sessão do Claude - implementar, revisar, corrigir, rodar os
+  testes - em etapas que podem se repetir mais de uma vez, com uma conversa principal acompanhando
+  tudo e avaliando o que cada uma encontrou. Rode um pelo botão, três de uma vez contra três
+  tickets, ou num horário marcado, às nove da manhã em todo dia útil, com as perguntas já
+  respondidas de antemão. Descreva a rodada em uma frase e o Claude lê o projeto e escreve o
+  formulário.
+- **O painel inteiro a partir do seu celular, não só um botão de "sim".** Responda um pedido de
+  permissão ou um plano, abra um projeto fechado, leia a conversa de ontem, ramifique, mude o
+  modelo e o esforço, troque de conta, faça login em um conector, dite, acompanhe um cenário em
+  execução e desbloqueie-o. Desligado por padrão, pareado por QR code, criptografado de ponta a
+  ponta por um relay que não lê uma palavra sequer, revogável com um toque.
+- **Várias contas do Claude, trocadas com um clique.** Trabalho e pessoal na mesma máquina, sem
+  precisar sair de nenhuma das duas. Cada linha mostra o que resta da janela de cinco horas daquela
+  conta e da semana dela, e Select move todas as conversas abertas para ela.
+- **Busca em todas as conversas do projeto.** Prefixos, erros de digitação, radicais de palavras,
+  frases entre aspas; nesta conversa ou em todas elas, com um salto direto até a mensagem, na
+  conversa em que ela está. Quando as palavras não bastam, descreva o que você está procurando e o
+  Claude lê as conversas para você.
+- **Tudo o que ele faz fica na tela.** Cada chamada de ferramenta com a duração, cada edição como
+  um diff já aberto, subagentes e frotas inteiras de agentes de workflow com a transcrição de cada
+  agente a um clique de distância, a lista de tarefas sendo riscada, e quanto custou o turno. Uma
+  API sobrecarregada ou limitada vira um cartão com o motivo e a contagem regressiva, não silêncio.
+- **Nada responde por você, e nada se perde.** Uma permissão, um plano ou uma pergunta esperam o
+  tempo que for preciso: sem prazo, sem continuação automática. As conversas continuam mesmo com o
+  painel recolhido ou o projeto trocado, e as mensagens escritas durante um turno esperam numa fila
+  que a IDE mantém.
 - **Android Studio incluído**, junto com todas as IDEs JetBrains a partir da 2026.1.
 
 ## Como começar
@@ -46,17 +54,37 @@ meio e sem nenhuma conta nossa.
 
 ## Também no painel
 
-- **Histórico** das conversas anteriores deste projeto, inclusive as que começaram no terminal.
+- **Aponte para os arquivos em vez de digitá-los.** Arraste um, digite `@` para escolher, cole uma
+  captura de tela ou um log longo - cada um vira uma cápsula em que não dá para errar.
+- **Mande o código com o endereço dele.** Selecione as linhas, "Send to Amazing Claude Code GUI", e
+  o agente lê o arquivo de verdade em volta delas, não um trecho sem contexto.
+- **Caminhos abrem arquivos.** Um caminho em qualquer lugar da conversa - o cabeçalho de um cartão,
+  uma resposta, um erro, sua própria mensagem - abre o arquivo no editor na linha que ele indica;
+  uma edição já abre na própria edição.
+- **Pegue qualquer parte de uma resposta.** Cite-a na próxima mensagem, ramifique a conversa
+  exatamente daquele ponto, fixe até três mensagens acima da conversa, ou traga uma mensagem
+  enviada de volta para o campo, para corrigir e reenviar.
+- **Modelo, esforço e modo mudam no meio da conversa**, cada aba por si, sem reiniciar nada. O que
+  uma nova conversa usa de início é você quem decide, e um modelo do seu próprio servidor pode ser
+  adicionado à mão.
+- **Servidores MCP, plugins e marketplaces** em telas próprias: qual servidor está no ar, qual
+  precisa de login, qual caiu e por quê.
+- **Histórico** das conversas anteriores deste projeto, inclusive as que começaram no terminal,
+  abertas pelo final e com as páginas mais antigas carregadas sob demanda.
 - **Uma fila** para as mensagens escritas enquanto um turno roda, reordenável arrastando.
-- **Melhorar o prompt**: a estrelinha reescreve seu rascunho em uma execução separada, sem gastar
-  o contexto da conversa, e um botão traz de volta as suas palavras.
+- **`!` roda um comando no seu próprio shell**, e a saída viaja com a sua próxima mensagem, sem
+  custar um turno nem pedir permissão.
+- **Melhorar o prompt**: a estrelinha reescreve seu rascunho em uma execução separada, sem gastar o
+  contexto da conversa, e um botão traz de volta as suas palavras.
 - **Ditado por voz** com a sua própria chave da Deepgram: segure um atalho, mesmo a partir do
   editor.
 - **Avisos sonoros** para os sete momentos que merecem um, e só quando você já não está olhando.
 - **Estatísticas** de horas, hábitos e conquistas, que dá para compartilhar como imagem.
-- **Nove idiomas**, seguindo a sua IDE por padrão.
-- **Seus buffers não salvos** são gravados antes do turno, e os arquivos que o agente mudou são
-  relidos pela IDE na hora.
+- **Dez idiomas**, seguindo a sua IDE por padrão.
+- **Seus buffers não salvos** são gravados antes de um turno, e os arquivos que o agente mudou são
+  relidos na hora.
+- **Um painel lateral, não uma aba do editor**, em qualquer borda da janela; números escolhem uma
+  opção, Shift+Tab alterna o modo, Escape interrompe o turno.
 
 ## Privacidade e transparência
 

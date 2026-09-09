@@ -92,12 +92,23 @@
   transition: color 0.12s ease, background 0.12s ease;
 }
 
-/* In a narrow panel the three of them share what there is, and the label gives way before the count. */
+/* In a narrow panel the three of them share what there is, and the label gives way before the count.
+   Two things keep the labels whole on a phone. The spacer between the tabs and the close button shares
+   nothing here: as a fourth flex item it took a quarter of the row, and the three labels stood cut to
+   "This …" beside an empty gap. And a tab never grows past its own text: an equal third left "This
+   chat" with room to spare while "Ask Claude" beside it was clipped, so the cap hands the spare to the
+   neighbour that needs it, and at 390 points all three fit (measured, in English). A label longer than
+   its share still clips - only that one, and only the part that does not fit. */
 @media (max-width: 560px) {
   .tab {
     flex: 1 1 0;
-    padding: 0 8px;
+    max-width: max-content;
+    padding: 0 6px;
     gap: 5px;
+  }
+
+  .tabs .tabsFill {
+    flex: none;
   }
 }
 

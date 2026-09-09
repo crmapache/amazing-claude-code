@@ -1264,6 +1264,7 @@ export const pt: Dict = {
       running: 'AGORA EM ANDAMENTO',
       repository: 'Repositório',
       inRepository: (name: string): string => `Em ${name}`,
+      opensProject: 'Não está aberto no IDE - escolhê-lo o abrirá lá',
       nothingRunning: 'Agora não há nada em andamento neste projeto.',
       none: 'Neste projeto não há nenhuma rodada de trabalho escrita.',
       create: 'Novo',

@@ -947,13 +947,23 @@ internal class RemoteAgent : Disposable {
         val sessionId = payload["s"]?.jsonPrimitive?.contentOrNull.orEmpty()
         val path = recents[key]
 
-        if (sessionId.isEmpty() || path == null) {
+        if (path == null) {
             // A stale list on a phone is the ordinary cause: the project has since been opened at the
             // desk, or dropped out of the recent list. Saying so is what lets the phone ask again.
             thisLogger().info("A device asked for a project this agent is not offering")
             answerOpen(device, sessionId, error = "That project is no longer on this IDE's list.")
             return
         }
+
+        /*
+         * No conversation named: the window and nothing in it.
+         *
+         * The scenarios of a closed project are read through its hub, and its hub exists once the
+         * project is open (see ScenarioDesk) - so picking a closed repository on the phone's scenarios
+         * screen opens it here, the way "Open & start" does, but without a tab nobody asked for. The
+         * phone subscribes to the project under the key this answers with.
+         */
+        val bare = sessionId.isEmpty()
 
         val title = payload["title"]?.jsonPrimitive?.contentOrNull.orEmpty()
         val launch = payload["launch"] as? JsonObject
@@ -986,6 +996,11 @@ internal class RemoteAgent : Disposable {
 
             if (attachment == null) {
                 answerOpen(device, sessionId, error = "The project opened but this IDE did not pick it up.")
+                return@executeOnPooledThread
+            }
+
+            if (bare) {
+                answerOpen(device, sessionId, projectKey = projectKey(opened))
                 return@executeOnPooledThread
             }
 

@@ -13,7 +13,14 @@ import { cardRuns, passesOf, problemsOf, blocking } from '../../scenarios/rules'
 import { pastRuns, runMarks, runningRuns } from '../../scenarios/runs'
 import { startedLabel } from '../../scenarios/moments'
 import type { ScenarioShelves } from '../facts'
-import { outcomeText, type RepositoryChoice, type ShelfChoice } from '../scenarios'
+import {
+  outcomeText,
+  repositoryOfOption,
+  shelfOptionId,
+  shelfOptions,
+  type RepositoryChoice,
+  type ShelfChoice,
+} from '../scenarios'
 import { Back } from './Back'
 import { HourSheet, NewScenarioSheet, ScenarioActionsSheet, StartSheet } from './ScenarioSheets'
 import { PickSheet } from './ScenarioPick'
@@ -37,6 +44,12 @@ interface ScenariosProps {
   /** Every project of every paired IDE, for the row that picks one - see RepositoryChoice. */
   repositories: RepositoryChoice[]
   onPickRepository: (agentId: string, projectKey: string) => void
+  /**
+   * A closed repository was picked for a shelf: the IDE opens it, and `then` is told the key it is open
+   * under. Opening takes seconds, and the screen says so meanwhile (see [opening]).
+   */
+  onOpenRepository: (repository: RepositoryChoice, then: (projectKey: string) => void) => void
+  opening: { going: boolean; error: string }
   /** What the IDE said it could not do, as a name there are words for. Empty when there is nothing. */
   problem: string
   /** When a model started writing a scenario, or 0 - the sheet counts the wait out loud. */
@@ -87,6 +100,8 @@ export const Scenarios = ({
   repository,
   repositories,
   onPickRepository,
+  onOpenRepository,
+  opening,
   problem,
   draftingSince,
   draftError,
@@ -168,7 +183,7 @@ export const Scenarios = ({
             className={m.headerWord}
             // The shared shelf by default: a scenario that follows the person around is the likelier
             // thing to want from a phone, and the repository is one chip away.
-            onClick={() => setSheet({ kind: 'new', description: '', shelf: { scope: 'user' } })}
+            onClick={() => setSheet({ kind: 'new', description: '', shelf: { scope: 'user' }, picking: false })}
           >
             {t.mobile.scenarios.create}
           </button>
@@ -194,6 +209,8 @@ export const Scenarios = ({
 
       <div className={m.pageList}>
         {problem ? <p className={m.noteBad}>{outcomeText(t, problem)}</p> : null}
+        {opening.going ? <p className={m.noteOk}>{t.mobile.newSession.opening}</p> : null}
+        {opening.error ? <p className={m.noteBad}>{opening.error}</p> : null}
         {shelves === null && <p className={m.empty}>{t.common.loading}</p>}
 
         {band === 'runs' ? (
@@ -382,10 +399,11 @@ export const Scenarios = ({
           description={sheet.description}
           shelf={sheet.shelf}
           repositories={repositories}
+          opening={opening.going}
           since={draftingSince}
           error={draftError}
           onChange={(description) => setSheet({ ...sheet, description })}
-          onShelf={(shelf) => setSheet({ ...sheet, shelf })}
+          onPickShelf={() => setSheet({ ...sheet, picking: true })}
           onDraft={() => onDraft(sheet.description, sheet.shelf)}
           onCancelDraft={onCancelDraft}
           onByHand={() => {
@@ -395,6 +413,39 @@ export const Scenarios = ({
             setSheet({ kind: 'none' })
           }}
           onClose={() => setSheet({ kind: 'none' })}
+        />
+      ) : null}
+
+      {/* The shelf for a new scenario, over the sheet that asked - drawn here so that it stacks above it. */}
+      {sheet.kind === 'new' && sheet.picking ? (
+        <PickSheet
+          title={t.scenarios.editor.shelf}
+          value={shelfOptionId(sheet.shelf, repositories)}
+          options={shelfOptions(repositories, {
+            shared: t.scenarios.editor.mine,
+            opensProject: t.mobile.scenarios.opensProject,
+            noProject: t.scenarios.shelves.noProject,
+          })}
+          onPick={(id) => {
+            const repo = repositoryOfOption(id, repositories)
+            if (!repo) {
+              setSheet({ ...sheet, shelf: { scope: 'user' }, picking: false })
+            } else if (repo.closed) {
+              // Opened first: the shelf is named by the key the project is open under, which the IDE
+              // answers with, and the sheet stays where it is until then.
+              setSheet({ ...sheet, picking: false })
+              onOpenRepository(repo, (key) =>
+                setSheet((current) =>
+                  current.kind === 'new'
+                    ? { ...current, shelf: { scope: 'project', agentId: repo.agentId, projectKey: key } }
+                    : current,
+                ),
+              )
+            } else {
+              setSheet({ ...sheet, shelf: { scope: 'project', agentId: repo.agentId, projectKey: repo.projectKey }, picking: false })
+            }
+          }}
+          onClose={() => setSheet({ ...sheet, picking: false })}
         />
       ) : null}
 
@@ -411,16 +462,16 @@ export const Scenarios = ({
           options={repositories.map((one, index) => ({
             id: String(index),
             label: one.name,
-            // A closed project cannot show its shelf from here - the shelves are facts of a project the
-            // IDE holds open (see RemoteFeed) - and is listed greyed rather than left out, so that a
-            // repository somebody is looking for is seen to be closed rather than missing.
-            hint: one.closed ? t.mobile.sessions.projectClosed : undefined,
-            disabled: one.closed,
+            // A closed project's shelf is read through its hub, and the hub comes with the window: picking
+            // one opens the project in the IDE first, the way "Open & start" does, and the row says so.
+            hint: one.closed ? t.mobile.scenarios.opensProject : undefined,
           }))}
           onPick={(id) => {
             const chosen = repositories[Number(id)]
             setSheet({ kind: 'none' })
-            if (chosen) onPickRepository(chosen.agentId, chosen.projectKey)
+            if (!chosen) return
+            if (chosen.closed) onOpenRepository(chosen, (key) => onPickRepository(chosen.agentId, key))
+            else onPickRepository(chosen.agentId, chosen.projectKey)
           }}
           onClose={() => setSheet({ kind: 'none' })}
         />
@@ -441,7 +492,7 @@ type Sheet =
       hour: { at: number; repeat: ScenarioSchedule['repeat']; weekday: number }
       values: Record<string, string>
     }
-  | { kind: 'new'; description: string; shelf: ShelfChoice }
+  | { kind: 'new'; description: string; shelf: ShelfChoice; picking: boolean }
   | { kind: 'repo' }
 
 /**

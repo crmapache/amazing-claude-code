@@ -74,7 +74,7 @@ intellijPlatform {
          * media section) and no adjective that cannot be checked. Every claim below is a thing the plugin
          * does; if one of them stops being true, this text is part of the change.
          *
-         * The same page in the panel's other eight languages lives in `docs/marketplace/`, linked from
+         * The same page in the panel's other nine languages lives in `docs/marketplace/`, linked from
          * the row under the opening paragraphs. The marketplace takes one description and one only, so
          * the translations are ordinary files in the repository - which also means they are only as
          * fresh as the last time this text was carried over to them. Change this, change those.
@@ -92,6 +92,7 @@ intellijPlatform {
             <p>&#127760; <b>English</b> |
             <a href="https://github.com/crmapache/amazing-claude-code/blob/main/docs/marketplace/zh.md">简体中文</a> |
             <a href="https://github.com/crmapache/amazing-claude-code/blob/main/docs/marketplace/ru.md">Русский</a> |
+            <a href="https://github.com/crmapache/amazing-claude-code/blob/main/docs/marketplace/uk.md">Українська</a> |
             <a href="https://github.com/crmapache/amazing-claude-code/blob/main/docs/marketplace/es.md">Español</a> |
             <a href="https://github.com/crmapache/amazing-claude-code/blob/main/docs/marketplace/pt.md">Português (Brasil)</a> |
             <a href="https://github.com/crmapache/amazing-claude-code/blob/main/docs/marketplace/de.md">Deutsch</a> |
@@ -101,33 +102,57 @@ intellijPlatform {
 
             <h2>Why this one</h2>
             <ul>
-              <li><b>Point at files, do not type them.</b> Drag one in, type <code>@</code> to pick it,
-              paste a screenshot - each lands as a chip you cannot mistype.</li>
-              <li><b>Send code with its address.</b> Select lines, "Send to Amazing Claude Code GUI",
-              and the agent reads the real file around them instead of a snippet with no context.</li>
-              <li><b>Grab any part of an answer.</b> Quote it into your next message, or fork the
-              conversation from that exact point - the original stays as it was.</li>
-              <li><b>See what it is doing.</b> Tool calls with their duration, diffs with counts, the
-              todo list ticking off, plans, subagents, whole fleets of agents in one workflow call, and
-              what the turn cost.</li>
-              <li><b>No unexplained silence.</b> An overloaded or rate-limited API becomes a card with
-              the reason, the attempt and the countdown.</li>
-              <li><b>Nothing answers for you.</b> A permission request, a plan or a question waits as
-              long as it takes - no timeout, no auto-continue.</li>
-              <li><b>A side panel, not an editor tab</b>, on any edge of the window.</li>
-              <li><b>Conversations outlive the panel.</b> Collapse it, switch projects, come back - the
-              agent kept working, and queued messages are still queued.</li>
-              <li><b>Model, effort and mode change mid-conversation</b>, per tab, without restarting
-              anything.</li>
-              <li><b>Answer it from your phone.</b> Off by default, paired by QR code, end-to-end
-              encrypted, revocable in one tap.</li>
+              <li><b>A round of work, written once and run for you.</b> Scenarios: a few cards, each
+              a Claude session of its own - implement, review, fix, run the tests - in stages that can
+              go round more than once, with a main thread walking them and judging what each one found.
+              Run one by button, three at once against three tickets, or on a clock at nine every
+              weekday with its questions answered in advance. Describe the round in a sentence and
+              Claude reads the project and writes the form.</li>
+              <li><b>The whole panel from your phone, not just a "yes" button.</b> Answer a permission
+              or a plan, open a project that is closed, read yesterday's chat, fork, change the model
+              and the effort, switch the account, sign in to a connector, dictate, watch a scenario run
+              and unblock it. Off by default, paired by QR code, end-to-end encrypted through a relay
+              that cannot read a word, revoked in one tap.</li>
+              <li><b>Several Claude accounts, switched in one click.</b> Work and personal on one
+              machine without signing out of either. Every row shows what is left of that account's
+              five-hour window and its week, and Select moves every open chat onto it.</li>
+              <li><b>Search across every conversation of the project.</b> Prefixes, typos, word stems,
+              phrases in quotes; this chat or all of them, with a jump straight to the message in its
+              chat. When words are not enough, describe what you are looking for and Claude reads the
+              conversations for you.</li>
+              <li><b>Everything it does is on screen.</b> Every tool call with its duration, every edit
+              as an open diff, subagents and whole fleets of workflow agents with each agent's own
+              transcript a click away, the task list ticking off, and what the turn cost. An overloaded
+              or rate-limited API is a card with the reason and the countdown, not silence.</li>
+              <li><b>Nothing answers for you, and nothing is lost.</b> A permission, a plan or a
+              question waits as long as it takes - no timeout, no auto-continue. Conversations keep
+              going with the panel collapsed or the project switched, and messages written during a
+              turn wait in a queue the IDE keeps.</li>
               <li><b>Android Studio included</b>, along with every JetBrains IDE from 2026.1 on.</li>
             </ul>
 
             <h2>Also in the panel</h2>
             <ul>
-              <li><b>History</b> of this project's past conversations, terminal ones included.</li>
+              <li><b>Point at files, do not type them.</b> Drag one in, type <code>@</code> to pick it,
+              paste a screenshot or a long log - each lands as a chip you cannot mistype.</li>
+              <li><b>Send code with its address.</b> Select lines, "Send to Amazing Claude Code GUI",
+              and the agent reads the real file around them instead of a snippet with no context.</li>
+              <li><b>Paths open files.</b> A path anywhere in the conversation - the head of a card, an
+              answer, an error, your own message - opens the file in the editor at the line it names;
+              an edit opens on the edit itself.</li>
+              <li><b>Grab any part of an answer.</b> Quote it into your next message, fork the
+              conversation from that exact point, pin up to three messages above the chat, or take a
+              sent message back into the field to fix and resend.</li>
+              <li><b>Model, effort and mode change mid-conversation</b>, per tab, without restarting
+              anything. What a new chat starts with is yours to set, and a model of your own server can
+              be added by hand.</li>
+              <li><b>MCP servers, plugins and marketplaces</b> on screens of their own: which server is
+              up, which wants a sign-in, which fell over and why.</li>
+              <li><b>History</b> of this project's past conversations, terminal ones included, opened
+              from the end and paged back on demand.</li>
               <li><b>A queue</b> for messages written while a turn is running, reorderable by drag.</li>
+              <li><b><code>!</code> runs a command in your own shell</b>, and the output travels with
+              your next message, costing no turn and no permission prompt.</li>
               <li><b>Improve prompt</b> - the sparkle rewrites your draft in a run of its own, costing
               your conversation no context, and one button puts your words back.</li>
               <li><b>Voice input</b> with a Deepgram key of your own: hold a hotkey, even from the
@@ -135,9 +160,11 @@ intellijPlatform {
               <li><b>Sound alerts</b> for the seven moments worth one, and only when you are not
               already looking.</li>
               <li><b>Statistics</b> of hours, habits and achievements, shareable as a picture.</li>
-              <li><b>Nine languages</b>, following your IDE by default.</li>
+              <li><b>Ten languages</b>, following your IDE by default.</li>
               <li><b>Your unsaved buffers</b> are written before a turn, and files the agent changed
               are re-read at once.</li>
+              <li><b>A side panel, not an editor tab</b>, on any edge of the window; numbers pick an
+              option, Shift+Tab cycles the mode, Escape stops the turn.</li>
             </ul>
 
             <h2>Privacy and transparency</h2>

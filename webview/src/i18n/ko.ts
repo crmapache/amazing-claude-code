@@ -1255,6 +1255,7 @@ export const ko: Dict = {
       running: '지금 실행 중',
       repository: '저장소',
       inRepository: (name: string): string => `${name} 안`,
+      opensProject: 'IDE에서 열려 있지 않음 - 선택하면 거기서 열립니다',
       nothingRunning: '지금 이 프로젝트에서 돌고 있는 것은 없습니다.',
       none: '이 프로젝트에는 적어 둔 작업 한 바퀴가 없습니다.',
       create: '새로',

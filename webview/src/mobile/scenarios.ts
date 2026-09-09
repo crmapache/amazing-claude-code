@@ -68,3 +68,34 @@ export const shelfLabel = (
     ? shared
     : (repositories.find((one) => one.agentId === shelf.agentId && one.projectKey === shelf.projectKey)?.name ??
       shared)
+
+/**
+ * The shelves as rows of a pick sheet: the shared one first, then every repository by name.
+ *
+ * One list for the two places that ask - the sheet that writes a new scenario and the editor's own row -
+ * so that a closed repository reads the same in both: listed, with the line saying that picking it opens
+ * the project in the IDE first. Only a project with no folder to write into is greyed; nothing can be
+ * kept there whether it is open or not.
+ */
+export const shelfOptions = (
+  repositories: RepositoryChoice[],
+  words: { shared: string; opensProject: string; noProject: string },
+): { id: string; label: string; hint?: string; disabled?: boolean }[] => [
+  { id: 'user', label: words.shared },
+  ...repositories.map((one, index) => ({
+    id: `repo:${index}`,
+    label: one.name,
+    hint: one.closed ? words.opensProject : !one.canShare ? words.noProject : undefined,
+    disabled: !one.closed && !one.canShare,
+  })),
+]
+
+/** Which row of [shelfOptions] a shelf is - the shared one, or the repository's own. */
+export const shelfOptionId = (shelf: ShelfChoice, repositories: RepositoryChoice[]): string =>
+  shelf.scope === 'user'
+    ? 'user'
+    : `repo:${repositories.findIndex((one) => one.agentId === shelf.agentId && one.projectKey === shelf.projectKey)}`
+
+/** The repository behind a row of [shelfOptions], or null for the shared shelf. */
+export const repositoryOfOption = (id: string, repositories: RepositoryChoice[]): RepositoryChoice | null =>
+  id.startsWith('repo:') ? (repositories[Number(id.slice(5))] ?? null) : null

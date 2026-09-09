@@ -124,8 +124,15 @@ type Sheet = '' | 'tabs' | 'run' | 'message'
 /** A conversation being started in a project that has to be opened first - see [startSession]. */
 interface Opening {
   agentId: string
+  /** Empty for a project opened bare - for its scenarios, with no conversation started in it. */
   sessionId: string
   error: string
+  /**
+   * What to do once the window is up, with the key the project is open under - the scenarios screen
+   * asks for this, since a closed project's shelf is read through the hub the window brings. Absent,
+   * the conversation named above is entered, as "Open & start" does.
+   */
+  then?: (projectKey: string) => void
 }
 
 const EMPTY_LAUNCH: SessionLaunch = { model: '', effort: '', mode: '' }
@@ -830,7 +837,8 @@ export const App = () => {
         if (!current || current.agentId !== agentId || current.sessionId !== result.sessionId) return current
 
         if (result.ok && result.projectKey) {
-          enter(agentId, result.projectKey, result.sessionId, false)
+          if (current.then) current.then(result.projectKey)
+          else enter(agentId, result.projectKey, result.sessionId, false)
           return null
         }
 
@@ -1194,6 +1202,19 @@ export const App = () => {
     },
     [],
   )
+
+  /**
+   * A closed project, opened for its scenarios: the window and nothing in it.
+   *
+   * A closed project's shelf is read through its hub, and the hub comes with the window - so picking a
+   * closed repository on the scenarios screen opens it in the IDE, the way "Open & start" does, but with
+   * no conversation started. The IDE answers with the key the project is open under (see
+   * RemoteAgent.openProject), and [then] is told it; the closed key is of no use once it is open.
+   */
+  const openRepository = useCallback((agentId: string, projectKey: string, then: (opened: string) => void) => {
+    setOpening({ agentId, sessionId: '', error: '', then })
+    links.current[agentId]?.openProject(projectKey, '', '', EMPTY_LAUNCH)
+  }, [])
 
   /**
    * Every project of every paired IDE, as a place a scenario may be kept - see RepositoryChoice.
@@ -1922,6 +1943,11 @@ export const App = () => {
             // Another repository is the same screen opened over another project: its shelves are that
             // project's facts, and watching it is how they arrive (see openScenarios).
             onPickRepository={openScenarios}
+            onOpenRepository={(repo, then) => openRepository(repo.agentId, repo.projectKey, then)}
+            opening={{
+              going: opening !== null && opening.sessionId === '' && opening.error === '',
+              error: opening !== null && opening.sessionId === '' ? opening.error : '',
+            }}
             problem={scenarioNote}
             draftingSince={drafting.since}
             draftError={drafting.error}
@@ -2071,17 +2097,30 @@ export const App = () => {
             models={inventories[at.agentId]?.models ?? null}
             customModels={held?.customModels ?? []}
             onChange={(draft) => setEdit((current) => (current ? { ...current, draft } : current))}
-            onShelf={(shelf) =>
-              setEdit((current) =>
-                current && current.draft
-                  ? {
-                      ...current,
-                      draft: { ...current.draft, scope: shelf.scope },
-                      home: shelfHome(shelf, { agentId: at.agentId, projectKey: at.projectKey }),
-                    }
-                  : current,
-              )
-            }
+            onShelf={(shelf) => {
+              const keep = (chosen: ShelfChoice) =>
+                setEdit((current) =>
+                  current && current.draft
+                    ? {
+                        ...current,
+                        draft: { ...current.draft, scope: chosen.scope },
+                        home: shelfHome(chosen, { agentId: at.agentId, projectKey: at.projectKey }),
+                      }
+                    : current,
+                )
+
+              // A closed repository is opened first, and kept under the key it is open under.
+              const closed =
+                shelf.scope === 'project' &&
+                repositories.find((one) => one.agentId === shelf.agentId && one.projectKey === shelf.projectKey)?.closed
+              if (shelf.scope === 'project' && closed) {
+                openRepository(shelf.agentId, shelf.projectKey, (key) =>
+                  keep({ scope: 'project', agentId: shelf.agentId, projectKey: key }),
+                )
+              } else {
+                keep(shelf)
+              }
+            }}
             onOpenCard={(stageId, cardId) =>
               setScreen({ at: 'scenarioCard', agentId: at.agentId, projectKey: at.projectKey, stageId, cardId })
             }

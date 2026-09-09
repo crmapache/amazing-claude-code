@@ -8,31 +8,39 @@ Il pilote le CLI Claude Code déjà installé sur votre machine : votre compte, 
 commandes en barre oblique, les règles de permissions, les serveurs MCP et les skills arrivent
 avec lui. Pas de proxy au milieu, aucun compte chez nous.
 
-🌐 [English](en.md) | [简体中文](zh.md) | [Русский](ru.md) | [Español](es.md) | [Português (Brasil)](pt.md) | [Deutsch](de.md) | **Français** | [日本語](ja.md) | [한국어](ko.md)
+🌐 [English](en.md) | [简体中文](zh.md) | [Русский](ru.md) | [Українська](uk.md) | [Español](es.md) | [Português (Brasil)](pt.md) | [Deutsch](de.md) | **Français** | [日本語](ja.md) | [한국어](ko.md)
 
 ## Pourquoi celui-ci
 
-- **On désigne les fichiers, on ne les tape pas.** Glissez-en un, tapez `@` pour le choisir,
-  collez une capture d'écran : chacun arrive sous forme de pastille où l'on ne peut pas se
-  tromper.
-- **Le code part avec son adresse.** Sélectionnez les lignes, « Send to Amazing Claude Code GUI »,
-  et l'agent lit le vrai fichier autour d'elles au lieu d'un extrait sans contexte.
-- **N'importe quel morceau d'une réponse est une poignée.** Citez-le dans votre message suivant,
-  ou faites bifurquer la conversation exactement à cet endroit : l'originale reste telle quelle.
-- **On voit ce qui se passe.** Les appels d'outils avec leur durée, les diffs avec leurs chiffres,
-  la liste de tâches qui se coche, les plans, les sous-agents, des flottes entières d'agents dans
-  un seul appel de workflow, et ce qu'a coûté le tour.
-- **Aucun silence inexpliqué.** Une API surchargée ou limitée devient une carte : la raison, le
-  numéro de tentative et le compte à rebours.
-- **Personne ne répond à votre place.** Une demande de permission, un plan ou une question
-  attendent le temps qu'il faut - pas de délai, pas de reprise automatique.
-- **Un panneau latéral, pas un onglet d'éditeur**, sur n'importe quel bord de la fenêtre.
-- **Les conversations survivent au panneau.** Repliez-le, changez de projet, revenez : l'agent a
-  continué de travailler, et les messages en file y sont toujours.
-- **Modèle, effort et mode changent en cours de conversation**, onglet par onglet, sans rien
-  redémarrer.
-- **Répondez depuis votre téléphone.** Désactivé par défaut, appairage par QR code, chiffrement de
-  bout en bout, révocable d'une pression.
+- **Un cycle de travail, écrit une fois et exécuté pour vous.** Les scénarios : quelques cartes,
+  chacune une session Claude à part entière - implémenter, relire, corriger, lancer les tests - en
+  étapes qui peuvent boucler plusieurs fois, avec un fil principal qui les parcourt et juge ce que
+  chacune a trouvé. Lancez-en un d'un bouton, trois à la fois sur trois tickets, ou programmé
+  chaque jour de semaine à neuf heures avec ses questions répondues à l'avance. Décrivez le cycle
+  en une phrase, et Claude lit le projet et rédige le formulaire.
+- **Tout le panneau depuis votre téléphone, pas seulement un bouton « oui ».** Répondez à une
+  demande de permission ou à un plan, ouvrez un projet fermé, lisez la conversation d'hier,
+  bifurquez, changez le modèle et l'effort, changez de compte, connectez-vous à un connecteur,
+  dictez, suivez un scénario en cours d'exécution et débloquez-le. Désactivé par défaut, appairé
+  par code QR, chiffré de bout en bout via un relais incapable de lire le moindre mot, révocable
+  d'une pression.
+- **Plusieurs comptes Claude, basculés en un clic.** Travail et personnel sur une seule machine,
+  sans se déconnecter ni de l'un ni de l'autre. Chaque ligne affiche ce qu'il reste de la fenêtre
+  de cinq heures de ce compte et de sa semaine, et Select y transfère toutes les conversations
+  ouvertes.
+- **Recherchez dans toutes les conversations du projet.** Préfixes, fautes de frappe, racines de
+  mots, expressions entre guillemets ; cette conversation ou toutes, avec un saut direct vers le
+  message dans sa conversation. Quand les mots ne suffisent pas, décrivez ce que vous cherchez et
+  Claude lit les conversations à votre place.
+- **Tout ce qu'il fait est à l'écran.** Chaque appel d'outil avec sa durée, chaque modification
+  sous forme de diff ouvert, les sous-agents et des flottes entières d'agents de workflow avec la
+  transcription de chaque agent à un clic de distance, la liste de tâches qui se coche, et ce qu'a
+  coûté le tour. Une API surchargée ou limitée devient une carte avec la raison et le compte à
+  rebours, pas un silence.
+- **Personne ne répond à votre place, et rien ne se perd.** Une demande de permission, un plan ou
+  une question attendent le temps qu'il faut - pas de délai, pas de reprise automatique. Les
+  conversations continuent même panneau replié ou projet changé, et les messages écrits pendant un
+  tour attendent dans une file que l'IDE conserve.
 - **Android Studio compris**, comme tous les IDE JetBrains à partir de 2026.1.
 
 ## Pour commencer
@@ -50,9 +58,27 @@ avec lui. Pas de proxy au milieu, aucun compte chez nous.
 
 ## Également dans le panneau
 
+- **On désigne les fichiers, on ne les tape pas.** Glissez-en un, tapez `@` pour le choisir,
+  collez une capture d'écran ou un long journal - chacun arrive sous forme de pastille où l'on ne
+  peut pas se tromper.
+- **Le code part avec son adresse.** Sélectionnez les lignes, « Send to Amazing Claude Code GUI »,
+  et l'agent lit le vrai fichier autour d'elles au lieu d'un extrait sans contexte.
+- **Les chemins ouvrent les fichiers.** Un chemin n'importe où dans la conversation - l'en-tête
+  d'une carte, une réponse, une erreur, votre propre message - ouvre le fichier dans l'éditeur à
+  la ligne qu'il indique ; une modification s'ouvre sur la modification elle-même.
+- **Attrapez n'importe quel morceau d'une réponse.** Citez-le dans votre message suivant, faites
+  bifurquer la conversation exactement à cet endroit, épinglez jusqu'à trois messages au-dessus de
+  la conversation, ou reprenez un message envoyé dans le champ pour le corriger et le renvoyer.
+- **Modèle, effort et mode changent en cours de conversation**, onglet par onglet, sans rien
+  redémarrer. Ce sur quoi démarre une nouvelle conversation est à vous de le définir, et un modèle
+  de votre propre serveur peut être ajouté à la main.
+- **Les serveurs MCP, les plugins et les marketplaces** ont chacun leur propre écran : quel
+  serveur est actif, lequel attend une connexion, lequel est tombé et pourquoi.
 - **L'historique** des conversations passées de ce projet, y compris celles commencées au
-  terminal.
+  terminal, ouvert à partir de la fin et rechargé page par page sur demande.
 - **Une file d'attente** pour les messages écrits pendant un tour, réordonnable par glisser.
+- **`!` lance une commande dans votre propre shell**, et le résultat voyage avec votre prochain
+  message, sans coûter de tour ni de demande de permission.
 - **Améliorer le prompt** : l'étoile réécrit votre brouillon dans une exécution à part, sans
   consommer le contexte de la conversation, et un bouton vous rend vos propres mots.
 - **La dictée vocale** avec votre propre clé Deepgram : maintenez un raccourci, même depuis
@@ -60,9 +86,11 @@ avec lui. Pas de proxy au milieu, aucun compte chez nous.
 - **Les alertes sonores** pour les sept moments qui le méritent, et seulement quand vous ne
   regardez pas déjà.
 - **Des statistiques** d'heures, d'habitudes et de succès, partageables en image.
-- **Neuf langues**, celle de votre IDE par défaut.
+- **Dix langues**, celle de votre IDE par défaut.
 - **Vos tampons non enregistrés** sont écrits avant un tour, et les fichiers modifiés par l'agent
-  sont relus aussitôt par l'IDE.
+  sont relus aussitôt.
+- **Un panneau latéral, pas un onglet d'éditeur**, sur n'importe quel bord de la fenêtre ; les
+  chiffres choisissent une option, Shift+Tab fait défiler le mode, Escape arrête le tour.
 
 ## Confidentialité et transparence
 

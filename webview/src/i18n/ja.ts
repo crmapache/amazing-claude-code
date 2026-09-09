@@ -1272,6 +1272,7 @@ export const ja: Dict = {
       running: '実行中',
       repository: 'リポジトリ',
       inRepository: (name: string): string => `${name} 内`,
+      opensProject: 'IDE では開いていません - 選ぶとそこで開きます',
       nothingRunning: 'このプロジェクトでいま動いているものはありません。',
       none: 'このプロジェクトには一連の作業が書き留められていません。',
       create: '新規',

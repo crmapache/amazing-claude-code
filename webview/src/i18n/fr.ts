@@ -1287,6 +1287,7 @@ export const fr: Dict = {
       running: 'EN COURS',
       repository: 'Dépôt',
       inRepository: (name: string): string => `Dans ${name}`,
+      opensProject: 'Pas ouvert dans l’IDE - le choisir l’ouvre là-bas',
       nothingRunning: 'Rien ne tourne dans ce projet en ce moment.',
       none: 'Aucun tour de travail n\'est écrit dans ce projet.',
       create: 'Nouveau',

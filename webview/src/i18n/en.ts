@@ -1579,6 +1579,8 @@ export const en = {
       /** The row that names the repository whose shelf stands under it, and the heading over that shelf. */
       repository: 'Repository',
       inRepository: (name: string): string => `In ${name}`,
+      /** Under a closed repository in the pickers: choosing it opens the project in the IDE first. */
+      opensProject: 'Not open in the IDE - picking it opens it there',
       nothingRunning: 'Nothing is running in this project right now.',
       none: 'No rounds of work have been written down in this project.',
       /** The button in the header: one door to both ways of making a scenario. */

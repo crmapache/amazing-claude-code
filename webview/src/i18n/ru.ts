@@ -1401,6 +1401,7 @@ export const ru: Dict = {
       running: 'СЕЙЧАС ИДЁТ',
       repository: 'Репозиторий',
       inRepository: (name: string): string => `В ${name}`,
+      opensProject: 'Сейчас не открыт в IDE - выбор откроет его там',
       nothingRunning: 'Сейчас в этом проекте ничего не идёт.',
       none: 'В этом проекте не записано ни одного круга работ.',
       create: 'Новый',

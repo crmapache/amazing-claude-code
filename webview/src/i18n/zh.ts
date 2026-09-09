@@ -1262,6 +1262,7 @@ export const zh: Dict = {
       running: '正在运行',
       repository: '仓库',
       inRepository: (name: string): string => `在 ${name}`,
+      opensProject: '当前未在 IDE 中打开 - 选中后会在那里打开',
       nothingRunning: '这个项目现在没有在跑的东西。',
       none: '这个项目里没有写下任何一轮工作。',
       create: '新建',

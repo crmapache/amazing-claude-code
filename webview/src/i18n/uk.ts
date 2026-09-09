@@ -1434,6 +1434,7 @@ export const uk: Dict = {
       running: 'ЗАРАЗ ІДЕ',
       repository: 'Репозиторій',
       inRepository: (name: string): string => `У ${name}`,
+      opensProject: 'Зараз не відкритий в IDE - вибір відкриє його там',
       nothingRunning: 'Зараз у цьому проєкті нічого не йде.',
       none: 'У цьому проєкті не записано жодного кола робіт.',
       create: 'Новий',

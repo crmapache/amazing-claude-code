@@ -10,6 +10,7 @@ moved to any edge of the window.
 [English](docs/marketplace/en.md) |
 [简体中文](docs/marketplace/zh.md) |
 [Русский](docs/marketplace/ru.md) |
+[Українська](docs/marketplace/uk.md) |
 [Español](docs/marketplace/es.md) |
 [Português (Brasil)](docs/marketplace/pt.md) |
 [Deutsch](docs/marketplace/de.md) |

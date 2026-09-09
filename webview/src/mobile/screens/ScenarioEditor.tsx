@@ -6,8 +6,14 @@ import { blankCard, blankInput, blankStage } from '../../scenarios/blank'
 import { cardRuns, MAX_CARD_RETRIES, MAX_STAGE_REPEAT, passesOf, problemsOf } from '../../scenarios/rules'
 import { Back } from './Back'
 import { PickSheet } from './ScenarioPick'
-import { ShelfChips } from './ShelfChips'
-import { shelfLabel, type RepositoryChoice, type ShelfChoice } from '../scenarios'
+import {
+  repositoryOfOption,
+  shelfLabel,
+  shelfOptionId,
+  shelfOptions,
+  type RepositoryChoice,
+  type ShelfChoice,
+} from '../scenarios'
 import m from '../mobile.module.css'
 
 /**
@@ -44,7 +50,7 @@ export const ScenarioEditor = ({
   tooBig: boolean
   /** The machine answered and had none: it is on neither shelf any more. */
   gone: boolean
-  /** Where it is kept, and the repositories it could be kept in instead - see ShelfChips. */
+  /** Where it is kept, and the repositories it could be kept in instead - see shelfOptions. */
   shelf: ShelfChoice
   repositories: RepositoryChoice[]
   models: ModelInfo[] | null
@@ -58,7 +64,7 @@ export const ScenarioEditor = ({
   const t = useT()
   /** Which of the four rows of the scenario itself is unfolded, and which stage. One at a time. */
   const [open, setOpen] = useState('')
-  const [picking, setPicking] = useState<'model' | 'effort' | 'mode' | 'retries' | ''>('')
+  const [picking, setPicking] = useState<'shelf' | 'model' | 'effort' | 'mode' | 'retries' | ''>('')
 
   if (!draft) {
     return (
@@ -141,14 +147,12 @@ export const ScenarioEditor = ({
             />
           </FoldRow>
 
-          <FoldRow
+          {/* A list to pick from rather than chips in the row: a machine remembers twenty repositories. */}
+          <PickRow
             name={t.scenarios.editor.shelf}
             value={shelfLabel(shelf, repositories, t.scenarios.editor.mine)}
-            open={open === 'shelf'}
-            onOpen={() => fold('shelf')}
-          >
-            <ShelfChips shelf={shelf} repositories={repositories} onPick={onShelf} />
-          </FoldRow>
+            onOpen={() => setPicking('shelf')}
+          />
 
           <FoldRow
             name={t.scenarios.editor.head}
@@ -367,7 +371,23 @@ export const ScenarioEditor = ({
         </button>
       </div>
 
-      {picking ? (
+      {picking === 'shelf' ? (
+        <PickSheet
+          title={t.scenarios.editor.shelf}
+          value={shelfOptionId(shelf, repositories)}
+          options={shelfOptions(repositories, {
+            shared: t.scenarios.editor.mine,
+            opensProject: t.mobile.scenarios.opensProject,
+            noProject: t.scenarios.shelves.noProject,
+          })}
+          onPick={(id) => {
+            const repo = repositoryOfOption(id, repositories)
+            onShelf(repo ? { scope: 'project', agentId: repo.agentId, projectKey: repo.projectKey } : { scope: 'user' })
+            setPicking('')
+          }}
+          onClose={() => setPicking('')}
+        />
+      ) : picking ? (
         <PickSheet
           title={
             picking === 'model'

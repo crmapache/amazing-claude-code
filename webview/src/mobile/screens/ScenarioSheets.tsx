@@ -7,8 +7,7 @@ import { HOURS, MINUTES, pad2, WEEKDAYS, weekdayName, whenLabel } from '../../sc
 import { nextDue } from '../../scenarios/due'
 import { countdown } from '../../scenarios/timetable'
 import { Sheet } from './Sheet'
-import { ShelfChips } from './ShelfChips'
-import type { RepositoryChoice, ShelfChoice } from '../scenarios'
+import { shelfLabel, type RepositoryChoice, type ShelfChoice } from '../scenarios'
 import m from '../mobile.module.css'
 
 /**
@@ -319,24 +318,28 @@ export const NewScenarioSheet = ({
   description,
   shelf,
   repositories,
+  opening,
   since,
   error,
   onChange,
-  onShelf,
+  onPickShelf,
   onDraft,
   onCancelDraft,
   onByHand,
   onClose,
 }: {
   description: string
-  /** Where it will be kept - the shared shelf, or one repository by name (see ShelfChips). */
+  /** Where it will be kept - the shared shelf, or one repository by name (see shelfOptions). */
   shelf: ShelfChoice
   repositories: RepositoryChoice[]
+  /** A closed repository was picked and the IDE is opening it - said under the row while it takes. */
+  opening: boolean
   /** When the model started writing, or 0 when nobody is. */
   since: number
   error: string
   onChange: (description: string) => void
-  onShelf: (shelf: ShelfChoice) => void
+  /** The row opens the pick sheet, which the screen above draws - a sheet over a sheet is its to stack. */
+  onPickShelf: () => void
   onDraft: () => void
   onCancelDraft: () => void
   onByHand: () => void
@@ -397,8 +400,17 @@ export const NewScenarioSheet = ({
 
       <div className={m.sheetLabel}>{t.scenarios.editor.shelf}</div>
       {/* Chosen here rather than in the editor afterwards, because the model reads the repository it is
-          writing for (see ScenarioAuthor): which one has to be known before it starts. */}
-      <ShelfChips shelf={shelf} repositories={repositories} disabled={drafting} onPick={onShelf} />
+          writing for (see ScenarioAuthor): which one has to be known before it starts. A row into a
+          list rather than chips: a machine remembers twenty repositories, and twenty chips are a wall. */}
+      <div className={m.card}>
+        <button type="button" className={m.foldRow} disabled={drafting || opening} onClick={onPickShelf}>
+          <span className={m.foldName}>{t.scenarios.editor.shelf}</span>
+          <span className={m.foldValue}>
+            {opening ? t.mobile.newSession.opening : shelfLabel(shelf, repositories, t.scenarios.editor.mine)}
+          </span>
+          <span className={m.taskRowChevron}>›</span>
+        </button>
+      </div>
     </Sheet>
   )
 }
