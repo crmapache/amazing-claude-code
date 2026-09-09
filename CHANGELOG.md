@@ -9,6 +9,13 @@ commits.
 
 ## [Unreleased]
 
+## [0.12.10] - 2026-09-09
+
+- Changed: on the phone, a repository the IDE does not hold open can now be picked - for its scenarios, and as the shelf a scenario is kept on. It used to stand greyed with "the project is closed", which was the whole difficulty: a shelf is read through the project's own window, so the one repository you wanted was the one you could not reach. Picking it opens the project in the IDE, the way "Open & start" on a project's card does, and the row says so before you press it.
+- Changed: "Kept in" - in the phone's scenario editor and in the sheet that writes a new one - is a row that opens a list rather than a strip of chips. A machine remembers a couple of dozen repositories, and a couple of dozen chips are a wall.
+- Fixed: the search on the phone cut all three of its tabs down to "This ...", "All c..." and "Ask C..." while leaving an empty gap beside them. The gap before the close button was taking a quarter of the row for itself, and each tab was held to an exact third whether its label needed it or not. The spare width now goes to the neighbour that needs it, and on a 390-point screen all three labels stand whole.
+- Note for phones: the panel and the phone client are deployed separately, so reload the page in your browser after updating the plugin.
+
 ## [0.12.9] - 2026-09-09
 
 - Added: a claude.ai connector - Google Drive, Calendar, Gmail - can be signed in from the phone. Press "Authenticate" on its row and the row turns into a link that opens the sign-in on claude.ai; nothing comes back to the machine with the IDE, which is what makes it possible. Any other server's sign-in still ends in a browser on that machine, because Claude Code catches the browser's answer on a port of its own there, and those rows keep saying "at the desk".
@@ -641,7 +648,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.9...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.10...HEAD
+[0.12.10]: https://github.com/crmapache/amazing-claude-code/compare/0.12.9...0.12.10
 [0.12.9]: https://github.com/crmapache/amazing-claude-code/compare/0.12.8...0.12.9
 [0.12.8]: https://github.com/crmapache/amazing-claude-code/compare/0.12.7...0.12.8
 [0.12.7]: https://github.com/crmapache/amazing-claude-code/compare/0.12.6...0.12.7
