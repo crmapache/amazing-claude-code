@@ -1,8 +1,8 @@
 ---
 name: deploy
-description: Выпустить новую версию плагина в JetBrains Marketplace одним прогоном - проверки, версия, CHANGELOG, коммиты, пуш в main, publishPlugin. Используй, когда пользователь говорит /deploy, "подними версию, коммит пуш, публикуй в стор", "выпускай", "релизь", "публикуй новую версию".
+description: Выпустить новую версию плагина в JetBrains Marketplace одним прогоном - проверки, версия, CHANGELOG, коммиты, пуш в main, publishPlugin и выкатка релея с телефонным клиентом. Используй, когда пользователь говорит /deploy, "подними версию, коммит пуш, публикуй в стор", "выпускай", "релизь", "публикуй новую версию".
 disable-model-invocation: true
-allowed-tools: Bash(git:*), Bash(./gradlew:*), Bash(pnpm:*), Bash(source:*), Bash(grep:*), Bash(sed:*), Bash(date:*), Read, Edit
+allowed-tools: Bash(git:*), Bash(./gradlew:*), Bash(pnpm:*), Bash(source:*), Bash(grep:*), Bash(sed:*), Bash(date:*), Bash(tar:*), Bash(scp:*), Bash(ssh:*), Bash(curl:*), Bash(python3:*), Bash(rm:*), Bash(mkdir:*), Bash(cp:*), Bash(ls:*), Bash(cd:*), Read, Edit
 ---
 
 # Релиз плагина
@@ -12,6 +12,12 @@ allowed-tools: Bash(git:*), Bash(./gradlew:*), Bash(pnpm:*), Bash(source:*), Bas
 не переспрашивай, доводи до опубликованной версии.
 
 Останавливайся молча только там, где идти дальше нельзя (см. «Когда стоп»).
+
+**Релиз - это ДВА артефакта, а не один.** Плагин уезжает в Marketplace, телефонный
+клиент - на релей, и они собираются из одного и того же `webview/`. Шаг 6 не
+опциональный и не «если трогали телефон»: панель и телефон делят `feed/`,
+`protocol.ts` и словари, так что почти любая правка меняет обоих. Плагин без
+релея - это телефон, говорящий со вчерашним экраном по сегодняшнему протоколу.
 
 **Субагентов не запускать** - ни `cp-committer`, ни любых других. Текст коммита и
 пункты CHANGELOG пишутся из знания того, что было сделано в этой сессии; агент
@@ -97,6 +103,52 @@ source .env && ./gradlew publishPlugin --console=plain
 Задача сама собирает, подписывает и загружает архив. `BUILD SUCCESSFUL` -
 версия ушла на модерацию, в списке обновлений появится через минуты-часы.
 
+## Шаг 6. Релей и телефонный клиент (обязательно, каждый релиз)
+
+Кода релея в GitHub нет, поэтому автодеплоя у него тоже нет - выкатывается руками.
+Полная памятка - `relay/README.md`, общие правила по серверу - скилл `infra`.
+
+```bash
+# 1. Телефонный клиент. Собирается из webview/, а не из relay/ - без него релею
+#    нечего отдавать.
+cd webview && pnpm build:mobile && cd ..
+rm -rf relay/public && mkdir -p relay/public && cp -R webview/dist-mobile/. relay/public/
+
+# 2. Исходники на сервер. COPYFILE_DISABLE не даёт macOS положить рядом с каждым
+#    файлом свой "._name" - в образе они раздаются как файлы клиента.
+cd relay && COPYFILE_DISABLE=1 tar czf /tmp/relay.tgz --exclude=node_modules --exclude=dist . && cd ..
+scp /tmp/relay.tgz root@40.160.85.25:/root/apps/
+
+# 3. Образ собирается на сервере и кладётся в его локальный реестр.
+ssh root@40.160.85.25 'cd /root/apps/acc-relay && rm -rf public dist && tar xzf ../relay.tgz && \
+  docker build -t 127.0.0.1:5000/acc-relay:local . && docker push 127.0.0.1:5000/acc-relay:local'
+
+# 4. Сам деплой через API Coolify.
+python3 ~/Documents/railway-migration/scripts/cool.py POST \
+  '/deploy?uuid=cfz0tc8zejfjo88adibxxafx&force=true'
+```
+
+`rm -rf public dist` перед распаковкой - не уборка: архив ложится поверх того, что
+уже лежит, и файл, ушедший из сборки, иначе остался бы в образе навсегда.
+
+UUID `acc-relay` может устареть - тогда перечитай его: `python3 cool.py GET /applications`.
+
+**Проверить, что доехало именно то, что собрали:**
+
+```bash
+curl -s https://relay.mzpizote.com/ | grep -o 'assets/mobile-[^"]*'
+```
+
+Имя бандла обязано совпасть с тем, что напечатала сборка в шаге 1. Не совпало -
+Coolify отдаёт прошлый образ, и деплой надо повторить.
+
+`relay/public/` намеренно в корневом `.gitignore`, а не в `relay/.gitignore` -
+коммитить там нечего, а правило внутри каталога выкинуло бы клиента из образа.
+
+**Телефон надо перезагрузить.** Он держит прошлый клиент service worker'ом, поэтому
+в заметках релиза про это есть отдельная строчка - не забывай её, если менялся
+телефонный экран.
+
 ## Когда стоп
 
 - Ветка не `main` - релизы идут только с неё.
@@ -104,3 +156,7 @@ source .env && ./gradlew publishPlugin --console=plain
 - `ACC_PUBLISH_TOKEN` в `.env` не найден - публиковать нечем.
 - Версия в `gradle.properties` уже описана разделом в `CHANGELOG.md`: её,
   похоже, уже выпустили. Скажи об этом вместо второй публикации того же номера.
+
+Шаг 6 в этот список не входит: плагин к тому моменту уже опубликован, и упавший
+деплой релея - это не отменённый релиз, а невыехавший телефонный клиент. Скажи об
+этом прямо и отдельно, вместе с тем, на каком шаге встало.
