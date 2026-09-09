@@ -62,6 +62,13 @@ export interface AgentEntry {
  * key because a path never leaves that machine; and two facts about the machine itself that a screen
  * starting a conversation needs - which models it offers and what is chosen at the desk.
  */
+/**
+ * Opening a project without starting a conversation in it - see RemoteAgent.CAP_OPEN_BARE.
+ *
+ * Spelled on both sides, like the frame's own fields: a typo here is a feature that quietly stays off.
+ */
+export const CAP_OPEN_BARE = 'openBare'
+
 export interface Inventory {
   projects: Array<{
     key: string
@@ -105,6 +112,15 @@ export interface Inventory {
    */
   at?: number
   recents?: Array<{ key: string; name: string }>
+  /**
+   * What this machine can do that an older one could not - see the caps list in RemoteAgent.
+   *
+   * The client comes off the relay and is whichever one was deployed last; the plugin behind it is
+   * whatever version that machine has installed. A screen offering what the machine cannot do is
+   * therefore ordinary rather than exceptional, and the refusal that comes back is written for another
+   * cause and reads as a lie. Absent means an IDE that predates the list, which can do none of them.
+   */
+  caps?: string[]
   models?: ModelInfo[]
   prefs?: SessionLaunch
 }

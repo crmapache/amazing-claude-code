@@ -22,6 +22,7 @@ import { applyMessage, emptyFeed, feedTicks, tickFeed, type MobileFeed } from '.
 import { Link, type LinkState, type SessionLaunch } from './link'
 import {
   buildProjects,
+  CAP_OPEN_BARE,
   chatKey,
   waitingFor,
   type AgentEntry,
@@ -1231,8 +1232,11 @@ export const App = () => {
         name: project.name,
         canShare: facts[`${project.agentId}:${project.key}`]?.scenarios?.canShare ?? true,
         closed: project.closed,
+        // Whether that machine can open it for its shelves - a plugin older than this client answers
+        // such a request with a refusal written for another cause (see CAP_OPEN_BARE).
+        canOpen: (inventories[project.agentId]?.caps ?? []).includes(CAP_OPEN_BARE),
       })),
-    [projects, facts],
+    [projects, facts, inventories],
   )
 
   const openMachineScreen = useCallback(
@@ -2109,11 +2113,15 @@ export const App = () => {
                     : current,
                 )
 
-              // A closed repository is opened first, and kept under the key it is open under.
-              const closed =
-                shelf.scope === 'project' &&
-                repositories.find((one) => one.agentId === shelf.agentId && one.projectKey === shelf.projectKey)?.closed
-              if (shelf.scope === 'project' && closed) {
+              // A closed repository is opened first, and kept under the key it is open under. A machine
+              // that cannot open one does not offer the row at all (see shelfOptions), so this only
+              // guards against being asked anyway.
+              const chosen =
+                shelf.scope === 'project'
+                  ? repositories.find((one) => one.agentId === shelf.agentId && one.projectKey === shelf.projectKey)
+                  : undefined
+              if (chosen?.closed && !chosen.canOpen) return
+              if (shelf.scope === 'project' && chosen?.closed) {
                 openRepository(shelf.agentId, shelf.projectKey, (key) =>
                   keep({ scope: 'project', agentId: shelf.agentId, projectKey: key }),
                 )

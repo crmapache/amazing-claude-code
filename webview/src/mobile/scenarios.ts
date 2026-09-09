@@ -21,9 +21,9 @@ export const outcomeText = (t: Dict, code: string): string =>
  * and from a sofa there was no telling which, nor any way to look at another one. The shelf that is the
  * same everywhere comes first now, and the repository is chosen by name (see mobile/screens/Scenarios).
  *
- * Open projects only can be read: their shelves travel as facts of a project the IDE holds open (see
- * RemoteFeed.PROJECT_FACTS), and a closed one has nothing to send them from. The closed ones are still
- * listed, greyed, so that a repository somebody is looking for is seen to be closed rather than missing.
+ * A closed project's shelf is read through the hub its window brings, so picking one opens the project
+ * in the IDE first (see openRepository). A machine too old to do that - the client comes off the relay
+ * and outruns the plugin behind it - lists it greyed, as every machine did before.
  */
 export interface RepositoryChoice {
   agentId: string
@@ -32,6 +32,14 @@ export interface RepositoryChoice {
   /** Whether that project has a repository to put a shared scenario in at all (see ScenarioShelves.canShare). */
   canShare: boolean
   closed: boolean
+  /**
+   * Whether that machine can open a project for its shelves at all - see CAP_OPEN_BARE.
+   *
+   * A phone runs whichever client the relay was last given, and the plugin on the other side is
+   * whatever version somebody has installed. On an older one a closed repository is greyed as it always
+   * was, rather than offered and refused with a sentence written for another cause.
+   */
+  canOpen: boolean
 }
 
 /**
@@ -79,14 +87,14 @@ export const shelfLabel = (
  */
 export const shelfOptions = (
   repositories: RepositoryChoice[],
-  words: { shared: string; opensProject: string; noProject: string },
+  words: { shared: string; opensProject: string; closed: string; noProject: string },
 ): { id: string; label: string; hint?: string; disabled?: boolean }[] => [
   { id: 'user', label: words.shared },
   ...repositories.map((one, index) => ({
     id: `repo:${index}`,
     label: one.name,
-    hint: one.closed ? words.opensProject : !one.canShare ? words.noProject : undefined,
-    disabled: !one.closed && !one.canShare,
+    hint: one.closed ? (one.canOpen ? words.opensProject : words.closed) : !one.canShare ? words.noProject : undefined,
+    disabled: one.closed ? !one.canOpen : !one.canShare,
   })),
 ]
 

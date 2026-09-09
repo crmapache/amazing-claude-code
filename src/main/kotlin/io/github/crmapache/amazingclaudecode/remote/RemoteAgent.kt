@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -1125,6 +1126,27 @@ internal class RemoteAgent : Disposable {
             // one is written as it is sent - and it is sent whenever a conversation's state changes and
             // every half minute regardless (see the phone's probe), so it is never stale for long.
             put("at", System.currentTimeMillis())
+            /*
+             * What this machine can do that an older one could not.
+             *
+             * The client is served by the relay and a phone has whichever one was deployed last; the
+             * plugin behind it is whatever version somebody has installed, and a release takes days to
+             * reach them. So a screen that offers what a machine cannot do is the ordinary state of
+             * things rather than an accident - and the refusal it gets back is written for a different
+             * cause and reads as a lie ("that project is no longer on this IDE's list" for a project
+             * plainly on it).
+             *
+             * A list of names rather than a version number: PROTOCOL_VERSION moves only for a change
+             * that breaks the other side (see its note), and everything here is by definition something
+             * an older machine can be asked nothing about. A name is added when a screen has to know,
+             * and read on the phone as "may I offer this".
+             */
+            putJsonArray("caps") {
+                // openProject with no conversation named opens the window and puts nothing in it - what
+                // the phone's scenarios screen asks for when a closed repository is picked for a shelf.
+                // Older machines answer that request with a refusal, so the row is greyed out instead.
+                add(CAP_OPEN_BARE)
+            }
             // The catalogue of models, so a conversation started from a phone can be started on a
             // chosen one. It belongs to the machine rather than to a project - it is what this
             // installation of the CLI offers, bans by an organization included - so it is asked of
@@ -1652,6 +1674,14 @@ internal class RemoteAgent : Disposable {
          * not. Left to grow with every release it would be a number nobody could act on.
          */
         const val PROTOCOL_VERSION = 1
+
+        /**
+         * Opening a project without starting a conversation in it - see the caps list in [inventoryBody].
+         *
+         * One string in two places rather than a literal on each side: the phone spells it too (see
+         * mobile/projects.ts), and a typo here is a feature that quietly stays off for everyone.
+         */
+        const val CAP_OPEN_BARE = "openBare"
 
         /** Where the relay lives unless someone points this at their own. */
         const val DEFAULT_RELAY = "wss://relay.mzpizote.com"

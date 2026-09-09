@@ -378,6 +378,7 @@ export const ScenarioEditor = ({
           options={shelfOptions(repositories, {
             shared: t.scenarios.editor.mine,
             opensProject: t.mobile.scenarios.opensProject,
+            closed: t.mobile.sessions.projectClosed,
             noProject: t.scenarios.shelves.noProject,
           })}
           onPick={(id) => {

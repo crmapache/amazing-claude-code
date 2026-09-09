@@ -424,10 +424,12 @@ export const Scenarios = ({
           options={shelfOptions(repositories, {
             shared: t.scenarios.editor.mine,
             opensProject: t.mobile.scenarios.opensProject,
+            closed: t.mobile.sessions.projectClosed,
             noProject: t.scenarios.shelves.noProject,
           })}
           onPick={(id) => {
             const repo = repositoryOfOption(id, repositories)
+            if (repo?.closed && !repo.canOpen) return
             if (!repo) {
               setSheet({ ...sheet, shelf: { scope: 'user' }, picking: false })
             } else if (repo.closed) {
@@ -464,12 +466,20 @@ export const Scenarios = ({
             label: one.name,
             // A closed project's shelf is read through its hub, and the hub comes with the window: picking
             // one opens the project in the IDE first, the way "Open & start" does, and the row says so.
-            hint: one.closed ? t.mobile.scenarios.opensProject : undefined,
+            // A machine too old to open one that way says the plain truth instead and is not offered:
+            // this client is served by the relay and outruns the plugin behind it (see CAP_OPEN_BARE).
+            hint: one.closed
+              ? one.canOpen
+                ? t.mobile.scenarios.opensProject
+                : t.mobile.sessions.projectClosed
+              : undefined,
+            disabled: one.closed && !one.canOpen,
           }))}
           onPick={(id) => {
             const chosen = repositories[Number(id)]
             setSheet({ kind: 'none' })
             if (!chosen) return
+            if (chosen.closed && !chosen.canOpen) return
             if (chosen.closed) onOpenRepository(chosen, (key) => onPickRepository(chosen.agentId, key))
             else onPickRepository(chosen.agentId, chosen.projectKey)
           }}
