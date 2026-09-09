@@ -9,6 +9,24 @@ commits.
 
 ## [Unreleased]
 
+## [0.12.9] - 2026-09-09
+
+- Added: a claude.ai connector - Google Drive, Calendar, Gmail - can be signed in from the phone. Press "Authenticate" on its row and the row turns into a link that opens the sign-in on claude.ai; nothing comes back to the machine with the IDE, which is what makes it possible. Any other server's sign-in still ends in a browser on that machine, because Claude Code catches the browser's answer on a port of its own there, and those rows keep saying "at the desk".
+- Fixed: on the phone, "MCP servers", "Plugins" and "Claude accounts" opened straight from the list of projects stayed on "Loading…" for good. Their answers travel as facts of a project, and a phone that had not entered a conversation of that project yet was listening to nothing. The screens now subscribe to the project on the way in, as the scenarios screen does.
+- Fixed: dictation on the phone - after several dictations in a row the button went red and nothing was written. Each press opened its own audio context at 16 kHz and closed it afterwards, and on iOS an audio context is a hardware session: the third or fourth in a row came up silent or not at all. There is one context per page now, opened inside the press at the device's own rate and brought down to 16 kHz by the plugin itself. And a dictation that cannot go anywhere says so instead of staying red: a token that does not come back in eight seconds, a microphone the system keeps muted, a track it takes away.
+- Fixed: a fresh chat on an "Opus 1M" model showed its context as 0 of 200K, and a fresh chat on Sonnet after a day on the large model showed 0 of 1M. Until Claude Code names the window itself, the panel guessed it from the account's last answer - the largest window of every model that account had run - which is a fact about the account rather than about the tab. The model's own name decides now: "1M" is a million, Opus, Sonnet and Haiku are two hundred thousand.
+- Added: every sheet on the phone closes with a pull down - the handle at its top promised that gesture all along. From the list inside a sheet the pull only counts while the list stands at its top; anywhere else a downward move scrolls the list, as it should.
+- Changed: the "+" on the phone's tab strip opens a new chat straight away, as it does at the desk. It used to open the list of conversations first, with a note about forks under it, and that read as the way to make a fork. A fork of the whole conversation is now a button of its own in that list - tap the open tab to get there - beside "New chat"; a fork from one message stays in the message's own sheet.
+- Fixed: the search on the phone sat under the clock and the battery, with its close button under the battery indicator, and tapping the field zoomed the whole page in and cut its right edge off. The window now leaves room for the status bar, and every field on the phone - the search, the forms, the scenario editor - is sixteen pixels, which is the size below which iOS zooms in and never zooms back.
+- Changed: the phone's scenarios put the shelf every project shares first, and the repository's shelf under a row that names the repository and changes it. "In this repository" said nothing from a sofa: the screen is opened from a menu, and which project it was opened over is a line in a header scrolled past. Projects the IDE does not hold open are listed greyed with the reason rather than left out.
+- Changed: "Kept in" - in the phone's editor and when writing a scenario from a sentence - is a row of chips: "Every project" first and by default, then each repository by name. A scenario written from a sentence for a repository is written by reading that repository, whichever project the screen was opened over, and one moved to another repository leaves its old shelf.
+- Fixed: the run's screen on the phone stood a second margin in from every other screen, and the way on from a finished run - "Continue in a chat" - looked like a note rather than a button. Same margins as everywhere now, and the button is a button.
+- Fixed: the hour and minute pickers in the phone's "Schedule a run" sheet drew black arrows on a black field. The browser drew them for a white page; the phone's page is dark and now says so to every control the browser draws itself.
+- Fixed: an open stage in the phone's editor had four different left edges - the name field, the repeat chips, the cards and the two buttons each brought their own inset. One inset for all of them now, and the cards stand in a box of their own.
+- Fixed: on the phone the accounts screen ran to the edges of the screen, and so did the MCP and plugins screens. They have the same gutter as every other screen now.
+- Fixed: at the desk, in a card's prompt, the lit names slid off the words from the third line down once the prompt grew past the field. The field's scrollbar takes a little width and the backdrop's did not, so the two wrapped their lines a scrollbar apart. Both keep the scrollbar's lane now, whether or not there is anything to scroll.
+- Changed: a scenario written from a sentence is written on the model and the effort your new chats start with, no lower than Sonnet at xhigh - Haiku at low wrote a slot's name into the slot's brackets, which is the kind of mistake that costs a night. It is also told which skills and slash commands this machine has and how each may be called: a skill that only a person may start goes in as the first line of a card's prompt, the way a person would type it, instead of being asked for in words the agent is refused on. The writer may read the skills it names, and has twice the steps and twice the time to do it.
+
 ## [0.12.8] - 2026-09-09
 
 - Added: what a new chat starts with is now yours to set - "New chats" in the settings, where the model, the effort and the permission mode stand together. Each of the first two also offers "As last chosen", which is what the panel always did: a tab began on whatever you last switched a chip to. That was the only way to say it, and it worked backwards - switching to Haiku once for a cheap question quietly decided what the next conversation would run on. Pin a model and a one-off switch stays a one-off switch.
@@ -623,7 +641,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.8...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.9...HEAD
+[0.12.9]: https://github.com/crmapache/amazing-claude-code/compare/0.12.8...0.12.9
 [0.12.8]: https://github.com/crmapache/amazing-claude-code/compare/0.12.7...0.12.8
 [0.12.7]: https://github.com/crmapache/amazing-claude-code/compare/0.12.6...0.12.7
 [0.12.6]: https://github.com/crmapache/amazing-claude-code/compare/0.12.5...0.12.6
