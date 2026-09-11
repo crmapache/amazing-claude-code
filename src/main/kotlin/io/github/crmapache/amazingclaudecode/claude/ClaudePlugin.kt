@@ -66,10 +66,19 @@ internal object ClaudePlugin {
                 return@run
             }
 
-            onResult(
-                parsed["installed"]?.jsonArray.orEmpty().mapNotNull(::parseInstalled),
-                parsed["available"]?.jsonArray.orEmpty().mapNotNull(::parseAvailable),
-            )
+            val raw = parsed["installed"]?.jsonArray.orEmpty()
+            val installed = raw.mapNotNull(::parseInstalled)
+            // The same guard as in [installed] below, because this is the second door to the same
+            // cache: the plugins screen and every action on a plugin come through here and write the
+            // list the "/" hint is built from (see ProjectCatalog.sendPlugins). Guarded on one door
+            // only, a renamed field in some later CLI would still take every plugin's commands out of
+            // the hint - just by the other road, and without a word to say why.
+            if (unreadable(raw.size, installed.size)) {
+                onError("Couldn't read any plugin out of the list.")
+                return@run
+            }
+
+            onResult(installed, parsed["available"]?.jsonArray.orEmpty().mapNotNull(::parseAvailable))
         }
     }
 
@@ -90,9 +99,26 @@ internal object ClaudePlugin {
                 return@run
             }
 
-            onResult(parsed.mapNotNull(::parseInstalled))
+            val installed = parsed.mapNotNull(::parseInstalled)
+            if (unreadable(parsed.size, installed.size)) {
+                onError("Couldn't read any plugin out of the list.")
+                return@run
+            }
+
+            onResult(installed)
         }
     }
+
+    /**
+     * An answer with entries out of which not one could be read is a shape we did not expect rather
+     * than an empty list. Told apart, the caller may believe an empty answer (see
+     * ProjectCatalog.installedPlugins); folded together, a renamed field in some later CLI would
+     * quietly take every plugin's commands out of the "/" hint and leave nothing to say why.
+     *
+     * One predicate for both doors on purpose: the guard used to sit on one of them, and which door an
+     * answer arrives through is not something the hint should depend on.
+     */
+    internal fun unreadable(entries: Int, read: Int): Boolean = entries > 0 && read == 0
 
     fun marketplaces(
         workingDirectory: String?,
@@ -154,7 +180,7 @@ internal object ClaudePlugin {
     private fun formatResult(output: String): String =
         output.trim().replace(Regex("""\s*([✔✘])"""), "\n$1").trim()
 
-    private fun parseInstalled(element: JsonElement): InstalledPlugin? {
+    internal fun parseInstalled(element: JsonElement): InstalledPlugin? {
         val obj = element as? JsonObject ?: return null
         val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return null
 

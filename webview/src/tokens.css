@@ -104,10 +104,6 @@
   --acc-ch-green: 77 194 134;
   --acc-ch-orchid: 214 145 196;
   --acc-ch-mist: 148 158 178;
-  /* The channels of --acc-c-ink-18, the one paint the gauges wear in the no-stress mode. Written out
-     rather than derived: the ladder above is what the transparencies are made of, and ink has no
-     channel entry of its own. */
-  --acc-ch-calm: 165 173 192;
   --acc-ch-shade: 8 10 16;
 
   /* ======================================================================
@@ -223,10 +219,10 @@
      paceColor/contextColor in feed/usage.ts, which name these and nothing else).
 
      A layer of its own over the paints above rather than the paints themselves, and numbered rather
-     than named by colour, because one switch collapses the whole ladder onto one calm tone (see
+     than named by colour, because one setting draws the whole ladder towards one calm tone (see
      [data-acc-calm] at the foot of this file). Named "green" and "bad", the roles would go on
-     promising a colour the mode has just taken away, and every gauge would have to be taught about
-     the mode one by one instead. */
+     promising a colour the mode has just damped, and every gauge would have to be taught about the
+     mode one by one instead. */
   --acc-gauge-1: var(--acc-meter-green);
   --acc-gauge-2: var(--acc-warn);
   --acc-gauge-3: var(--acc-orange);
@@ -466,12 +462,13 @@
 }
 
 /*
- * The no-stress colour mode: the gauges stop shouting.
+ * The no-stress colour mode: the gauges stop shouting, by as much as one asks them to.
  *
- * The ladder of four collapses onto one calm tone - a reading at 87% is drawn exactly like a reading at
- * 12%, only longer. What is measured stays on the screen; what is dropped is the verdict on it. Asked
- * for because the red is read as an alarm all day long by somebody who is simply working, and the panel
- * sits in the corner of the eye from morning till night.
+ * The ladder of four is drawn towards one calm tone, and how far is a figure a person sets - all the way
+ * at nought, where a reading at 87% is painted exactly like a reading at 12% and only longer. What is
+ * measured stays on the screen; what fades is the verdict on it. Asked for because the red is read as an
+ * alarm all day long by somebody who is simply working, and the panel sits in the corner of the eye from
+ * morning till night - and made a slider rather than a switch because the answer is rarely either end.
  *
  * A step lighter than the panel's dimmest text rather than grey on grey: an instrument nobody can read
  * is not calmer than a red one, it is only useless. And the only paints touched are the gauges' own -
@@ -479,23 +476,43 @@
  *
  * Here rather than in the components: the whole feature is a swap of four roles, and every gauge that
  * ever gets added is drawn by the mode without being told about it. The panel and the phone alike put
- * the attribute on the root (see hooks/useCalmColors.ts).
+ * the attribute and the figure on the root (see hooks/useCalmColors.ts) - and the attribute stands ONLY
+ * below the full hundred, so a panel nobody has calmed wears the literals of :root themselves rather
+ * than a round trip through a mix that has nothing to mix.
  */
 [data-acc-calm] {
+  /* Where the ladder is drawn to. */
   --acc-gauge-calm: var(--acc-c-ink-18);
 
-  --acc-gauge-1: var(--acc-gauge-calm);
-  --acc-gauge-2: var(--acc-gauge-calm);
-  --acc-gauge-3: var(--acc-gauge-calm);
-  --acc-gauge-4: var(--acc-gauge-calm);
-  --acc-gauge-1-35: rgb(var(--acc-ch-calm) / 35%);
-  --acc-gauge-1-80: rgb(var(--acc-ch-calm) / 80%);
-  --acc-gauge-2-35: var(--acc-gauge-1-35);
-  --acc-gauge-2-80: var(--acc-gauge-1-80);
-  --acc-gauge-3-35: var(--acc-gauge-1-35);
-  --acc-gauge-3-80: var(--acc-gauge-1-80);
-  --acc-gauge-4-35: var(--acc-gauge-1-35);
-  --acc-gauge-4-80: var(--acc-gauge-1-80);
+  /*
+   * How much of the paint survives. In oklab, and that is the whole of why the four steps can be trusted
+   * to fade together: the four colours and the calm tone sit at nearly one lightness, and oklab holds
+   * lightness along the line - so at a low figure all four read as ONE grey rather than as four different
+   * ones. (oklch would turn the hue instead and take the green through teal on its way.)
+   *
+   * The fallback is not politeness. A custom property that failed to arrive makes the whole declaration
+   * invalid at computed-value time, --acc-gauge-1 becomes guaranteed-invalid, and the gauge loses its
+   * paint altogether instead of falling back to the ladder.
+   */
+  --acc-gauge-1: color-mix(in oklab, var(--acc-meter-green) var(--acc-gauge-vivid, 100%), var(--acc-gauge-calm));
+  --acc-gauge-2: color-mix(in oklab, var(--acc-warn) var(--acc-gauge-vivid, 100%), var(--acc-gauge-calm));
+  --acc-gauge-3: color-mix(in oklab, var(--acc-orange) var(--acc-gauge-vivid, 100%), var(--acc-gauge-calm));
+  --acc-gauge-4: color-mix(in oklab, var(--acc-bad-light) var(--acc-gauge-vivid, 100%), var(--acc-gauge-calm));
+
+  /*
+   * The halo is made out of the paint above rather than mixed a second time out of channels: written this
+   * way the two intensities are said once each and cannot drift from the steps they belong to. And here
+   * srgb rather than oklab, because this is not a mix at all - color-mix(in srgb, X 35%, transparent) IS
+   * rgb(X / 35%), to the bit: transparent contributes nothing once the alphas are premultiplied.
+   */
+  --acc-gauge-1-35: color-mix(in srgb, var(--acc-gauge-1) 35%, transparent);
+  --acc-gauge-1-80: color-mix(in srgb, var(--acc-gauge-1) 80%, transparent);
+  --acc-gauge-2-35: color-mix(in srgb, var(--acc-gauge-2) 35%, transparent);
+  --acc-gauge-2-80: color-mix(in srgb, var(--acc-gauge-2) 80%, transparent);
+  --acc-gauge-3-35: color-mix(in srgb, var(--acc-gauge-3) 35%, transparent);
+  --acc-gauge-3-80: color-mix(in srgb, var(--acc-gauge-3) 80%, transparent);
+  --acc-gauge-4-35: color-mix(in srgb, var(--acc-gauge-4) 35%, transparent);
+  --acc-gauge-4-80: color-mix(in srgb, var(--acc-gauge-4) 80%, transparent);
 }
 
 /*

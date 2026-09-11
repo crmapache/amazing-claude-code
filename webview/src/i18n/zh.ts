@@ -70,7 +70,7 @@ export const zh: Dict = {
   settings: {
     rows: {
       sounds: { label: '提示音', sub: '面板需要你的时候' },
-      calmColors: { label: '柔和配色', sub: '仪表只用一种色调' },
+      calmColors: { label: '柔和配色', sub: '仪表保留多少颜色' },
       newChat: { label: '新对话', sub: '模型、思考强度和权限模式' },
       composerLayout: { label: '输入框布局', sub: '输入框放在哪里' },
       pasteCollapse: { label: '粘贴的文本', sub: '何时把粘贴折叠成小卡片' },
@@ -130,11 +130,11 @@ export const zh: Dict = {
 
   calmColors: {
     sample: '每一级各一个仪表',
-    label: '柔和配色',
-    hint: '不管读数是多少，都是一种颜色',
+    label: '仪表的颜色',
+    hint: '100% 是完整色阶，0% 只用一种颜色',
     keeps: '其他什么都不变：错误仍是红色，权限请求还是原样。那些是已经发生的事，不是情绪。',
-    on: '开',
-    off: '关',
+    full: '完整颜色',
+    none: '一种颜色',
   },
 
   history: {
@@ -282,7 +282,6 @@ export const zh: Dict = {
     cards: (n) => `${n} 张卡片`,
     hasLoop: '有循环',
     asksFor: (names: string): string => `会问：${names}`,
-    lastUsed: (value: string): string => `上次用的是 ${value}`,
     besideGoing: (n: number): string => `会在已经在跑的 ${n} 次旁边再起一次。它们都在同一份工作副本上。`,
     pastRuns: '过往运行',
     newestFirst: '最新的在前',
@@ -414,7 +413,7 @@ export const zh: Dict = {
       step: '步骤',
       head: '主线程',
       missing: '这台机器上没有这一步的记录。',
-      truncated: '这是结尾 - 开头没有显示。',
+      main: '主线程',
     },
     editor: {
       title: '场景',
@@ -507,7 +506,8 @@ export const zh: Dict = {
   pasteCollapse: {
     note: '长粘贴会折叠成一张小卡片，免得大段文字塞满输入框。行数按它在输入框里实际会占几行来算，所以粘贴成一整行的长文本也会折叠。两种方式都不会丢内容 - 折叠后的粘贴完整保留原文，点它上面的铅笔按钮就能展开回输入框。',
     never: '从不折叠',
-    neverSub: '粘贴的内容始终以纯文本留在输入框里',
+    neverSub: (thousands: number): string =>
+      `粘贴的内容留在输入框里，超过 ${thousands},000 个字符的除外`,
     from: (lines) => `${lines} 行起`,
     foldLabel: '长粘贴折叠',
     foldSub: (min, max) => `从多少行起 - ${min} 到 ${max}`,
@@ -744,6 +744,8 @@ export const zh: Dict = {
     /** The sign-in could not even start - see the `authProblem` message. */
     noDrawer: '面板打不开这个账号存放登录凭据的地方，登录没有落脚处。请在下面切换到别的账号。',
     noTerminal: '这个 IDE 没有打开终端，而登录正是在终端里进行的。',
+    switchAccount: '切换账号',
+    sendAgainAfter: '在终端里完成登录，然后重新发送消息。',
   },
 
   stream: {
@@ -899,6 +901,11 @@ export const zh: Dict = {
     },
 
     modelSwitch: { label: '模型', note: '这是 Claude Code 自己换的，不是你' },
+    modelStuck: {
+      label: '模型',
+      note: (running) => `已选择，但回答仍然来自 ${running}`,
+      hint: '这次切换没有传到 Claude Code，再选一次模型试试。',
+    },
 
     crash: {
       label: '会话',
@@ -1212,6 +1219,8 @@ export const zh: Dict = {
       reach: {
         connecting: '正在连接…',
         asleep: '和中继连上了，但没有 IDE 应答。',
+        silent: '好几分钟没有任何应答了。机器可能关着，也可能在那边撤销了本设备的访问。',
+        revoked: '那台 IDE 已经不认识本设备了。重新配对，或者忘掉它。',
         elsewhere: '另一个标签页或已安装的应用里也开着 - 连接由那一份持有。',
         reconnecting: '正在重连… 下面的列表可能不是最新的。',
         offline: '连不上中继。什么都不会丢 - 连接会自己恢复。',
@@ -1219,6 +1228,8 @@ export const zh: Dict = {
       agent: {
         connecting: '连接中…',
         asleep: '没有应答',
+        silent: '很久没有应答',
+        revoked: '访问已撤销',
         elsewhere: '在别处打开',
         reconnecting: '重连中…',
         offline: '离线',
@@ -1278,7 +1289,6 @@ export const zh: Dict = {
       start: {
         title: '现在就跑',
         required: '必填',
-        lastUsed: (value: string): string => `上次用的是 ${value}`,
         beside: (n: number): string => `会在已经在跑的 ${n} 次旁边再起一次。它们都在同一份工作副本上。`,
         run: '跑起来',
       },
@@ -1447,6 +1457,7 @@ export const zh: Dict = {
     effortHint: (effort) => `思考强度：${effort}`,
     modelHint: (model) => `模型：${model}`,
     modelHintSwitched: (model, from) => `模型：${model} - Claude Code 自己从 ${from} 切了过来`,
+    modelHintStuck: (model, picked) => `模型：${model} - 选的是 ${picked}，没有切过去`,
     modeHint: (mode) => `权限模式：${mode}`,
     sessionLimit: '5 小时额度',
     weekLimit: '每周额度',

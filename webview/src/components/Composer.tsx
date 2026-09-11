@@ -23,6 +23,8 @@ import {
   argumentQuery,
   captureCommand,
   captureWrittenCommand,
+  chosenRow,
+  enterSends,
   commandChip,
   commandNameBeforeArgument,
   matchArguments,
@@ -32,6 +34,7 @@ import {
   requiresArgument,
   slashQuery as slashQueryFromText,
   type CommandEntry,
+  type HeldChoice,
 } from '../feed/slash'
 import { clipboardHtml, clipboardTextOf, clipboardTokens, tokensText } from '../feed/tokens'
 import type { Chip, DraftEdit, UserToken } from '../feed/types'
@@ -395,6 +398,8 @@ interface ComposerProps {
   model?: string
   /** The choice the conversation has been moved away from, when that happened - see Selectors. */
   switchedFrom?: string
+  /** The choice that never came into force, while that holds - see Selectors. */
+  stuckPick?: string
   effort?: string
   mode?: string
   onOpenSelector?: (kind: SelectorKind, anchor: Anchor) => void
@@ -465,6 +470,7 @@ export const Composer = ({
   layout = 'bottom',
   model,
   switchedFrom,
+  stuckPick,
   effort,
   mode,
   onOpenSelector,
@@ -493,7 +499,8 @@ export const Composer = ({
    */
   const [dropping, setDropping] = useState(false)
   const [dismissed, setDismissed] = useState(false)
-  const [highlight, setHighlight] = useState(0)
+  /** Which row of the hint is chosen, by name rather than by place - see chosenRow in feed/slash. */
+  const [held, setHeld] = useState<HeldChoice | null>(null)
   const input = useRef<HTMLDivElement>(null)
   /** The origin for the overlaid argument hint - the hint itself is not part of the field. */
   const box = useRef<HTMLDivElement>(null)
@@ -614,11 +621,16 @@ export const Composer = ({
     if (focusToken > 0) input.current?.focus()
   }, [focusToken])
 
-  // Any edit opens the hint again and returns the choice to the start: the list has become a different
-  // one, and holding the previous place in it serves nothing.
+  // Any edit opens the hint again and puts the choice back at the top. Unconditional on purpose, and
+  // this is the place for it: a list arriving from the IDE - which now happens every couple of seconds,
+  // since it looks at the disk that often - does not touch the field, so it cannot get here and cannot
+  // move the choice out from under a finger already on the arrow keys. Keyed on the list the choice was
+  // made in instead, the reset skipped the one case where the text comes back to what it already was:
+  // typed a name, stepped down a row, deleted a letter, typed it again - and the old choice came back
+  // with it. Which row is chosen also decides what Enter does (see enterSends), so it is not decoration.
   useEffect(() => {
     setDismissed(false)
-    setHighlight(0)
+    setHeld(null)
   }, [tokens])
 
   /**
@@ -749,6 +761,40 @@ export const Composer = ({
   const suggestionItems: CommandEntry[] = isFileSuggest
     ? fileMatches.map((path) => ({ id: path, hint: '', group: 'project' as const }))
     : matches
+
+  /**
+   * What this list was built from - the choice is held against it, so that typing returns the choice to
+   * the top and a list arriving on its own does not. Also tells the three lists apart: a command's name
+   * is no answer inside a list of file paths.
+   */
+  const listKey = isFileSuggest ? `@${atText}` : argument ? `${argument.command}\u0000${argument.query}` : `/${query}`
+
+  /**
+   * Resolved once, here, and read by both the row that lights up and the key that runs it. Two
+   * resolutions is how they came to disagree: a position out of range left nothing highlighted while
+   * Enter quietly ran the first row.
+   */
+  const highlight = chosenRow(suggestionItems, held, listKey)
+  /**
+   * One step along the list, resolved against the choice as it stands at the moment of the write rather
+   * than against the one the drawn frame is showing. While every press gets a frame of its own the two
+   * are the same; two presses handled in one go - an autorepeat the browser coalesced, a test sending
+   * two events in a row - both read the same starting row, and the second press vanished.
+   */
+  const step = (delta: number) => {
+    setHeld((current) => {
+      const from = chosenRow(suggestionItems, current, listKey)
+      const row = suggestionItems[(from + delta + suggestionItems.length) % suggestionItems.length]
+
+      return row ? { id: row.id, list: listKey, by: 'key' } : current
+    })
+  }
+
+  /** The mouse lights a row too - it just does not decide what Enter means (see handPicked). */
+  const hover = (at: number) => {
+    const row = suggestionItems[at]
+    if (row) setHeld({ id: row.id, list: listKey, by: 'pointer' })
+  }
 
   const suggesting = suggestionItems.length > 0
   const showSlash = argument === null && !isFileSuggest
@@ -1514,13 +1560,13 @@ export const Composer = ({
     if (suggesting) {
       if (event.key === 'ArrowDown') {
         event.preventDefault()
-        setHighlight((current) => (current + 1) % suggestionItems.length)
+        step(1)
         return
       }
 
       if (event.key === 'ArrowUp') {
         event.preventDefault()
-        setHighlight((current) => (current - 1 + suggestionItems.length) % suggestionItems.length)
+        step(-1)
         return
       }
 
@@ -1528,18 +1574,28 @@ export const Composer = ({
       // nothing, Enter has to send. But not a bare command name that takes an argument: sending it
       // without a value is not allowed, and Enter has to bring it as far as the hint over the argument
       // itself. A file has no such case - the choice there is always explicit.
-      const exact = isFileSuggest
+      //
+      // Read off what is in the field rather than off how many rows the list has. By the count, a skill
+      // appearing on disk beside a command of a similar name turned the same Enter from "send" into
+      // "substitute" - and with the disk looked at every couple of seconds that can now happen between
+      // the thought and the press.
+      const typedInFull = isFileSuggest
         ? false
         : argument
-          ? argumentMatches.length === 1 && argumentMatches[0]?.id === argument.query
-          : matches.length === 1 && matches[0]?.id === query && !requiresArgument(matches[0].id)
+          ? argument.options.some((option) => option.id === argument.query)
+          : query !== null && commands.some((entry) => entry.id === query) && !requiresArgument(query)
+
+      // A row stepped onto with the arrows outranks the rule above - see enterSends in feed/slash,
+      // where it lives with its test because it breaks silently: on screen one row is lit, and another
+      // one runs.
+      const sends = enterSends(typedInFull, held, listKey)
 
       // The Enter the hint owns is the bare one. Held with Cmd/Ctrl it is the send key of the modEnter
       // setting, and taking it for the hint would leave that setting unable to send while a list is open -
       // and the list is open for most of what one types after a slash.
       const bare = !event.metaKey && !event.ctrlKey
 
-      if ((event.key === 'Enter' && bare && !exact) || event.key === 'Tab') {
+      if ((event.key === 'Enter' && bare && !sends) || event.key === 'Tab') {
         event.preventDefault()
         const picked = suggestionItems[highlight] ?? suggestionItems[0]
         if (picked) {
@@ -2007,7 +2063,7 @@ export const Composer = ({
       commands={suggestionItems}
       highlight={highlight}
       onPick={isFileSuggest ? (picked) => insertFileReference(picked.id) : insert}
-      onHighlight={setHighlight}
+      onHighlight={hover}
       showSlash={showSlash}
     />
   ) : null
@@ -2049,6 +2105,7 @@ export const Composer = ({
               <Selectors
                 model={model}
                 switchedFrom={switchedFrom}
+                stuckPick={stuckPick}
                 effort={effort ?? ''}
                 mode={mode ?? ''}
                 models={models}
@@ -2118,6 +2175,7 @@ export const Composer = ({
                   <Selectors
                     model={model}
                     switchedFrom={switchedFrom}
+                    stuckPick={stuckPick}
                     effort={effort ?? ''}
                     mode={mode ?? ''}
                     models={models}

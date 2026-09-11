@@ -163,6 +163,14 @@ export interface PanelTab {
    */
   color: string
   closeLabel: string
+  /**
+   * What its dot says, for the tabs that have something to say - a run of a scenario, and the hub over
+   * the runs of this project (see runDot in scenarios/runs.ts). Absent is the grey of the statistics,
+   * which is a screen rather than work and is never busy.
+   */
+  state?: SessionState
+  /** The word under the pointer for that dot. Empty leaves the dot without a hint at all. */
+  hint?: string
 }
 
 /** A stable empty default, so a header without such tabs does not rebuild its list on every draw. */
@@ -723,9 +731,14 @@ export const Header = ({
       }}
     >
       <span className={s.tabGroupBar} style={{ background: tab.color }} />
-      {/* No hint on this dot, unlike a conversation's: there the dot says what the tab is busy with, which
-          is written nowhere else, while here it would answer with the word standing next to it. */}
-      <span className={s.dot} />
+      {/* A run of a scenario is work, and its dot answers for it exactly as a conversation's does: the
+          word beside it is the name of the scenario, so the state is written nowhere else in the strip.
+          The statistics passes neither, and its dot stays grey and silent - a hint there would answer
+          with the word standing next to it. */}
+      <span
+        className={`${s.dot} ${DOT_CLASS[tab.state ?? 'idle']}`}
+        data-tooltip={tab.hint || undefined}
+      />
       <span className={s.tabTitle}>{tab.title}</span>
       <button
         type="button"

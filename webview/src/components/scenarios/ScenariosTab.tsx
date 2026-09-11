@@ -8,7 +8,7 @@ import type {
 } from '../../protocol'
 import { blankScenario } from '../../scenarios/blank'
 import { pastRuns, runningRuns } from '../../scenarios/runs'
-import { defaultHour, schedulesOf } from '../../scenarios/schedule'
+import { defaultHour } from '../../scenarios/schedule'
 import { timetableOf } from '../../scenarios/timetable'
 import { useT } from '../../i18n'
 import { Confirm } from '../Confirm'
@@ -206,8 +206,6 @@ export const ScenariosTab = ({
    * the two doors would each assemble it and drift apart on the first change to any of these defaults.
    */
   const askWhen = (scenario: Scenario, schedule?: ScenarioSchedule) => {
-    const last = schedule ?? schedulesOf(schedules, scenario)[0]
-
     openOver({
       kind: 'when',
       scenario,
@@ -223,10 +221,10 @@ export const ScenariosTab = ({
         repeat: schedule?.repeat ?? 'once',
         weekday: schedule?.weekday ?? 1,
       },
-      // The answers this arrangement already has; failing that, the ones the scenario's other
-      // arrangements or its last run were given - the same round of work against the same ticket is the
-      // commonest second one there is.
-      values: schedule?.inputs ?? last?.inputs ?? lastAnswers(runs, scenario),
+      // The answers this arrangement already has, and nothing else. A form that opens with somebody
+      // else's answers already in it is a form whose fields get sent without being read - and an
+      // arrangement raised every morning is the worst place for last week's ticket to hide.
+      values: schedule?.inputs ?? {},
     })
   }
 
@@ -242,9 +240,9 @@ export const ScenariosTab = ({
     openOver({
       kind: 'start',
       scenario,
-      // What the last run of this scenario was given: the same round of work against the same ticket is
-      // the commonest second run there is, and retyping it is the commonest reason not to.
-      values: lastAnswers(runs, scenario),
+      // Empty, always. Answers carried over from the last run look like answers somebody gave, and a
+      // run started against last week's ticket is work done in the wrong place before anybody notices.
+      values: {},
     })
   }
 
@@ -476,7 +474,6 @@ export const ScenariosTab = ({
         <StartForm
           scenario={over.scenario}
           values={over.values}
-          last={lastAnswers(runs, over.scenario)}
           going={going.length}
           onChange={(values) => openOver({ ...over, values })}
           onStart={() => {
@@ -548,10 +545,6 @@ export const ScenariosTab = ({
     </div>
   )
 }
-
-/** What the last run of this scenario was given - the commonest answer to the next run's questions. */
-const lastAnswers = (runs: ScenarioRunSummary[], scenario: Scenario): Record<string, string> =>
-  runs.find((run) => run.scenarioId === scenario.id && run.scope === scenario.scope)?.inputs ?? {}
 
 /**
  * What the rounds of work in this project have cost since midnight.

@@ -107,7 +107,6 @@ export const ScenarioActionsSheet = ({
 export const StartSheet = ({
   scenario,
   values,
-  last,
   going,
   onChange,
   onRun,
@@ -115,7 +114,6 @@ export const StartSheet = ({
 }: {
   scenario: Scenario
   values: Record<string, string>
-  last: Record<string, string>
   /** How many runs are already going over this working copy - said before the button, not after. */
   going: number
   onChange: (values: Record<string, string>) => void
@@ -157,11 +155,6 @@ export const StartSheet = ({
             autoCorrect="off"
             onChange={(event) => onChange({ ...values, [input.name]: event.target.value })}
           />
-          {/* What the last run used, under the field rather than inside it: a placeholder that looks
-              like an answer is an answer somebody sends without meaning to. */}
-          {last[input.name] && last[input.name] !== (values[input.name] ?? '') ? (
-            <span className={m.formNote}>{t.mobile.scenarios.start.lastUsed(last[input.name])}</span>
-          ) : null}
         </div>
       ))}
 

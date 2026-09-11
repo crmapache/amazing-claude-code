@@ -140,9 +140,6 @@ export const Scenarios = ({
     schedule: timetableOf(schedules, list).count,
   }
 
-  const lastAnswers = (scenario: Scenario): Record<string, string> =>
-    (shelves?.past ?? []).find((run) => run.scenarioId === scenario.id && run.scope === scenario.scope)?.inputs ?? {}
-
   const shared = list.filter((one) => one.scope === 'user')
   const own = list.filter((one) => one.scope === 'project')
 
@@ -155,7 +152,7 @@ export const Scenarios = ({
       onRun={() =>
         scenario.inputs.length === 0
           ? onRun(scenario, {})
-          : setSheet({ kind: 'run', scenario, values: lastAnswers(scenario) })
+          : setSheet({ kind: 'run', scenario, values: {} })
       }
       onSchedule={() =>
         setSheet({
@@ -163,7 +160,7 @@ export const Scenarios = ({
           scenario,
           scheduleId: '',
           hour: { at: defaultHour(), repeat: 'once', weekday: 1 },
-          values: lastAnswers(scenario),
+          values: {},
         })
       }
     />
@@ -328,7 +325,7 @@ export const Scenarios = ({
             const scenario = sheet.scenario
             setSheet({ kind: 'none' })
             if (scenario.inputs.length === 0) onRun(scenario, {})
-            else setSheet({ kind: 'run', scenario, values: lastAnswers(scenario) })
+            else setSheet({ kind: 'run', scenario, values: {} })
           }}
           onSchedule={() =>
             setSheet({
@@ -336,7 +333,7 @@ export const Scenarios = ({
               scenario: sheet.scenario,
               scheduleId: '',
               hour: { at: defaultHour(), repeat: 'once', weekday: 1 },
-              values: lastAnswers(sheet.scenario),
+              values: {},
             })
           }
           onEdit={() => {
@@ -359,7 +356,6 @@ export const Scenarios = ({
         <StartSheet
           scenario={sheet.scenario}
           values={sheet.values}
-          last={lastAnswers(sheet.scenario)}
           going={going.length}
           onChange={(values) => setSheet({ ...sheet, values })}
           onRun={() => {

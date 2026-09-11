@@ -151,6 +151,28 @@ export interface PanelState {
    * still announced.
    */
   ownSwap?: boolean
+  /**
+   * Since that pick, a request that could carry it has actually begun - so the next signature is a
+   * verdict on it rather than an echo of the one in flight.
+   *
+   * Without this there is nothing to judge a pick by: while the old request keeps answering, a signature
+   * naming the model being left proves nothing at all. Two things raise it, and both mean "whatever comes
+   * next is a new request": a tool call that has come back (the agent goes to the model again with its
+   * result) and a turn of one's own beginning. Measured against a live CLI 2.1.263: a model set in the
+   * middle of a turn is taken at once, the request in flight answers on the old one, and the very next
+   * step - straight after the tool result - is signed by the new model, about 2.6s later.
+   */
+  ownSwapDue?: boolean
+  /**
+   * The model that was picked and never arrived, while the conversation keeps answering on another one.
+   *
+   * The other half of [ownSwap]: silence about a pick of one's own is right only while the pick is on its
+   * way. A pick that never took is exactly the case the silence used to swallow - the panel showed one
+   * model, Claude Code worked on another, and nothing on the screen said so (recorded live: Fable picked
+   * mid-turn, every answer that hour signed by Opus). It lights the accent on the MODEL button and puts a
+   * row in the feed, and it is cleared by the next pick or by the picked model finally arriving.
+   */
+  stuckPick?: string
   project?: PanelProject
   usage: Required<AgentUsage>
   /**

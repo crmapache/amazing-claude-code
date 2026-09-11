@@ -148,6 +148,31 @@ const SHARED_WITH_ENGLISH: Record<string, Locale[]> = {
   'mobile.scenarios.repository': ['de'],
 }
 
+/**
+ * The one line on the settings screen that carries a number out of the code rather than a word: the size
+ * past which a paste folds whatever the setting says.
+ *
+ * The number counts CHARACTERS (see PASTE_ALWAYS_FOLDS_CHARS - what it guards is what the browser holds
+ * in an editable node, and that costs the same per character in every alphabet). Written as kilobytes,
+ * as it was, the line was true of English alone: a kilobyte of Russian or Chinese is two or three times
+ * fewer characters, so the promised hundred was two or three hundred - on a line whose whole purpose is
+ * to keep the exception from reading as a setting that quietly does not work.
+ */
+describe('the size guard on the paste screen', () => {
+  // Without word boundaries on purpose: \b is an ASCII rule, and against Cyrillic it matches nothing at
+  // all - the first draft of this test passed happily over "КБ". Spelled out per language rather than
+  // by one clever pattern: a unit is a word, and the four alphabets here write it four ways.
+  const SIZE_UNITS = /kb|mb|кб|мб|ko(?![a-z])|キロバイト|メガバイト|千字节|兆字节|킬로바이트|메가바이트/i
+
+  for (const { id } of LOCALES) {
+    it(`${id} says it in characters rather than in bytes`, () => {
+      const dictionary = DICTIONARIES[id] as unknown as typeof en
+
+      expect(dictionary.pasteCollapse.neverSub(100)).not.toMatch(SIZE_UNITS)
+    })
+  }
+})
+
 describe('a language that is left untranslated', () => {
   for (const { id } of LOCALES) {
     if (id === 'en') continue

@@ -223,8 +223,8 @@ internal object RemoteCommands {
          * `scenarioDraft` and `scenarioDraftCancel` are a model writing one out of a sentence (a run
          * with read-only tools inside the project - see ScenarioAuthor); `scenarioRun` is play;
          * `scenarioSchedule` and `scenarioUnschedule` are the hours; `scenarioRunDelete` is the history;
-         * and `scenarioLog` is what one step actually said, cut to the frame's budget on the way out
-         * (see RemoteFeed.trimmedLog) rather than refused for being large.
+         * and `scenarioLog` is what one step actually said, handed over a page at a time at the size a
+         * phone can carry (see ScenarioDesk.sendLog) rather than refused for being large.
          *
          * The two destructive ones - deleting a scenario, stopping a run - are asked about first on the
          * screen that offers them (see mobile/screens/Scenarios).
@@ -318,9 +318,9 @@ internal object RemoteCommands {
          */
         "setSendKey",
         /**
-         * The no-stress colour mode - a machine-wide setting beside the ones above, and settled the same
-         * way as the language below it: the phone obeys it without being able to set it. It is handed the
-         * mode as a fact of the project (see RemoteFeed), so somebody who switched the red off at the desk
+         * How much colour the gauges keep - a machine-wide setting beside the ones above, and settled the
+         * same way as the language below it: the phone obeys it without being able to set it. It is handed
+         * the figure as a fact of the project (see RemoteFeed), so somebody who damped the red at the desk
          * does not meet it again on the sofa.
          */
         "setCalmColors",

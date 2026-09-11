@@ -96,22 +96,31 @@ internal class RelayLink(
      * everything goes through this one place rather than from whichever thread produced the frame.
      */
     @Synchronized
-    fun flush(resyncFrames: () -> List<ByteArray>) {
+    fun flush(resyncFrame: (String) -> ByteArray?) {
         val live = socket.get() ?: return
+        val waiting = outbox.drain(resyncFrame)
 
-        for (frame in outbox.drain(resyncFrames)) {
+        for ((index, item) in waiting.withIndex()) {
             // A frame over the ceiling is one the relay will refuse anyway, and now that it refuses by
             // closing the socket rather than by dropping the message, sending it would cost every
             // device on this line a reconnect. Dropped here, the outcome is the one it always was -
             // that frame does not arrive - minus the collateral.
-            if (frame.size > MAX_FRAME_BYTES) {
-                thisLogger().info("A frame of ${frame.size} bytes is over what the relay takes - dropped")
+            if (item.frame.size > MAX_FRAME_BYTES) {
+                thisLogger().info("A frame of ${item.frame.size} bytes is over what the relay takes - dropped")
                 continue
             }
 
-            runCatching { live.sendBinary(ByteBuffer.wrap(frame), true).join() }
+            runCatching { live.sendBinary(ByteBuffer.wrap(item.frame), true).join() }
                 .onFailure {
                     thisLogger().info("The relay would not take a frame: ${it.message}")
+
+                    // Everything from the one that failed onwards goes back rather than out of
+                    // existence. The queue was already emptied to build this list, so an early return
+                    // used to throw the rest of it away in silence - and the ordinary cause is not a
+                    // dead line at all but a send that overlapped the heartbeat's ping, which the JDK's
+                    // client refuses outright. A conversation quietly missing a minute of itself, on a
+                    // connection that never looked broken, is the worst way for this to fail.
+                    outbox.putBack(waiting.subList(index, waiting.size))
                     return
                 }
         }

@@ -1,4 +1,4 @@
-import type { Scenario, ScenarioRun, ScenarioRunNote, ScenarioRunStep, ScenarioStage } from '../protocol'
+import type { ScenarioRun, ScenarioRunNote, ScenarioRunStep } from '../protocol'
 import { passesOf } from './rules'
 
 /**
@@ -197,14 +197,3 @@ export const finished = (state: ScenarioRun['state']): boolean =>
 /** Whether a step ever had its go at all. */
 export const begun = (state: ScenarioRunStep['state']): boolean => state !== 'waiting' && state !== 'skipped'
 
-/**
- * The card a step is a go at, out of the run's own snapshot.
- *
- * The snapshot rather than today's scenario: what a card said the night it ran is what its step was, and
- * a timeline drawn from the scenario as it stands now would put words into a card that never said them.
- */
-export const cardOf = (snapshot: Scenario, step: ScenarioRunStep): { stage: ScenarioStage; card: Scenario['stages'][number]['cards'][number] } | null => {
-  const stage = snapshot.stages.find((one) => one.id === step.stageId)
-  const card = stage?.cards.find((one) => one.id === step.cardId)
-  return stage && card ? { stage, card } : null
-}

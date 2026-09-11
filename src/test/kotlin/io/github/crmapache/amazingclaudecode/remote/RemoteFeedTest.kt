@@ -343,32 +343,11 @@ class RemoteFeedTest {
     }
 
     /*
-     * A step's conversation, cut from the END.
-     *
-     * This used to be refused outright, because a card that walked a repository leaves megabytes and an
-     * oversized frame is thrown away whole. Refusing was the wrong answer to a real problem: what
-     * somebody wants off a step at three in the morning is how it finished, which is the part that fits.
+     * A step's log has no test here any more, and its absence is the point: it is not cut on this road at
+     * all. The page is asked for at the size the asker can carry (ClaudeHistory.earlier with `local`, see
+     * ScenarioDesk.sendLog), because a page cut after the fact names a boundary its receiver never saw -
+     * and the next "load earlier" would then fetch the same events a second time.
      */
-    @Test
-    fun `a step's log is cut from the beginning and says so`() {
-        val event = """{"type":"assistant","text":"${"y".repeat(4000)}"}"""
-        val events = (1..40).joinToString(",") { event }
-        val body = """{"type":"scenarioLog","runId":"r1","key":"k","found":true,"truncated":false,"events":[$events]}"""
-
-        val out = RemoteFeed.forPhone(RemoteFeed.SCENARIO_LOG, body).message
-
-        assertTrue(out.length < body.length)
-        assertTrue(out.contains(""""truncated":true"""))
-        assertTrue(out.contains(""""runId":"r1""""))
-    }
-
-    /** A log that fits is left exactly as it was - including its own word about the beginning. */
-    @Test
-    fun `a short log travels whole`() {
-        val body = """{"type":"scenarioLog","runId":"r1","key":"k","found":true,"truncated":false,"events":[{"a":1}]}"""
-
-        assertEquals(body, RemoteFeed.forPhone(RemoteFeed.SCENARIO_LOG, body).message)
-    }
 
     /** Long enough to be recognisable in the output, and to be the weight the trimming is about. */
     private val LONG = "the whole of what this card says to its agent, at length"

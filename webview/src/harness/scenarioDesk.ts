@@ -604,39 +604,56 @@ const walk = (id: string, from = 0, startIn: 'run' | 'judge' = 'run'): void => {
 }
 
 /**
- * One step's log, as the events of its own conversation - the panel builds the feed out of them.
+ * How many pages of a step's log this desk pretends to hold. The last one has no cursor, so the mark
+ * over the feed goes and the beginning is genuinely on screen - the state worth seeing at least once.
+ */
+const LOG_PAGES = 3
+
+/**
+ * One page of a step's log, as the events of its own conversation - the panel builds the feed out of them.
  *
  * The "you" side of it is written in markdown, because that is how it comes in life: nobody types into a
  * scenario's conversation, and the longest thing on that side is a card's own report, handed on to the
- * head as the model wrote it. It is drawn as typed all the same, like any message in a chat.
+ * head as the model wrote it. It is drawn as typed all the same, like any message in a chat - under the
+ * label of the main thread, because that is who said it (see UserCard.userLabel).
+ *
+ * Every event carries a uuid, and without them there would be nothing to see here: the feed anchors the
+ * next request on the oldest one it holds, and a page of events with no uuid leaves the mark a caption
+ * that cannot be pressed (see noteOldest in feed/build.ts).
  */
-const logEvents = (title: string): AgentEvent[] => {
-  const id = `tool-${Math.random().toString(36).slice(2, 8)}`
+const logEvents = (title: string, page: number): AgentEvent[] => {
+  const id = `tool-${page}-${Math.random().toString(36).slice(2, 8)}`
+  const at = (n: number) => `${title}-p${page}-${n}`
+  const first = page === LOG_PAGES - 1
 
   return [
     {
       type: 'user',
+      uuid: at(1),
       message: {
         role: 'user',
         content: [
           {
             type: 'text',
-            text: [
-              `${title}: what this card's session was told.`,
-              '',
-              '## What is already done',
-              '',
-              '1. **The totals** are covered by tests, `pnpm test` is green.',
-              '2. **The discount** still rounds twice - left alone on purpose.',
-              '',
-              'Report back in the same shape, and name the files you touched.',
-            ].join('\n'),
+            text: first
+              ? [
+                  `${title}: what this card's session was told.`,
+                  '',
+                  '## What is already done',
+                  '',
+                  '1. **The totals** are covered by tests, `pnpm test` is green.',
+                  '2. **The discount** still rounds twice - left alone on purpose.',
+                  '',
+                  'Report back in the same shape, and name the files you touched.',
+                ].join('\n')
+              : `Carry on from where you stopped. (round ${LOG_PAGES - page})`,
           },
         ],
       },
     },
     {
       type: 'assistant',
+      uuid: at(2),
       message: {
         role: 'assistant',
         content: [{ type: 'tool_use', id, name: 'Read', input: { file_path: 'src/checkout/totals.ts' } }],
@@ -644,6 +661,7 @@ const logEvents = (title: string): AgentEvent[] => {
     },
     {
       type: 'user',
+      uuid: at(3),
       message: {
         role: 'user',
         content: [{ type: 'tool_result', tool_use_id: id, content: 'export const totals = (lines: Line[]) => {' }],
@@ -651,6 +669,7 @@ const logEvents = (title: string): AgentEvent[] => {
     },
     {
       type: 'assistant',
+      uuid: at(4),
       message: {
         role: 'assistant',
         content: [
@@ -925,11 +944,38 @@ export const answerScenarios = (message: WebviewMessage): void => {
     return sendList()
   }
 
+  /*
+   * A step's log, handed over the way the IDE hands it over: the end of it first, the pages above it
+   * when the mark over the feed asks for them.
+   *
+   * `before` is what tells the two apart, and the number in it is which page is being read - a real
+   * cursor is a line of a transcript, and anything the desk answers with will come back untouched. The
+   * last page carries no cursor at all: that is the beginning being reached, and the mark going with it.
+   */
   if (message.type === 'scenarioLog') {
-    opened += 1
-    const missing = opened % 3 === 0
     const run = records[message.runId]
     const step = run?.steps.find((one) => one.key === message.key)
+    const title = step?.title ?? 'The head'
+
+    if (message.before) {
+      const page = Number(message.before.split('#').pop()) || 1
+
+      return void setTimeout(() => {
+        send({
+          type: 'scenarioLog',
+          runId: message.runId,
+          key: message.key,
+          found: true,
+          before: message.before,
+          cursor: page + 1 < LOG_PAGES ? `${title}#${page + 1}` : undefined,
+          events: logEvents(title, page),
+        })
+      }, 250)
+    }
+
+    // Every third opening has no record at all - the state a swept run leaves, and one worth seeing.
+    opened += 1
+    const missing = opened % 3 === 0
 
     setTimeout(() => {
       send({
@@ -937,8 +983,8 @@ export const answerScenarios = (message: WebviewMessage): void => {
         runId: message.runId,
         key: message.key,
         found: !missing,
-        truncated: !missing && opened % 2 === 0,
-        events: missing ? [] : logEvents(step?.title ?? 'The head'),
+        cursor: missing ? undefined : `${title}#1`,
+        events: missing ? [] : logEvents(title, 0),
       })
     }, 250)
   }

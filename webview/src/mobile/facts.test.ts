@@ -1,7 +1,8 @@
 import { en } from '../i18n/en'
 import { describe, expect, it } from 'vitest'
 import type { ShellMessage } from '../protocol'
-import { applyFact, emptyFacts, factsFor, isFact, phoneCommands } from './facts'
+import type { ScenarioRunSummary } from '../protocol'
+import { applyFact, emptyFacts, factsFor, isFact, phoneCommands, projectRuns } from './facts'
 
 const window = (percent: number) => ({ percent, resets: '' })
 
@@ -141,7 +142,7 @@ describe('phoneCommands', () => {
    * an agent that has never heard of it.
    */
   it('leaves out the panel’s own commands, which no agent would understand', () => {
-    const ids = phoneCommands(en, emptyFacts()).map((command) => command.id)
+    const ids = phoneCommands(en, emptyFacts().commands, emptyFacts().hints).map((command) => command.id)
 
     expect(ids).not.toContain('resume')
     expect(ids).not.toContain('fork')
@@ -160,7 +161,7 @@ describe('phoneCommands', () => {
       commands: ['mcp__snakein__analyze'],
     } as ShellMessage)
 
-    expect(phoneCommands(en, facts).map((command) => command.id)).toContain('mcp__snakein__analyze')
+    expect(phoneCommands(en, facts.commands, facts.hints).map((command) => command.id)).toContain('mcp__snakein__analyze')
   })
 
   it('keeps the built-in ones and adds whatever the project keeps on disk', () => {
@@ -169,7 +170,7 @@ describe('phoneCommands', () => {
       hints: { deploy: { description: 'build, sign and publish', argumentHint: '' } },
     } as ShellMessage)
 
-    const commands = phoneCommands(en, facts)
+    const commands = phoneCommands(en, facts.commands, facts.hints)
 
     expect(commands.map((command) => command.id)).toContain('context')
     expect(commands.find((command) => command.id === 'deploy')).toEqual({
@@ -209,5 +210,125 @@ describe('applyFact, the record of a run', () => {
     const facts = applyFact(emptyFacts(), record('r1'), '')
 
     expect(facts.runs).toEqual({})
+  })
+})
+
+/**
+ * How much colour the gauges keep, as the desk has it.
+ *
+ * Held by a test because the two sides of this are not updated together: the phone's bundle is served by
+ * the relay and travels with it, while the plugin on the machine updates on its own. A machine that is a
+ * version behind still says `on` and nothing else - read as "nothing was said", it would hand somebody
+ * back the very red they had damped, on the screen they damped it for.
+ */
+describe('applyFact, the gauges’ colour', () => {
+  const said = (body: { vivid?: number; on?: boolean }) =>
+    ({ type: 'calmColors', ...body }) as unknown as ShellMessage
+
+  it('is taken in as a fact of the project', () => {
+    expect(isFact({ type: 'calmColors', vivid: 100 } as unknown as ShellMessage)).toBe(true)
+  })
+
+  it('keeps the figure the desk sent', () => {
+    expect(applyFact(emptyFacts(), said({ vivid: 30 }), '').calmVivid).toBe(30)
+    expect(applyFact(emptyFacts(), said({ vivid: 0 }), '').calmVivid).toBe(0)
+  })
+
+  it('reads the switch of an older machine', () => {
+    expect(applyFact(emptyFacts(), said({ on: true }), '').calmVivid).toBe(0)
+    expect(applyFact(emptyFacts(), said({ on: false }), '').calmVivid).toBe(100)
+  })
+})
+
+/**
+ * What a project's card on the first screen puts a row for.
+ *
+ * The rule fails in both directions and neither of them shows up as an error. Left at the live runs
+ * alone, a round of work that ran all night and finished before breakfast is nowhere on the screen its
+ * owner picks up in the morning; taken as "whatever the shelf lists first", a run still going gets a
+ * second row under itself.
+ */
+describe('projectRuns', () => {
+  const summary = (over: Partial<ScenarioRunSummary> = {}): ScenarioRunSummary => ({
+    id: 'r1',
+    scenarioId: 's1',
+    scenarioName: 'Nightly review',
+    scope: 'project',
+    startedAt: 1_700_000_000_000,
+    finishedAt: 0,
+    state: 'running',
+    total: 8,
+    done: 0,
+    failure: '',
+    cost: 0,
+    inputs: {},
+    ...over,
+  })
+
+  const shelves = (past: ScenarioRunSummary[]) => ({
+    list: [],
+    past,
+    schedules: [],
+    schedulesUnread: false,
+    canShare: true,
+  })
+
+  it('says nothing about a project that has never run one', () => {
+    expect(projectRuns(undefined)).toEqual([])
+    expect(projectRuns({ ...emptyFacts(), scenarios: shelves([]) })).toEqual([])
+  })
+
+  it('shows everything that is going, and only that', () => {
+    const live = [summary({ id: 'a' }), summary({ id: 'b' })]
+    const facts = { ...emptyFacts(), liveRuns: live, scenarios: shelves([...live, summary({ id: 'c', state: 'done' })]) }
+
+    expect(projectRuns(facts).map((run) => run.id)).toEqual(['a', 'b'])
+  })
+
+  /** The half this was written for: the night is over, and the card is where its result is asked after. */
+  it('falls back to the last round of work that is over', () => {
+    const facts = {
+      ...emptyFacts(),
+      liveRuns: [],
+      scenarios: shelves([
+        summary({ id: 'b', state: 'done', startedAt: 20 }),
+        summary({ id: 'a', state: 'failed', startedAt: 10 }),
+      ]),
+    }
+
+    expect(projectRuns(facts).map((run) => run.id)).toEqual(['b'])
+  })
+
+  /**
+   * One, not a list. The rest are history, and the screen behind the row is what history is for - a card
+   * that grew a row per run would push the project's conversations off the first screen.
+   */
+  it('offers one door back into the past and no more', () => {
+    const facts = {
+      ...emptyFacts(),
+      scenarios: shelves([
+        summary({ id: 'c', state: 'done', startedAt: 30 }),
+        summary({ id: 'b', state: 'done', startedAt: 20 }),
+        summary({ id: 'a', state: 'done', startedAt: 10 }),
+      ]),
+    }
+
+    expect(projectRuns(facts)).toHaveLength(1)
+  })
+
+  /**
+   * The shelf is read off the disk and still lists what is going right now, with figures written whenever
+   * it last got round to it. Taken as a past run, the row would stand under the live one as a second,
+   * staler copy of the same work.
+   */
+  it('never repeats a run that is already going', () => {
+    const going = summary({ id: 'a', done: 5 })
+    const facts = {
+      ...emptyFacts(),
+      liveRuns: [going],
+      scenarios: shelves([summary({ id: 'a', done: 2 })]),
+    }
+
+    expect(projectRuns(facts).map((run) => run.done)).toEqual([5])
   })
 })

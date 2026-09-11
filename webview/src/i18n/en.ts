@@ -90,7 +90,7 @@ export const en = {
   settings: {
     rows: {
       sounds: { label: 'Sound alerts', sub: 'When the panel calls you' },
-      calmColors: { label: 'No-stress colors', sub: 'Gauges in one calm tone' },
+      calmColors: { label: 'No-stress colors', sub: 'How much colour the gauges keep' },
       newChat: { label: 'New chats', sub: 'Model, effort and permission mode' },
       composerLayout: { label: 'Composer layout', sub: 'Where the input sits' },
       pasteCollapse: { label: 'Pasted text', sub: 'When a paste folds into a chip' },
@@ -172,12 +172,16 @@ export const en = {
   calmColors: {
     /** Over the sample: four gauges, one per step of the ladder. */
     sample: 'A GAUGE AT EVERY LEVEL',
-    label: 'No-stress colors',
-    hint: 'One tone, whatever the gauges read',
+    label: 'Colour in the gauges',
+    hint: 'The whole ladder at 100%, one calm tone at 0%',
     keeps: 'Nothing else changes: an error stays red, a permission stays what it is. Those are things that happened, not a mood.',
-    /** The value beside the row in the settings list. */
-    on: 'On',
-    off: 'Off',
+    /**
+     * The two ends of the slider, named beside the row in the settings list. Only the ends: everything
+     * between them is the figure itself, and a per cent is a reading rather than a word - the same in
+     * all ten languages, like `ctx 87%` over the input field (see calmColorsSummary).
+     */
+    full: 'Full colour',
+    none: 'One tone',
   },
 
   history: {
@@ -397,8 +401,6 @@ export const en = {
     hasLoop: 'has a loop',
     /** And what it will ask before it starts, as one chip: "asks: ticket, branch". */
     asksFor: (names: string): string => `asks: ${names}`,
-    /** Under a field of the start form: what the last run of this scenario was given. */
-    lastUsed: (value: string): string => `Last run used ${value}`,
     /** In the foot of the start form, when this would not be the only run over the working copy. */
     besideGoing: (n: number): string =>
       n === 1
@@ -559,7 +561,14 @@ export const en = {
       head: 'Main thread',
       /** The transcript is not on this machine, or the run was swept. */
       missing: 'There is no record of this step on this machine.',
-      truncated: 'This is the end of it - the beginning is not shown.',
+      /**
+       * What stands over every sent message in this log instead of "YOU".
+       *
+       * Nothing here was typed by a person: a step is talked to by the run's main thread (the head), and
+       * the label says so. The same conversation opened as an ordinary chat says "YOU" again, because
+       * there a person really can type into it.
+       */
+      main: 'MAIN',
     },
     editor: {
       title: 'SCENARIO',
@@ -665,7 +674,21 @@ export const en = {
   pasteCollapse: {
     note: 'A long paste folds into a chip so that a wall of text does not fill the input field. Lines are counted as they would fall in the field itself, so text pasted as one endless line folds too. Nothing is lost either way - a folded paste holds the text whole and unfolds back into the field by the pencil button on it.',
     never: 'Never fold',
-    neverSub: 'Everything pasted stays in the field as plain text',
+    /**
+     * Says the one exception out loud, because it is the row the exception applies to.
+     *
+     * A paste past the size guard folds whatever this row says (see PASTE_ALWAYS_FOLDS_CHARS): a
+     * megabyte in the field costs an eighth of a second per keystroke, and nobody switching the folding
+     * off was asking for a field one cannot type in. Unsaid, it reads as the setting quietly not working.
+     *
+     * In characters, because that is what is counted. Said in kilobytes it was true of English alone -
+     * the same text in Russian or Chinese weighs two or three times more per character, so the number on
+     * the screen promised a threshold two or three times lower than the one that fires. Each language
+     * spells the thousands the way it spells them; the number itself comes from the guard (see
+     * GUARD_THOUSANDS in PasteCollapse.tsx).
+     */
+    neverSub: (thousands: number): string =>
+      `Everything stays in the field, except a paste over ${thousands},000 characters`,
     /** "From 5 lines" - the threshold a paste has to reach to be folded. Beside the row in the settings. */
     from: (lines: number): string => `From ${lines} lines`,
     /** The other row of that screen: the one carrying the number field. */
@@ -926,6 +949,15 @@ export const en = {
     noDrawer:
       'The panel cannot reach the credential store of this account, so a sign-in here has nowhere to land. Switch to another account below.',
     noTerminal: 'This IDE would not open a terminal, and the sign-in happens in one.',
+    /**
+     * The way back from a turn that died on the sign-in, offered on the error row itself (see ErrorRow).
+     *
+     * Not "this screen closes by itself", as the line above says: nothing here can notice the sign-in -
+     * the CLI answers "signed in" for a dead token all along - so the conversation carries on from the
+     * next message, which comes up on a process raised anew.
+     */
+    switchAccount: 'Switch account',
+    sendAgainAfter: 'Finish the login in the terminal, then send your message again.',
   },
 
   stream: {
@@ -1144,6 +1176,17 @@ export const en = {
     },
 
     modelSwitch: { label: 'MODEL', note: 'switched by Claude Code, not by you' },
+
+    /**
+     * The other half of the story above: the person picked a model and the answers went on coming from
+     * the old one (see ModelStuckItem). The running model is named in the note rather than in a second
+     * chip - the row answers "what am I actually talking to", and that is one sentence, not a diagram.
+     */
+    modelStuck: {
+      label: 'MODEL',
+      note: (running: string): string => `picked, but the answers keep coming on ${running}`,
+      hint: 'The change did not reach Claude Code - try picking the model again.',
+    },
 
     crash: {
       label: 'SESSION',
@@ -1516,6 +1559,8 @@ export const en = {
       reach: {
         connecting: 'Connecting…',
         asleep: 'Connected to the relay, but no IDE is answering.',
+        silent: 'Nothing has answered for several minutes. The machine may be off, or this device’s access was revoked on it.',
+        revoked: 'That IDE no longer knows this device. Pair it again, or forget it.',
         elsewhere: 'Also open in another tab or in the installed app - that copy holds the connection.',
         reconnecting: 'Reconnecting… the list below may be out of date.',
         offline: 'Cannot reach the relay. Nothing is lost - this comes back on its own.',
@@ -1524,6 +1569,8 @@ export const en = {
       agent: {
         connecting: 'connecting…',
         asleep: 'not answering',
+        silent: 'no answer for a while',
+        revoked: 'access revoked',
         elsewhere: 'open elsewhere',
         reconnecting: 'reconnecting…',
         offline: 'offline',
@@ -1600,8 +1647,6 @@ export const en = {
       start: {
         title: 'Run it now',
         required: 'required',
-        /** Under a field, so the answer the last run used is one glance away rather than a guess. */
-        lastUsed: (value: string): string => `Last run used ${value}`,
         /** Said before the button, when this would not be the only run going over the working copy. */
         beside: (n: number): string =>
           n === 1
@@ -1802,6 +1847,9 @@ export const en = {
     /** The CLI moved the conversation to another model by itself - see SwitchItem. */
     modelHintSwitched: (model: string, from: string): string =>
       `Model: ${model} - Claude Code switched to it on its own, off ${from}`,
+    /** The model picked never took, and the chip has to name what is at work - see PanelState.stuckPick. */
+    modelHintStuck: (model: string, picked: string): string =>
+      `Model: ${model} - ${picked} was picked and did not take`,
     modeHint: (mode: string): string => `Permission mode: ${mode}`,
     sessionLimit: '5-hour limit',
     weekLimit: 'Weekly limit',

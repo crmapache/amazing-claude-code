@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { CALM_VIVID_FULL, clampVivid } from '../calmColors'
 
 /**
  * The attribute the no-stress colour mode hangs on, and the one place the panel and the phone agree
@@ -10,16 +11,35 @@ import { useEffect } from 'react'
  */
 const CALM_ATTRIBUTE = 'data-acc-calm'
 
+/** How much of the paint survives, as the rules over there read it. */
+const VIVID_PROPERTY = '--acc-gauge-vivid'
+
 /**
  * The no-stress colour mode, applied.
  *
  * Everything else about the mode is a swap of four CSS roles (see tokens.css), so there is nothing to
  * thread through the components: a gauge painted through the ladder is calmed without knowing that the
- * setting exists. This is the whole of the wiring - the state that says whether it is on lives where
- * every other machine-wide preference does (ClaudePreferences.calmColors).
+ * setting exists. This is the whole of the wiring - the figure itself lives where every other
+ * machine-wide preference does (ClaudePreferences.gaugeVivid).
  */
-export const useCalmColors = (on: boolean): void => {
+export const useCalmColors = (vivid: number): void => {
   useEffect(() => {
-    document.documentElement.toggleAttribute(CALM_ATTRIBUTE, on)
-  }, [on])
+    const root = document.documentElement
+    const figure = clampVivid(vivid)
+
+    // At the full hundred nothing is swapped at all, and the gauges wear the literals of :root rather
+    // than a mix that has nothing left to mix. There is no visible difference either way - the point is
+    // that a panel nobody has calmed cannot be made to differ from the one before the setting existed.
+    if (figure >= CALM_VIVID_FULL) {
+      root.removeAttribute(CALM_ATTRIBUTE)
+      root.style.removeProperty(VIVID_PROPERTY)
+      return
+    }
+
+    // The figure before the attribute, and taken away after it: a frame in which the rules already
+    // answer and the number has not arrived is a frame with no paint on the gauges (the fallback in
+    // tokens.css covers it, but the order is free).
+    root.style.setProperty(VIVID_PROPERTY, `${figure}%`)
+    root.toggleAttribute(CALM_ATTRIBUTE, true)
+  }, [vivid])
 }

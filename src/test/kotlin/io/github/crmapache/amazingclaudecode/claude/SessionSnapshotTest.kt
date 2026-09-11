@@ -187,11 +187,33 @@ class SessionSnapshotTest {
         assertTrue(apply(taskStarted("a1"), taskDone("a1")).pendingAgents.isEmpty())
     }
 
-    // A dev server raised through "!" travels the same channel and never reports back at all - counted as
-    // work, it would silence the notification for the rest of the day.
+    // A dev server travels the same channel and reports no work back - counted among the agents, it would
+    // silence the notification for the rest of the day. It is still held apart, because the process that
+    // started it is the process it dies with (see IdleSleep).
     @Test
     fun `a terminal command on the same channel is not an agent`() {
-        assertTrue(apply(taskStarted("b1", type = "local_bash")).pendingAgents.isEmpty())
+        val started = apply(taskStarted("b1", type = "local_bash"))
+
+        assertTrue(started.pendingAgents.isEmpty())
+        assertEquals(setOf("b1"), started.pendingCommands)
+    }
+
+    // Measured on 2.1.263: a background command, a foreground one and a killed one each end with a
+    // task_notification of their own, and it carries no task_type - so the end is looked for in both sets.
+    @Test
+    fun `a command is counted until it reports its end`() {
+        val ended = apply(taskStarted("b1", type = "local_bash"), taskDone("b1"))
+
+        assertTrue(ended.pendingCommands.isEmpty())
+    }
+
+    @Test
+    fun `a dead or replaced process leaves no commands behind`() {
+        val running = apply(taskStarted("b1", type = "local_bash"))
+        val died = apply(taskStarted("b1", type = "local_bash"), """{"type":"processExited","sessionId":"main","exitCode":1}""")
+
+        assertEquals(setOf("b1"), running.pendingCommands)
+        assertTrue(died.pendingCommands.isEmpty())
     }
 
     // An old CLI sent only subagents this way and named no type at all.

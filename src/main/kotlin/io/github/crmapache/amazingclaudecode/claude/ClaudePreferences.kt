@@ -20,7 +20,7 @@ internal object ClaudePreferences {
         val composerLayout: String,
         val pasteCollapse: String,
         val sendKey: String,
-        val calmColors: Boolean,
+        val gaugeVivid: Int,
         val improveInstructions: String,
         val language: String,
     )
@@ -34,7 +34,7 @@ internal object ClaudePreferences {
         composerLayout = composerLayout,
         pasteCollapse = pasteCollapse,
         sendKey = sendKey,
-        calmColors = calmColors,
+        gaugeVivid = gaugeVivid,
         improveInstructions = improveInstructions,
         language = language,
     )
@@ -128,16 +128,30 @@ internal object ClaudePreferences {
         set(value) = write(SEND_KEY_KEY, value.trim())
 
     /**
-     * The no-stress colour mode: the context bar and the usage rings drawn in one calm tone instead of
-     * the green-to-red ladder (see tokens.css and hooks/useCalmColors.ts). Off unless it is turned on -
-     * the ladder is what the panel has always shown, and it is what most people read the gauges by.
+     * How much colour the context bar and the usage rings keep: a hundred is the green-to-red ladder,
+     * nought is one calm tone whatever the reading, and between them the ladder is faded towards that
+     * tone (see tokens.css and hooks/useCalmColors.ts). The full ladder unless somebody says otherwise -
+     * it is what the panel has always shown, and what most people read the gauges by.
      *
      * Machine-wide beside the send key above: whether a red gauge presses on somebody all day is a
      * property of the person, not of the repository they happen to have open.
      */
-    var calmColors: Boolean
-        get() = read(CALM_COLORS_KEY) == "true"
-        set(value) = write(CALM_COLORS_KEY, if (value) "true" else "")
+    var gaugeVivid: Int
+        get() {
+            val stored = read(CALM_COLORS_KEY)
+            // The switch this setting grew out of, read on purpose: somebody who kept it on asked for one
+            // calm tone, and that is nought here. Taken for "nothing was said", it would hand them back
+            // the very ladder they had switched off.
+            if (stored == CALM_COLORS_WAS_ON) return GAUGE_VIVID_CALM
+
+            return stored.toIntOrNull()?.coerceIn(GAUGE_VIVID_CALM, GAUGE_VIVID_FULL) ?: GAUGE_VIVID_FULL
+        }
+        set(value) {
+            val vivid = value.coerceIn(GAUGE_VIVID_CALM, GAUGE_VIVID_FULL)
+            // The full ladder clears the key rather than writing itself into it - see [write]: an absent
+            // value and "as the panel has always drawn it" are the same answer.
+            write(CALM_COLORS_KEY, if (vivid == GAUGE_VIVID_FULL) "" else vivid.toString())
+        }
 
     /**
      * What the improve button asks for, in the person's own words. Empty means the built-in text (see
@@ -320,6 +334,13 @@ internal object ClaudePreferences {
         set(value) = write(VOICE_HOLD_MOUSE_KEY, value.trim())
 
     /** What a model name may not hold, and how much of it there may be - see [usableModelNames]. */
+    /** The ends of the gauges' colour: the whole ladder, and one calm tone whatever the reading. */
+    const val GAUGE_VIVID_FULL = 100
+    const val GAUGE_VIVID_CALM = 0
+
+    /** What the switch this setting grew out of wrote while it was on. */
+    private const val CALM_COLORS_WAS_ON = "true"
+
     private const val UNUSABLE_IN_MODEL = "\"'`\\,"
     private const val MAX_MODEL_NAME = 120
     private const val MAX_CUSTOM_MODELS = 30

@@ -28,6 +28,16 @@ interface UserCardProps {
   item: UserItem
   /** What is unfolded in the feed - here it is the pastes inside the message (see PasteView). */
   cards: CardState
+  /**
+   * What stands over the message instead of "YOU" - handed in by a feed whose "you" side is not a person.
+   *
+   * The log of a scenario's step is one such feed: everything sent there was sent by the main thread of
+   * the run (see ScenarioEngine), and a person reading it at three in the morning has to be able to tell
+   * that at a glance rather than by remembering what a scenario is. Absent everywhere else, and that is
+   * the point: the same transcript opened as an ordinary chat is a place where a person really does type,
+   * so there it says "YOU" as it always did.
+   */
+  userLabel?: string
   /** Open a link from one's own message in the system browser. */
   onOpenLink: (url: string) => void
   /**
@@ -54,7 +64,17 @@ interface UserCardProps {
   onActions?: () => void
 }
 
-export const UserCard = ({ item, cards, onOpenLink, onReuse, onPin, pinned, pinsFull, onActions }: UserCardProps) => {
+export const UserCard = ({
+  item,
+  cards,
+  userLabel,
+  onOpenLink,
+  onReuse,
+  onPin,
+  pinned,
+  pinsFull,
+  onActions,
+}: UserCardProps) => {
   const t = useT()
   /*
    * What the copy and reuse buttons do, worked out here rather than on the press: the tooltip has to
@@ -67,7 +87,7 @@ export const UserCard = ({ item, cards, onOpenLink, onReuse, onPin, pinned, pins
   return (
   <div className={s.user}>
     <div className={s.userHead}>
-      <span className={s.label}>{t.feed.you}</span>
+      <span className={s.label}>{userLabel ?? t.feed.you}</span>
       <span className={s.time}>{item.time}</span>
       <div className={s.spacer} />
 

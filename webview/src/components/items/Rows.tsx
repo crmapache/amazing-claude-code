@@ -15,6 +15,7 @@ import type {
   ErrorItem,
   LimitItem,
   MetaItem,
+  ModelStuckItem,
   ModelSwitchItem,
   RetryItem,
   ThinkItem,
@@ -295,6 +296,34 @@ export const ModelSwitchRow = ({
 }
 
 /**
+ * The model the person picked never came into force (see ModelStuckItem).
+ *
+ * The same shape as the swap row above and deliberately so: both are news about which model the answers
+ * are coming from, and two shapes for one subject would only be read twice. The words are the opposite
+ * ones - here the person did choose, and the choice is what did not happen.
+ *
+ * Not red either. Nothing has broken: the conversation works, on the model it was on before. What it
+ * costs is trust in the chip, and that is what the second line answers - the one thing that can be done
+ * about it is picking again.
+ */
+export const ModelStuckRow = ({ item }: { item: ModelStuckItem }) => {
+  const t = useT()
+
+  return (
+    <div className={s.modelSwitch}>
+      <span className={s.modelSwitchLabel}>{t.feed.modelStuck.label}</span>
+      <div className={s.modelSwitchBody}>
+        <p className={s.modelSwitchLine}>
+          <span className={s.modelSwitchTo}>{modelLabel(item.picked)}</span>
+          <span className={s.modelSwitchNote}>{t.feed.modelStuck.note(modelLabel(item.running))}</span>
+        </p>
+        <p className={s.modelSwitchReason}>{t.feed.modelStuck.hint}</p>
+      </div>
+    </div>
+  )
+}
+
+/**
  * What a compaction card says: the panel's own words, built from the figures the CLI gave.
  *
  * `target` is only ever the CLI's own line (the error of a failed compaction) and is shown as it came.
@@ -381,6 +410,24 @@ export const CrashRow = ({ item }: { item: CrashItem }) => {
 }
 
 /**
+ * The way back from a turn that died on the sign-in - what the panel offers on the error row itself.
+ *
+ * A whole object rather than a bare handler because the press does not answer at once: the sign-in
+ * happens in the IDE's terminal, and what comes of it is either a wait or one of two refusals (see
+ * ClaudeLogin.Outcome). Absent on the phone, which has no terminal to send anybody to - the same way
+ * the button that takes a message back into the field is absent there.
+ */
+export interface SignInOffer {
+  onSignIn: () => void
+  /** To the accounts screen - handed in only when the machine has another account to move to. */
+  onAccounts?: () => void
+  /** The terminal is open and the sign-in is being made in it. */
+  waiting: boolean
+  /** Why it could not even be started, when it could not - the `authProblem` codes. */
+  problem: 'no-drawer' | 'no-terminal' | ''
+}
+
+/**
  * A refusal from the agent or the process - in its place in the chronology (see ErrorItem). The cross
  * stays: an error that has been read can be removed at once rather than waiting for it to travel upwards
  * by itself.
@@ -389,21 +436,64 @@ export const ErrorRow = ({
   item,
   onDismiss,
   onOpenLink,
+  signIn,
 }: {
   item: ErrorItem
   onDismiss: () => void
   /** Open an address out of an error's text in the system browser. */
   onOpenLink: (url: string) => void
-}) => (
-  <p className={s.error}>
-    {/* An address inside an error is usually the one thing that can be done about it: "check
-        https://status.claude.com" asks one to go and look. So it stays a link, as in the agent's answer
-        (see LinkedText). */}
-    <span className={s.errorText}>
-      <LinkedText text={item.message} onOpenLink={onOpenLink} />
-    </span>
-    <button type="button" className={s.errorDismiss} onClick={onDismiss}>
-      ×
-    </button>
-  </p>
-)
+  /** The way back out of a dead sign-in, when this screen has one to offer - see SignInOffer. */
+  signIn?: SignInOffer
+}) => {
+  const t = useT()
+  const offered = item.signIn && signIn
+
+  return (
+    <div className={s.error}>
+      <div className={s.errorBody}>
+        {/* An address inside an error is usually the one thing that can be done about it: "check
+            https://status.claude.com" asks one to go and look. So it stays a link, as in the agent's
+            answer (see LinkedText). */}
+        <span className={s.errorText}>
+          <LinkedText text={item.message} onOpenLink={onOpenLink} />
+        </span>
+
+        {offered ? (
+          <>
+            <div className={s.errorActions}>
+              <button type="button" className={s.primary} onClick={signIn.onSignIn}>
+                {signIn.waiting ? t.login.openTerminalAgain : t.login.logIn}
+              </button>
+              {/* Only when there is somewhere to switch TO: a second button leading to a screen with one
+                  row on it offers a choice that does not exist. */}
+              {signIn.onAccounts ? (
+                <button type="button" className={s.secondary} onClick={signIn.onAccounts}>
+                  {t.login.switchAccount}
+                </button>
+              ) : null}
+            </div>
+
+            {/* What the press came to, right under it - the same two refusals the login screen says out
+                loud (see the `authProblem` message). */}
+            {signIn.problem !== '' ? (
+              <span className={s.errorNote}>
+                {signIn.problem === 'no-drawer' ? t.login.noDrawer : t.login.noTerminal}
+              </span>
+            ) : null}
+
+            {/* Not "this closes by itself", as on the login screen: nothing here can notice the sign-in
+                (the CLI answers "signed in" for the dead token all along), and the conversation carries
+                on from the message that is sent next - on a process raised anew (see ClaudeSessions). */}
+            {signIn.waiting && signIn.problem === '' ? (
+              <span className={s.errorNote}>{t.login.sendAgainAfter}</span>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+
+      <button type="button" className={s.errorDismiss} onClick={onDismiss}>
+        ×
+      </button>
+    </div>
+  )
+}

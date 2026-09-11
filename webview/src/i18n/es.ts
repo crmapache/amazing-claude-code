@@ -70,7 +70,7 @@ export const es: Dict = {
   settings: {
     rows: {
       sounds: { label: 'Avisos sonoros', sub: 'Cuándo te llama el panel' },
-      calmColors: { label: 'Colores tranquilos', sub: 'Medidores en un solo tono' },
+      calmColors: { label: 'Colores tranquilos', sub: 'Cuánto color conservan los medidores' },
       newChat: { label: 'Chats nuevos', sub: 'Modelo, esfuerzo y modo de permisos' },
       composerLayout: { label: 'Disposición del campo', sub: 'Dónde se coloca el campo de entrada' },
       pasteCollapse: { label: 'Texto pegado', sub: 'Cuándo un pegado se pliega en una ficha' },
@@ -130,11 +130,11 @@ export const es: Dict = {
 
   calmColors: {
     sample: 'UN MEDIDOR EN CADA NIVEL',
-    label: 'Colores tranquilos',
-    hint: 'Un solo tono, marquen lo que marquen',
+    label: 'Color de los medidores',
+    hint: 'La escala entera al 100%, un solo tono al 0%',
     keeps: 'Nada más cambia: un error sigue siendo rojo y un permiso sigue siendo lo que es. Eso son cosas que pasaron, no un estado de ánimo.',
-    on: 'Activado',
-    off: 'Desactivado',
+    full: 'Color completo',
+    none: 'Un solo tono',
   },
 
   history: {
@@ -283,7 +283,6 @@ export const es: Dict = {
     cards: (n) => (n === 1 ? '1 tarjeta' : `${n} tarjetas`),
     hasLoop: 'tiene un bucle',
     asksFor: (names: string): string => `pregunta: ${names}`,
-    lastUsed: (value: string): string => `La última vez fue ${value}`,
     besideGoing: (n: number): string =>
       n === 1
         ? 'Arrancará una segunda ejecución junto a la que ya va. Ambas trabajan sobre la misma copia de trabajo.'
@@ -418,7 +417,7 @@ export const es: Dict = {
       step: 'Paso',
       head: 'Hilo principal',
       missing: 'En esta máquina no hay registro de este paso.',
-      truncated: 'Este es el final: el principio no se muestra.',
+      main: 'PRINCIPAL',
     },
     editor: {
       title: 'ESCENARIO',
@@ -511,7 +510,8 @@ export const es: Dict = {
   pasteCollapse: {
     note: 'Un pegado largo se pliega en un chip para que un muro de texto no llene el campo de entrada. Las líneas se cuentan como quedarían en el propio campo, así que un texto pegado en una sola línea interminable también se pliega. No se pierde nada en ninguno de los casos: un pegado plegado guarda el texto entero y se despliega de vuelta al campo con el botón del lápiz.',
     never: 'No plegar nunca',
-    neverSub: 'Todo lo pegado se queda en el campo como texto normal',
+    neverSub: (thousands: number): string =>
+      `Todo se queda en el campo, salvo lo pegado de más de ${thousands} 000 caracteres`,
     from: (lines) => `Desde ${lines} líneas`,
     foldLabel: 'Plegar los pegados largos',
     foldSub: (min, max) => `A partir de cuántas líneas: ${min} a ${max}`,
@@ -751,6 +751,8 @@ export const es: Dict = {
     noDrawer:
       'El panel no alcanza el almacén de credenciales de esta cuenta, así que el inicio de sesión no tiene dónde caer. Cambia abajo a otra cuenta.',
     noTerminal: 'Este IDE no ha abierto ninguna terminal, y el inicio de sesión ocurre ahí.',
+    switchAccount: 'Cambiar de cuenta',
+    sendAgainAfter: 'Termina el inicio de sesión en la terminal y vuelve a enviar tu mensaje.',
   },
 
   stream: {
@@ -906,6 +908,11 @@ export const es: Dict = {
     },
 
     modelSwitch: { label: 'MODELO', note: 'lo cambió Claude Code, no tú' },
+    modelStuck: {
+      label: 'MODELO',
+      note: (running) => `elegido, pero las respuestas siguen llegando en ${running}`,
+      hint: 'El cambio no llegó a Claude Code: prueba a elegir el modelo otra vez.',
+    },
 
     crash: {
       label: 'SESIÓN',
@@ -1215,6 +1222,8 @@ export const es: Dict = {
       reach: {
         connecting: 'Conectando…',
         asleep: 'Conectado al relay, pero ningún IDE responde.',
+        silent: 'Hace varios minutos que no responde nada. Puede que la máquina esté apagada, o que allí se haya revocado el acceso de este dispositivo.',
+        revoked: 'Ese IDE ya no conoce este dispositivo. Vuelve a emparejarlo, u olvídalo.',
         elsewhere: 'También está abierto en otra pestaña o en la app instalada - esa copia tiene la conexión.',
         reconnecting: 'Reconectando… la lista de abajo puede estar desactualizada.',
         offline: 'No se llega al relay. No se pierde nada - esto vuelve solo.',
@@ -1222,6 +1231,8 @@ export const es: Dict = {
       agent: {
         connecting: 'conectando…',
         asleep: 'no responde',
+        silent: 'lleva rato sin responder',
+        revoked: 'acceso revocado',
         elsewhere: 'abierto en otro sitio',
         reconnecting: 'reconectando…',
         offline: 'sin conexión',
@@ -1281,7 +1292,6 @@ export const es: Dict = {
       start: {
         title: 'Ejecutar ahora',
         required: 'obligatorio',
-        lastUsed: (value: string): string => `La última vez fue ${value}`,
         beside: (n: number): string =>
           n === 1
             ? 'Arrancará una segunda ejecución junto a la que ya va. Ambas trabajan sobre la misma copia de trabajo.'
@@ -1454,6 +1464,7 @@ export const es: Dict = {
     effortHint: (effort) => `Esfuerzo de razonamiento: ${effort}`,
     modelHint: (model) => `Modelo: ${model}`,
     modelHintSwitched: (model, from) => `Modelo: ${model} - Claude Code cambió a él por su cuenta, desde ${from}`,
+    modelHintStuck: (model, picked) => `Modelo: ${model} - elegiste ${picked} y no llegó a aplicarse`,
     modeHint: (mode) => `Modo de permisos: ${mode}`,
     sessionLimit: 'Límite de 5 horas',
     weekLimit: 'Límite semanal',

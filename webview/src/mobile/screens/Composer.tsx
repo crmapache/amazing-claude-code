@@ -214,7 +214,19 @@ export const Composer = ({
     }
   }, [draft])
 
-  const commands = useMemo(() => phoneCommands(t, facts), [t, facts])
+  /**
+   * The two facts this is actually made of rather than the whole bundle.
+   *
+   * Every project fact returns a new bundle, and one of them - the summary of the scenario runs under
+   * way - arrives about once a second. Watching the bundle, the whole catalogue was rebuilt at that
+   * rate with nobody typing at all; the fold replaces these two wholesale, so their references outlive
+   * every fact that is not them. The dependencies are literally what is passed in, so a third fact
+   * cannot creep into the calculation without appearing here too.
+   */
+  const commands = useMemo(
+    () => phoneCommands(t, facts.commands, facts.hints),
+    [t, facts.commands, facts.hints],
+  )
 
   /** Which ring burns, when one does: the window being paid past, not always the five-hour one. */
   const burning = facts.extra?.active ? limitWindowRing(facts.extra.window) : null
@@ -234,7 +246,13 @@ export const Composer = ({
    */
   const head = draft.slice(0, caret)
   const commandQuery = slashQuery(head)
-  const commandMatches = commandQuery === null ? [] : matchCommands(commands, commandQuery)
+  // Remembered by what was typed, as in the panel: the catalogue runs to about a hundred entries once
+  // the person's own skills and every plugin's are in it, and this screen repaints on every project
+  // fact - that is, about once a second while a scenario runs, with nobody typing.
+  const commandMatches = useMemo(
+    () => (commandQuery === null ? [] : matchCommands(commands, commandQuery)),
+    [commands, commandQuery],
+  )
 
   /**
    * "@" searches from the caret rather than from the field's start: unlike a slash command it can be
@@ -242,7 +260,14 @@ export const Composer = ({
    * noise.
    */
   const at = commandMatches.length > 0 ? null : atQueryInText(draft, caret)
-  const fileMatches = at ? matchFiles(facts.files, at.query) : []
+  // Memoised for the same reason as the commands above, and this is the dearer of the two: it walks the
+  // whole file list of the project, where the command search walks a hundred entries. Left bare on a
+  // path that repaints once a second while a scenario runs, every one of those repaints combed the file
+  // list again with nobody touching the field. The panel wraps this very call and says so.
+  const fileMatches = useMemo(
+    () => (at ? matchFiles(facts.files, at.query) : []),
+    [facts.files, at?.query],
+  )
 
   const suggesting = commandMatches.length > 0 || fileMatches.length > 0
   const suggestQuery = commandMatches.length > 0 ? `/${commandQuery ?? ''}` : `@${at?.query ?? ''}`

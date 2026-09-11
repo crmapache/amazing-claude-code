@@ -7,6 +7,8 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
+import com.intellij.openapi.util.Disposer
+import com.intellij.util.concurrency.AppExecutorUtil
 import io.github.crmapache.amazingclaudecode.claude.accounts.AccountDesk
 import io.github.crmapache.amazingclaudecode.claude.accounts.AccountsWatch
 import io.github.crmapache.amazingclaudecode.editor.DiskRefresh
@@ -23,6 +25,7 @@ import io.github.crmapache.amazingclaudecode.stats.StatsCollector
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -86,6 +89,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
                 // listener below runs while `busy` is still true, so a move applied from there saw the
                 // tab as working and put itself straight back into the waiting list, for ever.
                 conversations.applyPendingAccount(sessionId)
+                // And the restart an added MCP server asked for while this turn was running - before the
+                // status for the same reason the move is: what was queued while it ran must go into the
+                // process that holds the servers as the person has just left them.
+                conversations.applyPendingRestart(sessionId)
                 sendStatus(sessionId, SessionSnapshot.STATUS_IDLE)
             },
             onTurnStarted = { sessionId -> sendStatus(sessionId, SessionSnapshot.STATUS_RUNNING) },
@@ -99,7 +106,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
                 permissions.withdrawAll(sessionId)
                 sendTurnStopped(sessionId)
             },
-            onMoveDropping = { sessionId ->
+            onProcessDropping = { sessionId ->
                 permissions.withdrawAll(sessionId)
                 sendProcessReplaced(sessionId)
             },
@@ -255,12 +262,19 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         catalog.scheduleUpdates(this, usage)
         usage.scheduleUpdates(this)
         auth.scheduleUpdates(this)
+        sweepIdleConversations()
         openLocalBridge()
         onPermissionRequest { sessionId, request -> permissions.ask(sessionId, request) }
         // A lost sign-in is reported past the event stream, before the first answer.
         onDiagnostic { _, text -> auth.noteLoggedOut(text) }
         onRawLine { sessionId, line, replay ->
             auth.noteLoggedOut(line)
+
+            // A turn the sign-in killed. The panel puts a way back on the row where it happened, and the
+            // tab is marked so the message that follows comes up on a process holding the fresh
+            // credential (see ClaudeSessions.renewAfterSignIn). Not from a replay: that refusal happened
+            // once and is over, and a past conversation must repair nothing.
+            if (!replay && AgentStream.isAuthFailure(line)) conversations.renewAfterSignIn(sessionId)
 
             // A file the agent has just rewritten is still the old one as far as the IDE is concerned
             // until somebody asks it to look again (see DiskRefresh). Not from a replay: that disk
@@ -481,6 +495,11 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             // Chinese IDE the whole setting exists for, where nothing is ever chosen by hand and the
             // only other caller (the language screen) is therefore never reached.
             "the language" to { catalog.sendLocale() },
+            // And how much colour the gauges keep, for the same reason and with a sharper edge: outside
+            // `init` this is only ever told when somebody changes it, so a phone that connected after
+            // the change - or simply reloaded the page - came back to the red its owner had damped, and
+            // stayed there until the slider was touched again at the desk.
+            "the gauges' colour" to { catalog.sendCalmColors() },
             // And the models added by hand, for the same reason: `init` does not carry them, so without
             // this a phone would never learn them - and the panel would draw an empty settings row over
             // a list that is not empty.
@@ -1162,7 +1181,20 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      * and waiting for the turn's end for that figure serves nothing.
      */
     fun changeModel(sessionId: String, model: String, remember: Boolean = true) {
+        // A model name is not private - it is the same word that stands on the button - and without these
+        // two lines a pick that quietly did not work leaves no trace anywhere at all. Established the hard
+        // way: a model picked and never applied was reconstructed from transcripts and the panel's own
+        // behaviour, because neither the request nor the CLI's answer to it was written down.
+        DiagnosticsLog.note(DiagnosticsLog.AGENT, "model asked for: $model")
+
         conversations.setModel(sessionId, model, remember) { change ->
+            val refusal = if (change.error.isEmpty()) "" else " (${change.error})"
+            DiagnosticsLog.note(
+                DiagnosticsLog.AGENT,
+                if (change.applied) "model applied: ${change.model}"
+                else "model refused: $model, staying on ${change.model}$refusal",
+            )
+
             broadcast(
                 sessionId,
                 buildJsonObject {
@@ -1272,7 +1304,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
 
     /**
      * A live process is being replaced under a tab that was not saying anything - see
-     * ClaudeSessions.onMoveDropping.
+     * ClaudeSessions.onProcessDropping.
      *
      * Deliberately not `turnStopped`: no turn is being stopped here, and a client that captioned this as
      * an interrupted turn would be inventing one. What this actually says is narrower and enough - the
@@ -1444,6 +1476,78 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         }.toString()
 
     fun snapshotOf(sessionId: String): SessionSnapshot = snapshot(sessionId).get()
+
+    /**
+     * Give back the processes of conversations nobody is using - see [IdleSleep] for what that costs and
+     * what it does not.
+     *
+     * Per project rather than per machine, like everything else here: a hub is what owns conversations,
+     * and a sweep that reached across projects would be one window deciding for another.
+     *
+     * Nothing is announced. A slept conversation is not an event - the tab looks exactly as it did, the
+     * feed is the panel's own, and the only visible difference is a second of waiting before the next
+     * answer. Saying it out loud would put a line about the plugin's housekeeping into a conversation
+     * about somebody's work.
+     */
+    private fun sweepIdleConversations() {
+        val sweep = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
+            {
+                // Off the scheduler's own thread: this pool carries the Stop watchdog and the usage
+                // polling, and taking a process down is not instant.
+                ApplicationManager.getApplication().executeOnPooledThread {
+                    runCatching { putIdleConversationsToSleep() }
+                        .onFailure { thisLogger().warn("The idle sweep stumbled", it) }
+                }
+            },
+            IdleSleep.EVERY_MS,
+            IdleSleep.EVERY_MS,
+            TimeUnit.MILLISECONDS,
+        )
+
+        Disposer.register(this) { sweep.cancel(false) }
+    }
+
+    private fun putIdleConversationsToSleep() {
+        val now = System.currentTimeMillis()
+
+        for ((sessionId, startedAt) in conversations.liveSince()) {
+            // The status changing is the honest moment; the launch is the fallback for a process raised
+            // without a turn ever running in it - the MCP screen does exactly that.
+            val awake = maxOf(snapshotOf(sessionId).changedAt, startedAt)
+
+            // Asked twice on purpose, and the second time inside the taking - see ClaudeSessions.sleep.
+            // The reading and the killing happen a whole loop apart, and a turn that begins in between
+            // is a turn this would kill on its first words.
+            if (!idleNow(sessionId, startedAt, now)) continue
+
+            if (conversations.sleep(sessionId) { idleNow(sessionId, startedAt, now) }) {
+                // The count and the interval, never which conversation or what was in it: this buffer
+                // travels in bug reports (see DiagnosticsLog). Worth a line because the symptom it would
+                // otherwise produce - "my conversation took a second to answer after lunch" - has no
+                // other explanation anywhere.
+                DiagnosticsLog.note(
+                    DiagnosticsLog.AGENT,
+                    "a conversation idle for ${(now - awake) / 60_000} min gave its process back",
+                )
+            }
+        }
+    }
+
+    /**
+     * Whether this conversation may be put to sleep as things stand this instant - the sweep's own rule
+     * (see [IdleSleep]), read fresh rather than off the picture the loop started with.
+     */
+    private fun idleNow(sessionId: String, startedAt: Long, now: Long): Boolean {
+        val snapshot = snapshotOf(sessionId)
+
+        return IdleSleep.sleeps(
+            snapshot,
+            running = true,
+            queued = queued.of(sessionId).isNotEmpty(),
+            awake = maxOf(snapshot.changedAt, startedAt),
+            now = now,
+        )
+    }
 
     /**
      * A project-wide fact as it was last sent, by its type - the model catalogue, for instance.
@@ -1661,6 +1765,11 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             // First of all of them: everything after this is drawn in whatever language it names, and a
             // client that joins without it draws the lot in English and then redraws it.
             "locale",
+            // And in whatever colour it names. Beside the language for the same reason and with the same
+            // consequence for being left off: a fact not listed here never reaches a joining client at
+            // all, so a phone opened after the slider was moved - or simply reloaded - came back to the
+            // red its owner had damped, and stayed there until somebody at the desk moved it again.
+            "calmColors",
             "init",
             "auth",
             // Right after the sign-in it qualifies: a client that joins without it cannot draw the menu

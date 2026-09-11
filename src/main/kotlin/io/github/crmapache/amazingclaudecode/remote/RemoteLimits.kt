@@ -102,6 +102,10 @@ internal class RemoteLimits {
             // Being caught up is cheap for the agent and expensive to be denied: a phone in a lift does
             // it on every reconnect.
             "ready" to 60,
+            // Telling a device this agent has let go of that it has been let go of. Not a thing anybody
+            // asks for - it is an answer to a handshake nobody can complete - and a device that has not
+            // understood it re-offers every fifteen seconds, so four a minute is the honest traffic.
+            "revoked" to 6,
             // A search answers as one types - a word is half a dozen requests - and costs a lookup in an
             // index already in memory. The model's search starts a process and a paid run, so it is
             // counted like a message.
@@ -148,12 +152,17 @@ internal class RemoteLimits {
              * each. The ones that move a run are a press apiece - and stopping one is asked about first,
              * so a loop of them is not a person.
              *
-             * The three that cost real work are lower and each for its own reason. `scenarioRun` raises a
+             * The two that cost real work are lower and each for its own reason. `scenarioRun` raises a
              * head and a card that work over the working copy for hours, so it is counted like a message.
              * `scenarioDraft` is a paid `claude -p` that reads the project, exactly as the model's search
-             * is. `scenarioLog` reads a transcript off the disk - megabytes for a card that walked a
-             * repository - and is trimmed on the way out rather than refused, which is a cost paid on this
-             * side and worth a ceiling.
+             * is.
+             *
+             * `scenarioLog` is NOT among them, though it once was: reading a page off a transcript is a
+             * pass over one file, and opening a step is now several of them in a row - the first page and
+             * then whatever the mark over the feed is pressed for, plus what one press fetches by itself
+             * (see useEarlierPages). At fifteen a minute, reading up a long card ran into the ceiling; it
+             * sits at the default, where `historyPage` - the very same read for an ordinary tab - has
+             * always been.
              */
             "scenarios" to 20,
             "scenarioFetch" to 30,
@@ -170,7 +179,6 @@ internal class RemoteLimits {
             "scenarioSchedule" to 15,
             "scenarioUnschedule" to 15,
             "scenarioRunDelete" to 15,
-            "scenarioLog" to 15,
         )
 
         const val DEFAULT_PER_MINUTE = 30

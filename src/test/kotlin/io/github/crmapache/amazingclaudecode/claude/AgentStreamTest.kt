@@ -146,4 +146,76 @@ class AgentStreamTest {
         // A blank name is the same as none: a tab must not be renamed into emptiness.
         assertNull(AgentStream.aiTitle("""{"type":"ai-title","aiTitle":"  "}"""))
     }
+
+    /**
+     * A turn the sign-in killed: the CLI closes it with a placeholder answer of its own carrying the
+     * machine word beside the message. Recorded off a live run against a refusing endpoint - what is
+     * read is that word, never the sentence, which differs by provider and by version.
+     */
+    @Test
+    fun `a turn that died on the sign-in is recognised`() {
+        val line = """{"type":"assistant","message":{"model":"<synthetic>","content":[{"type":"text",""" +
+            """"text":"Failed to authenticate: OAuth session expired and could not be refreshed"}]},""" +
+            """"parent_tool_use_id":null,"error":"authentication_failed","is_api_error_message":true}"""
+
+        assertTrue(AgentStream.isAuthFailure(line))
+    }
+
+    /** Every other refusal the same field carries: they cost the turn, not the sign-in. */
+    @Test
+    fun `other refusals are not the sign-in's`() {
+        assertFalse(
+            AgentStream.isAuthFailure(
+                """{"type":"assistant","message":{"content":[]},"error":"rate_limit"}""",
+            ),
+        )
+        assertFalse(AgentStream.isAuthFailure("""{"type":"assistant","message":{"content":[]}}"""))
+    }
+
+    /**
+     * A fleet's refusal says nothing about the tab's own process: a subagent is a request of its own,
+     * and the tab would be handed a renewal it has no reason for.
+     */
+    @Test
+    fun `a subagent's refusal is not the tab's`() {
+        val line = """{"type":"assistant","message":{"content":[]},"parent_tool_use_id":"toolu_1",""" +
+            """"error":"authentication_failed"}"""
+
+        assertFalse(AgentStream.isAuthFailure(line))
+    }
+
+    /**
+     * The panel talks about this very protocol all day, and an answer quoting the word is an answer
+     * rather than a refusal - the same trap the turn boundaries are guarded against above.
+     */
+    @Test
+    fun `the word quoted inside an answer is not a refusal`() {
+        val line = """{"type":"assistant","message":{"content":[{"type":"text",""" +
+            """"text":"the CLI marks it {\"error\":\"authentication_failed\"}"}]}}"""
+
+        assertFalse(AgentStream.isAuthFailure(line))
+    }
+
+    /**
+     * The API describes this refusal as an object - {"type": "authentication_error", "message": …} - and
+     * a field of that shape read as a plain value throws. This is asked on the thread that carries every
+     * line of the CLI onwards, with nobody above it to catch anything: the answer would not merely lose
+     * its way back to the sign-in, it would never reach the feed at all.
+     */
+    @Test
+    fun `a refusal shaped as an object costs nothing but the buttons`() {
+        val line = """{"type":"assistant","message":{"content":[]},"parent_tool_use_id":null,""" +
+            """"error":{"type":"authentication_failed","message":"OAuth token expired"}}"""
+
+        assertFalse(AgentStream.isAuthFailure(line))
+    }
+
+    /** A tool result carrying the same text - a cat of a recorded stream, a grep over a log. */
+    @Test
+    fun `a tool result carrying the word is not a refusal`() {
+        val line = """{"type":"user","message":{"content":[{"type":"tool_result",""" +
+            """"content":"{\"error\":\"authentication_failed\"}"}]}}"""
+
+        assertFalse(AgentStream.isAuthFailure(line))
+    }
 }

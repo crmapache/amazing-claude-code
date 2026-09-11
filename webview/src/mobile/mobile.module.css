@@ -3600,6 +3600,21 @@
   border-color: var(--acc-warn-16);
 }
 
+/*
+ * A round of work that is over: the same row, without the promise.
+ *
+ * The accent on the border is what makes a live row read as something happening, and last night's run is
+ * not. It keeps its place and its chevron - it is a door, and the door is the point - but it says so in
+ * the voice the rest of a quiet card is written in.
+ */
+.projectRunOver {
+  border-color: var(--acc-line-strong);
+}
+
+.projectRunOver .projectRunCount {
+  color: var(--acc-fg-dim);
+}
+
 .projectRunName {
   flex: 1 1 auto;
   min-width: 0;
@@ -4094,6 +4109,32 @@
  * The main thread's verdict, above the conversation rather than at the foot of it: it is what somebody
  * opened this for, and it is not something the card said.
  */
+/*
+ * A step's screen under its header: a band that stays, and a conversation that scrolls.
+ *
+ * It used to be the ordinary padded list with the feed dropped inside it, and that one line cost three
+ * things at once. The gutter was paid twice - the list's and the row's - so a line of the answer wrapped
+ * at 266 points of 393 while the verdict above it ran the full width; that is what it looked like, and
+ * the other two were invisible. The feed's own scroller, which is where all of its manners live, never
+ * scrolled at all: the log opened at its beginning rather than at its end, the button back to the bottom
+ * led nowhere, and a page fetched above the reading position moved it. Here the feed is the scroller, the
+ * way it is in a conversation - which is what a step is.
+ */
+.stepBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* The one thing that does not scroll away: it is the answer the screen was opened for, and it cannot
+   grow to eat the screen - the wire cuts it at a couple of hundred characters (see RemoteFeed). */
+.stepVerdictBand {
+  flex: none;
+  padding: var(--acc-sp-3) var(--acc-feed-gutter) 0;
+}
+
 .stepVerdictCard {
   display: flex;
   flex-direction: column;
@@ -4105,14 +4146,6 @@
   font-size: var(--acc-fs-label);
   letter-spacing: 0.09em;
   color: var(--acc-fg-ghost);
-}
-
-.stepPrompt {
-  padding: var(--acc-sp-3) var(--acc-sp-4);
-  font: var(--acc-fs-mono)/1.6 var(--acc-mono);
-  color: var(--acc-fg-mono);
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 /* The way into it, on the step's own row. */

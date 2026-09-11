@@ -95,6 +95,23 @@ const modelKey = (model: string): string => {
 /** Two names for one and the same model - see modelKey. */
 export const sameModel = (one: string, other: string): boolean => modelKey(one) === modelKey(other)
 
+/**
+ * The family alone, out of any of the names a model goes by - "fable", "opus" - or nothing when the name
+ * belongs to no family the panel knows: "default", "opusplan-preview", a model of somebody else's
+ * provider written in by hand (see CustomModels).
+ *
+ * It exists for one question and one only: has the model the person just picked arrived? A pick is a
+ * choice ("fable", "opus[1m]") and a signature is an identifier ("claude-fable-5-1"), so [sameModel] says
+ * no to that pair - it compares generations, and a choice carries none. The family is the most the two
+ * have in common, and it is enough: the person picked a family, and a signature out of it is that pick
+ * coming true. Where the family is unknown the question cannot be answered at all, and nothing is
+ * guessed - see noteStreamModel.
+ */
+export const modelFamily = (model: string): string => {
+  const bare = model.toLowerCase().replace(/\[.*\]$/, '')
+  return MODEL_FAMILIES.find((option) => bare.includes(option.id))?.id ?? ''
+}
+
 /** A choice turned into the identifier behind it, when the catalogue knows one; otherwise as it is. */
 const expandModel = (models: ModelInfo[] | null, model: string): string =>
   models?.find((option) => option.value === model)?.resolved || model

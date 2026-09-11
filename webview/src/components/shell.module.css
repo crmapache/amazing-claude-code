@@ -1353,8 +1353,16 @@
 
 /* --- The dropdown menu ----------------------------------------------------- */
 
+/*
+ * Fixed rather than absolute, like the menu it belongs to.
+ *
+ * The scrim answers "a click anywhere else closes this menu", and "anywhere else" must not depend on
+ * which box the button happened to stand in: an absolute one is laid out against the nearest positioned
+ * ancestor, so a menu opened from a form on a layer of its own got a scrim the size of that form - and a
+ * click beside it went to the form's own backdrop and shut the whole form, menu and answers with it.
+ */
 .menuScrim {
-  position: absolute;
+  position: fixed;
   /* Not inset:0 - otherwise it covers the header, and the history / MCP / plugins buttons are not clickable
      while another modal is open: the scrim swallows the click. The header is of variable height (the tabs
      wrap onto a second row) - hence a var rather than a number. */

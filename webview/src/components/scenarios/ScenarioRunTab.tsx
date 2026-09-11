@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
-import type { AgentEvent, ScenarioRun, ScenarioRunStep } from '../../protocol'
+import type { ScenarioRun, ScenarioRunStep } from '../../protocol'
 import { formatTokens } from '../../feed/build'
 import { formatDuration } from '../../feed/tools'
+import type { FeedItem } from '../../feed/types'
 import {
-  cardOf,
   cutCardOf,
   finished,
   progressOf,
@@ -47,10 +47,17 @@ export interface ScenarioRunTabProps {
    * would be the same words for both. Empty when the scenario's name says everything.
    */
   mark: string
-  /** The log of the step somebody has opened, keyed by the step (see scenarioLog in protocol.ts). */
-  log: { key: string; found: boolean; truncated: boolean; events: AgentEvent[] } | null
+  /**
+   * The log of the step somebody has opened, keyed by the step (see scenarioLog in protocol.ts).
+   *
+   * A feed rather than a batch of events: it grows upwards as the pages of the way back arrive, and
+   * where it is assembled is where the pages are put in (the scenarioLog case in App.tsx).
+   */
+  log: { key: string; found: boolean; loaded: boolean; earlierPages: number; items: FeedItem[] } | null
   onOpenLog: (key: string, conversationId: string) => void
   onCloseLog: () => void
+  /** Ask for the page above the open log; absent while there is nothing left to ask for. */
+  onLoadEarlier?: () => void
   onPause: () => void
   onResume: () => void
   onStop: () => void
@@ -68,6 +75,7 @@ export const ScenarioRunTab = ({
   log,
   onOpenLog,
   onCloseLog,
+  onLoadEarlier,
   onPause,
   onResume,
   onStop,
@@ -121,7 +129,6 @@ export const ScenarioRunTab = ({
    * found afresh; copied, it would be a photograph of a step in the middle of its work.
    */
   const openedStep = opened === HEAD ? null : run.steps.find((step) => step.key === opened) ?? null
-  const openedCard = openedStep ? cardOf(run.snapshot, openedStep) : null
 
   const openStep = (step: ScenarioRunStep) => {
     setOpened(step.key)
@@ -150,10 +157,11 @@ export const ScenarioRunTab = ({
             ? stepFacts(openedStep.startedAt, openedStep.finishedAt, openedStep.tokens, openedStep.cost)
             : stepFacts(run.startedAt, run.finishedAt, run.tokens, run.cost)
         }
-        prompt={openedCard ? openedStep?.prompt ?? '' : ''}
-        events={log && log.key === opened ? log.events : null}
-        found={log?.found ?? false}
-        truncated={log?.truncated ?? false}
+        items={log && log.key === opened ? log.items : []}
+        found={log?.key === opened && log.found}
+        loaded={log?.key === opened && log.loaded}
+        earlierPages={log?.key === opened ? log.earlierPages : 0}
+        onLoadEarlier={onLoadEarlier}
         onOpenLink={onOpenLink}
         onBack={closeLog}
       />

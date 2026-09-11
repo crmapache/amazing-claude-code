@@ -1,4 +1,4 @@
-import type { SessionEntry } from '../projects'
+import type { ChatState, SessionEntry } from '../projects'
 import { chatState } from '../projects'
 import { Sheet } from './Sheet'
 import m from '../mobile.module.css'
@@ -86,9 +86,14 @@ export const groupColor = (groupId: string): string => {
   return `hsl(${Math.abs(hash) % 360}, 55%, 72%)`
 }
 
-/** The same five states the list of conversations paints. */
-export const dotClass = (session: SessionEntry): string => {
-  const state = chatState(session)
+/**
+ * One of the five states as a dot of its own.
+ *
+ * Apart from the row below because a conversation is not the only thing on this phone that has a state:
+ * a scenario run on a project's card is drawn with the same five (see runDot in scenarios/runs.ts), and
+ * a second table of the same states would disagree with this one on the first change.
+ */
+export const dotFor = (state: ChatState): string => {
   if (state === 'crashed') return m.dotCrashed ?? ''
   if (state === 'attention') return m.dotAttention ?? ''
   if (state === 'running') return m.dotRunning ?? ''
@@ -96,3 +101,6 @@ export const dotClass = (session: SessionEntry): string => {
 
   return ''
 }
+
+/** The same five states the list of conversations paints. */
+export const dotClass = (session: SessionEntry): string => dotFor(chatState(session))

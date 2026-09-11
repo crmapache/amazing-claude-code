@@ -147,6 +147,55 @@ const typeInComposer = async (page, text) => {
   await sleep(420)
 }
 
+/** The button whose whole text is this - "Run" on a scenario's row is not the "Runs" tab beside it. */
+const clickExact = async (page, label, { last = false } = {}) => {
+  const found = await page.evaluate(([text, useLast]) => {
+    const all = [...document.querySelectorAll('button')].filter((b) => (b.textContent ?? '').trim() === text)
+    const button = useLast ? all[all.length - 1] : all[0]
+    if (!button) return false
+    button.click()
+    return true
+  }, [label, last])
+  if (!found) throw new Error(`no button whose text is exactly "${label}"`)
+  await sleep(320)
+}
+
+/**
+ * The scenarios hub.
+ *
+ * The button beside the magnifier opens it, and it is only on a conversation's screen: a run started
+ * from the hub takes a tab of its own, and there is no composer on that one. So the way back is the tab
+ * in the strip, which is what this falls back to.
+ */
+const openScenarios = async (page) => {
+  const pressed = await page.evaluate(() => {
+    const button = document.querySelector('[aria-label="Scenarios"]')
+    if (button) {
+      button.click()
+      return true
+    }
+
+    // A tab of the strip is a div with role="tab" - the cross inside it is the button.
+    const tab = [...document.querySelectorAll('[role="tab"]')].find((el) =>
+      (el.textContent ?? '').trim().startsWith('Scenarios'),
+    )
+    if (!tab) return false
+    tab.click()
+    return true
+  })
+  if (!pressed) throw new Error('the scenarios hub is neither a button nor a tab on this screen')
+  await sleep(900)
+}
+
+/** Start the scenario on the first shelf, answering the one thing it asks. */
+const startTheScenario = async (page, branch) => {
+  await clickExact(page, 'Run')
+  await sleep(320)
+  await page.locator('input').last().fill(branch)
+  await sleep(200)
+  await clickExact(page, 'Run', { last: true })
+}
+
 const FRAMES = [
   {
     file: '01-a-turn-in-progress',
@@ -294,6 +343,58 @@ const FRAMES = [
       await openMenu(page)
       await clickButton(page, 'History')
       await sleep(700)
+    },
+  },
+  {
+    file: '19-scenarios-and-their-runs',
+    shot: 'shot-turn',
+    run: async (page) => {
+      await openScenarios(page)
+      await startTheScenario(page, 'feature/apple-pay-sheet')
+      await sleep(2600)
+      await openScenarios(page)
+      await clickButton(page, 'Runs')
+      await sleep(600)
+    },
+  },
+  {
+    file: '20-a-run-in-progress',
+    shot: 'shot-turn',
+    run: async (page) => {
+      await openScenarios(page)
+      await startTheScenario(page, 'feature/apple-pay-sheet')
+      // Long enough for the walk to reach the card that stops to ask - the one state the whole screen
+      // is arranged around (see scenarioDesk).
+      await sleep(6200)
+    },
+  },
+  {
+    file: '21-the-scenario-editor',
+    shot: 'shot-turn',
+    run: async (page) => {
+      await openScenarios(page)
+      await clickButton(page, 'Review and fix')
+      await sleep(700)
+      // A stage rather than the name: the cards are what the editor is about - what each session is
+      // told, with the slot names lit up in it, and what has to be true before the main thread moves on.
+      await clickButton(page, 'Review, then fix')
+      await sleep(600)
+    },
+  },
+  {
+    file: '22-a-scenario-on-a-clock',
+    shot: 'shot-turn',
+    run: async (page) => {
+      await openScenarios(page)
+      // One for each shelf, so the day has more than a single hour standing in it.
+      for (const index of [0, 1]) {
+        await page.locator('[aria-label="Schedule a run"]').nth(index).click()
+        await sleep(500)
+        await clickButton(page, 'Set the time')
+        await sleep(700)
+      }
+      await clickButton(page, 'Schedule')
+      await sleep(600)
     },
   },
 ]

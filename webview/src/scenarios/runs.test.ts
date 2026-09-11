@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ScenarioRunSummary } from '../protocol'
-import { DOUBLE_PRESS_MS, pastRuns, pressedAgain, runMarks, runningRuns } from './runs'
+import { DOUBLE_PRESS_MS, liveDot, pastRuns, pressedAgain, runDot, runMarks, runningRuns } from './runs'
 
 /**
  * Splitting the runs into what is going and what is over, and naming them apart.
@@ -47,6 +47,83 @@ describe('runningRuns and pastRuns', () => {
     const all = [summary({ id: 'a', state: 'done' }), summary({ id: 'b', state: 'failed' })]
 
     expect(pastRuns(all, []).map((run) => run.id)).toEqual(['a', 'b'])
+  })
+})
+
+/**
+ * The dot a run is drawn with. It fails quietly in the only direction that matters: a run working for an
+ * hour under the grey dot of a tab nobody has open says the panel is idle when it is not.
+ */
+describe('runDot', () => {
+  it('breathes while the run is going, from the first moment', () => {
+    expect(runDot(summary({ state: 'starting' }))).toBe('running')
+    expect(runDot(summary({ state: 'running' }))).toBe('running')
+  })
+
+  it('calls for a person when the run stands on a question', () => {
+    expect(runDot(summary({ state: 'blocked', asking: 'Ship it?' }))).toBe('attention')
+  })
+
+  /** Parked by a hand, and nothing is being spent - a breathing dot there would promise work. */
+  it('goes quiet on a pause and on a stop', () => {
+    expect(runDot(summary({ state: 'paused' }))).toBe('idle')
+    expect(runDot(summary({ state: 'stopped', finishedAt: 9 }))).toBe('idle')
+  })
+
+  /** A pause laid over an open question: the question can still be answered, so it still calls. */
+  it('keeps calling when the pause came down over a question', () => {
+    expect(runDot(summary({ state: 'paused', asking: 'Ship it?' }))).toBe('attention')
+  })
+
+  it('tells a finished round of work from a failed one', () => {
+    expect(runDot(summary({ state: 'done', finishedAt: 9 }))).toBe('done')
+    expect(runDot(summary({ state: 'failed', finishedAt: 9, failure: 'crashed' }))).toBe('crashed')
+  })
+
+  /**
+   * A summary is read off that machine's disk, and an IDE closed in the middle of a step leaves the last
+   * state it wrote there for ever. Drawn from the record alone, such a row breathes over work that ended
+   * in the night - on the first screen of a phone, which is read to find out whether anything is going.
+   */
+  it('goes quiet over a run the machine no longer lists as going', () => {
+    expect(runDot(summary({ state: 'running' }), false)).toBe('idle')
+    expect(runDot(summary({ state: 'blocked', asking: 'Ship it?' }), false)).toBe('idle')
+  })
+
+  /** How it ended is a fact about the record, and being over does not take it away. */
+  it('still tells how a run that is over ended', () => {
+    expect(runDot(summary({ state: 'done', finishedAt: 9 }), false)).toBe('done')
+    expect(runDot(summary({ state: 'failed', finishedAt: 9, failure: 'crashed' }), false)).toBe('crashed')
+  })
+})
+
+describe('liveDot', () => {
+  it('says nothing when nothing is going', () => {
+    expect(liveDot([])).toBe('idle')
+  })
+
+  it('lets the one being waited for speak for the whole shelf', () => {
+    const live = [summary({ id: 'a' }), summary({ id: 'b', state: 'blocked', asking: 'Ship it?' })]
+
+    expect(liveDot(live)).toBe('attention')
+  })
+
+  it('breathes while any of them works', () => {
+    expect(liveDot([summary({ id: 'a', state: 'paused' }), summary({ id: 'b' })])).toBe('running')
+  })
+
+  /**
+   * The one live run of a shelf, and it is the first of the list - which is the trap. Handed straight to
+   * map, runDot is called with the index as its second argument, and a zero there says "this run is not
+   * going": the shelf with one round of work under way went grey, and only that one.
+   */
+  it('breathes over a single run that is going', () => {
+    expect(liveDot([summary({ id: 'a', state: 'running' })])).toBe('running')
+    expect(liveDot([summary({ id: 'a', state: 'blocked', asking: 'Ship it?' })])).toBe('attention')
+  })
+
+  it('stays quiet over runs that are all parked', () => {
+    expect(liveDot([summary({ id: 'a', state: 'paused' })])).toBe('idle')
   })
 })
 

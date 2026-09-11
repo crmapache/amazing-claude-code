@@ -9,7 +9,7 @@ import type {
   ToolResultBlock,
   ToolUseBlock,
 } from '../protocol'
-import { normalizeMode, sameModel } from '../catalog'
+import { modelFamily, normalizeMode, sameModel } from '../catalog'
 import { parseParagraphs } from './markdown'
 import { initialPanelState, push, type PanelAction, type PanelState } from './panelState'
 import { togglePin } from './pins'
@@ -78,13 +78,32 @@ export { initialPanelState } from './panelState'
  * the person's last message: the same refusal an hour later is a fresh piece of trouble, and staying
  * silent about it would be worse than repeating oneself.
  */
-const addError = (state: PanelState, message: string): PanelState => {
+const addError = (state: PanelState, message: string, signIn = false): PanelState => {
   const turnStart = state.items.map((item) => item.kind).lastIndexOf('user') + 1
   const alreadyShown = state.items
     .slice(turnStart)
     .some((item) => item.kind === 'error' && item.message === message)
 
-  if (alreadyShown) return state
+  if (alreadyShown) {
+    /**
+     * The row stands and the door does not. The same refusal arrives by two roads, and only one of them
+     * knows it is about the sign-in: come first through stderr or through a refused control request, the
+     * row is an ordinary red slab, and the mark carried by the second arrival used to be dropped with it.
+     * What is lost is the only way back there is - the login screen never comes up for this refusal (see
+     * ErrorItem.signIn) - so the mark goes onto the row already standing rather than onto a second one
+     * saying the same thing.
+     */
+    if (!signIn) return state
+
+    return {
+      ...state,
+      items: state.items.map((item, index) =>
+        index >= turnStart && item.kind === 'error' && item.message === message && !item.signIn
+          ? { ...item, signIn: true }
+          : item,
+      ),
+    }
+  }
 
   /**
    * The CLI can say the same trouble twice: as the agent's message in the stream and as a line in
@@ -101,8 +120,23 @@ const addError = (state: PanelState, message: string): PanelState => {
     (item, index) => !(index >= turnStart && item.kind === 'text' && item.source.trim() === said),
   )
 
-  return push({ ...state, items: withoutEcho }, (id) => ({ id, kind: 'error', message }))
+  return push({ ...state, items: withoutEcho }, (id) => ({ id, kind: 'error', message, signIn }))
 }
+
+/**
+ * The one refusal the panel reads by its machine name: the request failed because the sign-in did (see
+ * AgentAssistantEvent.error). Read as a code rather than as a sentence - the sentences under it are
+ * several, English, and change between CLI versions.
+ */
+const AUTH_FAILED = 'authentication_failed'
+
+/** What the CLI wrote under a failed request: its placeholder answer, as one piece of text. */
+const placeholderText = (blocks: ContentBlock[]): string =>
+  blocks
+    .filter((block) => block.type === 'text')
+    .map((block) => (block.type === 'text' ? block.text.trim() : ''))
+    .filter((text) => text !== '')
+    .join('\n')
 
 export const reducePanel = (state: PanelState, action: PanelAction, now = Date.now()): PanelState => {
   switch (action.kind) {
@@ -299,6 +333,9 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         ...state,
         status: 'running',
         turnStartedAt: now,
+        // A turn of one's own is a new request by definition, so a pick made before it is now answerable
+        // (see PanelState.ownSwapDue).
+        ownSwapDue: state.ownSwap ? true : state.ownSwapDue,
         // A new request - a new count, whatever was going on before it (see PanelState.stintStartedAt).
         stintStartedAt: now,
         pausedMs: 0,
@@ -421,6 +458,11 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         model: action.model,
         ownModel: action.model,
         ownSwap: expectingOwnSwap(state, action.model, action.error),
+        // A pick is judged only once a request that could carry it has begun - see PanelState.ownSwapDue.
+        ownSwapDue: false,
+        // Whatever the last pick failed to do is answered by this one: the accent it left says "the model
+        // you chose is not the one working", and the person has just chosen again.
+        stuckPick: undefined,
         // Whatever the agent had swapped before is answered by a choice of the person's own: the accent
         // on the button says "you did not pick this", and now they have (see PanelState.switchedFrom).
         switchedFrom: undefined,
@@ -1012,13 +1054,67 @@ const noteStreamModel = (state: PanelState, named: string, reason = '', replay =
   // sameModel rather than a string comparison: one model is signed differently from one answer to the
   // next - with a build date, with or without the window mark - and every such difference would otherwise
   // be announced as a swap (see modelKey in catalog.ts).
-  if (!previous || sameModel(previous, named)) return moved
+  if (!previous || sameModel(previous, named)) {
+    // The model being left, signed again while a pick of the person's own is waiting. Two different
+    // things look exactly like this, and which one it is depends on whether a request that could carry
+    // the pick has begun yet (see PanelState.ownSwapDue).
+    if (!replay && state.ownSwap) return state.ownSwapDue ? pickStuck(state, named) : { ...state, streamModel: named }
 
-  // The person asked for this themselves a moment ago, and this signature is the request coming true -
-  // the first one that names anything but the model being left (see PanelState.ownSwap).
-  if (state.ownSwap) return { ...moved, ownSwap: false }
+    return moved
+  }
 
-  return push(swapNoted(moved, previous, replay), (id) => ({ id, kind: 'model', from: previous, to: named, reason }))
+  if (state.ownSwap) {
+    // The signature names what was asked for: the request coming true, and nothing to tell anyone about.
+    if (arrivedAsPicked(state, named)) return { ...moved, ownSwap: false, ownSwapDue: false, stuckPick: undefined }
+
+    // Something else altogether, then - the agent has moved the conversation on its own, and that is
+    // news whatever the person picked a moment ago. The pick is no longer waiting either way: it has
+    // been overtaken, and holding the flag would swallow the next real swap.
+  }
+
+  return push(swapNoted({ ...moved, ownSwap: false, ownSwapDue: false }, previous, replay), (id) => ({
+    id,
+    kind: 'model',
+    from: previous,
+    to: named,
+    reason,
+  }))
+}
+
+/**
+ * Is this signature the pick coming true?
+ *
+ * By family, because that is all a pick and a signature have in common (see modelFamily). Where the pick
+ * has no family the panel knows - "default", a model of somebody else's provider - the question cannot be
+ * answered, and the old rule stands: anything other than the model being left is the answer to it. Better
+ * to keep quiet than to accuse a pick of not working because its name is unfamiliar.
+ */
+const arrivedAsPicked = (state: PanelState, named: string): boolean => {
+  const family = state.ownModel ? modelFamily(state.ownModel) : ''
+  return family ? family === modelFamily(named) : true
+}
+
+/**
+ * The pick did not take: a new request has gone out and come back signed by the model being left.
+ *
+ * Both halves matter. The row says it in the feed, because by then the person has been reading answers
+ * from a model they did not choose; the accent on the MODEL button says it for as long as it lasts, since
+ * the chip now has to name what is genuinely at work rather than what was asked for.
+ */
+const pickStuck = (state: PanelState, named: string): PanelState => {
+  const picked = state.ownModel
+  const moved: PanelState = {
+    ...state,
+    model: named,
+    streamModel: named,
+    ownSwap: false,
+    ownSwapDue: false,
+    stuckPick: picked,
+  }
+
+  if (!picked) return moved
+
+  return push(moved, (id) => ({ id, kind: 'modelStuck', picked, running: named }))
 }
 
 /**
@@ -1166,13 +1262,21 @@ const applyAgentEvent = (
       // measure here: placeholders from <synthetic> - a refusal about an unknown command, an answer
       // instead of a turn forbidden by a hook - arrive as a message in the feed, while the turn count
       // stays at zero.
-      return applyAssistant(
-        { ...signed, liveContextUsed, starting: false },
-        blocksOf(event.message.content),
-        now,
-        replay,
-        event.uuid,
-      )
+      const blocks = blocksOf(event.message.content)
+      const answered: PanelState = { ...signed, liveContextUsed, starting: false }
+
+      /**
+       * The turn ended because the sign-in did, and this answer is the CLI's own placeholder rather than
+       * anything the model said. As a grey paragraph it is a dead end: the login screen in front of the
+       * panel never comes up for it (the CLI goes on answering "signed in" for a token that merely lies
+       * in the store), so the red row with a way back is the only door there is - see ErrorItem.signIn.
+       *
+       * The text is laid down as the error, and the placeholder that follows is dropped as an echo of it
+       * (see alreadyShownAsError): one piece of trouble, one row.
+       */
+      const base = event.error === AUTH_FAILED ? addError(answered, placeholderText(blocks), !replay) : answered
+
+      return applyAssistant(base, blocks, now, replay, event.uuid)
     }
 
     case 'user': {
@@ -1481,14 +1585,25 @@ const isNoContentPlaceholder = (blocks: ContentBlock[]): boolean => {
   return block.type === 'text' && block.text.trim() === '(no content)'
 }
 
-/** Whether this same text has already been shown as an error in the current turn - then repeating it serves nothing. */
+/**
+ * Whether this same text has already been shown as an error in the current turn - then repeating it
+ * serves nothing.
+ *
+ * A whole line of it rather than the whole of it: an error is sometimes assembled out of the very blocks
+ * that are being laid down here, joined by a line break (see placeholderText). Compared as a whole, such
+ * a text stops matching itself the moment the refusal arrives in two paragraphs instead of one - a red
+ * slab, and the same words in grey underneath it. The line boundaries are what keeps this exact: a piece
+ * counts only if it begins where a line begins and ends where one ends, so a short answer cannot go
+ * missing inside a long error that merely contains those letters somewhere.
+ */
 const alreadyShownAsError = (state: PanelState, text: string): boolean => {
   const turnStart = state.items.map((item) => item.kind).lastIndexOf('user') + 1
   const message = text.trim()
+  if (!message) return false
 
   return state.items
     .slice(turnStart)
-    .some((item) => item.kind === 'error' && item.message.trim() === message)
+    .some((item) => item.kind === 'error' && `\n${item.message.trim()}\n`.includes(`\n${message}\n`))
 }
 
 /**
@@ -2035,6 +2150,10 @@ const applyToolResults = (
   const results = blocks.filter((block): block is ToolResultBlock => block.type === 'tool_result')
   if (results.length === 0) return state
 
+  // A tool has answered, so the agent goes back to the model with its result: whatever is signed next
+  // comes out of a request made after the person's pick, and is a verdict on it (see PanelState.ownSwapDue).
+  const due = !replay && state.ownSwap ? true : state.ownSwapDue
+
   const startedAt = { ...state.startedAt }
 
   const resolveTool = (item: ToolItem): ToolItem => {
@@ -2106,7 +2225,7 @@ const applyToolResults = (
     return { ...item, tools, pending }
   })
 
-  return applyTaskCreated({ ...state, items, startedAt }, results, replay)
+  return applyTaskCreated({ ...state, items, startedAt, ownSwapDue: due }, results, replay)
 }
 
 /** "Task #3 created successfully: …" - the only place TaskCreate names the number it assigned. */

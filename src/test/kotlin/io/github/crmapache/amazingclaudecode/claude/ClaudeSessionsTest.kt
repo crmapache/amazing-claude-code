@@ -237,7 +237,7 @@ class ClaudeSessionsTest : BasePlatformTestCase() {
             onEvent = { _, _ -> },
             onError = { _, _ -> },
             onFinished = {},
-            onMoveDropping = { dropped += 1 },
+            onProcessDropping = { dropped += 1 },
         )
         sessions.setEffort("main", "low")
 
@@ -257,6 +257,65 @@ class ClaudeSessionsTest : BasePlatformTestCase() {
         // No conversation was made for it: a tab nobody has written into reads the register itself
         // whenever it does start, which by then says exactly this.
         assertNull(sessions.model("main"))
+    }
+
+    /**
+     * The sweep reads a conversation on one thread and takes its process on another, so what it read is
+     * asked again at the moment of taking (see ClaudeSessions.sleep). A conversation with no process is
+     * settled before any of that: there is nothing to take, and asking would put a look at the state of
+     * every long-closed tab on the sweep's path for nothing.
+     */
+    fun testATabWithNoProcessIsSettledWithoutAskingAnything() {
+        var asked = false
+
+        assertFalse(sessions().sleep("never-opened") { asked = true; true })
+        assertFalse(asked)
+    }
+
+    /**
+     * A restart throws the process away exactly as a swap does - an added MCP server is read at launch
+     * and reaches a conversation no other way - so it owes the same word: the fleet, the background
+     * command and the pinned question all die with that process, and nothing else would say so.
+     *
+     * A tab with no process owes nothing and must stay silent: a restart there raises nothing and drops
+     * nothing, and a row in the feed about it would appear every time somebody adds a server while an
+     * untouched tab sits next door. What it still owes is the answer to whoever asked - the MCP screen
+     * questions the process next, and without that word it would go on showing the list from before.
+     */
+    fun testARestartWithNoProcessAnnouncesNothingAndStillAnswers() {
+        var dropped = 0
+        var answered = 0
+        val sessions = ClaudeSessions(
+            workingDirectory = null,
+            parentDisposable = testRootDisposable,
+            onEvent = { _, _ -> },
+            onError = { _, _ -> },
+            onFinished = {},
+            onProcessDropping = { dropped += 1 },
+        )
+
+        assertFalse(sessions.restart("never-opened") { answered += 1 })
+        assertEquals(0, dropped)
+        assertEquals(1, answered)
+    }
+
+    /** Nothing was waiting, so the end of a turn has nothing to apply - and must not stumble over it. */
+    fun testTheEndOfATurnAppliesNoRestartNobodyAskedFor() {
+        sessions().applyPendingRestart("main")
+    }
+
+    /**
+     * The rule that keeps a waiting restart from taking down the wrong process. A turn does not always
+     * end by saying so - a crash, a Stop, an account chosen - and whatever came up after the process the
+     * note was written about already read the config at launch. Fired blindly, the note would cost a
+     * fleet or a dev server raised long afterwards.
+     */
+    fun testAWaitingRestartIsOwedOnlyByTheProcessItWaitedFor() {
+        assertTrue(ClaudeSessions.stillOwed(running = true, startedAt = 1_000, waitedFor = 1_000))
+        // Something else came up in its place: it read the config when it started.
+        assertFalse(ClaudeSessions.stillOwed(running = true, startedAt = 2_000, waitedFor = 1_000))
+        // Nothing is standing there at all.
+        assertFalse(ClaudeSessions.stillOwed(running = false, startedAt = 1_000, waitedFor = 1_000))
     }
 
     /** The account register is machine-wide and outlives a test, so what a test adds it takes away. */

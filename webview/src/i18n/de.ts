@@ -73,7 +73,7 @@ export const de: Dict = {
   settings: {
     rows: {
       sounds: { label: 'Signaltöne', sub: 'Wenn das Panel nach dir ruft' },
-      calmColors: { label: 'Ruhige Farben', sub: 'Anzeigen in einem ruhigen Ton' },
+      calmColors: { label: 'Ruhige Farben', sub: 'Wie viel Farbe die Anzeigen behalten' },
       newChat: { label: 'Neue Chats', sub: 'Modell, Aufwand und Berechtigungsmodus' },
       composerLayout: { label: 'Layout des Eingabefelds', sub: 'Wo das Eingabefeld sitzt' },
       pasteCollapse: { label: 'Eingefügter Text', sub: 'Wann eine Einfügung zum Chip wird' },
@@ -133,11 +133,11 @@ export const de: Dict = {
 
   calmColors: {
     sample: 'EINE ANZEIGE AUF JEDER STUFE',
-    label: 'Ruhige Farben',
-    hint: 'Ein Ton, was die Anzeigen auch sagen',
+    label: 'Farbe der Anzeigen',
+    hint: 'Die ganze Leiter bei 100%, ein ruhiger Ton bei 0%',
     keeps: 'Sonst ändert sich nichts: ein Fehler bleibt rot, eine Berechtigung bleibt, was sie ist. Das sind Dinge, die passiert sind, keine Stimmung.',
-    on: 'An',
-    off: 'Aus',
+    full: 'Volle Farbe',
+    none: 'Ein Ton',
   },
 
   history: {
@@ -286,7 +286,6 @@ export const de: Dict = {
     cards: (n) => (n === 1 ? '1 Karte' : `${n} Karten`),
     hasLoop: 'hat eine Schleife',
     asksFor: (names: string): string => `fragt nach: ${names}`,
-    lastUsed: (value: string): string => `Zuletzt war es ${value}`,
     besideGoing: (n: number): string =>
       n === 1
         ? 'Es startet einen zweiten Lauf neben dem, der schon läuft. Beide arbeiten auf derselben Arbeitskopie.'
@@ -421,7 +420,7 @@ export const de: Dict = {
       step: 'Schritt',
       head: 'Hauptstrang',
       missing: 'Auf diesem Rechner gibt es keine Aufzeichnung dieses Schritts.',
-      truncated: 'Das ist das Ende - der Anfang wird nicht gezeigt.',
+      main: 'HAUPT',
     },
     editor: {
       title: 'SZENARIO',
@@ -514,7 +513,8 @@ export const de: Dict = {
   pasteCollapse: {
     note: 'Ein langer Einfügetext wird zu einem Chip, damit eine Textwand das Eingabefeld nicht füllt. Die Zeilen werden so gezählt, wie sie im Feld selbst fallen würden - Text, der als eine endlose Zeile eingefügt wird, klappt also auch zusammen. Verloren geht dabei nichts: Ein eingeklappter Einfügetext behält den ganzen Text und klappt über die Stiftschaltfläche wieder ins Feld auf.',
     never: 'Nie zusammenfalten',
-    neverSub: 'Alles Eingefügte bleibt als gewöhnlicher Text im Feld',
+    neverSub: (thousands: number): string =>
+      `Alles bleibt im Feld, außer einem Einfügen über ${thousands}.000 Zeichen`,
     from: (lines) => `Ab ${lines} Zeilen`,
     foldLabel: 'Lange Einfügungen zusammenfalten',
     foldSub: (min, max) => `Ab wie vielen Zeilen - ${min} bis ${max}`,
@@ -754,6 +754,8 @@ export const de: Dict = {
     noDrawer:
       'Das Panel kommt an den Anmeldespeicher dieses Kontos nicht heran, die Anmeldung hätte also kein Ziel. Wechsle unten zu einem anderen Konto.',
     noTerminal: 'Diese IDE hat kein Terminal geöffnet, und genau dort läuft die Anmeldung.',
+    switchAccount: 'Konto wechseln',
+    sendAgainAfter: 'Schließen Sie die Anmeldung im Terminal ab und senden Sie Ihre Nachricht erneut.',
   },
 
   stream: {
@@ -909,6 +911,11 @@ export const de: Dict = {
     },
 
     modelSwitch: { label: 'MODELL', note: 'gewechselt von Claude Code, nicht von dir' },
+    modelStuck: {
+      label: 'MODELL',
+      note: (running) => `gewählt, doch die Antworten kommen weiter von ${running}`,
+      hint: 'Die Änderung kam bei Claude Code nicht an - wähle das Modell noch einmal.',
+    },
 
     crash: {
       label: 'SITZUNG',
@@ -1219,6 +1226,8 @@ export const de: Dict = {
       reach: {
         connecting: 'Verbinde…',
         asleep: 'Mit dem Relay verbunden, aber keine IDE antwortet.',
+        silent: 'Seit einigen Minuten antwortet nichts. Der Rechner ist vielleicht aus - oder der Zugang dieses Geräts wurde dort entzogen.',
+        revoked: 'Diese IDE kennt dieses Gerät nicht mehr. Neu koppeln oder vergessen.',
         elsewhere: 'Auch in einem anderen Tab oder in der installierten App offen - die Kopie hält die Verbindung.',
         reconnecting: 'Verbinde neu… die Liste unten kann veraltet sein.',
         offline: 'Das Relay ist nicht erreichbar. Nichts geht verloren - das kommt von selbst zurück.',
@@ -1226,6 +1235,8 @@ export const de: Dict = {
       agent: {
         connecting: 'verbindet…',
         asleep: 'antwortet nicht',
+        silent: 'antwortet lange nicht',
+        revoked: 'Zugang entzogen',
         elsewhere: 'woanders offen',
         reconnecting: 'verbindet neu…',
         offline: 'offline',
@@ -1285,7 +1296,6 @@ export const de: Dict = {
       start: {
         title: 'Jetzt starten',
         required: 'erforderlich',
-        lastUsed: (value: string): string => `Zuletzt war es ${value}`,
         beside: (n: number): string =>
           n === 1
             ? 'Es startet einen zweiten Lauf neben dem, der schon läuft. Beide arbeiten auf derselben Arbeitskopie.'
@@ -1458,6 +1468,7 @@ export const de: Dict = {
     effortHint: (effort) => `Denkaufwand: ${effort}`,
     modelHint: (model) => `Modell: ${model}`,
     modelHintSwitched: (model, from) => `Modell: ${model} - Claude Code ist von ${from} aus selbst gewechselt`,
+    modelHintStuck: (model, picked) => `Modell: ${model} - ${picked} wurde gewählt und nicht übernommen`,
     modeHint: (mode) => `Berechtigungsmodus: ${mode}`,
     sessionLimit: '5-Stunden-Limit',
     weekLimit: 'Wochenlimit',

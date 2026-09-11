@@ -1,7 +1,7 @@
-import { useMemo } from 'react'
-import type { AgentEvent, ScenarioRunStep } from '../../protocol'
+import type { ScenarioRunStep } from '../../protocol'
 import { Feed } from '../../components/Feed'
-import { logItems, stepFacts } from '../../components/scenarios/StepLog'
+import { stepFacts } from '../../components/scenarios/StepLog'
+import type { FeedItem } from '../../feed/types'
 import { useCardState } from '../../hooks/useCardState'
 import { useT } from '../../i18n'
 import { Back } from './Back'
@@ -12,29 +12,34 @@ import m from '../mobile.module.css'
  *
  * The last thing the phone could not do. A step of a scenario is an ordinary Claude Code conversation, so
  * the honest way to show it is the way a conversation is shown - the same feed, built by the same
- * reducer, drawn by the same component the thread on this phone draws. What comes over the wire is the
- * END of it, cut to a frame (see RemoteFeed.trimmedLog): a card that walked a repository leaves
- * megabytes, and how it finished is the half anybody reads at three in the morning.
+ * reducer, drawn by the same component the thread on this phone draws. Including how it is READ: the end
+ * of the log arrives first and the way back up is fetched a page at a time, each page sized to what a
+ * relay frame carries (see ScenarioDesk.sendLog, and useEarlierPages, which serves both screens).
  *
- * The verdict stands above the conversation rather than at the foot of it. It is the main thread's
- * judgement rather than anything the card said, and it is the answer somebody opened this for.
+ * The verdict stands above the conversation rather than at the foot of it, and it STAYS there while the
+ * log scrolls under it. It is the main thread's judgement rather than anything the card said, it is the
+ * answer somebody opened this for, and it is short by construction - the wire cuts it at a couple of
+ * hundred characters on the way here (see RemoteFeed.stepBody).
  */
 export const ScenarioStep = ({
   step,
   log,
+  onLoadEarlier,
   onOpenLink,
   onBack,
 }: {
   /** The step out of the run's own record - null when the run itself has not arrived yet. */
   step: ScenarioRunStep | null
-  /** null while the answer is on its way; the events once it lands. */
-  log: { found: boolean; truncated: boolean; events: AgentEvent[] } | null
+  /** null before the screen was even opened; `loaded` is what says the answer has arrived. */
+  log: { found: boolean; loaded: boolean; earlierPages: number; items: FeedItem[] } | null
+  /** Ask for the page above what is on screen; absent while there is nothing left to ask for. */
+  onLoadEarlier?: () => void
   onOpenLink: (url: string) => void
   onBack: () => void
 }) => {
   const t = useT()
   const cards = useCardState()
-  const items = useMemo(() => logItems(log?.events ?? null), [log])
+  const items = log?.items ?? []
 
   const facts = step ? stepFacts(step.startedAt, step.finishedAt, step.tokens, step.cost) : ''
 
@@ -50,29 +55,25 @@ export const ScenarioStep = ({
         </div>
       </header>
 
-      <div className={m.pageList}>
+      <div className={m.stepBody}>
         {step?.verdictReason || step?.error ? (
-          <div className={`${m.card} ${m.stepVerdictCard}`}>
-            <span className={m.stepVerdictLabel}>{t.mobile.scenarios.step.verdict}</span>
-            <span className={step.verdict === 'undone' || step.error ? m.stepVerdictBad : m.stepVerdict}>
-              {step.verdictReason || step.error}
-            </span>
+          <div className={m.stepVerdictBand}>
+            <div className={`${m.card} ${m.stepVerdictCard}`}>
+              <span className={m.stepVerdictLabel}>{t.mobile.scenarios.step.verdict}</span>
+              <span className={step.verdict === 'undone' || step.error ? m.stepVerdictBad : m.stepVerdict}>
+                {step.verdictReason || step.error}
+              </span>
+            </div>
           </div>
         ) : null}
 
         {/*
-          What the step was told stands here only when the log below does not begin with it: a step is an
-          ordinary conversation, and what it was told is its first message. A tail handed over without its
-          head is the exception, and there this is the only copy of it left.
+          What the step was told is not repeated above the feed, because the feed has it: a step is an
+          ordinary conversation, and what it was told is its first message. There used to be a band here
+          for the one case where that was untrue - a tail handed over without its head - and it is gone
+          with the reason for it: the beginning is reachable now, a page at a time.
         */}
-        {log?.truncated && step?.prompt ? (
-          <>
-            <div className={`${m.card} ${m.stepPrompt}`}>{step.prompt}</div>
-            <p className={m.formNote}>{t.scenarios.log.truncated}</p>
-          </>
-        ) : null}
-
-        {log === null ? (
+        {!log?.loaded ? (
           <p className={m.empty}>{t.scenarios.log.loading}</p>
         ) : !log.found || items.length === 0 ? (
           <p className={m.empty}>{t.scenarios.log.missing}</p>
@@ -81,6 +82,9 @@ export const ScenarioStep = ({
             Every "something is happening" prop is empty, and that is the whole difference between this
             feed and a live one: the status line speaks about work under way, and a word there under a
             conversation that ended last night reads as one still going.
+
+            userLabel is the other one: nothing on this screen can be typed into, so what stands on the
+            "you" side was said by the run's main thread rather than by whoever is reading it.
           */
           <Feed
             items={items}
@@ -91,6 +95,9 @@ export const ScenarioStep = ({
             streamStatus=""
             statusStalled={false}
             cards={cards}
+            userLabel={t.scenarios.log.main}
+            onLoadEarlier={onLoadEarlier}
+            earlierPages={log.earlierPages}
             onPlanDecision={() => undefined}
             onDismissError={() => undefined}
             onOpenLink={onOpenLink}

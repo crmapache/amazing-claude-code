@@ -44,6 +44,20 @@ internal class RemoteState : PersistentStateComponent<RemoteState.Data> {
         var label: String = ""
 
         var devices: MutableList<Device> = mutableListOf()
+
+        /**
+         * The addresses this agent has let go of, newest last.
+         *
+         * A headstone rather than a record: the keys are gone and nothing here can talk to these. It
+         * exists so that a device coming back can be TOLD it was let go, instead of meeting the silence
+         * that a switched-off machine also makes - which is what left people staring at "connected to
+         * the relay, but no IDE is answering" for ever and guessing that "Forget" was the way out.
+         *
+         * It has to survive a restart, because the case it is for is a phone that was switched off at
+         * the time. Bounded, because it grows by a row per revocation and answers nothing after a
+         * while: a device revoked and forgotten a year ago is met by the silence, as before.
+         */
+        var revoked: MutableList<String> = mutableListOf()
     }
 
     class Device {
@@ -98,24 +112,38 @@ internal class RemoteState : PersistentStateComponent<RemoteState.Data> {
     /**
      * Forget a device.
      *
-     * This is the whole of a revocation on this side, and it is worth understanding why that is
-     * enough: with the record gone, frames from that device no longer decrypt and are dropped. No
-     * message needs to reach the phone and the relay needs to be told nothing - so it works while the
-     * phone is switched off, which is exactly when it is most likely to be wanted.
+     * This is what a revocation IS on this side, and it is worth understanding why that is enough: with
+     * the record gone, frames from that device no longer decrypt and are dropped. No message needs to
+     * reach the phone and the relay needs to be told nothing - so it works while the phone is switched
+     * off, which is exactly when it is most likely to be wanted.
+     *
+     * A word is sent to the phone all the same, and it is a courtesy rather than a mechanism: the same
+     * revocation happens whether or not it arrives (see RemoteAgent.farewell and [noteRevoked]).
      */
     fun forget(deviceId: String): Boolean = data.devices.removeIf { it.id == deviceId }
 
-    fun forgetAll() {
-        data.devices.clear()
+    /** Remember that this address was let go, so that it can be told rather than met with silence. */
+    fun noteRevoked(deviceId: String) {
+        data.revoked.remove(deviceId)
+        data.revoked.add(deviceId)
+        while (data.revoked.size > REVOKED_REMEMBERED) data.revoked.removeAt(0)
     }
+
+    fun wasRevoked(deviceId: String): Boolean = data.revoked.contains(deviceId)
 
     /** A fresh identity: every device falls away with it, because none of them knows the new one. */
     fun resetIdentity() {
         data.agentId = ""
         data.devices.clear()
+        // Not carried over: the addresses named there answered to an agent that no longer exists, and
+        // a headstone under a new name marks nobody's grave.
+        data.revoked.clear()
     }
 
     companion object {
         fun getInstance(): RemoteState = service()
+
+        /** How many let-go addresses are worth remembering - see [Data.revoked]. */
+        const val REVOKED_REMEMBERED = 32
     }
 }

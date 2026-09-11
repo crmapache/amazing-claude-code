@@ -61,6 +61,34 @@ export interface CommandHint {
 }
 
 /**
+ * Whether two maps of hints say the same thing.
+ *
+ * The IDE re-reads the disk every couple of seconds and sends the map unasked once a minute whether it
+ * changed or not, and every arriving message is a fresh object - so without this the panel repaints on
+ * a schedule rather than on news. Compared by content and not by the order the keys arrived in: that
+ * order is the order the IDE walked the directories in, and the file system does not promise it twice.
+ */
+export const sameHints = (
+  one: Record<string, CommandHint>,
+  other: Record<string, CommandHint>,
+): boolean => {
+  const names = Object.keys(one)
+  if (names.length !== Object.keys(other).length) return false
+
+  return names.every((name) => {
+    const mine = one[name]
+    const theirs = other[name]
+
+    return (
+      theirs !== undefined &&
+      mine !== undefined &&
+      mine.description === theirs.description &&
+      mine.argumentHint === theirs.argumentHint
+    )
+  })
+}
+
+/**
  * The agent's slash command list arrives with the session whole - it is the same catalogue the terminal
  * sees, the commands of every connected MCP server included. Our own panel commands and the built-in
  * ones described in advance come first and are always available, even before the session's first event;
@@ -109,13 +137,68 @@ export const buildCommands = (
   // skill simply could not be found in it. Files on disk lie there whether a conversation has begun or
   // not, so we take names from there too: by the time the agent names its own, the list already
   // matches.
+  //
+  // By name rather than in the order the map arrived in. That order is the order the IDE walked the
+  // directories in, and underneath it the order the file system chose to list them - it is not promised
+  // to be the same twice, so the same set of files could redraw the list in a different order for no
+  // reason at all. Sorted here, the panel stops depending on the map's order entirely. Plain comparison
+  // rather than a locale-aware one: these are file names, and the panel speaks ten languages - a list
+  // whose order followed the interface language would be a test that passes on one machine only.
+  const onDisk: CommandEntry[] = []
   for (const [id, hint] of Object.entries(hints)) {
     if (seen.has(id) || UNAVAILABLE_IN_STREAM_MODE.has(id)) continue
     seen.add(id)
-    entries.push({ id, hint: hint.description, argumentHint: hint.argumentHint, group: 'project' })
+    onDisk.push({ id, hint: hint.description, argumentHint: hint.argumentHint, group: 'project' })
   }
+  onDisk.sort((one, other) => (one.id < other.id ? -1 : one.id > other.id ? 1 : 0))
 
-  return entries
+  return [...entries, ...onDisk]
+}
+
+/**
+ * A row of the hint the person has chosen with the arrow keys, and the list it was chosen in.
+ *
+ * Held by id rather than by position: the IDE now looks at the disk every couple of seconds, and the
+ * agent re-sends its own catalogue at the start of every turn, so a list can be replaced while a finger
+ * is on the arrow keys. Held by position, the choice slides onto whatever moved into that slot, and
+ * Enter runs a command nobody picked.
+ */
+export interface HeldChoice {
+  id: string
+  /**
+   * What the list was built from when the choice was made - the query after the slash, the value after
+   * a command's name, or the text after the "@". It also tells the three lists apart: the list stops
+   * being one of commands and becomes one of files or of a command's values, where a held command name
+   * would mean nothing.
+   */
+  list: string
+  /**
+   * How the row came to be chosen. The arrows and a hovering mouse light the same row and go through
+   * the same handler, but they do not mean the same thing: stepping down is a decision, and a cursor
+   * that drifted across an open list on its way somewhere else is not - see [handPicked].
+   */
+  by: 'key' | 'pointer'
+}
+
+/**
+ * Which row of an open hint stays chosen when the list underneath it changes.
+ *
+ * Answers a position, because that is what the list itself is drawn from and what Enter reads - one
+ * resolution, so the highlighted row and the row that runs cannot disagree. A row that is no longer
+ * there gives the first one: it is the only answer where the screen and the key still say the same
+ * thing (an unresolvable position used to leave nothing highlighted while Enter quietly ran the top
+ * row), and keeping the old position instead would be the very thing this exists to prevent.
+ *
+ * A choice made in another list does not count, which is what tells the three lists apart: a command's
+ * name is no answer inside a list of file paths.
+ */
+export const chosenRow = (rows: { id: string }[], held: HeldChoice | null, list: string): number => {
+  if (rows.length === 0) return 0
+  if (!held || held.list !== list) return 0
+
+  const at = rows.findIndex((row) => row.id === held.id)
+
+  return at === -1 ? 0 : at
 }
 
 /** What has been typed after the slash, or null when the field is no longer about a command. */
@@ -401,3 +484,30 @@ export const matchArguments = (options: CommandOption[], query: string, limit = 
 
   return options.filter((option) => option.id.toLowerCase().startsWith(needle)).slice(0, limit)
 }
+
+/**
+ * Whether the choice standing over this list was put there by a hand on the arrow keys.
+ *
+ * Any edit to the field clears it (see the composer), so a choice that is still here and still belongs
+ * to this list is a deliberate one - which is the whole of what [enterSends] needs to know. The mouse
+ * is not counted: hovering lights a row through the same handler, and a cursor left lying over an open
+ * list would otherwise turn Enter from "send" into "substitute" without anybody having decided that.
+ */
+export const handPicked = (held: HeldChoice | null, list: string): boolean =>
+  held !== null && held.list === list && held.by === 'key'
+
+/**
+ * Whether Enter over an open hint sends what is typed instead of substituting the chosen row.
+ *
+ * [typedInFull] alone is not the answer, and that was the defect. Reading only the text, Enter sent the
+ * typed name even when the person had stepped down onto a neighbouring row - and while the names in a
+ * list do not overlap that is invisible, but the moment one typed name is the beginning of another
+ * (this machine has such pairs right now) the row lit up on screen and the row that ran were different
+ * commands. The same went for a command's values: one model chosen, another applied. Tab substituted
+ * correctly all along, so two keys over one list had come to mean different things.
+ *
+ * So an explicit choice outranks the rule. Nothing chosen by hand, and it is exactly as before: a name
+ * typed in full means send, because substituting a second time serves nothing.
+ */
+export const enterSends = (typedInFull: boolean, held: HeldChoice | null, list: string): boolean =>
+  typedInFull && !handPicked(held, list)

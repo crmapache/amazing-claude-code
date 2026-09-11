@@ -16,6 +16,25 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  */
 let lastShellRequest: { id: string; command: string } | undefined
 
+/**
+ * The model the harness's own stream is signing answers with, and how many picks have been made.
+ *
+ * The IDE is the only one who can answer a pick (see ClaudeSessionHub.changeModel), and here the harness
+ * plays that part. It plays the second half too - the stream that follows - because that is where the
+ * whole difference lives: a pick that takes is answered by the new model, and a pick that does not take
+ * by the old one, with the CLI having said yes to both. The second is what happens in life (recorded:
+ * Fable picked mid-turn, every answer that hour signed by Opus), and it is the only state on this screen
+ * with nothing else to look at - a row in the feed and an accent on the chip.
+ */
+let streamSignature = ''
+let modelPicks = 0
+
+/** A pick ("fable", "opus[1m]") as the stream would sign it - enough for the harness, not for the IDE. */
+const signatureOf = (pick: string): string => {
+  const family = pick.toLowerCase().replace(/\[.*\]$/, '')
+  return family && family !== 'default' ? `claude-${family}-5` : ''
+}
+
 /** A file the panel produced, handed to the browser the way the shell hands it to the IDE. */
 const download = (name: string, base64: string): void => {
   const link = document.createElement('a')
@@ -991,6 +1010,30 @@ const listenToPanel = () => {
     // here the browser has downloads of its own and does it itself - so the button can be tried out.
     if (message?.type === 'saveImage') download(message.name, message.data)
 
+    /*
+     * The system clipboard. On Linux the panel's own is private to the browser and reaches nothing, so
+     * the shell keeps the real one on its behalf (see clipboard.ts); here the harness keeps one just
+     * like it - a clipboard of its own, apart from the browser's.
+     *
+     * Apart is the whole point: that is the one thing an ordinary browser cannot show, and it is where
+     * the report came from - a copy made inside the panel stays in the browser's private clipboard and
+     * every later paste got it back instead of what had since been copied elsewhere.
+     */
+    if (message?.type === 'clipboardWrite') {
+      window.__accHarnessClipboard = { text: message.text, html: message.html }
+    }
+
+    if (message?.type === 'clipboardRead') {
+      const held = window.__accHarnessClipboard
+      window.__accReceive?.({
+        type: 'clipboard',
+        id: message.id,
+        text: held?.text ?? '',
+        html: held?.html ?? '',
+        image: '',
+      })
+    }
+
     // Something pasted into the panel: in the IDE the shell writes it out and answers with the path (see
     // PastedFiles.kt), so a copied message carries the file rather than "Image #3". Here there is no disk
     // to write to, so the harness invents a path - enough to see that a copy comes out with one.
@@ -1010,6 +1053,8 @@ const listenToPanel = () => {
     if (message?.type === 'history') {
       setTimeout(() => window.__accReceive?.({ type: 'history', conversations: SHOWCASE_HISTORY }), 200)
     }
+
+    if (message?.type === 'setModel') answerModel(message)
 
     // The shell is the only one who can say what effort a conversation works at (see
     // ClaudeSessionHub.changeEffort), so here the harness plays that part: without the answer the chip
@@ -1039,6 +1084,60 @@ const listenToPanel = () => {
   }
 
   window.dispatchEvent(new Event('acc:ready'))
+}
+
+/**
+ * A model pick, answered the way the IDE answers it - and then the stream the answer is judged by.
+ *
+ * Every third pick does not take: the CLI says yes and the next step comes back signed by the model being
+ * left. Nothing else on this screen shows that state, and by hand it cannot be reached at all.
+ *
+ * The step matters as much as the signature: the panel judges a pick only once a request that could have
+ * carried it has begun (see PanelState.ownSwapDue), and a tool coming back is exactly that. So the pair
+ * goes out whichever way the pick ends - the difference is the name under the answer, and nothing else.
+ */
+const answerModel = (message: Extract<WebviewMessage, { type: 'setModel' }>): void => {
+  modelPicks += 1
+  const stuck = modelPicks % 3 === 0
+  const signature = stuck ? streamSignature : signatureOf(message.model) || streamSignature
+
+  // Answered a beat later, never in the same tick. The panel marks the pick as "asked for" straight after
+  // handing it outwards, so an answer given synchronously lands BEFORE that mark and the mark then stands
+  // for ever - the chip keeps naming a pick that was answered long ago. The IDE is always a round trip
+  // away, so this is the harness being wrong rather than a state anything real can reach.
+  setTimeout(() => {
+    window.__accReceive?.({
+      type: 'model',
+      sessionId: message.sessionId,
+      model: message.model,
+      applied: true,
+    } as never)
+  }, 120)
+
+  if (!signature) return
+
+  const id = `model-step-${modelPicks}`
+  setTimeout(() => {
+    window.__accReceive?.({
+      type: 'agent',
+      sessionId: SESSION,
+      event: { type: 'assistant', message: { model: streamSignature, content: [{ type: 'tool_use', id, name: 'Read', input: { file_path: 'webview/src/catalog.ts' } }] } },
+    } as never)
+  }, 400)
+
+  setTimeout(() => {
+    window.__accReceive?.({
+      type: 'agent',
+      sessionId: SESSION,
+      event: { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'const MODEL_FAMILIES = [' }] } },
+    } as never)
+    window.__accReceive?.({
+      type: 'agent',
+      sessionId: SESSION,
+      event: { type: 'assistant', message: { model: signature, content: [{ type: 'text', text: 'Read it.' }] } },
+    } as never)
+    streamSignature = signature
+  }, 1100)
 }
 
 /** Waits for the panel to hand a command to the bridge - and returns it together with its number. */
@@ -1168,6 +1267,13 @@ export class ScenarioPlayer {
 
     const message: ShellMessage =
       step.kind === 'shell' ? step.message : { type: 'agent', sessionId: SESSION, event: step.event }
+
+    // What the stream is signing with right now: a pick is answered against it, and the harness cannot
+    // ask the panel (see answerModel).
+    if (step.kind === 'agent') {
+      const event = step.event as { type?: string; model?: string; message?: { model?: string } }
+      streamSignature = event.message?.model ?? (event.type === 'system' ? event.model : undefined) ?? streamSignature
+    }
 
     window.__accReceive?.(message)
   }

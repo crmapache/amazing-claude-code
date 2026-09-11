@@ -83,6 +83,51 @@ describe('a conversation opened from the history', () => {
   })
 })
 
+/**
+ * A scenario step's log takes the same road, and takes it from the very first page.
+ *
+ * There is no replay to finish there: the log is not a tab that a process is speaking into, it is a
+ * transcript read off the disk on request (see scenarioLog in protocol.ts). So the end of it arrives as
+ * a page like any other - one with no boundary to answer - and everything after it is the ordinary walk
+ * upwards. This is what lets the step log hold no machinery of its own.
+ */
+describe('a log opened by its end', () => {
+  const opened = reducePanel(
+    initialPanelState,
+    { kind: 'historyPage', entries: [assistant('what it did last', 'u5')], cursor: 'u5' },
+    1_000,
+  )
+
+  it('applies to an empty feed and offers the way back up', () => {
+    expect(said(opened)).toEqual(['mark:EARLIER', 'text:what it did last'])
+    expect(opened.oldestEventUuid).toEqual('u5')
+    expect(opened.reachedStart).toBe(false)
+  })
+
+  it('walks up to a beginning that is genuinely reached', () => {
+    const paged = reducePanel(
+      opened,
+      { kind: 'historyPage', before: 'u5', entries: [assistant('what it was told', 'u1')] },
+      2_000,
+    )
+
+    expect(said(paged)).toEqual(['text:what it was told', 'text:what it did last'])
+    expect(paged.reachedStart).toBe(true)
+  })
+
+  /** A whole log fits in one page, and then there was never anything to offer. */
+  it('offers nothing when the first page is the whole of it', () => {
+    const whole = reducePanel(
+      initialPanelState,
+      { kind: 'historyPage', entries: [assistant('all of it', 'u1')] },
+      1_000,
+    )
+
+    expect(said(whole)).toEqual(['text:all of it'])
+    expect(whole.reachedStart).toBe(true)
+  })
+})
+
 describe('a page of earlier messages', () => {
   const opened = feed([replayed('tail', 'u5'), { kind: 'replayFinished', cursor: 'u5' }])
 

@@ -696,6 +696,27 @@ export interface ModelSwitchItem {
   reason: string
 }
 
+/**
+ * A model the person picked that never came into force: the answers go on being signed by the old one.
+ *
+ * A row of its own rather than a [ModelSwitchItem] with a flag, because it says the opposite thing. That
+ * one is "Claude Code moved this conversation, not you"; this one is "you moved it, and it did not go" -
+ * the same words would be a lie in either direction.
+ *
+ * It exists because the silence around a pick of one's own used to cover this case too (see
+ * PanelState.ownSwap): the chip named the picked model, every answer came on another, and nothing
+ * anywhere said a word. Judged only once a request that could have carried the pick has begun - see
+ * PanelState.ownSwapDue.
+ */
+export interface ModelStuckItem {
+  id: string
+  kind: 'modelStuck'
+  /** What the person chose. */
+  picked: string
+  /** What the conversation is still answering on. */
+  running: string
+}
+
 /** The conversation's process died on its own - a separate, unambiguous mark in the feed. */
 export interface CrashItem {
   id: string
@@ -717,6 +738,19 @@ export interface ErrorItem {
   id: string
   kind: 'error'
   message: string
+  /**
+   * The turn died because the sign-in did - and this row is the one place a way back can be offered.
+   *
+   * It cannot be offered anywhere else. The login screen in front of the panel hangs on the CLI's own
+   * answer about the sign-in, and that answer is "signed in" whenever a token merely LIES in the store:
+   * a refresh the server refused leaves the token where it was, so the screen never comes up, not after
+   * five minutes and not after a restart of the IDE. Without a button here the conversation is a dead
+   * end - which is exactly what the feedback this was built for said.
+   *
+   * Not set in a replay: a sign-in that fell over a month ago is a record, and a past conversation must
+   * not ask anybody to fix anything (see "A past conversation is a record" in CLAUDE.md).
+   */
+  signIn?: boolean
 }
 
 /**
@@ -769,6 +803,7 @@ export type FeedItem =
   | MetaItem
   | RetryItem
   | ModelSwitchItem
+  | ModelStuckItem
   | CrashItem
   | ErrorItem
   | LimitItem

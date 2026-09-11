@@ -223,6 +223,119 @@ describe('errors in the feed', () => {
     expect(state.items.filter((item) => item.kind === 'text')).toHaveLength(1)
     expect(errorTexts(state)).toEqual(['claude exited with code 1'])
   })
+
+  /**
+   * A turn the sign-in killed. Every other refusal can be waited out or read and forgotten; this one has
+   * to be repaired, and the panel has nowhere else to say so: the login screen stands on the CLI's answer
+   * about the sign-in, and that answer stays "signed in" for a token a refused refresh left lying in the
+   * store. So the row itself carries the way back - see ErrorItem.signIn.
+   */
+  describe('a turn that died on the sign-in', () => {
+    const said = 'Failed to authenticate: OAuth session expired and could not be refreshed'
+
+    /** The CLI's placeholder answer: signed <synthetic>, with the machine word beside the message. */
+    const refusedEvent = (): AgentEvent => ({
+      type: 'assistant',
+      message: { model: '<synthetic>', content: [{ type: 'text', text: said }] },
+      error: 'authentication_failed',
+    })
+
+    const signInRows = (state: PanelState): number =>
+      state.items.filter((item) => item.kind === 'error' && item.signIn).length
+
+    it('becomes a red row offering a way back rather than a grey paragraph', () => {
+      const state = reducePanel(initialPanelState, { kind: 'agent', event: refusedEvent() })
+
+      expect(errorTexts(state)).toEqual([said])
+      expect(signInRows(state)).toBe(1)
+      // The placeholder itself is dropped as an echo of the row: one piece of trouble, one row.
+      expect(state.items.filter((item) => item.kind === 'text')).toHaveLength(0)
+    })
+
+    /** The result repeats the same sentence a moment later, and it must not add a second row. */
+    it('is not doubled by the result that closes the turn', () => {
+      let state = reducePanel(initialPanelState, { kind: 'agent', event: refusedEvent() })
+      state = reducePanel(state, {
+        kind: 'agent',
+        event: { type: 'result', subtype: 'success', is_error: true, result: said, duration_ms: 4200 },
+      })
+
+      expect(errorTexts(state)).toEqual([said])
+    })
+
+    /**
+     * The same sentence can arrive first by another road - the tail of the process's output, a refused
+     * control request - and that road knows nothing about the sign-in. The row is already standing, so
+     * the second arrival adds no row; what it must not do is leave that row without the one way back
+     * there is.
+     */
+    it('puts the way back onto a row the same words had already made', () => {
+      let state = reducePanel(initialPanelState, { kind: 'error', message: said })
+      expect(signInRows(state)).toBe(0)
+
+      state = reducePanel(state, { kind: 'agent', event: refusedEvent() })
+
+      expect(errorTexts(state)).toEqual([said])
+      expect(signInRows(state)).toBe(1)
+    })
+
+    /**
+     * The refusal in two paragraphs: the row is assembled out of both, joined by a line break, and the
+     * placeholder that follows arrives block by block. Compared whole against whole, neither block is
+     * the row - and the same words used to stand under it again in grey.
+     */
+    it('drops the placeholder even when it arrives in two paragraphs', () => {
+      const state = reducePanel(initialPanelState, {
+        kind: 'agent',
+        event: {
+          type: 'assistant',
+          message: {
+            model: '<synthetic>',
+            content: [
+              { type: 'text', text: said },
+              { type: 'text', text: 'Run /login to sign in again.' },
+            ],
+          },
+          error: 'authentication_failed',
+        },
+      })
+
+      expect(errorTexts(state)).toEqual([`${said}\nRun /login to sign in again.`])
+      expect(signInRows(state)).toBe(1)
+      expect(state.items.filter((item) => item.kind === 'text')).toHaveLength(0)
+    })
+
+    /** Every other refusal carried by the same field stays an ordinary answer with no button on it. */
+    it('leaves other refusals as they were', () => {
+      const overloaded = 'API Error: 529 Overloaded.'
+      const state = reducePanel(initialPanelState, {
+        kind: 'agent',
+        event: {
+          type: 'assistant',
+          message: { model: '<synthetic>', content: [{ type: 'text', text: overloaded }] },
+          error: 'overloaded',
+        },
+      })
+
+      expect(signInRows(state)).toBe(0)
+      expect(state.items.filter((item) => item.kind === 'text')).toHaveLength(1)
+    })
+
+    /**
+     * A conversation opened from the history is a record: the sign-in it fell over is a month old, and a
+     * button repairing it would be asking about work nobody is doing.
+     */
+    it('offers nothing in a replay', () => {
+      const state = reducePanel(
+        initialPanelState,
+        { kind: 'agent', event: refusedEvent(), replay: true },
+        1_700_000_000_000,
+      )
+
+      expect(errorTexts(state)).toEqual([said])
+      expect(signInRows(state)).toBe(0)
+    })
+  })
 })
 
 
@@ -304,6 +417,8 @@ const modelFallbackEvent = (originalModel: string, fallbackModel: string, conten
 
 const modelSwitches = (state: PanelState) => state.items.filter((item) => item.kind === 'model')
 
+const stuckPicks = (state: PanelState) => state.items.filter((item) => item.kind === 'modelStuck')
+
 describe('the model swapped by the CLI itself', () => {
   const reason = "Fable 5's safeguards flagged this message. Switched to Opus 4.8."
 
@@ -379,6 +494,98 @@ describe('the model swapped by the CLI itself', () => {
     expect(state.model).toBe('claude-opus-5')
     expect(state.switchedFrom).toBeUndefined()
     expect(modelSwitches(state)).toEqual([])
+  })
+
+  /**
+   * The other half of that silence, and the reason it needed one: while the old request answers, the
+   * chip must go on naming what the person picked. It used to be overwritten by every signature, so a
+   * pick made mid-turn vanished off the button a second after it was made - which reads as the panel
+   * undoing the choice by itself.
+   */
+  it('keeps the picked model on the chip while the old request is still answering', () => {
+    let state = play([initEvent('claude-fable-5'), signedTextEvent('claude-fable-5', 'Looking.')])
+    state = reducePanel(state, { kind: 'modelApplied', model: 'opus[1m]' })
+    state = play([signedTextEvent('claude-fable-5', 'Still on the old request.')], state)
+
+    expect(state.model).toBe('opus[1m]')
+    expect(stuckPicks(state)).toEqual([])
+    expect(state.stuckPick).toBeUndefined()
+  })
+
+  /**
+   * Recorded live: Fable picked in the middle of a turn, every answer for the next hour signed by Opus,
+   * and nothing anywhere saying so - the silence about a pick of one's own covered a pick that never
+   * took. Judged only once a request that could have carried it has begun: a tool has come back, so the
+   * agent has gone to the model again (measured on CLI 2.1.263 - the next step after a tool result is
+   * signed by the new model, about 2.6s after the pick).
+   */
+  it('says so when the picked model never arrives', () => {
+    let state = play([initEvent('claude-fable-5'), signedTextEvent('claude-fable-5', 'Looking.')])
+    state = reducePanel(state, { kind: 'modelApplied', model: 'opus' })
+    state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })], state)
+    state = play([toolResultEvent('t1', 'line 1')], state)
+    state = play([signedTextEvent('claude-fable-5', 'Still here.')], state)
+
+    expect(stuckPicks(state)).toEqual([
+      { id: expect.any(String), kind: 'modelStuck', picked: 'opus', running: 'claude-fable-5' },
+    ])
+    // The chip now names what is genuinely at work, and wears the accent that says why.
+    expect(state.model).toBe('claude-fable-5')
+    expect(state.stuckPick).toBe('opus')
+  })
+
+  // A turn of one's own is a new request too, so a pick made between turns is answerable at its start.
+  it('says so when a pick made between turns does not survive the next turn', () => {
+    let state = play([initEvent('claude-opus-5'), signedTextEvent('claude-opus-5', 'Done.')])
+    state = reducePanel(state, { kind: 'modelApplied', model: 'fable' })
+    state = reducePanel(state, { kind: 'prompt', tokens: [], quotes: [] })
+    state = play([signedTextEvent('claude-opus-5', 'Still on Opus.')], state)
+
+    expect(stuckPicks(state)).toHaveLength(1)
+    expect(state.stuckPick).toBe('fable')
+  })
+
+  // And says nothing when the pick simply takes a step to arrive: that is the ordinary way it happens.
+  it('keeps quiet when the picked model arrives after a step', () => {
+    let state = play([initEvent('claude-fable-5'), signedTextEvent('claude-fable-5', 'Looking.')])
+    state = reducePanel(state, { kind: 'modelApplied', model: 'opus[1m]' })
+    state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })], state)
+    state = play([toolResultEvent('t1', 'line 1')], state)
+    state = play([signedTextEvent('claude-opus-5', 'On Opus now.')], state)
+
+    expect(stuckPicks(state)).toEqual([])
+    expect(state.stuckPick).toBeUndefined()
+    expect(state.model).toBe('claude-opus-5')
+    expect(modelSwitches(state)).toEqual([])
+  })
+
+  /**
+   * A pick whose family the panel does not know - "default", or a model of somebody else's provider -
+   * cannot be checked against a signature at all, and a guess would accuse a working pick of failing.
+   */
+  it('keeps quiet about a pick it has no way of recognising', () => {
+    let state = play([initEvent('claude-fable-5'), signedTextEvent('claude-fable-5', 'Looking.')])
+    state = reducePanel(state, { kind: 'modelApplied', model: 'default' })
+    state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })], state)
+    state = play([toolResultEvent('t1', 'line 1')], state)
+    state = play([signedTextEvent('claude-opus-5', 'Whatever the default is.')], state)
+
+    expect(stuckPicks(state)).toEqual([])
+    expect(modelSwitches(state)).toEqual([])
+  })
+
+  // The next pick answers the accent the last one left: the person has just chosen again.
+  it('forgets a stuck pick as soon as another model is picked', () => {
+    let state = play([initEvent('claude-fable-5'), signedTextEvent('claude-fable-5', 'Looking.')])
+    state = reducePanel(state, { kind: 'modelApplied', model: 'opus' })
+    state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })], state)
+    state = play([toolResultEvent('t1', 'line 1')], state)
+    state = play([signedTextEvent('claude-fable-5', 'Still here.')], state)
+    expect(state.stuckPick).toBe('opus')
+
+    state = reducePanel(state, { kind: 'modelApplied', model: 'sonnet' })
+
+    expect(state.stuckPick).toBeUndefined()
   })
 
   // The silence is for the one swap that was asked for, and not a moment longer.

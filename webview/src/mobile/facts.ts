@@ -1,8 +1,10 @@
+import { calmVividOf } from '../calmColors'
 import type { CommandEntry, CommandHint } from '../feed/slash'
 import { buildCommands } from '../feed/slash'
 import { emptyUsageBook, mergeUsageBook, usageOf, type UsageBook, type UsageFacts } from '../feed/usage'
 import type { Dict } from '../i18n/en'
 import type { Scenario, ScenarioRun, ScenarioRunSummary, ScenarioSchedule, ShellMessage } from '../protocol'
+import { pastRuns } from '../scenarios/runs'
 
 /**
  * What a phone knows about a project rather than about one conversation in it.
@@ -57,13 +59,13 @@ export interface ProjectFacts extends UsageFacts {
    */
   locale?: { chosen: string; ide: string }
   /**
-   * The no-stress colour mode set at the desk, so the gauges here are as calm as the ones there.
+   * How much colour the gauges keep, as it was set at the desk - so the ones here are as calm as those.
    *
    * A property of the person like the language above it, and it travels the same way and for the same
    * reason: there is no other route to a phone that is never sent `init`. Absent until the IDE says -
    * and then the ladder, which is what the screen has always drawn.
    */
-  calmColors?: boolean
+  calmVivid?: number
   /**
    * The models added by hand at that desk (see CustomModels.tsx), so this screen offers the same list
    * the panel does.
@@ -207,9 +209,12 @@ export const applyFact = (facts: ProjectFacts, message: ShellMessage, watching =
     case 'locale':
       return { ...facts, locale: { chosen: message.language ?? '', ide: message.ideLanguage ?? '' } }
 
-    /* The gauges' paint, as the desk has it - the phone obeys it and cannot set it (see RemoteCommands). */
+    /*
+     * The gauges' paint, as the desk has it - the phone obeys it and cannot set it (see RemoteCommands).
+     * Read through calmVividOf because a machine whose plugin is older than this page still says `on`.
+     */
     case 'calmColors':
-      return { ...facts, calmColors: message.on }
+      return { ...facts, calmVivid: calmVividOf(message) }
 
     /* And the hand-added models, on the same terms: shown here, added only at the desk. */
     case 'customModels':
@@ -277,9 +282,18 @@ export const applyFact = (facts: ProjectFacts, message: ShellMessage, watching =
  *
  * Past conversations are not lost by this: the phone has a screen for them already, reached from the
  * project rather than from the field.
+ *
+ * Takes the two facts it is made of rather than the whole bundle, and that is what keeps the composer's
+ * memo honest. Every project fact returns a new bundle and one of them arrives about once a second, so
+ * the memo has to depend on these two alone - and given the bundle it used to depend on a promise in a
+ * comment that nobody would read a third fact here. Now a third one cannot be read without changing the
+ * signature, and the call site with it.
  */
-export const phoneCommands = (t: Dict, facts: ProjectFacts): CommandEntry[] =>
-  buildCommands(t, facts.commands, facts.hints).filter((command) => command.group !== 'panel')
+export const phoneCommands = (
+  t: Dict,
+  commands: ProjectFacts['commands'],
+  hints: ProjectFacts['hints'],
+): CommandEntry[] => buildCommands(t, commands, hints).filter((command) => command.group !== 'panel')
 
 /**
  * The runs going in a project right now, or nothing.
@@ -295,3 +309,28 @@ export const phoneCommands = (t: Dict, facts: ProjectFacts): CommandEntry[] =>
  * joining late, and a paused run sends no beat at all.
  */
 export const liveRunsOf = (facts: ProjectFacts | undefined): ScenarioRunSummary[] => facts?.liveRuns ?? []
+
+/**
+ * The runs a project's card puts a row for: what is going, or the last round of work that is over.
+ *
+ * The live ones alone answered "is anything happening here", which is the question the row was built for
+ * and not the only one asked of it. A scenario started at four in the morning is finished by breakfast,
+ * and a card that says nothing about it sends somebody through the menu and two screens to find out how
+ * the night went - for work that belongs to this project as much as any conversation on the card does.
+ *
+ * One when nothing is going, not a list: the rest are history, and history is what the screen behind the
+ * row is for. The newest by when it STARTED, because that is the order the list behind it is in, and two
+ * screens disagreeing about which run is the latest is worse than either ordering.
+ *
+ * A row drawn from this one is not a live row, and the dot has to be told so (see runDot): the summary is
+ * read off that machine's disk, and an IDE closed in the middle of a step leaves "running" written there
+ * for ever.
+ */
+export const projectRuns = (facts: ProjectFacts | undefined): ScenarioRunSummary[] => {
+  const live = liveRunsOf(facts)
+  if (live.length > 0) return live
+
+  const last = pastRuns(facts?.scenarios?.past ?? [], live)[0]
+
+  return last ? [last] : []
+}

@@ -341,7 +341,10 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
         // The account the scenarios themselves run on, so the writing is billed where the running is.
         val accountId = ClaudeAccounts.getInstance().currentId
         val home = ClaudeHome.of(project.basePath)
-        val skills = ClaudeCommandHints.scan(project.basePath, installed)
+        // Whatever the walk found, complete or not: a catalogue emptied because one plugin's folder
+        // would not list itself costs the writer the single rule it is read for - which door each skill
+        // is called through - and says nothing about it.
+        val skills = ClaudeCommandHints.scan(home, project.basePath, installed).hints
 
         /*
          * Where those skills are defined, so the writer may read them: the person's own folders and the
@@ -807,12 +810,23 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
      * double a night's writing to keep a second copy that can only go stale - and this is read once, when
      * somebody opens the step, rather than for every step of a run they never look inside.
      *
-     * The tail of it, like a conversation opened from the history and for the same reason: a step that
-     * read half a repository has a transcript in megabytes, and what anybody wants from it is the end.
+     * The tail of it first, like a conversation opened from the history and for the same reason: a step
+     * that read half a repository has a transcript in megabytes, and what anybody wants from it is the
+     * end. The rest arrives the way the rest of a chat arrives - a page at a time, asked for by the mark
+     * over the feed (see historyPage in feed/build.ts, and useEarlierPages, which serves both).
+     *
+     * [before] is the boundary the screen is standing on: absent it is the first ask and the end comes
+     * back, given it is "the page above this line". One door for the two, because they differ in nothing
+     * else - and ClaudeHistory.earlier with a null cursor IS the opening page.
      */
-    fun sendLog(clientId: String, runId: String, key: String, conversationId: String) {
+    fun sendLog(clientId: String, runId: String, key: String, conversationId: String, before: String? = null) {
         off {
-            val page = runCatching { ClaudeHistory.opening(project.basePath, conversationId) }.getOrNull()
+            // The size of a page depends on who asked (see ClaudeHistory.earlier): a phone's has to fit
+            // through the relay's frame, a panel's does not. Choosing it at the source is what saves the
+            // cursor - a page cut afterwards would name a boundary the receiver never saw.
+            val page = runCatching {
+                ClaudeHistory.earlier(project.basePath, conversationId, before, hub.isLocal(clientId))
+            }.getOrNull()
             val lines = page?.lines.orEmpty()
 
             val body = buildJsonObject {
@@ -820,9 +834,12 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
                 put("runId", runId)
                 put("key", key)
                 put("found", lines.isNotEmpty())
-                // A cursor means there is more above what is being shown - said out loud, because a
-                // log that silently begins in the middle reads as a step that began in the middle.
-                put("truncated", page?.cursor != null)
+                // A cursor means there is more above this page, and it is what the next ask anchors on;
+                // no cursor means the step's first message is on screen. The boundary asked for travels
+                // back beside it: two answers can be in flight, and only the one answering the boundary
+                // on screen may be applied (see historyPage in feed/build.ts).
+                page?.cursor?.let { put("cursor", it) }
+                before?.let { put("before", it) }
                 putJsonArray("events") {
                     for (line in lines) {
                         runCatching { Json.parseToJsonElement(line) }.getOrNull()?.let { add(it) }
@@ -830,10 +847,7 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
                 }
             }.toString()
 
-            // The panel reads it off the same disk it is written on; a phone gets the end of it, cut to
-            // what a frame carries (see RemoteFeed.trimmedLog). Cutting rather than refusing, because
-            // what anybody wants off a step at three in the morning is how it finished.
-            hub.emitTo(clientId, forClient(clientId, RemoteFeed.SCENARIO_LOG, body))
+            hub.emitTo(clientId, body)
         }
     }
 

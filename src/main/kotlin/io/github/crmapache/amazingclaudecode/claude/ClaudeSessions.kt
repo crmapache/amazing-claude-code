@@ -77,8 +77,13 @@ internal class ClaudeSessions(
      *
      * Fired for a renewal too (see [relaunchOn]): the account is the same on both sides of it, but the
      * process is not, and what dies is exactly the same.
+     *
+     * And for a restart (see [restart]), which is why it is no longer named after the move: adding an MCP
+     * server takes the process down and puts it back up, and what that costs is not one bit different -
+     * the same fleet, the same dev server, the same cards left ticking. It was announced on one road and
+     * not on the other, and the difference between the two roads is nothing a person could see.
      */
-    private val onMoveDropping: (sessionId: String) -> Unit = {},
+    private val onProcessDropping: (sessionId: String) -> Unit = {},
     /**
      * The conversation has been replaced and stands ready on the account now chosen.
      *
@@ -102,6 +107,11 @@ internal class ClaudeSessions(
      */
     private val launches = ConcurrentHashMap<String, SessionLaunch>()
 
+    /** A restart waiting for the turn that was running when it was asked for - see [restart]. */
+    private data class DeferredRestart(val processStartedAt: Long, val then: () -> Unit)
+
+    private val pendingRestarts = ConcurrentHashMap<String, DeferredRestart>()
+
     init {
         Disposer.register(parentDisposable, this)
     }
@@ -111,6 +121,9 @@ internal class ClaudeSessions(
         // happens now, so the words below are billed to the account the person chose (see
         // [applyPendingAccount]).
         applyPendingAccount(sessionId)
+        // And a restart it was asked for and has not made either - so that what is said below goes into
+        // a process holding the servers as they stand now (see [applyPendingRestart]).
+        applyPendingRestart(sessionId)
         session(sessionId).sendPrompt(text, images)
     }
 
@@ -220,6 +233,26 @@ internal class ClaudeSessions(
         sessions.filterValues { it.accountId == accountId && it.isRunning }
             .keys.toList()
             .forEach { moveTo(it, renew = true) }
+    }
+
+    /**
+     * The tab's turn died because the sign-in did: the next message comes up on a fresh process.
+     *
+     * A process reads its credential once, when it starts, so the one that met a refused refresh will
+     * meet it again however the sign-in is repaired in the meantime - and repairing it is exactly what
+     * the person is being offered beside the refusal (see ErrorItem.signIn in the panel). Nothing here
+     * can tell whether they went through with it: `claude auth status` answers "signed in" for a token
+     * that merely lies in the store, which is the very state this refusal leaves behind. So the process
+     * is not renewed on a confirmation that cannot be had - it is renewed on the next message, which is
+     * the moment the fresh credential is actually needed.
+     *
+     * The renewal itself is the road a repeated sign-in already travels (see [relaunchOn]): the same
+     * account, the same transcript, a new process. Marked only while there is a session to mark - a tab
+     * whose process is already gone raises its own on the next message anyway.
+     */
+    fun renewAfterSignIn(sessionId: String) {
+        if (!sessions.containsKey(sessionId)) return
+        pendingRenewals.add(sessionId)
     }
 
     /**
@@ -354,10 +387,10 @@ internal class ClaudeSessions(
         forcedMoves.remove(sessionId)?.cancel(false)
 
         // The process is alive and about to be thrown away, and it is holding work that will not survive
-        // it - see [onMoveDropping]. Only a live one: a tab that never started a process, or whose
+        // it - see [onProcessDropping]. Only a live one: a tab that never started a process, or whose
         // process is already gone, has nothing to lose and nothing to announce. And only when nobody has
         // said it yet - see [told].
-        if (session.isRunning && !told) onMoveDropping(sessionId)
+        if (session.isRunning && !told) onProcessDropping(sessionId)
 
         // Continued only if there is something to continue. The CLI mints an identifier the moment a
         // process comes up, before a single word has been said, and asking it to resume that identifier
@@ -488,6 +521,7 @@ internal class ClaudeSessions(
      */
     fun wake(sessionId: String) {
         applyPendingAccount(sessionId)
+        applyPendingRestart(sessionId)
         sessions[sessionId]?.wake()
     }
 
@@ -553,8 +587,28 @@ internal class ClaudeSessions(
      * The conversation is brought up for this if it is still asleep: MCP servers live inside the
      * process, and a sleeping one simply has none - no status, and nothing to connect to. The terminal
      * behaves exactly the same way: `/mcp` there is asked of a running session.
+     *
+     * [ifRunning] is the exception, and the whole of it is about what raising one costs. A conversation
+     * is not one process but the agent plus a copy of every MCP server configured on the machine -
+     * measured in the sandbox: 8 processes and 554 MB for a tab nobody had written a word into, 16 and
+     * 1.58 GB for two. The panel asks for this list on the way in, so that the screen behind the menu
+     * opens on something ready; asked the ordinary way, that head start raised the entire conversation
+     * before a single message, in every window, every time. So the head start is taken only where it is
+     * free - out of a process that is already there - and everything that a person actually opens asks
+     * the ordinary way.
+     *
+     * Nothing is reported when there is no process: an answer would have to invent a status for servers
+     * that are genuinely not running. The panel's menu row then carries no count at all, which is the
+     * truth, and opening the screen asks for real.
      */
-    fun mcpStatus(sessionId: String, onResult: (JsonObject) -> Unit, onFailure: (String) -> Unit = {}) {
+    fun mcpStatus(
+        sessionId: String,
+        onResult: (JsonObject) -> Unit,
+        onFailure: (String) -> Unit = {},
+        ifRunning: Boolean = false,
+    ) {
+        if (ifRunning && !isRunning(sessionId)) return
+
         awake(sessionId).requestMcpStatus(onResult, onFailure)
     }
 
@@ -590,18 +644,134 @@ internal class ClaudeSessions(
     }
 
     /**
-     * Restarting a conversation's process without losing the transcript - MCP servers reconnect by it
-     * (see ClaudeSession.restart). False means there was no process: there is nothing to connect to
-     * yet.
+     * Every conversation with a live process, and when that process came up.
+     *
+     * For the idle sweep (see IdleSleep): the moment is the fallback for a conversation whose status has
+     * never changed - a process raised to answer about MCP servers and left alone has no turn behind it
+     * and therefore no other moment to count from.
+     *
+     * Sessions the scenarios run are not here and cannot be: a run's head and its cards build their own
+     * ClaudeSession outright rather than through this register (see ScenarioEngine.openHead). A head
+     * spends a whole run silent between cards, so anything sweeping by "left alone" would have taken it -
+     * and the run with it.
      */
-    fun restart(sessionId: String): Boolean {
+    fun liveSince(): Map<String, Long> =
+        sessions.filterValues { it.isRunning }.mapValues { (_, session) -> session.startedAt }
+
+    /**
+     * Give a conversation's process back, keeping the conversation.
+     *
+     * The same [stop] underneath, named apart because the two mean different things to everything that
+     * watches: a stop is a person ending a conversation, this is the machine tidying up behind one
+     * nobody is using. The transcript stays on disk and the identifier stays here, so the next message
+     * raises the process again with `--resume` and the whole of what it knew (see ClaudeSession.start).
+     *
+     * [stillIdle] is asked here, at the last moment, and it is the whole reason this is not a bare
+     * [stop]. The sweep reads the conversation on one thread and takes the process down on another, and
+     * between the two a turn can begin: a background task reporting back starts one of the CLI's own
+     * accord (see AgentStream.isTurnAnnouncement), and a message can arrive from a phone. Asking only
+     * "is the process alive" answers the wrong question - it is alive precisely because somebody has
+     * just spoken in it, and the turn would be killed on its first words with nothing said: the panel
+     * counts the death as requested, so there is no crash line and no sound, only an answer that never
+     * came.
+     *
+     * The turn is asked of the session itself rather than through the caller's picture of it: [isBusy]
+     * is raised by the write and by the CLI's own announcement, both of them before the status this
+     * conversation reports outwards. What remains after this is the moment between the last look and the
+     * kill, and what falls into it is a message that has not been written yet - and that raises the
+     * process again by itself (see ClaudeSession.sendPrompt, which starts one when the handler is gone).
+     *
+     * False means there was nothing to take: the process had already gone, or the conversation turned
+     * out not to be idle after all.
+     */
+    fun sleep(sessionId: String, stillIdle: () -> Boolean): Boolean {
+        val session = sessions[sessionId] ?: return false
+        if (!session.isRunning) return false
+        if (session.isBusy) return false
+        if (!stillIdle()) return false
+
+        session.stop()
+        return true
+    }
+
+    /**
+     * Restarting a conversation's process without losing the transcript - an added or removed MCP server
+     * is read at launch and reaches a conversation no other way (see ProjectCatalog.addMcp). False means
+     * there was no process: there is nothing to connect to yet.
+     *
+     * Announced exactly as a swap is, and for exactly the same reason (see [onProcessDropping]). A
+     * restart is a swap by another name: the old process is thrown away with everything living inside
+     * it - a review's fleet, a background subagent, the dev server the agent raised - and a person who
+     * added a server from the MCP screen has no way of knowing any of that happened. On the move's road
+     * this was fixed; on this one the same loss went on being silent, and silent in three ways at once:
+     * the cards kept ticking against a CLI that was gone, the counts of that work stayed standing in the
+     * conversation's snapshot for good (so the phone's "the work is done" fell quiet for that tab and the
+     * idle sweep stopped taking its process back - see SessionSnapshot.pendingAgents and pendingCommands),
+     * and a question card pinned over the input field went on promising an answer nobody could give.
+     */
+    fun restart(sessionId: String, then: () -> Unit = {}): Boolean {
         // A restart takes the process down and puts it back up, which is what a move does as well - so
         // an outstanding move is honoured here rather than undone by a process coming back on the
         // account it was asked to leave. Nothing to bring up afterwards is an honest "false": the
         // servers connect by themselves with the first message.
         applyPendingAccount(sessionId)
 
-        return sessions[sessionId]?.restart() ?: false
+        // Nothing to restart, and the one who asked still wants their answer: the MCP screen questions
+        // the process next, and a tab with none raises one for that question anyway - holding the word
+        // back here would leave the screen showing the list from before the change.
+        val session = sessions[sessionId] ?: run { then(); return false }
+
+        // A turn is running: it waits. Taking the process now costs the answer being written, and
+        // nothing about an added server asks for that - a server is read at launch, so the turn already
+        // running could not have used it however fast we were. The same reasoning as a renewal on the
+        // account already in use (see [relaunchOn]), and the same waiting room next to it.
+        if (session.isBusy) {
+            pendingRestarts[sessionId] = DeferredRestart(session.startedAt, then)
+            return true
+        }
+
+        return restartNow(sessionId, session, then)
+    }
+
+    /**
+     * The restart a running turn was holding - see [restart].
+     *
+     * Applied at the end of a turn and wherever a conversation is about to live, exactly as a waiting
+     * move is (see [applyPendingAccount]), because a turn does not always end by saying so: a process
+     * that crashes or is killed leaves the last word unsaid.
+     *
+     * Which process was waited for is part of the note, and that is what keeps a stale one harmless.
+     * The process may be gone by now - it crashed, it was stopped, an account was chosen - and whatever
+     * came up in its place read the config when it started, so there is nothing left to restart. Fired
+     * blindly, the note would take down a process that had done nothing wrong, and with it a fleet or a
+     * dev server raised long after the server was added.
+     */
+    fun applyPendingRestart(sessionId: String) {
+        val waiting = pendingRestarts.remove(sessionId) ?: return
+        val session = sessions[sessionId]
+        val owed = session != null &&
+            stillOwed(session.isRunning, session.startedAt, waiting.processStartedAt)
+
+        if (!owed || session == null) {
+            waiting.then()
+            return
+        }
+
+        restartNow(sessionId, session, waiting.then)
+    }
+
+    private fun restartNow(sessionId: String, session: ClaudeSession, then: () -> Unit): Boolean {
+        // Asked after the move above, not before: that one may have replaced the process already and
+        // said so, and the process standing here now is the one about to be thrown away.
+        if (session.isRunning) onProcessDropping(sessionId)
+
+        val raised = session.restart()
+        // Whoever asked for the restart is told at the moment it happens rather than at the moment it
+        // was asked for: the MCP screen questions the process next, and questioning the one that is
+        // being replaced answers with the very list the person has just changed.
+        then()
+
+        return raised
     }
 
     /** Whether the process is alive right now - without creating one, unlike [session]. */
@@ -897,6 +1067,22 @@ internal class ClaudeSessions(
 
         /** How long a turn is given to stop of its own accord before it is taken down - see [armForcedMove]. */
         private const val FORCED_MOVE_SECONDS = 8L
+
+        /**
+         * Whether a restart that waited for a turn still has anything to take down - see
+         * [applyPendingRestart].
+         *
+         * The note names the process it was waiting for, and the answer is "only if that very one is
+         * still standing". A turn does not always end by saying so, so the note outlives the process it
+         * was written about more often than one would think: a crash, a Stop, an account chosen. Whatever
+         * came up afterwards read the config when it started, so it owes nothing - and taken down anyway
+         * it would cost a fleet or a dev server raised long after somebody added a server.
+         *
+         * Kept apart from the taking, and tested, because it breaks in the direction nobody looks: the
+         * restart still happens, on the wrong process, and what dies with it dies quietly.
+         */
+        fun stillOwed(running: Boolean, startedAt: Long, waitedFor: Long): Boolean =
+            running && startedAt == waitedFor
 
         /**
          * The CLI's own name for "whatever this account's default is" - the one model every plan can run.

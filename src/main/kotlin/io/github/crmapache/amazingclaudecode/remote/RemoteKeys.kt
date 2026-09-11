@@ -109,10 +109,13 @@ internal object RemoteKeys {
     /**
      * Forget a device's secret.
      *
-     * This is the whole of a revocation, and it is worth being clear about why that is enough: with the
+     * This is what a revocation IS, and it is worth being clear about why that is enough: with the
      * secret gone, frames from that device no longer open and are dropped. Nothing has to reach the
      * phone and the relay has to be told nothing - so it takes effect while the phone is switched off,
      * which is exactly when someone is most likely to want it.
+     *
+     * The phone is told all the same, because a revocation nobody can see is indistinguishable from a
+     * machine with its lid shut - but that word is a courtesy on top of this, not a part of it.
      */
     fun forgetDevice(agentId: String, deviceId: String) {
         PasswordSafe.instance.set(attributesFor("remote-device-$agentId", deviceId), null)

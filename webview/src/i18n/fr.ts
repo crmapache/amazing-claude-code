@@ -74,7 +74,7 @@ export const fr: Dict = {
   settings: {
     rows: {
       sounds: { label: 'Alertes sonores', sub: 'Quand le panneau t’appelle' },
-      calmColors: { label: 'Couleurs apaisées', sub: 'Des jauges d’un seul ton' },
+      calmColors: { label: 'Couleurs apaisées', sub: 'Combien de couleur gardent les jauges' },
       newChat: { label: 'Nouveaux chats', sub: 'Modèle, effort et mode de permission' },
       composerLayout: { label: 'Disposition du champ', sub: 'Où se place le champ de saisie' },
       pasteCollapse: { label: 'Texte collé', sub: 'Quand un collage se replie en pastille' },
@@ -134,11 +134,11 @@ export const fr: Dict = {
 
   calmColors: {
     sample: 'UNE JAUGE À CHAQUE PALIER',
-    label: 'Couleurs apaisées',
-    hint: 'Un seul ton, quoi qu’indiquent les jauges',
+    label: 'Couleur des jauges',
+    hint: 'Toute l’échelle à 100%, un seul ton à 0%',
     keeps: 'Rien d’autre ne change : une erreur reste rouge, une permission reste ce qu’elle est. Ce sont des choses qui sont arrivées, pas une humeur.',
-    on: 'Activé',
-    off: 'Désactivé',
+    full: 'Couleur pleine',
+    none: 'Un seul ton',
   },
 
   history: {
@@ -287,7 +287,6 @@ export const fr: Dict = {
     cards: (n) => (n === 1 ? '1 carte' : `${n} cartes`),
     hasLoop: 'contient une boucle',
     asksFor: (names: string): string => `demande : ${names}`,
-    lastUsed: (value: string): string => `La dernière fois c\'était ${value}`,
     besideGoing: (n: number): string =>
       n === 1
         ? 'Cela lancera une deuxième exécution à côté de celle qui tourne déjà. Les deux travaillent sur la même copie de travail.'
@@ -422,7 +421,7 @@ export const fr: Dict = {
       step: 'Étape',
       head: 'Fil principal',
       missing: 'Il n\'y a aucune trace de cette étape sur cette machine.',
-      truncated: 'Voici la fin - le début n\'est pas montré.',
+      main: 'PRINCIPAL',
     },
     editor: {
       title: 'SCÉNARIO',
@@ -515,7 +514,8 @@ export const fr: Dict = {
   pasteCollapse: {
     note: "Un collage long se replie en pastille pour qu'un mur de texte ne remplisse pas le champ de saisie. Les lignes sont comptées telles qu'elles tomberaient dans le champ lui-même, donc un texte collé en une seule ligne interminable se replie aussi. Rien n'est perdu dans les deux cas : un collage replié garde le texte entier et se redéploie dans le champ par le bouton crayon.",
     never: 'Ne jamais replier',
-    neverSub: 'Tout ce qui est collé reste dans le champ en texte simple',
+    neverSub: (thousands: number): string =>
+      `Tout reste dans le champ, sauf un collage de plus de ${thousands} 000 caractères`,
     from: (lines) => `À partir de ${lines} lignes`,
     foldLabel: 'Replier les collages longs',
     foldSub: (min, max) => `À partir de combien de lignes - ${min} à ${max}`,
@@ -755,6 +755,8 @@ export const fr: Dict = {
     noDrawer:
       'Le panneau n’atteint pas le coffre d’identifiants de ce compte : la connexion n’aurait nulle part où atterrir. Bascule vers un autre compte ci-dessous.',
     noTerminal: 'Cet IDE n’a pas ouvert de terminal, et c’est là que se fait la connexion.',
+    switchAccount: 'Changer de compte',
+    sendAgainAfter: 'Terminez la connexion dans le terminal, puis renvoyez votre message.',
   },
 
   stream: {
@@ -910,6 +912,11 @@ export const fr: Dict = {
     },
 
     modelSwitch: { label: 'MODÈLE', note: 'changé par Claude Code, pas par toi' },
+    modelStuck: {
+      label: 'MODÈLE',
+      note: (running) => `choisi, mais les réponses continuent d'arriver sur ${running}`,
+      hint: 'Le changement n’a pas atteint Claude Code : essaie de choisir le modèle à nouveau.',
+    },
 
     crash: {
       label: 'SESSION',
@@ -1237,6 +1244,8 @@ export const fr: Dict = {
       reach: {
         connecting: 'Connexion…',
         asleep: 'Connecté au relais, mais aucune IDE ne répond.',
+        silent: 'Rien ne répond depuis plusieurs minutes. La machine est peut-être éteinte, ou l’accès de cet appareil y a été révoqué.',
+        revoked: 'Cette IDE ne connaît plus cet appareil. Appairez-le à nouveau, ou oubliez-la.',
         elsewhere: 'Aussi ouvert dans un autre onglet ou dans l’app installée - c’est cette copie qui tient la connexion.',
         reconnecting: 'Reconnexion… la liste ci-dessous peut être périmée.',
         offline: 'Le relais est injoignable. Rien n’est perdu - cela revient tout seul.',
@@ -1244,6 +1253,8 @@ export const fr: Dict = {
       agent: {
         connecting: 'connexion…',
         asleep: 'ne répond pas',
+        silent: 'silencieuse depuis un moment',
+        revoked: 'accès révoqué',
         elsewhere: 'ouvert ailleurs',
         reconnecting: 'reconnexion…',
         offline: 'hors ligne',
@@ -1303,7 +1314,6 @@ export const fr: Dict = {
       start: {
         title: 'Lancer maintenant',
         required: 'obligatoire',
-        lastUsed: (value: string): string => `La dernière fois c\'était ${value}`,
         beside: (n: number): string =>
           n === 1
             ? 'Cela lancera une deuxième exécution à côté de celle qui tourne déjà. Les deux travaillent sur la même copie de travail.'
@@ -1476,6 +1486,7 @@ export const fr: Dict = {
     effortHint: (effort) => `Effort de raisonnement : ${effort}`,
     modelHint: (model) => `Modèle : ${model}`,
     modelHintSwitched: (model, from) => `Modèle : ${model} - Claude Code y est passé de lui-même, depuis ${from}`,
+    modelHintStuck: (model, picked) => `Modèle : ${model} - ${picked} a été choisi et n’a pas pris`,
     modeHint: (mode) => `Mode d’autorisation : ${mode}`,
     sessionLimit: 'Limite de 5 heures',
     weekLimit: 'Limite hebdomadaire',

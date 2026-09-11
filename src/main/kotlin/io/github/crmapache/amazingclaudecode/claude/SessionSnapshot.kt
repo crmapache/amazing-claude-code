@@ -82,6 +82,22 @@ internal data class SessionSnapshot(
      * time under the answer go by), and the panel can be closed while the phone is not.
      */
     val pendingAgents: Set<String> = emptySet(),
+    /**
+     * Background commands this conversation started and has not heard the end of, by task id.
+     *
+     * The same shape as [pendingAgents] and a different question. A command is not work being reported
+     * on - a dev server never reports anything - so it says nothing about a notification and is counted
+     * nowhere near one (see NotificationReasons). What it does say is that this process is holding
+     * something only it holds: the command is its child, and taking the process away takes the command
+     * with it (see IdleSleep, which is the one thing that asks this).
+     *
+     * Both kinds of command travel here - a background one and an ordinary one that ran long enough for
+     * the CLI to report it - and both close themselves off. Measured on 2.1.263: a background `sleep`,
+     * a foreground one and a killed one each ended with a `task_notification` of their own ("completed",
+     * "completed", "stopped"). A dev server is the case that does not close, and holding the process for
+     * one is the whole point.
+     */
+    val pendingCommands: Set<String> = emptySet(),
 ) {
 
     /**
@@ -210,11 +226,12 @@ internal object SessionSnapshots {
                 status = SessionSnapshot.STATUS_IDLE,
                 changedAt = at,
                 pendingAgents = emptySet(),
+                pendingCommands = emptySet(),
             )
 
             // The process was swapped under the conversation (an account chosen) - the same thing happens
             // to everything it was running, and nobody else will say so (see ClaudeSessionHub).
-            "processReplaced" -> snapshot.copy(pendingAgents = emptySet())
+            "processReplaced" -> snapshot.copy(pendingAgents = emptySet(), pendingCommands = emptySet())
 
             "agent" -> applyAgentEvent(snapshot, payload)
 
@@ -249,18 +266,30 @@ internal object SessionSnapshots {
             "task_started" -> {
                 val id = field("task_id")
                 // A terminal command is not an agent, although the CLI leads it down the same channel. A
-                // dev server raised through "!" never reports back at all: counted as work, it would
-                // silence the notification for the rest of the day. Same rule as isBashTask in the
-                // panel's feed/tasks.ts, unknown type included - an old CLI sent only subagents this way.
-                if (replayed || id.isEmpty() || field("task_type") == LOCAL_BASH) snapshot
-                else snapshot.copy(pendingAgents = snapshot.pendingAgents + id)
+                // dev server never reports work back: counted among the agents, it would silence the
+                // notification for the rest of the day. Same rule as isBashTask in the panel's
+                // feed/tasks.ts, unknown type included - an old CLI sent only subagents this way. It is
+                // still noted, apart: the process is holding it (see [pendingCommands]).
+                when {
+                    replayed || id.isEmpty() -> snapshot
+                    field("task_type") == LOCAL_BASH ->
+                        snapshot.copy(pendingCommands = snapshot.pendingCommands + id)
+
+                    else -> snapshot.copy(pendingAgents = snapshot.pendingAgents + id)
+                }
             }
 
             // An agent reporting back. Taken from a replay as well: removing is safe in a way that adding
             // is not, and a stale id left standing costs the notification it was meant to hold.
+            // The end of a command comes by the same event and carries no task_type of its own (measured
+            // on 2.1.263), so both sets are asked: an id lives in one of them at most.
             "task_notification" -> {
                 val id = field("task_id")
-                if (id.isEmpty()) snapshot else snapshot.copy(pendingAgents = snapshot.pendingAgents - id)
+                if (id.isEmpty()) snapshot
+                else snapshot.copy(
+                    pendingAgents = snapshot.pendingAgents - id,
+                    pendingCommands = snapshot.pendingCommands - id,
+                )
             }
 
             else -> snapshot

@@ -1,4 +1,5 @@
 import { isInsideIde, send } from './bridge'
+import { EMPTY_CLIPBOARD, isEmptyClipboard, pickPasted, type ClipboardContent } from './clipboardContent'
 import { isPasteShortcut, isTyping, servesPaste, typedNothing, type LastKey } from './clipboardKeys'
 import type { ShellMessage } from './protocol'
 
@@ -10,24 +11,20 @@ import type { ShellMessage } from './protocol'
  * precisely by a window - having got no ownership, the browser silently starts an internal clipboard and
  * lives with it. From outside that looks as though copying works only inside the input field: cut and
  * paste in the same place and it works, copy in a code tab and paste into the panel and it is empty, and
- * the other way round too. That is exactly what the report was about.
+ * the other way round too. That is exactly what the first report was about.
  *
  * We fix it not by replacing everything but by going around the broken place: the real clipboard is
  * available to the shell (it is the same one the whole IDE uses), so a copy is duplicated into it and a
- * paste is taken out of it when the browser returned emptiness. Where the native route works (macOS,
- * Windows) we do not touch it: with a live clipboard a paste arrives with contents, and the bridge simply
- * stays silent.
+ * paste is taken out of it. Where the native route works (macOS, Windows) we do not touch it at all: the
+ * bridge is Linux-only, and there the native clipboard can do more than ours.
+ *
+ * **On the bridge the browser's own clipboard is not believed at all**, and that is the second report.
+ * At first a paste was filled in only where the browser handed over emptiness - which held right up to
+ * the first copy made inside the panel: that fills the private clipboard for good, it is refreshed by
+ * nothing afterwards, and every later paste got that one snapshot back instead of what had since been
+ * copied in the editor. Why the system clipboard is the one to ask, and what the browser's snapshot is
+ * still kept for, is in clipboardContent.
  */
-
-/** The system clipboard's contents in the shape the page understands. */
-export interface ClipboardContent {
-  text: string
-  html: string
-  /** An image as a data URL: there is no other way to carry bytes through a text channel. */
-  image: string
-}
-
-const EMPTY: ClipboardContent = { text: '', html: '', image: '' }
 
 /**
  * How long the shell's answer is waited for before the clipboard counts as empty.
@@ -67,7 +64,7 @@ export const writeClipboard = (text: string, html = ''): boolean => {
 
 /** Ask the shell what is in the system clipboard right now. */
 export const readClipboard = (): Promise<ClipboardContent> => {
-  if (!bridged()) return Promise.resolve(EMPTY)
+  if (!bridged()) return Promise.resolve(EMPTY_CLIPBOARD)
 
   lastRequest += 1
   const id = `clip-${lastRequest}`
@@ -79,7 +76,7 @@ export const readClipboard = (): Promise<ClipboardContent> => {
       resolve(content)
     }
 
-    const timeout = setTimeout(() => finish(EMPTY), READ_TIMEOUT_MS)
+    const timeout = setTimeout(() => finish(EMPTY_CLIPBOARD), READ_TIMEOUT_MS)
 
     pending.set(id, finish)
     send({ type: 'clipboardRead', id })
@@ -92,6 +89,8 @@ export const resolveClipboard = (message: Extract<ShellMessage, { type: 'clipboa
     text: message.text ?? '',
     html: message.html ?? '',
     image: message.image ?? '',
+    // The shell carries an image as a data URL and no files of its own - see WebviewClipboard.
+    files: [],
   })
 }
 
@@ -102,8 +101,8 @@ export const resolveClipboard = (message: Extract<ShellMessage, { type: 'clipboa
 export const installClipboardBridge = (): (() => void) => {
   document.addEventListener('copy', onCopy)
   document.addEventListener('cut', onCopy)
-  // Intercepted before everyone: if the browser handed over emptiness, this event must not be let
-  // through - the input field's handler would take it for "nothing was pasted".
+  // Intercepted before everyone: on the bridge this event must not reach the input field at all - what
+  // it carries is either nothing or the browser's own stale snapshot, and both are answered elsewhere.
   document.addEventListener('paste', onPaste, true)
   window.addEventListener('keydown', onKeyDown, true)
   // What the keyboard actually typed - the one witness that tells a press meant for the field from a
@@ -138,15 +137,19 @@ const onCopy = (event: ClipboardEvent): void => {
 }
 
 /**
- * A paste the browser brought nothing with.
+ * Every paste on the bridge, whatever the browser brought with it.
  *
  * The event is suppressed entirely and one just like it is sent instead, carrying the contents of the
  * real clipboard: that way the whole paste handling - images, attachments, sheets of text - stays where
- * it was, and no second copy of it is started.
+ * it was, and no second copy of it is started. What the browser did bring is taken along as a spare and
+ * used only if the system clipboard answered with nothing (see clipboardContent).
  */
 const onPaste = (event: ClipboardEvent): void => {
   awaitingPaste = false
-  if (!bridged() || hasContent(event.clipboardData)) return
+  if (!bridged()) return
+  // Our own, sent from deliverPaste below. It travels this same capture phase, and taken for somebody
+  // else's it would send us round for the clipboard again, and again after that.
+  if (ours.has(event)) return
 
   // Nobody asked for this one: an ordinary key press arrived across the browser boundary carrying
   // modifiers that were never held, and the browser read it as a paste. Filling it in would be putting
@@ -156,11 +159,35 @@ const onPaste = (event: ClipboardEvent): void => {
     return
   }
 
+  const spare = snapshot(event.clipboardData)
+
   event.preventDefault()
   event.stopImmediatePropagation()
 
   const target = event.target instanceof Element ? event.target : document.activeElement
-  void readClipboard().then((content) => deliverPaste(target, content))
+  void readClipboard().then((content) => deliverPaste(target, pickPasted(content, spare)))
+}
+
+/** The pastes we sent ourselves - the one thing that tells them from a person's own. */
+const ours = new WeakSet<Event>()
+
+/**
+ * What the browser handed over, copied out while it still can be.
+ *
+ * An event's DataTransfer lives exactly as long as its handler, and the system clipboard is asked for
+ * across a whole round trip to the shell - so the spare is taken here or not at all. Files survive that
+ * on their own; the strings have to be read out now.
+ */
+const snapshot = (data: DataTransfer | null): ClipboardContent => {
+  if (!data) return EMPTY_CLIPBOARD
+
+  return {
+    text: data.getData('text/plain'),
+    html: data.getData('text/html'),
+    // Bytes come as files here, not as a data URL: that shape belongs to the shell's answer alone.
+    image: '',
+    files: Array.from(data.files),
+  }
 }
 
 /**
@@ -168,8 +195,10 @@ const onPaste = (event: ClipboardEvent): void => {
  *
  * Only if nothing else typed it: where the browser both inserted the character and invented the paste
  * beside it, there is nothing to restore, and restoring anyway would write the letter twice. So the
- * event is stopped (the field would otherwise handle an empty paste and swallow the keystroke with it),
- * and the decision is taken one task later, once the browser has done whatever it was going to do.
+ * event is stopped either way - it is not a paste, and letting it through means the field either
+ * swallows the keystroke over an empty paste or, worse, pastes the browser's own stale snapshot in the
+ * middle of a word - and the decision is taken one task later, once the browser has done whatever it
+ * was going to do.
  */
 const restoreTyped = (last: LastKey | null, event: ClipboardEvent): void => {
   if (!last?.text) return
@@ -249,7 +278,7 @@ const onKeyDown = (event: KeyboardEvent): void => {
  */
 const deliverPaste = (target: Element | null, content: ClipboardContent): void => {
   if (!isEditable(target)) return
-  if (!content.text && !content.html && !content.image) return
+  if (isEmptyClipboard(content)) return
 
   const data = new DataTransfer()
   if (content.text) data.setData('text/plain', content.text)
@@ -257,24 +286,15 @@ const deliverPaste = (target: Element | null, content: ClipboardContent): void =
 
   const image = fileFromDataUrl(content.image)
   if (image) data.items.add(image)
+  // The spare carries its bytes as files - a screenshot, a document out of a file manager.
+  for (const file of content.files) data.items.add(file)
 
-  const accepted = !target.dispatchEvent(
-    new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
-  )
+  const paste = new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
+  ours.add(paste)
+
+  const accepted = !target.dispatchEvent(paste)
 
   if (!accepted && content.text) insertText(target, content.text)
-}
-
-/**
- * Whether the clipboard holds anything at all. Files are checked too: a screenshot arrives precisely as
- * one, and there may be no text with it at all.
- */
-const hasContent = (data: DataTransfer | null): boolean => {
-  if (!data) return false
-  if (data.files.length > 0) return true
-  if (Array.from(data.items).some((item) => item.kind === 'file')) return true
-
-  return Boolean(data.getData('text/plain') || data.getData('text/html'))
 }
 
 const isEditable = (node: Element | null): node is HTMLElement => {

@@ -429,6 +429,7 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
                 runId = field("runId"),
                 key = field("key"),
                 conversationId = field("conversationId"),
+                before = field("before").ifEmpty { null },
             )
 
             /*
@@ -470,7 +471,13 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
                 hub.auth.check()
             }
 
-            "mcpList" -> hub.catalog.refreshMcp(sessionId)
+            // `ifRunning` is the panel's head start on the way in: answer only where a process is already
+            // up, because raising one costs the agent plus a copy of every MCP server (see
+            // ClaudeSessions.mcpStatus). Absent means the ordinary ask - somebody opened the screen.
+            "mcpList" -> hub.catalog.refreshMcp(
+                sessionId,
+                ifRunning = payload["ifRunning"]?.jsonPrimitive?.booleanOrNull == true,
+            )
 
             "mcpAdd" -> hub.catalog.addMcp(
                 sessionId,

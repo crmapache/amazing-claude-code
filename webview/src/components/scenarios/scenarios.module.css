@@ -1073,12 +1073,26 @@
   background: rgb(0 0 0 / 40%);
 }
 
+/*
+ * Centred by its own margins, and NEVER by a transform.
+ *
+ * A transformed box becomes the containing block of every fixed-positioned thing inside it, and the menu
+ * of a selector is fixed (see .menu in shell.module.css): it is placed by the window's coordinates,
+ * because that is what its button is measured in. Under translateX(-50%) those coordinates were read
+ * against the card instead - the hour's two little menus opened hundreds of pixels off the left of the
+ * screen, and the overflow below clipped what was left. On the screen that is a pair of buttons that do
+ * nothing at all, which is exactly how it was reported.
+ *
+ * The same goes for filter, will-change and contain: anything that makes a containing block here breaks
+ * every menu the forms open, silently and all at once.
+ */
 .overlay {
   position: absolute;
   z-index: 47;
   top: calc(var(--header-height) + 36px);
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  margin-inline: auto;
   width: min(440px, calc(100% - 28px));
   max-height: calc(100% - var(--header-height) - 72px);
   display: flex;
@@ -1239,11 +1253,6 @@
   letter-spacing: 0;
   color: var(--acc-warn);
   font-weight: 400;
-}
-
-.fieldNote {
-  font: 10.5px var(--acc-font);
-  color: var(--acc-fg-ghost);
 }
 
 .area {
@@ -2313,26 +2322,6 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-
-.logNote {
-  flex: none;
-  padding: 7px 12px;
-  border-bottom: 1px solid var(--acc-line);
-  font: 10.5px var(--acc-font);
-  color: var(--acc-fg-ghost);
-}
-
-.logPrompt {
-  flex: none;
-  max-height: 30%;
-  overflow: auto;
-  padding: 9px 12px;
-  border-bottom: 1px solid var(--acc-line);
-  font: 10.5px/1.6 var(--acc-mono);
-  color: var(--acc-fg-mono);
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 .logEmpty {

@@ -54,6 +54,70 @@ internal class ProjectCatalog(
     var pendingMcpRefreshUntil: Long = 0L
         private set
 
+    // --- The command hints ----------------------------------------------------------
+
+    /**
+     * The plugins as `claude plugin list` last named them - the scan needs nothing of them but where
+     * they were installed, and asking is a whole process (see [refreshCommandHints]).
+     *
+     * An answer that succeeded and named none is written here as readily as any other: guarding this
+     * against emptiness meant it could never empty at all, so a plugin removed at lunchtime went on
+     * being offered by the hint until the IDE was restarted, while the plugins screen next to it told
+     * the truth. A run that FAILED is a different thing and leaves this alone - the CLI reports that
+     * separately (see ClaudePlugin.installed).
+     *
+     * Written from the CLI's thread and read from the hints thread, which is why it is a reference
+     * rather than a mutable list: a walk reads it once, and a list that changed underneath makes the
+     * next fingerprint differ, so the round after picks it up.
+     */
+    @Volatile
+    private var installedPlugins: List<InstalledPlugin> = emptyList()
+
+    /** What the disk looked like when the hints were last read - see ClaudeCommandHints.scanIfChanged. */
+    @Volatile
+    private var hintStamp: String? = null
+
+    /** And what was last sent out of it - see [SentHints]. */
+    @Volatile
+    private var sentHints: SentHints = SentHints.NOTHING
+
+    /** How the fast round is pacing itself against a disk that answers slowly - see [HintPace]. */
+    @Volatile
+    private var hintPace: HintPace = HintPace.QUICK
+
+    /**
+     * Whether this project's last walk was already over its ceiling of candidates - the note about it is
+     * written on the edge rather than every round (see ClaudeCommandHints).
+     *
+     * Here rather than in the walk itself, for the same reason the fingerprint is here: the walk belongs
+     * to a project, and a second open project walks its own disk. One memory shared between the two,
+     * with one of them over the ceiling and one under it, turned every round into an edge and filled the
+     * report buffer with that one line.
+     */
+    private val hintCeilingSaid = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /**
+     * How many hint walks are queued or running. One at a time - and a fast round that finds one there
+     * already is dropped rather than queued. The unconditional minute round is never dropped, so it can
+     * queue behind a walk in progress: a couple a minute at the very worst, which is what its own note
+     * further down explains. See [onHintsThread].
+     */
+    private val hintTasks = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /**
+     * The one thread every hint walk happens on - the fast round, the minute round and the warm-up
+     * alike, so that the fingerprint and the last thing sent have a single writer.
+     *
+     * The thread comes out of the application's shared pool, with a single permit on this executor. So a
+     * walk stuck on a 9P share or a sleeping external drive does occupy a pooled thread while it hangs,
+     * and holds the only permit here, delaying this executor's own scheduled tick behind it. Accepted
+     * rather than overlooked: one permit is what gives the fingerprint and the last-sent map a single
+     * writer, walks are few and cost milliseconds on any disk that is answering, and a thread of our own
+     * per project is a steep price for that. The fast round drops itself when one is already running,
+     * which is what keeps a hung walk from collecting thirty more behind it.
+     */
+    private val hints = AppExecutorUtil.createBoundedScheduledExecutorService("ACC command hints", 1)
+
     // --- The project's own facts ---------------------------------------------------
 
     /**
@@ -80,10 +144,16 @@ internal class ProjectCatalog(
      * second window has to hear about the change without waiting for a restart.
      */
     fun sendCalmColors() {
+        val vivid = ClaudePreferences.gaugeVivid
         hub.broadcastProject(
             buildJsonObject {
                 put("type", "calmColors")
-                put("on", ClaudePreferences.calmColors)
+                put("vivid", vivid)
+                // For a client whose bundle is older than this plugin: the relay serves the phone and is
+                // deployed on its own, so a machine updated first is an ordinary day rather than an edge
+                // case. Halfway down is the only defensible line for a switch - see the field in
+                // protocol.ts, where both wrong answers are spelled out.
+                put("on", vivid < ClaudePreferences.GAUGE_VIVID_FULL / 2)
             }.toString(),
         )
     }
@@ -180,9 +250,9 @@ internal class ProjectCatalog(
                     // says "Enter", which is a real answer here rather than an absent one - a panel
                     // that has never been asked sends on Enter (see normalizeSendKey).
                     put("sendKey", preferences.sendKey)
-                    // And whether the gauges are drawn calm. Unconditional like the send key: false is
+                    // And how much colour the gauges keep. Unconditional like the send key: a hundred is
                     // an answer rather than a missing one - a panel nobody has asked draws the ladder.
-                    put("calmColors", preferences.calmColors)
+                    put("calmVivid", preferences.gaugeVivid)
                     // Two values rather than one, and the empty one is not the useless one: `language`
                     // is the explicit choice and is usually empty, `ideLanguage` is what the IDE itself
                     // is set to. Empty means "speak whatever the IDE speaks", and the picker needs the
@@ -264,41 +334,165 @@ internal class ProjectCatalog(
      * ClaudeCommandHints). The list of installed plugins is needed only for their installPath, so we
      * take the light `plugin list` without `--available`.
      *
-     * It goes out twice on purpose: first what is on disk right here, then the same with the plugins'
-     * commands added. The plugin list is a separate `claude` run - a whole Node start-up that can time
-     * out, fail or answer in a shape we do not expect - and hanging the disk scan on its success meant
-     * that one failure took the project's own commands with it. The panel then had nothing to hint with
-     * until the agent named its own list, that is, until the first message of the conversation had been
-     * sent: a person who had just installed the plugin typed "/" and did not find their own commands.
+     * The disk is walked twice on purpose, and that is not the same as speaking twice. The first walk
+     * does not wait for the plugin list: that list is a separate `claude` run - a whole Node start-up
+     * that can time out, fail or answer in a shape we do not expect - and hanging the disk scan on its
+     * success meant that one failure took the project's own commands with it. The panel then had nothing
+     * to hint with until the agent named its own list, that is, until the first message of the
+     * conversation had been sent: a person who had just installed the plugin typed "/" and did not find
+     * their own commands.
+     *
+     * The first walk goes out with the plugins we already know rather than with none: the map replaces
+     * the panel's wholesale, so every round used to blank out every plugin command's description and put
+     * it back a moment later. The second speaks only if the plugin list changed the map, so in the
+     * settled state exactly one message a minute leaves here. Two of them is the first round after the
+     * IDE starts, when the plugin list arrives for the first time.
+     *
+     * This is the UNCONDITIONAL road - the frontmatter of every file is read, and the message goes out
+     * even when nothing has changed. Both halves of that are load-bearing. Reading: a file system whose
+     * timestamps are whole seconds does not move the fingerprint when a word is replaced by one of the
+     * same length, so a round under the fingerprint would never bring that edit at all. Sending:
+     * `broadcastProject` does not throw, a client that failed to receive is only logged, and a frame
+     * lost on the way to the panel is a thing this plugin already knows happens (see channelLoss) - one
+     * small message a minute is what heals it. What the fast round below buys is that those thirty
+     * other ticks a minute cost a stat and say nothing.
      */
     fun refreshCommandHints() {
-        broadcastCommandHints(installed = emptyList())
+        onHintsThread { sweepCommandHints(installedPlugins, everything = true, heal = true) }
 
         ClaudePlugin.installed(
             project.basePath,
-            onResult = { installed -> if (installed.isNotEmpty()) broadcastCommandHints(installed) },
+            onResult = { installed ->
+                installedPlugins = installed
+                // Reads everything, says nothing new: the pair used to be two messages a minute saying
+                // the same thing, because a plugin list that has not changed changes no hint either.
+                onHintsThread { sweepCommandHints(installed, everything = true) }
+            },
             onError = { thisLogger().warn("Couldn't list plugins for command hints: $it") },
         )
     }
 
-    private fun broadcastCommandHints(installed: List<InstalledPlugin>) {
-        AppExecutorUtil.getAppExecutorService().submit {
-            val hints = ClaudeCommandHints.scan(project.basePath, installed)
+    /**
+     * The fast round: a skill written while a conversation is running reaches the hint in seconds.
+     *
+     * Measured on CLI 2.1.263, twice: the CLI itself picks a new command up somewhere between t+1.6 s and
+     * t+4.2 s, so at two seconds the hint and the CLI catch up with the file together. The panel used to learn about it
+     * only from the minute round above, with no way to ask sooner - and up to a minute of "the skill I
+     * have just written does not exist" is what the whole of this is about.
+     *
+     * Nothing here starts a process: the plugin list stays on the minute round.
+     */
+    private fun pollCommandHints() {
+        onHintsThread(skippable = true) { sweepCommandHints(installedPlugins, everything = false) }
+    }
 
-            hub.broadcastProject(
-                buildJsonObject {
-                    put("type", "commandHints")
-                    putJsonObject("hints") {
-                        hints.forEach { (id, hint) ->
-                            putJsonObject(id) {
-                                put("description", hint.description)
-                                put("argumentHint", hint.argumentHint)
-                            }
+    /**
+     * One walk, and what to do about it.
+     *
+     * A walk that could not list a directory it can see is not the truth about the disk, and the honest
+     * test of that is not the failure itself but what it cost: only a walk that LOST names we had
+     * already sent is thrown away. A directory that is permanently unreadable (mode 0300, a plugin
+     * folder owned by root) fails every single time, and refusing to broadcast on that alone would
+     * leave the hint empty for the whole life of the project - the very defect this fixes, only worse.
+     *
+     * [everything] reads the frontmatter whatever the fingerprint says; [heal] sends the answer whether
+     * it changed or not. They are not the same switch: the minute round asks for both, but only once -
+     * the second half of it, after the plugins have answered, reads everything and speaks only if that
+     * changed something, or the pair would be two messages a minute saying one thing.
+     */
+    private fun sweepCommandHints(installed: List<InstalledPlugin>, everything: Boolean, heal: Boolean = false) {
+        // Resolved here, inside the task, and never kept: on a WSL project the platform answers with
+        // this machine's home unless it is asked off a pooled thread, and a home computed once at
+        // construction would leave that project reading a stranger's personal commands for ever. Asking
+        // again costs nothing - ClaudeHome caches the answer per distribution (see its warmUp).
+        val home = ClaudeHome.of(project.basePath)
+        val since = if (everything) null else hintStamp
+        val look = ClaudeCommandHints.scanIfChanged(home, project.basePath, installed, since, hintCeilingSaid)
+        // Only the fast round paces itself: the minute one reads every file by design, and letting that
+        // set the poll's pace would be timing one thing to slow another. It paces itself after EVERY
+        // round, the ones that found nothing included - and those are nearly all of them. Written below
+        // the early return, the brake was fed only by the rare round that found a change, so on a quiet
+        // disk it was never fed at all: exactly backwards, since a quiet disk is what it walks.
+        if (!everything) hintPace = HintPace.after(hintPace, look.walkNanos)
+        val scan = look.scan ?: return
+
+        val found = scan.hints.keys.toSet()
+        if (!scan.whole && !sentHints.believes(found)) {
+            // Held back rather than dropped for good: patience runs out, or a directory that has closed
+            // for ever would silence the hint for the life of the project. See [SentHints].
+            sentHints = sentHints.heldBack()
+            return
+        }
+        // A walk that got through restores the patience, whatever it goes on to do with the map.
+        sentHints = sentHints.believed()
+
+        val fresh = canonicalHints(scan.hints)
+        hintStamp = scan.stamp
+        if (!heal && fresh == sentHints.canonical) return
+
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "commandHints")
+                putJsonObject("hints") {
+                    scan.hints.forEach { (id, hint) ->
+                        putJsonObject(id) {
+                            put("description", hint.description)
+                            put("argumentHint", hint.argumentHint)
                         }
                     }
-                }.toString(),
-            )
+                }
+            }.toString(),
+        )
+
+        // Only once the fact is in the hub's cache, which is what a client joining later is caught up
+        // from (see ClaudeSessionHub.broadcastProject). What an exception in between costs is a minute,
+        // not the life of the project: the unconditional round above re-reads and re-sends whatever the
+        // fingerprint says, so recovery does not wait for anything on disk to move.
+        sentHints = SentHints.of(fresh, found)
+    }
+
+    /**
+     * What the hint map is compared by - the same content, in an order that does not depend on the disk.
+     *
+     * Never the serialised message: `listFiles` promises no order, the map keeps the walk's, and the one
+     * thing that decides whether the panel is spoken to must not drift with it. The fingerprint sorts a
+     * copy for exactly the same reason.
+     */
+    private fun canonicalHints(hints: Map<String, CommandHint>): String =
+        hints.entries.sortedBy { it.key }.joinToString("\n") { (id, hint) ->
+            "$id\t${hint.description}\t${hint.argumentHint}"
         }
+
+
+    /**
+     * The hints, all of them, on one thread and never queued up behind themselves.
+     *
+     * One at a time, because the fingerprint and the last thing sent are a pair and two rounds with
+     * different plugin lists would let the loser of the race write its fingerprint last, leaving the
+     * panel with the other one's map and nothing to correct it.
+     *
+     * The two-second round is [skippable] - dropped rather than queued, because file I/O does not answer
+     * to interruption: a walk stuck on a dead share for a minute would otherwise collect a task per tick
+     * and run them all, in full, the moment the share came back. The minute round is not: it is the one
+     * that heals a lost frame and the one that brings an edit the fingerprint cannot see, and dropping
+     * it because a poll happened to be walking is how the healing quietly stops healing. One a minute
+     * cannot pile up the way thirty can.
+     */
+    private fun onHintsThread(skippable: Boolean = false, work: () -> Unit) {
+        if (skippable && hintTasks.get() > 0) return
+        hintTasks.incrementAndGet()
+
+        // A throw inside would cancel a scheduled task for good, so nothing is allowed out of here; and
+        // the counter is released whatever happens, or one failed walk would end the hint's life.
+        runCatching {
+            hints.execute {
+                try {
+                    runCatching(work).onFailure { thisLogger().warn("Couldn't refresh the command hints", it) }
+                } finally {
+                    hintTasks.decrementAndGet()
+                }
+            }
+        }.onFailure { hintTasks.decrementAndGet() }
     }
 
     /**
@@ -576,11 +770,12 @@ internal class ProjectCatalog(
      * brought up for this - as in the terminal, where `/mcp` is asked of a running session (see
      * ClaudeSessions.mcpStatus).
      */
-    fun refreshMcp(sessionId: String) {
+    fun refreshMcp(sessionId: String, ifRunning: Boolean = false) {
         hub.conversations.mcpStatus(
             sessionId,
             onResult = { status -> sendMcpServers(status) },
             onFailure = { error -> sendMcpActionResult(false, error) },
+            ifRunning = ifRunning,
         )
     }
 
@@ -700,8 +895,13 @@ internal class ProjectCatalog(
      * new one: we restart the conversation - the transcript stays, the same one comes up.
      */
     private fun refreshMcpAfterRestart(sessionId: String) {
-        hub.conversations.restart(sessionId)
-        scheduleMcpRefresh(sessionId, MCP_RECONNECT_REFRESH_SECONDS)
+        // The screen is questioned once the process has actually been replaced, not once the restart has
+        // been asked for. A restart waits for a running turn (see ClaudeSessions.restart), and a list
+        // read off the process being replaced is the list the person has just changed - which reads as
+        // "adding it did not work", with a second press to follow.
+        hub.conversations.restart(sessionId) {
+            scheduleMcpRefresh(sessionId, MCP_RECONNECT_REFRESH_SECONDS)
+        }
     }
 
     fun scheduleMcpRefresh(sessionId: String, delaySeconds: Long) {
@@ -841,6 +1041,10 @@ internal class ProjectCatalog(
 
     private fun sendPlugins(installed: List<InstalledPlugin>, available: List<AvailablePlugin>) {
         hub.stats.notePlugins(installed.count { it.enabled })
+        // A fresh answer is a fresh answer whoever asked for it: installing or removing a plugin comes
+        // through here, and without this the "/" hint would go on offering a removed plugin's commands
+        // until the next minute round asked the CLI again.
+        installedPlugins = installed
 
         hub.broadcastProject(
             buildJsonObject {
@@ -952,10 +1156,138 @@ internal class ProjectCatalog(
             TimeUnit.SECONDS,
         )
 
+        /**
+         * The hints get a round of their own, and a short one: a skill written mid-conversation has to
+         * reach the "/" hint about as fast as the CLI itself picks it up (1.6-4.2 s, measured on
+         * 2.1.263), not in a minute. It costs a walk of a few directories with no file read at all
+         * while nothing changes - 1.0-1.3 ms for the 97 commands and skills on this machine - and it
+         * starts no process: the plugin list stays on the slow round above.
+         *
+         * The clients guard is not only about saving work here: it keeps the round idle until somebody
+         * attaches, so the warm-up's first scan is never left waiting behind it.
+         */
+        val commandHints = hints.scheduleWithFixedDelay(
+            {
+                runCatching { if (hub.hasClients() && hintPace.due()) pollCommandHints() }
+                    .onFailure { thisLogger().warn("Couldn't schedule a command hint refresh", it) }
+            },
+            HINTS_PERIOD_SECONDS,
+            HINTS_PERIOD_SECONDS,
+            TimeUnit.SECONDS,
+        )
+
         Disposer.register(parentDisposable) {
             slow.cancel(false)
             tokens.cancel(false)
             branch.cancel(false)
+            commandHints.cancel(false)
+            hints.shutdown()
+        }
+    }
+
+    /**
+     * The map last broadcast, the names that were in it, and how long the guard has been holding back.
+     *
+     * The names are kept as a set of their own rather than read back out of [canonical]. Gluing the map
+     * into one string and taking it apart again broke in two ways, and both were silent. A fresh
+     * install: nothing had ever been sent, so the empty string parsed to one empty name and every walk
+     * looked like it had "lost" it - the very first real broadcast was blocked. And a description
+     * written on several lines, which the skill file format allows and a test here already covers: each
+     * extra line read as a name that no longer exists. Held as a set, neither case can happen at all -
+     * [NOTHING] believes anything, and a description is not a name.
+     *
+     * [refusals] is the other half. The guard is meant as a hiccup's worth of patience: the share
+     * stuttered, we waited, it came back. But a directory can also close for good - macOS revoking
+     * access to Documents, a plugin folder losing its mode, a volume that answers with a refusal from
+     * now on - and then the guard fires on every single round for ever: the hint freezes on what was
+     * read before the loss, a new skill never reaches it again, and no fingerprint is written either,
+     * so the two-second round re-reads every file on disk until the IDE is restarted. So patience is
+     * finite: after [PATIENCE] rounds in a row the loss is accepted as the truth, what was read is sent,
+     * and the fingerprint is written. A hiccup is still ridden out in silence; a closed door stops being
+     * a life sentence.
+     */
+    internal data class SentHints(val canonical: String, val names: Set<String>, val refusals: Int) {
+
+        /** Whether a walk that came back incomplete may still be believed - see the note above. */
+        fun believes(found: Set<String>): Boolean = found.containsAll(names) || refusals >= PATIENCE
+
+        /** One more round spent waiting. Stops counting at the ceiling so nothing can overflow. */
+        fun heldBack(): SentHints = if (refusals >= PATIENCE) this else copy(refusals = refusals + 1)
+
+        /** A walk got through: the patience is whole again, whatever is done with the map next. */
+        fun believed(): SentHints = if (refusals == 0) this else copy(refusals = 0)
+
+        companion object {
+            /** How many refusals in a row before the loss is taken for the truth: ten seconds of them. */
+            const val PATIENCE = 5
+
+            /** Nothing has been sent yet, so nothing can have been lost. */
+            val NOTHING = SentHints("", emptySet(), 0)
+
+            fun of(canonical: String, names: Set<String>): SentHints = SentHints(canonical, names, 0)
+        }
+    }
+
+    /**
+     * How long the fast round waits before walking the disk again.
+     *
+     * Two seconds is what a local disk is worth. Everything else this has to survive is a disk that is
+     * not local: a 9P share, an SMB mount, an external drive spinning up, an antivirus. There a walk
+     * costs seconds rather than milliseconds, and a fixed two-second round would keep one thread
+     * permanently busy and keep the drive from ever going back to sleep - so the round pays back its own
+     * cost fifty times over before it starts again.
+     *
+     * Four details, each of them a way to get this wrong:
+     *
+     * - the ceiling is the slow round. Above that the fast round buys nothing that the unconditional
+     *   minute does not already buy, and a hint that answers slower than it did before the change would
+     *   be a plain regression on exactly the machines that can least afford one.
+     * - going back to quick takes a run of quick walks rather than one. A single spin-up or a swapped
+     *   page would otherwise push the next look a hundred seconds out while the disk was already awake,
+     *   with nothing on screen to say why.
+     * - "quick" is measured against the round in force, not against a fixed number of milliseconds. On
+     *   a share, a WSL mount or a disk behind an antivirus a walk costs a hundred milliseconds every
+     *   time, so against an absolute figure no walk there is ever quick and the period could only ever
+     *   go up: one spin-up pinned it at the ceiling until the IDE was restarted. Relative, the brake
+     *   lets go again on any machine - it settles at what that machine's walk is actually worth.
+     * - the clock is [System.nanoTime]. Wall time steps backwards - NTP after a long sleep, a restored
+     *   snapshot - and a deadline written in it freezes the round for the length of the step. Which is
+     *   also why "not looked yet" is [nextAt] absent rather than [nextAt] zero: nanoTime is allowed to
+     *   start at any number at all, negative included, and on a machine whose clock starts below zero a
+     *   deadline of zero sits years in the future - the fast round would never run once, silently.
+     */
+    internal data class HintPace(val waitMs: Long, val quickRuns: Int, val nextAt: Long?) {
+
+        fun due(at: Long = System.nanoTime()): Boolean = nextAt == null || at - nextAt >= 0
+
+        companion object {
+            /** The floor: what a walk of a local disk is worth. */
+            const val QUICK_MS = HINTS_PERIOD_SECONDS * 1000
+
+            /** The ceiling: past this the unconditional minute round is doing the same job anyway. */
+            const val SLOWEST_MS = SLOW_PERIOD_MINUTES * 60 * 1000
+
+            /** How much of the round a walk is allowed to take: one part in fifty. */
+            const val BUDGET = 50
+
+            /** How many quick walks in a row earn the quick round back. */
+            const val SETTLED = 3
+
+            /** Nothing walked yet, so the first tick is due: see the note on the clock above. */
+            val QUICK = HintPace(QUICK_MS, SETTLED, null)
+
+            fun after(pace: HintPace, tookNanos: Long, at: Long = System.nanoTime()): HintPace {
+                val tookMs = tookNanos / 1_000_000
+                val wanted = (tookMs * BUDGET).coerceIn(QUICK_MS, SLOWEST_MS)
+                // Quick means "fits the round we are keeping", not "under forty milliseconds": see the
+                // third note above. Settled, the period drops to what this disk's walk is worth, which
+                // on a local one is the floor and on a share is a few seconds - never the ceiling it
+                // used to stick at.
+                val quickRuns = if (wanted <= pace.waitMs) pace.quickRuns + 1 else 0
+                val waitMs = if (quickRuns >= SETTLED) wanted else maxOf(wanted, pace.waitMs)
+
+                return HintPace(waitMs, quickRuns, at + waitMs * 1_000_000)
+            }
         }
     }
 
@@ -1004,7 +1336,10 @@ internal class ProjectCatalog(
         }
 
         /** The round for everything that is expensive and changes unhurriedly. */
-        private const val SLOW_PERIOD_MINUTES = 1L
+        internal const val SLOW_PERIOD_MINUTES = 1L
+
+        /** And the one for the "/" hint, which has to keep up with the CLI itself - see [HintPace]. */
+        internal const val HINTS_PERIOD_SECONDS = 2L
 
         /** Rarer still, because it is the heaviest of the lot. */
         private const val TOKENS_PERIOD_MINUTES = 5L

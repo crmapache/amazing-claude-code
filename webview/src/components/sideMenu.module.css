@@ -1082,6 +1082,26 @@
   gap: 5px;
 }
 
+/* The slider and what it is called, in the card the switch used to stand in. A plain box rather than
+   .switchRow: that one is a button - it is pressed as a whole - and here the thing that is dragged is
+   the slider itself, so the row around it must not answer to a press. */
+.calmControl {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-card);
+}
+
+.calmControlHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+
 /* The same figure the status row writes beside its own rings, and set the same way: tabular, so the
    four steps stand in one rhythm however wide their digits are. */
 .calmStepValue {
@@ -1438,7 +1458,8 @@
   color: var(--acc-fg-faint);
 }
 
-.soundPercent {
+/* The figure beside a slider - shared by the volume of a sound and the colour of the gauges. */
+.percentChip {
   flex: none;
   padding: 1px 6px 2px;
   border-radius: var(--acc-r-sm);
@@ -1447,7 +1468,7 @@
   color: var(--acc-accent);
 }
 
-.soundPercentOff {
+.percentChipMuted {
   background: var(--acc-neutral-12);
   color: var(--acc-fg-ghost);
 }
@@ -1469,7 +1490,9 @@
   color: var(--acc-fg);
 }
 
-.soundSlider {
+/* Two screens drag it now, so it is named after what it is rather than after the first of them. Only the
+   -webkit- pseudo-elements are dressed: the panel is drawn by JCEF, which is Chromium. */
+.slider {
   width: 100%;
   height: 14px;
   appearance: none;
@@ -1477,13 +1500,13 @@
   cursor: pointer;
 }
 
-.soundSlider::-webkit-slider-runnable-track {
+.slider::-webkit-slider-runnable-track {
   height: 3px;
   border-radius: 3px;
   background: var(--acc-bg-control);
 }
 
-.soundSlider::-webkit-slider-thumb {
+.slider::-webkit-slider-thumb {
   appearance: none;
   margin-top: -4.5px;
   width: 12px;
@@ -1492,7 +1515,7 @@
   background: var(--acc-accent);
 }
 
-.soundSliderOff::-webkit-slider-thumb {
+.sliderMuted::-webkit-slider-thumb {
   background: var(--acc-line-strong);
 }
 

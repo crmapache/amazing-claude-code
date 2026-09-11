@@ -60,7 +60,6 @@ internal object RemoteFeed {
             SCENARIO_LIVE -> Outgoing(type, trimmedLive(message))
             SCENARIO_RUN -> trimmedRun(message)
             SCENARIO_FETCHED, SCENARIO_DRAFTED -> Outgoing(type, wholeScenario(type, message))
-            SCENARIO_LOG -> Outgoing(type, trimmedLog(message))
             else -> Outgoing(type, message)
         }
 
@@ -345,45 +344,16 @@ internal object RemoteFeed {
         }.toString()
     }
 
-    /**
-     * What one step said, cut to a frame from the END.
+    /*
+     * A step's log is not cut here, and that is deliberate rather than forgotten.
      *
-     * A step that walked a repository leaves a transcript in megabytes, and this used to be the reason
-     * the phone was refused it outright - a frame over the relay's 256 KB is not shortened but thrown
-     * away whole, so asking for one was asking for silence. Refusing it was the wrong answer to a real
-     * problem: what somebody wants off a step at three in the morning is the end of it, which is exactly
-     * the part that fits.
-     *
-     * So the oldest events go until what is left fits, and the message says so - `truncated` is already
-     * the word for "the beginning is not shown", and a log that silently begins in the middle reads as a
-     * step that began in the middle.
+     * It used to be: the page came back whole from ClaudeHistory.opening and the oldest events were
+     * dropped afterwards to fit the frame. Cutting after the fact cannot keep a cursor honest - the
+     * boundary the page names is the one it began with, while what the phone actually received begins
+     * lower, so the next "load earlier" would ask from a line it never saw and the events between the
+     * two would arrive twice. Now the budget is chosen at the source instead (ClaudeHistory.earlier with
+     * `local`, exactly as sendHistoryPage does for an ordinary tab), so what leaves already fits.
      */
-    private fun trimmedLog(message: String): String {
-        if (message.length <= PHONE_LOG_BUDGET) return message
-
-        val root = runCatching { Json.parseToJsonElement(message).jsonObject }.getOrNull() ?: return message
-        val events = (root["events"] as? JsonArray) ?: return message
-
-        // From the end backwards, which is the half a person is reading.
-        val kept = ArrayDeque<JsonElement>()
-        var spent = 0
-        for (event in events.asReversed()) {
-            val size = event.toString().length + 1
-            if (spent + size > PHONE_LOG_BUDGET) break
-            spent += size
-            kept.addFirst(event)
-        }
-
-        return buildJsonObject {
-            for ((name, value) in root) {
-                when (name) {
-                    "events" -> put(name, JsonArray(kept.toList()))
-                    "truncated" -> put(name, JsonPrimitive(true))
-                    else -> put(name, value)
-                }
-            }
-        }.toString()
-    }
 
     /**
      * The list of what is going right now, cut to the same ceiling as everything else.
@@ -595,8 +565,8 @@ internal object RemoteFeed {
 
     /**
      * The no-stress colour mode, so the gauges on the phone are as calm as the ones at the desk. A
-     * single boolean, and on this list for the same reason the language is: it says nothing about the
-     * machine it came from.
+     * figure from nought to a hundred, and on this list for the same reason the language is: it says
+     * nothing about the machine it came from.
      */
     private const val CALM_COLORS = "calmColors"
 
@@ -633,9 +603,6 @@ internal object RemoteFeed {
     /** And one a model just wrote, which opens in the same editor and is saved from it. */
     const val SCENARIO_DRAFTED = "scenarioDrafted"
 
-    /** One step's own conversation, read off this machine's disk. */
-    const val SCENARIO_LOG = "scenarioLog"
-
     /**
      * What is going right now, as summaries - the light half of the scenarios (see ScenarioDesk.sendLive).
      *
@@ -660,9 +627,6 @@ internal object RemoteFeed {
      * cut, because what is shown is what gets saved back (see [wholeScenario]).
      */
     private const val PHONE_SCENARIO_BUDGET = 48 * 1024
-
-    /** And how much of one step's conversation. The end of it, which is the half anybody reads. */
-    private const val PHONE_LOG_BUDGET = 48 * 1024
 
     /** How many past runs travel. A year of a morning routine is three hundred; the row wanted is near the top. */
     private const val PHONE_RUNS = 40

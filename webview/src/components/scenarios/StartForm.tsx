@@ -14,7 +14,6 @@ import s from './scenarios.module.css'
 export const StartForm = ({
   scenario,
   values,
-  last,
   going,
   onChange,
   onStart,
@@ -22,8 +21,6 @@ export const StartForm = ({
 }: {
   scenario: Scenario
   values: Record<string, string>
-  /** What the last run of this scenario was given - offered under each field, never as its value. */
-  last?: Record<string, string>
   /** How many runs are already going over this working copy - said before the button, not after. */
   going: number
   onChange: (values: Record<string, string>) => void
@@ -57,7 +54,7 @@ export const StartForm = ({
         </>
       }
     >
-      <ScenarioInputs scenario={scenario} values={values} last={last} onChange={onChange} />
+      <ScenarioInputs scenario={scenario} values={values} onChange={onChange} />
     </Overlay>
   )
 }

@@ -21,6 +21,17 @@ export interface MobileFeed {
   /** True between restoreStarted and restoreFinished: the entries are collected, then applied at once. */
   restoring: boolean
   /**
+   * When the last piece of that restore arrived, on the IDE's clock - what stops it lasting for ever.
+   *
+   * A restore shows nothing until its closing half arrives, and that half is one frame like any other:
+   * a queue that gave up on this device, a frame over the relay's ceiling, a send the socket refused
+   * mid-batch. Lost, it used to leave the conversation blank on this phone with no sign anywhere of
+   * why, until somebody thought to leave the screen and come back. So the restore ends by itself when
+   * nothing more comes - which costs nothing when it was merely slow, because the pieces are held and
+   * applied together either way.
+   */
+  restoringSince: number
+  /**
    * Whether the IDE has said anything about this conversation yet.
    *
    * An empty feed means two different things - "this conversation is empty" and "nothing has arrived
@@ -32,10 +43,19 @@ export interface MobileFeed {
   pending: Array<{ action: PanelAction; at?: number }>
 }
 
+/**
+ * How long a restore may go without a word before it is treated as over - see MobileFeed.restoringSince.
+ *
+ * Generous, because the pieces of one arrive back to back and being early would mean drawing half a
+ * conversation; short next to the alternative, which is a screen that never draws it at all.
+ */
+const RESTORE_PATIENCE_MS = 20_000
+
 export const emptyFeed = (): MobileFeed => ({
   state: initialPanelState,
   seq: 0,
   restoring: false,
+  restoringSince: 0,
   loaded: false,
   pending: [],
 })
@@ -86,9 +106,26 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
   const at = message.at ?? now
   const seq = message.seq ?? feed.seq
 
+  const restored = (feed: MobileFeed): PanelState =>
+    feed.pending.reduce((panel, entry) => reducePanel(panel, entry.action, entry.at ?? now), feed.state)
+
   const collect = (action: PanelAction): MobileFeed => {
     if (feed.restoring) {
-      return { ...feed, seq, pending: [...feed.pending, { action, at }] }
+      // Still arriving: held with the rest, and the clock of the wait moves with it.
+      if (now - feed.restoringSince <= RESTORE_PATIENCE_MS) {
+        return { ...feed, seq, restoringSince: now, pending: [...feed.pending, { action, at }] }
+      }
+
+      // Nothing came for long enough that the closing half is not coming at all - see restoringSince.
+      return {
+        ...feed,
+        seq,
+        loaded: true,
+        restoring: false,
+        restoringSince: 0,
+        pending: [],
+        state: reducePanel(restored(feed), action, at),
+      }
     }
 
     return { ...feed, seq, loaded: true, state: reducePanel(feed.state, action, at) }
@@ -115,16 +152,19 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
           ]
         : []
 
-      return { ...feed, state, restoring: true, pending }
+      return { ...feed, state, restoring: true, restoringSince: now, pending }
     }
 
     case 'restoreFinished': {
-      const state = feed.pending.reduce(
-        (panel, entry) => reducePanel(panel, entry.action, entry.at ?? now),
-        feed.state,
-      )
-
-      return { ...feed, state, seq: message.upTo, restoring: false, loaded: true, pending: [] }
+      return {
+        ...feed,
+        state: restored(feed),
+        seq: message.upTo,
+        restoring: false,
+        restoringSince: 0,
+        loaded: true,
+        pending: [],
+      }
     }
 
     case 'agent':

@@ -2,11 +2,13 @@ import { ChatRow } from './ChatRow'
 import { Magnifier } from '../../components/SearchCapsule'
 import type { AgentEntry, ProjectEntry, SessionEntry } from '../projects'
 import { waitingFor } from '../projects'
-import { liveRunsOf, type ProjectFacts } from '../facts'
+import { liveRunsOf, projectRuns, type ProjectFacts } from '../facts'
 import type { LinkState } from '../link'
-import { runMarks } from '../../scenarios/runs'
+import { runDot, runMarks } from '../../scenarios/runs'
+import { startedLabel } from '../../scenarios/moments'
+import { dotFor } from './TabsSheet'
 import m from '../mobile.module.css'
-import { useT } from '../../i18n'
+import { useLocale, useT } from '../../i18n'
 import type { Dict } from '../../i18n/en'
 
 interface ProjectsProps {
@@ -31,11 +33,13 @@ interface ProjectsProps {
   onMenu: () => void
   onSearch: (project: ProjectEntry) => void
   /**
-   * The run going in a project, and the way into it.
+   * A round of work in a project, and the way straight into it.
    *
    * On this card rather than only behind the menu, because a scenario is the one kind of work here that
    * goes on unattended: a screen listing a project as quiet while four agents edit its files for the
-   * third hour is the screen this whole feature exists to replace.
+   * third hour is the screen this whole feature exists to replace. The last one that is OVER is here for
+   * the other half of the same day - it ran while nobody watched, so the card is where its result is
+   * asked after (see projectRuns).
    */
   onRun: (project: ProjectEntry, runId: string) => void
   /** Put one conversation away on this phone, and bring a project's back. */
@@ -84,6 +88,7 @@ export const Projects = ({
   onShowHidden,
 }: ProjectsProps) => {
   const t = useT()
+  const locale = useLocale()
 
   // Where the projects this IDE merely remembers begin. They get a heading of their own: "there is
   // nothing in this one" and "this one is not even open" are different facts, and a list that shows
@@ -180,11 +185,14 @@ export const Projects = ({
           const stopped = project.sessions.filter((session) => session.awaitsYou).length
           const open = project.sessions.length
 
-          // What is going here, as summaries. There may be several - one scenario can be started as many
-          // times as somebody wants at the desk - and they are asked of one place, because this rule used
-          // to be written here by hand as well as in the facts (see liveRunsOf).
+          // What is going here, as summaries - or, with nothing going, the last round of work that is
+          // over. There may be several live ones (one scenario can be started as many times as somebody
+          // wants at the desk), and they are asked of one place, because this rule used to be written
+          // here by hand as well as in the facts (see projectRuns).
           const going = liveRunsOf(fact)
-          const marks = runMarks(going)
+          const rounds = projectRuns(fact)
+          const live = going.length > 0
+          const marks = runMarks(rounds)
 
           return (
             <div key={`${project.agentId}:${project.key}`}>
@@ -221,22 +229,36 @@ export const Projects = ({
                   ) : null}
                 </div>
 
-                {/* What is running here without anybody watching it - see the note on [onRun]. One row
-                    each, because two runs of one scenario are two different pieces of work and the row
-                    is the way into one of them; what tells them apart is beside the name. */}
-                {going.map((run) => {
-                  const asking = run.state === 'blocked'
+                {/* What is running here without anybody watching it, or what last did - see the note on
+                    [onRun]. One row each, because two runs of one scenario are two different pieces of
+                    work and the row is the way into one of them; what tells them apart is beside the
+                    name.
+
+                    A row for work that is over is drawn quieter and says WHEN instead: an accent border
+                    is a promise that something is happening, and the one thing somebody wants of last
+                    night's run before opening it is whether it was in fact last night. */}
+                {rounds.map((run) => {
+                  const asking = live && run.state === 'blocked'
+                  const qualifier = live
+                    ? marks[run.id]
+                    : startedLabel(run.startedAt, locale, t.scenarios.when, now(project.agentId))
 
                   return (
                     <button
                       key={run.id}
                       type="button"
-                      className={`${m.projectRun} ${asking ? m.projectRunAsking : ''}`}
+                      className={[m.projectRun, asking ? m.projectRunAsking : '', live ? '' : m.projectRunOver]
+                        .filter(Boolean)
+                        .join(' ')}
                       onClick={() => onRun(project, run.id)}
                     >
-                      <span className={`${m.dot} ${asking ? m.dotAttention : m.dotRunning}`} />
+                      {/* The same table the strip at the desk draws its tab dots from: a run parked by
+                          hand is not going, and a breathing dot over it promises work. Told whether this
+                          one is still live, because a summary off the disk keeps saying "running" long
+                          after the IDE that wrote it was closed. */}
+                      <span className={`${m.dot} ${dotFor(runDot(run, live))}`} />
                       <span className={m.projectRunName}>
-                        {[run.scenarioName, marks[run.id]].filter(Boolean).join(' · ')}
+                        {[run.scenarioName, qualifier].filter(Boolean).join(' · ')}
                       </span>
                       <span className={`${m.projectRunCount} ${asking ? m.projectRunWaiting : ''}`}>
                         {asking ? t.mobile.sessions.answer : t.scenarios.run.cards(run.done, run.total)}

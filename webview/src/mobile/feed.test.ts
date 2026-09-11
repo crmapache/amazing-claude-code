@@ -98,6 +98,45 @@ describe('the phone building a conversation', () => {
   })
 
   /**
+   * The closing half of a restore is one frame like any other and can be lost - a queue that gave up on
+   * this device, a frame over the relay's ceiling, a send the socket refused mid-batch. Lost, it used to
+   * leave the conversation blank here for ever, with nothing on screen saying why.
+   */
+  it('does not wait for a restore that stopped arriving', () => {
+    const started = applyMessage(
+      emptyFeed(),
+      message({ type: 'restoreStarted', sessionId: 'main', from: 0 }),
+      1_000,
+    )
+
+    const collected = applyMessage(started, assistant('what did arrive'), 2_000)
+    expect(collected.state.items).toHaveLength(0)
+
+    const later = applyMessage(collected, assistant('half an hour later'), 2_000_000)
+
+    expect(later.restoring).toBe(false)
+    expect(later.state.items).toHaveLength(2)
+  })
+
+  /** And a restore that is merely slow is still applied in one go, which is the point of holding it. */
+  it('goes on holding a restore that is still arriving', () => {
+    const started = applyMessage(
+      emptyFeed(),
+      message({ type: 'restoreStarted', sessionId: 'main', from: 0 }),
+      1_000,
+    )
+
+    const collecting = [
+      [assistant('one'), 8_000],
+      [assistant('two'), 15_000],
+      [assistant('three'), 22_000],
+    ].reduce((feed, [one, at]) => applyMessage(feed, one as ShellMessage, at as number), started)
+
+    expect(collecting.restoring).toBe(true)
+    expect(collecting.state.items).toHaveLength(0)
+  })
+
+  /**
    * A journal that has lost its head has to say so: silence there reads as "this is the whole
    * conversation", which is the one thing it is not.
    */

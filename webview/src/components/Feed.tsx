@@ -32,10 +32,12 @@ import {
   ErrorRow,
   LimitRow,
   MetaRow,
+  ModelStuckRow,
   ModelSwitchRow,
   RetryRow,
   ThinkRow,
 } from './items/Rows'
+import type { SignInOffer } from './items/Rows'
 import { TextCard } from './items/TextCard'
 import { ToolGroupCard } from './items/ToolGroupCard'
 import { UserCard } from './items/UserCard'
@@ -94,6 +96,14 @@ interface FeedProps {
   /** Open a link from the agent's answer in the system browser. */
   onOpenLink: (url: string) => void
   /**
+   * The way back out of a turn that died on the sign-in - see SignInOffer and ErrorItem.signIn.
+   *
+   * Absent on the phone and in a step log: signing in happens in a terminal on the machine with the IDE,
+   * and a screen that cannot open one must not draw a button promising it. Hand in a STABLE object - a
+   * fresh one every render would undo the memo on every card of the feed.
+   */
+  signIn?: SignInOffer
+  /**
    * Take a sent message back into the input field, to be corrected and sent again (see feed/reuse.ts).
    * Absent on the phone: the field there is its own and holds plain text rather than the panel's tokens.
    */
@@ -105,6 +115,14 @@ interface FeedProps {
    * plain, unclickable caption - the beginning is on screen, or there is nothing to anchor a request on.
    */
   onLoadEarlier?: () => void
+  /**
+   * What stands over a sent message instead of "YOU" - see UserCard.userLabel.
+   *
+   * Handed in by the two feeds whose "you" side is the scenario engine rather than a person (the step log
+   * at the desk and on the phone). Everywhere else it is absent, and a live chat says "YOU" as it always
+   * did - which is the whole of the distinction: this feed cannot be typed into, that one can.
+   */
+  userLabel?: string
   /**
    * How many pages of earlier messages have been applied to this feed (see PanelState.earlierPages) - the
    * signal to hold the reading position when one arrives.
@@ -177,8 +195,10 @@ export const Feed = ({
   onPlanDecision,
   onDismissError,
   onOpenLink,
+  signIn,
   onReuse,
   onLoadEarlier,
+  userLabel,
   earlierPages,
   scrollRef,
   focus,
@@ -801,8 +821,10 @@ export const Feed = ({
               onPlanDecision={onPlanDecision}
               onDismissError={onDismissError}
               onOpenLink={onOpenLink}
+              signIn={signIn}
               onReuse={onReuse}
               onLoadEarlier={onLoadEarlier}
+              userLabel={userLabel}
               onPin={onPin}
               pinned={pins?.includes(item.id) ?? false}
               pinsFull={pinsFull}
@@ -865,8 +887,12 @@ interface ItemViewProps {
   onPlanDecision: (itemId: string, decision: 'approve' | 'keepPlanning') => void
   onDismissError: (id: string) => void
   onOpenLink: (url: string) => void
+  /** The way back out of a dead sign-in - see FeedProps.signIn. */
+  signIn?: SignInOffer
   onReuse?: (item: UserItem) => void
   onLoadEarlier?: () => void
+  /** What stands over a sent message instead of "YOU" - see FeedProps.userLabel. */
+  userLabel?: string
   /** Pin this row over the conversation, or unpin it - absent where there is no strip (see FeedProps). */
   onPin?: (id: string) => void
   pinned: boolean
@@ -897,8 +923,10 @@ const ItemView = memo(({
   onPlanDecision,
   onDismissError,
   onOpenLink,
+  signIn,
   onReuse,
   onLoadEarlier,
+  userLabel,
   onPin,
   pinned,
   pinsFull,
@@ -915,6 +943,7 @@ const ItemView = memo(({
         <UserCard
           item={item}
           cards={cards}
+          userLabel={userLabel}
           onOpenLink={onOpenLink}
           onReuse={onReuse}
           onPin={pin}
@@ -977,6 +1006,9 @@ const ItemView = memo(({
     case 'model':
       return <ModelSwitchRow item={item} onOpenLink={onOpenLink} />
 
+    case 'modelStuck':
+      return <ModelStuckRow item={item} />
+
     case 'meta':
       return <MetaRow item={item} />
 
@@ -984,7 +1016,9 @@ const ItemView = memo(({
       return <CrashRow item={item} />
 
     case 'error':
-      return <ErrorRow item={item} onDismiss={() => onDismissError(item.id)} onOpenLink={onOpenLink} />
+      return (
+        <ErrorRow item={item} onDismiss={() => onDismissError(item.id)} onOpenLink={onOpenLink} signIn={signIn} />
+      )
 
     case 'limit':
       return <LimitRow item={item} />

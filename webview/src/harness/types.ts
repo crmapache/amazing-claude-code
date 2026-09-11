@@ -58,6 +58,14 @@ declare global {
     /** And for the search window: opens it as the magnifier beside the slash does. */
     __accHarnessOpenSearch?: () => void
     /**
+     * The system clipboard, as the shell holds it - the harness plays that part too (see clipboard.ts).
+     * Out here on purpose: it is the only way to try the bridge without Linux. Declare the page linuxy
+     * (`Object.defineProperty(navigator, 'userAgent', { get: () => 'X11; Linux x86_64' })`), put
+     * something in here as though it had been copied in the editor, and paste into the field: what
+     * arrives must be this and not whatever was last copied inside the panel.
+     */
+    __accHarnessClipboard?: { text: string; html: string }
+    /**
      * Shot mode only: the frame has been played out in full. Whatever photographs the panel waits for
      * this rather than for the page's load - the events reach the feed through the bridge, a moment
      * later than the page itself is ready.

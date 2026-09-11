@@ -2444,10 +2444,33 @@
   color: var(--acc-bad-text);
 }
 
-.errorText {
+/* The error's own column: the text, and under it the way out of it when there is one (see ErrorRow).
+   The cross stays outside this column - it belongs to the row as a whole and must not travel down as the
+   card grows. */
+.errorBody {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.errorText {
   white-space: pre-wrap;
+}
+
+/* Wrapping rather than a row: the panel is 350px at its narrowest, and two buttons beside each other
+   there push the second one off the edge. */
+.errorActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+/* What the press came to, right under the buttons - quieter than the error itself, which is the news. */
+.errorNote {
+  opacity: 0.8;
 }
 
 .errorDismiss {

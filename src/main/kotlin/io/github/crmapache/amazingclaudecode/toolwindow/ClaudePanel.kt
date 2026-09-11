@@ -320,7 +320,10 @@ internal class ClaudePanel(
             // reached from a phone has no tool window at all, which is exactly the screen somebody
             // switches the red off for (see ClaudeSessionHub.everyHub).
             "setCalmColors" -> {
-                ClaudePreferences.calmColors = payload["on"]?.jsonPrimitive?.booleanOrNull == true
+                // Read on its own rather than through `whole` above: that one answers zero for "not
+                // said", and zero here is the one reading nobody meant - every gauge grey at once.
+                ClaudePreferences.gaugeVivid =
+                    payload["vivid"]?.jsonPrimitive?.intOrNull ?: ClaudePreferences.GAUGE_VIVID_FULL
                 ClaudeSessionHub.everyHub { it.catalog.sendCalmColors() }
             }
 

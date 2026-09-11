@@ -18,13 +18,10 @@ export const ScenarioInputs = ({
   scenario,
   values,
   onChange,
-  last,
 }: {
   scenario: Scenario
   values: Record<string, string>
   onChange: (values: Record<string, string>) => void
-  /** What the last run of this scenario was given, so a field can say so under itself. */
-  last?: Record<string, string>
 }) => {
   const t = useT()
 
@@ -42,11 +39,6 @@ export const ScenarioInputs = ({
             placeholder={input.placeholder}
             onChange={(event) => onChange({ ...values, [input.name]: event.target.value })}
           />
-          {/* What the last run used, under the field rather than inside it: a placeholder that looks
-              like an answer is an answer somebody sends without meaning to. */}
-          {last?.[input.name] && last[input.name] !== (values[input.name] ?? '') ? (
-            <span className={s.fieldNote}>{t.scenarios.lastUsed(last[input.name])}</span>
-          ) : null}
         </div>
       ))}
     </>

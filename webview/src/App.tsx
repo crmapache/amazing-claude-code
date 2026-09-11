@@ -29,6 +29,7 @@ import {
   normalizeComposerLayout,
   type ComposerLayout,
 } from './composerLayout'
+import { CALM_VIVID_FULL, calmColorsSummary, calmVividOf } from './calmColors'
 import { pasteCollapseSummary } from './pasteCollapse'
 import { Confirm } from './components/Confirm'
 import { Feed } from './components/Feed'
@@ -104,6 +105,7 @@ import {
   captureWrittenCommand,
   localCommand,
   plainText,
+  sameHints,
   type LocalCommand,
 } from './feed/slash'
 import {
@@ -132,7 +134,6 @@ import { composePrompt, countSessionImages, imageAttachments, tokensText, trimTr
 import type { FeedItem, TaskItem, TodoItem, UserItem, UserToken } from './feed/types'
 import { emptyUsageBook, mergeUsageBook, usageOf, type UsageBook } from './feed/usage'
 import type {
-  AgentEvent,
   AvailablePluginInfo,
   HistoryEntry,
   InstalledPluginInfo,
@@ -198,7 +199,7 @@ import {
   type ScenariosShown,
   type ScenariosView,
 } from './components/scenarios/ScenariosTab'
-import { pressedAgain, runMarks, type Presses } from './scenarios/runs'
+import { liveDot, pressedAgain, runDot, runMarks, type Presses } from './scenarios/runs'
 import { ScenarioRunTab } from './components/scenarios/ScenarioRunTab'
 import { useSelection } from './hooks/useSelection'
 
@@ -216,15 +217,44 @@ const STATISTICS_COLOR = 'hsl(220, 62%, 70%)'
 const SCENARIO_COLOR = 'hsl(268, 52%, 72%)'
 
 /**
- * The runs the strip currently has a tab for.
+ * The runs the strip currently has a tab for, each as it is known right now.
  *
- * What the labels on those tabs are worked out over (see runMarks). Not every run of the project: a
- * scenario run every morning for a month has thirty of them, and the tab open on tonight's would carry a
- * ticket beside its name for no reason anybody could see.
+ * What the labels on those tabs are worked out over (see runMarks), and what their dots are drawn from.
+ * Not every run of the project: a scenario run every morning for a month has thirty of them, and the tab
+ * open on tonight's would carry a ticket beside its name for no reason anybody could see.
+ *
+ * The live list comes first and the disk's list stands behind it, one entry per run. Live is the only
+ * source of truth about what is going (see ScenarioDesk.sendLive) - the disk's copy is written every
+ * couple of seconds and only sent when something else happens, so a run started at nine stands there at
+ * "starting" until it ends. Behind it because it is the half that still knows a run that has finished,
+ * or one opened out of the history, which live has let go of.
  */
-const watchedRuns = (tabs: PanelTabPlace[], runs: ScenarioRunSummary[]): ScenarioRunSummary[] => {
+const watchedRuns = (
+  tabs: PanelTabPlace[],
+  live: ScenarioRunSummary[],
+  past: ScenarioRunSummary[],
+): ScenarioRunSummary[] => {
   const open = new Set(tabs.map((tab) => runOfTab(tab.id)).filter(Boolean))
-  return runs.filter((run) => open.has(run.id))
+  const found = new Map<string, ScenarioRunSummary>()
+
+  for (const run of [...live, ...past]) {
+    if (open.has(run.id) && !found.has(run.id)) found.set(run.id, run)
+  }
+
+  return [...found.values()]
+}
+
+/**
+ * What the dot on the scenarios hub says under the pointer.
+ *
+ * The run's own words, because the hub's dot is about the runs and nothing else: it is one of them
+ * calling for an answer, or one of them working. A shelf where nothing is going says nothing at all -
+ * an empty hint is no hint, and the row already has the word "Scenarios" beside it.
+ */
+const hubHint = (t: Dict, state: SessionState): string => {
+  if (state === 'attention') return t.scenarios.runStates.blocked
+
+  return state === 'running' ? t.scenarios.runStates.running : ''
 }
 
 /**
@@ -307,8 +337,11 @@ const reportChips = (tokens: UserToken[], quotesBeside: number): void => {
   if (attachments > 0 || quotes > 0) send({ type: 'stat', kind: 'prompt', attachments, quotes })
 }
 
-/** How long to wait for the fiddling with the volume slider to end before writing the choice down. */
-const SOUND_SAVE_DELAY_MS = 250
+/**
+ * How long to wait for the fiddling with a slider to end before writing the choice down. Two of them go
+ * through it now - the volume of a sound and the colour of the gauges - and both fire on every per cent.
+ */
+const SLIDER_SAVE_DELAY_MS = 250
 
 /**
  * For how long after pressing "sign out" a lost login counts as one's own doing rather than as news. With
@@ -526,12 +559,12 @@ export const App = () => {
    */
   const [sendKey, setSendKeyState] = useState<SendKey>('enter')
   /**
-   * Whether the gauges are drawn in one calm tone rather than by the green-to-red ladder.
+   * How much colour the gauges keep - the whole green-to-red ladder, one calm tone, or anything between.
    *
-   * Off until the IDE says otherwise, for the same reason as the two settings above: the harness has no
-   * IDE behind it, and the ladder is what the panel has always shown.
+   * The full ladder until the IDE says otherwise, for the same reason as the two settings above: the
+   * harness has no IDE behind it, and the ladder is what the panel has always shown.
    */
-  const [calmColors, setCalmColorsState] = useState(false)
+  const [calmVivid, setCalmVividState] = useState(CALM_VIVID_FULL)
   /**
    * The models somebody added by hand, because Claude Code does not offer them (see CustomModels.tsx).
    *
@@ -551,7 +584,7 @@ export const App = () => {
   const holiday = useHoliday()
   // The whole of what the calm mode does to the screen: the gauges are painted through roles the root
   // swaps under this attribute (see useCalmColors and tokens.css).
-  useCalmColors(calmColors)
+  useCalmColors(calmVivid)
   const [loginWaiting, setLoginWaiting] = useState(false)
   /**
    * Why the sign-in could not even be started, when it could not (see protocol.ts).
@@ -787,13 +820,25 @@ export const App = () => {
    * questions, and only the second needs this.
    */
   const [runRecords, setRunRecords] = useState<Record<string, ScenarioRun>>({})
-  /** The log of the one step somebody has opened - see scenarioLog in protocol.ts. */
+  /**
+   * The log of the one step somebody has opened - see scenarioLog in protocol.ts.
+   *
+   * A feed of its own rather than the events as they arrived: a step is an ordinary conversation, and it
+   * is read the way one is - the end first, the older pages when the mark over it is pressed. Putting a
+   * page in is the very reducer case an ordinary tab uses for the same journey (`historyPage`), so the
+   * state it works on is a PanelState even though nothing here is live.
+   *
+   * `conversationId` is kept because the pages after the first one need it: the click that opened the log
+   * is long over by then.
+   */
   const [runLog, setRunLog] = useState<{
     runId: string
     key: string
+    conversationId: string
     found: boolean
-    truncated: boolean
-    events: AgentEvent[]
+    /** Whether the answer arrived - apart from `found`, or "reading" and "no record" become one screen. */
+    loaded: boolean
+    state: PanelState
   } | null>(null)
   /**
    * The work someone asked to kill with the cross on a chip - still without an answer to "are you sure?".
@@ -827,7 +872,16 @@ export const App = () => {
    * seconds, and there is no reason to wait for them on a click.
    */
   const [mcpServers, setMcpServers] = useState<McpServerInfo[] | null>(null)
-  const [mcpLoading, setMcpLoading] = useState(true)
+  /**
+   * Starts DOWN, because "nothing has been asked" is now an ordinary state.
+   *
+   * It used to start up: the startup request always went out and always came back, so the flag was only
+   * ever waiting for an answer already on its way. The startup request no longer raises a conversation
+   * for the asking (see loadMcp below), which means on an untouched panel there is no answer coming at
+   * all - and a flag stuck up is a flag that never lets the screen ask for itself. Nobody sees the
+   * difference: opening the screen raises it before the request goes.
+   */
+  const [mcpLoading, setMcpLoading] = useState(false)
   const [mcpFetchedAt, setMcpFetchedAt] = useState(0)
   const [mcpMessage, setMcpMessage] = useState<{ ok: boolean; text: string } | null>(null)
   const [pluginsInstalled, setPluginsInstalled] = useState<InstalledPluginInfo[] | null>(null)
@@ -1240,11 +1294,11 @@ export const App = () => {
    * without a "Refreshing..." on the button.
    */
   const loadMcp = useCallback(
-    (quiet = false) => {
+    (quiet = false, ifRunning = false) => {
       if (!quiet) setMcpLoading(true)
       // We ask the conversation: the servers are held by its process, and only it knows their live state
-      // (see mcpList in the protocol).
-      send({ type: 'mcpList', sessionId: activeRef.current })
+      // (see mcpList in the protocol). `ifRunning` is the form that will not raise one for the asking.
+      send({ type: 'mcpList', sessionId: activeRef.current, ifRunning })
     },
     [],
   )
@@ -1298,7 +1352,11 @@ export const App = () => {
     // cannot draw itself until this comes back. Asked for here rather than relied upon: the IDE does send
     // it when the panel opens, but that happens while this page is still loading.
     send({ type: 'voiceConfig' })
-    loadMcp()
+    // Quietly, and only out of a process that is already up. This one is a head start for a screen, not
+    // a thing anybody is looking at, and the ordinary form of it raises the whole conversation with every
+    // MCP server it carries - before a single word has been written (see mcpList in the protocol). The
+    // panel opens far more often than that screen does.
+    loadMcp(true, true)
     loadPlugins()
   }, [loadMcp, loadPlugins])
 
@@ -1540,7 +1598,7 @@ export const App = () => {
     soundSaveTimer.current = window.setTimeout(() => {
       soundSaveTimer.current = undefined
       send({ type: 'soundSettings', muted: next.muted, volumes: next.volumes as Record<string, number> })
-    }, SOUND_SAVE_DELAY_MS)
+    }, SLIDER_SAVE_DELAY_MS)
   }
 
   /**
@@ -1733,8 +1791,8 @@ export const App = () => {
               // Read unconditionally as well: an empty value means Enter, which is an answer rather than
               // a silence - it is what a panel nobody has asked already does.
               setSendKeyState(normalizeSendKey(message.preferences.sendKey))
-              // The same: false is an answer, and it is the one that puts the ladder back.
-              setCalmColorsState(message.preferences.calmColors === true)
+              // The same: a hundred is an answer, and it is the one that puts the ladder back.
+              setCalmVividState(calmVividOf({ vivid: message.preferences.calmVivid }))
               setLanguage({
                 chosen: message.preferences.language ?? '',
                 ide: message.preferences.ideLanguage ?? '',
@@ -1766,9 +1824,16 @@ export const App = () => {
             break
 
           /** The no-stress colour mode, told again outside `init` and for the same two reasons. */
-          case 'calmColors':
-            setCalmColorsState(message.on)
+          case 'calmColors': {
+            const vivid = calmVividOf(message)
+            // Our own answer, come back round: the IDE tells every window about the change (see
+            // setCalmColors in ClaudePanel), and the write is deferred - so the echo can land after the
+            // finger has moved on, and would drag the slider back under it. Anything else is the other
+            // window, and that is obeyed at once.
+            if (calmSent.current === vivid) calmSent.current = undefined
+            else setCalmVividState(vivid)
             break
+          }
 
           /**
            * The hand-added models, on the same route as the two above and for the same two reasons: a
@@ -2322,13 +2387,33 @@ export const App = () => {
             })
             break
 
+          /**
+           * A page of an open step's log - the end of it first, then whatever the mark asks for.
+           *
+           * Both go in through the reducer's `historyPage`, which is what an ordinary tab uses for this
+           * very journey: it prepends the page, closes the calls it leaves dangling, and rebuilds the
+           * mark over the feed from the cursor. The first ask carries no boundary, and a page with no
+           * boundary applies to an empty state unconditionally - so the two need no branch of their own
+           * beyond which state they are applied to.
+           *
+           * `found` is taken from the FIRST answer alone. It says "the transcript is not on this machine",
+           * and a page of the way up legitimately comes back empty the moment the beginning is reached -
+           * read as `found: false`, that emptiness would replace a log somebody is reading with "there is
+           * no record of this step".
+           */
           case 'scenarioLog':
-            setRunLog({
-              runId: message.runId,
-              key: message.key,
-              found: message.found,
-              truncated: message.truncated,
-              events: message.events,
+            setRunLog((current) => {
+              if (!current || current.runId !== message.runId || current.key !== message.key) return current
+
+              const first = message.before === undefined
+              const state = reducePanel(first ? initialPanelState : current.state, {
+                kind: 'historyPage',
+                entries: message.events,
+                cursor: message.cursor,
+                before: message.before,
+              })
+
+              return { ...current, found: first ? message.found : current.found, loaded: true, state }
             })
             break
 
@@ -2419,7 +2504,11 @@ export const App = () => {
             break
 
           case 'commandHints':
-            setCommandHints(message.hints)
+            // The same map keeps the same object, so nothing under it repaints. The IDE already holds
+            // its tongue while the disk is unchanged, but it says so once a minute regardless (that
+            // unconditional round is what heals a lost frame), and this is the half of the promise the
+            // panel can keep on its own rather than borrow.
+            setCommandHints((current) => (sameHints(current, message.hints) ? current : message.hints))
             break
 
           case 'commands':
@@ -2780,17 +2869,48 @@ export const App = () => {
     setSendKeyState(key)
   }, [])
 
+  /** The deferred write of the gauges' colour, and the last figure sent - see setCalmColors. */
+  const calmSaveTimer = useRef<number | undefined>(undefined)
+  const calmSent = useRef<number | undefined>(undefined)
+
   /**
-   * The no-stress colour mode, kept by the IDE beside the settings above.
+   * How much colour the gauges keep, kept by the IDE beside the settings above.
    *
-   * Set here as well as sent, like every other machine-wide preference: the IDE answers by telling
-   * every window (see setCalmColors in ClaudePanel), but the switch under the finger must move on the
-   * press rather than on the round trip.
+   * Set here as well as sent, like every other machine-wide preference: the IDE answers by telling every
+   * window (see setCalmColors in ClaudePanel), but the gauges under the finger must move on the drag
+   * rather than on the round trip.
+   *
+   * And written a little later, like the volume slider beside it: the range fires on every per cent, so
+   * one drag would be a hundred trips to the IDE's settings and a hundred broadcasts to every window and
+   * every phone on the line.
    */
-  const setCalmColors = useCallback((on: boolean) => {
-    send({ type: 'setCalmColors', on })
-    setCalmColorsState(on)
+  const setCalmColors = useCallback((vivid: number) => {
+    setCalmVividState(vivid)
+
+    window.clearTimeout(calmSaveTimer.current)
+    calmSaveTimer.current = window.setTimeout(() => {
+      calmSaveTimer.current = undefined
+      calmSent.current = vivid
+      send({ type: 'setCalmColors', vivid })
+    }, SLIDER_SAVE_DELAY_MS)
   }, [])
+
+  /**
+   * The deferred write is flushed before the page disappears - the same reason as for the sounds above:
+   * otherwise the last quarter second of dragging is lost on every reload, and the setting comes back as
+   * it was while looking as though it had been set.
+   */
+  useEffect(() => {
+    const flush = () => {
+      if (calmSaveTimer.current === undefined) return
+      window.clearTimeout(calmSaveTimer.current)
+      calmSaveTimer.current = undefined
+      send({ type: 'setCalmColors', vivid: calmVivid })
+    }
+
+    window.addEventListener('pagehide', flush)
+    return () => window.removeEventListener('pagehide', flush)
+  }, [calmVivid])
 
   /**
    * The hand-added models, kept by the IDE beside the settings above and set here as well for the same
@@ -3323,6 +3443,28 @@ export const App = () => {
    */
   const { loadEarlier } = useEarlierPages(panel, active, (before) =>
     send({ type: 'historyPage', sessionId: active, before }),
+  )
+
+  /**
+   * And the same for an open step's log, which is a past conversation as much as any other.
+   *
+   * A second instance of the one hook rather than a second understanding of what a press is worth: the
+   * conversation it belongs to is the step rather than the tab, so a log left half-read and reopened on
+   * another step does not inherit the press of the first (see useEarlierPages).
+   */
+  const { loadEarlier: loadEarlierLog } = useEarlierPages(
+    runLog?.state ?? initialPanelState,
+    runLog ? `${runLog.runId}:${runLog.key}` : '',
+    (before) => {
+      if (!runLog) return
+      send({
+        type: 'scenarioLog',
+        runId: runLog.runId,
+        key: runLog.key,
+        conversationId: runLog.conversationId,
+        before,
+      })
+    },
   )
 
   // --- The search --------------------------------------------------------------------
@@ -4135,6 +4277,42 @@ export const App = () => {
     setScenarioDraft((current) => (current.scenario ? { ...current, scenario: null } : current))
   }, [])
 
+  /**
+   * Whether there is anywhere to switch TO - another account of this machine holding a credential.
+   *
+   * The same reading the login screen goes by: an account whose drawer is empty cannot carry a turn, and
+   * offering it as a way out of a dead sign-in only spends the press.
+   */
+  const canSwitchAccount = (accounts?.accounts ?? []).some(
+    (one) => one.id !== accounts?.current && one.health !== 'absent',
+  )
+
+  /**
+   * The way back from a turn that died on the sign-in - a button on the error row in the feed itself
+   * (see ErrorRow and ErrorItem.signIn).
+   *
+   * The login screen cannot do this job: it stands on the CLI's own answer about the sign-in, and that
+   * answer is "signed in" for as long as a token merely LIES in the store - a refresh the server refused
+   * leaves it exactly where it was. So for an expired session that screen never comes up at all, and the
+   * conversation is a dead end until the panel offers a door beside the refusal.
+   *
+   * Memoized because the feed's cards are: a fresh object every render would undo the memo on every one
+   * of them while an answer is printing.
+   */
+  const signInOffer = useMemo(
+    () => ({
+      waiting: loginWaiting,
+      problem: loginProblem,
+      onSignIn: () => {
+        send({ type: 'login' })
+        setLoginWaiting(true)
+        setLoginProblem('')
+      },
+      onAccounts: canSwitchAccount ? () => setSideMenu({ open: true, screen: 'accounts' }) : undefined,
+    }),
+    [loginWaiting, loginProblem, canSwitchAccount],
+  )
+
   // Without a login the input field is meaningless: the agent answers any question with a line about
   // /login, and that command itself is out of reach in streaming mode.
   if (!auth || !auth.loggedIn) {
@@ -4365,7 +4543,7 @@ export const App = () => {
     composerLayout: composerLayoutOptions(t).find((option) => option.id === chosenLayout)?.label ?? '',
     pasteCollapse: pasteCollapseSummary(t, pasteCollapse),
     sendKey: sendKeySummary(sendKey),
-    calmColors: calmColors ? t.calmColors.on : t.calmColors.off,
+    calmColors: calmColorsSummary(t, calmVivid),
     improvePrompt: improveInstructions.instructions.trim()
       ? t.settings.improveSummary.custom
       : t.settings.improveSummary.builtIn,
@@ -4456,14 +4634,15 @@ export const App = () => {
    * A plain value rather than a remembered one, for the reason the tabs below are: this is past the
    * file's early returns, where a hook would be called on some renders and not on others.
    */
-  const runLabels = runMarks(watchedRuns(panelTabs, scenarioRuns))
+  const watched = watchedRuns(panelTabs, liveRuns, scenarioRuns)
+  const runLabels = runMarks(watched)
 
   const headerPanelTabs = ((): PanelTab[] => {
     const groups = groupOrder(sessions)
 
     return panelTabs.map((tab) => {
       const runId = runOfTab(tab.id)
-      const run = runId ? scenarioRuns.find((one) => one.id === runId) : undefined
+      const run = runId ? watched.find((one) => one.id === runId) : undefined
 
       return {
         id: tab.id,
@@ -4484,6 +4663,22 @@ export const App = () => {
             : tab.id === SCENARIOS_GROUP
               ? t.header.closeScenarios
               : t.header.closeRun,
+        /*
+         * The dot, for the two tabs that are about work rather than about a screen.
+         *
+         * A run answers for itself; the hub answers for every run of this project, because a run the
+         * clock raised at nine opens no tab of its own and the hub's row is the only place it shows.
+         * The words are the run's own states - the same ones its pill is written with, so the strip and
+         * the screen behind it do not describe the same run in two vocabularies.
+         */
+        state:
+          tab.id === SCENARIOS_GROUP ? liveDot(liveRuns) : run ? runDot(run) : undefined,
+        hint:
+          tab.id === SCENARIOS_GROUP
+            ? hubHint(t, liveDot(liveRuns))
+            : run
+              ? t.scenarios.runStates[run.state]
+              : undefined,
       }
     })
   })()
@@ -4747,12 +4942,32 @@ export const App = () => {
           // The same label the tab carries, from the same set - it is empty unless another run of this
           // scenario is open too (see runMarks).
           mark={runLabels[runOfTab(active)] ?? ''}
-          log={runLog && runLog.runId === runOfTab(active) ? runLog : null}
+          log={
+            runLog && runLog.runId === runOfTab(active)
+              ? {
+                  key: runLog.key,
+                  found: runLog.found,
+                  loaded: runLog.loaded,
+                  earlierPages: runLog.state.earlierPages,
+                  items: runLog.state.items,
+                }
+              : null
+          }
+          // The record is opened rather than emptied: the answer has to find the step it belongs to when
+          // it arrives, and the pages after the first one are asked for with the conversation named here.
           onOpenLog={(key, conversationId) => {
-            setRunLog(null)
+            setRunLog({
+              runId: runOfTab(active),
+              key,
+              conversationId,
+              found: false,
+              loaded: false,
+              state: initialPanelState,
+            })
             send({ type: 'scenarioLog', runId: runOfTab(active), key, conversationId })
           }}
           onCloseLog={() => setRunLog(null)}
+          onLoadEarlier={loadEarlierLog}
           onPause={() => send({ type: 'scenarioPause', runId: runOfTab(active) })}
           onResume={() => send({ type: 'scenarioResume', runId: runOfTab(active) })}
           onStop={() => send({ type: 'scenarioStop', runId: runOfTab(active) })}
@@ -4842,6 +5057,7 @@ export const App = () => {
               onPlanDecision={decidePlan}
               onDismissError={dismissError}
               onOpenLink={openLink}
+              signIn={signInOffer}
               onReuse={reuseMessage}
               onLoadEarlier={loadEarlier}
               earlierPages={panel.earlierPages}
@@ -4916,6 +5132,7 @@ export const App = () => {
             layout={composerLayout}
             model={model}
             switchedFrom={panel.switchedFrom}
+            stuckPick={panel.stuckPick}
             effort={effort}
             mode={mode}
             onOpenSelector={openSelector}
@@ -5009,6 +5226,7 @@ export const App = () => {
             <StatusBar
               model={model}
               switchedFrom={panel.switchedFrom}
+              stuckPick={panel.stuckPick}
               effort={effort}
               mode={mode}
               models={models}
@@ -5278,7 +5496,7 @@ export const App = () => {
         ) : null}
 
         {sideMenu.open && sideMenu.screen === 'calmColors' ? (
-          <CalmColors on={calmColors} onToggle={setCalmColors} />
+          <CalmColors vivid={calmVivid} onChange={setCalmColors} />
         ) : null}
 
         {sideMenu.open && sideMenu.screen === 'customModels' ? (

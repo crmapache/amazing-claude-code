@@ -223,7 +223,10 @@ export const apiRetry = (attempt: number, delayMs: number, status: number | null
     max_retries: 10,
     retry_delay_ms: delayMs,
     error_status: status,
-    error: status === 529 ? 'overloaded' : 'unknown',
+    // The CLI's own word for the refusal, beside its code. The panel reads the code (see retryReason);
+    // the word travels because the stream carries it, and a scenario that made one up would teach the
+    // wrong shape to whoever reads it next.
+    error: status === 529 ? 'overloaded' : status === 401 ? 'authentication_failed' : 'unknown',
   })
 
 /**

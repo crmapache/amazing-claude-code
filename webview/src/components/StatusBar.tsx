@@ -325,6 +325,8 @@ interface StatusBarProps {
   model?: string
   /** The model the agent moved this conversation off by itself, when it did - see Selectors. */
   switchedFrom?: string
+  /** The model picked here that never came into force, while that holds - see Selectors. */
+  stuckPick?: string
   effort: string
   mode: string
   /** The CLI's own list of models - the MODEL button measures its width by it, see modelSample. */
@@ -355,6 +357,7 @@ interface StatusBarProps {
 export const StatusBar = ({
   model,
   switchedFrom,
+  stuckPick,
   effort,
   mode,
   models,
@@ -368,6 +371,7 @@ export const StatusBar = ({
       <Selectors
         model={model}
         switchedFrom={switchedFrom}
+        stuckPick={stuckPick}
         effort={effort}
         mode={mode}
         models={models}
@@ -504,6 +508,13 @@ interface SelectorsProps {
    * it changed the choice behind one's back.
    */
   switchedFrom?: string
+  /**
+   * The model that was picked here and never came into force, given only while that holds (see
+   * PanelState.stuckPick). The button wears the same accent as for a swap and says a different thing in
+   * its hint: there the conversation was moved without the person, here the person moved it and it did
+   * not go - and a chip that stayed silent about either would be a chip nobody can trust.
+   */
+  stuckPick?: string
   effort: string
   mode: string
   /** The CLI's own list of models: the MODEL button measures its width by it - see modelSample. */
@@ -521,6 +532,7 @@ interface SelectorsProps {
 export const Selectors = ({
   model,
   switchedFrom,
+  stuckPick,
   effort,
   mode,
   models = null,
@@ -537,11 +549,13 @@ export const Selectors = ({
         value={modelLabel(model)}
         sample={modelSample(models)}
         hint={
-          switchedFrom
-            ? t.status.modelHintSwitched(modelLabel(model), modelLabel(switchedFrom))
-            : t.status.modelHint(modelLabel(model))
+          stuckPick
+            ? t.status.modelHintStuck(modelLabel(model), modelLabel(stuckPick))
+            : switchedFrom
+              ? t.status.modelHintSwitched(modelLabel(model), modelLabel(switchedFrom))
+              : t.status.modelHint(modelLabel(model))
         }
-        className={`${grow} ${switchedFrom ? s.selectorSwitched ?? '' : ''}`}
+        className={`${grow} ${switchedFrom || stuckPick ? s.selectorSwitched ?? '' : ''}`}
         onOpen={(anchor) => onOpen('model', anchor)}
       />
       <Selector

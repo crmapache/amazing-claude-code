@@ -62,9 +62,51 @@ internal object AgentStream {
      */
     fun isTurnAnnouncement(line: String): Boolean {
         val payload = topLevel(line, "system") ?: return false
-        if (payload["subtype"]?.jsonPrimitive?.contentOrNull != "init") return false
+        // Asked the same way the refusal below is, and for the same reason: this runs on the thread that
+        // carries every line onwards, and a field of an unexpected shape read as a plain value throws
+        // there. The CLI's own vocabulary is far less likely to change shape than a field it passes
+        // through from the API - but the cost of being wrong is the same one, the whole line lost.
+        if ((payload["subtype"] as? JsonPrimitive)?.contentOrNull != "init") return false
         return payload["task_id"] == null
     }
+
+    /**
+     * Whether this line is a turn that died because the sign-in did.
+     *
+     * The CLI closes such a turn with a placeholder answer of its own - signed `<synthetic>`, carrying
+     * the machine word `authentication_failed` beside the message (recorded off a live run against a
+     * refusing endpoint on 2.1.263). The word is what is read here rather than the sentence: under that
+     * one code the CLI has at least six different sentences - an expired OAuth session, a refused key, a
+     * gateway, Bedrock, Vertex - and they change between versions.
+     *
+     * What hangs on it: the process cannot be trusted to carry the next turn. It read its credential
+     * when it came up, and asking `claude auth status` proves nothing here - that answers "signed in"
+     * for a token that merely lies in the store, which is precisely the state a refused refresh leaves
+     * behind. So the tab is marked and the next message raises the process again (see
+     * ClaudeSessions.renewAfterSignIn).
+     *
+     * Only the conversation's own answer counts: a subagent's carries the call that spawned it, and a
+     * fleet's refusal says nothing about the tab's own process.
+     */
+    fun isAuthFailure(line: String): Boolean {
+        // The cheap test first, and it settles almost every line: every answer of the agent's is already
+        // parsed in full once a line (see [isTurnActivity]), and a second parse of every one of them for
+        // a word that turns up on a bad day would be paid for on all the good ones.
+        if (!line.contains(AUTH_FAILED)) return false
+
+        val payload = topLevel(line, "assistant") ?: return false
+        // Asked the way the field beside it is asked: `jsonPrimitive` throws on anything that is not
+        // one, and the API describes this very refusal as an OBJECT ({"type": …, "message": …}). This
+        // runs on the thread that reads the CLI's output and hands the line onwards, with nobody to
+        // catch it - a throw here loses the answer out of the feed altogether, not merely the door back
+        // to the sign-in. A field of the wrong shape is a field nobody said (the same lesson as
+        // HeadAnswer): the refusal stays an ordinary error in the feed, without the buttons.
+        if ((payload["error"] as? JsonPrimitive)?.contentOrNull != AUTH_FAILED) return false
+        return (payload["parent_tool_use_id"] as? JsonPrimitive)?.contentOrNull == null
+    }
+
+    /** The CLI's own word for "the request failed because the sign-in did" - see [isAuthFailure]. */
+    private const val AUTH_FAILED = "authentication_failed"
 
     /**
      * The conversation's own name, the one the CLI picked for it by the first message - or nothing, if

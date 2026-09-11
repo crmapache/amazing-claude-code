@@ -72,7 +72,7 @@ export const ja: Dict = {
   settings: {
     rows: {
       sounds: { label: '通知音', sub: 'パネルがあなたを呼ぶとき' },
-      calmColors: { label: '穏やかな色', sub: 'メーターを一つの色で' },
+      calmColors: { label: '穏やかな色', sub: 'メーターにどれだけ色を残すか' },
       newChat: { label: '新しいチャット', sub: 'モデル・思考量・権限モード' },
       composerLayout: { label: '入力欄のレイアウト', sub: '入力欄を置く場所' },
       pasteCollapse: { label: '貼り付けたテキスト', sub: '貼り付けをチップにまとめる条件' },
@@ -132,11 +132,11 @@ export const ja: Dict = {
 
   calmColors: {
     sample: '各段階のメーター',
-    label: '穏やかな色',
-    hint: 'メーターが何を示していても同じ色',
+    label: 'メーターの色',
+    hint: '100%で四段階すべて、0%で一つの色',
     keeps: 'ほかは変わりません。エラーは赤のまま、許可の確認もそのままです。それらは起きた出来事であって、気分ではありません。',
-    on: 'オン',
-    off: 'オフ',
+    full: 'フルカラー',
+    none: '一つの色',
   },
 
   history: {
@@ -284,7 +284,6 @@ export const ja: Dict = {
     cards: (n) => `${n} 枚のカード`,
     hasLoop: 'ループあり',
     asksFor: (names: string): string => `尋ねる項目: ${names}`,
-    lastUsed: (value: string): string => `前回は ${value} でした`,
     besideGoing: (n: number): string => `すでに動いている ${n} 件と並べてもう 1 件始まります。どれも同じ作業コピー上で動きます。`,
     pastRuns: 'これまでの実行',
     newestFirst: '新しい順',
@@ -416,7 +415,7 @@ export const ja: Dict = {
       step: 'ステップ',
       head: 'メインスレッド',
       missing: 'このマシンにはこのステップの記録がありません。',
-      truncated: 'ここが終わりです。先頭は表示していません。',
+      main: 'メイン',
     },
     editor: {
       title: 'シナリオ',
@@ -509,7 +508,8 @@ export const ja: Dict = {
   pasteCollapse: {
     note: '長い貼り付けはチップに折りたたまれ、大量のテキストが入力欄を埋め尽くさないようにします。行数は入力欄で実際に何行になるかで数えるので、一行のまま貼り付けた長文も折りたたまれます。どちらの場合も内容は失われません - 折りたたまれた貼り付けは本文をそのまま保持し、鉛筆ボタンで入力欄に戻せます。',
     never: 'まとめない',
-    neverSub: '貼り付けたものはそのまま入力欄のテキストとして残ります',
+    neverSub: (thousands: number): string =>
+      `貼り付けたものは入力欄に残ります。${thousands},000 文字を超えるものだけは折りたたまれます`,
     from: (lines) => `${lines} 行から`,
     foldLabel: '長い貼り付けをまとめる',
     foldSub: (min, max) => `何行からまとめるか - ${min}〜${max}`,
@@ -746,6 +746,8 @@ export const ja: Dict = {
     /** The sign-in could not even start - see the `authProblem` message. */
     noDrawer: 'このアカウントの認証情報の保管場所にパネルが届かないので、サインインの行き先がありません。下から別のアカウントに切り替えてください。',
     noTerminal: 'この IDE がターミナルを開きませんでした。サインインはそこで行われます。',
+    switchAccount: 'アカウントを切り替える',
+    sendAgainAfter: 'ターミナルでサインインを終えてから、メッセージをもう一度送ってください。',
   },
 
   stream: {
@@ -901,6 +903,11 @@ export const ja: Dict = {
     },
 
     modelSwitch: { label: 'モデル', note: '切り替えたのは Claude Code で、あなたではありません' },
+    modelStuck: {
+      label: 'モデル',
+      note: (running) => `を選びましたが、返答は ${running} のままです`,
+      hint: '切り替えが Claude Code に届きませんでした。もう一度モデルを選んでみてください。',
+    },
 
     crash: {
       label: 'セッション',
@@ -1222,6 +1229,8 @@ export const ja: Dict = {
       reach: {
         connecting: '接続中…',
         asleep: 'リレーには繋がっていますが、応答する IDE がありません。',
+        silent: '数分間まったく応答がありません。マシンが落ちているか、この端末のアクセスが向こうで取り消されています。',
+        revoked: 'その IDE はこの端末をもう知りません。もう一度ペアリングするか、忘れてください。',
         elsewhere: '別のタブかインストール済みのアプリでも開いています - 接続はそちらが持っています。',
         reconnecting: '再接続中… 下のリストは古いかもしれません。',
         offline: 'リレーに届きません。失われるものはなく、接続は自然に戻ります。',
@@ -1229,6 +1238,8 @@ export const ja: Dict = {
       agent: {
         connecting: '接続中…',
         asleep: '応答なし',
+        silent: 'しばらく応答なし',
+        revoked: 'アクセス取り消し済み',
         elsewhere: '別の場所で開いています',
         reconnecting: '再接続中…',
         offline: 'オフライン',
@@ -1288,7 +1299,6 @@ export const ja: Dict = {
       start: {
         title: '今すぐ実行',
         required: '必須',
-        lastUsed: (value: string): string => `前回は ${value} でした`,
         beside: (n: number): string => `すでに動いている ${n} 件と並べてもう 1 件始まります。どれも同じ作業コピー上で動きます。`,
         run: '実行',
       },
@@ -1457,6 +1467,7 @@ export const ja: Dict = {
     effortHint: (effort) => `思考の深さ：${effort}`,
     modelHint: (model) => `モデル: ${model}`,
     modelHintSwitched: (model, from) => `モデル: ${model} - Claude Code が ${from} から自分で切り替えました`,
+    modelHintStuck: (model, picked) => `モデル: ${model} - ${picked} を選びましたが反映されていません`,
     modeHint: (mode) => `権限モード：${mode}`,
     sessionLimit: '5時間の上限',
     weekLimit: '週の上限',

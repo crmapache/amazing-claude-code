@@ -70,7 +70,7 @@ export const ko: Dict = {
   settings: {
     rows: {
       sounds: { label: '알림음', sub: '패널이 부를 때' },
-      calmColors: { label: '편안한 색', sub: '계기를 한 가지 톤으로' },
+      calmColors: { label: '편안한 색', sub: '계기에 색을 얼마나 남길지' },
       newChat: { label: '새 대화', sub: '모델, 사고량, 권한 모드' },
       composerLayout: { label: '입력창 배치', sub: '입력창을 두는 자리' },
       pasteCollapse: { label: '붙여넣은 텍스트', sub: '붙여넣기를 칩으로 접는 기준' },
@@ -130,11 +130,11 @@ export const ko: Dict = {
 
   calmColors: {
     sample: '단계마다 하나씩',
-    label: '편안한 색',
-    hint: '계기가 무엇을 가리키든 한 가지 색',
+    label: '계기의 색',
+    hint: '100%면 네 단계 전부, 0%면 한 가지 색',
     keeps: '다른 건 그대로입니다. 오류는 빨간색으로 남고, 권한 요청도 그대로예요. 그건 실제로 일어난 일이지 기분이 아니니까요.',
-    on: '켬',
-    off: '끔',
+    full: '전체 색',
+    none: '한 가지 색',
   },
 
   history: {
@@ -282,7 +282,6 @@ export const ko: Dict = {
     cards: (n) => `카드 ${n}장`,
     hasLoop: '반복이 있음',
     asksFor: (names: string): string => `묻는 것: ${names}`,
-    lastUsed: (value: string): string => `지난번에는 ${value}였습니다`,
     besideGoing: (n: number): string => `이미 돌고 있는 ${n}개 옆에서 하나 더 시작합니다. 모두 같은 작업 복사본 위에서 움직입니다.`,
     pastRuns: '지난 실행',
     newestFirst: '새것부터',
@@ -414,7 +413,7 @@ export const ko: Dict = {
       step: '단계',
       head: '메인 스레드',
       missing: '이 컴퓨터에는 이 단계의 기록이 없습니다.',
-      truncated: '여기가 끝입니다. 앞부분은 보여 주지 않습니다.',
+      main: '메인',
     },
     editor: {
       title: '시나리오',
@@ -507,7 +506,8 @@ export const ko: Dict = {
   pasteCollapse: {
     note: '긴 붙여넣기는 칩으로 접혀서 많은 텍스트가 입력창을 가득 채우지 않게 합니다. 줄 수는 입력창에서 실제로 몇 줄이 되는지로 세기 때문에, 한 줄로 붙여넣은 긴 텍스트도 접힙니다. 어느 쪽이든 내용은 사라지지 않아요 - 접힌 붙여넣기는 본문을 그대로 담고 있고, 연필 버튼으로 입력창에 다시 펼칠 수 있습니다.',
     never: '접지 않기',
-    neverSub: '붙여넣은 것은 모두 일반 텍스트로 입력창에 남습니다',
+    neverSub: (thousands: number): string =>
+      `붙여넣은 것은 입력창에 남습니다. ${thousands},000자가 넘는 것만 접힙니다`,
     from: (lines) => `${lines}줄부터`,
     foldLabel: '긴 붙여넣기 접기',
     foldSub: (min, max) => `몇 줄부터 접을지 - ${min}~${max}`,
@@ -744,6 +744,8 @@ export const ko: Dict = {
     /** The sign-in could not even start - see the `authProblem` message. */
     noDrawer: '패널이 이 계정의 자격 증명 저장소에 닿지 못해서 로그인이 들어갈 곳이 없어요. 아래에서 다른 계정으로 전환하세요.',
     noTerminal: '이 IDE가 터미널을 열지 못했어요. 로그인은 터미널에서 이루어집니다.',
+    switchAccount: '계정 전환',
+    sendAgainAfter: '터미널에서 로그인을 마친 뒤 메시지를 다시 보내 주세요.',
   },
 
   stream: {
@@ -899,6 +901,11 @@ export const ko: Dict = {
     },
 
     modelSwitch: { label: '모델', note: 'Claude Code가 바꾼 거예요, 당신이 아니라' },
+    modelStuck: {
+      label: '모델',
+      note: (running) => `을 골랐는데 답변은 계속 ${running}에서 와요`,
+      hint: '변경이 Claude Code까지 가지 않았어요 - 모델을 다시 골라 보세요.',
+    },
 
     crash: {
       label: '세션',
@@ -1205,6 +1212,8 @@ export const ko: Dict = {
       reach: {
         connecting: '연결 중…',
         asleep: '릴레이에는 붙었는데, 응답하는 IDE가 없어요.',
+        silent: '몇 분째 아무 응답이 없어요. 컴퓨터가 꺼져 있거나, 그쪽에서 이 기기의 접근을 취소했을 수 있어요.',
+        revoked: '그 IDE는 이 기기를 더 이상 몰라요. 다시 페어링하거나 잊어버리세요.',
         elsewhere: '다른 탭이나 설치된 앱에서도 열려 있어요 - 연결은 그쪽이 쥐고 있어요.',
         reconnecting: '다시 연결하는 중… 아래 목록은 오래된 것일 수 있어요.',
         offline: '릴레이에 닿지 않아요. 잃는 건 없고, 연결은 알아서 돌아와요.',
@@ -1212,6 +1221,8 @@ export const ko: Dict = {
       agent: {
         connecting: '연결 중…',
         asleep: '응답 없음',
+        silent: '한참 응답 없음',
+        revoked: '접근 취소됨',
         elsewhere: '다른 곳에서 열림',
         reconnecting: '다시 연결 중…',
         offline: '오프라인',
@@ -1271,7 +1282,6 @@ export const ko: Dict = {
       start: {
         title: '지금 실행',
         required: '필수',
-        lastUsed: (value: string): string => `지난번에는 ${value}였습니다`,
         beside: (n: number): string => `이미 돌고 있는 ${n}개 옆에서 하나 더 시작합니다. 모두 같은 작업 복사본 위에서 움직입니다.`,
         run: '실행',
       },
@@ -1440,6 +1450,7 @@ export const ko: Dict = {
     effortHint: (effort) => `사고 강도: ${effort}`,
     modelHint: (model) => `모델: ${model}`,
     modelHintSwitched: (model, from) => `모델: ${model} - Claude Code가 ${from}에서 스스로 옮겼어요`,
+    modelHintStuck: (model, picked) => `모델: ${model} - ${picked}을 골랐지만 적용되지 않았어요`,
     modeHint: (mode) => `권한 모드: ${mode}`,
     sessionLimit: '5시간 한도',
     weekLimit: '주간 한도',

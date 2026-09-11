@@ -122,8 +122,8 @@ class RemoteCommandsTest {
         assertTrue(RemoteCommands.allows("scenarioRun"))
         assertTrue(RemoteCommands.allows("scenarioSchedule"))
 
-        // And reading what a step said. It is cut to the frame's budget on the way out rather than
-        // refused for being large (see RemoteFeed.trimmedLog).
+        // And reading what a step said. It arrives a page at a time, each sized to what a phone can
+        // carry, rather than refused for being large (see ScenarioDesk.sendLog).
         assertTrue(RemoteCommands.allows("scenarioLog"))
     }
 

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { unbase64url } from '../core/crypto'
 import { deriveSessionTitle } from '../feed/title'
 import type {
-  AgentEvent,
   AvailablePluginInfo,
   HistoryEntry,
   InstalledPluginInfo,
@@ -15,6 +14,7 @@ import { ClockContext } from '../hooks/useNow'
 import { planDecisionOf, useCardState } from '../hooks/useCardState'
 import { applyFact, emptyFacts, factsFor, isFact, liveRunsOf, type ProjectFacts } from './facts'
 import { shelfHome, type RepositoryChoice, type ShelfChoice } from './scenarios'
+import { CALM_VIVID_FULL } from '../calmColors'
 import { useCalmColors } from '../hooks/useCalmColors'
 import { LocaleProvider, activeLocale } from '../i18n'
 import { RemoteClock } from './clock'
@@ -30,6 +30,7 @@ import {
   type ProjectEntry,
   type SessionEntry,
 } from './projects'
+import { initialPanelState, reducePanel, type PanelState } from '../feed/build'
 import { tabHolding } from '../feed/resume'
 import { PIN_LIMIT, togglePin } from '../feed/pins'
 import type { FeedItem, TaskItem } from '../feed/types'
@@ -106,7 +107,15 @@ type Screen =
    * to the keyboard.
    */
   | { at: 'scenarios'; agentId: string; projectKey: string }
-  | { at: 'scenarioRun'; agentId: string; projectKey: string; runId: string }
+  /**
+   * One run - and where it was opened from, because a run now has two doors.
+   *
+   * From the list of runs, which is where the next one is; and straight off a project's card on the first
+   * screen, which is the door that matters when a round of work went on all night (see projectRuns). The
+   * way back is the way in: sent back to a list of runs it was never in, somebody walks out of a screen
+   * they have not seen, and the arrow stops meaning "back".
+   */
+  | { at: 'scenarioRun'; agentId: string; projectKey: string; runId: string; from?: Door }
   /**
    * One step's own conversation, and the editor with one of its cards.
    *
@@ -114,10 +123,18 @@ type Screen =
    * card is a prompt with two answers under it. Everything short about a scenario folds up from the
    * bottom instead (see ScenarioSheets).
    */
-  | { at: 'scenarioStep'; agentId: string; projectKey: string; runId: string; key: string }
+  | { at: 'scenarioStep'; agentId: string; projectKey: string; runId: string; key: string; from?: Door }
   | { at: 'scenarioEditor'; agentId: string; projectKey: string }
   | { at: 'scenarioCard'; agentId: string; projectKey: string; stageId: string; cardId: string }
   | { at: 'pairing' }
+
+/**
+ * Which door a run was opened by - absent means the list of runs, which is the ordinary one.
+ *
+ * Carried down to the step screen as well: a step goes back to its run, and the run has to remember its
+ * own way out or the second step back lands somewhere nobody came from.
+ */
+type Door = 'sessions'
 
 /** What is folded up over the screen, if anything - the six sheets and the drawer. */
 type Sheet = '' | 'tabs' | 'run' | 'message'
@@ -256,13 +273,22 @@ export const App = () => {
   const draftingRef = useRef(drafting)
   draftingRef.current = drafting
 
-  /** The log of the one step whose screen is open - see scenarioLog in protocol.ts. */
+  /**
+   * The log of the one step whose screen is open - see scenarioLog in protocol.ts.
+   *
+   * A feed rather than the events as they arrived, and the same shape the panel keeps: the end of the log
+   * comes first and the pages of the way back go in above it through the reducer's `historyPage`. The
+   * conversation is kept beside it because those later pages are asked for by name, long after the tap
+   * that opened the screen.
+   */
   const [stepLog, setStepLog] = useState<{
     runId: string
     key: string
+    conversationId: string
     found: boolean
-    truncated: boolean
-    events: AgentEvent[]
+    /** Whether the answer arrived - "reading" and "no record of this step" are one screen without it. */
+    loaded: boolean
+    state: PanelState
   } | null>(null)
 
   /** Moves the counters on the list of conversations once a second - see the effect below. */
@@ -750,14 +776,27 @@ export const App = () => {
       return
     }
 
-    /* One step's own conversation, cut to the end of it on the way over (see RemoteFeed.trimmedLog). */
+    /*
+     * A page of one step's own conversation - its end first, then the way back up.
+     *
+     * The same reducer case an ordinary tab uses for this (`historyPage`), and the same rule about
+     * `found`: it means "there is no record of this step on this machine", and only the first answer can
+     * say that. A page of the way up comes back empty the moment the beginning is reached, and read as
+     * `found: false` that emptiness would wipe a log somebody is reading right now.
+     */
     if (message.type === 'scenarioLog') {
-      setStepLog({
-        runId: message.runId,
-        key: message.key,
-        found: message.found,
-        truncated: message.truncated,
-        events: message.events,
+      setStepLog((current) => {
+        if (!current || current.runId !== message.runId || current.key !== message.key) return current
+
+        const first = message.before === undefined
+        const state = reducePanel(first ? initialPanelState : current.state, {
+          kind: 'historyPage',
+          entries: message.events,
+          cursor: message.cursor,
+          before: message.before,
+        })
+
+        return { ...current, found: first ? message.found : current.found, loaded: true, state }
       })
       return
     }
@@ -962,7 +1001,19 @@ export const App = () => {
   const reach = useMemo<LinkState | 'none'>(() => {
     if (agents.length === 0) return 'none'
 
-    const order: LinkState[] = ['connected', 'connecting', 'reconnecting', 'asleep', 'elsewhere', 'offline']
+    // Best first, and the two at the end of the list are the two worth acting on: a machine that has
+    // said nothing for minutes and one that has said this device is no longer welcome. They sit below
+    // the passing troubles because those pass, and above nothing at all.
+    const order: LinkState[] = [
+      'connected',
+      'connecting',
+      'reconnecting',
+      'asleep',
+      'elsewhere',
+      'silent',
+      'revoked',
+      'offline',
+    ]
     for (const state of order) {
       if (agents.some((agent) => (states[agent.agentId] ?? 'connecting') === state)) return state
     }
@@ -1139,19 +1190,27 @@ export const App = () => {
   )
 
   /**
-   * One run, asked for by name.
+   * One run, asked for by name, and the door it was opened by.
    *
    * The live one is already here - it arrives by itself - and asking for it again costs nothing and
    * saves the case that matters: a run opened straight from the list of past ones, which is a file on
    * that machine nobody has read yet.
+   *
+   * Opened off the first screen, the project is watched on the way in as well. A record answers whoever
+   * asked for it (see ScenarioDesk.sendRun), so the timeline arrives either way; what does not is every
+   * beat after it, because those travel as the project's facts and a phone watches one project at a time.
+   * Off the list of runs there is nothing to do - that screen subscribed when it opened (see
+   * openScenarios), and subscribing again makes the IDE forget what this device was sent and repeat all
+   * of it.
    */
   const openRun = useCallback(
-    (agentId: string, projectKey: string, runId: string) => {
+    (agentId: string, projectKey: string, runId: string, from?: Door) => {
       setScenarioNote('')
       // Named before the asking, not at the next render: the answer is what the screen is opened for,
       // and a record that arrives before the screen is known would be let go of as somebody else's.
       watchedRun.current = runId
-      setScreen({ at: 'scenarioRun', agentId, projectKey, runId })
+      setScreen({ at: 'scenarioRun', agentId, projectKey, runId, from })
+      if (from === 'sessions') links.current[agentId]?.watch(projectKey, '', 0)
       command(agentId, projectKey, { type: 'scenarioOpen', runId })
     },
     [command],
@@ -1457,6 +1516,29 @@ export const App = () => {
     },
   )
 
+  /**
+   * And the same for an open step's log, which is a past conversation like any other.
+   *
+   * Stated beside the one above and for the same reason - a hook cannot hang off which screen is open.
+   * The step rather than the thread is what a press belongs to here, so leaving one log for another does
+   * not carry the unfinished press across.
+   */
+  const stepScreen = screen.at === 'scenarioStep' ? screen : undefined
+  const { loadEarlier: loadEarlierStepLog } = useEarlierPages(
+    stepLog?.state ?? initialPanelState,
+    stepScreen && stepLog ? `${stepLog.runId}:${stepLog.key}` : '',
+    (before) => {
+      if (!stepScreen || !stepLog) return
+      command(stepScreen.agentId, stepScreen.projectKey, {
+        type: 'scenarioLog',
+        runId: stepLog.runId,
+        key: stepLog.key,
+        conversationId: stepLog.conversationId,
+        before,
+      })
+    },
+  )
+
   // --- The search --------------------------------------------------------------------
 
   /* A typed query goes out a moment after the typing pauses - the panel's own rule (see App.tsx). */
@@ -1727,8 +1809,11 @@ export const App = () => {
    * decision from the band at the top of the first screen belongs back at that screen, not at a thread
    * nobody asked for.
    *
-   * The three screens about the machine go back to the menu they were opened from, which is where the
-   * next one is: closing the drawer to open it again would be the app forgetting where it just was.
+   * Nothing here ever puts the side menu back up, and that was worth undoing. The menu is the index of
+   * the screens about the machine, so reopening it on the way out looked like keeping somebody's place;
+   * what it actually does is answer "back" with a panel that slides over the screen underneath - the
+   * screen they were on before they ever opened the menu, and the one the arrow promises. A menu is
+   * opened, not returned to.
    */
   const back = useCallback(() => {
     setSheet('')
@@ -1739,12 +1824,20 @@ export const App = () => {
       if (current.at === 'decide') return { ...current, at: 'thread' }
 
       // A run came from the list of them, which is where the next one is - and where the shelves are.
-      if (current.at === 'scenarioRun') return { ...current, at: 'scenarios' }
-      // And a step came from the run it belongs to. The log goes with it: a screen opened on the next
-      // step must not show the one before it while its own answer is on the way.
+      // Unless it came off a project's card, and then the list of runs is a screen nobody has seen: that
+      // one falls through to the first screen, where it was opened (see [Door]).
+      if (current.at === 'scenarioRun' && current.from !== 'sessions') return { ...current, at: 'scenarios' }
+      // And a step came from the run it belongs to, which keeps its own way out. The log goes with it: a
+      // screen opened on the next step must not show the one before it while its own answer is on the way.
       if (current.at === 'scenarioStep') {
         setStepLog(null)
-        return { at: 'scenarioRun', agentId: current.agentId, projectKey: current.projectKey, runId: current.runId }
+        return {
+          at: 'scenarioRun',
+          agentId: current.agentId,
+          projectKey: current.projectKey,
+          runId: current.runId,
+          from: current.from,
+        }
       }
       // A card came from the editor, which stays open behind it - nothing is saved by walking back.
       if (current.at === 'scenarioCard') {
@@ -1756,16 +1849,6 @@ export const App = () => {
       if (current.at === 'scenarioEditor') {
         setEdit(null)
         return { at: 'scenarios', agentId: current.agentId, projectKey: current.projectKey }
-      }
-
-      if (
-        current.at === 'mcp' ||
-        current.at === 'plugins' ||
-        current.at === 'accounts' ||
-        current.at === 'scenarios'
-      ) {
-        setDrawer(true)
-        return { at: 'sessions' }
       }
 
       watching.current = null
@@ -1788,12 +1871,12 @@ export const App = () => {
   const locale = activeLocale(spoken?.chosen, spoken?.ide)
 
   /*
-   * And the gauges' paint, by the same rule and for the same reason: the mode belongs to the person, is
+   * And the gauges' paint, by the same rule and for the same reason: the figure belongs to the person, is
    * set at the desk and cannot be set from here (see RemoteCommands). Answered by any project that has
-   * said, like the language above - somebody who switched the red off on their machine should not meet
-   * it on the list of chats, which belongs to no project at all.
+   * said, like the language above - somebody who damped the red on their machine should not meet it on
+   * the list of chats, which belongs to no project at all.
    */
-  useCalmColors(calmOf(facts, screen) === true)
+  useCalmColors(vividOf(facts, screen) ?? CALM_VIVID_FULL)
 
   const body = (() => {
     if (screen.at === 'pairing') {
@@ -1823,7 +1906,7 @@ export const App = () => {
           onNew={(project) => setScreen({ at: 'new', agentId: project.agentId, projectKey: project.key })}
           onMenu={() => setDrawer(true)}
           onSearch={(project) => openSearch(project.agentId, project.key, '')}
-          onRun={(project, runId) => openRun(project.agentId, project.key, runId)}
+          onRun={(project, runId) => openRun(project.agentId, project.key, runId, 'sessions')}
           onHide={hide}
           onShowHidden={showHidden}
           onHistory={(project) => {
@@ -2044,13 +2127,25 @@ export const App = () => {
               command(at.agentId, at.projectKey, { type: 'scenarioAnswer', runId: at.runId, allow, text })
             }
             onOpenStep={(step) => {
-              setStepLog(null)
+              // Opened rather than emptied: the answer has to find the step it belongs to when it
+              // arrives, and the pages after the first are asked for with the conversation named here.
+              setStepLog({
+                runId: at.runId,
+                key: step.key,
+                conversationId: step.conversationId,
+                found: false,
+                loaded: false,
+                state: initialPanelState,
+              })
               setScreen({
                 at: 'scenarioStep',
                 agentId: at.agentId,
                 projectKey: at.projectKey,
                 runId: at.runId,
                 key: step.key,
+                // The run's own way out travels down with it: two steps back from here is the screen the
+                // run was opened from, and a step that forgets the door sends it to the list of runs.
+                from: at.from,
               })
               command(at.agentId, at.projectKey, {
                 type: 'scenarioLog',
@@ -2073,7 +2168,17 @@ export const App = () => {
         <div className={m.screen}>
           <ScenarioStep
             step={run?.steps.find((one) => one.key === at.key) ?? null}
-            log={stepLog && stepLog.runId === at.runId && stepLog.key === at.key ? stepLog : null}
+            log={
+              stepLog && stepLog.runId === at.runId && stepLog.key === at.key
+                ? {
+                    found: stepLog.found,
+                    loaded: stepLog.loaded,
+                    earlierPages: stepLog.state.earlierPages,
+                    items: stepLog.state.items,
+                  }
+                : null
+            }
+            onLoadEarlier={loadEarlierStepLog}
             onOpenLink={(url) => window.open(url, '_blank', 'noopener')}
             onBack={back}
           />
@@ -2719,15 +2824,15 @@ const localeOf = (facts: Record<string, ProjectFacts>, screen: Screen): ProjectF
 }
 
 /**
- * Whether the gauges should be drawn calm, out of everything the paired IDEs have said.
+ * How much colour the gauges should keep, out of everything the paired IDEs have said.
  *
- * The same rule as the language above, written out rather than reused because a boolean needs asking
- * differently: an explicit `false` is an answer, and a search for the first truthy fact would walk
- * straight past a machine that has just switched the mode off.
+ * The same rule as the language above, written out rather than reused because a figure has to be asked
+ * for differently: nought is a real answer - it is the calmest one there is - and a search for the first
+ * truthy fact would walk straight past the very machine whose gauges were damped all the way.
  */
-const calmOf = (facts: Record<string, ProjectFacts>, screen: Screen): boolean | undefined => {
+const vividOf = (facts: Record<string, ProjectFacts>, screen: Screen): number | undefined => {
   const key = 'agentId' in screen ? `${screen.agentId}:${screen.projectKey}` : ''
-  return facts[key]?.calmColors ?? Object.values(facts).find((fact) => fact.calmColors !== undefined)?.calmColors
+  return facts[key]?.calmVivid ?? Object.values(facts).find((fact) => fact.calmVivid !== undefined)?.calmVivid
 }
 
 /**

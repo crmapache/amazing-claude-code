@@ -637,11 +637,15 @@ type ShellMessageBody =
          */
         sendKey?: string
         /**
-         * The no-stress colour mode: the gauges drawn in one calm tone rather than by a ladder of four
-         * (see hooks/useCalmColors.ts). Unset means off, which is what the panel did before the setting
-         * existed.
+         * How much colour the gauges keep, from a hundred (the whole ladder of four) down to nought (one
+         * calm tone whatever the reading) - see hooks/useCalmColors.ts. Unset means the full ladder,
+         * which is what the panel did before the setting existed.
+         *
+         * Renamed from `calmColors` when the switch became a slider, and that is free here: `init` never
+         * leaves this machine (see RemoteFeed), and the panel's bundle travels inside the plugin, so the
+         * two halves of this field cannot be of different versions.
          */
-        calmColors?: boolean
+        calmVivid?: number
         /**
          * The language chosen by hand. Empty - which is the usual case - means "whatever the IDE
          * speaks", so that a Chinese IDE gets a Chinese panel without anyone having to find the switch.
@@ -674,8 +678,14 @@ type ShellMessageBody =
   /**
    * The no-stress colour mode, on its own for the same two readers as the language above: a phone never
    * sees `init`, and a machine-wide setting switched in one window has to reach the other.
+   *
+   * `on` rides along for a client whose bundle is older than the plugin talking to it - the relay serves
+   * the phone and is deployed on its own, so a machine updated first is an ordinary day. It says "calm"
+   * from halfway down, which is the only defensible line: `vivid === 0` would leave such a phone bright
+   * red at ten per cent, and `vivid < 100` would grey it out at ninety. To be dropped once no living
+   * plugin is older than the relay.
    */
-  | { type: 'calmColors'; on: boolean }
+  | { type: 'calmColors'; vivid: number; on?: boolean }
   /**
    * The models somebody added by hand, on its own for the same two readers as the two above.
    *
@@ -1222,19 +1232,26 @@ type ShellMessageBody =
    */
   | { type: 'scenarioStarted'; runId: string; scheduled?: boolean }
   /**
-   * What one step said, as the events of its own conversation.
+   * A page of what one step said, as the events of its own conversation.
    *
    * The panel builds a feed out of them with the same reducer the live one uses (see feed/build.ts), so
-   * a step's log reads exactly as a conversation does. `truncated` says the beginning is not shown - a
-   * log that silently begins in the middle reads as a step that began in the middle.
+   * a step's log reads exactly as a conversation does - including how the rest of it arrives: the end
+   * first, the older pages when the mark over the feed asks for them. `cursor` and `before` mean here
+   * exactly what they mean on `historyPage`, which is the same journey for an ordinary tab.
+   *
+   * `found` answers the FIRST page alone (there is no record of this step at all); a page of the way up
+   * that comes back empty means the beginning has been reached, not that the log has gone.
    */
   | {
       type: 'scenarioLog'
       runId: string
       key: string
       found: boolean
-      truncated: boolean
       events: AgentEvent[]
+      /** The line to anchor the next ask on; absent when the step's first message is on screen. */
+      cursor?: string
+      /** The boundary this page answers - absent on the first ask. See historyPage in feed/build.ts. */
+      before?: string
     }
   /** Something could not be done, as a name the panel has words for in ten languages. */
   | { type: 'scenarioOutcome'; ok: boolean; code: string }
@@ -1776,10 +1793,10 @@ export type WebviewMessage =
   /** Which key sends a message - 'enter' or 'modEnter'. Machine-wide, like the layout (see sendKey.ts). */
   | { type: 'setSendKey'; key: string }
   /**
-   * The no-stress colour mode. Machine-wide beside the layout and the send key: whether a red gauge
-   * presses on somebody is a property of the person rather than of the repository.
+   * How much colour the gauges keep, 0..100. Machine-wide beside the layout and the send key: whether a
+   * red gauge presses on somebody is a property of the person rather than of the repository.
    */
-  | { type: 'setCalmColors'; on: boolean }
+  | { type: 'setCalmColors'; vivid: number }
   /**
    * The whole list of hand-added models, never a single addition or removal.
    *
@@ -1950,8 +1967,16 @@ export type WebviewMessage =
    * The MCP status is asked of the conversation itself - the servers are held by its process, and only
    * it knows who is connected, who needs a sign-in and who failed. The conversation is brought up for
    * this, as in the terminal, where `/mcp` is asked of a session.
+   *
+   * `ifRunning` is the one form that does NOT bring it up: answer out of a process that is already
+   * there, and say nothing at all when there is none. Bringing one up costs the whole conversation - the
+   * agent plus a copy of every MCP server it is configured with (measured in the sandbox: 8 processes
+   * and 554 MB for a tab nobody had written a word into) - and the panel asks this on the way in, purely
+   * so the screen behind the menu opens on something. That is a price for a screen most days nobody
+   * opens. Silence is a fine answer here: the menu row simply carries no count, which is the truth while
+   * no process holds any servers, and opening the screen asks for real.
    */
-  | { type: 'mcpList'; sessionId: string }
+  | { type: 'mcpList'; sessionId: string; ifRunning?: boolean }
   /** Raise one server anew - this is also how a failed one is retried. */
   | { type: 'mcpReconnect'; sessionId: string; name: string }
   /**
@@ -2151,8 +2176,11 @@ export type WebviewMessage =
    *
    * The run keeps none of it: a step is an ordinary conversation of the CLI's and its transcript is
    * already on the disk, so this is read when somebody opens a step and never for the rest.
+   *
+   * `before` is the boundary the screen is standing on: absent it asks for the end of the log, given it
+   * asks for the page above that line. Exactly the `historyPage` journey, and the same hook drives it.
    */
-  | { type: 'scenarioLog'; runId: string; key: string; conversationId: string }
+  | { type: 'scenarioLog'; runId: string; key: string; conversationId: string; before?: string }
   /**
    * Voice input (see VoiceDesk on the IDE's side).
    *
@@ -2469,6 +2497,19 @@ export interface AgentAssistantEvent {
   message: { id?: string; content: MessageContent; model?: string; usage?: AgentUsage }
   /** Non-empty for a subagent's messages: it is the identifier of the call that spawned it. */
   parent_tool_use_id?: string | null
+  /**
+   * A request that failed for good, named in one machine word rather than in a sentence: the answer
+   * under it is not the model's but a placeholder the CLI writes itself (signed `<synthetic>`, marked
+   * `is_api_error_message`). The words are `authentication_failed`, `rate_limit`, `overloaded`,
+   * `billing_error`, `server_error`, `invalid_request` and a few more of the same shape - the same
+   * vocabulary the retries carry (see AgentSystemEvent.error).
+   *
+   * The panel reads exactly one of them, and reads the CODE rather than the text: under
+   * `authentication_failed` the CLI has at least six different sentences (an expired OAuth session, a
+   * refused key, a gateway, Bedrock, Vertex), they change between versions, and the panel speaks ten
+   * languages while the sentence is always English.
+   */
+  error?: string
 }
 
 export interface AgentUserEvent {

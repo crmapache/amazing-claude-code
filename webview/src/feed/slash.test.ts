@@ -4,11 +4,14 @@ import {
   buildCommands,
   captureCommand,
   captureWrittenCommand,
+  chosenRow,
   commandChip,
   commandNameBeforeArgument,
+  enterSends,
   localCommand,
   matchCommands,
   replaceCommandHead,
+  sameHints,
   slashQuery,
   type CommandEntry,
 } from './slash'
@@ -103,6 +106,130 @@ describe('buildCommands', () => {
     const commands = buildCommands(en, ['task'], { task: { description: 'Start a new task', argumentHint: '' } })
 
     expect(commands.filter((command) => command.id === 'task')).toHaveLength(1)
+  })
+
+  it('puts what was found on disk in name order, whatever order the map arrived in', () => {
+    // The map comes in the order the IDE walked the directories in, and under that the order the file
+    // system chose to list them - not promised to be the same twice. Sorted here, the same set of files
+    // cannot redraw the list differently for no reason.
+    const hints = {
+      zulu: { description: '', argumentHint: '' },
+      alpha: { description: '', argumentHint: '' },
+      mike: { description: '', argumentHint: '' },
+    }
+    const ids = buildCommands(en, [], hints).map((command) => command.id)
+
+    expect(ids.slice(-3)).toEqual(['alpha', 'mike', 'zulu'])
+  })
+
+  it('leaves the three groups before it in their own order', () => {
+    // The order of the groups is what the hint is read by - the panel's own first, then the built-in
+    // ones, then what the agent named. Only the tail found on disk is sorted.
+    const first = buildCommands(en, ['zebra', 'apple'], {})
+    const ids = first.map((command) => command.id)
+
+    expect(ids.indexOf('zebra')).toBeLessThan(ids.indexOf('apple'))
+    expect(ids[0]).toBe('resume')
+  })
+})
+
+describe('sameHints', () => {
+  it('sees an unchanged map as unchanged, whatever order its keys are in', () => {
+    const one = { a: { description: 'first', argumentHint: '' }, b: { description: 'second', argumentHint: '' } }
+    const other = { b: { description: 'second', argumentHint: '' }, a: { description: 'first', argumentHint: '' } }
+
+    expect(sameHints(one, other)).toBe(true)
+  })
+
+  it('sees an edited description, a new name and a lost one', () => {
+    const was = { a: { description: 'first', argumentHint: '' } }
+
+    expect(sameHints(was, { a: { description: 'edited', argumentHint: '' } })).toBe(false)
+    expect(sameHints(was, { a: { description: 'first', argumentHint: '[x]' } })).toBe(false)
+    expect(sameHints(was, { a: { description: 'first', argumentHint: '' }, b: { description: '', argumentHint: '' } })).toBe(false)
+    expect(sameHints(was, {})).toBe(false)
+  })
+
+  it('does not take a renamed command for the same one', () => {
+    // Same size, same content, different names: counted rather than compared, this would pass.
+    expect(
+      sameHints({ a: { description: 'x', argumentHint: '' } }, { b: { description: 'x', argumentHint: '' } }),
+    ).toBe(false)
+  })
+})
+
+describe('chosenRow', () => {
+  const rows = project('alpha', 'mike', 'zulu')
+
+  it('starts at the top when nothing has been chosen', () => {
+    expect(chosenRow(rows, null, '/')).toBe(0)
+  })
+
+  it('keeps the chosen command when the list changes underneath it', () => {
+    // The whole point: the IDE looks at the disk every couple of seconds now, and the agent re-sends its
+    // catalogue at the start of every turn. Held by place, the choice slides onto whatever moved into
+    // that slot and Enter runs a command nobody picked.
+    const held = { id: 'zulu', list: '/', by: 'key' as const }
+    const grown = project('alpha', 'bravo', 'mike', 'zulu')
+
+    expect(chosenRow(grown, held, '/')).toBe(3)
+  })
+
+  it('returns to the top as soon as the typing makes it a different list', () => {
+    const held = { id: 'zulu', list: '/', by: 'key' as const }
+
+    expect(chosenRow(rows, held, '/zu')).toBe(0)
+  })
+
+  it('returns to the top when the chosen command is no longer there', () => {
+    // A skill renamed mid-debugging. The first row is the only answer where the screen and the key still
+    // say the same thing: an unresolvable place used to leave nothing highlighted while Enter quietly
+    // ran the top row.
+    const held = { id: 'gone', list: '/', by: 'key' as const }
+
+    expect(chosenRow(rows, held, '/')).toBe(0)
+  })
+
+  it('answers zero for an empty list rather than a place that is not there', () => {
+    expect(chosenRow([], { id: 'zulu', list: '/', by: 'key' as const }, '/')).toBe(0)
+  })
+
+  it('does not carry a command name into a list of file paths', () => {
+    // One choice serves three lists - commands, a command's values, the paths after "@" - and the key
+    // tells them apart.
+    const files = project('src/App.tsx', 'src/zulu.ts')
+
+    expect(chosenRow(files, { id: 'zulu', list: '/', by: 'key' as const }, '@zu')).toBe(0)
+  })
+})
+
+describe('enterSends', () => {
+  // What decides, over an open hint, whether Enter sends the message or substitutes the row on screen.
+  // Silent both ways: too eager and half a command is sent, too shy and the field will not send at all.
+  const list = '/ta'
+
+  it('sends a name that has been typed in full, as it always did', () => {
+    expect(enterSends(true, null, list)).toBe(true)
+  })
+
+  it('substitutes when the name is only half typed', () => {
+    expect(enterSends(false, null, list)).toBe(false)
+  })
+
+  it('substitutes the row stepped onto, even when what is typed is a name of its own', () => {
+    // The defect. "/task" is typed in full and "/task-review" is on the next row down: Enter used to
+    // send "/task" while the screen was lighting the row the person had just chosen.
+    expect(enterSends(true, { id: 'task-review', list, by: 'key' }, list)).toBe(false)
+  })
+
+  it('ignores a choice made in another list', () => {
+    expect(enterSends(true, { id: 'task-review', list: '/t', by: 'key' }, list)).toBe(true)
+  })
+
+  it('does not let a hovering mouse turn sending into substituting', () => {
+    // The arrows and the mouse light the same row through the same handler, and a cursor left lying
+    // over the list on its way somewhere else has decided nothing.
+    expect(enterSends(true, { id: 'task-review', list, by: 'pointer' }, list)).toBe(true)
   })
 })
 

@@ -45,6 +45,46 @@ export const scenariosSystem: Scenario[] = [
     checkpoint('The search window opens', [wait(300), openSearch()]),
   ]),
 
+  /*
+   * A skill written while the conversation is running - the thing this whole fast round exists for
+   * (see ClaudeCommandHints and ProjectCatalog's hint round). The IDE looks at the disk every couple of
+   * seconds and pushes the map unasked, so what matters here is what the panel does with a map arriving
+   * mid-conversation: the new name has to be in the "/" hint without the conversation being restarted,
+   * and a row already chosen with the arrow keys has to stay on the same command rather than slide onto
+   * whatever moved into its place.
+   *
+   * Hands-on between the two last checkpoints: type "/" in the field and arrow down onto a row.
+   */
+  scenario('skill-appears', 'A skill written mid-conversation', 'system', [
+    checkpoint('A turn, and the agent names what it knows', [
+      shell({ type: 'commands', commands: ['clear', 'compact', 'context', 'cost', 'usage'] }),
+      shell({
+        type: 'commandHints',
+        hints: {
+          clear: { description: 'Start this conversation over', argumentHint: '' },
+          compact: { description: 'Fold the conversation up and carry on with a summary', argumentHint: '' },
+          'review-log': { description: 'Write the findings into the review journal', argumentHint: '' },
+        },
+      }),
+      user('I am writing a skill for the release notes - give me a minute'),
+      wait(400),
+      ...textReply('Take your time. Say the word when it is on disk and I will run it.'),
+      turnResult(900),
+    ]),
+    checkpoint('The skill lands on disk, and the map arrives by itself', [
+      wait(200),
+      shell({
+        type: 'commandHints',
+        hints: {
+          clear: { description: 'Start this conversation over', argumentHint: '' },
+          compact: { description: 'Fold the conversation up and carry on with a summary', argumentHint: '' },
+          'release-notes': { description: 'Draft the release notes off the merged pull requests', argumentHint: '[tag]' },
+          'review-log': { description: 'Write the findings into the review journal', argumentHint: '' },
+        },
+      }),
+    ]),
+  ]),
+
   scenario('session-crash', 'A broken session', 'system', [
     checkpoint('The user asks to run the tests', [user('Run the full set of tests'), wait(500)]),
     checkpoint('Bash: pnpm test', [toolUse('Bash', { command: 'pnpm test' }, 's13-1'), wait(900)]),
@@ -290,6 +330,64 @@ export const scenariosSystem: Scenario[] = [
    * So the title names the account the button fills, and the press is answered: every third one refuses,
    * which is the state that used to leave the screen waiting on a terminal that never opened.
    */
+  /**
+   * The sign-in dies in the middle of the work - the case the whole of this door was built for.
+   *
+   * What makes it different from every other refusal: the login screen never comes up for it. It stands
+   * on the CLI's own answer about the sign-in, and that answer is "signed in" for as long as a token
+   * merely LIES in the store - a refresh the server refused leaves it exactly where it was. So the red
+   * row in the feed is the only way back there is, and the button on it is what this scenario is for
+   * (see ErrorItem.signIn). The accounts arrive first so the second button has somewhere to lead.
+   *
+   * The refused requests are repeated before that, as in life: the CLI does not give up on the first
+   * 401, and the row above the field names the refusal while it waits.
+   */
+  scenario('auth-expired', 'The sign-in dies mid-conversation', 'system', [
+    checkpoint('The user asks for the release notes', [
+      shell({
+        type: 'accounts',
+        capability: 'supported',
+        current: 'a2',
+        accounts: [
+          { id: '', alias: '', email: 'you@company.com', plan: 'max', health: 'present', isDefault: true },
+          { id: 'a2', alias: 'Personal', email: 'you@personal.com', plan: 'pro', health: 'present' },
+        ],
+      }),
+      user('Draft the release notes for the next version'),
+      wait(600),
+    ]),
+    checkpoint('The request is refused and repeated', [
+      apiRetry(1, 700, 401),
+      wait(700),
+      apiRetry(2, 1600, 401),
+      wait(1600),
+    ]),
+    /*
+     * The CLI's own placeholder rather than the model's answer: signed <synthetic>, with the machine word
+     * beside it. The result under it repeats the same sentence, and one red row is left for the two of
+     * them (see addError).
+     */
+    checkpoint('The turn dies on the sign-in, and the row offers a way back', [
+      agent({
+        type: 'assistant',
+        message: {
+          model: '<synthetic>',
+          content: [
+            { type: 'text', text: 'Failed to authenticate: OAuth session expired and could not be refreshed' },
+          ],
+        },
+        error: 'authentication_failed',
+      }),
+      agent({
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        result: 'Failed to authenticate: OAuth session expired and could not be refreshed',
+        duration_ms: 4200,
+      }),
+    ]),
+  ]),
+
   scenario('signed-out', 'The sign-in has expired', 'system', [
     checkpoint('The panel is locked out, and it says whose sign-in it wants', [
       shell({

@@ -70,7 +70,7 @@ export const pt: Dict = {
   settings: {
     rows: {
       sounds: { label: 'Avisos sonoros', sub: 'Quando o painel chama você' },
-      calmColors: { label: 'Cores tranquilas', sub: 'Medidores em um tom só' },
+      calmColors: { label: 'Cores tranquilas', sub: 'Quanta cor os medidores mantêm' },
       newChat: { label: 'Novas conversas', sub: 'Modelo, esforço e modo de permissão' },
       composerLayout: { label: 'Layout do campo', sub: 'Onde fica o campo de escrita' },
       pasteCollapse: { label: 'Texto colado', sub: 'Quando uma colagem vira um chip' },
@@ -130,11 +130,11 @@ export const pt: Dict = {
 
   calmColors: {
     sample: 'UM MEDIDOR EM CADA NÍVEL',
-    label: 'Cores tranquilas',
-    hint: 'Um tom só, seja qual for a leitura',
+    label: 'Cor dos medidores',
+    hint: 'A escala inteira em 100%, um tom só em 0%',
     keeps: 'Nada mais muda: um erro continua vermelho e uma permissão continua sendo o que é. Essas são coisas que aconteceram, não um humor.',
-    on: 'Ligado',
-    off: 'Desligado',
+    full: 'Cor total',
+    none: 'Um tom só',
   },
 
   history: {
@@ -283,7 +283,6 @@ export const pt: Dict = {
     cards: (n) => (n === 1 ? '1 cartão' : `${n} cartões`),
     hasLoop: 'tem um laço',
     asksFor: (names: string): string => `pergunta: ${names}`,
-    lastUsed: (value: string): string => `Da última vez foi ${value}`,
     besideGoing: (n: number): string =>
       n === 1
         ? 'Vai começar uma segunda execução ao lado da que já corre. As duas trabalham na mesma cópia de trabalho.'
@@ -418,7 +417,7 @@ export const pt: Dict = {
       step: 'Passo',
       head: 'Thread principal',
       missing: 'Não há registro deste passo nesta máquina.',
-      truncated: 'Este é o fim - o começo não está sendo mostrado.',
+      main: 'PRINCIPAL',
     },
     editor: {
       title: 'CENÁRIO',
@@ -511,7 +510,8 @@ export const pt: Dict = {
   pasteCollapse: {
     note: 'Uma colagem longa vira um chip para que uma parede de texto não encha o campo de entrada. As linhas são contadas como ficariam no próprio campo, então um texto colado em uma única linha sem fim também vira chip. Nada se perde em nenhum dos casos: uma colagem recolhida guarda o texto inteiro e volta ao campo pelo botão do lápis.',
     never: 'Nunca recolher',
-    neverSub: 'Tudo o que for colado fica no campo como texto comum',
+    neverSub: (thousands: number): string =>
+      `Tudo fica no campo, exceto o que for colado acima de ${thousands} mil caracteres`,
     from: (lines) => `A partir de ${lines} linhas`,
     foldLabel: 'Recolher colagens longas',
     foldSub: (min, max) => `A partir de quantas linhas - ${min} a ${max}`,
@@ -751,6 +751,8 @@ export const pt: Dict = {
     noDrawer:
       'O painel não alcança o cofre de credenciais desta conta, então o login não tem onde cair. Troque abaixo para outra conta.',
     noTerminal: 'Esta IDE não abriu um terminal, e o login acontece nele.',
+    switchAccount: 'Trocar de conta',
+    sendAgainAfter: 'Conclua o login no terminal e envie sua mensagem de novo.',
   },
 
   stream: {
@@ -906,6 +908,11 @@ export const pt: Dict = {
     },
 
     modelSwitch: { label: 'MODELO', note: 'quem trocou foi o Claude Code, não você' },
+    modelStuck: {
+      label: 'MODELO',
+      note: (running) => `escolhido, mas as respostas continuam vindo no ${running}`,
+      hint: 'A troca não chegou ao Claude Code - tente escolher o modelo de novo.',
+    },
 
     crash: {
       label: 'SESSÃO',
@@ -1214,6 +1221,8 @@ export const pt: Dict = {
       reach: {
         connecting: 'Conectando…',
         asleep: 'Conectado ao relay, mas nenhuma IDE responde.',
+        silent: 'Há vários minutos nada responde. A máquina pode estar desligada, ou o acesso deste aparelho foi revogado nela.',
+        revoked: 'Esse IDE não conhece mais este aparelho. Pareie de novo, ou esqueça.',
         elsewhere: 'Também está aberto em outra aba ou no app instalado - aquela cópia segura a conexão.',
         reconnecting: 'Reconectando… a lista abaixo pode estar desatualizada.',
         offline: 'Não dá para alcançar o relay. Nada se perde - isso volta sozinho.',
@@ -1221,6 +1230,8 @@ export const pt: Dict = {
       agent: {
         connecting: 'conectando…',
         asleep: 'não responde',
+        silent: 'sem resposta há um tempo',
+        revoked: 'acesso revogado',
         elsewhere: 'aberto em outro lugar',
         reconnecting: 'reconectando…',
         offline: 'offline',
@@ -1280,7 +1291,6 @@ export const pt: Dict = {
       start: {
         title: 'Executar agora',
         required: 'obrigatório',
-        lastUsed: (value: string): string => `Da última vez foi ${value}`,
         beside: (n: number): string =>
           n === 1
             ? 'Vai começar uma segunda execução ao lado da que já corre. As duas trabalham na mesma cópia de trabalho.'
@@ -1452,6 +1462,7 @@ export const pt: Dict = {
     effortHint: (effort) => `Esforço de raciocínio: ${effort}`,
     modelHint: (model) => `Modelo: ${model}`,
     modelHintSwitched: (model, from) => `Modelo: ${model} - o Claude Code mudou para ele sozinho, saindo de ${from}`,
+    modelHintStuck: (model, picked) => `Modelo: ${model} - você escolheu ${picked} e não pegou`,
     modeHint: (mode) => `Modo de permissão: ${mode}`,
     sessionLimit: 'Limite de 5 horas',
     weekLimit: 'Limite semanal',

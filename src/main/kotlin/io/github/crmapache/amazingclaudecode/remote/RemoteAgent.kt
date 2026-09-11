@@ -274,7 +274,7 @@ internal class RemoteAgent : Disposable {
         val beat = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
             {
                 started.checkAlive(System.currentTimeMillis())
-                started.flush(::resyncFrames)
+                started.flush(::resyncFrame)
             },
             BEAT_SECONDS,
             BEAT_SECONDS,
@@ -426,8 +426,26 @@ internal class RemoteAgent : Disposable {
         if (devicePub.isEmpty()) return
 
         val auth = RemoteKeys.deviceSecret(state.agentId(), deviceId) ?: run {
-            // Not a device this agent knows - or one that has been revoked. Either way there is nothing
-            // to answer with, and answering would only tell a stranger which addresses are real.
+            /*
+             * A device this agent let go of is told so; a stranger is not.
+             *
+             * The line between them is the headstone (see RemoteState.revoked), and it is what keeps
+             * the old rule intact: an address nobody here ever paired with learns nothing, because an
+             * answer would confirm that this agent is real. An address that WAS paired knows that
+             * already - it held our keys - so there is nothing left to give away, and the silence buys
+             * nothing except a person staring at "no IDE is answering" and guessing.
+             *
+             * In the open, because the key it would have been sealed with is exactly what was deleted.
+             * That makes it forgeable by whoever carries frames, so the phone treats it as a word about
+             * its own state and never as a reason to stop trying (see mobile/link.ts): the worst a
+             * forgery can do is put a wrong label on a screen until the real IDE answers.
+             */
+            if (state.wasRevoked(deviceId) && volume.allow(deviceId, REVOKED)) {
+                thisLogger().info("A device this agent revoked asked to resume - told so")
+                sendPlain(address, buildJsonObject { put("p", PROTOCOL_VERSION); put("k", REVOKED) })
+                return
+            }
+
             thisLogger().info("A device asked to resume that this agent has not paired with")
             return
         }
@@ -711,25 +729,54 @@ internal class RemoteAgent : Disposable {
      * Local and immediate, which is the whole point: with the secret gone its frames no longer open, so
      * nothing has to reach the phone and the relay has to be told nothing. It therefore works while the
      * phone is switched off - which is exactly when someone is most likely to want it.
+     *
+     * On top of that, and only on top of it, the device is TOLD - now if it is on the line ([farewell]),
+     * and when it comes back if it is not (the headstone in RemoteState, answered in [sessionInit]).
+     * Neither is what makes the revocation happen; both are what stop it looking like a machine that is
+     * merely switched off, which is the state people were left in with no way out except guessing.
      */
     fun revoke(deviceId: String) {
+        // Before the keys go, because it is sealed with them: the last thing this device can open, and
+        // the difference between a phone that says "access was revoked here" and one that shows the
+        // same silence a switched-off machine makes. Sent on the spot rather than queued - the seal is
+        // about to stop existing.
+        farewell(deviceId)
+
         sessions.close(deviceId)
         handshakes.remove(deviceId)
         resyncAsked.remove(deviceId)
         RemoteKeys.forgetDevice(state.agentId(), deviceId)
         state.forget(deviceId)
+        // Remembered as let go, so that a device which was switched off at this moment is told rather
+        // than met with silence when it comes back - see [sessionInit].
+        state.noteRevoked(deviceId)
         subscriptions.remove(deviceId)
         // Everything else keyed by this device, so a revoked one leaves no slot behind in any of them.
         lastHeard.remove(deviceId)
         handshakes.remove(deviceId)
         resyncAsked.remove(deviceId)
         volume.forget(deviceId)
+        outbox.forget(deviceId)
         countWatchers()
         announceRemoteState()
     }
 
     fun revokeAll() {
         for (device in state.devices()) revoke(device.id)
+    }
+
+    /**
+     * "This machine no longer knows you."
+     *
+     * Sealed, so it is worth believing: only this agent can have written it, and the device may act on
+     * it outright. What it saves is the state a person had no way out of - a live socket to the relay,
+     * an IDE that answers nothing, and no way to tell being revoked from a laptop with its lid shut.
+     */
+    private fun farewell(deviceId: String) {
+        val address = runCatching { Frame.decodeAddress(deviceId) }.getOrNull() ?: return
+        if (!sessions.isOpen(deviceId)) return
+
+        send(address, buildJsonObject { put("p", PROTOCOL_VERSION); put("k", REVOKED) })
     }
 
     /** Tell every project's panel how many devices are watching it - see ClaudeSessionHub. */
@@ -791,6 +838,7 @@ internal class RemoteAgent : Disposable {
 
     private fun sendPlain(device: ByteArray, body: JsonObject) {
         outbox.offer(
+            Frame.encodeAddress(device),
             Frame.build(
                 type = Frame.TYPE_SEALED,
                 to = device,
@@ -800,7 +848,7 @@ internal class RemoteAgent : Disposable {
             ),
         )
 
-        link?.flush(::resyncFrames)
+        link?.flush(::resyncFrame)
     }
 
     private fun subscribe(device: ByteArray, payload: JsonObject) {
@@ -836,7 +884,7 @@ internal class RemoteAgent : Disposable {
             return
         }
 
-        attachment.client.catchUp(attachment.hub, sessionId, since)
+        attachment.client.catchUp(address, attachment.hub, sessionId, since)
     }
 
     /**
@@ -1344,36 +1392,33 @@ internal class RemoteAgent : Disposable {
             return
         }
 
-        outbox.offer(sealed)
-        link?.flush(::resyncFrames)
+        outbox.offer(deviceId, sealed)
+        link?.flush(::resyncFrame)
     }
 
-    /** The marker a collapsed queue is replaced by - see RemoteOutbox. */
     /**
      * "Whatever was on its way to you is gone - ask again from the number you have."
      *
-     * Sent when the outgoing queue collapsed (see RemoteOutbox): everything waiting was thrown away on
-     * purpose, and a device that is not told simply sits there. It used to be one frame addressed to
-     * nobody - sixteen zero bytes - which the relay routed to an address no one holds, so it reached
-     * no phone and none of them ever asked. That is what a conversation opened on a phone and left
-     * blank looked like from this side: the journal was handed over, the queue gave up on it, and the
-     * only word about that went into a hole.
+     * Sent when that device's outgoing queue collapsed (see RemoteOutbox): everything waiting was
+     * thrown away on purpose, and a device that is not told simply sits there. It used to be one frame
+     * addressed to nobody - sixteen zero bytes - which the relay routed to an address no one holds, so
+     * it reached no phone and none of them ever asked. That is what a conversation opened on a phone
+     * and left blank looked like from this side: the journal was handed over, the queue gave up on it,
+     * and the only word about that went into a hole.
      *
-     * One frame per paired device, sealed like anything else: a device whose session keys are not open
-     * gets nothing here - it has a handshake to finish first, and that ends in a fresh subscription
-     * anyway.
+     * Sealed like anything else: a device whose session keys are not open gets nothing here - it has a
+     * handshake to finish first, and that ends in a fresh subscription anyway.
      */
-    private fun resyncFrames(): List<ByteArray> =
-        state.devices().mapNotNull { device ->
-            val address = runCatching { Frame.decodeAddress(device.id) }.getOrNull() ?: return@mapNotNull null
+    private fun resyncFrame(deviceId: String): ByteArray? {
+        val address = runCatching { Frame.decodeAddress(deviceId) }.getOrNull() ?: return null
 
-            sessions.seal(
-                device.id,
-                to = address,
-                from = state.address(),
-                body = """{"p":$PROTOCOL_VERSION,"k":"resync"}""".toByteArray(StandardCharsets.UTF_8),
-            )
-        }
+        return sessions.seal(
+            deviceId,
+            to = address,
+            from = state.address(),
+            body = """{"p":$PROTOCOL_VERSION,"k":"resync"}""".toByteArray(StandardCharsets.UTF_8),
+        )
+    }
 
     private fun announce(linkState: RelayLink.State) {
         thisLogger().info("The relay connection is now $linkState")
@@ -1401,11 +1446,18 @@ internal class RemoteAgent : Disposable {
         override val id = "${ClaudeSessionHub.RELAY_PREFIX}$projectKey"
 
         /**
-         * Whether what is passing through [deliver] right now is a catch-up batch this client asked for
-         * - see [catchUp]. On the thread doing the handing over, because that is exactly how far it
-         * reaches: the hub builds the batch and delivers it in the same call.
+         * Whose catch-up is passing through [deliver] right now, or null for the ordinary feed - see
+         * [catchUp]. On the thread doing the handing over, because that is exactly how far it reaches:
+         * the hub builds the batch and delivers it in the same call.
+         *
+         * The ADDRESS rather than a yes-or-no, and that is the whole of the fix for a conversation open
+         * in two places. A catch-up is one device's private answer to "here is where I got to", and it
+         * begins with "everything from your number is about to be restored" and ends with "and that is
+         * all of it". Broadcast, those two land on a device that asked for neither: between them it
+         * shows nothing at all, and if the closing one is lost on the way it shows nothing for ever.
+         * That is exactly what "I opened the same chat on my laptop and the phone died" was.
          */
-        private val catchingUp = ThreadLocal.withInitial { false }
+        private val catchingUp = ThreadLocal<String?>()
 
         /**
          * A fingerprint of the last of each project fact that genuinely went out, per device.
@@ -1435,7 +1487,8 @@ internal class RemoteAgent : Disposable {
         override fun deliver(messages: List<String>) {
             if (link == null) return
 
-            val live = !catchingUp.get()
+            val asker = catchingUp.get()
+            val live = asker == null
 
             // Opening a past conversation puts its whole transcript through here, line by line, as it is
             // read off the disk - tens of thousands of them for a long one. The panel wants exactly that
@@ -1475,6 +1528,8 @@ internal class RemoteAgent : Disposable {
 
             for ((address, subscription) in subscriptions) {
                 if (subscription.projectKey != projectKey) continue
+                // A catch-up belongs to the device that asked for it, and to no other.
+                if (asker != null && address != asker) continue
 
                 val wanted = newFacts(address, facts) +
                     sendable.filter { RemoteFeed.wantedBy(it, subscription.sessionId) }
@@ -1483,7 +1538,7 @@ internal class RemoteAgent : Disposable {
                 queue(address, wanted)
             }
 
-            link?.flush(::resyncFrames)
+            link?.flush(::resyncFrame)
 
             if (live) handOverReplayed(messages)
         }
@@ -1539,7 +1594,7 @@ internal class RemoteAgent : Disposable {
 
             for (device in state.devices()) queue(device.id, messages)
 
-            link?.flush(::resyncFrames)
+            link?.flush(::resyncFrame)
         }
 
         /**
@@ -1555,7 +1610,7 @@ internal class RemoteAgent : Disposable {
             if (state.devices().none { it.id == asker }) return
 
             queue(asker, messages)
-            link?.flush(::resyncFrames)
+            link?.flush(::resyncFrame)
         }
 
         /** Seal these messages for one device and put them in the queue out. */
@@ -1572,7 +1627,7 @@ internal class RemoteAgent : Disposable {
                         .toByteArray(StandardCharsets.UTF_8),
                 ) ?: continue
 
-                outbox.offer(sealed)
+                outbox.offer(deviceId, sealed)
             }
         }
 
@@ -1583,12 +1638,16 @@ internal class RemoteAgent : Disposable {
          * overflows is thrown away entire - which is how a long conversation opened on a phone used to
          * come up blank and stay blank (see ClaudeSessionHub.CatchUp and RemoteOutbox).
          */
-        fun catchUp(hub: ClaudeSessionHub, sessionId: String, since: Long) {
-            catchingUp.set(true)
+        fun catchUp(asker: String, hub: ClaudeSessionHub, sessionId: String, since: Long) {
+            // Saved and restored rather than cleared: this runs inside a live delivery when a replay
+            // finishes (see [handOverReplayed]), and a nested catch-up must give the thread back the
+            // state it borrowed.
+            val outer = catchingUp.get()
+            catchingUp.set(asker)
             try {
                 hub.attach(id, mapOf(sessionId to since), ClaudeSessionHub.CatchUp.tailOf(sessionId))
             } finally {
-                catchingUp.set(false)
+                catchingUp.set(outer)
             }
         }
 
@@ -1600,9 +1659,18 @@ internal class RemoteAgent : Disposable {
          */
         private fun handOverReplayed(messages: List<String>) {
             val hub = projects[projectKey]?.hub ?: return
-            val watched = subscriptions.values.filter { it.projectKey == projectKey }.map { it.sessionId }
+            val here = subscriptions.filterValues { it.projectKey == projectKey }
 
-            for (sessionId in RemoteFeed.replayed(messages, watched)) catchUp(hub, sessionId, since = 0)
+            // Every device watching that conversation, each with a catch-up of its own. The tab now
+            // holds a different conversation than it did a second ago, so all of them have to replace
+            // what is on screen - but a restore is addressed, and one batch shared between them is the
+            // defect this whole rule exists to prevent.
+            for (sessionId in RemoteFeed.replayed(messages, here.values.map { it.sessionId })) {
+                for ((address, subscription) in here) {
+                    if (subscription.sessionId != sessionId) continue
+                    catchUp(address, hub, sessionId, since = 0)
+                }
+            }
         }
     }
 
@@ -1654,10 +1722,10 @@ internal class RemoteAgent : Disposable {
                 type = Frame.TYPE_PUSH,
             ) ?: continue
 
-            outbox.offerUrgent(push)
+            outbox.offerUrgent(device.id, push)
         }
 
-        link?.flush(::resyncFrames)
+        link?.flush(::resyncFrame)
     }
 
     override fun dispose() {
@@ -1682,6 +1750,13 @@ internal class RemoteAgent : Disposable {
          * mobile/projects.ts), and a typo here is a feature that quietly stays off for everyone.
          */
         const val CAP_OPEN_BARE = "openBare"
+
+        /**
+         * "This machine no longer knows you." One word for both ways of saying it - sealed at the moment
+         * of the revocation, in the open when the device comes back afterwards - because the phone acts
+         * on the same fact either way and a second spelling is a second thing to get wrong.
+         */
+        const val REVOKED = "revoked"
 
         /** Where the relay lives unless someone points this at their own. */
         const val DEFAULT_RELAY = "wss://relay.mzpizote.com"

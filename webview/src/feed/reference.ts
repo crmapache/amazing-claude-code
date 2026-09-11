@@ -161,6 +161,29 @@ export const pasteCollapseLines = (value: string | undefined): number => {
 }
 
 /**
+ * The size past which a paste folds whatever the setting says.
+ *
+ * The line threshold answers "a paste of what size is worth hiding", and "never" is a legitimate answer
+ * to it. This is a different question: how much text the field can hold and still be a field. Measured
+ * in the panel, against a conversation of 827 messages, with the folding switched off:
+ *
+ *   in the field    per keystroke
+ *   up to 100 KB    4-12 ms
+ *   250 KB          29-32 ms
+ *   1 MB            40-68 ms, and up to 179 ms of the main thread blocked
+ *
+ * At a megabyte every single letter takes an eighth of a second, so the field stops being one - and
+ * nobody who switched the folding off was asking for that. Hence the guard, and hence its place: a
+ * hundred kilobytes is well past the last measurement that still types normally and well past anything
+ * meant to be read in the field before sending.
+ *
+ * Characters rather than lines on purpose. Lines are about how a text looks and depend on the width of
+ * the panel; this is about how much of it the browser has to keep in an editable node, and that is the
+ * same on every desk.
+ */
+export const PASTE_ALWAYS_FOLDS_CHARS = 100_000
+
+/**
  * Whether this paste goes in as a chip.
  *
  * Two counts, and the larger of them wins. The text's own lines are what the chip then says about itself,
@@ -172,9 +195,14 @@ export const pasteCollapseLines = (value: string | undefined): number => {
  *
  * Measured rather than guessed from the character count on purpose: how many lines a text takes depends
  * on the width of the panel, and the panel is narrow at one desk and half a screen wide at another.
+ *
+ * The size guard stands FIRST, ahead of "never" and ahead of any threshold: see
+ * [PASTE_ALWAYS_FOLDS_CHARS]. It is not a second opinion about the setting - it answers a question the
+ * setting was never asked.
  */
 export const collapsesPaste = (text: string, minLines: number, drawnLines = 0): boolean =>
-  minLines > PASTE_COLLAPSE_NEVER && Math.max(pasteLineCount(text), drawnLines) >= minLines
+  text.length > PASTE_ALWAYS_FOLDS_CHARS ||
+  (minLines > PASTE_COLLAPSE_NEVER && Math.max(pasteLineCount(text), drawnLines) >= minLines)
 
 /**
  * How much of a text a hover hint takes - lines of a paste, characters of a quote.

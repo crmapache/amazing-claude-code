@@ -4,6 +4,8 @@ import {
   chipLabel,
   chipTitle,
   collapsesPaste,
+  PASTE_ALWAYS_FOLDS_CHARS,
+  PASTE_COLLAPSE_NEVER,
   pasteBody,
   pasteCollapseLines,
   rangeLabel,
@@ -185,8 +187,31 @@ describe('collapsesPaste', () => {
     expect(collapsesPaste(paste(10), 10)).toBe(true)
   })
 
-  it('zero folds nothing, however long the paste', () => {
+  it('zero folds nothing over any number of lines', () => {
     expect(collapsesPaste(paste(500), 0)).toBe(false)
+  })
+
+  /**
+   * The size guard, and the one case where the setting does not have the last word.
+   *
+   * "Never" answers "a paste of what size is worth hiding". It does not answer "may the field hold a
+   * megabyte", and with the folding off it did: measured in the panel, every keystroke after such a
+   * paste blocked the main thread for 113-179 ms, which is a field one cannot type in. See
+   * PASTE_ALWAYS_FOLDS_CHARS.
+   */
+  it('folds a huge paste even when the folding is switched off', () => {
+    const huge = 'x'.repeat(PASTE_ALWAYS_FOLDS_CHARS + 1)
+
+    expect(collapsesPaste(huge, PASTE_COLLAPSE_NEVER)).toBe(true)
+    expect(collapsesPaste(huge, 500)).toBe(true)
+  })
+
+  it('leaves everything up to the guard to the setting', () => {
+    const big = 'x'.repeat(PASTE_ALWAYS_FOLDS_CHARS)
+
+    expect(collapsesPaste(big, PASTE_COLLAPSE_NEVER)).toBe(false)
+    expect(collapsesPaste(big, 2)).toBe(false)
+    expect(collapsesPaste(big, 2, 900)).toBe(true)
   })
 })
 

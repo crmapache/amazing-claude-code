@@ -102,7 +102,7 @@ export const Sounds = ({ prefs, onToggle, onVolume, onPreview }: SoundsProps) =>
                 <span className={s.soundHint}>{sound.hint}</span>
               </span>
 
-              <span className={`${s.soundPercent} ${on ? '' : s.soundPercentOff}`}>
+              <span className={`${s.percentChip} ${on ? '' : s.percentChipMuted}`}>
                 {on ? `${volume}%` : t.common.muted}
               </span>
 
@@ -123,7 +123,7 @@ export const Sounds = ({ prefs, onToggle, onVolume, onPreview }: SoundsProps) =>
                 well, straight at the volume one wants. */}
             <input
               type="range"
-              className={`${s.soundSlider} ${on ? '' : s.soundSliderOff}`}
+              className={`${s.slider} ${on ? '' : s.sliderMuted}`}
               min={0}
               max={100}
               step={1}

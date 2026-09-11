@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { PASTE_COLLAPSE_NEVER } from '../feed/reference'
+import { PASTE_ALWAYS_FOLDS_CHARS, PASTE_COLLAPSE_NEVER } from '../feed/reference'
 import type { Dict } from '../i18n/en'
 import { PASTE_COLLAPSE_MAX, PASTE_COLLAPSE_MIN, clampPasteCollapse } from '../pasteCollapse'
 import s from './sideMenu.module.css'
@@ -15,6 +15,21 @@ import s from './sideMenu.module.css'
  * with it, and coming back to the screen there would be nothing to say what the folding used to be set
  * to; greyed out, the number stays legible and the row above it is the way back.
  */
+/**
+ * The size guard as the screen says it - in thousands of CHARACTERS, which is what is actually counted.
+ *
+ * It used to say kilobytes, and the number was the same one divided by a thousand. That is true of
+ * English and of nothing else: the guard counts characters (see PASTE_ALWAYS_FOLDS_CHARS - what it
+ * guards is what the browser holds in an editable node, and that costs the same per character in every
+ * alphabet), while a kilobyte of Russian or Chinese is two or three times fewer of them. So the promised
+ * hundred kilobytes was two or three hundred on most of the ten languages this panel speaks - and the
+ * line exists precisely so that the exception is not read as a setting quietly not working.
+ *
+ * Counted here rather than written into the dictionaries: ten copies of a number are ten places to
+ * forget when the guard moves. Each language spells the thousands out its own way.
+ */
+const GUARD_THOUSANDS = Math.round(PASTE_ALWAYS_FOLDS_CHARS / 1000)
+
 export const PasteCollapse = ({
   t,
   lines,
@@ -59,7 +74,7 @@ export const PasteCollapse = ({
           <span className={s.choiceTop}>
             <span className={`${s.choiceLabel} ${never ? s.choiceLabelOn : ''}`}>{t.pasteCollapse.never}</span>
           </span>
-          <span className={s.choiceSub}>{t.pasteCollapse.neverSub}</span>
+          <span className={s.choiceSub}>{t.pasteCollapse.neverSub(GUARD_THOUSANDS)}</span>
         </span>
       </button>
 

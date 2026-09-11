@@ -41,7 +41,7 @@ export interface LinkEvents {
    * It happens when a phone is out of reach long enough for the queue on that side to fill, and it
    * happened on nothing more exotic than opening a long conversation - the journal alone was more than
    * the queue held. Either way the cure is the same and it belongs to whoever knows what this phone is
-   * looking at: subscribe again from the number it has (see RemoteAgent.resyncFrames).
+   * looking at: subscribe again from the number it has (see RemoteAgent.resyncFrame).
    */
   onResync?: () => void
 }
@@ -53,8 +53,23 @@ export interface LinkEvents {
  * be one state and it read as a lie in the case that matters most: with the laptop shut, the socket to
  * the relay opens perfectly well, so the app said "connected" over an empty list - which is
  * indistinguishable from a machine where nothing is happening. `asleep` is that case named.
+ *
+ * `silent` is the same case grown old, and it exists because `asleep` stops being the likeliest reading
+ * of it. A machine that has not answered for a minute is having a nap; one that has not answered for
+ * five is switched off, or has had remote access turned off on it, or has let this device go - and none
+ * of those is mended by waiting. So it is said in words, beside the button that ends it.
+ *
+ * `revoked` is that last one confirmed by the IDE itself rather than guessed at.
  */
-export type LinkState = 'connecting' | 'connected' | 'asleep' | 'elsewhere' | 'reconnecting' | 'offline'
+export type LinkState =
+  | 'connecting'
+  | 'connected'
+  | 'asleep'
+  | 'silent'
+  | 'revoked'
+  | 'elsewhere'
+  | 'reconnecting'
+  | 'offline'
 
 /**
  * What a conversation started from this phone is to begin on - the shell's SessionLaunch, on the wire.
@@ -94,6 +109,14 @@ const IDLE_SILENCE_MS = 180_000
  * waiting produces one.
  */
 const AGENT_SILENCE_MS = 6_000
+
+/**
+ * How long an IDE may say nothing before "asleep" stops being the honest word for it - see [LinkState].
+ *
+ * Comfortably past the point where a laptop being opened would have answered, and short enough that
+ * somebody who has just revoked this device at the desk is not left guessing for a quarter of an hour.
+ */
+const SILENT_AFTER_MS = 4 * 60_000
 
 /**
  * How often the handshake is offered again while the IDE has not answered it.
@@ -167,6 +190,25 @@ export class Link {
   /** The pending reconnect, kept so that waking up can overtake a backoff rather than race it. */
   private retry: number | null = null
 
+  /**
+   * Since when this IDE has answered nothing, across reconnects rather than within one.
+   *
+   * Not reset by the socket coming and going, and that is the whole of it: with no keys the line is
+   * torn down and rebuilt every three minutes by [probe], so a count kept per socket could never grow
+   * past three minutes and the case it is for - a machine that has been unreachable all afternoon -
+   * would never be reached.
+   */
+  private quietSince = 0
+
+  /**
+   * The IDE has said, sealed, that it no longer knows this device.
+   *
+   * Nothing on this side can undo that - the keys are gone at the other end, and only pairing again
+   * makes a new device - so the knocking stops. Apart from `closed`, because the two mean different
+   * things to a person: this one leaves the IDE in the list, named and with a way to be let go of.
+   */
+  private retired = false
+
   /** What is still going out, so that frames leave in the order they were asked for - see [send]. */
   private outgoing: Promise<void> = Promise.resolve()
 
@@ -176,6 +218,7 @@ export class Link {
   ) {}
 
   async connect(): Promise<void> {
+    if (this.retired) return
     this.closed = false
 
     // Whatever was scheduled is now happening: a second socket alongside this one would leave an
@@ -194,7 +237,10 @@ export class Link {
     // old socket's death says nothing about the new socket's life.
     this.abandon()
 
-    this.events.onState(this.attempts === 0 ? 'connecting' : 'reconnecting')
+    // A line that has answered nothing for minutes keeps saying so while it is rebuilt: without this
+    // the words a person is reading are replaced by "connecting…" every three minutes, for a second,
+    // by the very teardown that proves nothing is there.
+    this.events.onState(this.longQuiet() ? 'silent' : this.attempts === 0 ? 'connecting' : 'reconnecting')
 
     const address = base64url(unbase64url(this.agent.deviceId))
     const socket = new WebSocket(`${relayAddress(this.agent.relay)}/v1/device?id=${address}`)
@@ -233,7 +279,7 @@ export class Link {
       const displaced = event.code === CLOSE_DISPLACED
       if (!displaced) this.attempts += 1
 
-      this.events.onState(displaced ? 'elsewhere' : 'reconnecting')
+      this.events.onState(displaced ? 'elsewhere' : this.longQuiet() ? 'silent' : 'reconnecting')
 
       const wait = reconnectAfter(event.code, document.visibilityState === 'visible', this.attempts)
       if (wait === null) return
@@ -273,6 +319,24 @@ export class Link {
     if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close()
   }
 
+  /** Whether the wait for this IDE has gone on long enough to be worth different words. */
+  private longQuiet(): boolean {
+    return this.quietSince > 0 && Date.now() - this.quietSince > SILENT_AFTER_MS
+  }
+
+  /**
+   * The IDE has let this device go, and said so under seal.
+   *
+   * The socket goes and nothing brings it back: the key at the other end has been deleted, so every
+   * handshake from here would meet the same answer for ever. What is left on screen is the IDE, named,
+   * with the two things that are actually left to do beside it - pair again, or forget it.
+   */
+  private retire(): void {
+    this.retired = true
+    this.abandon()
+    this.events.onState('revoked')
+  }
+
   close(): void {
     this.closed = true
 
@@ -292,7 +356,7 @@ export class Link {
    * something a person is looking at right now is the difference between "it works" and "it is broken".
    */
   wake(): void {
-    if (this.closed) return
+    if (this.closed || this.retired) return
 
     const socket = this.socket
 
@@ -396,6 +460,9 @@ export class Link {
     if (!pending) return
 
     this.offeredAt = Date.now()
+    // From the first unanswered offer rather than from this one: the wait is what is being measured,
+    // and it does not start again every time the question is repeated.
+    if (this.quietSince === 0) this.quietSince = Date.now()
     this.waitForAgent()
 
     this.sendPlain({
@@ -427,11 +494,25 @@ export class Link {
     }
 
     if (!this.keys) {
-      // Nothing is sealed yet: the only frame worth reading is the agent's half of the handshake.
-      const opening = this.parse(envelope.body)
-      if (opening && (opening as { k?: string }).k === 'sessionAck') {
-        await this.finishResume(opening as { ephemeralPub: string; for?: string })
+      // Nothing is sealed yet: the two frames worth reading are the agent's half of the handshake and
+      // its refusal to take part in one.
+      const opening = this.parse(envelope.body) as { k?: string } | null
+
+      if (opening?.k === 'sessionAck') {
+        await this.finishResume(opening as unknown as { ephemeralPub: string; for?: string })
+        return
       }
+
+      /*
+       * "This machine no longer knows you", said to a device that came back after being let go of.
+       *
+       * It cannot be sealed - the key it would have been sealed with is exactly what was deleted - so
+       * whoever carries frames could write one. It is therefore allowed to change what the screen says
+       * and nothing else: the handshake goes on being offered on its own timetable, so a forgery costs
+       * a wrong label until the real IDE answers, and never a phone that has stopped trying.
+       */
+      if (opening?.k === 'revoked') this.events.onState('revoked')
+
       return
     }
 
@@ -483,6 +564,11 @@ export class Link {
     if (payload.k === 'event' && payload.b) this.events.onMessage(payload.b, payload.pj ?? '')
     if (payload.k === 'inventory') this.events.onInventory(payload)
     if (payload.k === 'resync') this.events.onResync?.()
+
+    // Sealed, so only this IDE can have written it: worth acting on rather than merely displaying.
+    // It arrives at the moment somebody presses Revoke at the desk, while the keys it is sealed with
+    // still exist - which is the only moment it can be sent at all.
+    if (payload.k === 'revoked') this.retire()
 
     if (payload.k === 'projectOpened') {
       const answer = payload as unknown as { s?: string; ok?: boolean; pj?: string; error?: string }
@@ -541,6 +627,7 @@ export class Link {
 
     // The IDE has spoken: this is the moment the machine is genuinely reachable, and the only honest
     // moment to say so.
+    this.quietSince = 0
     this.stopWaitingForAgent()
     this.events.onState('connected')
 
@@ -558,7 +645,7 @@ export class Link {
 
     this.answering = window.setTimeout(() => {
       this.answering = null
-      if (!this.keys && !this.closed) this.events.onState('asleep')
+      if (!this.keys && !this.closed) this.events.onState(this.longQuiet() ? 'silent' : 'asleep')
     }, AGENT_SILENCE_MS)
   }
 

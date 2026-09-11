@@ -1,4 +1,5 @@
 import type { ScenarioRunSummary } from '../protocol'
+import type { SessionState } from '../components/Header'
 
 /**
  * What is going and what is over, and what to call one run when its scenario's name is not enough.
@@ -32,6 +33,54 @@ export const runningRuns = (live: ScenarioRunSummary[]): ScenarioRunSummary[] =>
  */
 export const pastRuns = (runs: ScenarioRunSummary[], live: ScenarioRunSummary[]): ScenarioRunSummary[] =>
   runs.filter((run) => !isLive(run, live))
+
+/**
+ * A run in the five states a dot is drawn in - the same five a conversation's tab uses (see
+ * sessionState in App.tsx).
+ *
+ * One table rather than a decision at each dot, because the two screens that draw one draw it from
+ * different sides: the strip at the desk gives a run its own tab, and the phone puts a row for it on the
+ * project's card. A run going for an hour under a grey dot is the state this exists to prevent, and it
+ * is invisible to whoever is not looking at the run itself.
+ *
+ * Paused and stopped are grey on purpose. Both mean nothing is happening, and both were a person's own
+ * hand: a breathing dot over a run that was parked promises work that is not going on. The exception is
+ * a pause laid over an open question - the question can still be answered (see the note about pausing a
+ * card standing on one), so it keeps calling.
+ *
+ * [live] is whether the machine still lists this run among the ones going, and it beats the record. A
+ * summary is read off the disk, and an IDE closed in the middle of a step leaves the last state it wrote
+ * there for ever - so a row drawn from the shelf alone breathes over work that ended in the night. Said
+ * by default, because every caller that draws the live list has already been told it by the IDE.
+ */
+export const runDot = (
+  run: Pick<ScenarioRunSummary, 'state'> & { asking?: string },
+  live = true,
+): SessionState => {
+  if (run.state === 'failed') return 'crashed'
+  if (run.state === 'done') return 'done'
+  if (run.state === 'stopped') return 'idle'
+  if (!live) return 'idle'
+  if (run.state === 'blocked') return 'attention'
+  if (run.state === 'paused') return run.asking ? 'attention' : 'idle'
+
+  return 'running'
+}
+
+/**
+ * The same for a whole set of live runs: the most pressing one of them.
+ *
+ * What the hub's own tab says, and it can only ever say three of the five: a run that is over leaves the
+ * live list altogether, so there is nothing there to draw green or red. Somebody being waited for beats
+ * work in progress, and work in progress beats a shelf where nothing is going.
+ */
+export const liveDot = (live: ScenarioRunSummary[]): SessionState => {
+  // Called one at a time rather than handed to map: the index map passes second would land in [live].
+  const dots = live.map((run) => runDot(run))
+  if (dots.includes('attention')) return 'attention'
+
+  return dots.includes('running') ? 'running' : 'idle'
+}
 
 /**
  * What each of these runs is called, beyond the name of its scenario.
