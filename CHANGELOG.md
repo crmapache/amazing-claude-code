@@ -9,6 +9,20 @@ commits.
 
 ## [Unreleased]
 
+## [0.12.13] - 2026-09-19
+
+- Fixed: a conversation held on "Opus (1M context)" and reopened from the history came back on the ordinary window - one at 8% reopened at 44%, and a longer one at a red 100%. Under every answer Claude Code signs the model without its window, exactly as it signs plain Opus; the window is written down on a separate line of its own, and the panel only read the signature. It reads that line now, so the conversation comes back on the model and the window it was held on. On an account that does not have the large window at all, it comes back on the same model at the ordinary one instead of dying on the first message.
+- Fixed: the context meter of a conversation on the 1M window, fresh or reopened, measured itself against a fifth of that window until Claude Code had answered with the exact figure.
+- Added: a queue for scenarios. Beside Run on a scenario's row there is "Add to the queue": what is put there runs one at a time, in the order it was added, and nothing starts until the run before it is out of the way - including a run somebody started by hand. Each turn says what it waits for: a clean run before it, or the run before it whatever happened. A run that fails or is stopped stops the queue instead of being stepped over, and the queue waits for you - start the next one, or empty the queue. It lives on this machine, survives a restart of the IDE, and the phone can do all of it.
+- Fixed: "Continue in a chat" on a finished scenario run opened a conversation in which nothing could be asked. The agent went on being the run's main thread and answered a request to change a file with "I do not write files in this role, start a new run". It is told the run is over now, and does the work.
+- Fixed: and with every chat closed, the same button apparently did nothing - the conversation was raised under the run's own tab, which went on showing the run, so it was live and there was nowhere to type into it.
+- Fixed: a scenario set for nine in the morning did not run unless somebody had opened the scenarios in that project since the IDE was started, and a queue lined up the night before stood still after a restart. Nothing was watching the clock until then. It is watched as soon as the panel or a phone looks at the project.
+- Fixed: on the phone, the first screen told the truth about one project at best. A project working since nine showed yesterday's stopped run, one you had moved on from went on saying "Running" for good, and the branch was missing from every card but one. What a project's card is drawn from now reaches every phone on the line, not only the one looking inside that project.
+- Fixed: on the phone and in a second window, a project's branch and its pull request appeared and disappeared in turns. They were said as two separate halves, and whoever joined later was handed only the half found last.
+- Fixed: on the phone, a project whose panel had never been opened in the IDE showed an empty composer and empty shelves for as long as it stayed open.
+- Fixed: signed out of Claude Code's own sign-in and working on added accounts, the accounts screen said "sign in to Claude Code first" beside two accounts that were signed in, and the button to add another one disappeared.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.12.12] - 2026-09-11
 
 - Fixed: opening the same conversation in a second place - a laptop's browser beside the phone - stopped the first one dead. Catching a device up on what it had missed was sent to everyone watching that project instead of to the device that asked, and a catch-up begins with "your screen is about to be rebuilt" and ends with "and that is all of it": the phone showed nothing between the two, and nothing for ever if the closing half was lost on the way. A conversation can now be open in as many places as you like, and each of them keeps its own place in it.
@@ -687,7 +701,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.12...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.13...HEAD
+[0.12.13]: https://github.com/crmapache/amazing-claude-code/compare/0.12.12...0.12.13
 [0.12.12]: https://github.com/crmapache/amazing-claude-code/compare/0.12.11...0.12.12
 [0.12.11]: https://github.com/crmapache/amazing-claude-code/compare/0.12.10...0.12.11
 [0.12.10]: https://github.com/crmapache/amazing-claude-code/compare/0.12.9...0.12.10
