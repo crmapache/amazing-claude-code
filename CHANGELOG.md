@@ -9,6 +9,17 @@ commits.
 
 ## [Unreleased]
 
+## [0.12.14] - 2026-09-19
+
+- Added: "Indicators" under Settings - the readings around the input field switch off one by one: the context bar and the "ctx 42%" beside it, the five-hour ring, the weekly ring, a model's weekly ring, the tokens spent today, the feedback bubble and the heart. What is switched off is not drawn at all rather than left as an empty space, and with the whole row above the field gone the field takes that space back.
+- Added: a model's own weekly limit - "Fable" on the plans that have one - as a ring of its own beside the five-hour and the weekly ones, and as a third figure on the account's card. Claude Code has been answering with that window all along; the panel simply never read it. A plan without such a window shows nothing instead of a dash that promises a figure. While the ring is on the screen, it is the one that lights up when extra usage is being paid for, and the row in the feed now names that window "weekly Fable" instead of "weekly, extra usage included", which named the wrong one.
+- Fixed: on a narrow panel the heart at the end of the row under the field was cut in half by the panel's edge. It steps aside together with the feedback bubble once the row runs out of width, and comes back when there is room - the rings stay, because the limits are not read anywhere else.
+- Added: scenarios are put in order by dragging - by the grip on the left of a row, up and down its own shelf and over onto the other one. A row dropped on the other shelf takes its file with it, and its scheduled hours and its turns on the queue follow it there; a shelf that already holds a scenario under the same name refuses the move rather than writing over it. The order of a shelf is remembered - the repository's shelf carries its own order for everyone working in it, your own follows you from project to project. The keyboard does it too: space picks a row up, the arrows move it across both shelves, space puts it down.
+- Changed: the card of a run that is going opens the run on a press anywhere on it, the way a scenario's row opens its editor - the Open button between Pause and Stop is gone. What the run is doing - "Running", "Paused", "Waiting for you" - moved to the corner of the line of readings, out of the row of things to press.
+- Fixed: an empty shelf of scenarios stood taller than a row with a scenario on it, so everything below it jumped whenever the last scenario left the shelf. It is a row's height now, and while a row is being dragged the shelf it came from keeps open exactly the place it will go back to.
+- Fixed: on macOS the cursor did not change over anything that can be dragged - a scenario's row, a tab being carried along the strip, the grip of the input field. The cursor for it is drawn by the runtime through a system cursor newer versions of macOS no longer have, so an ordinary arrow came out; there it is the pointing hand now.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.12.13] - 2026-09-19
 
 - Fixed: a conversation held on "Opus (1M context)" and reopened from the history came back on the ordinary window - one at 8% reopened at 44%, and a longer one at a red 100%. Under every answer Claude Code signs the model without its window, exactly as it signs plain Opus; the window is written down on a separate line of its own, and the panel only read the signature. It reads that line now, so the conversation comes back on the model and the window it was held on. On an account that does not have the large window at all, it comes back on the same model at the ordinary one instead of dying on the first message.
@@ -701,7 +712,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.13...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.14...HEAD
+[0.12.14]: https://github.com/crmapache/amazing-claude-code/compare/0.12.13...0.12.14
 [0.12.13]: https://github.com/crmapache/amazing-claude-code/compare/0.12.12...0.12.13
 [0.12.12]: https://github.com/crmapache/amazing-claude-code/compare/0.12.11...0.12.12
 [0.12.11]: https://github.com/crmapache/amazing-claude-code/compare/0.12.10...0.12.11
