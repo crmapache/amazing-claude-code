@@ -178,8 +178,13 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      * The rounds of work somebody wrote down once, and the runs that came of them (see ScenarioDesk).
      *
      * Lazy, unlike the search beside it: the search pays for its index at every project's opening because
-     * the first keystroke has to answer, while a project that has no scenarios in it should not so much as
-     * read a directory to find that out.
+     * the first keystroke has to answer, while a project nobody is looking at should not so much as read a
+     * directory to find out whether it has any scenarios.
+     *
+     * "Nobody is looking" is the honest line, and it is drawn at the first client rather than at the
+     * scenarios button: [warmUp] builds this desk, so a panel open on the project - or a phone watching it
+     * from elsewhere - is enough for the hours and the queue to be watched. Behind the button it was not:
+     * a morning alarm needed somebody to have pressed it in that project first.
      */
     val scenarios: ScenarioDesk by lazy { ScenarioDesk(project, this) }
 
@@ -425,6 +430,20 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // wrong in a way that took a live IDE to notice: the relay connection reports its state through
         // the same cache and does it first, so the cache was never empty by the time the panel asked -
         // and the panel sat on "checking Claude Code…" forever.
+        warmUpIfNeeded()
+    }
+
+    /**
+     * Collect the project's facts, once, if nobody has yet.
+     *
+     * Called from [attach] for a client that has joined, and from the network agent for a phone that has
+     * subscribed to the project without joining as a client. The second is not an edge: a window whose
+     * panel was never opened has no client at all, and the phone reaching it from elsewhere is exactly
+     * the moment those facts are wanted.
+     *
+     * By its own flag rather than by "the cache is empty" - see the note at the end of [attach].
+     */
+    fun warmUpIfNeeded() {
         if (warmed.compareAndSet(false, true)) warmUp()
     }
 
@@ -504,6 +523,20 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             // this a phone would never learn them - and the panel would draw an empty settings row over
             // a list that is not empty.
             "the custom models" to { catalog.sendCustomModels() },
+            /*
+             * The rounds of work this project has written down - and, with them, the clock that watches
+             * their hours and the queue's own beat (see ScenarioDesk's constructor).
+             *
+             * That clock is the reason this line exists rather than the list. The desk is built lazily,
+             * and the only thing that used to build it was somebody pressing the scenarios button in
+             * this project: until that press, an hour set for nine in the morning came and went with
+             * nothing looking at it, and a queue lined up the night before stood still after a restart.
+             * Neither said anything - there was no code running to say it.
+             *
+             * The list is worth collecting here for its own sake too: a phone subscribing to the project
+             * is handed the cache as it stands, and an empty cache is a screen on "Loading…".
+             */
+            "the scenarios" to { scenarios.sendList() },
         )) {
             runCatching(collect).onFailure { thisLogger().warn("Could not collect $what", it) }
         }
@@ -1344,6 +1377,16 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
          */
         title: String = "",
         titleSource: String = SessionSnapshot.TITLE_HEURISTIC,
+        /**
+         * Whether what is being opened is a scenario run's main thread - said by the one button that
+         * opens one (see ScenarioRunTab and the phone's ScenarioRun).
+         *
+         * It decides one thing, and nothing here would decide it otherwise: that the tab tells the agent
+         * its part in the run is over (see ClaudeLaunch.AFTER_SCENARIO_HEAD). From this side the
+         * conversation is an identifier like any other - what it used to be is known only to whoever
+         * pressed the button.
+         */
+        wasScenarioHead: Boolean = false,
     ) {
         if (conversationId.isEmpty()) return
 
@@ -1356,7 +1399,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         }
 
         stats.noteResumed(sessionId, conversationId)
-        conversations.resume(sessionId, conversationId)
+        conversations.resume(sessionId, conversationId, wasScenarioHead)
         // The feed that was there described a different conversation: every client is told to drop it
         // rather than left showing something that no longer exists.
         resetJournal(sessionId)
@@ -1804,6 +1847,14 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             "scenarios",
             "scenarioLive",
             "scenarioRun",
+            /*
+             * What is lined up to run one after another (see ScenarioQueue).
+             *
+             * A fourth slot rather than a field of the shelves: the queue moves when a run ends, which is
+             * nothing to do with the shelves, and a screen that joins while a night is half done has to be
+             * told what is still waiting - a fact not listed here never reaches a joining client at all.
+             */
+            "scenarioQueue",
         )
     }
 }

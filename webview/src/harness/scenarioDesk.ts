@@ -1,6 +1,8 @@
 import type {
   AgentEvent,
   Scenario,
+  ScenarioQueued,
+  ScenarioQueueState,
   ScenarioRun,
   ScenarioRunStep,
   ScenarioRunSummary,
@@ -34,6 +36,24 @@ const walkers: Record<string, ReturnType<typeof setInterval>> = {}
 /** The description a model is "writing" right now, by its request's number - see scenarioDraft. */
 /** The hours the scenarios are set to start at, as the IDE would keep them (see ScheduleStore). */
 let hours: ScenarioSchedule[] = []
+/**
+ * The queue, as the IDE keeps it (see ScenarioQueue on the Kotlin side).
+ *
+ * Held here rather than derived from the runs, because that is what it is over there: a list on the disk
+ * that outlives every run it raises, and a stop that only a person can lift. Walked by [stepQueue] at the
+ * same two moments the IDE walks it - a turn added, and a run ending.
+ */
+let queue: ScenarioQueueState = {
+  waiting: [],
+  runId: '',
+  runName: '',
+  raisedAt: 0,
+  held: false,
+  heldWhy: '',
+  heldName: '',
+}
+/** Every third turn the queue raises "fails", so the state the whole band is arranged around is seen. */
+let raised = 0
 let drafting = ''
 /** Every third one comes back refused, so the failure is seen as often as the answer. */
 let drafted = 0
@@ -425,7 +445,85 @@ const brokenRun = (): ScenarioRun => {
 
 const sendList = (): void => {
   send({ type: 'scenarios', scenarios: shelves, runs, schedules: hours, canShare: true })
+  sendQueue()
   sendLive()
+}
+
+const sendQueue = (): void => send({ type: 'scenarioQueue', queue })
+
+/**
+ * One step of the queue, at the two moments the IDE takes one: a turn added over an idle queue, and a run
+ * it raised coming to an end.
+ *
+ * The rule is the IDE's, written small (see QueueRules.step): nothing starts while the turn before it is
+ * going; a turn that wants a clean ending and does not get one stops the queue; a turn whose time has come
+ * while a run started from the shelf is going stands behind that run instead of starting beside it; and a
+ * stop is lifted by a person and by nothing else. Every third turn raised here "fails" instead, because a
+ * queue that never stops shows none of the band that exists for the stop.
+ */
+const stepQueue = (): void => {
+  if (queue.held) return
+  if (queue.runId && live.includes(queue.runId)) return
+
+  const next = queue.waiting[0]
+  if (!next) return
+
+  const before = queue.runId ? records[queue.runId] : undefined
+  const clean = !queue.runId || before?.state === 'done'
+  if (!clean && next.afterSuccess) {
+    queue = { ...queue, held: true, heldWhy: before?.state ?? 'unknown', heldName: queue.runName }
+    return sendQueue()
+  }
+
+  // Something else is going - a run started by hand from the shelf. The turn stands behind the newest of
+  // them rather than starting beside it, exactly as the IDE writes it down (see QueueRules.step): the band
+  // then names that run, and its ending is what the next step judges, like the ending of a run of its own.
+  const beside = live
+    .filter((id) => id !== queue.runId)
+    .map((id) => records[id])
+    .filter((run): run is ScenarioRun => run !== undefined)
+  const newest = beside.reduce<ScenarioRun | undefined>(
+    (best, run) => (!best || run.startedAt > best.startedAt ? run : best),
+    undefined,
+  )
+  if (newest) {
+    queue = { ...queue, runId: newest.id, runName: newest.scenarioName, raisedAt: Date.now() }
+    return sendQueue()
+  }
+
+  const scenario = shelves.find((one) => one.id === next.scenarioId)
+  raised += 1
+  if (!scenario || raised % 3 === 0) {
+    // The other way a queue stops: the turn could not be raised at all. It keeps its place and wears the
+    // reason, exactly as on the machine - dropped silently, it would be work asked for and never done.
+    queue = {
+      ...queue,
+      waiting: queue.waiting.map((one, at) => (at === 0 ? { ...one, failure: 'noClaude' } : one)),
+      held: true,
+      heldWhy: 'noClaude',
+      heldName: next.scenarioName,
+    }
+    return sendQueue()
+  }
+
+  const id = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`
+  const run = blankRun(structuredClone(scenario), id, next.inputs)
+  records[id] = run
+  runs = [summarise(run), ...runs]
+  live = [...live, id]
+  queue = {
+    ...queue,
+    waiting: queue.waiting.slice(1),
+    runId: id,
+    runName: next.scenarioName,
+    raisedAt: Date.now(),
+  }
+  sendQueue()
+  // No tab is opened for it: the turn was taken hours ago as far as anybody is concerned, exactly as
+  // with a scheduled run.
+  send({ type: 'scenarioStarted', runId: id, scheduled: true })
+  sendList()
+  walk(id)
 }
 
 /**
@@ -437,8 +535,13 @@ const sendList = (): void => {
  */
 const sendLive = (): void => {
   const going = live.map((id) => records[id]).filter((run): run is ScenarioRun => run !== undefined)
+  // And the newest run that is over, exactly as the IDE sends it (see ScenarioDesk.sendLive): it is what
+  // a project's card on a phone says when nothing is going, and the shelves never reach that screen.
+  const over = Object.values(records)
+    .filter((run) => !live.includes(run.id))
+    .sort((first, second) => second.startedAt - first.startedAt)[0]
 
-  send({ type: 'scenarioLive', runs: going.map(summarise) })
+  send({ type: 'scenarioLive', runs: going.map(summarise), last: over ? summarise(over) : undefined })
 }
 
 /**
@@ -523,6 +626,9 @@ const walk = (id: string, from = 0, startIn: 'run' | 'judge' = 'run'): void => {
       keep({ ...run, state: 'done', finishedAt: Date.now() })
       stopWalking(id)
       sendList()
+      // And if the queue was standing behind this run - its own, or one started from the shelf - its next
+      // turn is due now; the IDE does the same on the ending of every run (see ScenarioDesk.ended).
+      stepQueue()
       return
     }
 
@@ -817,6 +923,90 @@ export const answerScenarios = (message: WebviewMessage): void => {
     return
   }
 
+  /*
+   * The queue, as the IDE keeps it: a list on the disk, taken one turn at a time.
+   *
+   * Every one of these answers by sending the whole queue back, which is what the machine does - the
+   * screens are drawn from the list and from nothing they work out themselves.
+   */
+  if (message.type === 'scenarioQueue') {
+    const scenario = shelves.find((one) => one.id === message.id)
+    if (!scenario) return
+
+    const entry: ScenarioQueued = {
+      id: `q-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`,
+      scenarioId: scenario.id,
+      scope: scenario.scope,
+      scenarioName: scenario.name,
+      inputs: message.inputs,
+      afterSuccess: message.afterSuccess,
+      addedAt: Date.now(),
+      failure: '',
+    }
+
+    // Put on an empty queue over a run already behind it, the turn starts the queue afresh: that ending
+    // was nobody's premise, and remembered it would stop a turn added hours later - see QueueRules.put.
+    const afresh = queue.waiting.length === 0 && !(queue.runId && live.includes(queue.runId))
+    const base = afresh ? { ...queue, held: false, heldWhy: '', heldName: '', runId: '', runName: '', raisedAt: 0 } : queue
+    queue = { ...base, waiting: [...base.waiting, entry] }
+    sendQueue()
+    // Over an idle queue this starts at once, which is what makes the button answer rather than file.
+    stepQueue()
+    return
+  }
+
+  if (message.type === 'scenarioQueueRemove') {
+    const left = queue.waiting.filter((one) => one.id !== message.entryId)
+    // The last turn gone takes the stop with it, as emptying the queue does - see QueueRules.remove.
+    const emptied = left.length === 0 && queue.waiting.length > 0
+    queue = emptied ? { ...queue, waiting: left, held: false, heldWhy: '', heldName: '' } : { ...queue, waiting: left }
+    return sendQueue()
+  }
+
+  if (message.type === 'scenarioQueueMove') {
+    const from = queue.waiting.findIndex((one) => one.id === message.entryId)
+    const to = from + message.by
+    if (from >= 0 && to >= 0 && to < queue.waiting.length) {
+      const moved = [...queue.waiting]
+      moved.splice(to, 0, ...moved.splice(from, 1))
+      queue = { ...queue, waiting: moved }
+    }
+    return sendQueue()
+  }
+
+  if (message.type === 'scenarioQueueMode') {
+    queue = {
+      ...queue,
+      waiting: queue.waiting.map((one) =>
+        one.id === message.entryId ? { ...one, afterSuccess: message.afterSuccess } : one,
+      ),
+    }
+    return sendQueue()
+  }
+
+  if (message.type === 'scenarioQueueGoOn') {
+    // The run it stopped on is forgotten along with the stop, or the next step would read the same
+    // failure and stop again - see QueueRules.letGo.
+    queue = {
+      ...queue,
+      held: false,
+      heldWhy: '',
+      heldName: '',
+      runId: '',
+      runName: '',
+      raisedAt: 0,
+      waiting: queue.waiting.map((one, at) => (at === 0 ? { ...one, failure: '' } : one)),
+    }
+    sendQueue()
+    stepQueue()
+    return
+  }
+
+  if (message.type === 'scenarioQueueClear') {
+    queue = { ...queue, waiting: [], held: false, heldWhy: '', heldName: '' }
+    return sendQueue()
+  }
+
   if (message.type === 'scenarioOpen') {
     const run = records[message.runId]
     return run ? send({ type: 'scenarioRun', run }) : send({ type: 'scenarioOutcome', ok: false, code: 'runGone' })
@@ -887,6 +1077,9 @@ export const answerScenarios = (message: WebviewMessage): void => {
       live = live.filter((one) => one !== message.runId)
       stopWalking(message.runId)
       sendList()
+      // A run cut short by a person is not a clean ending either, so the queue stops on it - which is
+      // the one way to see that state without waiting for something to actually go wrong.
+      stepQueue()
     }
     return
   }

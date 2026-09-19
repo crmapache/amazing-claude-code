@@ -239,6 +239,7 @@ export const ru: Dict = {
     bands: {
       scenarios: 'Сценарии',
       runs: 'Прогоны',
+      queue: 'Очередь',
       schedule: 'Расписание',
     },
     create: 'Новый сценарий',
@@ -317,6 +318,58 @@ export const ru: Dict = {
     deleteTitle: 'Удалить этот сценарий?',
     deleteRun: 'Удалить этот запуск',
     deleteRunTitle: 'Удалить этот запуск?',
+    queue: {
+      add: 'В очередь',
+      oneAtATime: 'по одному, по порядку',
+      waitingHere: (n) => {
+        const rest = n % 100
+        const last = n % 10
+        if (last === 1 && !(rest >= 11 && rest <= 14)) return `${n} запуск ждёт в очереди`
+        if (last >= 2 && last <= 4 && !(rest >= 11 && rest <= 14)) return `${n} запуска ждут в очереди`
+        return `${n} запусков ждут в очереди`
+      },
+      placeFirst: 'Встанет первым в очереди.',
+      placeBehind: (name) => `Встанет первым в очереди и начнётся, когда закончится ${name}.`,
+      place: (ahead) => {
+        const rest = ahead % 100
+        const last = ahead % 10
+        if (last === 1 && !(rest >= 11 && rest <= 14)) return `Впереди ${ahead} запуск.`
+        if (last >= 2 && last <= 4 && !(rest >= 11 && rest <= 14)) return `Впереди ${ahead} запуска.`
+        return `Впереди ${ahead} запусков.`
+      },
+      startWhen: 'КОГДА НАЧИНАТЬ',
+      afterSuccess: 'После того, как предыдущий закончится успешно',
+      afterSuccessNote: 'Если тот упадёт или его остановят, очередь встанет здесь и подождёт вас.',
+      afterAnything: 'После предыдущего, чем бы он ни кончился',
+      afterAnythingNote: 'Начнётся, даже если предыдущий упал. Для работы, которая от него не зависит.',
+      waitsForSuccess: 'после успешного',
+      waitsForAnything: 'после любого',
+      switchToAny: 'Начинать, даже если предыдущий упадёт',
+      switchToSuccess: 'Начинать только после успешного',
+      wouldNotStart: (why) => `не запустился: ${why}`,
+      moveUp: 'Выше в очереди',
+      moveDown: 'Ниже в очереди',
+      remove: 'Убрать из очереди',
+      stopped: 'Очередь встала',
+      stoppedOn: (name, why) => `${name} закончился: ${why}. Дальше ничего не начнётся.`,
+      stoppedUnknown: 'неизвестно, чем он кончился',
+      goOn: 'Запустить следующий',
+      goOnBehind: 'Продолжить после текущего',
+      goOnBehindHint: (name) => `Следующий начнётся, когда закончится ${name}.`,
+      clear: 'Очистить очередь',
+      clearTitle: 'Очистить очередь?',
+      clearSubject: (n) => {
+        const rest = n % 100
+        const last = n % 10
+        if (last === 1 && !(rest >= 11 && rest <= 14)) return `${n} запуск ждёт`
+        if (last >= 2 && last <= 4 && !(rest >= 11 && rest <= 14)) return `${n} запуска ждут`
+        return `${n} запусков ждут`
+      },
+      goingNow: 'Идёт сейчас',
+      empty: 'Ничего не поставлено в очередь',
+      emptyNote: 'Поставьте сюда круг работ - он начнётся, как только освободится предыдущий.',
+      unread: 'Очередь не прочиталась - файл на этой машине мог повредиться. Ничего не потеряно: список, который не прочитался, никогда не перезаписывается.',
+    },
     running: 'СЕЙЧАС ИДУТ',
     runningNote: 'все по одной рабочей копии',
     runningHere: (n) => {
@@ -435,6 +488,7 @@ export const ru: Dict = {
       noClaude: 'Claude Code на этой машине не найден.',
       runGone: 'Такого запуска больше нет.',
       runNotResumable: 'Этот запуск нельзя продолжить: его главный поток так и не поднялся.',
+      queueNotWritten: 'Очередь не удалось записать на диск.',
       unknown: 'Что-то пошло не так.',
     },
     run: {

@@ -72,6 +72,14 @@ internal class RemoteAgent : Disposable {
     private data class Subscription(val projectKey: String, val sessionId: String, val since: Long)
 
     /**
+     * One of a project's facts on its way out, and whether it is for everybody.
+     *
+     * The two travel together because both are read off the same message and reading it twice would be a
+     * second way of deciding the same thing (see RemoteFeed.isOverview and RemoteFeed.Outgoing).
+     */
+    private data class Fact(val everyone: Boolean, val outgoing: RemoteFeed.Outgoing)
+
+    /**
      * When each device last said anything - what decides between sending and ringing.
      *
      * Written only for a frame that opened, which is to say only for a device that proved it is one.
@@ -865,9 +873,24 @@ internal class RemoteAgent : Disposable {
         // The page that said this has nothing yet, whatever its predecessor under the same address was
         // sent (see RelayClient.forgetFacts).
         for (attached in projects.values) attached.client.forgetFacts(address)
+        // And with that memory gone, the overview facts of every OTHER project have to be said again -
+        // they are not sent by the delivery below, which is about this project alone, and nothing else
+        // would say them until one of them next changed.
+        greet(address)
         thisLogger().info("A device is now watching ${sessionId.ifEmpty { "the project" }} from $since")
 
         val attachment = projects[projectKey] ?: return
+
+        /*
+         * Nobody has asked this project's CLI anything yet, and a phone is the one asking now.
+         *
+         * The facts a first screen is drawn from - the branch, the file list, the commands, the limits -
+         * are collected once, by the first client that joins as a client (see ClaudeSessionHub.attach).
+         * A window whose panel was never opened has no such client, so a phone subscribing to it was
+         * handed the empty cache and nothing ever filled it: an empty composer and empty shelves, for as
+         * long as that project stayed open.
+         */
+        attachment.hub.warmUpIfNeeded()
 
         /*
          * A device may watch a project without watching a conversation in it, and an empty conversation
@@ -1114,6 +1137,32 @@ internal class RemoteAgent : Disposable {
      */
     private fun sendInventory(device: ByteArray) {
         send(device, inventoryBody())
+        // The same knock answers "and what is each of these projects like": the branch, what is running
+        // in it, the language and the colours. A device asks this every half minute and whenever it
+        // wakes, which is exactly when a page that has just loaded knows nothing (see [greet]).
+        greet(Frame.encodeAddress(device))
+    }
+
+    /**
+     * Tell one device the handful of facts that belong to no conversation and to every screen.
+     *
+     * Sent rather than answered, and to a device that has asked for nothing in particular. A phone opens
+     * on a list of every project on every paired IDE, with a branch and a row of what is running on each
+     * card - and a page that has just loaded is subscribed to nothing at all, so there was no address
+     * those facts could be delivered to and the first screen stood blank until a project was entered.
+     *
+     * Only the overview ones (see RemoteFeed.isOverview): the file list and the shelves are tens of
+     * kilobytes each and belong to whichever project is actually open on the screen. What has not
+     * changed since this device was last sent it does not travel at all, so a knock every half minute
+     * costs nothing once the first one has been answered.
+     */
+    private fun greet(deviceId: String) {
+        for (attached in projects.values) {
+            if (attached.project.isDisposed) continue
+
+            runCatching { attached.client.overviewTo(deviceId, attached.hub.projectFacts()) }
+                .onFailure { thisLogger().warn("A device could not be told about a project", it) }
+        }
     }
 
     /**
@@ -1142,8 +1191,7 @@ internal class RemoteAgent : Disposable {
     private fun broadcastInventory() {
         if (link == null) return
 
-        val now = System.currentTimeMillis()
-        val awake = sessions.openDevices().filter { now - (lastHeard[it] ?: 0) < AWAKE_MS }
+        val awake = devicesOnTheLine()
         if (awake.isEmpty()) return
 
         val body = inventoryBody()
@@ -1152,6 +1200,22 @@ internal class RemoteAgent : Disposable {
             val address = runCatching { Frame.decodeAddress(deviceId) }.getOrNull() ?: continue
             send(address, body)
         }
+    }
+
+    /**
+     * The devices with a line up right now: keys in hand and a word from them lately.
+     *
+     * Both halves matter and neither is enough alone. Keys without a word is a phone that was switched
+     * off in the night - what is sent to it waits in a queue that is thrown away entire when it overflows
+     * (see RemoteOutbox), so writing to it is worse than not writing. A word without keys cannot be
+     * sealed for at all.
+     *
+     * Read by the inventory and by the overview facts beside it, because the two are the same idea: what
+     * a device is told without having asked goes to whoever is actually there to read it.
+     */
+    private fun devicesOnTheLine(): Set<String> {
+        val now = System.currentTimeMillis()
+        return sessions.openDevices().filterTo(mutableSetOf()) { now - (lastHeard[it] ?: 0) < AWAKE_MS }
     }
 
     private fun inventoryBody(): JsonObject {
@@ -1499,6 +1563,27 @@ internal class RemoteAgent : Disposable {
             val sendable = if (live) messages.filterNot(RemoteFeed::isReplayLine) else messages
 
             /*
+             * Who is told anything at all about this project, and it is two groups rather than one.
+             *
+             * The devices WATCHING it get everything: the feed of the conversation they asked for and
+             * every fact, the heavy ones included. That is what a subscription is for.
+             *
+             * The devices merely on the line get the handful of facts that a screen about all the
+             * projects is drawn from (see RemoteFeed.isOverview). A device holds one subscription, and
+             * the first screen a phone opens on is about every project on every paired IDE - so
+             * addressing those by subscription meant drawing them for at most one project, and for none
+             * at all on a page that had just loaded.
+             *
+             * On the line rather than merely paired, and the same reading the inventory uses: a device
+             * that has been switched off for a week must not have frames piled up for it in a queue that
+             * is thrown away whole when it overflows (see RemoteOutbox). One that comes back says so,
+             * and is greeted with the overview at once (see [greet]).
+             */
+            val watchers = subscriptions.filterValues { it.projectKey == projectKey }
+            val told = if (asker != null) setOf(asker) else watchers.keys + devicesOnTheLine()
+            if (told.isEmpty()) return
+
+            /*
              * The project's facts, cut down for a phone once rather than once per device - and cut down
              * BEFORE the fingerprint below rather than after it, because what decides whether a fact is
              * worth sending has to be what actually goes out.
@@ -1509,30 +1594,30 @@ internal class RemoteAgent : Disposable {
              * as it arrives, every beat of an hours-long run would be sealed and sent to a phone in
              * somebody's pocket; fingerprinted as it leaves, a run costs a frame per thing that happens.
              */
-            val facts = if (subscriptions.isEmpty()) {
-                emptyList()
-            } else {
-                sendable.mapNotNull { message ->
-                    RemoteFeed.projectFact(message)?.let { type -> RemoteFeed.forPhone(type, message) }
+            val facts = sendable.mapNotNull { message ->
+                RemoteFeed.projectFact(message)?.let { type ->
+                    Fact(everyone = RemoteFeed.isOverview(type), outgoing = RemoteFeed.forPhone(type, message))
                 }
             }
 
-            // What a device was last sent goes with the device: a phone that was revoked or moved to
-            // another project leaves a slot behind for every run it ever watched, and nothing else here
-            // would ever take them away (see FactMemory). By what is watching THIS project, because a
-            // device that moved to another one keeps its place in the map under the same address.
-            FactMemory.prune(
-                sentFacts,
-                subscriptions.filterValues { it.projectKey == projectKey }.keys,
-            )
+            // What a device was last sent goes with the device: a phone that was revoked, or switched
+            // off, or moved to another project leaves a slot behind for every run it ever watched, and
+            // nothing else here would ever take them away (see FactMemory). By who is being told
+            // anything at all, because a device that moved keeps its place in the map under the same
+            // address - asked as "still paired", half of this would never fire.
+            FactMemory.prune(sentFacts, told)
 
-            for ((address, subscription) in subscriptions) {
-                if (subscription.projectKey != projectKey) continue
-                // A catch-up belongs to the device that asked for it, and to no other.
-                if (asker != null && address != asker) continue
+            for (address in told) {
+                val subscription = watchers[address]
 
-                val wanted = newFacts(address, facts) +
-                    sendable.filter { RemoteFeed.wantedBy(it, subscription.sessionId) }
+                // Kept in the order they arrived in, which is the order a client draws them in (see
+                // ClaudeSessionHub.PROJECT_ORDER): splitting them into two lists and joining those would
+                // put a fact before the one it refers to.
+                val theirs = facts.filter { subscription != null || it.everyone }.map { it.outgoing }
+
+                val wanted = newFacts(address, theirs) +
+                    (subscription?.let { one -> sendable.filter { RemoteFeed.wantedBy(it, one.sessionId) } }
+                        ?: emptyList())
                 if (wanted.isEmpty()) continue
 
                 queue(address, wanted)
@@ -1541,6 +1626,29 @@ internal class RemoteAgent : Disposable {
             link?.flush(::resyncFrame)
 
             if (live) handOverReplayed(messages)
+        }
+
+        /**
+         * The project's overview facts to one device, whether or not it is watching anything here.
+         *
+         * Apart from [deliver] because it answers a different question: that one is "something has
+         * happened, who should hear it", this one is "somebody has just arrived, what do they not yet
+         * know". Both go through [newFacts], so a device that already has them is sent nothing.
+         */
+        fun overviewTo(address: String, facts: List<String>) {
+            if (link == null) return
+
+            val theirs = facts.mapNotNull { message ->
+                RemoteFeed.projectFact(message)
+                    ?.takeIf(RemoteFeed::isOverview)
+                    ?.let { type -> RemoteFeed.forPhone(type, message) }
+            }
+
+            val wanted = newFacts(address, theirs)
+            if (wanted.isEmpty()) return
+
+            queue(address, wanted)
+            link?.flush(::resyncFrame)
         }
 
         /**

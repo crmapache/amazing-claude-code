@@ -107,6 +107,26 @@ internal class ClaudeSessions(
      */
     private val launches = ConcurrentHashMap<String, SessionLaunch>()
 
+    /**
+     * The tabs holding a conversation that was a scenario run's main thread - see
+     * [ClaudeLaunch.AFTER_SCENARIO_HEAD].
+     *
+     * Per TAB rather than per process, because a process is not the life of this: a tab put to sleep by
+     * the idle sweep, a crash, a restart for an added MCP server and a move to another account all raise
+     * a new one over the same transcript, and the role would come back with every one of them.
+     */
+    private val afterScenarioHead = ConcurrentHashMap.newKeySet<String>()
+
+    /**
+     * The same tabs, until the role has been lifted IN the conversation - see [releasedRole].
+     *
+     * Two sets rather than one because they answer at different moments and stop at different ones. The
+     * system prompt above is said to every process this tab raises, for as long as it holds that
+     * conversation; this is said once, inside the conversation, and then the transcript carries it
+     * itself.
+     */
+    private val roleStillHeld = ConcurrentHashMap.newKeySet<String>()
+
     /** A restart waiting for the turn that was running when it was asked for - see [restart]. */
     private data class DeferredRestart(val processStartedAt: Long, val then: () -> Unit)
 
@@ -124,8 +144,29 @@ internal class ClaudeSessions(
         // And a restart it was asked for and has not made either - so that what is said below goes into
         // a process holding the servers as they stand now (see [applyPendingRestart]).
         applyPendingRestart(sessionId)
-        session(sessionId).sendPrompt(text, images)
+        session(sessionId).sendPrompt(releasedRole(sessionId, text), images)
     }
+
+    /**
+     * The first message into a tab continuing a run's main thread, with the role lifted above it.
+     *
+     * The system prompt alone does not do it, and that was measured rather than assumed: with
+     * ClaudeLaunch.AFTER_SCENARIO_HEAD in the launch and nothing else, the agent refused the same
+     * request three times over - "I do not write files in this role, a new run is needed". It is not
+     * stubbornness but arithmetic: the transcript it comes up over is hundreds of kilobytes of being
+     * told exactly that, every message ending in a demand for JSON, and one paragraph appended to the
+     * system prompt is outvoted. Said as the last thing in the conversation, it is the most recent
+     * instruction there, and it holds.
+     *
+     * Once. After this the transcript carries the release itself, so every later message - and every
+     * later process over this conversation, from any door - reads it as part of the conversation.
+     *
+     * Ahead of the person's words rather than instead of them: the turn they asked for is the turn they
+     * get. What the panel shows is their own message, because the echo has already gone out by now (see
+     * ClaudeSessionHub.prompt) - the frame belongs to the agent, not to the screen.
+     */
+    private fun releasedRole(sessionId: String, text: String): String =
+        if (roleStillHeld.remove(sessionId)) "${ClaudeLaunch.AFTER_SCENARIO_HEAD}\n\n$text" else text
 
     /**
      * A branch off another conversation: the branch gets its whole transcript and an identifier of its
@@ -175,7 +216,7 @@ internal class ClaudeSessions(
      * Continuing the chosen conversation inside it is impossible: a conversation is given to a process
      * at launch. So the previous one is closed and a new one raised, exactly as when a tab is closed.
      */
-    fun resume(sessionId: String, conversationId: String) {
+    fun resume(sessionId: String, conversationId: String, wasScenarioHead: Boolean = false) {
         // Taken across the close on purpose. `close` drops an unspent choice, which is right when a tab
         // is abandoned and wrong here: this tab is being repurposed, and a choice made FOR this resume -
         // a model, an effort, a mode - would otherwise be wiped a line before it is read.
@@ -183,6 +224,13 @@ internal class ClaudeSessions(
 
         close(sessionId)
         chosen?.let { launches[sessionId] = it }
+        // Written AFTER the close, which clears it: what the tab held before this has nothing to do with
+        // what it is being given now, and a tab that once continued a head would otherwise go on lifting
+        // a role from every conversation opened in it afterwards.
+        if (wasScenarioHead) {
+            afterScenarioHead.add(sessionId)
+            roleStillHeld.add(sessionId)
+        }
 
         sessions[sessionId] = newSession(sessionId, forkFrom = null, resumeFrom = conversationId).also {
             Disposer.register(this, it)
@@ -483,6 +531,16 @@ internal class ClaudeSessions(
     private fun modelFor(accountId: String, model: String): String {
         val accounts = ClaudeAccounts.getInstance()
         if (accounts.canRun(accountId, model) != false) return model
+
+        // The same model at its ordinary window comes before any other model. The window mark is the one
+        // thing the catalogue is strict about (see ModelNames.holds): an account served plain Opus and not
+        // the large window used to be handed `opus[1m]` all the same, and the process died on the first
+        // message - and since a resumed conversation now carries the mark its transcript was held on (see
+        // ClaudeHistory.modelIdentity), every resume of such a conversation under such an account would go
+        // the same way. Without the mark it is what it was before the mark was read at all: the
+        // conversation, on its own model, in the window this account has.
+        val unmarked = ModelNames.unmarked(model)
+        if (unmarked != model && accounts.canRun(accountId, unmarked) != false) return unmarked
 
         val own = accounts.account(accountId)?.model.orEmpty()
         if (own.isNotEmpty() && accounts.canRun(accountId, own) != false) return own
@@ -943,6 +1001,10 @@ internal class ClaudeSessions(
     fun close(sessionId: String) {
         // A tab closed before anything was written into it takes its unspent choice with it.
         launches.remove(sessionId)
+        // And what its conversation used to be: the next one opened here is somebody else's (see
+        // [afterScenarioHead]).
+        afterScenarioHead.remove(sessionId)
+        roleStillHeld.remove(sessionId)
         // And an outstanding move: there is nothing left to move it to. Kept, the note would be found
         // by a tab that happens to be opened under the same id later, and its deadline would take down
         // whatever is running there by then.
@@ -1033,6 +1095,10 @@ internal class ClaudeSessions(
             model = model,
             effort = effort,
             accountId = account,
+            // A tab is told where it is running; one continuing a finished run's main thread is told one
+            // thing more - that the role the transcript keeps insisting on is over (see
+            // ClaudeLaunch.AFTER_SCENARIO_HEAD).
+            briefing = ClaudeLaunch.panelBriefing(afterScenarioHead = sessionId in afterScenarioHead),
             // Never chosen at all - we start in the same mode a terminal would start in this directory (see
             // PermissionDefaultMode).
             permissionMode = PermissionModes.resolve(

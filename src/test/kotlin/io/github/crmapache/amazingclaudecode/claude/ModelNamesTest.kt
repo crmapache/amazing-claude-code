@@ -1,5 +1,6 @@
 package io.github.crmapache.amazingclaudecode.claude
 
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.Test
@@ -60,8 +61,33 @@ class ModelNamesTest {
         val catalogue = setOf("claude-opus-5", "claude-sonnet-5")
 
         assertTrue(ModelNames.holds(catalogue, "opus"))
-        assertTrue(ModelNames.holds(catalogue, "opus[1m]"))
+        // Not the large window, though: a catalogue that has it names it (see the test below).
+        assertFalse(ModelNames.holds(catalogue, "opus[1m]"))
         assertFalse(ModelNames.holds(catalogue, "haiku"))
+    }
+
+    // The case behind the strictness: a conversation held on "Opus (1M context)" resumed under an account
+    // whose catalogue knows `opus` and not `opus[1m]`. Handed the mark all the same, the process comes up
+    // looking well and dies on the first message (see ClaudeAccounts.canRun).
+    @Test
+    fun `a window mark is held only by a catalogue that names it`() {
+        val ordinary = setOf("default", "opus", "sonnet", "haiku")
+        val large = setOf("default", "opus", "opus[1m]", "claude-opus-5[1m]", "sonnet", "haiku")
+
+        assertFalse(ModelNames.holds(ordinary, "claude-opus-5[1m]"))
+        assertFalse(ModelNames.holds(ordinary, "opus[1m]"))
+        assertTrue(ModelNames.holds(large, "claude-opus-5[1m]"))
+        assertTrue(ModelNames.holds(large, "opus[1m]"))
+        // The other way round the mark says nothing: served at the large window, served at the ordinary one.
+        assertTrue(ModelNames.holds(setOf("default", "opus[1m]", "sonnet", "sonnet[1m]", "haiku"), "claude-opus-5"))
+    }
+
+    @Test
+    fun `the mark comes off a name and nothing else does`() {
+        assertEquals("claude-opus-5", ModelNames.unmarked("claude-opus-5[1m]"))
+        assertEquals("opus", ModelNames.unmarked("opus[1m]"))
+        assertEquals("opus", ModelNames.unmarked("opus"))
+        assertEquals("claude-haiku-4-5-20251001", ModelNames.unmarked("claude-haiku-4-5-20251001"))
     }
 
     @Test

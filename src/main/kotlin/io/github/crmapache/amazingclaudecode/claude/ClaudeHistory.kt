@@ -253,11 +253,13 @@ internal object ClaudeHistory {
     private const val META = "\"isMeta\":true"
     private const val TEXT_BLOCK = "\"type\":\"text\""
 
-    /** A page of a conversation's messages, and where the next one would start - see [page]. */
     /**
-     * [model] is the one the conversation was last answered by, read off the page's own lines - empty
-     * when none of them was an answer. Right only for the conversation's end, which is what the tab opens
-     * with (see [opening]): that is the model a resumed conversation carries on at.
+     * A page of a conversation's messages, and where the next one would start - see [page].
+     *
+     * [model] is the one the conversation carries on at: the model that last answered, in the fullest
+     * spelling the file has for it (see [modelOf]) - empty when nothing in the file named one. Right only
+     * for the conversation's end, which is what the tab opens with (see [opening]): that is the model a
+     * resumed conversation is launched on.
      */
     data class Page(val lines: List<String>, val cursor: String?, val model: String = "")
 
@@ -265,6 +267,9 @@ internal object ClaudeHistory {
      * The model that last answered in [lines], by the signature under the answer - the same field the
      * feed reads the model from (see realModel in feed/build.ts). The CLI's own placeholders sign as
      * <synthetic> and are not a model anybody can be launched on.
+     *
+     * The signature names the model and nothing more - never its window: that comes from a line of the
+     * CLI's own (see [modelIdentity]), and the two are put together by [modelOf].
      */
     internal fun lastModel(lines: List<String>): String {
         for (line in lines.asReversed()) {
@@ -276,6 +281,77 @@ internal object ClaudeHistory {
     }
 
     private val MODEL_FIELD = Regex("\"model\":\"([^\"]+)\"")
+
+    /**
+     * The model the CLI says it is running, from a line of its own - the one name that carries the window
+     * mark.
+     *
+     * The signature under an answer names the model and nothing more: an answer on "Opus (1M context)" is
+     * signed `claude-opus-5`, exactly like one on plain Opus - verified on CLI 2.1.268 launched with
+     * `claude-opus-5[1m]`, and across two hundred thousand answers on this machine not one signature
+     * carries the mark. The mark lives here instead: an attachment of type `model`, which CLIs from 2.1.257
+     * write when a conversation starts and again whenever the model changes, the mark alone included -
+     * `{"attachment":{"type":"model","identity":{"modelId":"claude-opus-5[1m]",…}},"type":"attachment",…}`.
+     * Read by the signature alone, a conversation held on the large window came back on the ordinary one,
+     * and the CLI honestly reported a window a fifth the size: a conversation at 8% reopened at 44%, a
+     * longer one at a red 100% (see ClaudeSessionHub.resumeConversation).
+     *
+     * Parsed rather than matched: the two substrings only say the line is worth parsing - a handful per
+     * file - and the shape decides. null when the line is not that.
+     */
+    internal fun modelIdentity(line: String): String? {
+        if (!line.contains(ATTACHMENT) || !line.contains(MODEL_ID)) return null
+
+        return runCatching {
+            Json.parseToJsonElement(line).jsonObject["attachment"]?.jsonObject
+                ?.takeIf { it["type"]?.jsonPrimitive?.contentOrNull == "model" }
+                ?.get("identity")?.jsonObject
+                ?.get("modelId")?.jsonPrimitive?.contentOrNull
+                ?.takeIf { it.isNotBlank() }
+        }.getOrNull()
+    }
+
+    private const val ATTACHMENT = "\"type\":\"attachment\""
+    private const val MODEL_ID = "\"modelId\""
+
+    /**
+     * The model a conversation carries on at, out of the two places its transcript names one.
+     *
+     * The signature decides WHICH model: it stands under every answer, so it is never behind. The identity
+     * line supplies the fuller spelling when it names that same model - that is where the window mark is,
+     * and the signature never has it (see [modelIdentity]). An identity line naming another model is one
+     * the conversation has since moved off without a new line being written (a CLI older than the line
+     * writes none on a switch), and is not believed over the answer. With no answer at all the identity
+     * line is all there is: a conversation written into and never answered was still opened on that model.
+     */
+    internal fun modelOf(signature: String, identity: String): String = when {
+        signature.isEmpty() -> identity
+        identity.isEmpty() -> signature
+        ModelNames.same(identity, signature) -> identity
+        else -> signature
+    }
+
+    /** What one pass over the file yields: the window a page is cut from, and the CLI's last word on the model. */
+    internal data class Tail(val window: Window, val identity: String)
+
+    /**
+     * One pass over the transcript, for two things at once.
+     *
+     * The window is cut out of the messages (see [windowOf]); the model's full name is read off EVERY line
+     * on the way there, because the line that carries it is not a message and the window never holds it
+     * (see [modelIdentity]): written once when the conversation starts and again on every change, the last
+     * of them may lie thousands of lines above the window. The pass reads the whole file to find its tail
+     * anyway, so the second reading costs a substring check per line.
+     *
+     * For a page asked for by a boundary the pass stops there, and what was read of the identity stops with
+     * it - which is fine, because a page's model is right only for the conversation's end (see [Page]).
+     */
+    internal fun tailOf(lines: Sequence<String>, before: String?, pageSize: Int): Tail {
+        var identity = ""
+        val window = windowOf(candidates(lines.onEach { line -> modelIdentity(line)?.let { identity = it } }), before, pageSize)
+
+        return Tail(window, identity)
+    }
 
     /**
      * A page of the conversation's messages, older than [before] - the same lines [replay] would hand
@@ -316,15 +392,15 @@ internal object ClaudeHistory {
         // what the tab holds asks for its pages one after another: the veil stood over the feed for as
         // long as it took to read the whole file that many times over. Told by their shape alone, the
         // lines cost a pass of string checks; the parsing is paid for a page's worth of them.
-        val window = runCatching { file.useLines { lines -> windowOf(candidates(lines), before, pageSize) } }
+        val scanned = runCatching { file.useLines { lines -> tailOf(lines, before, pageSize) } }
             .onFailure { thisLogger().warn("Failed to page conversation $id", it) }
-            .getOrDefault(Window(emptyList(), moreAbove = false))
-        val prepared = window.lines.mapNotNull(::replayLine).map(shorten)
+            .getOrDefault(Tail(Window(emptyList(), moreAbove = false), identity = ""))
+        val prepared = scanned.window.lines.mapNotNull(::replayLine).map(shorten)
 
         // The boundary has already done its work inside the window, so the slicing is asked for the
         // window's own end rather than for it a second time.
-        val sliced = pageOf(prepared, before = null, pageSize = pageSize, maxChars = maxChars, moreAbove = window.moreAbove)
-        return sliced.copy(model = lastModel(sliced.lines))
+        val sliced = pageOf(prepared, before = null, pageSize = pageSize, maxChars = maxChars, moreAbove = scanned.window.moreAbove)
+        return sliced.copy(model = modelOf(lastModel(sliced.lines), scanned.identity))
     }
 
     /** The stretch of a transcript one page can be cut out of - see [windowOf]. */

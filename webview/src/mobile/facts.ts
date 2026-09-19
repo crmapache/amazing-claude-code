@@ -3,7 +3,14 @@ import type { CommandEntry, CommandHint } from '../feed/slash'
 import { buildCommands } from '../feed/slash'
 import { emptyUsageBook, mergeUsageBook, usageOf, type UsageBook, type UsageFacts } from '../feed/usage'
 import type { Dict } from '../i18n/en'
-import type { Scenario, ScenarioRun, ScenarioRunSummary, ScenarioSchedule, ShellMessage } from '../protocol'
+import type {
+  Scenario,
+  ScenarioQueueState,
+  ScenarioRun,
+  ScenarioRunSummary,
+  ScenarioSchedule,
+  ShellMessage,
+} from '../protocol'
 import { pastRuns } from '../scenarios/runs'
 
 /**
@@ -85,6 +92,15 @@ export interface ProjectFacts extends UsageFacts {
    */
   scenarios?: ScenarioShelves
   /**
+   * What is lined up to run one after another in that project (see ScenarioQueue).
+   *
+   * A fact of its own rather than part of the shelves above, for the reason it is a message of its own on
+   * the wire: it moves when a run ENDS, which is a different clock from the one the shelves change on.
+   * Absent until the machine has said anything, which the screen draws as neither a list nor "nothing is
+   * lined up".
+   */
+  queue?: { state: ScenarioQueueState; unread: boolean }
+  /**
    * The runs this phone has been handed whole, by their id.
    *
    * By id rather than one slot, because two of them arrive by different roads and must not overwrite
@@ -101,6 +117,14 @@ export interface ProjectFacts extends UsageFacts {
    * carrying for the run whose timeline is open (see [runs] above).
    */
   liveRuns?: ScenarioRunSummary[]
+  /**
+   * The newest run of that project that is over - see the `last` field of the `scenarioLive` message.
+   *
+   * Beside the live ones rather than taken off the shelves, and that is what makes the first screen work
+   * for every project rather than for the one being watched: the shelves travel by subscription and a
+   * phone holds one of those, while this arrives for every project on the machine.
+   */
+  lastRun?: ScenarioRunSummary
 }
 
 /** Both shelves of a project, the runs that came of them, and the ones waiting for their hour. */
@@ -162,6 +186,7 @@ export const isFact = (message: ShellMessage): boolean =>
   message.type === 'calmColors' ||
   message.type === 'customModels' ||
   message.type === 'scenarios' ||
+  message.type === 'scenarioQueue' ||
   message.type === 'scenarioLive' ||
   message.type === 'scenarioRun'
 
@@ -181,15 +206,22 @@ export const applyFact = (facts: ProjectFacts, message: ShellMessage, watching =
       // Into the account it names, never over the picture on screen - see [ProjectFacts.usage].
       return { ...facts, usage: mergeUsageBook(facts.usage, message) }
 
+    /*
+     * The branch and its pull request, each falling back to what is already held.
+     *
+     * The machine says the whole of this fact every time (see ProjectCatalog.sayProject), so on a current
+     * plugin nothing ever falls back. The fallback is for the other case, which is the ordinary one for a
+     * week after a release: this page is served by the relay and updates with it, while the plugin
+     * updates when somebody gets round to it - and an older one sends the branch and the pull request as
+     * two separate messages, each carrying its half. Replaced whole, the second of them wiped the first,
+     * so a project's card showed a branch that disappeared at the next look at GitHub.
+     */
     case 'project':
-      // Replaced rather than merged, unlike the usage: this one message is the whole answer about the
-      // branch, and a branch with no pull request says so by leaving the field out. Merging would keep
-      // yesterday's PR number beside today's branch.
       return {
         ...facts,
-        gitBranch: message.gitBranch,
-        pullRequest: message.pullRequest,
-        pullRequestUrl: message.pullRequestUrl,
+        gitBranch: message.gitBranch ?? facts.gitBranch,
+        pullRequest: message.pullRequest ?? facts.pullRequest,
+        pullRequestUrl: message.pullRequestUrl ?? facts.pullRequestUrl,
       }
 
     case 'files':
@@ -245,7 +277,19 @@ export const applyFact = (facts: ProjectFacts, message: ShellMessage, watching =
      * wait for that record, and a run standing on a question never sends another beat at all.
      */
     case 'scenarioLive':
-      return { ...facts, liveRuns: message.runs }
+      // Both halves of it, and `last` kept as it arrived - absent means "that IDE has not said", which on
+      // an older plugin is the honest answer and is drawn as no row at all.
+      return { ...facts, liveRuns: message.runs, lastRun: message.last ?? facts.lastRun }
+
+    /*
+     * What is lined up to run one after another.
+     *
+     * Apart from the shelves for the reason it is apart on the wire: it moves when a run ends rather than
+     * when somebody writes a scenario. Cut down on the way out, like everything else on this road - the
+     * answers a turn carries are free text somebody typed (see RemoteFeed.trimmedQueue).
+     */
+    case 'scenarioQueue':
+      return { ...facts, queue: { state: message.queue, unread: message.queueUnread === true } }
 
     /*
      * One run, whole - and only the one whose screen is open.
@@ -330,7 +374,11 @@ export const projectRuns = (facts: ProjectFacts | undefined): ScenarioRunSummary
   const live = liveRunsOf(facts)
   if (live.length > 0) return live
 
-  const last = pastRuns(facts?.scenarios?.past ?? [], live)[0]
+  // Off the live fact first, because that is the one that reaches a project this phone is not watching -
+  // which is every project but one, and all of them on a page that has just loaded. The shelves are the
+  // second answer and only ever a better one by a moment: they are read when this screen is opened over
+  // that project, and then they are as fresh as the fact.
+  const last = facts?.lastRun ?? pastRuns(facts?.scenarios?.past ?? [], live)[0]
 
-  return last ? [last] : []
+  return last && !live.some((run) => run.id === last.id) ? [last] : []
 }

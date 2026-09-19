@@ -1,7 +1,6 @@
 import { en } from '../i18n/en'
 import { describe, expect, it } from 'vitest'
-import type { ShellMessage } from '../protocol'
-import type { ScenarioRunSummary } from '../protocol'
+import type { ScenarioRunSummary, ShellMessage } from '../protocol'
 import { applyFact, emptyFacts, factsFor, isFact, phoneCommands, projectRuns } from './facts'
 
 const window = (percent: number) => ({ percent, resets: '' })
@@ -103,11 +102,11 @@ describe('applyFact', () => {
   })
 
   /**
-   * Unlike the usage, one "project" message is the whole answer about the branch: a branch with no
-   * pull request says so by leaving the field out. Merging would keep yesterday's PR number beside
-   * today's branch, which is the one wrong thing this row can say.
+   * One "project" message is the whole answer about the branch and its pull request, and a branch with no
+   * pull request says so with an empty field rather than by leaving it out. What this guards is the one
+   * wrong thing the row can say: yesterday's PR number beside today's branch.
    */
-  it('replaces the branch whole, so a branch with no PR does not inherit the last one', () => {
+  it('lets a branch with no PR say so, rather than inheriting the last one', () => {
     const withPr = applyFact(emptyFacts(), {
       type: 'project',
       gitBranch: 'feat/mobile-ui',
@@ -115,11 +114,36 @@ describe('applyFact', () => {
       pullRequestUrl: 'https://example.test/12',
     } as ShellMessage)
 
-    const switched = applyFact(withPr, { type: 'project', gitBranch: 'main' } as ShellMessage)
+    // Said with empty fields rather than by leaving them out, which is what the machine does (see
+    // ProjectCatalog.refreshPullRequest): "there is no pull request" and "this message is not about one"
+    // have to be different sentences.
+    const switched = applyFact(withPr, {
+      type: 'project',
+      gitBranch: 'main',
+      pullRequest: '',
+      pullRequestUrl: '',
+    } as ShellMessage)
 
     expect(switched.gitBranch).toBe('main')
-    expect(switched.pullRequest).toBeUndefined()
-    expect(switched.pullRequestUrl).toBeUndefined()
+    expect(switched.pullRequest).toBe('')
+    expect(switched.pullRequestUrl).toBe('')
+  })
+
+  /**
+   * A plugin older than this page sends the branch and the pull request as two messages, each with its
+   * half. Replaced whole, the second wiped the first - and what that looked like was a branch on the
+   * project card that vanished a minute after it appeared, every time the IDE looked at GitHub.
+   */
+  it('keeps the half an older machine did not mention', () => {
+    const withBranch = applyFact(emptyFacts(), { type: 'project', gitBranch: 'main' } as ShellMessage)
+    const withPr = applyFact(withBranch, {
+      type: 'project',
+      pullRequest: '12',
+      pullRequestUrl: 'https://example.test/12',
+    } as ShellMessage)
+
+    expect(withPr.gitBranch).toBe('main')
+    expect(withPr.pullRequest).toBe('12')
   })
 
   it('keeps the files and the hints apart from each other', () => {
@@ -210,6 +234,36 @@ describe('applyFact, the record of a run', () => {
     const facts = applyFact(emptyFacts(), record('r1'), '')
 
     expect(facts.runs).toEqual({})
+  })
+})
+
+/**
+ * What is going in a project, and what last did.
+ *
+ * Both halves ride on one message because both reach every paired device rather than only the one
+ * watching that project (see RemoteFeed.isOverview). The second half is the one that fails quietly: an
+ * IDE older than the field says nothing about it, and read as "there is no finished run" that silence
+ * would wipe a row the screen is showing.
+ */
+describe('applyFact, what a project is running', () => {
+  const going = (id: string) => ({ id, scenarioId: 's1', state: 'running' }) as unknown as ScenarioRunSummary
+  const over = (id: string) => ({ id, scenarioId: 's1', state: 'done' }) as unknown as ScenarioRunSummary
+
+  const live = (runs: ScenarioRunSummary[], last?: ScenarioRunSummary) =>
+    ({ type: 'scenarioLive', runs, last }) as ShellMessage
+
+  it('takes both the ones going and the newest one over', () => {
+    const facts = applyFact(emptyFacts(), live([going('a')], over('b')))
+
+    expect(facts.liveRuns?.map((run) => run.id)).toEqual(['a'])
+    expect(facts.lastRun?.id).toBe('b')
+  })
+
+  it('keeps the finished one a machine too old to send it says nothing about', () => {
+    const first = applyFact(emptyFacts(), live([], over('b')))
+    const second = applyFact(first, live([going('a')]))
+
+    expect(second.lastRun?.id).toBe('b')
   })
 })
 
@@ -314,6 +368,40 @@ describe('projectRuns', () => {
     }
 
     expect(projectRuns(facts)).toHaveLength(1)
+  })
+
+  /**
+   * The half that makes the first screen work at all.
+   *
+   * The shelves reach one project - whichever this phone is watching - because they are tens of kilobytes
+   * and travel by subscription. The live fact reaches every project on every paired machine, and it
+   * carries the newest finished run for exactly this row (see the `last` field of `scenarioLive`). Read
+   * off the shelves alone, a card was blank for every project but one, and blank for all of them on a
+   * page that had just loaded.
+   */
+  it('takes the finished run off the live fact, with no shelves at all', () => {
+    const facts = { ...emptyFacts(), lastRun: summary({ id: 'night', state: 'done', startedAt: 20 }) }
+
+    expect(projectRuns(facts).map((run) => run.id)).toEqual(['night'])
+  })
+
+  /** And it is still one row: what is going wins the card, as it always did. */
+  it('never draws the finished one beside a run that is going', () => {
+    const going = summary({ id: 'a' })
+    const facts = { ...emptyFacts(), liveRuns: [going], lastRun: summary({ id: 'b', state: 'done' }) }
+
+    expect(projectRuns(facts).map((run) => run.id)).toEqual(['a'])
+  })
+
+  /**
+   * The live frame is sent the moment a run ends, and for that one beat the run is on both halves of it.
+   * Drawn from each, the card would show the same work twice - once breathing and once as history.
+   */
+  it('never repeats the finished run that is also named as going', () => {
+    const one = summary({ id: 'a', state: 'done' })
+    const facts = { ...emptyFacts(), liveRuns: [one], lastRun: one }
+
+    expect(projectRuns(facts).map((run) => run.id)).toEqual(['a'])
   })
 
   /**

@@ -1061,6 +1061,310 @@
   gap: 4px;
 }
 
+/* --- The queue: what is lined up, and what the queue is doing about it ---------------- */
+
+/*
+ * A queue that has stopped, and it is the loudest thing on this screen on purpose.
+ *
+ * The same paint as the strip about a run asking a question, because it is the same kind of news: work
+ * that a person and only a person can start again. Everything else on this band is a list.
+ */
+/* The buttons go under the words when both do not fit on one line, rather than squeezing the words into a
+   column one word wide: in a panel of 400px the sentence about why the queue stopped - the only thing here a
+   person has to read - came out eleven lines tall beside two buttons that had all the room. */
+.queueHeld {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 9px;
+  padding: 9px 11px;
+  margin-bottom: 12px;
+  border: 1px solid var(--acc-warn-32);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-warn-06);
+}
+
+.queueHeldDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--acc-warn);
+}
+
+.queueHeldText {
+  flex: 1 1 220px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* The same text, pressable when there is a run to open - and saying so on hover. */
+.queueHeldOpen {
+  text-align: left;
+}
+
+.queueHeldOpen:hover .queueHeldWhy {
+  color: var(--acc-fg-dim);
+}
+
+.queueHeldTitle {
+  font: 500 11.5px/1.4 var(--acc-font);
+  color: var(--acc-warn-light);
+}
+
+.queueHeldWhy {
+  font: 11px/1.5 var(--acc-font);
+  color: var(--acc-fg-faint);
+}
+
+.queueHeldButtons {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* The turn the queue raised, while it is going: a line rather than a card, because the run itself has a
+   card of its own on the band next door and a tab of its own besides. */
+.queueGoing {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  margin-bottom: 12px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-card);
+}
+
+.queueGoingDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--acc-ok);
+  animation: accPulse 2s ease-in-out infinite;
+}
+
+.queueGoingText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  text-align: left;
+}
+
+.queueGoingTitle {
+  flex: none;
+  font: 500 11.5px var(--acc-font);
+  color: var(--acc-fg);
+}
+
+.queueGoingName {
+  min-width: 0;
+  font: 11px var(--acc-font);
+  color: var(--acc-fg-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.queueGoingFact {
+  flex: none;
+  font: 10.5px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.queueRows {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* A waiting turn. The shape of an hour's row, because it answers the same kind of question - what will
+   run, and what it is waiting for - and two lists in one screen that read differently for no reason are
+   two lists to learn. */
+.queueRow {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 11px;
+  padding: 8px 9px 8px 11px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-card);
+  overflow: hidden;
+}
+
+/* The rail down the side, in the shelf's own paint - the same two colours the shelves wear. */
+.queueRow::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+}
+
+.queueRow.railProject::before {
+  background: var(--acc-branch);
+}
+
+.queueRow.railUser::before {
+  background: var(--acc-agent);
+}
+
+.queueRow:hover,
+.queueRow[data-hover] {
+  border-color: var(--acc-line-hover);
+  background: var(--acc-bg-panel);
+}
+
+/* The place in the line, in a gutter of its own - the timetable's shape, with a number where it keeps
+   the hour. Order read off a figure is order read without counting rows. */
+.queueGutter {
+  flex: none;
+  width: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-right: 11px;
+  border-right: 1px solid var(--acc-line);
+}
+
+.queuePlace {
+  font: 500 11.5px/1.2 var(--acc-mono);
+  color: var(--acc-fg-ghost);
+}
+
+.queueText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.queueName {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  max-width: 100%;
+  font: 500 12.5px var(--acc-font);
+  color: var(--acc-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Which turn of this scenario it is - empty when it is the only one, see queueMarks. */
+.queueMark {
+  min-width: 0;
+  font: 400 11px var(--acc-mono);
+  color: var(--acc-fg-ghost);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.queueFacts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-width: 100%;
+  font: 11px var(--acc-font);
+  color: var(--acc-fg-ghost);
+}
+
+/* What this turn waits for, and it is pressable: the queue is where the whole night is read at once,
+   which is the moment somebody realises the third one need not wait for the second. */
+.queueWaits {
+  padding: 1px 6px;
+  border-radius: var(--acc-r-xs);
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-faint);
+  font: 10.5px var(--acc-font);
+  white-space: nowrap;
+}
+
+.queueWaits:hover,
+.queueWaits[data-hover] {
+  background: var(--acc-neutral-16);
+  color: var(--acc-fg);
+}
+
+/* The other half of the same choice, in the paint of something that goes on regardless. */
+.queueWaitsAny {
+  background: var(--acc-warn-12);
+  color: var(--acc-warn-light);
+}
+
+.queueFailed {
+  color: var(--acc-warn-light);
+}
+
+.queueActions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* The choice in the form: two rows, each saying what it does. What is being chosen is what happens to the
+   REST of the night when this turn's predecessor falls over, and that does not fit beside a tick box. */
+.queueChoice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.queueChoiceLabel {
+  font: 500 10px var(--acc-font);
+  letter-spacing: 0.08em;
+  color: var(--acc-fg-ghost);
+}
+
+.queueOption {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bg-card);
+  text-align: left;
+}
+
+.queueOption:hover,
+.queueOption[data-hover] {
+  border-color: var(--acc-line-hover);
+}
+
+.queueOptionOn {
+  border-color: var(--acc-branch-line);
+  background: var(--acc-branch-10);
+}
+
+.queueOptionName {
+  font: 500 12px var(--acc-font);
+  color: var(--acc-fg);
+}
+
+.queueOptionNote {
+  font: 11px/1.5 var(--acc-font);
+  color: var(--acc-fg-ghost);
+}
+
 /* --- The overlay the three forms stand on ------------------------------------------- */
 
 .overlayScrim {

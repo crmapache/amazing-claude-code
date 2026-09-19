@@ -44,15 +44,32 @@ internal object ModelNames {
      * The plain family name and the full identifier are both accepted for each other: a catalogue that
      * knows `opus` and a transcript that says `claude-opus-5` are talking about the same thing, and the
      * generation is only meaningful when both sides name one.
+     *
+     * The window mark is the one part of a name this IS strict about, and one way round only. A marked
+     * name is held by an entry carrying the same mark and by nothing else: the large window is a thing an
+     * account has or has not, and the CLI's catalogue names `opus[1m]` beside `opus` only where it has it -
+     * a conversation brought up with a mark the account cannot serve looks perfectly well and dies on the
+     * first message (see ClaudeAccounts.canRun). An unmarked name is held by a marked entry as before: a
+     * model served at the large window is served at the ordinary one.
      */
     fun holds(names: Collection<String>, model: String): Boolean {
         val wanted = key(model)
+        val mark = markOf(model)
 
         return names.any { name ->
             val known = key(name)
-            known == wanted || known == family(wanted) || family(known) == wanted
+            (known == wanted || known == family(wanted) || family(known) == wanted) &&
+                (mark.isEmpty() || markOf(name) == mark)
         }
     }
+
+    /** The name without its window mark - `claude-opus-5` for `claude-opus-5[1m]`; an unmarked name as it is. */
+    fun unmarked(model: String): String = model.substringBefore('[')
+
+    /** The window mark alone, in lowercase - `1m` - and empty for a name without one. */
+    private fun markOf(model: String): String = MARK.find(model.lowercase())?.groupValues?.get(1).orEmpty()
+
+    private val MARK = Regex("""\[([^\]]*)\]""")
 
     /** The family alone - `haiku` for `claude-haiku-4-5-20251001` - and a name with no known family as it is. */
     fun familyOf(model: String): String = family(key(model))

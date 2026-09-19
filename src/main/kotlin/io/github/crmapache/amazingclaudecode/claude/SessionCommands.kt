@@ -384,6 +384,40 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
             "scenarioRun" -> hub.scenarios.start(clientId, field("id"), field("scope"), values(payload["inputs"]))
 
             /*
+             * The queue: rounds of work taken one at a time over one working copy (see ScenarioQueue).
+             *
+             * `afterSuccess` is read as "anything but an explicit false", so an older client that does not
+             * send the field at all gets the careful half of the choice: a turn that waits for the one
+             * before it to have finished well. Read the other way round, a page one version behind would
+             * quietly turn a whole queue into "start regardless", which is the version of this feature
+             * nobody asked for.
+             */
+            "scenarioQueue" -> hub.scenarios.enqueue(
+                clientId,
+                id = field("id"),
+                scope = field("scope"),
+                inputs = values(payload["inputs"]),
+                afterSuccess = payload["afterSuccess"]?.jsonPrimitive?.booleanOrNull != false,
+            )
+
+            "scenarioQueueRemove" -> hub.scenarios.dequeue(clientId, field("entryId"))
+
+            // One step at a time, and by identifier: two windows and a phone draw this list, and an index
+            // is a place in whatever the sender last saw (see QueueRules.move).
+            "scenarioQueueMove" -> hub.scenarios.moveQueued(clientId, field("entryId"), by = number(payload["by"]))
+
+            "scenarioQueueMode" -> hub.scenarios.queueMode(
+                clientId,
+                entryId = field("entryId"),
+                afterSuccess = payload["afterSuccess"]?.jsonPrimitive?.booleanOrNull != false,
+            )
+
+            // The two answers to a queue that has stopped: carry on from here, or drop what is left.
+            "scenarioQueueGoOn" -> hub.scenarios.letGoQueue(clientId)
+
+            "scenarioQueueClear" -> hub.scenarios.clearQueue(clientId)
+
+            /*
              * A scheduled run, and taking one back (see ScenarioSchedule).
              *
              * Two identifiers, named apart on purpose. A scenario may have as many arrangements as
@@ -463,6 +497,9 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
                 } else {
                     SessionSnapshot.TITLE_HEURISTIC
                 },
+                // Which conversation this is cannot be worked out from the identifier - see the note on
+                // the parameter itself.
+                wasScenarioHead = payload["wasScenarioHead"]?.jsonPrimitive?.booleanOrNull == true,
             )
 
             // The automatic search missed - the person pointed at the file themselves.

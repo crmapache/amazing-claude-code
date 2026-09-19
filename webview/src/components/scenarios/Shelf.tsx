@@ -1,9 +1,17 @@
-import type { Scenario, ScenarioRunSummary, ScenarioSchedule, ScenarioScope } from '../../protocol'
+import type {
+  Scenario,
+  ScenarioQueued,
+  ScenarioQueueState,
+  ScenarioRunSummary,
+  ScenarioSchedule,
+  ScenarioScope,
+} from '../../protocol'
 import { cardRuns, passesOf, problemsOf, blocking } from '../../scenarios/rules'
+import { queuedFor } from '../../scenarios/queue'
 import { nextNote, schedulesOf, whenLabel } from '../../scenarios/schedule'
 import { runMarks } from '../../scenarios/runs'
 import { useLocale, useT } from '../../i18n'
-import { ClockIcon, CrossIcon, DuplicateIcon } from './icons'
+import { ClockIcon, CrossIcon, DuplicateIcon, QueueIcon } from './icons'
 import s from './scenarios.module.css'
 
 /**
@@ -27,9 +35,11 @@ export const Shelf = ({
   emptyNote,
   schedules,
   runs,
+  queue,
   onEdit,
   onRun,
   onWhen,
+  onQueue,
   onDuplicate,
   onRemove,
   onOpenRun,
@@ -45,9 +55,12 @@ export const Shelf = ({
   schedules: ScenarioSchedule[]
   /** Everything going right now; a row shows the ones that came from it. */
   runs: ScenarioRunSummary[]
+  /** The project's queue; a row says how many turns of its own are waiting in it. */
+  queue: ScenarioQueueState | null
   onEdit: (scenario: Scenario) => void
   onRun: (scenario: Scenario) => void
   onWhen: (scenario: Scenario) => void
+  onQueue: (scenario: Scenario) => void
   onDuplicate: (id: string, scope: ScenarioScope) => void
   onRemove: (scenario: Scenario) => void
   onOpenRun: (runId: string) => void
@@ -84,10 +97,12 @@ export const Shelf = ({
               scenario={scenario}
               hours={schedulesOf(schedules, scenario)}
               running={runs.filter((run) => run.scenarioId === scenario.id && run.scope === scenario.scope)}
+              queued={queuedFor(queue, scenario)}
               marks={marks}
               onEdit={() => onEdit(scenario)}
               onRun={() => onRun(scenario)}
               onWhen={() => onWhen(scenario)}
+              onQueue={() => onQueue(scenario)}
               onDuplicate={() => onDuplicate(scenario.id, scenario.scope)}
               onRemove={() => onRemove(scenario)}
               onOpenRun={onOpenRun}
@@ -103,10 +118,12 @@ const ShelfRow = ({
   scenario,
   hours,
   running,
+  queued,
   marks,
   onEdit,
   onRun,
   onWhen,
+  onQueue,
   onDuplicate,
   onRemove,
   onOpenRun,
@@ -114,10 +131,13 @@ const ShelfRow = ({
   scenario: Scenario
   hours: ScenarioSchedule[]
   running: ScenarioRunSummary[]
+  /** The turns of this scenario waiting on the project's queue. */
+  queued: ScenarioQueued[]
   marks: Record<string, string>
   onEdit: () => void
   onRun: () => void
   onWhen: () => void
+  onQueue: () => void
   onDuplicate: () => void
   onRemove: () => void
   onOpenRun: (runId: string) => void
@@ -203,6 +223,24 @@ const ShelfRow = ({
           </button>
 
           <span className={s.shelfIcons}>
+            {/*
+              A run that waits for the working copy rather than for an hour. Its own button beside the
+              clock and beside Run, because the three are three different intentions and none of them is
+              a variation of another: start now, start when nothing else of mine is going, start at nine.
+              Folded into Run's form, the one that waits would be found by pressing the one that does not.
+            */}
+            <button
+              type="button"
+              className={`${s.iconButton} ${queued.length > 0 ? s.iconOn : ''}`}
+              disabled={broken}
+              data-tooltip={
+                queued.length > 0 ? t.scenarios.queue.waitingHere(queued.length) : t.scenarios.queue.add
+              }
+              aria-label={t.scenarios.queue.add}
+              onClick={onQueue}
+            >
+              <QueueIcon />
+            </button>
             {/*
               Another run, waiting for its hour. Beside Run rather than inside its form: setting a time
               and pressing play are two different intentions, and the one that waits until nine is the

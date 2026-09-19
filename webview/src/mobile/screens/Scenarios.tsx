@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { formatDuration } from '../../feed/tools'
 import { useNow } from '../../hooks/useNow'
 import { useLocale, useT } from '../../i18n'
-import type { Scenario, ScenarioRunSummary, ScenarioSchedule } from '../../protocol'
+import type { Scenario, ScenarioQueued, ScenarioQueueState, ScenarioRunSummary, ScenarioSchedule } from '../../protocol'
 import { StatePill } from '../../components/scenarios/StatePill'
 import { BANDS, type ScenariosBand } from '../../components/scenarios/view'
 import { clockLabel, defaultHour, nextNote, schedulesOf, weekdayName, whenLabel } from '../../scenarios/schedule'
@@ -11,6 +11,7 @@ import { countdown, timetableOf } from '../../scenarios/timetable'
 import { blankScenario } from '../../scenarios/blank'
 import { cardRuns, passesOf, problemsOf, blocking } from '../../scenarios/rules'
 import { pastRuns, runMarks, runningRuns } from '../../scenarios/runs'
+import { namedRun, queueBehind, queueMarks, queueStanding, queuedFor } from '../../scenarios/queue'
 import { startedLabel } from '../../scenarios/moments'
 import type { ScenarioShelves } from '../facts'
 import {
@@ -22,7 +23,7 @@ import {
   type ShelfChoice,
 } from '../scenarios'
 import { Back } from './Back'
-import { HourSheet, NewScenarioSheet, ScenarioActionsSheet, StartSheet } from './ScenarioSheets'
+import { HourSheet, NewScenarioSheet, QueueSheet, ScenarioActionsSheet, StartSheet } from './ScenarioSheets'
 import { PickSheet } from './ScenarioPick'
 import m from '../mobile.module.css'
 
@@ -38,6 +39,13 @@ interface ScenariosProps {
    * appeared here at all.
    */
   live: ScenarioRunSummary[]
+  /**
+   * What is lined up to run one after another (see ScenarioQueue), and whether the file could be read.
+   *
+   * Null until the machine has said anything at all - drawn as neither a list nor "nothing is lined up",
+   * for the reason the shelves are.
+   */
+  queue: { state: ScenarioQueueState; unread: boolean } | null
   project: string
   /** The project whose shelf this screen shows - the one named by the row over the shelf. */
   repository: { agentId: string; projectKey: string }
@@ -57,6 +65,12 @@ interface ScenariosProps {
   draftError: string
   onOpenRun: (runId: string) => void
   onRun: (scenario: Scenario, inputs: Record<string, string>) => void
+  onQueue: (scenario: Scenario, inputs: Record<string, string>, afterSuccess: boolean) => void
+  onDequeue: (entryId: string) => void
+  onMoveQueued: (entryId: string, by: number) => void
+  onQueueMode: (entryId: string, afterSuccess: boolean) => void
+  onQueueGoOn: () => void
+  onQueueClear: () => void
   onSchedule: (
     scenario: Scenario,
     scheduleId: string,
@@ -81,7 +95,7 @@ interface ScenariosProps {
 const RUNS_SHOWN = 8
 
 /**
- * The rounds of work this project has written down, on the same three tabs the desk has.
+ * The rounds of work this project has written down, on the same four tabs the desk has.
  *
  * It opens on Runs, and that is the difference between the two screens: a phone is picked up because
  * something is happening, not to browse a shelf. Everything the desk can do is here - run with the
@@ -96,6 +110,7 @@ const RUNS_SHOWN = 8
 export const Scenarios = ({
   shelves,
   live,
+  queue,
   project,
   repository,
   repositories,
@@ -107,6 +122,12 @@ export const Scenarios = ({
   draftError,
   onOpenRun,
   onRun,
+  onQueue,
+  onDequeue,
+  onMoveQueued,
+  onQueueMode,
+  onQueueGoOn,
+  onQueueClear,
   onSchedule,
   onUnschedule,
   onEdit,
@@ -134,9 +155,12 @@ export const Scenarios = ({
   const marks = runMarks(going)
   const schedules = shelves?.schedules ?? []
 
+  const waiting = queue?.state.waiting ?? []
+
   const counts: Record<ScenariosBand, number> = {
     scenarios: list.length,
     runs: going.length,
+    queue: waiting.length,
     schedule: timetableOf(schedules, list).count,
   }
 
@@ -186,7 +210,7 @@ export const Scenarios = ({
           </button>
         </div>
 
-        {/* The same three questions the desk asks, in the order a phone asks them. */}
+        {/* The same four questions the desk asks, in the order a phone asks them. */}
         <div className={m.bandTabs}>
           {BANDS.map((one) => (
             <button
@@ -196,7 +220,13 @@ export const Scenarios = ({
               onClick={() => setBand(one)}
             >
               {t.scenarios.bands[one]}
-              <span className={`${m.bandTabCount} ${one === 'runs' && counts.runs > 0 ? m.bandTabLive : ''}`}>
+              {/* Lit for work that is happening and for a queue that has STOPPED - the two things
+                  worth knowing without opening the band. */}
+              <span
+                className={`${m.bandTabCount} ${
+                  (one === 'runs' && counts.runs > 0) || (one === 'queue' && queue?.state.held) ? m.bandTabLive : ''
+                }`}
+              >
                 {counts[one]}
               </span>
             </button>
@@ -294,6 +324,20 @@ export const Scenarios = ({
           </>
         ) : null}
 
+        {band === 'queue' ? (
+          <QueueList
+            queue={queue}
+            live={going}
+            past={past}
+            onOpenRun={onOpenRun}
+            onRemove={onDequeue}
+            onMove={onMoveQueued}
+            onMode={onQueueMode}
+            onGoOn={onQueueGoOn}
+            onClear={onQueueClear}
+          />
+        ) : null}
+
         {band === 'schedule' && shelves !== null ? (
           <Timetable
             schedules={schedules}
@@ -321,6 +365,12 @@ export const Scenarios = ({
         <ScenarioActionsSheet
           scenario={sheet.scenario}
           hours={schedulesOf(schedules, sheet.scenario)}
+          queued={queuedFor(queue?.state ?? null, sheet.scenario).length}
+          onQueue={() => {
+            // Always through the form, even for a scenario that asks nothing: there is a choice to make
+            // here - what the turn waits for - so it is never a question about nothing.
+            setSheet({ kind: 'queue', scenario: sheet.scenario, values: {}, afterSuccess: true })
+          }}
           onRun={() => {
             const scenario = sheet.scenario
             setSheet({ kind: 'none' })
@@ -361,6 +411,26 @@ export const Scenarios = ({
           onRun={() => {
             onRun(sheet.scenario, sheet.values)
             setSheet({ kind: 'none' })
+          }}
+          onClose={() => setSheet({ kind: 'none' })}
+        />
+      ) : null}
+
+      {sheet.kind === 'queue' ? (
+        <QueueSheet
+          scenario={sheet.scenario}
+          values={sheet.values}
+          afterSuccess={sheet.afterSuccess}
+          waiting={waiting.length}
+          behind={queueBehind(queue?.state ?? null, going)?.scenarioName ?? ''}
+          onChange={(values) => setSheet({ ...sheet, values })}
+          onAfterSuccess={(afterSuccess) => setSheet({ ...sheet, afterSuccess })}
+          onQueue={() => {
+            onQueue(sheet.scenario, sheet.values, sheet.afterSuccess)
+            setSheet({ kind: 'none' })
+            // Straight to the band it went to: a turn added to a list nobody is looking at is a press
+            // with no visible answer.
+            setBand('queue')
           }}
           onClose={() => setSheet({ kind: 'none' })}
         />
@@ -491,6 +561,7 @@ type Sheet =
   | { kind: 'none' }
   | { kind: 'row'; scenario: Scenario }
   | { kind: 'run'; scenario: Scenario; values: Record<string, string> }
+  | { kind: 'queue'; scenario: Scenario; values: Record<string, string>; afterSuccess: boolean }
   | {
       kind: 'when'
       scenario: Scenario
@@ -686,6 +757,208 @@ const ScenarioCard = ({
       </div>
     </div>
   )
+}
+
+/**
+ * What is lined up to run one after another, and what the queue is doing about it.
+ *
+ * The desk's band, in a thumb's shape: the stop first, because it is the only thing here a person has to
+ * answer; then the turn that is going; then the turns waiting, in the order they will be taken. A row is
+ * pressed to change what that turn waits for - the one decision a queued turn carries - and the two
+ * arrows and the cross are what reorders and drops it.
+ */
+const QueueList = ({
+  queue,
+  live,
+  past,
+  onOpenRun,
+  onRemove,
+  onMove,
+  onMode,
+  onGoOn,
+  onClear,
+}: {
+  queue: { state: ScenarioQueueState; unread: boolean } | null
+  live: ScenarioRunSummary[]
+  /** The runs that are over, so the one a stop names can be told apart from a run of the same scenario going now. */
+  past: ScenarioRunSummary[]
+  onOpenRun: (runId: string) => void
+  onRemove: (entryId: string) => void
+  onMove: (entryId: string, by: number) => void
+  onMode: (entryId: string, afterSuccess: boolean) => void
+  onGoOn: () => void
+  onClear: () => void
+}) => {
+  const t = useT()
+
+  if (queue === null) return <p className={m.empty}>{t.common.loading}</p>
+  if (queue.unread) return <p className={m.empty}>{t.scenarios.queue.unread}</p>
+
+  const waiting = queue.state.waiting
+  const standing = queueStanding(queue.state, live, past)
+  const marks = queueMarks(waiting)
+
+  return (
+    <>
+      {standing.kind === 'held' ? (
+        <div className={m.queueHeld}>
+          <p className={m.queueHeldTitle}>{t.scenarios.queue.stopped}</p>
+          {/* The run it stopped on opens from its sentence, as the one the queue stands behind opens from its
+              row: a name alone answers "which run?" wrongly as soon as a run of the same scenario is going. */}
+          {standing.runId ? (
+            <button type="button" className={m.queueHeldOpen} onClick={() => onOpenRun(standing.runId)}>
+              <p className={m.queueHeldWhy}>
+                {t.scenarios.queue.stoppedOn(namedRun(standing.name, standing.mark), whyWords(standing.why, t))}
+              </p>
+            </button>
+          ) : (
+            <p className={m.queueHeldWhy}>
+              {t.scenarios.queue.stoppedOn(standing.name, whyWords(standing.why, t))}
+            </p>
+          )}
+          <div className={m.queueHeldButtons}>
+            {waiting.length > 0 ? (
+              <button type="button" className={m.buttonPrimary} onClick={onGoOn}>
+                {standing.after ? t.scenarios.queue.goOnBehind : t.scenarios.queue.goOn}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={m.buttonSecondary}
+              onClick={() => {
+                // The one thing here that cannot be taken back: what it drops is a night somebody lined
+                // up, and there is nothing to put it back from.
+                if (window.confirm(`${t.scenarios.queue.clearTitle}\n\n${t.scenarios.queue.clearSubject(waiting.length)}`)) {
+                  onClear()
+                }
+              }}
+            >
+              {t.scenarios.queue.clear}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {standing.kind === 'going' ? (
+        <button type="button" className={m.card} onClick={() => onOpenRun(standing.run.id)}>
+          <p className={m.queueGoingRow}>
+            <span className={m.queueGoingDot} />
+            <span className={m.queueGoingName}>{namedRun(standing.run.scenarioName, standing.mark)}</span>
+            <span className={m.queueGoingFact}>
+              {t.scenarios.run.cards(standing.run.done, standing.run.total)}
+            </span>
+          </p>
+        </button>
+      ) : null}
+
+      {waiting.length === 0 ? (
+        <p className={m.empty}>{t.scenarios.queue.empty}</p>
+      ) : (
+        <div className={m.card}>
+          {waiting.map((entry, at) => (
+            <QueuedRow
+              key={entry.id}
+              entry={entry}
+              at={at}
+              mark={marks[entry.id] ?? ''}
+              first={at === 0}
+              last={at === waiting.length - 1}
+              onRemove={() => onRemove(entry.id)}
+              onMove={(by) => onMove(entry.id, by)}
+              onMode={() => onMode(entry.id, !entry.afterSuccess)}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
+const QueuedRow = ({
+  entry,
+  at,
+  mark,
+  first,
+  last,
+  onRemove,
+  onMove,
+  onMode,
+}: {
+  entry: ScenarioQueued
+  at: number
+  mark: string
+  first: boolean
+  last: boolean
+  onRemove: () => void
+  onMove: (by: number) => void
+  onMode: () => void
+}) => {
+  const t = useT()
+
+  return (
+    <div className={m.queueRow}>
+      <span className={m.hourGutter}>
+        <span className={m.hourClock}>{at + 1}</span>
+      </span>
+
+      {/* The whole middle changes what this turn waits for: the queue is where a night is read at once,
+          which is the moment somebody realises the third one need not wait for the second. */}
+      <button type="button" className={m.queueRowText} onClick={onMode}>
+        <span className={m.hourName}>{[entry.scenarioName, mark].filter(Boolean).join(' · ')}</span>
+        <span className={m.hourFacts}>
+          {[
+            entry.afterSuccess ? t.scenarios.queue.waitsForSuccess : t.scenarios.queue.waitsForAnything,
+            entry.failure ? t.scenarios.queue.wouldNotStart(whyWords(entry.failure, t)) : '',
+            ...Object.values(entry.inputs ?? {}).filter((value) => value.trim().length > 0),
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </span>
+      </button>
+
+      <span className={m.queueRowButtons}>
+        <button
+          type="button"
+          className={m.queueRowStep}
+          disabled={first}
+          aria-label={t.scenarios.queue.moveUp}
+          onClick={() => onMove(-1)}
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          className={m.queueRowStep}
+          disabled={last}
+          aria-label={t.scenarios.queue.moveDown}
+          onClick={() => onMove(1)}
+        >
+          ↓
+        </button>
+        <button
+          type="button"
+          className={m.queueRowStep}
+          aria-label={t.scenarios.queue.remove}
+          onClick={onRemove}
+        >
+          ×
+        </button>
+      </span>
+    </div>
+  )
+}
+
+/**
+ * Why the queue stopped, in words - the same two dictionaries the desk looks in.
+ *
+ * Two kinds of reason arrive under one name: how a run ended, and why a turn would not start at all. The
+ * machine has no words of its own, so both travel as names.
+ */
+const whyWords = (why: string, t: ReturnType<typeof useT>): string => {
+  const states = t.scenarios.runStates as Record<string, string>
+  const outcomes = t.scenarios.outcomes as Record<string, string>
+
+  return states[why] ?? outcomes[why] ?? t.scenarios.queue.stoppedUnknown
 }
 
 /** The hours, grouped by the day they fall on - the same timetable the desk draws, from one function. */

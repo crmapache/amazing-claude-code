@@ -54,6 +54,22 @@ internal class ProjectCatalog(
     var pendingMcpRefreshUntil: Long = 0L
         private set
 
+    /**
+     * The branch and its pull request as they were last found - see [sayProject], which is the only
+     * thing that reads them.
+     *
+     * Volatile because each half is found on a pooled thread of its own and both are read by whichever
+     * of the two sends the message.
+     */
+    @Volatile
+    private var branchName: String = ""
+
+    @Volatile
+    private var prNumber: String = ""
+
+    @Volatile
+    private var prUrl: String = ""
+
     // --- The command hints ----------------------------------------------------------
 
     /**
@@ -285,14 +301,8 @@ internal class ProjectCatalog(
 
     fun refreshBranch() {
         ApplicationManager.getApplication().executeOnPooledThread {
-            val branch = ProjectFacts.gitBranch(project) ?: return@executeOnPooledThread
-
-            hub.broadcastProject(
-                buildJsonObject {
-                    put("type", "project")
-                    put("gitBranch", branch)
-                }.toString(),
-            )
+            branchName = ProjectFacts.gitBranch(project) ?: return@executeOnPooledThread
+            sayProject()
         }
     }
 
@@ -304,15 +314,34 @@ internal class ProjectCatalog(
     fun refreshPullRequest() {
         ApplicationManager.getApplication().executeOnPooledThread {
             val pullRequest = ProjectFacts.pullRequest(project)
-
-            hub.broadcastProject(
-                buildJsonObject {
-                    put("type", "project")
-                    put("pullRequest", pullRequest?.number.orEmpty())
-                    put("pullRequestUrl", pullRequest?.url.orEmpty())
-                }.toString(),
-            )
+            prNumber = pullRequest?.number.orEmpty()
+            prUrl = pullRequest?.url.orEmpty()
+            sayProject()
         }
+    }
+
+    /**
+     * The whole of what this fact says, every time, rather than the half that has just been found.
+     *
+     * The branch and the pull request are found separately - one is a file on this disk, the other a
+     * question to GitHub - and they used to travel as two messages of the same kind. The hub keeps ONE
+     * message of each kind for whoever joins later (see broadcastProject), so what a second window or a
+     * phone was handed was whichever half happened to be found last: a pull request with no branch under
+     * it, or a branch with a pull request that had been closed an hour ago, until something moved.
+     *
+     * The phone had it worse, because its screens take this message as the whole answer and replace what
+     * they hold with it: the branch on a project's card appeared and then vanished on the next look at
+     * GitHub, with nothing to connect the two.
+     */
+    private fun sayProject() {
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "project")
+                put("gitBranch", branchName)
+                put("pullRequest", prNumber)
+                put("pullRequestUrl", prUrl)
+            }.toString(),
+        )
     }
 
     /** Walking the disk is not instant on a big repository, so it happens in the background. */

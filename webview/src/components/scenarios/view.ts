@@ -18,15 +18,20 @@ export interface ScheduledHour {
 }
 
 /**
- * The three questions the hub answers, one band each.
+ * The four questions the hub answers, one band each.
  *
- * What exists, what is happening, what will happen. They used to be five sections down one scroll, every
- * row of them in the same clothes: a scenario, a live run, a scheduled hour and a finished run were told
- * apart only by reading. Each carries its own count, so nothing has to be hunted for by scrolling.
+ * What exists, what is happening, what is lined up, what will happen at an hour. They used to be five
+ * sections down one scroll, every row of them in the same clothes: a scenario, a live run, a scheduled
+ * hour and a finished run were told apart only by reading. Each carries its own count, so nothing has to
+ * be hunted for by scrolling.
+ *
+ * The queue stands between what is going and what is scheduled, because that is where it belongs in time:
+ * it holds work that has been decided on and not yet started, which is a nearer thing than an hour
+ * tomorrow and a further one than a run under way.
  */
-export type ScenariosBand = 'scenarios' | 'runs' | 'schedule'
+export type ScenariosBand = 'scenarios' | 'runs' | 'queue' | 'schedule'
 
-export const BANDS: readonly ScenariosBand[] = ['scenarios', 'runs', 'schedule']
+export const BANDS: readonly ScenariosBand[] = ['scenarios', 'runs', 'queue', 'schedule']
 
 /**
  * What stands over the hub, if anything.
@@ -42,6 +47,18 @@ export type ScenariosOverlay =
   | { kind: 'new'; description: string; scope: ScenarioScope }
   /** The little form in front of a run: the questions the scenario asks before it starts. */
   | { kind: 'start'; scenario: Scenario; values: Record<string, string> }
+  /**
+   * The same form in front of a turn on the queue, with the one choice a queued turn has.
+   *
+   * Its own kind rather than a flag on the one above, because the two forms end in different buttons and
+   * different words: one says "start this now, beside whatever is going", the other "start it when the one
+   * before it is out of the way". Told apart by a boolean, the form would be one press away from doing the
+   * other thing, on a screen where the difference is a night of work.
+   *
+   * `afterSuccess` is what the turn will wait for. It opens on true - the careful half - and the reason is
+   * in ScenarioQueued: a chain's later halves usually stand on its earlier ones.
+   */
+  | { kind: 'queue'; scenario: Scenario; values: Record<string, string>; afterSuccess: boolean }
   /**
    * The form in front of a scheduled run: when to start, how often, and the scenario's own questions.
    *

@@ -11,21 +11,23 @@ import { shelfLabel, type RepositoryChoice, type ShelfChoice } from '../scenario
 import m from '../mobile.module.css'
 
 /**
- * The four sheets the scenarios screen folds up from the bottom.
+ * The sheets the scenarios screen folds up from the bottom.
  *
  * A sheet rather than a screen wherever the answer is "say this and come back": a screen costs the way
  * back and the loss of what was behind it, which are the two things a phone is worst at. The editor and
  * one card are screens because they are long; a ticket, an hour and a sentence are not.
  *
- * They live together because they are read together - four short forms about one row - and because every
- * one of them ends in the same pair of decisions: what it will run with, and whether to run it at all.
+ * They live together because they are read together - short forms about one row - and because every one
+ * of them ends in the same pair of decisions: what it will run with, and whether to run it at all.
  */
 
 /** Everything one does to a scenario, as words in a sheet rather than icons on a row. */
 export const ScenarioActionsSheet = ({
   scenario,
   hours,
+  queued,
   onRun,
+  onQueue,
   onSchedule,
   onEdit,
   onDuplicate,
@@ -34,7 +36,10 @@ export const ScenarioActionsSheet = ({
 }: {
   scenario: Scenario
   hours: ScenarioSchedule[]
+  /** How many turns of this scenario are already waiting on the project's queue. */
+  queued: number
   onRun: () => void
+  onQueue: () => void
   onSchedule: () => void
   onEdit: () => void
   onDuplicate: () => void
@@ -59,6 +64,17 @@ export const ScenarioActionsSheet = ({
         </span>
         {asks.length > 0 ? (
           <span className={m.sheetActionHint}>{t.mobile.scenarios.row.asksFirst(asks.join(', '))}</span>
+        ) : null}
+      </button>
+
+      {/* Between starting it now and setting an hour for it, because that is where it stands in
+          meaning: start when the working copy is free rather than this second or at nine. */}
+      <button type="button" className={m.sheetAction} onClick={onQueue}>
+        <span className={m.sheetActionText}>
+          <span className={m.sheetActionName}>{t.scenarios.queue.add}</span>
+        </span>
+        {queued > 0 ? (
+          <span className={m.sheetActionHint}>{t.scenarios.queue.waitingHere(queued)}</span>
         ) : null}
       </button>
 
@@ -159,6 +175,113 @@ export const StartSheet = ({
       ))}
 
       {going > 0 ? <p className={m.sheetNote}>{t.mobile.scenarios.start.beside(going)}</p> : null}
+    </Sheet>
+  )
+}
+
+/**
+ * What the scenario asks before it joins the queue, and the one choice a queued turn has.
+ *
+ * A sheet of its own rather than the start sheet with a switch in it, for the reason the desk keeps them
+ * apart: the two end in different buttons and mean different things - start now, beside whatever is
+ * going, against start when the one before it is out of the way.
+ */
+export const QueueSheet = ({
+  scenario,
+  values,
+  afterSuccess,
+  waiting,
+  behind,
+  onChange,
+  onAfterSuccess,
+  onQueue,
+  onClose,
+}: {
+  scenario: Scenario
+  values: Record<string, string>
+  afterSuccess: boolean
+  /** How many turns are already lined up - said before the button, so the place in the line is no surprise. */
+  waiting: number
+  /** The run a turn first in line would wait for, by name - the desk's QueueForm says why. Empty when nothing is going. */
+  behind: string
+  onChange: (values: Record<string, string>) => void
+  onAfterSuccess: (afterSuccess: boolean) => void
+  onQueue: () => void
+  onClose: () => void
+}) => {
+  const t = useT()
+  const missing = missingInputs(scenario, values)
+
+  return (
+    <Sheet
+      title={t.scenarios.queue.add}
+      meta={scenario.name}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className={m.buttonPrimary} disabled={missing.length > 0} onClick={onQueue}>
+            {t.scenarios.queue.add}
+          </button>
+          <button type="button" className={m.buttonSecondary} onClick={onClose}>
+            {t.common.cancel}
+          </button>
+        </>
+      }
+    >
+      {scenario.inputs.map((input) => (
+        <div key={input.id} className={m.formRow}>
+          <span className={m.sheetLabelRow}>
+            <span className={m.sheetLabelInline}>{input.label || input.name}</span>
+            {input.required ? (
+              <span className={m.sheetRequired}>{t.mobile.scenarios.start.required}</span>
+            ) : null}
+          </span>
+          <input
+            className={m.input}
+            value={values[input.name] ?? ''}
+            placeholder={input.placeholder}
+            autoCapitalize="off"
+            autoCorrect="off"
+            onChange={(event) => onChange({ ...values, [input.name]: event.target.value })}
+          />
+        </div>
+      ))}
+
+      {/* The choice itself, as two rows that say what they do: what is being chosen is what happens to
+          the rest of the night if this turn's predecessor falls over. */}
+      <span className={m.sheetLabel}>{t.scenarios.queue.startWhen}</span>
+
+      <button
+        type="button"
+        className={`${m.sheetAction} ${afterSuccess ? m.sheetActionOn : ''}`}
+        aria-pressed={afterSuccess}
+        onClick={() => onAfterSuccess(true)}
+      >
+        <span className={m.sheetActionText}>
+          <span className={m.sheetActionName}>{t.scenarios.queue.afterSuccess}</span>
+          <span className={m.sheetActionHint}>{t.scenarios.queue.afterSuccessNote}</span>
+        </span>
+      </button>
+
+      <button
+        type="button"
+        className={`${m.sheetAction} ${afterSuccess ? '' : m.sheetActionOn}`}
+        aria-pressed={!afterSuccess}
+        onClick={() => onAfterSuccess(false)}
+      >
+        <span className={m.sheetActionText}>
+          <span className={m.sheetActionName}>{t.scenarios.queue.afterAnything}</span>
+          <span className={m.sheetActionHint}>{t.scenarios.queue.afterAnythingNote}</span>
+        </span>
+      </button>
+
+      <p className={m.sheetNote}>
+        {waiting > 0
+          ? t.scenarios.queue.place(waiting)
+          : behind
+            ? t.scenarios.queue.placeBehind(behind)
+            : t.scenarios.queue.placeFirst}
+      </p>
     </Sheet>
   )
 }

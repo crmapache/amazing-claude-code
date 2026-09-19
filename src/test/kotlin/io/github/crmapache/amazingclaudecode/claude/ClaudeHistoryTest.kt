@@ -347,6 +347,67 @@ class ClaudeHistoryTest {
         assertEquals("", ClaudeHistory.lastModel(emptyList()))
     }
 
+    // The signature under an answer never carries the window mark: an answer on "Opus (1M context)" is
+    // signed `claude-opus-5`, exactly like one on plain Opus (verified on CLI 2.1.268 with the launch flag
+    // `claude-opus-5[1m]`, and across two hundred thousand answers on this machine). The mark lives in a
+    // line of the CLI's own - an attachment of type `model` - and nowhere else.
+    @Test
+    fun `the CLI's own identity line names the model with its window mark`() {
+        val identity = """{"parentUuid":"p","isSidechain":false,"attachment":{"type":"model","identity":{"modelId":"claude-opus-5[1m]","marketingName":"Opus 5 (1M context)","knowledgeCutoff":"May 2026"}},"type":"attachment","uuid":"i1","timestamp":"2026-09-08T18:30:55.332Z","version":"2.1.263"}"""
+
+        assertEquals("claude-opus-5[1m]", ClaudeHistory.modelIdentity(identity))
+        // The shape decides, not the substrings: an attachment of another kind naming the field is not that.
+        assertNull(ClaudeHistory.modelIdentity("""{"type":"attachment","uuid":"i2","attachment":{"type":"edited_text_file","identity":{"modelId":"claude-opus-5[1m]"}}}"""))
+        // An answer is an answer, whatever it quotes.
+        assertNull(ClaudeHistory.modelIdentity("""{"type":"assistant","uuid":"a1","message":{"model":"claude-opus-5","content":[{"type":"text","text":"the line reads \"type\":\"attachment\" and \"modelId\""}]}}"""))
+        // A line cut short does not parse, and a mark it cannot read is no mark.
+        assertNull(ClaudeHistory.modelIdentity("""{"type":"attachment","attachment":{"type":"model","identity":{"modelId":"""))
+        assertNull(ClaudeHistory.modelIdentity("""{"type":"attachment","attachment":{"type":"model","identity":{"modelId":""}}}"""))
+    }
+
+    @Test
+    fun `the answer decides which model, the identity line supplies the mark`() {
+        assertEquals("claude-opus-5[1m]", ClaudeHistory.modelOf(signature = "claude-opus-5", identity = "claude-opus-5[1m]"))
+        // Another model in the identity line is one the conversation has since moved off: the answer is never behind.
+        assertEquals("claude-sonnet-5", ClaudeHistory.modelOf(signature = "claude-sonnet-5", identity = "claude-opus-5[1m]"))
+        // No answer yet is still a conversation opened on a model.
+        assertEquals("claude-opus-5[1m]", ClaudeHistory.modelOf(signature = "", identity = "claude-opus-5[1m]"))
+        // Older CLIs write no identity line at all.
+        assertEquals("claude-opus-5", ClaudeHistory.modelOf(signature = "claude-opus-5", identity = ""))
+        assertEquals("", ClaudeHistory.modelOf(signature = "", identity = ""))
+    }
+
+    // The identity line is written once at the start and again on every change, so the last of them may
+    // lie thousands of lines above the window - and it is not a message, so the window never holds it. It
+    // is read off the whole file on the way to the tail (the case behind the whole thing: a conversation
+    // on "Opus (1M context)" reopened at 44% rather than 8%, in a window a fifth the size).
+    @Test
+    fun `the window mark is read off the whole file, not off the page`() {
+        val lines = listOf(identity("i1", "claude-opus-5[1m]")) +
+            (1..20).flatMap { listOf(said("u$it"), signed("a$it", "claude-opus-5")) }
+
+        val scanned = ClaudeHistory.tailOf(lines.asSequence(), before = null, pageSize = 2)
+
+        assertTrue(scanned.window.lines.none { it.contains("modelId") })
+        assertTrue(scanned.window.moreAbove)
+        assertEquals("claude-opus-5[1m]", scanned.identity)
+        assertEquals("claude-opus-5[1m]", ClaudeHistory.modelOf(ClaudeHistory.lastModel(scanned.window.lines), scanned.identity))
+    }
+
+    // A switch writes a new identity line - the mark alone changing included - and the last one stands.
+    @Test
+    fun `the last identity line is the one that counts`() {
+        val lines = listOf(
+            identity("i1", "claude-opus-5[1m]"), said("u1"), signed("a1", "claude-opus-5"),
+            identity("i2", "claude-opus-5"), said("u2"), signed("a2", "claude-opus-5"),
+        )
+
+        val scanned = ClaudeHistory.tailOf(lines.asSequence(), before = null, pageSize = 10)
+
+        assertEquals("claude-opus-5", scanned.identity)
+        assertEquals("claude-opus-5", ClaudeHistory.modelOf(ClaudeHistory.lastModel(scanned.window.lines), scanned.identity))
+    }
+
     @Test
     fun `a page with no boundary is the file's own last page`() {
         val all = (1..5).map { """{"type":"user","uuid":"u$it","message":{"role":"user","content":"m$it"}}""" }
@@ -777,6 +838,13 @@ class ClaudeHistoryTest {
 
     private fun answered(uuid: String) =
         """{"type":"assistant","uuid":"$uuid","message":{"content":[{"type":"text","text":"here it is"}]}}"""
+
+    private fun signed(uuid: String, model: String) =
+        """{"type":"assistant","uuid":"$uuid","message":{"model":"$model","content":[{"type":"text","text":"here it is"}]}}"""
+
+    /** The CLI's own word on the model it runs, the way it is written since 2.1.257 - see ClaudeHistory.modelIdentity. */
+    private fun identity(uuid: String, model: String) =
+        """{"type":"attachment","uuid":"$uuid","isSidechain":false,"attachment":{"type":"model","identity":{"modelId":"$model","marketingName":"x","knowledgeCutoff":"May 2026"}}}"""
 
     private fun called(uuid: String) =
         """{"type":"assistant","uuid":"$uuid","message":{"content":[{"type":"tool_use","name":"Read","input":{}}]}}"""

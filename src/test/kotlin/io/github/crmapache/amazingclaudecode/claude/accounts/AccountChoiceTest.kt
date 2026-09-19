@@ -234,6 +234,50 @@ class AccountChoiceTest : BasePlatformTestCase() {
     }
 
     /**
+     * The window mark is the one part of a name the catalogue is strict about (see ModelNames.holds): a
+     * conversation held on "Opus (1M context)" carried onto an account that serves Opus and not the large
+     * window carries on at Opus in the ordinary window - the same model, before the account's own - rather
+     * than being handed a mark the account cannot serve, which comes up looking well and dies on the first
+     * message.
+     */
+    fun testAWindowMarkTheAccountCannotServeComesOffOnTheWayAcross() {
+        AccountsState.getInstance().remember(account("home", model = "sonnet"))
+        accounts.noteModels("home", setOf("default", "opus", "sonnet", "haiku"))
+        working("work")
+        accounts.noteModels("work", setOf("default", "opus", "opus[1m]", "sonnet", "haiku"))
+
+        val sessions = sessions()
+        sessions.setModel("main", "opus[1m]") {}
+        assertEquals("opus[1m]", sessions.model("main"))
+
+        accounts.currentId = "home"
+        sessions.switchAllTo()
+
+        assertEquals("home", sessions.accountOf("main"))
+        assertEquals("opus", sessions.model("main"))
+    }
+
+    /**
+     * And a conversation opened from the history, whose transcript carries the mark it was held on (see
+     * ClaudeHistory.modelIdentity), is adopted the same way under such an account.
+     */
+    fun testAResumedConversationsMarkComesOffUnderAnAccountWithoutTheLargeWindow() {
+        working("home")
+        accounts.noteModels("home", setOf("default", "opus", "sonnet", "haiku"))
+
+        val sessions = sessions()
+        sessions.resume("old", "conversation-1")
+
+        assertEquals("claude-opus-5", sessions.adoptModel("old", "claude-opus-5[1m]"))
+        assertEquals("claude-opus-5", sessions.model("old"))
+
+        // Where the account has the large window, the mark stays.
+        accounts.noteModels("home", setOf("default", "opus", "opus[1m]", "sonnet", "haiku"))
+        sessions.resume("older", "conversation-2")
+        assertEquals("claude-opus-5[1m]", sessions.adoptModel("older", "claude-opus-5[1m]"))
+    }
+
+    /**
      * An account nobody has asked keeps its hands off the model, and that way round is not a coin toss.
      *
      * An unasked catalogue is the ordinary state of the first seconds of a project. Read as a refusal it

@@ -65,6 +65,7 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
     private val store = ScenarioStore(project.basePath)
     private val runs = RunStore(project.basePath)
     private val schedules = ScheduleStore(project.basePath)
+    private val queue = QueueStore(project.basePath)
 
     /**
      * One live run and the little bookkeeping that belongs to it alone.
@@ -143,6 +144,21 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
     private val pulsing = AtomicBoolean(false)
 
     /**
+     * The newest run that is OVER, as its summary - or null while this desk has not looked at the disk.
+     *
+     * Carried by the live frame rather than read from the shelves, and that is what makes a project's
+     * card answer "how did the night go" on a screen that is not looking at this project. The shelves are
+     * tens of kilobytes and travel by subscription; the live frame is a few hundred bytes and travels to
+     * every device on the line (see RemoteFeed.isOverview), so the one row somebody wants in the morning
+     * rides with it.
+     *
+     * Kept in memory rather than read when asked: a year of a morning routine is three hundred folders on
+     * the disk, and this is wanted every time anything moves.
+     */
+    @Volatile
+    private var finished: RunSummary? = null
+
+    /**
      * When the short "what is going" frame last went out, so it goes at a pace an eye can use.
      *
      * A frame of its own beside the heavy record, and this is the one everybody who is NOT looking at a
@@ -167,6 +183,17 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
     init {
         Disposer.register(hub, this)
 
+        /*
+         * The runs an IDE that went away left standing, closed now rather than at the first look at the
+         * shelves.
+         *
+         * It used to wait for a client to ask for the list, which was fine while the only thing that read
+         * a run's state was a screen. The queue reads it: its next turn asks how the last one ended, and a
+         * record left saying "running" by a window that was killed would hold the queue for ever, without
+         * a panel ever being opened to unstick it.
+         */
+        off { if (swept.compareAndSet(false, true)) runs.repairAbandoned(live.keys.toSet()) }
+
         clock = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
             {
                 // Off the scheduler's own thread, like the run's heartbeat: this pool is shared with the
@@ -176,6 +203,10 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
                         ApplicationManager.getApplication().executeOnPooledThread {
                             try {
                                 tickHours()
+                                // The queue's own beat, and the only one it has when nothing is ending:
+                                // an IDE that has just opened with turns waiting on the disk, and a queue
+                                // whose window was closed mid-run, both start moving here.
+                                stepQueue()
                             } catch (failure: Throwable) {
                                 thisLogger().warn("The scenario clock stumbled", failure)
                             } finally {
@@ -224,6 +255,15 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             // Null means the file could not be read at all, which is NOT an empty list: read as one, the
             // screen tells somebody their mornings are gone while they sit unharmed on the disk.
             val hours = schedules.keepOnly(project, user)
+            // The queue is pruned by the same rule and against the same two answers: a turn whose scenario
+            // has been deleted is work that cannot be done, and one whose shelf could not be READ is work
+            // that is still perfectly fine (see QueueRules.keepOnly).
+            val waiting = queue.keepOnly(project, user)
+            // The newest run that is over, for the live frame to carry (see [finished]). Off the same
+            // reading of the disk this message is already built from: asking for it separately would be
+            // a second walk of the same folder.
+            val going = live.keys
+            finished = summaries.firstOrNull { it.id !in going }
             hub.broadcastProject(
                 buildJsonObject {
                     put("type", "scenarios")
@@ -237,7 +277,40 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
                     put("canShare", store.projectDirectory() != null)
                 }.toString(),
             )
+
+            // On a message of its own, and never inside this one. The queue moves when a run ends, which
+            // is nothing to do with the shelves - sent together, every turn taken would mean reading two
+            // directories off a disk, and every scenario saved would redraw a queue that had not changed.
+            sendQueue(waiting)
+
+            // And the live frame, because the run it names as the last one that finished has just been
+            // read (see [finished]). This is the only road by which a screen that is not watching this
+            // project learns of it at all - and on an IDE that has just opened it is the first time that
+            // frame is said at all, so without it a card stays blank until something runs.
+            sendLive()
         }
+    }
+
+    /**
+     * The queue of this project, to everyone here.
+     *
+     * Told to everybody rather than answered to whoever asked, like the shelves: a queue is not private to
+     * a window, and the second window - or the phone - has to see the turn that was just taken. The hub
+     * keeps the latest of these for a panel that opens later.
+     *
+     * Null means the file could not be read at all, which is NOT an empty queue: read as one, the screen
+     * tells somebody the night they lined up is gone while it sits unharmed on the disk.
+     */
+    private fun sendQueue(known: ScenarioQueue? = null) {
+        val waiting = known ?: queue.stored()
+
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "scenarioQueue")
+                put("queue", json.encodeToJsonElement(waiting ?: ScenarioQueue()))
+                put("queueUnread", waiting == null)
+            }.toString(),
+        )
     }
 
     /**
@@ -264,6 +337,10 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             buildJsonObject {
                 put("type", "scenarioLive")
                 put("runs", json.encodeToJsonElement(going))
+                // And the newest one that is over, so a card elsewhere can say how the night went - see
+                // [finished]. Left out entirely when this project has never run anything, which is a
+                // different thing from "the last one is gone".
+                finished?.let { put("last", json.encodeToJsonElement(it)) }
             }.toString(),
         )
     }
@@ -471,7 +548,7 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
      */
     fun start(clientId: String, id: String, scope: String, inputs: Map<String, String>) {
         off {
-            val refusal = launch(id, scope, inputs, from = "") { record ->
+            val refusal = launch(id, scope, inputs, from = "", runId = ScenarioStore.newId()) { record ->
                 hub.emitTo(
                     clientId,
                     buildJsonObject {
@@ -490,12 +567,17 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
      * `from` is the standing arrangement this came out of, empty for a hand on the button; it is kept with
      * the run so that the clock can tell whether the round of work it is about to raise is already going
      * from the same arrangement (see [tickHours]).
+     *
+     * `runId` is handed in rather than made here, because the queue has to write down which run it raised
+     * BEFORE the run exists (see QueueRules.step): a name made in this function would be a name the queue
+     * could only learn afterwards, and the gap between those two moments is where a crash loses a turn.
      */
     private fun launch(
         id: String,
         scope: String,
         inputs: Map<String, String>,
         from: String,
+        runId: String,
         onStarted: (ScenarioRun) -> Unit,
     ): String? {
         val scenario = store.find(id, scope) ?: return "scenarioGone"
@@ -516,7 +598,7 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
          * (see ScenarioRun.snapshot).
          */
         val record = ScenarioRun(
-            id = ScenarioStore.newId(),
+            id = runId,
             scenarioId = scenario.id,
             scenarioName = scenario.name,
             scope = scenario.scope,
@@ -566,6 +648,215 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
         sendList()
         return null
     }
+    // --- The queue --------------------------------------------------------------------
+
+    /**
+     * Put a round of work on the end of the queue.
+     *
+     * Refused here rather than when its turn comes, exactly as a scheduled hour is: a scenario that cannot
+     * run is something to be told about now, while somebody is still looking at the screen. What is NOT
+     * checked here is whether anything is going - the whole point of a queue is that it holds turns for
+     * later, and a queue that refused a turn because the working copy was busy would be a list nobody
+     * could add to during the day.
+     */
+    fun enqueue(clientId: String, id: String, scope: String, inputs: Map<String, String>, afterSuccess: Boolean) {
+        off {
+            val scenario = store.find(id, scope)
+            if (scenario == null) return@off outcome(clientId, ok = false, code = "scenarioGone")
+            if (!ScenarioRules.runnable(scenario)) return@off outcome(clientId, ok = false, code = "scenarioBroken")
+            if (ScenarioRules.missingInputs(scenario, inputs).isNotEmpty()) {
+                return@off outcome(clientId, ok = false, code = "scenarioMissingInput")
+            }
+
+            val entry = ScenarioQueued(
+                id = ScenarioStore.newId(),
+                scenarioId = scenario.id,
+                scope = scenario.scope,
+                scenarioName = scenario.name,
+                inputs = ScenarioRules.answers(scenario, inputs),
+                afterSuccess = afterSuccess,
+                addedAt = System.currentTimeMillis(),
+            )
+
+            // How the run the queue names stands is asked INSIDE the edit, against the queue the turn is put
+            // on, for the reason the step asks it under the lock (see QueueStore.claimNext): a turn put on an
+            // empty queue over a run already behind it starts the queue afresh (see QueueRules.put), and read
+            // beforehand, "behind it" could describe a run another window raised a moment later.
+            if (!queue.edit { QueueRules.put(it, entry, outcomeOf(it), System.currentTimeMillis()) }) {
+                sendQueue()
+                return@off outcome(clientId, ok = false, code = "queueNotWritten")
+            }
+
+            sendQueue()
+            // An empty queue over an idle project means this turn is due right now, and waiting half a
+            // minute for the clock to notice reads as a button that did nothing.
+            stepQueue()
+        }
+    }
+
+    fun dequeue(clientId: String, entryId: String) = editQueue(clientId) { QueueRules.remove(it, entryId) }
+
+    fun moveQueued(clientId: String, entryId: String, by: Int) = editQueue(clientId) { QueueRules.move(it, entryId, by) }
+
+    fun queueMode(clientId: String, entryId: String, afterSuccess: Boolean) =
+        editQueue(clientId) { QueueRules.mode(it, entryId, afterSuccess) }
+
+    fun clearQueue(clientId: String) = editQueue(clientId) { QueueRules.clear(it) }
+
+    /**
+     * Go on anyway: the person has seen why the queue stopped and said to carry on.
+     *
+     * The step is taken here rather than left to the clock for the reason the one after [enqueue] is: this
+     * button means "start the next one", and half a minute of nothing happening reads as a press that was
+     * not heard.
+     */
+    fun letGoQueue(clientId: String) {
+        off {
+            if (!queue.edit { QueueRules.letGo(it) }) {
+                sendQueue()
+                return@off outcome(clientId, ok = false, code = "queueNotWritten")
+            }
+
+            sendQueue()
+            stepQueue()
+        }
+    }
+
+    private fun editQueue(clientId: String, change: (ScenarioQueue) -> ScenarioQueue) {
+        off {
+            val written = queue.edit(change)
+            // Told either way, and the disk's own answer rather than the wanted one: a row drawn and then
+            // gone at the next look reads as the panel having forgotten it on purpose.
+            sendQueue()
+            if (!written) outcome(clientId, ok = false, code = "queueNotWritten")
+        }
+    }
+
+    /**
+     * One step of the queue: raise the next turn, stop, or do nothing.
+     *
+     * Called whenever anything could have changed the answer - a run ending, a turn being added, a person
+     * letting it go on - and every half a minute besides, which is the only beat it has when nothing is
+     * ending at all (an IDE that has just opened with turns waiting, a window closed mid-run).
+     *
+     * The turn is taken IN THE FILE before a single process comes up (see QueueStore.claimNext), because
+     * two IDE windows on one repository run this on their own timers against the same queue. Everything
+     * else here is ordinary launching.
+     */
+    private fun stepQueue() {
+        val runId = ScenarioStore.newId()
+        // How the last run ended is worked out INSIDE the lock, against the queue the decision is made on
+        // (see QueueStore.claimNext): read beforehand, it would describe a queue another window may have
+        // moved on in the meantime, and "the last one is done" said about a run that has only just started
+        // is two sets of agents in one working copy.
+        val move = runCatching { queue.claimNext(::aheadOf, runId, System.currentTimeMillis()) }
+            .onFailure { thisLogger().warn("The scenario queue stumbled", it) }
+            .getOrDefault(QueueMove.Wait)
+
+        when (move) {
+            is QueueMove.Wait -> return
+            is QueueMove.Follow -> {
+                // Nothing is raised: the queue has written down which run it stands behind - one started
+                // by hand, or by the clock - and the band can name it from here on. Its ending is judged
+                // at the step that run's end brings, exactly like the ending of a run of the queue's own.
+                sendQueue(move.queue)
+            }
+
+            is QueueMove.Hold -> {
+                DiagnosticsLog.note(DiagnosticsLog.AGENT, "a scenario queue stopped on a run that did not finish well")
+                sendQueue(move.queue)
+                announce(QUEUE, "Stopped: ${move.queue.heldName} did not finish. Nothing after it will start.")
+            }
+
+            is QueueMove.Start -> {
+                sendQueue(move.queue)
+                val refusal = launch(
+                    id = move.entry.scenarioId,
+                    scope = move.entry.scope,
+                    inputs = move.entry.inputs,
+                    from = "",
+                    runId = runId,
+                ) { record ->
+                    DiagnosticsLog.note(DiagnosticsLog.AGENT, "a queued scenario started")
+                    hub.broadcastProject(
+                        buildJsonObject {
+                            put("type", "scenarioStarted")
+                            put("runId", record.id)
+                            // Nobody pressed anything this second - the turn was taken hours ago - so
+                            // nobody's screen should jump to it, exactly as with a scheduled run.
+                            put("scheduled", true)
+                        }.toString(),
+                    )
+                }
+
+                // It would not start at all: the turn goes back where it was, wearing the reason, and the
+                // queue stops. Dropped instead, a round of work somebody lined up would simply never have
+                // happened, with nothing on any screen about it.
+                if (refusal != null) {
+                    queue.putBack(move.entry, refusal)
+                    sendQueue()
+                    announce(QUEUE, "Stopped: ${move.entry.scenarioName} would not start. It is still first in line.")
+                }
+            }
+        }
+    }
+
+    /**
+     * What lies ahead of the queue: how the run it stands behind turned out, and what else is going.
+     *
+     * What else is going is asked only when the answer could change anything - the queue has not stopped,
+     * a turn is waiting, and nothing of the queue's own is going - because the other window's runs live on
+     * the disk, and the disk is a folder of summaries read one by one (see [goingBeside]). That leaves the
+     * folder read at exactly one moment: when a turn is about to be raised, which is the one moment the
+     * question is worth it. Everywhere else - the clock's half-minute beat over an idle queue, a queue
+     * standing behind something - the answer is the run it already names.
+     */
+    private fun aheadOf(waiting: ScenarioQueue): QueueAhead {
+        val outcome = outcomeOf(waiting)
+        val asked = !waiting.held && waiting.waiting.isNotEmpty() && outcome != QueueOutcome.GOING
+        return QueueAhead(outcome, going = if (asked) goingBeside(except = waiting.runId) else emptyList())
+    }
+
+    /**
+     * Every run of this project going right now other than [except], whoever raised it.
+     *
+     * This window's live map first, because it is the truth about this window and it is free; the disk
+     * only when the map has nothing, because what it answers for is the OTHER window's runs - a record is
+     * written every couple of seconds and its state is set the moment the run is raised - and reading a
+     * folder of summaries to learn what this window already knows would be paying for the answer twice.
+     * A record a killed window left saying "running" is closed when this project is opened (see the sweep
+     * in init), so what the folder calls going is going.
+     */
+    private fun goingBeside(except: String): List<QueueGoing> {
+        val here = live.values.map { it.engine.run }.filter { it.id != except }
+        if (here.isNotEmpty()) return here.map { QueueGoing(it.id, it.scenarioName, it.startedAt) }
+
+        return runs.summaries()
+            .filter { it.id != except && !RunState.finished(it.state) }
+            .map { QueueGoing(it.id, it.scenarioName, it.startedAt) }
+    }
+
+    /**
+     * How the run the queue stands behind turned out, as far as the queue is concerned.
+     *
+     * The live map first, because it is the truth about this window and it is free. The disk answers for
+     * the other window's runs and for this window's own after a restart - a record is written every couple
+     * of seconds, and its state is set the moment the run is raised.
+     *
+     * A record that is not there at all is an ending nobody can vouch for (see QueueOutcome.UNKNOWN), and
+     * the rules treat it as a failure: an IDE killed mid-run leaves exactly that, and going on from it is
+     * going on from work that may never have happened. The runs a window abandoned are closed when this
+     * project is opened (see the sweep in init) - a run left standing by a SECOND window that is still
+     * open stays "going" until one of them restarts, which holds the queue rather than double-starting it.
+     */
+    private fun outcomeOf(waiting: ScenarioQueue): String {
+        if (waiting.runId.isBlank()) return QueueOutcome.NONE
+        if (live.containsKey(waiting.runId)) return QueueOutcome.GOING
+
+        val record = runs.read(waiting.runId) ?: return QueueOutcome.UNKNOWN
+        return if (RunState.finished(record.state)) record.state else QueueOutcome.GOING
+    }
+
     // --- The hours -------------------------------------------------------------------
 
     /**
@@ -668,7 +959,7 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
                 // agents raised hours after their hour are a surprise nobody asked for - so it is said.
                 !ripe -> "missed"
                 busy -> "busy"
-                else -> launch(hour.scenarioId, hour.scope, hour.inputs, from = hour.id) { record ->
+                else -> launch(hour.scenarioId, hour.scope, hour.inputs, from = hour.id, runId = ScenarioStore.newId()) { record ->
                     DiagnosticsLog.note(DiagnosticsLog.AGENT, "a scheduled scenario started")
                     hub.broadcastProject(
                         buildJsonObject {
@@ -970,10 +1261,18 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             runs.keep(record)
             hub.broadcastProject(envelope(record))
         }
+        // The newest run that is over is this one, and the live frame below carries it (see [finished]).
+        // Written here rather than left to the reading of the shelves further down, because that reading
+        // happens off a pooled thread and the frame goes now.
+        finished = record.summarise()
         sendLive()
         announce(said, ending(record))
         // The list carries how each run ended, and it has just changed: nobody is going to ask again.
         sendList()
+        // And if the queue was standing behind this run - its own, or one started by hand - its next turn
+        // is due this second: the clock's own beat is half a minute away, and half a minute of an idle
+        // working copy between two rounds of work is half a minute of a night nobody gets back.
+        stepQueue()
     }
 
     /**
@@ -1086,6 +1385,15 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
 
     private companion object {
         const val NOTIFICATIONS = "Amazing Claude Code"
+
+        /**
+         * What a word about the queue is headed with.
+         *
+         * Not the scenario's name, which is what a run's own notification carries: the news here is about
+         * the queue itself - it stopped, and everything behind that turn is standing - and a title naming
+         * one scenario reads as that scenario's business alone.
+         */
+        const val QUEUE = "Scenario queue"
         const val REDRAW_MS = 250L
         const val WRITE_MS = 2_000L
 

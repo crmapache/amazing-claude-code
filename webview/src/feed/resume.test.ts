@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { reducePanel } from './build'
 import { initialPanelState } from './panelState'
-import { isUntouchedTab, tabHolding } from './resume'
+import { isUntouchedTab, tabHolding, tabTakesConversation } from './resume'
+import { runTabId } from '../tabs'
 import type { UserToken } from './types'
 
 /**
@@ -81,5 +82,42 @@ describe('a conversation already open', () => {
   // A tab that has never been resumed into holds no conversation at all - it must not answer for one.
   it('is nothing for a tab with no conversation behind it', () => {
     expect(tabHolding(undefined as unknown as string, tabs, (tab) => holds[tab])).toBeUndefined()
+  })
+})
+
+/**
+ * Which tab a past conversation may be put into.
+ *
+ * Recorded from a live panel: with every chat closed and a finished run's tab on screen, pressing that
+ * run's own "Continue in a chat" put the conversation into the RUN's tab - so the press looked like it
+ * did nothing, and the conversation it had opened had no input field anywhere on screen.
+ */
+describe('the tab a past conversation may land in', () => {
+  const chats = [{ id: 'main' }, { id: 'session-2' }]
+
+  it('is the one on screen when that is a conversation', () => {
+    expect(tabTakesConversation('session-2', chats)).toBe(true)
+  })
+
+  it('is never a tab of the strip, whatever else is open', () => {
+    expect(tabTakesConversation('__scenarios__', chats)).toBe(false)
+    expect(tabTakesConversation('__statistics__', chats)).toBe(false)
+    expect(tabTakesConversation(runTabId('run-1'), chats)).toBe(false)
+  })
+
+  // The half this was written for: no conversations at all is exactly the state a run's tab is looked at
+  // in, and "there are none" used to be read as "then the tab on screen is the spare one".
+  it('is never a tab of the strip with no conversations open either', () => {
+    expect(tabTakesConversation(runTabId('run-1'), [])).toBe(false)
+  })
+
+  // And the half that was right: an empty strip is the panel's own tab, and a history opened there should
+  // not leave a blank tab behind.
+  it('is the panel own tab when the strip is empty', () => {
+    expect(tabTakesConversation('main', [])).toBe(true)
+  })
+
+  it('is a fresh tab when the one on screen is somebody elses conversation', () => {
+    expect(tabTakesConversation('session-9', chats)).toBe(false)
   })
 })

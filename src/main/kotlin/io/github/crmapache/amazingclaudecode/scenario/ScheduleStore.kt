@@ -1,13 +1,7 @@
 package io.github.crmapache.amazingclaudecode.scenario
 
 import com.intellij.openapi.diagnostic.thisLogger
-import io.github.crmapache.amazingclaudecode.feedback.ShortHash
 import java.io.File
-import java.nio.channels.FileChannel
-import java.nio.channels.FileLock
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
-import java.nio.file.StandardOpenOption
 import kotlinx.serialization.json.Json
 
 /**
@@ -23,10 +17,13 @@ import kotlinx.serialization.json.Json
  * scenario is the ordinary case rather than the odd one. What each of them is called, and how the list is
  * added to, edited and pruned, is Schedules - this only reads and writes the file around it.
  */
-internal class ScheduleStore(private val file: File) {
+internal class ScheduleStore(private val store: ScenarioFile) {
 
     /** The ordinary way in: the file this machine keeps a project's hours in. */
-    constructor(workingDirectory: String?) : this(fileFor(workingDirectory))
+    constructor(workingDirectory: String?) : this(ScenarioFile.of(FOLDER, workingDirectory, FILE))
+
+    /** For the tests, which need a file of their own rather than this person's real one. */
+    constructor(file: File) : this(ScenarioFile(file))
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -124,12 +121,15 @@ internal class ScheduleStore(private val file: File) {
      * went on coming round (see Schedules.identify).
      */
     private fun read(): List<ScenarioSchedule>? {
-        if (!file.exists()) return emptyList()
+        // A file that is not there is an empty list; one that could not be read is not (see
+        // ScenarioFile.Stored), and everything below depends on the difference.
+        val text = when (val stored = store.read()) {
+            ScenarioFile.Stored.Missing -> return emptyList()
+            ScenarioFile.Stored.Unreadable -> return null
+            is ScenarioFile.Stored.Text -> stored.text
+        }
 
-        // A file of no length is damage rather than an empty list: this side never writes one (see [write]),
-        // so one that is there was left by something going wrong, and reading it as "no arrangements" is the
-        // very mistake this answer exists to avoid.
-        val stored = runCatching { json.decodeFromString<List<ScenarioSchedule>>(file.readText()) }
+        val stored = runCatching { json.decodeFromString<List<ScenarioSchedule>>(text) }
             .onFailure { thisLogger().warn("Could not read the scenario schedules", it) }
             .getOrNull() ?: return null
 
@@ -149,121 +149,15 @@ internal class ScheduleStore(private val file: File) {
         return named
     }
 
-    /**
-     * Put the list on the disk, and say whether it got there.
-     *
-     * Beside the file and then moved onto it, rather than written over it. A write straight over the file
-     * is readable garbage for as long as it takes - and the power going, or the IDE being killed, in that
-     * window leaves a half list that reads as no list at all (see [read]). The move is one step for
-     * anybody else looking, so a reader either sees yesterday's list or today's and never half of either.
-     *
-     * The answer is a boolean because the caller above has to be able to fail. A full disk and a folder
-     * that turned read-only are ordinary, and a write that quietly reports success is worse than one that
-     * fails loudly: everything upstream believes the arrangement was stored.
-     */
-    private fun write(schedules: List<ScenarioSchedule>): Boolean =
-        runCatching {
-            file.parentFile?.mkdirs()
-            val beside = File(file.parentFile, "${file.name}$PART")
-            beside.writeText(json.encodeToString(schedules))
-            runCatching {
-                Files.move(
-                    beside.toPath(),
-                    file.toPath(),
-                    StandardCopyOption.ATOMIC_MOVE,
-                    StandardCopyOption.REPLACE_EXISTING,
-                )
-            }.recover {
-                // Not every filesystem promises an atomic move; a plain replace is still better than
-                // writing through the file itself, which cannot even be attempted here.
-                Files.move(beside.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
-            }.getOrThrow()
-        }.onFailure { thisLogger().warn("Could not write the scenario schedules", it) }.isSuccess
+    /** The atomic write and the lock across windows are the file's own - see ScenarioFile. */
+    private fun write(schedules: List<ScenarioSchedule>): Boolean = store.put(json.encodeToString(schedules))
 
-    /**
-     * Held while the file is read and written - by every window on this machine, not just this one.
-     *
-     * Two locks because there are two kinds of neighbour. [GATE] keeps this JVM's own threads apart and,
-     * being one object for every store, keeps two instances of this class off one file: a second lock
-     * request on a file this process already holds is an error rather than a wait.
-     *
-     * The lock FILE is the one that matters, and it is what the promise about a second IDE window rests
-     * on. Read-modify-write across two processes is not made safe by comparing what was read - both read
-     * the same old moment, both find it still due, both write and both raise a round of work in one
-     * working copy. A lock of its own rather than a lock on the list: on POSIX a lock is released by
-     * closing ANY descriptor for that file, so writing the list would drop the lock on the list halfway
-     * through the work it is guarding.
-     *
-     * A filesystem that will not lock (some network shares) is not a reason to refuse the work: the
-     * arrangement is done unlocked, which is exactly where this stood before.
-     */
-    private fun <T> underLock(work: () -> T): T = synchronized(GATE) {
-        val channel = runCatching {
-            file.parentFile?.mkdirs()
-            FileChannel.open(
-                File(file.parentFile, "${file.name}$LOCK").toPath(),
-                StandardOpenOption.CREATE,
-                StandardOpenOption.WRITE,
-            )
-        }.getOrNull() ?: return@synchronized work()
-
-        channel.use {
-            val held = waitedFor(it)
-            try {
-                work()
-            } finally {
-                runCatching { held?.release() }
-            }
-        }
-    }
-
-    /**
-     * The lock, or null after a short wait - and then the work is done without it.
-     *
-     * Asked for rather than waited on, because the caller is whoever brought the message: the thread of
-     * the relay, or the one a panel is talking on. A share that went away mid-write, or another window
-     * stopped in a debugger, would hold this for as long as it liked, and everything behind that thread
-     * would stand with it - a whole line of conversations paying for one file.
-     *
-     * Giving up leaves exactly what there was before any of this: an unlocked read-modify-write, whose
-     * worst case is a scheduled run raised twice. Standing here for ever has no best case at all.
-     */
-    private fun waitedFor(channel: FileChannel): FileLock? {
-        val until = System.currentTimeMillis() + WAIT_MS
-
-        do {
-            val held = runCatching { channel.tryLock() }.getOrNull()
-            if (held != null) return held
-            runCatching { Thread.sleep(WAIT_STEP_MS) }.onFailure { return null }
-        } while (System.currentTimeMillis() < until)
-
-        return null
-    }
+    private fun <T> underLock(work: () -> T): T = store.underLock(work)
 
     private companion object {
         const val FILE = "schedules.json"
 
-        /** Beside the list while it is being written, and moved onto it when it is whole. */
-        const val PART = ".part"
-
-        /** The thing the windows actually take turns on - never the list itself, see [underLock]. */
-        const val LOCK = ".lock"
-
-        /** How long a window waits for its turn before going on without one - see [waitedFor]. */
-        const val WAIT_MS = 2_000L
-
-        const val WAIT_STEP_MS = 20L
-
-        /** One for every store in this process: see [underLock]. */
-        val GATE = Any()
-
-        private fun fileFor(workingDirectory: String?): File =
-            File(
-                File(File(File(System.getProperty("user.home"), ".amazing-claude-code"), "scenario-schedules"), key(workingDirectory)),
-                FILE,
-            )
-
-        private fun key(workingDirectory: String?): String =
-            if (workingDirectory.isNullOrBlank()) "unknown" else ShortHash.of(workingDirectory, length = 16)
+        /** Where on this machine a project's hours are kept - see ScenarioFile.of. */
+        const val FOLDER = "scenario-schedules"
     }
 }

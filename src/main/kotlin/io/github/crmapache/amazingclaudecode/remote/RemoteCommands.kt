@@ -247,6 +247,22 @@ internal object RemoteCommands {
         "scenarioUnschedule",
         "scenarioRunDelete",
         "scenarioLog",
+        /*
+         * The queue - rounds of work taken one at a time over one working copy (see ScenarioQueue).
+         *
+         * Allowed by the same argument as the rest of this block, and by a sharper one of its own: a queue
+         * exists to be filled in the evening and to run through the night, which means every moment worth
+         * touching it happens when nobody is at the desk. It stops on a run that did not finish well, and
+         * the only two answers to that - carry on from here, or drop what is left - are answers a person
+         * gives from wherever they happen to be. `scenarioQueue` adds a turn, which raises agents no
+         * differently from `scenarioRun` above; the rest only ever reorder or REMOVE work.
+         */
+        "scenarioQueue",
+        "scenarioQueueRemove",
+        "scenarioQueueMove",
+        "scenarioQueueMode",
+        "scenarioQueueGoOn",
+        "scenarioQueueClear",
         "accountList",
         "accountUse",
         "accountRename",

@@ -1450,7 +1450,7 @@ export const App = () => {
    * name on purpose - and a frame that arrives out of order over the relay was a tab called "New chat".
    */
   const openPast = useCallback(
-    (agentId: string, projectKey: string, entry: HistoryEntry) => {
+    (agentId: string, projectKey: string, entry: HistoryEntry, wasScenarioHead = false) => {
       // Already open on that machine - then this is "take me there": the history lists open conversations
       // too, and a second tab on one transcript is two processes writing over each other.
       const project = projects.find((item) => item.agentId === agentId && item.key === projectKey)
@@ -1489,6 +1489,8 @@ export const App = () => {
         conversationId: entry.id,
         title,
         titleSource,
+        // What the conversation used to be - known here and nowhere else (see the message's own note).
+        wasScenarioHead,
       })
 
       enter(agentId, projectKey, sessionId, false)
@@ -2024,6 +2026,7 @@ export const App = () => {
           <Scenarios
             shelves={held?.scenarios ?? null}
             live={liveRunsOf(held)}
+            queue={held?.queue ?? null}
             project={projectNameOf(projects, at.agentId, at.projectKey)}
             repository={{ agentId: at.agentId, projectKey: at.projectKey }}
             repositories={repositories}
@@ -2047,6 +2050,26 @@ export const App = () => {
                 inputs,
               })
             }
+            onQueue={(scenario, inputs, afterSuccess) =>
+              command(at.agentId, at.projectKey, {
+                type: 'scenarioQueue',
+                id: scenario.id,
+                scope: scenario.scope,
+                inputs,
+                afterSuccess,
+              })
+            }
+            onDequeue={(entryId) =>
+              command(at.agentId, at.projectKey, { type: 'scenarioQueueRemove', entryId })
+            }
+            onMoveQueued={(entryId, by) =>
+              command(at.agentId, at.projectKey, { type: 'scenarioQueueMove', entryId, by })
+            }
+            onQueueMode={(entryId, afterSuccess) =>
+              command(at.agentId, at.projectKey, { type: 'scenarioQueueMode', entryId, afterSuccess })
+            }
+            onQueueGoOn={() => command(at.agentId, at.projectKey, { type: 'scenarioQueueGoOn' })}
+            onQueueClear={() => command(at.agentId, at.projectKey, { type: 'scenarioQueueClear' })}
             onSchedule={(scenario, scheduleId, hour, inputs) =>
               command(at.agentId, at.projectKey, {
                 type: 'scenarioSchedule',
@@ -2115,13 +2138,20 @@ export const App = () => {
             onOpenChat={() => {
               const run = facts[`${at.agentId}:${at.projectKey}`]?.runs?.[at.runId]
               if (!run?.headConversationId) return
-              openPast(at.agentId, at.projectKey, {
-                id: run.headConversationId,
-                title: run.scenarioName,
-                updatedAt: run.finishedAt || run.startedAt,
-                messages: 0,
-                titleSource: 'heuristic',
-              })
+              openPast(
+                at.agentId,
+                at.projectKey,
+                {
+                  id: run.headConversationId,
+                  title: run.scenarioName,
+                  updatedAt: run.finishedAt || run.startedAt,
+                  messages: 0,
+                  titleSource: 'heuristic',
+                },
+                // The same thing the desk says, and for the same reason: without it the agent goes on
+                // being the run's main thread and refuses to do any work (see AFTER_SCENARIO_HEAD).
+                true,
+              )
             }}
             onAnswer={(allow, text) =>
               command(at.agentId, at.projectKey, { type: 'scenarioAnswer', runId: at.runId, allow, text })

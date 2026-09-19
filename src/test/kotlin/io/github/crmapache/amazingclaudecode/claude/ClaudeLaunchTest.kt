@@ -14,6 +14,7 @@ class ClaudeLaunchTest {
         conversationId: String? = null,
         forkFrom: String? = null,
         allowBypassSwitch: Boolean = true,
+        briefing: String = ClaudeLaunch.PANEL_BRIEFING,
     ) = ClaudeLaunch.arguments(
         model = model,
         effort = effort,
@@ -21,7 +22,10 @@ class ClaudeLaunchTest {
         conversationId = conversationId,
         forkFrom = forkFrom,
         allowBypassSwitch = allowBypassSwitch,
+        briefing = briefing,
     )
+
+    private fun briefingOf(args: List<String>): String = args[args.indexOf(ClaudeLaunch.BRIEFING_FLAG) + 1]
 
     // Without this flag the CLI refuses to switch into "no questions" mid-conversation - and that switch
     // is exactly what approving a plan ends with.
@@ -84,6 +88,43 @@ class ClaudeLaunchTest {
 
         assertTrue("MCP" in briefing)
         assertFalse(briefing.isBlank())
+    }
+
+    /**
+     * A tab continuing a finished run's main thread is told the role is over.
+     *
+     * It fails silently and completely: the transcript is pages of "you are the main thread, you hand
+     * cards out, you never write to disk, answer in JSON", an agent resumed onto it goes on obeying
+     * that, and the button that opened the tab promised the opposite. Recorded live before this existed:
+     * asked to add a sentence to a file it had just had written, the agent answered that it does not
+     * write files in this role and that a new run would be needed.
+     */
+    @Test
+    fun `a tab continuing a run's main thread is told that part is over`() {
+        val briefing = briefingOf(arguments(briefing = ClaudeLaunch.panelBriefing(afterScenarioHead = true)))
+
+        assertTrue("MCP" in briefing, "the ordinary briefing is still there")
+        assertTrue("main thread" in briefing)
+        assertTrue("run is over" in briefing)
+    }
+
+    // And nothing else hears a word of it: every other tab would be told about a role it never had, in a
+    // paragraph about scenarios it has nothing to do with.
+    @Test
+    fun `an ordinary tab hears nothing about scenario runs`() {
+        assertFalse("main thread" in briefingOf(arguments()))
+        assertFalse("main thread" in briefingOf(arguments(conversationId = "conversation-1")))
+    }
+
+    // The same rule as every other argument, on the one that is two paragraphs longer than the rest.
+    @Test
+    fun `the released role survives a shell as one line`() {
+        val args = arguments(briefing = ClaudeLaunch.panelBriefing(afterScenarioHead = true))
+
+        for (argument in args) {
+            assertFalse('\n' in argument, "a line feed in an argument: $argument")
+            assertFalse('"' in argument, "a quotation mark in an argument: $argument")
+        }
     }
 
     // The panel does not always launch the CLI itself: npm on Windows installs it as a batch file, the

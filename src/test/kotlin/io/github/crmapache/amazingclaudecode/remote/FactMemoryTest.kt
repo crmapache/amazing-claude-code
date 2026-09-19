@@ -25,7 +25,7 @@ class FactMemoryTest {
             FactMemory.key("tablet", "project"),
         )
 
-        FactMemory.prune(sent, watching = setOf("tablet"))
+        FactMemory.prune(sent, told = setOf("tablet"))
 
         assertEquals(setOf(FactMemory.key("tablet", "project")), sent.keys)
     }
@@ -37,7 +37,7 @@ class FactMemoryTest {
             .associate { FactMemory.key("phone", "scenarioRun r$it") to 1L }
             .toMutableMap()
 
-        FactMemory.prune(sent, watching = setOf("phone"))
+        FactMemory.prune(sent, told = setOf("phone"))
 
         assertTrue(sent.isEmpty())
     }
@@ -46,7 +46,7 @@ class FactMemoryTest {
     fun `a memory within its ceiling is left alone`() {
         val sent = memory(FactMemory.key("phone", "project"), FactMemory.key("phone", "files"))
 
-        FactMemory.prune(sent, watching = setOf("phone"))
+        FactMemory.prune(sent, told = setOf("phone"))
 
         assertEquals(2, sent.size)
     }

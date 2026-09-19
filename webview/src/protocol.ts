@@ -437,6 +437,61 @@ export interface ScenarioSchedule {
 export type ScenarioRepeat = 'once' | 'daily' | 'weekdays' | 'weekly'
 
 /**
+ * A round of work waiting for its turn (see ScenarioQueue on the IDE's side).
+ *
+ * Runs go side by side - that is what Run on a scenario's row means - and side by side is exactly what a
+ * night must not be: three rounds of work editing one working copy is a branch with a third of each of
+ * them in it. The queue is the other answer to the same wish: everything on it is started one at a time,
+ * in order, and nothing starts while the one before it is still going.
+ *
+ * One queue for the whole project, because the thing being taken in turns is the working copy.
+ */
+export interface ScenarioQueued {
+  id: string
+  scenarioId: string
+  scope: ScenarioScope
+  /** The name as it read when this was put on the queue - the scenario may be renamed or gone by then. */
+  scenarioName: string
+  /** The answers to the scenario's own questions, given when it was put on the queue. */
+  inputs: Record<string, string>
+  /**
+   * Whether the one before this has to have finished WELL, or merely to have finished.
+   *
+   * True by default, and that default is the point of the queue: the later halves of a chain usually
+   * stand on the earlier ones, and reviewing work that was never written is a night spent on nothing.
+   */
+  afterSuccess: boolean
+  addedAt: number
+  /** Why this turn could not be raised last time it came - `scenarioGone`, `noClaude` and the like. */
+  failure: string
+}
+
+/** The queue of a project: what is waiting, what it raised last, and whether it has stopped. */
+export interface ScenarioQueueState {
+  waiting: ScenarioQueued[]
+  /**
+   * The run it stands behind, going or over: the one it raised last, or one started by hand or by the
+   * clock that was going when the next turn's time came. Empty when it stands behind nothing yet.
+   */
+  runId: string
+  runName: string
+  /** When it was raised - the panel draws nothing from it; the IDE reads it (see QueueRules.SETTLING_MS). */
+  raisedAt: number
+  /**
+   * It has stopped and is waiting for a person.
+   *
+   * Set when a turn wanted a clean ending and did not get one, and when a turn would not start at all.
+   * Nothing is dropped and nothing is skipped: everything waiting stays in its order until somebody says
+   * to go on or to drop what is left.
+   */
+  held: boolean
+  /** Why: a run's own ending (`failed`, `stopped`, `unknown`) or the refusal that kept a turn from starting. */
+  heldWhy: string
+  /** Which scenario it stopped on, by name. */
+  heldName: string
+}
+
+/**
  * One run of one scenario: the timeline as it happens and as the history keeps it.
  *
  * `snapshot` is the scenario exactly as it was when the button was pressed, and it is what the timeline
@@ -1184,7 +1239,36 @@ type ShellMessageBody =
    * record several times a second. This is what every screen NOT looking at a timeline reads - the hub's
    * live section, the phone's list, the badge on a project card - and it is a few hundred bytes.
    */
-  | { type: 'scenarioLive'; runs: ScenarioRunSummary[] }
+  | {
+      type: 'scenarioLive'
+      runs: ScenarioRunSummary[]
+      /**
+       * The newest run of this project that is OVER, when it has ever had one.
+       *
+       * Here rather than only on the shelves because of who reads this message. The shelves are tens of
+       * kilobytes and reach one project at a time - whichever a phone is actually watching - while this
+       * one is a few hundred bytes and reaches every paired device (see RemoteFeed.isOverview). A project
+       * card away from that project could therefore say what is running and nothing about what ran: a
+       * scenario started at four in the morning and finished by breakfast left the card blank.
+       *
+       * Absent from an IDE older than this field, and absent when the project has never run anything -
+       * which the screen draws the same way, as no row.
+       */
+      last?: ScenarioRunSummary
+    }
+  /**
+   * What is lined up to run one after another (see ScenarioQueue).
+   *
+   * A message of its own rather than a field of the shelves, for the live list's reason turned around: the
+   * queue moves when a run ENDS, which has nothing to do with the shelves - together, every turn taken
+   * would mean reading two directories off a disk, and every scenario saved would redraw a queue that had
+   * not changed.
+   *
+   * `queueUnread` is the file could not be read at all, which is not an empty queue - the same distinction
+   * the scheduled hours make, and with the same consequence for getting it wrong: a night somebody lined up
+   * declared gone while it sits unharmed on the disk.
+   */
+  | { type: 'scenarioQueue'; queue: ScenarioQueueState; queueUnread?: boolean }
   /**
    * One run, whole. Pushed while it is live, answered when an old one is opened.
    *
@@ -1893,7 +1977,23 @@ export type WebviewMessage =
    * id (see ClaudeSessionHub.resumeConversation). The name travels along because resuming drops the one
    * the tab wore, and only the client that chose the conversation knows what it is called.
    */
-  | { type: 'resumeSession'; sessionId: string; conversationId: string; title?: string; titleSource?: TitleSource }
+  | {
+      type: 'resumeSession'
+      sessionId: string
+      conversationId: string
+      title?: string
+      titleSource?: TitleSource
+      /**
+       * Whether the conversation being opened is a finished scenario run's main thread.
+       *
+       * Said by the one button that opens one (see the run screen), because nothing on the IDE's side can
+       * tell: from there a conversation is an identifier like any other. What it buys is the role being
+       * lifted - the transcript is pages of "you are the main thread, you do not write files, answer in
+       * JSON", and an agent resumed onto it obeys that and refuses to work (see
+       * ClaudeLaunch.AFTER_SCENARIO_HEAD).
+       */
+      wasScenarioHead?: boolean
+    }
   /** Open the IDE's terminal with a Claude Code sign-in or sign-out. */
   | { type: 'login' }
   /*
@@ -2126,6 +2226,40 @@ export type WebviewMessage =
   | { type: 'scenarioDraftCancel'; id: string }
   /** Press play. `inputs` are the answers to the scenario's own questions, by name. */
   | { type: 'scenarioRun'; id: string; scope: ScenarioScope; inputs: Record<string, string> }
+  /**
+   * Put this round of work on the end of the queue, to be started when the working copy is free (see
+   * ScenarioQueued).
+   *
+   * Beside Run rather than instead of it, and the two mean different things on purpose: Run is "start now,
+   * beside whatever is going", this is "start it when the one before it is out of the way". A button that
+   * changed its meaning depending on whether something happened to be running would be a button nobody
+   * could press without checking first.
+   *
+   * `afterSuccess` is what the turn waits for: a clean ending, or merely an ending. The IDE reads a missing
+   * field as true - the careful half - so a page one version behind cannot quietly turn a queue into
+   * "start regardless".
+   */
+  | {
+      type: 'scenarioQueue'
+      id: string
+      scope: ScenarioScope
+      inputs: Record<string, string>
+      afterSuccess: boolean
+    }
+  | { type: 'scenarioQueueRemove'; entryId: string }
+  /**
+   * Move one turn up or down.
+   *
+   * One step at a time, and by identifier rather than by index: two windows and a phone draw this list, and
+   * an index is a place in whatever the sender last saw - which may have lost its head to a turn taken a
+   * second ago.
+   */
+  | { type: 'scenarioQueueMove'; entryId: string; by: number }
+  /** Change what one turn waits for, from the row, where the queue can be seen whole. */
+  | { type: 'scenarioQueueMode'; entryId: string; afterSuccess: boolean }
+  /** The two answers to a queue that has stopped: carry on from here, or drop what is left. */
+  | { type: 'scenarioQueueGoOn' }
+  | { type: 'scenarioQueueClear' }
   /**
    * Add a scheduled run to this scenario, or change one it already has.
    *

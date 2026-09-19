@@ -2454,6 +2454,33 @@ export const modelContextWindow = (model: string | undefined): number | undefine
 }
 
 /**
+ * The name the window is guessed from: the tab's own, in the fullest spelling there is for it.
+ *
+ * The signature under an answer loses the window mark - an answer on "Opus (1M context)" is signed
+ * `claude-opus-5`, exactly like one on plain Opus - and it takes over the tab's model with every answer,
+ * replayed ones included. A conversation opened from the history is told its model with the mark on it
+ * (see ClaudeSessionHub.resumeConversation) a moment BEFORE its replay, and the replay's first answer used
+ * to wipe the mark off: the meter guessed a fifth of the window until the CLI had answered exactly. The
+ * rule is the caption's (see resolvePanelModel in catalog.ts): the person's own choice stands while the
+ * stream names the same model, and the stream takes over only when it means another one - the CLI does
+ * swap on its own (see ModelSwitchItem).
+ *
+ * By family rather than by sameModel, for the reason arrivedAsPicked gives: a choice is a family
+ * ("opus[1m]") and a signature is an identifier ("claude-opus-5"), and sameModel says no to that pair -
+ * it compares generations, which a choice never carries. The window is a matter of the family and the
+ * mark, and the mark is in the choice alone; a choice of no family the panel knows ("default", a model of
+ * somebody else's provider) settles nothing, and the stream's name stands.
+ */
+const windowModel = (state: PanelState): string | undefined => {
+  if (state.pendingModel !== undefined) return state.pendingModel
+
+  const chosen = state.ownModel ? modelFamily(state.ownModel) : ''
+  if (chosen && state.model && chosen === modelFamily(state.model)) return state.ownModel
+
+  return state.model
+}
+
+/**
  * What the context meter shows: taken, total and the share.
  *
  * The window's size comes from the CLI itself (see PanelState.context): it depends on the model, with
@@ -2474,7 +2501,7 @@ export const contextOf = (
   const context = state.context
   const known = context && context.max > 0 ? context : undefined
   const live = state.liveContextUsed
-  const guessed = modelContextWindow(state.pendingModel ?? state.model) ?? (fallbackLimit > 0 ? fallbackLimit : 200_000)
+  const guessed = modelContextWindow(windowModel(state)) ?? (fallbackLimit > 0 ? fallbackLimit : 200_000)
 
   if (known || live !== undefined) {
     const limit = known?.max ?? guessed

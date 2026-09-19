@@ -57,3 +57,30 @@ export const CrossIcon = () => (
     <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
   </Icon>
 )
+
+/**
+ * A turn on the queue: three lines one under another, with the last one added at the bottom.
+ *
+ * Not a clock and nothing like one, on purpose - the row already carries a clock for the hour a scenario
+ * starts at by itself, and the two buttons sit beside each other. A queue is about ORDER rather than about
+ * time, so it is drawn as a list with something joining the end of it.
+ */
+export const QueueIcon = () => (
+  <Icon>
+    <path d="M3 4.5h10M3 8h7M3 11.5h4" />
+    <path d="M11.5 9.8v3.4M9.8 11.5h3.4" />
+  </Icon>
+)
+
+/** Up and down, for moving one turn along the queue. */
+export const UpIcon = () => (
+  <Icon>
+    <path d="M8 12.5V4M4.5 7.5L8 4l3.5 3.5" />
+  </Icon>
+)
+
+export const DownIcon = () => (
+  <Icon>
+    <path d="M8 3.5V12M4.5 8.5L8 12l3.5-3.5" />
+  </Icon>
+)

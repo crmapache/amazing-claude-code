@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from
 import type {
   ModelInfo,
   Scenario,
+  ScenarioQueueState,
   ScenarioRunSummary,
   ScenarioSchedule,
   ScenarioScope,
 } from '../../protocol'
 import { blankScenario } from '../../scenarios/blank'
+import { queueBehind } from '../../scenarios/queue'
 import { pastRuns, runningRuns } from '../../scenarios/runs'
 import { defaultHour } from '../../scenarios/schedule'
 import { timetableOf } from '../../scenarios/timetable'
@@ -14,6 +16,8 @@ import { useT } from '../../i18n'
 import { Confirm } from '../Confirm'
 import { Help } from './Help'
 import { NewScenarioForm } from './NewScenarioForm'
+import { QueueBand } from './QueueBand'
+import { QueueForm } from './QueueForm'
 import { RunsBand } from './RunsBand'
 import { ScenarioEditor } from './ScenarioEditor'
 import { ScheduleBand } from './ScheduleBand'
@@ -36,12 +40,13 @@ export { AT_FIRST, SHOWN_AT_FIRST } from './view'
 export type { ScenariosShown, ScenariosView } from './view'
 
 /**
- * The hub, built around three questions: what exists, what is happening, what will happen.
+ * The hub, built around four questions: what exists, what is happening, what is lined up, what will
+ * happen at an hour.
  *
  * It used to be five sections down one scroll, every row of them in the same clothes and every word in
  * the console font - a scenario, a live run, a scheduled hour and a finished run were told apart only by
  * reading. Now each question is a band with a count of its own, so nothing is hunted for by scrolling,
- * and the three forms have left the list for an overlay: half a minute of a model reading the project no
+ * and the forms have left the list for an overlay: half a minute of a model reading the project no
  * longer moves the shelf under whoever is looking at it.
  *
  * A row is a scenario and everything one does to a scenario is on it. The runs stand under the shelves as
@@ -65,6 +70,21 @@ export interface ScenariosTabProps {
   schedulesUnread?: boolean
   onSchedule: (scenario: Scenario, scheduleId: string, hour: ScheduledHour, inputs: Record<string, string>) => void
   onUnschedule: (scheduleId: string) => void
+  /**
+   * What is lined up to run one after another (see ScenarioQueue).
+   *
+   * Null before the IDE has said anything at all, which is a different thing from an empty queue: the
+   * band draws neither a list nor "nothing is lined up" until it knows.
+   */
+  queue: ScenarioQueueState | null
+  /** The queue could not be read off the disk at all - which, again, is not "there is nothing in it". */
+  queueUnread?: boolean
+  onQueue: (scenario: Scenario, inputs: Record<string, string>, afterSuccess: boolean) => void
+  onDequeue: (entryId: string) => void
+  onMoveQueued: (entryId: string, by: number) => void
+  onQueueMode: (entryId: string, afterSuccess: boolean) => void
+  onQueueGoOn: () => void
+  onQueueClear: () => void
   /** Whether this project has a repository to put a shared scenario in at all. */
   canShare: boolean
   /** For the editor's model menus: the account's catalogue and the names added by hand, as the composer has them. */
@@ -122,6 +142,14 @@ export const ScenariosTab = ({
   schedulesUnread,
   onSchedule,
   onUnschedule,
+  queue,
+  queueUnread,
+  onQueue,
+  onDequeue,
+  onMoveQueued,
+  onQueueMode,
+  onQueueGoOn,
+  onQueueClear,
   canShare,
   models,
   customModels,
@@ -154,6 +182,8 @@ export const ScenariosTab = ({
     schedule?: ScenarioSchedule
   } | null>(null)
   const [stopping, setStopping] = useState<ScenarioRunSummary | null>(null)
+  /** Dropping the whole queue is asked about on its own: one press against a night of lined-up work. */
+  const [clearing, setClearing] = useState(false)
   const [helping, setHelping] = useState(false)
 
   const shelves = useMemo(
@@ -228,6 +258,23 @@ export const ScenariosTab = ({
     })
   }
 
+  /**
+   * The form in front of a turn on the queue.
+   *
+   * Opened even for a scenario that asks nothing, unlike Run: there is always something to decide here -
+   * what the turn waits for - so this form is never a question about nothing.
+   */
+  const queueUp = (scenario: Scenario) =>
+    openOver({
+      kind: 'queue',
+      scenario,
+      // Empty, for the reason the start form's are: answers carried over read as answers somebody gave,
+      // and a night of work lined up against last week's ticket is the worst place for that to happen.
+      values: {},
+      // The careful half, chosen: a chain's later halves usually stand on its earlier ones.
+      afterSuccess: true,
+    })
+
   const start = (scenario: Scenario) => {
     /*
      * A scenario with nothing to ask starts on the press.
@@ -277,6 +324,7 @@ export const ScenariosTab = ({
   const counts: Record<ScenariosBand, number> = {
     scenarios: (scenarios ?? []).length,
     runs: going.length,
+    queue: queue?.waiting.length ?? 0,
     schedule: timetableOf(schedules, scenarios ?? []).count,
   }
 
@@ -312,7 +360,7 @@ export const ScenariosTab = ({
         </div>
       </div>
 
-      {/* The three questions, each with its own count and the one fact that belongs to it on the right. */}
+      {/* The four questions, each with its own count and the one fact that belongs to it on the right. */}
       <div className={s.bands}>
         <div className={s.bandTabs} role="tablist">
           {BANDS.map((one) => (
@@ -325,7 +373,16 @@ export const ScenariosTab = ({
               onClick={() => show(one)}
             >
               {t.scenarios.bands[one]}
-              <span className={`${s.bandCount} ${one === 'runs' && counts.runs > 0 ? s.bandCountLive : ''}`}>
+              {/*
+                The count is lit for work that is happening and for a queue that has STOPPED - the two
+                states on this screen somebody would want to know about without opening the band. A queue
+                merely holding turns is not news; one that stopped at midnight is the whole night.
+              */}
+              <span
+                className={`${s.bandCount} ${
+                  (one === 'runs' && counts.runs > 0) || (one === 'queue' && queue?.held) ? s.bandCountLive : ''
+                }`}
+              >
                 {counts[one]}
               </span>
             </button>
@@ -336,9 +393,11 @@ export const ScenariosTab = ({
           {band === 'runs'
             ? [t.scenarios.spentToday(`$${spentToday(runs, going).toFixed(2)}`), t.scenarios.runsKept(finished.length)]
                 .join(' · ')
-            : band === 'schedule'
-              ? t.scenarios.when.needsIdeShort
-              : ''}
+            : band === 'queue'
+              ? t.scenarios.queue.oneAtATime
+              : band === 'schedule'
+                ? t.scenarios.when.needsIdeShort
+                : ''}
         </span>
       </div>
 
@@ -351,7 +410,7 @@ export const ScenariosTab = ({
 
         {/*
           A run that stopped to ask is a strip at the top rather than a row to find. It is the one thing
-          on this screen waiting for a person, and it can be on any of the three bands.
+          on this screen waiting for a person, and it can be on any of the four bands.
         */}
         {asking.length > 0 ? (
           <div className={s.asksBand}>
@@ -377,9 +436,11 @@ export const ScenariosTab = ({
               emptyNote={canShare ? t.scenarios.shelves.projectEmptyNote : t.scenarios.shelves.noProjectNote}
               schedules={schedules}
               runs={going}
+              queue={queue}
               onEdit={(draft) => setView({ kind: 'edit', draft, fresh: false, at: EDIT_AT_FIRST })}
               onRun={start}
               onWhen={(scenario) => askWhen(scenario)}
+              onQueue={queueUp}
               onDuplicate={onDuplicate}
               onRemove={(scenario) => setRemoving({ scenario })}
               onOpenRun={onOpenRun}
@@ -395,9 +456,11 @@ export const ScenariosTab = ({
               emptyNote={t.scenarios.shelves.userEmptyNote}
               schedules={schedules}
               runs={going}
+              queue={queue}
               onEdit={(draft) => setView({ kind: 'edit', draft, fresh: false, at: EDIT_AT_FIRST })}
               onRun={start}
               onWhen={(scenario) => askWhen(scenario)}
+              onQueue={queueUp}
               onDuplicate={onDuplicate}
               onRemove={(scenario) => setRemoving({ scenario })}
               onOpenRun={onOpenRun}
@@ -418,6 +481,21 @@ export const ScenariosTab = ({
             onResume={onResumeRun}
             onStop={setStopping}
             onDelete={(run) => setRemoving({ run })}
+          />
+        ) : null}
+
+        {band === 'queue' ? (
+          <QueueBand
+            queue={queue}
+            unread={queueUnread === true}
+            live={going}
+            past={finished}
+            onOpenRun={onOpenRun}
+            onRemove={(entry) => onDequeue(entry.id)}
+            onMove={(entry, by) => onMoveQueued(entry.id, by)}
+            onMode={(entry, afterSuccess) => onQueueMode(entry.id, afterSuccess)}
+            onGoOn={onQueueGoOn}
+            onClear={() => setClearing(true)}
           />
         ) : null}
 
@@ -465,6 +543,25 @@ export const ScenariosTab = ({
           onSet={() => {
             onSchedule(over.scenario, over.scheduleId, over.hour, over.values)
             close()
+          }}
+          onCancel={close}
+        />
+      ) : null}
+
+      {over.kind === 'queue' ? (
+        <QueueForm
+          scenario={over.scenario}
+          values={over.values}
+          afterSuccess={over.afterSuccess}
+          waiting={queue?.waiting.length ?? 0}
+          behind={queueBehind(queue ?? null, going)?.scenarioName ?? ''}
+          onChange={(values) => openOver({ ...over, values })}
+          onAfterSuccess={(afterSuccess) => openOver({ ...over, afterSuccess })}
+          onQueue={() => {
+            onQueue(over.scenario, over.values, over.afterSuccess)
+            // Straight to the band it went to: a turn added to a list nobody is looking at is a press
+            // with no visible answer, and the place in the line is the thing worth seeing.
+            setView({ kind: 'list', band: 'queue', over: { kind: 'none' } })
           }}
           onCancel={close}
         />
@@ -523,6 +620,24 @@ export const ScenariosTab = ({
             setRemoving(null)
           }}
           onCancel={() => setRemoving(null)}
+        />
+      ) : null}
+
+      {/*
+        Dropping one turn is not asked about - it is one row of a list, and putting it back is a press -
+        while dropping the WHOLE queue is, because what it takes away is a night of work somebody lined
+        up and there is nothing to put back from.
+      */}
+      {clearing ? (
+        <Confirm
+          title={t.scenarios.queue.clearTitle}
+          subject={t.scenarios.queue.clearSubject(queue?.waiting.length ?? 0)}
+          confirmLabel={t.scenarios.queue.clear}
+          onConfirm={() => {
+            onQueueClear()
+            setClearing(false)
+          }}
+          onCancel={() => setClearing(false)}
         />
       ) : null}
 

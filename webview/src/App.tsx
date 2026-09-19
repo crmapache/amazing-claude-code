@@ -94,7 +94,7 @@ import { waitsForTheTurn } from './feed/delivery'
 import { PASTE_COLLAPSE_DEFAULT, PASTE_COLLAPSE_NEVER, pasteCollapseLines, referenceChip } from './feed/reference'
 import { normalizeSendKey, sendKeyOptions, sendKeySummary, type SendKey } from './sendKey'
 import { reusableMessage } from './feed/reuse'
-import { isUntouchedTab, tabHolding } from './feed/resume'
+import { isUntouchedTab, tabHolding, tabTakesConversation } from './feed/resume'
 import { chatHits, rowOf } from './feed/search'
 import { openedAgentOf } from './feed/workflow'
 import { deriveSessionTitle } from './feed/title'
@@ -146,6 +146,7 @@ import type {
   PluginMarketplaceInfo,
   Scenario,
   ScenarioRun,
+  ScenarioQueueState,
   ScenarioRunSummary,
   ScenarioSchedule,
   SoundId,
@@ -765,6 +766,16 @@ export const App = () => {
   const [scenarioSchedules, setScenarioSchedules] = useState<ScenarioSchedule[]>([])
   /** Whether the hours could not be read off the disk at all - see the `scenarios` message. */
   const [schedulesUnread, setSchedulesUnread] = useState(false)
+  /**
+   * What is lined up to run one after another (see ScenarioQueue in protocol.ts).
+   *
+   * Null until the IDE has said anything at all, which the band draws as neither a list nor "nothing is
+   * lined up": before the first message there is no answer to give, and drawing the empty one would say
+   * a night somebody lined up is gone every time a panel opens.
+   */
+  const [scenarioQueue, setScenarioQueue] = useState<ScenarioQueueState | null>(null)
+  /** Whether the queue could not be read off the disk at all - see the `scenarioQueue` message. */
+  const [queueUnread, setQueueUnread] = useState(false)
   const [canShareScenarios, setCanShareScenarios] = useState(false)
   const [scenarioOutcome, setScenarioOutcome] = useState('')
   /**
@@ -2350,6 +2361,18 @@ export const App = () => {
             break
 
           /*
+           * What is lined up to run one after another (see ScenarioQueue on the IDE's side).
+           *
+           * Its own message rather than a field of the shelves, because it moves when a run ENDS - which
+           * has nothing to do with the shelves - and because the shelves cost two directories read off a
+           * disk every time they are sent.
+           */
+          case 'scenarioQueue':
+            setScenarioQueue(message.queue)
+            setQueueUnread(message.queueUnread === true)
+            break
+
+          /*
            * A run has been started, and its tab opens on the answer rather than on the press.
            *
            * The identifier is the IDE's to give - it is what files the run on disk - so there is nothing
@@ -3354,7 +3377,7 @@ export const App = () => {
    * no longer: a tab opened from the history sat called "New chat" until somebody wrote into it.
    */
   const openResumed = useCallback(
-    (entry: HistoryEntry, target: string) => {
+    (entry: HistoryEntry, target: string, wasScenarioHead = false) => {
       const title = deriveSessionTitle(entry.title, 40)
       const titleSource: TitleSource = entry.titleSource === 'heuristic' ? 'heuristic' : 'llm'
 
@@ -3381,7 +3404,15 @@ export const App = () => {
       setShellRuns((current) => ({ ...current, [target]: [] }))
       delete soundMemory.current[target]
 
-      send({ type: 'resumeSession', sessionId: target, conversationId: entry.id, title, titleSource })
+      send({
+        type: 'resumeSession',
+        sessionId: target,
+        conversationId: entry.id,
+        title,
+        titleSource,
+        // What the conversation used to be - known here and nowhere else (see the message's own note).
+        wasScenarioHead,
+      })
     },
     [],
   )
@@ -3401,7 +3432,7 @@ export const App = () => {
    * answer costs nothing.
    */
   const resume = useCallback(
-    (entry: HistoryEntry) => {
+    (entry: HistoryEntry, wasScenarioHead = false) => {
       // Already open somewhere - then this press is "take me there": the tab comes to the front and
       // nothing is replayed. In the tab on screen that is simply closing the menu.
       const open = tabHolding(entry.id, sessions, (tab) => panelsRef.current[tab]?.sessionId)
@@ -3412,13 +3443,10 @@ export const App = () => {
         return open
       }
 
-      /**
-       * What is on screen may not be a conversation at all: the statistics are a tab of the strip too,
-       * and its identifier belongs to no conversation (see STATISTICS_GROUP). An empty strip, on the
-       * other hand, IS the tab to reuse - the panel's own one, which everything with no conversation
-       * named in it belongs to.
-       */
-      const onConversation = sessions.length === 0 || sessions.some((session) => session.id === active)
+      // What is on screen may not be a conversation at all - the statistics, the scenarios hub and a run
+      // being watched are tabs of the strip too, and none of them has an input field (see
+      // tabTakesConversation, which is where the reasoning lives).
+      const onConversation = tabTakesConversation(active, sessions)
       const untouched =
         onConversation &&
         isUntouchedTab({
@@ -3428,7 +3456,7 @@ export const App = () => {
         })
 
       const target = untouched ? active : `session-${Date.now()}`
-      openResumed(entry, target)
+      openResumed(entry, target, wasScenarioHead)
       return target
     },
     [active, openResumed, sessions, shellRuns],
@@ -4427,6 +4455,18 @@ export const App = () => {
   }
 
   /**
+   * Put a round of work on the end of the queue (see ScenarioQueue in protocol.ts).
+   *
+   * No guard against a bouncing finger, unlike Run beside it. Two turns of one scenario is a thing people
+   * genuinely ask for - the same round of work against two tickets - and here a second press costs a row
+   * in a list that is removed with one click, rather than a second set of agents in the working copy.
+   */
+  const queueScenario = (scenario: Scenario, inputs: Record<string, string>, afterSuccess: boolean) => {
+    setScenarioOutcome('')
+    send({ type: 'scenarioQueue', id: scenario.id, scope: scenario.scope, inputs, afterSuccess })
+  }
+
+  /**
    * One run, in a tab of its own.
    *
    * Every run gets its own rather than sharing one that swaps its contents: a run goes on for hours
@@ -4911,6 +4951,14 @@ export const App = () => {
             })
           }
           onUnschedule={(scheduleId) => send({ type: 'scenarioUnschedule', scheduleId })}
+          queue={scenarioQueue}
+          queueUnread={queueUnread}
+          onQueue={queueScenario}
+          onDequeue={(entryId) => send({ type: 'scenarioQueueRemove', entryId })}
+          onMoveQueued={(entryId, by) => send({ type: 'scenarioQueueMove', entryId, by })}
+          onQueueMode={(entryId, afterSuccess) => send({ type: 'scenarioQueueMode', entryId, afterSuccess })}
+          onQueueGoOn={() => send({ type: 'scenarioQueueGoOn' })}
+          onQueueClear={() => send({ type: 'scenarioQueueClear' })}
           canShare={canShareScenarios}
           models={models}
           customModels={customModels}
@@ -4977,13 +5025,19 @@ export const App = () => {
           onOpenChat={() => {
             const run = runRecords[runOfTab(active)]
             if (!run?.headConversationId) return
-            resume({
-              id: run.headConversationId,
-              title: run.scenarioName,
-              updatedAt: run.finishedAt || run.startedAt,
-              messages: 0,
-              titleSource: 'heuristic',
-            })
+            resume(
+              {
+                id: run.headConversationId,
+                title: run.scenarioName,
+                updatedAt: run.finishedAt || run.startedAt,
+                messages: 0,
+                titleSource: 'heuristic',
+              },
+              // The tab has to be told what it is taking on: every message of that transcript says the
+              // agent is the main thread of a run, and an agent that goes on believing it answers this
+              // button's promise with "I do not write files in this role" (see AFTER_SCENARIO_HEAD).
+              true,
+            )
           }}
           onAnswer={(allow, text) => send({ type: 'scenarioAnswer', runId: runOfTab(active), allow, text })}
           onOpenLink={openLink}

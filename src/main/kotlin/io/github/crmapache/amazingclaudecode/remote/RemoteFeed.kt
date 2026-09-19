@@ -57,6 +57,7 @@ internal object RemoteFeed {
             PLUGINS -> Outgoing(type, trimmedPlugins(message))
             MARKETPLACES -> Outgoing(type, marketplacesWithoutPaths(message))
             SCENARIOS -> Outgoing(type, trimmedScenarios(message))
+            SCENARIO_QUEUE -> Outgoing(type, trimmedQueue(message))
             SCENARIO_LIVE -> Outgoing(type, trimmedLive(message))
             SCENARIO_RUN -> trimmedRun(message)
             SCENARIO_FETCHED, SCENARIO_DRAFTED -> Outgoing(type, wholeScenario(type, message))
@@ -258,6 +259,32 @@ internal object RemoteFeed {
     private fun scheduleBody(schedule: JsonObject): JsonObject = answersCut(schedule)
 
     /**
+     * The queue, capped in length and with its answers shortened.
+     *
+     * The same two ceilings the scheduled hours have and for the same reason: every turn carries the
+     * answers somebody typed into a form, which is free text with nothing bounding it, and a frame over
+     * the relay's 256 KB is thrown away rather than shortened - taking with it the one thing the screen
+     * across the city is open for.
+     *
+     * The cap is generous because a queue is a night's work rather than a year's history: a person lines
+     * up a handful of rounds of work, not a hundred. What is past the cap is not lost, only unlisted -
+     * the file on the machine is the queue, and this is a drawing of it.
+     */
+    private fun trimmedQueue(message: String): String {
+        val root = runCatching { Json.parseToJsonElement(message).jsonObject }.getOrNull() ?: return message
+        val queue = root["queue"] as? JsonObject ?: return message
+        val waiting = queue["waiting"] as? JsonArray ?: return message
+
+        return JsonObject(
+            root + mapOf(
+                "queue" to JsonObject(
+                    queue + mapOf("waiting" to mapObjects(JsonArray(waiting.take(PHONE_QUEUED)), ::answersCut)),
+                ),
+            ),
+        ).toString()
+    }
+
+    /**
      * The answers to a scenario's questions, shortened wherever they are carried.
      *
      * One rule for the three places that carry them - a scheduled run, a live run's summary, a past run's
@@ -369,10 +396,13 @@ internal object RemoteFeed {
 
         return buildJsonObject {
             for ((name, value) in root) {
-                if (name == "runs") {
-                    put(name, mapObjects(JsonArray((value as? JsonArray).orEmpty().take(PHONE_RUNS)), ::summaryBody))
-                } else {
-                    put(name, value)
+                when (name) {
+                    "runs" ->
+                        put(name, mapObjects(JsonArray((value as? JsonArray).orEmpty().take(PHONE_RUNS)), ::summaryBody))
+                    // The newest run that is over rides on this message too, and it carries the same free
+                    // text the live ones do - the answers somebody typed into the start form.
+                    "last" -> put(name, (value as? JsonObject)?.let(::summaryBody) ?: value)
+                    else -> put(name, value)
                 }
             }
         }.toString()
@@ -486,6 +516,37 @@ internal object RemoteFeed {
         PROJECT_FACTS.firstOrNull { type -> message.startsWith("{\"type\":\"$type\"") }
 
     /**
+     * Whether this fact is one every paired device is told, whatever it happens to be watching.
+     *
+     * A device holds ONE subscription - one project, and at most one conversation in it - and every fact
+     * used to be addressed by it. That is right for the heavy ones: the file list, the shelves with every
+     * card's prose, a run's whole record. It is wrong for the handful a screen about ALL the projects is
+     * drawn from, and that screen is the one a phone opens on. The first screen draws a branch and a row
+     * of what is running for every project on every paired IDE, and it was drawing them for at most one -
+     * for none at all until a project had been entered, since a page that has just loaded is subscribed to
+     * nothing.
+     *
+     * What it looked like is worse than emptiness: the card fell back to the newest FINISHED run, so a
+     * project working away since nine in the morning showed last night's stopped one, and a project left
+     * behind for another one kept saying "running" for ever, because the facts that would have said
+     * otherwise are addressed to somebody else now.
+     *
+     * So these five travel to everyone on the line. They are chosen by weight and by whom they concern:
+     * a branch and its pull request, what is running here, and the three machine-wide preferences a
+     * screen obeys without being able to change them (see RemoteCommands.DENIED). Between them they are a
+     * few hundred bytes and they change when a person does something, not while an agent types - and
+     * unchanged they are not sent at all (see RelayClient.newFacts).
+     *
+     * Everything else stays on the subscription, and deliberately: the file list alone is forty-eight
+     * kilobytes, and sending every project's to every device would spend somebody's mobile data on screens
+     * they are not looking at.
+     */
+    fun isOverview(type: String): Boolean = type in OVERVIEW_FACTS
+
+    /** See [isOverview]. A set rather than a list: it is asked of, never walked. */
+    private val OVERVIEW_FACTS = setOf("project", SCENARIO_LIVE, LOCALE, CALM_COLORS, CUSTOM_MODELS)
+
+    /**
      * The branch and its pull request, the subscription's usage windows, the slash commands with their
      * descriptions, the project's file list - what the composer on the phone is drawn from - the two
      * machine-wide facts the phone obeys without being able to set them (the language, the colour mode
@@ -524,6 +585,7 @@ internal object RemoteFeed {
         "accounts",
         "accountOutcome",
         SCENARIOS,
+        SCENARIO_QUEUE,
         SCENARIO_LIVE,
         SCENARIO_RUN,
     )
@@ -597,6 +659,9 @@ internal object RemoteFeed {
     const val SCENARIOS = "scenarios"
     const val SCENARIO_RUN = "scenarioRun"
 
+    /** What is lined up to run one after another (see ScenarioQueue) - a list of turns and a stop. */
+    const val SCENARIO_QUEUE = "scenarioQueue"
+
     /** One scenario, asked for by name and answered whole - what the editor on a phone opens on. */
     const val SCENARIO_FETCHED = "scenarioFetched"
 
@@ -640,6 +705,15 @@ internal object RemoteFeed {
     private const val PHONE_SCHEDULES = 40
     private const val PHONE_ANSWERS = 8
     private const val PHONE_ANSWER_CHARS = 120
+
+    /**
+     * How many waiting turns travel.
+     *
+     * Bounded for the hours' reason rather than because a queue is expected to be long: a night's work is
+     * a handful of turns, and the ceiling is here so that "somebody lined up two hundred" cannot be the
+     * thing that throws away the whole frame.
+     */
+    private const val PHONE_QUEUED = 40
 
     /**
      * How much of each line of a step a phone is shown.

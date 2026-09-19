@@ -239,6 +239,7 @@ export const uk: Dict = {
     bands: {
       scenarios: 'Сценарії',
       runs: 'Прогони',
+      queue: 'Черга',
       schedule: 'Розклад',
     },
     create: 'Новий сценарій',
@@ -317,6 +318,58 @@ export const uk: Dict = {
     deleteTitle: 'Видалити цей сценарій?',
     deleteRun: 'Видалити цей запуск',
     deleteRunTitle: 'Видалити цей запуск?',
+    queue: {
+      add: 'У чергу',
+      oneAtATime: 'по одному, за порядком',
+      waitingHere: (n) => {
+        const rest = n % 100
+        const last = n % 10
+        if (last === 1 && !(rest >= 11 && rest <= 14)) return `${n} запуск чекає в черзі`
+        if (last >= 2 && last <= 4 && !(rest >= 11 && rest <= 14)) return `${n} запуски чекають у черзі`
+        return `${n} запусків чекають у черзі`
+      },
+      placeFirst: 'Стане першим у черзі.',
+      placeBehind: (name) => `Стане першим у черзі й почнеться, коли завершиться ${name}.`,
+      place: (ahead) => {
+        const rest = ahead % 100
+        const last = ahead % 10
+        if (last === 1 && !(rest >= 11 && rest <= 14)) return `Попереду ${ahead} запуск.`
+        if (last >= 2 && last <= 4 && !(rest >= 11 && rest <= 14)) return `Попереду ${ahead} запуски.`
+        return `Попереду ${ahead} запусків.`
+      },
+      startWhen: 'КОЛИ ПОЧИНАТИ',
+      afterSuccess: 'Після того, як попередній завершиться успішно',
+      afterSuccessNote: 'Якщо той впаде або його зупинять, черга стане тут і чекатиме на вас.',
+      afterAnything: 'Після попереднього, чим би він не скінчився',
+      afterAnythingNote: 'Почнеться, навіть якщо попередній впав. Для роботи, яка від нього не залежить.',
+      waitsForSuccess: 'після успішного',
+      waitsForAnything: 'після будь-якого',
+      switchToAny: 'Починати, навіть якщо попередній впаде',
+      switchToSuccess: 'Починати лише після успішного',
+      wouldNotStart: (why) => `не запустився: ${why}`,
+      moveUp: 'Вище в черзі',
+      moveDown: 'Нижче в черзі',
+      remove: 'Прибрати з черги',
+      stopped: 'Черга стала',
+      stoppedOn: (name, why) => `${name} завершився: ${why}. Далі ніщо не почнеться.`,
+      stoppedUnknown: 'невідомо, чим він скінчився',
+      goOn: 'Запустити наступний',
+      goOnBehind: 'Продовжити після поточного',
+      goOnBehindHint: (name) => `Наступний почнеться, коли завершиться ${name}.`,
+      clear: 'Очистити чергу',
+      clearTitle: 'Очистити чергу?',
+      clearSubject: (n) => {
+        const rest = n % 100
+        const last = n % 10
+        if (last === 1 && !(rest >= 11 && rest <= 14)) return `${n} запуск чекає`
+        if (last >= 2 && last <= 4 && !(rest >= 11 && rest <= 14)) return `${n} запуски чекають`
+        return `${n} запусків чекають`
+      },
+      goingNow: 'Іде зараз',
+      empty: 'Нічого не поставлено в чергу',
+      emptyNote: 'Покладіть сюди коло робіт - воно почнеться, щойно звільниться попереднє.',
+      unread: 'Чергу не вдалося прочитати - файл на цій машині міг пошкодитися. Нічого не втрачено: список, який не прочитався, ніколи не перезаписується.',
+    },
     running: 'ЗАРАЗ ІДУТЬ',
     runningNote: 'усі по одній робочій копії',
     runningHere: (n) => {
@@ -436,6 +489,7 @@ export const uk: Dict = {
       noClaude: 'Claude Code на цій машині не знайдено.',
       runGone: 'Такого запуску більше немає.',
       runNotResumable: 'Цей запуск не можна продовжити: його головний потік так і не піднявся.',
+      queueNotWritten: 'Чергу не вдалося записати на диск.',
       unknown: 'Щось пішло не так.',
     },
     run: {

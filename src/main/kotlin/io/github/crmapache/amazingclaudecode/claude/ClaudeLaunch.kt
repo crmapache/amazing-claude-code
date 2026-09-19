@@ -155,6 +155,48 @@ internal object ClaudeLaunch {
     """.trimIndent()
 
     /**
+     * What is said on top of it to a tab continuing a scenario run's main thread.
+     *
+     * That conversation is not an ordinary one: every message in it told the agent it was the main
+     * thread of a run - that it hands cards out rather than doing the work, that it never writes to
+     * disk, and that it answers in JSON (see scenario/HeadTalk). All of that is still standing in the
+     * transcript the tab comes up over, so the agent goes on obeying it: asked to change a file, it
+     * answers that it does not write files in this role and that a new run is needed. The one button
+     * that opens this conversation promises the opposite - carry on from here, it remembers everything -
+     * so the role has to be lifted for the promise to mean anything.
+     *
+     * Said in the system prompt rather than as a message of our own. A line written into the
+     * conversation from the person's side is a message they did not write, and the panel does not do
+     * that any more (see the note on effort in CLAUDE.md); the system prompt is where a role belongs,
+     * it costs no turn, and it comes back with every process this tab raises afterwards.
+     *
+     * One line and no quotation marks, like everything else that leaves here - see [oneLine].
+     */
+    val AFTER_SCENARIO_HEAD = """
+        The conversation above is a scenario run that has finished, and in it you were the main thread:
+        you handed cards out to other sessions, judged what came back, and answered in JSON because
+        every message asked you to.
+
+        That run is over, and your part in it is over with it. There are no more cards to hand out and
+        nothing here is answered in JSON any more. From now on you are an ordinary assistant in this
+        project, talking to the person who opened this tab and reading everything above as your own
+        memory of what was done.
+
+        Use the tools as you would anywhere else. The rule that the main thread never writes to disk
+        belonged to the run, not to you: if the person asks you to change a file, change it.
+    """.trimIndent()
+
+    /**
+     * What a tab of the panel tells the agent about where it is running.
+     *
+     * One door rather than two: the second half is added for exactly one case, and a caller deciding
+     * for itself whether to concatenate is a caller that will one day forget - which fails silently,
+     * as a conversation that goes on refusing to work.
+     */
+    fun panelBriefing(afterScenarioHead: Boolean = false): String =
+        if (afterScenarioHead) "$PANEL_BRIEFING\n\n$AFTER_SCENARIO_HEAD" else PANEL_BRIEFING
+
+    /**
      * A launch argument as a Windows shell will still recognise it: one line, whitespace collapsed.
      *
      * The panel does not launch the CLI itself everywhere. On Windows npm installs it as `claude.cmd`

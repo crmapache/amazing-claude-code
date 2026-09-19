@@ -45,7 +45,10 @@ internal class ClaudeAccounts {
         /** A project inside WSL - the CLI runs on the other side of a share. Not in this release. */
         WSL,
 
-        /** Nobody is signed in yet, so there is nothing to keep apart and nothing to probe against. */
+        /**
+         * No live sign-in anywhere - neither the CLI's own nor any drawer added here - so there is
+         * nothing to keep apart and nothing to probe against.
+         */
         NOT_SIGNED_IN,
 
         /**
@@ -395,7 +398,8 @@ internal class ClaudeAccounts {
      * The variable this feature rests on is undocumented (see [AccountStore]), so the probe demands both
      * halves of what it is supposed to do and refuses on anything else:
      *
-     *  1. the credential MOVED - a drawer we know to be empty answers `loggedIn:false`;
+     *  1. the credential MOVED - a drawer we know to be empty answers `loggedIn:false` while a live
+     *     sign-in answers `loggedIn:true`;
      *  2. the folder did NOT move - `projectsDirectory` is the same as without the drawer.
      *
      * The second half is the one that matters. If a future CLI ever made this variable behave like
@@ -403,6 +407,12 @@ internal class ClaudeAccounts {
      * servers, settings and entire history quietly split in two. It is also why the field must be
      * PRESENT in both answers: builds up to 2.1.247 do not report it, and two absences compare equal -
      * a proof that passes when there is nothing to prove is not a proof.
+     *
+     * The live sign-in in the first half is not only the CLI's own. A person who logged out of it and
+     * works on accounts added here has none, and a probe leaning on it alone answered "sign in first"
+     * beside two working accounts - hiding the Add button on a machine that had plainly proven the
+     * mechanism already. So an added drawer stands in for it (see [liveDrawer]), and the verdict itself
+     * is [IsolationProof], held by a test.
      *
      * Cached the way ClaudeExecutable caches its flag answers - by executable path and modification
      * time, so `claude update` re-probes - and never cached negatively for long: a machine that was not
@@ -452,35 +462,44 @@ internal class ClaudeAccounts {
 
     private fun probe(workingDirectory: String?): Capability {
         val plain = ClaudeAuth.status(ClaudeExecutable.environment(), workingDirectory)
+        val reference = plain.takeIf { it.loggedIn } ?: liveDrawer(workingDirectory)
 
-        if (!plain.loggedIn) return Capability.NOT_SIGNED_IN
+        return IsolationProof.verdict(plain, reference) {
+            val scratch = probeDirectory()
 
-        // An API key or a key helper comes out of the environment and outranks any drawer, so a second
-        // account here would be a row that cannot be switched to. Note that this machine still answers
-        // `claude.ai` when only an unapproved key is present - the isolated run below is what actually
-        // catches those, by answering `api_key` where it should have answered nothing.
-        if (plain.method.isNotEmpty() && plain.method != SUBSCRIPTION_METHOD) return Capability.API_KEY
-
-        val scratch = probeDirectory()
-
-        val isolated = try {
-            when (val environment = AccountStore.environmentFor(ClaudeExecutable.rawEnvironment(), scratch.absolutePath)) {
-                is AccountStore.Environment.Ready -> ClaudeAuth.status(environment.variables, workingDirectory)
-                is AccountStore.Environment.Refused -> return Capability.IGNORED
+            try {
+                when (val environment = AccountStore.environmentFor(ClaudeExecutable.rawEnvironment(), scratch.absolutePath)) {
+                    is AccountStore.Environment.Ready -> ClaudeAuth.status(environment.variables, workingDirectory)
+                    is AccountStore.Environment.Refused -> null
+                }
+            } finally {
+                // The CLI makes the folder it is pointed at, and nobody was clearing it away. A negative
+                // answer is deliberately re-asked about once a minute - which is the machine this probe
+                // exists for - so the leftovers piled up beside the real credential drawers.
+                runCatching { scratch.deleteRecursively() }
             }
-        } finally {
-            // The CLI makes the folder it is pointed at, and nobody was clearing it away. A negative
-            // answer is deliberately re-asked about once a minute - which is the machine this probe
-            // exists for - so the leftovers piled up beside the real credential drawers.
-            runCatching { scratch.deleteRecursively() }
         }
+    }
 
-        val moved = !isolated.loggedIn
-        val folderStayed = plain.projectsDirectory.isNotEmpty() &&
-            isolated.projectsDirectory.isNotEmpty() &&
-            plain.projectsDirectory == isolated.projectsDirectory
+    /**
+     * The first account added here whose drawer answers signed in, the one in use asked first - for a
+     * machine whose CLI's own sign-in is empty.
+     *
+     * Not a weaker stand-in but the stronger proof: a drawer answering signed in while the plain CLI
+     * answers signed out can only happen if the variable chose the drawer. Asked one at a time and only
+     * until one answers, because each answer is a process; a draft is skipped, its drawer is empty by
+     * definition.
+     */
+    private fun liveDrawer(workingDirectory: String?): ClaudeAuth.Status? {
+        val inUse = currentId
 
-        return if (moved && folderStayed) Capability.SUPPORTED else Capability.IGNORED
+        return list()
+            .filterNot { it.isPending }
+            .sortedByDescending { it.id == inUse }
+            .asSequence()
+            .mapNotNull { variablesFor(it.id, workingDirectory) }
+            .map { ClaudeAuth.status(it, workingDirectory) }
+            .firstOrNull { it.loggedIn }
     }
 
     // --- Adding, checking and forgetting ------------------------------------------
@@ -727,9 +746,6 @@ internal class ClaudeAccounts {
 
     companion object {
         fun getInstance(): ClaudeAccounts = service()
-
-        /** What `authMethod` says for a Claude subscription, the only kind a drawer can hold. */
-        private const val SUBSCRIPTION_METHOD = "claude.ai"
 
         /** A provisional record's id, before the sign-in has said who it is. */
         const val PENDING_PREFIX = "pending-"

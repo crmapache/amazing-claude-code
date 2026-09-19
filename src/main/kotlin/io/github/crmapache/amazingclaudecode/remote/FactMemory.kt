@@ -32,19 +32,24 @@ internal object FactMemory {
     fun address(key: String): String = key.substringBefore(SEPARATOR)
 
     /**
-     * Forget what belongs to devices that are not watching THIS project, and everything if it grew past
-     * [SLOTS].
+     * Forget what belongs to devices this project is no longer saying anything to, and everything if it
+     * grew past [SLOTS].
      *
-     * The first half is exact: a phone that was revoked, and a phone that moved to another project, both
-     * leave behind every slot they ever had here, and nothing else would ever remove them. Watching this
-     * project rather than merely still paired, because a device that moved keeps its place in the agent's
-     * subscriptions under the same address - asked that way, half of this would never fire.
+     * The first half is exact: a phone that was revoked, one that was switched off, and one that moved to
+     * another project all leave behind every slot they ever had here, and nothing else would ever remove
+     * them. By who is being told anything at all rather than by "still paired", because a device that
+     * moved keeps its place in the agent's subscriptions under the same address - asked that way, half of
+     * this would never fire.
+     *
+     * Forgetting one that comes back costs a frame it had already been sent, which is the right way round:
+     * the overview facts are what its first screen is drawn from, and it is better to say them twice than
+     * to leave a card blank because of what its predecessor under the same address once received.
      *
      * The second is the backstop for the device that stays on one project all year while a scenario runs
      * every morning.
      */
-    fun prune(sent: MutableMap<String, Long>, watching: Set<String>) {
-        sent.keys.removeAll { key -> address(key) !in watching }
+    fun prune(sent: MutableMap<String, Long>, told: Set<String>) {
+        sent.keys.removeAll { key -> address(key) !in told }
         if (sent.size > SLOTS) sent.clear()
     }
 

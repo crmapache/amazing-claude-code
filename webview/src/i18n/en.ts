@@ -276,6 +276,7 @@ export const en = {
     bands: {
       scenarios: 'Scenarios',
       runs: 'Runs',
+      queue: 'Queue',
       schedule: 'Schedule',
     },
     create: 'New scenario',
@@ -380,6 +381,63 @@ export const en = {
       save: 'Set the time',
       nothing: 'Nothing is waiting for an hour in this project.',
     },
+    /**
+     * The queue: rounds of work taken one at a time over one working copy (see ScenarioQueue on the IDE's
+     * side). Runs go side by side, which is what Run means; this is the other answer to the same wish.
+     */
+    queue: {
+      /** On the button on a scenario's row, and on the one that submits the form it opens. */
+      add: 'Add to the queue',
+      /** Beside the tabs: the one fact that makes a queue a queue. */
+      oneAtATime: 'one at a time, in order',
+      /** On that button when this scenario already has turns waiting. */
+      waitingHere: (n: number): string => (n === 1 ? '1 turn waiting in the queue' : `${n} turns waiting in the queue`),
+      /** In the foot of the form: where this turn will land. */
+      placeFirst: 'It goes first in the queue.',
+      /** The same place, but something is going: the turn waits for it, and that is said here rather than found out. */
+      placeBehind: (name: string): string => `It goes first in the queue and starts when ${name} is out of the way.`,
+      place: (ahead: number): string =>
+        ahead === 1 ? 'One turn is ahead of it.' : `${ahead} turns are ahead of it.`,
+      /** The choice a queued turn has, as two sentences rather than a tick box. */
+      startWhen: 'START IT',
+      afterSuccess: 'After the one before it is done',
+      afterSuccessNote: 'If that one fails or is stopped, the queue stops here and waits for you.',
+      afterAnything: 'After the one before it, whatever happened',
+      afterAnythingNote: 'Starts even if the one before it failed. For work that does not depend on it.',
+      /** On a waiting row, where the same choice can be changed without opening a form. */
+      waitsForSuccess: 'after a clean run',
+      waitsForAnything: 'after anything',
+      switchToAny: 'Start it even if the one before fails',
+      switchToSuccess: 'Start it only after a clean run',
+      /** A turn that could not be raised keeps its place and wears the reason. */
+      wouldNotStart: (why: string): string => `would not start: ${why}`,
+      moveUp: 'Move up the queue',
+      moveDown: 'Move down the queue',
+      remove: 'Take it off the queue',
+      /** The state the whole band is arranged around: nothing more starts until a person says. */
+      stopped: 'The queue has stopped',
+      stoppedOn: (name: string, why: string): string => `${name} ended: ${why}. Nothing after it will start.`,
+      /** A run whose record is not on this machine - an IDE killed in the middle of it leaves exactly that. */
+      stoppedUnknown: 'it is not known how it ended',
+      goOn: 'Start the next one',
+      /**
+       * The same button while a run is going beside the stopped queue: pressing it starts nothing, the queue
+       * stands behind that run (see QueueRules.step on the Kotlin side), and "start" would promise a second
+       * set of agents in one working copy.
+       */
+      goOnBehind: 'Go on after the current run',
+      goOnBehindHint: (name: string): string => `The next one starts when ${name} is out of the way.`,
+      clear: 'Empty the queue',
+      clearTitle: 'Empty the queue?',
+      clearSubject: (n: number): string =>
+        n === 1 ? '1 turn waiting' : `${n} turns waiting`,
+      /** The turn the queue raised, while it is going. */
+      goingNow: 'Running now',
+      empty: 'Nothing is lined up',
+      emptyNote: 'Put a round of work here and it starts when the one before it is out of the way.',
+      /** The file could not be read at all, which is not an empty queue - see the hours' own note. */
+      unread: 'The queue could not be read - the file on this machine may be damaged. Nothing is lost: nothing is ever written over a list that could not be read.',
+    },
     duplicate: 'Duplicate',
     delete: 'Delete',
     deleteTitle: 'Delete this scenario?',
@@ -483,6 +541,8 @@ export const en = {
       noClaude: 'Claude Code was not found on this machine.',
       runGone: 'That run is no longer there.',
       runNotResumable: 'This run cannot be picked up again: its main thread never came up.',
+      /** Said out loud, like the hours': a row drawn and then gone reads as the panel forgetting it. */
+      queueNotWritten: 'The queue could not be written to disk.',
       unknown: 'Something went wrong.',
     },
     run: {

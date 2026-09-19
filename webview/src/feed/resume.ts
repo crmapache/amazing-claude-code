@@ -1,3 +1,4 @@
+import { isPanelTab } from '../tabs'
 import type { PanelState } from './panelState'
 import type { UserToken } from './types'
 
@@ -61,3 +62,21 @@ export const tabHolding = (
 
   return tabs.find((tab) => conversationOf(tab.id) === conversationId)?.id
 }
+
+/**
+ * Whether the tab on screen is even a candidate for a past conversation.
+ *
+ * The strip holds two kinds of tab, and only one of them is a conversation (see isPanelTab): the
+ * statistics, the scenarios hub and a run being watched draw their own screen and have no input field at
+ * all. This rule used to be "is the active tab among the conversations, OR are there no conversations at
+ * all" - and the second half is what bit. With every chat closed and a run's tab on screen - which is
+ * exactly where the run's own "Continue in a chat" button is pressed - there were no conversations, so
+ * the tab on screen was taken to be the panel's own spare one and the conversation was put into it. The
+ * identifier it went in under belongs to the run, so the body went on drawing the run: the press
+ * apparently did nothing, the conversation was live and unreachable, and there was nowhere to type.
+ *
+ * The empty half is kept because it is right for what it was written for: a strip with nothing in it at
+ * all is the panel's own tab, and a history opened there should not leave a blank tab behind.
+ */
+export const tabTakesConversation = (active: string, sessions: readonly { id: string }[]): boolean =>
+  !isPanelTab(active) && (sessions.length === 0 || sessions.some((session) => session.id === active))

@@ -283,6 +283,55 @@ class RemoteFeedTest {
         assertFalse(out.contains(""""id":"r41""""))
     }
 
+    /**
+     * And on the one run that is over which rides on the live message.
+     *
+     * It is there so that a project's card can say how the night went on a screen that is not watching
+     * that project (see the `last` field of scenarioLive) - and being a summary like the rest, it carries
+     * the same free text somebody typed into the start form.
+     */
+    @Test
+    fun `the answer the last finished run carries is cut down as well`() {
+        val out = RemoteFeed.forPhone(
+            RemoteFeed.SCENARIO_LIVE,
+            """{"type":"scenarioLive","runs":[],"last":{"id":"r1","scenarioName":"Nightly",""" +
+                """"inputs":{"ticket":"$PASTED"}}}""",
+        ).message
+
+        assertFalse(out.contains(PASTED))
+        assertTrue(out.contains(""""id":"r1""""))
+    }
+
+    /**
+     * Which facts reach a device that has not asked for anything.
+     *
+     * A phone holds one subscription - one project, and at most one conversation in it - while its first
+     * screen is about every project on every paired IDE. So the handful a card is drawn from go to
+     * everybody on the line, and the heavy ones stay on the subscription. Both halves are worth a test:
+     * a fact wrongly left off this list is a blank row nobody can explain, and one wrongly added is every
+     * project's file list on somebody's mobile data.
+     */
+    @Test
+    fun `the facts a card is drawn from go to every device`() {
+        assertTrue(RemoteFeed.isOverview("project"))
+        assertTrue(RemoteFeed.isOverview(RemoteFeed.SCENARIO_LIVE))
+        assertTrue(RemoteFeed.isOverview("locale"))
+        assertTrue(RemoteFeed.isOverview("calmColors"))
+        assertTrue(RemoteFeed.isOverview("customModels"))
+    }
+
+    @Test
+    fun `everything heavy stays with whoever is watching that project`() {
+        assertFalse(RemoteFeed.isOverview("files"))
+        assertFalse(RemoteFeed.isOverview(RemoteFeed.SCENARIOS))
+        assertFalse(RemoteFeed.isOverview(RemoteFeed.SCENARIO_RUN))
+        assertFalse(RemoteFeed.isOverview(RemoteFeed.SCENARIO_QUEUE))
+        assertFalse(RemoteFeed.isOverview("commandHints"))
+        assertFalse(RemoteFeed.isOverview("usage"))
+        assertFalse(RemoteFeed.isOverview("mcpServers"))
+        assertFalse(RemoteFeed.isOverview("accounts"))
+    }
+
     /** The same answers, on the summaries of runs that are over. */
     @Test
     fun `the answers a past run carries are cut down too`() {

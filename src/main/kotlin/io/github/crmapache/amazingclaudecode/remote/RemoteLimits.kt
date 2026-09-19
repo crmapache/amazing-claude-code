@@ -179,6 +179,21 @@ internal class RemoteLimits {
             "scenarioSchedule" to 15,
             "scenarioUnschedule" to 15,
             "scenarioRunDelete" to 15,
+            /*
+             * The queue. Adding a turn is counted like starting a run even though it usually starts
+             * nothing this second: over an idle project it starts one immediately, and a ceiling that
+             * depended on whether the working copy happened to be busy would be no ceiling at all.
+             *
+             * The rest rewrite one small file: reordering a list is the one thing here somebody does
+             * several times in a row, so it is the loosest of them, and going on after a stop raises the
+             * next run - a press, and asked for on a screen somebody is looking at.
+             */
+            "scenarioQueue" to 10,
+            "scenarioQueueRemove" to 20,
+            "scenarioQueueMove" to 30,
+            "scenarioQueueMode" to 20,
+            "scenarioQueueGoOn" to 10,
+            "scenarioQueueClear" to 10,
         )
 
         const val DEFAULT_PER_MINUTE = 30

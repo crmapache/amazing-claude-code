@@ -129,6 +129,23 @@ everybody to pair again - it asks them to reload.
 Horizontal scaling is out of scope. Two replicas would need a shared bus between them, and this
 server's whole value is that it is small enough to read in one sitting.
 
+### The one for development
+
+A second copy of all of the above runs beside it as `acc-relay-dev`, at `wss://relay-dev.mzpizote.com`:
+same image, same sources, its own VAPID pair, its own sources directory on the server
+(`/root/apps/acc-relay-dev`) and its own tag in the registry (`acc-relay-dev:local`). It exists because
+the public one has other people's phones paired with it, and a deploy there is not something to do ten
+times while trying a change out.
+
+```
+./scripts/relay-dev.sh            # the phone's client is rebuilt, then the server
+./scripts/relay-dev.sh --no-web   # server only, when only relay/src has moved
+```
+
+Point a plugin at it the same way as at any other relay - **Remote access → relay address** in the
+panel's menu. The phone needs pairing separately: it dials whichever host served it the client, and
+that host is a different origin, so the keys of the public pairing are not there and are not touched.
+
 ## Configuration
 
 | Variable | Default | What it is |

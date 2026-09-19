@@ -4188,3 +4188,124 @@
   font-size: var(--acc-fs-meta);
   color: var(--acc-fg-ghost);
 }
+
+/* --- The queue: what is lined up, and what the queue is doing about it -------- */
+
+/* A queue that has stopped: the one thing on this screen that is waiting for a person, in the paint the
+   phone already uses for exactly that. */
+.queueHeld {
+  margin-bottom: var(--acc-sp-3);
+  padding: var(--acc-sp-3) var(--acc-sp-4);
+  border: 1px solid rgb(var(--acc-ch-sand) / 32%);
+  border-radius: var(--acc-r-lg);
+  background: rgb(var(--acc-ch-sand) / 10%);
+}
+
+.queueHeldTitle {
+  margin: 0 0 2px;
+  font-size: var(--acc-fs-body);
+  color: var(--acc-warn-light);
+}
+
+.queueHeldWhy {
+  margin: 0;
+  font-size: var(--acc-fs-meta);
+  line-height: 1.45;
+  color: var(--acc-fg-faint);
+}
+
+/* The sentence, pressable when there is a run to open. */
+.queueHeldOpen {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+.queueHeldButtons {
+  display: flex;
+  gap: var(--acc-sp-2);
+  margin-top: var(--acc-sp-3);
+}
+
+/* The turn the queue raised, while it is going - one line, because the run has a card of its own on the
+   band next door. */
+.queueGoingRow {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  margin: 0;
+  padding: var(--acc-sp-3) var(--acc-sp-4);
+  width: 100%;
+  text-align: left;
+}
+
+.queueGoingDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--acc-ok);
+}
+
+.queueGoingName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--acc-fs-body);
+  color: var(--acc-fg);
+}
+
+.queueGoingFact {
+  flex: none;
+  font-size: var(--acc-fs-meta);
+  color: var(--acc-fg-faint);
+}
+
+/* A waiting turn, in the shape of an hour's row: they answer the same kind of question, and two lists on
+   one screen that read differently for no reason are two lists to learn. */
+.queueRow {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-3);
+  width: 100%;
+  min-height: var(--acc-hit);
+  padding: var(--acc-sp-3) var(--acc-sp-4);
+  border-bottom: 1px solid var(--acc-bg-panel);
+}
+
+.queueRow:last-child {
+  border-bottom: none;
+}
+
+.queueRowText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.queueRowButtons {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-1);
+}
+
+/* Everything pressed on a phone is at least a finger wide - see --acc-hit in tokens.css. */
+.queueRowStep {
+  display: grid;
+  place-items: center;
+  min-width: var(--acc-hit);
+  min-height: var(--acc-hit);
+  border-radius: var(--acc-r-pill);
+  font-size: 16px;
+  color: var(--acc-fg-faint);
+}
+
+.queueRowStep:disabled {
+  opacity: 0.3;
+}

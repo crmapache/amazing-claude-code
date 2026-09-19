@@ -979,6 +979,49 @@ describe('building the feed out of the agent stream', () => {
     expect(contextOf(state, 500_000)).toEqual({ used: 10_000, limit: 1_000_000, percent: 1 })
   })
 
+  it('keeps the window mark of a resumed conversation through its replay', () => {
+    // A conversation opened from the history is told its model with the mark on it a moment BEFORE its
+    // replay, and every replayed answer is signed without the mark - `claude-opus-5` for "Opus (1M context)"
+    // and for plain Opus alike. The signature used to take over the tab's model, and the meter guessed a
+    // fifth of the window until the CLI had answered exactly.
+    let state = reducePanel(initialPanelState, { kind: 'modelApplied', model: 'claude-opus-5[1m]' }, 1_700_000_000_000)
+    const answered: AgentEvent = {
+      type: 'assistant',
+      message: { model: 'claude-opus-5', content: [{ type: 'text', text: 'a while ago' }], usage: { input_tokens: 80_000 } },
+    }
+    state = reducePanel(state, { kind: 'agent', event: answered, replay: true }, 1_700_000_000_100)
+
+    expect(state.model).toBe('claude-opus-5')
+    expect(contextOf(state, 200_000).limit).toBe(1_000_000)
+
+    // The stream naming another model altogether takes over: the CLI does swap on its own.
+    const swapped: AgentEvent = { ...answered, message: { ...answered.message, model: 'claude-sonnet-5' } }
+    state = reducePanel(state, { kind: 'agent', event: swapped, replay: true }, 1_700_000_000_200)
+
+    expect(contextOf(state, 1_000_000).limit).toBe(200_000)
+  })
+
+  it('keeps the window mark of a chip pick through the first bare signature', () => {
+    // A pick is a family ("opus[1m]") and a signature an identifier ("claude-opus-5"): the two are not the
+    // same model to sameModel, and were the guess to insist on that, the first answer of a fresh "Opus (1M
+    // context)" tab would be measured against a fifth of its window until the CLI had said the exact figure.
+    let state = reducePanel(initialPanelState, { kind: 'modelApplied', model: 'opus[1m]' }, 1_700_000_000_000)
+    expect(contextOf(state, 200_000).limit).toBe(1_000_000)
+
+    const answered: AgentEvent = {
+      type: 'assistant',
+      message: { model: 'claude-opus-5', content: [{ type: 'text', text: 'first words' }], usage: { input_tokens: 180_000 } },
+    }
+    state = reducePanel(state, { kind: 'agent', event: answered }, 1_700_000_000_100)
+
+    expect(contextOf(state, 200_000)).toEqual({ used: 180_000, limit: 1_000_000, percent: 18 })
+
+    // A choice of no family the panel knows settles nothing: the stream's own name stands.
+    state = reducePanel(initialPanelState, { kind: 'modelApplied', model: 'default' }, 1_700_000_000_000)
+    state = reducePanel(state, { kind: 'agent', event: answered }, 1_700_000_000_100)
+    expect(contextOf(state, 500_000).limit).toBe(200_000)
+  })
+
   it('lets the exact number from the CLI crowd out the estimate made during the turn', () => {
     const answering: AgentEvent = {
       type: 'assistant',
