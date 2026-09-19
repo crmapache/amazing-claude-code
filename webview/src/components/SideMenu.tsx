@@ -20,6 +20,7 @@ export type MenuScreen =
   | 'settings'
   | 'sounds'
   | 'calmColors'
+  | 'indicators'
   | 'remote'
   | 'remoteAbout'
   | 'accounts'
@@ -63,6 +64,8 @@ export interface MenuSummary {
   sounds: string
   /** Whether the gauges are drawn calm rather than by the green-to-red ladder - "On" or "Off". */
   calmColors: string
+  /** How many of the indicators around the input field are on - "6 on", the sounds' words. */
+  indicators: string
   /**
    * What a new tab starts with - the three values of the screen behind "New chats", each written the way
    * its own row writes it. "As last chosen" is one of the answers here rather than an absence of one:
@@ -134,6 +137,7 @@ const AUTHOR_PRODUCT = 'Snakein'
 const SETTINGS_SCREENS: MenuScreen[] = [
   'sounds',
   'calmColors',
+  'indicators',
   'newChat',
   'composerLayout',
   'pasteCollapse',
@@ -294,6 +298,15 @@ const ICONS: Record<string, ReactNode> = {
     <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
       <rect x="1.9" y="5.6" width="12.2" height="4.8" rx="2.4" />
       <path d="M4.6 8h2.8" strokeWidth="2" />
+    </svg>
+  ),
+  /* Two usage rings side by side, the second half-drawn: the row is about which of the readings around the
+     field stay on the screen, and the rings are the ones everybody recognises. */
+  indicators: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+      <circle cx="4.7" cy="8" r="2.9" />
+      <path d="M11.3 5.1a2.9 2.9 0 010 5.8" />
+      <path d="M11.3 10.9a2.9 2.9 0 010-5.8" strokeOpacity="0.4" />
     </svg>
   ),
   composerLayout: (
@@ -635,6 +648,17 @@ export const SettingsScreen = ({
           sub={t.settings.rows.calmColors.sub}
           value={summary.calmColors}
           onClick={() => onPick('calmColors')}
+        />
+        {/* Right after the colours, and for the same question: how much of the panel's corner of the eye
+            the person wants filled - the colours decide how loudly the readings speak, this decides which
+            of them speak at all. */}
+        <Row
+          icon="indicators"
+          iconClass={s.rowIconIndicators}
+          label={t.settings.rows.indicators.label}
+          sub={t.settings.rows.indicators.sub}
+          value={summary.indicators}
+          onClick={() => onPick('indicators')}
         />
         {/* One row for the three things a tab is born with, rather than three rows scattered down this
             list. They are one decision - "how does my work begin" - and the model and the effort had no

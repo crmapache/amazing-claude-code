@@ -3691,6 +3691,22 @@
   color: var(--acc-fg-ghost);
 }
 
+/* A turn has just gone onto the queue from a shelf that stays on screen: the count lights once and settles
+   back (useGrowthFlash, whose FLASH_MS is a little longer than this). Before .bandTabLive so that a stopped
+   queue keeps its own display and dot. */
+.bandTabGrew {
+  display: inline-block;
+  animation: accCountGrew 1.2s ease-out;
+}
+
+@keyframes accCountGrew {
+  0%,
+  25% {
+    color: var(--acc-accent-light);
+    transform: scale(1.35);
+  }
+}
+
 /* Something is going, and the count is the only thing on the strip that says so. */
 .bandTabLive {
   display: inline-flex;

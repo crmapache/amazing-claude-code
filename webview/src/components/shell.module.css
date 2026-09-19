@@ -798,14 +798,22 @@
 
 /* The far end of the status row as one block: the usage, then the bubble and the heart. Together, because
    they step onto the second line together - the usage parted from the pair reads as a third thing in a row
-   that has only two. margin-left holds them at the far edge on either line, which a spacer between the two
-   blocks could not do: on a wrapped line the spacer stays behind on the first one. */
+   that has only two.
+
+   It takes every free pixel of whatever line it stands on, and packs its contents against the far edge -
+   which holds them there on either line, as a spacer between the two blocks could not (on a wrapped line
+   the spacer stays behind on the first one). The grow is a million rather than one on purpose: the
+   selectors grow too (see .selectors), and on a shared line free space is split by these two numbers, so
+   the selectors' share of it is a millionth - nothing. Alone on a line, each of them takes all of it. That
+   is the whole trick of "the selectors fill the line only once the usage has stepped down under them",
+   and it costs no measuring: which line a block goes to is decided by its natural width, never by how much
+   it would grow. */
 .statusEnd {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
-  flex: none;
-  margin-left: auto;
+  flex: 1000000 0 auto;
 }
 
 /* Every meter is one whole piece: the key and the value must not drift apart. A size of its own rather than
@@ -866,8 +874,8 @@
    One line and no shrinking: this block now stands at the far end of the status row, between the spacer and
    the bubble with the heart (see .status and StatusBar.tsx), and there a wrap costs the whole row a second
    line - for the sake of moving the day's tokens under the rings. What gives way when the panel is dragged
-   narrow is the selectors opposite: they wrap by themselves, and each of them is one button rather than a
-   line of figures. */
+   narrow is the row around it: the whole far end steps down under the selectors (see .status and
+   .statusEnd), and the selectors are the ones that go on to lose their captions. */
 .meters {
   display: flex;
   align-items: center;
@@ -1012,17 +1020,46 @@
      itself and decide itself (see App.openSelector), as the header's buttons already do (see .history and
      its neighbours, the same trick). */
   z-index: 41;
-  /* Not flex: none - the usage and the pair stand in the same row now (see .statusEnd and StatusBar.tsx),
-     and a block that cannot shrink would push them out past the panel's right edge on a narrow panel. It
-     does not grow either: the row's free width belongs to the gap before the far end rather than to the
-     selectors. What shrinks inside is the selectors themselves - each of them ends its value with an
-     ellipsis (see .selectorText) rather than being cut off by the panel's edge.
+  /* Not flex: none - a block that cannot shrink would push past the panel's right edge on a narrow panel.
+     It grows, but beside the usage it gets next to nothing of the free width (see .statusEnd); on a line of
+     its own it gets the whole line, and the three share it evenly (see .selectorAuto and StatusBar.tsx).
 
      They do not wrap among themselves: the row above wraps instead (see .status), and this block staying
      one line deep is exactly what that buys. */
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
   max-width: 100%;
+}
+
+/* Too narrow for the captions (see useSelectorsFit): the selectors keep a line of their own even where the
+   shorter row would fit beside the usage again. The order in which the row gives way is the usage first and
+   the captions second, and a row that took the usage back up for dropping them would hand them back one
+   step early - wide enough to hold them again only on the line it had just left. */
+.status[data-selectors='terse'] .selectors,
+.status[data-selectors='squeezed'] .selectors {
+  flex-basis: 100%;
+}
+
+/* The ruler the row is measured against (see StatusBar and useSelectorsFit): a box of nothing that clips
+   whatever is in it, so it neither takes room nor stretches the panel's scroll, while the rows inside keep
+   their natural width. The gap is the selectors' own, inherited twice rather than written down a second
+   time. */
+.selectorsRuler {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+  gap: inherit;
+}
+
+.selectorsRulerRow {
+  display: flex;
+  width: max-content;
+  gap: inherit;
 }
 
 /* The width is counted by the longest of the values rather than by the chosen one (see .selectorSample) -
@@ -1133,6 +1170,17 @@
   color: var(--acc-fg-fainter);
 }
 
+/* The caption put away on a row too narrow for it (see Selector.terse): out of the flow and out of sight,
+   but not out of the button - a screen reader still reads MODEL before the value. */
+.selectorTerse .selectorLabel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .selectorValue {
   position: relative;
   flex: 1;
@@ -1162,12 +1210,11 @@
 }
 
 /*
- * Compact keeps these same buttons in the input field itself, while left/right keeps them in the side rail
- * spanning the panel's full height (see .railColumn below and Composer.tsx) rather than in the status row -
- * there they have no reason to divide a fixed 120px three ways: there are only three neighbours, and they
- * divide the row's whole width evenly among themselves rather than crowding into the right edge with
- * emptiness on the left. It comes later than .selector in the file - and therefore wins over its
- * flex: 0 0 120px at equal specificity.
+ * The three dividing their row's whole width evenly among themselves rather than crowding into one edge with
+ * emptiness at the other. Worn in the side rail (see .railColumn below and Composer.tsx), where the three
+ * are the row's only neighbours, and in the status row under the field, where the row hands them free width
+ * only once the usage has stepped down onto a line of its own (see .statusEnd). It comes later than
+ * .selector in the file - and therefore wins over its flex at equal specificity.
  *
  * min-width: min-content rather than 0 - otherwise flex-basis: 0 stops taking the contents' own width into
  * account when counting the row's width, and the value would be clipped with an ellipsis though there is
@@ -1285,6 +1332,12 @@
   align-items: center;
   flex: none;
   gap: 4px;
+}
+
+/* The pair inside its ruler (see StatusBar): the ruler is a box of no width, and a flex block in it would be
+   that wide too - the buttons would spill out and the pair would measure as nothing. */
+.endPairRuler {
+  width: max-content;
 }
 
 /*

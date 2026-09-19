@@ -8,6 +8,7 @@ import { useTicking } from '../../hooks/useTicking'
 import { useLocale, useT } from '../../i18n'
 import { StatePill } from './StatePill'
 import { CrossIcon } from './icons'
+import { RUNS_PAGE } from './view'
 import s from './scenarios.module.css'
 
 /**
@@ -25,6 +26,7 @@ export const RunsBand = ({
   finished,
   shown,
   onShow,
+  onFold,
   onOpen,
   onAnswer,
   onPause,
@@ -36,6 +38,8 @@ export const RunsBand = ({
   finished: ScenarioRunSummary[]
   shown: number
   onShow: () => void
+  /** Back to the first screenful. */
+  onFold: () => void
   onOpen: (runId: string) => void
   /** Straight into the run, on the card that is standing on a question. */
   onAnswer: (runId: string) => void
@@ -140,11 +144,22 @@ export const RunsBand = ({
             ))}
 
             {/* Inside the table rather than under it: the gap between it and the last run is the one
-                between two runs, and a row that opens more of them belongs to them. */}
-            {finished.length > shown ? (
-              <button type="button" className={s.moreRuns} onClick={onShow}>
-                {t.scenarios.moreRuns(finished.length - shown)}
-              </button>
+                between two runs, and a row that opens more of them belongs to them. Folding back sits in
+                the same row, where the hand already is after opening: the table is unfolded a screenful at
+                a time, and walking back up past thirty runs to fold it would undo the reason it pages. */}
+            {finished.length > RUNS_PAGE ? (
+              <div className={s.tableFoot}>
+                {finished.length > shown ? (
+                  <button type="button" className={s.moreRuns} onClick={onShow}>
+                    {t.scenarios.moreRuns(finished.length - shown)}
+                  </button>
+                ) : null}
+                {shown > RUNS_PAGE ? (
+                  <button type="button" className={s.moreRuns} onClick={onFold}>
+                    {t.scenarios.fewerRuns}
+                  </button>
+                ) : null}
+              </div>
             ) : null}
           </div>
         )}
@@ -157,7 +172,12 @@ export const RunsBand = ({
  * One run that is going: what it is doing, how far it has got, and what it has stopped to ask.
  *
  * The question is on the card, under a rule and in the warning tone, because it is the one thing here
- * that is waiting for a person. Answer / Open / Stop sit where the reading ends.
+ * that is waiting for a person. Answer or Pause, and Stop, sit where the reading ends.
+ *
+ * The whole card opens the run, the way a scenario's row opens its editor. There used to be an Open button
+ * between Pause and Stop, and a card whose middle does nothing reads as broken there - while the button
+ * was one more capsule in a row of three that all looked alike. The state is a reading rather than an
+ * action, so it went down to the corner of the line of readings, out of the row of things to press.
  */
 const LiveRun = ({
   run,
@@ -183,14 +203,21 @@ const LiveRun = ({
   const asks = run.state === 'blocked'
 
   return (
-    <div className={`${s.runCard} ${asks ? s.runCardAsks : ''}`}>
+    <div
+      className={`${s.runCard} ${asks ? s.runCardAsks : ''}`}
+      role="presentation"
+      onClick={(event) => {
+        // A press on any button of the card is that button's alone - the title included, which is the
+        // same door for the keyboard.
+        if ((event.target as HTMLElement).closest('button')) return
+        onOpen()
+      }}
+    >
       <div className={s.runCardHead}>
         <button type="button" className={s.runCardTitles} onClick={onOpen}>
           <span className={s.runCardName}>{run.scenarioName}</span>
           {mark ? <span className={s.runCardMark}>{mark}</span> : null}
         </button>
-
-        <StatePill state={run.state} failure={run.failure} />
 
         <span className={s.runCardButtons}>
           {asks ? (
@@ -206,9 +233,6 @@ const LiveRun = ({
               {t.scenarios.run.pause}
             </button>
           )}
-          <button type="button" className={s.button} onClick={onOpen}>
-            {t.scenarios.run.open}
-          </button>
           <button type="button" className={`${s.button} ${s.buttonDanger}`} onClick={onStop}>
             {t.scenarios.run.stop}
           </button>
@@ -259,6 +283,9 @@ const LiveRun = ({
             <span className={s.runValue}>${run.cost.toFixed(2)}</span>
           </span>
         ) : null}
+        <span className={s.runCardState}>
+          <StatePill state={run.state} failure={run.failure} />
+        </span>
       </div>
 
       {run.asking ? (

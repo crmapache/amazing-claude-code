@@ -108,10 +108,13 @@ let harnessAdding = false
 /** How many Claude Design sign-ins have been asked for - every second one is played as a refusal. */
 let harnessDesignLogins = 0
 
-/** Invented shares, so the rows carry real-looking figures rather than a bare tick. */
-const ACCOUNT_USAGE: Record<string, { session: number; week: number }> = {
-  '': { session: 34, week: 61 },
-  a2: { session: 88, week: 12 },
+/**
+ * Invented shares, so the rows carry real-looking figures rather than a bare tick. The third account's
+ * plan keeps no model week of its own, so the "no ring" case is on the screen too.
+ */
+const ACCOUNT_USAGE: Record<string, { session: number; week: number; fable?: number }> = {
+  '': { session: 34, week: 61, fable: 47 },
+  a2: { session: 88, week: 12, fable: 9 },
   a3: { session: 5, week: 5 },
 }
 
@@ -132,6 +135,11 @@ const sendAccounts = (): void => {
       account: account.id,
       session: { percent: share.session, resets: new Date(Date.now() + 2 * 3600_000).toISOString() },
       week: { percent: share.week, resets: new Date(Date.now() + 4 * 86_400_000).toISOString() },
+      // Always the whole list, as the plugin sends it: an empty one is "this plan keeps none".
+      models:
+        share.fable === undefined
+          ? []
+          : [{ label: 'Fable', percent: share.fable, resets: new Date(Date.now() + 2 * 86_400_000).toISOString() }],
     })
   }
 }

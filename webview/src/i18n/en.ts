@@ -42,6 +42,7 @@ export const en = {
       settings: { title: 'SETTINGS', hint: 'how the panel behaves and sounds' },
       sounds: { title: 'SOUND ALERTS', hint: 'when the panel calls you' },
       calmColors: { title: 'NO-STRESS COLORS', hint: 'how the gauges are painted' },
+      indicators: { title: 'INDICATORS', hint: 'what stays around the field' },
       remote: { title: 'REMOTE ACCESS', hint: 'state · relay · paired devices' },
       remoteAbout: { title: 'WHAT TRAVELS', hint: 'read this before you turn it on' },
       newChat: { title: 'NEW CHATS', hint: 'what a new tab starts with' },
@@ -91,6 +92,7 @@ export const en = {
     rows: {
       sounds: { label: 'Sound alerts', sub: 'When the panel calls you' },
       calmColors: { label: 'No-stress colors', sub: 'How much colour the gauges keep' },
+      indicators: { label: 'Indicators', sub: 'Which readings stay around the field' },
       newChat: { label: 'New chats', sub: 'Model, effort and permission mode' },
       composerLayout: { label: 'Composer layout', sub: 'Where the input sits' },
       pasteCollapse: { label: 'Pasted text', sub: 'When a paste folds into a chip' },
@@ -182,6 +184,25 @@ export const en = {
      */
     full: 'Full colour',
     none: 'One tone',
+  },
+
+  indicators: {
+    contextBar: { label: 'Context bar', hint: 'The strip over the field that fills as the conversation grows' },
+    contextFigure: {
+      label: 'Context figure',
+      hint: '“ctx 42%” at the end of the bar - in the ordinary layout only; in the narrow ones it is the bar’s hover hint',
+    },
+    fiveHour: { label: '5-hour limit', hint: 'The ring for the plan’s five-hour window' },
+    week: { label: 'Weekly limit', hint: 'The ring for the plan’s weekly window' },
+    modelWeek: {
+      label: 'A model’s weekly limit',
+      /** Named by the model once the figures have said which - the server's own name, never translated. */
+      named: (model: string): string => `${model} weekly limit`,
+      hint: 'A model’s own week, as on the account page - shown only while the plan keeps one',
+    },
+    tokens: { label: 'Tokens today', hint: 'Spent today, across every project' },
+    feedback: { label: 'Feedback button', hint: 'The bubble that opens the feedback form - the menu keeps its own way in' },
+    thanks: { label: 'Heart', hint: 'A star, a review, or a word to a friend' },
   },
 
   history: {
@@ -439,6 +460,8 @@ export const en = {
       unread: 'The queue could not be read - the file on this machine may be damaged. Nothing is lost: nothing is ever written over a list that could not be read.',
     },
     duplicate: 'Duplicate',
+    /** The grip on a scenario's row, for whoever cannot see it: it picks the row up (see Shelves). */
+    moveRow: 'Drag to another place or onto the other shelf',
     delete: 'Delete',
     deleteTitle: 'Delete this scenario?',
     deleteRun: 'Delete this run',
@@ -482,6 +505,8 @@ export const en = {
     },
     /** The row at the foot of the past runs: the table is shown a screenful at a time (see RUNS_PAGE). */
     moreRuns: (count: number): string => `Show ${count} more`,
+    /** Beside it once more than a screenful is open: the whole table back to its first screenful at once. */
+    fewerRuns: 'Show fewer',
     shelves: {
       project: 'IN THIS REPOSITORY',
       /** Beside the heading: what the shelf means, in half a line. */
@@ -543,6 +568,12 @@ export const en = {
       runNotResumable: 'This run cannot be picked up again: its main thread never came up.',
       /** Said out loud, like the hours': a row drawn and then gone reads as the panel forgetting it. */
       queueNotWritten: 'The queue could not be written to disk.',
+      /** A row dragged onto the other shelf, whose file would not move (see ScenarioStore.place). */
+      scenarioNotMoved: 'The scenario could not be moved to the other shelf.',
+      /** Refused rather than written over: either of the two could be the one somebody meant to keep. */
+      scenarioOnBothShelves: 'The other shelf already holds a scenario under the same identifier, so this one stayed where it was.',
+      /** Nothing is lost: every row is still on a shelf, only not in the place it was put. */
+      orderNotWritten: 'The new order of the shelf could not be written to disk.',
       unknown: 'Something went wrong.',
     },
     run: {
@@ -1883,6 +1914,7 @@ export const en = {
       title: 'Limits and context',
       fiveHourWindow: 'Five-hour window',
       weeklyWindow: 'Weekly window',
+      modelWindow: (model: string): string => `${model} weekly window`,
       paceNote: (percent: number): string =>
         `The dim arc is an even pace: ${percent}% of the week is already “due” by today. While the bright arc is shorter than it, the week is on plan.`,
       context: 'This conversation’s context',
@@ -1913,6 +1945,7 @@ export const en = {
     modeHint: (mode: string): string => `Permission mode: ${mode}`,
     sessionLimit: '5-hour limit',
     weekLimit: 'Weekly limit',
+    modelWeekLimit: (model: string): string => `${model} weekly limit`,
     windowUsed: (title: string, percent: number): string => `${title}: ${percent}% used`,
     /**
      * The figure itself - "2h 15m", "3d 4h" - is written the same way in every language on purpose: it is
@@ -1932,7 +1965,7 @@ export const en = {
     weeklyOpus: 'weekly Opus',
     weeklySonnet: 'weekly Sonnet',
     weeklyApps: 'weekly apps',
-    weeklyWithExtra: 'weekly, extra usage included',
+    weeklyFable: 'weekly Fable',
     extra: 'extra usage',
   },
 

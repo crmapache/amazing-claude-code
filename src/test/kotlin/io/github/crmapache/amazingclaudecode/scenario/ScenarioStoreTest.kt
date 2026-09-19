@@ -169,4 +169,117 @@ class ScenarioStoreTest {
     fun `a shelf under a folder that is not there at all is unknown`() {
         assertNull(ScenarioStore(File(project, "gone-with-the-branch").absolutePath).shelf(ScenarioScope.PROJECT))
     }
+
+    // --- Dragged into place ------------------------------------------------------------
+
+    /** A store whose personal shelf is a folder of the test's own rather than this person's Claude home. */
+    private fun withHome(): ScenarioStore = ScenarioStore(project.absolutePath, claudeHome = File(project, "home"))
+
+    private fun names(shelf: List<Scenario>?): List<String> = shelf.orEmpty().map { it.name }
+
+    private fun three(on: ScenarioStore): List<Scenario> =
+        listOf("One", "Two", "Three").map { name ->
+            on.save(scenario(name), ScenarioScope.PROJECT)!!.also { Thread.sleep(2) }
+        }
+
+    @Test
+    fun `a row put before another stays there`() {
+        val (one, _, three) = three(store)
+
+        assertNull(store.place(three.id, ScenarioScope.PROJECT, ScenarioScope.PROJECT, before = one.id))
+
+        assertEquals(listOf("Three", "One", "Two"), names(store.shelf(ScenarioScope.PROJECT)))
+    }
+
+    @Test
+    fun `a row put before nothing goes last`() {
+        val (one, _, _) = three(store)
+
+        assertNull(store.place(one.id, ScenarioScope.PROJECT, ScenarioScope.PROJECT, before = ""))
+
+        assertEquals(listOf("Two", "Three", "One"), names(store.shelf(ScenarioScope.PROJECT)))
+    }
+
+    // The neighbour it was dropped before was deleted in another window meanwhile: last, rather than lost.
+    @Test
+    fun `a neighbour that is gone puts the row last`() {
+        val (one, _, _) = three(store)
+
+        assertNull(store.place(one.id, ScenarioScope.PROJECT, ScenarioScope.PROJECT, before = "deleted-meanwhile"))
+
+        assertEquals(listOf("Two", "Three", "One"), names(store.shelf(ScenarioScope.PROJECT)))
+    }
+
+    // Written since the shelf was put in order: nobody placed it, so it goes where a new one always went.
+    @Test
+    fun `a scenario the order does not name comes after it`() {
+        val (one, _, three) = three(store)
+        store.place(three.id, ScenarioScope.PROJECT, ScenarioScope.PROJECT, before = one.id)
+
+        store.save(scenario("Four"), ScenarioScope.PROJECT)
+
+        assertEquals(listOf("Three", "One", "Two", "Four"), names(store.shelf(ScenarioScope.PROJECT)))
+    }
+
+    // Every field of a scenario has a default, so the order file would read as one called "Untitled".
+    @Test
+    fun `the order is never read as a scenario`() {
+        val (one, _, three) = three(store)
+        store.place(three.id, ScenarioScope.PROJECT, ScenarioScope.PROJECT, before = one.id)
+
+        assertTrue(File(store.projectDirectory(), ScenarioStore.ORDER).isFile)
+        assertEquals(3, onTheShelf())
+    }
+
+    @Test
+    fun `an order that will not parse costs the places and not the rows`() {
+        three(store)
+        File(store.projectDirectory(), ScenarioStore.ORDER).writeText("{ not json")
+
+        assertEquals(listOf("One", "Two", "Three"), names(store.shelf(ScenarioScope.PROJECT)))
+    }
+
+    @Test
+    fun `a row dragged onto the other shelf takes its file with it`() {
+        val home = withHome()
+        val (one, two, _) = three(home)
+        val mine = home.save(scenario("Mine"), ScenarioScope.USER)!!
+        val before = File(home.projectDirectory(), "${two.id}.json").readText()
+
+        assertNull(home.place(two.id, ScenarioScope.PROJECT, ScenarioScope.USER, before = mine.id))
+
+        assertEquals(listOf("One", "Three"), names(home.shelf(ScenarioScope.PROJECT)))
+        assertEquals(listOf("Two", "Mine"), names(home.shelf(ScenarioScope.USER)))
+        assertFalse(File(home.projectDirectory(), "${two.id}.json").exists())
+        // Carried rather than written again: not a character of it changes, the moment it was edited included.
+        assertEquals(before, File(home.userDirectory(), "${two.id}.json").readText())
+        assertEquals(ScenarioScope.USER, home.find(two.id, ScenarioScope.USER)!!.scope)
+        assertNull(home.find(one.id, ScenarioScope.USER))
+    }
+
+    // A project file that came back with a checkout beside somebody's own copy: either could be the keeper.
+    @Test
+    fun `a move onto a shelf that holds the same identifier is refused`() {
+        val home = withHome()
+        val shared = home.save(scenario("Shared"), ScenarioScope.PROJECT)!!
+        File(home.userDirectory().apply { mkdirs() }, "${shared.id}.json")
+            .writeText(File(home.projectDirectory(), "${shared.id}.json").readText().replace("Shared", "Own copy"))
+
+        assertEquals(
+            ScenarioStore.TWIN,
+            home.place(shared.id, ScenarioScope.PROJECT, ScenarioScope.USER, before = ""),
+        )
+        assertEquals("Shared", home.find(shared.id, ScenarioScope.PROJECT)!!.name)
+        assertEquals("Own copy", home.find(shared.id, ScenarioScope.USER)!!.name)
+    }
+
+    @Test
+    fun `a row that is on neither shelf is gone`() {
+        val home = withHome()
+        three(home)
+
+        assertEquals(ScenarioStore.GONE, home.place("nobody", ScenarioScope.PROJECT, ScenarioScope.USER, before = ""))
+        assertEquals(ScenarioStore.GONE, home.place("nobody", ScenarioScope.PROJECT, ScenarioScope.PROJECT, before = ""))
+        assertEquals(ScenarioStore.GONE, home.place("../..", ScenarioScope.PROJECT, ScenarioScope.PROJECT, before = ""))
+    }
 }

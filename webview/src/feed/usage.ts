@@ -1,5 +1,5 @@
 import type { Dict } from '../i18n/en'
-import type { ExtraUsage, ShellMessage, UsageWindow } from '../protocol'
+import type { ExtraUsage, ModelUsageWindow, ShellMessage, UsageWindow } from '../protocol'
 
 /**
  * How the usage gauges are read: what the figures themselves add up to, the ring's geometry, the colour
@@ -17,6 +17,8 @@ import type { ExtraUsage, ShellMessage, UsageWindow } from '../protocol'
 export interface UsageFacts {
   session?: UsageWindow
   week?: UsageWindow
+  /** The per-model weekly windows (Fable) - an empty list means the plan keeps none. */
+  models?: ModelUsageWindow[]
   /** Whether the plan's limit is being passed for money right now - see ExtraUsage. */
   extra?: ExtraUsage
   /** The current model's context window: with the large ones it is a million, not two hundred thousand. */
@@ -72,6 +74,7 @@ export const usageOf = (book: UsageBook, account: string): UsageFacts => {
   return {
     session: own.session,
     week: own.week,
+    models: own.models,
     extra: own.extra,
     contextWindow: own.contextWindow ?? book.shared.contextWindow,
     todayTokens: own.todayTokens ?? book.shared.todayTokens,
@@ -97,6 +100,9 @@ export const mergeUsage = (current: UsageFacts, message: UsageMessage): UsageFac
     : {
         session: message.session ?? current.session,
         week: message.week ?? current.week,
+        // A whole list or nothing: the plugin sends every per-model week it knows each time, so an empty
+        // list is "the plan keeps none" and must replace, while an absent one says nothing about them.
+        models: message.models ?? current.models,
         // Extra usage arrives whole or not at all: its two halves are put together on the plugin's side
         // (see ProjectUsage.putExtra), and merging them field by field here would only take them apart.
         extra: message.extra ?? current.extra,
@@ -125,7 +131,9 @@ const limitWindowNames = (t: Dict): Record<string, string> => ({
   seven_day_opus: t.limits.weeklyOpus,
   seven_day_sonnet: t.limits.weeklySonnet,
   seven_day_oauth_apps: t.limits.weeklyApps,
-  seven_day_overage_included: t.limits.weeklyWithExtra,
+  // The CLI's own name for this one is "Fable limit" (checked in 2.1.273): it is the weekly bucket of the
+  // models whose usage the plan counts apart - the same window `model_scoped` reports as Fable's week.
+  seven_day_overage_included: t.limits.weeklyFable,
   overage: t.limits.extra,
 })
 
@@ -133,15 +141,25 @@ export const limitWindowName = (t: Dict, window: string | undefined): string =>
   limitWindowNames(t)[window ?? ''] ?? ''
 
 /**
- * Which of the two rings the window belongs to: the five-hour one or the weekly one.
+ * Which ring the window belongs to: the five-hour one, the weekly one or the model's own week.
  *
- * It decides which ring burns while extra usage is being spent. Everything weekly - the shared window and
- * the per-model ones alike - belongs to the weekly ring; anything else, an unfamiliar name included, goes
- * to the five-hour one, because that is the window that runs out several times a day and is nearly always
- * the one meant.
+ * It decides which ring burns while extra usage is being spent. `seven_day_overage_included` is the model's
+ * week (the CLI calls it "Fable limit"), so when that ring is on the screen it is the one that burns - the
+ * shared week beside it is not exhausted, and setting it alight would point at a window that is fine.
+ * Without a model ring the same window falls back to the weekly one, as it did before the ring existed.
+ * Everything else weekly - the shared window and the Opus and Sonnet ones - belongs to the weekly ring;
+ * anything else, an unfamiliar name included, goes to the five-hour one, because that is the window that
+ * runs out several times a day and is nearly always the one meant.
  */
-export const limitWindowRing = (window: string | undefined): 'session' | 'week' =>
-  window?.startsWith('seven_day') ? 'week' : 'session'
+export const limitWindowRing = (
+  window: string | undefined,
+  hasModelRing = false,
+): 'session' | 'week' | 'model' =>
+  window === 'seven_day_overage_included' && hasModelRing
+    ? 'model'
+    : window?.startsWith('seven_day')
+      ? 'week'
+      : 'session'
 
 /** The ring's radius in its own coordinates, and the arc length at that radius. */
 export const RING_RADIUS = 8.5

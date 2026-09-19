@@ -31,6 +31,7 @@ export const fr: Dict = {
       settings: { title: 'RÉGLAGES', hint: 'comment le panneau se comporte et comment il sonne' },
       sounds: { title: 'ALERTES SONORES', hint: 'quand le panneau t’appelle' },
       calmColors: { title: 'COULEURS APAISÉES', hint: 'comment les jauges sont peintes' },
+      indicators: { title: 'INDICATEURS', hint: 'ce qui reste autour du champ' },
       remote: { title: 'ACCÈS À DISTANCE', hint: 'état · relais · appareils appairés' },
       remoteAbout: { title: 'CE QUI SORT D’ICI', hint: 'à lire avant de l’activer' },
       newChat: { title: 'NOUVEAUX CHATS', hint: 'ce avec quoi démarre un nouvel onglet' },
@@ -75,6 +76,7 @@ export const fr: Dict = {
     rows: {
       sounds: { label: 'Alertes sonores', sub: 'Quand le panneau t’appelle' },
       calmColors: { label: 'Couleurs apaisées', sub: 'Combien de couleur gardent les jauges' },
+      indicators: { label: 'Indicateurs', sub: 'Quelles mesures restent près du champ' },
       newChat: { label: 'Nouveaux chats', sub: 'Modèle, effort et mode de permission' },
       composerLayout: { label: 'Disposition du champ', sub: 'Où se place le champ de saisie' },
       pasteCollapse: { label: 'Texte collé', sub: 'Quand un collage se replie en pastille' },
@@ -139,6 +141,24 @@ export const fr: Dict = {
     keeps: 'Rien d’autre ne change : une erreur reste rouge, une permission reste ce qu’elle est. Ce sont des choses qui sont arrivées, pas une humeur.',
     full: 'Couleur pleine',
     none: 'Un seul ton',
+  },
+
+  indicators: {
+    contextBar: { label: 'Barre de contexte', hint: 'La bande au-dessus du champ qui se remplit au fil de la conversation' },
+    contextFigure: {
+      label: 'Chiffre du contexte',
+      hint: '« ctx 42% » au bout de la barre - seulement dans la disposition normale ; dans les étroites, le chiffre est dans l’infobulle de la barre',
+    },
+    fiveHour: { label: 'Limite de 5 heures', hint: 'L’anneau de la fenêtre de cinq heures du forfait' },
+    week: { label: 'Limite hebdomadaire', hint: 'L’anneau de la fenêtre hebdomadaire du forfait' },
+    modelWeek: {
+      label: 'Limite hebdomadaire d’un modèle',
+      named: (model) => `Limite hebdomadaire ${model}`,
+      hint: 'La semaine propre d’un modèle, comme sur la page du compte - seulement tant que le forfait en a une',
+    },
+    tokens: { label: 'Tokens du jour', hint: 'Dépensés aujourd’hui, tous projets confondus' },
+    feedback: { label: 'Bouton de retour', hint: 'La bulle qui ouvre le formulaire - le menu garde son propre accès' },
+    thanks: { label: 'Cœur', hint: 'Une étoile, un avis ou un mot à un ami' },
   },
 
   history: {
@@ -274,6 +294,7 @@ export const fr: Dict = {
       nothing: 'Rien n\'attend son heure dans ce projet.',
     },
     duplicate: 'Dupliquer',
+    moveRow: 'Glisser vers une autre place ou sur l’autre étagère',
     delete: 'Supprimer',
     deleteTitle: 'Supprimer ce scénario ?',
     deleteRun: 'Supprimer cette exécution',
@@ -341,6 +362,7 @@ export const fr: Dict = {
       state: 'ÉTAT',
     },
     moreRuns: (count: number): string => `Afficher ${count} de plus`,
+    fewerRuns: 'Afficher moins',
     shelves: {
       project: 'DANS CE DÉPÔT',
       projectNote: 'voyage avec le dépôt · tous ceux qui travaillent ici l\'ont',
@@ -396,6 +418,9 @@ export const fr: Dict = {
       runGone: 'Cette exécution n\'existe plus.',
       runNotResumable: 'Cette exécution ne peut pas être reprise : son fil principal n\'a jamais démarré.',
       queueNotWritten: 'La file n’a pas pu être écrite sur le disque.',
+      scenarioNotMoved: 'Le scénario n’a pas pu être déplacé sur l’autre étagère.',
+      scenarioOnBothShelves: 'L’autre étagère contient déjà un scénario avec le même identifiant, celui-ci est donc resté à sa place.',
+      orderNotWritten: 'Le nouvel ordre de l’étagère n’a pas pu être écrit sur le disque.',
       unknown: 'Quelque chose a mal tourné.',
     },
     run: {
@@ -1500,6 +1525,7 @@ export const fr: Dict = {
       title: 'Limites et contexte',
       fiveHourWindow: 'Fenêtre de cinq heures',
       weeklyWindow: 'Fenêtre hebdomadaire',
+      modelWindow: (model) => `Fenêtre hebdomadaire ${model}`,
       paceNote: (percent) =>
         `L’arc pâle est le rythme régulier : ${percent}% de la semaine sont déjà « dus » à ce jour. Tant que l’arc vif est plus court, la semaine tient le plan.`,
       context: 'Le contexte de cette conversation',
@@ -1526,6 +1552,7 @@ export const fr: Dict = {
     modeHint: (mode) => `Mode d’autorisation : ${mode}`,
     sessionLimit: 'Limite de 5 heures',
     weekLimit: 'Limite hebdomadaire',
+    modelWeekLimit: (model) => `Limite hebdomadaire ${model}`,
     windowUsed: (title, percent) => `${title} : ${percent}% utilisé`,
     resetsIn: (left) => `Réinitialisation dans ${left}`,
     paceBudget: (percent) => `Anneau pâle : ${percent}% du budget à rythme régulier pour aujourd’hui`,
@@ -1541,7 +1568,7 @@ export const fr: Dict = {
     weeklyOpus: 'hebdomadaire Opus',
     weeklySonnet: 'hebdomadaire Sonnet',
     weeklyApps: 'hebdomadaire des applications',
-    weeklyWithExtra: 'hebdomadaire, usage supplémentaire compris',
+    weeklyFable: 'hebdomadaire Fable',
     extra: 'd’usage supplémentaire',
   },
 

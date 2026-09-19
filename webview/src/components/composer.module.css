@@ -1001,6 +1001,12 @@
   pointer-events: none;
 }
 
+/* The figure without its bar (see indicators.ts): it keeps the far end it always stood at rather than
+   moving to where the bar used to begin - the eye goes looking for it there. */
+.contextMeterRowFigure {
+  justify-content: flex-end;
+}
+
 /* Four pixels rather than three, and the same four for the fill: the fill used to glow, and the glow
    made it read as a thicker bar than the track under it. Flat, the two are one line of one weight. */
 .contextMeter {
@@ -1258,6 +1264,13 @@
   padding: 7px 11px 7px 9px;
 }
 
+/* The vertical gauge switched off (see indicators.ts): the left padding was the narrow one because the
+   gauge and its gap stood between it and the text - without them the text would sit closer to the left
+   edge than to the right one. After .boxCompact and .boxRail, so that it wins at equal specificity. */
+.boxNoGauge {
+  padding-left: 11px;
+}
+
 /* The same trick as .compactSelectors above - the shared .selectorAuto divides the row evenly among the
    three buttons, while position+z-index lift them above the menu's scrim (see .compactSelectors and
    .selectors in shell.module.css). Here that is not visible to the eye - the rail stands above the scrim's
@@ -1374,6 +1387,21 @@
   font-size: 13px;
   line-height: var(--acc-leading, 1.55);
   color: var(--acc-fg);
+}
+
+/*
+ * Neither the context bar nor its figure (see indicators.ts), so there is no row above the field, and the
+ * field's own top padding - the short one, because the bar's row stood above it - would put the first line
+ * against the frame. The bottom padding's eleven pixels instead, and the heights grow by the same four so
+ * that the field still holds three lines and five, not a line less a strip. Only in the ordinary layout:
+ * the narrow ones never had the row, and their fields carry no padding of their own.
+ */
+.boxBare .field {
+  padding-top: 11px;
+  min-height: 85px;
+  min-height: calc(3 * 1lh + 22px);
+  max-height: 127px;
+  max-height: calc(5 * 1lh + 22px);
 }
 
 /*
@@ -1513,7 +1541,8 @@
  * commanding), what one does with it on the right (Send, Queue, Stop). The usage used to stand at the left
  * edge and has moved down into the status line, where the heart is - it is a fact about the day rather than
  * about this draft (see StatusBar). The row does not wrap: a Send button that rode onto a second line reads
- * as a breakage.
+ * as a breakage. Dragged narrow it gives way instead - the squares leave one by one (see useToolsFit), and
+ * after them Queue and Send narrow down to a letter each (see .send).
  */
 .tools {
   display: flex;
@@ -1538,6 +1567,7 @@
 .toolGroups {
   display: flex;
   align-items: center;
+  flex: none;
   gap: 11px;
 }
 
@@ -1547,10 +1577,15 @@
   gap: 4px;
 }
 
+/* flex: none - the squares never narrow. Left to the default they could: the automatic minimum of a flex
+   item is the smaller of its width and its contents, and a 26px button around a 14px icon would give up
+   twelve pixels of itself before anything else in the row did. When the row runs short, squares leave it
+   whole instead (see useToolsFit). */
 .attach {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex: none;
   width: 26px;
   height: 26px;
   border-radius: var(--acc-r-md);
@@ -1863,12 +1898,16 @@
   flex-shrink: 1;
 }
 
+/* Stop and Force stop never narrow and never break a line: a Stop cut down to its square, or folded into
+   two lines inside a 26px button, is the one control here that must not be mistaken for anything else. */
 .stop {
   height: 26px;
   display: flex;
   align-items: center;
+  flex: none;
   gap: 7px;
   padding: 0 10px;
+  white-space: nowrap;
   border: 1px solid var(--acc-line-strong);
   border-radius: var(--acc-r-lg);
   font: 500 11.5px var(--acc-font);
@@ -1896,8 +1935,10 @@
   height: 26px;
   display: flex;
   align-items: center;
+  flex: none;
   gap: 7px;
   padding: 0 10px;
+  white-space: nowrap;
   border: 1px solid var(--acc-bad);
   border-radius: var(--acc-r-lg);
   background: var(--acc-bad-16);
@@ -1917,17 +1958,36 @@
   color: var(--acc-bad-text);
 }
 
+/*
+ * Queue and Send are the last things in the row to give way - after every square that can leave has left
+ * (see useToolsFit) - and they give way down to their first letter, never below it.
+ *
+ * A grid of two columns is what holds that floor: the first letter in a column of its own size, the rest in
+ * one that can shrink to nothing (minmax(0, ...)). A grid sized to its minimum puts every track at its
+ * floor, so the button's own smallest width is its padding and one letter, and the row's automatic minimum
+ * for a flex item is exactly that. No overflow on the button itself: a clipping box has no automatic
+ * minimum at all and would narrow on past the letter. The rest clips itself instead, without an ellipsis -
+ * on a button this narrow three dots would take the room of the letters they stand in for.
+ */
 .send {
   height: 26px;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, max-content);
   align-items: center;
-  gap: 7px;
+  justify-content: center;
+  flex: 0 1 auto;
   padding: 0 11px;
   border-radius: var(--acc-r-lg);
   background: var(--acc-accent);
   color: var(--acc-on-accent);
   font: 600 11.5px var(--acc-font);
+  white-space: nowrap;
   transition: background-color 80ms linear;
+}
+
+.sendRest {
+  min-width: 0;
+  overflow: hidden;
 }
 
 .send:hover,
@@ -1987,7 +2047,9 @@
  */
 [data-holiday] .send:not(.sendRun):not(.sendQueued):not(:disabled) {
   position: relative;
-  overflow: hidden;
+  /* clip rather than hidden: a hidden overflow makes the button a scroll container, and a scroll container
+     has no automatic minimum in the row - Send would narrow on past its first letter (see .send). */
+  overflow: clip;
   border: 1px solid var(--acc-ice-line);
   background: var(--acc-ice);
   /* Lit from above and settled at the bottom, then the button's own drop onto the row beneath. */

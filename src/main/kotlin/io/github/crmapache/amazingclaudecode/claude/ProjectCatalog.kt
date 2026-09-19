@@ -175,6 +175,22 @@ internal class ProjectCatalog(
     }
 
     /**
+     * Which indicators around the input field are switched off. A fact of its own for the second of the
+     * calm colours' two reasons only: the setting is machine-wide, so another window has to apply a change
+     * at once rather than after a restart. The first reason does not apply - it is not in the phone's
+     * list (RemoteFeed.PROJECT_FACTS), because the phone has neither the counter nor the buttons, and its
+     * rings are its own business - so a joining panel learns it from `init`, and nothing else needs it.
+     */
+    fun sendIndicators() {
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "indicators")
+                putJsonArray("hidden") { ClaudePreferences.hiddenIndicators.forEach { add(it) } }
+            }.toString(),
+        )
+    }
+
+    /**
      * The models added by hand, as a fact of their own beside the two above - and for the same two
      * reasons: a phone is never sent `init`, and a list changed in one window has to reach the others
      * without waiting for a restart.
@@ -269,6 +285,9 @@ internal class ProjectCatalog(
                     // And how much colour the gauges keep. Unconditional like the send key: a hundred is
                     // an answer rather than a missing one - a panel nobody has asked draws the ladder.
                     put("calmVivid", preferences.gaugeVivid)
+                    // And which indicators around the field are switched off. Unconditional too: an empty
+                    // list says "all of them shown", the answer a panel nobody has asked gives by itself.
+                    putJsonArray("hiddenIndicators") { preferences.hiddenIndicators.forEach { add(it) } }
                     // Two values rather than one, and the empty one is not the useless one: `language`
                     // is the explicit choice and is usually empty, `ideLanguage` is what the IDE itself
                     // is set to. Empty means "speak whatever the IDE speaks", and the picker needs the

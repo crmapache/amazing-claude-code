@@ -293,6 +293,9 @@
 
 /* --- The empty state ------------------------------------------------------- */
 
+/* The same side gutters as every row of the feed, and the lines centred as text rather than only as
+   boxes: a narrow panel folds the title in two, and a folded paragraph centred as a box is a box as wide as
+   the panel - its lines ran from the left edge, flush against it. */
 .empty {
   height: 100%;
   display: flex;
@@ -300,6 +303,8 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
+  padding: 0 var(--acc-feed-gutter, 16px);
+  text-align: center;
   color: var(--acc-fg-faint);
 }
 

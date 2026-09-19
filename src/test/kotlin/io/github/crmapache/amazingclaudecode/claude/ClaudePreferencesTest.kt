@@ -56,6 +56,31 @@ class ClaudePreferencesTest : BasePlatformTestCase() {
         assertEquals(listOf("glm-4.6"), ClaudePreferences.usableModelNames(listOf("glm-4.6", "two words")))
     }
 
+    /**
+     * The indicators switched off around the field. What is stored is what is OFF - an empty setting means
+     * "all shown" - and the value comes in by a message, so anything that is not a plain word is dropped
+     * on the way in and on the way out.
+     */
+    fun testHiddenIndicatorsSurviveARoundTrip() {
+        ClaudePreferences.hiddenIndicators = setOf("tokens", "thanks")
+
+        assertEquals(setOf("thanks", "tokens"), ClaudePreferences.hiddenIndicators)
+        assertEquals(setOf("thanks", "tokens"), ClaudePreferences.snapshot().hiddenIndicators)
+    }
+
+    fun testHiddenIndicatorsKeepOnlyPlainWords() {
+        ClaudePreferences.hiddenIndicators = setOf(" week ", "with,comma", "two words", "", "a1")
+
+        assertEquals(setOf("week"), ClaudePreferences.hiddenIndicators)
+    }
+
+    fun testNothingHiddenIsTheDefault() {
+        ClaudePreferences.hiddenIndicators = setOf("week")
+        ClaudePreferences.hiddenIndicators = emptySet()
+
+        assertEquals(emptySet<String>(), ClaudePreferences.hiddenIndicators)
+    }
+
     fun testEmptyValueMeansDefault() {
         ClaudePreferences.model = "opus"
         ClaudePreferences.model = ""
@@ -71,6 +96,7 @@ class ClaudePreferencesTest : BasePlatformTestCase() {
         ClaudePreferences.mode = ""
         ClaudePreferences.composerLayout = ""
         ClaudePreferences.customModels = emptyList()
+        ClaudePreferences.hiddenIndicators = emptySet()
         super.tearDown()
     }
 }

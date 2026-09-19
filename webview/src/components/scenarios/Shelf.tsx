@@ -1,3 +1,7 @@
+import type { CSSProperties, ReactNode } from 'react'
+import { useDroppable } from '@dnd-kit/core'
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import type {
   Scenario,
   ScenarioQueued,
@@ -6,13 +10,22 @@ import type {
   ScenarioSchedule,
   ScenarioScope,
 } from '../../protocol'
+import { rowKey } from '../../scenarios/arrange'
 import { cardRuns, passesOf, problemsOf, blocking } from '../../scenarios/rules'
 import { queuedFor } from '../../scenarios/queue'
 import { nextNote, schedulesOf, whenLabel } from '../../scenarios/schedule'
-import { runMarks } from '../../scenarios/runs'
+import { runMarks, runsOf } from '../../scenarios/runs'
 import { useLocale, useT } from '../../i18n'
-import { ClockIcon, CrossIcon, DuplicateIcon, QueueIcon } from './icons'
+import { ClockIcon, CrossIcon, DuplicateIcon, GripIcon, QueueIcon } from './icons'
 import s from './scenarios.module.css'
+
+/**
+ * The name a shelf's heading answers to while a row is dragged (see Shelves).
+ *
+ * The heading of the second shelf is the line between the two, and a drag has to be able to measure it;
+ * a row key is a scope and a colon too, but never this word, so the two cannot meet.
+ */
+export const shelfHeading = (scope: ScenarioScope): string => `heading:${scope}`
 
 /**
  * One shelf of scenarios: what is on it, what each one is set up to do, and everything one does to one.
@@ -25,12 +38,18 @@ import s from './scenarios.module.css'
  * The Run button is never disabled by another run - a scenario may be started as many times as somebody
  * wants, which is what the whole of this is about. What guards the second press is a moment's pause at
  * the one door runs go through (see App), not a dead button here.
+ *
+ * The rows are picked up by the grip on their left and put down anywhere on either shelf (see Shelves) -
+ * by the grip alone, because everything else on a row is already a click with a meaning of its own.
  */
 export const Shelf = ({
   label,
   note,
   scope,
   scenarios,
+  known,
+  movable,
+  carrying,
   empty,
   emptyNote,
   schedules,
@@ -48,7 +67,14 @@ export const Shelf = ({
   label: string
   note: string
   scope: ScenarioScope
+  /** This shelf's rows in the order they stand - mid-drag, that may include one read off the other shelf. */
   scenarios: Scenario[]
+  /** Both shelves, to tell a run's scenario from another under the same identifier (see runsOf). */
+  known: Scenario[]
+  /** Whether a row has anywhere else to go - a row that has not gets no grip at all. */
+  movable: (scenario: Scenario) => boolean
+  /** How tall the row being carried is, or null when none is (see Shelves). */
+  carrying: number | null
   empty: string
   emptyNote: string
   /** Every scheduled run of the project; the row takes its own out of it. */
@@ -69,17 +95,30 @@ export const Shelf = ({
 }) => {
   const t = useT()
   const marks = runMarks(runs)
+  // Measured rather than dropped on: where a drag crosses from one shelf to the other (see landing).
+  const { setNodeRef: headingRef } = useDroppable({ id: shelfHeading(scope) })
 
   return (
     <div className={s.section}>
-      <div className={s.label}>
+      <div ref={headingRef} className={s.label}>
         <span className={`${s.labelRail} ${scope === 'project' ? s.railProject : s.railUser}`} />
         {label}
         <span className={s.labelNote}>{note}</span>
         <span className={s.labelLine} />
       </div>
 
-      {scenarios.length === 0 ? (
+      {scenarios.length === 0 && carrying !== null ? (
+        /*
+          While a row is carried, an empty shelf is the place that row would take, of exactly its height -
+          not the capsule with its words and its button. Two reasons, and they are the same reason: nothing
+          on the screen moves while the hand does, and the line between the shelves (see landing) stands
+          still. A shelf that changed height here moved that line, and a line that moves on its own is a
+          row that changes shelves on its own - it bounced between them until the panel died of a render
+          loop (React #185, seen live on a project with an empty shelf).
+        */
+        /* The height of a row, when the drag could not say how tall this one is (see .emptyDrop). */
+        <div className={s.emptyDrop} style={carrying > 0 ? { height: carrying } : undefined} />
+      ) : scenarios.length === 0 ? (
         <div className={s.emptyShelf}>
           <span className={s.emptyText}>
             <span className={s.emptyTitle}>{empty}</span>
@@ -90,36 +129,137 @@ export const Shelf = ({
           </button>
         </div>
       ) : (
-        <div className={s.rows}>
-          {scenarios.map((scenario) => (
-            <ShelfRow
-              key={`${scenario.scope}:${scenario.id}`}
-              scenario={scenario}
-              hours={schedulesOf(schedules, scenario)}
-              running={runs.filter((run) => run.scenarioId === scenario.id && run.scope === scenario.scope)}
-              queued={queuedFor(queue, scenario)}
-              marks={marks}
-              onEdit={() => onEdit(scenario)}
-              onRun={() => onRun(scenario)}
-              onWhen={() => onWhen(scenario)}
-              onQueue={() => onQueue(scenario)}
-              onDuplicate={() => onDuplicate(scenario.id, scenario.scope)}
-              onRemove={() => onRemove(scenario)}
-              onOpenRun={onOpenRun}
-            />
-          ))}
-        </div>
+        <SortableContext id={scope} items={scenarios.map(rowKey)} strategy={verticalListSortingStrategy}>
+          <div className={s.rows}>
+            {scenarios.map((scenario) => (
+              <SortableRow
+                key={rowKey(scenario)}
+                id={rowKey(scenario)}
+                disabled={!movable(scenario)}
+                scenario={scenario}
+                shelf={scope}
+                hours={schedulesOf(schedules, scenario)}
+                running={runsOf(runs, scenario, known)}
+                queued={queuedFor(queue, scenario)}
+                marks={marks}
+                onEdit={() => onEdit(scenario)}
+                onRun={() => onRun(scenario)}
+                onWhen={() => onWhen(scenario)}
+                onQueue={() => onQueue(scenario)}
+                onDuplicate={() => onDuplicate(scenario.id, scenario.scope)}
+                onRemove={() => onRemove(scenario)}
+                onOpenRun={onOpenRun}
+              />
+            ))}
+          </div>
+        </SortableContext>
       )}
     </div>
   )
 }
 
+type RowProps = Parameters<typeof ShelfRow>[0]
+
+/**
+ * A row where it stands on its shelf, with the grip that picks it up.
+ *
+ * What moves with the hand is a copy on a layer of its own (see Shelves), and this is the slot it leaves
+ * behind: it slides to wherever the row would land, so the gap under the hand is always the place it goes.
+ */
+const SortableRow = ({ id, disabled, ...row }: { id: string; disabled: boolean } & RowProps) => {
+  const t = useT()
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled,
+  })
+
+  return (
+    <ShelfRow
+      {...row}
+      rowRef={setNodeRef}
+      placing={isDragging}
+      // Inline by exception, for the one value that changes on every movement of the hand. Translate rather
+      // than the whole transform: rows are not one height (one with a run going carries a strip), and a
+      // scale would squash the slot to the height of whichever row it is passing.
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      grip={
+        disabled ? null : (
+          <button
+            ref={setActivatorNodeRef}
+            type="button"
+            className={s.grip}
+            aria-label={t.scenarios.moveRow}
+            {...attributes}
+            {...listeners}
+          >
+            <GripIcon />
+          </button>
+        )
+      }
+    />
+  )
+}
+
+/**
+ * The copy of a row that follows the hand, drawn on the layer above everything (see Shelves).
+ *
+ * The same row with nothing to press on it - it is a picture of what is being carried - and in the paint
+ * of the shelf it would land on, so crossing over to the other shelf is seen before it is let go.
+ */
+export const LiftedRow = ({
+  scenario,
+  shelf,
+  known,
+  schedules,
+  runs,
+  queue,
+}: {
+  scenario: Scenario
+  shelf: ScenarioScope
+  known: Scenario[]
+  schedules: ScenarioSchedule[]
+  runs: ScenarioRunSummary[]
+  queue: ScenarioQueueState | null
+}) => {
+  const nothing = () => undefined
+
+  return (
+    <ShelfRow
+      scenario={scenario}
+      shelf={shelf}
+      hours={schedulesOf(schedules, scenario)}
+      running={runsOf(runs, scenario, known)}
+      queued={queuedFor(queue, scenario)}
+      marks={runMarks(runs)}
+      lifted
+      grip={
+        <span className={s.grip}>
+          <GripIcon />
+        </span>
+      }
+      onEdit={nothing}
+      onRun={nothing}
+      onWhen={nothing}
+      onQueue={nothing}
+      onDuplicate={nothing}
+      onRemove={nothing}
+      onOpenRun={nothing}
+    />
+  )
+}
+
 const ShelfRow = ({
   scenario,
+  shelf,
   hours,
   running,
   queued,
   marks,
+  grip,
+  rowRef,
+  style,
+  placing,
+  lifted,
   onEdit,
   onRun,
   onWhen,
@@ -129,11 +269,21 @@ const ShelfRow = ({
   onOpenRun,
 }: {
   scenario: Scenario
+  /** The shelf it is drawn on - its rail's paint. Mid-drag that is not always the one it was read off. */
+  shelf: ScenarioScope
   hours: ScenarioSchedule[]
   running: ScenarioRunSummary[]
   /** The turns of this scenario waiting on the project's queue. */
   queued: ScenarioQueued[]
   marks: Record<string, string>
+  /** What picks the row up, or nothing for a row with nowhere else to go. */
+  grip?: ReactNode
+  rowRef?: (node: HTMLElement | null) => void
+  style?: CSSProperties
+  /** The slot left behind by a row that is being carried (see SortableRow). */
+  placing?: boolean
+  /** The copy that is carried (see LiftedRow). */
+  lifted?: boolean
   onEdit: () => void
   onRun: () => void
   onWhen: () => void
@@ -156,7 +306,13 @@ const ShelfRow = ({
   const coming = comingHours(hours, locale, t.scenarios.when)
 
   return (
-    <div className={`${s.shelfRow} ${scenario.scope === 'project' ? s.railProject : s.railUser}`}>
+    <div
+      ref={rowRef}
+      style={style}
+      className={`${s.shelfRow} ${shelf === 'project' ? s.railProject : s.railUser} ${
+        placing ? s.shelfRowPlacing : ''
+      } ${lifted ? s.shelfRowLifted : ''}`}
+    >
       {/*
         The whole row opens the editor, not only the words on its left: a card whose middle does nothing
         reads as a card that is broken there. The buttons on it keep their own meaning - a press that
@@ -170,6 +326,8 @@ const ShelfRow = ({
           onEdit()
         }}
       >
+        {grip}
+
         <button type="button" className={s.shelfText} onClick={onEdit}>
           <span className={s.shelfName}>{scenario.name}</span>
 

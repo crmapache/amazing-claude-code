@@ -96,10 +96,17 @@ export const bootstrap: ScenarioStep[] = [
   // Without any usage the input field's bottom row is empty and the rings in it cannot be looked at. The
   // week stands on the window's third day: the pale pace arc then runs ahead of the bright one, that is,
   // exactly the case it is drawn for is visible.
+  //
+  // Addressed to the ordinary sign-in (`account: ''`), as the plugin addresses every window: the panel
+  // keeps the rings per account and reads the tab's own, and a message naming no account belongs to the
+  // day's tokens alone - sent that way, the rings never showed in the harness at all.
   shell({
     type: 'usage',
+    account: '',
     session: { percent: 22, resets: inHours(2 + 41 / 60) },
     week: { percent: 31, resets: inHours(4.5 * 24) },
+    // The model's own week beside the shared one - the third ring, in the shape `get_usage` reports it.
+    models: [{ label: 'Fable', percent: 44, resets: inHours(1.5 * 24) }],
     todayTokens: '445.5M',
   }),
 ]

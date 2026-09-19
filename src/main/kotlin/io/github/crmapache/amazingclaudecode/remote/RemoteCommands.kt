@@ -220,6 +220,8 @@ internal object RemoteCommands {
          * they paired by carrying a fingerprint across the room.
          *
          * So: `scenarioSave`, `scenarioDelete`, `scenarioDuplicate` and `scenarioFetch` are the editor;
+         * `scenarioPlace` is a row dragged to a new place on the shelves, which is the editor's own "Kept in"
+         * without the rest of the form;
          * `scenarioDraft` and `scenarioDraftCancel` are a model writing one out of a sentence (a run
          * with read-only tools inside the project - see ScenarioAuthor); `scenarioRun` is play;
          * `scenarioSchedule` and `scenarioUnschedule` are the hours; `scenarioRunDelete` is the history;
@@ -240,6 +242,7 @@ internal object RemoteCommands {
         "scenarioSave",
         "scenarioDelete",
         "scenarioDuplicate",
+        "scenarioPlace",
         "scenarioDraft",
         "scenarioDraftCancel",
         "scenarioRun",
@@ -340,6 +343,13 @@ internal object RemoteCommands {
          * does not meet it again on the sofa.
          */
         "setCalmColors",
+        /**
+         * Which indicators around the input field are shown - a machine-wide setting about the desk's own
+         * row: the context bar, the rings, the token counter, the bubble and the heart. The phone has
+         * neither the counter nor the buttons, and it is not even told the setting (see
+         * ProjectCatalog.sendIndicators) - its strip is drawn for a thumb, not trimmed for a panel.
+         */
+        "setHiddenIndicators",
         /**
          * The models added by hand (see CustomModels.tsx) - a machine-wide setting beside the ones above,
          * and settled the same way: the phone is handed the list as a fact of the project (see

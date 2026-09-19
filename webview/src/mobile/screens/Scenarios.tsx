@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { formatDuration } from '../../feed/tools'
+import { useGrowthFlash } from '../../hooks/useGrowthFlash'
 import { useNow } from '../../hooks/useNow'
 import { useLocale, useT } from '../../i18n'
 import type { Scenario, ScenarioQueued, ScenarioQueueState, ScenarioRunSummary, ScenarioSchedule } from '../../protocol'
@@ -163,6 +164,7 @@ export const Scenarios = ({
     queue: waiting.length,
     schedule: timetableOf(schedules, list).count,
   }
+  const queueFlash = useGrowthFlash(queue ? waiting.length : null)
 
   const shared = list.filter((one) => one.scope === 'user')
   const own = list.filter((one) => one.scope === 'project')
@@ -223,7 +225,8 @@ export const Scenarios = ({
               {/* Lit for work that is happening and for a queue that has STOPPED - the two things
                   worth knowing without opening the band. */}
               <span
-                className={`${m.bandTabCount} ${
+                key={one === 'queue' ? queueFlash : 0}
+                className={`${m.bandTabCount} ${one === 'queue' && queueFlash ? m.bandTabGrew : ''} ${
                   (one === 'runs' && counts.runs > 0) || (one === 'queue' && queue?.state.held) ? m.bandTabLive : ''
                 }`}
               >
@@ -279,6 +282,14 @@ export const Scenarios = ({
                 {past.length > shown && (
                   <button type="button" className={m.wideButton} onClick={() => setShown(past.length)}>
                     {t.scenarios.moreRuns(past.length - shown)}
+                  </button>
+                )}
+
+                {/* The way back, where the list ends: after "show more" that is the whole history away
+                    from the top, and folding it should not mean scrolling back up past it. */}
+                {shown > RUNS_SHOWN && past.length > RUNS_SHOWN && (
+                  <button type="button" className={m.wideButton} onClick={() => setShown(RUNS_SHOWN)}>
+                    {t.scenarios.fewerRuns}
                   </button>
                 )}
               </>
@@ -427,10 +438,9 @@ export const Scenarios = ({
           onAfterSuccess={(afterSuccess) => setSheet({ ...sheet, afterSuccess })}
           onQueue={() => {
             onQueue(sheet.scenario, sheet.values, sheet.afterSuccess)
+            // Back to the shelf rather than over to the queue, as on the desk: turns are lined up several at
+            // a time, and the count on the Queue tab lighting up is the press's answer (useGrowthFlash).
             setSheet({ kind: 'none' })
-            // Straight to the band it went to: a turn added to a list nobody is looking at is a press
-            // with no visible answer.
-            setBand('queue')
           }}
           onClose={() => setSheet({ kind: 'none' })}
         />

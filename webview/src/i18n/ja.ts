@@ -29,6 +29,7 @@ export const ja: Dict = {
       settings: { title: '設定', hint: 'パネルの動きと音' },
       sounds: { title: '通知音', hint: 'パネルがあなたを呼ぶとき' },
       calmColors: { title: '穏やかな色', hint: 'メーターの色の付け方' },
+      indicators: { title: 'インジケーター', hint: '入力欄のまわりに残すもの' },
       remote: { title: 'リモートアクセス', hint: '状態 · リレー · ペアリング済みの端末' },
       remoteAbout: { title: '外に出る情報', hint: 'オンにする前にお読みください' },
       newChat: { title: '新しいチャット', hint: '新しいタブが何で始まるか' },
@@ -73,6 +74,7 @@ export const ja: Dict = {
     rows: {
       sounds: { label: '通知音', sub: 'パネルがあなたを呼ぶとき' },
       calmColors: { label: '穏やかな色', sub: 'メーターにどれだけ色を残すか' },
+      indicators: { label: 'インジケーター', sub: '入力欄のそばに残す表示' },
       newChat: { label: '新しいチャット', sub: 'モデル・思考量・権限モード' },
       composerLayout: { label: '入力欄のレイアウト', sub: '入力欄を置く場所' },
       pasteCollapse: { label: '貼り付けたテキスト', sub: '貼り付けをチップにまとめる条件' },
@@ -137,6 +139,24 @@ export const ja: Dict = {
     keeps: 'ほかは変わりません。エラーは赤のまま、許可の確認もそのままです。それらは起きた出来事であって、気分ではありません。',
     full: 'フルカラー',
     none: '一つの色',
+  },
+
+  indicators: {
+    contextBar: { label: 'コンテキストバー', hint: '会話が進むにつれて埋まっていく、入力欄の上の帯' },
+    contextFigure: {
+      label: 'コンテキストの数値',
+      hint: 'バーの端の「ctx 42%」- 通常のレイアウトのみ。狭いレイアウトではバーのヒントに出ます',
+    },
+    fiveHour: { label: '5時間の上限', hint: 'プランの5時間ウィンドウのリング' },
+    week: { label: '週の上限', hint: 'プランの週ウィンドウのリング' },
+    modelWeek: {
+      label: 'モデル別の週の上限',
+      named: (model) => `${model} の週の上限`,
+      hint: 'アカウントページと同じ、モデル専用の週 - プランにある間だけ表示されます',
+    },
+    tokens: { label: '今日のトークン', hint: '今日使った分（全プロジェクト合計）' },
+    feedback: { label: 'フィードバックボタン', hint: 'フォームを開く吹き出し - メニューからはいつでも開けます' },
+    thanks: { label: 'ハート', hint: 'スター、レビュー、または友人へのひとこと' },
   },
 
   history: {
@@ -271,6 +291,7 @@ export const ja: Dict = {
       nothing: 'このプロジェクトで時刻を待っているものはありません。',
     },
     duplicate: '複製',
+    moveRow: 'ドラッグして並べ替えるか、もう一方の棚へ移動',
     delete: '削除',
     deleteTitle: 'このシナリオを削除しますか？',
     deleteRun: 'この実行を削除',
@@ -335,6 +356,7 @@ export const ja: Dict = {
       state: '状態',
     },
     moreRuns: (count: number): string => `さらに ${count} 件を表示`,
+    fewerRuns: '折りたたむ',
     shelves: {
       project: 'このリポジトリの中',
       projectNote: 'リポジトリと一緒に移動 · ここで働く全員が持つ',
@@ -390,6 +412,9 @@ export const ja: Dict = {
       runGone: 'その実行はもうありません。',
       runNotResumable: 'この実行は再開できません。メインスレッドが一度も立ち上がらなかったためです。',
       queueNotWritten: 'キューをディスクに書き込めませんでした。',
+      scenarioNotMoved: 'シナリオをもう一方の棚へ移動できませんでした。',
+      scenarioOnBothShelves: 'もう一方の棚に同じ識別子のシナリオがすでにあるため、このシナリオは元の場所に残しました。',
+      orderNotWritten: '棚の新しい並び順をディスクに書き込めませんでした。',
       unknown: '何かがうまくいきませんでした。',
     },
     run: {
@@ -1482,6 +1507,7 @@ export const ja: Dict = {
       title: '上限とコンテキスト',
       fiveHourWindow: '5時間のウィンドウ',
       weeklyWindow: '週のウィンドウ',
+      modelWindow: (model) => `${model} の週のウィンドウ`,
       paceNote: (percent) =>
         `淡い弧は一定ペースです。今日までなら週の ${percent}% までが「予定内」。明るい弧がそれより短いうちは計画どおりです。`,
       context: 'この会話のコンテキスト',
@@ -1507,6 +1533,7 @@ export const ja: Dict = {
     modeHint: (mode) => `権限モード：${mode}`,
     sessionLimit: '5時間の上限',
     weekLimit: '週の上限',
+    modelWeekLimit: (model) => `${model} の週の上限`,
     windowUsed: (title, percent) => `${title}：${percent}% 使用`,
     resetsIn: (left) => `${left} 後にリセット`,
     paceBudget: (percent) => `淡いリング：一定ペースなら今日までに ${percent}%`,
@@ -1522,7 +1549,7 @@ export const ja: Dict = {
     weeklyOpus: '週の Opus',
     weeklySonnet: '週の Sonnet',
     weeklyApps: '週のアプリ',
-    weeklyWithExtra: '週（追加利用を含む）',
+    weeklyFable: '週の Fable',
     extra: '追加利用',
   },
 

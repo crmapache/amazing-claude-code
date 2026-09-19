@@ -58,7 +58,27 @@ internal object ClaudeUsage {
      */
     data class Extra(val enabled: Boolean, val percent: Int?)
 
-    data class Snapshot(val session: Window?, val week: Window?, val contextWindow: Int?, val extra: Extra? = null) {
+    /**
+     * A weekly window of one model rather than of the whole subscription - on a plan that has one, the
+     * server keeps a separate week for a named model beside the shared one (today Fable). The label is the
+     * server's own ("Fable"), exactly what the account page and `/usage` in a terminal write it as, so it
+     * is a name to show rather than a word to translate.
+     */
+    data class ModelWindow(val label: String, val window: Window)
+
+    /**
+     * [models] has two different empties, and they are not the same answer: null means the reply said
+     * nothing about per-model windows (an answer out of a cache, or a process that is handing over its
+     * last response's headers), an empty list means the server was asked and named none. The first must
+     * not wipe what is known, the second must.
+     */
+    data class Snapshot(
+        val session: Window?,
+        val week: Window?,
+        val contextWindow: Int?,
+        val extra: Extra? = null,
+        val models: List<ModelWindow>? = null,
+    ) {
         /**
          * Whether the limits themselves have arrived. Without them the panel asks again: usually it
          * means the process came up but has not yet learned the subscription windows from the server -
@@ -84,6 +104,7 @@ internal object ClaudeUsage {
             week = limits?.let { window(it, "seven_day") },
             contextWindow = contextWindow(usage),
             extra = limits?.let { extra(it) },
+            models = limits?.let { modelWindows(it) },
         )
     }
 
@@ -115,6 +136,9 @@ internal object ClaudeUsage {
         private var session: Window? = null
         private var week: Window? = null
 
+        /** The per-model weekly windows, by the server's label - each folded by the same rule as the week. */
+        private var models: Map<String, Window> = emptyMap()
+
         /**
          * The same snapshot, but with its windows checked against everything seen before.
          *
@@ -125,8 +149,26 @@ internal object ClaudeUsage {
         fun merge(snapshot: Snapshot, now: Instant = Instant.now()): Snapshot {
             session = fold(session, snapshot.session, now)
             week = fold(week, snapshot.week, now)
+            models = foldModels(snapshot.models, now)
 
-            return snapshot.copy(session = session, week = week)
+            return snapshot.copy(session = session, week = week, models = models.map { ModelWindow(it.key, it.value) })
+        }
+
+        /**
+         * The per-model windows, each through [fold]. An answer that said nothing about them (null) keeps
+         * every known one, still passed through [fold] so a window whose reset has gone by drops to zero
+         * the same way the shared week does; an answer that named none clears them - the plan no longer
+         * has such a week, and a ring for it would be a ring about nothing.
+         */
+        private fun foldModels(incoming: List<ModelWindow>?, now: Instant): Map<String, Window> {
+            if (incoming != null && incoming.isEmpty()) return emptyMap()
+
+            val named = incoming?.associate { it.label to it.window }.orEmpty()
+            val labels = if (incoming == null) models.keys else named.keys
+
+            return labels
+                .mapNotNull { label -> fold(models[label], named[label], now)?.let { label to it } }
+                .toMap()
         }
 
         /**
@@ -141,6 +183,7 @@ internal object ClaudeUsage {
         fun forget() {
             session = null
             week = null
+            models = emptyMap()
         }
 
         private fun fold(known: Window?, incoming: Window?, now: Instant): Window? {
@@ -187,8 +230,10 @@ internal object ClaudeUsage {
 
     private const val SAME_WINDOW_TOLERANCE_MS = 2 * 60 * 1000L
 
-    private fun window(limits: JsonObject, name: String): Window? {
-        val window = limits.child(name) ?: return null
+    private fun window(limits: JsonObject, name: String): Window? = limits.child(name)?.let(::windowOf)
+
+    /** One window's share and reset, whichever list it came from - the keys are the same everywhere. */
+    private fun windowOf(window: JsonObject): Window? {
         val percent = window["utilization"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() ?: return null
 
         return Window(
@@ -196,6 +241,29 @@ internal object ClaudeUsage {
             resets = window["resets_at"]?.jsonPrimitive?.contentOrNull.orEmpty(),
         )
     }
+
+    /**
+     * The per-model weekly windows: `model_scoped`, the list the CLI builds out of the server's own limits
+     * (the `weekly_scoped` rows whose model is on its allowlist) - the same rows `/usage` draws as
+     * "Current week (Fable)". Absent is null, not an empty list (see [Snapshot.models]).
+     *
+     * The label goes to the screen, so it is trimmed and capped: it is the server's word, and a row that
+     * cannot name its model has nothing to be recognised by, so it is dropped rather than drawn nameless.
+     */
+    private fun modelWindows(limits: JsonObject): List<ModelWindow>? {
+        val rows = limits.items("model_scoped") ?: return null
+
+        return rows.mapNotNull { row ->
+            val scoped = row as? JsonObject ?: return@mapNotNull null
+            val label = scoped["display_name"]?.jsonPrimitive?.contentOrNull?.trim()?.take(MODEL_LABEL_LIMIT)
+            if (label.isNullOrEmpty()) return@mapNotNull null
+            val window = windowOf(scoped) ?: return@mapNotNull null
+            ModelWindow(label, window)
+        }.distinctBy { it.label }
+    }
+
+    /** How long a model's label may be on the screen - a name, not a sentence. */
+    private const val MODEL_LABEL_LIMIT = 40
 
     /**
      * The extra usage settings out of the same answer: whether it is allowed at all and how much of its

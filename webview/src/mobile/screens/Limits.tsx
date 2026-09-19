@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { Ring } from '../../components/StatusBar'
 import {
   contextColor,
@@ -35,8 +36,9 @@ interface LimitsProps {
 export const Limits = ({ facts, context, onClose }: LimitsProps) => {
   const t = useT()
   const budget = facts.week ? weekBudgetToday(facts.week.resets) : null
+  const models = facts.models ?? []
   /** Which window is being paid past, when one is - it takes that window's own row below. */
-  const burning = facts.extra?.active ? limitWindowRing(facts.extra.window) : null
+  const burning = facts.extra?.active ? limitWindowRing(facts.extra.window, models.length > 0) : null
 
   return (
     <Sheet title={t.mobile.limits.title} bodyClassName={m.limBody} onClose={onClose}>
@@ -74,6 +76,25 @@ export const Limits = ({ facts, context, onClose }: LimitsProps) => {
           )}
             </>
           ) : null}
+
+          {/* A model's own week (Fable), where the plan keeps one - after the shared week and in its
+              shape, with the same pale arc. The note about the arc is not repeated: it is said once,
+              under the week above, and means the same thing here. */}
+          {models.map((model) => (
+            <Fragment key={model.label}>
+              <div className={m.limDivider} />
+              {burning === 'model' ? (
+                <ExtraWindow extra={facts.extra!} />
+              ) : (
+                <Window
+                  name={t.mobile.limits.modelWindow(model.label)}
+                  usage={model}
+                  color={paceColor(model.percent, model.resets, WEEK_MS)}
+                  pace={weekBudgetToday(model.resets)}
+                />
+              )}
+            </Fragment>
+          ))}
 
           <div className={m.limDivider} />
 

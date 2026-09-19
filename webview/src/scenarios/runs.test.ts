@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ScenarioRunSummary } from '../protocol'
-import { DOUBLE_PRESS_MS, liveDot, pastRuns, pressedAgain, runDot, runMarks, runningRuns } from './runs'
+import { DOUBLE_PRESS_MS, liveDot, pastRuns, pressedAgain, runDot, runMarks, runningRuns, runsOf } from './runs'
 
 /**
  * Splitting the runs into what is going and what is over, and naming them apart.
@@ -54,6 +54,32 @@ describe('runningRuns and pastRuns', () => {
  * The dot a run is drawn with. It fails quietly in the only direction that matters: a run working for an
  * hour under the grey dot of a tab nobody has open says the panel is idle when it is not.
  */
+describe('runsOf', () => {
+  // Dragged over to the other shelf mid-run: the run still carries the shelf it was started from.
+  it('follows a scenario that was moved to the other shelf', () => {
+    const run = summary({ scenarioId: 's1', scope: 'project' })
+    const moved = { id: 's1', scope: 'user' as const }
+
+    expect(runsOf([run], moved, [moved])).toEqual([run])
+  })
+
+  // A project file back from a checkout beside somebody's own copy: the shelf is all that tells them apart.
+  it('lets the shelf decide between two scenarios under one identifier', () => {
+    const project = { id: 's1', scope: 'project' as const }
+    const own = { id: 's1', scope: 'user' as const }
+    const run = summary({ scenarioId: 's1', scope: 'project' })
+
+    expect(runsOf([run], project, [project, own])).toEqual([run])
+    expect(runsOf([run], own, [project, own])).toEqual([])
+  })
+
+  it('leaves out the runs of other scenarios', () => {
+    const scenario = { id: 's1', scope: 'project' as const }
+
+    expect(runsOf([summary({ scenarioId: 's2' })], scenario, [scenario])).toEqual([])
+  })
+})
+
 describe('runDot', () => {
   it('breathes while the run is going, from the first moment', () => {
     expect(runDot(summary({ state: 'starting' }))).toBe('running')

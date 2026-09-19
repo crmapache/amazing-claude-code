@@ -149,8 +149,10 @@ export const showcaseBootstrap: ScenarioStep[] = [
   shell({ type: 'modeAvailability', bypassPermissions: true }),
   shell({
     type: 'usage',
+    account: '',
     session: { percent: 38, resets: inHours(2 + 11 / 60) },
     week: { percent: 57, resets: inHours(3 * 24 + 6) },
+    models: [{ label: 'Fable', percent: 41, resets: inHours(3 * 24 + 6) }],
     todayTokens: '312.8M',
     contextWindow: 200_000,
   }),

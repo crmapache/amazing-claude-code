@@ -3,14 +3,17 @@ import { describe, expect, it } from 'vitest'
 import {
   contextColor,
   contextGlow,
+  emptyUsageBook,
   FIVE_HOUR_MS,
   limitWindowName,
   limitWindowRing,
   mergeUsage,
+  mergeUsageBook,
   paceColor,
   RING_LENGTH,
   ringDash,
   timeLeft,
+  usageOf,
   type UsageFacts,
 } from './usage'
 
@@ -49,6 +52,31 @@ describe('mergeUsage', () => {
 
     expect(filled.session).toEqual({ percent: 3, resets: '2026-08-26T23:00:00Z' })
     expect(filled.week).toBeUndefined()
+  })
+})
+
+describe('the per-model weeks', () => {
+  const fable = { label: 'Fable', percent: 58, resets: '2026-09-21T00:00:00Z' }
+
+  // The plugin sends the whole list every time, so a list is news and replaces, and silence keeps.
+  it('takes a list whole and keeps it through a message that says nothing about it', () => {
+    const known = mergeUsage({}, { type: 'usage', models: [fable] })
+
+    expect(known.models).toEqual([fable])
+    expect(mergeUsage(known, { type: 'usage', todayTokens: '1M' }).models).toEqual([fable])
+    expect(mergeUsage(known, { type: 'usage', models: [] }).models).toEqual([])
+  })
+
+  it('goes with the account on a reset', () => {
+    expect(mergeUsage({ models: [fable] }, { type: 'usage', reset: true }).models).toBeUndefined()
+  })
+
+  // Copied field by field - the one place a new figure is easy to lose on its way to the screen.
+  it('reaches the account screen through usageOf', () => {
+    const book = mergeUsageBook(emptyUsageBook(), { type: 'usage', account: 'work', models: [fable] })
+
+    expect(usageOf(book, 'work').models).toEqual([fable])
+    expect(usageOf(book, 'home').models).toBeUndefined()
   })
 })
 
@@ -145,9 +173,23 @@ describe('the limit windows', () => {
     expect(limitWindowName(en, undefined)).toBe('')
   })
 
+  // The CLI's own name for it is "Fable limit" - the model's week, not the shared one.
+  it('names the overage-included window by its model', () => {
+    expect(limitWindowName(en, 'seven_day_overage_included')).toBe('weekly Fable')
+  })
+
+  // With the model's ring on the screen it is that ring that runs out: burning the shared week beside it
+  // would point at a window that is fine.
+  it('sends the model week to its own ring when there is one', () => {
+    expect(limitWindowRing('seven_day_overage_included', true)).toBe('model')
+    expect(limitWindowRing('seven_day', true)).toBe('week')
+    expect(limitWindowRing('five_hour', true)).toBe('session')
+  })
+
   it('sends every weekly window to the weekly ring, and everything else to the five-hour one', () => {
     expect(limitWindowRing('seven_day')).toBe('week')
     expect(limitWindowRing('seven_day_opus')).toBe('week')
+    // No model ring on the screen: the week is the closest thing there is, as before the ring existed.
     expect(limitWindowRing('seven_day_overage_included')).toBe('week')
     expect(limitWindowRing('five_hour')).toBe('session')
     // The five-hour window runs out several times a day and is nearly always the one meant.

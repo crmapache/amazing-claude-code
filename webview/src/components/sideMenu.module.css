@@ -267,6 +267,12 @@
 /* The one row here that leads to a screen of its own rather than to a value takes the accent: what a
    new tab starts with is the thing on this list people come back to, and the shield below is one of the
    three answers behind it rather than the whole of it. */
+/* Neutral like the colours above it: the row is about the panel's own readings, not about a place to go. */
+.rowIconIndicators {
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-dim);
+}
+
 .rowIconNewChat {
   background: var(--acc-accent-12);
   color: var(--acc-accent);
@@ -1174,6 +1180,14 @@
 
 .switchKnobOn {
   left: 17px;
+}
+
+/* The indicators' switches (see Indicators.tsx): eight of them, so closer together than the screen's own
+   gap - one list, told apart by their frames - with the screen's gap left between the two groups. */
+.indicatorList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 /* The switch on a kind of message the report has nothing to say about: dimmed and unclickable, but still

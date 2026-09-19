@@ -298,6 +298,24 @@
   color: var(--acc-fg-ghost);
 }
 
+/*
+ * A turn has just gone onto the queue, from a shelf that stays on screen: the count lights once and settles
+ * back, so the press is answered without taking anybody off the shelf (useGrowthFlash, whose FLASH_MS is a
+ * little longer than this). Before .bandCountLive so that a stopped queue keeps its own display and dot.
+ */
+.bandCountGrew {
+  display: inline-block;
+  animation: accCountGrew 1.2s ease-out;
+}
+
+@keyframes accCountGrew {
+  0%,
+  25% {
+    color: var(--acc-accent-light);
+    transform: scale(1.35);
+  }
+}
+
 /* Something is going, and the count is the only thing on the strip that says so. */
 .bandCountLive {
   display: inline-flex;
@@ -330,6 +348,14 @@
 
 .section {
   margin-bottom: 16px;
+
+  /*
+   * How tall a row stands with one line of name and one of facts - the ordinary row, which is what the
+   * empty shelf below has to match. Written once here because three things are measured against it: the
+   * capsule of an empty shelf, the slot a carried row leaves behind, and the drag's own arithmetic, which
+   * reads the line between the shelves and would be thrown by a shelf that changes height under it.
+   */
+  --acc-shelf-row: 54px;
 }
 
 .label {
@@ -419,6 +445,75 @@
 .shelfRow[data-hover] {
   border-color: var(--acc-line-hover);
   background: var(--acc-bg-panel);
+}
+
+/*
+ * A row being carried (see Shelves). What follows the hand is a copy lifted over the list with a shadow, so
+ * it reads as held above the others rather than as a card laid over one by mistake; the row's own place is
+ * the empty slot it leaves - dashed, with nothing in it, sliding to wherever the row would land.
+ */
+.shelfRowLifted {
+  border-color: var(--acc-line-hover);
+  background: var(--acc-bg-panel);
+  box-shadow: var(--acc-shadow-card);
+  cursor: grabbing;
+}
+
+.shelfRowPlacing,
+.shelfRowPlacing:hover,
+.shelfRowPlacing[data-hover] {
+  border-style: dashed;
+  border-color: var(--acc-line-hover);
+  background: transparent;
+}
+
+.shelfRowPlacing::before,
+.shelfRowPlacing > * {
+  visibility: hidden;
+}
+
+/*
+ * An empty shelf while a row is being carried: the place that row would take, exactly its height.
+ *
+ * Exactly, because that is what makes the drag hold still. Both shelves stand in one column, and the line
+ * between them is the heading of the second: a shelf that changes height when a row leaves it or lands on
+ * it moves that line, and a line that moves while the hand does not is a row that changes shelves by
+ * itself (it bounced between them until the panel died of a render loop - see landing). The row leaves a
+ * place of its own size and takes one of its own size, so nothing moves at all.
+ */
+.emptyDrop {
+  height: var(--acc-shelf-row);
+  border: 1px dashed var(--acc-line);
+  border-radius: var(--acc-r-md);
+}
+
+/* The grip a row is picked up by: quiet until a hand goes for it. A column of bright grips down a shelf
+   would argue with the names beside them for the eye. */
+.grip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 26px;
+  margin: 0 -4px 0 -6px;
+  padding: 0;
+  border-radius: var(--acc-r-xs);
+  color: var(--acc-fg-ghost);
+  cursor: grab;
+  /* Without it a touchscreen takes the gesture for a scroll, and the drag ends before it begins. */
+  touch-action: none;
+}
+
+.grip:hover,
+.grip[data-hover] {
+  color: var(--acc-fg);
+  background: var(--acc-neutral-12);
+}
+
+.shelfRowLifted .grip {
+  color: var(--acc-fg-soft);
+  cursor: grabbing;
 }
 
 /* Centred, not top-aligned: the left half is two lines and the right half one, and a button hanging
@@ -594,7 +689,10 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 44px;
+  /* Exactly a row: a shelf that empties - by a delete, by a move, by a row being carried off it - must not
+     change the height of everything under it. The leading inside is trimmed to fit this rather than
+     stretch it. */
+  min-height: var(--acc-shelf-row);
   padding: 9px 12px;
   border: 1px dashed var(--acc-line);
   border-radius: var(--acc-r-md);
@@ -605,18 +703,18 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 
 .emptyTitle {
   flex: 1;
   min-width: 0;
-  font: 11.5px/1.5 var(--acc-font);
+  font: 11.5px/1.45 var(--acc-font);
   color: var(--acc-fg-faint);
 }
 
 .emptyNote {
-  font: 10.5px/1.5 var(--acc-font);
+  font: 10.5px/1.45 var(--acc-font);
   color: var(--acc-fg-ghost);
 }
 
@@ -718,6 +816,7 @@
   gap: 8px;
 }
 
+/* The pointer because the whole of it opens the run (see LiveRun). */
 .runCard {
   display: flex;
   flex-direction: column;
@@ -726,9 +825,19 @@
   border: 1px solid var(--acc-line);
   border-radius: var(--acc-r-lg);
   background: var(--acc-bg-card);
+  cursor: pointer;
 }
 
-.runCardAsks {
+.runCard:hover,
+.runCard[data-hover] {
+  border-color: var(--acc-line-hover);
+  background: var(--acc-bg-panel);
+}
+
+/* Kept on hover as well: a card waiting for a person does not stop saying so under the pointer. */
+.runCardAsks,
+.runCardAsks:hover,
+.runCardAsks[data-hover] {
   border-color: var(--acc-warn-32);
 }
 
@@ -813,6 +922,12 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+/* The state at the end of the line of readings, in the card's corner - and still there when a narrow panel
+   wraps the line, since the margin pushes it right on whichever line it lands. */
+.runCardState {
+  margin-left: auto;
 }
 
 /* What it has stopped to ask, under a rule and in the warning tone: the one thing here waiting for a
@@ -944,12 +1059,23 @@
  * The row that opens more of them, inside the table: the gap between it and the last run is the one
  * between two runs, and a row that opens more of them belongs to them.
  */
-.moreRuns {
-  padding: 8px;
+/* More of the table, and once more is open, all of it folded back: two halves of one row rather than two
+   rows, so unfolding the table does not also grow its foot. */
+.tableFoot {
+  display: flex;
   border-top: 1px solid var(--acc-line);
+}
+
+.moreRuns {
+  flex: 1;
+  padding: 8px;
   font: 11px var(--acc-font);
   color: var(--acc-fg-ghost);
   text-align: center;
+}
+
+.moreRuns + .moreRuns {
+  border-left: 1px solid var(--acc-line);
 }
 
 .moreRuns:hover,

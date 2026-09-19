@@ -167,7 +167,7 @@ internal object ClaudeLaunch {
      *
      * Said in the system prompt rather than as a message of our own. A line written into the
      * conversation from the person's side is a message they did not write, and the panel does not do
-     * that any more (see the note on effort in CLAUDE.md); the system prompt is where a role belongs,
+     * that any more (see the note on effort in .claude/rules/models.md); the system prompt is where a role belongs,
      * it costs no turn, and it comes back with every process this tab raises afterwards.
      *
      * One line and no quotation marks, like everything else that leaves here - see [oneLine].

@@ -382,6 +382,20 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
     }
 
     /**
+     * A row dragged to a new place - on its own shelf, or over onto the other one (see ScenarioStore.place).
+     *
+     * The shelves go out again whichever way it went, the refusal included: the page has already drawn the
+     * row where it was dropped, and only this list puts it back where it really is. Its hours and its turns
+     * on the queue follow it to the other shelf on the same pass (see Schedules.keepOnly).
+     */
+    fun place(clientId: String, id: String, from: String, to: String, before: String) {
+        off {
+            store.place(id, from, to, before)?.let { outcome(clientId, ok = false, code = it) }
+            sendList()
+        }
+    }
+
+    /**
      * A scenario written by a model out of a sentence, for whoever is meeting the form for the first time
      * (see ScenarioAuthor).
      *

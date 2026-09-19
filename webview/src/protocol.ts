@@ -56,6 +56,16 @@ export interface UsageWindow {
 }
 
 /**
+ * A weekly window of one model rather than of the whole subscription - on a plan that keeps one, the
+ * server counts a separate week for a named model beside the shared one (today Fable). `label` is the
+ * server's own name for the bucket, exactly as the account page writes it, so it is shown as it came
+ * rather than translated (see ClaudeUsage.modelWindows on the plugin's side).
+ */
+export interface ModelUsageWindow extends UsageWindow {
+  label: string
+}
+
+/**
  * Extra usage: the work an exhausted limit no longer covers, paid for on top of the plan.
  *
  * `active` is the whole point of it - the work is going past the limit RIGHT NOW - and it is learned
@@ -67,8 +77,9 @@ export interface ExtraUsage {
   active: boolean
   /**
    * Which window is being paid past, in the CLI's words: `five_hour`, `seven_day`, `seven_day_opus` and
-   * so on. It decides which of the two rings burns and what the window is called in words (see
-   * limitWindowName and limitWindowRing in feed/usage.ts). Absent when the CLI did not say.
+   * so on. It decides which ring burns - `seven_day_overage_included` is the model's own week (Fable) - and
+   * what the window is called in words (see limitWindowName and limitWindowRing in feed/usage.ts). Absent
+   * when the CLI did not say.
    */
   window?: string
   enabled?: boolean
@@ -702,6 +713,11 @@ type ShellMessageBody =
          */
         calmVivid?: number
         /**
+         * The indicators around the input field switched off by hand (see indicators.ts). What is stored
+         * is what is OFF, so an empty list - or none at all - means every one of them shown.
+         */
+        hiddenIndicators?: string[]
+        /**
          * The language chosen by hand. Empty - which is the usual case - means "whatever the IDE
          * speaks", so that a Chinese IDE gets a Chinese panel without anyone having to find the switch.
          */
@@ -742,6 +758,12 @@ type ShellMessageBody =
    */
   | { type: 'calmColors'; vivid: number; on?: boolean }
   /**
+   * Which indicators around the input field are switched off, after somebody flipped one - in this window
+   * or another (the setting is the machine's). A joining window learns it from `init` and then from this,
+   * in that order (see PROJECT_ORDER in ClaudeSessionHub). Never sent to a phone.
+   */
+  | { type: 'indicators'; hidden: string[] }
+  /**
    * The models somebody added by hand, on its own for the same two readers as the two above.
    *
    * They stand beside the catalogue rather than inside it, and that is the whole point: the catalogue
@@ -775,6 +797,12 @@ type ShellMessageBody =
       account?: string
       session?: UsageWindow
       week?: UsageWindow
+      /**
+       * The per-model weekly windows (Fable), always as a whole list. An empty list is news - the plan
+       * keeps no such week, and a ring for it goes - while an absent field says nothing about them, like
+       * every other field here.
+       */
+      models?: ModelUsageWindow[]
       /**
        * Everything known about the subscription is somebody else's now: the sign-in has moved to another
        * account (see ProjectUsage.forget). Said out loud because the message is merged field by field -
@@ -1881,6 +1909,8 @@ export type WebviewMessage =
    * red gauge presses on somebody is a property of the person rather than of the repository.
    */
   | { type: 'setCalmColors'; vivid: number }
+  /** Which indicators around the input field are switched off - the whole list (see indicators.ts). */
+  | { type: 'setHiddenIndicators'; hidden: string[] }
   /**
    * The whole list of hand-added models, never a single addition or removal.
    *
@@ -2204,6 +2234,13 @@ export type WebviewMessage =
   | { type: 'scenarioSave'; scenario: Scenario; scope: ScenarioScope }
   | { type: 'scenarioDelete'; id: string; scope: ScenarioScope }
   | { type: 'scenarioDuplicate'; id: string; scope: ScenarioScope }
+  /**
+   * A row dragged to a new place: on its own shelf, or over onto the other one - which moves its file.
+   *
+   * Named by the row it now stands before (empty for last) rather than by a number: two windows draw these
+   * shelves, and an index is a place in whatever this one last saw (see ScenarioStore.place).
+   */
+  | { type: 'scenarioPlace'; id: string; from: ScenarioScope; to: ScenarioScope; before: string }
   /**
    * One scenario, with every word of it - what the editor is opened on.
    *

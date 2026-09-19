@@ -65,6 +65,16 @@ import { StatisticsTab, type StatisticsView } from './components/stats/Statistic
 import { dressAll, summarize } from './stats/achievements'
 import { ChoiceList, LayoutChoice } from './components/Choices'
 import { CalmColors } from './components/CalmColors'
+import { Indicators } from './components/Indicators'
+import {
+  indicatorsSummary,
+  normalizeHidden,
+  sameHidden,
+  shownIndicators,
+  toggleIndicator,
+  type HiddenIndicators,
+  type IndicatorId,
+} from './indicators'
 import { CustomModels } from './components/CustomModels'
 import { PasteCollapse } from './components/PasteCollapse'
 import { PermissionPanel } from './components/PermissionPanel'
@@ -76,7 +86,7 @@ import { Tooltips } from './components/Tooltips'
 import { Remote, RemoteAbout, remoteState, type RemoteStatus } from './components/Remote'
 import { Accounts, accountState, currentAccountName, type AccountsState } from './components/Accounts'
 import { Sounds } from './components/Sounds'
-import { StatusBar, UsageMeters, type Anchor, type SelectorKind } from './components/StatusBar'
+import { metersShown, StatusBar, UsageMeters, type Anchor, type SelectorKind } from './components/StatusBar'
 import { SHARE, shareText, thanksMenu, thanksUrl } from './components/Thanks'
 import { useCalmColors } from './hooks/useCalmColors'
 import { useHoliday } from './hooks/useHoliday'
@@ -566,6 +576,13 @@ export const App = () => {
    * harness has no IDE behind it, and the ladder is what the panel has always shown.
    */
   const [calmVivid, setCalmVividState] = useState(CALM_VIVID_FULL)
+  /**
+   * The indicators around the input field switched off by hand - see indicators.ts. None until the IDE
+   * says otherwise, for the same reason as the settings above: the harness has no IDE behind it, and
+   * everything shown is what the panel has always drawn.
+   */
+  const [hiddenIndicators, setHiddenIndicatorsState] = useState<HiddenIndicators>([])
+  const indicators = useMemo(() => shownIndicators(hiddenIndicators), [hiddenIndicators])
   /**
    * The models somebody added by hand, because Claude Code does not offer them (see CustomModels.tsx).
    *
@@ -1804,6 +1821,9 @@ export const App = () => {
               setSendKeyState(normalizeSendKey(message.preferences.sendKey))
               // The same: a hundred is an answer, and it is the one that puts the ladder back.
               setCalmVividState(calmVividOf({ vivid: message.preferences.calmVivid }))
+              // And the same once more: an empty list is "everything shown", the answer that puts a
+              // switched-off indicator back.
+              setHiddenIndicatorsState(normalizeHidden(message.preferences.hiddenIndicators))
               setLanguage({
                 chosen: message.preferences.language ?? '',
                 ide: message.preferences.ideLanguage ?? '',
@@ -1843,6 +1863,27 @@ export const App = () => {
             // window, and that is obeyed at once.
             if (calmSent.current === vivid) calmSent.current = undefined
             else setCalmVividState(vivid)
+            break
+          }
+
+          /**
+           * The switched-off indicators, told again outside `init`: the setting is the machine's, so a
+           * second window must apply a change it did not make - and a window that joins later is handed
+           * this right after the `init` it was cached with (see PROJECT_ORDER in ClaudeSessionHub).
+           */
+          case 'indicators': {
+            const hidden = normalizeHidden(message.hidden)
+            // Our own answers, come back round in the order they were sent: the IDE tells every window,
+            // this one included (see setHiddenIndicators in ClaudePanel). Taken at face value, the echo of
+            // the first of two quick presses would flip the second switch back for a moment. Anything
+            // that is not one of ours is the other window, and that is obeyed at once.
+            const ours = indicatorsSent.current.findIndex((sent) => sameHidden(sent, hidden))
+            if (ours >= 0) {
+              indicatorsSent.current = indicatorsSent.current.slice(ours + 1)
+            } else {
+              indicatorsSent.current = []
+              setHiddenIndicatorsState(hidden)
+            }
             break
           }
 
@@ -2891,6 +2932,23 @@ export const App = () => {
     send({ type: 'setSendKey', key })
     setSendKeyState(key)
   }, [])
+
+  /** The lists sent and not yet heard back - see the 'indicators' case above. */
+  const indicatorsSent = useRef<HiddenIndicators[]>([])
+
+  /**
+   * One indicator switched on or off. Applied here at once and sent whole: the IDE keeps the list and
+   * tells every window, but the switch under the finger must move on the press rather than on the trip.
+   */
+  const toggleShownIndicator = useCallback(
+    (id: IndicatorId) => {
+      const hidden = toggleIndicator(hiddenIndicators, id)
+      indicatorsSent.current = [...indicatorsSent.current, hidden]
+      send({ type: 'setHiddenIndicators', hidden: [...hidden] })
+      setHiddenIndicatorsState(hidden)
+    },
+    [hiddenIndicators],
+  )
 
   /** The deferred write of the gauges' colour, and the last figure sent - see setCalmColors. */
   const calmSaveTimer = useRef<number | undefined>(undefined)
@@ -4584,6 +4642,7 @@ export const App = () => {
     pasteCollapse: pasteCollapseSummary(t, pasteCollapse),
     sendKey: sendKeySummary(sendKey),
     calmColors: calmColorsSummary(t, calmVivid),
+    indicators: indicatorsSummary(t, hiddenIndicators),
     improvePrompt: improveInstructions.instructions.trim()
       ? t.settings.improveSummary.custom
       : t.settings.improveSummary.builtIn,
@@ -4787,7 +4846,9 @@ export const App = () => {
    * rail (both see Composer). Only one of those is on the screen at a time, so this node is drawn once
    * however many places are handed it.
    */
-  const metersNode = <UsageMeters todayTokens={usage.todayTokens ?? '…'} usage={usage} />
+  const metersNode = metersShown(indicators) ? (
+    <UsageMeters todayTokens={usage.todayTokens ?? '…'} usage={usage} shown={indicators} />
+  ) : null
 
   /**
    * A permission, a question, the task list with the branch and the PR, the queue, the quotes - the whole
@@ -4977,6 +5038,7 @@ export const App = () => {
           onSave={(scenario, scope) => send({ type: 'scenarioSave', scenario, scope })}
           onDelete={(id, scope) => send({ type: 'scenarioDelete', id, scope })}
           onDuplicate={(id, scope) => send({ type: 'scenarioDuplicate', id, scope })}
+          onPlace={(move) => send({ type: 'scenarioPlace', ...move })}
           onRun={(scenario, inputs) => startScenario(scenario, inputs)}
           onOpenRun={openRun}
           onDeleteRun={(runId) => send({ type: 'scenarioRunDelete', runId })}
@@ -5180,6 +5242,7 @@ export const App = () => {
             models={models}
             customModels={customModels}
             meters={metersNode}
+            indicators={indicators}
             files={files}
             imageBaseCount={imageBaseCount}
             focusToken={focusToken}
@@ -5285,6 +5348,7 @@ export const App = () => {
               mode={mode}
               models={models}
               meters={metersNode}
+              indicators={indicators}
               onOpen={openSelector}
               onOpenThanks={openThanks}
               onOpenFeedback={openFeedback}
@@ -5551,6 +5615,14 @@ export const App = () => {
 
         {sideMenu.open && sideMenu.screen === 'calmColors' ? (
           <CalmColors vivid={calmVivid} onChange={setCalmColors} />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'indicators' ? (
+          <Indicators
+            hidden={hiddenIndicators}
+            modelLabel={usage.models?.[0]?.label}
+            onToggle={toggleShownIndicator}
+          />
         ) : null}
 
         {sideMenu.open && sideMenu.screen === 'customModels' ? (

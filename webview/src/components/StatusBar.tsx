@@ -19,8 +19,11 @@ import {
   WEEK_MS,
   weekBudgetToday,
 } from '../feed/usage'
-import type { ReactNode } from 'react'
-import type { ExtraUsage, ModelInfo, UsageWindow } from '../protocol'
+import { useRef, type ReactNode } from 'react'
+import { useEndPairFit } from '../hooks/useEndPairFit'
+import { useSelectorsFit } from '../hooks/useSelectorsFit'
+import type { ShownIndicators } from '../indicators'
+import type { ExtraUsage, ModelInfo, ModelUsageWindow, UsageWindow } from '../protocol'
 import { Chevron } from './Chevron'
 import { FeedbackButton } from './Feedback'
 import s from './shell.module.css'
@@ -56,11 +59,21 @@ interface UsageMetersProps {
   /** Today's tokens across every project - the same "tok" as in a terminal. */
   todayTokens: string
   /** The subscription's usage windows. They come from the agent itself, so they are sometimes empty. */
-  usage: { session?: UsageWindow; week?: UsageWindow; extra?: ExtraUsage }
+  usage: { session?: UsageWindow; week?: UsageWindow; models?: ModelUsageWindow[]; extra?: ExtraUsage }
+  /** Which of them a person keeps on the screen - see indicators.ts. */
+  shown: Pick<ShownIndicators, 'fiveHour' | 'week' | 'modelWeek' | 'tokens'>
 }
 
 /**
- * The subscription's usage: the five-hour window, the weekly one and the day's volume of work.
+ * Whether the meters have anything to draw at all, by the switches alone. Asked by whoever places them:
+ * a row holding an empty block still spaces it, and on a side rail that is twelve pixels of nothing.
+ */
+export const metersShown = (shown: UsageMetersProps['shown']): boolean =>
+  shown.fiveHour || shown.week || shown.modelWeek || shown.tokens
+
+/**
+ * The subscription's usage: the five-hour window, the weekly one, a model's own week where the plan keeps
+ * one (Fable), and the day's volume of work. Each can be switched off by hand (see indicators.ts).
  *
  * It lives in the input field's own bottom row rather than in the status line under it: that is where one
  * looks while deciding what to write next - whether the limit will stretch to a long turn - and the
@@ -72,14 +85,15 @@ interface UsageMetersProps {
  * The context fill is deliberately not here: it is already drawn as a bar above the field itself (see
  * Composer), and a second figure about the same thing would only take up room.
  */
-export const UsageMeters = ({ todayTokens, usage }: UsageMetersProps) => {
+export const UsageMeters = ({ todayTokens, usage, shown }: UsageMetersProps) => {
   const t = useT()
+  const models = shown.modelWeek ? (usage.models ?? []) : []
   /**
    * Which ring burns, when one does. The window that ran out is the one being paid past, and a five-hour
-   * one and a weekly one are two different rings: painting the five-hour ring for an exhausted week would
-   * point at a window that is fine.
+   * one, a weekly one and a model's own week are different rings: painting the five-hour ring for an
+   * exhausted week would point at a window that is fine.
    */
-  const burning = usage.extra?.active ? limitWindowRing(usage.extra.window) : null
+  const burning = usage.extra?.active ? limitWindowRing(usage.extra.window, models.length > 0) : null
 
   return (
     <div className={s.meters}>
@@ -87,7 +101,7 @@ export const UsageMeters = ({ todayTokens, usage }: UsageMetersProps) => {
           up, its percentage is stuck at a hundred, and a figure that cannot change any more says nothing.
           What matters now is that the work is being paid for - so the ring is closed, painted its own
           colour, left without a number and set alight, and the tooltip says the rest. */}
-      {burning === 'session' ? (
+      {!shown.fiveHour ? null : burning === 'session' ? (
         <Meter percent={100} color="var(--acc-extra)" value="" flame tooltip={extraTooltip(t, usage.extra!)} />
       ) : usage.session ? (
         <Meter
@@ -97,20 +111,39 @@ export const UsageMeters = ({ todayTokens, usage }: UsageMetersProps) => {
         />
       ) : null}
 
-      {burning === 'week' ? (
+      {!shown.week ? null : burning === 'week' ? (
         <Meter percent={100} color="var(--acc-extra)" value="" flame tooltip={extraTooltip(t, usage.extra!)} />
       ) : usage.week ? (
-        <WeekMeter usage={usage.week} />
+        <WeekMeter usage={usage.week} title={t.status.weekLimit} />
       ) : null}
 
-      <span
-        className={s.meterTokens}
-        data-tooltip={t.status.todayTokens}
-        data-tooltip-at="top left"
-        data-tooltip-kind="meter"
-      >
-        {todayTokens}
-      </span>
+      {/* The model's own week (Fable) after the shared one, in the same shape: it is a week too, with
+          the same pale arc of the even pace - a ring only as long as the plan keeps such a window. */}
+      {models.map((model) =>
+        burning === 'model' ? (
+          <Meter
+            key={model.label}
+            percent={100}
+            color="var(--acc-extra)"
+            value=""
+            flame
+            tooltip={extraTooltip(t, usage.extra!)}
+          />
+        ) : (
+          <WeekMeter key={model.label} usage={model} title={t.status.modelWeekLimit(model.label)} />
+        ),
+      )}
+
+      {shown.tokens ? (
+        <span
+          className={s.meterTokens}
+          data-tooltip={t.status.todayTokens}
+          data-tooltip-at="top left"
+          data-tooltip-kind="meter"
+        >
+          {todayTokens}
+        </span>
+      ) : null}
     </div>
   )
 }
@@ -331,8 +364,10 @@ interface StatusBarProps {
   mode: string
   /** The CLI's own list of models - the MODEL button measures its width by it, see modelSample. */
   models: ModelInfo[] | null
-  /** The usage rings and the day's tokens - see [UsageMeters]. */
+  /** The usage rings and the day's tokens - see [UsageMeters]. Null when every one of them is switched off. */
   meters: ReactNode
+  /** Whether the bubble and the heart are kept on the screen - see indicators.ts. */
+  indicators: Pick<ShownIndicators, 'feedback' | 'thanks'>
   onOpen: (kind: SelectorKind, anchor: Anchor) => void
   onOpenThanks: (anchor: Anchor) => void
   onOpenFeedback: () => void
@@ -348,11 +383,15 @@ interface StatusBarProps {
  * account has left - a fact about the day rather than about this draft - and they belong with the other
  * two things in this line that are not about the draft either.
  *
- * The far end is pinned by its own margin rather than by the row's alignment (see .statusEnd): the
+ * The far end takes the free width of its line and packs itself against the far edge (see .statusEnd): the
  * selectors keep the width they need, the far end keeps the far edge, and the gap between them is whatever
  * is left - so nothing moves when the model or the mode changes. The usage stands inside that end, in front
  * of the pair: the figures arrive late and change width, and there they grow into the gap instead of
  * pushing the buttons.
+ *
+ * Dragged narrow, the row gives way in steps (see composerFit.ts): the far end steps down onto a line of
+ * its own and the selectors share the first one evenly, then the captions go, then the values give way to
+ * an ellipsis.
  */
 export const StatusBar = ({
   model,
@@ -362,36 +401,84 @@ export const StatusBar = ({
   mode,
   models,
   meters,
+  indicators,
   onOpen,
   onOpenThanks,
   onOpenFeedback,
-}: StatusBarProps) => (
-  <div className={s.status}>
-    <div className={s.selectors}>
-      <Selectors
-        model={model}
-        switchedFrom={switchedFrom}
-        stuckPick={stuckPick}
-        effort={effort}
-        mode={mode}
-        models={models}
-        onOpen={onOpen}
-      />
-    </div>
+}: StatusBarProps) => {
+  const room = useRef<HTMLDivElement>(null)
+  const ruler = useRef<HTMLDivElement>(null)
+  const fit = useSelectorsFit(room, ruler)
+  const selectors = { model, switchedFrom, stuckPick, effort, mode, models, onOpen }
 
-    <div className={s.statusEnd}>
-      {meters}
+  const status = useRef<HTMLDivElement>(null)
+  const end = useRef<HTMLDivElement>(null)
+  const pair = useRef<HTMLDivElement>(null)
+  const pairRuler = useRef<HTMLDivElement>(null)
+  const pairWanted = indicators.feedback || indicators.thanks
+  const pairFits = useEndPairFit(status, end, pair, pairRuler, pairWanted, meters ? 'meters' : '')
+  const pairButtons = (
+    <>
+      {indicators.feedback ? <FeedbackButton onOpen={onOpenFeedback} /> : null}
+      {indicators.thanks ? <ThanksButton onOpen={onOpenThanks} /> : null}
+    </>
+  )
 
-      {/* The two of them as one group: this row spaces its parts widely (the selectors on one side, the
-          usage and the buttons on the other), while these two belong together and sit at the selectors'
-          own spacing. */}
-      <div className={s.endPair}>
-        <FeedbackButton onOpen={onOpenFeedback} />
-        <ThanksButton onOpen={onOpenThanks} />
+  return (
+    <div className={s.status} data-selectors={fit} ref={status}>
+      <div className={s.selectors} ref={room}>
+        {/* Shared evenly for as long as each keeps its whole width (see .selectorAuto) - on a line of
+            their own that is the whole line. Squeezed past that, each gives way in proportion to its
+            own width instead: an even share would cut the longest value while the shortest had room to
+            spare. */}
+        <Selectors {...selectors} auto={fit !== 'squeezed'} terse={fit !== 'full'} />
+
+        {/* The ruler: the same three at their natural width, once with the captions and once without -
+            what the row is measured against (see useSelectorsFit). Drawn rather than added up so that
+            it cannot drift from the buttons it stands for: the language, the longest model name and the
+            IDE's font change both at once. Hidden from the eye, the pointer, the keyboard and the
+            screen reader alike. */}
+        <div className={s.selectorsRuler} ref={ruler} aria-hidden="true" inert>
+          <div className={s.selectorsRulerRow}>
+            <Selectors {...selectors} />
+          </div>
+          <div className={s.selectorsRulerRow}>
+            <Selectors {...selectors} terse />
+          </div>
+        </div>
       </div>
+
+      {/* Not drawn at all once everything in it is switched off: an empty far end still takes its line
+          when the selectors have stepped down to theirs, and adds the row's gap for nothing. */}
+      {meters || pairWanted ? (
+        <div className={s.statusEnd} ref={end}>
+          {meters}
+
+          {/* The two of them as one group: this row spaces its parts widely (the selectors on one side,
+              the usage and the buttons on the other), while these two belong together and sit at the
+              selectors' own spacing. Gone, rather than cut by the panel's edge, once even a line of their
+              own cannot hold them beside the usage (see endPairFits). */}
+          {pairWanted && pairFits ? (
+            <div className={s.endPair} ref={pair}>
+              {pairButtons}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* The pair's ruler: the same two buttons at their natural width, which is what the far end is
+          measured against - the pair itself has no width once it has left. Hidden the same way as the
+          selectors' ruler. */}
+      {pairWanted ? (
+        <div className={s.selectorsRuler} aria-hidden="true" inert>
+          <div className={`${s.endPair} ${s.endPairRuler}`} ref={pairRuler}>
+            {pairButtons}
+          </div>
+        </div>
+      ) : null}
     </div>
-  </div>
-)
+  )
+}
 
 interface BranchChipProps {
   gitBranch?: string
@@ -435,7 +522,7 @@ export const BranchChip = ({ gitBranch, pullRequest, onOpenPullRequest }: Branch
  * - and that is visible without reading a single figure. That same budget used to stand as a second
  * number after a slash, but two percentages in a row had to be compared in one's head every time.
  */
-const WeekMeter = ({ usage }: { usage: UsageWindow }) => {
+const WeekMeter = ({ usage, title }: { usage: UsageWindow; title: string }) => {
   const t = useT()
   const budget = weekBudgetToday(usage.resets)
 
@@ -446,8 +533,8 @@ const WeekMeter = ({ usage }: { usage: UsageWindow }) => {
       pace={budget}
       tooltip={
         budget === null
-          ? windowTooltip(t, t.status.weekLimit, usage)
-          : `${windowTooltip(t, t.status.weekLimit, usage)}\n${t.status.paceBudget(budget)}`
+          ? windowTooltip(t, title, usage)
+          : `${windowTooltip(t, title, usage)}\n${t.status.paceBudget(budget)}`
       }
     />
   )
@@ -460,6 +547,11 @@ interface SelectorProps {
   sample: string
   hint: string
   className?: string
+  /**
+   * The caption is not drawn, only the value - for a row too narrow to hold both (see StatusBar). It stays
+   * in the button for a screen reader: "Opus 5" on its own does not say what it is the value of.
+   */
+  terse?: boolean
   onOpen: (anchor: Anchor) => void
 }
 
@@ -471,10 +563,10 @@ interface SelectorProps {
  * whose form is eight of these. A native `select` is not an option there and not merely for the look: in
  * the IDE's offscreen browser its list does not open at all.
  */
-export const Selector = ({ label, value, sample, hint, className = '', onOpen }: SelectorProps) => (
+export const Selector = ({ label, value, sample, hint, className = '', terse = false, onOpen }: SelectorProps) => (
   <button
     type="button"
-    className={`${s.selector} ${className}`}
+    className={`${s.selector} ${terse ? s.selectorTerse : ''} ${className}`}
     /* The panel's own hint rather than the native title: the native one does not unfold in the IDE's
        browser at all, and on this button in particular there is something to read - a MODEL wearing the
        accent explains by nothing else why it does (see Selectors below and Tooltips). */
@@ -521,6 +613,8 @@ interface SelectorsProps {
   models?: ModelInfo[] | null
   /** The row shares the width evenly rather than standing as fixed buttons - see .selectorAuto. */
   auto?: boolean
+  /** The values without their captions - see Selector. */
+  terse?: boolean
   onOpen: (kind: SelectorKind, anchor: Anchor) => void
 }
 
@@ -537,6 +631,7 @@ export const Selectors = ({
   mode,
   models = null,
   auto = false,
+  terse = false,
   onOpen,
 }: SelectorsProps) => {
   const t = useT()
@@ -545,6 +640,7 @@ export const Selectors = ({
   return (
     <>
       <Selector
+        terse={terse}
         label={t.selectors.model}
         value={modelLabel(model)}
         sample={modelSample(models)}
@@ -559,6 +655,7 @@ export const Selectors = ({
         onOpen={(anchor) => onOpen('model', anchor)}
       />
       <Selector
+        terse={terse}
         label={t.selectors.effort}
         value={effortShortLabel(effort)}
         sample={EFFORT_SAMPLE}
@@ -567,6 +664,7 @@ export const Selectors = ({
         onOpen={(anchor) => onOpen('effort', anchor)}
       />
       <Selector
+        terse={terse}
         label={t.selectors.mode}
         value={modeShortLabel(t, mode)}
         sample={modeSample(t)}

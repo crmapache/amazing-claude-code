@@ -163,6 +163,11 @@ export const Accounts = ({
                   <div className={m.accountMeters}>
                     <Meter name={t.accounts.fiveHour} window={facts.session} span={FIVE_HOUR_MS} />
                     <Meter name={t.accounts.weekly} window={facts.week} span={WEEK_MS} />
+                    {/* A model's own week (Fable), where the plan keeps one - the same rule as the
+                        panel's accounts screen. */}
+                    {(facts.models ?? []).map((model) => (
+                      <Meter key={model.label} name={model.label} window={model} span={WEEK_MS} />
+                    ))}
                   </div>
 
                   {account.health === 'absent' && <p className={m.noteBad}>{t.accounts.absent}</p>}

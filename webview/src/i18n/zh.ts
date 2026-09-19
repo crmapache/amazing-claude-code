@@ -27,6 +27,7 @@ export const zh: Dict = {
       settings: { title: '设置', hint: '面板的行为和提示音' },
       sounds: { title: '提示音', hint: '面板需要你的时候' },
       calmColors: { title: '柔和配色', hint: '仪表用什么颜色画' },
+      indicators: { title: '指示器', hint: '输入框周围保留什么' },
       remote: { title: '远程访问', hint: '状态 · 中继 · 已配对设备' },
       remoteAbout: { title: '哪些内容会离开本机', hint: '开启之前请先读一遍' },
       newChat: { title: '新对话', hint: '新标签页从什么开始' },
@@ -71,6 +72,7 @@ export const zh: Dict = {
     rows: {
       sounds: { label: '提示音', sub: '面板需要你的时候' },
       calmColors: { label: '柔和配色', sub: '仪表保留多少颜色' },
+      indicators: { label: '指示器', sub: '输入框旁保留哪些读数' },
       newChat: { label: '新对话', sub: '模型、思考强度和权限模式' },
       composerLayout: { label: '输入框布局', sub: '输入框放在哪里' },
       pasteCollapse: { label: '粘贴的文本', sub: '何时把粘贴折叠成小卡片' },
@@ -135,6 +137,24 @@ export const zh: Dict = {
     keeps: '其他什么都不变：错误仍是红色，权限请求还是原样。那些是已经发生的事，不是情绪。',
     full: '完整颜色',
     none: '一种颜色',
+  },
+
+  indicators: {
+    contextBar: { label: '上下文条', hint: '输入框上方随对话增长而填满的横条' },
+    contextFigure: {
+      label: '上下文数值',
+      hint: '横条末端的“ctx 42%” - 仅在常规布局中；窄布局里数值在横条的提示中',
+    },
+    fiveHour: { label: '5 小时额度', hint: '套餐 5 小时窗口的圆环' },
+    week: { label: '每周额度', hint: '套餐每周窗口的圆环' },
+    modelWeek: {
+      label: '模型每周额度',
+      named: (model) => `${model} 每周额度`,
+      hint: '模型自己的一周，与账户页面一致 - 仅在套餐有此额度时显示',
+    },
+    tokens: { label: '今日 token', hint: '今天消耗的，所有项目合计' },
+    feedback: { label: '反馈按钮', hint: '打开反馈表单的气泡 - 菜单里始终可以打开' },
+    thanks: { label: '爱心', hint: '一颗星、一条评价，或向朋友推荐' },
   },
 
   history: {
@@ -269,6 +289,7 @@ export const zh: Dict = {
       nothing: '这个项目里没有什么在等自己的时间。',
     },
     duplicate: '复制',
+    moveRow: '拖动以调整位置，或拖到另一个架子',
     delete: '删除',
     deleteTitle: '删除这个场景？',
     deleteRun: '删除这次运行',
@@ -333,6 +354,7 @@ export const zh: Dict = {
       state: '状态',
     },
     moreRuns: (count: number): string => `再显示 ${count} 条`,
+    fewerRuns: '收起',
     shelves: {
       project: '在这个仓库里',
       projectNote: '随仓库走 · 在这里干活的人都有',
@@ -388,6 +410,9 @@ export const zh: Dict = {
       runGone: '这次运行已经不在了。',
       runNotResumable: '这次运行无法继续：它的主线程一直没有启动。',
       queueNotWritten: '队列无法写入磁盘。',
+      scenarioNotMoved: '无法把场景移到另一个架子。',
+      scenarioOnBothShelves: '另一个架子上已有相同标识的场景，所以这个场景留在了原处。',
+      orderNotWritten: '无法把架子的新顺序写入磁盘。',
       unknown: '出了点问题。',
     },
     run: {
@@ -1472,6 +1497,7 @@ export const zh: Dict = {
       title: '额度与上下文',
       fiveHourWindow: '5 小时窗口',
       weeklyWindow: '每周窗口',
+      modelWindow: (model) => `${model} 每周窗口`,
       paceNote: (percent) =>
         `暗色弧线是匀速线：按这个速度，本周到今天该用掉 ${percent}%。只要亮色弧线比它短，这周就没有超前。`,
       context: '这次对话的上下文',
@@ -1497,6 +1523,7 @@ export const zh: Dict = {
     modeHint: (mode) => `权限模式：${mode}`,
     sessionLimit: '5 小时额度',
     weekLimit: '每周额度',
+    modelWeekLimit: (model) => `${model} 每周额度`,
     windowUsed: (title, percent) => `${title}：已用 ${percent}%`,
     resetsIn: (left) => `${left} 后重置`,
     paceBudget: (percent) => `暗色圆环：${percent}%，按匀速计算今天该用到的量`,
@@ -1512,7 +1539,7 @@ export const zh: Dict = {
     weeklyOpus: '每周 Opus',
     weeklySonnet: '每周 Sonnet',
     weeklyApps: '每周应用',
-    weeklyWithExtra: '每周（含额外计费）',
+    weeklyFable: '每周 Fable',
     extra: '额外计费',
   },
 

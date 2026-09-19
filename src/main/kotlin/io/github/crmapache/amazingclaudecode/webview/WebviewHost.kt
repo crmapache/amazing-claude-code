@@ -5,6 +5,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.wm.IdeGlassPaneUtil
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
@@ -363,9 +364,15 @@ internal class WebviewHost(
         val type = when (cursor) {
             "pointer" -> Cursor.HAND_CURSOR
             "text" -> Cursor.TEXT_CURSOR
-            // Dragging: AWT has no grabbing hand of its own, and the nearest thing in meaning is the
-            // move cursor.
-            "grab", "grabbing", "move" -> Cursor.MOVE_CURSOR
+            /*
+             * Dragging: AWT has no grabbing hand of its own, and the nearest thing in meaning is the move
+             * cursor - everywhere but macOS, where it is not drawn at all. The runtime builds that one
+             * through a private AppKit cursor this system no longer has, and what comes out is an ordinary
+             * arrow: seen live over the grip of a scenario's row, where the hand holds the row itself.
+             * There the pointing hand is the nearest thing that is actually drawn, and it is what every
+             * other button of the panel already shows.
+             */
+            "grab", "grabbing", "move" -> if (SystemInfo.isMac) Cursor.HAND_CURSOR else Cursor.MOVE_CURSOR
             "col-resize", "ew-resize" -> Cursor.E_RESIZE_CURSOR
             "row-resize", "ns-resize" -> Cursor.N_RESIZE_CURSOR
             "wait", "progress" -> Cursor.WAIT_CURSOR

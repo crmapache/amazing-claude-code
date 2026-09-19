@@ -27,6 +27,7 @@ export const ko: Dict = {
       settings: { title: '설정', hint: '패널의 동작과 소리' },
       sounds: { title: '알림음', hint: '패널이 부를 때' },
       calmColors: { title: '편안한 색', hint: '계기를 어떤 색으로 그릴지' },
+      indicators: { title: '표시기', hint: '입력창 주변에 남길 것' },
       remote: { title: '원격 접속', hint: '상태 · 릴레이 · 연결된 기기' },
       remoteAbout: { title: '밖으로 나가는 것', hint: '켜기 전에 읽어 주세요' },
       newChat: { title: '새 대화', hint: '새 탭이 무엇으로 시작하는지' },
@@ -71,6 +72,7 @@ export const ko: Dict = {
     rows: {
       sounds: { label: '알림음', sub: '패널이 부를 때' },
       calmColors: { label: '편안한 색', sub: '계기에 색을 얼마나 남길지' },
+      indicators: { label: '표시기', sub: '입력창 곁에 남길 수치' },
       newChat: { label: '새 대화', sub: '모델, 사고량, 권한 모드' },
       composerLayout: { label: '입력창 배치', sub: '입력창을 두는 자리' },
       pasteCollapse: { label: '붙여넣은 텍스트', sub: '붙여넣기를 칩으로 접는 기준' },
@@ -135,6 +137,24 @@ export const ko: Dict = {
     keeps: '다른 건 그대로입니다. 오류는 빨간색으로 남고, 권한 요청도 그대로예요. 그건 실제로 일어난 일이지 기분이 아니니까요.',
     full: '전체 색',
     none: '한 가지 색',
+  },
+
+  indicators: {
+    contextBar: { label: '컨텍스트 막대', hint: '대화가 길어질수록 채워지는 입력창 위의 띠' },
+    contextFigure: {
+      label: '컨텍스트 수치',
+      hint: '막대 끝의 “ctx 42%” - 기본 배치에서만; 좁은 배치에서는 막대의 툴팁에 있어요',
+    },
+    fiveHour: { label: '5시간 한도', hint: '요금제 5시간 창의 링' },
+    week: { label: '주간 한도', hint: '요금제 주간 창의 링' },
+    modelWeek: {
+      label: '모델별 주간 한도',
+      named: (model) => `${model} 주간 한도`,
+      hint: '계정 페이지와 같은 모델 전용 주간 - 요금제에 있을 때만 보여요',
+    },
+    tokens: { label: '오늘의 토큰', hint: '오늘 쓴 토큰 (모든 프로젝트 합계)' },
+    feedback: { label: '피드백 버튼', hint: '양식을 여는 말풍선 - 메뉴에서는 언제든 열 수 있어요' },
+    thanks: { label: '하트', hint: '별, 리뷰, 또는 친구에게 한마디' },
   },
 
   history: {
@@ -269,6 +289,7 @@ export const ko: Dict = {
       nothing: '이 프로젝트에서 시각을 기다리는 것은 없습니다.',
     },
     duplicate: '복제',
+    moveRow: '끌어서 다른 위치나 다른 선반으로 옮기기',
     delete: '삭제',
     deleteTitle: '이 시나리오를 삭제할까요?',
     deleteRun: '이 실행 삭제',
@@ -333,6 +354,7 @@ export const ko: Dict = {
       state: '상태',
     },
     moreRuns: (count: number): string => `${count}개 더 보기`,
+    fewerRuns: '접기',
     shelves: {
       project: '이 저장소 안에',
       projectNote: '저장소와 함께 이동 · 여기서 일하는 모두가 가짐',
@@ -388,6 +410,9 @@ export const ko: Dict = {
       runGone: '그 실행은 더 이상 없습니다.',
       runNotResumable: '이 실행은 이어갈 수 없습니다. 메인 스레드가 한 번도 뜨지 않았습니다.',
       queueNotWritten: '대기열을 디스크에 기록하지 못했습니다.',
+      scenarioNotMoved: '시나리오를 다른 선반으로 옮기지 못했습니다.',
+      scenarioOnBothShelves: '다른 선반에 같은 식별자의 시나리오가 이미 있어서 이 시나리오는 제자리에 두었습니다.',
+      orderNotWritten: '선반의 새 순서를 디스크에 기록하지 못했습니다.',
       unknown: '무언가 잘못됐습니다.',
     },
     run: {
@@ -1465,6 +1490,7 @@ export const ko: Dict = {
       title: '한도와 컨텍스트',
       fiveHourWindow: '5시간 창',
       weeklyWindow: '주간 창',
+      modelWindow: (model) => `${model} 주간 창`,
       paceNote: (percent) =>
         `흐린 호가 일정한 속도예요. 오늘까지라면 주간의 ${percent}%까지가 「예정」. 밝은 호가 그보다 짧으면 계획대로예요.`,
       context: '이 대화의 컨텍스트',
@@ -1490,6 +1516,7 @@ export const ko: Dict = {
     modeHint: (mode) => `권한 모드: ${mode}`,
     sessionLimit: '5시간 한도',
     weekLimit: '주간 한도',
+    modelWeekLimit: (model) => `${model} 주간 한도`,
     windowUsed: (title, percent) => `${title}: ${percent}% 사용`,
     resetsIn: (left) => `${left} 후 초기화`,
     paceBudget: (percent) => `흐린 링: 일정한 속도라면 오늘까지 ${percent}%`,
@@ -1505,7 +1532,7 @@ export const ko: Dict = {
     weeklyOpus: '주간 Opus',
     weeklySonnet: '주간 Sonnet',
     weeklyApps: '주간 앱',
-    weeklyWithExtra: '주간 (추가 사용 포함)',
+    weeklyFable: '주간 Fable',
     extra: '추가 사용',
   },
 

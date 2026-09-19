@@ -253,6 +253,7 @@ export const scenariosSystem: Scenario[] = [
       rateLimit({ status: 'rejected', resetsInSeconds: 90, isUsingOverage: true }),
       shell({
         type: 'usage',
+        account: '',
         session: { percent: 100, resets: inHours(1 / 40) },
         extra: { active: true, enabled: true, percent: 23, window: 'five_hour' },
       }),
@@ -271,9 +272,29 @@ export const scenariosSystem: Scenario[] = [
       }),
       shell({
         type: 'usage',
+        account: '',
         session: { percent: 18, resets: inHours(3) },
         week: { percent: 100, resets: inHours(72) },
         extra: { active: true, enabled: true, percent: 41, window: 'seven_day' },
+      }),
+      wait(600),
+    ]),
+    // The model's own week (Fable) is a third ring, and its window is the CLI's
+    // `seven_day_overage_included`: when it runs out, that ring burns and the shared week stays a figure.
+    checkpoint('The Fable week runs out instead: its own ring burns', [
+      rateLimit({
+        status: 'rejected',
+        rateLimitType: 'seven_day_overage_included',
+        resetsInSeconds: 2 * 24 * 60 * 60,
+        isUsingOverage: true,
+      }),
+      shell({
+        type: 'usage',
+        account: '',
+        session: { percent: 18, resets: inHours(3) },
+        week: { percent: 64, resets: inHours(72) },
+        models: [{ label: 'Fable', percent: 100, resets: inHours(48) }],
+        extra: { active: true, enabled: true, percent: 41, window: 'seven_day_overage_included' },
       }),
       wait(600),
     ]),
@@ -281,8 +302,10 @@ export const scenariosSystem: Scenario[] = [
       rateLimit({ status: 'allowed', resetsInSeconds: 18_000 }),
       shell({
         type: 'usage',
+        account: '',
         session: { percent: 4, resets: inHours(5) },
         week: { percent: 31, resets: inHours(4.5 * 24) },
+        models: [{ label: 'Fable', percent: 2, resets: inHours(7 * 24) }],
         extra: { active: false, enabled: true, percent: 23 },
       }),
       wait(400),
@@ -300,6 +323,7 @@ export const scenariosSystem: Scenario[] = [
       shell({ type: 'auth', installed: true, loggedIn: true, email: 'first@example.com', plan: 'Max' }),
       shell({
         type: 'usage',
+        account: '',
         session: { percent: 41, resets: inHours(2) },
         week: { percent: 18, resets: inHours(4 * 24) },
       }),
@@ -307,13 +331,13 @@ export const scenariosSystem: Scenario[] = [
     ]),
     checkpoint('Another account: the rings empty at once', [
       shell({ type: 'auth', installed: true, loggedIn: true, email: 'second@example.com', plan: 'Pro' }),
-      shell({ type: 'usage', reset: true }),
+      shell({ type: 'usage', account: '', reset: true }),
       wait(700),
     ]),
     // Only the five-hour window comes back: the new account's week has not started, and an empty ring is
     // the honest answer for it.
     checkpoint('The new account answers - and only about what it has spent', [
-      shell({ type: 'usage', session: { percent: 10, resets: inHours(4.5) } }),
+      shell({ type: 'usage', account: '', session: { percent: 10, resets: inHours(4.5) } }),
       wait(600),
     ]),
   ]),

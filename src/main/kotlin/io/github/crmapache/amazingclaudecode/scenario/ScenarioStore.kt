@@ -3,7 +3,9 @@ package io.github.crmapache.amazingclaudecode.scenario
 import com.intellij.openapi.diagnostic.thisLogger
 import io.github.crmapache.amazingclaudecode.claude.ClaudeHome
 import java.io.File
+import java.nio.file.Files
 import java.util.UUID
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
@@ -18,8 +20,11 @@ import kotlinx.serialization.json.Json
  * Read from disk on every request rather than cached. They are a handful of small files, the panel asks
  * for them when a tab is opened, and a cache would have to be kept honest against an editor window, a
  * git checkout and a second IDE - three writers this side does not own.
+ *
+ * `claudeHome` is for the tests alone: the person's shelf is otherwise their real Claude home, and a test
+ * that moved a scenario onto it would leave one in the folder they actually work in.
  */
-internal class ScenarioStore(private val workingDirectory: String?) {
+internal class ScenarioStore(private val workingDirectory: String?, private val claudeHome: File? = null) {
 
     private val json = Json {
         prettyPrint = true
@@ -37,7 +42,9 @@ internal class ScenarioStore(private val workingDirectory: String?) {
      * WSL runs its CLI in there: the home whose `commands/` the panel already reads for slash hints is the
      * home this belongs next to.
      */
-    fun userDirectory(): File = File(ClaudeHome.of(workingDirectory).configDirectory, "scenarios")
+    fun userDirectory(): File = File(configDirectory(), "scenarios")
+
+    private fun configDirectory(): File = claudeHome ?: ClaudeHome.of(workingDirectory).configDirectory
 
     private fun directoryOf(scope: String): File? =
         if (ScenarioScope.normalize(scope) == ScenarioScope.USER) userDirectory() else projectDirectory()
@@ -53,13 +60,13 @@ internal class ScenarioStore(private val workingDirectory: String?) {
     private fun reachable(scope: String): Boolean =
         runCatching {
             if (ScenarioScope.normalize(scope) == ScenarioScope.USER) {
-                ClaudeHome.of(workingDirectory).configDirectory.parentFile?.isDirectory == true
+                configDirectory().parentFile?.isDirectory == true
             } else {
                 workingDirectory?.let { File(it).isDirectory } == true
             }
         }.getOrDefault(false)
 
-    /** Everything on both shelves, project first, each in the order it was created. */
+    /** Everything on both shelves, project first, each in the order it stands on its shelf (see [shelf]). */
     fun all(): List<Scenario> = shelf(ScenarioScope.PROJECT).orEmpty() + shelf(ScenarioScope.USER).orEmpty()
 
     fun find(id: String, scope: String): Scenario? = shelf(scope).orEmpty().firstOrNull { it.id == id }
@@ -81,17 +88,99 @@ internal class ScenarioStore(private val workingDirectory: String?) {
      *
      * Told apart by the ground the shelf stands on (see [reachable]): a folder that is not there, on a disk
      * that is, has genuinely never been made. A disk that will not answer is where the doubt belongs.
+     *
+     * In the order somebody put them in by dragging (see [place]), and whatever that order does not name -
+     * written since, or brought in by a checkout - after it, in the order it was created. Sorted stably,
+     * so the second half keeps the first sort.
+     *
+     * A file whose name starts with a dot is never a scenario. The shelf's own order lives in one, and
+     * everything in [Scenario] has a default: read as a scenario, `{"order": [...]}` came out as a row
+     * called "Untitled".
      */
     fun shelf(scope: String): List<Scenario>? {
         val directory = directoryOf(scope) ?: return null
         if (!directory.isDirectory) return if (reachable(scope)) emptyList() else null
         val files = runCatching { directory.listFiles() }.getOrNull() ?: return null
 
+        val rank = orderOf(directory).withIndex().associate { (at, id) -> id to at }
         return files
-            .filter { it.isFile && it.name.endsWith(".json") }
+            .filter { it.isFile && it.name.endsWith(".json") && !it.name.startsWith(".") }
             .mapNotNull { file -> parse(file, scope) }
             .sortedBy { it.createdAt }
+            .sortedBy { rank[it.id] ?: Int.MAX_VALUE }
     }
+
+    /**
+     * Put one scenario at a place on a shelf - before [before], or last when that is empty or no longer
+     * there - moving its file over from the other shelf first when [from] is not [to].
+     *
+     * Named by the neighbour rather than by a number, for the reason the queue moves by steps (see
+     * QueueRules.move): two windows and a second IDE draw these shelves, and an index is a place in whatever
+     * the sender last saw. A neighbour is a place in what is actually on the disk.
+     *
+     * Answers null when it is done, or the name of what went wrong - which the screen has words for.
+     */
+    fun place(id: String, from: String, to: String, before: String): String? {
+        if (!usableId(id)) return GONE
+        val source = ScenarioScope.normalize(from)
+        val target = ScenarioScope.normalize(to)
+        if (source != target) move(id, source, target)?.let { return it }
+
+        val directory = directoryOf(target) ?: return NOT_ORDERED
+        val standing = shelf(target)?.map { it.id } ?: return NOT_ORDERED
+        if (id !in standing) return GONE
+
+        val others = standing.filter { it != id }
+        val at = others.indexOf(before).takeIf { before.isNotEmpty() && it >= 0 } ?: others.size
+        val order = others.toMutableList().apply { add(at, id) }
+        val written = ScenarioFile(File(directory, ORDER)).put(json.encodeToString(ShelfOrder(order)))
+        return if (written) null else NOT_ORDERED
+    }
+
+    /**
+     * The file itself, carried from one shelf to the other - not read and written again.
+     *
+     * Carried as it lies, so nothing in it changes but its folder: not the moment it was last edited, not a
+     * field a newer build wrote that this one does not know. The shelf is not in the file (see
+     * [Scenario.scope]), so the folder is the whole of the move.
+     *
+     * Refused rather than written over when the other shelf already holds a scenario under the same
+     * identifier - a project file that came back with a git checkout beside somebody's own copy. Either of
+     * the two could be the one somebody meant to keep, and a move is no place to lose one of them.
+     */
+    private fun move(id: String, from: String, to: String): String? {
+        val file = directoryOf(from)?.let { File(it, "$id.json") }?.takeIf(File::isFile) ?: return GONE
+        val directory = directoryOf(to) ?: return NOT_MOVED
+        val landing = File(directory, "$id.json")
+        if (landing.exists()) return TWIN
+
+        return runCatching {
+            directory.mkdirs()
+            // Not atomic, on purpose: the two shelves are a repository and a home folder, which are on
+            // different disks often enough, and a plain move copies and deletes where a rename cannot.
+            Files.move(file.toPath(), landing.toPath())
+        }.fold(
+            onSuccess = { null },
+            onFailure = {
+                thisLogger().warn("Could not move a scenario to the other shelf", it)
+                NOT_MOVED
+            },
+        )
+    }
+
+    /**
+     * The shelf's own order, as far as it can be read - and nothing when it cannot.
+     *
+     * An order is a convenience rather than anything of anybody's: a file that will not parse costs the
+     * rows their places, never the rows. So "could not read" and "there is none" are one answer here, unlike
+     * the shelf itself.
+     */
+    private fun orderOf(directory: File): List<String> =
+        when (val stored = ScenarioFile(File(directory, ORDER)).read()) {
+            is ScenarioFile.Stored.Text ->
+                runCatching { json.decodeFromString<ShelfOrder>(stored.text).order.distinct() }.getOrDefault(emptyList())
+            else -> emptyList()
+        }
 
     /**
      * A file from disk made safe to draw.
@@ -205,5 +294,24 @@ internal class ScenarioStore(private val workingDirectory: String?) {
             id.isNotBlank() && id.length <= MAX_ID && id.all { it.isLetterOrDigit() || it == '-' || it == '_' }
 
         private const val MAX_ID = 64
+
+        /**
+         * The file a shelf keeps its order in, beside the scenarios - so the repository's order travels with
+         * the repository and one's own follows one from project to project, exactly as the rows do.
+         *
+         * A dot in front, and that is what keeps it apart from them: an identifier cannot hold a dot (see
+         * [usableId]), so no scenario is ever written under this name, and the shelf skips every such file.
+         */
+        const val ORDER = ".order.json"
+
+        /** What [place] answers with - the names the screen has words for (see `outcomes` in the panel). */
+        const val GONE = "scenarioGone"
+        const val TWIN = "scenarioOnBothShelves"
+        const val NOT_MOVED = "scenarioNotMoved"
+        const val NOT_ORDERED = "orderNotWritten"
     }
 }
+
+/** A shelf's order, by identifier. An object rather than a bare list, so the file can grow a field. */
+@Serializable
+internal data class ShelfOrder(val order: List<String> = emptyList())

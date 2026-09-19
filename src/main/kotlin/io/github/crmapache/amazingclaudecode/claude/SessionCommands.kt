@@ -375,6 +375,9 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
 
             "scenarioDuplicate" -> hub.scenarios.duplicate(clientId, field("id"), field("scope"))
 
+            // A row dragged to a new place, named by the row it now stands before - empty for last.
+            "scenarioPlace" -> hub.scenarios.place(clientId, field("id"), field("from"), field("to"), field("before"))
+
             // A model writes one out of a sentence, and the answer goes to whoever asked rather than to
             // the project: nothing has been saved yet (see ScenarioDesk.draft).
             "scenarioDraft" -> hub.scenarios.draft(clientId, field("id"), field("description"))

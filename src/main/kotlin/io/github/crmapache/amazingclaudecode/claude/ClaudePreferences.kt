@@ -21,6 +21,7 @@ internal object ClaudePreferences {
         val pasteCollapse: String,
         val sendKey: String,
         val gaugeVivid: Int,
+        val hiddenIndicators: Set<String>,
         val improveInstructions: String,
         val language: String,
     )
@@ -35,6 +36,7 @@ internal object ClaudePreferences {
         pasteCollapse = pasteCollapse,
         sendKey = sendKey,
         gaugeVivid = gaugeVivid,
+        hiddenIndicators = hiddenIndicators,
         improveInstructions = improveInstructions,
         language = language,
     )
@@ -237,6 +239,26 @@ internal object ClaudePreferences {
         set(value) = write(MUTED_SOUNDS_KEY, value.joinToString(","))
 
     /**
+     * The indicators around the input field switched off by hand - the context bar and its figure, the
+     * usage rings, the token counter, the bubble and the heart. The same shape as [mutedSounds] and for the
+     * same reason: what is stored is what is OFF, so an indicator added in a later version arrives switched
+     * on for everyone rather than hidden for whoever once opened the list.
+     *
+     * Which ids exist the panel decides (see indicators.ts) - it drops a name it does not know. This side
+     * only keeps the value a plain list of words: it is written by a message, and a message can say
+     * anything.
+     */
+    var hiddenIndicators: Set<String>
+        get() = indicatorIds(read(HIDDEN_INDICATORS_KEY).split(','))
+        set(value) = write(HIDDEN_INDICATORS_KEY, indicatorIds(value).joinToString(","))
+
+    private fun indicatorIds(ids: Iterable<String>): Set<String> =
+        ids.map { it.trim() }.filter { INDICATOR_ID.matches(it) }.take(MAX_INDICATORS).toSortedSet()
+
+    private val INDICATOR_ID = Regex("[A-Za-z]{1,32}")
+    private const val MAX_INDICATORS = 32
+
+    /**
      * Each sound's volume in per cent. Only those differing from full are written down: a sound not
      * named here plays as it is.
      *
@@ -362,6 +384,7 @@ internal object ClaudePreferences {
     private const val PASTE_COLLAPSE_KEY = "acc.pasteCollapse"
     private const val SEND_KEY_KEY = "acc.sendKey"
     private const val CALM_COLORS_KEY = "acc.calmColors"
+    private const val HIDDEN_INDICATORS_KEY = "acc.indicators.hidden"
     private const val IMPROVE_INSTRUCTIONS_KEY = "acc.improve.instructions"
     private const val LANGUAGE_KEY = "acc.language"
     private const val CUSTOM_MODELS_KEY = "acc.models.custom"

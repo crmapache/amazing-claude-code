@@ -41,7 +41,7 @@ export interface DictationHandlers {
  *
  * It cannot be written once: one side of it is Kotlin inside the IDE and this side is a page in
  * somebody's hand, and there is no code between them. So it is the case of Frame.kt and frame.ts (see
- * CLAUDE.md) - the query parameters, the shape of an answer, and the three numbers below are the same on
+ * .claude/rules/remote-access.md) - the query parameters, the shape of an answer, and the three numbers below are the same on
  * both sides by discipline alone, and a change made to one of them has to be made to
  * voice/DeepgramStream.kt as well. Nothing fails if it is not: the phone simply transcribes a little
  * differently from the desk, which is the sort of difference nobody reports and nobody finds.

@@ -22,6 +22,8 @@ import { plan } from '../scenarios/rules'
  */
 
 let shelves: Scenario[] = []
+/** How many copies have been made, so each gets an identifier of its own (see scenarioDuplicate). */
+let copies = 0
 let runs: ScenarioRunSummary[] = []
 let records: Record<string, ScenarioRun> = {}
 /**
@@ -903,7 +905,31 @@ export const answerScenarios = (message: WebviewMessage): void => {
   if (message.type === 'scenarioDuplicate') {
     const source = shelves.find((one) => one.id === message.id)
     if (!source) return
-    shelves = [...shelves, { ...structuredClone(source), id: `${source.id}-copy`, name: `${source.name} copy` }]
+    // A fresh identifier each time, as the IDE gives one: copying twice under one name made two rows that
+    // answered to the same key, and a drag picked up both.
+    const id = `${source.id}-copy-${(copies += 1)}`
+    shelves = [...shelves, { ...structuredClone(source), id, name: `${source.name} copy` }]
+    return sendList()
+  }
+
+  /*
+   * A row dragged to a new place, as ScenarioStore.place does it: onto the other shelf only when that shelf
+   * has nothing under the same identifier, and then before the row it was dropped above, or last.
+   */
+  if (message.type === 'scenarioPlace') {
+    const moving = shelves.find((one) => one.id === message.id && one.scope === message.from)
+    if (!moving) return send({ type: 'scenarioOutcome', ok: false, code: 'scenarioGone' })
+    if (message.from !== message.to && shelves.some((one) => one.id === message.id && one.scope === message.to)) {
+      send({ type: 'scenarioOutcome', ok: false, code: 'scenarioOnBothShelves' })
+      return sendList()
+    }
+
+    const rest = shelves.filter((one) => one !== moving)
+    const before = rest.findIndex((one) => one.id === message.before && one.scope === message.to)
+    const last = rest.map((one) => one.scope).lastIndexOf(message.to)
+    const at = before >= 0 ? before : last >= 0 ? last + 1 : rest.length
+    rest.splice(at, 0, { ...moving, scope: message.to })
+    shelves = rest
     return sendList()
   }
 

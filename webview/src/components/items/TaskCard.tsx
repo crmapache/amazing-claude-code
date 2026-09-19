@@ -27,7 +27,7 @@ export const TaskCard = ({ item, open, onToggle }: TaskCardProps) => {
   const t = useT()
   const hasBody = Boolean(item.prompt) || item.log.length > 0 || Boolean(item.workflow)
   // A workflow is a fleet rather than an agent, and its own report is what the card is drawn from: the
-  // chip in the header counts it the same way (see the workflow section of CLAUDE.md). The name is asked
+  // chip in the header counts it the same way (see .claude/rules/subagents.md). The name is asked
   // for as well as the report, because the report only arrives with the first progress event - until then
   // the card would call a workflow an agent.
   const chip = item.workflow || item.target === 'workflow' ? 'WORKFLOW' : 'AGENT'

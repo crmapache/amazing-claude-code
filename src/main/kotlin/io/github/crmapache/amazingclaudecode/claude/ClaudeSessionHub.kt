@@ -1814,6 +1814,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             // red its owner had damped, and stayed there until somebody at the desk moved it again.
             "calmColors",
             "init",
+            // Right after `init`, which carries the same setting as it stood when the hub warmed up: the
+            // cached `init` is what a joining window is given, so without the later fact a panel reopened
+            // after the switch was flipped would come back with the indicator its owner had hidden.
+            "indicators",
             "auth",
             // Right after the sign-in it qualifies: a client that joins without it cannot draw the menu
             // row, and a fact not listed here never reaches one at all. Deliberately NOT in

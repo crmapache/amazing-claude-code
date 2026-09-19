@@ -500,6 +500,20 @@ internal class ProjectUsage(
                 put("account", account)
                 merged.session?.let { putWindow("session", it) }
                 merged.week?.let { putWindow("week", it) }
+                // The per-model weeks (Fable) as a whole list, always: after the memory they are what is
+                // known right now, and an empty list is the honest "this plan has none" that takes a ring
+                // away, while a missing field would leave yesterday's on the screen.
+                merged.models?.let { models ->
+                    putJsonArray("models") {
+                        models.forEach { model ->
+                            addJsonObject {
+                                put("label", model.label)
+                                put("percent", model.window.percent)
+                                put("resets", model.window.resets)
+                            }
+                        }
+                    }
+                }
                 merged.contextWindow?.let { put("contextWindow", it) }
                 putExtra(held)
             }.toString(),

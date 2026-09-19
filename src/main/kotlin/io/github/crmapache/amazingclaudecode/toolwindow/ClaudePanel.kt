@@ -46,7 +46,9 @@ import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JComponent
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -325,6 +327,16 @@ internal class ClaudePanel(
                 ClaudePreferences.gaugeVivid =
                     payload["vivid"]?.jsonPrimitive?.intOrNull ?: ClaudePreferences.GAUGE_VIVID_FULL
                 ClaudeSessionHub.everyHub { it.catalog.sendCalmColors() }
+            }
+
+            // Which indicators around the input field are switched off (see indicators.ts). Told to every
+            // hub, like the colours above: the setting is the machine's, and each hub keeps the last word
+            // for a window that joins later - a hub without a window today may be given one tomorrow.
+            "setHiddenIndicators" -> {
+                ClaudePreferences.hiddenIndicators = (payload["hidden"] as? JsonArray).orEmpty()
+                    .mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+                    .toSet()
+                ClaudeSessionHub.everyHub { it.catalog.sendIndicators() }
             }
 
             /*

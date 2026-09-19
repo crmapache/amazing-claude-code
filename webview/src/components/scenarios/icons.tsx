@@ -72,6 +72,23 @@ export const QueueIcon = () => (
   </Icon>
 )
 
+/**
+ * What a row is picked up by: two columns of three dots, the handle every sortable list has taught people.
+ *
+ * Filled rather than stroked, unlike the rest - a dot drawn as a ring at this size is a blur - and on the
+ * same grid, so it centres in its button exactly as the marks beside Run do.
+ */
+export const GripIcon = () => (
+  <svg viewBox="0 0 16 16" width={ICON_SIZE + 2} height={ICON_SIZE + 2} aria-hidden="true" fill="currentColor">
+    <circle cx="6" cy="3.5" r="1.25" />
+    <circle cx="10" cy="3.5" r="1.25" />
+    <circle cx="6" cy="8" r="1.25" />
+    <circle cx="10" cy="8" r="1.25" />
+    <circle cx="6" cy="12.5" r="1.25" />
+    <circle cx="10" cy="12.5" r="1.25" />
+  </svg>
+)
+
 /** Up and down, for moving one turn along the queue. */
 export const UpIcon = () => (
   <Icon>

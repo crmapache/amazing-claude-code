@@ -748,7 +748,7 @@ export interface ErrorItem {
    * end - which is exactly what the feedback this was built for said.
    *
    * Not set in a replay: a sign-in that fell over a month ago is a record, and a past conversation must
-   * not ask anybody to fix anything (see "A past conversation is a record" in CLAUDE.md).
+   * not ask anybody to fix anything (see "A past conversation is a record" in .claude/rules/history.md).
    */
   signIn?: boolean
 }

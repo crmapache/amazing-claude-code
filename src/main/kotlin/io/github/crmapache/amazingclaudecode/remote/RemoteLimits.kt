@@ -174,6 +174,8 @@ internal class RemoteLimits {
             "scenarioSave" to 15,
             "scenarioDelete" to 10,
             "scenarioDuplicate" to 10,
+            // Rewrites one small file, and putting a shelf in order is several drags in a row.
+            "scenarioPlace" to 30,
             "scenarioDraft" to 10,
             "scenarioRun" to 10,
             "scenarioSchedule" to 15,

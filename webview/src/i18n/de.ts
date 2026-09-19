@@ -30,6 +30,7 @@ export const de: Dict = {
       settings: { title: 'EINSTELLUNGEN', hint: 'wie sich das Panel verhält und wie es klingt' },
       sounds: { title: 'SIGNALTÖNE', hint: 'wenn das Panel nach dir ruft' },
       calmColors: { title: 'RUHIGE FARBEN', hint: 'wie die Anzeigen gefärbt werden' },
+      indicators: { title: 'ANZEIGEN', hint: 'was um das Feld herum bleibt' },
       remote: { title: 'FERNZUGRIFF', hint: 'Status · Relay · gekoppelte Geräte' },
       remoteAbout: { title: 'WAS DAS HAUS VERLÄSST', hint: 'lies das, bevor du es einschaltest' },
       newChat: { title: 'NEUE CHATS', hint: 'womit ein neuer Tab startet' },
@@ -74,6 +75,7 @@ export const de: Dict = {
     rows: {
       sounds: { label: 'Signaltöne', sub: 'Wenn das Panel nach dir ruft' },
       calmColors: { label: 'Ruhige Farben', sub: 'Wie viel Farbe die Anzeigen behalten' },
+      indicators: { label: 'Anzeigen', sub: 'Welche Werte am Feld stehen bleiben' },
       newChat: { label: 'Neue Chats', sub: 'Modell, Aufwand und Berechtigungsmodus' },
       composerLayout: { label: 'Layout des Eingabefelds', sub: 'Wo das Eingabefeld sitzt' },
       pasteCollapse: { label: 'Eingefügter Text', sub: 'Wann eine Einfügung zum Chip wird' },
@@ -138,6 +140,24 @@ export const de: Dict = {
     keeps: 'Sonst ändert sich nichts: ein Fehler bleibt rot, eine Berechtigung bleibt, was sie ist. Das sind Dinge, die passiert sind, keine Stimmung.',
     full: 'Volle Farbe',
     none: 'Ein Ton',
+  },
+
+  indicators: {
+    contextBar: { label: 'Kontextleiste', hint: 'Der Streifen über dem Feld, der sich mit dem Gespräch füllt' },
+    contextFigure: {
+      label: 'Kontextwert',
+      hint: '„ctx 42%“ am Ende der Leiste - nur im normalen Layout; in den schmalen steht der Wert im Hinweis der Leiste',
+    },
+    fiveHour: { label: '5-Stunden-Limit', hint: 'Der Ring für das Fünf-Stunden-Fenster des Plans' },
+    week: { label: 'Wochenlimit', hint: 'Der Ring für das Wochenfenster des Plans' },
+    modelWeek: {
+      label: 'Wochenlimit eines Modells',
+      named: (model) => `Wochenlimit für ${model}`,
+      hint: 'Die eigene Woche eines Modells, wie auf der Kontoseite - nur solange der Plan eine hat',
+    },
+    tokens: { label: 'Tokens heute', hint: 'Heute verbraucht, über alle Projekte' },
+    feedback: { label: 'Feedback-Knopf', hint: 'Die Sprechblase, die das Formular öffnet - das Menü behält seinen eigenen Weg dorthin' },
+    thanks: { label: 'Herz', hint: 'Ein Stern, eine Bewertung oder ein Wort an einen Freund' },
   },
 
   history: {
@@ -273,6 +293,7 @@ export const de: Dict = {
       nothing: 'In diesem Projekt wartet nichts auf eine Uhrzeit.',
     },
     duplicate: 'Duplizieren',
+    moveRow: 'An eine andere Stelle oder ins andere Regal ziehen',
     delete: 'Löschen',
     deleteTitle: 'Dieses Szenario löschen?',
     deleteRun: 'Diesen Lauf löschen',
@@ -340,6 +361,7 @@ export const de: Dict = {
       state: 'ZUSTAND',
     },
     moreRuns: (count: number): string => `${count} weitere anzeigen`,
+    fewerRuns: 'Weniger anzeigen',
     shelves: {
       project: 'IN DIESEM REPOSITORY',
       projectNote: 'reist mit dem Repository · alle, die hier arbeiten, haben es',
@@ -395,6 +417,9 @@ export const de: Dict = {
       runGone: 'Diesen Lauf gibt es nicht mehr.',
       runNotResumable: 'Dieser Lauf lässt sich nicht fortsetzen: sein Hauptstrang ist nie hochgekommen.',
       queueNotWritten: 'Die Warteschlange ließ sich nicht auf die Festplatte schreiben.',
+      scenarioNotMoved: 'Das Szenario ließ sich nicht ins andere Regal verschieben.',
+      scenarioOnBothShelves: 'Im anderen Regal liegt schon ein Szenario mit derselben Kennung, darum ist dieses geblieben, wo es war.',
+      orderNotWritten: 'Die neue Reihenfolge des Regals ließ sich nicht auf die Festplatte schreiben.',
       unknown: 'Etwas ist schiefgegangen.',
     },
     run: {
@@ -1482,6 +1507,7 @@ export const de: Dict = {
       title: 'Limits und Kontext',
       fiveHourWindow: 'Fünf-Stunden-Fenster',
       weeklyWindow: 'Wochenfenster',
+      modelWindow: (model) => `Wochenfenster für ${model}`,
       paceNote: (percent) =>
         `Der blasse Bogen ist der gleichmäßige Takt: ${percent}% der Woche sind bis heute schon „fällig“. Solange der helle Bogen kürzer ist, liegt die Woche im Plan.`,
       context: 'Der Kontext dieses Gesprächs',
@@ -1508,6 +1534,7 @@ export const de: Dict = {
     modeHint: (mode) => `Berechtigungsmodus: ${mode}`,
     sessionLimit: '5-Stunden-Limit',
     weekLimit: 'Wochenlimit',
+    modelWeekLimit: (model) => `Wochenlimit für ${model}`,
     windowUsed: (title, percent) => `${title}: ${percent}% verbraucht`,
     resetsIn: (left) => `Zurückgesetzt in ${left}`,
     paceBudget: (percent) => `Blasser Ring: ${percent}% gleichmäßiges Budget für heute`,
@@ -1523,7 +1550,7 @@ export const de: Dict = {
     weeklyOpus: 'wöchentliche Opus-',
     weeklySonnet: 'wöchentliche Sonnet-',
     weeklyApps: 'wöchentliche App-',
-    weeklyWithExtra: 'wöchentliche, Zusatznutzung eingerechnet,',
+    weeklyFable: 'wöchentliche Fable-',
     extra: 'Zusatznutzungs-',
   },
 

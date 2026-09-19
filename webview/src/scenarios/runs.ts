@@ -1,4 +1,4 @@
-import type { ScenarioRunSummary } from '../protocol'
+import type { Scenario, ScenarioRunSummary } from '../protocol'
 import type { SessionState } from '../components/Header'
 
 /**
@@ -33,6 +33,24 @@ export const runningRuns = (live: ScenarioRunSummary[]): ScenarioRunSummary[] =>
  */
 export const pastRuns = (runs: ScenarioRunSummary[], live: ScenarioRunSummary[]): ScenarioRunSummary[] =>
   runs.filter((run) => !isLive(run, live))
+
+/**
+ * The runs of one scenario - by its identifier, and by its shelf only when both shelves hold that one.
+ *
+ * A run keeps the shelf its scenario stood on when it was started, and a scenario dragged over to the
+ * other shelf mid-run is still the scenario that run is working through: matched by the pair, its row lost
+ * the strip saying so the moment it was dropped. The shelf decides only between two scenarios under one
+ * identifier - a project file back from a checkout beside somebody's own copy - the same rule its hours
+ * and its turns on the queue follow (see Schedules.keepOnly).
+ */
+export const runsOf = <Run extends Pick<ScenarioRunSummary, 'scenarioId' | 'scope'>>(
+  runs: Run[],
+  scenario: Pick<Scenario, 'id' | 'scope'>,
+  scenarios: Pick<Scenario, 'id' | 'scope'>[],
+): Run[] => {
+  const twin = scenarios.some((one) => one.id === scenario.id && one.scope !== scenario.scope)
+  return runs.filter((run) => run.scenarioId === scenario.id && (!twin || run.scope === scenario.scope))
+}
 
 /**
  * A run in the five states a dot is drawn in - the same five a conversation's tab uses (see

@@ -94,6 +94,48 @@ class ClaudeUsageTest {
         assertEquals(1000000, snapshot.contextWindow)
     }
 
+    // The shape recorded off CLI 2.1.273: `model_scoped` beside the shared windows, with the server's own
+    // label - what the account page draws as its own weekly bar.
+    @Test
+    fun `a model's own weekly window is read with its label`() {
+        val snapshot = parse(
+            """
+            {"rate_limits":{
+               "seven_day":{"utilization":81,"resets_at":"2026-09-21T00:00:00+00:00"},
+               "model_scoped":[{"display_name":"Fable","utilization":58,"resets_at":"2026-09-21T00:00:00.657078+00:00"}]}}
+            """.trimIndent(),
+        )
+
+        assertEquals(listOf("Fable"), snapshot.models?.map { it.label })
+        assertEquals(58, snapshot.models?.single()?.window?.percent)
+        assertEquals("2026-09-21T00:00:00.657078+00:00", snapshot.models?.single()?.window?.resets)
+    }
+
+    // Two empties, two answers: an absent list is "nothing said" and must not wipe what is known, an
+    // empty one is "the plan has none".
+    @Test
+    fun `an absent model list is not the same as an empty one`() {
+        assertNull(parse("""{"rate_limits":{"seven_day":{"utilization":81}}}""").models)
+        assertNull(parse("""{"rate_limits":{"model_scoped":null}}""").models)
+        assertEquals(emptyList(), parse("""{"rate_limits":{"model_scoped":[]}}""").models)
+    }
+
+    // A row that cannot name its model has nothing to be recognised by on the screen.
+    @Test
+    fun `a model row without a name or a share is dropped`() {
+        val snapshot = parse(
+            """
+            {"rate_limits":{"model_scoped":[
+               {"display_name":"  ","utilization":10},
+               {"utilization":20},
+               {"display_name":"Fable"},
+               {"display_name":"Fable 5","utilization":30}]}}
+            """.trimIndent(),
+        )
+
+        assertEquals(listOf("Fable 5"), snapshot.models?.map { it.label })
+    }
+
     @Test
     fun `with no per-model breakdown we do not invent a window size`() {
         assertNull(parse("""{"session":{"model_usage":{}}}""").contextWindow)
@@ -266,5 +308,64 @@ class ClaudeUsageTrackerTest {
 
         assertEquals(0, later.session?.percent)
         assertEquals("", later.session?.resets)
+    }
+
+    private fun fable(percent: Int, resets: String) = listOf(ClaudeUsage.ModelWindow("Fable", window(percent, resets)))
+
+    // The model's week is a week like any other: the routes disagree about it the same way.
+    @Test
+    fun `a model's window does not go down within itself`() {
+        val tracker = ClaudeUsage.Tracker()
+        val future = "2026-08-24T00:00:00Z"
+
+        tracker.merge(snapshot().copy(models = fable(58, future)), now)
+        val merged = tracker.merge(snapshot().copy(models = fable(41, future)), now)
+
+        assertEquals(58, merged.models?.single()?.window?.percent)
+    }
+
+    // A live conversation hands over the last response's headers and says nothing about per-model
+    // windows: that must not take the ring away.
+    @Test
+    fun `an answer silent about models keeps the known ones`() {
+        val tracker = ClaudeUsage.Tracker()
+
+        tracker.merge(snapshot().copy(models = fable(58, "2026-08-24T00:00:00Z")), now)
+        val merged = tracker.merge(snapshot(session = window(3, "2026-08-20T16:00:00Z")), now)
+
+        assertEquals(58, merged.models?.single()?.window?.percent)
+    }
+
+    // "The server named none" is news: the plan has no such week any more.
+    @Test
+    fun `an empty model list clears the known ones`() {
+        val tracker = ClaudeUsage.Tracker()
+
+        tracker.merge(snapshot().copy(models = fable(58, "2026-08-24T00:00:00Z")), now)
+        val merged = tracker.merge(snapshot().copy(models = emptyList()), now)
+
+        assertEquals(emptyList(), merged.models)
+    }
+
+    // The same rule as the shared week: a window whose reset has gone by says nothing about now.
+    @Test
+    fun `a model's window drops to zero once its reset has passed`() {
+        val tracker = ClaudeUsage.Tracker()
+
+        tracker.merge(snapshot().copy(models = fable(90, "2026-08-20T14:00:00Z")), now)
+        val later = tracker.merge(snapshot(), Instant.parse("2026-08-20T14:30:00Z"))
+
+        assertEquals(0, later.models?.single()?.window?.percent)
+    }
+
+    // The memory belongs to the account: a switch forgets the model's week along with the rest.
+    @Test
+    fun `forgetting takes the model windows too`() {
+        val tracker = ClaudeUsage.Tracker()
+
+        tracker.merge(snapshot().copy(models = fable(58, "2026-08-24T00:00:00Z")), now)
+        tracker.forget()
+
+        assertEquals(emptyList(), tracker.merge(snapshot(), now).models)
     }
 }

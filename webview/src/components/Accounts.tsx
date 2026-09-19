@@ -119,6 +119,13 @@ const Meters = ({ facts, t }: { facts: UsageFacts; t: Dict }) => (
   <div className={s.accountMeters}>
     <Meter name={t.accounts.fiveHour} window={facts.session} span={FIVE_HOUR_MS} />
     <Meter name={t.accounts.weekly} window={facts.week} span={WEEK_MS} />
+    {/* A model's own week (Fable) only where the plan keeps one, and named by the model alone: beside
+        "week" the word says which week, and the name is the server's, not ours to translate. No dash
+        while unknown, unlike the two above - an account whose plan has no such week would otherwise
+        promise a figure that never comes. */}
+    {(facts.models ?? []).map((model) => (
+      <Meter key={model.label} name={model.label} window={model} span={WEEK_MS} />
+    ))}
   </div>
 )
 

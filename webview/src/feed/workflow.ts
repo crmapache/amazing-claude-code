@@ -12,7 +12,7 @@ import type { FeedItem, TaskItem } from './types'
  * task and hands over the whole of it every time, already merged.
  *
  * Nothing here is put into words. The card picks those at drawing time, in the language of the moment
- * (see the rule about the reducer in CLAUDE.md).
+ * (see the rule about the reducer in .claude/rules/i18n.md).
  */
 
 export type WorkflowAgentState = 'queued' | 'running' | 'done' | 'failed' | 'skipped'

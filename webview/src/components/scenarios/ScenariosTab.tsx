@@ -12,6 +12,7 @@ import { queueBehind } from '../../scenarios/queue'
 import { pastRuns, runningRuns } from '../../scenarios/runs'
 import { defaultHour } from '../../scenarios/schedule'
 import { timetableOf } from '../../scenarios/timetable'
+import { useGrowthFlash } from '../../hooks/useGrowthFlash'
 import { useT } from '../../i18n'
 import { Confirm } from '../Confirm'
 import { Help } from './Help'
@@ -21,7 +22,7 @@ import { QueueForm } from './QueueForm'
 import { RunsBand } from './RunsBand'
 import { ScenarioEditor } from './ScenarioEditor'
 import { ScheduleBand } from './ScheduleBand'
-import { Shelf } from './Shelf'
+import { Shelves } from './Shelves'
 import { StartForm } from './StartForm'
 import { WhenForm } from './WhenForm'
 import {
@@ -126,6 +127,8 @@ export interface ScenariosTabProps {
   onSave: (scenario: Scenario, scope: ScenarioScope) => void
   onDelete: (id: string, scope: ScenarioScope) => void
   onDuplicate: (id: string, scope: ScenarioScope) => void
+  /** A row dragged to a new place, on its own shelf or onto the other one (see Shelves). */
+  onPlace: (move: { id: string; from: ScenarioScope; to: ScenarioScope; before: string }) => void
   onRun: (scenario: Scenario, inputs: Record<string, string>) => void
   onOpenRun: (runId: string) => void
   onDeleteRun: (runId: string) => void
@@ -168,6 +171,7 @@ export const ScenariosTab = ({
   onSave,
   onDelete,
   onDuplicate,
+  onPlace,
   onRun,
   onOpenRun,
   onDeleteRun,
@@ -185,14 +189,6 @@ export const ScenariosTab = ({
   /** Dropping the whole queue is asked about on its own: one press against a night of lined-up work. */
   const [clearing, setClearing] = useState(false)
   const [helping, setHelping] = useState(false)
-
-  const shelves = useMemo(
-    () => ({
-      project: (scenarios ?? []).filter((one) => one.scope === 'project'),
-      user: (scenarios ?? []).filter((one) => one.scope === 'user'),
-    }),
-    [scenarios],
-  )
 
   const going = useMemo(() => runningRuns(liveRuns), [liveRuns])
   const finished = useMemo(() => pastRuns(runs, liveRuns), [runs, liveRuns])
@@ -301,6 +297,9 @@ export const ScenariosTab = ({
     if (scenario) onRun(scenario, schedule.inputs)
   }
 
+  // Above the editor's return: it is a hook, and the editor is this same component drawing something else.
+  const queueFlash = useGrowthFlash(queue ? queue.waiting.length : null)
+
   if (view.kind === 'edit') {
     return (
       <ScenarioEditor
@@ -379,7 +378,8 @@ export const ScenariosTab = ({
                 merely holding turns is not news; one that stopped at midnight is the whole night.
               */}
               <span
-                className={`${s.bandCount} ${
+                key={one === 'queue' ? queueFlash : 0}
+                className={`${s.bandCount} ${one === 'queue' && queueFlash ? s.bandCountGrew : ''} ${
                   (one === 'runs' && counts.runs > 0) || (one === 'queue' && queue?.held) ? s.bandCountLive : ''
                 }`}
               >
@@ -426,47 +426,22 @@ export const ScenariosTab = ({
         ) : null}
 
         {band === 'scenarios' ? (
-          <>
-            <Shelf
-              label={t.scenarios.shelves.project}
-              note={t.scenarios.shelves.projectNote}
-              scope="project"
-              scenarios={shelves.project}
-              empty={canShare ? t.scenarios.shelves.projectEmpty : t.scenarios.shelves.noProject}
-              emptyNote={canShare ? t.scenarios.shelves.projectEmptyNote : t.scenarios.shelves.noProjectNote}
-              schedules={schedules}
-              runs={going}
-              queue={queue}
-              onEdit={(draft) => setView({ kind: 'edit', draft, fresh: false, at: EDIT_AT_FIRST })}
-              onRun={start}
-              onWhen={(scenario) => askWhen(scenario)}
-              onQueue={queueUp}
-              onDuplicate={onDuplicate}
-              onRemove={(scenario) => setRemoving({ scenario })}
-              onOpenRun={onOpenRun}
-              onNew={() => openOver({ kind: 'new', description: '', scope: 'project' })}
-            />
-
-            <Shelf
-              label={t.scenarios.shelves.user}
-              note={t.scenarios.shelves.userNote}
-              scope="user"
-              scenarios={shelves.user}
-              empty={t.scenarios.shelves.userEmpty}
-              emptyNote={t.scenarios.shelves.userEmptyNote}
-              schedules={schedules}
-              runs={going}
-              queue={queue}
-              onEdit={(draft) => setView({ kind: 'edit', draft, fresh: false, at: EDIT_AT_FIRST })}
-              onRun={start}
-              onWhen={(scenario) => askWhen(scenario)}
-              onQueue={queueUp}
-              onDuplicate={onDuplicate}
-              onRemove={(scenario) => setRemoving({ scenario })}
-              onOpenRun={onOpenRun}
-              onNew={() => openOver({ kind: 'new', description: '', scope: 'user' })}
-            />
-          </>
+          <Shelves
+            scenarios={scenarios ?? []}
+            canShare={canShare}
+            schedules={schedules}
+            runs={going}
+            queue={queue}
+            onPlace={onPlace}
+            onEdit={(draft) => setView({ kind: 'edit', draft, fresh: false, at: EDIT_AT_FIRST })}
+            onRun={start}
+            onWhen={(scenario) => askWhen(scenario)}
+            onQueue={queueUp}
+            onDuplicate={onDuplicate}
+            onRemove={(scenario) => setRemoving({ scenario })}
+            onOpenRun={onOpenRun}
+            onNew={(scope) => openOver({ kind: 'new', description: '', scope })}
+          />
         ) : null}
 
         {band === 'runs' ? (
@@ -475,6 +450,7 @@ export const ScenariosTab = ({
             finished={finished}
             shown={shown.runs}
             onShow={() => setShown((current) => ({ ...current, runs: current.runs + RUNS_PAGE }))}
+            onFold={() => setShown((current) => ({ ...current, runs: RUNS_PAGE }))}
             onOpen={onOpenRun}
             onAnswer={onOpenRun}
             onPause={onPauseRun}
@@ -559,9 +535,11 @@ export const ScenariosTab = ({
           onAfterSuccess={(afterSuccess) => openOver({ ...over, afterSuccess })}
           onQueue={() => {
             onQueue(over.scenario, over.values, over.afterSuccess)
-            // Straight to the band it went to: a turn added to a list nobody is looking at is a press
-            // with no visible answer, and the place in the line is the thing worth seeing.
-            setView({ kind: 'list', band: 'queue', over: { kind: 'none' } })
+            // Back to the shelf it was queued from rather than over to the queue: turns are lined up
+            // several at a time, and a trip to the other band after each one is a trip back for the next.
+            // The press is answered where the person already is - the row's queue button lights, and the
+            // count on the Queue tab lights up as it grows (useGrowthFlash).
+            close()
           }}
           onCancel={close}
         />
