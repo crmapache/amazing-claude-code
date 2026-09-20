@@ -1,5 +1,7 @@
 package io.github.crmapache.amazingclaudecode.claude
 
+import java.io.File
+import kotlin.io.path.createTempDirectory
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -13,6 +15,25 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ClaudeHistoryTest {
+
+    /**
+     * A scenario run's own conversations are left out of the list of past conversations, and left out
+     * BEFORE the newest are taken (see ScenarioConversations for why they are in that folder at all).
+     *
+     * Cut afterwards, a night of runs leaves a page of two rows and the person's own conversations under
+     * them stay just as unreachable - the same complaint with a shorter list.
+     */
+    @Test
+    fun `a run's conversations are dropped before the newest are counted`() {
+        val folder = createTempDirectory("history").toFile()
+        val files = listOf("mine-old", "run-3", "run-2", "run-1", "mine-new").mapIndexed { at, name ->
+            File(folder, "$name.jsonl").also { it.writeText("{}"); it.setLastModified(1_000L + at * 1_000L) }
+        }
+
+        val kept = ClaudeHistory.newest(files, hidden = setOf("run-1", "run-2", "run-3"), limit = 2)
+
+        assertEquals(listOf("mine-new.jsonl", "mine-old.jsonl"), kept.map { it.name })
+    }
 
     // A person's bare text message with no attachments - Claude Code keeps it in message.content as a
     // string rather than an array of blocks. The live stream hands the panel arrays only, so such a

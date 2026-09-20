@@ -147,7 +147,25 @@ internal object QueueRules {
      * crash would leave the turn taken and nothing to show for it.
      */
     fun step(queue: ScenarioQueue, ahead: QueueAhead, runId: String, now: Long): QueueMove {
-        if (queue.held) return QueueMove.Wait
+        /*
+         * A stop is a verdict about an ENDING, and an ending can be taken back: a run that fell over is
+         * picked up where it stood and goes on (see CarryOn), which is the ordinary answer to a queue that
+         * stopped at three in the morning - pick that run up, let it finish, let the night go on. Going
+         * again, the ending the stop was about is not there to judge, so the stop goes with it and the
+         * queue stands behind that run once more, to judge how it ends THIS time. Left on, the band sat
+         * over a run visibly working and every turn under it waited for a second press of a button whose
+         * question had already been answered - and answered in the one way that actually deals with a
+         * failure rather than stepping over it.
+         *
+         * Only ever the run the queue stopped ON. A stop left by a turn that would not start names no run
+         * at all (see [refused]), and a run going BESIDE a stopped queue is not an answer to it: that one
+         * is somebody's fix or somebody's unrelated evening, and the failure is still a verdict waiting
+         * for a person.
+         */
+        if (queue.held) {
+            if (ahead.outcome != QueueOutcome.GOING) return QueueMove.Wait
+            return QueueMove.Follow(queue.copy(held = false, heldWhy = "", heldName = ""))
+        }
         // Still going, or raised a moment ago and not on the disk yet - see [SETTLING_MS].
         if (!behind(queue, ahead.outcome, now)) return QueueMove.Wait
 

@@ -3,6 +3,7 @@ package io.github.crmapache.amazingclaudecode.search
 import com.intellij.openapi.diagnostic.thisLogger
 import io.github.crmapache.amazingclaudecode.claude.AgentStream
 import io.github.crmapache.amazingclaudecode.claude.ClaudeHistory
+import io.github.crmapache.amazingclaudecode.scenario.ScenarioConversations
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -513,10 +514,28 @@ internal class SearchIndex(
 
         private const val NEWLINE = '\n'.code.toByte()
 
-        /** The transcripts of a project, as the history finds them: top-level files only, no subagents. */
-        fun transcriptsOf(workingDirectory: String?): List<File> =
-            ClaudeHistory.directoriesFor(workingDirectory)
+        /**
+         * The transcripts a search may reach, as the history finds them: top-level files only, no
+         * subagents, and none of the conversations the panel raised for a scenario run.
+         *
+         * Left out for the reason the history leaves them out (see ScenarioConversations): a night of
+         * runs is a dozen conversations nobody held, and on a project that is run nightly they are more
+         * than half of everything there is - so "all chats" answers mostly with the machine's own work,
+         * and the one door to what a run did is the run itself, where every card has its log.
+         *
+         * Left out HERE rather than when the answers are drawn, which is what makes both directions work
+         * by themselves: one that appears while the index is warm is missing from the next listing, so
+         * the refresh reads it as gone and drops it along with its copy on the disk, and one released
+         * back to the person (see ClaudeSessions.releasedRole) reads as a new file and is taken in whole.
+         * The model's corpus follows the same list, so it is swept with it (see [corpus]).
+         */
+        fun transcriptsOf(workingDirectory: String?): List<File> {
+            val hidden = ScenarioConversations(workingDirectory).all()
+
+            return ClaudeHistory.directoriesFor(workingDirectory)
                 .flatMap { directory -> (directory.listFiles { file -> file.isFile && file.extension == "jsonl" } ?: emptyArray()).asList() }
+                .filterNot { it.nameWithoutExtension in hidden }
                 .distinctBy { it.nameWithoutExtension }
+        }
     }
 }

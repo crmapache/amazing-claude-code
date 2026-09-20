@@ -1,6 +1,7 @@
 package io.github.crmapache.amazingclaudecode.claude
 
 import com.intellij.openapi.diagnostic.thisLogger
+import io.github.crmapache.amazingclaudecode.scenario.ScenarioConversations
 import java.io.File
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -40,12 +41,33 @@ internal object ClaudeHistory {
         val named: Boolean = false,
     )
 
-    fun list(workingDirectory: String?, limit: Int = 40): List<Entry> =
-        directoriesFor(workingDirectory)
+    /**
+     * This project's past conversations, newest first - without the ones the panel raised for itself.
+     *
+     * A scenario run is a dozen conversations of the CLI's, kept in this same folder because that is
+     * where the CLI keeps everything (see ScenarioConversations), and none of them is a conversation
+     * anybody held. A night of runs pushed an evening's own three off the top of this list, which is the
+     * one list that answers "what was I doing".
+     *
+     * Thrown out BEFORE the newest are taken, and that is the whole of it working: cut afterwards, a
+     * night of runs would leave a page of four rows and the conversations under them would stay
+     * unreachable - the same complaint with a shorter list.
+     */
+    fun list(workingDirectory: String?, limit: Int = 40): List<Entry> {
+        val hidden = ScenarioConversations(workingDirectory).all()
+
+        val files = directoriesFor(workingDirectory)
             .flatMap { directory -> (directory.listFiles { file -> file.extension == "jsonl" } ?: emptyArray()).asList() }
+
+        return newest(files, hidden, limit).mapNotNull { file -> entryFor(file) }
+    }
+
+    /** Which transcripts the list is built from, apart from the disk so a test can hold it to the order. */
+    internal fun newest(files: List<File>, hidden: Set<String>, limit: Int): List<File> =
+        files
+            .filterNot { it.nameWithoutExtension in hidden }
             .sortedByDescending { it.lastModified() }
             .take(limit)
-            .mapNotNull { file -> entryFor(file) }
 
     /**
      * The conversation's file on disk - if the CLI has started one already.

@@ -1061,6 +1061,12 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
                 if (live.containsKey(runId)) runs.keep(walker.run)
             }
             sendList()
+            // A queue that stopped on THIS run has just had the ending it stopped on taken back, and the
+            // step is where that is worked out (see QueueRules.step). Taken now rather than left to the
+            // clock's half-minute beat, for the reason the one after [letGoQueue] is: the band saying
+            // "nothing after it will start" over a run visibly working is the screen contradicting itself,
+            // and half a minute of it is long enough to be believed.
+            stepQueue()
         }
     }
 

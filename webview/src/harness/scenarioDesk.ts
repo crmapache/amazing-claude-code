@@ -460,11 +460,18 @@ const sendQueue = (): void => send({ type: 'scenarioQueue', queue })
  * The rule is the IDE's, written small (see QueueRules.step): nothing starts while the turn before it is
  * going; a turn that wants a clean ending and does not get one stops the queue; a turn whose time has come
  * while a run started from the shelf is going stands behind that run instead of starting beside it; and a
- * stop is lifted by a person and by nothing else. Every third turn raised here "fails" instead, because a
- * queue that never stops shows none of the band that exists for the stop.
+ * stop is lifted by a person, or by the run it was about being picked up and going again. Every third turn
+ * raised here "fails" instead, because a queue that never stops shows none of the band that exists for the
+ * stop.
  */
 const stepQueue = (): void => {
-  if (queue.held) return
+  if (queue.held) {
+    // A stop is a verdict about an ENDING, and picking that run up takes the ending back: it is going
+    // again, so the stop goes with it and the queue stands behind it once more (see QueueRules.step).
+    if (!(queue.runId && live.includes(queue.runId))) return
+    queue = { ...queue, held: false, heldWhy: '', heldName: '' }
+    return sendQueue()
+  }
   if (queue.runId && live.includes(queue.runId)) return
 
   const next = queue.waiting[0]
@@ -1153,6 +1160,9 @@ export const answerScenarios = (message: WebviewMessage): void => {
     })
     walk(message.runId, from, cut >= 0 ? 'judge' : 'run')
     sendList()
+    // A queue that stopped on THIS run has just had the ending it stopped on taken back, exactly as the
+    // IDE works it out (see ScenarioDesk.carryOn).
+    stepQueue()
     return
   }
 

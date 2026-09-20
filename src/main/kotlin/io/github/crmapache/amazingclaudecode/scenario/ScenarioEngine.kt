@@ -468,11 +468,25 @@ internal class ScenarioEngine(
     private fun rememberConversationIds() {
         head?.conversationId?.takeIf { it != run.headConversationId }?.let {
             run = run.copy(headConversationId = it)
+            conversations.note(it)
         }
         val conversation = card?.conversationId ?: return
         val step = run.steps.getOrNull(at) ?: return
-        if (step.conversationId != conversation) editStep(step.key) { it.copy(conversationId = conversation) }
+        if (step.conversationId != conversation) {
+            editStep(step.key) { it.copy(conversationId = conversation) }
+            conversations.note(conversation)
+        }
     }
+
+    /**
+     * Where the identifiers above are also written down, so the history can leave them out: they are
+     * conversations of the plugin's, not of the person's (see ScenarioConversations).
+     *
+     * Written here rather than by the desk, because this is the one place that learns them at all, and
+     * only on the beat where one is NEW - both branches above already ask that question to decide
+     * whether the record is worth changing.
+     */
+    private val conversations = ScenarioConversations(workingDirectory)
 
     // --- The head's turns ----------------------------------------------------------
 

@@ -5,6 +5,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.util.concurrency.AppExecutorUtil
 import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
 import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
+import io.github.crmapache.amazingclaudecode.scenario.ScenarioConversations
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
@@ -165,8 +166,21 @@ internal class ClaudeSessions(
      * get. What the panel shows is their own message, because the echo has already gone out by now (see
      * ClaudeSessionHub.prompt) - the frame belongs to the agent, not to the screen.
      */
-    private fun releasedRole(sessionId: String, text: String): String =
-        if (roleStillHeld.remove(sessionId)) "${ClaudeLaunch.AFTER_SCENARIO_HEAD}\n\n$text" else text
+    private fun releasedRole(sessionId: String, text: String): String {
+        if (!roleStillHeld.remove(sessionId)) return text
+
+        /*
+         * And the conversation goes back into the history with it. It was left out of that list as a
+         * conversation of the plugin's rather than of anybody's (see ScenarioConversations), which it
+         * was until this moment: somebody has now opened it in a tab of their own and written into it,
+         * and what they write next is theirs. Hidden still, their own work would be reachable only
+         * through the run it began as - and going on with something the run never did is the whole
+         * reason that door is there.
+         */
+        sessions[sessionId]?.conversationId?.let { ScenarioConversations(workingDirectory).release(it) }
+
+        return "${ClaudeLaunch.AFTER_SCENARIO_HEAD}\n\n$text"
+    }
 
     /**
      * A branch off another conversation: the branch gets its whole transcript and an identifier of its

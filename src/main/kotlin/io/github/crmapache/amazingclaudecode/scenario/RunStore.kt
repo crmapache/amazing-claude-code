@@ -59,6 +59,30 @@ internal class RunStore(workingDirectory: String?) {
             .sortedByDescending { it.startedAt }
     }
 
+    /**
+     * Every conversation these runs raised, oldest run first: the main thread of each and the session of
+     * every card that got its go.
+     *
+     * Read out of the records rather than kept in the summaries, and asked for exactly once - when the
+     * book of run conversations is opened on a machine that has none yet (see
+     * ScenarioConversations.known). Whole records rather than a search through their text: two fields
+     * are wanted out of a file that also holds a snapshot of the scenario and every card's prompt, and
+     * reading a field by looking for its name is how a list quietly loses half its entries the day a
+     * field is added above it.
+     */
+    fun conversations(): List<String> {
+        val folders = runCatching { directory.listFiles() }.getOrNull() ?: return emptyList()
+
+        return folders
+            .filter(File::isDirectory)
+            .mapNotNull { folder ->
+                runCatching { json.decodeFromString<ScenarioRun>(File(folder, RECORD).readText()) }.getOrNull()
+            }
+            .sortedBy { it.startedAt }
+            .flatMap { run -> listOf(run.headConversationId) + run.steps.map { it.conversationId } }
+            .filter { it.isNotBlank() }
+    }
+
     fun read(id: String): ScenarioRun? =
         runCatching { json.decodeFromString<ScenarioRun>(File(runDirectory(id) ?: return null, RECORD).readText()) }
             .onFailure { thisLogger().info("Could not read a scenario run: ${it.message}") }

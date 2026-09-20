@@ -130,6 +130,59 @@ class QueueRulesTest {
         assertIs<QueueMove.Start>(QueueRules.step(letting, QueueAhead(QueueOutcome.NONE), runId = "r2", now = 2_000))
     }
 
+    /**
+     * The other answer to a failure, and the one that actually deals with it: the run that fell over is
+     * picked up where it stood (see CarryOn) and goes on. The ending the stop was about is taken back with
+     * it, so the stop goes too - left on, the band sat over a run visibly working and every turn under it
+     * waited for a second press of a button whose question had already been answered.
+     */
+    @Test
+    fun `the run a queue stopped on going again lifts the stop`() {
+        val queue = queueOf(entry(id = "q2"), entry(id = "q3"))
+            .copy(runId = "r1", runName = "Build it", raisedAt = 1_500, held = true, heldWhy = RunState.FAILED, heldName = "Build it")
+
+        val follow = assertIs<QueueMove.Follow>(
+            QueueRules.step(queue, QueueAhead(QueueOutcome.GOING), runId = "r2", now = 2_000),
+        )
+
+        assertTrue(!follow.queue.held && follow.queue.heldWhy.isEmpty() && follow.queue.heldName.isEmpty())
+        // Still behind that run, because its ending is the premise again - this time the one it ends with.
+        assertEquals("r1", follow.queue.runId)
+        assertEquals(listOf("q2", "q3"), follow.queue.waiting.map { it.id })
+        // And nothing starts beside it: the run is going.
+        assertIs<QueueMove.Wait>(QueueRules.step(follow.queue, QueueAhead(QueueOutcome.GOING), runId = "r2", now = 2_100))
+    }
+
+    /**
+     * And only the run it stopped ON. A run going beside a stopped queue is somebody's fix or somebody's
+     * unrelated evening, and the failure is still a verdict waiting for a person.
+     */
+    @Test
+    fun `a run going beside a stopped queue leaves the stop where it is`() {
+        val queue = queueOf(entry(id = "q2"))
+            .copy(runId = "r1", runName = "Build it", raisedAt = 1_500, held = true, heldWhy = RunState.FAILED)
+
+        assertIs<QueueMove.Wait>(
+            QueueRules.step(
+                queue,
+                QueueAhead(RunState.FAILED, going = listOf(QueueGoing(id = "r9", name = "Build it", startedAt = 1_800))),
+                runId = "r2",
+                now = 2_000,
+            ),
+        )
+    }
+
+    /**
+     * A stop left by a turn that would not start names no run at all (see QueueRules.refused), so there is
+     * nothing that can be picked up to answer it: it waits for a person, whatever else the project is doing.
+     */
+    @Test
+    fun `a stop left by a turn that would not start is not lifted by anything going`() {
+        val queue = QueueRules.refused(queueOf(entry(id = "q2")), entry(id = "q2"), why = "scenarioGone")
+
+        assertIs<QueueMove.Wait>(QueueRules.step(queue, QueueAhead(QueueOutcome.NONE), runId = "r2", now = 2_000))
+    }
+
     // --- A run somebody else started -----------------------------------------------------
 
     private fun going(id: String = "r9", name: String = "Build it", startedAt: Long = 1_800) =

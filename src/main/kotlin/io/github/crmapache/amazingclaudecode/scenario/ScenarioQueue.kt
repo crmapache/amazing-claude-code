@@ -120,6 +120,11 @@ internal sealed interface QueueMove {
      * Written rather than merely waited for, because the next step has to judge THAT run's ending, and
      * the band has to be able to say what the queue is waiting for - the one rule about a queue that must
      * not be invisible.
+     *
+     * The same move carries a stop being lifted by the run it was about going again (see
+     * [QueueRules.step]): a run picked up where it stood is a run the queue is behind once more, and the
+     * queue handed back has no stop left on it. Nothing is raised either way, which is why it is one move
+     * and not two - the difference is only in what the written queue no longer says.
      */
     data class Follow(val queue: ScenarioQueue) : QueueMove
 }
