@@ -9,6 +9,12 @@ commits.
 
 ## [Unreleased]
 
+## [0.12.15] - 2026-09-20
+
+- Fixed: a queue of scenarios stopped by a run that fell over stayed stopped after that run was picked up and carried on. The band went on saying that nothing after it would start, over a run visibly working, and the turns under it did not begin even when it finished well - until the button on the band was pressed. A stop is about how a run ended, and picking that run up takes the ending back: the queue stands behind it again and waits to see how it ends this time.
+- Changed: the conversations a scenario run raises - the main thread and one for every card - are no longer listed among the past conversations of a project. A night of runs is a dozen conversations nobody held, and on a project that is run nightly they were more than half of that list, with your own evening somewhere underneath them. What a run did is read in the run itself, where every card keeps its log. One you carry on in a chat of your own comes back into the list as soon as you write into it, because from then on it is yours.
+- Changed: the same conversations are left out of the search as well, both the search over all chats and the one the model does for you. They are not indexed at all, so the copy the search keeps on disk gets smaller with them gone.
+
 ## [0.12.14] - 2026-09-19
 
 - Added: "Indicators" under Settings - the readings around the input field switch off one by one: the context bar and the "ctx 42%" beside it, the five-hour ring, the weekly ring, a model's weekly ring, the tokens spent today, the feedback bubble and the heart. What is switched off is not drawn at all rather than left as an empty space, and with the whole row above the field gone the field takes that space back.
@@ -712,7 +718,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.14...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.15...HEAD
+[0.12.15]: https://github.com/crmapache/amazing-claude-code/compare/0.12.14...0.12.15
 [0.12.14]: https://github.com/crmapache/amazing-claude-code/compare/0.12.13...0.12.14
 [0.12.13]: https://github.com/crmapache/amazing-claude-code/compare/0.12.12...0.12.13
 [0.12.12]: https://github.com/crmapache/amazing-claude-code/compare/0.12.11...0.12.12
