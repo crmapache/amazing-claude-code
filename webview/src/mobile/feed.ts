@@ -222,13 +222,14 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
     case 'permissionResolved':
       return collect({ kind: 'permissionResolved', id: message.id, decision: message.decision })
 
-    // A model chosen by hand - at the desk, or as the model a conversation of one's own is started on.
-    // The phone has no model button, so there is nothing here for it to show; what it needs is to know
-    // that the change was somebody's doing. Without this the tab's memory of what the stream last named
-    // stays on the old model, and the first answer signed with the new one is announced in the feed as a
-    // swap made behind one's back (see noteStreamModel).
+    // A model chosen by hand - at the desk, or as the model a conversation of one's own is started on -
+    // and the same message announcing what a tab simply runs on, which is what `born` tells apart (see
+    // the modelApplied action). The phone has no model button, so there is nothing here for it to show;
+    // what it needs is to know that the change was somebody's doing. Without this the tab's memory of
+    // what the stream last named stays on the old model, and the first answer signed with the new one is
+    // announced in the feed as a swap made behind one's back (see noteStreamModel).
     case 'model':
-      return collect({ kind: 'modelApplied', model: message.model, error: message.error })
+      return collect({ kind: 'modelApplied', model: message.model, error: message.error, born: message.born })
 
     /*
      * What this conversation works at (see ClaudeSessionHub.sendEffort). Nobody but the IDE knows it -

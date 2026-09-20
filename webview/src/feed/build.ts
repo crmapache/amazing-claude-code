@@ -456,16 +456,30 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         ...state,
         pendingModel: undefined,
         model: action.model,
+        // The tab's own model either way: an announcement exists precisely so that a tab nobody has
+        // touched is drawn by what it runs on rather than by the setting (see PanelState.ownModel).
         ownModel: action.model,
-        ownSwap: expectingOwnSwap(state, action.model, action.error),
-        // A pick is judged only once a request that could carry it has begun - see PanelState.ownSwapDue.
-        ownSwapDue: false,
-        // Whatever the last pick failed to do is answered by this one: the accent it left says "the model
-        // you chose is not the one working", and the person has just chosen again.
-        stuckPick: undefined,
-        // Whatever the agent had swapped before is answered by a choice of the person's own: the accent
-        // on the button says "you did not pick this", and now they have (see PanelState.switchedFrom).
-        switchedFrom: undefined,
+        // Only a choice is judged, and an announcement is not one (see the `born` half of the action).
+        // The shell names a tab's model at its birth, to every client that joins and after every reset,
+        // and it names the CHOICE it was launched on - "opus[1m]", never the signature the answers carry.
+        // Counted as a pick, that pair was two different models to the comparison below, so a re-attach
+        // to a conversation running happily on the very same model raised a swap nobody had asked for -
+        // and the next signature, being the same model again, was read as the pick never arriving.
+        ...(action.born
+          ? {}
+          : {
+              ownSwap: expectingOwnSwap(state, action.model, action.error),
+              // A pick is judged only once a request that could carry it has begun - see
+              // PanelState.ownSwapDue.
+              ownSwapDue: false,
+              // Whatever the last pick failed to do is answered by this one: the accent it left says "the
+              // model you chose is not the one working", and the person has just chosen again.
+              stuckPick: undefined,
+              // Whatever the agent had swapped before is answered by a choice of the person's own: the
+              // accent on the button says "you did not pick this", and now they have (see
+              // PanelState.switchedFrom).
+              switchedFrom: undefined,
+            }),
       }
       return action.error ? addError(applied, action.error) : applied
     }
@@ -1030,8 +1044,28 @@ const realModel = (model: string | undefined): string | undefined =>
 const expectingOwnSwap = (state: PanelState, model: string, error?: string): boolean | undefined => {
   if (error) return state.ownSwap
   if (!state.streamModel || sameModel(state.streamModel, model)) return state.ownSwap
+  if (!picksAnother(model, state.streamModel)) return state.ownSwap
 
   return true
+}
+
+/**
+ * Does the pick name a model other than the one the answers are already coming on?
+ *
+ * By family, and this is the same yardstick arrivedAsPicked measures the answer by - deliberately so.
+ * The check above it is by sameModel, which compares generations: a pick carries none ("opus[1m]"), a
+ * signature always does ("claude-opus-5[1m]"), so on that pair sameModel says "different models" about
+ * one and the same model, and the guard right above never fired for a pick of a whole family. Picking
+ * the model already at work then raised a wait that nothing could ever answer: the signature that came
+ * next was that same model, and the only reading left for it was "the pick did not take".
+ *
+ * A family the panel does not know ("default", a model of somebody else's provider) settles nothing, and
+ * then something may well be coming: the wait is raised, because it is also what keeps a swap the person
+ * asked for from being announced as the agent's doing.
+ */
+const picksAnother = (pick: string, running: string): boolean => {
+  const family = modelFamily(pick)
+  return family ? family !== modelFamily(running) : true
 }
 
 /**
@@ -1058,7 +1092,17 @@ const noteStreamModel = (state: PanelState, named: string, reason = '', replay =
     // The model being left, signed again while a pick of the person's own is waiting. Two different
     // things look exactly like this, and which one it is depends on whether a request that could carry
     // the pick has begun yet (see PanelState.ownSwapDue).
-    if (!replay && state.ownSwap) return state.ownSwapDue ? pickStuck(state, named) : { ...state, streamModel: named }
+    if (!replay && state.ownSwap) {
+      if (!state.ownSwapDue) return { ...state, streamModel: named }
+
+      // Unless this signature is what was asked for all along: a pick the panel cannot recognise
+      // ("default", a model of somebody else's provider) may be exactly the model already answering, and
+      // accusing it of not arriving is the one thing worse than saying nothing. The same question as on
+      // the arm below, asked here too so that a pick is judged by one yardstick and not by two.
+      if (!arrivedAsPicked(state, named)) return pickStuck(state, named)
+
+      return { ...moved, ownSwap: false, ownSwapDue: false, stuckPick: undefined }
+    }
 
     return moved
   }

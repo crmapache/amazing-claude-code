@@ -574,6 +574,90 @@ describe('the model swapped by the CLI itself', () => {
     expect(modelSwitches(state)).toEqual([])
   })
 
+  /**
+   * Recorded from a live panel: "Opus 1M picked, but the answers keep coming on Opus 5 1M" - one and the
+   * same model, named as a choice on one side and as a signature on the other. The wait was raised by a
+   * comparison that reads those two as different models (see picksAnother), and nothing could ever
+   * answer it: what came next was that same model again.
+   */
+  it('keeps quiet when the model picked is the one already at work', () => {
+    let state = play([initEvent('claude-opus-5[1m]'), signedTextEvent('claude-opus-5[1m]', 'Working.')])
+    state = reducePanel(state, { kind: 'modelApplied', model: 'opus[1m]' })
+    state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })], state)
+    state = play([toolResultEvent('t1', 'line 1')], state)
+    state = play([signedTextEvent('claude-opus-5[1m]', 'Still here.')], state)
+
+    expect(stuckPicks(state)).toEqual([])
+    expect(state.stuckPick).toBeUndefined()
+    expect(modelSwitches(state)).toEqual([])
+  })
+
+  // The same on the other side of the pick: an unrecognisable choice may well BE the model answering.
+  it('keeps quiet about a pick it cannot recognise when the model at work does not change', () => {
+    let state = play([initEvent('claude-opus-5'), signedTextEvent('claude-opus-5', 'Working.')])
+    state = reducePanel(state, { kind: 'modelApplied', model: 'default' })
+    state = play([toolUseEvent('t1', 'Read', { file_path: 'a.ts' })], state)
+    state = play([toolResultEvent('t1', 'line 1')], state)
+    state = play([signedTextEvent('claude-opus-5', 'Still here.')], state)
+
+    expect(stuckPicks(state)).toEqual([])
+    expect(state.stuckPick).toBeUndefined()
+    expect(modelSwitches(state)).toEqual([])
+  })
+
+  /**
+   * The shell names a tab's model to every client that joins it, not only at a birth (see the attach in
+   * ClaudeSessionHub), and it names the choice the process was launched on. Counted as a pick, that
+   * announcement put the row into the feed of a conversation nobody had touched - a re-attach after an
+   * idle nap was enough. The chip still has to be drawn by it: that is what the announcement is for.
+   */
+  it('does not judge the model a tab is merely told it runs on', () => {
+    let state = play([initEvent('claude-opus-5[1m]'), signedTextEvent('claude-opus-5[1m]', 'Working.')])
+    state = reducePanel(state, { kind: 'modelApplied', model: 'opus[1m]', born: true })
+
+    expect(state.ownModel).toBe('opus[1m]')
+
+    state = reducePanel(state, { kind: 'prompt', tokens: [], quotes: [] })
+    state = play([signedTextEvent('claude-opus-5[1m]', 'Carrying on.')], state)
+
+    expect(stuckPicks(state)).toEqual([])
+    expect(state.stuckPick).toBeUndefined()
+  })
+
+  // And the announcement does not erase what the agent did either: nobody chose this, so the accent that
+  // says "you did not pick this" stays where it was.
+  it('leaves an agent swap standing when the tab is told its model again', () => {
+    let state = play([
+      initEvent('claude-fable-5'),
+      signedTextEvent('claude-fable-5', 'Looking.'),
+      signedTextEvent('claude-opus-4-8', 'Carrying on.'),
+    ])
+    expect(state.switchedFrom).toBe('claude-fable-5')
+
+    state = reducePanel(state, { kind: 'modelApplied', model: 'fable', born: true })
+    state = reducePanel(state, { kind: 'prompt', tokens: [], quotes: [] })
+    state = play([signedTextEvent('claude-opus-4-8', 'Still here.')], state)
+
+    expect(state.switchedFrom).toBe('claude-fable-5')
+    expect(stuckPicks(state)).toEqual([])
+  })
+
+  /**
+   * And the wait that is never raised is a wait that cannot swallow anything. The CLI moves a
+   * conversation to another generation of the same family on its own - a guard's fallback from Opus 5 to
+   * Opus 4.8 - and that arrives as the picked family coming true, so a pick which changed nothing at all
+   * used to buy the next swap its silence.
+   */
+  it('still announces a swap inside the family after a pick that changed nothing', () => {
+    let state = play([initEvent('claude-opus-5[1m]'), signedTextEvent('claude-opus-5[1m]', 'Working.')])
+    state = reducePanel(state, { kind: 'modelApplied', model: 'opus[1m]' })
+    state = play([signedTextEvent('claude-opus-4-8', 'Carrying on.')], state)
+
+    expect(modelSwitches(state)).toEqual([
+      { id: expect.any(String), kind: 'model', from: 'claude-opus-5[1m]', to: 'claude-opus-4-8', reason: '' },
+    ])
+  })
+
   // The next pick answers the accent the last one left: the person has just chosen again.
   it('forgets a stuck pick as soon as another model is picked', () => {
     let state = play([initEvent('claude-fable-5'), signedTextEvent('claude-fable-5', 'Looking.')])

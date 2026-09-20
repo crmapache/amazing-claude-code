@@ -471,8 +471,16 @@ export type PanelAction =
   | { kind: 'modeRequested'; mode: string }
   | { kind: 'modeApplied'; mode: string; applied: boolean; error?: string }
   | { kind: 'modelRequested'; model: string }
-  /** The model now in force: on the agent's refusal the previous one rather than the chosen one. */
-  | { kind: 'modelApplied'; model: string; error?: string }
+  /**
+   * The model now in force: on the agent's refusal the previous one rather than the chosen one.
+   *
+   * [born] says the shell is NAMING the tab's model rather than reporting a choice - at a conversation's
+   * birth, to a client that has just joined, after a reset, on a fork (see the `model` message in
+   * protocol.ts). Both kinds draw the chip, and only a choice is judged afterwards: read as a pick, an
+   * announcement of the model a tab has been working on all along accused it of not arriving (see
+   * [ownSwap]), and a re-attach was enough to put that in the feed of a conversation nobody had touched.
+   */
+  | { kind: 'modelApplied'; model: string; error?: string; born?: boolean }
   | { kind: 'effortRequested'; effort: string }
   /**
    * The effort this conversation works at, as the shell says it does. There is no "applied" beside it

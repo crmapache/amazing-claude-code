@@ -2744,8 +2744,11 @@ export const App = () => {
             // this tab's, and a past conversation's model is no choice for the next tab (see protocol.ts).
             if (!message.born) setPrefs((current) => ({ ...current, model: message.model }))
             feed({
+              // `born` travels on: the shell names a tab's model to a client that has just joined as
+              // well as at a birth, and read as a choice that announcement accused a conversation of
+              // running on a model nobody picked (see the modelApplied action).
               session: message.sessionId,
-              action: { kind: 'modelApplied', model: message.model, error: message.error },
+              action: { kind: 'modelApplied', model: message.model, error: message.error, born: message.born },
             })
             break
 
@@ -3343,7 +3346,9 @@ export const App = () => {
        * which is the only route it has at all.
        */
       if (parentPanel?.model) {
-        dispatchPanel({ session: id, action: { kind: 'modelApplied', model: parentPanel.model } })
+        // As a fact about the fork rather than as a pick made in it: nobody chose anything here, and the
+        // parent's model is simply what this tab came up on (see the modelApplied action).
+        dispatchPanel({ session: id, action: { kind: 'modelApplied', model: parentPanel.model, born: true } })
       }
       if (parentPanel?.permissionMode) {
         dispatchPanel({

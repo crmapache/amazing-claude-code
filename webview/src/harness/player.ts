@@ -1106,8 +1106,12 @@ const listenToPanel = () => {
  */
 const answerModel = (message: Extract<WebviewMessage, { type: 'setModel' }>): void => {
   modelPicks += 1
-  const stuck = modelPicks % 3 === 0
-  const signature = stuck ? streamSignature : signatureOf(message.model) || streamSignature
+  const carried = signatureOf(message.model) || streamSignature
+  // A pick of the model already at work cannot fail to arrive - it is already here - and the panel
+  // rightly says nothing about it (see picksAnother in feed/build.ts). Stepping over such a pick keeps
+  // the promise of this cycle honest: every third pick that asks for something ELSE does not take.
+  const stuck = modelPicks % 3 === 0 && carried !== streamSignature
+  const signature = stuck ? streamSignature : carried
 
   // Answered a beat later, never in the same tick. The panel marks the pick as "asked for" straight after
   // handing it outwards, so an answer given synchronously lands BEFORE that mark and the mark then stands
