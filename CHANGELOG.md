@@ -9,6 +9,13 @@ commits.
 
 ## [Unreleased]
 
+## [0.12.16] - 2026-09-20
+
+- Fixed: the feed announced "Opus 1M picked, but the answers keep coming on Opus 5 1M" - one and the same model named twice - and left the MODEL button marked as though the choice had not worked. A choice is spelled one way and the signature under an answer another, and the panel read that pair as two different models, so picking the model already at work raised a wait that nothing could ever answer: whatever came next was that model again.
+- Fixed: the same line turned up in conversations where nobody had picked anything at all - after the panel reconnected, after a conversation woke up from a nap, and in a fork. Being told which model a tab runs on is not a choice made in it, and it is no longer judged as one.
+- Fixed: a swap Claude Code makes on its own between two generations of one family, from Opus 5 to Opus 4.8, went unannounced when it happened soon after a model of that family had been picked.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.12.15] - 2026-09-20
 
 - Fixed: a queue of scenarios stopped by a run that fell over stayed stopped after that run was picked up and carried on. The band went on saying that nothing after it would start, over a run visibly working, and the turns under it did not begin even when it finished well - until the button on the band was pressed. A stop is about how a run ended, and picking that run up takes the ending back: the queue stands behind it again and waits to see how it ends this time.
@@ -718,7 +725,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.15...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.16...HEAD
+[0.12.16]: https://github.com/crmapache/amazing-claude-code/compare/0.12.15...0.12.16
 [0.12.15]: https://github.com/crmapache/amazing-claude-code/compare/0.12.14...0.12.15
 [0.12.14]: https://github.com/crmapache/amazing-claude-code/compare/0.12.13...0.12.14
 [0.12.13]: https://github.com/crmapache/amazing-claude-code/compare/0.12.12...0.12.13
