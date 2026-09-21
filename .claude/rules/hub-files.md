@@ -49,6 +49,7 @@ paths:
 - `jumping`, `resetSearch`, эффект над `sessions` - search
 - `watchedRuns`, `scenariosView`, `scenariosShown`, `runRecords`, `case 'scenarioLog'` - scenarios
 - `runLocal`, `designAsked` - accounts
+- `settingSources`, `settingSourcesFacts`, `openSettingSources` - setting-sources
 - `openLink` - side-menu
 - `mcpLoading` - idle-sleep
 - состояние формы обратной связи - feedback
@@ -65,6 +66,7 @@ paths:
 - `mcpList` с `ifRunning` - idle-sleep; `cursor` в `replayFinished`, `historyPage` - history
 - `effort`, `setCustomModels`, `customModels` - models; `setSendKey` - composer-field; `queue` - remote-access
 - `models` у `usage`, `ModelUsageWindow`, `hiddenIndicators`, `setHiddenIndicators`, факт `indicators` - indicators
+- `settingSources` в `init`, `setSettingSources`, `askSettingSources`, `accountOutranked` - setting-sources
 
 **`webview/src/feed/build.ts`** (редьюсер ленты):
 - `TodoWrite`/`TaskCreate`/`TaskUpdate`, `tasksCarried`, `pendingTasks` - task-list
@@ -74,6 +76,7 @@ paths:
 - `modelContextWindow`, `case 'context'` - fork-tabs
 - `noteStreamModel`, `ownSwap`/`ownSwapDue`, `stuckPick` - models
 - `isEditTool` - tool-cards; `realModel` - stats; `uuid` у `UserItem`/`TextItem` - search
+- `case 'outranked'` и `OutrankedItem` - setting-sources
 - в состояние кладутся признаки, а не слова - i18n
 
 **`webview/src/feed/types.ts`** и **`webview/src/feed/panelState.ts`**:
@@ -114,6 +117,7 @@ paths:
 - `prompt`: сохранение буферов - editor-sync; `sendStatus`, очередь, команда в идущий ход - turn-lifecycle
 - `changeModel`, `emitLive` для усилия - models
 - `INIT_MARKER` - fork-tabs и history; `RESULT_MARKER`, `everyHub`, `accounts`, `accountsChangedElsewhere` - accounts
+- `settingSources` у `conversations`, `sendAccountOutranked` - setting-sources
 - `resumeConversation`, сообщение `conversation` в `attach`/`resetJournal` - history
 - `PROJECT_ORDER`, `broadcastProject` - remote-access и calm-colors; `indicators` в нём - indicators;
   `refreshCommandHints` - slash-hints

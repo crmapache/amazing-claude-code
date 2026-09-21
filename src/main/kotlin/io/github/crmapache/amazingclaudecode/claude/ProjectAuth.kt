@@ -224,7 +224,7 @@ internal class ProjectAuth(
      */
     fun checkModeAvailability() {
         ApplicationManager.getApplication().executeOnPooledThread {
-            val bypass = PermissionBypass.isAvailable(project.basePath)
+            val bypass = PermissionBypass.isAvailable(project.basePath, SettingSources.of(project))
 
             hub.broadcastProject(
                 buildJsonObject {

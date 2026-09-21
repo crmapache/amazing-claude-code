@@ -191,6 +191,23 @@ describe('errors in the feed', () => {
     expect(errorTexts(state)).toEqual([refusal, refusal])
   })
 
+  it('warns once per conversation that the repository overrules the chosen account', () => {
+    // The process comes up again after a crash, a resume, an MCP reconnect or an idle sleep, and every
+    // one of those launches checks the settings anew.
+    const names = ['ANTHROPIC_API_KEY']
+    let state = reducePanel(initialPanelState, { kind: 'outranked', names })
+    state = reducePanel(state, { kind: 'outranked', names })
+
+    expect(state.items.filter((item) => item.kind === 'outranked')).toHaveLength(1)
+  })
+
+  it('warns again when the repository sets something new', () => {
+    let state = reducePanel(initialPanelState, { kind: 'outranked', names: ['ANTHROPIC_API_KEY'] })
+    state = reducePanel(state, { kind: 'outranked', names: ['ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL'] })
+
+    expect(state.items.filter((item) => item.kind === 'outranked')).toHaveLength(2)
+  })
+
   it('lives in the feed rather than as a separate card - and is dismissed by its own id', () => {
     const state = reducePanel(initialPanelState, { kind: 'error', message: refusal })
     const error = state.items.find((item) => item.kind === 'error')

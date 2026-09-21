@@ -17,6 +17,7 @@ import type {
   MetaItem,
   ModelStuckItem,
   ModelSwitchItem,
+  OutrankedItem,
   RetryItem,
   ThinkItem,
 } from '../../feed/types'
@@ -405,6 +406,36 @@ export const CrashRow = ({ item }: { item: CrashItem }) => {
       <span className={s.crashText}>
         {item.exitCode === undefined ? t.feed.crash.text : t.feed.crash.textWithCode(item.exitCode)}
       </span>
+    </div>
+  )
+}
+
+/**
+ * The repository's settings overrule the account this conversation runs on (see OutrankedItem).
+ *
+ * A warning rather than an error, and it carries the one thing a warning is worth: the way out. The
+ * names are printed as they stand in the settings file - they are identifiers, and whoever reads this row
+ * is about to go and look for them in it.
+ *
+ * The button is absent on a phone and in a replay, for the reason the sign-in button beside it is: there
+ * is no settings screen to open there, and a record of a past conversation must not ask anybody to fix
+ * anything.
+ */
+export const OutrankedRow = ({ item, onOpen }: { item: OutrankedItem; onOpen?: () => void }) => {
+  const t = useT()
+
+  return (
+    <div className={s.outranked}>
+      <span className={s.outrankedLabel}>{t.feed.outranked.label}</span>
+      <span className={s.outrankedText}>
+        {t.feed.outranked.text}
+        <span className={s.outrankedNames}>{item.names.join(', ')}</span>
+      </span>
+      {onOpen ? (
+        <button type="button" className={s.outrankedButton} onClick={onOpen}>
+          {t.feed.outranked.open}
+        </button>
+      ) : null}
     </div>
   )
 }

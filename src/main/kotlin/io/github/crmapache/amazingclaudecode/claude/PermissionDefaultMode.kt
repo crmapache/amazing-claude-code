@@ -20,11 +20,11 @@ package io.github.crmapache.amazingclaudecode.claude
  */
 internal object PermissionDefaultMode {
 
-    fun of(projectDirectory: String?): String = of(
-        sources = ClaudeSettings.sources(projectDirectory),
+    fun of(projectDirectory: String?, settingSources: String = SettingSources.ALL): String = of(
+        sources = ClaudeSettings.sources(projectDirectory, settingSources),
         // Settings only: asking the CLI here is out of the question - that is starting a process, and
         // the default is needed for the panel's very first frame.
-        bypassAllowed = PermissionBypass.allowedBySettings(projectDirectory),
+        bypassAllowed = PermissionBypass.allowedBySettings(projectDirectory, settingSources),
     )
 
     fun of(sources: List<ClaudeSettings.Source>, bypassAllowed: Boolean): String {

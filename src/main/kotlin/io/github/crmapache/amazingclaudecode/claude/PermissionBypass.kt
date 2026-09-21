@@ -16,12 +16,12 @@ import java.io.File
  */
 internal object PermissionBypass {
 
-    fun isAvailable(projectDirectory: String?): Boolean {
+    fun isAvailable(projectDirectory: String?, settingSources: String = SettingSources.ALL): Boolean {
         val executable = ClaudeExecutable.find() ?: return false
 
         return isAvailable(
             cliKnowsFlag = ClaudeExecutable.supportsFlag(executable, ClaudeLaunch.ALLOW_BYPASS_FLAG),
-            settings = settingsFiles(projectDirectory),
+            settings = settingsFiles(projectDirectory, settingSources),
         )
     }
 
@@ -35,8 +35,8 @@ internal object PermissionBypass {
      * the ban has to be asked where there is no right to do so: settings are parsed on the interface
      * thread, while the panel is still opening (see [PermissionDefaultMode]).
      */
-    fun allowedBySettings(projectDirectory: String?): Boolean =
-        settingsFiles(projectDirectory).none(::disables)
+    fun allowedBySettings(projectDirectory: String?, settingSources: String = SettingSources.ALL): Boolean =
+        settingsFiles(projectDirectory, settingSources).none(::disables)
 
     /**
      * The same files the CLI itself reads: the organization's policy, the person's own settings and
@@ -44,8 +44,8 @@ internal object PermissionBypass {
      * so the order of the layers changes nothing here, and finding the ban in any one of them is
      * enough.
      */
-    fun settingsFiles(projectDirectory: String?): List<File> =
-        ClaudeSettings.sources(projectDirectory).map { it.file }
+    fun settingsFiles(projectDirectory: String?, settingSources: String = SettingSources.ALL): List<File> =
+        ClaudeSettings.sources(projectDirectory, settingSources).map { it.file }
 
     private fun disables(file: File): Boolean =
         ClaudeSettings.permission(file, DISABLE_BYPASS) == "disable"

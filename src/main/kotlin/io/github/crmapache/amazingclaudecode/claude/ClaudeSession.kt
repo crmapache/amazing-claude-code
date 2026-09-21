@@ -9,10 +9,13 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Key
 import com.intellij.util.concurrency.AppExecutorUtil
+import io.github.crmapache.amazingclaudecode.claude.accounts.AccountOverride
 import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
 import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import java.nio.file.Path
+import java.util.Collections
 import java.util.UUID
+import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
@@ -153,6 +156,24 @@ internal class ClaudeSession(
      * a tab: a name costs a small model's turn and there is nothing to put it on.
      */
     private val nameWanted: Boolean = true,
+    /**
+     * Which of Claude Code's settings layers this project's conversations load - see [SettingSources].
+     *
+     * Asked at every launch rather than kept, and that is the same reason [titleWanted] is a question:
+     * the choice is made on a screen while conversations are already open, and a process raised after it
+     * - a restart, a resume, a crash recovery - must come up the way the person has just asked, not the
+     * way the project stood when this object was built.
+     */
+    private val settingSources: () -> String = { SettingSources.ALL },
+    /**
+     * The repository's settings would outrank the account this conversation was started on, and these
+     * are the names doing it (see AccountOverride). Values never travel here - they are keys.
+     *
+     * Said at launch because that is the only moment it is true of a real process, and said out loud
+     * because nothing else can: the CLI takes the checked-in key without a word, and the panel would go
+     * on showing the account nobody is paying with.
+     */
+    private val onAccountOutranked: (List<String>) -> Unit = {},
 ) : Disposable {
 
     private var handler: OSProcessHandler? = null
@@ -678,10 +699,28 @@ internal class ClaudeSession(
         return start() != null
     }
 
+    /**
+     * The processes this conversation took down itself.
+     *
+     * A set rather than the [stopRequested] flag beside it, because the flag belongs to the conversation
+     * while the answer belongs to a process: [restart] kills one and starts the next in the same breath,
+     * clearing the flag on the way, and the platform reports the first death only afterwards. Read then,
+     * the flag says "nobody stopped anything" - and the feed gets a crash card for a restart that went
+     * exactly to plan.
+     *
+     * Weak keys: a process that died and was never asked about must not be kept alive here by its own
+     * funeral notice.
+     */
+    private val buried: MutableSet<OSProcessHandler> =
+        // Synchronized because the two halves run on different threads: the kill comes from whoever asked
+        // for it, the funeral from the platform's process listener.
+        Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap()))
+
     /** Stopping the conversation entirely: the process is taken down, the context is lost. */
     fun stop() {
         val process = handler ?: return
         stopRequested = true
+        buried.add(process)
         handler = null
         busy = false
         // There is nowhere left to deliver what was swallowed, and no reason to: the conversation with
@@ -1229,6 +1268,43 @@ internal class ClaudeSession(
             return null
         }
 
+        // What this project's settings are read from, asked now rather than at construction - the screen
+        // may have been visited while this conversation sat open.
+        val sources = SettingSources.normalize(settingSources())
+
+        // Silently dropped by a CLI too old to know the flag - and noted, because then the project's
+        // settings ARE loaded after somebody asked for them not to be, and the only other trace of that
+        // is a conversation behaving exactly as it did before.
+        val passedSources = when {
+            sources.isEmpty() -> sources
+            ClaudeExecutable.supportsFlag(executable, SettingSources.FLAG) -> sources
+            else -> {
+                DiagnosticsLog.note(
+                    DiagnosticsLog.AGENT,
+                    "this claude does not know ${SettingSources.FLAG}: every settings layer is loaded",
+                )
+                SettingSources.ALL
+            }
+        }
+
+        // A key checked into the repository beats the account chosen here, and the CLI says nothing about
+        // it (see AccountOverride). Only for a named account: on the ordinary sign-in there are no two
+        // answers to disagree, and a gateway configured in a repository is then simply how that project
+        // is meant to run.
+        if (accountId.isNotEmpty()) {
+            // By what is actually being launched rather than by what was chosen: a CLI that dropped the
+            // flag reads the repository's settings anyway, and that is exactly when the warning is owed.
+            AccountOverride.namesIn(workingDirectory, passedSources)
+                .takeIf { it.isNotEmpty() }
+                ?.let { names ->
+                    DiagnosticsLog.note(
+                        DiagnosticsLog.ACCOUNTS,
+                        "the project's settings outrank the chosen account: ${names.joinToString(", ")}",
+                    )
+                    onAccountOutranked(names)
+                }
+        }
+
         val commandLine = GeneralCommandLine(executable.absolutePath)
             .withParameters(
                 ClaudeLaunch.arguments(
@@ -1242,6 +1318,7 @@ internal class ClaudeSession(
                         ClaudeLaunch.ALLOW_BYPASS_FLAG,
                     ),
                     briefing = briefing,
+                    settingSources = passedSources,
                 ),
             )
             .withWorkingDirectory(workingDirectory?.let { Path.of(it) })
@@ -1268,6 +1345,16 @@ internal class ClaudeSession(
                 }
 
                 override fun processTerminated(event: ProcessEvent) {
+                    // Whether we killed this one ourselves - asked of the process rather than of the
+                    // conversation, and that is the whole point (see [buried]).
+                    val killedByUs = buried.remove(process)
+
+                    // A funeral for a process that has already been replaced: [restart] takes the old one
+                    // down and raises the next in the same breath, while the platform delivers this event
+                    // afterwards. Everything below belongs to the process standing here NOW - clearing
+                    // its handle would leave the conversation thinking it has none and raising a second.
+                    if (handler != null && handler !== process) return
+
                     handler = null
                     busy = false
                     // What was undelivered went missing along with the process: raising a new one for
@@ -1283,7 +1370,11 @@ internal class ClaudeSession(
                     // We stopped it ourselves - this is not a crash, there is nothing to explain to the
                     // user. But if the process died on its own, any card that was "running" at that
                     // moment would otherwise hang like that forever.
-                    if (!stopRequested) {
+                    // Ours to explain only if nobody here took it down. `stopRequested` alone could not
+                    // say so: [restart] clears it the moment the next process starts, and this event for
+                    // the old one arrives after that - so a restart that went exactly to plan was drawn
+                    // in the feed as "Claude Code stopped unexpectedly (exit code 137)".
+                    if (!stopRequested && !killedByUs) {
                         // Now everything the process said past the stream has become an error: the
                         // conversation is gone, and there is nothing else left to explain it with.
                         diagnosticsTail().takeIf { it.isNotEmpty() }?.let(onError)

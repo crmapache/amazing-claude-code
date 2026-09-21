@@ -27,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -120,6 +121,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
                 // model menu falls back to the built-in list for the rest of the project's life.
                 usage.refreshModels(sessionId, accountId)
             },
+            // Asked at every launch rather than captured here: the screen behind it can be visited while
+            // conversations are open, and the next process must come up the way it was just left.
+            settingSources = { SettingSources.of(project) },
+            onAccountOutranked = { sessionId, names -> sendAccountOutranked(sessionId, names) },
         )
     }
 
@@ -817,6 +822,25 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
                 put("type", "error")
                 put("sessionId", sessionId)
                 put("message", text)
+            }.toString(),
+        )
+    }
+
+    /**
+     * A conversation came up on an account the repository's settings overrule - see AccountOverride.
+     *
+     * Names only, never values: what stands in that `env` block is a key, and this message is written to
+     * the panel's log, kept in a journal and replayed to a phone.
+     */
+    fun sendAccountOutranked(sessionId: String, names: List<String>) {
+        if (names.isEmpty()) return
+
+        broadcast(
+            sessionId,
+            buildJsonObject {
+                put("type", "accountOutranked")
+                put("sessionId", sessionId)
+                putJsonArray("names") { names.forEach { add(it) } }
             }.toString(),
         )
     }

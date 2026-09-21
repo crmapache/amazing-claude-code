@@ -309,6 +309,14 @@
   color: var(--acc-fg-dim);
 }
 
+/* Not the neutral of the three rows above it: those are about the shape of the input field, while this
+   one decides what the AGENT runs with - which account is billed, which address answers. So it takes the
+   agent's own tint, the way the improve row below does. */
+.rowIconSources {
+  background: var(--acc-agent-12);
+  color: var(--acc-agent-light);
+}
+
 /* The same rose as the heart in the status row: both entries lead to the same person, and the colour is
    what says so without a word of explanation. */
 .rowIconImprove {
@@ -566,6 +574,15 @@
   padding: 6px 8px 10px;
 }
 
+/* What stands UNDER a list-shaped screen - a card, a warning - for the same reason the note above has
+   its own padding: the rows keep their edge-to-edge fill, and a paragraph or a box beneath them must
+   not sit flush against the panel's border. The top gap is the list's own 2px hair turned into a break
+   between two different things. */
+.screenFoot {
+  padding: 12px 6px 0;
+  gap: 10px;
+}
+
 .screenEmpty {
   padding: 18px 12px;
   text-align: center;
@@ -725,6 +742,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A list of identifiers inside a card - variable names, and always several of them: wrapped rather than
+   cut with an ellipsis like .cardName above, because the one that matters may be the last. */
+.cardNames {
+  font: 11.5px var(--acc-mono);
+  line-height: 1.5;
+  color: var(--acc-warn);
+  overflow-wrap: anywhere;
 }
 
 .cardState {

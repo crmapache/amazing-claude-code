@@ -8,6 +8,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.util.concurrency.AppExecutorUtil
+import io.github.crmapache.amazingclaudecode.claude.accounts.AccountOverride
 import io.github.crmapache.amazingclaudecode.editor.UnsavedEdits
 import io.github.crmapache.amazingclaudecode.project.ProjectFacts
 import io.github.crmapache.amazingclaudecode.sound.AlertSounds
@@ -231,12 +232,50 @@ internal class ProjectCatalog(
                     "mode",
                     PermissionModes.resolve(
                         ClaudePreferences.mode,
-                        fallback = PermissionDefaultMode.of(project.basePath),
+                        fallback = PermissionDefaultMode.of(project.basePath, SettingSources.of(project)),
                     ),
                 )
             }.toString(),
         )
     }
+
+    /**
+     * What the settings-sources screen shows: the choice in force, what the repository would override if
+     * its layers are loaded, and - when asked - whether this CLI knows the flag at all.
+     *
+     * [withCapability] is the expensive half and is asked for only by the screen, off the interface
+     * thread: it costs a `--help` the first time (cached by ClaudeExecutable afterwards). Without it the
+     * message says nothing about the CLI rather than lying about it - the panel leaves its warning as it
+     * was instead of promising support nobody checked.
+     */
+    fun sendSettingSources(withCapability: Boolean = false) {
+        val chosen = SettingSources.of(project)
+
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "settingSources")
+                put("value", chosen)
+                // Names only, never values - those are keys (see AccountOverride). Read whatever is
+                // chosen: the screen's whole job is to say what would come back if the layers were let in
+                // again, so this half ignores the current choice on purpose.
+                putJsonArray("repository") {
+                    AccountOverride.namesIn(project.basePath, SettingSources.ALL).forEach { add(it) }
+                }
+                if (withCapability) put("supported", cliKnowsTheFlag())
+            }.toString(),
+        )
+    }
+
+    /**
+     * Whether the installed Claude Code takes the flag at all.
+     *
+     * A missing executable answers "yes" rather than "no": there is nothing to blame the setting for
+     * then, the panel already says so in its own words, and a warning about an old CLI on a machine
+     * without one is a warning about the wrong thing.
+     */
+    private fun cliKnowsTheFlag(): Boolean = ClaudeExecutable.find()
+        ?.let { ClaudeExecutable.supportsFlag(it, SettingSources.FLAG) }
+        ?: true
 
     fun sendInit() {
         val preferences = ClaudePreferences.snapshot()
@@ -271,7 +310,7 @@ internal class ProjectCatalog(
                         "mode",
                         PermissionModes.resolve(
                             preferences.mode,
-                            fallback = PermissionDefaultMode.of(project.basePath),
+                            fallback = PermissionDefaultMode.of(project.basePath, SettingSources.of(project)),
                         ),
                     )
                     if (preferences.composerLayout.isNotEmpty()) put("composerLayout", preferences.composerLayout)
@@ -296,6 +335,12 @@ internal class ProjectCatalog(
                     put("language", preferences.language)
                     put("ideLanguage", IdeLanguage.current())
                 }
+                // Which of Claude Code's settings layers this project loads - outside `preferences`
+                // deliberately: everything in there is the machine's, and this one belongs to the
+                // repository that happens to be open (see SettingSources). The value alone, because it
+                // is all that costs nothing: what the repository sets and whether this CLI knows the
+                // flag are asked for by the screen itself (see [sendSettingSources]).
+                put("settingSources", SettingSources.of(project))
                 // What the improve button asks for. Both texts: the screen shows the built-in one as what
                 // is in force while nothing of one's own has been put in, and it is also what the restore
                 // button restores - a default the screen cannot name is a default nobody edits.
@@ -731,6 +776,7 @@ internal class ProjectCatalog(
             draft = draft,
             attachments = attachments,
             rejected = rejected,
+            settingSources = SettingSources.of(project),
             onError = { message -> sendImproved(clientId, sessionId, id, error = shortError(message)) },
             onResult = { text -> sendImproved(clientId, sessionId, id, text = text) },
         )

@@ -39,6 +39,7 @@ export const ja: Dict = {
       composerLayout: { title: '入力欄のレイアウト', hint: '入力欄を置く場所' },
       pasteCollapse: { title: '貼り付けたテキスト', hint: '貼り付けをチップにまとめる条件' },
       sendKey: { title: 'メッセージの送信', hint: 'どのキーで送るか' },
+      settingSources: { title: '設定の読み込み元', hint: 'Claude Code がどの層を読むか' },
       improvePrompt: { title: 'プロンプトの改善', hint: '星ボタンが出す指示' },
       voice: { title: '音声入力', hint: '打つかわりに話す' },
       voiceLanguage: { title: '話す言語', hint: '音声入力が聞き取る言語' },
@@ -79,6 +80,7 @@ export const ja: Dict = {
       composerLayout: { label: '入力欄のレイアウト', sub: '入力欄を置く場所' },
       pasteCollapse: { label: '貼り付けたテキスト', sub: '貼り付けをチップにまとめる条件' },
       sendKey: { label: 'メッセージの送信', sub: 'どのキーで送るか' },
+      settingSources: { label: '設定の読み込み元', sub: 'ここで Claude Code が読む層' },
       improvePrompt: { label: 'プロンプトの改善', sub: '星ボタンが出す指示' },
       voice: { label: '音声入力', sub: '自分の Deepgram キーで口述する' },
       customModels: { label: 'カスタムモデル', sub: 'Claude Code が挙げないもの' },
@@ -584,6 +586,20 @@ export const ja: Dict = {
     modEnterSub: 'Enter で改行',
   },
 
+  settingSources: {
+    note: 'Claude Code は複数のファイルから設定を読み、リポジトリのファイルが自分のものより優先されます。コミットされた env ブロックが、すべてのリクエストの接続先と鍵を決めます。ある層を外すと、その層の権限・フック・MCP サーバーも一緒に外れます。組織の管理設定はいずれの場合も適用されます。',
+    all: 'すべて',
+    allSub: '自分の設定、リポジトリの設定、そのローカルファイル - Claude Code の既定の動作',
+    withoutLocal: 'ローカルファイルを除く',
+    withoutLocalSub: 'settings.local.json は読まず、リポジトリの共有設定は残します',
+    userOnly: '自分のものだけ',
+    userOnlySub: 'リポジトリの 2 つのファイルを読みません - 自分のログインと設定で決まります',
+    repositorySets: 'このリポジトリが設定しているもの',
+    repositoryMeans: 'その層を読んでいるあいだは、ここで選んだアカウントと接続先より優先されます。',
+    repositoryQuiet: 'このリポジトリには、アカウントや接続先を上書きする設定はありません。',
+    needsNewer: 'この Claude Code は必要なフラグを知りません。ここで何を選んでもすべての層が読み込まれます。更新してください。',
+  },
+
   improvePrompt: {
     note: 'クリップの隣にある星ボタンは、入力欄の文章を書き直します。ここに書かれているのがその指示です。下書きと一緒に Claude Code の独立した実行へ送られ - ツールもファイルも会話もなし - ほかのメッセージと同じように利用量に数えられます。',
     label: '指示',
@@ -976,6 +992,12 @@ export const ja: Dict = {
       textWithCode: (code) => `Claude Code が予期せず終了しました（終了コード ${code}）。`,
     },
 
+    outranked: {
+      label: '設定',
+      text: 'このリポジトリがここで選んだアカウントを上書きしています:',
+      open: '設定の読み込み元',
+    },
+
     limit: {
       label: '上限',
       extraLabel: '追加利用',
@@ -1106,6 +1128,7 @@ export const ja: Dict = {
       'no-store': '新しいアカウント用のフォルダーを作れませんでした。',
       'design-no-account': 'いま使っているアカウントを特定できなかったので、何も開いていません。',
       'not-supported': 'この Claude Code は 2 つのサインインを区別できないため、何も追加されませんでした。',
+      'already-here': 'そのアカウントはすでにあります。Claude Code 自身のサインインなので、何も追加されませんでした。',
       'logout-failed': 'ログアウトできませんでした。ターミナルで試してください。',
       'already-running': 'すでにサインインが進んでいます。',
       unknown: 'うまくいきませんでした。',

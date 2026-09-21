@@ -77,6 +77,7 @@ import {
 } from './indicators'
 import { CustomModels } from './components/CustomModels'
 import { PasteCollapse } from './components/PasteCollapse'
+import { SettingSources } from './components/SettingSources'
 import { PermissionPanel } from './components/PermissionPanel'
 import { Plugins } from './components/Plugins'
 import { Queue } from './components/Queue'
@@ -103,6 +104,11 @@ import { deferFollowUpForCompact } from './feed/compact'
 import { waitsForTheTurn } from './feed/delivery'
 import { PASTE_COLLAPSE_DEFAULT, PASTE_COLLAPSE_NEVER, pasteCollapseLines, referenceChip } from './feed/reference'
 import { normalizeSendKey, sendKeyOptions, sendKeySummary, type SendKey } from './sendKey'
+import {
+  normalizeSettingSources,
+  settingSourcesSummary,
+  type SettingSources as SettingSourcesValue,
+} from './settingSources'
 import { reusableMessage } from './feed/reuse'
 import { isUntouchedTab, tabHolding, tabTakesConversation } from './feed/resume'
 import { chatHits, rowOf } from './feed/search'
@@ -569,6 +575,19 @@ export const App = () => {
    * field from the one in the plugin.
    */
   const [sendKey, setSendKeyState] = useState<SendKey>('enter')
+  /**
+   * Which of Claude Code's settings layers this project's conversations load, and what the repository
+   * sets that would override the account (see settingSources.ts).
+   *
+   * The only setting on the panel's screens that belongs to the project rather than to the machine, so
+   * it does not travel in `preferences` - the IDE sends it beside them. `repository` and `supported` are
+   * answered by the IDE when the screen asks: the first is two files off disk, the second costs a
+   * process, and neither is worth doing before anybody has opened that screen.
+   */
+  const [settingSources, setSettingSourcesState] = useState<SettingSourcesValue>('')
+  const [settingSourcesFacts, setSettingSourcesFacts] = useState<{ repository: string[]; supported?: boolean }>({
+    repository: [],
+  })
   /**
    * How much colour the gauges keep - the whole green-to-red ladder, one calm tone, or anything between.
    *
@@ -1405,6 +1424,18 @@ export const App = () => {
   }, [sideMenu.open, sideMenu.screen])
 
   /**
+   * What the settings-sources screen cannot be drawn honestly without: the names the repository sets
+   * right now, and whether this Claude Code knows the flag at all.
+   *
+   * Asked when the screen opens rather than carried in `init`, because the second half costs a process
+   * (`claude --help`) and the first reads two files that anybody may have edited since the panel started.
+   * Once per opening: neither answer changes while somebody looks at three options.
+   */
+  useEffect(() => {
+    if (sideMenu.open && sideMenu.screen === 'settingSources') send({ type: 'askSettingSources' })
+  }, [sideMenu.open, sideMenu.screen])
+
+  /**
    * The statistics tab is looked at and the figures grow under it: a turn ends, a minute passes. Asked
    * for again every half-minute while it is the active tab - the ticker on the IDE's side marks minutes
    * at the same pace, so asking more often would show nothing new.
@@ -1819,6 +1850,10 @@ export const App = () => {
               // Read unconditionally as well: an empty value means Enter, which is an answer rather than
               // a silence - it is what a panel nobody has asked already does.
               setSendKeyState(normalizeSendKey(message.preferences.sendKey))
+              // Beside the preferences rather than inside them: this one belongs to the repository that
+              // is open (see settingSources.ts). Unknown values read as "all layers" - a panel must never
+              // narrow what a conversation loads on the strength of a word it does not know.
+              setSettingSourcesState(normalizeSettingSources(message.settingSources))
               // The same: a hundred is an answer, and it is the one that puts the ladder back.
               setCalmVividState(calmVividOf({ vivid: message.preferences.calmVivid }))
               // And the same once more: an empty list is "everything shown", the answer that puts a
@@ -1852,6 +1887,31 @@ export const App = () => {
            */
           case 'locale':
             setLanguage({ chosen: message.language ?? '', ide: message.ideLanguage ?? '' })
+            break
+
+          /**
+           * The settings-sources screen, answered in full: the choice, what the repository sets, and -
+           * when it was asked for - whether this Claude Code knows the flag at all.
+           *
+           * `supported` is kept from the previous answer when this one leaves it out, rather than reset
+           * to "unknown": the IDE sends this message on every change of the choice too, and a warning
+           * about an old CLI must not blink out and back on every press.
+           */
+          case 'settingSources':
+            setSettingSourcesState(normalizeSettingSources(message.value))
+            setSettingSourcesFacts((current) => ({
+              repository: message.repository,
+              supported: message.supported ?? current.supported,
+            }))
+            break
+
+          /**
+           * A conversation came up on an account the repository's settings overrule (see OutrankedItem).
+           * A row in that conversation's feed rather than a notice over the panel: it belongs to the
+           * launch it happened at, and every other tab may be running on something else entirely.
+           */
+          case 'accountOutranked':
+            feed({ session: message.sessionId, action: { kind: 'outranked', names: message.names } })
             break
 
           /** The no-stress colour mode, told again outside `init` and for the same two reasons. */
@@ -2934,6 +2994,29 @@ export const App = () => {
   const setSendKey = useCallback((key: SendKey) => {
     send({ type: 'setSendKey', key })
     setSendKeyState(key)
+  }, [])
+
+  /**
+   * Which of Claude Code's settings layers this project loads.
+   *
+   * Applied here at once and sent: the IDE answers with a `settingSources` of its own, and waiting for
+   * it would leave the tick standing on the old option under the finger. What the answer does bring is
+   * the repository's names read again - the choice does not change them, but the file may have.
+   */
+  const setSettingSources = useCallback((value: string) => {
+    const chosen = normalizeSettingSources(value)
+    send({ type: 'setSettingSources', value: chosen })
+    setSettingSourcesState(chosen)
+  }, [])
+
+  /**
+   * The screen behind the warning row in the feed - opened from the row itself.
+   *
+   * A stable function, like the sign-in offer beside it: a fresh closure in a memoized card's props
+   * would undo the memo on every card of the feed (see ItemView).
+   */
+  const openSettingSources = useCallback(() => {
+    setSideMenu({ open: true, screen: 'settingSources' })
   }, [])
 
   /** The lists sent and not yet heard back - see the 'indicators' case above. */
@@ -4646,6 +4729,7 @@ export const App = () => {
     composerLayout: composerLayoutOptions(t).find((option) => option.id === chosenLayout)?.label ?? '',
     pasteCollapse: pasteCollapseSummary(t, pasteCollapse),
     sendKey: sendKeySummary(sendKey),
+    settingSources: settingSourcesSummary(settingSources, t),
     calmColors: calmColorsSummary(t, calmVivid),
     indicators: indicatorsSummary(t, hiddenIndicators),
     improvePrompt: improveInstructions.instructions.trim()
@@ -5179,6 +5263,7 @@ export const App = () => {
               onDismissError={dismissError}
               onOpenLink={openLink}
               signIn={signInOffer}
+              onSettingSources={openSettingSources}
               onReuse={reuseMessage}
               onLoadEarlier={loadEarlier}
               earlierPages={panel.earlierPages}
@@ -5640,6 +5725,16 @@ export const App = () => {
             selected={sendKey}
             note={t.sendKey.note}
             onPick={(id) => setSendKey(normalizeSendKey(id))}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'settingSources' ? (
+          <SettingSources
+            t={t}
+            value={settingSources}
+            repository={settingSourcesFacts.repository}
+            supported={settingSourcesFacts.supported}
+            onPick={setSettingSources}
           />
         ) : null}
 

@@ -41,6 +41,7 @@ export const fr: Dict = {
       composerLayout: { title: 'DISPOSITION DU CHAMP', hint: 'où se place le champ de saisie' },
       pasteCollapse: { title: 'TEXTE COLLÉ', hint: 'quand un collage se replie en pastille' },
       sendKey: { title: 'ENVOYER UN MESSAGE', hint: 'quelle touche envoie' },
+      settingSources: { title: 'ORIGINE DES RÉGLAGES', hint: 'quelles couches Claude Code charge' },
       improvePrompt: { title: 'AMÉLIORER LE PROMPT', hint: 'ce que demande le bouton étoile' },
       voice: { title: 'SAISIE VOCALE', hint: 'dicter au lieu de taper' },
       voiceLanguage: { title: 'LANGUE PARLÉE', hint: 'ce que la dictée écoute' },
@@ -81,6 +82,7 @@ export const fr: Dict = {
       composerLayout: { label: 'Disposition du champ', sub: 'Où se place le champ de saisie' },
       pasteCollapse: { label: 'Texte collé', sub: 'Quand un collage se replie en pastille' },
       sendKey: { label: 'Envoyer un message', sub: 'Quelle touche envoie' },
+      settingSources: { label: 'Origine des réglages', sub: 'Quelles couches Claude Code charge ici' },
       improvePrompt: { label: 'Améliorer le prompt', sub: 'Ce que demande le bouton étoile' },
       voice: { label: 'Saisie vocale', sub: 'Dicter avec votre propre clé Deepgram' },
       customModels: { label: 'Modèles personnalisés', sub: 'Ceux que Claude Code ne propose pas' },
@@ -590,6 +592,20 @@ export const fr: Dict = {
     modEnterSub: 'Enter passe à la ligne',
   },
 
+  settingSources: {
+    note: "Claude Code lit ses réglages dans plusieurs fichiers, et ceux du dépôt l'emportent sur les vôtres : un bloc env versionné décide de l'adresse et de la clé avec lesquelles part chaque requête. Écarter une couche écarte aussi ses permissions, ses hooks et ses serveurs MCP. Les réglages gérés par votre organisation s'appliquent de toute façon.",
+    all: 'Toutes',
+    allSub: 'Les vôtres, ceux du dépôt et son fichier local - ce que Claude Code fait tout seul',
+    withoutLocal: 'Sans le fichier local',
+    withoutLocalSub: 'Ignore settings.local.json et garde les réglages partagés du dépôt',
+    userOnly: 'Seulement les miens',
+    userOnlySub: 'Ignore les deux fichiers du dépôt - votre connexion et vos réglages décident',
+    repositorySets: 'Ce dépôt définit',
+    repositoryMeans: "Tant que ses couches sont chargées, cela l'emporte sur le compte et l'adresse choisis ici.",
+    repositoryQuiet: 'Ce dépôt ne définit rien qui remplacerait votre compte ou votre adresse.',
+    needsNewer: "Ce Claude Code ne connaît pas l'option nécessaire : toutes les couches sont chargées, quel que soit le choix fait ici. Mettez-le à jour.",
+  },
+
   improvePrompt: {
     note: 'Le bouton étoile, à côté du trombone, réécrit ce qui se trouve dans le champ de saisie. Voici ce qu’il demande. Cela part comme une exécution de Claude Code à part - sans outils, sans fichiers, sans conversation - et compte dans ton usage comme n’importe quel autre message.',
     label: 'INSTRUCTIONS',
@@ -985,6 +1001,12 @@ export const fr: Dict = {
       textWithCode: (code) => `Claude Code s’est arrêté de façon inattendue (code ${code}).`,
     },
 
+    outranked: {
+      label: 'RÉGLAGES',
+      text: 'Ce dépôt remplace le compte choisi ici :',
+      open: 'Origine des réglages',
+    },
+
     limit: {
       label: 'LIMITE',
       extraLabel: 'USAGE SUPPLÉMENTAIRE',
@@ -1120,6 +1142,7 @@ export const fr: Dict = {
       'no-store': 'Impossible de créer un dossier pour le nouveau compte.',
       'design-no-account': 'Impossible de déterminer le compte en cours : rien n’a été ouvert.',
       'not-supported': "Ce Claude Code ne sait pas séparer deux connexions, donc rien n'a été ajouté.",
+      'already-here': "Ce compte est déjà là : c'est la connexion de Claude Code lui-même, donc rien n'a été ajouté.",
       'logout-failed': 'La déconnexion a échoué. Essayez dans un terminal.',
       'already-running': 'Une connexion est déjà en cours.',
       unknown: 'Ça n’a pas marché.',

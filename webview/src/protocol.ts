@@ -728,6 +728,16 @@ type ShellMessageBody =
          */
         ideLanguage?: string
       }
+      /**
+       * Which of Claude Code's settings layers this project's conversations are started with - '' for
+       * all of them, 'user,project' without the untracked local file, 'user' for this machine's owner
+       * alone (see settingSources.ts).
+       *
+       * Outside `preferences` on purpose: everything in there is the machine's, while this one belongs
+       * to the repository that is open - a checked-in base URL is a fact about that repository and about
+       * no other checkout on the disk.
+       */
+      settingSources?: string
       /** The sound alert settings - they outlive an IDE restart. */
       sounds?: SoundSettings
       /**
@@ -746,6 +756,27 @@ type ShellMessageBody =
    * so a change made in one window has to reach the other one, which is already past its own `init`.
    */
   | { type: 'locale'; language?: string; ideLanguage?: string }
+  /**
+   * The settings-sources screen's whole state: the choice in force, what the repository would set if its
+   * layers are loaded, and whether this Claude Code knows the flag at all.
+   *
+   * `repository` carries NAMES and never values - what stands in that block is a key (see
+   * AccountOverride on the IDE's side). It is read whatever is chosen, so that the screen can say what
+   * comes back the moment the layers are let in again.
+   *
+   * `supported` is absent unless it was asked for: the answer costs a process, so `init` leaves it out
+   * and the screen asks for it when it opens (see 'askSettingSources').
+   */
+  | { type: 'settingSources'; value: string; repository: string[]; supported?: boolean }
+  /**
+   * A conversation came up on a named account that the repository's settings overrule - these are the
+   * names doing it.
+   *
+   * The CLI applies a settings file's `env` over the environment it was handed, so a checked-in key
+   * beats the account chosen in the panel without a word from anyone. Nothing else can notice it, and
+   * the panel would go on drawing that account's name and its limits while somebody else pays.
+   */
+  | { type: 'accountOutranked'; sessionId: string; names: string[] }
   /**
    * The no-stress colour mode, on its own for the same two readers as the language above: a phone never
    * sees `init`, and a machine-wide setting switched in one window has to reach the other.
@@ -1904,6 +1935,15 @@ export type WebviewMessage =
   | { type: 'setPasteCollapse'; lines: string }
   /** Which key sends a message - 'enter' or 'modEnter'. Machine-wide, like the layout (see sendKey.ts). */
   | { type: 'setSendKey'; key: string }
+  /**
+   * Which of Claude Code's settings layers this project loads - see settingSources.ts.
+   *
+   * The one setting of the panel that belongs to the project rather than to the machine, and the only
+   * one a phone may not touch: it decides where the requests of a machine somebody is not sitting at go.
+   */
+  | { type: 'setSettingSources'; value: string }
+  /** The same screen, opening: what the repository sets right now, and whether this CLI knows the flag. */
+  | { type: 'askSettingSources' }
   /**
    * How much colour the gauges keep, 0..100. Machine-wide beside the layout and the send key: whether a
    * red gauge presses on somebody is a property of the person rather than of the repository.

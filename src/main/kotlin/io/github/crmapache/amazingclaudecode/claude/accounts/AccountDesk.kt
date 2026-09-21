@@ -9,6 +9,7 @@ import io.github.crmapache.amazingclaudecode.claude.ClaudeAuth
 import io.github.crmapache.amazingclaudecode.claude.ClaudeCli
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessions
+import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.serialization.json.addJsonObject
@@ -88,7 +89,17 @@ internal class AccountDesk(
      * Kept beside the health and refreshed in the same round, for the same reason: reading it costs a
      * file per row, and the list goes out on every open.
      */
-    private val knownIdentity = ConcurrentHashMap<String, AccountIdentity.Who>()
+    private val knownIdentity = ConcurrentHashMap<String, AccountIdentity.Probed>()
+
+    /**
+     * When the last round of usage questions went out.
+     *
+     * The names above are answers to those questions, and the only ones worth merging two rows on are
+     * the ones written down since we asked: a drawer's file keeps whoever was last in it for ever, and
+     * acting on a stale name deletes a live account (see [AccountTwin]).
+     */
+    @Volatile
+    private var askedAt = 0L
 
     @Volatile
     private var checkedAt = 0L
@@ -175,8 +186,14 @@ internal class AccountDesk(
         knownIdentity.keys.retainAll(asked.toSet())
         asked.forEach { id -> accounts.probedIdentity(id)?.let { knownIdentity[id] = it } }
 
+        // One account cannot be two rows. Before the list goes out rather than after: a list drawn with
+        // the duplicate in it would be redrawn without it a moment later, and the row a person was
+        // reaching for would move under their hand.
+        if (mergeTwin()) return
+
         broadcast(knownHealth)
 
+        askedAt = System.currentTimeMillis()
         asked.forEach { hub.usage.refreshLimits(urgent = true, viaPing = true, account = it) }
 
         // And which models each of them can run. Not for this screen - it shows no models - but for the
@@ -186,6 +203,59 @@ internal class AccountDesk(
         // this screen is the one place a person has to pass through to switch at all. Once per account -
         // ProjectUsage.refreshModels latches it.
         asked.forEach { hub.usage.refreshModels(ClaudeSessions.MAIN_SESSION, account = it) }
+    }
+
+    /**
+     * Two rows holding one account become one row, silently.
+     *
+     * It is the added row that goes. The other one is the sign-in Claude Code itself has: it owns no
+     * drawer to delete, and the only way to remove it is to sign the person out of Claude Code
+     * altogether - so "which of the two is the extra one" has exactly one answer. Nothing is lost by it
+     * either: the credential for that account is in the CLI's own drawer as well, and that is the drawer
+     * every conversation moves onto.
+     *
+     * The person's own word for the account travels with it. A name was given to a row on purpose, and
+     * the row it was given to is the one being merged away; leaving the old one would keep a name that
+     * was chosen for a different account on screen - which is how the duplicate got noticed in the first
+     * place.
+     *
+     * What makes it safe to do without asking is in [AccountTwin]: two straight answers, both written
+     * down since this screen last asked, from two drawers that are both signed in now. Without that
+     * much it does nothing at all and the rows simply stay as they are.
+     */
+    private fun mergeTwin(): Boolean {
+        val twin = AccountTwin.duplicate(
+            default = AccountTwin.Drawer("", knownIdentity[""], live = defaultWho?.loggedIn == true),
+            added = accounts.list().filterNot { it.isPending }.map { account ->
+                AccountTwin.Drawer(
+                    id = account.id,
+                    probe = knownIdentity[account.id],
+                    live = knownHealth[account.id] == ClaudeAccounts.Health.PRESENT,
+                )
+            },
+            answeredAfter = askedAt,
+        ) ?: return false
+
+        accounts.account(twin)?.alias?.takeIf { it.isNotEmpty() }?.let { accounts.rename("", it) }
+
+        // The conversations are on that account either way - the drawer changes, the subscription does
+        // not - but they have to be raised again over the drawer that is staying, because the one they
+        // are holding is about to be deleted. The setter does that by itself, which is why it is written
+        // before the record goes (see ClaudeAccounts.currentId).
+        if (accounts.currentId == twin) accounts.currentId = ""
+
+        accounts.forget(twin)
+        knownHealth.remove(twin)
+        knownIdentity.remove(twin)
+        // Its figures were this account's all along, filed under a row that no longer exists - and kept,
+        // the weekly window they hold would make the surviving row's honest answer look borrowed (see
+        // UsageProbes.trust).
+        hub.usage.forget(twin)
+        invalidate()
+        DiagnosticsLog.note(DiagnosticsLog.ACCOUNTS, "two rows holding one account were merged")
+
+        ClaudeSessionHub.everyHub { it.accountsChanged() }
+        return true
     }
 
     private fun broadcast(health: Map<String, ClaudeAccounts.Health>) {
@@ -227,7 +297,7 @@ internal class AccountDesk(
                         // the straight answer; the guess by elimination stays as the fallback until such
                         // an answer exists (see ClaudeAccounts.probedIdentity and defaultIdentity). The
                         // plan needs neither: that one the CLI reads from the credential itself.
-                        val email = knownIdentity[""]?.email ?: accounts.defaultIdentity(who.email)
+                        val email = knownIdentity[""]?.who?.email ?: accounts.defaultIdentity(who.email)
 
                         addJsonObject {
                             put("id", "")
@@ -251,7 +321,7 @@ internal class AccountDesk(
                             // the alias when there is one and falls back to the address - never the other
                             // way round: a name given on purpose beats one Anthropic assigned.
                             put("alias", account.alias)
-                            put("email", identity?.email ?: account.email)
+                            put("email", identity?.who?.email ?: account.email)
                             put("plan", account.plan)
                             put("pending", account.isPending)
                             health[account.id]?.let { put("health", it.name.lowercase()) }
@@ -356,6 +426,17 @@ internal class AccountDesk(
                         accounts.list().forEach { hub.usage.forget(it.id) }
                         invalidate()
                         ClaudeSessionHub.everyHub { it.accountsChanged() }
+                    }
+
+                    // Nothing was added, and the reason is worth a sentence: the person went through a
+                    // browser sign-in and the list came back looking exactly as it did before. Their
+                    // figures are re-asked all the same - the sign-in rewrote the shared parts of the
+                    // CLI's configuration for every account, newcomer or not.
+                    AccountSignIn.Outcome.Twin -> {
+                        accounts.list().forEach { hub.usage.forget(it.id) }
+                        invalidate()
+                        ClaudeSessionHub.everyHub { it.accountsChanged() }
+                        sendOutcome("already-here")
                     }
 
                     is AccountSignIn.Outcome.Failed -> {

@@ -337,6 +337,20 @@ internal object RemoteCommands {
          */
         "setSendKey",
         /**
+         * Which of Claude Code's settings layers the project loads, and the screen's question about what
+         * the repository sets right now (see SettingSources).
+         *
+         * Refused harder than the machine-wide settings around it, and for a different reason: this one
+         * decides which account is billed and which address the requests of a machine nobody is sitting
+         * at go to. A wrong press here does not make a panel look odd on the desk - it moves the work
+         * onto somebody else's gateway, quietly, in a repository the person on the sofa cannot see.
+         *
+         * The question is refused along with the answer: the phone has no such screen, and its answer
+         * costs a `claude --help` on the machine at the desk.
+         */
+        "setSettingSources",
+        "askSettingSources",
+        /**
          * How much colour the gauges keep - a machine-wide setting beside the ones above, and settled the
          * same way as the language below it: the phone obeys it without being able to set it. It is handed
          * the figure as a fact of the project (see RemoteFeed), so somebody who damped the red at the desk

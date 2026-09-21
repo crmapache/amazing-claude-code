@@ -37,6 +37,7 @@ export const ko: Dict = {
       composerLayout: { title: '입력창 배치', hint: '입력창을 두는 자리' },
       pasteCollapse: { title: '붙여넣은 텍스트', hint: '붙여넣기를 칩으로 접는 기준' },
       sendKey: { title: '메시지 보내기', hint: '어떤 키로 보낼지' },
+      settingSources: { title: '설정을 읽는 곳', hint: 'Claude Code가 어떤 계층을 읽는지' },
       improvePrompt: { title: '프롬프트 다듬기', hint: '별 버튼이 요청하는 내용' },
       voice: { title: '음성 입력', hint: '타이핑 대신 말하기' },
       voiceLanguage: { title: '말하는 언어', hint: '받아쓰기가 알아들을 언어' },
@@ -77,6 +78,7 @@ export const ko: Dict = {
       composerLayout: { label: '입력창 배치', sub: '입력창을 두는 자리' },
       pasteCollapse: { label: '붙여넣은 텍스트', sub: '붙여넣기를 칩으로 접는 기준' },
       sendKey: { label: '메시지 보내기', sub: '어떤 키로 보낼지' },
+      settingSources: { label: '설정을 읽는 곳', sub: '여기서 Claude Code가 읽는 계층' },
       improvePrompt: { label: '프롬프트 다듬기', sub: '별 버튼이 요청하는 내용' },
       voice: { label: '음성 입력', sub: '내 Deepgram 키로 받아쓰기' },
       customModels: { label: '커스텀 모델', sub: 'Claude Code에 없는 모델' },
@@ -582,6 +584,20 @@ export const ko: Dict = {
     modEnterSub: 'Enter는 줄바꿈',
   },
 
+  settingSources: {
+    note: 'Claude Code는 여러 파일에서 설정을 읽고, 저장소의 파일이 내 설정보다 우선합니다. 저장소에 커밋된 env 블록이 모든 요청의 주소와 키를 정합니다. 어떤 계층을 빼면 그 계층의 권한, 훅, MCP 서버도 함께 빠집니다. 조직의 관리 설정은 어느 경우에나 적용됩니다.',
+    all: '전부',
+    allSub: '내 설정, 저장소 설정, 저장소의 로컬 파일 - Claude Code의 기본 동작',
+    withoutLocal: '로컬 파일 제외',
+    withoutLocalSub: 'settings.local.json은 건너뛰고 저장소의 공유 설정은 유지합니다',
+    userOnly: '내 것만',
+    userOnlySub: '저장소의 두 파일을 건너뜁니다 - 내 로그인과 내 설정이 결정합니다',
+    repositorySets: '이 저장소가 정하는 것',
+    repositoryMeans: '해당 계층을 읽는 동안에는 여기서 고른 계정과 주소보다 우선합니다.',
+    repositoryQuiet: '이 저장소에는 계정이나 주소를 덮어쓸 설정이 없습니다.',
+    needsNewer: '이 Claude Code는 필요한 플래그를 모릅니다. 여기서 무엇을 골라도 모든 계층을 읽습니다. 업데이트하세요.',
+  },
+
   improvePrompt: {
     note: '클립 옆의 별 버튼은 입력창의 글을 다시 씁니다. 여기 적힌 것이 그 요청입니다. 초안과 함께 별도의 Claude Code 실행으로 나가고 - 도구도, 파일도, 대화도 없이 - 다른 메시지와 똑같이 사용량에 포함됩니다.',
     label: '요청 내용',
@@ -974,6 +990,12 @@ export const ko: Dict = {
       textWithCode: (code) => `Claude Code가 예기치 않게 종료됐어요 (종료 코드 ${code}).`,
     },
 
+    outranked: {
+      label: '설정',
+      text: '이 저장소가 여기서 고른 계정을 덮어씁니다:',
+      open: '설정을 읽는 곳',
+    },
+
     limit: {
       label: '한도',
       extraLabel: '추가 사용',
@@ -1089,6 +1111,7 @@ export const ko: Dict = {
       'no-store': '새 계정을 담을 폴더를 만들지 못했어요.',
       'design-no-account': '지금 쓰는 계정을 알아내지 못해서 아무것도 열지 않았어요.',
       'not-supported': '이 Claude Code는 두 로그인을 구분하지 못해 아무것도 추가되지 않았습니다.',
+      'already-here': '그 계정은 이미 있습니다. Claude Code 자체의 로그인이라 아무것도 추가되지 않았습니다.',
       'logout-failed': '로그아웃하지 못했습니다. 터미널에서 시도해 보세요.',
       'already-running': '이미 로그인이 진행 중이에요.',
       unknown: '잘 되지 않았어요.',

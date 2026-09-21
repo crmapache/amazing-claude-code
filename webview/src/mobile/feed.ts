@@ -207,6 +207,14 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
     case 'error':
       return collect({ kind: 'error', message: message.message })
 
+    /**
+     * The repository's settings overrule the account this conversation came up on (see OutrankedItem).
+     * Worth a row here too: whose subscription is paying is exactly the kind of thing a phone is looked
+     * at for. The way out is not offered - the screen it leads to is on the machine at the desk.
+     */
+    case 'accountOutranked':
+      return collect({ kind: 'outranked', names: message.names })
+
     case 'permission':
       return collect({
         kind: 'permission',

@@ -31,6 +31,7 @@ export type MenuScreen =
   | 'composerLayout'
   | 'pasteCollapse'
   | 'sendKey'
+  | 'settingSources'
   | 'improvePrompt'
   | 'voice'
   | 'voiceLanguage'
@@ -77,6 +78,12 @@ export interface MenuSummary {
   pasteCollapse: string
   /** Which key sends a message - the key itself ("Enter", "Cmd+Enter"), not a sentence about it. */
   sendKey: string
+  /**
+   * Which of Claude Code's settings layers this project loads, named the way its own screen names the
+   * chosen option. The only row in this list whose value belongs to the repository rather than to the
+   * machine (see settingSources.ts).
+   */
+  settingSources: string
   /** Whether the improve button asks by a text of one's own - "Default" or "Custom". */
   improvePrompt: string
   /** Dictation: the language it listens in, or that it is switched off. */
@@ -142,6 +149,7 @@ const SETTINGS_SCREENS: MenuScreen[] = [
   'composerLayout',
   'pasteCollapse',
   'sendKey',
+  'settingSources',
   'improvePrompt',
   'voice',
   'customModels',
@@ -331,6 +339,15 @@ const ICONS: Record<string, ReactNode> = {
       <rect x="2" y="3.4" width="12" height="9.2" rx="1.6" />
       <path d="M11 6.2v2.2a0.9 0.9 0 0 1-0.9 0.9H5.4" />
       <path d="M6.9 7.9L5.2 9.3l1.7 1.4" />
+    </svg>
+  ),
+  /* Three sheets in a stack, the top one lifted: the row is about which of Claude Code's settings layers
+     are read at all, and a stack is the one drawing that says "layers" before it is read. */
+  settingSources: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
+      <path d="M8 1.9l5.4 2.7L8 7.3 2.6 4.6 8 1.9z" />
+      <path d="M2.6 8L8 10.7 13.4 8" />
+      <path d="M2.6 11.3L8 14l5.4-2.7" strokeOpacity="0.45" />
     </svg>
   ),
   feedback: (
@@ -697,6 +714,14 @@ export const SettingsScreen = ({
           sub={t.settings.rows.sendKey.sub}
           value={summary.sendKey}
           onClick={() => onPick('sendKey')}
+        />
+        <Row
+          icon="settingSources"
+          iconClass={s.rowIconSources}
+          label={t.settings.rows.settingSources.label}
+          sub={t.settings.rows.settingSources.sub}
+          value={summary.settingSources}
+          onClick={() => onPick('settingSources')}
         />
         <Row
           icon="improvePrompt"

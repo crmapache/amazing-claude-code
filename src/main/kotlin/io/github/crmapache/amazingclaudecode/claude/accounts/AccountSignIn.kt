@@ -45,6 +45,14 @@ internal class AccountSignIn(
         data class Failed(val code: String) : Outcome
 
         /**
+         * The sign-in worked and named an account this machine already has: the CLI's own.
+         *
+         * Not a failure and not an addition. The person has what they signed in for - it is the first
+         * row of the screen - and the drawer minted for it is gone again (see ClaudeAccounts.Landing).
+         */
+        data object Twin : Outcome
+
+        /**
          * The person stopped waiting. Not a failure and not worth a sentence on screen: they pressed
          * the button, and the only thing to say back is the list without the sign-in in it.
          */
@@ -220,6 +228,11 @@ internal class AccountSignIn(
             landing is ClaudeAccounts.Landing.Added -> {
                 DiagnosticsLog.note(DiagnosticsLog.ACCOUNTS, "an account was added")
                 finish(Outcome.Added(landing.account))
+            }
+
+            landing is ClaudeAccounts.Landing.Twin -> {
+                DiagnosticsLog.note(DiagnosticsLog.ACCOUNTS, "a sign-in landed on an account already here")
+                finish(Outcome.Twin)
             }
 
             System.currentTimeMillis() - startedAt > GIVE_UP_MS -> {

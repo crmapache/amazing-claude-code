@@ -52,6 +52,7 @@ export const en = {
       composerLayout: { title: 'COMPOSER LAYOUT', hint: 'where the input sits' },
       pasteCollapse: { title: 'PASTED TEXT', hint: 'when a paste folds into a chip' },
       sendKey: { title: 'SENDING A MESSAGE', hint: 'which key sends it' },
+      settingSources: { title: 'WHERE SETTINGS COME FROM', hint: 'which layers Claude Code loads' },
       improvePrompt: { title: 'IMPROVE PROMPT', hint: 'what the sparkle button asks for' },
       voice: { title: 'VOICE INPUT', hint: 'dictate instead of typing' },
       voiceLanguage: { title: 'SPOKEN LANGUAGE', hint: 'what dictation listens for' },
@@ -97,6 +98,7 @@ export const en = {
       composerLayout: { label: 'Composer layout', sub: 'Where the input sits' },
       pasteCollapse: { label: 'Pasted text', sub: 'When a paste folds into a chip' },
       sendKey: { label: 'Sending a message', sub: 'Which key sends it' },
+      settingSources: { label: 'Settings sources', sub: "Which of Claude Code's layers load here" },
       improvePrompt: { label: 'Improve prompt', sub: 'What the sparkle button asks for' },
       voice: { label: 'Voice input', sub: 'Dictate with your own Deepgram key' },
       customModels: { label: 'Custom models', sub: 'Ones Claude Code does not offer' },
@@ -796,6 +798,20 @@ export const en = {
     modEnterSub: 'Enter breaks the line',
   },
 
+  settingSources: {
+    note: "Claude Code reads its settings from several files, and a repository's own win over yours: an env block committed to it decides the address and the key every request goes out with. Leaving a layer out drops its permissions, hooks and MCP servers along with it. Managed settings from your organization apply either way.",
+    all: 'Everything',
+    allSub: "Yours, the repository's and its local file - what Claude Code does by itself",
+    withoutLocal: 'Without the local file',
+    withoutLocalSub: "Skips settings.local.json, keeps the repository's shared settings",
+    userOnly: 'Only my own',
+    userOnlySub: 'Skips both files in the repository - your sign-in and your settings decide',
+    repositorySets: 'This repository sets',
+    repositoryMeans: 'While its layers load, these win over the account and the address chosen here.',
+    repositoryQuiet: 'This repository sets nothing that would override your account or your address.',
+    needsNewer: 'This Claude Code does not know the flag this needs - every layer loads whatever is chosen here. Update it.',
+  },
+
   improvePrompt: {
     note: 'The sparkle button beside the paperclip rewrites what stands in the input field. This is what it asks for. It goes out as a Claude Code run of its own - no tools, no files, no conversation - and counts against your usage.',
     label: 'INSTRUCTIONS',
@@ -1285,6 +1301,12 @@ export const en = {
       textWithCode: (code: number): string => `Claude Code stopped unexpectedly (exit code ${code}).`,
     },
 
+    outranked: {
+      label: 'SETTINGS',
+      text: 'This repository overrides the account chosen here:',
+      open: 'Settings sources',
+    },
+
     limit: {
       label: 'LIMIT',
       extraLabel: 'EXTRA USAGE',
@@ -1441,6 +1463,7 @@ export const en = {
       'no-store': 'A folder for the new account could not be created.',
       'design-no-account': 'The account in use could not be resolved, so nothing was opened.',
       'not-supported': 'This Claude Code cannot keep two sign-ins apart, so nothing was added.',
+      'already-here': 'That account is already here: it is the sign-in Claude Code itself has, so nothing was added.',
       'logout-failed': 'Logging out did not work. Try it in a terminal.',
       'already-running': 'A sign-in is already under way.',
       unknown: 'That did not work.',

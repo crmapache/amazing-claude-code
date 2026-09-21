@@ -6,6 +6,7 @@ import io.github.crmapache.amazingclaudecode.claude.ClaudeCli
 import io.github.crmapache.amazingclaudecode.claude.ClaudeExecutable
 import io.github.crmapache.amazingclaudecode.claude.CommandHint
 import io.github.crmapache.amazingclaudecode.claude.ModelNames
+import io.github.crmapache.amazingclaudecode.claude.SettingSources
 import java.io.File
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -156,6 +157,11 @@ internal object ScenarioAuthor {
         skills: Map<String, CommandHint>,
         /** Folders outside the project the writer may read - where those skills are defined. */
         readableDirectories: List<String>,
+        /**
+         * Which of Claude Code's settings layers this run loads - see SettingSources. It runs in the
+         * project's directory like the conversations do, and must obey the same choice.
+         */
+        settingSources: String = SettingSources.ALL,
         onStarted: (ProcessHandler) -> Unit,
         onError: (String) -> Unit,
         onResult: (Scenario) -> Unit,
@@ -214,6 +220,7 @@ internal object ScenarioAuthor {
                 addIfSupported(executable, "--safe-mode")
                 addIfSupported(executable, "--strict-mcp-config")
                 addIfSupported(executable, "--no-session-persistence")
+                SettingSources.flagValue(settingSources)?.let { addIfSupported(executable, SettingSources.FLAG, it) }
             }
 
             ClaudeCli.run(

@@ -33,6 +33,25 @@ internal object AccountIdentity {
     }
 
     /**
+     * An answer together with the moment it was written down.
+     *
+     * The moment is not decoration. A drawer's own configuration file keeps the last account it was
+     * asked about for ever, including one that was signed out of a week ago, so a decision that DELETES
+     * something on the strength of this - the two drawers holding one account being merged into one row
+     * (see [AccountTwin]) - has to know whether the answer came before or after it asked. Reading is
+     * cheap and the file is rewritten by every question, so "after we asked" is a fact rather than a
+     * guess.
+     */
+    data class Probed(val who: Who, val at: Long)
+
+    /** The answer in this file, or null when there is no file to answer with. */
+    fun probe(file: File): Probed? {
+        val at = file.lastModified().takeIf { it > 0L } ?: return null
+
+        return Probed(read(file), at)
+    }
+
+    /**
      * The CLI's own configuration file.
      *
      * Note where it is: `~/.claude.json` is a SIBLING of `~/.claude`, not a file inside it - the plugin

@@ -143,6 +143,14 @@ internal object PromptImprover {
         draft: String,
         attachments: List<String>,
         rejected: List<String>,
+        /**
+         * Which of Claude Code's settings layers this run loads - see [SettingSources].
+         *
+         * It runs in the project's own directory, so a base URL checked into the repository decides where
+         * this request goes exactly as it decides a conversation's. Left out, the button would be the one
+         * thing in the panel still talking to a gateway the person has just told it to ignore.
+         */
+        settingSources: String = SettingSources.ALL,
         onError: (String) -> Unit,
         onResult: (String) -> Unit,
     ) {
@@ -179,6 +187,7 @@ internal object PromptImprover {
                 addIfSupported(executable, "--safe-mode")
                 addIfSupported(executable, "--strict-mcp-config")
                 addIfSupported(executable, "--no-session-persistence")
+                SettingSources.flagValue(settingSources)?.let { addIfSupported(executable, SettingSources.FLAG, it) }
             }
 
             ClaudeCli.run(

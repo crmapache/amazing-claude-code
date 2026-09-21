@@ -15,6 +15,7 @@ class ClaudeLaunchTest {
         forkFrom: String? = null,
         allowBypassSwitch: Boolean = true,
         briefing: String = ClaudeLaunch.PANEL_BRIEFING,
+        settingSources: String = SettingSources.ALL,
     ) = ClaudeLaunch.arguments(
         model = model,
         effort = effort,
@@ -23,6 +24,7 @@ class ClaudeLaunchTest {
         forkFrom = forkFrom,
         allowBypassSwitch = allowBypassSwitch,
         briefing = briefing,
+        settingSources = settingSources,
     )
 
     private fun briefingOf(args: List<String>): String = args[args.indexOf(ClaudeLaunch.BRIEFING_FLAG) + 1]
@@ -38,6 +40,23 @@ class ClaudeLaunchTest {
     @Test
     fun `an old CLI that does not know the flag gets a command line without it`() {
         assertFalse(ClaudeLaunch.ALLOW_BYPASS_FLAG in arguments(allowBypassSwitch = false))
+    }
+
+    // The one answer that must leave the command line exactly as it was before this setting existed: a
+    // machine where nobody has opened that screen launches the CLI byte for byte as it always did.
+    @Test
+    fun `loading every settings layer adds nothing to the command line`() {
+        assertFalse(SettingSources.FLAG in arguments(settingSources = SettingSources.ALL))
+        assertFalse(SettingSources.FLAG in arguments(settingSources = "nonsense the panel never sends"))
+    }
+
+    @Test
+    fun `a narrowed choice travels as the flag's own value`() {
+        val narrowed = arguments(settingSources = SettingSources.USER_ONLY)
+        assertEquals("user", narrowed[narrowed.indexOf(SettingSources.FLAG) + 1])
+
+        val shared = arguments(settingSources = SettingSources.WITHOUT_LOCAL)
+        assertEquals("user,project", shared[shared.indexOf(SettingSources.FLAG) + 1])
     }
 
     // The flag by itself allows nothing: the conversation comes up in the mode chosen in the panel.

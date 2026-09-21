@@ -17,6 +17,7 @@ import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
 import io.github.crmapache.amazingclaudecode.claude.EffortLevels
 import io.github.crmapache.amazingclaudecode.claude.InstalledPlugin
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
+import io.github.crmapache.amazingclaudecode.claude.SettingSources
 import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
 import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import io.github.crmapache.amazingclaudecode.remote.RemoteFeed
@@ -463,6 +464,7 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             effort = EffortLevels.normalize(ClaudePreferences.startingEffort()),
             skills = listed,
             readableDirectories = readable,
+            settingSources = SettingSources.of(project),
             onStarted = { handler -> drafts.started(id, handler) },
             onError = { message ->
                 if (drafts.finished(id)) return@write

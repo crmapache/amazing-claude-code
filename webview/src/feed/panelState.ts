@@ -438,6 +438,11 @@ export type PanelAction =
   | { kind: 'streamPrimed'; text: string; thinking: string }
   | { kind: 'status'; status: AgentStatus }
   | { kind: 'error'; message: string }
+  /**
+   * The repository's settings overrule the account this conversation came up on - see OutrankedItem.
+   * `names` are variable names, never values.
+   */
+  | { kind: 'outranked'; names: string[] }
   | { kind: 'init'; project: PanelProject }
   /**
    * A past conversation has just been handed to this tab - it holds that conversation from this moment,

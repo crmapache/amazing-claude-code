@@ -41,6 +41,18 @@ internal class ClaudeSessions(
     /** The turn started on its own, without a send from the panel; see ClaudeSession.onTurnStarted. */
     private val onTurnStarted: (sessionId: String) -> Unit = {},
     /**
+     * Which of Claude Code's settings layers this project loads - see SettingSources.
+     *
+     * A question rather than a value, and asked at every launch: the setting belongs to the project and
+     * is changed on a screen while conversations are already open (see ClaudeSession.settingSources).
+     */
+    private val settingSources: () -> String = { SettingSources.ALL },
+    /**
+     * The repository's settings outrank the account a conversation came up on, and these are the names
+     * doing it - see ClaudeSession.onAccountOutranked.
+     */
+    private val onAccountOutranked: (sessionId: String, names: List<String>) -> Unit = { _, _ -> },
+    /**
      * A conversation has just been born, and this is the effort it was born with.
      *
      * Said out loud because nobody else can say it later: the CLI never announces the effort and cannot
@@ -806,6 +818,25 @@ internal class ClaudeSessions(
     }
 
     /**
+     * Every live conversation of this project, raised again over its own transcript.
+     *
+     * For a change that a process can only read at launch and that belongs to the project rather than to
+     * one tab: which of Claude Code's settings layers are loaded (see SettingSources). Left to the next
+     * launch, the choice would look like a setting that does nothing - the tabs already open are exactly
+     * the ones somebody has just been watching talk to the wrong gateway.
+     *
+     * Through [restart], so a running turn is not cut short: the layers are read when a process starts,
+     * so the turn in flight could not have used the new choice however fast we were.
+     *
+     * Only the live ones, as in [relaunchOn]: a tab with no process reads the setting when it raises one,
+     * and touching it here would cost every client a birth announcement for a conversation that has not
+     * changed.
+     */
+    fun restartAll() {
+        sessions.filterValues { it.isRunning }.keys.toList().forEach { restart(it) }
+    }
+
+    /**
      * The restart a running turn was holding - see [restart].
      *
      * Applied at the end of a turn and wherever a conversation is about to live, exactly as a waiting
@@ -1117,7 +1148,9 @@ internal class ClaudeSessions(
             // PermissionDefaultMode).
             permissionMode = PermissionModes.resolve(
                 launch.mode.ifEmpty { ClaudePreferences.mode },
-                fallback = PermissionDefaultMode.of(workingDirectory),
+                // Out of the layers this project actually loads: told to skip the repository's settings,
+                // the panel must not take a default mode out of them either (see SettingSources).
+                fallback = PermissionDefaultMode.of(workingDirectory, settingSources()),
             ),
             onEvent = { line -> onEvent(sessionId, line) },
             onError = { message -> onError(sessionId, message) },
@@ -1130,6 +1163,8 @@ internal class ClaudeSessions(
             titleWanted = { titleWanted(sessionId) },
             onTurnEnded = { if (current()) onTurnEnded(sessionId) },
             onTurnStarted = { if (current()) onTurnStarted(sessionId) },
+            settingSources = settingSources,
+            onAccountOutranked = { names -> onAccountOutranked(sessionId, names) },
         ).also { slot[0] = it }
     }
 

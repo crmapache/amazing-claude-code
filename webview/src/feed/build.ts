@@ -262,6 +262,21 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
     case 'error':
       return addError(state, action.message)
 
+    /**
+     * Once per conversation, not once per launch. The process comes up again after a crash, a resume, an
+     * MCP reconnect or an idle sleep, and every one of those would otherwise lay down the same warning
+     * again - a feed slowly filling with a row saying the same thing about the same settings file.
+     *
+     * Same names is the test rather than "any such row": a second variable added to the repository's
+     * settings since is news, and the row that is already there does not say it.
+     */
+    case 'outranked': {
+      const said = action.names.join(',')
+      const already = state.items.some((item) => item.kind === 'outranked' && item.names.join(',') === said)
+
+      return already ? state : push(state, (id) => ({ id, kind: 'outranked', names: action.names }))
+    }
+
     case 'dismissError':
       return { ...state, items: state.items.filter((item) => item.id !== action.id) }
 

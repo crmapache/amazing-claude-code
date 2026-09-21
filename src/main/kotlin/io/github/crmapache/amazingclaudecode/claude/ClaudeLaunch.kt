@@ -230,6 +230,16 @@ internal object ClaudeLaunch {
         forkFrom: String?,
         allowBypassSwitch: Boolean,
         /**
+         * Which of Claude Code's settings layers this conversation is started with - empty for all of
+         * them, which is what the CLI does by itself and what the flag's absence means here (see
+         * [SettingSources]).
+         *
+         * Passed only when this CLI knows the flag, decided by the caller the same way the bypass switch
+         * above is: an unknown flag is not waved through, the process refuses to start, and the
+         * conversation dies with nothing on screen to explain it.
+         */
+        settingSources: String = SettingSources.ALL,
+        /**
          * What this particular conversation is told about the place it runs in.
          *
          * A parameter rather than the constant below, because not every conversation this plugin raises
@@ -266,6 +276,11 @@ internal object ClaudeLaunch {
         // Only if this CLI knows the flag at all: an unknown one it does not wave through, it refuses
         // to start.
         if (allowBypassSwitch) add(ALLOW_BYPASS_FLAG)
+
+        // The layers this project's settings come from, when they are not all of them. Nothing is added
+        // for the ordinary answer, so a machine that never opens that screen launches the CLI exactly as
+        // it did before the setting existed.
+        SettingSources.flagValue(settingSources)?.let { addAll(listOf(SettingSources.FLAG, it)) }
 
         when {
             // Continuing our own conversation after the process was restarted.

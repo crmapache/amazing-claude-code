@@ -84,6 +84,16 @@ internal class ClaudeAccounts {
         data object Unsettled : Landing
 
         data class Added(val account: AccountsState.Account) : Landing
+
+        /**
+         * The credential landed, and it belongs to the account the CLI's own sign-in already holds.
+         *
+         * Nothing is added: a second drawer on one subscription is two rows that bill the same place,
+         * tell the same figures and silence each other's honest ones (see [AccountTwin]). The drawer
+         * just minted goes away with it, which costs the person nothing - the account they signed into
+         * is on the screen already, and their credential for it was never touched.
+         */
+        data object Twin : Landing
     }
 
     private val state: AccountsState get() = AccountsState.getInstance()
@@ -376,10 +386,10 @@ internal class ClaudeAccounts {
      * are for. Read from disk rather than kept in the state, because the state is where a stale address
      * would live forever.
      */
-    fun probedIdentity(accountId: String): AccountIdentity.Who? {
+    fun probedIdentity(accountId: String): AccountIdentity.Probed? {
         val file = usageProbeFolder(accountId)?.resolve(".claude.json") ?: return null
 
-        return AccountIdentity.read(file).takeIf { it.isNamed }
+        return AccountIdentity.probe(file)?.takeIf { it.who.isNamed }
     }
 
     private fun refuse(reason: String): AccountStore.Environment {
@@ -597,6 +607,16 @@ internal class ClaudeAccounts {
 
         val id = AccountStore.idOf(who.email, who.orgUuid)
 
+        // Signing in as the account the CLI's own sign-in already holds is not an account to add: it is
+        // the row at the top of the screen, reached a second way. Refused rather than merged afterwards,
+        // because the merge has to delete a drawer and this one has nothing in it the person would miss
+        // - their credential for that account is the one they already had (see [AccountTwin]).
+        if (holdsTheDefault(id, pending, workingDirectory)) {
+            abandonSignIn(pending)
+            DiagnosticsLog.note(DiagnosticsLog.ACCOUNTS, "a sign-in named the account the CLI's own holds")
+            return Landing.Twin
+        }
+
         // Signing in again as an account already on the list replaces it rather than doubling it: the
         // new drawer is the live one. The old record goes, and with it the old drawer.
         val replaced = state.account(id)?.takeIf { it.storeDir != pending.storeDir }
@@ -633,6 +653,24 @@ internal class ClaudeAccounts {
         if (currentId.isEmpty()) currentId = id
 
         return Landing.Added(account)
+    }
+
+    /**
+     * Whether the account that has just signed in is the one the CLI's own drawer holds.
+     *
+     * Both halves are asked for here rather than assumed. The name comes from the ordinary sign-in's own
+     * usage question ([probedIdentity]), and it counts only if it was written down AFTER this sign-in
+     * began - the accounts screen asks every row while it is open, so a sign-in started from it has a
+     * fresh answer by the time it lands, and a person who wandered off gets no refusal rather than a
+     * wrong one. The liveness is the drawer itself: a file naming somebody the person signed out of
+     * months ago must not turn a new account away.
+     *
+     * A machine-wide fact asked with this project's directory, exactly as the isolation probe asks it.
+     */
+    private fun holdsTheDefault(id: String, pending: AccountsState.Account, workingDirectory: String?): Boolean {
+        if (AccountTwin.named(probedIdentity(""), answeredAfter = pending.addedAt) != id) return false
+
+        return ClaudeAuth.status(ClaudeExecutable.environment(), workingDirectory).loggedIn
     }
 
     /** A sign-in that never landed: the drawer and its provisional record go away together. */

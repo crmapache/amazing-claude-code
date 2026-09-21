@@ -717,6 +717,27 @@ export interface ModelStuckItem {
   running: string
 }
 
+/**
+ * The repository's settings overrule the account this conversation came up on.
+ *
+ * Claude Code applies a settings file's `env` over the environment it was handed, and the repository's
+ * layers outrank the person's own. So a checked-in `ANTHROPIC_API_KEY` or base URL wins over the account
+ * chosen in the panel - silently: the turn runs, answers and is billed, while the panel goes on drawing
+ * the account nobody is paying with. With a dead address it does not even answer, and a panel that is
+ * waiting looks exactly like a panel that is thinking.
+ *
+ * A row rather than an error, because nothing is broken: the setup may be exactly what its owner wanted.
+ * What they cannot do is fix what they cannot see - so the row names what is overriding the account and
+ * where the switch is (see SettingSources).
+ *
+ * [names] are variable names and never values: what stands in that block is a key.
+ */
+export interface OutrankedItem {
+  id: string
+  kind: 'outranked'
+  names: string[]
+}
+
 /** The conversation's process died on its own - a separate, unambiguous mark in the feed. */
 export interface CrashItem {
   id: string
@@ -805,6 +826,7 @@ export type FeedItem =
   | ModelSwitchItem
   | ModelStuckItem
   | CrashItem
+  | OutrankedItem
   | ErrorItem
   | LimitItem
 

@@ -25,6 +25,7 @@ import io.github.crmapache.amazingclaudecode.AccBundle
 import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.claude.SessionClient
+import io.github.crmapache.amazingclaudecode.claude.SettingSources
 import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
 import io.github.crmapache.amazingclaudecode.editor.OpenInEditor
 import io.github.crmapache.amazingclaudecode.editor.SelectionReference
@@ -316,6 +317,38 @@ internal class ClaudePanel(
 
             // Which key sends a message out of the input field - "enter" or "modEnter" (see sendKey.ts).
             "setSendKey" -> ClaudePreferences.sendKey = field("key")
+
+            /*
+             * Which of Claude Code's settings layers this project's conversations load (see
+             * SettingSources). The only setting of the panel that belongs to the project rather than to
+             * the machine: "this repository configures a gateway of its own" is a fact about the
+             * repository, and machine-wide it would silence every other checkout on the disk.
+             *
+             * The new-tab defaults go out right after, because they may have just changed: the permission
+             * mode a tab starts in is read out of these very layers, and a selector still naming the mode
+             * of a layer no longer loaded would be a selector telling the truth about nothing.
+             */
+            "setSettingSources" -> {
+                SettingSources.remember(project, field("value"))
+                // The layers are read when a process starts, so the conversations already open would
+                // otherwise go on talking to whatever the old choice loaded - a setting that visibly does
+                // nothing in the very tabs it was opened for. A running turn is not cut short by it (see
+                // ClaudeSessions.restartAll).
+                hub.conversations.restartAll()
+                // Off the interface thread: both of these read settings files off disk, and the defaults
+                // may have just changed - the permission mode a tab starts in comes out of those layers.
+                ApplicationManager.getApplication().executeOnPooledThread {
+                    hub.catalog.sendSettingSources()
+                    hub.catalog.sendNewTabDefaults()
+                }
+            }
+
+            // The same screen, asking for what only a process can answer - whether this CLI knows the
+            // flag at all - and for what the repository sets right now. Off the interface thread: the
+            // answer costs a `--help` (cached afterwards) and two files read off disk.
+            "askSettingSources" -> ApplicationManager.getApplication().executeOnPooledThread {
+                hub.catalog.sendSettingSources(withCapability = true)
+            }
 
             // The no-stress colour mode. Told to every hub rather than only to this panel: the setting
             // is the machine's, so a second window must not go on showing the ladder - and a project

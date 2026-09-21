@@ -37,6 +37,7 @@ export const es: Dict = {
       composerLayout: { title: 'DISPOSICIÓN DEL CAMPO', hint: 'dónde se coloca el campo de entrada' },
       pasteCollapse: { title: 'TEXTO PEGADO', hint: 'cuándo un pegado se pliega en una ficha' },
       sendKey: { title: 'ENVIAR UN MENSAJE', hint: 'qué tecla lo envía' },
+      settingSources: { title: 'ORIGEN DE LOS AJUSTES', hint: 'qué capas carga Claude Code' },
       improvePrompt: { title: 'MEJORAR EL PROMPT', hint: 'qué pide el botón de la estrella' },
       voice: { title: 'ENTRADA POR VOZ', hint: 'dictar en lugar de escribir' },
       voiceLanguage: { title: 'IDIOMA HABLADO', hint: 'qué escucha el dictado' },
@@ -77,6 +78,7 @@ export const es: Dict = {
       composerLayout: { label: 'Disposición del campo', sub: 'Dónde se coloca el campo de entrada' },
       pasteCollapse: { label: 'Texto pegado', sub: 'Cuándo un pegado se pliega en una ficha' },
       sendKey: { label: 'Enviar un mensaje', sub: 'Qué tecla lo envía' },
+      settingSources: { label: 'Origen de los ajustes', sub: 'Qué capas carga Claude Code aquí' },
       improvePrompt: { label: 'Mejorar el prompt', sub: 'Qué pide el botón de la estrella' },
       voice: { label: 'Entrada por voz', sub: 'Dicta con tu propia clave de Deepgram' },
       customModels: { label: 'Modelos propios', sub: 'Los que Claude Code no ofrece' },
@@ -586,6 +588,20 @@ export const es: Dict = {
     modEnterSub: 'Enter salta de línea',
   },
 
+  settingSources: {
+    note: 'Claude Code lee sus ajustes de varios archivos, y los del repositorio ganan a los tuyos: un bloque env subido al repositorio decide la dirección y la clave con las que sale cada petición. Dejar fuera una capa quita también sus permisos, sus hooks y sus servidores MCP. Los ajustes gestionados de tu organización se aplican igualmente.',
+    all: 'Todas',
+    allSub: 'Los tuyos, los del repositorio y su archivo local: lo que hace Claude Code por sí mismo',
+    withoutLocal: 'Sin el archivo local',
+    withoutLocalSub: 'Omite settings.local.json y mantiene los ajustes compartidos del repositorio',
+    userOnly: 'Solo los míos',
+    userOnlySub: 'Omite los dos archivos del repositorio: deciden tu sesión y tus ajustes',
+    repositorySets: 'Este repositorio define',
+    repositoryMeans: 'Mientras se carguen sus capas, esto gana a la cuenta y la dirección elegidas aquí.',
+    repositoryQuiet: 'Este repositorio no define nada que anule tu cuenta ni tu dirección.',
+    needsNewer: 'Este Claude Code no conoce la opción necesaria: se cargan todas las capas, elijas lo que elijas. Actualízalo.',
+  },
+
   improvePrompt: {
     note: 'El botón de la estrella, junto al clip, reescribe lo que hay en el campo de entrada. Esto es lo que pide. Sale como una ejecución propia de Claude Code - sin herramientas, sin archivos, sin conversación - y cuenta para tu uso como cualquier otro mensaje.',
     label: 'INSTRUCCIONES',
@@ -981,6 +997,12 @@ export const es: Dict = {
       textWithCode: (code) => `Claude Code se cerró de forma inesperada (código ${code}).`,
     },
 
+    outranked: {
+      label: 'AJUSTES',
+      text: 'Este repositorio anula la cuenta elegida aquí:',
+      open: 'Origen de los ajustes',
+    },
+
     limit: {
       label: 'LÍMITE',
       extraLabel: 'USO EXTRA',
@@ -1098,6 +1120,7 @@ export const es: Dict = {
       'no-store': 'No se ha podido crear una carpeta para la cuenta nueva.',
       'design-no-account': 'No se ha podido determinar la cuenta en uso, así que no se abrió nada.',
       'not-supported': 'Este Claude Code no puede separar dos sesiones, así que no se añadió nada.',
+      'already-here': 'Esa cuenta ya está aquí: es el inicio de sesión del propio Claude Code, así que no se añadió nada.',
       'logout-failed': 'No se pudo cerrar la sesión. Prueba en una terminal.',
       'already-running': 'Ya hay un inicio de sesión en marcha.',
       unknown: 'Eso no ha funcionado.',

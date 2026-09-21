@@ -2386,6 +2386,59 @@
   color: var(--acc-bad-text);
 }
 
+/* --- The repository outranks the chosen account ----------------------------- */
+
+/* Warm rather than red, and it is the whole point of the row: nothing is broken - the turn ran and was
+   answered - but it was paid for by somebody other than the account on screen. Laid out like .crash
+   above, with the button on its own end of the row. */
+.outranked {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 12px 0;
+  padding: 6px 9px;
+  border: 1px solid var(--acc-warn-32);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-warn-06);
+}
+
+.outrankedLabel {
+  font: 600 9px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-warn);
+}
+
+.outrankedText {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--acc-fg-dim);
+}
+
+/* The variable names inside the sentence: monospace, because they are identifiers somebody is about to
+   go and find in a file, and wrapped rather than cut - the one that matters may be the last. */
+.outrankedNames {
+  margin-left: 6px;
+  font: 11.5px var(--acc-mono);
+  color: var(--acc-warn);
+  overflow-wrap: anywhere;
+}
+
+.outrankedButton {
+  padding: 3px 8px;
+  border: 1px solid var(--acc-warn-32);
+  border-radius: var(--acc-r-sm);
+  background: transparent;
+  font-size: 11px;
+  color: var(--acc-warn);
+  cursor: pointer;
+}
+
+.outrankedButton:hover {
+  background: var(--acc-warn-12);
+}
+
 /* --- The working indicator ------------------------------------------------- */
 
 .streaming {

@@ -28,6 +28,8 @@ let lastShellRequest: { id: string; command: string } | undefined
  */
 let streamSignature = ''
 let modelPicks = 0
+/** Which settings layers this "project" loads - the harness plays the IDE's own store for that setting. */
+let settingSourcesChoice = ''
 
 /** A pick ("fable", "opus[1m]") as the stream would sign it - enough for the harness, not for the IDE. */
 const signatureOf = (pick: string): string => {
@@ -1077,6 +1079,26 @@ const listenToPanel = () => {
     // would be invisible here.
     if (message?.type === 'setCustomModels') {
       window.__accReceive?.({ type: 'customModels', models: message.models })
+    }
+
+    /*
+     * The settings-sources screen, answered the way the IDE answers it (see ProjectCatalog): the choice
+     * comes back, and with it what the repository sets and whether the CLI knows the flag.
+     *
+     * A repository that DOES override the account is what the harness shows, because that is the state
+     * the screen was built for and the one nobody can reach by hand here - a panel with nothing to warn
+     * about is the easy half. The flag is known: an out-of-date CLI has its own line, reachable by
+     * flipping this to false.
+     */
+    if (message?.type === 'setSettingSources' || message?.type === 'askSettingSources') {
+      const value = message.type === 'setSettingSources' ? message.value : settingSourcesChoice
+      settingSourcesChoice = value
+      window.__accReceive?.({
+        type: 'settingSources',
+        value,
+        repository: ['ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL'],
+        supported: true,
+      })
     }
 
     if (message) answerFeedback(message)

@@ -40,6 +40,7 @@ export const de: Dict = {
       composerLayout: { title: 'LAYOUT DES EINGABEFELDS', hint: 'wo das Eingabefeld sitzt' },
       pasteCollapse: { title: 'EINGEFÜGTER TEXT', hint: 'wann eine Einfügung zum Chip wird' },
       sendKey: { title: 'NACHRICHT SENDEN', hint: 'welche Taste sendet' },
+      settingSources: { title: 'HERKUNFT DER EINSTELLUNGEN', hint: 'welche Ebenen Claude Code lädt' },
       improvePrompt: { title: 'PROMPT VERBESSERN', hint: 'worum der Stern-Button bittet' },
       voice: { title: 'SPRACHEINGABE', hint: 'diktieren statt tippen' },
       voiceLanguage: { title: 'GESPROCHENE SPRACHE', hint: 'worauf das Diktat hört' },
@@ -80,6 +81,7 @@ export const de: Dict = {
       composerLayout: { label: 'Layout des Eingabefelds', sub: 'Wo das Eingabefeld sitzt' },
       pasteCollapse: { label: 'Eingefügter Text', sub: 'Wann eine Einfügung zum Chip wird' },
       sendKey: { label: 'Nachricht senden', sub: 'Welche Taste sendet' },
+      settingSources: { label: 'Herkunft der Einstellungen', sub: 'Welche Ebenen Claude Code hier lädt' },
       improvePrompt: { label: 'Prompt verbessern', sub: 'Worum der Stern-Button bittet' },
       voice: { label: 'Spracheingabe', sub: 'Diktieren mit deinem eigenen Deepgram-Schlüssel' },
       customModels: { label: 'Eigene Modelle', sub: 'Die, die Claude Code nicht anbietet' },
@@ -589,6 +591,20 @@ export const de: Dict = {
     modEnterSub: 'Enter bricht die Zeile um',
   },
 
+  settingSources: {
+    note: 'Claude Code liest seine Einstellungen aus mehreren Dateien, und die des Repositorys schlagen deine: ein eingecheckter env-Block bestimmt Adresse und Schlüssel, mit denen jede Anfrage hinausgeht. Wird eine Ebene weggelassen, verschwinden auch ihre Berechtigungen, Hooks und MCP-Server. Verwaltete Einstellungen deiner Organisation gelten in jedem Fall.',
+    all: 'Alle',
+    allSub: 'Deine, die des Repositorys und dessen lokale Datei - was Claude Code von selbst tut',
+    withoutLocal: 'Ohne die lokale Datei',
+    withoutLocalSub: 'Überspringt settings.local.json und behält die geteilten Einstellungen des Repositorys',
+    userOnly: 'Nur meine eigenen',
+    userOnlySub: 'Überspringt beide Dateien im Repository - es zählen deine Anmeldung und deine Einstellungen',
+    repositorySets: 'Dieses Repository setzt',
+    repositoryMeans: 'Solange seine Ebenen geladen werden, schlägt das den hier gewählten Account und die Adresse.',
+    repositoryQuiet: 'Dieses Repository setzt nichts, was deinen Account oder deine Adresse überschreiben würde.',
+    needsNewer: 'Dieses Claude Code kennt die nötige Option nicht - es werden alle Ebenen geladen, egal was hier gewählt ist. Aktualisiere es.',
+  },
+
   improvePrompt: {
     note: 'Der Stern-Button neben der Büroklammer schreibt um, was im Eingabefeld steht. Darum bittet er. Das geht als eigener Lauf von Claude Code hinaus - ohne Werkzeuge, ohne Dateien, ohne Gespräch - und zählt wie jede andere Nachricht auf dein Kontingent.',
     label: 'ANWEISUNGEN',
@@ -984,6 +1000,12 @@ export const de: Dict = {
       textWithCode: (code) => `Claude Code hat sich unerwartet beendet (Exit-Code ${code}).`,
     },
 
+    outranked: {
+      label: 'EINSTELLUNGEN',
+      text: 'Dieses Repository überschreibt den hier gewählten Account:',
+      open: 'Herkunft der Einstellungen',
+    },
+
     limit: {
       label: 'LIMIT',
       extraLabel: 'ZUSATZNUTZUNG',
@@ -1102,6 +1124,7 @@ export const de: Dict = {
       'no-store': 'Für das neue Konto ließ sich kein Ordner anlegen.',
       'design-no-account': 'Das Konto, mit dem du gerade arbeitest, ließ sich nicht bestimmen - es wurde nichts geöffnet.',
       'not-supported': 'Dieses Claude Code kann zwei Anmeldungen nicht trennen, daher wurde nichts hinzugefügt.',
+      'already-here': 'Dieses Konto ist schon da: Es ist die Anmeldung von Claude Code selbst, daher wurde nichts hinzugefügt.',
       'logout-failed': 'Abmelden hat nicht geklappt. Versuchen Sie es im Terminal.',
       'already-running': 'Eine Anmeldung läuft bereits.',
       unknown: 'Das hat nicht geklappt.',

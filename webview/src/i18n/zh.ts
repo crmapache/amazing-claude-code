@@ -37,6 +37,7 @@ export const zh: Dict = {
       composerLayout: { title: '输入框布局', hint: '输入框放在哪里' },
       pasteCollapse: { title: '粘贴的文本', hint: '何时把粘贴折叠成小卡片' },
       sendKey: { title: '发送消息', hint: '用哪个键发送' },
+      settingSources: { title: '设置的来源', hint: 'Claude Code 读取哪些层' },
       improvePrompt: { title: '优化提示词', hint: '星标按钮按什么要求改写' },
       voice: { title: '语音输入', hint: '用说的，不用打字' },
       voiceLanguage: { title: '口述语言', hint: '听写要听哪种语言' },
@@ -77,6 +78,7 @@ export const zh: Dict = {
       composerLayout: { label: '输入框布局', sub: '输入框放在哪里' },
       pasteCollapse: { label: '粘贴的文本', sub: '何时把粘贴折叠成小卡片' },
       sendKey: { label: '发送消息', sub: '用哪个键发送' },
+      settingSources: { label: '设置来源', sub: 'Claude Code 在这里读取哪些层' },
       improvePrompt: { label: '优化提示词', sub: '星标按钮按什么要求改写' },
       voice: { label: '语音输入', sub: '用你自己的 Deepgram 密钥听写' },
       customModels: { label: '自定义模型', sub: 'Claude Code 没有列出的那些' },
@@ -582,6 +584,20 @@ export const zh: Dict = {
     modEnterSub: 'Enter 换行',
   },
 
+  settingSources: {
+    note: 'Claude Code 从多个文件读取设置，仓库里的文件优先于你自己的：提交进仓库的 env 块决定每个请求使用的地址和密钥。关掉某一层，它的权限、钩子和 MCP 服务器也会一起关掉。组织的托管设置始终生效。',
+    all: '全部',
+    allSub: '你的、仓库的以及它的本地文件 - Claude Code 默认的做法',
+    withoutLocal: '不含本地文件',
+    withoutLocalSub: '跳过 settings.local.json，保留仓库的共享设置',
+    userOnly: '仅我自己的',
+    userOnlySub: '跳过仓库里的两个文件 - 由你的登录和你的设置决定',
+    repositorySets: '此仓库设置了',
+    repositoryMeans: '只要读取它的层，这些就会压过这里选择的账号和地址。',
+    repositoryQuiet: '此仓库没有设置任何会覆盖你的账号或地址的内容。',
+    needsNewer: '这个 Claude Code 不认识所需的参数 - 无论这里选什么都会读取全部层。请更新。',
+  },
+
   improvePrompt: {
     note: '回形针旁边的星标按钮会改写输入框里的内容，这就是它提出的要求。它会作为一次独立的 Claude Code 运行发出 - 不带工具、不读文件、不接入对话 - 并和普通消息一样计入你的用量。',
     label: '改写要求',
@@ -974,6 +990,12 @@ export const zh: Dict = {
       textWithCode: (code) => `Claude Code 意外退出了（退出码 ${code}）。`,
     },
 
+    outranked: {
+      label: '设置',
+      text: '此仓库覆盖了这里选择的账号：',
+      open: '设置来源',
+    },
+
     limit: {
       label: '额度',
       extraLabel: '额外计费',
@@ -1091,6 +1113,7 @@ export const zh: Dict = {
       'no-store': '没能为新账号建好文件夹。',
       'design-no-account': '认不出你正在用的是哪个账号，所以什么也没打开。',
       'not-supported': '此 Claude Code 无法区分两个登录，因此未添加任何账号。',
+      'already-here': '该账号已经在这里了：它就是 Claude Code 自己的登录，因此未添加任何账号。',
       'logout-failed': '退出失败。请在终端中尝试。',
       'already-running': '已经有一个登录在进行中了。',
       unknown: '这次没成功。',
