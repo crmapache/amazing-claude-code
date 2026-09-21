@@ -9,6 +9,15 @@ commits.
 
 ## [Unreleased]
 
+## [0.12.17] - 2026-09-21
+
+- Added: "Settings sources" under Settings decides which of Claude Code's own layers load in this project. Claude Code reads its settings from several files, and a repository's own beat yours: an env block committed to it sets the address and the key every request goes out with. Choose everything the way Claude Code does it by itself, everything but the repository's local file, or only your own settings. Leaving a layer out drops its permissions, hooks and MCP servers with it, and managed settings from your organization apply either way. The choice belongs to the project, not to the machine, and it takes hold at once: the conversations already open raise their processes again, without cutting a turn that is running.
+- Added: the same screen names what this repository sets right now - the environment variables it commits and whether it hands the key over through a helper. Names only, never values. You come here when a conversation answers from the wrong place or says nothing at all, and that line answers whether the repository is the reason.
+- Fixed: a repository with a key or an address committed to its settings silently won over the account picked on the accounts screen. The turn went out, was answered, and was paid for by a subscription nobody had chosen here, while the panel went on drawing the chosen account's name, its rings and its limits. With an address that leads nowhere, the turn simply hangs with no answer and no error, which looks exactly like thinking. The feed now says it in one line, once per conversation, with the way to the settings sources beside it. It is said only when an account was picked by name - on the ordinary sign-in there is nothing to override.
+- Fixed: one and the same account could stand on the accounts screen twice, once as Claude Code's own sign-in and once as an account added here. Two cards of one subscription with all but identical figures, and which of the two identical rows you pressed decided nothing except confusion; on top of that, the guard against figures borrowed from a neighbour threw away honest readings, because two stores of one subscription repeat each other truthfully and always. Signing in to an account that is already the one Claude Code itself holds is now refused and said so; a pair already standing on the screen merges into one row by itself, and the name you gave moves onto the row that stays.
+- Fixed: the feed reported "Claude Code stopped unexpectedly (exit code 137)" over a restart that went exactly to plan - after adding an MCP server, and now after changing where settings come from. Whether a process was killed on purpose was asked of the conversation instead of the process itself, and by the time the news of the old one's death arrived the next process was already up.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.12.16] - 2026-09-20
 
 - Fixed: the feed announced "Opus 1M picked, but the answers keep coming on Opus 5 1M" - one and the same model named twice - and left the MODEL button marked as though the choice had not worked. A choice is spelled one way and the signature under an answer another, and the panel read that pair as two different models, so picking the model already at work raised a wait that nothing could ever answer: whatever came next was that model again.
@@ -725,7 +734,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.16...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.17...HEAD
+[0.12.17]: https://github.com/crmapache/amazing-claude-code/compare/0.12.16...0.12.17
 [0.12.16]: https://github.com/crmapache/amazing-claude-code/compare/0.12.15...0.12.16
 [0.12.15]: https://github.com/crmapache/amazing-claude-code/compare/0.12.14...0.12.15
 [0.12.14]: https://github.com/crmapache/amazing-claude-code/compare/0.12.13...0.12.14
