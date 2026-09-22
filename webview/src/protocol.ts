@@ -2743,6 +2743,16 @@ export interface AgentUserEvent {
    */
   isMeta?: boolean
   timestamp?: string
+  /**
+   * What the tool handed back, in the shape it handed it back - the transcript keeps it beside the text
+   * form of the same result, and only a saved conversation has it.
+   *
+   * The panel reads one thing out of it: the options a question was closed with (see addReplayedAnswers
+   * in build.ts). The text form of that same result is an English sentence the CLI composes ("Your
+   * questions have been answered: …"), and reading the pairs back out of a sentence would be a parser
+   * for wording nobody promised to keep.
+   */
+  toolUseResult?: { answers?: Record<string, string> }
 }
 
 export interface AgentUsage {
@@ -2767,6 +2777,17 @@ export interface AgentResultEvent {
   subtype: string
   result?: string
   is_error?: boolean
+  /**
+   * The response code the model's own request came back with, when the turn died on one (`terminal_reason`
+   * is then `api_error`). Absent from every other ending.
+   *
+   * The one machine mark this kind of refusal has. Its word-sized twin beside the answer
+   * (AgentAssistantEvent.error) is no help here: measured against an endpoint refusing with 400, the CLI
+   * calls it `unknown` - the vocabulary of `authentication_failed` and `rate_limit` has no entry for a
+   * request the server would not take at all (2.1.273). See "A request the server would not take" in
+   * .claude/rules/setting-sources.md.
+   */
+  api_error_status?: number | null
   duration_ms?: number
   num_turns?: number
   total_cost_usd?: number

@@ -998,6 +998,10 @@ export const ja: Dict = {
       open: '設定の読み込み元',
     },
 
+    sampling: {
+      note: '最新のモデルはサンプリングのパラメータを受け付けなくなりましたが、今回のリクエストには入っていました。Claude Code 自身は付けないので、リクエストの経路にあるもの - 多くは設定でアドレスを指定したゲートウェイやプロキシ - が付けています。',
+    },
+
     limit: {
       label: '上限',
       extraLabel: '追加利用',
@@ -1017,12 +1021,14 @@ export const ja: Dict = {
     ask: {
       label: 'CLAUDE からの質問',
       blocks: (n) => `${n} 件の質問 · ここで止まっています`,
+      leftOver: (n) => `${n} 件の質問 · 答えないままです`,
       pickAny: '複数選べます',
       other: 'その他',
       ownAnswer: '自分で答えを書く…',
       send: '回答を送る',
       pickToContinue: '選ぶと続きます',
       note: '聞いたところからそのまま続きます',
+      leftOverNote: 'そのターンはとっくに終わっています - 答えは新しいメッセージとして送られます',
       expand: '質問を開く',
       collapse: '質問を閉じる',
       dismiss: '質問を片づける',

@@ -42,6 +42,7 @@ paths:
 - `improveSources`, `restoreDraft`, `registerApply` - prompt-improver
 - `feedPlaces`, `key={active}`, `forgetFeedFocus` - reading-place
 - `hiddenTaskIds` - subagents
+- `sendAnswers`, `dismissAsk` - permissions
 - `latestTodo` (список задач из реплея не всплывает) - history
 - выбор из истории, какую вкладку занять - history
 - `branchFrom` / форк и шкала контекста форка - fork-tabs
@@ -66,7 +67,8 @@ paths:
 - `mcpList` с `ifRunning` - idle-sleep; `cursor` в `replayFinished`, `historyPage` - history
 - `effort`, `setCustomModels`, `customModels` - models; `setSendKey` - composer-field; `queue` - remote-access
 - `models` у `usage`, `ModelUsageWindow`, `hiddenIndicators`, `setHiddenIndicators`, факт `indicators` - indicators
-- `settingSources` в `init`, `setSettingSources`, `askSettingSources`, `accountOutranked` - setting-sources
+- `toolUseResult` у `AgentUserEvent`, `text` у `askAnswer` - permissions
+- `settingSources` в `init`, `setSettingSources`, `askSettingSources`, `accountOutranked`, `api_error_status` - setting-sources
 
 **`webview/src/feed/build.ts`** (редьюсер ленты):
 - `TodoWrite`/`TaskCreate`/`TaskUpdate`, `tasksCarried`, `pendingTasks` - task-list
@@ -75,15 +77,18 @@ paths:
 - `taskPrompt`, ветка `Workflow`, `applyTaskProgress`, `ASYNC_AGENT_LAUNCHED` - subagents
 - `modelContextWindow`, `case 'context'` - fork-tabs
 - `noteStreamModel`, `ownSwap`/`ownSwapDue`, `stuckPick` - models
+- `revivedAsk`, `addReplayedAnswers`, отметка `answered` у вопроса в `applyToolResults` - permissions
 - `isEditTool` - tool-cards; `realModel` - stats; `uuid` у `UserItem`/`TextItem` - search
-- `case 'outranked'` и `OutrankedItem` - setting-sources
+- `case 'outranked'` и `OutrankedItem`, `overSampling` и метки `addError` - setting-sources
 - в состояние кладутся признаки, а не слова - i18n
 
 **`webview/src/feed/types.ts`** и **`webview/src/feed/panelState.ts`**:
-- `DraftEdit` - prompt-improver; `ErrorItem.signIn` - expired-sign-in; `ModelStuckItem` - models
+- `DraftEdit` - prompt-improver; `ErrorItem.signIn` - expired-sign-in; `ErrorItem.sampling` - setting-sources;
+  `ModelStuckItem` - models
 - `ClosedReason`, `ToolMeta`, `CompactOutcome`, `DetailNote`, `PermItem.mode`, `LimitItem.window`,
   `MetaItem.stats` («Stopped by you» не переводится) - i18n; `movedAccount` - accounts
 - `CompactItem.startedAt`, `stintStartedAt`, `pausedMs` - turn-lifecycle; `TodoItem.replayed` - history
+- `AskItem.historic`/`answered`/`reopened`, `PlanItem.historic` - permissions
 - `PanelState.tasks`, `pendingTasks`, `tasksCarried` - task-list; `pins` - pins
 - `earlierPages`, `oldestEventUuid`, `reachedStart` - history; `ownSwapDue`, `stuckPick` - models
 

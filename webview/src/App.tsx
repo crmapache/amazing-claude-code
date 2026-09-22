@@ -3233,6 +3233,13 @@ export const App = () => {
    * The answer to the agent's question returns through the very tool call that asked it: the turn stands
    * precisely on it and carries on from the same place rather than starting anew with the next message.
    *
+   * Unless there is no turn left to stand on it - a conversation abandoned on a question and opened
+   * again from the history (see revivedAsk in build.ts). Then the very same answer travels as an
+   * ordinary message, which is what the shell does with it when nobody is waiting (see answerAsk in
+   * SessionPermissions), and the feed has to be told that a turn is beginning rather than being written
+   * into: marked as steering, the panel showed neither the spinner nor the counter over an agent that
+   * was, by then, genuinely working.
+   *
    * Into the feed the answer still goes as the person's own line: otherwise the conversation would keep a
    * question with not a trace of an answer to it.
    */
@@ -3274,11 +3281,11 @@ export const App = () => {
             { kind: 'text', value: `\n${entry.answer}` },
           ]),
           quotes: [],
-          steering: true,
+          steering: running,
         },
       })
     },
-    [cards, active, forgetAskDraft],
+    [cards, active, forgetAskDraft, running],
   )
 
   const decidePermission = useCallback(

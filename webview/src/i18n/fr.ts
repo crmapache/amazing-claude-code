@@ -1007,6 +1007,10 @@ export const fr: Dict = {
       open: 'Origine des réglages',
     },
 
+    sampling: {
+      note: "Les modèles les plus récents n'acceptent plus de paramètre d'échantillonnage, et cette requête en contenait un. Claude Code n'en ajoute aucun : il vient donc de ce par quoi passent les requêtes - le plus souvent une passerelle ou un proxy défini par une adresse dans les réglages.",
+    },
+
     limit: {
       label: 'LIMITE',
       extraLabel: 'USAGE SUPPLÉMENTAIRE',
@@ -1027,12 +1031,14 @@ export const fr: Dict = {
     ask: {
       label: 'CLAUDE DEMANDE',
       blocks: (n) => `${n} ${n === 1 ? 'question' : 'questions'} · bloque l’exécution`,
+      leftOver: (n) => `${n} ${n === 1 ? 'question' : 'questions'} · sans réponse`,
       pickAny: 'plusieurs possibles',
       other: 'Autre',
       ownAnswer: 'écrivez votre propre réponse…',
       send: 'Envoyer les réponses',
       pickToContinue: 'Choisis pour continuer',
       note: 'l’exécution reprend exactement là où elle a demandé',
+      leftOverNote: 'cette exécution est terminée depuis longtemps - ta réponse partira comme un nouveau message',
       expand: 'Déplier la question',
       collapse: 'Replier la question',
       dismiss: 'Fermer la question',

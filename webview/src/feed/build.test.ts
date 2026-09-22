@@ -353,6 +353,110 @@ describe('errors in the feed', () => {
       expect(signInRows(state)).toBe(0)
     })
   })
+
+  /**
+   * A request the server would not take at all. The panel laid it down as the bare red row the API had
+   * written - and was reported for it as a bug of its own, which is the one reading of those words that
+   * cannot be right: a turn of Claude Code's carries no sampling parameter, so one that arrived with it
+   * was changed along the way (see ErrorItem.sampling).
+   */
+  describe('a request refused over a sampling parameter', () => {
+    const said = 'API Error: 400 temperature is deprecated for this model.'
+
+    /**
+     * How the CLI closes such a turn - measured against an endpoint refusing with 400 on 2.1.273. The
+     * response code is the whole of the machine part: the word beside the answer says `unknown` here.
+     */
+    const refusedResult = (message: string, status: number | null = 400): AgentEvent => ({
+      type: 'result',
+      subtype: 'success',
+      is_error: true,
+      result: message,
+      api_error_status: status,
+      duration_ms: 140,
+    })
+
+    const samplingRows = (state: PanelState): number =>
+      state.items.filter((item) => item.kind === 'error' && item.sampling).length
+
+    it('is marked, so the row can say where that parameter came from', () => {
+      const state = reducePanel(initialPanelState, { kind: 'agent', event: refusedResult(said) })
+
+      expect(errorTexts(state)).toEqual([said])
+      expect(samplingRows(state)).toBe(1)
+    })
+
+    /** A gateway answers in its own words and its own format - the CLI passes the whole body through. */
+    it('is read through a gateway sentence wrapped around the refusal', () => {
+      const relayed =
+        'API Error: 400 {"error":"Error communicating with Anthropic model \'claude-fable-5\': ' +
+        'Status code: 400, body: {\\"type\\":\\"invalid_request_error\\",\\"message\\":\\"temperature is deprecated for this model.\\"}"}'
+      const state = reducePanel(initialPanelState, { kind: 'agent', event: refusedResult(relayed) })
+
+      expect(samplingRows(state)).toBe(1)
+    })
+
+    it('is read for the other two parameters by the same names', () => {
+      const state = reducePanel(initialPanelState, {
+        kind: 'agent',
+        event: refusedResult('API Error: 400 top_p is not supported for this model.'),
+      })
+
+      expect(samplingRows(state)).toBe(1)
+    })
+
+    /**
+     * Both halves are needed. The code alone would put the sentence under every malformed request there
+     * is, and the words alone under an outage that happens to quote them back.
+     */
+    it('says nothing under a refusal of another kind', () => {
+      const overloaded = reducePanel(initialPanelState, {
+        kind: 'agent',
+        event: refusedResult('API Error: 529 Overloaded - temperature has nothing to do with it.', 529),
+      })
+      const malformed = reducePanel(initialPanelState, {
+        kind: 'agent',
+        event: refusedResult('API Error: 400 messages: at least one message is required.'),
+      })
+
+      expect(samplingRows(overloaded)).toBe(0)
+      expect(samplingRows(malformed)).toBe(0)
+      expect(errorTexts(malformed)).toHaveLength(1)
+    })
+
+    /** A turn that ended well is not read at all, whatever its text happens to mention. */
+    it('says nothing when the turn did not fail', () => {
+      const state = reducePanel(initialPanelState, {
+        kind: 'agent',
+        event: { type: 'result', subtype: 'success', result: 'Lowered the temperature in the config.' },
+      })
+
+      expect(samplingRows(state)).toBe(0)
+    })
+
+    /** A record of a past conversation explains nothing about the route the machine uses today. */
+    it('says nothing in a replay', () => {
+      const state = reducePanel(
+        initialPanelState,
+        { kind: 'agent', event: refusedResult(said), replay: true },
+        1_700_000_000_000,
+      )
+
+      expect(errorTexts(state)).toEqual([said])
+      expect(samplingRows(state)).toBe(0)
+    })
+
+    /** The same words may already be standing from another road - the mark goes onto that row. */
+    it('marks a row the same words had already made', () => {
+      let state = reducePanel(initialPanelState, { kind: 'error', message: said })
+      expect(samplingRows(state)).toBe(0)
+
+      state = reducePanel(state, { kind: 'agent', event: refusedResult(said) })
+
+      expect(errorTexts(state)).toEqual([said])
+      expect(samplingRows(state)).toBe(1)
+    })
+  })
 })
 
 
@@ -3375,6 +3479,155 @@ describe('the end of a past conversation replay', () => {
     expect(plan?.historic).toBe(true)
     expect(play([toolUseEvent('plan-1', 'ExitPlanMode', { plan: '- A step' })])
       .items.find((item): item is PlanItem => item.kind === 'plan')?.historic).toBeFalsy()
+  })
+
+  /**
+   * Unless it is the question the conversation was abandoned on: nobody ever answered that one, and it was
+   * the one thing a reopened conversation used to lose outright - see revivedAsk.
+   */
+  describe('the question a conversation was abandoned on', () => {
+    const askEvent = (id: string): AgentEvent =>
+      toolUseEvent(id, 'AskUserQuestion', {
+        questions: [{ question: 'Which option shall I make?', header: 'Option', options: [{ label: 'The first' }] }],
+      })
+
+    /** The record a question leaves when it was answered - the answers stand apart from the sentence. */
+    const answeredEvent = (id: string, answers: Record<string, string>): AgentEvent =>
+      ({
+        type: 'user',
+        message: {
+          content: [{ type: 'tool_result', tool_use_id: id, content: 'Your questions have been answered.' }],
+        },
+        toolUseResult: { answers },
+        timestamp: '2026-08-17T09:41:07.000Z',
+      }) as AgentEvent
+
+    const saidEvent = (text: string): AgentEvent =>
+      ({ type: 'user', message: { content: [{ type: 'text', text }] } }) as AgentEvent
+
+    const finish = (state: PanelState) => reducePanel(state, { kind: 'replayFinished' }, 1_700_000_060_000)
+
+    const askOf = (state: PanelState) => state.items.find((item): item is AskItem => item.kind === 'ask')
+
+    it('comes back as a live card, so the person can see what was asked and answer it', () => {
+      const state = finish(replay([textEvent('Two ways to do this.'), askEvent('ask-1')]))
+
+      expect(askOf(state)?.historic).toBe(false)
+    })
+
+    it('stays a record when the call did come back - that question was dealt with', () => {
+      const state = finish(replay([askEvent('ask-1'), answeredEvent('ask-1', { 'Which option shall I make?': 'The first' })]))
+
+      expect(askOf(state)?.answered).toBe(true)
+      expect(askOf(state)?.historic).toBe(true)
+    })
+
+    /** A question closed with the cross leaves a refusal rather than answers, and it is closed all the same. */
+    it('stays a record when the call came back with nothing to show', () => {
+      const state = finish(replay([askEvent('ask-1'), toolResultEvent('ask-1', 'The user chose not to answer')]))
+
+      expect(askOf(state)?.historic).toBe(true)
+    })
+
+    it('stays a record when the talk moved on without an answer', () => {
+      const state = finish(replay([askEvent('ask-1'), saidEvent('Never mind, do the other thing')]))
+
+      expect(askOf(state)?.historic).toBe(true)
+    })
+
+    it('stays a record when it was a subagent asking - its agent ended with the turn', () => {
+      const state = finish(replay([taskStartedEvent('a90aa', 'toolu-1', 'Explore'), subagentAskEvent('toolu-1')]))
+
+      expect(askOf(state)?.historic).toBe(true)
+    })
+
+    /** A page is cut wherever it is cut, and the answer to its last question is already on screen below. */
+    it('stays a record at the top of a page of older messages', () => {
+      const state = reducePanel(
+        initialPanelState,
+        { kind: 'historyPage', entries: [textEvent('Two ways to do this.'), askEvent('ask-1')], cursor: 'u5' },
+        1_700_000_060_000,
+      )
+
+      expect(askOf(state)?.historic).toBe(true)
+    })
+
+    it('stays a record when the person got ahead of the replay and a turn is already running', () => {
+      const state = finish({ ...replay([askEvent('ask-1')]), turnStartedAt: 1_700_000_050_000 })
+
+      expect(askOf(state)?.historic).toBe(true)
+    })
+  })
+
+  /**
+   * And the answer given to a question is a line of the person's own - the panel writes it at the press of
+   * the button, and a replay has to write the same one: the transcript keeps no message of the kind.
+   */
+  describe('the answer to a question in a replay', () => {
+    const users = (state: PanelState) => state.items.filter((item): item is UserItem => item.kind === 'user')
+
+    const askEvent = toolUseEvent('ask-1', 'AskUserQuestion', {
+      questions: [{ question: 'Which option shall I make?', header: 'Option', options: [{ label: 'The first' }] }],
+    })
+
+    const answeredEvent = (id: string, answers: Record<string, string>): AgentEvent =>
+      ({
+        type: 'user',
+        message: {
+          content: [{ type: 'tool_result', tool_use_id: id, content: 'Your questions have been answered.' }],
+        },
+        toolUseResult: { answers },
+        timestamp: '2026-08-17T09:41:07.000Z',
+        uuid: 'u7',
+      }) as AgentEvent
+
+    it('stands in the feed as the question and the answer to it', () => {
+      const state = replay([askEvent, answeredEvent('ask-1', { 'Which option shall I make?': 'The first' })])
+
+      expect(users(state)).toHaveLength(1)
+      // The question dimmed as the echo it is, the answer beside it as the person's own words.
+      expect(users(state)[0]?.tokens).toEqual([
+        { kind: 'text', value: 'Which option shall I make?', echo: true },
+        { kind: 'text', value: '\nThe first' },
+      ])
+      // Named by the record, so a search hit on it lands on this very row.
+      expect(users(state)[0]?.uuid).toBe('u7')
+    })
+
+    it('keeps every question of a call that asked several at once', () => {
+      const state = replay([
+        toolUseEvent('ask-2', 'AskUserQuestion', {
+          questions: [
+            { question: 'Which option?', header: 'Option', options: [{ label: 'The first' }] },
+            { question: 'And the branch?', header: 'Branch', options: [{ label: 'main' }] },
+          ],
+        }),
+        answeredEvent('ask-2', { 'Which option?': 'The first', 'And the branch?': 'main' }),
+      ])
+
+      expect(users(state)[0]?.tokens).toEqual([
+        { kind: 'text', value: 'Which option?', echo: true },
+        { kind: 'text', value: '\nThe first' },
+        { kind: 'text', value: '\n\nAnd the branch?', echo: true },
+        { kind: 'text', value: '\nmain' },
+      ])
+    })
+
+    it('writes nothing for a result that closed something other than a question', () => {
+      const state = replay([
+        toolUseEvent('toolu-1', 'Bash', { command: 'pnpm test' }),
+        { ...(toolResultEvent('toolu-1', 'ok') as AgentEvent), toolUseResult: { answers: { a: 'b' } } } as AgentEvent,
+      ])
+
+      expect(users(state)).toHaveLength(0)
+    })
+
+    /** A live conversation puts that line there itself, and a second one out of the stream would double it. */
+    it('writes nothing in a live conversation', () => {
+      const state = play([askEvent, answeredEvent('ask-1', { 'Which option shall I make?': 'The first' })])
+
+      expect(users(state)).toHaveLength(0)
+    })
   })
 
   it('does not rewrite the already closed cards of a replay', () => {

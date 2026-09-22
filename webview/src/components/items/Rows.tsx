@@ -468,6 +468,7 @@ export const ErrorRow = ({
   onDismiss,
   onOpenLink,
   signIn,
+  onSettingSources,
 }: {
   item: ErrorItem
   onDismiss: () => void
@@ -475,6 +476,14 @@ export const ErrorRow = ({
   onOpenLink: (url: string) => void
   /** The way back out of a dead sign-in, when this screen has one to offer - see SignInOffer. */
   signIn?: SignInOffer
+  /**
+   * To the screen that says where this machine's requests are routed - offered under a refusal that came
+   * from somewhere along that route (see ErrorItem.sampling).
+   *
+   * Absent on a phone and in a replay, exactly as the button on the row about an overruled account is:
+   * there is no settings screen there, and a record of a past conversation asks nobody to fix anything.
+   */
+  onSettingSources?: () => void
 }) => {
   const t = useT()
   const offered = item.signIn && signIn
@@ -517,6 +526,22 @@ export const ErrorRow = ({
                 on from the message that is sent next - on a process raised anew (see ClaudeSessions). */}
             {signIn.waiting && signIn.problem === '' ? (
               <span className={s.errorNote}>{t.login.sendAgainAfter}</span>
+            ) : null}
+          </>
+        ) : null}
+
+        {/* A refusal in the API's own words says nothing about who put that parameter into the request -
+            and the answer is never "the panel", which is what everybody reading it assumes. So the row
+            says it in words, and points at the screen where the route is set (see ErrorItem.sampling). */}
+        {item.sampling ? (
+          <>
+            <span className={s.errorNote}>{t.feed.sampling.note}</span>
+            {onSettingSources ? (
+              <div className={s.errorActions}>
+                <button type="button" className={s.secondary} onClick={onSettingSources}>
+                  {t.feed.outranked.open}
+                </button>
+              </div>
             ) : null}
           </>
         ) : null}

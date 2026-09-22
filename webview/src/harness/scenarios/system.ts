@@ -19,6 +19,18 @@ import {
 } from '../events'
 import type { Scenario } from '../types'
 
+/**
+ * A refusal as a gateway actually writes one, taken from a report: its own sentence, its own shape, and
+ * the API's own body quoted inside it. The CLI puts `API Error: <code>` in front and passes the rest
+ * through untouched (measured against a refusing endpoint on 2.1.273) - see the `gateway-sampling`
+ * scenario below.
+ */
+const SPOILED_REQUEST =
+  'API Error: 400 {"error":"Error communicating with Anthropic model \'claude-fable-5\': ' +
+  'Error from client: AnthropicLLMClient\\nStatus code: 400\\nError body: ' +
+  '{\\"type\\":\\"error\\",\\"error\\":{\\"type\\":\\"invalid_request_error\\",' +
+  '\\"message\\":\\"temperature is deprecated for this model.\\"},\\"request_id\\":\\"req_011CXyz\\"}"}'
+
 export const scenariosSystem: Scenario[] = [
   /*
    * The search behind the magnifier (see Search.tsx, SearchCapsule.tsx and feed/search.ts). The two turns
@@ -412,6 +424,35 @@ export const scenariosSystem: Scenario[] = [
     ]),
   ]),
 
+  /**
+   * The turn dies on a refusal nobody in the panel caused: a gateway between Claude Code and Anthropic
+   * puts a sampling parameter into the request, and the models from Opus 4.7 onwards will not take one.
+   *
+   * Written down because the panel was reported for it. A refusal naming a parameter reads as the panel
+   * having sent that parameter - so the row says in words where it comes from, and points at the screen
+   * that decides what the requests are routed through (see ErrorItem.sampling). The gateway answers in
+   * its own format rather than the API's, and the CLI passes the whole body through - that is what such a
+   * refusal actually looks like, and reading it is the point of the scenario.
+   */
+  scenario('gateway-sampling', 'A gateway spoils the request', 'system', [
+    checkpoint('The user asks for a change', [user('Rename the helper and update everything that calls it'), wait(800)]),
+    checkpoint('The request comes back refused, and the row says whose parameter it is', [
+      agent({
+        type: 'assistant',
+        message: { model: '<synthetic>', content: [{ type: 'text', text: SPOILED_REQUEST }] },
+        error: 'unknown',
+      }),
+      agent({
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        result: SPOILED_REQUEST,
+        api_error_status: 400,
+        duration_ms: 160,
+      }),
+    ]),
+  ]),
+
   scenario('signed-out', 'The sign-in has expired', 'system', [
     checkpoint('The panel is locked out, and it says whose sign-in it wants', [
       shell({
@@ -502,9 +543,13 @@ export const scenariosSystem: Scenario[] = [
       ]),
     ]),
     /**
-     * The same past conversation further on: the agent asked the person with options, they answered, and the
-     * answer lies in the conversation as an ordinary line. The question card must not appear over the input
-     * field here at all - this question was answered somewhere in the past (see AskItem.historic).
+     * The same past conversation further on: the agent asked the person with options and they answered. The
+     * question card must not appear over the input field here at all - this one was answered somewhere in
+     * the past (see AskItem.historic), and what stands in the feed instead is the answer, as the person's
+     * own line, exactly as the panel wrote it at the time (see addReplayedAnswers).
+     *
+     * On disk that answer is the tool's own result and nothing else - there is no message from the person
+     * anywhere near it - so that is the shape it arrives in here.
      */
     checkpoint('The replay held a question with options - and an answer to it', [
       ...replayed([
@@ -531,11 +576,14 @@ export const scenariosSystem: Scenario[] = [
           message: {
             content: [
               {
-                type: 'text',
-                text: 'Keep the previous order of the sections in the settings?\nKeep it',
+                type: 'tool_result',
+                tool_use_id: 'r-ask',
+                content:
+                  'Your questions have been answered: "Keep the previous order of the sections in the settings?"="Keep it". You can now continue with these answers in mind.',
               },
             ],
           },
+          toolUseResult: { answers: { 'Keep the previous order of the sections in the settings?': 'Keep it' } },
           timestamp: '2026-08-17T09:44:12.000Z',
         }),
         wait(300),
@@ -544,11 +592,45 @@ export const scenariosSystem: Scenario[] = [
       ]),
     ]),
     /**
+     * And the end of that conversation: the agent asked again, and nobody ever answered - the IDE was closed
+     * on the question. On disk the call is left with no result and with nothing after it, which is the one
+     * thing that tells this question from the one above (see revivedAsk in feed/build.ts).
+     *
+     * Nothing pops up yet: while the replay is still reading, every question in it is a record. The card
+     * comes back at the next checkpoint, when the reading ends.
+     */
+    checkpoint('The replay ends on a question nobody answered', [
+      ...replayed([
+        ...textReply('One thing left to settle before I touch the dock.'),
+        wait(300),
+        toolUse(
+          'AskUserQuestion',
+          {
+            questions: [
+              {
+                question: 'Where should the cards above the input field go in the narrow layout?',
+                header: 'Cards',
+                multiSelect: false,
+                options: [
+                  { label: 'Into the dock', description: 'Right above the field, as they are now' },
+                  { label: 'Into the side rail', description: 'Off to the side, leaving the field alone' },
+                ],
+              },
+            ],
+          },
+          'r-ask-open',
+        ),
+      ]),
+    ]),
+    /**
      * A tab is opened with the end of a past conversation rather than the whole of it, so the reading
      * finishes on a boundary: the mark above the feed stands for everything still on disk, and pressing it
      * asks for the next page (answered here by the harness itself - see player.ts).
+     *
+     * And the question the conversation was abandoned on comes back over the input field, answerable: there
+     * is nobody left to answer through the call, so the answer goes on as the next message instead.
      */
-    checkpoint('The replay has finished, with more of the conversation above it', [
+    checkpoint('The replay has finished - and its unanswered question is back', [
       shell({ type: 'replayFinished', sessionId: SESSION, cursor: 'r-top' }),
     ]),
   ]),

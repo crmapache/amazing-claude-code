@@ -996,6 +996,10 @@ export const ko: Dict = {
       open: '설정을 읽는 곳',
     },
 
+    sampling: {
+      note: '최신 모델은 샘플링 파라미터를 더 이상 받지 않는데, 이번 요청에는 들어 있었습니다. Claude Code가 직접 붙이지는 않으므로, 요청이 지나가는 곳에서 붙인 것입니다 - 보통 설정에 주소로 지정한 게이트웨이나 프록시입니다.',
+    },
+
     limit: {
       label: '한도',
       extraLabel: '추가 사용',
@@ -1015,12 +1019,14 @@ export const ko: Dict = {
     ask: {
       label: 'CLAUDE의 질문',
       blocks: (n) => `질문 ${n}개 · 여기서 멈춰 있어요`,
+      leftOver: (n) => `질문 ${n}개 · 답하지 않은 채로 남았어요`,
       pickAny: '여러 개 선택 가능',
       other: '기타',
       ownAnswer: '직접 답을 적어요…',
       send: '답변 보내기',
       pickToContinue: '고르면 계속돼요',
       note: '물어본 자리에서 그대로 이어져요',
+      leftOverNote: '그 턴은 이미 끝났어요 - 답변은 새 메시지로 보내져요',
       expand: '질문 펼치기',
       collapse: '질문 접기',
       dismiss: '질문 닫기',

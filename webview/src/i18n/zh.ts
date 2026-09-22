@@ -996,6 +996,10 @@ export const zh: Dict = {
       open: '设置来源',
     },
 
+    sampling: {
+      note: '最新的模型不再接受采样参数，而这次请求里带了一个。Claude Code 自己不会加，所以它来自请求经过的地方 - 通常是设置里用地址指定的网关或代理。',
+    },
+
     limit: {
       label: '额度',
       extraLabel: '额外计费',
@@ -1015,12 +1019,14 @@ export const zh: Dict = {
     ask: {
       label: 'CLAUDE 提问',
       blocks: (n) => `${n} 个问题 · 回合在等你`,
+      leftOver: (n) => `${n} 个问题 · 一直没人回答`,
       pickAny: '可多选',
       other: '其他',
       ownAnswer: '写下你自己的回答…',
       send: '发送答案',
       pickToContinue: '选一个继续',
       note: '回合会从提问的地方接着往下走',
+      leftOverNote: '那个回合早就结束了 - 你的回答会作为新消息发出去',
       expand: '展开问题',
       collapse: '收起问题',
       dismiss: '关闭问题',

@@ -1307,6 +1307,14 @@ export const en = {
       open: 'Settings sources',
     },
 
+    /**
+     * Under a request Anthropic would not take because of a sampling parameter - see ErrorItem.sampling.
+     * The button beside it is the one above: the same screen deserves the same name in every language.
+     */
+    sampling: {
+      note: 'The newest models no longer accept a sampling parameter, and this request carried one. Claude Code adds none of its own, so it comes from whatever the requests are routed through - usually a gateway or proxy set by an address in the settings.',
+    },
+
     limit: {
       label: 'LIMIT',
       extraLabel: 'EXTRA USAGE',
@@ -1333,6 +1341,11 @@ export const en = {
     ask: {
       label: 'CLAUDE ASKS',
       blocks: (n: number): string => `${n} ${n === 1 ? 'question' : 'questions'} · blocks the run`,
+      /**
+       * And the same for a question a conversation was abandoned on (see AskItem.reopened): nothing is
+       * running, so there is nothing for it to block - it simply never got an answer.
+       */
+      leftOver: (n: number): string => `${n} ${n === 1 ? 'question' : 'questions'} · never answered`,
       pickAny: 'pick any',
       other: 'Other',
       /** The field beside "Other" - it is a placeholder, so it is written in lower case. */
@@ -1340,6 +1353,8 @@ export const en = {
       send: 'Send answers',
       pickToContinue: 'Pick to continue',
       note: 'the run continues right where it asked',
+      /** And the same for a question left over from a conversation that ended on it. */
+      leftOverNote: 'that run is long over - your answer goes on as a new message',
       expand: 'Expand the question',
       collapse: 'Collapse the question',
       dismiss: 'Close the question',

@@ -106,7 +106,8 @@ interface FeedProps {
   signIn?: SignInOffer
   /**
    * Open the screen that decides which of Claude Code's settings layers this project loads - offered on
-   * the row about a repository overruling the chosen account (see OutrankedItem).
+   * the row about a repository overruling the chosen account (see OutrankedItem) and under a refusal that
+   * came from whatever those settings route the requests through (see ErrorItem.sampling).
    *
    * Absent on the phone and in a step log, like the sign-in above: there is no settings screen to open
    * there. Hand in a STABLE function, for the same reason.
@@ -1034,7 +1035,13 @@ const ItemView = memo(({
 
     case 'error':
       return (
-        <ErrorRow item={item} onDismiss={() => onDismissError(item.id)} onOpenLink={onOpenLink} signIn={signIn} />
+        <ErrorRow
+          item={item}
+          onDismiss={() => onDismissError(item.id)}
+          onOpenLink={onOpenLink}
+          signIn={signIn}
+          onSettingSources={onSettingSources}
+        />
       )
 
     case 'limit':

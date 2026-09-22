@@ -1006,6 +1006,10 @@ export const de: Dict = {
       open: 'Herkunft der Einstellungen',
     },
 
+    sampling: {
+      note: 'Die neuesten Modelle akzeptieren keinen Sampling-Parameter mehr, und diese Anfrage enthielt einen. Claude Code fügt keinen hinzu - er kommt also von dem, worüber die Anfragen laufen: meist ein Gateway oder Proxy, den eine Adresse in den Einstellungen festlegt.',
+    },
+
     limit: {
       label: 'LIMIT',
       extraLabel: 'ZUSATZNUTZUNG',
@@ -1026,12 +1030,14 @@ export const de: Dict = {
     ask: {
       label: 'CLAUDE FRAGT',
       blocks: (n) => `${n} ${n === 1 ? 'Frage' : 'Fragen'} · hält den Lauf an`,
+      leftOver: (n) => `${n} ${n === 1 ? 'Frage' : 'Fragen'} · ohne Antwort geblieben`,
       pickAny: 'mehrere möglich',
       other: 'Anderes',
       ownAnswer: 'eigene Antwort schreiben…',
       send: 'Antworten senden',
       pickToContinue: 'Wähle etwas, um fortzufahren',
       note: 'der Lauf geht genau dort weiter, wo er gefragt hat',
+      leftOverNote: 'dieser Lauf ist längst vorbei - deine Antwort geht als neue Nachricht raus',
       expand: 'Frage aufklappen',
       collapse: 'Frage zuklappen',
       dismiss: 'Frage schließen',

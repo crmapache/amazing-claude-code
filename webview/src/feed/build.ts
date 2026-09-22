@@ -51,6 +51,7 @@ import type {
   TaskItem,
   ToolItem,
   UserItem,
+  UserToken,
 } from './types'
 
 /**
@@ -78,7 +79,7 @@ export { initialPanelState } from './panelState'
  * the person's last message: the same refusal an hour later is a fresh piece of trouble, and staying
  * silent about it would be worse than repeating oneself.
  */
-const addError = (state: PanelState, message: string, signIn = false): PanelState => {
+const addError = (state: PanelState, message: string, marks: ErrorMarks = {}): PanelState => {
   const turnStart = state.items.map((item) => item.kind).lastIndexOf('user') + 1
   const alreadyShown = state.items
     .slice(turnStart)
@@ -87,19 +88,20 @@ const addError = (state: PanelState, message: string, signIn = false): PanelStat
   if (alreadyShown) {
     /**
      * The row stands and the door does not. The same refusal arrives by two roads, and only one of them
-     * knows it is about the sign-in: come first through stderr or through a refused control request, the
-     * row is an ordinary red slab, and the mark carried by the second arrival used to be dropped with it.
-     * What is lost is the only way back there is - the login screen never comes up for this refusal (see
-     * ErrorItem.signIn) - so the mark goes onto the row already standing rather than onto a second one
+     * knows what it is about: come first through stderr or through a refused control request, the row is
+     * an ordinary red slab, and the mark carried by the second arrival used to be dropped with it. What
+     * is lost is the only way back there is - the login screen never comes up for a dead sign-in (see
+     * ErrorItem.signIn), and nothing else in the panel explains a request the server would not take (see
+     * ErrorItem.sampling) - so the mark goes onto the row already standing rather than onto a second one
      * saying the same thing.
      */
-    if (!signIn) return state
+    if (!marks.signIn && !marks.sampling) return state
 
     return {
       ...state,
       items: state.items.map((item, index) =>
-        index >= turnStart && item.kind === 'error' && item.message === message && !item.signIn
-          ? { ...item, signIn: true }
+        index >= turnStart && item.kind === 'error' && item.message === message
+          ? { ...item, ...(marks.signIn ? { signIn: true } : {}), ...(marks.sampling ? { sampling: true } : {}) }
           : item,
       ),
     }
@@ -120,7 +122,13 @@ const addError = (state: PanelState, message: string, signIn = false): PanelStat
     (item, index) => !(index >= turnStart && item.kind === 'text' && item.source.trim() === said),
   )
 
-  return push({ ...state, items: withoutEcho }, (id) => ({ id, kind: 'error', message, signIn }))
+  return push({ ...state, items: withoutEcho }, (id) => ({ id, kind: 'error', message, ...marks }))
+}
+
+/** What is known about a refusal beyond its text, and what the row offers because of it - see ErrorItem. */
+interface ErrorMarks {
+  signIn?: boolean
+  sampling?: boolean
 }
 
 /**
@@ -129,6 +137,33 @@ const addError = (state: PanelState, message: string, signIn = false): PanelStat
  * several, English, and change between CLI versions.
  */
 const AUTH_FAILED = 'authentication_failed'
+
+/**
+ * Whether this refusal is the request itself being rejected over a sampling parameter - see
+ * ErrorItem.sampling.
+ *
+ * Read by two things at once, because neither is enough alone. The response code is the machine part and
+ * it comes from the CLI's own field (AgentResultEvent.api_error_status): 400 is the server saying it
+ * would not take the request at all, as opposed to a limit, a dead sign-in or an outage. The names are
+ * the part that says WHICH request it was, and they are read out of the text because there is nowhere
+ * else - the word beside the answer says `unknown` for every 400 alike (measured against a refusing
+ * endpoint on 2.1.273).
+ *
+ * Reading a sentence is what this panel does not do, and the exception is made knowingly: what is looked
+ * for here is not a sentence but three field names of the API, the same ones in every wording and every
+ * language a gateway may answer in. The cost of being wrong either way is small - a missed refusal is the
+ * bare red row the panel showed before, and a false one is a sentence about a gateway under a refusal
+ * that mentions those fields for some other reason.
+ */
+const overSampling = (status: number | null | undefined, message: string): boolean => {
+  if (status !== 400) return false
+
+  const said = message.toLowerCase()
+  return SAMPLING_PARAMS.some((name) => said.includes(name))
+}
+
+/** The parameters the models from Opus 4.7 onwards refuse - named as the API names them. */
+const SAMPLING_PARAMS = ['temperature', 'top_p', 'top_k']
 
 /** What the CLI wrote under a failed request: its placeholder answer, as one piece of text. */
 const placeholderText = (blocks: ContentBlock[]): string =>
@@ -326,7 +361,7 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
     }
 
     case 'replayFinished':
-      return withEarlier(applyReplayFinished(finishCompacting(state), now), action.cursor)
+      return withEarlier(revivedAsk(applyReplayFinished(finishCompacting(state), now)), action.cursor)
 
     case 'prompt': {
       const message: UserItem = {
@@ -821,6 +856,51 @@ const applyReplayFinished = (state: PanelState, now: number): PanelState => {
   )
 
   return { ...state, items, startedAt }
+}
+
+/**
+ * A question the conversation was abandoned on comes back as a live card.
+ *
+ * Every other question out of a replay is a record and nothing more (see AskItem.historic): it was
+ * answered, and the answer stands in the feed right under it. This one was not. The options hung over
+ * the input field, the IDE was closed on them, and the process that asked died with it - so on disk the
+ * call is left with no result at all, and there is nothing after it.
+ *
+ * Left historic, it was the one thing a reopened conversation lost outright. A question is not a row of
+ * its own (see drawnInFeed), so the feed simply ended on whatever the agent had said before asking, and
+ * what it had actually asked - the question, the options, their explanations - was nowhere on screen.
+ * The only way on was to guess at it.
+ *
+ * There is nobody left to answer through the call itself, and the card does not pretend otherwise: the
+ * answer travels as the next message instead, by the road that was already there for exactly this (see
+ * askAnswer in protocol.ts and answerAsk in SessionPermissions). The CLI takes such a resumed
+ * conversation without complaint - a dangling call is dropped as it rebuilds the talk, checked on
+ * 2.1.278 by resuming a transcript that ends on one.
+ *
+ * Three conditions, and each of them is a way the question could be stale instead:
+ *
+ * - **It has to be the last thing in the feed.** Anything below it means the talk moved on without an
+ *   answer - the person's own next message in a conversation that was resumed once already, or the
+ *   "[Request interrupted]" the CLI writes over a turn somebody stopped.
+ * - **Its call must never have come back** (see AskItem.answered). A question closed with the cross
+ *   leaves a refusal rather than answers, so it draws no line under itself - without this it would look
+ *   exactly like an abandoned one.
+ * - **It has to belong to the main stream.** A subagent's question is unanswerable by anybody: the
+ *   agent that asked it ended together with the turn.
+ *
+ * And it lives here rather than in [applyReplayFinished], which a page of older messages goes through
+ * too (see 'historyPage'): there the last item is merely where the page happened to be cut, and the
+ * answer to it is already on screen below.
+ */
+const revivedAsk = (state: PanelState): PanelState => {
+  // The person got ahead of the replay and is already writing in this tab - the same case, and for the
+  // same reason, as the one applyReplayFinished steps aside for.
+  if (state.turnStartedAt !== undefined) return state
+
+  const last = state.items[state.items.length - 1]
+  if (last?.kind !== 'ask' || !last.historic || last.answered || last.taskId !== undefined) return state
+
+  return { ...state, items: [...state.items.slice(0, -1), { ...last, historic: false, reopened: true }] }
 }
 
 /**
@@ -1333,7 +1413,8 @@ const applyAgentEvent = (
        * The text is laid down as the error, and the placeholder that follows is dropped as an echo of it
        * (see alreadyShownAsError): one piece of trouble, one row.
        */
-      const base = event.error === AUTH_FAILED ? addError(answered, placeholderText(blocks), !replay) : answered
+      const base =
+        event.error === AUTH_FAILED ? addError(answered, placeholderText(blocks), { signIn: !replay }) : answered
 
       return applyAssistant(base, blocks, now, replay, event.uuid)
     }
@@ -1348,7 +1429,11 @@ const applyAgentEvent = (
       // put it there: that record is the only trace that the person said anything at all, and without it
       // a past conversation's feed consisted of answers alone.
       const withPrompt = replay ? addReplayedPrompt(noted, event, now) : noted
-      return applyToolResults(withPrompt, blocks, now, replay)
+      // And the same for an answer given to a question with options: the panel wrote that line itself
+      // when the button was pressed, and the transcript kept only the tool's result (see
+      // addReplayedAnswers).
+      const withAnswers = replay ? addReplayedAnswers(withPrompt, event, now) : withPrompt
+      return applyToolResults(withAnswers, blocks, now, replay)
     }
 
     case 'result': {
@@ -1403,8 +1488,19 @@ const applyAgentEvent = (
 
       // The refusal goes into the feed BEFORE the turn's result: it happened earlier, and "Worked 3s"
       // under it reads as the end of this very turn rather than of the next one.
+      //
+      // This is also where a refused REQUEST is told apart from every other ending: the response code
+      // arrives here and nowhere else (see overSampling and AgentResultEvent.api_error_status).
+      //
+      // Never from a replay, for the reason the sign-in's door is never offered there: what the row adds
+      // is an explanation of a route that is being used right now, and a conversation opened from the
+      // history is a record of one that was.
       const withError = finishCompacting(
-        event.is_error && event.result ? addError(state, event.result) : state,
+        event.is_error && event.result
+          ? addError(state, event.result, {
+              sampling: !replay && overSampling(event.api_error_status, event.result),
+            })
+          : state,
       )
 
       /**
@@ -2199,6 +2295,61 @@ const addReplayedPrompt = (
   }))
 }
 
+/**
+ * The options a question with options was closed with, out of a past conversation's replay.
+ *
+ * A live conversation puts this line into the feed itself, at the press of the card's button (see
+ * sendAnswers in App.tsx) - the transcript keeps no message of the kind, only the tool's own result.
+ * Without it a conversation opened from the history had a hole exactly where a decision had been taken:
+ * the question itself is not a row (see drawnInFeed), the answer was nowhere at all, and the agent
+ * below simply carried on knowing something nobody on screen had told it.
+ *
+ * Shaped exactly as the live one: the question as a token of its own, so it is dimmed as the echo it is,
+ * and the answer beside it as the person's own words (see UserToken.echo). A reopened conversation ought
+ * to read the way it read at the desk.
+ */
+const addReplayedAnswers = (
+  state: PanelState,
+  event: Extract<AgentEvent, { type: 'user' }>,
+  now: number,
+): PanelState => {
+  const answers = event.toolUseResult?.answers
+  if (!answers || typeof answers !== 'object') return state
+
+  // The result of a question rather than of any other tool: `toolUseResult` stands beside every result
+  // there is, and `answers` is only this tool's word - but the card's identifier is what makes it
+  // certain, and it costs a look at the feed.
+  const closes = blocksOf(event.message.content).some(
+    (block) =>
+      block.type === 'tool_result' &&
+      state.items.some((item) => item.kind === 'ask' && item.id === block.tool_use_id),
+  )
+  if (!closes) return state
+
+  const pairs = Object.entries(answers).filter(
+    (pair): pair is [string, string] =>
+      pair[0].trim().length > 0 && typeof pair[1] === 'string' && pair[1].trim().length > 0,
+  )
+  if (pairs.length === 0) return state
+
+  // The moment it was answered rather than the moment the tab was opened - as with every other replayed
+  // line (see addReplayedPrompt).
+  const said = Date.parse(event.timestamp ?? '')
+
+  return push(state, (id) => ({
+    id,
+    kind: 'user',
+    time: formatClock(Number.isNaN(said) ? now : said),
+    tokens: pairs.flatMap<UserToken>(([question, answer], index) => [
+      { kind: 'text', value: index === 0 ? question : `\n\n${question}`, echo: true },
+      { kind: 'text', value: `\n${answer}` },
+    ]),
+    quotes: [],
+    // The transcript's name for the line, so a search hit on it can be found in the feed (see rowOf).
+    ...(event.uuid ? { uuid: event.uuid } : {}),
+  }))
+}
+
 const applyToolResults = (
   state: PanelState,
   blocks: ContentBlock[],
@@ -2270,6 +2421,14 @@ const applyToolResults = (
         outcome: isError ? ('failed' as const) : ('ok' as const),
         log: appendAgentLog(item.log, detailFor(text).map((line): DetailLine => ({ ...line, tone }))),
       }
+    }
+
+    // A question draws no card out of a replay and needs none of the above - but it does need to know
+    // that its call came back at all: that is the whole difference between a question that was dealt
+    // with and one the conversation was simply abandoned on (see revivedAsk).
+    if (item.kind === 'ask') {
+      if (item.answered || !results.some((candidate) => candidate.tool_use_id === item.id)) return item
+      return { ...item, answered: true }
     }
 
     if (item.kind !== 'toolGroup') return item

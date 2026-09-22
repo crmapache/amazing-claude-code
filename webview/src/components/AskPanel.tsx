@@ -246,7 +246,11 @@ export const AskPanel = ({ item, draft, onDraft, composerEmpty, hotkeys, onSubmi
             while text of two different sizes lines up on the baseline (as in TaskListPanel). */}
         <span className={s.askTitle}>
           <span className={s.askLabel}>{t.feed.ask.label}</span>
-          <span className={s.askMeta}>{t.feed.ask.blocks(item.questions.length)}</span>
+          {/* A question out of a conversation that was abandoned on it says what it is instead of what a
+              live one says: there is no run for it to block (see AskItem.reopened). */}
+          <span className={s.askMeta}>
+            {item.reopened ? t.feed.ask.leftOver(item.questions.length) : t.feed.ask.blocks(item.questions.length)}
+          </span>
         </span>
         <div className={s.spacer} />
         <button
@@ -390,7 +394,7 @@ export const AskPanel = ({ item, draft, onDraft, composerEmpty, hotkeys, onSubmi
             {answered ? t.feed.ask.send : t.feed.ask.pickToContinue}
           </button>
           <div className={s.spacer} />
-          <span className={s.askNote}>{t.feed.ask.note}</span>
+          <span className={s.askNote}>{item.reopened ? t.feed.ask.leftOverNote : t.feed.ask.note}</span>
         </div>
       )}
     </div>

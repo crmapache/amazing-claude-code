@@ -1003,6 +1003,10 @@ export const es: Dict = {
       open: 'Origen de los ajustes',
     },
 
+    sampling: {
+      note: 'Los modelos más nuevos ya no aceptan un parámetro de muestreo, y esta petición llevaba uno. Claude Code no añade ninguno, así que viene de aquello por lo que pasan las peticiones: normalmente una pasarela o un proxy fijado por una dirección en los ajustes.',
+    },
+
     limit: {
       label: 'LÍMITE',
       extraLabel: 'USO EXTRA',
@@ -1023,12 +1027,14 @@ export const es: Dict = {
     ask: {
       label: 'CLAUDE PREGUNTA',
       blocks: (n) => `${n} ${n === 1 ? 'pregunta' : 'preguntas'} · bloquea la ejecución`,
+      leftOver: (n) => `${n} ${n === 1 ? 'pregunta' : 'preguntas'} · sin responder`,
       pickAny: 'elige las que quieras',
       other: 'Otra',
       ownAnswer: 'escribe tu propia respuesta…',
       send: 'Enviar respuestas',
       pickToContinue: 'Elige para continuar',
       note: 'la ejecución sigue justo donde preguntó',
+      leftOverNote: 'esa ejecución terminó hace tiempo - tu respuesta sale como un mensaje nuevo',
       expand: 'Desplegar la pregunta',
       collapse: 'Plegar la pregunta',
       dismiss: 'Cerrar la pregunta',
