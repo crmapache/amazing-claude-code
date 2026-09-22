@@ -9,6 +9,13 @@ commits.
 
 ## [Unreleased]
 
+## [0.12.18] - 2026-09-22
+
+- Fixed: a conversation that ended on a question with buttons lost the question when you opened it again. The card with the options stands over the input field rather than in the feed, and a question out of a record was never raised there - so the panel showed what the agent had said before asking and then nothing at all, with no way to find out what it wanted. Such a question now comes back as a live card, answerable as it was, and says about itself that it is one left over from last time. It comes back only where it is still the last thing that happened: a question already answered, or one the conversation moved on without, stays a record.
+- Fixed: the answer you gave to a question with buttons was missing from a conversation opened from the history. The decision was made and everything below it followed from the decision, while the screen kept no trace of it. The question and the answer now stand in the feed of a past conversation the same way they do in a live one.
+- Fixed: a turn could die with a refusal in the API's own words - "temperature is deprecated for this model" - and nothing said where that came from. It is never the panel: Claude Code sends no sampling parameter of its own, so a request that arrives with one was changed along the way, by a gateway or a proxy the requests are routed through. Such a refusal now says that in words, with the way to the settings sources beside it. Worth knowing if your requests go through a company gateway: the newest models, from Opus 4.7 onwards, refuse those parameters outright.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.12.17] - 2026-09-21
 
 - Added: "Settings sources" under Settings decides which of Claude Code's own layers load in this project. Claude Code reads its settings from several files, and a repository's own beat yours: an env block committed to it sets the address and the key every request goes out with. Choose everything the way Claude Code does it by itself, everything but the repository's local file, or only your own settings. Leaving a layer out drops its permissions, hooks and MCP servers with it, and managed settings from your organization apply either way. The choice belongs to the project, not to the machine, and it takes hold at once: the conversations already open raise their processes again, without cutting a turn that is running.
@@ -734,7 +741,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.17...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.18...HEAD
+[0.12.18]: https://github.com/crmapache/amazing-claude-code/compare/0.12.17...0.12.18
 [0.12.17]: https://github.com/crmapache/amazing-claude-code/compare/0.12.16...0.12.17
 [0.12.16]: https://github.com/crmapache/amazing-claude-code/compare/0.12.15...0.12.16
 [0.12.15]: https://github.com/crmapache/amazing-claude-code/compare/0.12.14...0.12.15
