@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.12.19] - 2026-09-22
+
+- Fixed: a conversation opened from the history could show a wall of internal markup signed with your name and the time - the report of a background agent, which Claude Code hands to the conversation as a message written on your behalf. The panel has always kept those out of the feed, but it recognised them by their opening and closing tags, and a record longer than eight kilobytes reaches a past conversation cut short, without its end. So the longer an agent had worked, the surer its report was to turn up as something you had said. The same cut also left that agent's card in the history open, as though it had never finished; both are read by what survives the cut now.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.12.18] - 2026-09-22
 
 - Fixed: a conversation that ended on a question with buttons lost the question when you opened it again. The card with the options stands over the input field rather than in the feed, and a question out of a record was never raised there - so the panel showed what the agent had said before asking and then nothing at all, with no way to find out what it wanted. Such a question now comes back as a live card, answerable as it was, and says about itself that it is one left over from last time. It comes back only where it is still the last thing that happened: a question already answered, or one the conversation moved on without, stays a record.
@@ -741,7 +746,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.18...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.19...HEAD
+[0.12.19]: https://github.com/crmapache/amazing-claude-code/compare/0.12.18...0.12.19
 [0.12.18]: https://github.com/crmapache/amazing-claude-code/compare/0.12.17...0.12.18
 [0.12.17]: https://github.com/crmapache/amazing-claude-code/compare/0.12.16...0.12.17
 [0.12.16]: https://github.com/crmapache/amazing-claude-code/compare/0.12.15...0.12.16
