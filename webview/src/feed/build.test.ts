@@ -3741,6 +3741,56 @@ describe('a task notification out of a transcript', () => {
     expect(after.items).toEqual(before.items)
   })
 
+  /**
+   * The report of an agent that worked for ten minutes runs to tens of kilobytes, and a record that long
+   * is cut down before a past conversation is handed it (JournalTrim, eight kilobytes to a string). What
+   * the cut takes with it is the closing tag - so the block stopped being a block, and the longest
+   * notifications of all were the ones that came up in the feed as a wall of markup signed with the
+   * person's name and time. Reported exactly that way.
+   */
+  describe('and the same notification cut short by the history', () => {
+    /** The cut as the history makes it: the tail gone, its own note about it in place of the tail. */
+    const cut = (body: string): string =>
+      `${body.slice(0, body.indexOf('<status>'))}\n\n… 18422 more characters are not kept in the panel's history.`
+
+    const long = (): string =>
+      notification('toolu-1', 'completed', 'Agent "Map action storage path" finished')
+
+    it('is still not shown as something the person said', () => {
+      const state = replay([...backgroundCommand(), notificationEvent(cut(long()))])
+
+      expect(state.items.filter((item) => item.kind === 'user')).toHaveLength(0)
+    })
+
+    it('still closes the card it belongs to, by what survived the cut', () => {
+      const state = replay([
+        toolUseEvent('toolu-1', 'Agent', { subagent_type: 'Explore', description: 'Map action storage path', run_in_background: true }),
+        toolResultEvent('toolu-1', 'Async agent launched successfully. Agent ID: a90aa'),
+        notificationEvent(cut(long())),
+      ])
+
+      const task = state.items.find((item): item is TaskItem => item.kind === 'task')
+      expect(task?.pending).toBe(false)
+    })
+
+    /**
+     * And the second mark on such a record, the one the CLI files it under rather than writes into it. It
+     * holds whatever happens to the text - a renamed tag, a cut in another place - and it is what a record
+     * of this kind carries instead of `isMeta` (see AgentUserEvent.origin).
+     */
+    it('is not shown as the person even when nothing in the text says what it is', () => {
+      const state = replay([
+        {
+          type: 'user',
+          message: { content: [{ type: 'text', text: 'Agent "Map action storage path" finished. Here is the map.' }] },
+          origin: { kind: 'task-notification' },
+        } as AgentEvent,
+      ])
+
+      expect(state.items.filter((item) => item.kind === 'user')).toHaveLength(0)
+    })
+  })
+
   it('skips a notification that names no call at all', () => {
     const state = replay([
       ...backgroundCommand(),

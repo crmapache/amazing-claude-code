@@ -320,7 +320,13 @@ export const applyTaskNotification = (state: PanelState, event: AgentSystemEvent
   return finishTaskCard(state, cardFor(state, taskId), outcomeOf(event.status), event.summary, now)
 }
 
-const NOTIFICATION_BLOCK = /<task-notification>[\s\S]*?<\/task-notification>/g
+/**
+ * The end is optional for the same reason it is in SERVICE_BLOCK: a notification over eight kilobytes
+ * reaches a past conversation cut short, without its closing tag (see JournalTrim). Everything read out of
+ * it - the call it belongs to, the outcome, the summary - stands at the top of the block and survives the
+ * cut, so the card gets its ending from a notification the cut left half-written just as well.
+ */
+const NOTIFICATION_BLOCK = /<task-notification>[\s\S]*?(?:<\/task-notification>|$)/g
 const NOTIFIED_TOOL_USE = /<tool-use-id>([\s\S]*?)<\/tool-use-id>/
 const NOTIFIED_STATUS = /<status>([\s\S]*?)<\/status>/
 const NOTIFIED_SUMMARY = /<summary>([\s\S]*?)<\/summary>/

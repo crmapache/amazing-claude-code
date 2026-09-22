@@ -2164,8 +2164,15 @@ const SERVICE_TAGS = [
  *
  * The notification is not merely dropped: before this it goes into the card of the task it speaks about
  * (see applyReplayedTaskNotification).
+ *
+ * The end of such a block is optional, and that is the whole of this line's history. A message over eight
+ * kilobytes is cut down before it is handed to a past conversation (see JournalTrim and HISTORY_STRING_CHARS),
+ * and the cut takes the closing tag with it - so a pair-matching expression found no block at all and the
+ * longest notifications, the ones carrying a whole agent's report, were the ones that landed in the feed
+ * signed with the person's name. A block that is not closed runs to the end of the text: nothing written
+ * by a person follows an opening tag of the CLI's.
  */
-const SERVICE_BLOCK = new RegExp(`<(${SERVICE_TAGS.join('|')})>[\\s\\S]*?</\\1>`, 'g')
+const SERVICE_BLOCK = new RegExp(`<(${SERVICE_TAGS.join('|')})>[\\s\\S]*?(?:</\\1>|$)`, 'g')
 
 /**
  * The wrapper of closing tags a model invents around such a block: it prints the block as though it were
@@ -2270,7 +2277,13 @@ const addReplayedPrompt = (
   // A record written by the CLI rather than the person, and a message of a nested stream: a subagent is
   // written to by the turn rather than by the person, and its correspondence has nothing to do with this
   // feed.
-  if (event.isMeta || event.parent_tool_use_id) return state
+  //
+  // `origin` is asked as well as `isMeta`, because the record that made this necessary carries the second
+  // and not the first: a background agent's report is filed under the person's name, unmarked as internal
+  // (see AgentUserEvent.origin). The text below says the same thing, and is the only word about it in
+  // transcripts written before the field existed - but a long enough report reaches here with its end cut
+  // off, and the field is what holds then.
+  if (event.isMeta || event.parent_tool_use_id || event.origin?.kind) return state
 
   const text = replayedPromptText(blocksOf(event.message.content))
   if (!text) return state

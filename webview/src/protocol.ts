@@ -2742,6 +2742,17 @@ export interface AgentUserEvent {
    * opened.
    */
   isMeta?: boolean
+  /**
+   * Why this record exists, when the CLI wrote it for a reason of its own: `task-notification` is a
+   * background agent reporting its end, handed to the conversation as a message in the person's name.
+   *
+   * The second mark beside `isMeta`, which such a record does not carry (checked across every transcript
+   * on the machine: sixty-four notifications, not one of them marked). It says the same thing about the
+   * record and says it in a field, so it holds where the text does not - a notification longer than the
+   * history's limit arrives cut in half (see JournalTrim), and what was cut off is exactly the end tag
+   * everything else recognised it by.
+   */
+  origin?: { kind?: string } | null
   timestamp?: string
   /**
    * What the tool handed back, in the shape it handed it back - the transcript keeps it beside the text
