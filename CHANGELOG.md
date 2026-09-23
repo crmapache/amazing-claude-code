@@ -9,6 +9,15 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-23
+
+- Added: a light theme. Settings now opens with "Appearance", and the panel can follow the IDE, stay dark or stay light. Following the IDE is the default, so if you work in a light IDE the panel turns light by itself after this update, and it switches the moment you switch the IDE's theme. Every colour was worked out so that each piece of text is exactly as readable on its background as it is in the dark theme, and a light IDE no longer opens the panel on a flash of dark.
+- Added: a text size of the panel's own. Until now the panel followed the size of the IDE's console font, so making it bigger made the terminal and the run window bigger too. On the same "Appearance" screen you can keep following the console font or set a size for the panel alone, and the whole panel grows in proportion - text, spacing and icons. The size changes a moment after you stop pressing, so the button stays under the pointer.
+- Added: the phone client follows your phone's own light or dark mode, and turns with it at dusk without a reload.
+- Added: the tabs you had open come back when the project opens again - after closing the IDE, and after a crash or a force-quit too. They come back in their order, with their conversations, their model, effort and mode, the tab that was on screen, and what you were typing in each input field, attachments and pasted pictures included. Nothing is started on its own: an agent comes up only when its tab is shown or written into, so ten tabs coming back do not start ten agents. Switch it off under Settings, "Tabs on start" - that also deletes what was kept.
+- Fixed: reloading the panel - from the crash screen, or after an update of the plugin - lost everything typed in the input fields and always landed on the first tab. Drafts and the tab you were on now survive it.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.12.19] - 2026-09-22
 
 - Fixed: a conversation opened from the history could show a wall of internal markup signed with your name and the time - the report of a background agent, which Claude Code hands to the conversation as a message written on your behalf. The panel has always kept those out of the feed, but it recognised them by their opening and closing tags, and a record longer than eight kilobytes reaches a past conversation cut short, without its end. So the longer an agent had worked, the surer its report was to turn up as something you had said. The same cut also left that agent's card in the history open, as though it had never finished; both are read by what survives the cut now.
@@ -746,7 +755,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.12.19...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.0...HEAD
+[0.13.0]: https://github.com/crmapache/amazing-claude-code/compare/0.12.19...0.13.0
 [0.12.19]: https://github.com/crmapache/amazing-claude-code/compare/0.12.18...0.12.19
 [0.12.18]: https://github.com/crmapache/amazing-claude-code/compare/0.12.17...0.12.18
 [0.12.17]: https://github.com/crmapache/amazing-claude-code/compare/0.12.16...0.12.17
