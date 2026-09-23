@@ -46,6 +46,15 @@ export const inHours = (count: number): string => new Date(Date.now() + count * 
 /** The language asked for in the address bar, if any - see the note in `bootstrap` below. */
 const harnessLanguage = (): string => new URLSearchParams(window.location.search).get('lang') ?? ''
 
+/**
+ * Whether the IDE the harness plays is a light one - `?theme=light` in the address, the same word the
+ * plugin writes into the real panel's address (see WebviewHost.startUrl). The page reads the address
+ * before its first frame (harness.tsx, as main.tsx does), and the `theme` message below says it again
+ * the way the plugin does once the page is ready - with nothing chosen in the settings, so the panel
+ * follows the IDE, which is what almost everybody's panel does.
+ */
+const harnessIdeDark = (): boolean => new URLSearchParams(window.location.search).get('theme') !== 'light'
+
 /** Signing in and opening the project - the shared start for every scenario. */
 export const bootstrap: ScenarioStep[] = [
   shell({ type: 'auth', installed: true, loggedIn: true, email: 'you@example.com', plan: 'Max' }),
@@ -93,6 +102,7 @@ export const bootstrap: ScenarioStep[] = [
       ].join('\n'),
     },
   }),
+  shell({ type: 'theme', theme: '', ideDark: harnessIdeDark() }),
   // Without any usage the input field's bottom row is empty and the rings in it cannot be looked at. The
   // week stands on the window's third day: the pale pace arc then runs ahead of the bright one, that is,
   // exactly the case it is drawn for is visible.

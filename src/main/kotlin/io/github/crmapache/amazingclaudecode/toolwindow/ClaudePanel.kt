@@ -33,9 +33,11 @@ import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import io.github.crmapache.amazingclaudecode.feedback.FeedbackDesk
 import io.github.crmapache.amazingclaudecode.sound.AlertSounds
 import io.github.crmapache.amazingclaudecode.voice.VoiceDesk
+import io.github.crmapache.amazingclaudecode.webview.DraftImages
 import io.github.crmapache.amazingclaudecode.webview.FilePicker
 import io.github.crmapache.amazingclaudecode.webview.IdeTypography
 import io.github.crmapache.amazingclaudecode.webview.ImageDownloads
+import io.github.crmapache.amazingclaudecode.webview.PanelTheme
 import io.github.crmapache.amazingclaudecode.webview.PastedFiles
 import io.github.crmapache.amazingclaudecode.webview.WebviewClipboard
 import io.github.crmapache.amazingclaudecode.webview.WebviewFileDrop
@@ -59,6 +61,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 
 /**
  * The panel's contents: the interface in a browser, and the window's own half of the conversation with
@@ -91,6 +94,25 @@ internal class ClaudePanel(
 
     /** The same, for the voice input settings - they are the machine's too (see VoiceDesk). */
     fun voiceSettingsChanged() = voice.sendConfig()
+
+    /**
+     * The same, for the theme and the text size. Nothing about them goes through the hub at all - they are
+     * this window's zoom and this window's page - so every window is told directly.
+     */
+    fun appearanceChanged() {
+        sendTheme()
+        sendTypography()
+    }
+
+    /** The same, for whether the tabs come back after a restart (see TabMemory). */
+    fun restoreTabsChanged() {
+        webview?.send(
+            buildJsonObject {
+                put("type", "restoreTabs")
+                put("on", ClaudePreferences.restoreTabs)
+            }.toString(),
+        )
+    }
 
     /**
      * Whether the panel is still alive. The platform answers that same question only in a deprecated
@@ -176,7 +198,7 @@ internal class ClaudePanel(
     private var frame: JBPanel<JBPanel<*>>? = null
 
     private fun buildWebview(parentDisposable: Disposable): JComponent {
-        val host = WebviewHost(parentDisposable) { message -> handleWebviewMessage(message) }
+        val host = WebviewHost(parentDisposable, PanelTheme.current()) { message -> handleWebviewMessage(message) }
         webview = host
 
         // Dragging files into the panel: inside the IDE that goes past the embedded browser, so we take
@@ -295,8 +317,10 @@ internal class ClaudePanel(
                 // Whatever the page already has: after a reload of the page alone (the conversations
                 // outlive it now) only the tail is worth sending.
                 hub.attach(client.id, seenSequences(payload))
+                sendDrafts()
                 sendDockAnchor()
                 sendTypography()
+                sendTheme()
                 // The menu's row carries the account in force, so the list has to be there before anybody
                 // opens the screen behind it - otherwise that row sits blank next to a full one for
                 // remote access, and the screen it opens jumps from a skeleton to its content mid-slide.
@@ -437,6 +461,34 @@ internal class ClaudePanel(
             "setLanguage" -> {
                 ClaudePreferences.language = field("language")
                 ClaudePanels.everyPanel { it.localeChanged() }
+            }
+
+            // The theme and the text size: machine-wide, like the language above, and told to every
+            // window for the same reason - the one that made the change is not the only one on the screen.
+            "setTheme" -> {
+                ClaudePreferences.theme = field("theme")
+                ClaudePanels.everyPanel { it.appearanceChanged() }
+            }
+
+            "setTextSize" -> {
+                ClaudePreferences.textSize = payload["size"]?.jsonPrimitive?.intOrNull ?: ClaudePreferences.TEXT_SIZE_FOLLOW
+                ClaudePanels.everyPanel { it.appearanceChanged() }
+            }
+
+            // What is being written in a tab's input field, and which tab is on screen - the two halves of
+            // the tabs coming back after a restart that only the panel knows (see TabMemory). At this door
+            // rather than among the conversation commands: a phone has a field and a screen of its own,
+            // and neither is the desk's.
+            "saveDraft" -> hub.saveDraft(field("sessionId"), payload["draft"] as? JsonObject)
+
+            "tabShown" -> hub.showTab(field("sessionId"))
+
+            // Whether the tabs come back at all. Machine-wide: every project's memory is told, a switch
+            // off clears what each of them keeps on disk, and every window's screen shows the new answer.
+            "setRestoreTabs" -> {
+                ClaudePreferences.restoreTabs = payload["on"]?.jsonPrimitive?.booleanOrNull != false
+                ClaudeSessionHub.everyHub { it.restoreTabsChanged() }
+                ClaudePanels.everyPanel { it.restoreTabsChanged() }
             }
 
             // The panel calls the person. It decides that itself (only there is it known what exactly
@@ -857,15 +909,22 @@ internal class ClaudePanel(
     }
 
     /**
-     * The panel does not choose its fonts: the IDE sets them, and they change while it runs - a person
-     * edits the console font size or switches the theme and expects the panel to follow, like the
-     * terminal beside it. The colour scheme carries the console font, the look-and-feel change the
-     * interface one, so we listen to both events.
+     * The panel's fonts and theme follow the IDE, which changes them while it runs - a person edits the
+     * console font size or switches the theme and expects the panel to follow, like the terminal beside
+     * it. The colour scheme carries the console font, the look-and-feel change the interface one and the
+     * brightness, so we listen to both events. What the panel's own settings pin (a theme, a size) is
+     * applied on top of the IDE's answer each time, rather than instead of listening.
      */
     private fun watchTypography() {
         val connection = ApplicationManager.getApplication().messageBus.connect(parentDisposable)
         connection.subscribe(EditorColorsManager.TOPIC, EditorColorsListener { sendTypography() })
-        connection.subscribe(LafManagerListener.TOPIC, LafManagerListener { sendTypography() })
+        connection.subscribe(
+            LafManagerListener.TOPIC,
+            LafManagerListener {
+                sendTypography()
+                sendTheme()
+            },
+        )
     }
 
     /**
@@ -904,6 +963,51 @@ internal class ClaudePanel(
                 put("monoFamily", typography.monoFamily)
                 put("uiFamily", typography.uiFamily)
                 put("lineHeight", typography.lineHeight)
+                // The three sizes the settings screen speaks of: what the console has, what the panel
+                // was given (nought for "the console's"), and what it is drawn at as a result.
+                put("consoleSize", typography.consoleSize)
+                put("textSize", ClaudePreferences.textSize)
+                put("size", typography.size)
+            }.toString(),
+        )
+    }
+
+    /**
+     * The drafts the IDE holds for this project's tabs, handed to a page that has just loaded - after a
+     * restart they come off disk, after a reload of the page alone they never left (see
+     * ClaudeSessionHub.saveDraft).
+     *
+     * Always sent, even empty: the page does not report its own drafts until it has heard this, so that a
+     * field it has not been given yet is never reported empty over a draft the IDE is still holding. Off
+     * the interface thread, because a pasted picture comes back with its bytes read off disk (see
+     * DraftImages).
+     */
+    private fun sendDrafts() {
+        val held = hub.heldDrafts()
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val message = buildJsonObject {
+                put("type", "drafts")
+                putJsonObject("drafts") {
+                    held.forEach { (sessionId, draft) -> put(sessionId, DraftImages.rehydrate(draft)) }
+                }
+            }.toString()
+
+            webview?.send(message)
+        }
+    }
+
+    /**
+     * The theme as the page needs it: the choice itself and the IDE's brightness, rather than the theme
+     * they amount to. The settings screen shows "as in the IDE" as a choice of its own, and the page
+     * resolves it (see theme.ts) - the same rule PanelTheme holds for the page's first frame.
+     */
+    private fun sendTheme() {
+        webview?.send(
+            buildJsonObject {
+                put("type", "theme")
+                put("theme", ClaudePreferences.theme)
+                put("ideDark", PanelTheme.ideIsDark())
             }.toString(),
         )
     }

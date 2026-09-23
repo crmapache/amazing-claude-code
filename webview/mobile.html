@@ -5,7 +5,10 @@
     <!-- viewport-fit=cover so the layout can reach under the notch and the home indicator, which is
          where a fixed footer of buttons has to sit to be reachable with a thumb. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#1c1f26" />
+    <!-- The browser's own chrome in the colour of the panel under it, by the phone's own light or dark -
+         the same rule the page follows (see theme.ts). The values are the two themes' --acc-bg. -->
+    <meta name="theme-color" content="#1c1f26" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f8fa" media="(prefers-color-scheme: light)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Amazing Claude Code GUI</title>

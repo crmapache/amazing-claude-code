@@ -29,12 +29,14 @@ export const fr: Dict = {
       mcp: { title: 'SERVEURS MCP', hint: 'état · connexion · reconnexion' },
       plugins: { title: 'PLUGINS', hint: 'installés · parcourir · marketplaces' },
       settings: { title: 'RÉGLAGES', hint: 'comment le panneau se comporte et comment il sonne' },
+      appearance: { title: 'APPARENCE', hint: 'thème et taille du texte' },
       sounds: { title: 'ALERTES SONORES', hint: 'quand le panneau t’appelle' },
       calmColors: { title: 'COULEURS APAISÉES', hint: 'comment les jauges sont peintes' },
       indicators: { title: 'INDICATEURS', hint: 'ce qui reste autour du champ' },
       remote: { title: 'ACCÈS À DISTANCE', hint: 'état · relais · appareils appairés' },
       remoteAbout: { title: 'CE QUI SORT D’ICI', hint: 'à lire avant de l’activer' },
       newChat: { title: 'NOUVEAUX CHATS', hint: 'ce avec quoi démarre un nouvel onglet' },
+      restoreTabs: { title: 'ONGLETS AU DÉMARRAGE', hint: 'ce qui revient après un redémarrage' },
       newChatModel: { title: 'MODÈLE PAR DÉFAUT', hint: 'le modèle sur lequel démarre un nouvel onglet' },
       newChatEffort: { title: 'EFFORT PAR DÉFAUT', hint: 'à quel point un nouvel onglet réfléchit' },
       newChatMode: { title: 'MODE PAR DÉFAUT', hint: 'ce avec quoi démarrent les nouveaux onglets' },
@@ -60,7 +62,7 @@ export const fr: Dict = {
       plugins: { label: 'Plugins', sub: 'Installés, parcourir, marketplaces' },
       remote: { label: 'Accès à distance', sub: 'État, relais, appareils appairés' },
       accounts: { label: 'Comptes Claude', sub: 'Changer sans se déconnecter' },
-      settings: { label: 'Réglages', sub: 'Sons, nouveaux chats, disposition, langue' },
+      settings: { label: 'Réglages', sub: 'Thème, sons, nouveaux chats, langue' },
       feedback: { label: 'Envoyer un retour', sub: 'Un bug, une idée ou juste un bonjour' },
     },
 
@@ -75,10 +77,12 @@ export const fr: Dict = {
 
   settings: {
     rows: {
+      appearance: { label: 'Apparence', sub: 'Thème et taille du texte' },
       sounds: { label: 'Alertes sonores', sub: 'Quand le panneau t’appelle' },
       calmColors: { label: 'Couleurs apaisées', sub: 'Combien de couleur gardent les jauges' },
       indicators: { label: 'Indicateurs', sub: 'Quelles mesures restent près du champ' },
       newChat: { label: 'Nouveaux chats', sub: 'Modèle, effort et mode de permission' },
+      restoreTabs: { label: 'Onglets au démarrage', sub: 'Rouvrir ce qui était ouvert, brouillons compris' },
       composerLayout: { label: 'Disposition du champ', sub: 'Où se place le champ de saisie' },
       pasteCollapse: { label: 'Texte collé', sub: 'Quand un collage se replie en pastille' },
       sendKey: { label: 'Envoyer un message', sub: 'Quelle touche envoie' },
@@ -134,6 +138,34 @@ export const fr: Dict = {
     play: 'Écouter',
     playNamed: (sound) => `Écouter : ${sound}`,
     volumeOf: (sound) => `Volume : ${sound}`,
+  },
+
+  appearance: {
+    size: 'TAILLE DU TEXTE',
+    theme: 'THÈME',
+    followConsole: 'Comme la police de la console',
+    followConsoleSub: (size) => `Suivre la police de console de l’IDE - actuellement ${size}`,
+    own: 'Une taille à part',
+    ownSub: 'Le panneau seul - l’éditeur, le terminal et la console restent tels quels',
+    smaller: 'Plus petit',
+    larger: 'Plus grand',
+    followIde: 'Comme l’IDE',
+    followIdeSub: (theme) => `Suivre l’IDE - actuellement ${theme}`,
+    dark: 'Sombre',
+    darkSub: 'Toujours sombre, même dans un IDE clair',
+    light: 'Clair',
+    lightSub: 'Toujours clair, même dans un IDE sombre',
+    darkWord: 'sombre',
+    lightWord: 'clair',
+    auto: 'Auto',
+  },
+
+  restoreTabs: {
+    label: 'Restaurer les onglets',
+    hint: 'Les onglets, leurs conversations et le texte en cours reviennent quand le projet est rouvert - même après un plantage de l’IDE',
+    note: 'Rien n’est relancé : un agent ne démarre que lorsque son onglet est ouvert ou qu’on y écrit. Les brouillons restent sur cette machine, dans le dossier de l’IDE, et nulle part ailleurs.',
+    on: 'Activé',
+    off: 'Désactivé',
   },
 
   calmColors: {

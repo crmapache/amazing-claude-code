@@ -24,6 +24,7 @@ internal object ClaudePreferences {
         val hiddenIndicators: Set<String>,
         val improveInstructions: String,
         val language: String,
+        val restoreTabs: Boolean,
     )
 
     fun snapshot(): Snapshot = Snapshot(
@@ -39,6 +40,7 @@ internal object ClaudePreferences {
         hiddenIndicators = hiddenIndicators,
         improveInstructions = improveInstructions,
         language = language,
+        restoreTabs = restoreTabs,
     )
 
     var model: String
@@ -180,6 +182,47 @@ internal object ClaudePreferences {
     var language: String
         get() = read(LANGUAGE_KEY)
         set(value) = write(LANGUAGE_KEY, value.trim())
+
+    /**
+     * Which of the panel's two themes it wears: [THEME_DARK], [THEME_LIGHT], or empty - the default - for
+     * "the IDE's", dark under a dark look and feel and light under a light one (see PanelTheme).
+     *
+     * Empty rather than dark by default for the reason the language above is empty rather than English:
+     * somebody working in a light IDE should get a light panel without first having to discover that a
+     * switch exists. An explicit choice wins over the IDE's either way.
+     *
+     * Machine-wide: how bright a screen somebody wants is a matter of their eyes and their room, not of
+     * the repository that happens to be open. Read back through the same filter it is written through -
+     * a word this version does not know means "the IDE's", never a third theme.
+     */
+    var theme: String
+        get() = read(THEME_KEY).takeIf { it in THEMES }.orEmpty()
+        set(value) = write(THEME_KEY, value.trim().takeIf { it in THEMES }.orEmpty())
+
+    /**
+     * The panel's own text size in points, or [TEXT_SIZE_FOLLOW] - the default - for "the console
+     * font's", which is what the panel has always followed (see IdeTypography).
+     *
+     * Asked for by somebody who wanted the panel bigger than their editor: the console font is shared with
+     * the terminal and the run window, and turning it up for the panel turned all of them up. Whole points
+     * only, and within the bounds the zoom accepts anyway - a size nobody can set by hand is a size that
+     * cannot have been meant.
+     */
+    var textSize: Int
+        get() = read(TEXT_SIZE_KEY).toIntOrNull()?.takeIf { it in TEXT_SIZE_MIN..TEXT_SIZE_MAX } ?: TEXT_SIZE_FOLLOW
+        set(value) = write(TEXT_SIZE_KEY, if (value in TEXT_SIZE_MIN..TEXT_SIZE_MAX) value.toString() else "")
+
+    /**
+     * Whether the tabs open when a project was last closed - and what was being typed in them - come back
+     * when it is opened again (see TabMemory).
+     *
+     * On unless switched off, and stored the other way round for that reason: only "off" is ever written,
+     * so an empty setting means "as the panel does by default". Machine-wide: whether somebody likes to
+     * start clean is a habit of theirs, not of a repository.
+     */
+    var restoreTabs: Boolean
+        get() = read(RESTORE_TABS_KEY) != RESTORE_TABS_OFF
+        set(value) = write(RESTORE_TABS_KEY, if (value) "" else RESTORE_TABS_OFF)
 
     /**
      * The models somebody named by hand, because Claude Code does not name them (see CustomModels.tsx).
@@ -363,6 +406,20 @@ internal object ClaudePreferences {
     /** What the switch this setting grew out of wrote while it was on. */
     private const val CALM_COLORS_WAS_ON = "true"
 
+    /** The two themes a choice can name - see [theme]. Nothing chosen is the IDE's. */
+    const val THEME_DARK = "dark"
+    const val THEME_LIGHT = "light"
+    private val THEMES = setOf(THEME_DARK, THEME_LIGHT)
+
+    /**
+     * The text size's bounds, and the answer meaning "the console's" - see [textSize]. The bounds are the
+     * zoom's own (IdeTypography keeps the page between 0.6 and 2.5 of its 13-point design), rounded
+     * inwards to whole points.
+     */
+    const val TEXT_SIZE_FOLLOW = 0
+    const val TEXT_SIZE_MIN = 8
+    const val TEXT_SIZE_MAX = 32
+
     private const val UNUSABLE_IN_MODEL = "\"'`\\,"
     private const val MAX_MODEL_NAME = 120
     private const val MAX_CUSTOM_MODELS = 30
@@ -387,6 +444,10 @@ internal object ClaudePreferences {
     private const val HIDDEN_INDICATORS_KEY = "acc.indicators.hidden"
     private const val IMPROVE_INSTRUCTIONS_KEY = "acc.improve.instructions"
     private const val LANGUAGE_KEY = "acc.language"
+    private const val THEME_KEY = "acc.theme"
+    private const val TEXT_SIZE_KEY = "acc.textSize"
+    private const val RESTORE_TABS_KEY = "acc.restoreTabs"
+    private const val RESTORE_TABS_OFF = "off"
     private const val CUSTOM_MODELS_KEY = "acc.models.custom"
     private const val EXECUTABLE_KEY = "acc.executable"
     private const val MUTED_SOUNDS_KEY = "acc.sounds.muted"

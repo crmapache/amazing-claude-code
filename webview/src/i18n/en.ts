@@ -40,12 +40,14 @@ export const en = {
       mcp: { title: 'MCP SERVERS', hint: 'status · sign in · reconnect' },
       plugins: { title: 'PLUGINS', hint: 'installed · browse · marketplaces' },
       settings: { title: 'SETTINGS', hint: 'how the panel behaves and sounds' },
+      appearance: { title: 'APPEARANCE', hint: 'theme and text size' },
       sounds: { title: 'SOUND ALERTS', hint: 'when the panel calls you' },
       calmColors: { title: 'NO-STRESS COLORS', hint: 'how the gauges are painted' },
       indicators: { title: 'INDICATORS', hint: 'what stays around the field' },
       remote: { title: 'REMOTE ACCESS', hint: 'state · relay · paired devices' },
       remoteAbout: { title: 'WHAT TRAVELS', hint: 'read this before you turn it on' },
       newChat: { title: 'NEW CHATS', hint: 'what a new tab starts with' },
+      restoreTabs: { title: 'TABS ON START', hint: 'what comes back after a restart' },
       newChatModel: { title: 'DEFAULT MODEL', hint: 'what a new tab starts on' },
       newChatEffort: { title: 'DEFAULT EFFORT', hint: 'how hard a new tab thinks' },
       newChatMode: { title: 'DEFAULT MODE', hint: 'what new tabs start in' },
@@ -71,7 +73,7 @@ export const en = {
       plugins: { label: 'Plugins', sub: 'Installed, browse, marketplaces' },
       remote: { label: 'Remote access', sub: 'State, relay, paired devices' },
       accounts: { label: 'Claude accounts', sub: 'Switch without signing out' },
-      settings: { label: 'Settings', sub: 'Sounds, new chats, layout, language' },
+      settings: { label: 'Settings', sub: 'Theme, sounds, new chats, language' },
       feedback: { label: 'Send feedback', sub: 'A bug, an idea, or just hello' },
     },
 
@@ -91,10 +93,12 @@ export const en = {
 
   settings: {
     rows: {
+      appearance: { label: 'Appearance', sub: 'Theme and text size' },
       sounds: { label: 'Sound alerts', sub: 'When the panel calls you' },
       calmColors: { label: 'No-stress colors', sub: 'How much colour the gauges keep' },
       indicators: { label: 'Indicators', sub: 'Which readings stay around the field' },
       newChat: { label: 'New chats', sub: 'Model, effort and permission mode' },
+      restoreTabs: { label: 'Tabs on start', sub: 'Reopen what was open, drafts included' },
       composerLayout: { label: 'Composer layout', sub: 'Where the input sits' },
       pasteCollapse: { label: 'Pasted text', sub: 'When a paste folds into a chip' },
       sendKey: { label: 'Sending a message', sub: 'Which key sends it' },
@@ -171,6 +175,46 @@ export const en = {
     play: 'Play it',
     playNamed: (sound: string): string => `Play ${sound}`,
     volumeOf: (sound: string): string => `${sound} volume`,
+  },
+
+  /**
+   * The theme and the text size, on one screen: both are about how the panel looks rather than how it
+   * behaves, and a person who came for one is likely to want the other. The unit of a size ("13 pt") is
+   * the IDE's own and is written by the code in every language (see formatPoints).
+   */
+  appearance: {
+    /** Over the two halves of the screen. */
+    size: 'TEXT SIZE',
+    theme: 'THEME',
+    followConsole: 'As the console font',
+    followConsoleSub: (size: string): string => `Follow the IDE's console font - ${size} right now`,
+    own: 'A size of its own',
+    ownSub: 'The panel alone - the editor, the terminal and the console stay as they are',
+    smaller: 'Smaller',
+    larger: 'Larger',
+    followIde: 'As in the IDE',
+    followIdeSub: (theme: string): string => `Follow the IDE - ${theme} right now`,
+    dark: 'Dark',
+    darkSub: 'Always dark, even in a light IDE',
+    light: 'Light',
+    lightSub: 'Always light, even in a dark IDE',
+    /** The IDE's theme in the middle of the line above. */
+    darkWord: 'dark',
+    lightWord: 'light',
+    /** The value beside the row in the settings list when nothing is chosen - "Auto · 13 pt". */
+    auto: 'Auto',
+  },
+
+  /**
+   * The tabs coming back after a restart - one switch, and the two sentences people ask about: what
+   * comes back, and what it costs (nothing starts on its own, and the drafts stay on this machine).
+   */
+  restoreTabs: {
+    label: 'Bring the tabs back',
+    hint: 'The tabs, their conversations and what was being typed in them come back when the project opens again - after a crash of the IDE too',
+    note: 'Nothing is started again: an agent comes up only when its tab is opened or written into. Drafts are kept on this machine, in the IDE’s own folder, and nowhere else.',
+    on: 'On',
+    off: 'Off',
   },
 
   calmColors: {

@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
+import { followSystemTheme } from '../theme'
 import '../base.css'
 import './mobile.css'
 
@@ -13,6 +14,10 @@ import './mobile.css'
  */
 
 document.documentElement.dataset.accDensity = 'touch'
+
+// And the theme, for the same reason: the phone's own light or dark, set before the first paint and
+// followed from then on (see theme.ts).
+followSystemTheme()
 
 const container = document.getElementById('root')
 

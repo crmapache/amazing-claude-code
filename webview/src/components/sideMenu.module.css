@@ -16,7 +16,7 @@
      itself under them. Nothing behind it is clickable while it is open - that is what the scrim is for. */
   inset: 0;
   z-index: 40;
-  background: rgb(var(--acc-ch-shade) / 55%);
+  background: var(--acc-scrim);
   transition: opacity 0.22s ease;
 }
 
@@ -57,7 +57,7 @@
    on the same curve as the slide, so opening still looks like a sheet coming over the panel. */
 .sheetOpen {
   transform: translateX(0);
-  box-shadow: -18px 0 44px rgb(var(--acc-ch-shade) / 62%);
+  box-shadow: -18px 0 44px var(--acc-drop-far);
 }
 
 .sheetShut {
@@ -252,6 +252,13 @@
   color: var(--acc-agent);
 }
 
+/* The theme and the text size take the aquamarine: the one tint of the list no other settings row wears,
+   for the row people most often come to this list looking for. */
+.rowIconAppearance {
+  background: var(--acc-branch-12);
+  color: var(--acc-branch);
+}
+
 .rowIconSounds {
   background: var(--acc-warn-12);
   color: var(--acc-warn);
@@ -274,6 +281,12 @@
 }
 
 .rowIconNewChat {
+  background: var(--acc-accent-12);
+  color: var(--acc-accent);
+}
+
+/* The same blue as the new chats above it: both rows are about tabs, and the pair reads as one subject. */
+.rowIconRestoreTabs {
   background: var(--acc-accent-12);
   color: var(--acc-accent);
 }
@@ -1678,6 +1691,68 @@
 /* Dimmed rather than gone: what folding would go back to stays readable while "never fold" is chosen. */
 .choiceNumber:disabled {
   opacity: 0.4;
+}
+
+/*
+ * A heading over one of several lists on a single list-shaped screen (see Appearance.tsx). Inset like the
+ * note above a list, for the same reason: the rows run edge to edge, the words over them must not.
+ */
+.listLabel {
+  padding: 8px 8px 6px;
+}
+
+/* The second heading stands apart from the list above it: the 2px hair between rows is what holds one
+   list together, and the same hair here would read as the next row of the first. */
+.listLabelNext {
+  padding-top: 18px;
+}
+
+/*
+ * The text size's figure between its two buttons. One box, so that the three read as one control rather
+ * than as two buttons that happen to have a number between them - and the same box the typed number of a
+ * paste stands in (.choiceNumber), so that the two settings of that shape look alike.
+ */
+.stepper {
+  flex: none;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-raised);
+}
+
+.stepperButton {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--acc-r-xs);
+  color: var(--acc-fg-dim);
+  transition: background-color 80ms linear, color 80ms linear;
+}
+
+.stepperButton:hover:not(:disabled),
+.stepperButton[data-hover]:not(:disabled) {
+  background: var(--acc-bg-menu-hover);
+  color: var(--acc-fg);
+}
+
+.stepperButton:disabled {
+  opacity: 0.35;
+}
+
+/* Wide enough for "13.5 pt" without the buttons moving between one size and the next. */
+.stepperValue {
+  min-width: 46px;
+  font: 12px var(--acc-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--acc-fg);
+}
+
+/* The console's size, shown while it is followed: the figure is a reading there rather than a setting. */
+.stepperValueFollowing {
+  color: var(--acc-fg-faint);
 }
 
 /* --- Composer layout: four little drawings rather than four words ----------- */

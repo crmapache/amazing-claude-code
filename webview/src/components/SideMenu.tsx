@@ -18,6 +18,7 @@ export type MenuScreen =
   | 'mcp'
   | 'plugins'
   | 'settings'
+  | 'appearance'
   | 'sounds'
   | 'calmColors'
   | 'indicators'
@@ -25,6 +26,7 @@ export type MenuScreen =
   | 'remoteAbout'
   | 'accounts'
   | 'newChat'
+  | 'restoreTabs'
   | 'newChatModel'
   | 'newChatEffort'
   | 'newChatMode'
@@ -62,6 +64,8 @@ export interface MenuSummary {
   statistics: string
   mcp: { connected: number; total: number } | null
   plugins: number | null
+  /** The theme's word and the size the panel is drawn at - "Auto · 13 pt". */
+  appearance: string
   sounds: string
   /** Whether the gauges are drawn calm rather than by the green-to-red ladder - "On" or "Off". */
   calmColors: string
@@ -73,6 +77,8 @@ export interface MenuSummary {
    * that IS the setting, and a row saying nothing would read as a row that has not loaded.
    */
   newChat: { model: string; effort: string; mode: string }
+  /** Whether the tabs come back after a restart - "On" or "Off". */
+  restoreTabs: string
   composerLayout: string
   /** From how many lines a pasted text folds into a chip, or that it never does. */
   pasteCollapse: string
@@ -142,10 +148,12 @@ const AUTHOR_PRODUCT = 'Snakein'
  * One row instead of that group, and every new preference joins them rather than making the root longer.
  */
 const SETTINGS_SCREENS: MenuScreen[] = [
+  'appearance',
   'sounds',
   'calmColors',
   'indicators',
   'newChat',
+  'restoreTabs',
   'composerLayout',
   'pasteCollapse',
   'sendKey',
@@ -292,6 +300,14 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M8 6.2v3.6M6.2 8h3.6" />
     </svg>
   ),
+  /* A tab with an arrow curling back into it: the row is about tabs that come back. */
+  restoreTabs: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2.4 6.2V4.4a1.2 1.2 0 011.2-1.2h3l1.2 1.4h4.6a1.2 1.2 0 011.2 1.2v6.8a1.2 1.2 0 01-1.2 1.2H6" />
+      <path d="M5.6 9.6a2.6 2.6 0 10-2.4 1.6" />
+      <path d="M1.9 9.9l1.3 1.3 1.3-1.3" />
+    </svg>
+  ),
   /* Rising bars: the row is about how hard a new tab thinks, and a level is the one thing a ladder of
      bars says without a word. A dial would have promised a gauge - something being measured rather than
      something being chosen. */
@@ -300,8 +316,16 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M3.6 11.4V9.2M8 11.4V6.4M12.4 11.4V3.9" />
     </svg>
   ),
+  /* A disc half in shadow: the light and the dark side of one thing, which is what a theme is. */
+  appearance: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4">
+      <circle cx="8" cy="8" r="5.6" />
+      <path d="M8 2.4a5.6 5.6 0 010 11.2z" fill="currentColor" stroke="none" />
+    </svg>
+  ),
   /* A gauge at rest: the track and a short reading inside it. The row is about how the gauges are
-     painted, and a palette or a half-filled disc would have promised a theme instead. */
+     painted, and a palette or a half-filled disc would have promised a theme instead - the half-filled
+     disc is the appearance row's, above. */
   calmColors: (
     <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
       <rect x="1.9" y="5.6" width="12.2" height="4.8" rx="2.4" />
@@ -647,6 +671,16 @@ export const SettingsScreen = ({
   return (
     <div className={s.screen}>
       <div className={s.rows}>
+        {/* First, because it is the row people open this list looking for: a panel too dark, too light
+            or too small is the complaint that arrives before any other. */}
+        <Row
+          icon="appearance"
+          iconClass={s.rowIconAppearance}
+          label={t.settings.rows.appearance.label}
+          sub={t.settings.rows.appearance.sub}
+          value={summary.appearance}
+          onClick={() => onPick('appearance')}
+        />
         <Row
           icon="sounds"
           iconClass={s.rowIconSounds}
@@ -690,6 +724,16 @@ export const SettingsScreen = ({
           sub={t.settings.rows.newChat.sub}
           value=""
           onClick={() => onPick('newChat')}
+        />
+        {/* Right after the new chats: both are about tabs, one about how a tab begins and this about
+            whether the tabs outlive a restart. */}
+        <Row
+          icon="restoreTabs"
+          iconClass={s.rowIconRestoreTabs}
+          label={t.settings.rows.restoreTabs.label}
+          sub={t.settings.rows.restoreTabs.sub}
+          value={summary.restoreTabs}
+          onClick={() => onPick('restoreTabs')}
         />
         <Row
           icon="composerLayout"

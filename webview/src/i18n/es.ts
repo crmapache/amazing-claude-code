@@ -25,12 +25,14 @@ export const es: Dict = {
       mcp: { title: 'SERVIDORES MCP', hint: 'estado · iniciar sesión · reconectar' },
       plugins: { title: 'PLUGINS', hint: 'instalados · explorar · marketplaces' },
       settings: { title: 'AJUSTES', hint: 'cómo se comporta y cómo suena el panel' },
+      appearance: { title: 'APARIENCIA', hint: 'tema y tamaño del texto' },
       sounds: { title: 'AVISOS SONOROS', hint: 'cuándo te llama el panel' },
       calmColors: { title: 'COLORES TRANQUILOS', hint: 'cómo se pintan los medidores' },
       indicators: { title: 'INDICADORES', hint: 'qué queda alrededor del campo' },
       remote: { title: 'ACCESO REMOTO', hint: 'estado · relay · dispositivos vinculados' },
       remoteAbout: { title: 'QUÉ SALE DE AQUÍ', hint: 'léelo antes de activarlo' },
       newChat: { title: 'CHATS NUEVOS', hint: 'con qué empieza una pestaña nueva' },
+      restoreTabs: { title: 'PESTAÑAS AL INICIAR', hint: 'lo que vuelve tras un reinicio' },
       newChatModel: { title: 'MODELO POR DEFECTO', hint: 'con qué modelo empieza una pestaña nueva' },
       newChatEffort: { title: 'ESFUERZO POR DEFECTO', hint: 'cuánto piensa una pestaña nueva' },
       newChatMode: { title: 'MODO POR DEFECTO', hint: 'con qué empiezan las pestañas nuevas' },
@@ -56,7 +58,7 @@ export const es: Dict = {
       plugins: { label: 'Plugins', sub: 'Instalados, explorar, marketplaces' },
       remote: { label: 'Acceso remoto', sub: 'Estado, relay, dispositivos vinculados' },
       accounts: { label: 'Cuentas de Claude', sub: 'Cambia sin cerrar sesión' },
-      settings: { label: 'Ajustes', sub: 'Sonidos, chats nuevos, disposición, idioma' },
+      settings: { label: 'Ajustes', sub: 'Tema, sonidos, chats nuevos, idioma' },
       feedback: { label: 'Enviar comentarios', sub: 'Un fallo, una idea o simplemente un hola' },
     },
 
@@ -71,10 +73,12 @@ export const es: Dict = {
 
   settings: {
     rows: {
+      appearance: { label: 'Apariencia', sub: 'Tema y tamaño del texto' },
       sounds: { label: 'Avisos sonoros', sub: 'Cuándo te llama el panel' },
       calmColors: { label: 'Colores tranquilos', sub: 'Cuánto color conservan los medidores' },
       indicators: { label: 'Indicadores', sub: 'Qué lecturas quedan junto al campo' },
       newChat: { label: 'Chats nuevos', sub: 'Modelo, esfuerzo y modo de permisos' },
+      restoreTabs: { label: 'Pestañas al iniciar', sub: 'Reabrir lo que estaba abierto, borradores incluidos' },
       composerLayout: { label: 'Disposición del campo', sub: 'Dónde se coloca el campo de entrada' },
       pasteCollapse: { label: 'Texto pegado', sub: 'Cuándo un pegado se pliega en una ficha' },
       sendKey: { label: 'Enviar un mensaje', sub: 'Qué tecla lo envía' },
@@ -130,6 +134,34 @@ export const es: Dict = {
     play: 'Escúchalo',
     playNamed: (sound) => `Escuchar: ${sound}`,
     volumeOf: (sound) => `Volumen de: ${sound}`,
+  },
+
+  appearance: {
+    size: 'TAMAÑO DEL TEXTO',
+    theme: 'TEMA',
+    followConsole: 'Como la fuente de la consola',
+    followConsoleSub: (size) => `Seguir la fuente de consola del IDE - ahora mismo, ${size}`,
+    own: 'Un tamaño propio',
+    ownSub: 'Solo el panel - el editor, la terminal y la consola se quedan como están',
+    smaller: 'Más pequeño',
+    larger: 'Más grande',
+    followIde: 'Como el IDE',
+    followIdeSub: (theme) => `Seguir al IDE - ahora mismo, ${theme}`,
+    dark: 'Oscuro',
+    darkSub: 'Siempre oscuro, incluso en un IDE claro',
+    light: 'Claro',
+    lightSub: 'Siempre claro, incluso en un IDE oscuro',
+    darkWord: 'oscuro',
+    lightWord: 'claro',
+    auto: 'Automático',
+  },
+
+  restoreTabs: {
+    label: 'Restaurar las pestañas',
+    hint: 'Las pestañas, sus conversaciones y el texto a medio escribir vuelven cuando se abre de nuevo el proyecto, también tras un fallo del IDE',
+    note: 'No se vuelve a lanzar nada: un agente arranca solo cuando se abre su pestaña o se escribe en ella. Los borradores se guardan en esta máquina, en la carpeta del propio IDE, y en ningún otro sitio.',
+    on: 'Activado',
+    off: 'Desactivado',
   },
 
   calmColors: {

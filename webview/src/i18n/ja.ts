@@ -27,12 +27,14 @@ export const ja: Dict = {
       mcp: { title: 'MCP サーバー', hint: '状態 · サインイン · 再接続' },
       plugins: { title: 'プラグイン', hint: 'インストール済み · 一覧 · マーケットプレイス' },
       settings: { title: '設定', hint: 'パネルの動きと音' },
+      appearance: { title: '外観', hint: 'テーマと文字サイズ' },
       sounds: { title: '通知音', hint: 'パネルがあなたを呼ぶとき' },
       calmColors: { title: '穏やかな色', hint: 'メーターの色の付け方' },
       indicators: { title: 'インジケーター', hint: '入力欄のまわりに残すもの' },
       remote: { title: 'リモートアクセス', hint: '状態 · リレー · ペアリング済みの端末' },
       remoteAbout: { title: '外に出る情報', hint: 'オンにする前にお読みください' },
       newChat: { title: '新しいチャット', hint: '新しいタブが何で始まるか' },
+      restoreTabs: { title: '起動時のタブ', hint: '再起動後に戻るもの' },
       newChatModel: { title: 'デフォルトのモデル', hint: '新しいタブが始まるモデル' },
       newChatEffort: { title: 'デフォルトの思考量', hint: '新しいタブがどれだけ考えるか' },
       newChatMode: { title: 'デフォルトのモード', hint: '新しいタブが始まるモード' },
@@ -58,7 +60,7 @@ export const ja: Dict = {
       plugins: { label: 'プラグイン', sub: 'インストール済み、一覧、マーケットプレイス' },
       remote: { label: 'リモートアクセス', sub: '状態、リレー、ペアリング済みの端末' },
       accounts: { label: 'Claude アカウント', sub: 'サインアウトせずに切り替え' },
-      settings: { label: '設定', sub: '通知音、新しいチャット、レイアウト、言語' },
+      settings: { label: '設定', sub: 'テーマ、通知音、新しいチャット、言語' },
       feedback: { label: 'フィードバックを送る', sub: '不具合、アイデア、ひとことでも' },
     },
 
@@ -73,10 +75,12 @@ export const ja: Dict = {
 
   settings: {
     rows: {
+      appearance: { label: '外観', sub: 'テーマと文字サイズ' },
       sounds: { label: '通知音', sub: 'パネルがあなたを呼ぶとき' },
       calmColors: { label: '穏やかな色', sub: 'メーターにどれだけ色を残すか' },
       indicators: { label: 'インジケーター', sub: '入力欄のそばに残す表示' },
       newChat: { label: '新しいチャット', sub: 'モデル・思考量・権限モード' },
+      restoreTabs: { label: '起動時のタブ', sub: '開いていたタブを下書きごと開き直す' },
       composerLayout: { label: '入力欄のレイアウト', sub: '入力欄を置く場所' },
       pasteCollapse: { label: '貼り付けたテキスト', sub: '貼り付けをチップにまとめる条件' },
       sendKey: { label: 'メッセージの送信', sub: 'どのキーで送るか' },
@@ -132,6 +136,34 @@ export const ja: Dict = {
     play: '再生',
     playNamed: (sound) => `再生：${sound}`,
     volumeOf: (sound) => `音量：${sound}`,
+  },
+
+  appearance: {
+    size: '文字サイズ',
+    theme: 'テーマ',
+    followConsole: 'コンソールのフォントに合わせる',
+    followConsoleSub: (size) => `IDE のコンソールフォントに合わせる - 現在は ${size}`,
+    own: '独自のサイズ',
+    ownSub: 'パネルだけ - エディター、ターミナル、コンソールはそのまま',
+    smaller: '小さく',
+    larger: '大きく',
+    followIde: 'IDE に合わせる',
+    followIdeSub: (theme) => `IDE に合わせる - 現在は${theme}`,
+    dark: 'ダーク',
+    darkSub: 'IDE がライトでも常にダーク',
+    light: 'ライト',
+    lightSub: 'IDE がダークでも常にライト',
+    darkWord: 'ダーク',
+    lightWord: 'ライト',
+    auto: '自動',
+  },
+
+  restoreTabs: {
+    label: 'タブを復元する',
+    hint: 'プロジェクトを開き直すと、タブとその会話、書きかけの文章が戻ります - IDE がクラッシュした後も',
+    note: '何も起動し直しません。エージェントはタブを開くか書き込んだときにだけ立ち上がります。下書きはこのマシンの IDE 自身のフォルダーにだけ保存されます。',
+    on: 'オン',
+    off: 'オフ',
   },
 
   calmColors: {

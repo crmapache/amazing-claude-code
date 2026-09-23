@@ -15,7 +15,7 @@
   position: absolute;
   inset: 0;
   z-index: 44;
-  background: rgb(var(--acc-ch-shade) / 55%);
+  background: var(--acc-scrim);
 }
 
 .window {
@@ -653,7 +653,7 @@
 .hitSelected {
   background: var(--acc-bg-control);
   border-color: var(--acc-fg-ghost);
-  box-shadow: 0 2px 8px rgb(var(--acc-ch-shade) / 45%);
+  box-shadow: 0 2px 8px var(--acc-drop);
 }
 
 /* Unfolded, the row is text and not a button any more, and the pointer over it changes nothing. Lifted
@@ -790,7 +790,7 @@
   font: 600 11px var(--acc-font);
   color: var(--acc-on-accent);
   background: var(--acc-accent);
-  box-shadow: 0 2px 8px rgb(var(--acc-ch-shade) / 55%);
+  box-shadow: 0 2px 8px var(--acc-drop);
   white-space: nowrap;
 }
 

@@ -28,12 +28,14 @@ export const de: Dict = {
       mcp: { title: 'MCP-SERVER', hint: 'Status · anmelden · neu verbinden' },
       plugins: { title: 'PLUGINS', hint: 'installiert · stöbern · Marktplätze' },
       settings: { title: 'EINSTELLUNGEN', hint: 'wie sich das Panel verhält und wie es klingt' },
+      appearance: { title: 'DARSTELLUNG', hint: 'Farbdesign und Textgröße' },
       sounds: { title: 'SIGNALTÖNE', hint: 'wenn das Panel nach dir ruft' },
       calmColors: { title: 'RUHIGE FARBEN', hint: 'wie die Anzeigen gefärbt werden' },
       indicators: { title: 'ANZEIGEN', hint: 'was um das Feld herum bleibt' },
       remote: { title: 'FERNZUGRIFF', hint: 'Status · Relay · gekoppelte Geräte' },
       remoteAbout: { title: 'WAS DAS HAUS VERLÄSST', hint: 'lies das, bevor du es einschaltest' },
       newChat: { title: 'NEUE CHATS', hint: 'womit ein neuer Tab startet' },
+      restoreTabs: { title: 'TABS BEIM START', hint: 'was nach einem Neustart zurückkommt' },
       newChatModel: { title: 'STANDARDMODELL', hint: 'mit welchem Modell ein neuer Tab startet' },
       newChatEffort: { title: 'STANDARD-AUFWAND', hint: 'wie gründlich ein neuer Tab denkt' },
       newChatMode: { title: 'STANDARDMODUS', hint: 'womit neue Tabs starten' },
@@ -59,7 +61,7 @@ export const de: Dict = {
       plugins: { label: 'Plugins', sub: 'Installiert, stöbern, Marktplätze' },
       remote: { label: 'Fernzugriff', sub: 'Status, Relay, gekoppelte Geräte' },
       accounts: { label: 'Claude-Konten', sub: 'Wechseln, ohne dich abzumelden' },
-      settings: { label: 'Einstellungen', sub: 'Töne, neue Chats, Layout, Sprache' },
+      settings: { label: 'Einstellungen', sub: 'Farbdesign, Töne, neue Chats, Sprache' },
       feedback: { label: 'Feedback senden', sub: 'Ein Bug, eine Idee oder einfach hallo' },
     },
 
@@ -74,10 +76,12 @@ export const de: Dict = {
 
   settings: {
     rows: {
+      appearance: { label: 'Darstellung', sub: 'Farbdesign und Textgröße' },
       sounds: { label: 'Signaltöne', sub: 'Wenn das Panel nach dir ruft' },
       calmColors: { label: 'Ruhige Farben', sub: 'Wie viel Farbe die Anzeigen behalten' },
       indicators: { label: 'Anzeigen', sub: 'Welche Werte am Feld stehen bleiben' },
       newChat: { label: 'Neue Chats', sub: 'Modell, Aufwand und Berechtigungsmodus' },
+      restoreTabs: { label: 'Tabs beim Start', sub: 'Wieder öffnen, was offen war, samt Entwürfen' },
       composerLayout: { label: 'Layout des Eingabefelds', sub: 'Wo das Eingabefeld sitzt' },
       pasteCollapse: { label: 'Eingefügter Text', sub: 'Wann eine Einfügung zum Chip wird' },
       sendKey: { label: 'Nachricht senden', sub: 'Welche Taste sendet' },
@@ -133,6 +137,34 @@ export const de: Dict = {
     play: 'Anhören',
     playNamed: (sound) => `Anhören: ${sound}`,
     volumeOf: (sound) => `Lautstärke: ${sound}`,
+  },
+
+  appearance: {
+    size: 'TEXTGRÖSSE',
+    theme: 'FARBDESIGN',
+    followConsole: 'Wie die Konsolenschrift',
+    followConsoleSub: (size) => `Der Konsolenschrift der IDE folgen - derzeit ${size}`,
+    own: 'Eigene Größe',
+    ownSub: 'Nur das Panel - Editor, Terminal und Konsole bleiben, wie sie sind',
+    smaller: 'Kleiner',
+    larger: 'Größer',
+    followIde: 'Wie die IDE',
+    followIdeSub: (theme) => `Der IDE folgen - derzeit ${theme}`,
+    dark: 'Dunkel',
+    darkSub: 'Immer dunkel, auch in einer hellen IDE',
+    light: 'Hell',
+    lightSub: 'Immer hell, auch in einer dunklen IDE',
+    darkWord: 'dunkel',
+    lightWord: 'hell',
+    auto: 'Auto',
+  },
+
+  restoreTabs: {
+    label: 'Tabs wiederherstellen',
+    hint: 'Die Tabs, ihre Unterhaltungen und der angefangene Text kommen zurück, wenn das Projekt wieder geöffnet wird - auch nach einem Absturz der IDE',
+    note: 'Nichts wird neu gestartet: Ein Agent startet erst, wenn sein Tab geöffnet oder beschrieben wird. Entwürfe bleiben auf diesem Rechner, im eigenen Ordner der IDE, und nirgendwo sonst.',
+    on: 'An',
+    off: 'Aus',
   },
 
   calmColors: {

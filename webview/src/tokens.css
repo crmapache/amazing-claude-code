@@ -1,5 +1,6 @@
 /*
- * The "Moonlight" theme - the Amazing Claude Code panel's dark scheme for JetBrains Dark.
+ * The "Moonlight" theme - the Amazing Claude Code panel's dark scheme for JetBrains Dark - and, at the foot
+ * of the file, "Daylight", its light twin for JetBrains Light.
  *
  * The sizes, radii, fonts and structure are as they were - only the colour values changed and a second
  * layer appeared.
@@ -9,10 +10,10 @@
  *      without alpha: only that way does one and the same paint give both a solid colour and a ladder of
  *      transparencies without spreading rgb(...) literals through the files.
  *   2. THE ROLES (--acc-bg, --acc-fg, --acc-accent, ...) - what the components paint with. The components
- *      know ONLY about this layer.
+ *      are meant to know only about this layer.
  *
- * A light theme, when its turn comes, overrides the second layer whole and touches neither the first nor a
- * single CSS module - see the stub at the end of the file.
+ * The light theme overrides the palette rather than the roles - see [data-acc-theme='light'] at the end of
+ * the file for why.
  */
 
 :root {
@@ -311,6 +312,21 @@
      surfaces; the theme's shadow is bluish too. */
   --acc-shade: rgb(var(--acc-ch-shade) / 22%);
 
+  /* The veil laid over the panel behind whatever slides in over it - the side menu, the search window, an
+     agent's window - and its lighter kin behind the scenario overlays and the phone's sheets. */
+  --acc-scrim: rgb(var(--acc-ch-shade) / 55%);
+  --acc-scrim-soft: rgb(var(--acc-ch-shade) / 46%);
+
+  /* The paint of a shadow whose shape is the component's own: a sheet sliding in from an edge casts a
+     wide one, a small lifted button a close one. Only the colour is a role - the offsets and the blur
+     belong to the thing casting it, and differ from one to the next. */
+  --acc-drop-far: rgb(var(--acc-ch-shade) / 62%);
+  --acc-drop: rgb(var(--acc-ch-shade) / 46%);
+
+  /* What the browser draws by itself - the check boxes, the page before the first paint - is drawn for
+     this scheme too, rather than as a white island in a dark panel. */
+  color-scheme: dark;
+
   /* --- The holiday layer: 24 Dec - 3 Jan ----------------------------------
      Two things the panel has no paint for the rest of the year: snow, and the ice the Send button
      freezes over with (see holiday.ts, Holiday.tsx and the [data-holiday] rules in composer.module.css).
@@ -516,20 +532,138 @@
 }
 
 /*
- * The light theme's stub. ONLY the role layer is overridden: the surfaces, the borders, the text,
- * --acc-on-accent and one step of each accent (on a light background the glowing variant becomes
- * unreadable while the dark one becomes the main one). The transparency ladders and the channels are not
- * touched at all: 12% of moon blue works on any background.
+ * "Daylight" - the light theme.
  *
- * [data-acc-theme='light'] {
- *   --acc-bg-sunken: #eceef3;
- *   --acc-bg-deep: #f1f3f7;
- *   --acc-bg: #f7f8fb;
- *   ...
- *   --acc-fg: #1b1f28;
- *   --acc-on-accent: #ffffff;
- *   --acc-accent: var(--acc-c-moon-1);
- *   --acc-accent-hover: #3f86c4;
- *   --acc-accent-light: var(--acc-c-moon-1);
- * }
+ * The attribute stands on the root when the panel is light (see theme.ts): chosen so in the settings, or
+ * following an IDE that is light. The phone puts it there when the phone itself is light.
+ *
+ * WHY THE PALETTE AND NOT THE ROLES. The plan was once to override the roles alone, and it would not have
+ * held: the modules reach past the roles into the palette in dozens of places (a hover painted
+ * --acc-c-moon-3, a quiet line --acc-c-ink-16, a tint rgb(var(--acc-ch-sand) / 6%)), so a theme made of
+ * roles would have left every one of them glowing pastel on white. Overriding the palette catches them
+ * all, and it is honest rather than lucky because of what a step of the palette actually means: not "this
+ * blue" but "this much contrast against the panel". A light theme keeps that meaning and changes the paint.
+ *
+ * So every value below was computed rather than picked, by one rule each:
+ *
+ *   - the TEXT steps of the ink (14-21) hold the contrast against the background the dark ones have -
+ *     4.4:1 for the quietest body text, 13:1 for the main one - so every line of text is exactly as
+ *     readable here as there, and palette.test.ts holds it to that;
+ *   - the SURFACE steps (01-13) stand off the background by the same perceptual distance (OKLab
+ *     lightness) as their dark twins, mirrored and eased to four fifths: a card sits a step darker than
+ *     the panel here where it sat a step lighter there, the input fields become white wells, and the
+ *     order of the ladder is untouched - so "a hover is one step past what it hovers over" is as true on
+ *     white as it was on ink. The floating layers (06) are the one exception, see the step itself;
+ *   - each ACCENT keeps its hue and gains the contrast its step is for, against the panel: the pressed
+ *     shade 4.5:1, the main paint 5.35:1, the hover 6.1:1, the light variant 6.9:1, the text-on-a-tint
+ *     variant 9.5:1. The main figure is what keeps a coloured word at AA on the side menu's darker grey as
+ *     well as on the panel, and white on a filled button with it. On ink the higher step was the lighter
+ *     one; on white it is the darker one - which is the same thing, said about contrast.
+ *
+ * The channels follow the main paints, so every tint ladder (12% of the accent, 32% of the warning) is
+ * made of the light theme's colour rather than a pastel one. The few literals of the dark layer - what
+ * the text on a filled button is, how heavy a shadow falls - are restated here, because on white they
+ * mean the opposite.
  */
+:root[data-acc-theme='light'] {
+  color-scheme: light;
+
+  /* Neutrals: the panel is JetBrains Light's own tool window grey (#f7f8fa), as the dark one is Dark's.
+     Step 06 - the floating layers: the side menu, the search window, a scenario's dialog - is the one
+     exception to the mirror below. Mirrored, it came out a step darker than the cards, and a menu sliding
+     over the panel read as a grey slab; white is what JetBrains Light's own popups are, and it stands
+     apart from the cards on it just as well, from the other side. */
+  --acc-c-ink-01: #ffffff;
+  --acc-c-ink-02: #fcfcfd;
+  --acc-c-ink-03: #f7f8fa;
+  --acc-c-ink-04: #f1f3f6;
+  --acc-c-ink-05: #ebeef2;
+  --acc-c-ink-06: #ffffff;
+  --acc-c-ink-07: #dadee5;
+  --acc-c-ink-08: #d5d9e0;
+  --acc-c-ink-09: #d1d5dc;
+  --acc-c-ink-10: #cdd1d9;
+  --acc-c-ink-11: #c0c5ce;
+  --acc-c-ink-12: #b9bec8;
+  --acc-c-ink-13: #9aa0ab;
+  --acc-c-ink-14: #788093;
+  --acc-c-ink-15: #6c7486;
+  --acc-c-ink-16: #61687a;
+  --acc-c-ink-17: #565d6d;
+  --acc-c-ink-18: #4c5261;
+  --acc-c-ink-19: #404552;
+  --acc-c-ink-20: #373b47;
+  --acc-c-ink-21: #2a2d35;
+
+  --acc-c-moon-1: #0677bd;
+  --acc-c-moon-2: #026bab;
+  --acc-c-moon-3: #00629a;
+  --acc-c-moon-4: #025a8e;
+
+  --acc-c-aqua-1: #038078;
+  --acc-c-aqua-2: #08736b;
+  --acc-c-aqua-3: #016a62;
+  --acc-c-aqua-4: #04615a;
+
+  --acc-c-iris-1: #7b5dd5;
+  --acc-c-iris-2: #7250c6;
+  --acc-c-iris-3: #653db2;
+
+  --acc-c-mint-1: #06825a;
+  --acc-c-mint-2: #077552;
+  --acc-c-mint-3: #066b4c;
+  --acc-c-mint-4: #056248;
+  --acc-c-mint-5: #034b37;
+
+  --acc-c-sand-1: #996904;
+  --acc-c-sand-2: #8a5e01;
+  --acc-c-sand-3: #7f5602;
+  --acc-c-sand-4: #705000;
+
+  --acc-c-copper-1: #ac4804;
+  --acc-c-copper-2: #8e3f03;
+
+  --acc-c-rose-1: #cd3d50;
+  --acc-c-rose-2: #be2e46;
+  --acc-c-rose-3: #b32241;
+  --acc-c-rose-4: #a9143c;
+  --acc-c-rose-5: #87022d;
+
+  --acc-c-orchid: #9b4889;
+  --acc-c-green: #067648;
+
+  --acc-ch-moon: 2 107 171;
+  --acc-ch-aqua: 8 115 107;
+  --acc-ch-iris: 114 80 198;
+  --acc-ch-mint: 7 117 82;
+  --acc-ch-sand: 138 94 1;
+  --acc-ch-rose: 190 46 70;
+  --acc-ch-rose-4: 169 20 60;
+  --acc-ch-copper: 172 72 4;
+  --acc-ch-green: 6 118 72;
+  --acc-ch-orchid: 155 72 137;
+  /* A shade darker than the dark theme's mist: the neutral backing of a read or a grep is a tint of this,
+     and at 12% the lighter grey vanished into a white card. */
+  --acc-ch-mist: 104 112 128;
+
+  /* White on a filled button: every paint above, the pressed shade included, is past 4.5:1 against white. */
+  --acc-on-accent: #ffffff;
+
+  /* The shimmer runs from the strongest blue towards a lighter one, as it ran towards a dimmer one on ink:
+     the wave is the text losing a little contrast, whichever way that goes. */
+  --acc-stream-3: #4b95d4;
+
+  /* Snow the colour of a winter sky rather than of snow: white flakes on a white panel are no flakes. */
+  --acc-snow: #a3b5d1;
+
+  /* On white a shadow is felt rather than seen. The same casts as on ink, a fraction of the weight - at the
+     dark theme's 62% a menu dropped a stain rather than a shadow. */
+  --acc-shade: rgb(var(--acc-ch-shade) / 5%);
+  --acc-scrim: rgb(var(--acc-ch-shade) / 28%);
+  --acc-scrim-soft: rgb(var(--acc-ch-shade) / 22%);
+  --acc-drop-far: rgb(var(--acc-ch-shade) / 16%);
+  --acc-drop: rgb(var(--acc-ch-shade) / 14%);
+  --acc-shadow-menu: 0 14px 36px rgb(var(--acc-ch-shade) / 16%);
+  --acc-shadow-card: 0 12px 32px rgb(var(--acc-ch-shade) / 14%), 0 0 0 1px rgb(var(--acc-ch-shade) / 8%);
+  --acc-shadow-popover: 0 8px 22px rgb(var(--acc-ch-shade) / 16%);
+}

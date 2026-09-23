@@ -1500,7 +1500,7 @@
   right: 0;
   bottom: 0;
   z-index: 46;
-  background: rgb(0 0 0 / 40%);
+  background: var(--acc-scrim-soft);
 }
 
 /*
@@ -2769,7 +2769,7 @@
   right: 0;
   bottom: 0;
   z-index: 46;
-  background: rgb(0 0 0 / 40%);
+  background: var(--acc-scrim-soft);
 }
 
 .help {

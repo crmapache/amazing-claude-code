@@ -213,6 +213,23 @@ internal class SessionRegistry {
         return true
     }
 
+    /**
+     * The strip put back in a remembered order - see ClaudeSessionHub.restoreTabs. [open] places a tab at
+     * the end, or after its group, and a restored strip is opened tab by tab; the order it was left in is
+     * what a person comes back expecting, the first tab included when it had been dragged away from the
+     * front.
+     *
+     * Tabs the order does not name keep their places in front of the rest - that is the opening tab, when
+     * it had nothing worth bringing back. The order was read off this very list, so its groups are
+     * unbroken runs already, and a stable sort keeps them so.
+     */
+    @Synchronized
+    fun arrange(order: List<String>) {
+        val sorted = tabs.sortedBy { tab -> order.indexOf(tab.id) }
+        tabs.clear()
+        tabs.addAll(sorted)
+    }
+
     @Synchronized
     fun contains(id: String): Boolean = tabs.any { it.id == id }
 

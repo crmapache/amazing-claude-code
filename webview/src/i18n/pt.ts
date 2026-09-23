@@ -25,12 +25,14 @@ export const pt: Dict = {
       mcp: { title: 'SERVIDORES MCP', hint: 'estado · entrar · reconectar' },
       plugins: { title: 'PLUGINS', hint: 'instalados · explorar · marketplaces' },
       settings: { title: 'CONFIGURAÇÕES', hint: 'como o painel se comporta e como ele soa' },
+      appearance: { title: 'APARÊNCIA', hint: 'tema e tamanho do texto' },
       sounds: { title: 'AVISOS SONOROS', hint: 'quando o painel chama você' },
       calmColors: { title: 'CORES TRANQUILAS', hint: 'como os medidores são pintados' },
       indicators: { title: 'INDICADORES', hint: 'o que fica em volta do campo' },
       remote: { title: 'ACESSO REMOTO', hint: 'estado · relay · dispositivos pareados' },
       remoteAbout: { title: 'O QUE SAI DAQUI', hint: 'leia antes de ligar' },
       newChat: { title: 'NOVAS CONVERSAS', hint: 'com o que uma aba nova começa' },
+      restoreTabs: { title: 'ABAS AO INICIAR', hint: 'o que volta depois de reiniciar' },
       newChatModel: { title: 'MODELO PADRÃO', hint: 'em qual modelo uma aba nova começa' },
       newChatEffort: { title: 'ESFORÇO PADRÃO', hint: 'quanto uma aba nova pensa' },
       newChatMode: { title: 'MODO PADRÃO', hint: 'com o que as novas abas começam' },
@@ -56,7 +58,7 @@ export const pt: Dict = {
       plugins: { label: 'Plugins', sub: 'Instalados, explorar, marketplaces' },
       remote: { label: 'Acesso remoto', sub: 'Estado, relay, dispositivos pareados' },
       accounts: { label: 'Contas do Claude', sub: 'Trocar sem sair da conta' },
-      settings: { label: 'Configurações', sub: 'Sons, novas conversas, layout, idioma' },
+      settings: { label: 'Configurações', sub: 'Tema, sons, novas conversas, idioma' },
       feedback: { label: 'Enviar feedback', sub: 'Um bug, uma ideia ou só um oi' },
     },
 
@@ -71,10 +73,12 @@ export const pt: Dict = {
 
   settings: {
     rows: {
+      appearance: { label: 'Aparência', sub: 'Tema e tamanho do texto' },
       sounds: { label: 'Avisos sonoros', sub: 'Quando o painel chama você' },
       calmColors: { label: 'Cores tranquilas', sub: 'Quanta cor os medidores mantêm' },
       indicators: { label: 'Indicadores', sub: 'Quais leituras ficam junto ao campo' },
       newChat: { label: 'Novas conversas', sub: 'Modelo, esforço e modo de permissão' },
+      restoreTabs: { label: 'Abas ao iniciar', sub: 'Reabrir o que estava aberto, com os rascunhos' },
       composerLayout: { label: 'Layout do campo', sub: 'Onde fica o campo de escrita' },
       pasteCollapse: { label: 'Texto colado', sub: 'Quando uma colagem vira um chip' },
       sendKey: { label: 'Enviar uma mensagem', sub: 'Qual tecla envia' },
@@ -130,6 +134,34 @@ export const pt: Dict = {
     play: 'Ouvir',
     playNamed: (sound) => `Ouvir: ${sound}`,
     volumeOf: (sound) => `Volume de: ${sound}`,
+  },
+
+  appearance: {
+    size: 'TAMANHO DO TEXTO',
+    theme: 'TEMA',
+    followConsole: 'Como a fonte do console',
+    followConsoleSub: (size) => `Seguir a fonte do console da IDE - agora, ${size}`,
+    own: 'Um tamanho próprio',
+    ownSub: 'Só o painel - o editor, o terminal e o console continuam como estão',
+    smaller: 'Menor',
+    larger: 'Maior',
+    followIde: 'Como a IDE',
+    followIdeSub: (theme) => `Seguir a IDE - agora, ${theme}`,
+    dark: 'Escuro',
+    darkSub: 'Sempre escuro, mesmo numa IDE clara',
+    light: 'Claro',
+    lightSub: 'Sempre claro, mesmo numa IDE escura',
+    darkWord: 'escuro',
+    lightWord: 'claro',
+    auto: 'Automático',
+  },
+
+  restoreTabs: {
+    label: 'Restaurar as abas',
+    hint: 'As abas, as conversas delas e o texto pela metade voltam quando o projeto for aberto de novo - também depois de uma falha da IDE',
+    note: 'Nada é iniciado de novo: um agente só sobe quando a aba dele é aberta ou alguém escreve nela. Os rascunhos ficam nesta máquina, na pasta da própria IDE, e em nenhum outro lugar.',
+    on: 'Ligado',
+    off: 'Desligado',
   },
 
   calmColors: {

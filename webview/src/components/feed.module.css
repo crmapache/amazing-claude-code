@@ -1646,7 +1646,7 @@
   position: absolute;
   inset: 0;
   z-index: 23;
-  background: rgb(var(--acc-ch-shade) / 55%);
+  background: var(--acc-scrim);
 }
 
 /* Stretched to the output area rather than hung from its top, unlike the search window: a list of hits

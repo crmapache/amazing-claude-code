@@ -1,6 +1,7 @@
 import { StrictMode, useCallback, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from '../App'
+import { applyTheme, themeFromAddress } from '../theme'
 import '../base.css'
 import { CheckpointsCard } from './CheckpointsCard'
 import styles from './harness.module.css'
@@ -10,6 +11,11 @@ import { scenarios } from './scenarios'
 import type { PlaybackMode, Scenario } from './types'
 
 const player = new ScenarioPlayer()
+
+// The theme before the first frame, from the address - exactly as the real panel's page takes it (see
+// main.tsx). The bootstrap's `theme` message then says the same thing the plugin would.
+const firstTheme = themeFromAddress(window.location.search)
+if (firstTheme) applyTheme(firstTheme)
 
 /**
  * Shot mode: `?shot=<scenario id>` (and an optional `&cp=<index>`) plays one checkpoint of one scenario,

@@ -258,4 +258,29 @@ class SessionRegistryTest {
 
         assertNull(registry.titleSource("never-opened"))
     }
+
+    /* A restored strip is opened tab by tab; the order it was left in is what comes back. */
+    @Test
+    fun `a remembered order puts the strip back, the opening tab included`() {
+        val registry = SessionRegistry()
+        registry.open("b")
+        registry.open("a")
+        registry.open("a-fork", parentId = "a")
+
+        registry.arrange(listOf("a", "a-fork", ClaudeSessions.MAIN_SESSION, "b"))
+
+        assertEquals(listOf("a", "a-fork", ClaudeSessions.MAIN_SESSION, "b"), registry.tabs().map { it.id })
+    }
+
+    /* The opening tab had nothing worth bringing back: it keeps its place at the front. */
+    @Test
+    fun `a tab the order does not name stays in front`() {
+        val registry = SessionRegistry()
+        registry.open("b")
+        registry.open("a")
+
+        registry.arrange(listOf("a", "b"))
+
+        assertEquals(listOf(ClaudeSessions.MAIN_SESSION, "a", "b"), registry.tabs().map { it.id })
+    }
 }

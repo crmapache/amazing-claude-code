@@ -147,6 +147,8 @@ private const val HOVER_SETTLE_MS = 80
  */
 internal class WebviewHost(
     parentDisposable: Disposable,
+    /** The theme the page opens in - see [startUrl]. */
+    private val startTheme: String,
     private val onMessage: (String) -> Unit,
 ) : Disposable {
 
@@ -593,18 +595,38 @@ internal class WebviewHost(
     /** Vite's dev server address, if the panel was asked to load from it rather than from the plugin's resources. */
     private val devUrl: String get() = System.getProperty("acc.webview.devUrl").orEmpty()
 
+    /**
+     * Where the page is loaded from - and in which theme it paints its first frame.
+     *
+     * The theme rides in the address because nothing else is there early enough: the page paints before its
+     * receiver exists, so a message saying "light" would arrive after a frame of ink on a light IDE. The
+     * page reads it before it renders (see theme.ts) and takes every later word from the `theme` message.
+     * A reload keeps the address, and with it the theme of the moment the panel was built - the message
+     * that follows the reload puts that right a frame later.
+     */
     private fun startUrl(): String {
         if (devUrl.isNotBlank()) {
             thisLogger().info("Loading webview from dev server: $devUrl")
-            return devUrl
+            return withTheme(devUrl, startTheme)
         }
-        return "${WebviewResources.ORIGIN}/index.html"
+        return withTheme("${WebviewResources.ORIGIN}/index.html", startTheme)
     }
 
     internal companion object {
 
         /** Whether this IDE can show the embedded browser the panel lives in. */
         fun isSupported(): Boolean = JBCefApp.isSupported()
+
+        /**
+         * The address with the theme added to its query - after a query the address may already have (a
+         * dev server's), and before a fragment, which is where a query stops being one.
+         */
+        fun withTheme(url: String, theme: String): String {
+            val fragment = url.indexOf('#').takeIf { it >= 0 } ?: url.length
+            val head = url.substring(0, fragment)
+            val separator = if ('?' in head) '&' else '?'
+            return "$head${separator}theme=$theme${url.substring(fragment)}"
+        }
 
         /**
          * A proxy settings warm-up used to stand here, reading them in advance and by the ordinary route.

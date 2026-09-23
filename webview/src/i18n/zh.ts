@@ -25,12 +25,14 @@ export const zh: Dict = {
       mcp: { title: 'MCP 服务器', hint: '状态 · 登录 · 重新连接' },
       plugins: { title: '插件', hint: '已安装 · 浏览 · 市场' },
       settings: { title: '设置', hint: '面板的行为和提示音' },
+      appearance: { title: '外观', hint: '主题和文字大小' },
       sounds: { title: '提示音', hint: '面板需要你的时候' },
       calmColors: { title: '柔和配色', hint: '仪表用什么颜色画' },
       indicators: { title: '指示器', hint: '输入框周围保留什么' },
       remote: { title: '远程访问', hint: '状态 · 中继 · 已配对设备' },
       remoteAbout: { title: '哪些内容会离开本机', hint: '开启之前请先读一遍' },
       newChat: { title: '新对话', hint: '新标签页从什么开始' },
+      restoreTabs: { title: '启动时的标签页', hint: '重启后恢复什么' },
       newChatModel: { title: '默认模型', hint: '新标签页用哪个模型开始' },
       newChatEffort: { title: '默认思考强度', hint: '新标签页思考得多深' },
       newChatMode: { title: '默认模式', hint: '新标签页从哪种模式开始' },
@@ -56,7 +58,7 @@ export const zh: Dict = {
       plugins: { label: '插件', sub: '已安装、浏览、市场' },
       remote: { label: '远程访问', sub: '状态、中继、已配对设备' },
       accounts: { label: 'Claude 账号', sub: '不用退出登录也能切换' },
-      settings: { label: '设置', sub: '提示音、新对话、布局、语言' },
+      settings: { label: '设置', sub: '主题、提示音、新对话、语言' },
       feedback: { label: '发送反馈', sub: '问题、想法，或者只是打个招呼' },
     },
 
@@ -71,10 +73,12 @@ export const zh: Dict = {
 
   settings: {
     rows: {
+      appearance: { label: '外观', sub: '主题和文字大小' },
       sounds: { label: '提示音', sub: '面板需要你的时候' },
       calmColors: { label: '柔和配色', sub: '仪表保留多少颜色' },
       indicators: { label: '指示器', sub: '输入框旁保留哪些读数' },
       newChat: { label: '新对话', sub: '模型、思考强度和权限模式' },
+      restoreTabs: { label: '启动时的标签页', sub: '重新打开之前的标签页和草稿' },
       composerLayout: { label: '输入框布局', sub: '输入框放在哪里' },
       pasteCollapse: { label: '粘贴的文本', sub: '何时把粘贴折叠成小卡片' },
       sendKey: { label: '发送消息', sub: '用哪个键发送' },
@@ -130,6 +134,34 @@ export const zh: Dict = {
     play: '试听',
     playNamed: (sound) => `试听${sound}`,
     volumeOf: (sound) => `${sound}音量`,
+  },
+
+  appearance: {
+    size: '文字大小',
+    theme: '主题',
+    followConsole: '跟随控制台字体',
+    followConsoleSub: (size) => `跟随 IDE 的控制台字体 - 当前是 ${size}`,
+    own: '单独设置大小',
+    ownSub: '只影响面板 - 编辑器、终端和控制台保持不变',
+    smaller: '缩小',
+    larger: '放大',
+    followIde: '跟随 IDE',
+    followIdeSub: (theme) => `跟随 IDE - 当前是${theme}`,
+    dark: '深色',
+    darkSub: '始终深色，即使 IDE 是浅色',
+    light: '浅色',
+    lightSub: '始终浅色，即使 IDE 是深色',
+    darkWord: '深色',
+    lightWord: '浅色',
+    auto: '自动',
+  },
+
+  restoreTabs: {
+    label: '恢复标签页',
+    hint: '再次打开项目时，标签页、其中的对话和未写完的文字都会回来 - IDE 崩溃后也一样',
+    note: '不会重新启动任何东西：只有在打开标签页或在其中输入时，代理才会启动。草稿只保存在这台机器上 IDE 自己的文件夹里，别处没有。',
+    on: '开',
+    off: '关',
   },
 
   calmColors: {

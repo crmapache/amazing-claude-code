@@ -2056,7 +2056,7 @@
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 85%),
     inset 0 -1px 0 rgb(18 58 88 / 30%),
-    0 1px 3px rgb(var(--acc-ch-shade) / 45%);
+    0 1px 3px var(--acc-drop);
   color: var(--acc-ice-ink);
   text-shadow: 0 1px 0 rgb(255 255 255 / 45%);
 }

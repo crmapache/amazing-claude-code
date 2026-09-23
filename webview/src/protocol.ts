@@ -727,6 +727,11 @@ type ShellMessageBody =
          * which language "Automatic" means right now rather than promise something unnamed.
          */
         ideLanguage?: string
+        /**
+         * Whether the tabs open when the project closed come back when it opens again, drafts and all.
+         * Unset - a plugin older than the setting - reads as on, which is the default.
+         */
+        restoreTabs?: boolean
       }
       /**
        * Which of Claude Code's settings layers this project's conversations are started with - '' for
@@ -909,6 +914,22 @@ type ShellMessageBody =
    * the other side, where a second client can see them too.
    */
   | { type: 'sessions'; sessions: SessionInfo[] }
+  /**
+   * Which tab to put on screen: the one that was there when the panel was last closed or reloaded, empty
+   * when there is none to name. Sent to the panel alone, right after `sessions` whenever it joins - and
+   * always, because the panel reports its own tab only once it has heard this (see tabShown).
+   */
+  | { type: 'activeTab'; sessionId: string }
+  /**
+   * The drafts the IDE holds for the tabs - what was being written in each input field when the panel
+   * was last closed or reloaded (see TabMemory on the plugin's side). Read as it comes, off disk: the
+   * page checks every token before a field is given it (see restoredDraft). Always sent once on joining,
+   * even empty - the panel reports its own drafts only after this, so it never reports a field empty over
+   * a draft it has not been handed yet.
+   */
+  | { type: 'drafts'; drafts: Record<string, { tokens?: unknown; quotes?: unknown }> }
+  /** Whether the tabs come back after a restart - told to every window when it is switched. */
+  | { type: 'restoreTabs'; on: boolean }
   /**
    * A conversation's feed is about to be handed over from the shell's journal - everything up to
    * restoreFinished belongs to it and is applied as one change rather than one entry at a time.
@@ -1447,13 +1468,30 @@ type ShellMessageBody =
   | { type: 'dockAnchor'; anchor: 'left' | 'right' | 'top' | 'bottom' }
   /**
    * The fonts from the IDE's settings. The panel's contents are drawn in the console font - the same as
-   * the built-in terminal - and what surrounds them in the interface font. It arrives at startup and
-   * again on every change of colour scheme or look and feel.
+   * the built-in terminal - and what surrounds them in the interface font. It arrives at startup, again on
+   * every change of colour scheme or look and feel, and whenever the panel's own text size is set.
    *
-   * There is no size here on purpose: the whole page is scaled by the embedded browser's zoom (see
-   * IdeTypography.kt on the plugin's side), so the layout knows nothing about it.
+   * The sizes are for the settings screen alone, not for the layout: the whole page is scaled by the
+   * embedded browser's zoom (see IdeTypography.kt on the plugin's side), so the styles know nothing about
+   * them. `textSize` is the panel's own size in points, 0 while it follows the console's; `size` is what
+   * it is drawn at as a result. Absent from a plugin older than the setting - read as "follows".
    */
-  | { type: 'typography'; monoFamily: string; uiFamily: string; lineHeight: number }
+  | {
+      type: 'typography'
+      monoFamily: string
+      uiFamily: string
+      lineHeight: number
+      consoleSize?: number
+      textSize?: number
+      size?: number
+    }
+  /**
+   * The panel's theme: the choice made in its settings ('dark', 'light', or '' for the IDE's) and whether
+   * the IDE is dark right now. Sent as the two rather than as the theme they amount to - the settings
+   * screen shows "as in the IDE" as a choice of its own - and resolved by the page (see theme.ts). It
+   * arrives when the page is ready, on every change of the IDE's look and feel, and on every choice.
+   */
+  | { type: 'theme'; theme: string; ideDark: boolean }
   /**
    * The statistics tab's figures - the answer to the `statistics` request. The machine's days in full,
    * every project's minutes by day, and the achievements as they stand: the range shown (a week, a
@@ -1949,6 +1987,22 @@ export type WebviewMessage =
    * red gauge presses on somebody is a property of the person rather than of the repository.
    */
   | { type: 'setCalmColors'; vivid: number }
+  /**
+   * The panel's theme - 'dark', 'light', or '' for the IDE's - and its text size in points, 0 for the
+   * console font's. Machine-wide, and about this desk's screen alone: the phone follows its own light or
+   * dark and is never handed either (see RemoteCommands).
+   */
+  | { type: 'setTheme'; theme: string }
+  | { type: 'setTextSize'; size: number }
+  /**
+   * The tabs coming back after a restart, the panel's two halves of it: what is being written in a tab's
+   * input field (null when it is empty - the message went, or the words were deleted), and which tab is
+   * on screen. Pasted pictures travel without their bytes - they are on disk already (see savableDraft).
+   * And the switch for the whole thing, machine-wide.
+   */
+  | { type: 'saveDraft'; sessionId: string; draft: { tokens: unknown[]; quotes: unknown[] } | null }
+  | { type: 'tabShown'; sessionId: string }
+  | { type: 'setRestoreTabs'; on: boolean }
   /** Which indicators around the input field are switched off - the whole list (see indicators.ts). */
   | { type: 'setHiddenIndicators'; hidden: string[] }
   /**

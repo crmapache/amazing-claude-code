@@ -480,7 +480,7 @@
 }
 
 .choiceDanger {
-  color: var(--acc-danger, #e06c75);
+  color: var(--acc-bad);
 }
 
 /* The gap between two rows of choices - enough that the open one does not run into the next. */
@@ -491,7 +491,7 @@
 .startError {
   margin: 0;
   padding: var(--acc-sp-4) var(--acc-sp-5);
-  color: var(--acc-danger, #e06c75);
+  color: var(--acc-bad);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -683,9 +683,9 @@
   gap: 6px;
   max-width: 100%;
   padding: 4px 6px 4px 4px;
-  border: 1px solid rgb(168 148 242 / 32%);
+  border: 1px solid var(--acc-agent-32);
   border-radius: var(--acc-r-sm);
-  background: rgb(168 148 242 / 12%);
+  background: var(--acc-agent-12);
   color: var(--acc-agent-light);
   font: 12px var(--acc-mono);
   overflow: hidden;
@@ -955,7 +955,7 @@
   border-bottom: 1px solid var(--acc-line);
   border-radius: var(--acc-r-card) var(--acc-r-card) 0 0;
   background: var(--acc-bg-panel);
-  box-shadow: 0 -14px 34px rgb(var(--acc-ch-shade) / 46%);
+  box-shadow: 0 -14px 34px var(--acc-drop);
 }
 
 .sheetGrab {
@@ -1076,7 +1076,7 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  background: rgb(var(--acc-ch-shade) / 46%);
+  background: var(--acc-scrim-soft);
 }
 
 .sheet {
@@ -1087,7 +1087,7 @@
   border-top: 1px solid var(--acc-line-strong);
   border-radius: var(--acc-r-card) var(--acc-r-card) 0 0;
   background: var(--acc-bg-panel);
-  box-shadow: 0 -18px 44px rgb(var(--acc-ch-shade) / 62%);
+  box-shadow: 0 -18px 44px var(--acc-drop-far);
 }
 
 .limBody {
@@ -1289,7 +1289,7 @@
 
 .buttonDanger {
   border: 1px solid var(--acc-line-strong);
-  color: var(--acc-danger, #e06c75);
+  color: var(--acc-bad);
   background: none;
 }
 
@@ -1357,7 +1357,7 @@
 .pairingError {
   margin: 10px 0 0;
   font-size: 13px;
-  color: var(--acc-danger, #e06c75);
+  color: var(--acc-bad);
 }
 
 /* ===========================================================================
@@ -2040,7 +2040,7 @@
   position: fixed;
   inset: 0;
   z-index: 45;
-  background: rgb(var(--acc-ch-shade) / 55%);
+  background: var(--acc-scrim);
 }
 
 .drawer {
@@ -2053,7 +2053,7 @@
   flex-direction: column;
   background: var(--acc-bg-raised);
   border-right: 1px solid var(--acc-line);
-  box-shadow: 18px 0 44px rgb(var(--acc-ch-shade) / 62%);
+  box-shadow: 18px 0 44px var(--acc-drop-far);
 }
 
 .drawerHead {
@@ -3298,7 +3298,7 @@
 
 /* The danger of the two header words. Red standing rather than red on a press: it ends a run. */
 .headerWordDanger {
-  color: var(--acc-danger, #e06c75);
+  color: var(--acc-bad);
 }
 
 .timeline {

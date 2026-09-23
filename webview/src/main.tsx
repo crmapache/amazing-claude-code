@@ -3,7 +3,13 @@ import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { send } from './bridge'
 import { Crash } from './components/Crash'
+import { applyTheme, themeFromAddress } from './theme'
 import './base.css'
+
+// The theme goes on before anything renders - the IDE wrote it into the address for exactly this (see
+// theme.ts): a light IDE must not open its panel on a frame of the dark theme.
+const firstTheme = themeFromAddress(window.location.search)
+if (firstTheme) applyTheme(firstTheme)
 
 const container = document.getElementById('root')
 

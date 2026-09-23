@@ -381,6 +381,23 @@ internal object RemoteCommands {
          */
         "setLanguage",
         /**
+         * The panel's theme and its text size - machine-wide settings about the screen on the desk, one of
+         * them its zoom. Refused like the language above, and unlike the language the phone is not even
+         * handed them: it follows its own light or dark the way every app on it does (see
+         * mobile/main.tsx), and its type is drawn for a thumb rather than scaled from a console font.
+         */
+        "setTheme",
+        "setTextSize",
+        /**
+         * The tabs coming back after a restart: the desk's drafts, the tab on the desk's screen, and the
+         * switch for the whole thing. A phone has an input field and a screen of its own, and reporting
+         * either as the desk's would put its half-typed words into the panel and pull the desk's panel
+         * onto whatever tab the sofa is looking at. The switch is machine-wide like the ones above.
+         */
+        "saveDraft",
+        "tabShown",
+        "setRestoreTabs",
+        /**
          * The sparkle button beside the paperclip and the text it asks by.
          *
          * `setImproveInstructions` writes a machine-wide setting, and belongs with `setDefaultMode` above

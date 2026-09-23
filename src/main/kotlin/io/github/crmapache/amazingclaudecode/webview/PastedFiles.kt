@@ -69,6 +69,32 @@ internal object PastedFiles {
         File(PathManager.getSystemPath(), "amazing-claude-code/pasted").also { it.mkdirs() }
 
     /**
+     * A pasted picture read back as the data URL it arrived as - for a draft coming back after a restart
+     * (see DraftImages), where the chip has its path and has lost its bytes.
+     *
+     * Only a file of this folder, and only a picture: the path comes out of a draft the page wrote, and a
+     * draft is a message like any other - one that could name any file on the disk. A path outside the
+     * folder, a file swept by age or one past [MAX_READ_BACK] answers nothing, and the chip comes back
+     * as a plain file reference instead (see restoredDraft in draftMemory.ts).
+     */
+    fun dataUrlOf(path: String): String? = runCatching {
+        val file = File(path).canonicalFile
+        if (file.parentFile != folder().canonicalFile || !file.isFile || file.length() > MAX_READ_BACK) {
+            return@runCatching null
+        }
+
+        val mediaType = MEDIA_TYPES[file.extension.lowercase()] ?: return@runCatching null
+        "data:$mediaType;base64,${Base64.getEncoder().encodeToString(file.readBytes())}"
+    }.getOrNull()
+
+    /** The picture formats this folder holds, by the extension [nameFor] gave them. */
+    private val MEDIA_TYPES: Map<String, String> =
+        EXTENSIONS.entries.associate { (type, extension) -> extension to type } + ("jpeg" to "image/jpeg")
+
+    /** Past this a picture is not read back into a draft: it would be a page's worth of megabytes to hand over. */
+    private const val MAX_READ_BACK = 25L * 1024 * 1024
+
+    /**
      * What the file is called here.
      *
      * A document copied in a file manager arrives with a name of its own, and it is worth keeping: half

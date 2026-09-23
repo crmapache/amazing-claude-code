@@ -82,6 +82,25 @@ export const ScenarioToolbar = ({
         </select>
       ) : null}
 
+      {/* Which IDE the harness plays - a dark one or a light one. A reload for the same reason as the
+          language: the page takes its first theme from the address (see harness/events.ts). The panel's
+          own choice is made on its settings screen, as in the IDE. */}
+      {!collapsed ? (
+        <select
+          className={s.languageSelect}
+          value={new URLSearchParams(window.location.search).get('theme') === 'light' ? 'light' : ''}
+          onChange={(event) => {
+            const search = new URLSearchParams(window.location.search)
+            if (event.target.value) search.set('theme', event.target.value)
+            else search.delete('theme')
+            window.location.search = search.toString()
+          }}
+        >
+          <option value="">IDE theme: dark</option>
+          <option value="light">IDE theme: light</option>
+        </select>
+      ) : null}
+
       {!collapsed
         ? CATEGORY_ORDER.filter((category) => scenarios.some((item) => item.category === category)).map(
             (category) => (

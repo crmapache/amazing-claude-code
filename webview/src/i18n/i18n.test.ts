@@ -103,6 +103,7 @@ const SHARED_WITH_ENGLISH: Record<string, Locale[]> = {
   'modes.plan.label': ['es', 'de', 'fr'],
   'modes.plan.short': ['es', 'de', 'fr'],
   'modes.auto.label': ['es', 'pt-BR', 'de', 'fr'],
+  'appearance.auto': ['de', 'fr'],
   'modes.auto.short': ['es', 'pt-BR', 'de', 'fr'],
   'modes.tags.danger': ['fr'],
   'selectors.effort': ['fr'],

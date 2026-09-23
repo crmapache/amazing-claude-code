@@ -259,6 +259,39 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     @Volatile
     private var inventoryListener: (() -> Unit)? = null
 
+    /** The tabs as they stood when the project last closed, and as they stand now - see [TabMemory]. */
+    private val memory = TabMemory(TabMemory.fileFor(project.basePath), this)
+
+    /**
+     * What each tab was last seen holding - its conversation, model, effort and mode.
+     *
+     * Asked of the conversations every time rather than kept here, EXCEPT when they no longer know: a
+     * project closing takes its conversations down before this hub, and the status those dying processes
+     * report would otherwise write a list of empty tabs over the real one a moment before the close.
+     */
+    private val remembered = ConcurrentHashMap<String, TabMemory.Tab>()
+
+    /**
+     * What is being written in each tab's input field, as the panel last sent it (see draftMemory.ts).
+     *
+     * Kept here rather than only on disk because the page is not the only thing that forgets: a reload
+     * of the page alone - the crash screen's button, an update of the plugin - used to take every draft
+     * with it, and this is where it comes back from (see ClaudePanel.sendDrafts).
+     */
+    private val drafts = ConcurrentHashMap<String, JsonObject>()
+
+    /** The tab the panel has on screen - remembered, and handed back to a panel that joins (see [attach]). */
+    @Volatile
+    private var activeTab: String? = null
+
+    /**
+     * Restored tabs whose conversation has not been brought up yet. A process per conversation is several
+     * processes and hundreds of megabytes once its MCP servers are counted (see IdleSleep), and a project
+     * reopened with ten tabs must not raise ten of them before anybody has looked at one: each comes up
+     * when it is first put on screen, or when somebody writes into it.
+     */
+    private val asleepUntilSeen = ConcurrentHashMap.newKeySet<String>()
+
     init {
         // Where the CLI keeps its files for this project is a process to find out on a WSL project, and
         // the history, the settings and the hint all ask it soon: paid now, off every thread anybody
@@ -330,6 +363,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
                 }
             }
         }
+
+        // Last, once everything the conversations report to is standing: the tabs the project had open
+        // come back before any client joins, so the first list a panel is handed is already the right one.
+        restoreTabs()
     }
 
     /**
@@ -380,6 +417,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         val batch = ArrayList<String>()
         batch += projectMessages()
         batch += sessionsMessage()
+        // Which tab to put on screen: the one that was there when the panel was last closed or reloaded.
+        // Said to the panel alone - a phone chooses its own conversation - and said even when there is
+        // none to name, because the panel waits for this word before reporting its own (see App).
+        if (client.isLocal) batch += activeTabMessage()
 
         // The registry's tabs, plus any conversation that has a journal without being in it. The second
         // part should never happen - a tab is opened before anything is said in it - but a feed that
@@ -809,6 +850,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // out rather than before it: what a client sees is the conversation coming free and the queued
         // message starting the next turn, in that order.
         if (state != SessionSnapshot.STATUS_RUNNING) runQueued(sessionId)
+
+        // A turn is what names a new tab's conversation, and a /clear replaces it: this is the moment the
+        // remembered list learns which conversation the tab now holds.
+        rememberTabs()
     }
 
     fun sendError(sessionId: String, text: String) {
@@ -924,6 +969,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     fun closeSession(id: String) {
         conversations.close(id)
         stats.noteSessionClosed(id)
+        // A tab closed is a tab forgotten: its draft goes with it, and the next start does not bring it back.
+        remembered.remove(id)
+        drafts.remove(id)
+        asleepUntilSeen.remove(id)
         // What this conversation was waiting to say goes with it: there is nothing left to say it to.
         queued.clear(id)
         journals.remove(id)
@@ -957,7 +1006,190 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // The tabs themselves are half of what a phone's list shows: one opened, closed or renamed
         // changes it as surely as a status does.
         inventoryChanged()
+        rememberTabs()
     }
+
+    // --- Tabs that outlive the IDE -------------------------------------------------
+
+    /**
+     * Put the tabs the project had open back on the strip - see [TabMemory].
+     *
+     * Each comes back the way a conversation picked from the history comes back: its transcript played
+     * into the feed, its process left down until it is needed. Two things differ, both on purpose. The
+     * tab's own model, effort and mode are put back as they stood rather than re-read from the transcript
+     * - the chip is what the person last chose, and the transcript only knows what last answered. And no
+     * process is raised at all until the tab is looked at (see [asleepUntilSeen]).
+     *
+     * Nothing here counts as a statistic: a project opened again is not a conversation reopened from the
+     * history, and ten tabs coming back are not ten tabs opened today.
+     */
+    private fun restoreTabs() {
+        if (!ClaudePreferences.restoreTabs) return
+
+        val saved = memory.load() ?: return
+        val state = TabMemory.restorable(saved)
+        if (state.tabs.isEmpty()) return
+
+        for (tab in state.tabs) {
+            if (tab.id == ClaudeSessions.MAIN_SESSION) {
+                if (tab.titleSource != SessionSnapshot.TITLE_DEFAULT) tabs.rename(tab.id, tab.title, tab.titleSource)
+            } else {
+                tabs.open(id = tab.id, parentId = tab.parentId, title = tab.title, titleSource = tab.titleSource)
+            }
+
+            remembered[tab.id] = tab.copy(draft = null)
+            tab.draft?.let { drafts[tab.id] = it }
+
+            // Written down before the conversation is made, which is when it is read (see
+            // ClaudeSessions.newSession) - and read again by the first message of a tab that holds only a
+            // draft, which has no conversation to make yet.
+            val launch = SessionLaunch(model = tab.model, effort = tab.effort, mode = tab.mode)
+            if (!launch.isEmpty) conversations.rememberLaunch(tab.id, launch)
+
+            val conversation = tab.conversationId
+            when {
+                conversation != null -> {
+                    conversations.resume(tab.id, conversation)
+                    replayTranscript(
+                        tab.id,
+                        conversation,
+                        adoptTranscriptModel = tab.model.isEmpty(),
+                        wakeAfter = false,
+                        whenMissing = { lostTranscript(tab.id) },
+                    )
+                }
+
+                // A fork that had not said anything yet, kept for its draft: it is still a fork, and its
+                // first message still forks its parent's conversation rather than starting a blank one.
+                tab.parentId != null -> conversations.branchFrom(tab.parentId, tab.id)
+            }
+        }
+
+        tabs.arrange(state.tabs.map { it.id })
+        activeTab = state.active
+        thisLogger().info("Restored ${state.tabs.size} tabs of ${saved.tabs.size} remembered")
+        broadcastSessions()
+    }
+
+    /**
+     * A restored tab's conversation is not on disk any more - deleted by hand, or cleaned up by the CLI.
+     *
+     * Asked here, on the thread that reads the transcript anyway, rather than while the tabs are put back
+     * (see TabMemory.restorable). A tab that has nothing else goes; one with a draft stays for it, as the
+     * empty tab it now is - without the conversation, because a first message into it would ask the CLI
+     * to continue a transcript that is gone, and the CLI refuses to start at all.
+     */
+    private fun lostTranscript(sessionId: String) {
+        val tab = remembered[sessionId] ?: return
+        thisLogger().info("A restored tab's conversation is gone from disk")
+
+        // The opening tab is never closed - a message naming no conversation belongs to it (see
+        // ClaudeSessions.MAIN_SESSION) - so without a draft it is emptied instead, name and all.
+        if (!drafts.containsKey(sessionId) && sessionId != ClaudeSessions.MAIN_SESSION) {
+            closeSession(sessionId)
+            return
+        }
+
+        remembered[sessionId] = tab.copy(conversationId = null)
+        conversations.close(sessionId)
+        val launch = SessionLaunch(model = tab.model, effort = tab.effort, mode = tab.mode)
+        if (!launch.isEmpty) conversations.rememberLaunch(sessionId, launch)
+        if (!drafts.containsKey(sessionId)) tabs.resetTitle(sessionId)
+        resetJournal(sessionId)
+        broadcastSessions()
+    }
+
+    /**
+     * The tabs as they stand now, handed to the memory. Called on every change that could matter - a tab
+     * opened, closed, renamed or moved, a turn over (that is when a conversation is named), a model,
+     * effort or mode applied, a draft, the tab on screen - and cheap when nothing changed, because the
+     * memory writes only a list it has not written yet.
+     */
+    private fun rememberTabs() {
+        if (!ClaudePreferences.restoreTabs) return
+
+        // One at a time: a list read on one thread and handed over after a newer one read on another
+        // would be written last, and stand on disk until the next change.
+        synchronized(memory) { rememberTabsNow() }
+    }
+
+    private fun rememberTabsNow() {
+        val list = tabs.tabs().map { tab ->
+            val before = remembered[tab.id]
+            TabMemory.Tab(
+                id = tab.id,
+                parentId = tab.parentId,
+                title = tab.title,
+                titleSource = tab.titleSource,
+                conversationId = conversations.conversationIdOf(tab.id) ?: before?.conversationId,
+                model = conversations.model(tab.id) ?: before?.model.orEmpty(),
+                effort = conversations.effort(tab.id) ?: before?.effort.orEmpty(),
+                mode = conversations.permissionMode(tab.id) ?: before?.mode.orEmpty(),
+                draft = drafts[tab.id],
+            ).also { remembered[tab.id] = it.copy(draft = null) }
+        }
+
+        memory.remember(TabMemory.State(active = activeTab?.takeIf { tabs.contains(it) }, tabs = list))
+    }
+
+    /**
+     * The panel's draft for one tab - what is in its input field, attachments and quotes included. Null
+     * or empty means the field is empty: the message went, or the words were deleted.
+     */
+    fun saveDraft(sessionId: String, draft: JsonObject?) {
+        if (!tabs.contains(sessionId)) return
+
+        if (draft == null || !TabMemory.hasDraft(draft)) drafts.remove(sessionId) else drafts[sessionId] = draft
+        rememberTabs()
+    }
+
+    /** The drafts held for the panel, to hand to one that has just loaded (see ClaudePanel.sendDrafts). */
+    fun heldDrafts(): Map<String, JsonObject> = drafts.filterKeys { tabs.contains(it) }
+
+    /**
+     * The panel put this tab on screen. Remembered, so that it is the tab on screen after a restart, and
+     * the moment a restored tab's conversation comes up (see [asleepUntilSeen]).
+     */
+    fun showTab(sessionId: String) {
+        if (!tabs.contains(sessionId)) return
+
+        activeTab = sessionId
+        wakeRestored(sessionId)
+        rememberTabs()
+    }
+
+    /**
+     * A restored tab's transcript has been played in. Its process waits for a look - unless the tab is
+     * already the one on screen, which is exactly what the panel shows first after a restart.
+     */
+    private fun settleRestored(sessionId: String) {
+        asleepUntilSeen.add(sessionId)
+        if (activeTab == sessionId) wakeRestored(sessionId)
+    }
+
+    /**
+     * Brought up for the same reason a conversation opened from the history is brought up at once: the
+     * context bar has no figure until the process names it, and the transcript does not hold one.
+     */
+    private fun wakeRestored(sessionId: String) {
+        if (!asleepUntilSeen.remove(sessionId)) return
+
+        conversations.wake(sessionId)
+        usage.refreshContext(sessionId)
+    }
+
+    /**
+     * The setting was switched. Off, what is on disk goes (see TabMemory.forget); on, the tabs as they
+     * stand now are written at once rather than at the next change.
+     */
+    fun restoreTabsChanged() {
+        if (ClaudePreferences.restoreTabs) rememberTabs() else memory.forget()
+    }
+
+    private fun activeTabMessage(): String = buildJsonObject {
+        put("type", "activeTab")
+        put("sessionId", activeTab?.takeIf { tabs.contains(it) }.orEmpty())
+    }.toString()
 
     /**
      * The list a phone draws is out of date - see [onInventoryChanged].
@@ -1226,6 +1458,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
                     if (change.error.isNotEmpty()) put("error", change.error)
                 }.toString(),
             )
+            rememberTabs()
         }
     }
 
@@ -1264,6 +1497,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             )
 
             if (change.applied) usage.refreshContext(sessionId)
+            rememberTabs()
         }
     }
 
@@ -1280,6 +1514,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     fun changeEffort(sessionId: String, effort: String, remember: Boolean = true) {
         conversations.setEffort(sessionId, effort, remember)
         sendEffort(sessionId, effort)
+        rememberTabs()
     }
 
     /**
@@ -1429,7 +1664,34 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         resetJournal(sessionId)
         broadcastSessions()
 
+        replayTranscript(sessionId, conversationId, adoptTranscriptModel = true, wakeAfter = true)
+    }
+
+    /**
+     * A conversation's transcript played into its tab's feed - the tail of it, page by page above that
+     * on request - and the process brought up after it, or left for later.
+     *
+     * Shared by the two ways a past conversation comes into a tab: picked from the history, and brought
+     * back with the tabs of a project opened again (see [restoreTabs]). They differ in two answers only.
+     * Whether the transcript's model is taken: from the history yes, since nothing else names it; from
+     * the remembered tabs no, since the tab's own chip was remembered with it. And whether the process
+     * comes up at once: from the history yes, it is the tab on screen and its window has to be measured;
+     * a restored tab waits until somebody looks at it (see [settleRestored]).
+     */
+    private fun replayTranscript(
+        sessionId: String,
+        conversationId: String,
+        adoptTranscriptModel: Boolean,
+        wakeAfter: Boolean,
+        /** What to do instead when the transcript is not on disk at all - see [lostTranscript]. */
+        whenMissing: (() -> Unit)? = null,
+    ) {
         ApplicationManager.getApplication().executeOnPooledThread {
+            if (whenMissing != null && ClaudeHistory.transcriptFile(project.basePath, conversationId) == null) {
+                whenMissing()
+                return@executeOnPooledThread
+            }
+
             // The end of the conversation rather than the whole of it: what comes before is asked for by
             // whoever is looking, page by page (see ClaudeHistory.opening for why the whole of it never
             // arrived at all on Windows).
@@ -1445,7 +1707,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
              * resumed without a model flag, carries on at the session's model - this does the same and
              * tells the panel which one it is, before the replay names it.
              */
-            if (page.model.isNotEmpty()) {
+            if (adoptTranscriptModel && page.model.isNotEmpty()) {
                 // What was adopted rather than what was written in the transcript: the account paying
                 // today may have no access to that model, and then the conversation comes up on another
                 // one (see ClaudeSessions.adoptModel). Saying the transcript's would leave the chip
@@ -1488,8 +1750,12 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             // without waiting for the first message. The replay does not know this figure at all: the
             // transcript holds neither the system prompt with its tools nor the model's window size, and
             // a conversation on a "1M" model looked overflowing by it from the very first second.
-            conversations.wake(sessionId)
-            usage.refreshContext(sessionId)
+            if (wakeAfter) {
+                conversations.wake(sessionId)
+                usage.refreshContext(sessionId)
+            } else {
+                settleRestored(sessionId)
+            }
         }
     }
 

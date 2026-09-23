@@ -25,32 +25,45 @@ export const ChoiceList = ({
 }) => (
   <div className={`${s.screen} ${s.screenList}`}>
     {note ? <span className={`${s.screenNote} ${s.choiceNote}`}>{note}</span> : null}
-    {options.map((option) => {
-      const on = option.id === selected
-
-      return (
-        <button
-          key={option.id}
-          type="button"
-          className={`${s.choice} ${on ? s.choiceOn : ''}`}
-          disabled={option.disabled}
-          onClick={() => onPick(option.id)}
-        >
-          <span className={s.choiceTick}>{on ? '✓' : ''}</span>
-          <span className={s.choiceBody}>
-            <span className={s.choiceTop}>
-              <span className={`${s.choiceLabel} ${on ? s.choiceLabelOn : ''}`}>{option.label}</span>
-              {option.tag ? (
-                <span className={`${s.choiceTag} ${option.danger ? s.choiceTagDanger : ''}`}>{option.tag}</span>
-              ) : null}
-              {option.key ? <span className={s.choiceTag}>{option.key}</span> : null}
-            </span>
-            {option.sub ? <span className={s.choiceSub}>{option.sub}</span> : null}
-          </span>
-        </button>
-      )
-    })}
+    {options.map((option) => (
+      <ChoiceOption key={option.id} option={option} on={option.id === selected} onPick={onPick} />
+    ))}
   </div>
+)
+
+/**
+ * One row of such a choice - the tick, the name and the sentence under it.
+ *
+ * On its own for the screens that hold more than one choice (see Appearance): two lists stacked in their
+ * own containers would pad twice, and a copy of the row would drift from this one on its first edit.
+ */
+export const ChoiceOption = ({
+  option,
+  on,
+  onPick,
+}: {
+  option: MenuOption
+  on: boolean
+  onPick: (id: string) => void
+}) => (
+  <button
+    type="button"
+    className={`${s.choice} ${on ? s.choiceOn : ''}`}
+    disabled={option.disabled}
+    onClick={() => onPick(option.id)}
+  >
+    <span className={s.choiceTick}>{on ? '✓' : ''}</span>
+    <span className={s.choiceBody}>
+      <span className={s.choiceTop}>
+        <span className={`${s.choiceLabel} ${on ? s.choiceLabelOn : ''}`}>{option.label}</span>
+        {option.tag ? (
+          <span className={`${s.choiceTag} ${option.danger ? s.choiceTagDanger : ''}`}>{option.tag}</span>
+        ) : null}
+        {option.key ? <span className={s.choiceTag}>{option.key}</span> : null}
+      </span>
+      {option.sub ? <span className={s.choiceSub}>{option.sub}</span> : null}
+    </span>
+  </button>
 )
 
 /**

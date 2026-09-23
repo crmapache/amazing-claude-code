@@ -57,6 +57,8 @@ paths:
 - новогодние украшения - holiday
 - голосовая вставка в черновик - voice
 - `hiddenIndicators`, `indicatorsSent`, `case 'indicators'`, `metersNode` - indicators
+- `theme`, `setTheme`, `textSize`, `textSizeSent`, `case 'typography'`, `case 'theme'` - appearance
+- `draftsKnown`, `draftsSent`, `draftSaves`, `shellNamedTab`, `case 'drafts'`, `case 'activeTab'`, `restoreTabs` - restore-tabs
 - хоткеи поверх панели, пока собирается иероглиф - composer-field
 - только в `mobile/App.tsx`: `openMachineScreen`, `openRepository`, `Door`/`from`, `edit.home`/`edit.origin` -
   remote-access и scenarios; `vividOf` - calm-colors; `case 'effort'` в `mobile/feed.ts` - models
@@ -69,6 +71,8 @@ paths:
 - `models` у `usage`, `ModelUsageWindow`, `hiddenIndicators`, `setHiddenIndicators`, факт `indicators` - indicators
 - `toolUseResult` у `AgentUserEvent`, `text` у `askAnswer` - permissions; `origin` у `AgentUserEvent` - history
 - `settingSources` в `init`, `setSettingSources`, `askSettingSources`, `accountOutranked`, `api_error_status` - setting-sources
+- `theme`, `setTheme`, `setTextSize`, размеры в `typography` - appearance
+- `activeTab`, `drafts`, `restoreTabs`, `saveDraft`, `tabShown`, `setRestoreTabs` - restore-tabs
 
 **`webview/src/feed/build.ts`** (редьюсер ленты):
 - `TodoWrite`/`TaskCreate`/`TaskUpdate`, `tasksCarried`, `pendingTasks` - task-list
@@ -110,7 +114,8 @@ paths:
 46/47 - accounts.
 
 **`webview/src/tokens.css`**: `--acc-hit` и плотность `touch` - remote-access; `--acc-chip-*` - tool-cards;
-шрифтовой стек CJK - i18n; ступени `--acc-gauge-*` - calm-colors.
+шрифтовой стек CJK - i18n; ступени `--acc-gauge-*` - calm-colors; светлая тема, `--acc-scrim`/`--acc-drop`,
+`color-scheme` - appearance.
 
 **`webview/src/catalog.ts`**: `panelCommands` (`/design-login`) - accounts.
 
@@ -128,6 +133,7 @@ paths:
 - `PROJECT_ORDER`, `broadcastProject` - remote-access и calm-colors; `indicators` в нём - indicators;
   `refreshCommandHints` - slash-hints
 - `stats` - stats; круг сна простаивающих - idle-sleep; прогрев `ClaudeHome` - claude-home
+- `restoreTabs`, `rememberTabs`, `replayTranscript`, `lostTranscript`, `showTab`, `asleepUntilSeen` - restore-tabs
 
 **`ClaudeSession.kt`** (подгружает turn-lifecycle): `setEffort`, `effort` - models; `awaitingPermission` -
 permissions; окружение в `start` - task-list; `rememberConversation` - аргументы запуска в CLAUDE.md;
@@ -147,7 +153,8 @@ remote-access; остальное - по заметке фичи, которой
 
 **`toolwindow/ClaudePanel.kt`**: сообщения аккаунтов и `designLogin` у двери окна - accounts; `setCustomModels` -
 models; `openFile` - open-in-editor; фидбэк и лог незнакомого сообщения (только тип и длина) - feedback;
-`setHiddenIndicators` - indicators.
+`setHiddenIndicators` - indicators; `setTheme`, `setTextSize`, `sendTheme`, `appearanceChanged` - appearance;
+`saveDraft`, `tabShown`, `setRestoreTabs`, `sendDrafts` - restore-tabs.
 
 **`ClaudeCli.kt`**: всё написанное человеком - в stdin (аргументы запуска в CLAUDE.md, prompt-improver);
 `run`/`onStarted` и отмена - search; `--tools ""` у разовых запусков - task-list.
@@ -157,7 +164,7 @@ models; `openFile` - open-in-editor; фидбэк и лог незнакомог
 
 **`ClaudePreferences.kt`** (подгружает models): `gaugeVivid` - calm-colors; `language` - i18n;
 `improveInstructions` - prompt-improver; `startingModel`/`startingEffort` для писателя сценариев -
-scenario-author; `hiddenIndicators` - indicators.
+scenario-author; `hiddenIndicators` - indicators; `theme`, `textSize` - appearance; `restoreTabs` - restore-tabs.
 
 **`RemoteCommands.kt`** (подгружает remote-access): почему телефону разрешено или запрещено конкретное
 сообщение, сказано в заметке фичи, которой оно принадлежит.

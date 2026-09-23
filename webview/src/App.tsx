@@ -64,7 +64,9 @@ import type { Dict } from './i18n/en'
 import { StatisticsTab, type StatisticsView } from './components/stats/StatisticsTab'
 import { dressAll, summarize } from './stats/achievements'
 import { ChoiceList, LayoutChoice } from './components/Choices'
+import { Appearance, appearanceSummary } from './components/Appearance'
 import { CalmColors } from './components/CalmColors'
+import { RestoreTabs } from './components/RestoreTabs'
 import { Indicators } from './components/Indicators'
 import {
   indicatorsSummary,
@@ -104,12 +106,15 @@ import { deferFollowUpForCompact } from './feed/compact'
 import { waitsForTheTurn } from './feed/delivery'
 import { PASTE_COLLAPSE_DEFAULT, PASTE_COLLAPSE_NEVER, pasteCollapseLines, referenceChip } from './feed/reference'
 import { normalizeSendKey, sendKeyOptions, sendKeySummary, type SendKey } from './sendKey'
+import { DESIGN_SIZE, TEXT_SIZE_FOLLOW, normalizeTextSize, type TextSize } from './textSize'
+import { applyTheme, normalizeThemeChoice, resolveTheme, type ThemeChoice } from './theme'
 import {
   normalizeSettingSources,
   settingSourcesSummary,
   type SettingSources as SettingSourcesValue,
 } from './settingSources'
 import { reusableMessage } from './feed/reuse'
+import { draftKey, restoredDraft, savableDraft, type SavedDraft } from './feed/draftMemory'
 import { isUntouchedTab, tabHolding, tabTakesConversation } from './feed/resume'
 import { chatHits, rowOf } from './feed/search'
 import { openedAgentOf } from './feed/workflow'
@@ -361,6 +366,24 @@ const reportChips = (tokens: UserToken[], quotesBeside: number): void => {
 const SLIDER_SAVE_DELAY_MS = 250
 
 /**
+ * How long the text size waits for the presses to stop before it is sent - and the page zooms.
+ *
+ * Longer than a slider's quarter second, and for a reason a slider does not have: the size is applied by
+ * zooming the whole page, the settings screen included, so every applied step moves the button under the
+ * pointer. Zoomed on each press, the third quick press of "larger" would land beside the button. The
+ * figure on the screen answers at once; the panel follows once the hand is still.
+ */
+const TEXT_SIZE_SAVE_DELAY_MS = 600
+
+/**
+ * How long a draft waits for the typing to pause before it goes to the IDE (see draftMemory.ts). Long
+ * enough that a sentence is one save rather than forty, short enough that a crash takes a word or two at
+ * most. An emptied field is said at once - a message sent and then restored after a restart would be the
+ * one thing worse than a lost draft.
+ */
+const DRAFT_SAVE_DELAY_MS = 700
+
+/**
  * For how long after pressing "sign out" a lost login counts as one's own doing rather than as news. With
  * room to spare for the sign-out itself: it goes through the IDE's terminal, where the person has yet to
  * see how it ended.
@@ -444,6 +467,24 @@ export const App = () => {
   sessionsRef.current = sessions
   const [active, setActive] = useState(MAIN_SESSION)
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
+  /**
+   * The shell's tabs as its last list named them - read by the message that follows that list in the
+   * same batch (see `activeTab`), before any render has put the list into state.
+   */
+  const shellTabs = useRef<string[]>([MAIN_SESSION])
+  /**
+   * Whether the IDE has said which tab to show, and handed over its drafts. Until it has, this panel
+   * reports neither: the tab on screen at the first render is the default rather than a choice, and an
+   * empty field at the first render is a field not given its draft yet - reported, either would overwrite
+   * what the IDE was about to hand back (see TabMemory on the plugin's side).
+   */
+  const [shellNamedTab, setShellNamedTab] = useState(false)
+  const draftsKnown = useRef(false)
+  /** What each tab's draft was when it was last sent, and the saves waiting for the typing to pause. */
+  const draftsSent = useRef<Record<string, string>>({})
+  const draftSaves = useRef<Record<string, { timer: number; draft: SavedDraft }>>({})
+  /** The tab last reported as on screen - a status change re-renders the strip, and says nothing new. */
+  const tabReported = useRef('')
   /**
    * What has been ticked and written into the agent's question, by tab and by the call that asked it.
    *
@@ -596,6 +637,11 @@ export const App = () => {
    */
   const [calmVivid, setCalmVividState] = useState(CALM_VIVID_FULL)
   /**
+   * Whether the tabs come back after a restart, drafts and all (see TabMemory on the plugin's side). On
+   * until the IDE says otherwise: it is the default, and the harness has no IDE to say it.
+   */
+  const [restoreTabs, setRestoreTabsState] = useState(true)
+  /**
    * The indicators around the input field switched off by hand - see indicators.ts. None until the IDE
    * says otherwise, for the same reason as the settings above: the harness has no IDE behind it, and
    * everything shown is what the panel has always drawn.
@@ -622,6 +668,21 @@ export const App = () => {
   // The whole of what the calm mode does to the screen: the gauges are painted through roles the root
   // swaps under this attribute (see useCalmColors and tokens.css).
   useCalmColors(calmVivid)
+  /**
+   * The theme as the IDE states it: the choice in the settings and whether the IDE is dark (see
+   * theme.ts). Nothing until the IDE has said it - the page opened in the theme the address named (see
+   * main.tsx), and a default here would repaint that first frame on the way to the real answer.
+   */
+  const [theme, setThemeState] = useState<{ choice: ThemeChoice; ideDark: boolean } | null>(null)
+  useEffect(() => {
+    if (theme) applyTheme(resolveTheme(theme.choice, theme.ideDark))
+  }, [theme])
+  /**
+   * The panel's own text size and the console's, for the settings screen - the zoom itself is the IDE's
+   * (see textSize.ts). The console's size is the design's until the IDE says otherwise, which is what
+   * the harness shows.
+   */
+  const [textSize, setTextSizeState] = useState<TextSize>({ chosen: TEXT_SIZE_FOLLOW, console: DESIGN_SIZE })
   const [loginWaiting, setLoginWaiting] = useState(false)
   /**
    * Why the sign-in could not even be started, when it could not (see protocol.ts).
@@ -1291,6 +1352,63 @@ export const App = () => {
     [],
   )
 
+  /**
+   * Every change of a draft goes to the IDE, which keeps it across a restart of itself and a reload of
+   * this page (see draftMemory.ts). After a pause in the typing rather than on every key, and an emptied
+   * field at once: a message sent must not come back as a draft because the save of its last keystroke
+   * was still waiting when the IDE went down.
+   */
+  useEffect(() => {
+    if (!draftsKnown.current) return
+
+    for (const [session, draft] of Object.entries(drafts)) {
+      const saved = savableDraft(draft)
+      const key = draftKey(saved)
+      if ((draftsSent.current[session] ?? '') === key) continue
+
+      window.clearTimeout(draftSaves.current[session]?.timer)
+      delete draftSaves.current[session]
+
+      const flush = () => {
+        delete draftSaves.current[session]
+        draftsSent.current[session] = key
+        send({ type: 'saveDraft', sessionId: session, draft: saved })
+      }
+
+      if (!saved) flush()
+      else draftSaves.current[session] = { timer: window.setTimeout(flush, DRAFT_SAVE_DELAY_MS), draft: saved }
+    }
+  }, [drafts])
+
+  // The saves still waiting go out before the page does - a reload of the page is exactly the moment a
+  // draft is supposed to survive.
+  useEffect(() => {
+    const flush = () => {
+      for (const [session, pending] of Object.entries(draftSaves.current)) {
+        window.clearTimeout(pending.timer)
+        draftsSent.current[session] = draftKey(pending.draft)
+        send({ type: 'saveDraft', sessionId: session, draft: pending.draft })
+      }
+      draftSaves.current = {}
+    }
+
+    window.addEventListener('pagehide', flush)
+    return () => window.removeEventListener('pagehide', flush)
+  }, [])
+
+  /**
+   * The tab on screen, told to the IDE: it is the tab put back on screen after a restart, and a restored
+   * tab's conversation comes up the first time it is shown (see ClaudeSessionHub.showTab). Only the
+   * shell's tabs - statistics and a run being watched are this screen's own and mean nothing there.
+   */
+  useEffect(() => {
+    if (!shellNamedTab || active === tabReported.current) return
+    if (!sessions.some((session) => session.id === active)) return
+
+    tabReported.current = active
+    send({ type: 'tabShown', sessionId: active })
+  }, [shellNamedTab, active, sessions])
+
   /** A tick or a word put into the agent's question - see askDrafts. */
   const editAskDraft = useCallback((session: string, askId: string, next: AskDraft) => {
     setAskDrafts((current) => ({ ...current, [session]: { ...current[session], [askId]: next } }))
@@ -1863,6 +1981,7 @@ export const App = () => {
                 chosen: message.preferences.language ?? '',
                 ide: message.preferences.ideLanguage ?? '',
               })
+              setRestoreTabsState(message.preferences.restoreTabs !== false)
             }
             if (message.improve) setImproveInstructions(message.improve)
             feed({
@@ -1978,6 +2097,7 @@ export const App = () => {
            */
           case 'sessions': {
             const known = message.sessions.map((info) => info.id)
+            shellTabs.current = known
             // The strip as it stands NOW, before the news is applied: the neighbour of a tab that has
             // been closed cannot be found in a list the tab is already gone from (see tabAfterElsewhere).
             const before = sessionsRef.current
@@ -2003,6 +2123,41 @@ export const App = () => {
             )
             break
           }
+
+          /**
+           * The tab to put on screen - the one that was there when the panel was last closed or
+           * reloaded. It follows `sessions` in the same batch, so the tab it names is on that list already
+           * (see shellTabs); an empty name, or one the list no longer has, leaves the screen as it is.
+           */
+          case 'activeTab':
+            if (message.sessionId && shellTabs.current.includes(message.sessionId)) setActive(message.sessionId)
+            setShellNamedTab(true)
+            break
+
+          /**
+           * The drafts the IDE held - after a restart off disk, after a reload of the page from its memory.
+           * A field that already holds something keeps it: whatever is in it now was typed after the draft
+           * being restored was saved. Written down as already sent, so it does not travel straight back.
+           */
+          case 'drafts': {
+            for (const [session, raw] of Object.entries(message.drafts)) {
+              const restored = restoredDraft(raw)
+              if (!restored) continue
+
+              const current = draftsRef.current[session]
+              if (current && (current.tokens.length > 0 || current.quotes.length > 0)) continue
+
+              draftsSent.current[session] = draftKey(savableDraft(restored))
+              editDraft(session, restored)
+            }
+            draftsKnown.current = true
+            break
+          }
+
+          /** The switch for all of the above, flipped in another window. */
+          case 'restoreTabs':
+            setRestoreTabsState(message.on)
+            break
 
           /**
            * A feed is about to be handed over from the shell's journal. Everything up to restoreFinished
@@ -2643,8 +2798,24 @@ export const App = () => {
             setDockAnchor(message.anchor)
             break
 
-          case 'typography':
+          case 'typography': {
             applyTypography(message.monoFamily, message.uiFamily, message.lineHeight)
+            const chosen = normalizeTextSize(message.textSize)
+            // Our own sizes, come back round in the order they were sent - the same care as the
+            // indicators': the echo of the first of three presses must not pull the figure back two
+            // points while the other two are on their way. Anything else is the other window, or a
+            // change of font in the IDE, and that is taken as it stands.
+            const ours = textSizeSent.current.indexOf(chosen)
+            textSizeSent.current = ours >= 0 ? textSizeSent.current.slice(ours + 1) : []
+            setTextSizeState((current) => ({
+              chosen: ours >= 0 ? current.chosen : chosen,
+              console: message.consoleSize ?? current.console,
+            }))
+            break
+          }
+
+          case 'theme':
+            setThemeState({ choice: normalizeThemeChoice(message.theme), ideDark: message.ideDark })
             break
 
           case 'statistics': {
@@ -3035,6 +3206,64 @@ export const App = () => {
     },
     [hiddenIndicators],
   )
+
+  /**
+   * The theme, chosen in the settings. Applied here at once and sent: the IDE tells every window, this
+   * one included, but the panel under the pointer must turn on the press rather than on the round trip.
+   * Until the IDE has spoken the IDE is taken for dark - the only case is the harness, which says it at
+   * once anyway.
+   */
+  const setTheme = useCallback((choice: ThemeChoice) => {
+    send({ type: 'setTheme', theme: choice })
+    setThemeState((current) => ({ choice, ideDark: current?.ideDark ?? true }))
+  }, [])
+
+  /** The sizes sent and not yet heard back, and the one waiting to be sent - see setTextSize. */
+  const textSizeSent = useRef<number[]>([])
+  const textSizeTimer = useRef<number | undefined>(undefined)
+  const textSizePending = useRef<number | undefined>(undefined)
+
+  /**
+   * The panel's own text size, or TEXT_SIZE_FOLLOW for the console's.
+   *
+   * The figure changes at once and the size is sent once the presses stop (TEXT_SIZE_SAVE_DELAY_MS): the
+   * IDE zooms the page on it, and a page zooming between two presses moves the button from under the
+   * second one.
+   */
+  const setTextSize = useCallback((size: number) => {
+    const chosen = normalizeTextSize(size)
+    setTextSizeState((current) => ({ ...current, chosen }))
+
+    textSizePending.current = chosen
+    window.clearTimeout(textSizeTimer.current)
+    textSizeTimer.current = window.setTimeout(() => {
+      textSizeTimer.current = undefined
+      textSizePending.current = undefined
+      textSizeSent.current = [...textSizeSent.current, chosen]
+      send({ type: 'setTextSize', size: chosen })
+    }, TEXT_SIZE_SAVE_DELAY_MS)
+  }, [])
+
+  // The same flush as the sliders' below: a size pressed in the last moment before a reload is a size
+  // that was set, and it must not come back as it was.
+  useEffect(() => {
+    const flush = () => {
+      if (textSizeTimer.current === undefined || textSizePending.current === undefined) return
+      window.clearTimeout(textSizeTimer.current)
+      textSizeTimer.current = undefined
+      send({ type: 'setTextSize', size: textSizePending.current })
+      textSizePending.current = undefined
+    }
+
+    window.addEventListener('pagehide', flush)
+    return () => window.removeEventListener('pagehide', flush)
+  }, [])
+
+  /** Whether the tabs come back after a restart - applied here at once, and every window is told. */
+  const setRestoreTabs = useCallback((on: boolean) => {
+    send({ type: 'setRestoreTabs', on })
+    setRestoreTabsState(on)
+  }, [])
 
   /** The deferred write of the gauges' colour, and the last figure sent - see setCalmColors. */
   const calmSaveTimer = useRef<number | undefined>(undefined)
@@ -4721,6 +4950,7 @@ export const App = () => {
         }
       : null,
     plugins: pluginsInstalled?.length ?? null,
+    appearance: appearanceSummary(t, theme?.choice ?? '', textSize),
     sounds: t.common.countOn(SOUND_IDS.filter((sound) => !isMuted(soundPrefs, sound)).length),
     // The three values behind "New chats", each named the way its own list names it. "As last chosen" is
     // an answer here rather than a blank: it IS what is set, and it is what most of these rows say.
@@ -4733,6 +4963,7 @@ export const App = () => {
       effort: prefs.newTabEffort || t.newChat.lastUsed,
       mode: modeMenuOptions(t, availableModes).find((option) => option.id === normalizeMode(prefs.mode))?.label ?? '',
     },
+    restoreTabs: restoreTabs ? t.restoreTabs.on : t.restoreTabs.off,
     composerLayout: composerLayoutOptions(t).find((option) => option.id === chosenLayout)?.label ?? '',
     pasteCollapse: pasteCollapseSummary(t, pasteCollapse),
     sendKey: sendKeySummary(sendKey),
@@ -5708,6 +5939,21 @@ export const App = () => {
 
         {sideMenu.open && sideMenu.screen === 'pasteCollapse' ? (
           <PasteCollapse t={t} lines={pasteCollapse} last={pasteCollapseLast} onPick={setPasteCollapse} />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'appearance' ? (
+          <Appearance
+            t={t}
+            size={textSize}
+            theme={theme?.choice ?? ''}
+            ideDark={theme?.ideDark ?? true}
+            onTextSize={setTextSize}
+            onTheme={setTheme}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'restoreTabs' ? (
+          <RestoreTabs t={t} on={restoreTabs} onToggle={setRestoreTabs} />
         ) : null}
 
         {sideMenu.open && sideMenu.screen === 'calmColors' ? (

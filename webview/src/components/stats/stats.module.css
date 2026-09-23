@@ -545,7 +545,7 @@
   padding: 7px 9px;
   border: 1px solid var(--acc-line-strong);
   border-radius: var(--acc-r-md);
-  background: rgb(20 23 29 / 96%);
+  background: color-mix(in srgb, var(--acc-bg-sunken) 96%, transparent);
   box-shadow: var(--acc-shadow-popover);
   pointer-events: none;
   white-space: nowrap;

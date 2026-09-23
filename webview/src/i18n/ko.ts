@@ -25,12 +25,14 @@ export const ko: Dict = {
       mcp: { title: 'MCP 서버', hint: '상태 · 로그인 · 다시 연결' },
       plugins: { title: '플러그인', hint: '설치됨 · 둘러보기 · 마켓플레이스' },
       settings: { title: '설정', hint: '패널의 동작과 소리' },
+      appearance: { title: '모양', hint: '테마와 글자 크기' },
       sounds: { title: '알림음', hint: '패널이 부를 때' },
       calmColors: { title: '편안한 색', hint: '계기를 어떤 색으로 그릴지' },
       indicators: { title: '표시기', hint: '입력창 주변에 남길 것' },
       remote: { title: '원격 접속', hint: '상태 · 릴레이 · 연결된 기기' },
       remoteAbout: { title: '밖으로 나가는 것', hint: '켜기 전에 읽어 주세요' },
       newChat: { title: '새 대화', hint: '새 탭이 무엇으로 시작하는지' },
+      restoreTabs: { title: '시작 시 탭', hint: '재시작 후 돌아오는 것' },
       newChatModel: { title: '기본 모델', hint: '새 탭이 시작하는 모델' },
       newChatEffort: { title: '기본 사고량', hint: '새 탭이 얼마나 깊이 생각하는지' },
       newChatMode: { title: '기본 모드', hint: '새 탭이 시작하는 모드' },
@@ -56,7 +58,7 @@ export const ko: Dict = {
       plugins: { label: '플러그인', sub: '설치됨, 둘러보기, 마켓플레이스' },
       remote: { label: '원격 접속', sub: '상태, 릴레이, 연결된 기기' },
       accounts: { label: 'Claude 계정', sub: '로그아웃 없이 전환하기' },
-      settings: { label: '설정', sub: '알림음, 새 대화, 배치, 언어' },
+      settings: { label: '설정', sub: '테마, 알림음, 새 대화, 언어' },
       feedback: { label: '피드백 보내기', sub: '버그, 아이디어, 그냥 인사도 좋아요' },
     },
 
@@ -71,10 +73,12 @@ export const ko: Dict = {
 
   settings: {
     rows: {
+      appearance: { label: '모양', sub: '테마와 글자 크기' },
       sounds: { label: '알림음', sub: '패널이 부를 때' },
       calmColors: { label: '편안한 색', sub: '계기에 색을 얼마나 남길지' },
       indicators: { label: '표시기', sub: '입력창 곁에 남길 수치' },
       newChat: { label: '새 대화', sub: '모델, 사고량, 권한 모드' },
+      restoreTabs: { label: '시작 시 탭', sub: '열려 있던 탭을 초안과 함께 다시 열기' },
       composerLayout: { label: '입력창 배치', sub: '입력창을 두는 자리' },
       pasteCollapse: { label: '붙여넣은 텍스트', sub: '붙여넣기를 칩으로 접는 기준' },
       sendKey: { label: '메시지 보내기', sub: '어떤 키로 보낼지' },
@@ -130,6 +134,34 @@ export const ko: Dict = {
     play: '들어보기',
     playNamed: (sound) => `들어보기: ${sound}`,
     volumeOf: (sound) => `볼륨: ${sound}`,
+  },
+
+  appearance: {
+    size: '글자 크기',
+    theme: '테마',
+    followConsole: '콘솔 글꼴과 같게',
+    followConsoleSub: (size) => `IDE의 콘솔 글꼴을 따라감 - 지금은 ${size}`,
+    own: '별도 크기',
+    ownSub: '패널만 - 편집기, 터미널, 콘솔은 그대로',
+    smaller: '작게',
+    larger: '크게',
+    followIde: 'IDE와 같게',
+    followIdeSub: (theme) => `IDE를 따라감 - 지금은 ${theme}`,
+    dark: '어두운 테마',
+    darkSub: 'IDE가 밝아도 항상 어둡게',
+    light: '밝은 테마',
+    lightSub: 'IDE가 어두워도 항상 밝게',
+    darkWord: '어두운 테마',
+    lightWord: '밝은 테마',
+    auto: '자동',
+  },
+
+  restoreTabs: {
+    label: '탭 복원',
+    hint: '프로젝트를 다시 열면 탭과 그 대화, 쓰다 만 글이 돌아옵니다 - IDE가 비정상 종료된 뒤에도',
+    note: '아무것도 다시 실행하지 않습니다. 에이전트는 탭을 열거나 거기에 입력할 때만 시작됩니다. 초안은 이 컴퓨터의 IDE 자체 폴더에만 저장됩니다.',
+    on: '켜짐',
+    off: '꺼짐',
   },
 
   calmColors: {
