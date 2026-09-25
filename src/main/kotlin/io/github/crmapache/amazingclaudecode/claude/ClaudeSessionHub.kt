@@ -144,13 +144,17 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             usage.refreshLimits(urgent = true)
             usage.refreshTodayTokens()
             usage.refreshModels(ClaudeSessions.MAIN_SESSION)
-            // Who that sign-in belongs to is what the accounts row is drawn from, and this is the moment
-            // it becomes known (see ProjectAuth.lastStatus). The list as it stands: re-checking here
-            // would start the very process that has this moment finished.
+            // The accounts screen already has this sign-in's row - the answer reached it a moment ago (see
+            // AccountDesk.heard). What the row still lacks is its figures, and those come with the list.
             accounts.sendList()
         },
         // The figures on the rings belong to the account they were asked about - see ProjectUsage.forget.
         onAccountChanged = { account -> usage.forget(account) },
+        onAnswered = { account, status, askedAt -> accounts.heard(account, status, askedAt) },
+        // The other projects put the question again themselves rather than being handed this answer: it
+        // was asked from this project's directory, and each of them lifts its own gate and draws its own
+        // screen.
+        onSettled = { everyHub { if (it !== this@ClaudeSessionHub) it.auth.check() } },
     )
 
     val catalog: ProjectCatalog = ProjectCatalog(project, this)

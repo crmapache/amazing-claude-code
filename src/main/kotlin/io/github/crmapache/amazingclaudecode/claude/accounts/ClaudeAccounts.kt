@@ -66,7 +66,22 @@ internal class ClaudeAccounts {
         /** Nothing is filed: this account has to be signed in again before it can run a turn. */
         ABSENT,
 
-        UNKNOWN,
+        UNKNOWN;
+
+        companion object {
+            /**
+             * What one `auth status`, asked inside an account's own drawer, says about that drawer.
+             *
+             * One reading for both askers - the accounts screen's round and the sign-in round (see
+             * LatestAnswer) - because two readings of one answer are how the screen and the sign-in gate
+             * come to disagree about the same drawer.
+             */
+            fun of(status: ClaudeAuth.Status): Health = when {
+                !status.installed -> UNKNOWN
+                status.loggedIn -> PRESENT
+                else -> ABSENT
+            }
+        }
     }
 
     /**
@@ -692,13 +707,8 @@ internal class ClaudeAccounts {
      */
     fun health(id: String, workingDirectory: String?): Health {
         val variables = variablesFor(id, workingDirectory) ?: return Health.UNKNOWN
-        val status = ClaudeAuth.status(variables, workingDirectory)
 
-        return when {
-            !status.installed -> Health.UNKNOWN
-            status.loggedIn -> Health.PRESENT
-            else -> Health.ABSENT
-        }
+        return Health.of(ClaudeAuth.status(variables, workingDirectory))
     }
 
     /**

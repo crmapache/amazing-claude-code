@@ -32,6 +32,19 @@ internal class ProjectAuth(
      * ProjectUsage.forget).
      */
     private val onAccountChanged: (accountId: String) -> Unit = {},
+    /**
+     * What the account in force's own drawer answered, and when it was asked. It is the question the
+     * accounts screen puts to that row, so the screen takes it rather than waiting to ask again (see
+     * AccountDesk.heard).
+     */
+    private val onAnswered: (accountId: String, status: ClaudeAuth.Status, askedAt: Long) -> Unit =
+        { _, _, _ -> },
+    /**
+     * A sign-in or sign-out made in the terminal has been seen to land. The drawer it went into is the
+     * machine's rather than this project's, so the other open projects are still showing whatever they
+     * knew before it.
+     */
+    private val onSettled: () -> Unit = {},
 ) {
 
     /**
@@ -40,16 +53,6 @@ internal class ProjectAuth(
      */
     @Volatile
     var loggedIn = false
-        private set
-
-    /**
-     * The whole of the CLI's last answer about the ordinary sign-in - who, on what plan.
-     *
-     * Kept so the accounts screen can name that account without starting a second `auth status` of its
-     * own: this round already asked, at warm-up, and the answer is the same one.
-     */
-    @Volatile
-    var lastStatus: ClaudeAuth.Status? = null
         private set
 
     /** Polling of the sign-in state while the user goes through it in the terminal. */
@@ -90,15 +93,17 @@ internal class ProjectAuth(
 
             // Asked under the current account's own environment, so `loggedIn` and the plan describe the
             // account the panel claims to be on rather than whatever the CLI's default drawer holds.
-            val status = accounts.variablesFor(chosen, project.basePath)
+            val askedAt = System.currentTimeMillis()
+            val variables = accounts.variablesFor(chosen, project.basePath)
+            val status = variables
                 ?.let { ClaudeAuth.status(it, project.basePath) }
                 ?: ClaudeAuth.Status(installed = true, loggedIn = false)
 
             val before = loggedIn
             loggedIn = status.loggedIn
-            // Only the ordinary sign-in's own answer is worth keeping: asked under a drawer, `email` is
-            // still the shared file's and names whoever signed in last (see ClaudeAuth.Status.identity).
-            if (chosen.isEmpty()) lastStatus = status
+            // A drawer that would not resolve was never asked, and the "signed out" standing in for it
+            // says nothing about what is filed there.
+            if (variables != null) onAnswered(chosen, status, askedAt)
             send(status, chosen)
 
             /*
@@ -134,6 +139,7 @@ internal class ProjectAuth(
                 awaited = null
                 polling?.cancel(false)
                 polling = null
+                onSettled()
             }
 
             // The model catalogue comes only after a confirmed sign-in: without one the CLI answers not

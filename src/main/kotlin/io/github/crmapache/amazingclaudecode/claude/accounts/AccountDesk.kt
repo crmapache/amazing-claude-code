@@ -64,23 +64,27 @@ internal class AccountDesk(
     private var capability: ClaudeAccounts.Capability? = null
 
     /**
-     * Who the CLI's own sign-in belongs to, as it last answered.
+     * Who the CLI's own sign-in belongs to, and whether there is one, as last heard.
      *
      * Cached so the first paint of the screen is not empty while a process is asked. Learning it costs a
-     * process, and the answer changes only when somebody signs in or out.
+     * process, and the answer changes only when somebody signs in or out. Three askers feed it - the
+     * round, the sign-in round while this sign-in is in force ([heard]), and the logout ([signedOut]) -
+     * and [LatestAnswer] decides between them.
      */
-    @Volatile
-    private var defaultWho: ClaudeAuth.Status? = null
+    private val knownDefault = LatestAnswer<ClaudeAuth.Status>()
 
     /**
-     * What each account's health last came back as, and when the round that asked finished.
+     * What each account's health last came back as.
      *
      * Kept because the list goes out twice - at once, then again with the answers - and the first of the
      * two would otherwise UNSAY what is already on screen: a card that knows it has no stored credential
      * would lose that line and get it back a second later, which is a flicker every time the screen is
-     * opened. The clock stops a fresh round starting on every open: each answer costs a process.
+     * opened. [checkedAt] stops a fresh round starting on every open: each answer costs a process.
+     *
+     * The round is not its only source - the sign-in round answers the same question about the account
+     * in force (see [heard]), and [LatestAnswer] decides between the two.
      */
-    private val knownHealth = ConcurrentHashMap<String, ClaudeAccounts.Health>()
+    private val knownHealth = ConcurrentHashMap<String, LatestAnswer<ClaudeAccounts.Health>>()
 
     /**
      * Who each row really is, as the CLI wrote it down while answering about that account alone (see
@@ -113,7 +117,7 @@ internal class AccountDesk(
      * the answers.
      */
     fun sendList(withHealth: Boolean = true) {
-        broadcast(knownHealth)
+        broadcast()
 
         if (!withHealth) return
 
@@ -154,15 +158,73 @@ internal class AccountDesk(
         // Who the ordinary sign-in is. Without this the screen tells a person who is plainly signed in
         // - the chat beside it is running on that very account - that they have no accounts at all.
         //
-        // Taken from the sign-in round when it has an answer: that round asks at start-up anyway, so
-        // asking again here would be a second process for a fact already in memory.
-        defaultWho = hub.auth.lastStatus
-            ?: runCatching { ClaudeAuth.status(workingDirectory = project.basePath) }.getOrNull()
+        // Left alone when something has answered it within the window: the sign-in round asks at start-up
+        // anyway, and asking again would be a second process for a fact already in memory. But only
+        // within the window. That round asks about the account IN FORCE, so once an added account is in
+        // force it never asks about this one again - and the answer it left behind used to be drawn for
+        // the rest of the session, which after "Log out" meant a row for a sign-in that no longer exists.
+        val heardAt = knownDefault.askedAt
+        if (heardAt == null || System.currentTimeMillis() - heardAt >= FRESH_MS) {
+            // Timed before the process rather than after it: what decides between two answers is which
+            // question was put later (see LatestAnswer).
+            val askedAt = System.currentTimeMillis()
+            // In the same environment the sign-in round asks it in, so the two answer the same question.
+            accounts.variablesFor("", project.basePath)
+                ?.let { runCatching { ClaudeAuth.status(it, project.basePath) }.getOrNull() }
+                ?.let { knownDefault.record(it, askedAt) }
+        }
 
         knownHealth.keys.retainAll(accounts.list().map { it.id }.toSet())
-        accounts.list().forEach { knownHealth[it.id] = accounts.health(it.id, project.basePath) }
+        accounts.list().forEach { account ->
+            val askedAt = System.currentTimeMillis()
+            hearHealth(account.id, accounts.health(account.id, project.basePath), askedAt)
+        }
 
         figures()
+    }
+
+    private fun hearHealth(id: String, health: ClaudeAccounts.Health, askedAt: Long): Boolean =
+        knownHealth.computeIfAbsent(id) { LatestAnswer() }.record(health, askedAt)
+
+    private fun healthOf(id: String): ClaudeAccounts.Health? = knownHealth[id]?.current
+
+    /**
+     * What the sign-in round has just learned about the account in force, taken as that row's health.
+     *
+     * It is the very same question - `auth status` inside that account's drawer, from this project - so
+     * the screen has no business waiting for its own round to put it again. It used to: the round runs at
+     * most once a minute, and a person who signed in again from the gate came straight back to a card
+     * saying "No stored credential" beside a chat that was plainly running on that account.
+     *
+     * Redrawn only when the row changes: the sign-in round comes by every few minutes, and while somebody
+     * is signing in, every few seconds.
+     */
+    fun heard(accountId: String, status: ClaudeAuth.Status, askedAt: Long) {
+        // The CLI's own sign-in has no health line of its own: it is a row while it is signed in and no
+        // row when it is not, so what the round would have learned about it is the whole answer.
+        val changed = if (accountId.isEmpty()) {
+            knownDefault.record(status, askedAt)
+        } else {
+            hearHealth(accountId, ClaudeAccounts.Health.of(status), askedAt)
+        }
+
+        if (changed) broadcast()
+    }
+
+    /**
+     * An account was signed out on this machine: its drawer is empty as of [at].
+     *
+     * Told rather than asked - the CLI has just answered the logout, and that is the newest word there is
+     * about the drawer. Every project is told, not only the one whose button was pressed: each keeps its
+     * own answers, and the one they held was "signed in". The redraw is the caller's, which moves or
+     * redraws every hub straight after.
+     */
+    fun signedOut(id: String, at: Long) {
+        if (id.isEmpty()) {
+            knownDefault.record(ClaudeAuth.Status(installed = true, loggedIn = false), at)
+        } else {
+            hearHealth(id, ClaudeAccounts.Health.ABSENT, at)
+        }
     }
 
     /**
@@ -191,7 +253,7 @@ internal class AccountDesk(
         // reaching for would move under their hand.
         if (mergeTwin()) return
 
-        broadcast(knownHealth)
+        broadcast()
 
         askedAt = System.currentTimeMillis()
         asked.forEach { hub.usage.refreshLimits(urgent = true, viaPing = true, account = it) }
@@ -225,12 +287,16 @@ internal class AccountDesk(
      */
     private fun mergeTwin(): Boolean {
         val twin = AccountTwin.duplicate(
-            default = AccountTwin.Drawer("", knownIdentity[""], live = defaultWho?.loggedIn == true),
+            default = AccountTwin.Drawer(
+                id = "",
+                probe = knownIdentity[""],
+                live = knownDefault.current?.loggedIn == true,
+            ),
             added = accounts.list().filterNot { it.isPending }.map { account ->
                 AccountTwin.Drawer(
                     id = account.id,
                     probe = knownIdentity[account.id],
-                    live = knownHealth[account.id] == ClaudeAccounts.Health.PRESENT,
+                    live = healthOf(account.id) == ClaudeAccounts.Health.PRESENT,
                 )
             },
             answeredAfter = askedAt,
@@ -258,7 +324,7 @@ internal class AccountDesk(
         return true
     }
 
-    private fun broadcast(health: Map<String, ClaudeAccounts.Health>) {
+    private fun broadcast() {
         // A sign-in that was begun and never finished leaves a draft in the book, and the book is shared
         // by every IDE on this machine now - so an IDE that was closed halfway through one would leave
         // "Signing in…" sitting on every screen for ever. Nothing waits longer than the sign-in itself is
@@ -290,7 +356,7 @@ internal class AccountDesk(
                      * anything. Left out, the screen would deny the existence of the account paying for the
                      * conversation open next to it.
                      */
-                    defaultWho?.takeIf { it.loggedIn }?.let { who ->
+                    knownDefault.current?.takeIf { it.loggedIn }?.let { who ->
                         // The address and the organisation come out of a file every drawer shares, so
                         // after an account is added they may belong to the newcomer rather than to this
                         // row. What this row itself wrote down while being asked about its own usage is
@@ -324,7 +390,7 @@ internal class AccountDesk(
                             put("email", identity?.who?.email ?: account.email)
                             put("plan", account.plan)
                             put("pending", account.isPending)
-                            health[account.id]?.let { put("health", it.name.lowercase()) }
+                            healthOf(account.id)?.let { put("health", it.name.lowercase()) }
                         }
                     }
                 }
@@ -339,7 +405,7 @@ internal class AccountDesk(
      * window above exists to stop repeated opens starting processes, and an account that has just
      * appeared has no answer for it to reuse.
      */
-    private fun invalidate() {
+    fun invalidate() {
         checkedAt = 0
     }
 
@@ -424,8 +490,15 @@ internal class AccountDesk(
                         // utilisation - for EVERY account, not only the new one. So everybody's figures
                         // are re-asked, not just the newcomer's.
                         accounts.list().forEach { hub.usage.forget(it.id) }
-                        invalidate()
-                        ClaudeSessionHub.everyHub { it.accountsChanged() }
+                        // Every project's screen asks again, not only this one. Signing in again as an
+                        // account already on the list gives it a new drawer under the same id, and the
+                        // other screens hold that row's health from the drawer just deleted - "No stored
+                        // credential" on a card that has just been signed in, for as long as their
+                        // freshness window lasts.
+                        ClaudeSessionHub.everyHub {
+                            it.accounts.invalidate()
+                            it.accountsChanged()
+                        }
                     }
 
                     // Nothing was added, and the reason is worth a sentence: the person went through a
@@ -493,11 +566,16 @@ internal class AccountDesk(
             accountId = id,
             onError = { sendOutcome("logout-failed") },
             onResult = {
+                // What the logout answered, filed in every project before anything is redrawn. Left to
+                // their rounds, the row came straight back: a round leaves an answer younger than its
+                // window alone, and the answer every screen held was "signed in".
+                val at = System.currentTimeMillis()
+                ClaudeSessionHub.everyHub { it.accounts.signedOut(id, at) }
+
                 val moved = id == accounts.currentId
                 if (moved) accounts.currentId = next
                 // Its figures belonged to a subscription this machine no longer reaches.
                 hub.usage.forget(id)
-                defaultWho = null
                 invalidate()
                 // Conversations still open on the account just signed out of are moved along with the
                 // choice: their credential has been revoked, so the next turn in them would not start at
