@@ -9,6 +9,16 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-09-25
+
+- Fixed: after signing in again from the sign-in screen, the accounts screen went on saying "No stored credential" over the very account you had just signed in to, beside a chat plainly running on it - while another project, opened later, showed it right. The screen asked about each account itself, at most once a minute, and did not listen to the sign-in check that had just seen the credential land. It takes that answer now and turns right the moment the sign-in lands; the other open projects learn it at once too, instead of keeping the sign-in screen up for several minutes. Signing in again through "Add an account" to an account already on the list is picked up by every open project straight away as well.
+- Fixed: after "Log out" on Claude Code's own sign-in, its card came straight back on the accounts screen, with the old figures and a "Log out" button, and stayed there until the IDE was restarted. The screen drew that row from the last answer about it, given while it was still signed in, and nothing asked again once the panel had moved to another account. The logout itself now counts as the answer in every open project, and an answer older than a minute is asked again.
+- Fixed: on the phone, a table in an answer squeezed every column down to a letter or two per line, so a five-column table ran on for three screens. A wide table now keeps its columns and scrolls sideways, and a swipe that reaches its edge no longer turns into the browser's "back". Column alignment from the answer's own markup - centred and right-aligned columns - never took effect before, on the phone or in the panel; it does now.
+- Changed: on the phone, scenarios open from the project's own card instead of the side menu. The menu had to guess which project you meant and opened the wrong shelf about as often as the right one. The card's footer now holds three doors: past conversations, scenarios and a new chat. A project that is not open in the IDE opens there when you press it, and going back returns you to the same card at the same place in the list rather than to the top. The scenarios screen no longer asks which repository - it is always the card's own.
+- Changed: on the phone, a project card shows only the runs that are going on. Yesterday's stopped or failed run used to stand on it as a red dot above every chat, as if it still wanted something from you; finished runs live on the scenarios screen, one press away.
+- Changed: on the phone, a scenario run reads from top to bottom in the order the night went. How the run ended - its error, "Every card is done" or where it stopped, and the doors to continue it - now stands below the last step instead of above the first. A step opens its log by pressing anywhere on its card rather than a small "Log" word at the end of the line.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.0] - 2026-09-23
 
 - Added: a light theme. Settings now opens with "Appearance", and the panel can follow the IDE, stay dark or stay light. Following the IDE is the default, so if you work in a light IDE the panel turns light by itself after this update, and it switches the moment you switch the IDE's theme. Every colour was worked out so that each piece of text is exactly as readable on its background as it is in the dark theme, and a light IDE no longer opens the panel on a flash of dark.
@@ -755,7 +765,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.0...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.1...HEAD
+[0.13.1]: https://github.com/crmapache/amazing-claude-code/compare/0.13.0...0.13.1
 [0.13.0]: https://github.com/crmapache/amazing-claude-code/compare/0.12.19...0.13.0
 [0.12.19]: https://github.com/crmapache/amazing-claude-code/compare/0.12.18...0.12.19
 [0.12.18]: https://github.com/crmapache/amazing-claude-code/compare/0.12.17...0.12.18
