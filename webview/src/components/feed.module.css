@@ -1050,11 +1050,51 @@
   font-weight: 600;
 }
 
-.tableCellCenter {
+/*
+ * On a phone the table keeps its columns and scrolls sideways, as a table does on any phone.
+ *
+ * At `width: 100%` a browser meets a table wider than its box by squeezing every column down to its
+ * longest word - which on 390 points is a word per line and a five-column answer three screens tall, with
+ * nothing left to scroll. `max-content` lets the columns be as wide as what is in them, and the wrapper
+ * above already scrolls. `min-width` keeps a small table as wide as the answer, the way it was.
+ *
+ * The cap on a cell is what keeps a column of sentences from becoming one line a screen long: past it a
+ * cell wraps, as prose. It sits on a block inside the cell rather than on the cell, because what `max-width`
+ * does to a table cell is left undefined by CSS, and browsers - Safari among them - ignore it.
+ */
+[data-acc-density='touch'] .table {
+  width: max-content;
+  min-width: 100%;
+}
+
+[data-acc-density='touch'] .tableCell {
+  display: block;
+  max-width: min(18em, 70vw);
+}
+
+/* A block does not follow the cell's text-align, only its lines do: in a column wider than the cap (a small
+   table stretched to the answer's width) a centred or right-aligned cell would sit at the left. */
+[data-acc-density='touch'] .table .tableCellCenter .tableCell {
+  margin-inline: auto;
+}
+
+[data-acc-density='touch'] .table .tableCellRight .tableCell {
+  margin-left: auto;
+}
+
+/* A sideways swipe that reaches the table's edge stays in it rather than going on to the browser's own
+   "back" gesture. */
+[data-acc-density='touch'] .tableWrap {
+  overscroll-behavior-x: contain;
+}
+
+/* Under the table's name, as `.table td` is: on their own these lost to its `text-align: left`, and a column
+   the answer marked `---:` or `:---:` was drawn flush left all the same. */
+.table .tableCellCenter {
   text-align: center;
 }
 
-.tableCellRight {
+.table .tableCellRight {
   text-align: right;
 }
 

@@ -49,7 +49,7 @@ import { MessageSheet } from './screens/MessageSheet'
 import { NewSession } from './screens/NewSession'
 import { Pairing, type PairingOffer } from './screens/Pairing'
 import { Plugins } from './screens/Plugins'
-import { Projects } from './screens/Projects'
+import { Projects, type HomeAnchor } from './screens/Projects'
 import { ScenarioCardScreen } from './screens/ScenarioCardScreen'
 import { ScenarioEditor } from './screens/ScenarioEditor'
 import { ScenarioRun } from './screens/ScenarioRun'
@@ -162,6 +162,9 @@ export const App = () => {
   const [states, setStates] = useState<Record<string, LinkState>>({})
   const [feed, setFeed] = useState<MobileFeed>(emptyFeed())
   const [opening, setOpening] = useState<Opening | null>(null)
+  /** The same, for the handler of the IDE's answer, which is built once (see projectOpened). */
+  const openingRef = useRef(opening)
+  openingRef.current = opening
 
   /** Whether the side menu is out, and which sheet is folded up over the screen. */
   const [drawer, setDrawer] = useState(false)
@@ -290,6 +293,15 @@ export const App = () => {
     loaded: boolean
     state: PanelState
   } | null>(null)
+
+  /**
+   * The card on the first screen the scenarios were entered from, and where it stood - see HomeAnchor.
+   *
+   * Here rather than in the list, because the list is exactly what is gone while somebody is in there:
+   * every screen is drawn in place of it. Set by the card's door, used and dropped by the list when it
+   * comes back.
+   */
+  const [homeAnchor, setHomeAnchor] = useState<HomeAnchor | null>(null)
 
   /** Moves the counters on the list of conversations once a second - see the effect below. */
   const [tick, setTick] = useState(0)
@@ -870,20 +882,27 @@ export const App = () => {
     setScreen({ at: decide ? 'decide' : 'thread', agentId, projectKey, sessionId })
   }, [cards])
 
-  /** How a request to open a closed project ended - see [startSession]. */
+  /**
+   * How a request to open a closed project ended - see [startSession].
+   *
+   * Read off the ref and acted on outside the state's updater. What follows is anything but pure - it
+   * sets other state and talks to the IDE - and an updater is run twice under StrictMode: the scenarios
+   * screen, opened this way off a closed project's card, was subscribed to the project twice for one answer.
+   */
   const projectOpened = useCallback(
     (agentId: string, result: { sessionId: string; ok: boolean; projectKey?: string; error?: string }) => {
-      setOpening((current) => {
-        if (!current || current.agentId !== agentId || current.sessionId !== result.sessionId) return current
+      const current = openingRef.current
+      if (!current || current.agentId !== agentId || current.sessionId !== result.sessionId) return
 
-        if (result.ok && result.projectKey) {
-          if (current.then) current.then(result.projectKey)
-          else enter(agentId, result.projectKey, result.sessionId, false)
-          return null
-        }
+      if (result.ok && result.projectKey) {
+        openingRef.current = null
+        setOpening(null)
+        if (current.then) current.then(result.projectKey)
+        else enter(agentId, result.projectKey, result.sessionId, false)
+        return
+      }
 
-        return { ...current, error: result.error || 'The IDE could not open that project.' }
-      })
+      setOpening({ ...current, error: result.error || 'The IDE could not open that project.' })
     },
     [enter],
   )
@@ -1275,6 +1294,34 @@ export const App = () => {
     setOpening({ agentId, sessionId: '', error: '', then })
     links.current[agentId]?.openProject(projectKey, '', '', EMPTY_LAUNCH)
   }, [])
+
+  /**
+   * A project's scenarios, off the button on its card.
+   *
+   * A closed project is opened in the IDE first - its shelves are read through the hub, and the hub comes
+   * with the window (see openRepository). The screen goes up at once rather than after the window does:
+   * opening takes seconds, and a card that does nothing for that long reads as a missed tap. It says
+   * "Opening the project…" meanwhile, and is re-aimed at the key the project is open under once the IDE
+   * answers - along with the anchor, since the card is drawn under that key from then on.
+   */
+  const openProjectScenarios = useCallback(
+    (agentId: string, projectKey: string, closed: boolean) => {
+      if (!closed) {
+        openScenarios(agentId, projectKey)
+        return
+      }
+
+      setScenarioNote('')
+      setScreen({ at: 'scenarios', agentId, projectKey })
+      openRepository(agentId, projectKey, (opened) => {
+        setHomeAnchor((current) =>
+          current?.project === `${agentId}:${projectKey}` ? { ...current, project: `${agentId}:${opened}` } : current,
+        )
+        openScenarios(agentId, opened)
+      })
+    },
+    [openScenarios, openRepository],
+  )
 
   /**
    * Every project of every paired IDE, as a place a scenario may be kept - see RepositoryChoice.
@@ -1908,7 +1955,17 @@ export const App = () => {
           onNew={(project) => setScreen({ at: 'new', agentId: project.agentId, projectKey: project.key })}
           onMenu={() => setDrawer(true)}
           onSearch={(project) => openSearch(project.agentId, project.key, '')}
-          onRun={(project, runId) => openRun(project.agentId, project.key, runId, 'sessions')}
+          onScenarios={(project, anchor) => {
+            setHomeAnchor(anchor)
+            openProjectScenarios(project.agentId, project.key, project.closed)
+          }}
+          canOpenBare={(agentId) => (inventories[agentId]?.caps ?? []).includes(CAP_OPEN_BARE)}
+          onRun={(project, runId, anchor) => {
+            setHomeAnchor(anchor)
+            openRun(project.agentId, project.key, runId, 'sessions')
+          }}
+          anchor={homeAnchor}
+          onAnchored={() => setHomeAnchor(null)}
           onHide={hide}
           onShowHidden={showHidden}
           onHistory={(project) => {
@@ -2028,11 +2085,7 @@ export const App = () => {
             live={liveRunsOf(held)}
             queue={held?.queue ?? null}
             project={projectNameOf(projects, at.agentId, at.projectKey)}
-            repository={{ agentId: at.agentId, projectKey: at.projectKey }}
             repositories={repositories}
-            // Another repository is the same screen opened over another project: its shelves are that
-            // project's facts, and watching it is how they arrive (see openScenarios).
-            onPickRepository={openScenarios}
             onOpenRepository={(repo, then) => openRepository(repo.agentId, repo.projectKey, then)}
             opening={{
               going: opening !== null && opening.sessionId === '' && opening.error === '',
@@ -2637,8 +2690,6 @@ export const App = () => {
                 }
               : undefined
           }
-          onScenarios={menuProject ? () => openScenarios(menuProject.agentId, menuProject.key) : undefined}
-          liveRuns={menuProject ? liveRunsOf(facts[`${menuProject.agentId}:${menuProject.key}`]) : []}
           onMcp={menuProject ? () => openMachineScreen('mcp', menuProject.agentId, menuProject.key) : undefined}
           onPlugins={
             menuProject ? () => openMachineScreen('plugins', menuProject.agentId, menuProject.key) : undefined

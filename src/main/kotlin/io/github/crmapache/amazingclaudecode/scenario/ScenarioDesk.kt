@@ -145,21 +145,6 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
     private val pulsing = AtomicBoolean(false)
 
     /**
-     * The newest run that is OVER, as its summary - or null while this desk has not looked at the disk.
-     *
-     * Carried by the live frame rather than read from the shelves, and that is what makes a project's
-     * card answer "how did the night go" on a screen that is not looking at this project. The shelves are
-     * tens of kilobytes and travel by subscription; the live frame is a few hundred bytes and travels to
-     * every device on the line (see RemoteFeed.isOverview), so the one row somebody wants in the morning
-     * rides with it.
-     *
-     * Kept in memory rather than read when asked: a year of a morning routine is three hundred folders on
-     * the disk, and this is wanted every time anything moves.
-     */
-    @Volatile
-    private var finished: RunSummary? = null
-
-    /**
      * When the short "what is going" frame last went out, so it goes at a pace an eye can use.
      *
      * A frame of its own beside the heavy record, and this is the one everybody who is NOT looking at a
@@ -260,11 +245,6 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             // has been deleted is work that cannot be done, and one whose shelf could not be READ is work
             // that is still perfectly fine (see QueueRules.keepOnly).
             val waiting = queue.keepOnly(project, user)
-            // The newest run that is over, for the live frame to carry (see [finished]). Off the same
-            // reading of the disk this message is already built from: asking for it separately would be
-            // a second walk of the same folder.
-            val going = live.keys
-            finished = summaries.firstOrNull { it.id !in going }
             hub.broadcastProject(
                 buildJsonObject {
                     put("type", "scenarios")
@@ -284,10 +264,9 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             // directories off a disk, and every scenario saved would redraw a queue that had not changed.
             sendQueue(waiting)
 
-            // And the live frame, because the run it names as the last one that finished has just been
-            // read (see [finished]). This is the only road by which a screen that is not watching this
-            // project learns of it at all - and on an IDE that has just opened it is the first time that
-            // frame is said at all, so without it a card stays blank until something runs.
+            // And the live frame: on an IDE that has just opened this is the first time it is said at all,
+            // and a phone that last heard of a run going before the IDE went down would otherwise go on
+            // drawing it on the project's card until something else ran.
             sendLive()
         }
     }
@@ -338,10 +317,6 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             buildJsonObject {
                 put("type", "scenarioLive")
                 put("runs", json.encodeToJsonElement(going))
-                // And the newest one that is over, so a card elsewhere can say how the night went - see
-                // [finished]. Left out entirely when this project has never run anything, which is a
-                // different thing from "the last one is gone".
-                finished?.let { put("last", json.encodeToJsonElement(it)) }
             }.toString(),
         )
     }
@@ -1283,10 +1258,7 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             runs.keep(record)
             hub.broadcastProject(envelope(record))
         }
-        // The newest run that is over is this one, and the live frame below carries it (see [finished]).
-        // Written here rather than left to the reading of the shelves further down, because that reading
-        // happens off a pooled thread and the frame goes now.
-        finished = record.summarise()
+        // Out of the live frame this second: a card still showing it as going would promise work that ended.
         sendLive()
         announce(said, ending(record))
         // The list carries how each run ended, and it has just changed: nobody is going to ask again.

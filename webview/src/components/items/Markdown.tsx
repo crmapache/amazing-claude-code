@@ -106,6 +106,9 @@ const alignClass = (align: TableAlign): string | undefined => (align ? ALIGN_CLA
  * A table out of the agent's answer - `| a | b |` with a `|---|---|` separator after it (see
  * parseTableAt). The cells are parsed by the same parseInline as ordinary text - code, bold and links
  * inside a table work exactly the same.
+ *
+ * Each cell's content sits in a span of its own. At the desk it is an ordinary inline span and changes
+ * nothing; on a phone it is the block that caps how wide a column may grow (see .tableCell).
  */
 const TableView = ({
   table,
@@ -122,9 +125,11 @@ const TableView = ({
         <tr>
           {table.header.map((cell, index) => (
             <th key={index} className={alignClass(table.align[index])}>
-              {cell.map((part, partIndex) => (
-                <PartView key={partIndex} part={part} reveal={reveal} onOpenLink={onOpenLink} />
-              ))}
+              <span className={s.tableCell}>
+                {cell.map((part, partIndex) => (
+                  <PartView key={partIndex} part={part} reveal={reveal} onOpenLink={onOpenLink} />
+                ))}
+              </span>
             </th>
           ))}
         </tr>
@@ -134,9 +139,11 @@ const TableView = ({
           <tr key={rowIndex}>
             {row.map((cell, cellIndex) => (
               <td key={cellIndex} className={alignClass(table.align[cellIndex])}>
-                {cell.map((part, partIndex) => (
-                  <PartView key={partIndex} part={part} reveal={reveal} onOpenLink={onOpenLink} />
-                ))}
+                <span className={s.tableCell}>
+                  {cell.map((part, partIndex) => (
+                    <PartView key={partIndex} part={part} reveal={reveal} onOpenLink={onOpenLink} />
+                  ))}
+                </span>
               </td>
             ))}
           </tr>

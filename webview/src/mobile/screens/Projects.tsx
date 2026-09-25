@@ -1,15 +1,30 @@
+import { useLayoutEffect, useRef } from 'react'
 import { ChatRow } from './ChatRow'
 import { Magnifier } from '../../components/SearchCapsule'
 import type { AgentEntry, ProjectEntry, SessionEntry } from '../projects'
 import { waitingFor } from '../projects'
-import { liveRunsOf, projectRuns, type ProjectFacts } from '../facts'
+import { liveRunsOf, type ProjectFacts } from '../facts'
 import type { LinkState } from '../link'
 import { runDot, runMarks } from '../../scenarios/runs'
-import { startedLabel } from '../../scenarios/moments'
 import { dotFor } from './TabsSheet'
 import m from '../mobile.module.css'
-import { useLocale, useT } from '../../i18n'
+import { useT } from '../../i18n'
 import type { Dict } from '../../i18n/en'
+
+/**
+ * Which card a screen was opened from, and where on the screen that card stood.
+ *
+ * The list is unmounted the moment another screen opens, and it used to come back scrolled to the top: a
+ * project four cards down meant scrolling back to it after every look at its scenarios, which is exactly
+ * the trip the button on its card exists to make short. The offset rather than only the card, so that
+ * the card lands under the thumb where it was - not merely somewhere on the screen.
+ */
+export interface HomeAnchor {
+  /** `agentId:projectKey` - the same key the card is drawn under. */
+  project: string
+  /** How far below the top of the scrolling list the card's top edge was, in pixels. */
+  top: number
+}
 
 interface ProjectsProps {
   agents: AgentEntry[]
@@ -33,15 +48,30 @@ interface ProjectsProps {
   onMenu: () => void
   onSearch: (project: ProjectEntry) => void
   /**
-   * A round of work in a project, and the way straight into it.
+   * The project's scenarios - the one door into them on this phone.
    *
-   * On this card rather than only behind the menu, because a scenario is the one kind of work here that
-   * goes on unattended: a screen listing a project as quiet while four agents edit its files for the
-   * third hour is the screen this whole feature exists to replace. The last one that is OVER is here for
-   * the other half of the same day - it ran while nobody watched, so the card is where its result is
-   * asked after (see projectRuns).
+   * On the card rather than in the menu: they belong to a project, and a menu row had to guess which one
+   * was meant. The anchor is where the card stood, so the way back lands on it (see [HomeAnchor]).
    */
-  onRun: (project: ProjectEntry, runId: string) => void
+  onScenarios: (project: ProjectEntry, anchor: HomeAnchor) => void
+  /**
+   * Whether that machine can open a closed project with no conversation in it (see CAP_OPEN_BARE) - the
+   * only way a closed project's shelves can be read. An older plugin cannot, and the button stays grey
+   * rather than promising a screen that would open on a refusal written for another cause.
+   */
+  canOpenBare: (agentId: string) => boolean
+  /**
+   * A round of work going in a project, and the way straight into it.
+   *
+   * On this card because a scenario is the one kind of work here that goes on unattended: a screen listing
+   * a project as quiet while four agents edit its files for the third hour is the screen this whole
+   * feature exists to replace. Only what is going - what ended is on the scenarios screen (see liveRunsOf).
+   */
+  onRun: (project: ProjectEntry, runId: string, anchor: HomeAnchor) => void
+  /** Where to put the list back to, when this screen is returned to from a card's door - else nothing. */
+  anchor: HomeAnchor | null
+  /** The anchor has been used: a later visit that did not come from a card starts at the top as before. */
+  onAnchored: () => void
   /** Put one conversation away on this phone, and bring a project's back. */
   onHide: (entry: SessionEntry) => void
   onShowHidden: (project: ProjectEntry) => void
@@ -83,12 +113,49 @@ export const Projects = ({
   onHistory,
   onMenu,
   onSearch,
+  onScenarios,
+  canOpenBare,
   onRun,
+  anchor,
+  onAnchored,
   onHide,
   onShowHidden,
 }: ProjectsProps) => {
   const t = useT()
-  const locale = useLocale()
+  const listRef = useRef<HTMLDivElement>(null)
+
+  /** Where a card stands in the scrolling list right now - measured at the tap that leaves it. */
+  const anchorOf = (project: ProjectEntry): HomeAnchor => {
+    const id = cardId(project)
+    const list = listRef.current
+    const card = list ? cardIn(list, id) : undefined
+
+    return {
+      project: id,
+      top: list && card ? card.getBoundingClientRect().top - list.getBoundingClientRect().top : 0,
+    }
+  }
+
+  /*
+   * Back to the card this screen was left from, before the first paint - a frame at the top and then a
+   * jump is the flicker this would otherwise be.
+   *
+   * Once, on the way in: the list re-renders every second while anything counts, and a scroll pinned to
+   * the anchor would take the list out from under the thumb. A card that has gone meanwhile (the project
+   * was closed at the desk) leaves the list at the top, which is what it did before there was an anchor.
+   */
+  useLayoutEffect(() => {
+    if (!anchor) return
+
+    const list = listRef.current
+    const card = list ? cardIn(list, anchor.project) : undefined
+    if (list && card) {
+      list.scrollTop += card.getBoundingClientRect().top - list.getBoundingClientRect().top - anchor.top
+    }
+
+    onAnchored()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- on mount only, see above
+  }, [])
 
   // Where the projects this IDE merely remembers begin. They get a heading of their own: "there is
   // nothing in this one" and "this one is not even open" are different facts, and a list that shows
@@ -142,7 +209,7 @@ export const Projects = ({
         )}
       </header>
 
-      <div className={m.list}>
+      <div ref={listRef} className={m.list}>
         {reach !== 'connected' && reach !== 'none' && <p className={m.reach}>{reachText(t)[reach]}</p>}
 
         {waiting.length > 0 && (
@@ -185,14 +252,15 @@ export const Projects = ({
           const stopped = project.sessions.filter((session) => session.awaitsYou).length
           const open = project.sessions.length
 
-          // What is going here, as summaries - or, with nothing going, the last round of work that is
-          // over. There may be several live ones (one scenario can be started as many times as somebody
-          // wants at the desk), and they are asked of one place, because this rule used to be written
-          // here by hand as well as in the facts (see projectRuns).
+          // What is going here, as summaries. There may be several (one scenario can be started as many
+          // times as somebody wants at the desk), and only these: a run that ended is history, and its
+          // place is the scenarios screen behind this card's button (see liveRunsOf).
           const going = liveRunsOf(fact)
-          const rounds = projectRuns(fact)
-          const live = going.length > 0
-          const marks = runMarks(rounds)
+          const marks = runMarks(going)
+
+          // Its scenarios live in its own window. A closed project is opened for them, which only a machine
+          // that knows how to open one bare can do.
+          const scenariosOpen = project.online && (!project.closed || canOpenBare(project.agentId))
 
           return (
             <div key={`${project.agentId}:${project.key}`}>
@@ -200,7 +268,10 @@ export const Projects = ({
                 <p className={`${m.bandTitle} ${m.homeBand}`}>{t.mobile.sessions.recentlyOpened}</p>
               )}
 
-              <section className={`${m.project} ${project.online ? '' : m.projectOffline}`}>
+              <section
+                data-card={cardId(project)}
+                className={`${m.project} ${project.online ? '' : m.projectOffline}`}
+              >
                 <div className={m.projectHead}>
                   <span className={m.projectMain}>
                     <span className={m.projectName}>{project.name}</span>
@@ -229,36 +300,24 @@ export const Projects = ({
                   ) : null}
                 </div>
 
-                {/* What is running here without anybody watching it, or what last did - see the note on
-                    [onRun]. One row each, because two runs of one scenario are two different pieces of
-                    work and the row is the way into one of them; what tells them apart is beside the
-                    name.
-
-                    A row for work that is over is drawn quieter and says WHEN instead: an accent border
-                    is a promise that something is happening, and the one thing somebody wants of last
-                    night's run before opening it is whether it was in fact last night. */}
-                {rounds.map((run) => {
-                  const asking = live && run.state === 'blocked'
-                  const qualifier = live
-                    ? marks[run.id]
-                    : startedLabel(run.startedAt, locale, t.scenarios.when, now(project.agentId))
+                {/* What is running here without anybody watching it - see the note on [onRun]. One row
+                    each, because two runs of one scenario are two different pieces of work and the row is
+                    the way into one of them; what tells them apart is beside the name. */}
+                {going.map((run) => {
+                  const asking = run.state === 'blocked'
 
                   return (
                     <button
                       key={run.id}
                       type="button"
-                      className={[m.projectRun, asking ? m.projectRunAsking : '', live ? '' : m.projectRunOver]
-                        .filter(Boolean)
-                        .join(' ')}
-                      onClick={() => onRun(project, run.id)}
+                      className={`${m.projectRun} ${asking ? m.projectRunAsking : ''}`}
+                      onClick={() => onRun(project, run.id, anchorOf(project))}
                     >
                       {/* The same table the strip at the desk draws its tab dots from: a run parked by
-                          hand is not going, and a breathing dot over it promises work. Told whether this
-                          one is still live, because a summary off the disk keeps saying "running" long
-                          after the IDE that wrote it was closed. */}
-                      <span className={`${m.dot} ${dotFor(runDot(run, live))}`} />
+                          hand is not going, and a breathing dot over it promises work. */}
+                      <span className={`${m.dot} ${dotFor(runDot(run, true))}`} />
                       <span className={m.projectRunName}>
-                        {[run.scenarioName, qualifier].filter(Boolean).join(' · ')}
+                        {[run.scenarioName, marks[run.id]].filter(Boolean).join(' · ')}
                       </span>
                       <span className={`${m.projectRunCount} ${asking ? m.projectRunWaiting : ''}`}>
                         {asking ? t.mobile.sessions.answer : t.scenarios.run.cards(run.done, run.total)}
@@ -294,23 +353,34 @@ export const Projects = ({
                   </button>
                 )}
 
-                {/* Both ways out of this card, on one row at its foot: back into something - which is
-                    where a phone often wants to go, since the thing worth answering is as likely to be
-                    yesterday's conversation as today's tab - and forward into something new.
+                {/* Every way out of this card, on one row at its foot. The past conversations are an icon:
+                    a clock with the hands turned back reads as "history" at a glance, and the two words
+                    it used to be took half the row away from the two doors that are pressed far more often
+                    - into the project's scenarios and into a new chat.
 
-                    Both of them on a closed project too. Its past conversations are read off that
-                    machine's disk without opening anything (see RemoteAgent.recentHistory), and they are
-                    the likelier half of what a phone comes to a remembered project for: a project is
-                    closed because the day ended, and what one wants from it the next morning is
-                    yesterday's conversation rather than a blank one. */}
+                    All three on a closed project too. Its past conversations are read off that machine's
+                    disk without opening anything (see RemoteAgent.recentHistory), and they are the likelier
+                    half of what a phone comes to a remembered project for: a project is closed because the
+                    day ended, and what one wants from it the next morning is yesterday's conversation
+                    rather than a blank one. Its scenarios open the project in the IDE first. */}
                 <div className={m.projectFoot}>
                   <button
                     type="button"
-                    className={m.footButton}
+                    className={`${m.footButton} ${m.footButtonIcon}`}
+                    aria-label={t.mobile.sessions.pastConversations}
                     disabled={!project.online}
                     onClick={() => onHistory(project)}
                   >
-                    {t.mobile.sessions.pastConversations}
+                    <HistoryIcon />
+                  </button>
+
+                  <button
+                    type="button"
+                    className={m.footButton}
+                    disabled={!scenariosOpen}
+                    onClick={() => onScenarios(project, anchorOf(project))}
+                  >
+                    {t.scenarios.button}
                   </button>
 
                   <button
@@ -331,6 +401,13 @@ export const Projects = ({
   )
 }
 
+/** The key a card is drawn and anchored under. */
+const cardId = (project: ProjectEntry): string => `${project.agentId}:${project.key}`
+
+/** One card of the list, by its key - compared as data rather than put into a selector it could break. */
+const cardIn = (list: HTMLElement, id: string): HTMLElement | undefined =>
+  Array.from(list.querySelectorAll<HTMLElement>('[data-card]')).find((card) => card.dataset.card === id)
+
 /** What a stopped conversation is stopped for, in the two words the band has room for. */
 const waitKind = (t: Dict, awaits: string): string =>
   awaits === 'perm'
@@ -344,6 +421,27 @@ const waitKind = (t: Dict, awaits: string): string =>
 const Burger = () => (
   <svg viewBox="0 0 16 16" className={m.headerIconGlyph} aria-hidden="true">
     <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+)
+
+/**
+ * The past conversations: a clock with an arrow turning back - the usual sign for history. A bare clock
+ * would read as the scenarios' schedule, which is drawn with one.
+ */
+const HistoryIcon = () => (
+  <svg
+    viewBox="0 0 16 16"
+    className={m.footIcon}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9" />
+    <path d="M2.3 2.6v2.3h2.3" />
+    <path d="M8 5v3.2l2.1 1.3" />
   </svg>
 )
 

@@ -145,8 +145,6 @@ const SHARED_WITH_ENGLISH: Record<string, Locale[]> = {
   'scenarios.run.tokens': ['es', 'pt-BR'],
   // "Verdict" is the word itself in French.
   'mobile.scenarios.step.verdict': ['fr'],
-  // "Repository" is what German says too - the loan word, not a line that was skipped.
-  'mobile.scenarios.repository': ['de'],
 }
 
 /**

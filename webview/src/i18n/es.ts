@@ -1396,7 +1396,6 @@ export const es: Dict = {
 
     scenarios: {
       running: 'AHORA EN MARCHA',
-      repository: 'Repositorio',
       inRepository: (name: string): string => `En ${name}`,
       opensProject: 'No está abierto en el IDE - elegirlo lo abrirá allí',
       nothingRunning: 'Ahora mismo no hay nada en marcha en este proyecto.',

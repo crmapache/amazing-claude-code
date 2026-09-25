@@ -1418,7 +1418,6 @@ export const fr: Dict = {
 
     scenarios: {
       running: 'EN COURS',
-      repository: 'Dépôt',
       inRepository: (name: string): string => `Dans ${name}`,
       opensProject: 'Pas ouvert dans l’IDE - le choisir l’ouvre là-bas',
       nothingRunning: 'Rien ne tourne dans ce projet en ce moment.',

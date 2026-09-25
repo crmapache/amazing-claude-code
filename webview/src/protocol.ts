@@ -1322,19 +1322,6 @@ type ShellMessageBody =
   | {
       type: 'scenarioLive'
       runs: ScenarioRunSummary[]
-      /**
-       * The newest run of this project that is OVER, when it has ever had one.
-       *
-       * Here rather than only on the shelves because of who reads this message. The shelves are tens of
-       * kilobytes and reach one project at a time - whichever a phone is actually watching - while this
-       * one is a few hundred bytes and reaches every paired device (see RemoteFeed.isOverview). A project
-       * card away from that project could therefore say what is running and nothing about what ran: a
-       * scenario started at four in the morning and finished by breakfast left the card blank.
-       *
-       * Absent from an IDE older than this field, and absent when the project has never run anything -
-       * which the screen draws the same way, as no row.
-       */
-      last?: ScenarioRunSummary
     }
   /**
    * What is lined up to run one after another (see ScenarioQueue).

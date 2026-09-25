@@ -11,7 +11,6 @@ import type {
   ScenarioSchedule,
   ShellMessage,
 } from '../protocol'
-import { pastRuns } from '../scenarios/runs'
 
 /**
  * What a phone knows about a project rather than about one conversation in it.
@@ -117,14 +116,6 @@ export interface ProjectFacts extends UsageFacts {
    * carrying for the run whose timeline is open (see [runs] above).
    */
   liveRuns?: ScenarioRunSummary[]
-  /**
-   * The newest run of that project that is over - see the `last` field of the `scenarioLive` message.
-   *
-   * Beside the live ones rather than taken off the shelves, and that is what makes the first screen work
-   * for every project rather than for the one being watched: the shelves travel by subscription and a
-   * phone holds one of those, while this arrives for every project on the machine.
-   */
-  lastRun?: ScenarioRunSummary
 }
 
 /** Both shelves of a project, the runs that came of them, and the ones waiting for their hour. */
@@ -277,9 +268,7 @@ export const applyFact = (facts: ProjectFacts, message: ShellMessage, watching =
      * wait for that record, and a run standing on a question never sends another beat at all.
      */
     case 'scenarioLive':
-      // Both halves of it, and `last` kept as it arrived - absent means "that IDE has not said", which on
-      // an older plugin is the honest answer and is drawn as no row at all.
-      return { ...facts, liveRuns: message.runs, lastRun: message.last ?? facts.lastRun }
+      return { ...facts, liveRuns: message.runs }
 
     /*
      * What is lined up to run one after another.
@@ -342,10 +331,14 @@ export const phoneCommands = (
 /**
  * The runs going in a project right now, or nothing.
  *
- * Beside the shape of the facts rather than in a screen, because three of them ask: the list, the card on
- * the project screen and the badge in the drawer. It used to be written twice - once here, once by hand
- * inside the project card - and a rule written twice is a rule that disagrees with itself on the first
- * change.
+ * Beside the shape of the facts rather than in a screen, because two of them ask: the list of runs and the
+ * card on the first screen. It used to be written twice - once here, once by hand inside the project card -
+ * and a rule written twice is a rule that disagrees with itself on the first change.
+ *
+ * The card draws these and nothing else. It used to fall back to the newest run that was over, and a
+ * stopped or failed run from yesterday stood there with a red dot above every conversation, as though it
+ * were something still to deal with. What ended is history, and history is one tap away - on the screen
+ * behind the card's Scenarios button.
  *
  * Summaries, so a run that is standing on a question counts like any other. The old rule waited for two
  * facts to agree - the shelves naming a run and its whole record having arrived - which was honest with
@@ -353,32 +346,3 @@ export const phoneCommands = (
  * joining late, and a paused run sends no beat at all.
  */
 export const liveRunsOf = (facts: ProjectFacts | undefined): ScenarioRunSummary[] => facts?.liveRuns ?? []
-
-/**
- * The runs a project's card puts a row for: what is going, or the last round of work that is over.
- *
- * The live ones alone answered "is anything happening here", which is the question the row was built for
- * and not the only one asked of it. A scenario started at four in the morning is finished by breakfast,
- * and a card that says nothing about it sends somebody through the menu and two screens to find out how
- * the night went - for work that belongs to this project as much as any conversation on the card does.
- *
- * One when nothing is going, not a list: the rest are history, and history is what the screen behind the
- * row is for. The newest by when it STARTED, because that is the order the list behind it is in, and two
- * screens disagreeing about which run is the latest is worse than either ordering.
- *
- * A row drawn from this one is not a live row, and the dot has to be told so (see runDot): the summary is
- * read off that machine's disk, and an IDE closed in the middle of a step leaves "running" written there
- * for ever.
- */
-export const projectRuns = (facts: ProjectFacts | undefined): ScenarioRunSummary[] => {
-  const live = liveRunsOf(facts)
-  if (live.length > 0) return live
-
-  // Off the live fact first, because that is the one that reaches a project this phone is not watching -
-  // which is every project but one, and all of them on a page that has just loaded. The shelves are the
-  // second answer and only ever a better one by a moment: they are read when this screen is opened over
-  // that project, and then they are as fresh as the fact.
-  const last = facts?.lastRun ?? pastRuns(facts?.scenarios?.past ?? [], live)[0]
-
-  return last && !live.some((run) => run.id === last.id) ? [last] : []
-}

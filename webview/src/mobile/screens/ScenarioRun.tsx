@@ -4,6 +4,7 @@ import { formatDuration } from '../../feed/tools'
 import { useTicking } from '../../hooks/useTicking'
 import { useLocale, useT } from '../../i18n'
 import type { ScenarioRun as Run, ScenarioRunStep } from '../../protocol'
+import { Chevron } from '../../components/Chevron'
 import { StatePill } from '../../components/scenarios/StatePill'
 import { cutCardOf, finished, progressOf, resumable, runElapsed, timelineOf } from '../../scenarios/timeline'
 import { dayAndHour } from '../../scenarios/moments'
@@ -40,6 +41,11 @@ interface ScenarioRunProps {
  * What it is asking stands at the top, where reading begins, and its options are buttons under it: a card
  * that stopped to ask is a run standing still, and answering it is what this channel exists for. Every
  * step opens its own conversation, cut to the end of it on the way over (see RemoteFeed.trimmedLog).
+ *
+ * How it ended goes the other way - at the bottom, under the last step. The failure and the two doors out
+ * of a finished run are the last thing that happened, and standing over the timeline they read as the
+ * first: the error of the fifth card above the first, and "continue" before a line of what there is to
+ * continue. Read top to bottom, the screen is the night in the order it went.
  *
  * The one thing that honestly does not travel is the line of what a card's agent is saying THIS SECOND: it
  * is the one field of a run that changes four times a second, and carrying it would cost somebody's mobile
@@ -170,37 +176,9 @@ export const ScenarioRun = ({
       </header>
 
       <div className={m.pageList}>
-        {problem ? <p className={m.noteBad}>{outcomeText(t, problem)}</p> : null}
-        {run.error ? <p className={m.noteBad}>{run.error}</p> : null}
-
-        {/* What a finished run says first, and the two doors out of it - the same two the panel offers
-            over its timeline (see ScenarioRunTab): pick it up where it stood, or go on with its main
-            thread in an ordinary chat. */}
-        {over && (
-          <div className={m.afterCard}>
-            <p className={m.afterText}>
-              {run.state === 'done'
-                ? t.scenarios.run.after.done
-                : run.state === 'stopped'
-                  ? t.scenarios.run.after.stopped(cutCardOf(run))
-                  : t.scenarios.run.after.failed(cutCardOf(run))}
-            </p>
-            <div className={m.afterButtons}>
-              {resumable(run) && (
-                <button type="button" className={m.buttonOption} onClick={onContinue}>
-                  <span className={m.buttonOptionLabel}>{t.scenarios.run.after.carryOn}</span>
-                  <span className={m.buttonOptionHint}>{t.scenarios.run.after.carryOnHint}</span>
-                </button>
-              )}
-              {run.headConversationId.length > 0 && (
-                <button type="button" className={`${m.buttonOption} ${m.buttonOptionAccent}`} onClick={onOpenChat}>
-                  <span className={m.buttonOptionLabel}>{t.scenarios.run.after.chat}</span>
-                  <span className={m.buttonOptionHint}>{t.scenarios.run.after.chatHint}</span>
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+        {/* A refusal of something pressed in the header - holding the run or ending it - stands where the
+            header is. One of a finished run's own doors is answered under those doors, below. */}
+        {problem && !over ? <p className={m.noteBad}>{outcomeText(t, problem)}</p> : null}
 
         {/*
           What is being asked, up here where reading happens rather than in the footer with the answers.
@@ -265,6 +243,46 @@ export const ScenarioRun = ({
             )
           })}
         </div>
+
+        {/* How it ended, under the step it ended on - see the note on this screen. */}
+        {run.error || over ? (
+          <div className={m.runEnd}>
+            {run.error ? <p className={m.noteBad}>{run.error}</p> : null}
+
+            {/* What a finished run says, and the two doors out of it - the same two the panel offers
+                (see ScenarioRunTab): pick it up where it stood, or go on with its main thread in an
+                ordinary chat. */}
+            {over && (
+              <div className={m.afterCard}>
+                <p className={m.afterText}>
+                  {run.state === 'done'
+                    ? t.scenarios.run.after.done
+                    : run.state === 'stopped'
+                      ? t.scenarios.run.after.stopped(cutCardOf(run))
+                      : t.scenarios.run.after.failed(cutCardOf(run))}
+                </p>
+                <div className={m.afterButtons}>
+                  {resumable(run) && (
+                    <button type="button" className={m.buttonOption} onClick={onContinue}>
+                      <span className={m.buttonOptionLabel}>{t.scenarios.run.after.carryOn}</span>
+                      <span className={m.buttonOptionHint}>{t.scenarios.run.after.carryOnHint}</span>
+                    </button>
+                  )}
+                  {run.headConversationId.length > 0 && (
+                    <button type="button" className={`${m.buttonOption} ${m.buttonOptionAccent}`} onClick={onOpenChat}>
+                      <span className={m.buttonOptionLabel}>{t.scenarios.run.after.chat}</span>
+                      <span className={m.buttonOptionHint}>{t.scenarios.run.after.chatHint}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* A door that was refused - "continue" on a run that cannot be picked up - answered right
+                under the door that was pressed. */}
+            {problem && over ? <p className={m.noteBad}>{outcomeText(t, problem)}</p> : null}
+          </div>
+        ) : null}
       </div>
 
       {question && (
@@ -352,11 +370,13 @@ export const ScenarioRun = ({
 }
 
 /**
- * One go at one card - and now a way into what it said.
+ * One go at one card - and the way into what it said.
  *
- * It used to be a plain row, because there was nothing behind it to open: a step's conversation is read
- * off the machine's disk, and that was refused over the wire. It is not any more (see RemoteCommands),
- * so the row is a button and says so.
+ * The whole card is the door to its log, and the chip in its head row says so. The door used to be the
+ * word "Log" alone at the end of that row: a line of small text nobody took for a button, standing a few
+ * pixels off the line of the pill beside it, and the one target on a screen of cards that had to be hit
+ * dead on. A card is the size a thumb has, and it is what the eye is already on when it wants the log.
+ * The same rule the live run's card on the list follows - a middle that does nothing reads as broken.
  */
 const StepRow = ({
   step,
@@ -386,17 +406,21 @@ const StepRow = ({
   const line = step.summary || step.prompt
   const slots = Object.entries(step.slots).filter(([, value]) => value.length > 0)
 
-  return (
-    <div
-      className={[
-        m.step,
-        ahead ? m.stepWaiting : '',
-        going ? m.stepRunning : '',
-        step.state === 'failed' ? m.stepFailed : '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
-    >
+  // Only where there is one to open: a step that never ran has no conversation behind it, and a card that
+  // looks pressable and answers nothing is worse than one that does not.
+  const opens = step.conversationId.length > 0
+
+  const className = [
+    m.step,
+    opens ? m.stepOpens : '',
+    ahead ? m.stepWaiting : '',
+    going ? m.stepRunning : '',
+    step.state === 'failed' ? m.stepFailed : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  const body = (
       <span className={m.stepText}>
         <span className={m.stepHead}>
           <span className={m.stepTitle}>{step.title}</span>
@@ -414,13 +438,13 @@ const StepRow = ({
 
           {elapsed ? <span className={`${m.stepTime} ${going ? m.stepTimeGoing : ''}`}>{elapsed}</span> : null}
 
-          {/* Only where there is one to open: a step that never ran has no conversation behind it, and a
-              row that looks pressable and answers nothing is worse than a row that does not. */}
-          {step.conversationId ? (
-            <button type="button" className={m.stepLog} onClick={onOpen}>
+          {/* A sign rather than a button of its own - the card is the button - drawn as a chip of the same
+              make as the pill, so the two stand on one line. */}
+          {opens ? (
+            <span className={m.stepLog}>
               {t.scenarios.run.log}
-              <span className={m.taskRowChevron}>›</span>
-            </button>
+              <Chevron className={m.stepLogChevron} />
+            </span>
           ) : null}
         </span>
 
@@ -444,6 +468,13 @@ const StepRow = ({
           <span className={m.stepLine}>{t.scenarios.run.sentBack(step.nudges.length)}</span>
         )}
       </span>
-    </div>
+  )
+
+  return opens ? (
+    <button type="button" className={className} onClick={onOpen}>
+      {body}
+    </button>
+  ) : (
+    <div className={className}>{body}</div>
   )
 }

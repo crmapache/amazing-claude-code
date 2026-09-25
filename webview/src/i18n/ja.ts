@@ -1403,7 +1403,6 @@ export const ja: Dict = {
 
     scenarios: {
       running: '実行中',
-      repository: 'リポジトリ',
       inRepository: (name: string): string => `${name} 内`,
       opensProject: 'IDE では開いていません - 選ぶとそこで開きます',
       nothingRunning: 'このプロジェクトでいま動いているものはありません。',

@@ -1,7 +1,7 @@
 import { en } from '../i18n/en'
 import { describe, expect, it } from 'vitest'
 import type { ScenarioRunSummary, ShellMessage } from '../protocol'
-import { applyFact, emptyFacts, factsFor, isFact, phoneCommands, projectRuns } from './facts'
+import { applyFact, emptyFacts, factsFor, isFact, phoneCommands } from './facts'
 
 const window = (percent: number) => ({ percent, resets: '' })
 
@@ -238,32 +238,32 @@ describe('applyFact, the record of a run', () => {
 })
 
 /**
- * What is going in a project, and what last did.
+ * What is going in a project - and only that.
  *
- * Both halves ride on one message because both reach every paired device rather than only the one
- * watching that project (see RemoteFeed.isOverview). The second half is the one that fails quietly: an
- * IDE older than the field says nothing about it, and read as "there is no finished run" that silence
- * would wipe a row the screen is showing.
+ * An older plugin still sends the newest finished run beside the live ones, for a card row the phone no
+ * longer draws. Kept in the facts, it would be a second answer to "what is running here" waiting for
+ * somebody to read it as one.
  */
 describe('applyFact, what a project is running', () => {
   const going = (id: string) => ({ id, scenarioId: 's1', state: 'running' }) as unknown as ScenarioRunSummary
   const over = (id: string) => ({ id, scenarioId: 's1', state: 'done' }) as unknown as ScenarioRunSummary
 
-  const live = (runs: ScenarioRunSummary[], last?: ScenarioRunSummary) =>
-    ({ type: 'scenarioLive', runs, last }) as ShellMessage
-
-  it('takes both the ones going and the newest one over', () => {
-    const facts = applyFact(emptyFacts(), live([going('a')], over('b')))
+  it('takes the runs that are going and nothing else off the live message', () => {
+    const facts = applyFact(emptyFacts(), {
+      type: 'scenarioLive',
+      runs: [going('a')],
+      last: over('b'),
+    } as unknown as ShellMessage)
 
     expect(facts.liveRuns?.map((run) => run.id)).toEqual(['a'])
-    expect(facts.lastRun?.id).toBe('b')
+    expect(Object.values(facts).flat().some((value) => (value as { id?: string } | undefined)?.id === 'b')).toBe(false)
   })
 
-  it('keeps the finished one a machine too old to send it says nothing about', () => {
-    const first = applyFact(emptyFacts(), live([], over('b')))
-    const second = applyFact(first, live([going('a')]))
+  it('empties when the last one ends', () => {
+    const first = applyFact(emptyFacts(), { type: 'scenarioLive', runs: [going('a')] } as ShellMessage)
+    const second = applyFact(first, { type: 'scenarioLive', runs: [] } as ShellMessage)
 
-    expect(second.lastRun?.id).toBe('b')
+    expect(second.liveRuns).toEqual([])
   })
 })
 
@@ -291,132 +291,5 @@ describe('applyFact, the gauges’ colour', () => {
   it('reads the switch of an older machine', () => {
     expect(applyFact(emptyFacts(), said({ on: true }), '').calmVivid).toBe(0)
     expect(applyFact(emptyFacts(), said({ on: false }), '').calmVivid).toBe(100)
-  })
-})
-
-/**
- * What a project's card on the first screen puts a row for.
- *
- * The rule fails in both directions and neither of them shows up as an error. Left at the live runs
- * alone, a round of work that ran all night and finished before breakfast is nowhere on the screen its
- * owner picks up in the morning; taken as "whatever the shelf lists first", a run still going gets a
- * second row under itself.
- */
-describe('projectRuns', () => {
-  const summary = (over: Partial<ScenarioRunSummary> = {}): ScenarioRunSummary => ({
-    id: 'r1',
-    scenarioId: 's1',
-    scenarioName: 'Nightly review',
-    scope: 'project',
-    startedAt: 1_700_000_000_000,
-    finishedAt: 0,
-    state: 'running',
-    total: 8,
-    done: 0,
-    failure: '',
-    cost: 0,
-    inputs: {},
-    ...over,
-  })
-
-  const shelves = (past: ScenarioRunSummary[]) => ({
-    list: [],
-    past,
-    schedules: [],
-    schedulesUnread: false,
-    canShare: true,
-  })
-
-  it('says nothing about a project that has never run one', () => {
-    expect(projectRuns(undefined)).toEqual([])
-    expect(projectRuns({ ...emptyFacts(), scenarios: shelves([]) })).toEqual([])
-  })
-
-  it('shows everything that is going, and only that', () => {
-    const live = [summary({ id: 'a' }), summary({ id: 'b' })]
-    const facts = { ...emptyFacts(), liveRuns: live, scenarios: shelves([...live, summary({ id: 'c', state: 'done' })]) }
-
-    expect(projectRuns(facts).map((run) => run.id)).toEqual(['a', 'b'])
-  })
-
-  /** The half this was written for: the night is over, and the card is where its result is asked after. */
-  it('falls back to the last round of work that is over', () => {
-    const facts = {
-      ...emptyFacts(),
-      liveRuns: [],
-      scenarios: shelves([
-        summary({ id: 'b', state: 'done', startedAt: 20 }),
-        summary({ id: 'a', state: 'failed', startedAt: 10 }),
-      ]),
-    }
-
-    expect(projectRuns(facts).map((run) => run.id)).toEqual(['b'])
-  })
-
-  /**
-   * One, not a list. The rest are history, and the screen behind the row is what history is for - a card
-   * that grew a row per run would push the project's conversations off the first screen.
-   */
-  it('offers one door back into the past and no more', () => {
-    const facts = {
-      ...emptyFacts(),
-      scenarios: shelves([
-        summary({ id: 'c', state: 'done', startedAt: 30 }),
-        summary({ id: 'b', state: 'done', startedAt: 20 }),
-        summary({ id: 'a', state: 'done', startedAt: 10 }),
-      ]),
-    }
-
-    expect(projectRuns(facts)).toHaveLength(1)
-  })
-
-  /**
-   * The half that makes the first screen work at all.
-   *
-   * The shelves reach one project - whichever this phone is watching - because they are tens of kilobytes
-   * and travel by subscription. The live fact reaches every project on every paired machine, and it
-   * carries the newest finished run for exactly this row (see the `last` field of `scenarioLive`). Read
-   * off the shelves alone, a card was blank for every project but one, and blank for all of them on a
-   * page that had just loaded.
-   */
-  it('takes the finished run off the live fact, with no shelves at all', () => {
-    const facts = { ...emptyFacts(), lastRun: summary({ id: 'night', state: 'done', startedAt: 20 }) }
-
-    expect(projectRuns(facts).map((run) => run.id)).toEqual(['night'])
-  })
-
-  /** And it is still one row: what is going wins the card, as it always did. */
-  it('never draws the finished one beside a run that is going', () => {
-    const going = summary({ id: 'a' })
-    const facts = { ...emptyFacts(), liveRuns: [going], lastRun: summary({ id: 'b', state: 'done' }) }
-
-    expect(projectRuns(facts).map((run) => run.id)).toEqual(['a'])
-  })
-
-  /**
-   * The live frame is sent the moment a run ends, and for that one beat the run is on both halves of it.
-   * Drawn from each, the card would show the same work twice - once breathing and once as history.
-   */
-  it('never repeats the finished run that is also named as going', () => {
-    const one = summary({ id: 'a', state: 'done' })
-    const facts = { ...emptyFacts(), liveRuns: [one], lastRun: one }
-
-    expect(projectRuns(facts).map((run) => run.id)).toEqual(['a'])
-  })
-
-  /**
-   * The shelf is read off the disk and still lists what is going right now, with figures written whenever
-   * it last got round to it. Taken as a past run, the row would stand under the live one as a second,
-   * staler copy of the same work.
-   */
-  it('never repeats a run that is already going', () => {
-    const going = summary({ id: 'a', done: 5 })
-    const facts = {
-      ...emptyFacts(),
-      liveRuns: [going],
-      scenarios: shelves([summary({ id: 'a', done: 2 })]),
-    }
-
-    expect(projectRuns(facts).map((run) => run.done)).toEqual([5])
   })
 })

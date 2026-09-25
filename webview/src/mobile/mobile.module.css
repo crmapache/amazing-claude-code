@@ -1695,9 +1695,15 @@
 /* The two ways out of a project's card, on one row at its foot. Equal halves
    rather than a word and a square: at this width a square with a plus in it read
    as the card's own title bar rather than as the way into a conversation. */
+/*
+ * Three doors: the past conversations as a square icon, then the scenarios and a new chat sharing the rest.
+ *
+ * The icon is the width of its own height and no more - the two words it used to be took half the row away
+ * from the two doors that are pressed far more often.
+ */
 .projectFoot {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: var(--acc-hit) 1fr 1fr;
   gap: var(--acc-sp-2);
   /* No inset of its own: the card already has one, and the pair used to stand a step inside the chats
      above them - two left edges a few pixels apart, which reads as sloppy rather than as dense. */
@@ -1727,6 +1733,18 @@
 
 .footButton:disabled {
   opacity: 0.45;
+}
+
+.footButtonIcon {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--acc-fg-dim);
+}
+
+.footIcon {
+  width: 18px;
+  height: 18px;
 }
 
 .footButtonAccent {
@@ -3485,6 +3503,12 @@
  * can be a paragraph and a fixed block of one would leave no timeline underneath it.
  */
 /* What a finished run says first, and the two doors out of it - see the panel's .after. */
+/* How a run ended, under its last step: set off from the timeline by more than the steps are from each
+   other, because it is not one more of them. */
+.runEnd {
+  margin-top: var(--acc-sp-4);
+}
+
 .afterCard {
   margin: 0 0 var(--acc-sp-4);
   padding: var(--acc-sp-4);
@@ -3598,21 +3622,6 @@
 /* Standing on a question is the state this row exists for: it is the only one a person can end. */
 .projectRunAsking {
   border-color: var(--acc-warn-16);
-}
-
-/*
- * A round of work that is over: the same row, without the promise.
- *
- * The accent on the border is what makes a live row read as something happening, and last night's run is
- * not. It keeps its place and its chevron - it is a door, and the door is the point - but it says so in
- * the voice the rest of a quiet card is written in.
- */
-.projectRunOver {
-  border-color: var(--acc-line-strong);
-}
-
-.projectRunOver .projectRunCount {
-  color: var(--acc-fg-dim);
 }
 
 .projectRunName {
@@ -4165,15 +4174,55 @@
 }
 
 /* The way into it, on the step's own row. */
+/*
+ * A step with a log behind it is a button the size of its card (see StepRow).
+ *
+ * The browser's own dress of a button is taken off - it would centre the text and change the font - and
+ * the press answers with the card's background, the only feedback a touch has.
+ */
+.stepOpens {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.stepOpens:active {
+  background: var(--acc-bg-card);
+}
+
+/*
+ * The sign that the card opens its log, pushed to the far end of the pill's line, where a row's way on is
+ * looked for.
+ *
+ * The pill's twin in everything but colour: the same mono type at the same weight, the same padding,
+ * border, corner and background (see statePill.module.css). It used to be bold on an accent fill, and
+ * although its box and baseline matched the pill's to the pixel, it read as bigger and lower than the
+ * "Done" beside it - a heavy block with a descender against a light outline. What says "this opens" is
+ * the accent and the chevron; the card around it is the target.
+ */
 .stepLog {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  min-height: var(--acc-hit);
-  padding-left: var(--acc-sp-2);
-  font-size: var(--acc-fs-meta);
-  color: var(--acc-accent-light);
+  gap: 5px;
+  margin-left: auto;
+  padding: 2px 7px;
+  border: 1px solid var(--acc-accent-32);
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-raised);
+  font: var(--acc-fs-label) var(--acc-mono);
+  color: var(--acc-accent);
+  white-space: nowrap;
+}
+
+/* The shared chevron points down; this one points the way the card goes. */
+.stepLogChevron {
+  width: 8px;
+  height: 5px;
+  transform: rotate(-90deg);
 }
 
 /* --- The run's own timeline -------------------------------------------------- */

@@ -399,9 +399,6 @@ internal object RemoteFeed {
                 when (name) {
                     "runs" ->
                         put(name, mapObjects(JsonArray((value as? JsonArray).orEmpty().take(PHONE_RUNS)), ::summaryBody))
-                    // The newest run that is over rides on this message too, and it carries the same free
-                    // text the live ones do - the answers somebody typed into the start form.
-                    "last" -> put(name, (value as? JsonObject)?.let(::summaryBody) ?: value)
                     else -> put(name, value)
                 }
             }

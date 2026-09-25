@@ -284,25 +284,6 @@ class RemoteFeedTest {
     }
 
     /**
-     * And on the one run that is over which rides on the live message.
-     *
-     * It is there so that a project's card can say how the night went on a screen that is not watching
-     * that project (see the `last` field of scenarioLive) - and being a summary like the rest, it carries
-     * the same free text somebody typed into the start form.
-     */
-    @Test
-    fun `the answer the last finished run carries is cut down as well`() {
-        val out = RemoteFeed.forPhone(
-            RemoteFeed.SCENARIO_LIVE,
-            """{"type":"scenarioLive","runs":[],"last":{"id":"r1","scenarioName":"Nightly",""" +
-                """"inputs":{"ticket":"$PASTED"}}}""",
-        ).message
-
-        assertFalse(out.contains(PASTED))
-        assertTrue(out.contains(""""id":"r1""""))
-    }
-
-    /**
      * Which facts reach a device that has not asked for anything.
      *
      * A phone holds one subscription - one project, and at most one conversation in it - while its first

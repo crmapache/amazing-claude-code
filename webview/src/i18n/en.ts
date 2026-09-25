@@ -1796,8 +1796,7 @@ export const en = {
     scenarios: {
       /** Over the card of the run that is happening right now. */
       running: 'RUNNING NOW',
-      /** The row that names the repository whose shelf stands under it, and the heading over that shelf. */
-      repository: 'Repository',
+      /** The heading over the repository's own shelf, named - the screen is always about one project. */
       inRepository: (name: string): string => `In ${name}`,
       /** Under a closed repository in the pickers: choosing it opens the project in the IDE first. */
       opensProject: 'Not open in the IDE - picking it opens it there',

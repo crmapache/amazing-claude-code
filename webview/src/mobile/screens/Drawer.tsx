@@ -1,6 +1,5 @@
 import type { AgentEntry } from '../projects'
 import type { LinkState } from '../link'
-import type { ScenarioRunSummary } from '../../protocol'
 import m from '../mobile.module.css'
 import { useT } from '../../i18n'
 import type { Dict } from '../../i18n/en'
@@ -15,18 +14,9 @@ interface DrawerProps {
   account: string
   /** Whether any MCP server of the project on screen wants attention - the dot on that row. */
   mcpTone: 'none' | 'warn' | 'bad'
-  /**
-   * The rounds of work going in that project right now.
-   *
-   * A count rather than one run's progress: there may be several, and a row of a menu has space for the
-   * one fact that decides whether to open the screen at all. How far along each of them is is said on
-   * the screen behind this row.
-   */
-  liveRuns: ScenarioRunSummary[]
   /** Absent where there is no conversation on screen to have tasks, or no project to ask about. */
   onProjects: () => void
   onTasks?: () => void
-  onScenarios?: () => void
   onMcp?: () => void
   onPlugins?: () => void
   onAccounts?: () => void
@@ -65,10 +55,8 @@ export const Drawer = ({
   live,
   account,
   mcpTone,
-  liveRuns,
   onProjects,
   onTasks,
-  onScenarios,
   onMcp,
   onPlugins,
   onAccounts,
@@ -126,19 +114,9 @@ export const Drawer = ({
             </button>
           )}
 
-          {/* The project's rounds of work, beside the task list rather than below the rule with the
-              machine's screens: both of these rows answer "what is being worked on", and a scenario is
-              the one kind of work that goes on with nobody in front of it. It needs a project rather
-              than a conversation, so it stands where the task list does but survives without one. */}
-          {onScenarios && (
-            <button type="button" className={m.drawerRow} onClick={onScenarios}>
-              <span className={m.drawerIcon}>⌸</span>
-              <span className={m.drawerLabel}>{t.scenarios.button}</span>
-              {liveRuns.length > 0 && (
-                <span className={m.drawerValueAgent}>{t.mobile.drawer.live(liveRuns.length)}</span>
-              )}
-            </button>
-          )}
+          {/* No row for scenarios. They belong to one project, and a menu row had to guess which - the one
+              on screen, else the first open one - so it opened somebody else's shelf as often as not. Their
+              door is on each project's card now (see Projects), where the project is not a guess. */}
 
           <div className={m.drawerRule} />
 

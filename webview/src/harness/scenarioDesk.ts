@@ -544,13 +544,8 @@ const stepQueue = (): void => {
  */
 const sendLive = (): void => {
   const going = live.map((id) => records[id]).filter((run): run is ScenarioRun => run !== undefined)
-  // And the newest run that is over, exactly as the IDE sends it (see ScenarioDesk.sendLive): it is what
-  // a project's card on a phone says when nothing is going, and the shelves never reach that screen.
-  const over = Object.values(records)
-    .filter((run) => !live.includes(run.id))
-    .sort((first, second) => second.startedAt - first.startedAt)[0]
 
-  send({ type: 'scenarioLive', runs: going.map(summarise), last: over ? summarise(over) : undefined })
+  send({ type: 'scenarioLive', runs: going.map(summarise) })
 }
 
 /**
