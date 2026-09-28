@@ -9,6 +9,15 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.4] - 2026-09-28
+
+- Fixed: a conversation left running a workflow opened on the phone as "Loading the conversation..." that never went away, or as an empty feed under "earlier messages are not shown on the phone" with no way to load them. A phone is handed the end of a conversation rather than all of it, and a workflow resends the whole report of its fleet on every change, with hundreds of progress events in between; after a few hours the end held nothing but copies of one report. Each report now replaces the ones before it, a subagent's steps no longer crowd the conversation out of what the phone is handed, and the phone opens on the latest messages. The panel had the same trouble after being reloaded during such a run, and no longer does.
+- Fixed: on the phone, "load earlier messages" is there whenever there is more above. Each press brings the previous page, all the way to the beginning. It used to stay a plain caption when nothing on screen could anchor the request, and a conversation opened from the history had no such line on the phone at all while the panel beside it did.
+- Fixed: "Loading the conversation..." could stay on the phone for good when one frame was lost on the way, or after taking the phone out of a pocket with a connection that looked alive but was not. The phone now asks again when the IDE does not answer within a few seconds, reconnects when the line has gone silent, and finishes a stalled load by itself.
+- Fixed: after the connection dropped, the phone could come back with a gap in the middle of a conversation, or without the first half of what it had been loading. It now reopens on the latest messages with everything else a press away.
+- Fixed: on the phone, "load earlier messages" could do nothing in a long conversation written in Russian or another non-Latin script. A page was measured in characters, such text weighs twice as much on the wire, and the page did not fit the relay's frame and was dropped. Pages are measured in bytes now, and a message too large for a frame is shortened rather than lost.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.3] - 2026-09-27
 
 - Fixed: the limit rings under the input field could stop moving for the better part of an hour while the account was being spent - one evening they stayed on 5% and 19% while the account page said 49% and 26%. Every open project asked about the limits on its own schedule and kept the answer to itself, and only one of them may ask at a time. With another project working, the same project lost its turn every time and never heard anything new. Figures are now shared across the IDE: whichever project learns them, every panel and the phone show them at once, and a panel that opens starts with what is already known.
@@ -779,7 +788,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.3...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.4...HEAD
+[0.13.4]: https://github.com/crmapache/amazing-claude-code/compare/0.13.3...0.13.4
 [0.13.3]: https://github.com/crmapache/amazing-claude-code/compare/0.13.2...0.13.3
 [0.13.2]: https://github.com/crmapache/amazing-claude-code/compare/0.13.1...0.13.2
 [0.13.1]: https://github.com/crmapache/amazing-claude-code/compare/0.13.0...0.13.1
