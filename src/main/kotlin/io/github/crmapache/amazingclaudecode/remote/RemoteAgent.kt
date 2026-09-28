@@ -18,6 +18,7 @@ import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.claude.SessionClient
 import io.github.crmapache.amazingclaudecode.claude.SessionLaunch
 import io.github.crmapache.amazingclaudecode.claude.SessionSnapshot
+import io.github.crmapache.amazingclaudecode.claude.StartingChoice
 import io.github.crmapache.amazingclaudecode.stats.StatsLedger
 import io.github.crmapache.amazingclaudecode.net.IdeHttp
 import java.net.http.HttpClient
@@ -986,10 +987,7 @@ internal class RemoteAgent : Disposable {
                             put("title", entry.title)
                             put("updatedAt", entry.updatedAt)
                             put("messages", entry.messages)
-                            put(
-                                "titleSource",
-                                if (entry.named) SessionSnapshot.TITLE_LLM else SessionSnapshot.TITLE_HEURISTIC,
-                            )
+                            put("titleSource", entry.titleSource)
                         }
                     }
                 }
@@ -1041,11 +1039,7 @@ internal class RemoteAgent : Disposable {
         val launch = payload["launch"] as? JsonObject
         // Empty means "start a fresh one" - the request this used to be, and still the usual one.
         val conversationId = payload["c"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        val titleSource = if (payload["titleSource"]?.jsonPrimitive?.contentOrNull == SessionSnapshot.TITLE_LLM) {
-            SessionSnapshot.TITLE_LLM
-        } else {
-            SessionSnapshot.TITLE_HEURISTIC
-        }
+        val titleSource = SessionSnapshot.titleSourceOf(payload["titleSource"]?.jsonPrimitive?.contentOrNull)
 
         // Off the frame-reading thread: opening a project loads a whole IDE window, and the socket has
         // frames to carry in the meantime.
@@ -1270,10 +1264,10 @@ internal class RemoteAgent : Disposable {
             putJsonObject("prefs") {
                 // What a new tab genuinely starts on rather than what was last picked in one: a phone
                 // opening a conversation names the model in the request itself, and a request naming
-                // the last pick would walk straight past a model pinned at the desk (see
-                // ClaudePreferences.startingModel).
-                put("model", ClaudePreferences.startingModel())
-                put("effort", ClaudePreferences.startingEffort())
+                // the last pick would walk straight past a model pinned at the desk, or past the one the
+                // chosen account was last left on (see StartingChoice).
+                put("model", StartingChoice.model())
+                put("effort", StartingChoice.effort())
                 put("mode", ClaudePreferences.mode)
             }
             putJsonArray("projects") {

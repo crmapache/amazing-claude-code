@@ -13,11 +13,11 @@ import io.github.crmapache.amazingclaudecode.claude.ClaudeExecutable
 import io.github.crmapache.amazingclaudecode.claude.ClaudeHistory
 import io.github.crmapache.amazingclaudecode.claude.ClaudeHome
 import io.github.crmapache.amazingclaudecode.claude.ClaudePlugin
-import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
 import io.github.crmapache.amazingclaudecode.claude.EffortLevels
 import io.github.crmapache.amazingclaudecode.claude.InstalledPlugin
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.claude.SettingSources
+import io.github.crmapache.amazingclaudecode.claude.StartingChoice
 import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
 import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import io.github.crmapache.amazingclaudecode.remote.RemoteFeed
@@ -435,8 +435,12 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             workingDirectory = project.basePath,
             description = description,
             accountId = accountId,
-            model = writingModel(accountId),
-            effort = EffortLevels.normalize(ClaudePreferences.startingEffort()),
+            // What a new tab of this panel starts on, held to what this account can run - a model the
+            // account has no access to is not refused at launch, the process dies on its first message,
+            // and here that is a strip over the field saying the answer could not be read (see
+            // StartingChoice). The floor under it is the author's own (see ScenarioAuthor.atTheFloor).
+            model = StartingChoice.model(accountId),
+            effort = EffortLevels.normalize(StartingChoice.effort(accountId)),
             skills = listed,
             readableDirectories = readable,
             settingSources = SettingSources.of(project),
@@ -457,25 +461,6 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
     /** The person stopped waiting: the process goes, and its answer with it (see AiRuns). */
     fun cancelDraft(id: String) {
         drafts.cancel(id)
-    }
-
-    /**
-     * What the writing runs on: the model a new tab of this panel starts with, unless this account is
-     * known not to run it.
-     *
-     * The same clamp a conversation gets (see ClaudeSessions.modelFor), for the same reason: a model the
-     * account has no access to is not refused at launch, the process dies on its first message, and here
-     * that is a strip over the field saying the answer could not be read. Unknown counts as yes - the
-     * catalogue is asked for lazily, and an unasked one is the ordinary state of a project's first
-     * minutes. Empty leaves the choice to the CLI.
-     */
-    private fun writingModel(accountId: String): String {
-        val accounts = ClaudeAccounts.getInstance()
-        val wanted = ClaudePreferences.startingModel()
-        if (accounts.canRun(accountId, wanted) != false) return wanted
-
-        val own = accounts.account(accountId)?.model.orEmpty()
-        return if (own.isNotEmpty() && accounts.canRun(accountId, own) != false) own else ""
     }
 
     private fun drafted(clientId: String, id: String, scenario: Scenario?, error: String?) {
@@ -601,11 +586,14 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             total = ScenarioRules.cardRuns(scenario),
         )
 
+        // One reading for both halves: the account the run pays with is the one its defaults are worked
+        // out on (see StartingChoice), and read twice they could straddle a switch.
+        val account = ClaudeAccounts.getInstance().currentId
         val walker = ScenarioEngine(
             workingDirectory = project.basePath,
-            accountId = ClaudeAccounts.getInstance().currentId,
-            defaultModel = ClaudePreferences.startingModel(),
-            defaultEffort = ClaudePreferences.startingEffort(),
+            accountId = account,
+            defaultModel = StartingChoice.model(account),
+            defaultEffort = StartingChoice.effort(account),
             start = record,
             onChange = { moved(record.id) },
             onFinished = { finished -> ended(finished) },
@@ -1007,11 +995,12 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             if (CarryOn.pointOf(record) == null) return@off outcome(clientId, ok = false, code = "runNotResumable")
             if (ClaudeExecutable.find() == null) return@off outcome(clientId, ok = false, code = "noClaude")
 
+            val account = ClaudeAccounts.getInstance().currentId
             val walker = ScenarioEngine(
                 workingDirectory = project.basePath,
-                accountId = ClaudeAccounts.getInstance().currentId,
-                defaultModel = ClaudePreferences.startingModel(),
-                defaultEffort = ClaudePreferences.startingEffort(),
+                accountId = account,
+                defaultModel = StartingChoice.model(account),
+                defaultEffort = StartingChoice.effort(account),
                 start = record,
                 onChange = { moved(runId) },
                 onFinished = { finished -> ended(finished) },

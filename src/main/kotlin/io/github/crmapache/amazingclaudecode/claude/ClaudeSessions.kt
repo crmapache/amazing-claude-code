@@ -36,6 +36,10 @@ internal class ClaudeSessions(
     private val onTitle: (sessionId: String, title: String) -> Unit = { _, _ -> },
     /** Whether this conversation still needs a name of its own - see ClaudeSession.titleWanted. */
     private val titleWanted: (sessionId: String) -> Boolean = { true },
+    /** The name the person gave the tab by hand, if any - see ClaudeSession.ownTitle. */
+    private val ownTitle: (sessionId: String) -> String? = { null },
+    /** The CLI renamed the conversation itself by `/rename` - see ClaudeSession.onRenamed. */
+    private val onRenamed: (sessionId: String, title: String) -> Unit = { _, _ -> },
     /** The turn ended - the panel should clear its work; see ClaudeSession.onTurnEnded. */
     private val onTurnEnded: (sessionId: String) -> Unit = {},
     /** The turn started on its own, without a send from the panel; see ClaudeSession.onTurnStarted. */
@@ -480,10 +484,10 @@ internal class ClaudeSessions(
         val forkFrom = if (conversationId == null) session.forkFrom else null
 
         val carried = SessionLaunch(
-            // Clamped to what the account it is moving ONTO can actually run - see [modelFor]. Carried
+            // Clamped to what the account it is moving ONTO can actually run - see StartingChoice.clamp. Carried
             // whole, a tab left an account whose plan had the model and arrived at one whose plan does
             // not, looking perfectly well and dying on the next message.
-            model = modelFor(accountId, session.model),
+            model = StartingChoice.clamp(accountId, session.model),
             effort = session.effort,
             mode = session.permissionMode.orEmpty(),
         )
@@ -538,56 +542,6 @@ internal class ClaudeSessions(
     }
 
     /**
-     * The model to start on, given the account that will pay - the carried one when it may be run there,
-     * and that account's own otherwise.
-     *
-     * The CLI does not refuse a model an account has no access to at launch: the process comes up, says
-     * the model in its init event, replays the transcript and looks perfectly well, and then dies on the
-     * person's first message with an HTTP 404 (see ClaudeAccounts.canRun). Nothing on the screen names
-     * the account, and nothing puts it right by itself - so it is put right here, before the process is
-     * raised, and the panel is told the model it actually got.
-     *
-     * Only a definite NO replaces anything. Unknown leaves the model alone, and that way round is not a
-     * coin toss: an unasked catalogue is the ordinary state of the first seconds of a project, and
-     * treating it as a refusal would throw away the model of every conversation opened from the history -
-     * including the one this rule exists to protect, an old chat on a million-token model. The catalogue
-     * is asked for when a conversation is born on an account and again when the accounts screen opens
-     * (see AccountDesk.round), which is the screen a person has to visit to switch at all.
-     */
-    private fun modelFor(accountId: String, model: String): String {
-        val accounts = ClaudeAccounts.getInstance()
-        if (accounts.canRun(accountId, model) != false) return model
-
-        // The same model at its ordinary window comes before any other model. The window mark is the one
-        // thing the catalogue is strict about (see ModelNames.holds): an account served plain Opus and not
-        // the large window used to be handed `opus[1m]` all the same, and the process died on the first
-        // message - and since a resumed conversation now carries the mark its transcript was held on (see
-        // ClaudeHistory.modelIdentity), every resume of such a conversation under such an account would go
-        // the same way. Without the mark it is what it was before the mark was read at all: the
-        // conversation, on its own model, in the window this account has.
-        val unmarked = ModelNames.unmarked(model)
-        if (unmarked != model && accounts.canRun(accountId, unmarked) != false) return unmarked
-
-        val own = accounts.account(accountId)?.model.orEmpty()
-        if (own.isNotEmpty() && accounts.canRun(accountId, own) != false) return own
-
-        // The machine's default gets the same test as the other two, and it is the case that matters
-        // most: every applied pick writes that default, so choosing Opus on a Max account is exactly what
-        // leaves it standing when the move lands on a Pro one. Unchecked, this branch handed back the
-        // very model the first branch had just refused - and an account nobody has chosen a model for
-        // (the ordinary sign-in among them, which has no record at all) reaches it every time.
-        val preferred = ClaudePreferences.model
-        if (accounts.canRun(accountId, preferred) != false) return preferred
-
-        // Everything this tab could have asked for is refused, so what is left is the account's own
-        // default - NAMED rather than left out. Leaving the flag out is not the same thing here: a move
-        // resumes the transcript, and the CLI resumed without `--model` carries on at the model written
-        // in it, which is very likely the one just refused. Naming it is only possible when the account
-        // has answered with a catalogue at all; without one there is nothing honest left to say.
-        return DEFAULT_MODEL.takeIf { accounts.canRun(accountId, it) == true }.orEmpty()
-    }
-
-    /**
      * Which account this conversation's process runs on.
      *
      * A tab with no process yet answers with the account it WOULD start on rather than with the empty
@@ -625,8 +579,8 @@ internal class ClaudeSessions(
         // Clamped to what the account paying for it can run, and the answer is what was ACTUALLY adopted
         // so the caller tells the panel the truth. A transcript's model is a fact about the account it
         // used to run on, and since everything now runs on the account chosen today, that is regularly a
-        // different one - a model it may have no access to at all (see [modelFor]).
-        val adopted = modelFor(session.accountId, model)
+        // different one - a model it may have no access to at all (see StartingChoice.clamp).
+        val adopted = StartingChoice.clamp(session.accountId, model)
 
         session.adoptModel(adopted)
         return adopted
@@ -920,6 +874,16 @@ internal class ClaudeSessions(
     fun conversationIdOf(sessionId: String): String? = sessions[sessionId]?.conversationId
 
     /**
+     * The name the person gave the tab, into the conversation behind it - see ClaudeSession.rename.
+     *
+     * Without creating a conversation, unlike [session]: a tab nobody has written into has no transcript
+     * to name, and its conversation takes the name with the first message (see ClaudeSession.ownTitle).
+     */
+    fun rename(sessionId: String, title: String) {
+        sessions[sessionId]?.rename(title)
+    }
+
+    /**
      * The model and the effort. The choice is remembered: new conversations will start with it.
      *
      * The conversation is started for this even if it does not exist yet - as with the permission mode:
@@ -951,6 +915,9 @@ internal class ClaudeSessions(
             if (remember && change.applied) {
                 ClaudePreferences.model = change.model
                 ClaudeAccounts.getInstance().rememberChoice(accountOf(sessionId), model = change.model)
+                // Both are inputs to what the next tab starts on, and every window draws that answer
+                // over its untouched tabs (see StartingChoice).
+                ClaudeSessionHub.announceNewTabDefaults()
             }
             onApplied(change)
         }
@@ -966,6 +933,7 @@ internal class ClaudeSessions(
         if (remember) {
             ClaudePreferences.effort = effort
             ClaudeAccounts.getInstance().rememberChoice(accountOf(sessionId), effort = effort)
+            ClaudeSessionHub.announceNewTabDefaults()
         }
         session(sessionId).setEffort(effort)
     }
@@ -1106,30 +1074,13 @@ internal class ClaudeSessions(
          */
         val account = accounts.currentId
 
-        // Per account rather than machine-wide, and that is not symmetry for its own sake. Every
-        // successful pick writes the machine's default, so a model chosen on a Max account decided what
-        // a tab on a Pro account launched with - and a plan that has no Opus cannot run one. An account
-        // nobody has chosen for falls back to the default.
-        val remembered = accounts.account(account)
-
-        // The pin stands above the account's memory and below the request, and that order is the whole
-        // of the setting: "start every new tab on this" is a decision somebody made in words, while what
-        // the account was last left on is a decision nothing was ever said about. Empty - the default -
-        // and the chain is exactly the one it has always been (see ClaudePreferences.newTabEffort).
-        val effort = launch.effort
-            .ifEmpty { ClaudePreferences.newTabEffort }
-            .ifEmpty { remembered?.effort.orEmpty() }
-            .ifEmpty { ClaudePreferences.effort }
-        // A new conversation starts with whatever is chosen now: re-picking the model in every tab is
-        // work over nothing. A conversation opened from the history is the exception, and it is told
-        // its own model a moment later, once its transcript has been read (see adoptModel).
-        val model = modelFor(
-            account,
-            launch.model
-                .ifEmpty { ClaudePreferences.newTabModel }
-                .ifEmpty { remembered?.model.orEmpty() }
-                .ifEmpty { ClaudePreferences.model },
-        )
+        // By the one chain everything that shows this answer reads too - the chip over an empty tab, a
+        // phone's new chat, a scenario's head (see StartingChoice, and there the order and why). A new
+        // conversation starts with whatever is chosen now: re-picking the model in every tab is work over
+        // nothing. A conversation opened from the history is the exception, and it is told its own model a
+        // moment later, once its transcript has been read (see adoptModel).
+        val effort = StartingChoice.effort(account, requested = launch.effort)
+        val model = StartingChoice.model(account, requested = launch.model)
 
         onBorn(sessionId, effort, model, account)
 
@@ -1161,6 +1112,8 @@ internal class ClaudeSessions(
             onPermissionWithdrawn = { requestId -> onPermissionWithdrawn(sessionId, requestId) },
             onTitle = { title -> onTitle(sessionId, title) },
             titleWanted = { titleWanted(sessionId) },
+            ownTitle = { ownTitle(sessionId) },
+            onRenamed = { title -> onRenamed(sessionId, title) },
             onTurnEnded = { if (current()) onTurnEnded(sessionId) },
             onTurnStarted = { if (current()) onTurnStarted(sessionId) },
             settingSources = settingSources,
@@ -1198,13 +1151,5 @@ internal class ClaudeSessions(
          */
         fun stillOwed(running: Boolean, startedAt: Long, waitedFor: Long): Boolean =
             running && startedAt == waitedFor
-
-        /**
-         * The CLI's own name for "whatever this account's default is" - the one model every plan can run.
-         *
-         * Its own word rather than ours: it is what the CLI lists in the model catalogue and what the
-         * panel's own menu sends when a person picks the first entry (see DEFAULT_MODEL in catalog.ts).
-         */
-        private const val DEFAULT_MODEL = "default"
     }
 }

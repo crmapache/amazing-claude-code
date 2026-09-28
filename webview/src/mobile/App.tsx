@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { unbase64url } from '../core/crypto'
-import { deriveSessionTitle } from '../feed/title'
+import { deriveSessionTitle, resumedTitle, searchHitTitleSource } from '../feed/title'
 import type {
   AvailablePluginInfo,
   HistoryEntry,
@@ -1513,8 +1513,7 @@ export const App = () => {
       }
 
       const sessionId = newSessionId()
-      const title = deriveSessionTitle(entry.title, 40)
-      const titleSource = entry.titleSource === 'heuristic' ? 'heuristic' : 'llm'
+      const { title, titleSource } = resumedTitle(entry.title, entry.titleSource)
 
       // A project the IDE is not holding open has to be opened first, and the conversation travels with
       // that request rather than after it - the window takes seconds, and a phone waiting to send the
@@ -1708,8 +1707,7 @@ export const App = () => {
         type: 'resumeSession',
         sessionId,
         conversationId: hit.conversationId,
-        title: deriveSessionTitle(hit.title, 40),
-        titleSource: hit.named ? 'llm' : 'heuristic',
+        ...resumedTitle(hit.title, searchHitTitleSource(hit)),
       })
       enter(search.agentId, search.projectKey, sessionId, false)
     },

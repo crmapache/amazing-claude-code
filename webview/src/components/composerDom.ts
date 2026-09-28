@@ -492,8 +492,32 @@ export const rebuildDom = (root: HTMLElement, tokens: UserToken[]) => {
     if (tail.endsWith('\n')) last.textContent = `${tail}\n`
   }
 
+  // A caret put into a contentEditable takes the focus along with it, and a rebuild comes from outside -
+  // a draft cleared by a send, a tab switched, a rewrite come back. None of them is a reason to take the
+  // keyboard from a field the person is typing into somewhere else in the panel. The one that lost it was
+  // a tab's name, opened by the very `/rename` whose send cleared this draft: it closed again before a
+  // letter could go into it.
+  const focused = document.activeElement
+  if (focused && !root.contains(focused) && isTypingField(focused.tagName, (focused as HTMLInputElement).type ?? '')) {
+    return
+  }
+
   placeCaretAtEnd(root)
 }
+
+/**
+ * Whether an element is a field one types words into - which a rebuild of the input field must leave the
+ * keyboard with (see rebuildDom). A checkbox or a button holding the focus is not being typed into, and
+ * the caret may go back to the message as it always has.
+ */
+export const isTypingField = (tag: string, type: string): boolean => {
+  if (tag === 'TEXTAREA') return true
+  if (tag !== 'INPUT') return false
+
+  return !NOT_TYPED_INTO.has(type.toLowerCase())
+}
+
+const NOT_TYPED_INTO = new Set(['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color', 'file', 'image'])
 
 /** Reads the DOM back into tokens - called after every keystroke and every edit. */
 /**

@@ -127,6 +127,24 @@ internal object AgentStream {
     private val AI_TITLE = Regex("\"aiTitle\"\\s*:\\s*\"([^\"]+)\"")
 
     /**
+     * The name a person gave the conversation - typed into a tab here (see ClaudeSession.rename), or
+     * `/rename` in a terminal - or null, if this line is not about one. Empty is an answer too: the CLI
+     * writes an empty name to take one back, and the model's name counts again from there.
+     *
+     * Beside [aiTitle] for the same reason that one is here, and parsed whole unlike it: this is a name a
+     * person typed, so quotes and backslashes inside it are the ordinary case rather than a rare one, and
+     * the record it lives in is one short line.
+     */
+    fun customTitle(line: String): String? {
+        if (!line.contains("\"type\":\"custom-title\"")) return null
+
+        val payload = runCatching { Json.parseToJsonElement(line).jsonObject }.getOrNull() ?: return null
+        if (payload["type"]?.jsonPrimitive?.contentOrNull != "custom-title") return null
+
+        return payload["customTitle"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+    }
+
+    /**
      * The whole event - if the top-level type is one of the expected ones at all.
      *
      * A quick substring check settles almost everything, but on its own it is not enough: the very

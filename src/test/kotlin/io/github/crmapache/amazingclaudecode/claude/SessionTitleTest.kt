@@ -2,7 +2,9 @@ package io.github.crmapache.amazingclaudecode.claude
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * A tab's name is asked for by the first message of a conversation (see ClaudeSession.requestTitle),
@@ -10,6 +12,44 @@ import kotlin.test.assertNull
  * "/compact", a conversation carries the name of what was done to it rather than of what it is about.
  */
 class SessionTitleTest {
+
+    // A phone sends the CLI's own /rename, and the tab has to learn what it was renamed to.
+    @Test
+    fun `the CLI's rename is told apart, with a name or without`() {
+        assertTrue(SessionTitle.isRename("/rename"))
+        assertTrue(SessionTitle.isRename("  /rename Parser fixes\nand more "))
+        assertFalse(SessionTitle.isRename("/renamed"))
+        assertFalse(SessionTitle.isRename("please /rename it"))
+    }
+
+    // What was done TO the conversation names nothing - and a model's name asked for by it would race
+    // the name the command is giving.
+    @Test
+    fun `a rename names nothing by itself`() {
+        assertNull(SessionTitle.describe("/rename Parser fixes"))
+    }
+
+    @Test
+    fun `a name typed into a tab is one trimmed line`() {
+        assertEquals("Parser - edge cases", SessionTitle.own("  Parser\n-\tedge   cases \u0000"))
+    }
+
+    @Test
+    fun `a name of nothing leaves the tab as it was`() {
+        assertNull(SessionTitle.own(""))
+        assertNull(SessionTitle.own(" \n\t "))
+    }
+
+    // Counted in characters a person sees: a cut in the middle of an emoji would leave half of one.
+    @Test
+    fun `a name too long is cut, and never inside a character`() {
+        val long = "😀".repeat(SessionTitle.OWN_MAX_LENGTH + 5)
+
+        val own = SessionTitle.own(long)!!
+
+        assertEquals(SessionTitle.OWN_MAX_LENGTH, own.codePointCount(0, own.length))
+        assertEquals("😀".repeat(SessionTitle.OWN_MAX_LENGTH), own)
+    }
 
     @Test
     fun `a message is what the name is asked for`() {

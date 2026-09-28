@@ -115,6 +115,18 @@ internal class ClaudeSession(
      */
     private val titleWanted: () -> Boolean = { true },
     /**
+     * The name the person gave this tab by hand, or null when it carries any other - see [rename].
+     *
+     * Asked rather than remembered, for the reason [titleWanted] is: the name belongs to the tab and
+     * outlives this object, which a restart, a resume or a move to another account builds anew.
+     */
+    private val ownTitle: () -> String? = { null },
+    /**
+     * The CLI renamed the conversation itself - a `/rename` that reached it - and this is the name it
+     * wrote into the transcript (see [readRename]).
+     */
+    private val onRenamed: (String) -> Unit = {},
+    /**
      * The process died on its own - not because we stopped it. The conversation may have been standing
      * in the middle of a tool at that moment: the cards left "running" would hang there forever if
      * nobody is warned.
@@ -300,6 +312,29 @@ internal class ClaudeSession(
     private var titleAsked = false
 
     /**
+     * The person's name as this process last took it - see [nameAfterPerson]. Per process rather than per
+     * conversation: a name written into the file while no process ran (see [rename]) may have been read
+     * before it landed by the one that has just come up, and that one would write its own old name back
+     * over it with the rest of the conversation's details. One question per process costs a line in the
+     * transcript; a name quietly lost costs the whole of what the person did. Null after /clear too: the
+     * new conversation has taken no name yet.
+     */
+    @Volatile
+    private var namedAs: String? = null
+
+    /** A `/rename` went into this process, and its turn has not ended yet - see [readRename]. */
+    @Volatile
+    private var renameSent = false
+
+    /**
+     * The CLI holds a name the person gave it by `/rename`, and the tab has not taken it yet - so the
+     * tab's own, older name must not be pushed over it (see [nameAfterPerson]). A message queued behind
+     * the command goes in the moment its turn ends, well before the name has been read back.
+     */
+    @Volatile
+    private var renamedByCommand = false
+
+    /**
      * How many conversations this process has held. Only /clear moves it: the transcript changes under
      * the same process, and everything asked about the previous conversation stops being about anything
      * (see [requestTitle]). Counted rather than compared by conversation id on purpose - the id of a
@@ -351,9 +386,114 @@ internal class ClaudeSession(
         // to the panel as an error, and repeating it blindly serves nothing.
         val sent = write(process, userMessage(text, images))
         if (!sent) delivery?.let { undelivered.stopWatching(listOf(it)) }
-        if (sent) requestTitle(text)
+        if (sent && SessionTitle.isRename(text)) {
+            // The person is naming the conversation right now, through the CLI: the tab's own name sent
+            // after it would race the command and could undo it.
+            renameSent = true
+            renamedByCommand = true
+        } else if (sent) {
+            requestTitle(text)
+            nameAfterPerson()
+        }
 
         return sent
+    }
+
+    /**
+     * The name the person gave this tab, into the conversation's transcript - where the history list, the
+     * search and `claude --resume` in a terminal read names from.
+     *
+     * Two roads, the same two the CLI's own SDK has. A live process is asked (`rename_session`): it keeps
+     * the name in memory and writes it back into the transcript with the rest of the conversation's
+     * details, so a line slipped in behind its back would be buried under the old name on its next write.
+     * A conversation with no process takes the line straight into its file, the way the SDK renames a
+     * session nobody is running (see ClaudeHistory.rename) - raising a process for a name would cost the
+     * agent plus a copy of every MCP server. A tab nobody has written into yet has no file at all, and
+     * takes the name with its first message (see [nameAfterPerson]).
+     */
+    fun rename(title: String) {
+        // A name typed into the tab is newer than any the CLI was given by `/rename`.
+        renamedByCommand = false
+
+        if (handler != null) {
+            askRename(title)
+            return
+        }
+
+        val conversation = conversationId ?: return
+        // Off the caller's thread: finding the file may mean running a process of its own on WSL (see
+        // ClaudeHome). Nothing is marked as given: the next process asks again with its first message
+        // anyway (see [namedAs]), which is what covers a process that read the file a moment too early.
+        AppExecutorUtil.getAppExecutorService().execute {
+            val file = ClaudeHistory.transcriptFile(workingDirectory, conversation) ?: return@execute
+            ClaudeHistory.rename(file, conversation, title)
+        }
+    }
+
+    /**
+     * The person's name, owed to this process and not yet given: named before the first message, while
+     * asleep, or in a process raised since. Asked after every message rather than once - cheap when there
+     * is nothing owed, and the moment a message has gone in is the moment the conversation surely has a
+     * transcript to carry the name.
+     */
+    private fun nameAfterPerson() {
+        if (renamedByCommand) return
+        val title = ownTitle()?.takeIf { it.isNotBlank() } ?: return
+        if (title == namedAs) return
+
+        askRename(title)
+    }
+
+    /**
+     * The name a `/rename` gave the conversation, read back once its turn is over and handed upwards, so
+     * the tab wears what the CLI now calls it.
+     *
+     * Read from the transcript because nothing else says it: the stream carries the command's answer as a
+     * sentence ("Session renamed to: ..."), and a bare `/rename` makes a name up that nobody on this side
+     * has seen. A moment after the result rather than at it, so that the line is surely on disk.
+     */
+    private fun readRename() {
+        val conversation = conversationId ?: return
+        val asked = conversationEpoch
+
+        AppExecutorUtil.getAppScheduledExecutorService().schedule(
+            {
+                val file = ClaudeHistory.transcriptFile(workingDirectory, conversation) ?: return@schedule
+                val title = ClaudeHistory.ownTitleOf(file) ?: return@schedule
+                if (asked != conversationEpoch) return@schedule
+
+                // Handed upwards before the guard below is lowered: until the tab carries the new name, a
+                // message going in would push the old one over it.
+                onRenamed(title)
+                namedAs = title
+                renamedByCommand = false
+            },
+            RENAME_READ_DELAY_MS,
+            TimeUnit.MILLISECONDS,
+        )
+    }
+
+    /**
+     * `source: host` is what makes it the person's: the CLI counts it as a rename made by the user and
+     * stops naming the conversation itself (verified on 2.1.280 - a later `generate_session_title` answers
+     * with this name). The conversation is named when it is known, so that a /clear racing the request
+     * refuses it instead of naming the conversation that has just begun.
+     */
+    private fun askRename(title: String) {
+        val asked = conversationEpoch
+
+        control(
+            "rename_session",
+            onResult = { if (asked == conversationEpoch) namedAs = title },
+            // The tab keeps the name either way; only the transcript goes without it until the next
+            // message asks again. A CLI too old to know the request answers with an error every time,
+            // which is a line in the log per message rather than anything a person sees.
+            onFailure = { message -> thisLogger().info("The conversation could not be renamed: $message") },
+        ) {
+            put("title", title)
+            put("source", "host")
+            conversationId?.let { put("session_id", it) }
+        }
     }
 
     /**
@@ -882,6 +1022,8 @@ internal class ClaudeSession(
     private fun resetConversation(line: String) {
         lastSentTitle = null
         titleAsked = false
+        namedAs = null
+        renamedByCommand = false
         conversationEpoch += 1
         undelivered.forget()
         // The turn that was asking is gone along with the conversation, so its questions are unanswerable
@@ -897,6 +1039,11 @@ internal class ClaudeSession(
     private fun endTurn() {
         busy = false
         onTurnEnded()
+
+        if (renameSent) {
+            renameSent = false
+            readRename()
+        }
 
         // The end of a turn is the first moment anything can be said about what was sent: until then an
         // accepted message is indistinguishable from a swallowed one.
@@ -1389,6 +1536,8 @@ internal class ClaudeSession(
         process.startNotify()
         startedAt = System.currentTimeMillis()
         announcedOnce = false
+        namedAs = null
+        renamedByCommand = false
         handler = process
         return process
     }
@@ -1477,6 +1626,9 @@ internal class ClaudeSession(
 
         /** How long any control request is waited for before we give up ourselves. */
         const val CONTROL_TIMEOUT_SECONDS = 20L
+
+        /** How long after a `/rename`'s result its name is read back from the transcript - see [readRename]. */
+        const val RENAME_READ_DELAY_MS = 300L
 
         /**
          * The step between delivery checks: the first after one such interval, the following ones

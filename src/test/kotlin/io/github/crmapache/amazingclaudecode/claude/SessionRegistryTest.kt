@@ -112,6 +112,57 @@ class SessionRegistryTest {
         assertEquals(SessionSnapshot.TITLE_DEFAULT, registry.tabs().single().titleSource)
     }
 
+    // A name the person typed stands above the model's: the answer to a question asked before the rename
+    // arrives after it, and the CLI repeats its own name through the stream for as long as it runs.
+    @Test
+    fun `a name given by hand is replaced by nobody but the person`() {
+        val registry = SessionRegistry()
+        registry.rename(ClaudeSessions.MAIN_SESSION, "fix the parser", SessionSnapshot.TITLE_LLM)
+
+        assertTrue(registry.rename(ClaudeSessions.MAIN_SESSION, "Parser", SessionSnapshot.TITLE_USER))
+        assertFalse(registry.rename(ClaudeSessions.MAIN_SESSION, "fix the parser", SessionSnapshot.TITLE_LLM))
+        assertFalse(registry.rename(ClaudeSessions.MAIN_SESSION, "fix the", SessionSnapshot.TITLE_HEURISTIC))
+        assertEquals("Parser", registry.ownTitle(ClaudeSessions.MAIN_SESSION))
+
+        assertTrue(registry.rename(ClaudeSessions.MAIN_SESSION, "Parser, again", SessionSnapshot.TITLE_USER))
+        assertEquals("Parser, again", registry.tabs().single().title)
+    }
+
+    // What the conversation behind a tab still owes its transcript is the person's name and nothing else.
+    @Test
+    fun `only a name given by hand is the tab's own`() {
+        val registry = SessionRegistry()
+        assertNull(registry.ownTitle(ClaudeSessions.MAIN_SESSION))
+
+        registry.rename(ClaudeSessions.MAIN_SESSION, "fix the parser", SessionSnapshot.TITLE_LLM)
+        assertNull(registry.ownTitle(ClaudeSessions.MAIN_SESSION))
+        assertNull(registry.ownTitle("no-such-tab"))
+    }
+
+    // /clear begins another conversation, and a name belongs to a conversation - the CLI drops its own
+    // rename on /clear the same way.
+    @Test
+    fun `a wiped conversation drops the name the person gave it too`() {
+        val registry = SessionRegistry()
+        registry.rename(ClaudeSessions.MAIN_SESSION, "Parser", SessionSnapshot.TITLE_USER)
+
+        registry.resetTitle(ClaudeSessions.MAIN_SESSION)
+
+        assertEquals(SessionSnapshot.TITLE_DEFAULT, registry.tabs().single().titleSource)
+        assertNull(registry.ownTitle(ClaudeSessions.MAIN_SESSION))
+    }
+
+    @Test
+    fun `a past conversation brings its own name into a tab named by hand`() {
+        val registry = SessionRegistry()
+        registry.rename(ClaudeSessions.MAIN_SESSION, "Parser", SessionSnapshot.TITLE_USER)
+
+        registry.takeOver(ClaudeSessions.MAIN_SESSION, "Refund webhooks", SessionSnapshot.TITLE_LLM)
+
+        assertEquals("Refund webhooks", registry.tabs().single().title)
+        assertEquals(SessionSnapshot.TITLE_LLM, registry.tabs().single().titleSource)
+    }
+
     // The tab a past conversation opens in. This is the case that shipped broken: everything closed, a
     // conversation picked in the history, and the tab it was opened into existed on that one screen
     // only - so the list coming back from here wiped it, the panel flickered and stayed empty.

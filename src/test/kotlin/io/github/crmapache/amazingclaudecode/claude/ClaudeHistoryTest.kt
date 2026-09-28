@@ -142,6 +142,91 @@ class ClaudeHistoryTest {
 
     // The event repeats through the file - if the topic has changed since, we keep the last value seen
     // rather than the one the CLI picked at the very beginning.
+    // The order the CLI's own resume list has: a rename stands above the model's name.
+    @Test
+    fun `a name the person gave stands above the model's`() {
+        val lines = sequenceOf(
+            """{"type":"user","message":{"role":"user","content":"Describe this image"}}""",
+            """{"type":"ai-title","aiTitle":"Describing the image contents","sessionId":"abc"}""",
+            """{"type":"custom-title","customTitle":"Картинка \"до\"","sessionId":"abc"}""",
+            """{"type":"ai-title","aiTitle":"Describing the image contents","sessionId":"abc"}""",
+        )
+
+        val scan = ClaudeHistory.scan(lines)
+
+        assertEquals("Картинка \"до\"", scan.customTitle)
+        assertEquals(SessionSnapshot.TITLE_USER, scan.titleSource)
+    }
+
+    // The CLI writes an empty name to take a rename back; the model's name counts again from there.
+    @Test
+    fun `the last name the person gave is the one, and an empty one takes it back`() {
+        val renamed = sequenceOf(
+            """{"type":"custom-title","customTitle":"First","sessionId":"abc"}""",
+            """{"type":"custom-title","customTitle":"Second","sessionId":"abc"}""",
+        )
+        assertEquals("Second", ClaudeHistory.scan(renamed).customTitle)
+
+        val takenBack = renamed + """{"type":"custom-title","customTitle":"","sessionId":"abc"}"""
+        assertNull(ClaudeHistory.scan(takenBack).customTitle)
+        assertEquals(SessionSnapshot.TITLE_HEURISTIC, ClaudeHistory.scan(takenBack).titleSource)
+    }
+
+    // A conversation nobody is running is named by a line appended to its file - the record the CLI
+    // writes itself, and the one the history reads back.
+    @Test
+    fun `a conversation is renamed by a record the history reads back`() {
+        val file = File(createTempDirectory("rename").toFile(), "abc.jsonl")
+        file.writeText("""{"type":"user","message":{"role":"user","content":"Describe this image"}}""" + "\n")
+
+        assertTrue(ClaudeHistory.rename(file, "abc", "Моя «картинка» \"q\""))
+
+        val lines = file.readLines()
+        assertEquals(2, lines.size)
+        assertEquals("Моя «картинка» \"q\"", ClaudeHistory.scan(lines.asSequence()).customTitle)
+        assertEquals("abc", Json.parseToJsonElement(lines[1]).jsonObject["sessionId"]?.jsonPrimitive?.contentOrNull)
+    }
+
+    // A process killed mid-write leaves a line without its end; glued onto it, the name would take the
+    // torn line and itself down together.
+    @Test
+    fun `a name goes after a torn last line rather than onto it`() {
+        val file = File(createTempDirectory("rename").toFile(), "abc.jsonl")
+        file.writeText("""{"type":"user","message":{"role":"user","content":"Describe this image"}}""" + "\n" + """{"type":"assist""")
+
+        assertTrue(ClaudeHistory.rename(file, "abc", "Named"))
+
+        assertEquals("Named", ClaudeHistory.scan(file.readLines().asSequence()).customTitle)
+    }
+
+    // What a /rename that reached the CLI named the conversation - the last word in the file.
+    @Test
+    fun `the name the CLI wrote last is read back`() {
+        val file = File(createTempDirectory("rename").toFile(), "abc.jsonl")
+        file.writeText(
+            listOf(
+                """{"type":"user","message":{"role":"user","content":"/rename"}}""",
+                """{"type":"custom-title","customTitle":"First","sessionId":"abc"}""",
+                """{"type":"custom-title","customTitle":"rename-command-name","sessionId":"abc"}""",
+            ).joinToString("\n", postfix = "\n"),
+        )
+
+        assertEquals("rename-command-name", ClaudeHistory.ownTitleOf(file))
+
+        file.appendText("""{"type":"custom-title","customTitle":"","sessionId":"abc"}""" + "\n")
+        assertNull(ClaudeHistory.ownTitleOf(file))
+        assertNull(ClaudeHistory.ownTitleOf(File(file.parentFile, "gone.jsonl")))
+    }
+
+    // The file is the CLI's: one that is not there is not one to start.
+    @Test
+    fun `a conversation with no file is not renamed into a new one`() {
+        val file = File(createTempDirectory("rename").toFile(), "gone.jsonl")
+
+        assertFalse(ClaudeHistory.rename(file, "gone", "Named"))
+        assertFalse(file.exists())
+    }
+
     @Test
     fun `with several ai-titles the last one stays`() {
         val lines = sequenceOf(

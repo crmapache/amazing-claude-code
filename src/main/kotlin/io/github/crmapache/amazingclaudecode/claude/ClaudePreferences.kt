@@ -12,8 +12,6 @@ import com.intellij.ide.util.PropertiesComponent
 internal object ClaudePreferences {
 
     data class Snapshot(
-        val model: String,
-        val effort: String,
         val mode: String,
         val newTabModel: String,
         val newTabEffort: String,
@@ -28,8 +26,6 @@ internal object ClaudePreferences {
     )
 
     fun snapshot(): Snapshot = Snapshot(
-        model = model,
-        effort = effort,
         mode = mode,
         newTabModel = newTabModel,
         newTabEffort = newTabEffort,
@@ -83,19 +79,6 @@ internal object ClaudePreferences {
     var newTabEffort: String
         get() = EffortLevels.normalize(read(NEW_TAB_EFFORT_KEY))
         set(value) = write(NEW_TAB_EFFORT_KEY, EffortLevels.normalize(value))
-
-    /**
-     * What a new tab genuinely starts on when nothing has been chosen for it in particular - the pin if
-     * there is one, and the last pick otherwise.
-     *
-     * Read by everything that has to SHOW that answer rather than launch by it: the chip over an empty
-     * tab in the panel, and the choice a phone opens a new conversation from. The launch itself takes a
-     * longer road, because it also knows which account is paying (see ClaudeSessions.newSession) - and
-     * an account nobody has worked on yet ends up exactly here.
-     */
-    fun startingModel(): String = newTabModel.ifEmpty { model }
-
-    fun startingEffort(): String = newTabEffort.ifEmpty { effort }
 
     /**
      * Where the input field sits: 'left' | 'bottom' | 'right' | 'compact'. Empty means a panel opened

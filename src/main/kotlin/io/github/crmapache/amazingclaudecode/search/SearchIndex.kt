@@ -3,6 +3,7 @@ package io.github.crmapache.amazingclaudecode.search
 import com.intellij.openapi.diagnostic.thisLogger
 import io.github.crmapache.amazingclaudecode.claude.AgentStream
 import io.github.crmapache.amazingclaudecode.claude.ClaudeHistory
+import io.github.crmapache.amazingclaudecode.claude.SessionSnapshot
 import io.github.crmapache.amazingclaudecode.scenario.ScenarioConversations
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -53,6 +54,8 @@ internal class SearchIndex(
     private class Conversation(val id: String) {
         val messages = ArrayList<IndexedMessage>()
         var aiTitle: String? = null
+        /** The name a person gave the conversation - see AgentStream.customTitle. It stands above the model's. */
+        var customTitle: String? = null
         var firstText: String = ""
         var fallbackCommand: String = ""
         var seen = Seen(0, 0, 0)
@@ -69,10 +72,17 @@ internal class SearchIndex(
         var corpusVersion = -1L
 
         val title: String
-            get() = aiTitle?.takeIf { it.isNotBlank() } ?: firstText.ifEmpty { fallbackCommand }.ifEmpty { "untitled" }
+            get() = customTitle
+                ?: aiTitle?.takeIf { it.isNotBlank() }
+                ?: firstText.ifEmpty { fallbackCommand }.ifEmpty { "untitled" }
 
-        val named: Boolean
-            get() = !aiTitle.isNullOrBlank()
+        /** By the history's own rule - see ClaudeHistory.Scan.titleSource. */
+        val titleSource: String
+            get() = when {
+                customTitle != null -> SessionSnapshot.TITLE_USER
+                !aiTitle.isNullOrBlank() -> SessionSnapshot.TITLE_LLM
+                else -> SessionSnapshot.TITLE_HEURISTIC
+            }
     }
 
     private val conversations = LinkedHashMap<String, Conversation>()
@@ -128,6 +138,7 @@ internal class SearchIndex(
             if (!appended) {
                 target.messages.clear()
                 target.aiTitle = null
+                target.customTitle = null
                 target.firstText = ""
                 target.fallbackCommand = ""
             }
@@ -226,11 +237,14 @@ internal class SearchIndex(
         return conversations[conversation]?.messages?.size ?: 0
     }
 
-    /** Whether the title is the model's own rather than a guess - see ClaudeHistory.Entry.named. */
+    /**
+     * Where the title came from - the person, the model or a guess; see ClaudeHistory.Entry.titleSource.
+     * A conversation the index does not know is a guess, as its title is.
+     */
     @Synchronized
-    fun isNamed(conversation: String): Boolean {
+    fun titleSourceOf(conversation: String): String {
         if (!loaded) load()
-        return conversations[conversation]?.named ?: false
+        return conversations[conversation]?.titleSource ?: SessionSnapshot.TITLE_HEURISTIC
     }
 
     /**
@@ -353,6 +367,13 @@ internal class SearchIndex(
             return
         }
 
+        // The person's name, by the same rule: the last one stands, and an empty one takes it back.
+        val given = AgentStream.customTitle(line)
+        if (given != null) {
+            conversation.customTitle = given.ifEmpty { null }
+            return
+        }
+
         val message = TranscriptText.messageOf(conversation.id, line) ?: return
         conversation.messages.add(message)
 
@@ -380,6 +401,7 @@ internal class SearchIndex(
             conversation.seen = entry.seen
             conversation.kept = entry.seen
             conversation.aiTitle = entry.aiTitle
+            conversation.customTitle = entry.customTitle
             conversation.firstText = entry.firstText
             conversation.fallbackCommand = entry.fallbackCommand
 
@@ -400,7 +422,13 @@ internal class SearchIndex(
         }
     }
 
-    private class ManifestEntry(val seen: Seen, val aiTitle: String?, val firstText: String, val fallbackCommand: String)
+    private class ManifestEntry(
+        val seen: Seen,
+        val aiTitle: String?,
+        val customTitle: String?,
+        val firstText: String,
+        val fallbackCommand: String,
+    )
 
     private fun readManifest(): Map<String, ManifestEntry>? {
         val file = directory.resolve(MANIFEST_FILE)
@@ -419,6 +447,7 @@ internal class SearchIndex(
                     offset = entry["offset"]?.jsonPrimitive?.longOrNull ?: 0,
                 ),
                 aiTitle = entry["aiTitle"]?.jsonPrimitive?.contentOrNull,
+                customTitle = entry["customTitle"]?.jsonPrimitive?.contentOrNull,
                 firstText = entry["firstText"]?.jsonPrimitive?.contentOrNull.orEmpty(),
                 fallbackCommand = entry["fallbackCommand"]?.jsonPrimitive?.contentOrNull.orEmpty(),
             )
@@ -436,6 +465,7 @@ internal class SearchIndex(
                         put("modified", conversation.kept.modified)
                         put("offset", conversation.kept.offset)
                         conversation.aiTitle?.let { put("aiTitle", it) }
+                        conversation.customTitle?.let { put("customTitle", it) }
                         if (conversation.firstText.isNotEmpty()) put("firstText", conversation.firstText)
                         if (conversation.fallbackCommand.isNotEmpty()) put("fallbackCommand", conversation.fallbackCommand)
                     }
@@ -500,8 +530,14 @@ internal class SearchIndex(
     }
 
     companion object {
-        /** The shape of the copy on disk; a change here rebuilds every project's copy from the transcripts. */
-        const val FORMAT = 1L
+        /**
+         * The shape of the copy on disk; a change here rebuilds every project's copy from the transcripts.
+         *
+         * 2: the person's own names (`customTitle`). A copy made before them was read past the lines that
+         * carry them, and only a rebuild reads those again - a conversation renamed by `/rename` in a
+         * terminal would otherwise keep the model's name in the search for good.
+         */
+        const val FORMAT = 2L
 
         const val MANIFEST_FILE = "manifest.json"
         const val CORPUS_DIR = "corpus"

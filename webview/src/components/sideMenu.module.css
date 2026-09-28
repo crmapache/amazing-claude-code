@@ -330,6 +330,13 @@
   color: var(--acc-agent-light);
 }
 
+/* Claude Code's own settings take the accent the CLI is drawn in elsewhere in the panel - they are the
+   agent's, not the panel's, and the row says so before it is read. */
+.rowIconClaudeConfig {
+  background: var(--acc-accent-12);
+  color: var(--acc-accent);
+}
+
 /* The same rose as the heart in the status row: both entries lead to the same person, and the colour is
    what says so without a word of explanation. */
 .rowIconImprove {
@@ -1227,6 +1234,62 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* --- Claude Code's own settings (see ClaudeConfig.tsx) ------------------------ */
+
+/* One group of settings under its label - the screen's own gap between the groups, a tighter one inside. */
+.configGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* A setting with the line that may stand under it - what the CLI said about a change it did not take. */
+.configItem {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* A setting with values to pick from rather than a switch: the same frame as the switches beside it, with
+   the name above the values - twelve models do not fit to the right of a name in 350 pixels. */
+.configCard {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-card);
+}
+
+/* The values themselves, as the CLI names them - wrapped rather than squeezed: some run to a dozen, and
+   some are sentences ("Switch automatically"). */
+.configChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.configChoice {
+  padding: 4px 8px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-md);
+  font: 11px var(--acc-mono);
+  color: var(--acc-fg-dim);
+}
+
+.configChoice:hover:not(:disabled),
+.configChoice[data-hover]:not(:disabled) {
+  color: var(--acc-fg);
+  border-color: var(--acc-line-hover);
+}
+
+.configChoiceOn {
+  border-color: var(--acc-accent-40);
+  background: var(--acc-accent-12);
+  color: var(--acc-fg);
 }
 
 /* The switch on a kind of message the report has nothing to say about: dimmed and unclickable, but still

@@ -375,6 +375,21 @@ export const panelCommands = (t: Dict): CommandOption[] => [
    * terminal where the sign-in does work, in the drawer of the account in force (see DesignLogin).
    */
   { id: 'design-login', hint: t.commands.designLogin, local: true },
+  /*
+   * The panel's, because the CLI's does two things wrong here. Its rename lands in the transcript and
+   * nowhere the strip can hear - the stream carries only the sentence "Session renamed to: ..." - so the
+   * tab kept its old name. And with no name given it makes one up out of the conversation, a slug like
+   * "temperature-deprecation-fix". Here a name renames the tab the way a double click does, and no name
+   * opens the field on the tab (see TabNameField) - which is what a bare rename is asking for.
+   */
+  { id: 'rename', hint: t.commands.rename, local: true, argumentHint: t.commands.renameArgument },
+  /*
+   * The panel's only when nothing follows it. Alone, the CLI prints a usage text in a stream - forty
+   * settings as `key=a|b|c` lines, a wall nobody can act on - where a terminal opens a screen, so here it
+   * opens the panel's own screen of those settings (see ClaudeConfig.tsx). With `key=value` after it the
+   * CLI does exactly what was asked, so that goes on to it as typed (see localCommand).
+   */
+  { id: 'config', hint: t.commands.config, local: true },
 ]
 
 export const builtinCommands = (t: Dict): CommandOption[] => [

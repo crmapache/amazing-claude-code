@@ -3,6 +3,9 @@ package io.github.crmapache.amazingclaudecode.claude
 import com.intellij.openapi.diagnostic.thisLogger
 import io.github.crmapache.amazingclaudecode.scenario.ScenarioConversations
 import java.io.File
+import java.io.RandomAccessFile
+import java.nio.file.Files
+import java.nio.file.StandardOpenOption
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -34,11 +37,12 @@ internal object ClaudeHistory {
         val updatedAt: Long,
         val messages: Int,
         /**
-         * The name was picked by a model rather than guessed from the first line. It matters past the
-         * list itself: a conversation carried on in a tab keeps this name, and one that is only a guess
-         * is worth replacing with a real one (see ClaudeSession.requestTitle).
+         * Where the name came from - one of SessionSnapshot's TITLE_ values: the person's own, the
+         * model's, or a guess off the first line. It matters past the list itself: a conversation carried
+         * on in a tab keeps this name at this rank, a guess is worth replacing with a real one (see
+         * ClaudeSession.requestTitle), and a name the person gave must not be replaced by the model's.
          */
-        val named: Boolean = false,
+        val titleSource: String = SessionSnapshot.TITLE_HEURISTIC,
     )
 
     /**
@@ -79,6 +83,52 @@ internal object ClaudeHistory {
         directoriesFor(workingDirectory)
             .map { it.resolve("$id.jsonl") }
             .firstOrNull { it.isFile }
+
+    /**
+     * The name a person gave the conversation, as its file says last - null when none stands. Read after
+     * the CLI renamed a conversation itself (see ClaudeSession.readRename): the stream says so only in a
+     * sentence meant for the eye, and the file is where the name actually lands.
+     */
+    fun ownTitleOf(file: File): String? = runCatching {
+        var title: String? = null
+        file.useLines { lines ->
+            for (line in lines) AgentStream.customTitle(line)?.let { title = it.ifEmpty { null } }
+        }
+        title
+    }
+        .onFailure { thisLogger().warn("Could not read the name of conversation ${file.nameWithoutExtension}", it) }
+        .getOrNull()
+
+    /**
+     * Name a conversation nobody is running: the record the CLI writes when a running one is renamed,
+     * appended the way the CLI's own SDK appends it for a session with no process (`renameSession`), and
+     * the one [scan] reads back. See ClaudeSession.rename for why a running one is asked instead.
+     *
+     * Appended, never rewritten - the file is the CLI's, and the last name in it is the one that counts.
+     * A file whose last line was cut short, by a process killed mid-write, gets the record after a line
+     * break of its own: glued onto that torn tail it would take both lines down with it.
+     */
+    fun rename(file: File, conversationId: String, title: String): Boolean = runCatching {
+        val record = buildJsonObject {
+            put("type", "custom-title")
+            put("customTitle", title)
+            put("sessionId", conversationId)
+        }.toString()
+
+        val torn = RandomAccessFile(file, "r").use { transcript ->
+            transcript.length() > 0 && transcript.run { seek(length() - 1); read() != '\n'.code }
+        }
+
+        // APPEND without CREATE: a file that vanished in between is not one to start over.
+        Files.writeString(
+            file.toPath(),
+            (if (torn) "\n" else "") + record + "\n",
+            Charsets.UTF_8,
+            StandardOpenOption.APPEND,
+        )
+    }
+        .onFailure { thisLogger().warn("Could not write the name of conversation $conversationId", it) }
+        .isSuccess
 
     /**
      * The end of a conversation, as the panel opens it from the history - the same lines [page] hands
@@ -648,18 +698,32 @@ internal object ClaudeHistory {
 
         return Entry(
             id = id,
-            // The CLI's own name (see Scan.aiTitle) - preferred over the heuristic when there is one:
-            // shorter, closer to the point, and independent of how well the person's first line came
-            // out.
-            title = scan.aiTitle?.takeIf { it.isNotBlank() } ?: scan.title.ifEmpty { "untitled" },
+            // The person's own name first, then the CLI's (see Scan.aiTitle) - both preferred over the
+            // heuristic: shorter, closer to the point, and independent of how well the person's first
+            // line came out. The order is the CLI's own: its resume list puts a rename above the model.
+            title = scan.customTitle ?: scan.aiTitle ?: scan.title.ifEmpty { "untitled" },
             updatedAt = file.lastModified(),
             messages = scan.messages,
-            named = !scan.aiTitle.isNullOrBlank(),
+            titleSource = scan.titleSource,
         )
     }
 
     /** What could be learned about a conversation in a single pass over its file. */
-    internal data class Scan(val title: String, val messages: Int, val aiTitle: String? = null)
+    internal data class Scan(
+        val title: String,
+        val messages: Int,
+        val aiTitle: String? = null,
+        /** The name a person gave the conversation - see AgentStream.customTitle. */
+        val customTitle: String? = null,
+    ) {
+        /** Which of the three names the history shows - see [Entry.titleSource]. */
+        val titleSource: String
+            get() = when {
+                customTitle != null -> SessionSnapshot.TITLE_USER
+                aiTitle != null -> SessionSnapshot.TITLE_LLM
+                else -> SessionSnapshot.TITLE_HEURISTIC
+            }
+    }
 
     /**
      * The title and the message count - in one pass: a conversation's file weighs megabytes, and there
@@ -681,6 +745,7 @@ internal object ClaudeHistory {
         // person: then the command's name is the only meaningful title there is.
         var fallbackCommand = ""
         var aiTitle: String? = null
+        var customTitle: String? = null
         var messages = 0
 
         for (line in lines) {
@@ -692,6 +757,13 @@ internal object ClaudeHistory {
             val named = AgentStream.aiTitle(line)
             if (named != null) {
                 aiTitle = named
+                continue
+            }
+
+            // And the person's, by the same rule: the last one stands, and an empty one takes it back.
+            val given = AgentStream.customTitle(line)
+            if (given != null) {
+                customTitle = given.ifEmpty { null }
                 continue
             }
 
@@ -717,7 +789,7 @@ internal object ClaudeHistory {
             }
         }
 
-        return Scan(title.ifEmpty { fallbackCommand }, messages, aiTitle)
+        return Scan(title.ifEmpty { fallbackCommand }, messages, aiTitle, customTitle)
     }
 
     /**

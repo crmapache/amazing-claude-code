@@ -1,5 +1,6 @@
 package io.github.crmapache.amazingclaudecode.search
 
+import io.github.crmapache.amazingclaudecode.claude.SessionSnapshot
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
@@ -146,6 +147,33 @@ class SearchIndexTest {
 
         assertEquals("Fix the search button in compact layout please", index.titleOf("a"))
         assertEquals("Named by the model", index.titleOf("b"))
+    }
+
+    @Test
+    fun `the name the person gave stands above the model's`() {
+        transcript(
+            "c",
+            line("user", "u3", "hi"),
+            """{"type":"ai-title","aiTitle":"Named by the model","sessionId":"c"}""" + "\n",
+            """{"type":"custom-title","customTitle":"Named by me","sessionId":"c"}""" + "\n",
+        )
+
+        val index = index()
+        index.refresh(force = true)
+
+        assertEquals("Named by me", index.titleOf("c"))
+        assertEquals(SessionSnapshot.TITLE_USER, index.titleSourceOf("c"))
+    }
+
+    // Kept in the copy on disk: a name read once is not lost the next time the IDE starts.
+    @Test
+    fun `the name the person gave survives the copy on disk`() {
+        transcript("c", line("user", "u3", "hi"), """{"type":"custom-title","customTitle":"Named by me","sessionId":"c"}""" + "\n")
+        index().refresh(force = true)
+
+        val reopened = index()
+
+        assertEquals("Named by me", reopened.titleOf("c"))
     }
 
     @Test

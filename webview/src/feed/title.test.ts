@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deriveSessionTitle } from './title'
+import { deriveSessionTitle, resumedTitle, searchHitTitleSource } from './title'
 
 describe('deriveSessionTitle', () => {
   it('glues a short first line to its continuation', () => {
@@ -38,5 +38,36 @@ describe('deriveSessionTitle', () => {
 
   it('leaves short text alone', () => {
     expect(deriveSessionTitle('go on')).toBe('go on')
+  })
+})
+
+describe('resumedTitle', () => {
+  // The tab hands its name back to the transcript, so a person's name worked over like a guess would be
+  // cut in the transcript itself.
+  it('carries a name the person gave exactly as it was typed', () => {
+    const name = '@backend: the long refactoring of the parser and the tokenizer, part two'
+
+    expect(resumedTitle(name, 'user')).toEqual({ title: name, titleSource: 'user' })
+  })
+
+  it('shortens a guess and a model name as before', () => {
+    expect(resumedTitle('> quoted\nfix the parser', 'heuristic')).toEqual({
+      title: 'fix the parser',
+      titleSource: 'heuristic',
+    })
+    // A name with no rank said is the model's, as it always was.
+    expect(resumedTitle('Parser fixes', undefined)).toEqual({ title: 'Parser fixes', titleSource: 'llm' })
+  })
+})
+
+describe('searchHitTitleSource', () => {
+  it('reads the rank the IDE says', () => {
+    expect(searchHitTitleSource({ named: true, titleSource: 'user' })).toBe('user')
+  })
+
+  // A phone may well be talking to an IDE built before titleSource.
+  it('falls back to whether the title is a guess', () => {
+    expect(searchHitTitleSource({ named: true })).toBe('llm')
+    expect(searchHitTitleSource({ named: false })).toBe('heuristic')
   })
 })

@@ -311,6 +311,15 @@ internal object RemoteCommands {
         // The same list, one step finer: the order the tabs at the desk are drawn in, which a phone has
         // no picture of and no reason to rearrange.
         "reorderTabs",
+        /**
+         * A name typed into a tab at the desk (see ClaudeSessionHub.nameSession).
+         *
+         * Refused for the reason `agentTranscript` is: nothing on the phone asks for it - its list has no
+         * field to type a name into. On its merits the door is narrow - a line in the transcript of a
+         * conversation this device may already write into - so it moves up to ALLOWED the day the phone
+         * grows the field, rather than being refused on principle.
+         */
+        "nameSession",
         "setMode",
         "setDefaultMode",
         /**
@@ -350,6 +359,14 @@ internal object RemoteCommands {
          */
         "setSettingSources",
         "askSettingSources",
+        /**
+         * Claude Code's own settings (see ClaudeConfigDesk) - the machine's CLI, for every project and the
+         * terminal too, like the defaults refused above: what the next session at the keyboard starts with
+         * is not a sofa's to settle. The question goes with the change: the phone has no such screen, and
+         * its answer costs a run of the CLI on the machine at the desk.
+         */
+        "askClaudeConfig",
+        "setClaudeConfig",
         /**
          * How much colour the gauges keep - a machine-wide setting beside the ones above, and settled the
          * same way as the language below it: the phone obeys it without being able to set it. It is handed

@@ -181,6 +181,9 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
              */
             "renameSession" -> hub.renameSession(sessionId, field("title"))
 
+            // The name the person typed into the tab themselves - see ClaudeSessionHub.nameSession.
+            "nameSession" -> hub.nameSession(sessionId, field("title"))
+
             "reorderGroups" -> hub.reorderGroups(field("groupId"), field("beforeGroupId").ifEmpty { null })
 
             "reorderTabs" -> hub.reorderTabs(sessionId, field("beforeSessionId").ifEmpty { null })
@@ -222,7 +225,7 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
              */
             "setDefaultMode" -> {
                 ClaudePreferences.mode = PermissionModes.normalize(field("mode"))
-                announceNewTabDefaults()
+                ClaudeSessionHub.announceNewTabDefaults()
             }
 
             /*
@@ -237,12 +240,12 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
              */
             "setDefaultModel" -> {
                 ClaudePreferences.newTabModel = field("model")
-                announceNewTabDefaults()
+                ClaudeSessionHub.announceNewTabDefaults()
             }
 
             "setDefaultEffort" -> {
                 ClaudePreferences.newTabEffort = field("effort")
-                announceNewTabDefaults()
+                ClaudeSessionHub.announceNewTabDefaults()
             }
 
             /*
@@ -495,11 +498,7 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
                 sessionId = sessionId,
                 conversationId = field("conversationId"),
                 title = field("title"),
-                titleSource = if (field("titleSource") == SessionSnapshot.TITLE_LLM) {
-                    SessionSnapshot.TITLE_LLM
-                } else {
-                    SessionSnapshot.TITLE_HEURISTIC
-                },
+                titleSource = SessionSnapshot.titleSourceOf(field("titleSource")),
                 // Which conversation this is cannot be worked out from the identifier - see the note on
                 // the parameter itself.
                 wasScenarioHead = payload["wasScenarioHead"]?.jsonPrimitive?.booleanOrNull == true,
@@ -555,26 +554,6 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
         }
 
         return true
-    }
-
-    /**
-     * What a new tab starts with, told to every window of every project.
-     *
-     * To all of them rather than to whoever asked, exactly like the colour mode and the hand-added
-     * models (see setCustomModels in ClaudePanel): the setting belongs to the machine, and a second
-     * window still drawing an empty tab with yesterday's model is a window showing something that is no
-     * longer true. The permission mode goes along with the other two because it is answered per project
-     * - Claude Code's own default is read from the settings that apply in that directory (see
-     * PermissionDefaultMode) - so each catalogue has to say it for itself.
-     */
-    private fun announceNewTabDefaults() {
-        ClaudeSessionHub.everyHub {
-            it.catalog.sendNewTabDefaults()
-            // And the phone, which learns this from its inventory rather than from a project fact: it
-            // names the model in the request that opens a conversation, so a stale one there would walk
-            // straight past a model just pinned here.
-            it.inventoryChanged()
-        }
     }
 
     /**

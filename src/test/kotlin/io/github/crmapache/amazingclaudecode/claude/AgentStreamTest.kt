@@ -140,6 +140,20 @@ class AgentStreamTest {
         )
     }
 
+    // A name a person typed: quotes and backslashes in it are the ordinary case, not a rare one.
+    @Test
+    fun `the name the person gave is read whole, quotes and all`() {
+        assertEquals(
+            """Fix "the" C:\\path""",
+            AgentStream.customTitle("""{"type":"custom-title","customTitle":"Fix \"the\" C:\\\\path","sessionId":"a"}"""),
+        )
+        // Empty is an answer rather than no answer: it takes a rename back.
+        assertEquals("", AgentStream.customTitle("""{"type":"custom-title","customTitle":"","sessionId":"a"}"""))
+        assertNull(AgentStream.customTitle("""{"type":"ai-title","aiTitle":"Model's"}"""))
+        // The words inside a message are not a record of their own.
+        assertNull(AgentStream.customTitle("""{"type":"user","text":"{\"type\":\"custom-title\"}","extra":{"type":"custom-title"}}"""))
+    }
+
     @Test
     fun `other events carry no name`() {
         assertNull(AgentStream.aiTitle("""{"type":"system","subtype":"init"}"""))

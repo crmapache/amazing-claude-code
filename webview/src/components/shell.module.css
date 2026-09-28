@@ -455,6 +455,32 @@
   text-overflow: ellipsis;
 }
 
+/* A tab's name being typed (see TabNameField in Header.tsx). It stands where the name stood, in the same
+   type, and takes as much room as the words in it - the tab does not jump to its full width the moment the
+   field opens, and the neighbours stay where the eye left them. */
+.tabNameField {
+  flex: 0 1 auto;
+  min-width: 48px;
+  max-width: 100%;
+  field-sizing: content;
+  height: 20px;
+  margin: 0 -4px;
+  padding: 0 4px;
+  border: 1px solid var(--acc-accent-40);
+  border-radius: var(--acc-r-xs);
+  background: var(--acc-bg-raised);
+  color: var(--acc-fg);
+  font: 12px/15px var(--acc-font);
+  /* The tab refuses selection so that a drag does not paint its caption (see .tab); a field has to take it
+     back, or the name opened whole-selected would show nothing selected at all. */
+  user-select: text;
+  cursor: text;
+}
+
+.tabNameField:focus-visible {
+  outline: none;
+}
+
 .tabClose {
   flex: none;
   width: 15px;

@@ -46,8 +46,36 @@ export interface RemoteDevice {
   lastSeenAt: number
 }
 
-/** Where a tab's name came from - see SessionInfo.titleSource. */
-export type TitleSource = 'default' | 'heuristic' | 'llm'
+/**
+ * One of Claude Code's own settings as `/config` lists it (see the `claudeConfig` message).
+ *
+ * `options` are the values the CLI takes, in its own words; `free` means any value (the language). `value`
+ * is absent when it is not known - a setting a newer CLI added, or one whose default the CLI works out at
+ * run time and nothing has been written for - and the screen marks nothing as current then rather than
+ * guessing. `lockedBy` names a layer stronger than the one `/config` writes into that holds the setting:
+ * a change here would change nothing, so the row says why instead.
+ */
+export interface ClaudeConfigSetting {
+  key: string
+  options: string[]
+  free?: boolean
+  value?: string
+  group: 'work' | 'terminal' | 'other'
+  lockedBy?: 'policy' | 'local' | 'project' | 'user'
+  /** `/config` keeps it in this project's local settings file: it holds for this project alone. */
+  projectOnly?: boolean
+}
+
+/**
+ * Where a tab's name came from - it decides whether it may be overwritten. 'default' means not a word
+ * has been said yet and a stand-in is in place ('main session' / 'new session'). 'heuristic' is an
+ * instant guess from the first message, which the LLM's answer arriving after it may replace. 'llm' is
+ * what the generation sent (see sessionTitle): the next answer no longer overwrites it, only a reset on
+ * /clear does. 'user' is a name the person typed into the tab (see nameSession): nothing but another
+ * such name replaces it, and it is written into the conversation's transcript, so the history and the
+ * search call the conversation by it too.
+ */
+export type TitleSource = 'default' | 'heuristic' | 'llm' | 'user'
 
 /** One subscription usage window: the share and when it resets. */
 export interface UsageWindow {
@@ -93,8 +121,9 @@ export interface HistoryEntry {
   updatedAt: number
   messages: number
   /**
-   * Where the name came from - the model's own or a guess off the first line. A conversation carried on
-   * in a tab keeps it, and a guess is the one a fresh name may replace (see sessionTitle).
+   * Where the name came from - the person's own, the model's or a guess off the first line. A
+   * conversation carried on in a tab keeps it at that rank: a guess is the one a fresh name may replace
+   * (see sessionTitle), and the person's own is replaced by nobody but them.
    */
   titleSource?: TitleSource
 }
@@ -148,8 +177,16 @@ export interface SearchHit {
   at: number
   /** The conversation's title, as the history lists it. */
   title: string
-  /** Whether that title is the model's own rather than a guess off the first line - see HistoryEntry.titleSource. */
+  /**
+   * Whether that title is the conversation's own name - the model's or the person's - rather than a guess
+   * off the first line. What a phone built before `titleSource` reads.
+   */
   named: boolean
+  /**
+   * Where that title came from - see HistoryEntry.titleSource. Absent from an IDE built before it, and
+   * then `named` is all there is to go by (see searchHitTitleSource).
+   */
+  titleSource?: TitleSource
   /** How many messages that conversation holds - what stands under its title where the list groups by it. */
   messages: number
   /** The whole message's length in characters, so an unfolded one can say how much of it is shown. */
@@ -678,17 +715,30 @@ type ShellMessageBody =
       pluginVersion?: string
       /** The choice of model, effort and mode: it outlives both tabs and IDE restarts. */
       preferences?: {
+        /**
+         * What "as last chosen" comes to right now: the model and the effort a new tab starts on with
+         * nothing pinned. The account in use first and the machine's last pick after it, so not simply
+         * the last pick (see StartingChoice) - the "New chats" screen names it beside that entry.
+         */
         model: string
         effort: string
         mode: string
         /**
          * What a new tab is PINNED to, beside what was last chosen above. Empty - the usual case -
-         * means "whatever was last chosen", which is what the panel did before the setting existed:
-         * then an untouched tab is drawn by `model`/`effort`, and a pinned one by these (see
+         * means "whatever was last chosen", which is what the panel did before the setting existed (see
          * ClaudePreferences.newTabModel).
          */
         newTabModel?: string
         newTabEffort?: string
+        /**
+         * What an untouched tab is drawn by - the answer itself, worked out by the IDE and only there: it
+         * reads the pins, the account in use and what it remembers, and which models that account can
+         * run (see StartingChoice). The chip over an empty tab is a promise about the process the IDE
+         * will launch, and a formula of the panel's own broke it whenever the account's memory differed
+         * from the machine's last pick.
+         */
+        startingModel?: string
+        startingEffort?: string
         /** Where the input field sits. Unset means a panel opened for the first time, behaving as before (at the bottom). */
         composerLayout?: string
         /**
@@ -774,6 +824,22 @@ type ShellMessageBody =
    */
   | { type: 'settingSources'; value: string; repository: string[]; supported?: boolean }
   /**
+   * Claude Code's own settings - what `/config` changes in a terminal - for the screen `/config` opens in
+   * the panel (see ClaudeConfig.tsx and ClaudeConfigDesk on the IDE's side).
+   *
+   * `loading` while the CLI is being asked for the list (a run of it, once per CLI version); `error` is
+   * one of the screen's own words - `noCli` or `unreadable` - rather than a sentence. `outcome` says how
+   * the last change went, and only a panel waiting on that very key reads it: the hub hands this message
+   * to a page that joins later, and an old outcome must not surface there.
+   */
+  | {
+      type: 'claudeConfig'
+      settings: ClaudeConfigSetting[]
+      loading?: boolean
+      error?: string
+      outcome?: { key: string; ok: boolean; message?: string }
+    }
+  /**
    * A conversation came up on a named account that the repository's settings overrule - these are the
    * names doing it.
    *
@@ -810,14 +876,27 @@ type ShellMessageBody =
   | { type: 'customModels'; models: string[] }
   /**
    * What a new tab starts with, on its own beside `init` for the same reason the three above stand
-   * apart: the setting is machine-wide, and a second window is already past its own `init`.
+   * apart: the setting is machine-wide, and a second window is already past its own `init`. Sent again
+   * whenever anything the answer reads changes - a pin, a pick, the account chosen, what an account
+   * remembers, which models it can run, the hand-added list (see ClaudeSessionHub.announceNewTabDefaults).
    *
    * `model` and `effort` are the pins and travel empty when nothing is pinned - empty means "whatever
-   * was last chosen". `mode` is resolved rather than raw: a mode nobody ever chose is Claude Code's own
-   * default for that directory, and the selector has to name what the process will genuinely come up
-   * with (see PermissionDefaultMode).
+   * was last chosen". `startingModel`/`startingEffort` are what an untouched tab is drawn by, and
+   * `unpinnedModel`/`unpinnedEffort` what "as last chosen" comes to - both worked out by the IDE, the
+   * same way `init` carries them. `mode` is resolved rather than raw: a mode nobody ever chose is Claude
+   * Code's own default for that directory, and the selector has to name what the process will genuinely
+   * come up with (see PermissionDefaultMode).
    */
-  | { type: 'newTabDefaults'; model: string; effort: string; mode: string }
+  | {
+      type: 'newTabDefaults'
+      model: string
+      effort: string
+      mode: string
+      startingModel: string
+      startingEffort: string
+      unpinnedModel: string
+      unpinnedEffort: string
+    }
   | {
       type: 'usage'
       /**
@@ -1831,6 +1910,12 @@ export type WebviewMessage =
    * same one, and a copy of it in another language would drift from this one.
    */
   | { type: 'renameSession'; sessionId: string; title: string }
+  /**
+   * The name the person typed into the tab themselves (see Header). It outranks every other, and the
+   * shell writes it into the conversation's transcript - where the history, the search and the CLI's own
+   * resume list read names from. Not sent from a phone: its list has no field to type one into.
+   */
+  | { type: 'nameSession'; sessionId: string; title: string }
   /** The tabs' new order after a drag - by group, as moveTab arranges it. The statistics tab is the panel's own and is never reported here. */
   | { type: 'reorderGroups'; groupId: string; beforeGroupId?: string }
   /**
@@ -1969,6 +2054,13 @@ export type WebviewMessage =
   | { type: 'setSettingSources'; value: string }
   /** The same screen, opening: what the repository sets right now, and whether this CLI knows the flag. */
   | { type: 'askSettingSources' }
+  /** The screen of Claude Code's own settings, opening - see the `claudeConfig` message. */
+  | { type: 'askClaudeConfig' }
+  /**
+   * One of Claude Code's own settings changed - by the CLI itself, through `/config key=value`. The IDE
+   * sends only a key the CLI listed with a value it listed for it (see ClaudeConfig.command).
+   */
+  | { type: 'setClaudeConfig'; key: string; value: string }
   /**
    * How much colour the gauges keep, 0..100. Machine-wide beside the layout and the send key: whether a
    * red gauge presses on somebody is a property of the person rather than of the repository.

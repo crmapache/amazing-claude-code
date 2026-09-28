@@ -80,6 +80,7 @@ import {
 import { CustomModels } from './components/CustomModels'
 import { PasteCollapse } from './components/PasteCollapse'
 import { SettingSources } from './components/SettingSources'
+import { ClaudeConfig, EMPTY_CLAUDE_CONFIG, type ClaudeConfigState } from './components/ClaudeConfig'
 import { PermissionPanel } from './components/PermissionPanel'
 import { Plugins } from './components/Plugins'
 import { Queue } from './components/Queue'
@@ -118,7 +119,7 @@ import { draftKey, restoredDraft, savableDraft, type SavedDraft } from './feed/d
 import { isUntouchedTab, tabHolding, tabTakesConversation } from './feed/resume'
 import { chatHits, rowOf } from './feed/search'
 import { openedAgentOf } from './feed/workflow'
-import { deriveSessionTitle } from './feed/title'
+import { deriveSessionTitle, resumedTitle, searchHitTitleSource } from './feed/title'
 import {
   appendChip,
   appendText,
@@ -174,7 +175,6 @@ import type {
   VoiceBalance,
   VoiceHotkeySlot,
   StatisticsData,
-  TitleSource,
 } from './protocol'
 import {
   NO_SOUND_PREFS,
@@ -533,13 +533,15 @@ export const App = () => {
    * new tab, a fork and the IDE's next start begin from it.
    */
   /**
-   * What a new tab starts with, in two halves that are deliberately not one.
+   * What a new tab starts with, in halves that are deliberately not one.
    *
-   * `model` and `effort` are the last pick made in any tab - written by the MODEL and EFFORT chips, as
-   * they always were. `newTabModel` and `newTabEffort` are the pins from the "New chats" screen, and
-   * empty - the usual case - means "whatever was last picked". So an untouched tab is drawn by the pins
-   * where there are any and by the last pick where there are not (see startingModel below), and pinning
-   * a model is not something a pick in some other tab can quietly undo.
+   * `newTabModel` and `newTabEffort` are the pins from the "New chats" screen, and empty - the usual case
+   * - means "whatever was last picked". `model` and `effort` are what that comes to right now, and
+   * `startingModel`/`startingEffort` the answer an untouched tab is drawn by. The last four are the IDE's
+   * and only the IDE's: they read the account in use, what it remembers and which models it can run (see
+   * StartingChoice), and a formula of the panel's own, a pin over the machine's last pick, drew Sonnet
+   * over a tab that came up on Opus whenever the account remembered otherwise. So a pick here writes
+   * none of them - the IDE remembers it and tells every window what a new tab starts on now.
    */
   const [prefs, setPrefs] = useState({
     model: '',
@@ -547,6 +549,8 @@ export const App = () => {
     mode: 'manual',
     newTabModel: '',
     newTabEffort: '',
+    startingModel: '',
+    startingEffort: 'high',
   })
   /**
    * What language the panel speaks, in two halves: the choice somebody made and what the IDE itself is
@@ -626,6 +630,21 @@ export const App = () => {
    * process, and neither is worth doing before anybody has opened that screen.
    */
   const [settingSources, setSettingSourcesState] = useState<SettingSourcesValue>('')
+  /**
+   * Claude Code's own settings, as the IDE last read them - the screen `/config` opens (see ClaudeConfig).
+   * Asked for when the screen opens: the list costs a run of the CLI the first time, and the values are
+   * files anybody may have edited since.
+   */
+  const [claudeConfig, setClaudeConfigState] = useState<ClaudeConfigState>(EMPTY_CLAUDE_CONFIG)
+  /**
+   * The setting a change is on its way for - one at a time (see ClaudeConfig). A ref beside the state for
+   * the message handler, which is set up once and has to see the key of the change it is answering.
+   */
+  const [claudeConfigPending, setClaudeConfigPending] = useState<string | null>(null)
+  const claudeConfigPendingRef = useRef<string | null>(null)
+  claudeConfigPendingRef.current = claudeConfigPending
+  /** What the CLI said about a change it did not take, by setting - see ClaudeConfig's `failures`. */
+  const [claudeConfigFailures, setClaudeConfigFailures] = useState<Record<string, string>>({})
   const [settingSourcesFacts, setSettingSourcesFacts] = useState<{ repository: string[]; supported?: boolean }>({
     repository: [],
   })
@@ -1289,14 +1308,14 @@ export const App = () => {
   const mode = panel.pendingMode ?? panel.permissionMode ?? prefs.mode
 
   /**
-   * What a tab that has not started yet will start on - the pin if there is one, the last pick otherwise.
+   * What a tab that has not started yet will start on - as the IDE worked it out (see StartingChoice).
    *
-   * The same formula the IDE launches by (see ClaudePreferences.startingModel), and it has to be: the
-   * chip over an empty tab is a promise about the process that tab will raise, and a chip naming the last
-   * pick while the launch used the pin would be that promise broken before the first message.
+   * Taken rather than computed, and that is the whole of it: the chip over an empty tab is a promise
+   * about the process that tab will raise, and only the IDE knows everything that process is launched by
+   * - the pin, the account in use, what it was last left on, which models it can run.
    */
-  const startingModel = prefs.newTabModel || prefs.model
-  const startingEffort = prefs.newTabEffort || prefs.effort
+  const startingModel = prefs.startingModel
+  const startingEffort = prefs.startingEffort
 
   // Which model is genuinely running - see resolvePanelModel, and there too why it was split out into a
   // function of its own. Measured against this tab's own model where it has one (see PanelState.ownModel):
@@ -1364,10 +1383,15 @@ export const App = () => {
     for (const [session, draft] of Object.entries(drafts)) {
       const saved = savableDraft(draft)
       const key = draftKey(saved)
-      if ((draftsSent.current[session] ?? '') === key) continue
 
       window.clearTimeout(draftSaves.current[session]?.timer)
       delete draftSaves.current[session]
+
+      // Cancelled above before this check, not after it. A message typed into an empty field and sent
+      // inside the pause brings the draft straight back to what the IDE already holds - nothing - and a
+      // check first left the save of its last keystroke waiting, to land after the send: the message came
+      // back as a draft on the next start, and a command in it went out a second time glued to the next.
+      if ((draftsSent.current[session] ?? '') === key) continue
 
       const flush = () => {
         delete draftSaves.current[session]
@@ -1551,6 +1575,9 @@ export const App = () => {
    */
   useEffect(() => {
     if (sideMenu.open && sideMenu.screen === 'settingSources') send({ type: 'askSettingSources' })
+    // Claude Code's settings the same way, and for the same two reasons: the list costs a run of the CLI
+    // the first time, and the values are files that may have changed since the screen was last open.
+    if (sideMenu.open && sideMenu.screen === 'claudeConfig') send({ type: 'askClaudeConfig' })
   }, [sideMenu.open, sideMenu.screen])
 
   /**
@@ -1956,6 +1983,8 @@ export const App = () => {
                 // cleared (see newTabDefaults below, which is the same read).
                 newTabModel: message.preferences?.newTabModel ?? '',
                 newTabEffort: message.preferences?.newTabEffort ?? '',
+                startingModel: message.preferences?.startingModel ?? current.startingModel,
+                startingEffort: message.preferences?.startingEffort || current.startingEffort,
               }))
               if (message.preferences.composerLayout) {
                 setComposerLayoutState(normalizeComposerLayout(message.preferences.composerLayout))
@@ -2016,6 +2045,31 @@ export const App = () => {
            * to "unknown": the IDE sends this message on every change of the choice too, and a warning
            * about an old CLI must not blink out and back on every press.
            */
+          /**
+           * Claude Code's own settings, read afresh - on opening the screen and after every change. The
+           * outcome is read only for the change this page is waiting on: the hub hands this message to a
+           * page that joins later as well, and an old failure must not appear under a row nobody touched.
+           */
+          case 'claudeConfig': {
+            // While the CLI is being asked for the list, what the screen already shows stays on it.
+            setClaudeConfigState((current) => ({
+              settings: message.loading && message.settings.length === 0 ? current.settings : message.settings,
+              loading: Boolean(message.loading),
+              error: message.error ?? '',
+            }))
+            const outcome = message.outcome
+            if (outcome && outcome.key === claudeConfigPendingRef.current) {
+              setClaudeConfigPending(null)
+              setClaudeConfigFailures((current) => {
+                const next = { ...current }
+                if (outcome.ok) delete next[outcome.key]
+                else next[outcome.key] = outcome.message ?? ''
+                return next
+              })
+            }
+            break
+          }
+
           case 'settingSources':
             setSettingSourcesState(normalizeSettingSources(message.value))
             setSettingSourcesFacts((current) => ({
@@ -2301,10 +2355,16 @@ export const App = () => {
           // message (see submit) whatever that guess was, the placeholder included: the shell asks for
           // the name and throws away an answer about a conversation that a /clear has wiped in the
           // meantime, so anything arriving here is about the conversation the tab is holding now.
+          //
+          // Except over a name the person typed: the shell refuses the model's answer there too (see
+          // SessionRegistry.rename), but one already on its way when the person renamed the tab arrives
+          // after the name was put on this strip, and would stand until the list came back.
           case 'sessionTitle':
             setSessions((current) =>
               current.map((session) =>
-                session.id === message.sessionId ? { ...session, title: message.title, titleSource: 'llm' } : session,
+                session.id === message.sessionId && session.titleSource !== 'user'
+                  ? { ...session, title: message.title, titleSource: 'llm' }
+                  : session,
               ),
             )
             break
@@ -2950,10 +3010,11 @@ export const App = () => {
             break
 
           /**
-           * What a new tab starts with, changed somewhere else - another window of this machine, or the
-           * screen in this one answering back. Machine-wide settings arrive this way rather than only in
-           * `init` (see calmColors and customModels), and this one has a second reader beside the screen:
-           * the chip over an untouched tab draws itself from these very values.
+           * What a new tab starts with, changed somewhere else - another window of this machine, a pick
+           * in a tab, an account switched to, or the screen in this one answering back. Machine-wide
+           * settings arrive this way rather than only in `init` (see calmColors and customModels), and
+           * this one has a second reader beside the screen: the chip over an untouched tab draws itself
+           * from the answer it carries.
            */
           case 'newTabDefaults':
             setPrefs((current) => ({
@@ -2961,6 +3022,10 @@ export const App = () => {
               newTabModel: message.model,
               newTabEffort: message.effort,
               mode: normalizeMode(message.mode),
+              model: message.unpinnedModel,
+              effort: message.unpinnedEffort || current.effort,
+              startingModel: message.startingModel,
+              startingEffort: message.startingEffort || current.startingEffort,
             }))
             break
 
@@ -2969,11 +3034,9 @@ export const App = () => {
             break
 
           case 'model':
-            // The setting follows the model in force rather than the one chosen: a rejected one must
-            // neither stand as a tick in the menu nor travel as a flag into the next tab - with it the
-            // process would not come up at all. Not for a birth: the model a conversation came up on is
-            // this tab's, and a past conversation's model is no choice for the next tab (see protocol.ts).
-            if (!message.born) setPrefs((current) => ({ ...current, model: message.model }))
+            // What this answer means for the NEXT tab is the IDE's to say, and it says so with
+            // `newTabDefaults` once the pick is remembered - a rejected one is not, a phone's never is,
+            // and the account in use decides what the next tab reads it against (see StartingChoice).
             feed({
               // `born` travels on: the shell names a tab's model to a client that has just joined as
               // well as at a birth, and read as a choice that announcement accused a conversation of
@@ -3181,6 +3244,33 @@ export const App = () => {
   }, [])
 
   /**
+   * One of Claude Code's own settings changed, by the CLI itself (see ClaudeConfigDesk). Shown changed at
+   * once, the way a switch has to answer a press; the IDE answers with the files read again a few seconds
+   * later, and that answer - not this guess - is what stays on the screen.
+   */
+  const setClaudeConfigValue = useCallback((key: string, value: string) => {
+    if (claudeConfigPendingRef.current !== null) return
+
+    setClaudeConfigPending(key)
+    setClaudeConfigFailures((current) => {
+      const next = { ...current }
+      delete next[key]
+      return next
+    })
+    setClaudeConfigState((current) => ({
+      ...current,
+      settings: current.settings.map((setting) => (setting.key === key ? { ...setting, value } : setting)),
+    }))
+    send({ type: 'setClaudeConfig', key, value })
+  }, [])
+
+  /** The screen `/config` opens - declared up here because the command runs from [runLocal]. */
+  const openClaudeConfig = useCallback(() => {
+    setMenu(null)
+    setSideMenu({ open: true, screen: 'claudeConfig' })
+  }, [])
+
+  /**
    * The screen behind the warning row in the feed - opened from the row itself.
    *
    * A stable function, like the sign-in offer beside it: a fresh closure in a memoized card's props
@@ -3317,18 +3407,15 @@ export const App = () => {
       send({ type: 'setCustomModels', models })
       setCustomModelsState(models)
 
-      // A model taken off the list stops being the choice new tabs are drawn with, exactly as it stops
-      // being the one the IDE launches them on (see setCustomModels in ClaudePanel). Both halves or
-      // neither: left standing here, the chip would go on naming a model that is in no menu until the
-      // first message of a tab brought the real one back. Only what was on THIS list is touched - a
-      // model out of the CLI's own catalogue is none of its business.
+      // A model taken off the list stops being the pin behind "New chats", exactly as it stops being one
+      // in the IDE (see setCustomModels in ClaudePanel) - the row on that screen answers on the press, as
+      // every pin does. What an untouched tab is drawn by follows from the IDE's answer (see
+      // newTabDefaults): it clears the account's memory and the last pick there too. Only what was on
+      // THIS list is touched - a model out of the CLI's own catalogue is none of its business.
       const gone = customModels.filter((name) => !models.includes(name))
-      if (gone.includes(prefs.model)) setPrefs((current) => ({ ...current, model: '' }))
-      // And the pin behind "New chats", which is the stronger of the two: it is what an untouched tab is
-      // drawn by and what the IDE launches one on (see startingModel).
       if (gone.includes(prefs.newTabModel)) setPrefs((current) => ({ ...current, newTabModel: '' }))
     },
-    [customModels, prefs.model, prefs.newTabModel],
+    [customModels, prefs.newTabModel],
   )
 
   /**
@@ -3750,6 +3837,22 @@ export const App = () => {
   )
 
   /**
+   * A name the person typed into a tab - see TabNameField in Header. Put on the strip at once, as a guessed
+   * name is (see submit): the shell answers with the same list a moment later, and waiting for it would
+   * leave the old name standing under the hand that has just replaced it. Which name wins is the shell's
+   * to decide (see SessionRegistry.rename) - this one outranks every other there, so the answer agrees.
+   */
+  /** The tab whose name is being typed - see Header's `naming`. */
+  const [namingTab, setNamingTab] = useState<string | null>(null)
+
+  const nameSession = useCallback((id: string, title: string) => {
+    setSessions((current) =>
+      current.map((session) => (session.id === id ? { ...session, title, titleSource: 'user' } : session)),
+    )
+    send({ type: 'nameSession', sessionId: id, title })
+  }, [])
+
+  /**
    * A past conversation opens in the tab named here - the one on screen when there is nothing in it to
    * lose, a tab of its own otherwise (see [resume], which decides which).
    *
@@ -3760,8 +3863,7 @@ export const App = () => {
    */
   const openResumed = useCallback(
     (entry: HistoryEntry, target: string, wasScenarioHead = false) => {
-      const title = deriveSessionTitle(entry.title, 40)
-      const titleSource: TitleSource = entry.titleSource === 'heuristic' ? 'heuristic' : 'llm'
+      const { title, titleSource } = resumedTitle(entry.title, entry.titleSource)
 
       setSideMenu({ open: false, screen: 'menu' })
       setSessions((current) =>
@@ -3969,7 +4071,7 @@ export const App = () => {
         title: hit.title,
         updatedAt: hit.at,
         messages: 0,
-        titleSource: hit.named ? 'llm' : 'heuristic',
+        titleSource: searchHitTitleSource(hit),
       })
 
       const hits = chatHits(all, hit.conversationId)
@@ -4066,7 +4168,6 @@ export const App = () => {
    */
   const pickModel = useCallback(
     (model: string) => {
-      setPrefs((current) => ({ ...current, model }))
       send({ type: 'setModel', sessionId: active, model })
       // Until the agent answers we show what was chosen - otherwise the choice looks lost; the answer
       // either confirms it or brings the previous model back.
@@ -4078,11 +4179,11 @@ export const App = () => {
   /**
    * The effort of THIS conversation - and, as with the model, the one the next tab will start on. Both
    * at once, and deliberately: the choice applies where it was made, while the tabs already open keep
-   * working at whatever they were started at (see ClaudeSessionHub.changeEffort).
+   * working at whatever they were started at (see ClaudeSessionHub.changeEffort). The second half is the
+   * IDE's to announce (see newTabDefaults).
    */
   const pickEffort = useCallback(
     (effort: string) => {
-      setPrefs((current) => ({ ...current, effort }))
       send({ type: 'setEffort', sessionId: active, effort })
       // Shown as chosen until the shell answers - for the same reason as the model: without it the
       // choice looks lost for as long as the message travels.
@@ -4127,9 +4228,26 @@ export const App = () => {
         return
       }
 
+      // A name renames the tab on screen the way a double click does; no name opens the field on it,
+      // which is what a bare rename is asking for (see panelCommands for why the CLI's is not used).
+      if (name === 'rename') {
+        const title = argument.trim()
+        if (title) nameSession(active, title)
+        else setNamingTab(active)
+        return
+      }
+
+      // The panel's own screen of Claude Code's settings - the CLI prints a usage text here instead of
+      // the screen a terminal gets (see panelCommands). With `key=value` after it the command is not ours
+      // and never reaches this (see localCommand).
+      if (name === 'config') {
+        openClaudeConfig()
+        return
+      }
+
       if (name === 'fork') fork()
     },
-    [fork, pickModel, pickEffort],
+    [fork, pickModel, pickEffort, nameSession, active, openClaudeConfig],
   )
 
   /** The Alt+B from the selection menu. The key is drawn in the menu, so it has to work. */
@@ -5154,6 +5272,10 @@ export const App = () => {
         onNewSession={() => startSession(`session-${Date.now()}`)}
         onReorderGroups={reorderGroups}
         onReorderTabs={reorderTabs}
+        onNameSession={nameSession}
+        naming={namingTab}
+        onNaming={setNamingTab}
+        onReturnToInput={() => setFocusToken((current) => current + 1)}
         onOpenMenu={openMenu}
         panelTabs={headerPanelTabs}
         onPickPanelTab={setActive}
@@ -5978,6 +6100,15 @@ export const App = () => {
             selected={sendKey}
             note={t.sendKey.note}
             onPick={(id) => setSendKey(normalizeSendKey(id))}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'claudeConfig' ? (
+          <ClaudeConfig
+            state={claudeConfig}
+            pending={claudeConfigPending}
+            failures={claudeConfigFailures}
+            onSet={setClaudeConfigValue}
           />
         ) : null}
 

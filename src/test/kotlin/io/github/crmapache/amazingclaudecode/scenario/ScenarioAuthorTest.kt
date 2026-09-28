@@ -92,7 +92,7 @@ class ScenarioAuthorTest {
 
     /**
      * A model name from a model is the one field here that kills a run rather than spoiling it: the CLI
-     * takes an unknown one at launch and dies on the first message (see ClaudeSessions.modelFor).
+     * takes an unknown one at launch and dies on the first message (see StartingChoice.clamp).
      */
     @Test
     fun `the model and the effort are left to the panel whatever the answer says`() {

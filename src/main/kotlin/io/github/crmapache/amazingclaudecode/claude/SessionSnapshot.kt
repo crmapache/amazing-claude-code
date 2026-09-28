@@ -143,6 +143,24 @@ internal data class SessionSnapshot(
 
         /** And one the CLI's own model picked - see ClaudeSession.onTitle. */
         const val TITLE_LLM = "llm"
+
+        /**
+         * One the person typed into the tab themselves. Nothing but another such name replaces it - see
+         * SessionRegistry.rename - and it is written into the conversation's transcript the way the CLI
+         * writes its own rename (see ClaudeSession.rename).
+         */
+        const val TITLE_USER = "user"
+
+        /**
+         * Where a name that came over the wire came from, trusted only as far as it can be: a
+         * conversation's own name - the model's or the person's - or else a guess. What a client sends
+         * along with a past conversation it opens is its reading of the history list, and a value this
+         * side never hands out would otherwise land in the registry as a source nobody ranks.
+         */
+        fun titleSourceOf(value: String?): String = when (value) {
+            TITLE_LLM, TITLE_USER -> value
+            else -> TITLE_HEURISTIC
+        }
     }
 }
 

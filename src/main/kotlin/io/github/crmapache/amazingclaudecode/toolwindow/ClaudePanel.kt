@@ -367,6 +367,17 @@ internal class ClaudePanel(
                 }
             }
 
+            // Claude Code's own settings - the screen `/config` opens (see ClaudeConfigDesk). Off the
+            // interface thread: the list costs a run of the CLI the first time, and every answer reads the
+            // CLI's settings files off disk.
+            "askClaudeConfig" -> ApplicationManager.getApplication().executeOnPooledThread {
+                hub.claudeConfig.send()
+            }
+
+            "setClaudeConfig" -> ApplicationManager.getApplication().executeOnPooledThread {
+                hub.claudeConfig.change(field("key"), field("value"))
+            }
+
             // The same screen, asking for what only a process can answer - whether this CLI knows the
             // flag at all - and for what the repository sets right now. Off the interface thread: the
             // answer costs a `--help` (cached afterwards) and two files read off disk.
@@ -420,13 +431,13 @@ internal class ClaudePanel(
                 val gone = dropped - ClaudePreferences.customModels.toSet()
                 if (ClaudePreferences.model in gone) ClaudePreferences.model = ""
                 // And the pin behind "New chats", which is the STRONGEST of the three: it beats both the
-                // account's memory and the pick above (see ClaudeSessions.newSession). Left standing, it
+                // account's memory and the pick above (see StartingChoice). Left standing, it
                 // would go on launching every new tab on a name that is in no menu any more.
                 if (ClaudePreferences.newTabModel in gone) ClaudePreferences.newTabModel = ""
 
                 // And the same name wherever an account still holds it, because that record is the
                 // STRONGER of the two: a new tab launches on what the account was last left on and only
-                // then on the machine's default (see ClaudeSessions.newSession). Clearing one half left
+                // then on the machine's default (see StartingChoice). Clearing one half left
                 // the other standing, and nothing downstream catches it - the clamp knows a hand-added
                 // model by this very list, so a name just taken off it is in no catalogue at all and the
                 // check answers "unknown", which the launch reads as a yes.
@@ -434,7 +445,7 @@ internal class ClaudePanel(
 
                 ClaudeSessionHub.everyHub {
                     it.catalog.sendCustomModels()
-                    it.catalog.sendNewTabDefaults()
+                    it.newTabDefaultsChanged()
                 }
             }
 

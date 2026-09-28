@@ -73,6 +73,15 @@ class TabMemoryTest {
         assertEquals(listOf("with-conversation", "with-draft"), kept)
     }
 
+    // A tab set up for a job and named before a word was said is the person's work, as a draft is.
+    @Test
+    fun `a tab named by hand comes back with nothing else in it`() {
+        val named = tab("named").copy(title = "Release notes", titleSource = SessionSnapshot.TITLE_USER)
+        val state = TabMemory.State(active = null, tabs = listOf(named, tab("empty")))
+
+        assertEquals(listOf("named"), TabMemory.restorable(state).tabs.map { it.id })
+    }
+
     @Test
     fun `a fork whose parent is not coming back stands on its own`() {
         val state = TabMemory.State(

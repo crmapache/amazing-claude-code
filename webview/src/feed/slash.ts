@@ -278,6 +278,10 @@ export const localCommand = (
   const [name = '', ...rest] = trimmed.slice(1).split(/\s+/)
   const argument = rest.join(' ')
 
+  // `/config key=value` is the CLI's to carry out and does - only the bare one opens the panel's screen
+  // (see panelCommands).
+  if (name === 'config' && argument) return null
+
   if (panelCommands(t).some((command) => command.id === name)) return { name, argument }
 
   // The values come from the same list as the hint and the menu in the bottom line - there would be

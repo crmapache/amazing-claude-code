@@ -230,9 +230,10 @@ internal class TabMemory(
         /**
          * The tabs worth bringing back, in their order, and the one to show.
          *
-         * A tab comes back for one of two reasons: it held a conversation, or something was being written
-         * in it. A tab with neither is an empty "New chat", and bringing back a strip of those restores
-         * nothing anybody lost.
+         * A tab comes back for one of three reasons: it held a conversation, something was being written
+         * in it, or the person named it by hand - a tab set up for a job before a word of it was said is
+         * as much the person's work as a draft is. A tab with none of these is an empty "New chat", and
+         * bringing back a strip of those restores nothing anybody lost.
          *
          * Whether the conversation's transcript is still on disk is not asked here: finding it can take a
          * process on a WSL project (see ClaudeHome), and this runs while the panel is being built. It is
@@ -245,7 +246,8 @@ internal class TabMemory(
             val kept = ArrayList<Tab>()
 
             for (tab in state.tabs) {
-                if (tab.conversationId == null && !hasDraft(tab.draft)) continue
+                val named = tab.titleSource == SessionSnapshot.TITLE_USER
+                if (tab.conversationId == null && !hasDraft(tab.draft) && !named) continue
 
                 kept += tab.copy(parentId = tab.parentId?.takeIf { parent -> kept.any { it.id == parent } })
             }

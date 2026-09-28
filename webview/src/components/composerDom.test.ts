@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { blockText, caretScrollShift } from './composerDom'
+import { blockText, caretScrollShift, isTypingField } from './composerDom'
 
 /**
  * How far the input field scrolls to keep the line being typed in sight - see scrollCaretIntoView.
@@ -57,5 +57,26 @@ describe('an element of the browser own making, read as a message', () => {
 
   it('opens the message with its own text, without a break before it', () => {
     expect(blockText('one', false)).toBe('one')
+  })
+})
+
+/**
+ * Which focused elements a rebuild of the input field leaves the keyboard with - see rebuildDom. The case
+ * it came from: `/rename` sent from the field opens the tab's name, and the draft cleared by that very
+ * send put the caret back into the message, closing the name before a letter went in.
+ */
+describe('a field being typed into elsewhere', () => {
+  it('is a text field or a textarea, whatever the text field is for', () => {
+    expect(isTypingField('INPUT', 'text')).toBe(true)
+    expect(isTypingField('INPUT', '')).toBe(true)
+    expect(isTypingField('INPUT', 'search')).toBe(true)
+    expect(isTypingField('TEXTAREA', '')).toBe(true)
+  })
+
+  it('is not a checkbox, a button or anything that is not a field', () => {
+    expect(isTypingField('INPUT', 'checkbox')).toBe(false)
+    expect(isTypingField('INPUT', 'Range')).toBe(false)
+    expect(isTypingField('BUTTON', '')).toBe(false)
+    expect(isTypingField('DIV', '')).toBe(false)
   })
 })

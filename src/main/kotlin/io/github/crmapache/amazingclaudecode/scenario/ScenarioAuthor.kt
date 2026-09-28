@@ -55,7 +55,7 @@ internal object ScenarioAuthor {
 
     /**
      * The model and the effort are the caller's - what a new tab of this panel starts with, clamped to
-     * the account (see ScenarioDesk.writingModel) - with a floor under them (see [atTheFloor]), rather
+     * the account (see StartingChoice) - with a floor under them (see [atTheFloor]), rather
      * than a pair fixed here as the improve button fixes its own.
      *
      * The improve button buys wording and nothing else, and low effort is right for it. This buys a
@@ -406,7 +406,7 @@ Two or three stages and a handful of cards is a scenario somebody will actually 
      * offer, the modes to the ones that exist, the names of inputs and slots to what a prompt can reference,
      * and the whole thing to a size a person can read. A model that answers with forty stages, a permission
      * mode of its own invention or a model name it has heard of has not written a scenario - and the last of
-     * those would be a process that comes up and dies on its first message (see ClaudeSessions.modelFor).
+     * those would be a process that comes up and dies on its first message (see StartingChoice.clamp).
      * So the model and the effort are left empty here whatever the answer says: what a new tab starts with is
      * the right default, and the editor is where somebody chooses otherwise.
      *

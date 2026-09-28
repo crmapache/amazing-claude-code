@@ -7,6 +7,7 @@
  */
 
 import { withoutShellText } from './bash'
+import type { SearchHit, TitleSource } from '../protocol'
 
 const IMAGE_PLACEHOLDER = /\[Image #\d+]/g
 const MULTIPLE_SPACES = / {2,}/g
@@ -38,3 +39,28 @@ export const deriveSessionTitle = (text: string, max = 60): string => {
 
   return truncateAtWord(joined, max)
 }
+
+/**
+ * The name, and its rank, a past conversation opens in a tab with - picked from the history list or
+ * reached from a search hit.
+ *
+ * A name the person gave travels exactly as they typed it. Worked over like a guess it came out cut at
+ * forty characters and short of a line starting with "@", and the tab hands its name back to the
+ * conversation's transcript with the next message (see ClaudeSession.nameAfterPerson) - the cut would
+ * have been written over the name itself. A name with no rank said is the model's, as it always was.
+ */
+export const resumedTitle = (
+  title: string,
+  source: TitleSource | undefined,
+): { title: string; titleSource: TitleSource } => {
+  if (source === 'user') return { title, titleSource: 'user' }
+
+  return { title: deriveSessionTitle(title, 40), titleSource: source === 'heuristic' ? 'heuristic' : 'llm' }
+}
+
+/**
+ * Where a search hit's title came from - see SearchHit.titleSource. An IDE built before that field says
+ * only whether the title is a guess, and a phone may well be talking to one.
+ */
+export const searchHitTitleSource = (hit: Pick<SearchHit, 'named' | 'titleSource'>): TitleSource =>
+  hit.titleSource ?? (hit.named ? 'llm' : 'heuristic')

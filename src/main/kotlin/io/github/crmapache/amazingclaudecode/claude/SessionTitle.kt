@@ -39,7 +39,7 @@ internal object SessionTitle {
      * plugin's command and says what it is about, while the bare "/status" is the CLI's own.
      */
     private val HOUSEKEEPING = setOf(
-        "clear", "compact", "resume", "rewind", "fork", "export",
+        "clear", "compact", "resume", "rewind", "fork", "export", "rename",
         "login", "logout", "exit", "quit", "upgrade", "migrate-installer", "install-github-app",
         "model", "effort", "config", "permissions", "hooks", "agents", "todos", "memory", "mcp", "ide",
         "add-dir", "statusline", "output-style", "terminal-setup", "vim", "privacy-settings",
@@ -62,6 +62,39 @@ internal object SessionTitle {
 
         return description.take(SAMPLE_LENGTH)
     }
+
+    /**
+     * The longest name a person may give a tab. The strip cuts a name long before this, so the limit is
+     * not about the look: a paragraph pasted into the field would otherwise travel in every list of tabs
+     * sent to every client, into the tabs file on disk and into the transcript.
+     */
+    const val OWN_MAX_LENGTH = 100
+
+    /**
+     * A name the person typed into a tab, made fit to wear - or null when nothing is left of it, and the
+     * tab keeps the name it had.
+     *
+     * One line: the strip draws one, and the field it came from was one too - a line break or a tab can
+     * only have arrived pasted, and inside a name it reads as a gap rather than as anything meant.
+     */
+    fun own(text: String): String? {
+        val line = text.replace(BREAKS, " ").trim()
+        if (line.isEmpty()) return null
+        if (line.codePointCount(0, line.length) <= OWN_MAX_LENGTH) return line
+
+        return line.substring(0, line.offsetByCodePoints(0, OWN_MAX_LENGTH)).trimEnd()
+    }
+
+    private val BREAKS = Regex("[\\s\\p{Cntrl}]+")
+
+    /**
+     * Whether a message is the CLI's own `/rename`, with a name or without one - see
+     * ClaudeSession.sendPrompt. The panel runs its own and never sends this (see panelCommands in
+     * catalog.ts); it arrives from a phone, which sends a command as it was typed.
+     */
+    fun isRename(text: String): Boolean = RENAME.matches(text.trim())
+
+    private val RENAME = Regex("/rename(\\s.*)?", RegexOption.DOT_MATCHES_ALL)
 
     private fun describeCommand(text: String): String? {
         val name = text.drop(1).takeWhile { !it.isWhitespace() }

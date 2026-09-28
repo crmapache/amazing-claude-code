@@ -4,6 +4,8 @@ import { BranchChip } from './StatusBar'
 import s from './shell.module.css'
 import { useT } from '../i18n'
 import type { Dict } from '../i18n/en'
+import { useFieldHistory } from '../hooks/useFieldHistory'
+import type { TitleSource } from '../protocol'
 
 /**
  * What is happening in a tab: nothing, work under way, work finished, or someone being waited for. The
@@ -11,15 +13,6 @@ import type { Dict } from '../i18n/en'
  * the corner of the eye, without reading a caption.
  */
 export type SessionState = 'idle' | 'running' | 'done' | 'attention' | 'crashed'
-
-/**
- * Where a tab's name came from - it decides whether it may be overwritten. 'default' means not a word
- * has been said yet and a stand-in is in place ('main session' / 'new session'). 'heuristic' is an
- * instant guess from the first message, which the LLM's answer arriving after it may replace. 'llm' is
- * what the generation sent (see sessionTitle in protocol.ts): the next answer no longer overwrites it,
- * only a reset on /clear does.
- */
-export type TitleSource = 'default' | 'heuristic' | 'llm'
 
 export interface Session {
   id: string
@@ -109,6 +102,26 @@ interface HeaderProps {
    */
   onReorderTabs: (sessionId: string, beforeSessionId: string | null) => void
   /**
+   * The name the person typed into a conversation's tab - a double click on it opens the field (see
+   * TabNameField). Only when it changed: a name confirmed as it stood is not a new one, and it would
+   * otherwise pin whatever the model had called the conversation as the person's own.
+   */
+  onNameSession: (id: string, title: string) => void
+  /**
+   * The tab whose name is being typed right now, if any. Held above the strip because a double click is
+   * not the only door: `/rename` with no name opens the same field on the tab on screen (see runLocal).
+   * One at a time: opening another closes this one through its blur, which keeps what was typed.
+   */
+  naming: string | null
+  onNaming: (id: string | null) => void
+  /**
+   * Enter or Escape has ended a naming, and the keyboard goes back to the input field. Left to itself the
+   * focus went nowhere - the field it was in is gone - and the next word typed after naming a tab needed a
+   * click first. Only a key does this: a naming put down by a click elsewhere leaves the focus where the
+   * hand sent it.
+   */
+  onReturnToInput: () => void
+  /**
    * The history, MCP, plugins, sounds, remote access and the preferences are gathered into one menu
    * behind the burger button on the right of the header - there was no longer room in the header for a
    * button per entry. It opens down the panel's right-hand edge and is drawn by App.tsx (see SideMenu):
@@ -171,6 +184,95 @@ export interface PanelTab {
   state?: SessionState
   /** The word under the pointer for that dot. Empty leaves the dot without a hint at all. */
   hint?: string
+}
+
+/**
+ * The longest name the field takes. The IDE holds the same line (SessionTitle.OWN_MAX_LENGTH): the strip
+ * cuts a name long before this, and a pasted paragraph has no business in every list of tabs.
+ */
+const TAB_NAME_MAX = 100
+
+/**
+ * The field a conversation's name is typed into, standing where the name stood (see naming in Header).
+ *
+ * A component of its own rather than a piece of sessionTab, for the reason OwnAnswer is one: the keys
+ * the embedded browser does not give a plain field come from a hook (see useFieldHistory), and a hook
+ * cannot be called inside the strip's loop.
+ *
+ * Enter keeps the name, Escape keeps the old one, and the focus leaving keeps what was typed - the way
+ * a rename field behaves in the IDE around it and everywhere else.
+ */
+const TabNameField = ({
+  title,
+  label,
+  onDone,
+}: {
+  title: string
+  label: string
+  /**
+   * The name typed, or null when the naming was called off, and whether a key ended it (Enter or Escape)
+   * rather than the focus leaving - see onReturnToInput in Header.
+   */
+  onDone: (name: string | null, byKey: boolean) => void
+}) => {
+  const [value, setValue] = useState(title)
+  const field = useFieldHistory(value, setValue)
+  const input = useRef<HTMLInputElement>(null)
+  /** Enter unmounts the field, and the blur that follows must not count as a second answer. */
+  const done = useRef(false)
+
+  const finish = (name: string | null, byKey: boolean) => {
+    if (done.current) return
+    done.current = true
+    onDone(name, byKey)
+  }
+
+  // The whole name selected, as every rename field opens: typing replaces it, an arrow keeps it.
+  useLayoutEffect(() => {
+    input.current?.focus()
+    input.current?.select()
+  }, [])
+
+  return (
+    <input
+      ref={input}
+      className={s.tabNameField}
+      value={value}
+      maxLength={TAB_NAME_MAX}
+      aria-label={label}
+      spellCheck={false}
+      onChange={field.onChange}
+      onKeyDown={(event) => {
+        // Every key here is the field's own. The tab around it opens on Enter and Space - Space would
+        // never reach the name at all - and the panel stops the agent on Escape and changes the mode on
+        // Shift+Tab (see App).
+        event.stopPropagation()
+        // Enter confirms an input method's candidate and Escape throws its half-typed character away:
+        // neither is an answer to the naming (see composer-field in the rules).
+        if (event.nativeEvent.isComposing) return
+
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          finish(value, true)
+          return
+        }
+
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          finish(null, true)
+          return
+        }
+
+        field.onKeyDown(event)
+      }}
+      onBlur={() => finish(value, false)}
+      // A press inside the field places the caret rather than starting a drag of the tab, a click does not
+      // pick the tab again, and a double click selects a word rather than opening the field anew.
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+    />
+  )
 }
 
 /** A stable empty default, so a header without such tabs does not rebuild its list on every draw. */
@@ -264,6 +366,10 @@ export const Header = ({
   onNewSession,
   onReorderGroups,
   onReorderTabs,
+  onNameSession,
+  naming,
+  onNaming,
+  onReturnToInput,
   onOpenMenu,
   layout,
   gitBranch,
@@ -301,6 +407,22 @@ export const Header = ({
    * about.
    */
   const [shifts, setShifts] = useState<Record<string, number>>({})
+
+  /**
+   * The two reorder callbacks as they stand when the tab is dropped rather than when it was pressed. A
+   * gesture outlives the render it began in, and the callbacks close over the strip they were made with:
+   * a name typed into a tab is put down by the very press that starts a drag (see startDrag), and the
+   * strip as it stood a render earlier would come back from the drop without it.
+   */
+  const reorder = useRef({ onReorderGroups, onReorderTabs })
+  reorder.current = { onReorderGroups, onReorderTabs }
+
+  const finishNaming = (session: Session, name: string | null, byKey: boolean) => {
+    onNaming(null)
+    const next = name?.trim()
+    if (next && next !== session.title) onNameSession(session.id, next)
+    if (byKey) onReturnToInput()
+  }
 
   /**
    * Where the groups stood on screen at the moment the tab was released.
@@ -445,6 +567,12 @@ export const Header = ({
     if (event.button !== 0) return
     if ((event.target as HTMLElement).closest('button')) return
 
+    // The preventDefault below keeps the focus where it was, and a name being typed into a tab would
+    // stay open under a press that picks or drags another. So the field is put down first, keeping what
+    // was typed - the way a press anywhere else in the panel puts it down (see TabNameField).
+    const focused = document.activeElement
+    if (focused instanceof HTMLInputElement && tabs.current?.contains(focused)) focused.blur()
+
     event.preventDefault()
 
     const row = unitRow(drag)
@@ -521,8 +649,8 @@ export const Header = ({
         // that came after the last one to step aside.
         const before = place > from ? (row[place + 1]?.id ?? null) : row[place]?.id ?? null
         if (place !== from) {
-          if (drag.kind === 'tab') onReorderTabs(drag.id, before)
-          else onReorderGroups(drag.id, before)
+          if (drag.kind === 'tab') reorder.current.onReorderTabs(drag.id, before)
+          else reorder.current.onReorderGroups(drag.id, before)
         }
 
         // A click after a drag does not switch the tab: the hand was moving it rather than choosing it.
@@ -670,6 +798,12 @@ export const Header = ({
           if (dragged.current) return
           onPickSession(session.id)
         }}
+        onDoubleClick={(event) => {
+          // The cross is a button of its own, and two quick presses on it are two closes rather than a
+          // rename. Nor is the tail of a drag a double click on anything.
+          if ((event.target as HTMLElement).closest('button') || dragged.current) return
+          onNaming(session.id)
+        }}
         onKeyDown={(event) => {
           if (event.key !== 'Enter' && event.key !== ' ') return
           // Space scrolls the strip otherwise, and the tab under the finger never opens.
@@ -684,7 +818,15 @@ export const Header = ({
             ⑂
           </span>
         ) : null}
-        <span className={s.tabTitle}>{session.title}</span>
+        {naming === session.id ? (
+          <TabNameField
+            title={session.title}
+            label={t.header.renameTab}
+            onDone={(name, byKey) => finishNaming(session, name, byKey)}
+          />
+        ) : (
+          <span className={s.tabTitle}>{session.title}</span>
+        )}
         <button
           type="button"
           className={s.tabClose}

@@ -210,17 +210,19 @@ internal class ProjectCatalog(
     }
 
     /**
-     * What a new tab starts with: the two pins and the permission mode.
+     * What a new tab starts with: the two pins, the permission mode, and the answers worked out of them.
      *
      * A message of its own beside `init`, for the reason the colour mode has one - the setting is
      * machine-wide, so a change made in one window has to reach the others without waiting for a
-     * restart (see announceNewTabDefaults in SessionCommands).
+     * restart (see ClaudeSessionHub.announceNewTabDefaults).
      *
-     * The pins travel as they are, empty included: empty is the answer that means "whatever was last
-     * chosen", which is what the panel does when nothing is pinned. The mode is resolved rather than
-     * passed on, exactly as it is in `init` - the selector has to name the value the process will
-     * genuinely come up with, and never having chosen one means Claude Code's own (see
-     * PermissionDefaultMode).
+     * The pins travel as they are, empty included: empty means "whatever was last chosen", and that is
+     * what the "New chats" screen ticks. What an untouched tab is DRAWN by travels beside them already
+     * worked out, and never by the panel: the answer reads the account in use, what it remembers and
+     * which models it can run (see StartingChoice), and a second copy of that in the panel is exactly
+     * what used to draw Sonnet over a tab that came up on Opus. The mode is resolved rather than passed
+     * on, exactly as it is in `init` - the selector has to name the value the process will genuinely
+     * come up with, and never having chosen one means Claude Code's own (see PermissionDefaultMode).
      */
     fun sendNewTabDefaults() {
         hub.broadcastProject(
@@ -228,6 +230,10 @@ internal class ProjectCatalog(
                 put("type", "newTabDefaults")
                 put("model", ClaudePreferences.newTabModel)
                 put("effort", ClaudePreferences.newTabEffort)
+                put("startingModel", StartingChoice.model())
+                put("startingEffort", StartingChoice.effort())
+                put("unpinnedModel", StartingChoice.unpinnedModel())
+                put("unpinnedEffort", StartingChoice.unpinnedEffort())
                 put(
                     "mode",
                     PermissionModes.resolve(
@@ -294,14 +300,19 @@ internal class ProjectCatalog(
                 // The choice of model and the rest outlives an IDE restart: looking for it again after
                 // every opening is the same as not saving it at all.
                 putJsonObject("preferences") {
-                    put("model", preferences.model)
-                    put("effort", preferences.effort)
+                    // What "as last chosen" comes to right now - the account in use first, the machine's
+                    // last pick after it - rather than the machine's pick alone (see StartingChoice).
+                    put("model", StartingChoice.unpinnedModel())
+                    put("effort", StartingChoice.unpinnedEffort())
                     // What a new tab is PINNED to, beside what was last chosen above. Two values rather
-                    // than one, and the empty one is the point: empty means "whatever was last chosen",
-                    // so the panel draws an untouched tab by the pick above and a pinned one by these
+                    // than one, and the empty one is the point: empty means "whatever was last chosen"
                     // (see ClaudePreferences.newTabModel).
                     put("newTabModel", preferences.newTabModel)
                     put("newTabEffort", preferences.newTabEffort)
+                    // And the answer an untouched tab is drawn by, worked out here and only here - the
+                    // chip over it promises the process the IDE will launch (see sendNewTabDefaults).
+                    put("startingModel", StartingChoice.model())
+                    put("startingEffort", StartingChoice.effort())
                     // With the same value the process will genuinely come up with: the selector in the
                     // panel has to tell the truth from the first second. Never chosen at all - we take
                     // Claude Code's own default, the way the terminal takes it (see
@@ -657,13 +668,11 @@ internal class ProjectCatalog(
                                 put("title", entry.title)
                                 put("updatedAt", entry.updatedAt)
                                 put("messages", entry.messages)
-                                // Where the name came from: a conversation opened in a tab keeps it,
-                                // and a guess is worth replacing with the model's own name once the
-                                // conversation carries on (see ClaudeSession.requestTitle).
-                                put(
-                                    "titleSource",
-                                    if (entry.named) SessionSnapshot.TITLE_LLM else SessionSnapshot.TITLE_HEURISTIC,
-                                )
+                                // Where the name came from: a conversation opened in a tab keeps it at
+                                // that rank - a guess is worth replacing with the model's own name once
+                                // the conversation carries on (see ClaudeSession.requestTitle), and the
+                                // person's own is replaced by nobody but them.
+                                put("titleSource", entry.titleSource)
                             }
                         }
                     }

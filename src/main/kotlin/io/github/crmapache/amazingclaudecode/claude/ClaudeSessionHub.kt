@@ -79,9 +79,14 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             onTitle = { sessionId, title -> sendSessionTitle(sessionId, title) },
             // A tab already carrying a name the model picked is left alone - a name outlives the
             // process that asked for it, and asking again would spend a model call to arrive at the
-            // same words. A stand-in or a guess off the first line is another matter: those are exactly
-            // what the question exists to replace.
-            titleWanted = { sessionId -> tabs.titleSource(sessionId) != SessionSnapshot.TITLE_LLM },
+            // same words. One the person typed is left alone all the more: the answer would be thrown
+            // away (see SessionRegistry.rename). A stand-in or a guess off the first line is another
+            // matter: those are exactly what the question exists to replace.
+            titleWanted = { sessionId ->
+                tabs.titleSource(sessionId) !in setOf(SessionSnapshot.TITLE_LLM, SessionSnapshot.TITLE_USER)
+            },
+            ownTitle = { sessionId -> tabs.ownTitle(sessionId) },
+            onRenamed = { sessionId, title -> adoptOwnTitle(sessionId, title) },
             onTurnEnded = { sessionId ->
                 // Before the status goes out, and the order is load-bearing twice over. The status is
                 // what drains this tab's queue (see runQueued), and a message queued while the turn ran
@@ -179,6 +184,9 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
 
     /** The single entrance every request about a conversation comes through. */
     val commands: SessionCommands = SessionCommands(this)
+
+    /** Claude Code's own settings - the screen `/config` opens in the panel (see ClaudeConfigDesk). */
+    val claudeConfig: ClaudeConfigDesk = ClaudeConfigDesk(project, this)
 
     /** The search over this project's conversations - the three tabs behind the magnifier (see SearchDesk). */
     val search: SearchDesk = SearchDesk(project, this)
@@ -996,6 +1004,35 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         if (tabs.rename(id, title, SessionSnapshot.TITLE_HEURISTIC)) broadcastSessions()
     }
 
+    /**
+     * The name the person typed into the tab. It outranks every other (see SessionRegistry.rename) and
+     * goes into the conversation's transcript as well (see ClaudeSession.rename) - the history list, the
+     * search and `claude --resume` in a terminal all read names from there, and a name kept only on the
+     * strip would be gone the moment the tab is closed.
+     *
+     * A tab with no conversation behind it yet keeps the name here alone; its conversation takes it with
+     * the first message (see ClaudeSession.ownTitle).
+     */
+    fun nameSession(id: String, title: String) {
+        val name = SessionTitle.own(title) ?: return
+        if (!tabs.rename(id, name, SessionSnapshot.TITLE_USER)) return
+
+        conversations.rename(id, name)
+        broadcastSessions()
+    }
+
+    /**
+     * The CLI renamed the conversation itself - a `/rename` that reached it, which today means one typed
+     * on a phone (the panel runs its own, see panelCommands in catalog.ts). It is the person's name as
+     * surely as one typed into the tab, and the tab takes it. As the CLI wrote it rather than through
+     * [SessionTitle.own]: cut here, the shorter name would be handed back to the transcript over the whole
+     * one with the next process (see ClaudeSession.nameAfterPerson).
+     */
+    private fun adoptOwnTitle(id: String, title: String) {
+        val name = title.trim().takeIf { it.isNotEmpty() } ?: return
+        if (tabs.rename(id, name, SessionSnapshot.TITLE_USER)) broadcastSessions()
+    }
+
     fun reorderGroups(groupId: String, beforeGroupId: String?) {
         if (tabs.moveGroup(groupId, beforeGroupId)) broadcastSessions()
     }
@@ -1079,17 +1116,20 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      * A restored tab's conversation is not on disk any more - deleted by hand, or cleaned up by the CLI.
      *
      * Asked here, on the thread that reads the transcript anyway, rather than while the tabs are put back
-     * (see TabMemory.restorable). A tab that has nothing else goes; one with a draft stays for it, as the
-     * empty tab it now is - without the conversation, because a first message into it would ask the CLI
-     * to continue a transcript that is gone, and the CLI refuses to start at all.
+     * (see TabMemory.restorable). A tab that has nothing else goes; one with a draft or a name the person
+     * gave it stays for them, as the empty tab it now is - without the conversation, because a first
+     * message into it would ask the CLI to continue a transcript that is gone, and the CLI refuses to
+     * start at all.
      */
     private fun lostTranscript(sessionId: String) {
         val tab = remembered[sessionId] ?: return
         thisLogger().info("A restored tab's conversation is gone from disk")
 
+        val named = tabs.titleSource(sessionId) == SessionSnapshot.TITLE_USER
+
         // The opening tab is never closed - a message naming no conversation belongs to it (see
         // ClaudeSessions.MAIN_SESSION) - so without a draft it is emptied instead, name and all.
-        if (!drafts.containsKey(sessionId) && sessionId != ClaudeSessions.MAIN_SESSION) {
+        if (!drafts.containsKey(sessionId) && !named && sessionId != ClaudeSessions.MAIN_SESSION) {
             closeSession(sessionId)
             return
         }
@@ -1098,7 +1138,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         conversations.close(sessionId)
         val launch = SessionLaunch(model = tab.model, effort = tab.effort, mode = tab.mode)
         if (!launch.isEmpty) conversations.rememberLaunch(sessionId, launch)
-        if (!drafts.containsKey(sessionId)) tabs.resetTitle(sessionId)
+        if (!drafts.containsKey(sessionId) && !named) tabs.resetTitle(sessionId)
         resetJournal(sessionId)
         broadcastSessions()
     }
@@ -1196,11 +1236,22 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     }.toString()
 
     /**
+     * What a new tab starts on here has changed - see [announceNewTabDefaults], which tells every hub.
+     *
+     * Both readers at once: the panel draws the chip over an untouched tab by it, and a phone names it
+     * in the request that opens a conversation there (see StartingChoice).
+     */
+    fun newTabDefaultsChanged() {
+        catalog.sendNewTabDefaults()
+        inventoryChanged()
+    }
+
+    /**
      * The list a phone draws is out of date - see [onInventoryChanged].
      *
      * Not private, because a phone's inventory carries more than the tabs: it also carries what a new
-     * conversation there starts with, and that is changed from a screen the hub knows nothing about (see
-     * announceNewTabDefaults in SessionCommands).
+     * conversation there starts with, and that is changed from places the hub knows nothing about (see
+     * [newTabDefaultsChanged]).
      */
     fun inventoryChanged() {
         runCatching { inventoryListener?.invoke() }
@@ -2043,8 +2094,16 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      * and puts a usage question to every account, which is right when the change was made here and
      * pointless when it was read out of a file: nothing about this machine's sign-in has moved, and the
      * cost would be a process per account per project per open IDE on every press of Select next door.
+     *
+     * And what a new tab starts on, which that file holds half of: the account chosen and what each
+     * account was last left on (see StartingChoice). A pick made in the other IDE is exactly what the
+     * sandbox caught - the chip over an empty tab named this IDE's last pick while the launch took the
+     * account's.
      */
-    fun accountsChangedElsewhere() = accounts.sendList(withHealth = false)
+    fun accountsChangedElsewhere() {
+        accounts.sendList(withHealth = false)
+        newTabDefaultsChanged()
+    }
 
     override fun dispose() {
         clients.clear()
@@ -2068,6 +2127,19 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
          * opened the panel in would start its schedules, its warm-up and its bridge for a conversation
          * that does not exist.
          */
+        /**
+         * What a new tab starts on has changed, told to every window of every project - see
+         * [newTabDefaultsChanged].
+         *
+         * To all of them rather than to whoever asked, exactly like the colour mode and the hand-added
+         * models: every input to that answer belongs to the machine (the pins, the last pick, the account
+         * chosen and what it remembers), and a second window still drawing an empty tab with yesterday's
+         * model is a window showing something that is no longer true. Called from wherever one of those
+         * inputs is written, and cheap enough to be called when it turns out nothing moved: one small
+         * message per window.
+         */
+        fun announceNewTabDefaults() = everyHub { it.newTabDefaultsChanged() }
+
         fun everyHub(tell: (ClaudeSessionHub) -> Unit) {
             for (project in ProjectManager.getInstance().openProjects) {
                 if (project.isDisposed) continue

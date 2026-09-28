@@ -100,10 +100,16 @@ internal class SessionRegistry {
     /**
      * Rename a tab - unless what it already carries is worth more.
      *
-     * The order of the two names is not the order they arrive in: the interface guesses a name from the
+     * The order of the names is not the order they arrive in: the interface guesses a name from the
      * first message immediately, while the CLI's own model answers a second or two later. But a stale
      * heuristic guess must not overwrite a name the model has already picked, or a tab renamed once
      * would flicker back on the next message.
+     *
+     * A name the person typed stands above both: the model's answer to a question asked before the tab
+     * was renamed arrives after it, and the CLI repeats its own name through the stream for as long as
+     * the conversation lives (see ClaudeSession.rememberTitle). Only the person replaces it - or a /clear
+     * and a past conversation opened in the tab, which drop the name before putting the next one on (see
+     * [resetTitle] and [takeOver]).
      */
     @Synchronized
     fun rename(id: String, title: String, source: String): Boolean {
@@ -113,11 +119,19 @@ internal class SessionRegistry {
         if (index < 0) return false
 
         val current = tabs[index]
-        if (current.titleSource == SessionSnapshot.TITLE_LLM && source != SessionSnapshot.TITLE_LLM) return false
+        if (rank(source) < rank(current.titleSource)) return false
 
         tabs[index] = current.copy(title = title, titleSource = source)
         return true
     }
+
+    /**
+     * The name the person gave this tab by hand, or null when it carries anything else. Asked when a
+     * conversation decides whether it still owes its transcript that name (see ClaudeSession.ownTitle).
+     */
+    @Synchronized
+    fun ownTitle(id: String): String? =
+        tabs.firstOrNull { it.id == id }?.takeIf { it.titleSource == SessionSnapshot.TITLE_USER }?.title
 
     /**
      * Back to the stand-in name: the conversation behind the tab is gone (/clear, or a past conversation
@@ -249,5 +263,13 @@ internal class SessionRegistry {
         const val MAIN_TITLE = "main session"
         const val NEW_TITLE = "new session"
         const val FORK_TITLE = "fork"
+
+        /** How much a name is worth - see [rename]. A source nobody knows ranks with the stand-in. */
+        fun rank(source: String): Int = when (source) {
+            SessionSnapshot.TITLE_USER -> 3
+            SessionSnapshot.TITLE_LLM -> 2
+            SessionSnapshot.TITLE_HEURISTIC -> 1
+            else -> 0
+        }
     }
 }

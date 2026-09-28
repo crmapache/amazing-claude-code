@@ -34,6 +34,7 @@ export type MenuScreen =
   | 'pasteCollapse'
   | 'sendKey'
   | 'settingSources'
+  | 'claudeConfig'
   | 'improvePrompt'
   | 'voice'
   | 'voiceLanguage'
@@ -158,6 +159,7 @@ const SETTINGS_SCREENS: MenuScreen[] = [
   'pasteCollapse',
   'sendKey',
   'settingSources',
+  'claudeConfig',
   'improvePrompt',
   'voice',
   'customModels',
@@ -372,6 +374,14 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M8 1.9l5.4 2.7L8 7.3 2.6 4.6 8 1.9z" />
       <path d="M2.6 8L8 10.7 13.4 8" />
       <path d="M2.6 11.3L8 14l5.4-2.7" strokeOpacity="0.45" />
+    </svg>
+  ),
+  /* A terminal's prompt: the row is about the CLI's own settings - the ones /config changes in a terminal -
+     and a cursor after a chevron is the one drawing that says "the terminal program" unread. */
+  claudeConfig: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="12" height="10" rx="1.6" />
+      <path d="M4.8 6.4l2 1.6-2 1.6M8.4 10h2.8" />
     </svg>
   ),
   feedback: (
@@ -766,6 +776,17 @@ export const SettingsScreen = ({
           sub={t.settings.rows.settingSources.sub}
           value={summary.settingSources}
           onClick={() => onPick('settingSources')}
+        />
+        {/* Right after the sources, and for the same reason the two stand together: both are about
+            Claude Code's own settings rather than the panel's - which layers it reads, and what is in
+            them. No value beside it: forty settings do not fold into one word. */}
+        <Row
+          icon="claudeConfig"
+          iconClass={s.rowIconClaudeConfig}
+          label={t.settings.rows.claudeConfig.label}
+          sub={t.settings.rows.claudeConfig.sub}
+          value=""
+          onClick={() => onPick('claudeConfig')}
         />
         <Row
           icon="improvePrompt"

@@ -1,4 +1,12 @@
-import type { PaintedTerm, SearchHit, ShellMessage, VoiceHotkey, VoiceHotkeySlot, WebviewMessage } from '../protocol'
+import type {
+  ClaudeConfigSetting,
+  PaintedTerm,
+  SearchHit,
+  ShellMessage,
+  VoiceHotkey,
+  VoiceHotkeySlot,
+  WebviewMessage,
+} from '../protocol'
 import { answerScenarios } from './scenarioDesk'
 import { bootstrap, SESSION } from './events'
 import { SHOWCASE_HISTORY } from './scenarios/showcase'
@@ -28,8 +36,56 @@ let lastShellRequest: { id: string; command: string } | undefined
  */
 let streamSignature = ''
 let modelPicks = 0
+
+/**
+ * What a new tab starts on, as the IDE keeps it (see StartingChoice): the pins, the last pick and the
+ * default mode. The IDE works the answer out and the panel only draws it, so the harness has to answer
+ * too - without it a pick here would never reach the chip over an untouched tab. There are no accounts
+ * in the harness, so the answer is the pin over the last pick: what the IDE says on a machine whose
+ * account remembers nothing of its own.
+ */
+const newTab = { pinnedModel: '', pinnedEffort: '', lastModel: '', lastEffort: '', mode: '' }
+/** The hand-added list as it last came in - what a removal is measured against (see setCustomModels). */
+let customList: string[] = []
+
+const announceNewTabDefaults = (): void => {
+  window.__accReceive?.({
+    type: 'newTabDefaults',
+    model: newTab.pinnedModel,
+    effort: newTab.pinnedEffort,
+    mode: newTab.mode,
+    startingModel: newTab.pinnedModel || newTab.lastModel,
+    startingEffort: newTab.pinnedEffort || newTab.lastEffort,
+    unpinnedModel: newTab.lastModel,
+    unpinnedEffort: newTab.lastEffort,
+  })
+}
 /** Which settings layers this "project" loads - the harness plays the IDE's own store for that setting. */
 let settingSourcesChoice = ''
+
+/**
+ * Claude Code's own settings as the IDE would read them (see ClaudeConfigDesk) - a slice of the real list,
+ * with every kind of row the screen draws: switches, values to pick, a free one, one the project's
+ * settings hold, one whose value nobody has written and one a newer CLI added that the panel does not
+ * know by name.
+ */
+let claudeConfigSettings: ClaudeConfigSetting[] = [
+  { key: 'autoCompact', options: ['true', 'false'], value: 'true', group: 'work' },
+  { key: 'thinking', options: ['true', 'false'], value: 'true', group: 'work' },
+  { key: 'checkpoints', options: ['true', 'false'], value: 'true', group: 'work' },
+  { key: 'language', options: [], free: true, value: 'Russian', group: 'work' },
+  { key: 'outputStyle', options: ['default', 'Proactive', 'Concise', 'Explanatory', 'Learning'], value: 'default', group: 'work', projectOnly: true },
+  { key: 'workflows', options: ['true', 'false'], group: 'work' },
+  { key: 'workflowSizeGuideline', options: ['unrestricted', 'small', 'medium', 'large'], group: 'work' },
+  { key: 'switchModelsOnFlag', options: ['Switch automatically', 'Ask each time'], group: 'work' },
+  { key: 'worktreeBaseRef', options: ['fresh', 'head'], value: 'fresh', group: 'work', lockedBy: 'project' },
+  { key: 'model', options: ['default', 'sonnet', 'opus', 'haiku', 'fable', 'best', 'sonnet[1m]', 'opus[1m]', 'fable[1m]', 'opusplan'], value: 'default', group: 'terminal' },
+  { key: 'permissionMode', options: ['default', 'plan', 'acceptEdits', 'auto', 'dontAsk'], value: 'default', group: 'terminal' },
+  { key: 'theme', options: ['auto', 'dark', 'light', 'light-daltonized', 'dark-daltonized', 'light-ansi', 'dark-ansi'], value: 'dark', group: 'terminal' },
+  { key: 'verbose', options: ['true', 'false'], value: 'false', group: 'terminal' },
+  { key: 'tips', options: ['true', 'false'], value: 'false', group: 'terminal', projectOnly: true },
+  { key: 'brandNewSetting', options: ['on', 'off'], group: 'other' },
+]
 
 /** A pick ("fable", "opus[1m]") as the stream would sign it - enough for the harness, not for the IDE. */
 const signatureOf = (pick: string): string => {
@@ -1068,17 +1124,41 @@ const listenToPanel = () => {
 
     // The shell is the only one who can say what effort a conversation works at (see
     // ClaudeSessionHub.changeEffort), so here the harness plays that part: without the answer the chip
-    // would stand "chosen" forever and the applied state would never be seen.
+    // would stand "chosen" forever and the applied state would never be seen. And what the next tab
+    // starts at, which the same pick decides (see newTab above).
     if (message?.type === 'setEffort') {
       window.__accReceive?.({ type: 'effort', sessionId: message.sessionId, effort: message.effort })
+      newTab.lastEffort = message.effort
+      announceNewTabDefaults()
+    }
+
+    // The three halves of the "New chats" screen, answered as the IDE answers them.
+    if (message?.type === 'setDefaultModel') {
+      newTab.pinnedModel = message.model
+      announceNewTabDefaults()
+    }
+
+    if (message?.type === 'setDefaultEffort') {
+      newTab.pinnedEffort = message.effort
+      announceNewTabDefaults()
+    }
+
+    if (message?.type === 'setDefaultMode') {
+      newTab.mode = message.mode
+      announceNewTabDefaults()
     }
 
     // The hand-added models are kept by the IDE and told back to every window (see ClaudePanel), so the
     // harness plays that half too: without the answer the screen would still fill - the panel sets its
     // own state on the press - and the one thing that could go wrong, a list that never comes back,
-    // would be invisible here.
+    // would be invisible here. A model taken off the list stops being a pin and a last pick with it.
     if (message?.type === 'setCustomModels') {
       window.__accReceive?.({ type: 'customModels', models: message.models })
+      const gone = customList.filter((name) => !message.models.includes(name))
+      customList = message.models
+      if (gone.includes(newTab.pinnedModel)) newTab.pinnedModel = ''
+      if (gone.includes(newTab.lastModel)) newTab.lastModel = ''
+      announceNewTabDefaults()
     }
 
     /*
@@ -1099,6 +1179,34 @@ const listenToPanel = () => {
         repository: ['ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL'],
         supported: true,
       })
+    }
+
+    /*
+     * Claude Code's own settings: the list at once, a change a moment later - the real one is a run of
+     * the CLI and takes a few seconds, which is exactly the wait the screen has to hold its rows through.
+     * A value the CLI would refuse ("Learning" style, in this play) comes back unchanged with its sentence.
+     */
+    if (message?.type === 'askClaudeConfig') {
+      window.__accReceive?.({ type: 'claudeConfig', settings: claudeConfigSettings })
+    }
+
+    if (message?.type === 'setClaudeConfig') {
+      const { key, value } = message
+      window.setTimeout(() => {
+        const refused = key === 'outputStyle' && value === 'Learning'
+        if (!refused) {
+          claudeConfigSettings = claudeConfigSettings.map((setting) =>
+            setting.key === key ? { ...setting, value } : setting,
+          )
+        }
+        window.__accReceive?.({
+          type: 'claudeConfig',
+          settings: claudeConfigSettings,
+          outcome: refused
+            ? { key, ok: false, message: 'Couldn\'t save Output style: Learning is not available on this plan.' }
+            : { key, ok: true, message: `Set ${key} to ${value}` },
+        })
+      }, 1500)
     }
 
     if (message) answerFeedback(message)
@@ -1146,6 +1254,9 @@ const answerModel = (message: Extract<WebviewMessage, { type: 'setModel' }>): vo
       model: message.model,
       applied: true,
     } as never)
+    // Remembered as the IDE remembers an applied pick, and the next tab's answer told to the panel.
+    newTab.lastModel = message.model
+    announceNewTabDefaults()
   }, 120)
 
   if (!signature) return

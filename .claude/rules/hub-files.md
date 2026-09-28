@@ -59,6 +59,8 @@ paths:
 - `hiddenIndicators`, `indicatorsSent`, `case 'indicators'`, `metersNode` - indicators
 - `theme`, `setTheme`, `textSize`, `textSizeSent`, `case 'typography'`, `case 'theme'` - appearance
 - `draftsKnown`, `draftsSent`, `draftSaves`, `shellNamedTab`, `case 'drafts'`, `case 'activeTab'`, `restoreTabs` - restore-tabs
+- `nameSession`, `case 'sessionTitle'`, `resumedTitle`/`searchHitTitleSource` при открытии из истории и поиска - tab-names
+- `claudeConfig*` состояние, `openClaudeConfig`, `case 'claudeConfig'`, `config` в `runLocal` - claude-config
 - хоткеи поверх панели, пока собирается иероглиф - composer-field
 - только в `mobile/App.tsx`: `openMachineScreen`, `openRepository`, `Door`/`from`, `edit.home`/`edit.origin` -
   remote-access и scenarios; `vividOf` - calm-colors; `case 'effort'` в `mobile/feed.ts` - models
@@ -72,7 +74,9 @@ paths:
 - `toolUseResult` у `AgentUserEvent`, `text` у `askAnswer` - permissions; `origin` у `AgentUserEvent` - history
 - `settingSources` в `init`, `setSettingSources`, `askSettingSources`, `accountOutranked`, `api_error_status` - setting-sources
 - `theme`, `setTheme`, `setTextSize`, размеры в `typography` - appearance
+- `claudeConfig`, `askClaudeConfig`, `setClaudeConfig`, `ClaudeConfigSetting` - claude-config
 - `activeTab`, `drafts`, `restoreTabs`, `saveDraft`, `tabShown`, `setRestoreTabs` - restore-tabs
+- `TitleSource` (`'user'`), `nameSession`, `titleSource` у `SearchHit` - tab-names
 
 **`webview/src/feed/build.ts`** (редьюсер ленты):
 - `TodoWrite`/`TaskCreate`/`TaskUpdate`, `tasksCarried`, `pendingTasks` - task-list
@@ -134,12 +138,13 @@ paths:
   `refreshCommandHints` - slash-hints
 - `stats` - stats; круг сна простаивающих - idle-sleep; прогрев `ClaudeHome` - claude-home
 - `restoreTabs`, `rememberTabs`, `replayTranscript`, `lostTranscript`, `showTab`, `asleepUntilSeen` - restore-tabs
+- `nameSession`, `titleWanted`/`ownTitle` у `conversations` - tab-names
 
-**`ClaudeSession.kt`** (подгружает turn-lifecycle): `setEffort`, `effort` - models; `awaitingPermission` -
+**`ClaudeSession.kt`** (подгружает turn-lifecycle): `rename`, `nameAfterPerson`, `namedAs`, `ownTitle` - tab-names; `setEffort`, `effort` - models; `awaitingPermission` -
 permissions; окружение в `start` - task-list; `rememberConversation` - аргументы запуска в CLAUDE.md;
 `isBusy` - idle-sleep; `forkFrom` - accounts.
 
-**`ClaudeSessions.kt`** (подгружает accounts и idle-sleep): `branchFrom` - fork-tabs; `adoptModel` - history;
+**`ClaudeSessions.kt`** (подгружает accounts и idle-sleep): `rename`, `ownTitle` - tab-names; `branchFrom` - fork-tabs; `adoptModel` - history;
 `newSession`, `onBorn`, `setPermissionMode` - models; `renewAfterSignIn` - expired-sign-in;
 `releasedRole` и рамка в `prompt` - scenarios.
 
@@ -163,8 +168,8 @@ models; `openFile` - open-in-editor; фидбэк и лог незнакомог
 `AFTER_SCENARIO_HEAD` - scenarios.
 
 **`ClaudePreferences.kt`** (подгружает models): `gaugeVivid` - calm-colors; `language` - i18n;
-`improveInstructions` - prompt-improver; `startingModel`/`startingEffort` для писателя сценариев -
-scenario-author; `hiddenIndicators` - indicators; `theme`, `textSize` - appearance; `restoreTabs` - restore-tabs.
+`improveInstructions` - prompt-improver; стартовая модель новой вкладки переехала в `StartingChoice.kt` -
+models; `hiddenIndicators` - indicators; `theme`, `textSize` - appearance; `restoreTabs` - restore-tabs.
 
 **`RemoteCommands.kt`** (подгружает remote-access): почему телефону разрешено или запрещено конкретное
 сообщение, сказано в заметке фичи, которой оно принадлежит.

@@ -10,15 +10,11 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 class ClaudePreferencesTest : BasePlatformTestCase() {
 
     fun testSnapshotKeepsWhatWasWritten() {
-        ClaudePreferences.model = "haiku"
-        ClaudePreferences.effort = "low"
         ClaudePreferences.mode = "acceptEdits"
         ClaudePreferences.composerLayout = "right"
 
         val snapshot = ClaudePreferences.snapshot()
 
-        assertEquals("haiku", snapshot.model)
-        assertEquals("low", snapshot.effort)
         assertEquals("acceptEdits", snapshot.mode)
         assertEquals("right", snapshot.composerLayout)
     }

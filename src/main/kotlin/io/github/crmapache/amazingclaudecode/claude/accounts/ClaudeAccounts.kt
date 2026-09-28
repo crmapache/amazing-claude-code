@@ -168,6 +168,12 @@ internal class ClaudeAccounts {
             // theirs: it costs a process per account per project, and the one path that has nothing new
             // to ask about is the one where this book was re-read rather than written (see AccountsWatch).
             ClaudeSessionHub.everyHub { it.conversations.switchAllTo() }
+
+            // What the next tab starts on is part of the same choice and costs one small message rather
+            // than a process: a new account brings its own memory of the last pick, and the chip over an
+            // empty tab that went on naming the old one's promised a model the launch no longer used
+            // (see StartingChoice).
+            ClaudeSessionHub.announceNewTabDefaults()
         }
 
     /**
@@ -241,7 +247,11 @@ internal class ClaudeAccounts {
     fun noteModels(accountId: String, models: Set<String>) {
         if (models.isEmpty()) return
 
-        catalogues[accountId] = models
+        val before = catalogues.put(accountId, models)
+        // The clamp reads this, so a first or changed answer about the account in use can change what a
+        // new tab starts on - a pinned model the plan turns out not to have (see StartingChoice). Asked at
+        // every conversation's birth, so only a catalogue that actually moved is worth telling anybody.
+        if (before != models && accountId == currentId) ClaudeSessionHub.announceNewTabDefaults()
     }
 
     /**

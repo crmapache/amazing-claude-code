@@ -65,6 +65,12 @@ internal class ClaudeHome internal constructor(
     val remote: Boolean,
     /** A path in the CLI's own terms turned into one this JVM can open - the identity on this machine. */
     private val toHost: (String) -> String,
+    /**
+     * The CLI's old global config, `.claude.json` - a SIBLING of `~/.claude` by default, and inside the
+     * directory `CLAUDE_CONFIG_DIR` names when that moved it, which is the CLI's own rule. Still read for the
+     * settings nothing has rewritten into the settings file yet (see ClaudeConfig).
+     */
+    val globalConfigFile: File = File(configDirectory.parentFile, GLOBAL_CONFIG),
 ) {
 
     /**
@@ -123,12 +129,16 @@ internal class ClaudeHome internal constructor(
                 listOf(path, real).distinct()
             } ?: emptyList()
 
+            val moved = System.getenv(CONFIG_DIR_VARIABLE)?.takeIf { it.isNotBlank() }
+            val configDirectory = HostOs.configDirectory()
+
             return ClaudeHome(
-                configDirectory = HostOs.configDirectory(),
+                configDirectory = configDirectory,
                 managedSettingsDirectory = HostOs.managedSettingsDirectory(),
                 projectPaths = paths,
                 remote = false,
                 toHost = { it },
+                globalConfigFile = if (moved != null) File(configDirectory, GLOBAL_CONFIG) else File(configDirectory.parentFile, GLOBAL_CONFIG),
             )
         }
 
@@ -149,8 +159,8 @@ internal class ClaudeHome internal constructor(
             home: String,
             configDirectory: String?,
         ): ClaudeHome {
-            val config = configDirectory?.trim()?.takeIf { it.isNotEmpty() }?.let { linuxAbsolute(it, home) }
-                ?: "$home/.claude"
+            val moved = configDirectory?.trim()?.takeIf { it.isNotEmpty() }?.let { linuxAbsolute(it, home) }
+            val config = moved ?: "$home/.claude"
 
             return ClaudeHome(
                 configDirectory = File(windowsPathOf(root, config)),
@@ -158,6 +168,7 @@ internal class ClaudeHome internal constructor(
                 projectPaths = listOfNotNull(linuxPath, realLinuxPath).distinct(),
                 remote = true,
                 toHost = { windowsPathOf(root, it) },
+                globalConfigFile = File(windowsPathOf(root, if (moved != null) "$moved/$GLOBAL_CONFIG" else "$home/$GLOBAL_CONFIG")),
             )
         }
 
@@ -261,6 +272,7 @@ internal class ClaudeHome internal constructor(
             }
         }
 
+        private const val GLOBAL_CONFIG = ".claude.json"
         private const val CONFIG_DIR_VARIABLE = "CLAUDE_CONFIG_DIR"
     }
 }
