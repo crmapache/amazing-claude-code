@@ -97,6 +97,15 @@ export const scenariosSystem: Scenario[] = [
     ]),
   ]),
 
+  /*
+   * The screen after the last tab is closed (see Welcome.tsx). The shell's list simply comes back empty,
+   * the way it does when the tab's cross is pressed in the IDE. The scene plays from the start every time
+   * the screen opens, so to watch it again: "Let's start", then this checkpoint once more.
+   */
+  scenario('welcome', 'Every tab is closed', 'system', [
+    checkpoint('The last tab is closed', [shell({ type: 'sessions', sessions: [] })]),
+  ]),
+
   scenario('session-crash', 'A broken session', 'system', [
     checkpoint('The user asks to run the tests', [user('Run the full set of tests'), wait(500)]),
     checkpoint('Bash: pnpm test', [toolUse('Bash', { command: 'pnpm test' }, 's13-1'), wait(900)]),

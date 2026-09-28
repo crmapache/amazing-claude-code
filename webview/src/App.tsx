@@ -92,6 +92,8 @@ import { Accounts, accountState, currentAccountName, type AccountsState } from '
 import { Sounds } from './components/Sounds'
 import { metersShown, StatusBar, UsageMeters, type Anchor, type SelectorKind } from './components/StatusBar'
 import { SHARE, shareText, thanksMenu, thanksUrl } from './components/Thanks'
+import { markPanelReady } from './components/Splash'
+import { Welcome } from './components/Welcome'
 import { useCalmColors } from './hooks/useCalmColors'
 import { useHoliday } from './hooks/useHoliday'
 import { useHoverTarget } from './hooks/useHoverTarget'
@@ -571,6 +573,11 @@ export const App = () => {
   const locale = activeLocale(language.chosen, language.ide)
   const t = useDict(locale)
   const [auth, setAuth] = useState<AuthState | null>(null)
+  // The IDE's first word about the CLI and the sign-in is what the opening splash waits for: from here on
+  // what lies under it is a real screen - the panel or the gate saying what is missing - not "Checking…".
+  useEffect(() => {
+    if (auth) markPanelReady()
+  }, [auth])
   /**
    * Whether the "no questions" mode is allowed on this machine. The shell finds that out from the CLI
    * itself and answers with a message of its own, so until the answer comes we assume it is not: leading
@@ -5556,12 +5563,7 @@ export const App = () => {
           onOpenLink={openLink}
         />
       ) : sessions.length === 0 ? (
-        <div className={s.emptyState}>
-          <p className={s.gateTitle}>{t.chrome.noChats.title}</p>
-          <button type="button" className={s.gateButton} onClick={() => startSession(MAIN_SESSION)}>
-            {t.chrome.noChats.button}
-          </button>
-        </div>
+        <Welcome onStart={() => startSession(MAIN_SESSION)} />
       ) : (
         <div className={s.workArea} data-layout={composerLayout}>
         <div className={s.content}>

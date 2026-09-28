@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { send } from './bridge'
 import { Crash } from './components/Crash'
+import { Splash } from './components/Splash'
 import { applyTheme, themeFromAddress } from './theme'
 import './base.css'
 
@@ -31,10 +32,13 @@ window.addEventListener('unhandledrejection', (event) => {
   send({ type: 'trace', message: `unhandled rejection: ${reason?.stack ?? String(reason)}` })
 })
 
+// The splash beside the panel rather than inside it: the panel swaps its whole tree when the IDE's
+// first answer arrives, which is the very moment the splash is covering (see Splash.tsx).
 createRoot(container).render(
   <StrictMode>
     <Crash>
       <App />
     </Crash>
+    <Splash />
   </StrictMode>,
 )

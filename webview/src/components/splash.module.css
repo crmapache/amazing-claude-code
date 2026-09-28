@@ -1,0 +1,441 @@
+/*
+ * The panel's opening - see Splash.tsx.
+ *
+ * The timeline, in seconds from the moment the page opens:
+ *   0.0  the glow comes up, the stars fade in
+ *   0.1  the monogram is written stroke by stroke - the tick, its crossbar, the two arcs (until ~1.4)
+ *   1.2  the light flashes behind it and the two fans of rays burst out
+ *   1.3  the orbits fade in with their travellers already moving
+ *   1.35 the plugin's name rises
+ *   2.1  the rays start glinting one after another, and keep on
+ *   2.2  the splash may go (HOLD_MS): it fades as soon as the IDE has answered, and until then the loading
+ *        line shows under the name
+ *
+ * The keyframes live here rather than in a shared file, for the reason at the head of shell.module.css:
+ * a CSS module renames animation names along with classes.
+ *
+ * No reduced-motion block: under that setting the splash is not rendered at all (see motionDown).
+ */
+
+/* --- The layer ------------------------------------------------------------- */
+
+/*
+ * Over everything the panel can put up, the tooltips (60) included: for these two seconds the page is the
+ * splash. The panel is rendered underneath all along, so what the fade uncovers is already laid out -
+ * the sign-in gate's "Checking…" and the switch to the panel happen behind it, not in front of the eyes.
+ */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  overflow: hidden;
+  background: var(--acc-bg);
+  transition: opacity 0.5s ease;
+}
+
+/* Handing over: the page fades to the panel while the scene comes a little closer, as though passed
+   through. Clicks go through at once - the panel under the fade is live. */
+.splash[data-leaving] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.splash[data-leaving] .stage {
+  transform: scale(1.06);
+}
+
+/* --- The stage ------------------------------------------------------------- */
+
+/* Mirrored by STAGE_W and STAGE_H in Splash.tsx: the orbits and the stars are placed in its pixels. */
+.stage {
+  position: relative;
+  flex: none;
+  width: 260px;
+  height: 210px;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Everything on the stage drifts up and down together, so the orbits stay centred on the monogram. It is
+   also the stacking context the travellers pass in front of and behind the monogram within. */
+.float {
+  position: absolute;
+  inset: 0;
+  animation: acc-splash-float 7s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
+}
+
+/* A panel too low for the scene keeps the name, which is the part that says whose screen this is. */
+@media (max-height: 340px) {
+  .stage {
+    display: none;
+  }
+}
+
+/* The narrowest tool window: the scene shrinks with everything in it rather than being cut at the sides. */
+@media (max-width: 300px) {
+  .stage {
+    zoom: 0.8;
+  }
+}
+
+/* --- The light ------------------------------------------------------------- */
+
+.glow {
+  position: absolute;
+  left: calc(50% - 120px);
+  top: calc(50% - 120px);
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  /* Several stops rather than two: a straight fall to transparent leaves a ring where it ends, and the
+     glow read as a grey disc laid under the mark instead of light coming off it. */
+  background: radial-gradient(
+    closest-side,
+    var(--acc-accent-16),
+    var(--acc-accent-08) 35%,
+    rgb(var(--acc-ch-iris) / 4%) 65%,
+    transparent
+  );
+  animation:
+    acc-splash-appear 0.9s ease-out both,
+    acc-splash-breathe 5s cubic-bezier(0.37, 0, 0.63, 1) 0.9s infinite alternate;
+}
+
+/* The burst the moment the monogram is complete. Invisible at rest - it exists for that one moment. */
+.flash {
+  position: absolute;
+  left: calc(50% - 55px);
+  top: calc(50% - 55px);
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--acc-accent-40), transparent);
+  opacity: 0;
+  animation: acc-splash-flash 0.9s ease-out 1.2s both;
+}
+
+/* --- The orbits ------------------------------------------------------------ */
+
+.rings {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  animation: acc-splash-appear 0.8s ease-out 1.3s both;
+}
+
+.rings ellipse {
+  fill: none;
+  stroke: var(--acc-line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 1.5 5;
+  stroke-linecap: round;
+}
+
+/*
+ * One traveller on its orbit, made of two swings rather than a path to follow.
+ *
+ * Across, the dot swings from one end of the orbit to the other; up and down, it swings the same way a
+ * quarter of a lap later. Each swing eases like a sine (that cubic-bezier is the usual easeInOutSine), and
+ * two sines a quarter apart are an ellipse. The outer box turns the whole ellipse to the orbit's tilt, so
+ * the dot itself is never squashed, and all three are transforms - nothing here lays anything out again.
+ *
+ * The same quarter-late swing drives the depth: on the near half of the orbit (the lower one) the dot is
+ * bigger and brighter and its z-index is above the monogram's, on the far half it is smaller, dimmer and
+ * behind it. z-index runs 0..3 against the monogram's 2, and rounds to 2 exactly as the dot crosses the
+ * middle - where it is painted over the monogram, being later in the page.
+ */
+.orbit {
+  --acc-sine: cubic-bezier(0.37, 0, 0.63, 1);
+  --acc-half: calc(var(--acc-period) / 2);
+  --acc-late: calc(var(--acc-delay) - var(--acc-period) / 4);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: rotate(var(--acc-tilt));
+  animation:
+    acc-splash-appear 0.8s ease-out 1.3s both,
+    acc-splash-near var(--acc-half) var(--acc-sine) var(--acc-late) infinite alternate;
+}
+
+.orbitX,
+.orbitY {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.orbitX {
+  animation: acc-splash-sway var(--acc-half) var(--acc-sine) var(--acc-delay) infinite alternate;
+}
+
+.orbitY {
+  animation: acc-splash-bob var(--acc-half) var(--acc-sine) var(--acc-late) infinite alternate;
+}
+
+.traveller {
+  position: absolute;
+  left: -3.5px;
+  top: -3.5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentcolor;
+  box-shadow: 0 0 10px 1px color-mix(in srgb, currentcolor 70%, transparent);
+  animation: acc-splash-depth var(--acc-half) var(--acc-sine) var(--acc-late) infinite alternate;
+}
+
+/* --- The stars ------------------------------------------------------------- */
+
+.star {
+  position: absolute;
+  animation: acc-splash-appear 1s ease-out 0.3s both;
+}
+
+.twinkle {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: acc-splash-twinkle var(--acc-for) cubic-bezier(0.37, 0, 0.63, 1) var(--acc-at) infinite alternate;
+}
+
+.point {
+  border-radius: 50%;
+  background: currentcolor;
+}
+
+/* --- The monogram ---------------------------------------------------------- */
+
+.mark {
+  position: absolute;
+  z-index: 2;
+  left: calc(50% - 52px);
+  top: calc(50% - 52px);
+  width: 104px;
+  height: 104px;
+  overflow: visible;
+  filter: drop-shadow(0 0 6px var(--acc-accent-32));
+}
+
+.inkMoon {
+  stop-color: var(--acc-accent-hover);
+}
+
+.inkAqua {
+  stop-color: var(--acc-branch);
+}
+
+.inkIris {
+  stop-color: var(--acc-agent);
+}
+
+.letters path,
+.rays path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The letters' weight is lighter than the button's icon (1.5 on the same grid): at 104 pixels the button's
+   stroke reads as a marker pen, and what carries the mark at this size is the gradient, not the weight. */
+.letters path {
+  stroke-width: 1.1;
+  animation: acc-splash-draw var(--acc-for) cubic-bezier(0.65, 0, 0.35, 1) var(--acc-at) both;
+}
+
+.rays path {
+  stroke: var(--acc-accent-light);
+  stroke-width: 0.6;
+  opacity: 0.6;
+  animation:
+    acc-splash-draw 0.35s ease-out var(--acc-at) both,
+    acc-splash-glint 3.6s ease-in-out var(--acc-glint) infinite;
+}
+
+/* --- The name and the loading line ----------------------------------------- */
+
+.name {
+  margin: 0;
+  font: 600 15px var(--acc-font);
+  letter-spacing: 0.02em;
+  color: var(--acc-fg);
+  animation: acc-splash-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) 1.35s both;
+}
+
+/* A thin track with a bead of light running along it - shown only while the scene has played out and the
+   IDE has still not answered (data-waiting). */
+.loading {
+  position: relative;
+  width: 96px;
+  height: 2px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--acc-line);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.loading::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--acc-accent), transparent);
+  animation: acc-splash-bead 1.3s cubic-bezier(0.37, 0, 0.63, 1) infinite;
+}
+
+.splash[data-waiting] .loading {
+  opacity: 1;
+}
+
+/* --- Keyframes ------------------------------------------------------------- */
+
+/* Only the start is named: the end is whatever opacity the element has of its own. */
+@keyframes acc-splash-appear {
+  from {
+    opacity: 0;
+  }
+}
+
+/* A stroke drawn along its own length. pathLength="1" on every path makes the length one for all of them,
+   and the gap of two is longer than any path, so at the start there is nothing - not even a dot of a round
+   cap - and at the end there is the whole stroke. */
+@keyframes acc-splash-draw {
+  from {
+    stroke-dasharray: 1 2;
+    stroke-dashoffset: 1;
+  }
+
+  to {
+    stroke-dasharray: 1 2;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes acc-splash-glint {
+  0%,
+  28%,
+  100% {
+    opacity: 0.6;
+  }
+
+  10% {
+    opacity: 1;
+  }
+}
+
+@keyframes acc-splash-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+
+  35% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+}
+
+@keyframes acc-splash-breathe {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0.6;
+    transform: scale(0.92);
+  }
+}
+
+@keyframes acc-splash-float {
+  from {
+    transform: translateY(-3px);
+  }
+
+  to {
+    transform: translateY(3px);
+  }
+}
+
+@keyframes acc-splash-sway {
+  from {
+    transform: translateX(calc(var(--acc-rx) * -1));
+  }
+
+  to {
+    transform: translateX(var(--acc-rx));
+  }
+}
+
+@keyframes acc-splash-bob {
+  from {
+    transform: translateY(calc(var(--acc-ry) * -1));
+  }
+
+  to {
+    transform: translateY(var(--acc-ry));
+  }
+}
+
+@keyframes acc-splash-near {
+  from {
+    z-index: 0;
+  }
+
+  to {
+    z-index: 3;
+  }
+}
+
+@keyframes acc-splash-depth {
+  from {
+    opacity: 0.35;
+    transform: scale(0.65);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+@keyframes acc-splash-twinkle {
+  from {
+    opacity: 0.15;
+    transform: scale(0.55) rotate(0deg);
+  }
+
+  to {
+    opacity: 0.9;
+    transform: scale(1) rotate(45deg);
+  }
+}
+
+@keyframes acc-splash-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(3px);
+  }
+}
+
+@keyframes acc-splash-bead {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(250%);
+  }
+}

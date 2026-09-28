@@ -1,6 +1,7 @@
 import { StrictMode, useCallback, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from '../App'
+import { Splash } from '../components/Splash'
 import { applyTheme, themeFromAddress } from '../theme'
 import '../base.css'
 import { CheckpointsCard } from './CheckpointsCard'
@@ -28,6 +29,13 @@ if (firstTheme) applyTheme(firstTheme)
  */
 const shotParams = new URLSearchParams(window.location.search)
 const shotId = shotParams.get('shot')
+
+/**
+ * `?splash` puts the panel's opening over the page, the way main.tsx does in the IDE (see Splash.tsx) -
+ * with `&shot=` it covers exactly the panel. Only on asking: every other visit, and every picture of the
+ * listing, is about the panel behind it.
+ */
+const withSplash = shotParams.has('splash')
 
 const Harness = () => {
   const [runId, setRunId] = useState(0)
@@ -133,6 +141,7 @@ const Harness = () => {
         <div className={`${styles.stageCard} ${styles.shotStage}`}>
           <App key={runId} />
         </div>
+        {withSplash ? <Splash /> : null}
       </div>
     )
   }
@@ -158,6 +167,7 @@ const Harness = () => {
         mode={mode}
         onModeChange={setMode}
       />
+      {withSplash ? <Splash /> : null}
     </div>
   )
 }

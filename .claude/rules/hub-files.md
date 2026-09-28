@@ -55,6 +55,7 @@ paths:
 - `mcpLoading` - idle-sleep
 - состояние формы обратной связи - feedback
 - новогодние украшения - holiday
+- экран без вкладок (`sessions.length === 0`, `Welcome`), `markPanelReady` на первый `auth` - welcome
 - голосовая вставка в черновик - voice
 - `hiddenIndicators`, `indicatorsSent`, `case 'indicators'`, `metersNode` - indicators
 - `theme`, `setTheme`, `textSize`, `textSizeSent`, `case 'typography'`, `case 'theme'` - appearance
