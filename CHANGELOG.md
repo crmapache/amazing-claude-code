@@ -9,6 +9,13 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.6] - 2026-09-28
+
+- Fixed: with many tabs open, "no PR" in the header slid over the menu button and the branch name vanished altogether. The right end of the header could be squeezed to nothing to make room for the tabs, and only the branch knew how to shrink. Now the PR mark and the menu button always stay whole, the branch keeps at least four characters - "main" in full - and the tabs wrap onto another row instead. A branch that is cut short shows its full name when you hover over it.
+- Fixed: on the phone, the scenarios screen scrolled sideways when a run had been started with a long answer, such as a link to a Notion page. That answer is shown beside the scenario's name to tell two runs of it apart, and it could not shrink, so it pushed the card past the edge of the screen. It now shrinks with an ellipsis and takes at most about half the line, on the phone and in the panel alike.
+- Changed: a run started with a link is now called by what the link points at - the Notion page, "pull/45", "issues/123" - rather than by the start of the address, which is the same for every link to one site and so told two runs apart by nothing. The same name is used on the phone, in the panel, on the queue and in the IDE's notifications.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.5] - 2026-09-28
 
 - Added: the panel opens with a short splash. The ACC monogram writes itself out stroke by stroke, its rays light up, and three lights in the panel's colours circle it above the plugin's name. It covers only the moment the panel is getting ready, so the "Checking Claude Code..." screen and the switch to the panel no longer flash by, and it fades as soon as the IDE has answered, usually about two seconds in. If the IDE is slow to answer, a thin loading line shows under the name; if it does not answer at all, the splash steps aside after a few seconds and leaves the screen that says what is wrong. With "reduce motion" turned on in the system there is no splash.
@@ -793,7 +800,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.5...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.6...HEAD
+[0.13.6]: https://github.com/crmapache/amazing-claude-code/compare/0.13.5...0.13.6
 [0.13.5]: https://github.com/crmapache/amazing-claude-code/compare/0.13.4...0.13.5
 [0.13.4]: https://github.com/crmapache/amazing-claude-code/compare/0.13.3...0.13.4
 [0.13.3]: https://github.com/crmapache/amazing-claude-code/compare/0.13.2...0.13.3
