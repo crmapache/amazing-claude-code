@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.5] - 2026-09-28
+
+- Added: the panel opens with a short splash. The ACC monogram writes itself out stroke by stroke, its rays light up, and three lights in the panel's colours circle it above the plugin's name. It covers only the moment the panel is getting ready, so the "Checking Claude Code..." screen and the switch to the panel no longer flash by, and it fades as soon as the IDE has answered, usually about two seconds in. If the IDE is slow to answer, a thin loading line shows under the name; if it does not answer at all, the splash steps aside after a few seconds and leaves the screen that says what is wrong. With "reduce motion" turned on in the system there is no splash.
+- Changed: the screen you see after closing the last tab now has a small animated picture above "Let's start": a chat bubble draws itself and a plus is written into it, with sparks around it. Now and then the plus nudges towards the button. The picture leans a little towards the mouse, and it holds still after half a minute without the mouse moving, so a panel left like this for hours does not keep drawing frames. With "reduce motion" turned on it is shown still.
+
 ## [0.13.4] - 2026-09-28
 
 - Fixed: a conversation left running a workflow opened on the phone as "Loading the conversation..." that never went away, or as an empty feed under "earlier messages are not shown on the phone" with no way to load them. A phone is handed the end of a conversation rather than all of it, and a workflow resends the whole report of its fleet on every change, with hundreds of progress events in between; after a few hours the end held nothing but copies of one report. Each report now replaces the ones before it, a subagent's steps no longer crowd the conversation out of what the phone is handed, and the phone opens on the latest messages. The panel had the same trouble after being reloaded during such a run, and no longer does.
@@ -788,7 +793,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.4...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.5...HEAD
+[0.13.5]: https://github.com/crmapache/amazing-claude-code/compare/0.13.4...0.13.5
 [0.13.4]: https://github.com/crmapache/amazing-claude-code/compare/0.13.3...0.13.4
 [0.13.3]: https://github.com/crmapache/amazing-claude-code/compare/0.13.2...0.13.3
 [0.13.2]: https://github.com/crmapache/amazing-claude-code/compare/0.13.1...0.13.2
