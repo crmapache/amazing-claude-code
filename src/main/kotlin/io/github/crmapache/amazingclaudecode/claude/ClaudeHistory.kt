@@ -155,14 +155,14 @@ internal object ClaudeHistory {
      *
      * [local] means the IDE's own panel: its channel into the page is ours to manage, while a phone's
      * page has to survive a relay frame capped at 256 KB, and a frame over the cap is dropped whole and
-     * in silence (see [MAX_PAGE_CHARS]). One page for both would have to be the smaller of the two, and
+     * in silence (see [MAX_PHONE_PAGE_BYTES]). One page for both would have to be the smaller of the two, and
      * that turns reading back through a long conversation at the desk into a row of taps.
      */
     fun earlier(workingDirectory: String?, id: String, before: String?, local: Boolean): Page =
         if (local) {
             page(workingDirectory, id, before, pageSize = OPENING_PAGE_MESSAGES, maxChars = OPENING_PAGE_CHARS)
         } else {
-            page(workingDirectory, id, before)
+            page(workingDirectory, id, before, maxChars = MAX_PHONE_PAGE_BYTES, weigh = ::utf8Bytes)
         }
 
     /**
@@ -446,6 +446,7 @@ internal object ClaudeHistory {
         before: String?,
         pageSize: Int = PAGE_MESSAGES,
         maxChars: Int = MAX_PAGE_CHARS,
+        weigh: (String) -> Int = String::length,
     ): Page {
         val file = transcriptFile(workingDirectory, id) ?: return Page(emptyList(), null)
 
@@ -471,7 +472,14 @@ internal object ClaudeHistory {
 
         // The boundary has already done its work inside the window, so the slicing is asked for the
         // window's own end rather than for it a second time.
-        val sliced = pageOf(prepared, before = null, pageSize = pageSize, maxChars = maxChars, moreAbove = scanned.window.moreAbove)
+        val sliced = pageOf(
+            prepared,
+            before = null,
+            pageSize = pageSize,
+            maxChars = maxChars,
+            moreAbove = scanned.window.moreAbove,
+            weigh = weigh,
+        )
         return sliced.copy(model = modelOf(lastModel(sliced.lines), scanned.identity))
     }
 
@@ -588,6 +596,8 @@ internal object ClaudeHistory {
         pageSize: Int,
         maxChars: Int = MAX_PAGE_CHARS,
         moreAbove: Boolean = false,
+        /** What one line weighs against [maxChars] - its characters by default, its bytes for a phone. */
+        weigh: (String) -> Int = String::length,
     ): Page {
         val boundary = before?.let { uuid -> all.indexOfFirst { it.contains("\"uuid\":\"$uuid\"") } }
         val end = if (boundary != null && boundary >= 0) boundary else all.size
@@ -611,7 +621,7 @@ internal object ClaudeHistory {
         var start = end
         var spent = 0
         while (start > floor) {
-            val length = all[start - 1].length
+            val length = weigh(all[start - 1])
             if (start < end && spent + length > maxChars) break
             spent += length
             start--
@@ -638,6 +648,36 @@ internal object ClaudeHistory {
      * whole page rather than its tail.
      */
     internal const val MAX_PAGE_CHARS = 128 * 1024
+
+    /**
+     * The same half of a frame for a page that goes to a phone, only counted in what the frame is counted
+     * in. A character is a byte only in English: the text of a Russian conversation is two bytes a
+     * character, so a page within its budget in characters came out at the full 256 KB and over it once
+     * the envelope was added - dropped whole, and the button over the feed dead on exactly the
+     * conversations whose messages are longest.
+     */
+    internal const val MAX_PHONE_PAGE_BYTES = 128 * 1024
+
+    /** What a line weighs on the wire - see [MAX_PHONE_PAGE_BYTES]. */
+    internal fun utf8Bytes(line: String): Int {
+        var bytes = 0
+        var index = 0
+        while (index < line.length) {
+            val char = line[index]
+            bytes += when {
+                char.code < 0x80 -> 1
+                char.code < 0x800 -> 2
+                // A surrogate pair is one character of four bytes, however many chars it takes here.
+                Character.isHighSurrogate(char) && index + 1 < line.length && Character.isLowSurrogate(line[index + 1]) -> {
+                    index += 1
+                    4
+                }
+                else -> 3
+            }
+            index += 1
+        }
+        return bytes
+    }
 
     /**
      * Above this an entry of a page is looked into, and this is how much of one string inside it survives

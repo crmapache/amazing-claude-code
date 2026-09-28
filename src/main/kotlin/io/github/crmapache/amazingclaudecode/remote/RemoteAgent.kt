@@ -15,6 +15,7 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import io.github.crmapache.amazingclaudecode.claude.ClaudeHistory
 import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
+import io.github.crmapache.amazingclaudecode.claude.JournalTrim
 import io.github.crmapache.amazingclaudecode.claude.SessionClient
 import io.github.crmapache.amazingclaudecode.claude.SessionLaunch
 import io.github.crmapache.amazingclaudecode.claude.SessionSnapshot
@@ -1721,17 +1722,38 @@ internal class RemoteAgent : Disposable {
             val device = runCatching { Frame.decodeAddress(deviceId) }.getOrNull() ?: return
 
             for (message in messages) {
-                val sealed = sessions.seal(
-                    deviceId,
-                    to = device,
-                    from = state.address(),
-                    body = """{"p":$PROTOCOL_VERSION,"k":"event","pj":"$projectKey","b":$message}"""
-                        .toByteArray(StandardCharsets.UTF_8),
-                ) ?: continue
+                val body = fitted(message) ?: continue
+                val sealed = sessions.seal(deviceId, to = device, from = state.address(), body = body) ?: continue
 
                 outbox.offer(deviceId, sealed)
             }
         }
+
+        /**
+         * One message as the body of a frame, shortened if it would not fit one.
+         *
+         * A frame over the relay's ceiling is not sent at all (see RelayLink.flush), and on a phone that is
+         * a message simply missing from the conversation, with nothing anywhere saying so. The journal cuts
+         * its monsters down already (see JournalTrim), but by characters and generously: a Russian answer
+         * or a fleet's report with Russian previews weighs twice its characters on the wire. So what would
+         * not fit is shortened the way the journal shortens - long text inside it cut and the cut said in
+         * the text - rather than lost. Only what still does not fit after that is dropped.
+         */
+        private fun fitted(message: String): ByteArray? {
+            val whole = envelope(message)
+            if (whole.size <= FRAME_BODY_BYTES) return whole
+
+            for (limit in PHONE_STRING_LIMITS) {
+                val shorter = envelope(JournalTrim.trim(message, maxChars = 0, maxStringChars = limit))
+                if (shorter.size <= FRAME_BODY_BYTES) return shorter
+            }
+
+            thisLogger().info("A message of ${whole.size} bytes does not fit a frame even shortened - dropped")
+            return null
+        }
+
+        private fun envelope(message: String): ByteArray =
+            """{"p":$PROTOCOL_VERSION,"k":"event","pj":"$projectKey","b":$message}""".toByteArray(StandardCharsets.UTF_8)
 
         /**
          * Hand a device the end of one conversation, as the journal has it.
@@ -1844,6 +1866,19 @@ internal class RemoteAgent : Disposable {
          * not. Left to grow with every release it would be a number nobody could act on.
          */
         const val PROTOCOL_VERSION = 1
+
+        /**
+         * How much of a frame a sealed body may take: the relay's ceiling less the envelope's header and
+         * the seal's tag (see Frame.HEADER_BYTES and Sealing).
+         */
+        private const val FRAME_BODY_BYTES = RelayLink.MAX_FRAME_BYTES - Frame.HEADER_BYTES - 16
+
+        /**
+         * How short the long text inside an oversized message is cut, tried in turn - see
+         * RelayClient.fitted. The first keeps a readable page of a long answer; the second is for a message
+         * made of a great many texts at once, a fleet's report of sixty agents among them.
+         */
+        private val PHONE_STRING_LIMITS = listOf(8 * 1024, 1024)
 
         /**
          * Opening a project without starting a conversation in it - see the caps list in [inventoryBody].

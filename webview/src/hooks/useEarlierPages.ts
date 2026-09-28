@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { beginsMidway } from '../feed/build'
 import type { PanelState } from '../feed/panelState'
 
 /**
@@ -44,6 +45,17 @@ export const shouldAskAgain = (
   fetched < MAX_EXTRA_PAGES
 
 /**
+ * Whether there is anything above this feed to ask for.
+ *
+ * Either something on screen can be named for the request, or the feed says it begins partway through
+ * and has nothing to name - it then asks for the newest page on disk (see beginsMidway). It used to wait
+ * for something it could name, and a phone opening a tab full of a fleet's progress never got one: the
+ * mark over the feed stood there as a caption for good.
+ */
+export const mayAskEarlier = (state: Pick<PanelState, 'oldestEventUuid' | 'reachedStart' | 'items'>): boolean =>
+  !state.reachedStart && (state.oldestEventUuid !== undefined || beginsMidway(state.items))
+
+/**
  * The mark over the feed that fetches the conversation above what is on screen.
  *
  * One hook for the panel and for the phone, because it is one behaviour: a tab opens a past conversation
@@ -55,13 +67,13 @@ export const shouldAskAgain = (
  * inline arrow at the call site does not restart anything.
  *
  * The returned handler is undefined while there is nothing to fetch, which leaves the mark a plain
- * caption rather than a button: either the beginning is already on screen, or nothing has arrived yet for
- * the request to anchor on, or an answer is still on its way.
+ * caption rather than a button: either the beginning is already on screen, or the feed is the whole
+ * conversation, or an answer is still on its way (see mayAskEarlier).
  */
 export const useEarlierPages = (
-  state: Pick<PanelState, 'lastPageRows' | 'reachedStart' | 'oldestEventUuid' | 'earlierPages'>,
+  state: Pick<PanelState, 'lastPageRows' | 'reachedStart' | 'oldestEventUuid' | 'earlierPages' | 'items'>,
   conversation: string,
-  request: (before: string) => void,
+  request: (before: string | undefined) => void,
 ): { loadEarlier?: () => void; loading: boolean } => {
   const [loading, setLoading] = useState(false)
   const fetched = useRef(0)
@@ -128,10 +140,13 @@ export const useEarlierPages = (
   }, [loading, state.earlierPages])
 
   const before = state.oldestEventUuid
-  const ready = before !== undefined && !state.reachedStart && !loading
+  const askable = useMemo(
+    () => mayAskEarlier({ oldestEventUuid: before, reachedStart: state.reachedStart, items: state.items }),
+    [before, state.reachedStart, state.items],
+  )
+  const ready = askable && !loading
 
   const loadEarlier = useCallback(() => {
-    if (before === undefined) return
     fetched.current = 0
     awaiting.current = conversation
     setLoading(true)

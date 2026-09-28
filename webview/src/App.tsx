@@ -3968,7 +3968,9 @@ export const App = () => {
     runLog?.state ?? initialPanelState,
     runLog ? `${runLog.runId}:${runLog.key}` : '',
     (before) => {
-      if (!runLog) return
+      // A step's log names its boundary from its first page on (see withEarlier), and a request without
+      // one is that first page - it would put the log back to its end over whatever has been read above.
+      if (!runLog || before === undefined) return
       send({
         type: 'scenarioLog',
         runId: runLog.runId,

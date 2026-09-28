@@ -570,6 +570,12 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
       // and the second would put the same messages in a second time.
       if (action.before !== undefined && action.before !== state.oldestEventUuid) return answered
 
+      // A page asked for with no boundary is the newest page on disk - the right answer only while nothing
+      // on screen can be named (see beginsMidway). Something that can be named arrived while it travelled,
+      // and the newest page on disk now holds that very message: applied, it would stand twice. Counted
+      // as answered, the screen asks again from the name it now has.
+      if (action.before === undefined && state.oldestEventUuid !== undefined) return answered
+
       // The beginning has already been reached, so this is a second copy of the page that reached it: the
       // boundary above stopped moving there and cannot tell the two apart (see reachedStart).
       if (state.reachedStart) return answered
@@ -617,8 +623,12 @@ export const drawnInFeed = (item: FeedItem): item is FeedRowItem =>
  * file". The IDE answers that with the file's own last page, which is what the screen already had: the
  * request to load more brought back the same messages a second time.
  */
-const keptOnDisk = (event: { type?: string; subtype?: string }): boolean =>
-  event.type === 'user' || event.type === 'assistant' || event.subtype === 'local_command'
+const keptOnDisk = (event: { type?: string; subtype?: string; parent_tool_use_id?: string | null }): boolean =>
+  // A subagent's own events are kept in a file of their own, beside the conversation's (see
+  // ClaudeHistory.page): anchored on one, the request named a line the conversation's file does not hold,
+  // and the answer was the file's newest page - the messages already on screen, a second time.
+  !event.parent_tool_use_id &&
+  (event.type === 'user' || event.type === 'assistant' || event.subtype === 'local_command')
 
 /**
  * The first event a feed ever sees is, at that moment, the oldest one it has - remembered once and left
@@ -663,6 +673,17 @@ const withEarlier = (state: PanelState, cursor: string | null | undefined): Pane
 
 /** The mark over a feed that begins mid-conversation - a button wherever there is something to fetch. */
 const EARLIER_CHIP = 'EARLIER'
+
+/**
+ * Whether this feed begins partway through its conversation - the mark above it says so.
+ *
+ * Asked where there is nothing on screen to name in a request for what came before it: a phone opening a
+ * tab whose recent traffic is all a subagent's or a fleet's has no message of the conversation in hand,
+ * and the mark over it used to be a caption with no way past it - "earlier messages are not shown" over
+ * an empty feed. Such a feed asks for the newest page on disk instead (see historyPage above).
+ */
+export const beginsMidway = (items: FeedItem[]): boolean =>
+  items.some((item) => item.kind === 'checkpoint' && item.chip === EARLIER_CHIP)
 
 
 

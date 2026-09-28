@@ -192,6 +192,34 @@ class SessionFanOutTest : BasePlatformTestCase() {
         assertTrue(finished, finished.contains("\"upTo\":${hub.lastSeq("trimmed")}"))
     }
 
+    /**
+     * A tab running a workflow, opened on a phone.
+     *
+     * The fleet re-sends its whole report on every change and bare progress between reports, and an
+     * afternoon of that used to be the whole of a phone's tail: copies of one report, a mark saying the
+     * beginning was not shown, and nothing of the conversation under it - not even a message to anchor a
+     * request for the rest on. The phone is handed the conversation and the fleet's last report instead.
+     */
+    fun testAPhoneOpeningARunningWorkflowIsHandedTheConversation() {
+        val hub = hub()
+        hub.onAgentLine("fleet", """{"type":"assistant","message":{"content":[{"type":"text","text":"launching"}]},"parent_tool_use_id":null,"uuid":"u-said"}""")
+        val agents = (1..60).joinToString(",") { """{"type":"workflow_agent","index":$it,"label":"agent $it","promptPreview":"${"p".repeat(400)}","resultPreview":"${"r".repeat(400)}"}""" }
+        repeat(200) { round ->
+            hub.onAgentLine("fleet", """{"type":"system","subtype":"task_progress","task_id":"wf","description":"round $round","workflow_progress":[$agents]}""")
+            repeat(5) { hub.onAgentLine("fleet", """{"type":"system","subtype":"task_progress","task_id":"wf","last_tool_name":"agent $it"}""") }
+        }
+
+        val phone = Recorder("phone-fleet")
+        hub.register(phone)
+        hub.attach(phone.id, catchUp = ClaudeSessionHub.CatchUp.tailOf("fleet"))
+
+        val fleet = phone.received.filter { it.contains("\"sessionId\":\"fleet\"") }
+        assertTrue(fleet.any { it.contains("\"uuid\":\"u-said\"") })
+        assertEquals(1, fleet.count { it.contains("workflow_progress") })
+        assertTrue(fleet.single { it.contains("workflow_progress") }.contains("round 199"))
+        assertFalse(fleet.any { it.contains("\"truncated\":true") })
+    }
+
     /** Nothing left out means nothing to warn about - the mark in the feed has to stay honest. */
     fun testAShortConversationIsNotMarkedTruncated() {
         val hub = hub()

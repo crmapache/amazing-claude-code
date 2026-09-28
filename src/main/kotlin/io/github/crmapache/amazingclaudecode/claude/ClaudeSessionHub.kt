@@ -443,11 +443,11 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
 
             val seen = since[sessionId] ?: 0
             val journal = journal(sessionId)
-            val entries = journal.since(seen, catchUp.maxEntries, catchUp.maxChars)
+            val tail = journal.tail(seen, catchUp.budget())
 
-            batch += restoreStarted(sessionId, from = seen, truncated = journal.truncatedFrom(seen, entries))
+            batch += restoreStarted(sessionId, from = seen, truncated = tail.truncated)
 
-            entries.forEach { entry -> batch += SessionMessages.stamp(entry.json, entry.seq, entry.at) }
+            tail.entries.forEach { entry -> batch += SessionMessages.stamp(entry.json, entry.seq, entry.at) }
 
             // The answer being printed at this very moment: it is not in the journal (see SessionStream)
             // and without it a conversation joined mid-turn looks frozen.
@@ -525,8 +525,12 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         val sessions: Set<String>? = null,
         val maxEntries: Int = Int.MAX_VALUE,
         val maxChars: Long = Long.MAX_VALUE,
+        /** How the traffic beside the conversation is thinned, if at all - see SessionJournal.Thinning. */
+        val thinning: SessionJournal.Thinning? = null,
     ) {
         fun wants(sessionId: String): Boolean = sessions?.contains(sessionId) ?: true
+
+        fun budget(): SessionJournal.Budget = SessionJournal.Budget(maxEntries, maxChars, thinning)
 
         companion object {
             val EVERYTHING = CatchUp()
@@ -535,13 +539,29 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
              * One conversation, and its end rather than its whole. Three hundred entries is a long
              * evening of work in one tab, and a megabyte is what a phone can take without the screen
              * standing empty while it arrives.
+             *
+             * Counted in the conversation's own entries, with the subagents' calls and the tasks'
+             * progress thinned on a budget of their own: counted together, a subagent at work for an hour
+             * spent the whole of it on its own steps, and the phone opened on a card's log with no
+             * conversation around it - or on nothing at all, the card itself having fallen off the front.
              */
             fun tailOf(sessionId: String): CatchUp =
-                CatchUp(sessions = setOf(sessionId), maxEntries = REMOTE_MAX_ENTRIES, maxChars = REMOTE_MAX_CHARS)
+                CatchUp(
+                    sessions = setOf(sessionId),
+                    maxEntries = REMOTE_MAX_ENTRIES,
+                    maxChars = REMOTE_MAX_CHARS,
+                    thinning = REMOTE_THINNING,
+                )
 
             const val REMOTE_MAX_ENTRIES = 300
 
             const val REMOTE_MAX_CHARS = 1024L * 1024
+
+            /**
+             * Thirty steps of each subagent is the end of its log as a card on a phone shows it; a hundred
+             * and fifty and half a megabyte together is five of them at work at once.
+             */
+            val REMOTE_THINNING = SessionJournal.Thinning(perStrand = 30, maxEntries = 150, maxChars = 512L * 1024)
         }
     }
 
@@ -727,12 +747,12 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      * Everything a client would need to rebuild the feed comes this way. What does not: the deltas of
      * the answer being printed (see [emitLive]) and answers addressed to whoever asked (see [emitTo]).
      */
-    fun broadcast(sessionId: String, json: String) {
+    fun broadcast(sessionId: String, json: String, strand: SessionJournal.Strand? = null) {
         val trimmed = JournalTrim.trim(json)
         val at = System.currentTimeMillis()
 
         val stamped = synchronized(lock(sessionId)) {
-            val entry = journal(sessionId).append(trimmed, at)
+            val entry = journal(sessionId).append(trimmed, at, strand)
             SessionMessages.stamp(trimmed, entry.seq, entry.at)
         }
 
@@ -843,7 +863,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             return
         }
 
-        broadcast(sessionId, envelope)
+        // A subagent's step or a task's progress is kept as such, so that the journal can let go of a
+        // report the next one repeats and a phone can be handed the conversation rather than the traffic
+        // beside it (see SessionJournal.Strand).
+        broadcast(sessionId, envelope, JournalStrands.of(line))
     }
 
     fun sendStatus(sessionId: String, state: String) {

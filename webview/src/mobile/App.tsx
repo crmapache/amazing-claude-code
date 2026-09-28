@@ -18,7 +18,16 @@ import { CALM_VIVID_FULL } from '../calmColors'
 import { useCalmColors } from '../hooks/useCalmColors'
 import { LocaleProvider, activeLocale } from '../i18n'
 import { RemoteClock } from './clock'
-import { applyMessage, emptyFeed, feedTicks, tickFeed, type MobileFeed } from './feed'
+import {
+  applyMessage,
+  emptyFeed,
+  feedTicks,
+  restoreOverdue,
+  RESTORE_PATIENCE_MS,
+  settleRestore,
+  tickFeed,
+  type MobileFeed,
+} from './feed'
 import { Link, type LinkState, type SessionLaunch } from './link'
 import {
   buildProjects,
@@ -1010,6 +1019,63 @@ export const App = () => {
   }, [states])
 
   /**
+   * A conversation asked for and not answered: ask again, and if the line has gone quiet, dial it again.
+   *
+   * The IDE answers a subscription at once - the restore starts with its very first frame - so a screen
+   * still waiting a few seconds later is waiting for something that is not coming. The request goes out
+   * once and nothing about it is confirmed: sent into a socket that died while the phone was in a pocket,
+   * it was lost with no sign, and "Loading the conversation…" stood until the beat noticed the silence a
+   * minute on, or until somebody gave up and reloaded the page.
+   *
+   * First the request is said again and the line is knocked on; if nothing at all has come back since the
+   * wait began, the line is dead whatever the socket says, and it is dialled afresh - the way back from
+   * that asks for the conversation by itself (see the effect above).
+   */
+  const connectedHere = watching.current ? states[watching.current.agentId] === 'connected' : false
+  useEffect(() => {
+    const current = watching.current
+    if (!current || feed.loaded || feed.restoring || !connectedHere) return
+
+    const since = Date.now()
+    let knocked = false
+
+    const timer = window.setInterval(() => {
+      const link = links.current[current.agentId]
+      if (!link) return
+
+      if (knocked && !link.heardSince(since)) {
+        link.redial()
+        return
+      }
+
+      knocked = true
+      link.wake()
+      link.watch(current.projectKey, current.sessionId, seen.current)
+    }, WATCH_PATIENCE_MS)
+
+    return () => window.clearInterval(timer)
+  }, [screen, feed.loaded, feed.restoring, connectedHere])
+
+  /**
+   * And a restore that went quiet is ended by the clock, not only by the next message - see
+   * restoreOverdue. In a conversation where nothing else is happening there is no next message.
+   */
+  useEffect(() => {
+    if (!feed.restoring) return
+
+    const timer = window.setTimeout(() => {
+      const current = watching.current
+      if (!current) return
+      setFeed((previous) => {
+        const now = clockOf(current.agentId).now()
+        return restoreOverdue(previous, now) ? settleRestore(previous, now) : previous
+      })
+    }, RESTORE_PATIENCE_MS + 1_000)
+
+    return () => window.clearTimeout(timer)
+  }, [feed.restoring, feed.restoringSince, clockOf])
+
+  /**
    * Whether this phone can reach anything at all.
    *
    * The best of the paired IDEs rather than each one separately: the list already says how each one is
@@ -1576,7 +1642,8 @@ export const App = () => {
     stepLog?.state ?? initialPanelState,
     stepScreen && stepLog ? `${stepLog.runId}:${stepLog.key}` : '',
     (before) => {
-      if (!stepScreen || !stepLog) return
+      // A request without a boundary is a log's first page - see the same guard at the desk.
+      if (!stepScreen || !stepLog || before === undefined) return
       command(stepScreen.agentId, stepScreen.projectKey, {
         type: 'scenarioLog',
         runId: stepLog.runId,
@@ -2879,6 +2946,13 @@ const EMPTY_COUNTS = { chat: 0, project: 0, conversations: 0 }
 
 /** How long the typing pauses before a query goes out - the panel's figure (see App.tsx). */
 const SEARCH_DEBOUNCE_MS = 160
+
+/**
+ * How long a conversation asked for may go unanswered before it is asked for again - see the wait for a
+ * conversation in App. The IDE answers at once; this is the round trip through the relay with room to
+ * spare on a poor signal, and short next to a person looking at "Loading".
+ */
+const WATCH_PATIENCE_MS = 8_000
 
 /** How many pages above a jump may fetch on its own - the panel's figure (see App.tsx). */
 const JUMP_PAGE_LIMIT = 40

@@ -617,6 +617,36 @@ class ClaudeHistoryTest {
         assertNull(second.cursor)
     }
 
+    /**
+     * A phone's page is weighed in what its frame is weighed in. The text of a Russian conversation is two
+     * bytes a character, and a page within its budget in characters came out at twice that on the wire -
+     * over the frame, dropped whole, and "load earlier" dead on the conversations with the longest
+     * messages.
+     */
+    @Test
+    fun `a page weighed in bytes holds half as much Cyrillic`() {
+        val lines = (1..10).map {
+            """{"type":"user","uuid":"u$it","message":{"role":"user","content":"${"я".repeat(400)}"}}"""
+        }
+        val budget = lines.takeLast(4).sumOf { it.length }
+
+        val inChars = ClaudeHistory.pageOf(lines, before = null, pageSize = 10, maxChars = budget)
+        val inBytes = ClaudeHistory.pageOf(lines, before = null, pageSize = 10, maxChars = budget, weigh = ClaudeHistory::utf8Bytes)
+
+        assertEquals(4, inChars.lines.size)
+        assertEquals(2, inBytes.lines.size)
+        assertTrue(inBytes.lines.sumOf { ClaudeHistory.utf8Bytes(it) } <= budget)
+    }
+
+    @Test
+    fun `bytes are counted the way UTF-8 counts them`() {
+        assertEquals(1, ClaudeHistory.utf8Bytes("a"))
+        assertEquals(2, ClaudeHistory.utf8Bytes("я"))
+        assertEquals(3, ClaudeHistory.utf8Bytes("€"))
+        assertEquals(4, ClaudeHistory.utf8Bytes("😀"))
+        assertEquals("a я € 😀".toByteArray(Charsets.UTF_8).size, ClaudeHistory.utf8Bytes("a я € 😀"))
+    }
+
     // A boundary that does not exist in this file - a stale uuid from before a resume, say - is treated
     // as "no boundary at all" rather than as an empty page: see the reasoning on ClaudeHistory.page.
     @Test

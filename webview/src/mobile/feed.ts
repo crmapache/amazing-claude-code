@@ -16,7 +16,14 @@ import type { UserToken } from '../feed/types'
 
 export interface MobileFeed {
   state: PanelState
-  /** The last journal number applied, which is what a reconnect asks to continue from. */
+  /**
+   * The last journal number applied, which is what a reconnect asks to continue from.
+   *
+   * Applied rather than received. A restore is held until it is complete (see restoring), and a line that
+   * broke in the middle of one used to leave this at the last entry that had ARRIVED: the phone came back
+   * asking to continue from there, the IDE began a restore from that number, and the half that had been
+   * held was thrown away with the old restore - the conversation came up missing its first part, for good.
+   */
   seq: number
   /** True between restoreStarted and restoreFinished: the entries are collected, then applied at once. */
   restoring: boolean
@@ -40,7 +47,14 @@ export interface MobileFeed {
    * one, with an invitation to say something.
    */
   loaded: boolean
-  pending: Array<{ action: PanelAction; at?: number }>
+  /**
+   * Whether the restore under way was cut short - it holds the end of the conversation with a gap above
+   * it. What decides whose word about that gap counts: a replay's own (see replayFinished) only when the
+   * phone was handed all of it.
+   */
+  restoreCut: boolean
+  /** A restore's entries, held until it is complete - each with its number, applied together with it. */
+  pending: Array<{ action: PanelAction; at?: number; seq?: number }>
 }
 
 /**
@@ -49,7 +63,31 @@ export interface MobileFeed {
  * Generous, because the pieces of one arrive back to back and being early would mean drawing half a
  * conversation; short next to the alternative, which is a screen that never draws it at all.
  */
-const RESTORE_PATIENCE_MS = 20_000
+export const RESTORE_PATIENCE_MS = 20_000
+
+/**
+ * A restore that has gone quiet for longer than [RESTORE_PATIENCE_MS] - see MobileFeed.restoringSince.
+ *
+ * Asked by the screen on a timer of its own as well as by every message that arrives. Asked by the
+ * messages alone, it waited for one: a restore whose closing half was lost in a conversation where
+ * nothing else was happening stood on "Loading the conversation…" for as long as the screen was open.
+ */
+export const restoreOverdue = (feed: MobileFeed, now: number): boolean =>
+  feed.restoring && now - feed.restoringSince > RESTORE_PATIENCE_MS
+
+/**
+ * End a restore with what it has - everything held is applied, and its numbers with it.
+ *
+ * Returns the same feed when there is no restore to end, so a timer that fires late renders nothing.
+ */
+export const settleRestore = (feed: MobileFeed, now: number): MobileFeed => {
+  if (!feed.restoring) return feed
+
+  const state = feed.pending.reduce((panel, entry) => reducePanel(panel, entry.action, entry.at ?? now), feed.state)
+  const seq = feed.pending.reduce((last, entry) => entry.seq ?? last, feed.seq)
+
+  return { ...feed, state, seq, loaded: true, restoring: false, restoringSince: 0, pending: [] }
+}
 
 export const emptyFeed = (): MobileFeed => ({
   state: initialPanelState,
@@ -57,6 +95,7 @@ export const emptyFeed = (): MobileFeed => ({
   restoring: false,
   restoringSince: 0,
   loaded: false,
+  restoreCut: false,
   pending: [],
 })
 
@@ -106,26 +145,17 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
   const at = message.at ?? now
   const seq = message.seq ?? feed.seq
 
-  const restored = (feed: MobileFeed): PanelState =>
-    feed.pending.reduce((panel, entry) => reducePanel(panel, entry.action, entry.at ?? now), feed.state)
-
   const collect = (action: PanelAction): MobileFeed => {
     if (feed.restoring) {
-      // Still arriving: held with the rest, and the clock of the wait moves with it.
-      if (now - feed.restoringSince <= RESTORE_PATIENCE_MS) {
-        return { ...feed, seq, restoringSince: now, pending: [...feed.pending, { action, at }] }
+      // Still arriving: held with the rest, and the clock of the wait moves with it. Its number waits with
+      // it - see MobileFeed.seq.
+      if (!restoreOverdue(feed, now)) {
+        return { ...feed, restoringSince: now, pending: [...feed.pending, { action, at, seq: message.seq }] }
       }
 
       // Nothing came for long enough that the closing half is not coming at all - see restoringSince.
-      return {
-        ...feed,
-        seq,
-        loaded: true,
-        restoring: false,
-        restoringSince: 0,
-        pending: [],
-        state: reducePanel(restored(feed), action, at),
-      }
+      const settled = settleRestore(feed, now)
+      return { ...settled, seq: Math.max(settled.seq, seq), state: reducePanel(settled.state, action, at) }
     }
 
     return { ...feed, seq, loaded: true, state: reducePanel(feed.state, action, at) }
@@ -135,7 +165,13 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
     case 'restoreStarted': {
       // `from` of zero means this client had nothing, so whatever is on screen is not a shorter version
       // of what is coming - it is a different conversation's remains.
-      const state = message.from === 0 ? initialPanelState : feed.state
+      //
+      // And a restore that is cut short replaces the screen too, whatever number it continues from. It is
+      // the end of the conversation with a gap before it, and kept under what was already on screen, the
+      // gap stood in the middle of the feed - a mark between yesterday's messages and today's, with no
+      // way to fill it: the pages above come from the top of the feed, not from its middle. Replaced, the
+      // feed is the end again with the mark on top, and everything the phone had is a page away.
+      const state = message.from === 0 || message.truncated ? initialPanelState : feed.state
       // Worded differently from the panel's mark on purpose: at the desk the beginning is genuinely
       // gone, while here it usually still exists on the machine and simply was not sent - a phone is
       // handed the end of a conversation rather than a working day of it (see ClaudeSessionHub.CatchUp).
@@ -152,19 +188,13 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
           ]
         : []
 
-      return { ...feed, state, restoring: true, restoringSince: now, pending }
+      return { ...feed, state, restoring: true, restoringSince: now, restoreCut: message.truncated === true, pending }
     }
 
     case 'restoreFinished': {
-      return {
-        ...feed,
-        state: restored(feed),
-        seq: message.upTo,
-        restoring: false,
-        restoringSince: 0,
-        loaded: true,
-        pending: [],
-      }
+      // A restore only begins with restoreStarted, and a closing half with no beginning is the end of one
+      // that has already been settled by its silence - applied, and there is nothing left to hold.
+      return { ...settleRestore({ ...feed, restoring: true }, now), seq: message.upTo }
     }
 
     case 'agent':
@@ -270,8 +300,22 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
     case 'processReplaced':
       return collect({ kind: 'processReplaced' })
 
+    /*
+     * A past conversation opened in the tab has finished replaying, and the IDE says what lies above the
+     * page it replayed (see replayTranscript in the hub) - the boundary the next page is asked for by, or
+     * that the beginning is already there.
+     *
+     * The phone used to throw that word away and rely on a mark of its own, which a restore sets only when
+     * the journal was cut: a conversation opened from the history into a fresh tab has a whole journal, so
+     * the phone showed the replayed page with nothing above it and no way to load the rest, while the desk
+     * beside it offered exactly that. Taken only from a restore that handed over all of the replay - one
+     * cut short holds its end, and the top of the page it was cut from is not the top of what is on screen.
+     */
     case 'replayFinished':
-      return collect({ kind: 'replayFinished' })
+      return collect({
+        kind: 'replayFinished',
+        cursor: feed.restoring && !feed.restoreCut ? (message.cursor ?? null) : undefined,
+      })
 
     case 'streamingText':
       return collect({ kind: 'streamPrimed', text: message.text, thinking: message.thinking })

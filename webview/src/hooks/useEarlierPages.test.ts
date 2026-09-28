@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_EXTRA_PAGES, MIN_ROWS_PER_PRESS, shouldAskAgain } from './useEarlierPages'
+import type { FeedItem } from '../feed/types'
+import { MAX_EXTRA_PAGES, MIN_ROWS_PER_PRESS, mayAskEarlier, shouldAskAgain } from './useEarlierPages'
 
 /**
  * When one press of "load earlier" is over.
@@ -37,5 +38,31 @@ describe('whether a press of "load earlier" has more to fetch', () => {
   it('stops after its share of pages, however little each brought', () => {
     expect(shouldAskAgain(arrived(0), MAX_EXTRA_PAGES - 1)).toBe(true)
     expect(shouldAskAgain(arrived(0), MAX_EXTRA_PAGES)).toBe(false)
+  })
+})
+
+describe('whether the mark over the feed can be pressed', () => {
+  const mark: FeedItem = { id: 'm', kind: 'checkpoint', chip: 'EARLIER', target: '', targetKey: 'notOnPhone' }
+
+  it('can, with something on screen to name', () => {
+    expect(mayAskEarlier({ oldestEventUuid: 'u1', reachedStart: false, items: [] })).toBe(true)
+  })
+
+  /**
+   * A phone opening a tab whose recent traffic is all a fleet's progress has the mark and nothing it can
+   * name. It used to be a caption for good - "earlier messages are not shown on the phone" over an empty
+   * feed; it asks for the newest page on disk instead.
+   */
+  it('can, over a feed that begins partway through with nothing to name', () => {
+    expect(mayAskEarlier({ oldestEventUuid: undefined, reachedStart: false, items: [mark] })).toBe(true)
+  })
+
+  /** A whole conversation with nothing yet to name - a fresh tab - has nothing above it. */
+  it('cannot over a feed that is the whole conversation', () => {
+    expect(mayAskEarlier({ oldestEventUuid: undefined, reachedStart: false, items: [] })).toBe(false)
+  })
+
+  it('cannot once the beginning is on screen', () => {
+    expect(mayAskEarlier({ oldestEventUuid: 'u1', reachedStart: true, items: [mark] })).toBe(false)
   })
 })

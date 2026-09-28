@@ -655,6 +655,31 @@ export class Link {
     this.answering = null
   }
 
+  /**
+   * Whether anything at all has arrived over this line since [moment] - a frame of any kind, opened or
+   * not (see receive).
+   */
+  heardSince(moment: number): boolean {
+    return this.lastHeard >= moment
+  }
+
+  /**
+   * Drop the line in hand and dial again, now.
+   *
+   * For a line that looks open and carries nothing. A phone taken out of a pocket often holds exactly
+   * that: the socket still says OPEN, the connection behind it died while the page was asleep, and the
+   * beat would notice only once the silence ran past its patience - more than a minute of a conversation
+   * on "Loading" while a person stares at it. The screen knows sooner, because it asked for something the
+   * IDE always answers at once (see App's wait for a conversation).
+   */
+  redial(): void {
+    if (this.closed || this.retired) return
+
+    // The socket in hand goes first and silently - connect sees to that.
+    this.attempts = 0
+    void this.connect()
+  }
+
   /** Ask to watch one conversation, from the number this device already has. */
   watch(projectKey: string, sessionId: string, since: number): void {
     this.send({ p: PROTOCOL_VERSION, k: 'subscribe', pj: projectKey, s: sessionId, q: since })
