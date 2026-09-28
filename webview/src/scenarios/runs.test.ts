@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import type { ScenarioRunSummary } from '../protocol'
-import { DOUBLE_PRESS_MS, liveDot, pastRuns, pressedAgain, runDot, runMarks, runningRuns, runsOf } from './runs'
+import {
+  answerLabel,
+  DOUBLE_PRESS_MS,
+  liveDot,
+  pastRuns,
+  pressedAgain,
+  runDot,
+  runMarks,
+  runningRuns,
+  runsOf,
+} from './runs'
 
 /**
  * Splitting the runs into what is going and what is over, and naming them apart.
@@ -216,6 +226,52 @@ describe('runMarks', () => {
     ])
 
     expect(marks.a).toBe('x'.repeat(40))
+  })
+
+  /**
+   * Caught on a phone: two runs of one scenario against two Notion pages. Cut to a label's width, both
+   * marks read "https://app.notion.com/p/" and nothing else.
+   */
+  it('names a link by the page it points at rather than by its head', () => {
+    const marks = runMarks([
+      { id: 'a', scenarioId: 's1', inputs: { task: 'https://app.notion.com/p/Shopify-checkout-2a3f5c' }, startedAt: 1 },
+      { id: 'b', scenarioId: 's1', inputs: { task: 'https://app.notion.com/p/Name-cleanup-9b1e07' }, startedAt: 2 },
+    ])
+
+    expect(marks.a).toBe('Shopify-checkout-2a3f5c')
+    expect(marks.b).toBe('Name-cleanup-9b1e07')
+  })
+})
+
+describe('answerLabel', () => {
+  it('keeps plain answers as they are', () => {
+    expect(answerLabel({ ticket: 'ACC-12' })).toBe('ACC-12')
+    expect(answerLabel({ empty: '  ', ticket: 'ACC-12' })).toBe('ACC-12')
+    expect(answerLabel({})).toBe('')
+  })
+
+  /** "45" alone could be anything; the segment before it says what it is a number of. */
+  it('keeps what a bare number is a number of', () => {
+    expect(answerLabel({ pr: 'https://github.com/crmapache/amazing-claude-code/pull/45' })).toBe('pull/45')
+    expect(answerLabel({ issue: 'https://github.com/org/repo/issues/123/' })).toBe('issues/123')
+  })
+
+  it('reads a segment the way a person would, and drops the query', () => {
+    expect(answerLabel({ page: 'https://www.notion.so/team/%D0%9F%D0%BB%D0%B0%D0%BD-abc?pvs=4' })).toBe('План-abc')
+    expect(answerLabel({ ticket: 'https://acme.atlassian.net/browse/PROJ-812#comment' })).toBe('PROJ-812')
+  })
+
+  it('names a link with no path by its host', () => {
+    expect(answerLabel({ site: 'https://www.example.com/' })).toBe('example.com')
+  })
+
+  /** A line that only starts with a link is a sentence about it, and stays one. */
+  it('leaves text that merely contains a link alone', () => {
+    expect(answerLabel({ note: 'see https://example.com/a for context' })).toBe('see https://example.com/a for context')
+  })
+
+  it('cuts to the length it is asked for', () => {
+    expect(answerLabel({ page: 'https://app.notion.com/p/Shopify-checkout-2a3f5c' }, 8)).toBe('Shopify-')
   })
 })
 

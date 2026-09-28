@@ -1287,15 +1287,13 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
      * is the ONLY surface a run has while the panel is closed, which is most of the time a run is alive.
      *
      * The first answer somebody gave it, because that is what tells two starts of one round of work apart
-     * - the ticket, the branch. Two runs given the same answers, or a scenario that asks nothing, fall
-     * back to the minute they started at. The panel works the same thing out for its tabs and rows in ten
-     * languages of its own (see runMarks); this side has one language and needs it for one line.
+     * - the ticket, the branch; a link by the page it points at (see AnswerLabel). Two runs given the same
+     * answers, or a scenario that asks nothing, fall back to the minute they started at. The panel works
+     * the same thing out for its tabs and rows in ten languages of its own (see runMarks); this side has
+     * one language and needs it for one line.
      */
     private fun markOf(record: ScenarioRun): String {
-        val answer = record.inputs.values
-            .firstOrNull { it.isNotBlank() }
-            ?.lineSequence()?.firstOrNull()?.trim()?.take(MARK_CHARS)
-            .orEmpty()
+        val answer = AnswerLabel.of(record.inputs, MARK_CHARS)
 
         // The clock is added whenever another run of the same scenario is about, and not only when there
         // is no answer to use: the commonest second start is the same round of work against the same

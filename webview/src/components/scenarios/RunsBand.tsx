@@ -2,7 +2,7 @@ import type { ScenarioRunSummary } from '../../protocol'
 import { formatTokens } from '../../feed/build'
 import { formatDuration } from '../../feed/tools'
 import { startedLabel } from '../../scenarios/moments'
-import { runMarks } from '../../scenarios/runs'
+import { answerLabel, runMarks } from '../../scenarios/runs'
 import { runElapsed } from '../../scenarios/timeline'
 import { useTicking } from '../../hooks/useTicking'
 import { useLocale, useT } from '../../i18n'
@@ -298,8 +298,8 @@ const LiveRun = ({
   )
 }
 
-/** The first answer this run was given - the ticket, usually. What tells two nights of one scenario apart. */
-const answerOf = (run: ScenarioRunSummary): string => {
-  const said = Object.values(run.inputs ?? {}).find((value) => value.trim().length > 0) ?? ''
-  return said.split('\n')[0]?.trim().slice(0, 24) ?? ''
-}
+/**
+ * The first answer this run was given - the ticket, usually. What tells two nights of one scenario apart.
+ * Shorter than a live run's mark: here it shares a table column with the scenario's name.
+ */
+const answerOf = (run: ScenarioRunSummary): string => answerLabel(run.inputs, 24)

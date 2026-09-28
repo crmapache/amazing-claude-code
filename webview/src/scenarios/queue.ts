@@ -1,4 +1,5 @@
 import type { ScenarioQueued, ScenarioQueueState, ScenarioRunSummary } from '../protocol'
+import { answerLabel } from './runs'
 
 /**
  * What the queue is doing, and what to call the turns waiting in it.
@@ -8,9 +9,6 @@ import type { ScenarioQueued, ScenarioQueueState, ScenarioRunSummary } from '../
  * first change, and the way that shows is the worst thing this screen can do - a queue drawn as going
  * while it has actually stopped, on the one screen somebody checks before going to bed.
  */
-
-/** How much of an answer stands as a turn's name. Longer than that is a paragraph, not a label. */
-const MARK_CHARS = 40
 
 /**
  * Where the queue stands, in the one order the three questions have to be asked in.
@@ -105,13 +103,7 @@ const runMark = (
     live.some((one) => one.id !== run.id && one.scenarioId === run.scenarioId) ||
     queue.waiting.some((entry) => entry.scenarioId === run.scenarioId)
 
-  return twin ? firstAnswer(run.inputs) : ''
-}
-
-/** The first answer somebody gave, cut to one line of a sensible length - it is free text and can be a paragraph. */
-const firstAnswer = (inputs: Record<string, string> | undefined): string => {
-  const answer = Object.values(inputs ?? {}).find((value) => value.trim().length > 0) ?? ''
-  return answer.split('\n')[0]?.trim().slice(0, MARK_CHARS) ?? ''
+  return twin ? answerLabel(run.inputs) : ''
 }
 
 /**
@@ -156,7 +148,7 @@ export const queueMarks = (waiting: ScenarioQueued[]): Record<string, string> =>
   for (const entry of waiting) {
     const only = waiting.every((other) => other.id === entry.id || other.scenarioId !== entry.scenarioId)
 
-    marks[entry.id] = only ? '' : firstAnswer(entry.inputs)
+    marks[entry.id] = only ? '' : answerLabel(entry.inputs)
   }
 
   return marks

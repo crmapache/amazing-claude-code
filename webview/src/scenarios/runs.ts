@@ -121,10 +121,7 @@ export const runMarks = (
   runs: { id: string; scenarioId: string; inputs: Record<string, string>; startedAt: number }[],
 ): Record<string, string> => {
   const said = new Map<string, string>()
-  for (const run of runs) {
-    const answer = Object.values(run.inputs ?? {}).find((value) => value.trim().length > 0) ?? ''
-    said.set(run.id, answer.split('\n')[0]?.trim().slice(0, MARK_CHARS) ?? '')
-  }
+  for (const run of runs) said.set(run.id, answerLabel(run.inputs))
 
   const marks: Record<string, string> = {}
   for (const run of runs) {
@@ -160,6 +157,54 @@ const clockOf = (at: number): string => {
 
 /** How much of an answer stands as a run's name. Longer than that is a paragraph, not a label. */
 const MARK_CHARS = 40
+
+/**
+ * What a run's first answer is called wherever it stands beside the scenario's name - the marks of live
+ * runs, the table of past ones, the turns on the queue. One rule for all of them, and the same one the IDE
+ * names its notifications by (AnswerLabel.kt).
+ *
+ * The first line of the first answer given, cut to a label's length - an answer is free text and can be a
+ * paragraph. And for a link, the part of it that names something. A pasted link is the commonest answer
+ * there is - the ticket, the Notion page, the pull request - and its head is the same for every run:
+ * "https://app.notion.com/p/" comes before anything that tells one page from another. Cut to a label, two
+ * runs against two pages came out as the same words, which is the one thing a mark exists to prevent. So a
+ * link is named by its last path segment - the page, the ticket - and a bare number by the segment before
+ * it as well ("pull/45", "issues/123"), since "45" alone could be anything. A link with no path is its host.
+ */
+export const answerLabel = (inputs: Record<string, string> | undefined, chars: number = MARK_CHARS): string => {
+  const answer = Object.values(inputs ?? {}).find((value) => value.trim().length > 0) ?? ''
+  return linkName(answer.split('\n')[0]?.trim() ?? '').slice(0, chars)
+}
+
+/** A line that is one http(s) link, named by what it points at - see answerLabel. Anything else as it is. */
+const linkName = (line: string): string => {
+  if (!/^https?:\/\/\S+$/i.test(line)) return line
+
+  let url: URL
+  try {
+    url = new URL(line)
+  } catch {
+    return line
+  }
+
+  const parts = url.pathname
+    .split('/')
+    .filter((part) => part.length > 0)
+    .map(decoded)
+  const last = parts[parts.length - 1]
+  if (!last) return url.hostname.replace(/^www\./, '')
+
+  return /^\d+$/.test(last) && parts.length > 1 ? `${parts[parts.length - 2]}/${last}` : last
+}
+
+/** A path segment as a person would read it; one with a broken escape as it came. */
+const decoded = (part: string): string => {
+  try {
+    return decodeURIComponent(part)
+  } catch {
+    return part
+  }
+}
 
 /**
  * How close two presses of Run have to be to count as one.

@@ -3064,10 +3064,18 @@
   display: flex;
   align-items: center;
   gap: var(--acc-sp-2);
+  /* The card's width, said out loud. This head is a button, and a button left to itself is as wide as what
+     it holds rather than as the card around it - so nothing in it ever had to shrink: a run named by a
+     Notion link laid the whole link out past the card's edge, and the screen scrolled sideways. A button
+     also centres its text of its own accord, which a card this wide would show. */
+  width: 100%;
+  text-align: left;
 }
 
+/* The name does not grow: the mark qualifies it and stands right after it, and the chevron goes to the
+   edge on its own margin, where every other row on the phone has it. */
 .runCardName {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3075,6 +3083,10 @@
   font-size: 15.5px;
   font-weight: 600;
   color: var(--acc-fg);
+}
+
+.runCardHead > .taskRowChevron {
+  margin-left: auto;
 }
 
 /*
@@ -3739,8 +3751,11 @@
 
 /* Which run of its scenario this is - a ticket, or the minute it started (see runMarks). */
 .runCardMark {
-  flex: none;
+  /* It gives way to the scenario's name and never takes more than a share of the line - the same rule as
+     the desk's (see .runCardMark in scenarios.module.css). */
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 45%;
   padding: 1px 6px;
   border-radius: var(--acc-r-xs);
   background: var(--acc-neutral-12);

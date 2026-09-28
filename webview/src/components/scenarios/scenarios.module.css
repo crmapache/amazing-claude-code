@@ -865,12 +865,21 @@
   text-overflow: ellipsis;
 }
 
-/* Which run of the scenario this is - a ticket, or the minute it started (see runMarks). */
+/*
+ * Which run of the scenario this is - a ticket, or the minute it started (see runMarks).
+ *
+ * The mark gives way to the name, never the other way round, and never takes more than a share of the
+ * line. An answer is free text: a branch pasted into the start form is sixty characters, a Notion link
+ * more. Left unshrinkable it took the whole table column - the row read "R." and a ticket, a table of runs
+ * that had stopped saying which scenario they were - and on the phone the same card laid the link out past
+ * the screen's edge. The table had this rule first; the card and the run's own head have it now too.
+ */
 .runCardMark,
 .runMark,
 .tableMark {
-  flex: none;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 45%;
   padding: 1px 6px;
   border-radius: var(--acc-r-xs);
   background: var(--acc-neutral-12);
@@ -879,18 +888,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/*
- * In the table the mark gives way to the name, never the other way round.
- *
- * A branch pasted into the start form is sixty characters of answer, and left unshrinkable it took the
- * whole column: the row read "R." and a ticket - which is a table of runs that has stopped saying which
- * scenario they were.
- */
-.tableMark {
-  flex: 0 1 auto;
-  max-width: 45%;
 }
 
 .runCardButtons {
