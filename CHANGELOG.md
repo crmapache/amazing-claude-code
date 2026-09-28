@@ -9,6 +9,15 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-09-27
+
+- Added: a conversation's tab can be renamed. Double-click its name, type, and press Enter; Escape keeps the old one, and clicking elsewhere keeps what you typed. `/rename New name` in the input field does the same, and `/rename` alone opens the field on the tab. The name goes into Claude Code's own record of the conversation, so the history, the search and `claude --resume` in a terminal show it too, and the model no longer renames a conversation you have named. A tab you named comes back after a restart even if nothing was written in it yet. After Enter or Escape the keyboard is back in the input field.
+- Fixed: `/rename` typed in the panel reached Claude Code, which renamed only its record and left the tab with the old name - and without a name it made one up from the conversation, something like "temperature-deprecation-fix". The panel handles it itself now. `/rename` sent from the phone still goes to Claude Code, and the tab takes the name from its record once the command is done. A name you gave is shown in full when the conversation is opened from the history or the search, on the phone too. The conversation search rebuilds its index once after this update, so that it knows the names.
+- Added: `/config` opens a "Claude Code settings" screen instead of printing a long list of `key=value` lines. It is also under Settings in the menu. Switches and choices change Claude Code's own settings - the ones `/config` changes in a terminal - and every change is written by Claude Code itself, so they apply in a terminal as well. A setting your project overrides says so and cannot be changed from there, and the few settings Claude Code keeps per project are marked as such. `/config key=value` still goes to Claude Code as typed.
+- Fixed: a new tab could show one model and effort on its selectors and then start on another - Sonnet on the selector, answers from Opus - with the selector switching after the first answer. The panel drew the selector from this IDE's last pick, while the tab was launched on what the chosen Claude account was last left on; the two part ways after switching accounts, or after picking a model in another IDE on the same machine. One answer now decides both, and "As last chosen" under "New chats" names it too. A new chat started from the phone and a scenario run start on the same answer.
+- Fixed: a message typed into an empty input field and sent within a moment could come back into the field after the IDE restarted, and a command there then ran together with the next one - `/rename/rename` went to the agent as text.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.1] - 2026-09-25
 
 - Fixed: after signing in again from the sign-in screen, the accounts screen went on saying "No stored credential" over the very account you had just signed in to, beside a chat plainly running on it - while another project, opened later, showed it right. The screen asked about each account itself, at most once a minute, and did not listen to the sign-in check that had just seen the credential land. It takes that answer now and turns right the moment the sign-in lands; the other open projects learn it at once too, instead of keeping the sign-in screen up for several minutes. Signing in again through "Add an account" to an account already on the list is picked up by every open project straight away as well.
@@ -765,7 +774,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.1...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.2...HEAD
+[0.13.2]: https://github.com/crmapache/amazing-claude-code/compare/0.13.1...0.13.2
 [0.13.1]: https://github.com/crmapache/amazing-claude-code/compare/0.13.0...0.13.1
 [0.13.0]: https://github.com/crmapache/amazing-claude-code/compare/0.12.19...0.13.0
 [0.12.19]: https://github.com/crmapache/amazing-claude-code/compare/0.12.18...0.12.19
