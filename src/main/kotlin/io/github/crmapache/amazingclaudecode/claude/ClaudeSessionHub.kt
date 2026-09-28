@@ -154,7 +154,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             accounts.sendList()
         },
         // The figures on the rings belong to the account they were asked about - see ProjectUsage.forget.
-        onAccountChanged = { account -> usage.forget(account) },
+        onAccountChanged = { account, identity -> usage.forget(account, identity) },
         onAnswered = { account, status, askedAt -> accounts.heard(account, status, askedAt) },
         // The other projects put the question again themselves rather than being handed this answer: it
         // was asked from this project's directory, and each of them lifts its own gate and draws its own

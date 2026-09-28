@@ -152,6 +152,21 @@ class UsageProbesTest {
         )
     }
 
+    // The answer to a postponed question reaches every open project, so one of them waiting is enough: a
+    // place per project queued one question per project, each going the moment the previous one freed the
+    // pace - the burst that makes the endpoint refuse.
+    @Test
+    fun `one question per account waits out the pace, however many ask`() {
+        val probes = UsageProbes()
+
+        assertTrue(probes.hold("work"))
+        assertFalse(probes.hold("work"))
+        assertTrue(probes.hold("home"))
+
+        probes.release("work")
+        assertTrue(probes.hold("work"))
+    }
+
     // Signing out of an account leaves its window behind, and the next account to answer with a window
     // of its own would look like a copy of a subscription this machine no longer reaches.
     @Test

@@ -42,6 +42,9 @@ internal class UsageProbes {
 
     private val seen = HashMap<String, Seen>()
 
+    /** The accounts with a question already waiting out the pace - see [hold]. */
+    private val waiting = HashSet<String>()
+
     /**
      * Take the right to ask this account about its usage, or find out how long is left until it comes
      * free. Zero means "ask now, and it is written down"; anything else is milliseconds to wait.
@@ -59,6 +62,26 @@ internal class UsageProbes {
 
         askedAt[account] = now
         return 0
+    }
+
+    /**
+     * Take the one place for a question about this account that waits out the pace instead of being
+     * dropped, or find it taken (false).
+     *
+     * One place for the whole IDE rather than one per project, because the answer is the whole IDE's
+     * (see AccountUsage): the accounts screen asks for every row at once, several projects open at once
+     * each ask for their rings, and a question already on its way answers all of them. A place per
+     * project queued one question per project behind one another - each of them the moment the previous
+     * one freed the pace, a burst of exactly the kind that makes the endpoint refuse.
+     *
+     * Whoever takes it gives it back with [release] when the wait is over, before asking.
+     */
+    @Synchronized
+    fun hold(account: String): Boolean = waiting.add(account)
+
+    @Synchronized
+    fun release(account: String) {
+        waiting.remove(account)
     }
 
     /**

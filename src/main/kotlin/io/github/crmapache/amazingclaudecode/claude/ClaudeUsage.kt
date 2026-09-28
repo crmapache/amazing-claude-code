@@ -129,7 +129,8 @@ internal object ClaudeUsage {
      *   back;
      * - a window newer than the known one - we start counting afresh, from it.
      *
-     * The instance lives with the panel: this is its memory of what has already been seen.
+     * One instance per account for the whole IDE (see AccountUsage): this is the memory of what has
+     * already been seen, and every open project's answers are folded into the same one.
      */
     class Tracker {
 

@@ -7,11 +7,7 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.atomic.AtomicReference
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
@@ -19,7 +15,6 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
-import kotlinx.serialization.json.putJsonObject
 
 /**
  * Everything the panel counts rather than draws: the subscription's usage windows, today's tokens, the
@@ -33,6 +28,11 @@ import kotlinx.serialization.json.putJsonObject
  * It owns nothing: neither the conversations nor the channel into the interface. Both arrive as
  * functions, because both change during the panel's life - the conversations appear only with the
  * browser, and there is no channel at all until the page is ready.
+ *
+ * Nor does it own the subscription's figures, only the questions about them. What it learns belongs to
+ * the account and goes to every open project (see AccountUsage) - kept here, it left every other project
+ * with whatever it had learned itself, which for a project that kept losing the right to ask was nothing
+ * for the better part of an hour.
  */
 internal class ProjectUsage(
     private val workingDirectory: String?,
@@ -47,80 +47,13 @@ internal class ProjectUsage(
     private val sessions: ClaudeSessions get() = hub.conversations
 
     /**
-     * Everything counted here, kept per Claude account.
-     *
-     * Per account rather than one set of figures, because two accounts genuinely run at once now: a
-     * conversation carries its account for its whole life (see ClaudeSession), so a tab on one account
-     * and a tab on another are both live, both answering about their own subscription, and both feeding
-     * this. Held as one picture they would interleave - one account's five-hour window beside the
-     * other's weekly one, which is exactly the corruption [forget] was written to undo, except that no
-     * switch would be needed to produce it.
-     *
-     * Keyed by the account id, with the empty string for the CLI's ordinary sign-in.
+     * What is known about each account's usage, for the whole IDE: every answer asked from here is folded
+     * into it and goes to every open project, this one included.
      */
-    private class PerAccount {
-        /**
-         * The memory of the usage windows: snapshots arrive by two routes with different lags, and
-         * folding them into one truthful picture is that memory's work (see [ClaudeUsage.Tracker]), not
-         * the panel's.
-         */
-        val windows = ClaudeUsage.Tracker()
-
-        /**
-         * Extra usage - the work that goes on past an exhausted limit, paid for on top of the plan.
-         *
-         * It is put together out of two different routes, because neither one alone knows the whole of
-         * it: the stream's limit events say whether it is being spent right now (see [noteRateLimit]),
-         * the answer to `get_usage` how much of the month's budget for it has already gone. Kept here
-         * rather than sent onwards as it comes, so that a message about one of the two does not wipe the
-         * other.
-         *
-         * Null until the first limit event arrives - "we do not know yet" rather than "no". The
-         * difference matters exactly once per launch, and it is the whole of a bug: the CLI repeats the
-         * event on every turn while the state holds, so the first one after a restart says "money is
-         * being spent" about a state that began hours ago. Read as a change from "no", that fires a
-         * notification to every paired phone - and once per open project, so three projects and one
-         * restart meant three buzzes about one morning's spending.
-         */
-        val extraActive = AtomicReference<Boolean?>(null)
-
-        /**
-         * Which window the extra usage is spent past, in the CLI's words. The panel decides by it which
-         * of its rings burns: a used-up five-hour window and a used-up weekly one arrive as the same
-         * event and are two different rings on the screen.
-         */
-        @Volatile
-        var extraWindow = ""
-
-        @Volatile
-        var extraKnown: ClaudeUsage.Extra? = null
-
-        /**
-         * When a ping for the usage was last raised BY THIS PROJECT. The polling goes every half-minute,
-         * but for a sleeping panel every round costs a separate process for a few seconds, while usage
-         * barely moves without conversations - so we ping less often (see [refreshLimits]).
-         *
-         * How often the SERVER may be asked is a different question with a different owner: it counts
-         * per account, across every open project, and lives in [UsageProbes].
-         */
-        val lastPing = AtomicLong(0)
-
-        /**
-         * Whether a ping is already waiting out the machine-wide pace before it goes.
-         *
-         * Without it every urgent request that arrives during that wait would queue one of its own: the
-         * accounts screen alone asks for every row at once, and reopening it a second later would double
-         * the queue rather than reuse the answer already on its way.
-         */
-        val waiting = AtomicBoolean(false)
-    }
-
-    private val perAccount = ConcurrentHashMap<String, PerAccount>()
+    private val book: AccountUsage get() = AccountUsage.getInstance()
 
     /** How often the server may be asked about an account, and whether its answer is about it at all. */
     private val probes: UsageProbes get() = UsageProbes.getInstance()
-
-    private fun of(account: String): PerAccount = perAccount.getOrPut(account) { PerAccount() }
 
     /** Whose figures a question with nobody named is about: the account new conversations start on. */
     private fun currentAccount(): String = ClaudeAccounts.getInstance().currentId
@@ -149,8 +82,13 @@ internal class ProjectUsage(
      * The whole usage at once, at the panel's own request: both the subscription windows and the day's
      * tokens. It asks for this when it opens - so we ask straight away, without looking at the ping's
      * threshold.
+     *
+     * What the IDE already knows goes first: another project may have learned the figures a moment ago,
+     * and they are as true for this panel as for that one - without them the rings stand empty for as
+     * long as the pace makes this question wait.
      */
     fun refreshAll() {
+        book.pictures().forEach(hub::broadcastProject)
         refreshLimits(urgent = true)
         refreshTodayTokens()
     }
@@ -168,9 +106,11 @@ internal class ProjectUsage(
      *
      * A ping costs starting a process for a few seconds, so it does not go on every round but by a
      * threshold of its own: without work, usage grows only from a terminal or a browser - which is what
-     * the threshold is left for, instead of not asking at all. [urgent] lifts it: that is how the panel
-     * asks when it opens and when it retries, where the figures are needed now rather than "next
-     * round".
+     * the threshold is left for, instead of not asking at all. The threshold is the account's rather
+     * than this project's: the answer goes to every open project (see AccountUsage), so a question any
+     * of them put inside the last minute has already answered this round too. [urgent] lowers it to the
+     * server's own pace: that is how the panel asks when it opens and when it retries, where the figures
+     * are needed now rather than "next round".
      */
     fun refreshLimits(
         attempt: Int = 0,
@@ -212,8 +152,8 @@ internal class ProjectUsage(
         if (live != null) {
             // A question into a process already up costs nothing of ours, but it still goes to the
             // server, and the server counts those per account (see UsageProbes). Refused here means
-            // simply skipping this round: the next one is half a minute away and nothing on screen is
-            // waiting for this one.
+            // simply skipping this round: whoever was granted the question is asking about this very
+            // account, and its answer comes to this project's rings as well.
             if (probes.claim(account, UsageProbes.URGENT_GAP_MS) > 0) return
 
             sessions.requestUsage(
@@ -232,27 +172,23 @@ internal class ProjectUsage(
             return
         }
 
-        val held = of(account)
-        val now = System.currentTimeMillis()
-        val since = now - held.lastPing.get()
-        if (!urgent && since < TimeUnit.SECONDS.toMillis(PING_MIN_SECONDS)) return
-
-        // And the machine-wide pace on top of this project's own. It is the one that matters for the
-        // truth of the figures: asked too often, the usage endpoint starts refusing, and a refused
-        // request is not an empty answer - the CLI quietly answers out of a cache shared by every
-        // account, so the refusal arrives as another account's percentages under this account's name.
+        // The machine-wide pace, one register for the account across every open project. It is the one
+        // that matters for the truth of the figures: asked too often, the usage endpoint starts refusing,
+        // and a refused request is not an empty answer - the CLI quietly answers out of a cache, up to an
+        // hour old, and says nothing about having done so.
         //
         // An urgent request is not dropped by it but postponed: the accounts screen asks for a figure
         // beside every row, and a row that stays empty because a neighbour asked first is the very
-        // thing that screen exists to avoid.
-        val wait = probes.claim(account, UsageProbes.URGENT_GAP_MS)
+        // thing that screen exists to avoid. One postponed question per account covers everyone who
+        // asks meanwhile - its answer reaches them all.
+        val wait = probes.claim(account, if (urgent) UsageProbes.URGENT_GAP_MS else PING_GAP_MS)
         if (wait > 0) {
             if (!urgent) return
-            if (!held.waiting.compareAndSet(false, true)) return
+            if (!probes.hold(account)) return
 
             AppExecutorUtil.getAppScheduledExecutorService().schedule(
                 {
-                    held.waiting.set(false)
+                    probes.release(account)
                     refreshLimits(attempt, preferred, urgent = true, viaPing = true, account = account)
                 },
                 wait + WAIT_SLACK_MS,
@@ -260,8 +196,6 @@ internal class ProjectUsage(
             )
             return
         }
-
-        held.lastPing.set(now)
 
         // The ping runs in that account's own environment, which is what lets an account be asked about
         // without switching to it: the credential travels per process. It is also what puts real figures
@@ -283,43 +217,24 @@ internal class ProjectUsage(
     }
 
     /**
-     * The sign-in has moved to another account: everything counted here was about the previous one.
+     * The sign-in has moved to another account: everything counted about it was about the previous one.
      *
-     * Thrown away rather than left to be overwritten by the next answer, because it would not be. A
-     * weekly window the new account has not opened yet arrives with no reset time at all, and the memory
-     * of the windows - rightly, for its usual job - keeps the known share in that case (see
-     * [ClaudeUsage.Tracker]). That is exactly how the panel came to show a five-hour window of one
-     * account beside a weekly window of another.
+     * [identity] is who the sign-in is now, when this is a switch being noticed: every open project
+     * notices it for itself, and the figures, which are the whole IDE's, go only once (see
+     * AccountUsage.forget).
      */
-    fun forget(account: String = currentAccount()) {
-        val held = of(account)
+    fun forget(account: String = currentAccount(), identity: String? = null) {
+        // The catalogue belongs to the account as well - a plan without Opus does not offer it. Only the
+        // latch is released here: the sign-in check asks for the list itself once the new account is
+        // confirmed (see ClaudeSessionHub, onSignedIn). This project's own latch, so released by every
+        // project that notices, whether or not the figures below are already gone.
+        modelsRequested.remove(account)
 
-        held.windows.forget()
+        if (!book.forget(account, identity)) return
+
         // Including the window this account was last recognised by: kept, it would make the NEXT
         // account's honest answer look like a borrowed one (see UsageProbes.trust).
         probes.forget(account)
-        held.extraKnown = null
-        held.extraActive.set(null)
-        held.extraWindow = ""
-        // The threshold on the ping means "nothing can have changed since we last asked", and an account
-        // switch is the opposite of that.
-        held.lastPing.set(0)
-        // The catalogue belongs to the account as well - a plan without Opus does not offer it. Only the
-        // latch is released here: the sign-in check asks for the list itself once the new account is
-        // confirmed (see ClaudeSessionHub, onSignedIn).
-        modelsRequested.remove(account)
-
-        // The interface is told to forget too, and told separately: its own state is merged field by
-        // field (see mergeUsage in feed/usage.ts), so silence about a window means "nothing new", not
-        // "that window is nobody's now". Named, so it clears that account's rings and not whichever
-        // account's the panel happens to be drawing.
-        hub.broadcastProject(
-            buildJsonObject {
-                put("type", "usage")
-                put("account", account)
-                put("reset", true)
-            }.toString(),
-        )
 
         // Past the conversations, straight to the server: a process already up may be the previous
         // account's, and the rings would be filled from it again.
@@ -331,18 +246,8 @@ internal class ProjectUsage(
      * without any question from us, and the rings must not wait for the next round of polling to learn
      * of it (the whole point of the paint is that the limit has been passed right now).
      *
-     * Only the change is said out loud: the CLI repeats the event on every turn while the state holds,
-     * and repeating a message that says the same thing would be noise on the wire - a phone across the
-     * city is on the other end of it.
-     *
-     * Returns whether the spending has just started - the switch from the plan's own window to money on
-     * top of it. Only this side can tell that moment from the state that follows it, and it is the one
-     * occasion a person away from the desk is called about that is not in any message (see
-     * NotificationReasons.EXTRA_USAGE). Only the switch on, not a change of window while it lasts: a
-     * second window running out changes nothing about the fact that the money is already going.
-     *
-     * And never on the first event after a launch, whatever it says: see [extraActive]. Nor twice for one
-     * window, however many projects are open to see it - see [ExtraUsageAnnouncements].
+     * Returns whether the spending has just started - the one moment a phone is called about (see
+     * AccountUsage.noteRateLimit, where the state it is a change of lives).
      */
     fun noteRateLimit(sessionId: String, line: String): Boolean {
         val verdict = ClaudeRateLimit.of(line) ?: return false
@@ -350,37 +255,7 @@ internal class ProjectUsage(
         // Attributed to the account whose process said it. Without this a limit event from a tab on one
         // account repaints the other account's rings - and with two accounts running side by side that is
         // not an edge case, it is every time one of them runs out.
-        val account = sessions.accountOf(sessionId)
-        val held = of(account)
-
-        val active = verdict.extraUsage
-        val window = if (active) verdict.window else ""
-        val wasActive = held.extraActive.getAndSet(active)
-        val changed = wasActive != active || held.extraWindow != window
-
-        held.extraWindow = window
-        if (!changed) return false
-
-        hub.broadcastProject(
-            buildJsonObject {
-                put("type", "usage")
-                put("account", account)
-                putExtra(held)
-            }.toString(),
-        )
-
-        /*
-         * A crossing seen from a state we knew about: it was off, it is on now.
-         *
-         * "Was false" rather than "was not true": the first event after a launch has nothing before it
-         * (see [extraActive]), and it is a reading rather than a crossing - told to the panel, which has
-         * to paint the rings, and not to a phone, which would be woken about nothing.
-         *
-         * Claimed rather than simply reported: the limit is the account's, and every open project sees
-         * the same crossing in its own agent's stream (see ExtraUsageAnnouncements).
-         */
-        return active && wasActive == false &&
-            ExtraUsageAnnouncements.getInstance().claim(account, verdict.window, verdict.resetsAt)
+        return book.noteRateLimit(sessions.accountOf(sessionId), verdict)
     }
 
     /**
@@ -475,76 +350,11 @@ internal class ProjectUsage(
     }
 
     /**
-     * The get_usage answer upwards - no matter whether it came from a live conversation or from a ping.
-     * It goes in any case, limits or not: the context window's size is sometimes in the answer even when
-     * the limit windows are not.
+     * The get_usage answer upwards - no matter whether it came from a live conversation or from a ping,
+     * and to every open project rather than this one (see AccountUsage). It goes in any case, limits or
+     * not: the context window's size is sometimes in the answer even when the limit windows are not.
      */
-    private fun sendUsage(snapshot: ClaudeUsage.Snapshot, account: String) {
-        val held = of(account)
-        // What goes upwards is not the raw answer but one checked against what was seen before: on its
-        // own a snapshot does not say whether it is about the present window (see ClaudeUsage.Tracker).
-        val merged = held.windows.merge(snapshot)
-
-        // A one-off ping answers about extra usage as fully as a live conversation does, while an answer
-        // from a process that has not yet learned the account's settings carries no such block at all -
-        // and silence is not "extra usage went away".
-        snapshot.extra?.let { held.extraKnown = it }
-
-        hub.broadcastProject(
-            buildJsonObject {
-                put("type", "usage")
-                // Whose figures these are. The panel keeps a set of rings per account and draws the ones
-                // belonging to the tab on screen: without this field it merges every answer into one
-                // picture, and two accounts running at once produce one account's five-hour window beside
-                // the other's weekly one.
-                put("account", account)
-                merged.session?.let { putWindow("session", it) }
-                merged.week?.let { putWindow("week", it) }
-                // The per-model weeks (Fable) as a whole list, always: after the memory they are what is
-                // known right now, and an empty list is the honest "this plan has none" that takes a ring
-                // away, while a missing field would leave yesterday's on the screen.
-                merged.models?.let { models ->
-                    putJsonArray("models") {
-                        models.forEach { model ->
-                            addJsonObject {
-                                put("label", model.label)
-                                put("percent", model.window.percent)
-                                put("resets", model.window.resets)
-                            }
-                        }
-                    }
-                }
-                merged.contextWindow?.let { put("contextWindow", it) }
-                putExtra(held)
-            }.toString(),
-        )
-    }
-
-    /**
-     * Extra usage upwards: whether it is being spent right now and how much of its monthly budget has
-     * gone. Always as a whole rather than field by field - the two halves come from different routes,
-     * and half a picture on the wire would mean the ring goes back to a percentage the moment the other
-     * half arrives.
-     */
-    private fun JsonObjectBuilder.putExtra(held: PerAccount) {
-        val known = held.extraKnown
-        val active = held.extraActive.get() == true
-        if (known == null && !active) return
-
-        putJsonObject("extra") {
-            put("active", active)
-            if (active && held.extraWindow.isNotEmpty()) put("window", held.extraWindow)
-            known?.let { put("enabled", it.enabled) }
-            known?.percent?.let { put("percent", it) }
-        }
-    }
-
-    private fun JsonObjectBuilder.putWindow(name: String, window: ClaudeUsage.Window) {
-        putJsonObject(name) {
-            put("percent", window.percent)
-            put("resets", window.resets)
-        }
-    }
+    private fun sendUsage(snapshot: ClaudeUsage.Snapshot, account: String) = book.fold(account, snapshot)
 
     /**
      * The model catalogue - the same one `/model` shows in a terminal.
@@ -699,9 +509,11 @@ internal class ProjectUsage(
 
         /**
          * For a sleeping panel, though, the same question costs starting a separate process for a few
-         * seconds, and we do not ask more often than this: without conversations usage grows only from
-         * work in a terminal or in a browser.
+         * seconds, and the account is not asked more often than this: without conversations usage grows
+         * only from work in a terminal or in a browser. Counted per account across the IDE, not per
+         * project - three open projects asking once a minute each were three questions a minute about one
+         * subscription, whose answers now reach all three anyway.
          */
-        const val PING_MIN_SECONDS = 60L
+        const val PING_GAP_MS = 60_000L
     }
 }

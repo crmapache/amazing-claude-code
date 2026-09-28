@@ -8,10 +8,13 @@ import com.intellij.openapi.components.service
  * project.
  *
  * The plan's limit belongs to an account and the thing that notices it running out belongs to a project:
- * every open project reads its own agent's stream and sees the same crossing for itself (see
- * ProjectUsage.noteRateLimit). Three projects with agents working meant three identical pushes to a phone
- * about one moment - and that moment is the one occasion a person away from the desk is called about
- * something no message mentions, so the repeat is all there is to read.
+ * every open project reads its own agent's stream and sees the same crossing for itself. Three projects
+ * with agents working meant three identical pushes to a phone about one moment - and that moment is the
+ * one occasion a person away from the desk is called about something no message mentions, so the repeat
+ * is all there is to read. The state the crossing is a change of is the account's now (see
+ * AccountUsage.noteRateLimit), which takes most repeats away on its own; this still holds the ones it
+ * cannot see - two processes on one account whose events disagree for a moment around the crossing
+ * read as off, on, off, on, and each "on" is a crossing of that one window.
  *
  * So the announcement is claimed once per window: the first project to see the crossing takes it, and
  * whoever comes after finds it taken. Held in memory rather than on disk - this is about not saying one

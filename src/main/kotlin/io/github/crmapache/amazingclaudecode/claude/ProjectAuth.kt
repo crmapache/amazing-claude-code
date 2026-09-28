@@ -30,8 +30,12 @@ internal class ProjectAuth(
      * The sign-in has moved to another account. Everything counted about the subscription was about the
      * previous one and has to be thrown away rather than merged with what the new one says (see
      * ProjectUsage.forget).
+     *
+     * [identity] is who it has moved to, or null when there is nothing to name it by. Every open project
+     * notices one switch for itself, and this is what tells the figures, which are the whole IDE's, that
+     * the second project to notice is late news rather than a second switch (see AccountUsage.forget).
      */
-    private val onAccountChanged: (accountId: String) -> Unit = {},
+    private val onAccountChanged: (accountId: String, identity: String?) -> Unit = { _, _ -> },
     /**
      * What the account in force's own drawer answered, and when it was asked. It is the question the
      * accounts screen puts to that row, so the screen takes it rather than waiting to ask again (see
@@ -133,7 +137,7 @@ internal class ProjectAuth(
                 account = identity
                 accountIsOurs = ours
             }
-            if (switched) onAccountChanged(chosen)
+            if (switched) onAccountChanged(chosen, identity.ifEmpty { null })
 
             if (status.loggedIn == awaited) {
                 awaited = null
