@@ -487,9 +487,14 @@ interface BranchChipProps {
 }
 
 /**
- * The branch and its PR - exported on the same principle as [Selector]: compact shows the same chip in
- * its own row beside the tasks rather than in a separate status line (see TaskListPanel.tsx), while its
- * look and behaviour have to stay the same.
+ * The branch and its PR, on the right of the header before the burger (see Header.tsx) - the one place
+ * they stand in every layout.
+ *
+ * The branch gives way to the tabs down to four characters (see .statusItem), so its full name
+ * is a hover away - but only while it is cut short. A hint that repeats the name already on the screen is
+ * the thing the panel's hints never do, so whether it is cut is looked at the moment the pointer arrives,
+ * and the text is written straight onto the element: the hints read it from there on the `mouseover`
+ * that follows this event (see Tooltips), and a render per hover would buy nothing.
  */
 export const BranchChip = ({ gitBranch, pullRequest, onOpenPullRequest }: BranchChipProps) => {
   const t = useT()
@@ -498,7 +503,16 @@ export const BranchChip = ({ gitBranch, pullRequest, onOpenPullRequest }: Branch
 
   return (
     <span className={s.statusItem}>
-      <span className={s.statusBranch}>{gitBranch}</span>
+      <span
+        className={s.statusBranch}
+        onPointerEnter={(event) => {
+          const branch = event.currentTarget
+          if (branch.scrollWidth > branch.clientWidth) branch.dataset.tooltip = gitBranch
+          else delete branch.dataset.tooltip
+        }}
+      >
+        {gitBranch}
+      </span>
       {pullRequest ? (
         <button
         type="button"

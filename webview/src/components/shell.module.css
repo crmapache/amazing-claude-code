@@ -517,10 +517,11 @@
   align-items: center;
   gap: 8px;
   padding-right: 6px;
-  /* Without it the row's shrinking would run into the children's combined "natural" width (a flex item's
-     min-width is auto by default) - the branch chip inside could shrink itself as far as one likes (see
-     .statusItem), but the whole row outwards could not, and no shrinking would genuinely happen. */
-  min-width: 0;
+  /* No min-width: 0 here, and that is the point: the row may shrink only as far as its pieces can -
+     the branch down to its first few letters, the PR mark and the burger not at all (see .statusItem).
+     With min-width: 0 it went further, since flex shrinking is shared out by width wanted and a strip of
+     tabs wants many times more than "main no PR": with nine tabs this row got fifteen pixels, the branch
+     vanished and "no PR" spilled over the burger. Now it keeps what it needs, and the tabs wrap instead. */
 }
 
 /* Someone else is watching this project - a browser page beside the IDE, later a phone.
@@ -847,28 +848,36 @@
    stands in the header (see Header.tsx), in the interface font and smaller, and without a font of its own
    here it would read in that one. */
 .statusItem {
-  display: inline-flex;
+  display: inline-grid;
+  /* A grid rather than a flex row, for the sake of its smallest width. The branch's column may shrink to
+     four characters and no further, the PR mark's not at all, so the smallest this chip can be is those
+     two - and that is what the header's row counts on (see .headerTools). A flex row had no such floor to
+     give: its smallest width was either the whole branch name, or nothing at all, and nothing at all left
+     the PR mark standing outside the chip, over the burger.
+
+     Four characters rather than zero, because a PR mark with no branch before it says whose PR it is to
+     nobody; and four rather than three, because the ellipsis takes one of them. Four is "main" whole - the
+     name most repositories sit on most of the time - and of a longer name three letters and the ellipsis,
+     still enough to tell feature/ from fix/. The font is monospaced, so ch is one character exactly. */
+  grid-template-columns: minmax(4ch, auto) auto;
   align-items: baseline;
-  gap: 4px;
+  column-gap: 4px;
   white-space: nowrap;
   font: 12.5px/1.4 var(--acc-mono);
   /* The width is counted from the room the branch name genuinely needs rather than fixed - it is given the
-     room the tabs leave free (see .headerTools below), and conversely it gives way to them itself, clipped
-     with an ellipsis (see .statusBranch), when there is not enough room for everyone. max-width is only a
-     ceiling: even with a completely empty header one branch must not take more than a third of a typical
-     panel's width. */
+     room the tabs leave free, and conversely it gives way to them itself, clipped with an ellipsis (see
+     .statusBranch), when there is not enough room for everyone. max-width is only a ceiling: even with a
+     completely empty header one branch must not take more than a third of a typical panel's width. */
   flex: 0 1 auto;
-  min-width: 0;
   max-width: 350px;
 }
 
-/* The branch is clipped to exactly the room genuinely available (min-width: 0 + flex: 1 1 auto) rather than
-   to some arbitrary constant in pixels - short branches are shown whole, long ones squeeze only when there
-   genuinely is no room. */
+/* The branch is clipped to exactly the room its column is given rather than to some arbitrary constant in
+   pixels - short branches are shown whole, long ones squeeze only when there genuinely is no room. The
+   full name is then a hover away (see BranchChip). */
 .statusBranch {
   color: var(--acc-ok-light);
   min-width: 0;
-  flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
 }
