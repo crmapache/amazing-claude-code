@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.3] - 2026-09-27
+
+- Fixed: the limit rings under the input field could stop moving for the better part of an hour while the account was being spent - one evening they stayed on 5% and 19% while the account page said 49% and 26%. Every open project asked about the limits on its own schedule and kept the answer to itself, and only one of them may ask at a time. With another project working, the same project lost its turn every time and never heard anything new. Figures are now shared across the IDE: whichever project learns them, every panel and the phone show them at once, and a panel that opens starts with what is already known.
+- Fixed: a late or cached answer about the limits no longer pulls a ring back to an older, lower figure, and the rings no longer blank for a moment in every window when you switch accounts in a terminal.
+
 ## [0.13.2] - 2026-09-27
 
 - Added: a conversation's tab can be renamed. Double-click its name, type, and press Enter; Escape keeps the old one, and clicking elsewhere keeps what you typed. `/rename New name` in the input field does the same, and `/rename` alone opens the field on the tab. The name goes into Claude Code's own record of the conversation, so the history, the search and `claude --resume` in a terminal show it too, and the model no longer renames a conversation you have named. A tab you named comes back after a restart even if nothing was written in it yet. After Enter or Escape the keyboard is back in the input field.
@@ -774,7 +779,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.2...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.3...HEAD
+[0.13.3]: https://github.com/crmapache/amazing-claude-code/compare/0.13.2...0.13.3
 [0.13.2]: https://github.com/crmapache/amazing-claude-code/compare/0.13.1...0.13.2
 [0.13.1]: https://github.com/crmapache/amazing-claude-code/compare/0.13.0...0.13.1
 [0.13.0]: https://github.com/crmapache/amazing-claude-code/compare/0.12.19...0.13.0
