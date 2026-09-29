@@ -307,7 +307,13 @@ internal class AccountDesk(
         // The conversations are on that account either way - the drawer changes, the subscription does
         // not - but they have to be raised again over the drawer that is staying, because the one they
         // are holding is about to be deleted. The setter does that by itself, which is why it is written
-        // before the record goes (see ClaudeAccounts.currentId).
+        // before the record goes (see ClaudeAccounts.currentId). A turn running on the twin is let finish
+        // rather than stopped: the move sees one account on both sides (see ClaudeAccounts.sameAccount),
+        // and it can only see it while the answer this merge has just acted on is still fresh - which it
+        // is, a second old. The drawer still goes at once, and on macOS the turn does not notice: the CLI
+        // serves the credential it has read even after the keychain item is gone (checked on 2.1.280).
+        // A credential kept in a file reads as absent once deleted - the same exposure a renewal has
+        // always lived with (see ClaudeSessions.relaunchOn).
         if (accounts.currentId == twin) accounts.currentId = ""
 
         accounts.forget(twin)

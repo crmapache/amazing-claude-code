@@ -234,8 +234,11 @@ const SPARKS = [
   { angle: 337, size: 1.05, rise: 1.2, seconds: 1.35, delay: 1.45 },
 ]
 
-/** The four-pointed spark, drawn in a box of its own twelve by twelve - see SPARK_SCALE. */
-const SPARK_PATH = 'M6 0L7.1 4.9L12 6L7.1 7.1L6 12L4.9 7.1L0 6L4.9 4.9Z'
+/**
+ * The four-pointed spark, drawn in a box of its own twelve by twelve - see SPARK_SCALE. The panel's one
+ * spark: a calling tab twinkles with it too (see TabGlow in Header).
+ */
+export const SPARK_PATH = 'M6 0L7.1 4.9L12 6L7.1 7.1L6 12L4.9 7.1L0 6L4.9 4.9Z'
 
 /**
  * How much of that box is left. Set by the smallest ring rather than the biggest: on the composer's own

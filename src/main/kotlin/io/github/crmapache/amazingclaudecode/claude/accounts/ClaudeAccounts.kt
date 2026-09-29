@@ -417,6 +417,22 @@ internal class ClaudeAccounts {
         return AccountIdentity.probe(file)?.takeIf { it.who.isNamed }
     }
 
+    /**
+     * Whether [from] and [to] are one subscription in two drawers - see [AccountTwin.sameAccount].
+     *
+     * Fresh means written within [SAME_ACCOUNT_FRESH_MS], not after a question of our own: the question
+     * is put by whichever IDE is running the merge, and the IDE that follows it through the register
+     * (see AccountsWatch) asked nothing - it reads the same file a couple of seconds later.
+     */
+    fun sameAccount(from: String, to: String): Boolean =
+        from == to ||
+            AccountTwin.sameAccount(
+                from = from,
+                to = to,
+                defaultProbe = probedIdentity(""),
+                answeredAfter = System.currentTimeMillis() - SAME_ACCOUNT_FRESH_MS,
+            )
+
     private fun refuse(reason: String): AccountStore.Environment {
         DiagnosticsLog.note(DiagnosticsLog.ACCOUNTS, "an account would not resolve: $reason")
         return AccountStore.Environment.Refused(reason)
@@ -813,5 +829,14 @@ internal class ClaudeAccounts {
 
         private const val ALIAS_LIMIT = 40
         private const val RETRY_MS = 60_000L
+
+        /**
+         * How old the ordinary sign-in's answer may be for [sameAccount] to go by it.
+         *
+         * The merge acts on an answer seconds old, and the IDE following it reads the file a moment
+         * later, so the window is not what makes the rule work - it only keeps a name from last week out
+         * of a decision taken now.
+         */
+        private const val SAME_ACCOUNT_FRESH_MS = 10 * 60 * 1000L
     }
 }

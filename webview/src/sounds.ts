@@ -120,6 +120,57 @@ const PRIORITY: SoundId[] = [
 ]
 
 /**
+ * What a call is about, in the three words the tab strip paints it with (see TabGlow in Header.tsx).
+ *
+ * Seven occasions sound seven different files, but a glance at the strip has room for three colours at
+ * most - any more and the eye has to learn a legend instead of reading a light. So the occasions fold
+ * into what the person is being called to: work that is done, something that waits for them, something
+ * that broke. A used-up limit is the middle one rather than the last: it is a pause, not a breakage,
+ * which is how the feed paints it too (see .limit in feed.module.css).
+ */
+export type CallTone = 'success' | 'attention' | 'error'
+
+const TONES: Record<SoundId, CallTone> = {
+  turnFinished: 'success',
+  permission: 'attention',
+  question: 'attention',
+  plan: 'attention',
+  rateLimit: 'attention',
+  extraUsage: 'attention',
+  trouble: 'error',
+}
+
+export const toneOf = (sound: SoundId): CallTone => TONES[sound]
+
+/**
+ * A tab that has called the person and has not been opened since - it glows in the strip until it is.
+ *
+ * `at` is when: a second call of the same tone into a tab already glowing is news too (another turn has
+ * finished there), and the strip stirs on it again (see useResting).
+ */
+export interface TabCall {
+  tone: CallTone
+  at: number
+}
+
+/**
+ * The calls still standing: opening a tab answers its call, and a closed tab has nobody left to call.
+ *
+ * The very same object when nothing went, so a pass that changes nothing repaints nothing.
+ */
+export const callsStanding = (
+  calls: Record<string, TabCall>,
+  active: string,
+  open: ReadonlySet<string>,
+): Record<string, TabCall> => {
+  const ids = Object.keys(calls)
+  const kept = ids.filter((id) => id !== active && open.has(id))
+  if (kept.length === ids.length) return calls
+
+  return Object.fromEntries(kept.map((id) => [id, calls[id]!]))
+}
+
+/**
  * A limit refusal recognised by its text.
  *
  * The main route is different: the limit event arrives separately and becomes a row of its own in the

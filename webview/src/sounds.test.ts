@@ -4,13 +4,17 @@ import type { FeedItem } from './feed/types'
 import type { AgentStatus } from './protocol'
 import {
   NO_SOUND_PREFS,
+  SOUND_IDS,
+  callsStanding,
   isMuted,
   rememberPanel,
   setVolume,
   soundForPanel,
   toggleSound,
+  toneOf,
   volumeOf,
   type PanelView,
+  type TabCall,
 } from './sounds'
 
 const meta = (id: string, stats: string[] = ['Worked 3s']): FeedItem => ({ id, kind: 'meta', stats })
@@ -240,5 +244,43 @@ describe('the tick boxes and the volume', () => {
     expect(isMuted(prefs, 'trouble')).toBe(false)
     expect(isMuted(prefs, 'question')).toBe(true)
     expect(volumeOf(prefs, 'plan')).toBe(20)
+  })
+})
+
+describe('the colour a calling tab glows with', () => {
+  it('folds the seven occasions into done, waiting and broken', () => {
+    expect(toneOf('turnFinished')).toBe('success')
+    expect(toneOf('permission')).toBe('attention')
+    expect(toneOf('question')).toBe('attention')
+    expect(toneOf('plan')).toBe('attention')
+    expect(toneOf('trouble')).toBe('error')
+  })
+
+  it('paints a used-up limit as a pause rather than a breakage', () => {
+    expect(toneOf('rateLimit')).toBe('attention')
+    expect(toneOf('extraUsage')).toBe('attention')
+  })
+
+  it('has a colour for every occasion there is', () => {
+    for (const sound of SOUND_IDS) expect(['success', 'attention', 'error']).toContain(toneOf(sound))
+  })
+})
+
+describe('the calls still standing', () => {
+  const calls: Record<string, TabCall> = {
+    a: { tone: 'success', at: 1 },
+    b: { tone: 'error', at: 2 },
+  }
+
+  it('answers the call of the tab that has been opened', () => {
+    expect(callsStanding(calls, 'a', new Set(['a', 'b']))).toEqual({ b: { tone: 'error', at: 2 } })
+  })
+
+  it('drops the call of a tab that has been closed', () => {
+    expect(callsStanding(calls, 'main', new Set(['a']))).toEqual({ a: { tone: 'success', at: 1 } })
+  })
+
+  it('returns the very same object when nothing went, so nothing repaints', () => {
+    expect(callsStanding(calls, 'main', new Set(['main', 'a', 'b']))).toBe(calls)
   })
 })

@@ -184,14 +184,17 @@ import type {
 import {
   NO_SOUND_PREFS,
   SOUND_IDS,
+  callsStanding,
   isMuted,
   rememberPanel,
   setVolume,
   soundForPanel,
   toggleSound,
+  toneOf,
   volumeOf,
   type SoundMemory,
   type SoundPrefs,
+  type TabCall,
 } from './sounds'
 import {
   AgentTranscriptContext,
@@ -822,6 +825,12 @@ export const App = () => {
   })
   /** The tick boxes and the volume of the sound alerts - see sounds.ts. */
   const [soundPrefs, setSoundPrefs] = useState<SoundPrefs>(NO_SOUND_PREFS)
+  /**
+   * The tabs that called with a sound and have not been opened since, and what about - they glow in the
+   * strip until they are (see TabGlow in Header). The sound says that something happened; with a dozen
+   * tabs open only this says where.
+   */
+  const [calls, setCalls] = useState<Record<string, TabCall>>({})
   /** The project's past conversations: null means the list has not arrived yet (see the startup requests). */
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
   /**
@@ -1826,7 +1835,23 @@ export const App = () => {
       volume: volumeOf(prefs, sound),
       onlyIfAway: sessionId === activeRef.current,
     })
+
+    // The tab the sound came from lights up, so that "which one was that" has an answer in the strip.
+    // Only a call that sounds: the light answers the sound, and an occasion switched off asked nothing.
+    // Nor the open tab: whatever called there is already before the eyes, and opening the tab - the one
+    // thing that puts the light out - has already happened.
+    if (sessionId === activeRef.current) return
+    setCalls((current) => ({ ...current, [sessionId]: { tone: toneOf(sound), at: Date.now() } }))
   }, [])
+
+  /**
+   * Opening a tab answers its call, and the light goes (fading - see TabGlow). A closed tab takes its call
+   * with it, from whichever client it was closed.
+   */
+  useEffect(() => {
+    const open = new Set(sessions.map((session) => session.id))
+    setCalls((current) => callsStanding(current, active, open))
+  }, [active, sessions])
 
   /** The deferred write of the sound settings - see changeSoundPrefs. */
   const soundSaveTimer = useRef<number | undefined>(undefined)
@@ -5414,6 +5439,7 @@ export const App = () => {
         panelTabs={headerPanelTabs}
         onPickPanelTab={setActive}
         onClosePanelTab={closePanelTab}
+        calls={calls}
         watchers={watchers}
         gitBranch={panels[MAIN_SESSION]?.project?.gitBranch}
         pullRequest={panels[MAIN_SESSION]?.project?.pullRequest}

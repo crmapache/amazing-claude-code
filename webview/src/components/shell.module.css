@@ -64,6 +64,69 @@
   }
 }
 
+/* A tab that called - see TabGlow in Header.tsx. */
+
+/* The aura's breath: slow, and never down to nothing - between breaths the colour still says which tab it
+   was, the breathing only draws the eye to it. */
+@keyframes acc-call-breathe {
+  0%,
+  100% {
+    opacity: 0.62;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+/* The sheen passes over in the first part of the period and the rest is a pause: a band running on without
+   a break reads as a loading bar rather than as light catching the tab. */
+@keyframes acc-call-sheen {
+  0% {
+    transform: translateX(-110%) skewX(-16deg);
+  }
+
+  36%,
+  100% {
+    transform: translateX(230%) skewX(-16deg);
+  }
+}
+
+/* A spark is out for a third of its period: it blooms, turning, and closes up again. */
+@keyframes acc-call-twinkle {
+  0%,
+  56%,
+  100% {
+    opacity: 0;
+    transform: scale(0.2) rotate(-40deg);
+  }
+
+  72% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+
+  86% {
+    opacity: 0.35;
+    transform: scale(0.55) rotate(28deg);
+  }
+}
+
+/* The call's colour, registered: a tab that called about one thing and then about another changes its
+   light smoothly instead of switching it, which an unregistered custom property cannot do - it has no type
+   to be interpolated as. */
+@property --acc-call {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+
+@property --acc-call-light {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+
 .panel {
   display: flex;
   flex-direction: column;
@@ -340,6 +403,10 @@
     background-color 0.16s ease,
     box-shadow 0.16s ease,
     opacity 0.16s ease;
+  /* A layer of its own, so that the light of a calling tab (see .tabGlow) can lie between the tab's
+     background and its name: over the background, or the hover and the active tab would cover it; under
+     the name, or the name would be tinted with it. */
+  isolation: isolate;
 }
 
 /* The stripe on top is the group's colour: a conversation and all its forks share one, so the belonging is
@@ -446,6 +513,125 @@
 .dotCrashed {
   background: var(--acc-bad-light);
   box-shadow: 0 0 0 3px var(--acc-bad-16);
+}
+
+/* --- A tab that called ---------------------------------------------------------
+   A sound called the person, and this is the tab it came from (see TabGlow in Header.tsx): an aura rising
+   off the bottom edge, a sheen passing over now and then, a few sparks - in the colour of what it called
+   about. It stays until the tab is opened.
+
+   The dot beside the name says what the tab is doing; this says that it called. The dot is small and
+   static on purpose (see .dotRunning), so the call gets a louder mark of its own - and the louder one is
+   the one that goes away once it has been answered.
+
+   Only opacity and transforms move, both on the compositor. The colour moves too, but only when a tab
+   calls about something else - see @property --acc-call above. */
+.tabGlow {
+  position: absolute;
+  /* Down over the tab's bottom border as well: the light's edge is the tab's edge, not two pixels above it. */
+  inset: 0 0 -2px;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity 0.7s ease,
+    --acc-call 0.6s ease,
+    --acc-call-light 0.6s ease;
+}
+
+/* It comes on slower than it goes: it gathers rather than switches on, and once the tab is opened the call
+   is answered and has no business lingering. */
+.tabGlow[data-lit] {
+  opacity: 1;
+  transition-duration: 1.1s, 0.6s, 0.6s;
+}
+
+.tabGlow[data-call='success'] {
+  --acc-call: var(--acc-ok);
+  --acc-call-light: var(--acc-ok-light);
+}
+
+.tabGlow[data-call='attention'] {
+  --acc-call: var(--acc-warn);
+  --acc-call-light: var(--acc-warn-light);
+}
+
+.tabGlow[data-call='error'] {
+  --acc-call: var(--acc-bad);
+  --acc-call-light: var(--acc-bad-light);
+}
+
+/* The aura: a line of light along the bottom, brightest in the middle, the glow it throws up into the tab,
+   and a faint wash over the whole of it so the colour reads even at the corners. The line stays: tried
+   without it, the aura alone read as a tinted tab rather than as a lit one. */
+.tabGlow::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+        90deg,
+        transparent 4%,
+        var(--acc-call) 28%,
+        var(--acc-call-light) 50%,
+        var(--acc-call) 72%,
+        transparent 96%
+      )
+      bottom / 100% 2px no-repeat,
+    radial-gradient(80% 125% at 50% 100%, color-mix(in srgb, var(--acc-call) 30%, transparent), transparent 76%),
+    linear-gradient(to top, color-mix(in srgb, var(--acc-call) 12%, transparent), transparent 85%);
+}
+
+/* The sheen: a soft band of the lighter paint passing over at a slant - the pass of light over the empty
+   screen's button (see .start::after in welcome.module.css), in the call's colour and again and again. */
+.tabGlow::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 45%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--acc-call-light) 24%, transparent) 50%,
+    transparent
+  );
+  transform: translateX(-110%) skewX(-16deg);
+}
+
+/* Each started at its own tab's phase - see CALL_PHASE_SPAN_MS in Header.tsx. */
+.tabGlow[data-call]::before {
+  animation: acc-call-breathe 2.8s ease-in-out var(--acc-call-phase, 0s) infinite;
+}
+
+.tabGlow[data-call]::after {
+  animation: acc-call-sheen 4.4s ease-in-out var(--acc-call-phase, 0s) infinite;
+}
+
+.tabSpark {
+  position: absolute;
+  fill: var(--acc-call-light);
+  /* At five pixels a star with no light around it reads as a speck of dust - the ring's sparks carry a
+     halo for the same reason (see .flameSparkGlow). */
+  filter: drop-shadow(0 0 2px var(--acc-call));
+  opacity: 0;
+  animation-name: acc-call-twinkle;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+/* Nobody has been around for a while (see useResting in Header): the aura holds still where it is, and the
+   sheen and the sparks go - both frozen mid-flight read as a smear on the tab rather than as light. The
+   first movement of the mouse or a fresh call sets them going again. */
+.tabs[data-resting] .tabGlow::before {
+  animation-play-state: paused;
+}
+
+.tabs[data-resting] .tabGlow::after,
+.tabs[data-resting] .tabSpark {
+  animation: none;
 }
 
 .tabTitle {
@@ -1017,6 +1203,14 @@
 @media (prefers-reduced-motion: reduce) {
   .flameHeat,
   .flameSpark {
+    animation: none;
+  }
+
+  /* A calling tab keeps its light and loses its motion: the aura stands at full, the sheen and the sparks
+     are gone. The fade in and out stays - it is a change of light, not a movement. */
+  .tabGlow[data-call]::before,
+  .tabGlow[data-call]::after,
+  .tabSpark {
     animation: none;
   }
 

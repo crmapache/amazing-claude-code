@@ -17,7 +17,7 @@ import {
   user,
   wait,
 } from '../events'
-import type { Scenario } from '../types'
+import type { Scenario, ScenarioStep } from '../types'
 
 /**
  * A refusal as a gateway actually writes one, taken from a report: its own sentence, its own shape, and
@@ -30,6 +30,15 @@ const SPOILED_REQUEST =
   'Error from client: AnthropicLLMClient\\nStatus code: 400\\nError body: ' +
   '{\\"type\\":\\"error\\",\\"error\\":{\\"type\\":\\"invalid_request_error\\",' +
   '\\"message\\":\\"temperature is deprecated for this model.\\"},\\"request_id\\":\\"req_011CXyz\\"}"}'
+
+/** The same agent steps, but happening in another tab than the one on screen. */
+const inTab = (sessionId: string, steps: ScenarioStep[]): ScenarioStep[] =>
+  steps.map((step) => (step.kind === 'agent' ? shell({ type: 'agent', sessionId, event: step.event }) : step))
+
+/** The three background conversations of the `tab-calls` scenario. */
+const REFUNDS = 's-refunds'
+const MIGRATION = 's-migration'
+const E2E = 's-e2e'
 
 export const scenariosSystem: Scenario[] = [
   /*
@@ -104,6 +113,54 @@ export const scenariosSystem: Scenario[] = [
    */
   scenario('welcome', 'Every tab is closed', 'system', [
     checkpoint('The last tab is closed', [shell({ type: 'sessions', sessions: [] })]),
+  ]),
+
+  /*
+   * Tabs calling from the background (see TabGlow in Header.tsx). Three conversations work behind the one
+   * on screen, and each calls in its own way: one finishes, one waits for a permission, one breaks off.
+   * The sound would come from the IDE; here what is left of it is the light on the tab it came from.
+   *
+   * Hands-on after the last checkpoint: open a glowing tab - its light fades - and come back.
+   */
+  scenario('tab-calls', 'Tabs calling from the background', 'system', [
+    checkpoint('Three conversations at work behind this one', [
+      shell({
+        type: 'sessions',
+        sessions: [
+          { id: SESSION, title: 'Checkout sheet polish', titleSource: 'llm', kind: 'main', groupId: SESSION, depth: 0, status: 'idle', awaitsYou: false },
+          { id: REFUNDS, title: 'Refund webhooks retry storm', titleSource: 'llm', kind: 'main', groupId: REFUNDS, depth: 0, status: 'running', awaitsYou: false },
+          { id: MIGRATION, title: 'Orders table migration', titleSource: 'llm', kind: 'main', groupId: MIGRATION, depth: 0, status: 'running', awaitsYou: false },
+          { id: E2E, title: 'E2E: guest checkout', titleSource: 'llm', kind: 'main', groupId: E2E, depth: 0, status: 'running', awaitsYou: false },
+        ],
+      }),
+      ...[REFUNDS, MIGRATION, E2E].flatMap((id) => [
+        shell({ type: 'status', sessionId: id, state: 'running' }),
+        ...inTab(id, [agent({ type: 'assistant', message: { content: [{ type: 'text', text: 'On it.' }] } })]),
+      ]),
+      user('Keep an eye on the other three for me while I look at the sheet'),
+      wait(400),
+      ...textReply('Sure - the tab that calls will light up in the strip.'),
+      turnResult(900),
+    ]),
+    checkpoint('The refunds one finishes', [
+      wait(1500),
+      ...inTab(REFUNDS, [...textReply('The retries back off now; the storm is gone.'), turnResult(4200)]),
+      shell({ type: 'status', sessionId: REFUNDS, state: 'idle' }),
+    ]),
+    checkpoint('The migration waits for a permission', [
+      wait(2200),
+      ...inTab(MIGRATION, [toolUse('Bash', { command: 'pnpm db:migrate --env staging' }, 'tc-migrate')]),
+      shell({
+        type: 'permission',
+        id: 'tc-perm',
+        sessionId: MIGRATION,
+        toolName: 'Bash',
+        target: 'pnpm db:migrate --env staging',
+        command: 'pnpm db:migrate --env staging',
+        mode: 'default',
+      }),
+    ]),
+    checkpoint('The e2e run breaks off', [wait(1700), shell({ type: 'processExited', sessionId: E2E, exitCode: 1 })]),
   ]),
 
   scenario('session-crash', 'A broken session', 'system', [

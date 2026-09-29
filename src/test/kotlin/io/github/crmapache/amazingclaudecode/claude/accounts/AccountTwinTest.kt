@@ -2,7 +2,9 @@ package io.github.crmapache.amazingclaudecode.claude.accounts
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * When two rows on the accounts screen are one account, and - far more important - when they only look
@@ -129,6 +131,62 @@ class AccountTwinTest {
         )
 
         assertNull(twin)
+    }
+
+    // --- A move within one account ---------------------------------------------------
+
+    /**
+     * What a merge leaves a running tab: the row it was on is gone and the choice is the CLI's own
+     * sign-in, holding the very same account. The move asks this before stopping the turn, and the turn
+     * used to be stopped - "Stopped to switch account" under work nobody had touched.
+     */
+    @Test
+    fun `an added row and the sign-in holding its account are one account in both directions`() {
+        val me = idOf("me@example.com")
+        val default = probe("me@example.com")
+
+        assertTrue(AccountTwin.sameAccount(me, "", default, asked))
+        assertTrue(AccountTwin.sameAccount("", me, default, asked))
+    }
+
+    /** Between two subscriptions the turn is still stopped - that is what pressing Select says. */
+    @Test
+    fun `a sign-in holding somebody else is another account`() {
+        assertFalse(AccountTwin.sameAccount(idOf("me@example.com"), "", probe("work@example.com"), asked))
+    }
+
+    /** Same address, another organisation: another seat, another bill. */
+    @Test
+    fun `the same address in another organisation is another account`() {
+        val default = probe("me@example.com", org = "the-company")
+
+        assertFalse(AccountTwin.sameAccount(idOf("me@example.com", org = "personal"), "", default, asked))
+    }
+
+    /**
+     * An added row's id is its account, so two of them are two accounts - whatever the sign-in's answer
+     * says, and even when it names one of them.
+     */
+    @Test
+    fun `two added rows are two accounts`() {
+        val default = probe("me@example.com")
+
+        assertFalse(AccountTwin.sameAccount(idOf("me@example.com"), idOf("work@example.com"), default, asked))
+    }
+
+    @Test
+    fun `a row is the account it is`() {
+        assertTrue(AccountTwin.sameAccount("", "", defaultProbe = null, answeredAfter = asked))
+        assertTrue(AccountTwin.sameAccount("added-1", "added-1", defaultProbe = null, answeredAfter = asked))
+    }
+
+    /** A name left in the file from before the window is not somebody the sign-in holds now. */
+    @Test
+    fun `a stale or missing answer keeps the rows apart`() {
+        val me = idOf("me@example.com")
+
+        assertFalse(AccountTwin.sameAccount(me, "", probe("me@example.com", at = asked - 1), asked))
+        assertFalse(AccountTwin.sameAccount(me, "", defaultProbe = null, answeredAfter = asked))
     }
 
     // --- The sign-in's half ----------------------------------------------------------

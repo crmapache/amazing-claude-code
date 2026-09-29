@@ -47,6 +47,39 @@ internal object AccountTwin {
         return added.firstOrNull { it.id.isNotEmpty() && accountIn(it, answeredAfter) == theirs }?.id
     }
 
+    /**
+     * Whether a conversation on [from] is still on the same subscription once it is on [to].
+     *
+     * Asked by a move that finds a turn running (see ClaudeSessions.moveTo): between two subscriptions
+     * the turn is interrupted, and within one it is let finish, because nothing about the bill changes
+     * and stopping it would cost the person an answer for nothing. The case it exists for is the merge
+     * (see AccountDesk.mergeTwin): the added row goes, the conversations on it move onto the CLI's own
+     * sign-in, and that is one account in two drawers. The move read the two ids as two accounts and
+     * stopped a running turn - "Stopped to switch account" under work nobody had touched, in whichever
+     * project happened to be busy when another one opened its panel and the merge came round.
+     *
+     * An added row's id IS its account - it is minted from the identity the sign-in landed as (see
+     * AccountStore.idOf) - so two added rows are two accounts by construction, and only the CLI's own
+     * sign-in needs asking. The answer is its usage question's, as it is for the merge.
+     *
+     * Looser than [duplicate] on purpose, because nothing here deletes anything. The liveness is not
+     * asked: it costs a process, and the move runs on whatever thread chose the account. So a signed-out
+     * drawer's stale name can pass, and the worst that buys is a turn finishing on the account being
+     * left - which is what a renewal does anyway. It can hardly come up: a drawer that answered with the
+     * very account an added row holds is the pair the merge takes apart as soon as it sees it.
+     */
+    fun sameAccount(from: String, to: String, defaultProbe: AccountIdentity.Probed?, answeredAfter: Long): Boolean {
+        if (from == to) return true
+
+        val added = when {
+            from.isEmpty() -> to
+            to.isEmpty() -> from
+            else -> return false
+        }
+
+        return named(defaultProbe, answeredAfter) == added
+    }
+
     /** Which account this drawer really holds, or null when the answer cannot be relied on. */
     fun accountIn(drawer: Drawer, answeredAfter: Long): String? =
         if (drawer.live) named(drawer.probe, answeredAfter) else null

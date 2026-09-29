@@ -288,6 +288,11 @@ internal class ClaudeSessions(
      * puts a "[Request interrupted by user]" line into the transcript, so the process raised on the new
      * account resumes onto everything that was said.
      *
+     * Unless the account chosen is the one the tab is already on under another row - the CLI's own
+     * sign-in holding the very account of an added row, which is what a merge leaves behind (see
+     * ClaudeAccounts.sameAccount). Nobody is billed differently by that, so the turn is let finish and
+     * the process is replaced after it, the way a renewal waits (see [relaunchOn]).
+     *
      * A tab with no process at all is left alone: it has nothing to move, and whenever it does start it
      * reads the register itself - which by then says exactly this.
      */
@@ -427,7 +432,8 @@ internal class ClaudeSessions(
         told: Boolean = false,
     ) {
         val session = sessions[sessionId] ?: return
-        val accountId = ClaudeAccounts.getInstance().currentId
+        val accounts = ClaudeAccounts.getInstance()
+        val accountId = accounts.currentId
 
         if (session.accountId == accountId && !renew) {
             // Already where it should be, so any move still outstanding for it is void - and the deadline
@@ -447,7 +453,13 @@ internal class ClaudeSessions(
             // subscription on both sides of this - so a turn stopped mid-sentence would cost the person
             // an answer to buy nothing at all. It runs on the token the process is already holding, and
             // the new drawer is waiting for the process after it (see [relaunchOn]).
-            if (session.accountId == accountId) {
+            //
+            // And "the account" is the subscription, not the row. A merge moves a tab off an added row onto
+            // the CLI's own sign-in holding that very account (see AccountDesk.mergeTwin); the ids differ,
+            // the bill does not, and a turn stopped for it - "Stopped to switch account" under work nobody
+            // had touched - bought nothing either. It waits with the renewals: the row it is leaving is
+            // gone, so the process after the turn has to come up over the drawer that stays.
+            if (accounts.sameAccount(session.accountId, accountId)) {
                 pendingRenewals.add(sessionId)
                 return
             }
