@@ -9,6 +9,12 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.8] - 2026-09-29
+
+- Added: a tab that called you with a sound now glows in the tab strip until you open it, so with a dozen tabs open you can see which one it was. The colour says what it called about: mint for finished work, sand for something waiting on you (a permission, a question, a plan, a used-up limit), pink for something that broke. An occasion you switched off in the sound settings does not glow either, and the tab you are looking at never does. After half a minute with no mouse or keys in the panel the glow holds still and keeps only its colour, so a tab calling someone who went to lunch does not keep the IDE drawing frames for nobody; a new call or a mouse movement sets it going again.
+- Fixed: a long turn in one project could stop by itself with "Stopped to switch account" while you only opened another project in the same IDE. Opening the panel checks the accounts, and when an added account turned out to be the same one Claude Code is signed in with, the two were merged - and the move off the removed row read as a switch to another account, which interrupts a running turn. It is one subscription on both sides, so now the turn is let finish and the conversation moves over after it, the way a renewed sign-in waits.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.7] - 2026-09-29
 
 - Added: the file open in the editor and the lines selected in it now go with each message, the way Claude Code does it in a terminal connected to the IDE - select the code, ask "why is this slow?", and the agent sees what you mean without being told where to look. A chip beside the paperclip shows the file and the lines that will go along; click it to leave them out of one message. Under a sent message a line says what went with it ("14 lines from useSession.ts"), and clicking it opens those lines in the editor. Settings - "Open file and selection" switches it off for good. A message written on the phone carries nothing of the editor, a slash command goes without it, and a selection longer than 20,000 characters is named by its lines for the agent to read rather than pasted in.
@@ -807,7 +813,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.7...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.8...HEAD
+[0.13.8]: https://github.com/crmapache/amazing-claude-code/compare/0.13.7...0.13.8
 [0.13.7]: https://github.com/crmapache/amazing-claude-code/compare/0.13.6...0.13.7
 [0.13.6]: https://github.com/crmapache/amazing-claude-code/compare/0.13.5...0.13.6
 [0.13.5]: https://github.com/crmapache/amazing-claude-code/compare/0.13.4...0.13.5
