@@ -33,6 +33,7 @@ export const zh: Dict = {
       remoteAbout: { title: '哪些内容会离开本机', hint: '开启之前请先读一遍' },
       newChat: { title: '新对话', hint: '新标签页从什么开始' },
       restoreTabs: { title: '启动时的标签页', hint: '重启后恢复什么' },
+      shareEditor: { title: '消息附带编辑器', hint: '随消息一起发出的内容' },
       newChatModel: { title: '默认模型', hint: '新标签页用哪个模型开始' },
       newChatEffort: { title: '默认思考强度', hint: '新标签页思考得多深' },
       newChatMode: { title: '默认模式', hint: '新标签页从哪种模式开始' },
@@ -80,6 +81,7 @@ export const zh: Dict = {
       indicators: { label: '指示器', sub: '输入框旁保留哪些读数' },
       newChat: { label: '新对话', sub: '模型、思考强度和权限模式' },
       restoreTabs: { label: '启动时的标签页', sub: '重新打开之前的标签页和草稿' },
+      shareEditor: { label: '打开的文件和选区', sub: '每条消息附带的内容' },
       composerLayout: { label: '输入框布局', sub: '输入框放在哪里' },
       pasteCollapse: { label: '粘贴的文本', sub: '何时把粘贴折叠成小卡片' },
       sendKey: { label: '发送消息', sub: '用哪个键发送' },
@@ -162,6 +164,14 @@ export const zh: Dict = {
     label: '恢复标签页',
     hint: '再次打开项目时，标签页、其中的对话和未写完的文字都会回来 - IDE 崩溃后也一样',
     note: '不会重新启动任何东西：只有在打开标签页或在其中输入时，代理才会启动。草稿只保存在这台机器上 IDE 自己的文件夹里，别处没有。',
+    on: '开',
+    off: '关',
+  },
+
+  shareEditor: {
+    label: '随消息附带编辑器',
+    hint: '每条消息都会附上编辑器中打开的文件及其中选中的行，就像 Claude Code 在终端里那样',
+    note: '仅限此面板：在手机上写的消息不会附带编辑器的任何内容。单条消息可以不附带 - 点一下输入框里的文件标签即可。',
     on: '开',
     off: '关',
   },
@@ -802,6 +812,10 @@ export const zh: Dict = {
     improveTerminal: '终端命令不会被改写',
     voice: '语音输入',
     voiceStop: '结束听写',
+    editor: {
+      on: (place) => `Claude 会随这条消息看到 ${place} · 点击不附带`,
+      off: (place) => `${place} 不会随这条消息发出 · 点击附带`,
+    },
   },
 
   header: {
@@ -888,6 +902,11 @@ export const zh: Dict = {
     copyReply: '复制整条回复',
     moreActions: '更多',
     copyMessage: '复制这条消息，附件以路径形式复制',
+    editor: {
+      selected: (n, name) => `${name} 中的 ${n} 行`,
+      opened: (name) => `在 ${name} 中`,
+      open: (place) => `${place} · 在编辑器中打开`,
+    },
     reuse: {
       label: '修改后重新发送',
       hint: '把这条消息放回输入框，修改后重新发送',
@@ -1090,6 +1109,8 @@ export const zh: Dict = {
     queue: {
       label: '排队中',
       hint: (n) => `${n} 条会在本轮结束后按顺序发出 · 拖动可调整顺序`,
+      edit: '在输入框中编辑',
+      editing: (key, button) => `正在输入框中编辑 · 按 ${key} 或点「${button}」放回这里`,
     },
     selection: { quote: '引用', fork: '从这里分叉' },
     streams: {

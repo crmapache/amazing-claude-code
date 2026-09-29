@@ -16,7 +16,7 @@ class PromptDeliveriesTest {
 
     /** A send: each has a time of its own, so that the order is as it is in life. */
     private fun sent(text: String, repeat: Boolean = false) =
-        PromptDeliveries.Delivery(text, emptyList(), sentAt = ++turn, repeat = repeat)
+        PromptDeliveries.Delivery(text, emptyList(), context = null, sentAt = ++turn, repeat = repeat)
 
     // Exactly the loss this whole thing exists for: two "go on" in a row, and only one arrived. Closing
     // both waits by them means silently losing the second.

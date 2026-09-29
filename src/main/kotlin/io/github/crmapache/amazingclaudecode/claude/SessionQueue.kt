@@ -36,6 +36,12 @@ internal class SessionQueue {
         val echo: JsonObject?,
         /** Queued from a paired phone rather than from the desk - the statistics tell the two apart. */
         val remote: Boolean,
+        /**
+         * What the editor showed when Queue was pressed, as the agent will read it (see EditorContext) - taken
+         * then rather than when the message fires: it is what the person was looking at while writing it, and
+         * by the time the turn ends they may well be looking at something else.
+         */
+        val context: String? = null,
     )
 
     private val bySession = mutableMapOf<String, MutableList<Entry>>()
@@ -43,14 +49,49 @@ internal class SessionQueue {
     @Synchronized
     fun of(sessionId: String): List<Entry> = bySession[sessionId].orEmpty().toList()
 
+    /**
+     * [before] is the place a message taken out for editing is going back to - the one that stood after it
+     * (see [takeOut]). Gone by now - fired, or taken out itself - the message goes to the end, which is
+     * where anything queued goes: the place it asked for no longer exists, and the end is the one place
+     * that still means "after everything already waiting".
+     */
     @Synchronized
-    fun add(sessionId: String, entry: Entry): List<Entry> {
+    fun add(sessionId: String, entry: Entry, before: String? = null): List<Entry> {
         val list = bySession.getOrPut(sessionId) { mutableListOf() }
         // The same identifier twice is a message sent again after a frame went missing, not a second
         // message: a phone that does not hear the answer resends, and two copies of one thought is worse
         // than none (see RemoteOutbox).
-        if (list.none { it.id == entry.id }) list += entry
+        if (list.any { it.id == entry.id }) return list.toList()
+
+        val at = before?.let { id -> list.indexOfFirst { it.id == id } } ?: -1
+        if (at >= 0) list.add(at, entry) else list += entry
         return list.toList()
+    }
+
+    /** A message taken out to be edited: the whole of it, where it stood, and what is left waiting. */
+    data class Taken(
+        val entry: Entry,
+        /** The message that stood right after it - the place it goes back to. Null when it was the last. */
+        val before: String?,
+        val rest: List<Entry>,
+    )
+
+    /**
+     * Take one message out to be edited, rather than dropping it as [remove] does.
+     *
+     * Out of the queue for as long as it is being edited, and that is the point rather than a side effect:
+     * left in, a message would fire the moment the turn ended - half-edited, or in the version the person
+     * had just decided to change. Null when it is no longer here: it fired while the press was on its way,
+     * and there is nothing left to edit.
+     */
+    @Synchronized
+    fun takeOut(sessionId: String, id: String): Taken? {
+        val list = bySession[sessionId] ?: return null
+        val at = list.indexOfFirst { it.id == id }
+        if (at < 0) return null
+
+        val entry = list.removeAt(at)
+        return Taken(entry, list.getOrNull(at)?.id, list.toList())
     }
 
     @Synchronized

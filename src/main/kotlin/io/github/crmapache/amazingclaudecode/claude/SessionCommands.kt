@@ -81,7 +81,17 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
              */
             "ready" -> hub.attach(clientId, seen(payload))
 
-            "prompt" -> hub.prompt(sessionId, field("text"), images(payload), echo = echo(payload), remote = !local)
+            // `editor` asks for what the editor beside the panel shows (see EditorContext) - honoured for this
+            // IDE's own panel only: a phone has no editor beside it, and what the desk's editor happens to show
+            // is not something to hand to whoever is on the other end of the relay.
+            "prompt" -> hub.prompt(
+                sessionId,
+                field("text"),
+                images(payload),
+                echo = echo(payload),
+                remote = !local,
+                withEditor = local && flag(payload, "editor"),
+            )
 
             /**
              * A message written while the agent was busy. It waits beside the conversation rather than
@@ -96,9 +106,14 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
                 images = images(payload),
                 echo = echo(payload),
                 remote = !local,
+                before = field("before").ifEmpty { null },
+                withEditor = local && flag(payload, "editor"),
             )
 
             "unqueuePrompt" -> hub.unqueuePrompt(sessionId, field("id"))
+
+            // The pencil on a queued message - the whole message back to the asker, to be edited in the field.
+            "takeQueued" -> hub.takeQueued(clientId, sessionId, field("id"), asker)
 
             "reorderQueue" -> hub.reorderQueue(
                 sessionId,
@@ -561,6 +576,8 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
      * look inside: it is the interface that knows what a chip or a quote is, and a copy of that
      * knowledge here would be a second thing to keep in step with it.
      */
+    private fun flag(payload: JsonObject, name: String): Boolean = payload[name]?.jsonPrimitive?.booleanOrNull == true
+
     private fun echo(payload: JsonObject): JsonObject? {
         val fields = ECHOED.mapNotNull { name -> payload[name]?.let { name to it } }
         return if (fields.isEmpty()) null else JsonObject(fields.toMap())

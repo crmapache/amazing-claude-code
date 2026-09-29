@@ -37,6 +37,7 @@ export const fr: Dict = {
       remoteAbout: { title: 'CE QUI SORT D’ICI', hint: 'à lire avant de l’activer' },
       newChat: { title: 'NOUVEAUX CHATS', hint: 'ce avec quoi démarre un nouvel onglet' },
       restoreTabs: { title: 'ONGLETS AU DÉMARRAGE', hint: 'ce qui revient après un redémarrage' },
+      shareEditor: { title: 'L’ÉDITEUR DANS LES MESSAGES', hint: 'ce qui part avec un message' },
       newChatModel: { title: 'MODÈLE PAR DÉFAUT', hint: 'le modèle sur lequel démarre un nouvel onglet' },
       newChatEffort: { title: 'EFFORT PAR DÉFAUT', hint: 'à quel point un nouvel onglet réfléchit' },
       newChatMode: { title: 'MODE PAR DÉFAUT', hint: 'ce avec quoi démarrent les nouveaux onglets' },
@@ -84,6 +85,7 @@ export const fr: Dict = {
       indicators: { label: 'Indicateurs', sub: 'Quelles mesures restent près du champ' },
       newChat: { label: 'Nouveaux chats', sub: 'Modèle, effort et mode de permission' },
       restoreTabs: { label: 'Onglets au démarrage', sub: 'Rouvrir ce qui était ouvert, brouillons compris' },
+      shareEditor: { label: 'Fichier ouvert et sélection', sub: 'Ce qui part avec chaque message' },
       composerLayout: { label: 'Disposition du champ', sub: 'Où se place le champ de saisie' },
       pasteCollapse: { label: 'Texte collé', sub: 'Quand un collage se replie en pastille' },
       sendKey: { label: 'Envoyer un message', sub: 'Quelle touche envoie' },
@@ -166,6 +168,14 @@ export const fr: Dict = {
     label: 'Restaurer les onglets',
     hint: 'Les onglets, leurs conversations et le texte en cours reviennent quand le projet est rouvert - même après un plantage de l’IDE',
     note: 'Rien n’est relancé : un agent ne démarre que lorsque son onglet est ouvert ou qu’on y écrit. Les brouillons restent sur cette machine, dans le dossier de l’IDE, et nulle part ailleurs.',
+    on: 'Activé',
+    off: 'Désactivé',
+  },
+
+  shareEditor: {
+    label: 'Joindre l’éditeur',
+    hint: 'Chaque message emporte le fichier ouvert dans l’éditeur et les lignes qui y sont sélectionnées - comme le fait Claude Code dans un terminal',
+    note: 'Depuis ce panneau seulement : un message écrit sur un téléphone n’emporte rien de l’éditeur. Un message peut partir sans - cliquez sur la puce du fichier dans le champ de saisie.',
     on: 'Activé',
     off: 'Désactivé',
   },
@@ -812,6 +822,10 @@ export const fr: Dict = {
     improveTerminal: 'Une commande de terminal n’est pas réécrite',
     voice: 'Dicter',
     voiceStop: 'Arrêter la dictée',
+    editor: {
+      on: (place) => `Claude voit ${place} avec ce message · cliquez pour le retirer`,
+      off: (place) => `${place} ne part pas avec ce message · cliquez pour le joindre`,
+    },
   },
 
   header: {
@@ -899,6 +913,11 @@ export const fr: Dict = {
     copyReply: 'Copier toute la réponse',
     moreActions: 'Plus',
     copyMessage: 'Copier ce message, avec les chemins des pièces jointes',
+    editor: {
+      selected: (n, name) => (n === 1 ? `1 ligne de ${name}` : `${n} lignes de ${name}`),
+      opened: (name) => `Dans ${name}`,
+      open: (place) => `${place} · ouvrir dans l’éditeur`,
+    },
     reuse: {
       label: 'Corriger et renvoyer',
       hint: 'Remettre ce message dans le champ de saisie, pour le corriger et le renvoyer',
@@ -1102,6 +1121,8 @@ export const fr: Dict = {
     queue: {
       label: 'EN ATTENTE',
       hint: (n) => `${n} partiront dans l’ordre à la fin du tour · glissez pour réordonner`,
+      edit: 'Modifier dans le champ',
+      editing: (key, button) => `En cours de modification dans le champ · ${key} ou « ${button} » le remet ici`,
     },
     selection: { quote: 'Citer', fork: 'Bifurquer d’ici' },
     streams: {

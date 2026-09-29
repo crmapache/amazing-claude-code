@@ -67,6 +67,7 @@ import { ChoiceList, LayoutChoice } from './components/Choices'
 import { Appearance, appearanceSummary } from './components/Appearance'
 import { CalmColors } from './components/CalmColors'
 import { RestoreTabs } from './components/RestoreTabs'
+import { ShareEditor } from './components/ShareEditor'
 import { Indicators } from './components/Indicators'
 import {
   indicatorsSummary,
@@ -84,6 +85,7 @@ import { ClaudeConfig, EMPTY_CLAUDE_CONFIG, type ClaudeConfigState } from './com
 import { PermissionPanel } from './components/PermissionPanel'
 import { Plugins } from './components/Plugins'
 import { Queue } from './components/Queue'
+import { editorKey } from './feed/editorContext'
 import { Quotes, type Quote } from './components/Quotes'
 import { SelectionMenu } from './components/SelectionMenu'
 import { Tooltips } from './components/Tooltips'
@@ -177,6 +179,7 @@ import type {
   VoiceBalance,
   VoiceHotkeySlot,
   StatisticsData,
+  EditorRef,
 } from './protocol'
 import {
   NO_SOUND_PREFS,
@@ -406,6 +409,13 @@ interface Draft {
 
 const EMPTY_DRAFT: Draft = { tokens: [], quotes: [] }
 
+/** Nothing to send: no text, no attachment and no quote. A tab never written into has no draft at all. */
+const draftEmpty = (draft: Draft | undefined): boolean =>
+  !draft ||
+  (draft.quotes.length === 0 &&
+    !draft.tokens.some((token) => token.kind === 'chip') &&
+    plainText(draft.tokens).trim().length === 0)
+
 /** The search folded into a feed's corner - see the capsule state in App and SearchCapsule.tsx. */
 interface SearchCapsuleState {
   /** The tab it stands over. */
@@ -469,6 +479,15 @@ export const App = () => {
   sessionsRef.current = sessions
   const [active, setActive] = useState(MAIN_SESSION)
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
+  /**
+   * A queued message taken out into this tab's field to be edited, by tab - and where it goes back to:
+   * before `before`, or at the end when that is null (see takeQueued in protocol.ts).
+   *
+   * The panel's own rather than the IDE's: the message itself is simply out of the queue, and what is
+   * remembered here is only the place it left. It lasts while the field holds something - a field emptied
+   * by sending, or by hand, has let go of that message one way or another (see the effect over drafts).
+   */
+  const [queueEdits, setQueueEdits] = useState<Record<string, { before: string | null }>>({})
   /**
    * The shell's tabs as its last list named them - read by the message that follows that list in the
    * same batch (see `activeTab`), before any render has put the list into state.
@@ -667,6 +686,22 @@ export const App = () => {
    * until the IDE says otherwise: it is the default, and the harness has no IDE to say it.
    */
   const [restoreTabs, setRestoreTabsState] = useState(true)
+  /**
+   * Whether a message carries what the editor shows (see EditorContext on the plugin's side). On until the
+   * IDE says otherwise, like the switch above.
+   */
+  const [shareEditor, setShareEditorState] = useState(true)
+  /**
+   * What the editor beside the panel shows right now - the file in front of the person and the lines
+   * selected in it. Null with no text editor open, and always in the harness until a scenario says otherwise.
+   */
+  const [editorContext, setEditorContext] = useState<EditorRef | null>(null)
+  /**
+   * What each tab's next message goes without: the file and lines on screen when its chip was pressed off
+   * (see editorKey). Keyed by what was on screen rather than a plain flag, so selecting other lines - a new
+   * thing to show - puts the chip back on by itself; and forgotten when the message goes.
+   */
+  const [editorSkips, setEditorSkips] = useState<Record<string, string>>({})
   /**
    * The indicators around the input field switched off by hand - see indicators.ts. None until the IDE
    * says otherwise, for the same reason as the settings above: the harness has no IDE behind it, and
@@ -2018,6 +2053,7 @@ export const App = () => {
                 ide: message.preferences.ideLanguage ?? '',
               })
               setRestoreTabsState(message.preferences.restoreTabs !== false)
+              setShareEditorState(message.preferences.shareEditor !== false)
             }
             if (message.improve) setImproveInstructions(message.improve)
             feed({
@@ -2220,6 +2256,16 @@ export const App = () => {
             setRestoreTabsState(message.on)
             break
 
+          // Whether a message carries what the editor shows - flipped here or in another window.
+          case 'shareEditor':
+            setShareEditorState(message.on)
+            break
+
+          // What the editor beside this panel shows now (see EditorContext.kt).
+          case 'editorContext':
+            setEditorContext(message.context ?? null)
+            break
+
           /**
            * A feed is about to be handed over from the shell's journal. Everything up to restoreFinished
            * is collected rather than applied (see feed above).
@@ -2333,6 +2379,7 @@ export const App = () => {
                 tokens: (message.tokens ?? []) as UserToken[],
                 quotes: message.quotes ?? [],
                 steering: message.steering,
+                ...(message.editor ? { editor: message.editor } : {}),
               },
             })
             break
@@ -2341,6 +2388,11 @@ export const App = () => {
           // What this conversation is waiting to say, as the IDE holds it - see SessionQueue.kt.
           case 'queue':
             feed({ session: message.sessionId, action: { kind: 'queue', items: message.items } })
+            break
+
+          // The pencil on a queued message was pressed here - the message, whole, for the field.
+          case 'queuedTaken':
+            takeBackQueued(message.sessionId, message.before ?? null, message.text, message.tokens, message.quotes ?? [])
             break
 
           case 'planResolved':
@@ -3362,6 +3414,12 @@ export const App = () => {
     setRestoreTabsState(on)
   }, [])
 
+  /** Whether a message carries what the editor shows - applied here at once, and every window is told. */
+  const setShareEditor = useCallback((on: boolean) => {
+    send({ type: 'setShareEditor', on })
+    setShareEditorState(on)
+  }, [])
+
   /** The deferred write of the gauges' colour, and the last figure sent - see setCalmColors. */
   const calmSaveTimer = useRef<number | undefined>(undefined)
   const calmSent = useRef<number | undefined>(undefined)
@@ -3779,6 +3837,11 @@ export const App = () => {
   /**
    * A new tab from scratch - both the ordinary one from the "+" button and the single one that greets the
    * user after they have closed every one of them.
+   *
+   * The keyboard goes to the new tab's field at once, as it does after a fork. A new tab is opened to be
+   * written into, and left where the click put it the focus stayed on the "+" itself - so the first space
+   * of the first sentence pressed the button again and opened a second tab (reported as "an 'n' creates a
+   * new tab": the sentence began with "Can").
    */
   const startSession = useCallback((id: string) => {
     setSessions((current) => [
@@ -3786,6 +3849,7 @@ export const App = () => {
       { id, title: defaultTitle(id), state: 'idle', groupId: id, depth: 0, titleSource: 'default' },
     ])
     setActive(id)
+    setFocusToken((current) => current + 1)
     // Without a name rather than with the stand-in this screen draws: a non-empty title is what the shell
     // reads as "somebody has already named this tab" (see SessionRegistry.open), and a tab marked as named
     // is never renamed by its first message afterwards - neither by the guess made here nor by the model's
@@ -4402,20 +4466,48 @@ export const App = () => {
    * on every render would rebuild every card of the conversation on every chunk of a printing answer,
    * which is the very cost that memo is there to avoid.
    */
-  const reuseMessage = useCallback(
-    (item: UserItem) => {
-      const session = activeRef.current
-      const { tokens } = reusableMessage(item)
-
+  const intoField = useCallback(
+    (session: string, tokens: UserToken[], quotes: string[]) => {
       // The quotes travel beside the tokens rather than inside them (see the composer's own quotes
       // above the field), so they are put back the same way - as a draft of this tab's.
       editDraft(session, {
-        quotes: item.quotes.map((text, index) => ({ id: `r-${Date.now()}-${index}`, text })),
+        quotes: quotes.map((text, index) => ({ id: `r-${Date.now()}-${index}`, text })),
       })
-      applyTokens(session, tokens)
+      applyTokens(session, reusableMessage({ tokens }).tokens)
     },
     [applyTokens, editDraft],
   )
+
+  const reuseMessage = useCallback(
+    (item: UserItem) => intoField(activeRef.current, item.tokens, item.quotes),
+    [intoField],
+  )
+
+  /**
+   * A queued message the IDE took out at the pencil's press, into the field it was pressed in (see
+   * takeQueued in protocol.ts) - by the same road a sent message takes back (see reuseMessage), so it is
+   * one step of the undo history over whatever was being written.
+   *
+   * Its place is remembered alongside, and the send key and Queue put it back there. Without tokens - a
+   * message that came with none - the text is all there is, and it goes in as it stands.
+   */
+  const takeBackQueued = useCallback(
+    (session: string, before: string | null, text: string, tokens: unknown, quotes: string[]) => {
+      const pieces = Array.isArray(tokens) && tokens.length > 0 ? (tokens as UserToken[]) : [{ kind: 'text' as const, value: text }]
+
+      setQueueEdits((current) => ({ ...current, [session]: { before } }))
+      intoField(session, pieces, quotes)
+    },
+    [intoField],
+  )
+
+  /** The place of a message taken out to be edited is kept only while the field still holds something. */
+  useEffect(() => {
+    setQueueEdits((current) => {
+      const kept = Object.entries(current).filter(([session]) => !draftEmpty(drafts[session]))
+      return kept.length === Object.keys(current).length ? current : Object.fromEntries(kept)
+    })
+  }, [drafts])
 
   /**
    * The way back: what stands in the field is a rewrite nobody has touched, and this puts the person's own
@@ -4553,6 +4645,29 @@ export const App = () => {
     const images = isOverride ? [] : imageAttachments(draft.tokens)
     const attachCount = isOverride ? 0 : draft.tokens.filter((token) => token.kind === 'chip').length
 
+    // What the editor shows goes along - unless it is switched off, for good or for this one message (see
+    // editorSkips). The IDE reads it itself the moment the message arrives; the flag only asks for it. A
+    // text the panel puts in on the person's behalf (isOverride) is not something they wrote while looking
+    // at the editor, and a slash command is an order to the conversation rather than a question about code
+    // - the IDE leaves it out of one anyway (see ClaudeSessionHub.editorSeen), and the card must not claim
+    // otherwise.
+    const withEditor =
+      !isOverride &&
+      !written.trimStart().startsWith('/') &&
+      shareEditor &&
+      editorContext !== null &&
+      editorSkips[active] !== editorKey(editorContext)
+    // The chip's "not this one" was about this message, and this message is on its way.
+    if (editorSkips[active] !== undefined) {
+      setEditorSkips((current) => {
+        const { [active]: _gone, ...rest } = current
+        return rest
+      })
+    }
+
+    // A queued message that was taken out to be edited goes back to where it stood (see queueEdits).
+    const place = isOverride ? undefined : queueEdits[active]?.before ?? undefined
+
     // Into the queue while the agent is busy and someone explicitly asked to wait, or while compacting
     // runs: /compact swallows stdin and does not run these messages once it ends (see
     // deferFollowUpForCompact). A free agent has nothing to wait for.
@@ -4561,6 +4676,8 @@ export const App = () => {
         type: 'queuePrompt',
         sessionId: active,
         id: `q-${Date.now()}-${promptCounter.current++}`,
+        ...(place ? { before: place } : {}),
+        ...(withEditor ? { editor: true } : {}),
         text,
         attach: attachCount ? `${attachCount} refs` : '',
         // The pieces the card will be drawn from travel with it, exactly as they do with a message sent
@@ -4646,13 +4763,20 @@ export const App = () => {
     ownPrompts.current.add(promptId)
     dispatchPanel({
       session: active,
-      action: { kind: 'prompt', tokens, quotes: quotes.map((quote) => quote.text), steering: running },
+      action: {
+        kind: 'prompt',
+        tokens,
+        quotes: quotes.map((quote) => quote.text),
+        steering: running,
+        ...(withEditor && editorContext ? { editor: editorContext } : {}),
+      },
     })
 
     send({
       type: 'prompt',
       sessionId: active,
       id: promptId,
+      ...(withEditor ? { editor: true } : {}),
       // The pieces the card is drawn from travel with it: the shell keeps them for whoever was not here
       // (a second client, or this same page after a reload) - see promptEcho.
       tokens,
@@ -4679,6 +4803,10 @@ export const App = () => {
     shellRuns,
     commands,
     improveSources,
+    queueEdits,
+    shareEditor,
+    editorContext,
+    editorSkips,
   ])
 
   const sendNow = useCallback(() => submit(false), [submit])
@@ -4688,11 +4816,7 @@ export const App = () => {
    * Whether there is anything to send: text, an attachment or a quote. An empty field means both buttons
    * are dimmed, and Enter does nothing either.
    */
-  const draftReady = useMemo(() => {
-    if (draft.quotes.length > 0) return true
-    if (draft.tokens.some((token) => token.kind === 'chip')) return true
-    return plainText(draft.tokens).trim().length > 0
-  }, [draft])
+  const draftReady = useMemo(() => !draftEmpty(draft), [draft])
 
   // For the local harness page only (webview/src/harness) - it imitates a genuine send of a message from
   // the input field. Vite statically substitutes import.meta.env.DEV with false on a vite build, so this
@@ -5091,6 +5215,7 @@ export const App = () => {
       mode: modeMenuOptions(t, availableModes).find((option) => option.id === normalizeMode(prefs.mode))?.label ?? '',
     },
     restoreTabs: restoreTabs ? t.restoreTabs.on : t.restoreTabs.off,
+    shareEditor: shareEditor ? t.shareEditor.on : t.shareEditor.off,
     composerLayout: composerLayoutOptions(t).find((option) => option.id === chosenLayout)?.label ?? '',
     pasteCollapse: pasteCollapseSummary(t, pasteCollapse),
     sendKey: sendKeySummary(sendKey),
@@ -5347,6 +5472,11 @@ export const App = () => {
           send({ type: 'reorderQueue', sessionId: active, ids: next.map((item) => item.id) })
         }}
         onRemove={(id) => send({ type: 'unqueuePrompt', sessionId: active, id })}
+        onEdit={(id) => send({ type: 'takeQueued', sessionId: active, id })}
+        // Only while there is a turn to wait out: with none, the message in the field simply goes when sent,
+        // and a place in a queue that has nothing to wait for would promise an order that does not exist.
+        editing={running ? (queueEdits[active] ?? null) : null}
+        sendKey={sendKey}
       />
 
       <Quotes
@@ -5774,6 +5904,21 @@ export const App = () => {
             voiceError={voiceErrorText}
             onSubmit={sendNow}
             onQueue={queueNext}
+            keyQueues={queueEdits[active] !== undefined}
+            editor={
+              shareEditor && editorContext
+                ? { ref: editorContext, on: editorSkips[active] !== editorKey(editorContext) }
+                : null
+            }
+            onToggleEditor={() => {
+              if (!editorContext) return
+              const key = editorKey(editorContext)
+              setEditorSkips((current) => {
+                if (current[active] !== key) return { ...current, [active]: key }
+                const { [active]: _back, ...rest } = current
+                return rest
+              })
+            }}
             canSubmit={draftReady}
             stopStalled={stopStalled}
             onStop={() => {
@@ -6080,6 +6225,10 @@ export const App = () => {
 
         {sideMenu.open && sideMenu.screen === 'restoreTabs' ? (
           <RestoreTabs t={t} on={restoreTabs} onToggle={setRestoreTabs} />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'shareEditor' ? (
+          <ShareEditor t={t} on={shareEditor} onToggle={setShareEditor} />
         ) : null}
 
         {sideMenu.open && sideMenu.screen === 'calmColors' ? (

@@ -1,7 +1,14 @@
 import { type RefObject, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 
-import { toolsDropped, type ToolsMeasure, type WritingTool } from '../composerFit'
+import {
+  EDITOR_NAME_GAP,
+  EDITOR_NAME_MAX,
+  toolsDropped,
+  type FitStep,
+  type ToolsMeasure,
+  type WritingTool,
+} from '../composerFit'
 
 /**
  * The marks the row's parts carry for the measurement, set in Composer. Attributes rather than classes: the
@@ -10,11 +17,12 @@ import { toolsDropped, type ToolsMeasure, type WritingTool } from '../composerFi
  * - `square` - the paperclip, the one square that never leaves, measured for the width of all of them;
  * - `group` / `groups` - a group of squares and the block of groups, measured for their gaps;
  * - `spacer` - the stretch between the squares and the sending buttons, which absorbs what is to spare;
- * - `clip` - the part of a caption a sending button gives up when it narrows (see firstLetter).
+ * - `clip` - the part of a caption a sending button gives up when it narrows (see firstLetter);
+ * - `name` - the file name on the editor's chip, which steps out of the row before any square does.
  */
 const FIT = 'data-fit'
 
-export const fitMark = (part: 'square' | 'group' | 'groups' | 'spacer' | 'clip') => ({ [FIT]: part })
+export const fitMark = (part: 'square' | 'group' | 'groups' | 'spacer' | 'clip' | 'name') => ({ [FIT]: part })
 
 const part = (row: HTMLElement, name: string) => row.querySelector<HTMLElement>(`[${FIT}='${name}']`)
 
@@ -44,11 +52,16 @@ const measureRow = (row: HTMLElement): ToolsMeasure | null => {
     given += Math.max(0, clip.scrollWidth - clip.clientWidth)
   })
 
+  // The name's own width even while it is out of the row: it is kept in the chip at no width at all, and
+  // the text inside still has one to read (see .editorChipNameGone).
+  const name = part(row, 'name')
+
   return {
     short: given + overflow - spare,
     square: square.getBoundingClientRect().width,
     inner: gapOf(part(row, 'group')),
     outer: gapOf(part(row, 'groups')),
+    name: name ? Math.min(name.scrollWidth, EDITOR_NAME_MAX) + EDITOR_NAME_GAP : 0,
   }
 }
 
@@ -68,7 +81,7 @@ const measureRow = (row: HTMLElement): ToolsMeasure | null => {
 export const useToolsFit = (
   row: RefObject<HTMLElement | null>,
   present: ReadonlySet<WritingTool>,
-  droppable: readonly WritingTool[],
+  droppable: readonly FitStep[],
   active: boolean,
   content: string,
 ): number => {

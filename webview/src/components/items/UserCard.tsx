@@ -11,6 +11,9 @@ import { reusableMessage } from '../../feed/reuse'
 import type { Chip, ChipKind, UserItem } from '../../feed/types'
 import type { CardState } from '../../hooks/useCardState'
 import { useOpenFile } from '../../hooks/useOpenFile'
+import { editorLabel } from '../../feed/editorContext'
+import type { EditorRef } from '../../protocol'
+import { EditorIcon } from '../EditorChip'
 import s from '../feed.module.css'
 import { useT } from '../../i18n'
 
@@ -153,18 +156,63 @@ export const UserCard = ({
         ),
       )}
     </div>
+
+    {item.editor ? <EditorLine editor={item.editor} /> : null}
   </div>
   )
 }
+
+/**
+ * What the editor showed when the message went - the file, and how many lines of it were selected. The
+ * agent was shown it beside the message (see EditorContext.kt), and a question like "why is this slow?" is
+ * only readable later with the thing it was about in sight.
+ *
+ * Opens those lines in the editor, the way a file's chip opens its file; where there is no editor (the
+ * phone) it is the same words without the click.
+ */
+const EditorLine = memo(({ editor }: { editor: EditorRef }) => {
+  const t = useT()
+  const openFile = useOpenFile()
+  const count = editor.from !== undefined && editor.to !== undefined ? editor.to - editor.from + 1 : 0
+  const words = count > 0 ? t.feed.editor.selected(count, editor.name) : t.feed.editor.opened(editor.name)
+  const place = editorLabel({ ...editor, name: editor.path })
+
+  if (!openFile) {
+    return (
+      <div className={s.userEditor} data-tooltip={place}>
+        <EditorIcon size={11} />
+        <span className={s.userEditorText}>{words}</span>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      className={`${s.userEditor} ${s.userEditorOpens}`}
+      data-tooltip={t.feed.editor.open(place)}
+      onClick={() =>
+        openFile({
+          path: editor.path,
+          ...(editor.from !== undefined ? { line: editor.from, endLine: editor.to } : {}),
+        })
+      }
+    >
+      <EditorIcon size={11} />
+      <span className={s.userEditorText}>{words}</span>
+    </button>
+  )
+})
 
 /**
  * An arrow curving back into a field - "take this back to where it was written".
  *
  * A drawing rather than a character: ↩ and ⤺ are not in the panel's font and fall through to whatever
  * the system has, at a size and weight of their own beside a letter set in ours (the same reason a
- * hotkey's caps are drawn - see HotkeyCaps).
+ * hotkey's caps are drawn - see HotkeyCaps). Shared with a queued message's row (see Queue), which takes
+ * its message back into the field just as this card does.
  */
-const ReuseArrow = () => (
+export const ReuseArrow = () => (
   <svg viewBox="0 0 16 16" aria-hidden="true" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <path d="M3.4 6.6h6.4a3 3 0 0 1 0 6H6.2" />
     <path d="M5.8 4.2 3.4 6.6l2.4 2.4" />

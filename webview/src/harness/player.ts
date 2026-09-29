@@ -1,6 +1,7 @@
 import type {
   ClaudeConfigSetting,
   PaintedTerm,
+  QueuedMessage,
   SearchHit,
   ShellMessage,
   VoiceHotkey,
@@ -1037,11 +1038,84 @@ const answerSearch = (message: WebviewMessage): void => {
   }
 }
 
+/**
+ * The queue of each conversation, held here as the IDE holds it (see SessionQueue.kt) - with the pieces a
+ * message was typed in, because the pencil hands them back to the field whole.
+ */
+type HeldQueued = QueuedMessage & { tokens: unknown; quotes: string[] }
+
+const queues = new Map<string, HeldQueued[]>()
+
+const sayQueue = (sessionId: string): void => {
+  const items = (queues.get(sessionId) ?? []).map(({ id, text, attach, images }) => ({ id, text, attach, images }))
+  window.__accReceive?.({ type: 'queue', sessionId, items })
+}
+
+/**
+ * Queue, the cross, a drag and the pencil, answered the way ClaudeSessionHub answers them - so the queue
+ * above the field can be worked by hand here. Nothing is ever fired out of it: the harness has no turn
+ * that ends by itself, and a scenario that wants one plays it.
+ */
+const answerQueue = (message: WebviewMessage): void => {
+  if (message.type === 'queuePrompt') {
+    const list = queues.get(message.sessionId) ?? []
+    if (list.some((item) => item.id === message.id)) return
+
+    const entry: HeldQueued = {
+      id: message.id,
+      text: message.text,
+      attach: message.attach ?? '',
+      images: message.images?.length ?? 0,
+      tokens: message.tokens,
+      quotes: message.quotes ?? [],
+    }
+    const at = message.before ? list.findIndex((item) => item.id === message.before) : -1
+    queues.set(message.sessionId, at >= 0 ? [...list.slice(0, at), entry, ...list.slice(at)] : [...list, entry])
+    sayQueue(message.sessionId)
+    return
+  }
+
+  if (message.type === 'unqueuePrompt') {
+    queues.set(message.sessionId, (queues.get(message.sessionId) ?? []).filter((item) => item.id !== message.id))
+    sayQueue(message.sessionId)
+    return
+  }
+
+  if (message.type === 'reorderQueue') {
+    const list = queues.get(message.sessionId) ?? []
+    const named = message.ids.flatMap((id) => list.filter((item) => item.id === id))
+    queues.set(message.sessionId, [...named, ...list.filter((item) => !message.ids.includes(item.id))])
+    sayQueue(message.sessionId)
+    return
+  }
+
+  if (message.type === 'takeQueued') {
+    const list = queues.get(message.sessionId) ?? []
+    const at = list.findIndex((item) => item.id === message.id)
+    const taken = list[at]
+    if (!taken) return
+
+    const rest = list.filter((item) => item.id !== message.id)
+    queues.set(message.sessionId, rest)
+    sayQueue(message.sessionId)
+    window.__accReceive?.({
+      type: 'queuedTaken',
+      sessionId: message.sessionId,
+      id: taken.id,
+      ...(rest[at] ? { before: rest[at]!.id } : {}),
+      text: taken.text,
+      tokens: taken.tokens,
+      quotes: taken.quotes,
+    })
+  }
+}
+
 const listenToPanel = () => {
   // A scenario replayed from the top reads its history from the top too. The counter is a module's own,
   // so without this the mark stayed dead after the pages ran out once, for the rest of the browser tab.
   earlierPages = 0
   typedIntoFeed = []
+  queues.clear()
 
   if (window.__accSend) return
 
@@ -1219,6 +1293,7 @@ const listenToPanel = () => {
     if (message) answerAccounts(message)
     if (message) answerLogin(message)
     if (message) answerScenarios(message)
+    if (message) answerQueue(message)
   }
 
   window.dispatchEvent(new Event('acc:ready'))
@@ -1418,6 +1493,14 @@ export class ScenarioPlayer {
     if (step.kind === 'agent') {
       const event = step.event as { type?: string; model?: string; message?: { model?: string } }
       streamSignature = event.message?.model ?? (event.type === 'system' ? event.model : undefined) ?? streamSignature
+    }
+
+    // A queue a scenario puts up is the queue the harness holds from then on (see answerQueue).
+    if (message.type === 'queue') {
+      queues.set(
+        message.sessionId,
+        message.items.map((item) => ({ ...item, tokens: [{ kind: 'text', value: item.text }], quotes: [] })),
+      )
     }
 
     window.__accReceive?.(message)

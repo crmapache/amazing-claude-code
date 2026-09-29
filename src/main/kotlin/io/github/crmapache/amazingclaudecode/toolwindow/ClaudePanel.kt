@@ -27,6 +27,7 @@ import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.claude.SessionClient
 import io.github.crmapache.amazingclaudecode.claude.SettingSources
 import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
+import io.github.crmapache.amazingclaudecode.editor.EditorContext
 import io.github.crmapache.amazingclaudecode.editor.OpenInEditor
 import io.github.crmapache.amazingclaudecode.editor.SelectionReference
 import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
@@ -102,6 +103,16 @@ internal class ClaudePanel(
     fun appearanceChanged() {
         sendTheme()
         sendTypography()
+    }
+
+    /** The same, for whether a message carries what the editor shows (see EditorContext). */
+    fun shareEditorChanged() {
+        webview?.send(
+            buildJsonObject {
+                put("type", "shareEditor")
+                put("on", ClaudePreferences.shareEditor)
+            }.toString(),
+        )
     }
 
     /** The same, for whether the tabs come back after a restart (see TabMemory). */
@@ -182,6 +193,27 @@ internal class ClaudePanel(
         watchDockAnchor()
         watchTypography()
         watchIdeActivation()
+        watchEditor()
+    }
+
+    /**
+     * The file in front of the person and the lines selected in it, for the chip in the field (see
+     * EditorContext). Only this window hears it, not the hub: it is about the editor beside this panel, and a
+     * phone across the city has nothing beside it - which is also why a phone's message never carries it
+     * (see ClaudeSessionHub.prompt).
+     */
+    private fun watchEditor() {
+        if (webview == null) return
+        EditorContext.getInstance(project).watch(parentDisposable, ::sendEditorContext)
+    }
+
+    private fun sendEditorContext(snapshot: EditorContext.Snapshot? = EditorContext.getInstance(project).now()) {
+        webview?.send(
+            buildJsonObject {
+                put("type", "editorContext")
+                if (snapshot != null) put("context", EditorContext.descriptor(snapshot))
+            }.toString(),
+        )
     }
 
     /** Whether the interface has said a single word to us - see [watchForSilence]. */
@@ -321,6 +353,7 @@ internal class ClaudePanel(
                 sendDockAnchor()
                 sendTypography()
                 sendTheme()
+                sendEditorContext()
                 // The menu's row carries the account in force, so the list has to be there before anybody
                 // opens the screen behind it - otherwise that row sits blank next to a full one for
                 // remote access, and the screen it opens jumps from a skeleton to its content mid-slide.
@@ -493,6 +526,13 @@ internal class ClaudePanel(
             "saveDraft" -> hub.saveDraft(field("sessionId"), payload["draft"] as? JsonObject)
 
             "tabShown" -> hub.showTab(field("sessionId"))
+
+            // Whether a message carries what the editor shows (see EditorContext). Machine-wide, like the
+            // one below: every window's chip and screen follow it.
+            "setShareEditor" -> {
+                ClaudePreferences.shareEditor = payload["on"]?.jsonPrimitive?.booleanOrNull != false
+                ClaudePanels.everyPanel { it.shareEditorChanged() }
+            }
 
             // Whether the tabs come back at all. Machine-wide: every project's memory is told, a switch
             // off clears what each of them keeps on disk, and every window's screen shows the new answer.

@@ -23,6 +23,7 @@ internal object ClaudePreferences {
         val improveInstructions: String,
         val language: String,
         val restoreTabs: Boolean,
+        val shareEditor: Boolean,
     )
 
     fun snapshot(): Snapshot = Snapshot(
@@ -37,6 +38,7 @@ internal object ClaudePreferences {
         improveInstructions = improveInstructions,
         language = language,
         restoreTabs = restoreTabs,
+        shareEditor = shareEditor,
     )
 
     var model: String
@@ -206,6 +208,18 @@ internal object ClaudePreferences {
     var restoreTabs: Boolean
         get() = read(RESTORE_TABS_KEY) != RESTORE_TABS_OFF
         set(value) = write(RESTORE_TABS_KEY, if (value) "" else RESTORE_TABS_OFF)
+
+    /**
+     * Whether a message sent from the panel carries what the editor shows - the open file, and the lines
+     * selected in it (see EditorContext).
+     *
+     * On unless switched off, stored the other way round like [restoreTabs]: it is what Claude Code in a
+     * terminal does, and what the feedback that asked for it expected without being told. Machine-wide: it
+     * is a way of working, not a property of a repository.
+     */
+    var shareEditor: Boolean
+        get() = read(SHARE_EDITOR_KEY) != SHARE_EDITOR_OFF
+        set(value) = write(SHARE_EDITOR_KEY, if (value) "" else SHARE_EDITOR_OFF)
 
     /**
      * The models somebody named by hand, because Claude Code does not name them (see CustomModels.tsx).
@@ -431,6 +445,8 @@ internal object ClaudePreferences {
     private const val TEXT_SIZE_KEY = "acc.textSize"
     private const val RESTORE_TABS_KEY = "acc.restoreTabs"
     private const val RESTORE_TABS_OFF = "off"
+    private const val SHARE_EDITOR_KEY = "acc.shareEditor"
+    private const val SHARE_EDITOR_OFF = "off"
     private const val CUSTOM_MODELS_KEY = "acc.models.custom"
     private const val EXECUTABLE_KEY = "acc.executable"
     private const val MUTED_SOUNDS_KEY = "acc.sounds.muted"

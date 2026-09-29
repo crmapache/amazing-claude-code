@@ -3,6 +3,8 @@ import { withoutShellText } from '../feed/bash'
 import type { QueuedMessage } from '../protocol'
 import s from './composer.module.css'
 import { useT } from '../i18n'
+import { ReuseArrow } from './items/UserCard'
+import { sendKeyCap, type SendKey } from '../sendKey'
 
 interface QueueProps {
   /**
@@ -13,9 +15,20 @@ interface QueueProps {
   items: QueuedMessage[]
   onReorder: (from: number, to: number) => void
   onRemove: (id: string) => void
+  /** Take a message out and back into the field, to be corrected and queued again (see App.takeQueued). */
+  onEdit: (id: string) => void
+  /**
+   * A message of this tab's is out of the queue and in the field being edited, and Queue puts it back
+   * before `before` (at the end when that is null). Its place is drawn as a row of its own: out of the
+   * queue, the message would otherwise simply vanish from it, and the person who pressed the pencil could
+   * not tell whether it will still be said, or where.
+   */
+  editing: { before: string | null } | null
+  /** The key that sends - while a message is being edited it puts it back instead, and the place says so. */
+  sendKey: SendKey
 }
 
-export const Queue = ({ items, onReorder, onRemove }: QueueProps) => {
+export const Queue = ({ items, onReorder, onRemove, onEdit, editing, sendKey }: QueueProps) => {
   const t = useT()
   const [dragFrom, setDragFrom] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState<number | null>(null)
@@ -23,7 +36,24 @@ export const Queue = ({ items, onReorder, onRemove }: QueueProps) => {
   /** The same index as dragOver, but without waiting for a re-render - onPointerUp reads it at once. */
   const overIndexRef = useRef<number | null>(null)
 
-  if (items.length === 0) return null
+  if (items.length === 0 && !editing) return null
+
+  /** Where the place of the message being edited stands - before its old neighbour, else at the end. */
+  const editingAt = editing
+    ? (() => {
+        const at = editing.before ? items.findIndex((item) => item.id === editing.before) : -1
+        return at >= 0 ? at : items.length
+      })()
+    : -1
+
+  const editingRow = (
+    <div key="editing" className={`${s.queueRow} ${s.queueRowEditing}`}>
+      <span className={s.queueEditingMark}>
+        <ReuseArrow />
+      </span>
+      <span className={s.queueText}>{t.chrome.queue.editing(sendKeyCap(sendKey), t.composer.queue)}</span>
+    </div>
+  )
 
   /**
    * The handle drags by pointer events rather than native HTML5 DnD: inside JCEF (the IDE's embedded
@@ -64,11 +94,13 @@ export const Queue = ({ items, onReorder, onRemove }: QueueProps) => {
     <div className={s.queue}>
       <div className={s.queueHead}>
         <span className={s.queueLabel}>{t.chrome.queue.label}</span>
-        <span className={s.queueHint}>{t.chrome.queue.hint(items.length)}</span>
+        {/* Nothing to count and nothing to drag while the one message there is sits in the field. */}
+        {items.length > 0 ? <span className={s.queueHint}>{t.chrome.queue.hint(items.length)}</span> : null}
         <div className={s.spacer} />
       </div>
 
-      {items.map((item, index) => (
+      {items.flatMap((item, index) => [
+        ...(index === editingAt ? [editingRow] : []),
         <div
           key={item.id}
           ref={(row) => {
@@ -84,11 +116,24 @@ export const Queue = ({ items, onReorder, onRemove }: QueueProps) => {
           <span className={s.queueNum}>{index + 1}</span>
           <span className={s.queueText}>{withoutShellText(item.text)}</span>
           {item.attach ? <span className={s.queueAttach}>{item.attach}</span> : null}
+          {/* Disabled while another message is being edited: there is one field, and a second message
+              put into it would replace the first - which is out of the queue and would be lost. */}
+          <button
+            type="button"
+            className={`${s.iconButton} ${s.queueEdit}`}
+            aria-label={t.chrome.queue.edit}
+            data-tooltip={t.chrome.queue.edit}
+            disabled={editing !== null}
+            onClick={() => onEdit(item.id)}
+          >
+            <ReuseArrow />
+          </button>
           <button type="button" className={s.iconButton} onClick={() => onRemove(item.id)}>
             ×
           </button>
-        </div>
-      ))}
+        </div>,
+      ])}
+      {editingAt === items.length ? editingRow : null}
     </div>
   )
 }

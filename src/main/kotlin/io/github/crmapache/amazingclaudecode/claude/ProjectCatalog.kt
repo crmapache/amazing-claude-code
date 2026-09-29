@@ -348,6 +348,9 @@ internal class ProjectCatalog(
                     // Whether the tabs come back after a restart. Unconditional: "on" is the answer a
                     // panel nobody has asked gives, and it is a real one (see ClaudePreferences.restoreTabs).
                     put("restoreTabs", preferences.restoreTabs)
+                    // Whether a message carries what the editor shows. Unconditional for the same reason:
+                    // "on" is the default (see ClaudePreferences.shareEditor).
+                    put("shareEditor", preferences.shareEditor)
                 }
                 // Which of Claude Code's settings layers this project loads - outside `preferences`
                 // deliberately: everything in there is the machine's, and this one belongs to the

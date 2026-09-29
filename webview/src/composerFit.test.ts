@@ -101,6 +101,35 @@ describe('toolsDropped', () => {
   })
 })
 
+describe('the name on the editor chip', () => {
+  /** A row with the editor's chip, its name `name` pixels wide with the gap before it. */
+  const dropNamed = (short: number, dropped = 0, name = 120) =>
+    toolsDropped(ALL, droppableTools(ALL, false, true), dropped, { short, ...SIZES, name })
+
+  it('steps out before any square leaves', () => {
+    expect(droppableTools(ALL, false, true)[0]).toBe('editorName')
+    expect(dropNamed(1)).toBe(1)
+    expect(dropNamed(120)).toBe(1)
+  })
+
+  it('goes whole, and the squares follow only once it is gone', () => {
+    // Short by more than the name: the name and then the slash.
+    expect(dropNamed(121)).toBe(2)
+  })
+
+  it('comes back last, and only with the room for all of it', () => {
+    // Out with the slash: the slash comes back first.
+    expect(dropNamed(-31, 2)).toBe(1)
+    // Out alone: room short of the whole name keeps it out; the whole name and a pixel bring it back.
+    expect(dropNamed(-100, 1)).toBe(1)
+    expect(dropNamed(-121, 1)).toBe(0)
+  })
+
+  it('is not a step at all without a chip', () => {
+    expect(droppableTools(ALL, false)).not.toContain('editorName')
+  })
+})
+
 describe('firstLetter', () => {
   it('splits a caption into its first letter and the rest', () => {
     expect(firstLetter('Send')).toEqual(['S', 'end'])

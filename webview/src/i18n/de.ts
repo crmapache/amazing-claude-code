@@ -36,6 +36,7 @@ export const de: Dict = {
       remoteAbout: { title: 'WAS DAS HAUS VERLÄSST', hint: 'lies das, bevor du es einschaltest' },
       newChat: { title: 'NEUE CHATS', hint: 'womit ein neuer Tab startet' },
       restoreTabs: { title: 'TABS BEIM START', hint: 'was nach einem Neustart zurückkommt' },
+      shareEditor: { title: 'EDITOR IN NACHRICHTEN', hint: 'was mit einer Nachricht mitgeht' },
       newChatModel: { title: 'STANDARDMODELL', hint: 'mit welchem Modell ein neuer Tab startet' },
       newChatEffort: { title: 'STANDARD-AUFWAND', hint: 'wie gründlich ein neuer Tab denkt' },
       newChatMode: { title: 'STANDARDMODUS', hint: 'womit neue Tabs starten' },
@@ -83,6 +84,7 @@ export const de: Dict = {
       indicators: { label: 'Anzeigen', sub: 'Welche Werte am Feld stehen bleiben' },
       newChat: { label: 'Neue Chats', sub: 'Modell, Aufwand und Berechtigungsmodus' },
       restoreTabs: { label: 'Tabs beim Start', sub: 'Wieder öffnen, was offen war, samt Entwürfen' },
+      shareEditor: { label: 'Offene Datei und Auswahl', sub: 'Was mit jeder Nachricht mitgeht' },
       composerLayout: { label: 'Layout des Eingabefelds', sub: 'Wo das Eingabefeld sitzt' },
       pasteCollapse: { label: 'Eingefügter Text', sub: 'Wann eine Einfügung zum Chip wird' },
       sendKey: { label: 'Nachricht senden', sub: 'Welche Taste sendet' },
@@ -165,6 +167,14 @@ export const de: Dict = {
     label: 'Tabs wiederherstellen',
     hint: 'Die Tabs, ihre Unterhaltungen und der angefangene Text kommen zurück, wenn das Projekt wieder geöffnet wird - auch nach einem Absturz der IDE',
     note: 'Nichts wird neu gestartet: Ein Agent startet erst, wenn sein Tab geöffnet oder beschrieben wird. Entwürfe bleiben auf diesem Rechner, im eigenen Ordner der IDE, und nirgendwo sonst.',
+    on: 'An',
+    off: 'Aus',
+  },
+
+  shareEditor: {
+    label: 'Den Editor mitschicken',
+    hint: 'Jede Nachricht trägt die im Editor offene Datei und die darin markierten Zeilen - so wie Claude Code es im Terminal macht',
+    note: 'Nur aus diesem Panel: Eine Nachricht vom Handy trägt nichts vom Editor. Eine einzelne Nachricht kann ohne ihn gehen - drück auf den Datei-Chip im Eingabefeld.',
     on: 'An',
     off: 'Aus',
   },
@@ -811,6 +821,10 @@ export const de: Dict = {
     improveTerminal: 'Ein Terminal-Befehl wird nicht umgeschrieben',
     voice: 'Diktieren',
     voiceStop: 'Diktat beenden',
+    editor: {
+      on: (place) => `Claude sieht ${place} mit dieser Nachricht · klicken, um es wegzulassen`,
+      off: (place) => `${place} bleibt bei dieser Nachricht weg · klicken, um es mitzuschicken`,
+    },
   },
 
   header: {
@@ -898,6 +912,11 @@ export const de: Dict = {
     copyReply: 'Die ganze Antwort kopieren',
     moreActions: 'Mehr',
     copyMessage: 'Diese Nachricht kopieren - mit den Pfaden der Anhänge',
+    editor: {
+      selected: (n, name) => (n === 1 ? `1 Zeile aus ${name}` : `${n} Zeilen aus ${name}`),
+      opened: (name) => `In ${name}`,
+      open: (place) => `${place} · im Editor öffnen`,
+    },
     reuse: {
       label: 'Bearbeiten und neu senden',
       hint: 'Diese Nachricht zurück ins Eingabefeld holen, um sie zu bearbeiten und neu zu senden',
@@ -1101,6 +1120,8 @@ export const de: Dict = {
     queue: {
       label: 'IN DER WARTESCHLANGE',
       hint: (n) => `${n} gehen der Reihe nach raus, sobald der Lauf fertig ist · zum Umsortieren ziehen`,
+      edit: 'Im Eingabefeld bearbeiten',
+      editing: (key, button) => `Wird im Eingabefeld bearbeitet · ${key} oder „${button}“ stellt sie wieder hierher`,
     },
     selection: { quote: 'Zitieren', fork: 'Ab hier abzweigen' },
     streams: {

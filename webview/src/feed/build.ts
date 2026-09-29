@@ -24,6 +24,7 @@ import {
   noteSubagent,
 } from './tasks'
 import { replayedMessage } from './replayed'
+import { editorOfBlocks } from './editorContext'
 import { readPlan, readQuestions, readTodos } from './toolInput'
 import { readReview } from './findings'
 import {
@@ -370,6 +371,7 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         time: formatClock(now),
         tokens: action.tokens,
         quotes: action.quotes,
+        ...(action.editor ? { editor: action.editor } : {}),
       }
 
       // A message written into a running turn starts nothing afresh: the agent carries on with its own,
@@ -2306,8 +2308,13 @@ const addReplayedPrompt = (
   // off, and the field is what holds then.
   if (event.isMeta || event.parent_tool_use_id || event.origin?.kind) return state
 
-  const text = replayedPromptText(blocksOf(event.message.content))
+  const blocks = blocksOf(event.message.content)
+  const text = replayedPromptText(blocks)
   if (!text) return state
+
+  // The note of what the editor showed is a block of its own and is stripped out of the text above with the
+  // rest of the service blocks - read back here, it is the line under the message again (see editorContext.ts).
+  const editor = editorOfBlocks(blocks)
 
   // The time is taken from when it was said: in a replay "now" is the moment the tab was opened, and the
   // whole past conversation would look like today's.
@@ -2326,6 +2333,7 @@ const addReplayedPrompt = (
     quotes,
     // The transcript's name for the line, so a search hit on it can be found in the feed (see rowOf).
     ...(event.uuid ? { uuid: event.uuid } : {}),
+    ...(editor ? { editor } : {}),
   }))
 }
 

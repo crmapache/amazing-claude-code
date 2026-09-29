@@ -343,15 +343,15 @@ internal class ClaudeSession(
      */
     private var conversationEpoch = 0
 
-    fun sendPrompt(text: String, images: List<ImageAttachment> = emptyList()) {
-        sendPrompt(text, images, repeat = false)
+    fun sendPrompt(text: String, images: List<ImageAttachment> = emptyList(), context: String? = null) {
+        sendPrompt(text, images, context, repeat = false)
     }
 
     /**
      * Whether the message went into the process. Outside this is not needed, but a resend tells by it
      * whether a turn has begun (see [resend]).
      */
-    private fun sendPrompt(text: String, images: List<ImageAttachment>, repeat: Boolean): Boolean {
+    private fun sendPrompt(text: String, images: List<ImageAttachment>, context: String?, repeat: Boolean): Boolean {
         // The process did not come up (onError has already said so) - the turn did not begin and cannot
         // begin. Not saying so separately means leaving the panel with the spinner it put up on the
         // send: the error message is in the feed while work still looks like it is happening.
@@ -379,12 +379,12 @@ internal class ClaudeSession(
         // of a turn is missing from that snapshot: no further turn begins, no later chain ever looks at
         // it, and the loss goes unnoticed forever - which is precisely the moment this whole check
         // exists for.
-        val delivery = if (watched) PromptDeliveries.Delivery(text, images, sentAt, repeat) else null
+        val delivery = if (watched) PromptDeliveries.Delivery(text, images, context, sentAt, repeat) else null
         delivery?.let(undelivered::watch)
 
         // We only wait for a report on what actually went out: a failed write has already been reported
         // to the panel as an error, and repeating it blindly serves nothing.
-        val sent = write(process, userMessage(text, images))
+        val sent = write(process, userMessage(text, images, context))
         if (!sent) delivery?.let { undelivered.stopWatching(listOf(it)) }
         if (sent && SessionTitle.isRename(text)) {
             // The person is naming the conversation right now, through the CLI: the tab's own name sent
@@ -1227,7 +1227,7 @@ internal class ClaudeSession(
         // failed to come up and a broken channel start no turn, while the panel would be left with a
         // spinner and a running counter over the text of the error, and there would be nothing left to
         // clear them with.
-        if (!sendPrompt(lost.text, lost.images, repeat = true)) return
+        if (!sendPrompt(lost.text, lost.images, lost.context, repeat = true)) return
         onTurnStarted()
 
         // The repeat gets a chain of checks of its own right away rather than waiting for the end of a
@@ -1586,7 +1586,16 @@ internal class ClaudeSession(
         conversationId = started
     }
 
-    private fun userMessage(text: String, images: List<ImageAttachment>): String = buildJsonObject {
+    /**
+     * [context] - what the editor showed (see EditorContext) - goes as a block of its own after everything
+     * the person wrote, rather than glued onto their text. Glued on, it would be their words as far as every
+     * reader of the transcript is concerned: the title of the conversation in the history list is its first
+     * text block (ClaudeHistory.firstText), the delivery check matches the text block by block
+     * (PromptDelivery.match), and the name the model is asked for reads [text] alone. As a block of its own,
+     * wrapped the way the CLI wraps its own notes to the model, each of them leaves it out by itself, and the
+     * feed draws it as a line under the message rather than as something said (see feed/editorContext.ts).
+     */
+    private fun userMessage(text: String, images: List<ImageAttachment>, context: String?): String = buildJsonObject {
         put("type", "user")
         putJsonObject("message") {
             put("role", "user")
@@ -1605,6 +1614,12 @@ internal class ClaudeSession(
                             put("media_type", image.mediaType)
                             put("data", image.data)
                         }
+                    }
+                }
+                if (context != null) {
+                    addJsonObject {
+                        put("type", "text")
+                        put("text", context)
                     }
                 }
             }

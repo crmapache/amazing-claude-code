@@ -12,6 +12,7 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import io.github.crmapache.amazingclaudecode.claude.accounts.AccountDesk
 import io.github.crmapache.amazingclaudecode.claude.accounts.AccountsWatch
 import io.github.crmapache.amazingclaudecode.editor.DiskRefresh
+import io.github.crmapache.amazingclaudecode.editor.EditorContext
 import io.github.crmapache.amazingclaudecode.editor.UnsavedEdits
 import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import io.github.crmapache.amazingclaudecode.remote.LocalBridgeServer
@@ -1337,20 +1338,64 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         echo: JsonObject? = null,
         /** The message came from a paired phone rather than from the desk - the statistics tell the two apart. */
         remote: Boolean = false,
+        /** Carry what the editor beside the panel shows - see [editorSeen]. */
+        withEditor: Boolean = false,
     ) {
         if (text.isBlank()) return
 
+        val seen = editorSeen(withEditor, text)
         val running = snapshot(sessionId).get().status == SessionSnapshot.STATUS_RUNNING
         if (PromptDelivery.waitsForTheTurn(text, running)) {
             // An identifier of our own: the message came as a send rather than as a queued one, so
             // nobody has named it. What it does not get is the "3 refs" beside the row - that is worked
             // out of the chips in the field, and a second answer to what counts as an attachment would
             // drift from the first (see SessionQueue.Entry).
-            queuePrompt(sessionId, UUID.randomUUID().toString(), text, images = images, echo = echo, remote = remote)
+            enqueue(
+                sessionId,
+                SessionQueue.Entry(
+                    id = UUID.randomUUID().toString(),
+                    text = text,
+                    attach = "",
+                    images = images,
+                    echo = echoWith(echo, seen),
+                    remote = remote,
+                    context = seen?.let(EditorContext::reminder),
+                ),
+                before = null,
+            )
             return
         }
 
-        deliverPrompt(sessionId, text, images, echo, remote)
+        deliverPrompt(sessionId, text, images, echoWith(echo, seen), remote, seen?.let(EditorContext::reminder))
+    }
+
+    /**
+     * What the editor beside the panel shows, when the message asked for it and the setting allows it - the
+     * open file and the lines selected in it (see EditorContext). Read the moment the message arrives, which
+     * is the moment Send was pressed: what the person was looking at while they wrote.
+     *
+     * The setting is asked here as well as by the panel, which already leaves the flag off when it is off:
+     * a panel page a version behind would not know the setting exists.
+     *
+     * Never with a slash command. It is not a question about code but an order to the conversation, the
+     * terminal attaches nothing to one either, and the CLI tells a command by the text it was sent - a
+     * second block beside "/compact" is not something to find out the hard way that it reads past.
+     */
+    private fun editorSeen(withEditor: Boolean, text: String): EditorContext.Snapshot? =
+        if (withEditor && ClaudePreferences.shareEditor && !PromptDelivery.isCommand(text)) {
+            EditorContext.getInstance(project).now()
+        } else {
+            null
+        }
+
+    /**
+     * The echo, with what the editor showed beside the rest - the line under the message in the feed, for
+     * every window, a reload of this one included. Left alone when there is no echo at all: a message nobody
+     * drew a card for is not given one made of nothing but a file name.
+     */
+    private fun echoWith(echo: JsonObject?, seen: EditorContext.Snapshot?): JsonObject? {
+        if (echo == null || seen == null) return echo
+        return JsonObject(echo + ("editor" to EditorContext.descriptor(seen)))
     }
 
     /**
@@ -1366,6 +1411,8 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         images: List<ImageAttachment>,
         echo: JsonObject?,
         remote: Boolean,
+        /** What the editor showed, as the agent reads it - a block of its own beside the text (see ClaudeSession.userMessage). */
+        context: String?,
     ) {
         stats.notePrompt(sessionId, text, images = images.size, remote = remote)
 
@@ -1402,7 +1449,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // panel, a phone, a queued message and an answer to a question all arrive here, so saving in
         // this one place covers the lot.
         UnsavedEdits.flush(project)
-        conversations.prompt(sessionId, text, images)
+        conversations.prompt(sessionId, text, images, context)
     }
 
     /**
@@ -1424,16 +1471,71 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         images: List<ImageAttachment> = emptyList(),
         echo: JsonObject? = null,
         remote: Boolean = false,
+        /** Where a message taken out for editing goes back to - see [SessionQueue.add]. */
+        before: String? = null,
+        /** Carry what the editor shows, taken now rather than when the message fires - see SessionQueue.Entry.context. */
+        withEditor: Boolean = false,
     ) {
         if (text.isBlank()) return
 
-        sendQueue(sessionId, queued.add(sessionId, SessionQueue.Entry(id, text, attach, images, echo, remote)))
+        val seen = editorSeen(withEditor, text)
+        enqueue(
+            sessionId,
+            SessionQueue.Entry(
+                id = id,
+                text = text,
+                attach = attach,
+                images = images,
+                echo = echoWith(echo, seen),
+                remote = remote,
+                context = seen?.let(EditorContext::reminder),
+            ),
+            before,
+        )
+    }
+
+    private fun enqueue(sessionId: String, entry: SessionQueue.Entry, before: String?) {
+        sendQueue(sessionId, queued.add(sessionId, entry, before))
         runQueued(sessionId)
     }
 
     /** The cross on a queued message: it is not going to be said after all. */
     fun unqueuePrompt(sessionId: String, id: String) {
         sendQueue(sessionId, queued.remove(sessionId, id))
+    }
+
+    /**
+     * The pencil on a queued message: it goes back into the field of whoever pressed it, to be corrected
+     * and queued again.
+     *
+     * The answer carries the message as it was typed - the chips, the quotes and the bytes of a pasted
+     * image inside them, the same pieces an echo is drawn from - because the field takes a message back
+     * in pieces rather than as the text the agent would have read (see feed/reuse.ts). Only to the asker:
+     * it is going into one window's field, and another window's field has nothing to do with it. Everyone
+     * sees the list without it.
+     *
+     * Nothing is answered when the message has already gone: it fired while the press was on its way, the
+     * list every window is sent says so, and its card is in the feed by now.
+     */
+    fun takeQueued(clientId: String, sessionId: String, id: String, asker: String = clientId) {
+        val taken = queued.takeOut(sessionId, id) ?: return
+        sendQueue(sessionId, taken.rest)
+
+        emitTo(
+            clientId,
+            buildJsonObject {
+                put("type", "queuedTaken")
+                put("sessionId", sessionId)
+                put("id", id)
+                taken.before?.let { put("before", it) }
+                put("text", taken.entry.text)
+                // Not what the editor showed when it was queued: queued again, it is sent with what the
+                // editor shows then, like any other message leaving the field.
+                taken.entry.echo?.get("tokens")?.let { put("tokens", it) }
+                taken.entry.echo?.get("quotes")?.let { put("quotes", it) }
+            }.toString(),
+            asker,
+        )
     }
 
     /** The queue dragged into another order - see [SessionQueue.reorder]. */
@@ -1459,7 +1561,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
 
         val (entry, rest) = queued.take(sessionId) ?: return
         sendQueue(sessionId, rest)
-        deliverPrompt(sessionId, entry.text, entry.images, entry.echo, entry.remote)
+        deliverPrompt(sessionId, entry.text, entry.images, entry.echo, entry.remote, entry.context)
     }
 
     private fun sendQueue(sessionId: String, items: List<SessionQueue.Entry>) {

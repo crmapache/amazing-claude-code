@@ -27,6 +27,7 @@ export type MenuScreen =
   | 'accounts'
   | 'newChat'
   | 'restoreTabs'
+  | 'shareEditor'
   | 'newChatModel'
   | 'newChatEffort'
   | 'newChatMode'
@@ -80,6 +81,8 @@ export interface MenuSummary {
   newChat: { model: string; effort: string; mode: string }
   /** Whether the tabs come back after a restart - "On" or "Off". */
   restoreTabs: string
+  /** Whether a message carries the open file and the selected lines - "On" or "Off". */
+  shareEditor: string
   composerLayout: string
   /** From how many lines a pasted text folds into a chip, or that it never does. */
   pasteCollapse: string
@@ -155,6 +158,7 @@ const SETTINGS_SCREENS: MenuScreen[] = [
   'indicators',
   'newChat',
   'restoreTabs',
+  'shareEditor',
   'composerLayout',
   'pasteCollapse',
   'sendKey',
@@ -308,6 +312,15 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M2.4 6.2V4.4a1.2 1.2 0 011.2-1.2h3l1.2 1.4h4.6a1.2 1.2 0 011.2 1.2v6.8a1.2 1.2 0 01-1.2 1.2H6" />
       <path d="M5.6 9.6a2.6 2.6 0 10-2.4 1.6" />
       <path d="M1.9 9.9l1.3 1.3 1.3-1.3" />
+    </svg>
+  ),
+  /* A page of text with a band across it: a file, and lines of it picked out - what goes with a message. */
+  shareEditor: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4.2 2.4h5.2l2.8 2.8v8a.8.8 0 01-.8.8H4.2a.8.8 0 01-.8-.8V3.2a.8.8 0 01.8-.8z" />
+      <path d="M9.4 2.4v2.8h2.8" />
+      <rect x="5.4" y="7.6" width="5.2" height="2.6" rx=".6" />
+      <path d="M5.8 12h3.2" />
     </svg>
   ),
   /* Rising bars: the row is about how hard a new tab thinks, and a level is the one thing a ladder of
@@ -744,6 +757,16 @@ export const SettingsScreen = ({
           sub={t.settings.rows.restoreTabs.sub}
           value={summary.restoreTabs}
           onClick={() => onPick('restoreTabs')}
+        />
+        {/* Before the input field's own rows: it is about what a message carries, and they are about how
+            the field that writes it looks and behaves. */}
+        <Row
+          icon="shareEditor"
+          iconClass={s.rowIconShareEditor}
+          label={t.settings.rows.shareEditor.label}
+          sub={t.settings.rows.shareEditor.sub}
+          value={summary.shareEditor}
+          onClick={() => onPick('shareEditor')}
         />
         <Row
           icon="composerLayout"

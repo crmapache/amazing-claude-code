@@ -291,6 +291,11 @@
   color: var(--acc-accent);
 }
 
+.rowIconShareEditor {
+  background: var(--acc-accent-12);
+  color: var(--acc-accent);
+}
+
 /* The bars share the chip's neutral: the effort is a level, and a colour of its own would read as one of
    the levels being flagged. */
 .rowIconEffort {

@@ -48,6 +48,7 @@ export const en = {
       remoteAbout: { title: 'WHAT TRAVELS', hint: 'read this before you turn it on' },
       newChat: { title: 'NEW CHATS', hint: 'what a new tab starts with' },
       restoreTabs: { title: 'TABS ON START', hint: 'what comes back after a restart' },
+      shareEditor: { title: 'EDITOR IN MESSAGES', hint: 'what goes along with a message' },
       newChatModel: { title: 'DEFAULT MODEL', hint: 'what a new tab starts on' },
       newChatEffort: { title: 'DEFAULT EFFORT', hint: 'how hard a new tab thinks' },
       newChatMode: { title: 'DEFAULT MODE', hint: 'what new tabs start in' },
@@ -100,6 +101,7 @@ export const en = {
       indicators: { label: 'Indicators', sub: 'Which readings stay around the field' },
       newChat: { label: 'New chats', sub: 'Model, effort and permission mode' },
       restoreTabs: { label: 'Tabs on start', sub: 'Reopen what was open, drafts included' },
+      shareEditor: { label: 'Open file and selection', sub: 'What goes along with each message' },
       composerLayout: { label: 'Composer layout', sub: 'Where the input sits' },
       pasteCollapse: { label: 'Pasted text', sub: 'When a paste folds into a chip' },
       sendKey: { label: 'Sending a message', sub: 'Which key sends it' },
@@ -215,6 +217,14 @@ export const en = {
     label: 'Bring the tabs back',
     hint: 'The tabs, their conversations and what was being typed in them come back when the project opens again - after a crash of the IDE too',
     note: 'Nothing is started again: an agent comes up only when its tab is opened or written into. Drafts are kept on this machine, in the IDE’s own folder, and nowhere else.',
+    on: 'On',
+    off: 'Off',
+  },
+
+  shareEditor: {
+    label: 'Send the editor along',
+    hint: 'Each message carries the file open in the editor, and the lines selected in it - the way Claude Code does it in a terminal',
+    note: 'Only from this panel: a message written on a phone carries nothing of the editor. One message can go without it - press the file’s chip in the input field.',
     on: 'On',
     off: 'Off',
   },
@@ -1041,6 +1051,11 @@ export const en = {
     improveTerminal: 'A terminal command is not rewritten',
     voice: 'Dictate',
     voiceStop: 'Stop dictating',
+    editor: {
+      /** Hover over the file's chip in the field: it goes along with this message, or it has been left out. */
+      on: (place: string): string => `Claude sees ${place} with this message · click to leave it out`,
+      off: (place: string): string => `${place} is left out of this message · click to send it along`,
+    },
   },
 
   header: {
@@ -1147,6 +1162,14 @@ export const en = {
     moreActions: 'More',
     /** The two buttons in the head of a message of one's own - see UserCard. */
     copyMessage: 'Copy this message, with the paths of what was attached',
+    editor: {
+      /** Under a sent message: the lines selected in the editor that went to the agent with it. */
+      selected: (n: number, name: string): string => (n === 1 ? `1 line from ${name}` : `${n} lines from ${name}`),
+      /** The same when nothing was selected: the file that stood open. */
+      opened: (name: string): string => `In ${name}`,
+      /** On hover over that line: where it points, and what a click does. */
+      open: (place: string): string => `${place} · open in the editor`,
+    },
     reuse: {
       label: 'Edit and send again',
       hint: 'Put this message back into the input field, to edit and send again',
@@ -1432,6 +1455,13 @@ export const en = {
       label: 'QUEUED',
       hint: (n: number): string =>
         `${n} will fire in order when the run finishes · drag to reorder`,
+      /** On the pencil beside a queued message: it goes back into the field to be corrected. */
+      edit: 'Edit in the field',
+      /**
+       * In the place of a message taken out to be edited. The send key and the Queue button go in: both put
+       * it back (see Composer's keyQueues).
+       */
+      editing: (key: string, button: string): string => `Being edited in the field · ${key} or ${button} puts it back here`,
     },
     selection: { quote: 'Quote', fork: 'Fork from here' },
     streams: {

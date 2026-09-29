@@ -60,8 +60,12 @@ internal data class SelectionReference(
             )
         }
 
-        /** The path from the project's root: a full one does not fit the panel and adds nothing. */
-        private fun relativePath(project: Project, file: VirtualFile): String {
+        /**
+         * The path from the project's root: a full one does not fit the panel and adds nothing. A file outside
+         * the project keeps its full path - from the root it would lead nowhere. Shared with what the editor
+         * shows the agent on its own (see EditorContext).
+         */
+        internal fun relativePath(project: Project, file: VirtualFile): String {
             val base = project.basePath ?: return file.path
 
             return runCatching {

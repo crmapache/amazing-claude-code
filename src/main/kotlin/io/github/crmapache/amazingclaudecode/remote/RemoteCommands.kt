@@ -415,6 +415,21 @@ internal object RemoteCommands {
         "tabShown",
         "setRestoreTabs",
         /**
+         * The pencil on a queued message: the whole message back into the asker's field (see
+         * ClaudeSessionHub.takeQueued). Refused because the phone has no such button, not on principle -
+         * the door is no wider than "unqueuePrompt", which is allowed. What stands in the way of the button
+         * is the answer: it carries the message in the desk field's pieces, the bytes of a pasted image
+         * among them, and the phone's field is plain text with photos of its own, while a frame back to it
+         * holds 256 kilobytes - a queued photo alone can be more.
+         */
+        "takeQueued",
+        /**
+         * Whether a message carries what the desk's editor shows (see EditorContext) - a machine-wide
+         * setting, like the ones above, and about an editor the phone is nowhere near. The `editor` flag on
+         * a phone's own message is ignored for the same reason (see SessionCommands).
+         */
+        "setShareEditor",
+        /**
          * The sparkle button beside the paperclip and the text it asks by.
          *
          * `setImproveInstructions` writes a machine-wide setting, and belongs with `setDefaultMode` above

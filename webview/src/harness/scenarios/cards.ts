@@ -1,6 +1,7 @@
 import {
   agent,
   checkpoint,
+  replayed,
   resolvePlan,
   scenario,
   shell,
@@ -151,6 +152,54 @@ export const scenariosCards: Scenario[] = [
     ]),
   ]),
 
+
+  /**
+   * What the editor shows goes with a message (see EditorContext.kt): the chip in the field's bottom row,
+   * the press that leaves it out of one message, the line under a sent message, and the same line read back
+   * out of a past conversation's transcript. The player plays the IDE's half by the message it would send.
+   */
+  scenario('editor-context', 'The editor beside the panel', 'cards', [
+    checkpoint('A file open in the editor: its chip beside the paperclip', [
+      shell({
+        type: 'editorContext',
+        context: { path: 'apps/web/src/checkout/PaymentSheet.tsx', name: 'PaymentSheet.tsx' },
+      }),
+      wait(300),
+    ]),
+    checkpoint('Lines selected in it', [
+      shell({
+        type: 'editorContext',
+        context: { path: 'apps/web/src/checkout/useCheckoutSession.ts', name: 'useCheckoutSession.ts', from: 48, to: 61 },
+      }),
+      wait(300),
+    ]),
+    checkpoint('Sent: the line under the message says what the agent was shown', [
+      user('Why does this retry forever when the merchant session fails?'),
+      wait(400),
+      ...textReply('Because the catch on line 57 swallows the rejection and schedules the same call again with no ceiling.'),
+      turnResult(4000),
+    ]),
+    checkpoint('A past conversation: the line read back out of the transcript', [
+      ...replayed([
+        agent({
+          type: 'user',
+          message: {
+            content: [
+              { type: 'text', text: 'And is the sheet itself any better?' },
+              {
+                type: 'text',
+                text: '<system-reminder>\nThe user selected the lines 12 to 20 from apps/web/src/checkout/PaymentSheet.tsx:\nexport const PaymentSheet = () => {\n\nThis may or may not be related to the current task.\n</system-reminder>',
+              },
+            ],
+          },
+          timestamp: '2026-09-29T10:12:00.000Z',
+        }),
+        wait(300),
+        ...textReply('It is: the sheet gives up after one failed validation and falls back to the card form.'),
+        turnResult(3000),
+      ]),
+    ]),
+  ]),
 
   scenario('todo-list', 'The task list', 'cards', [
     checkpoint('The user asks to break the work into steps', [

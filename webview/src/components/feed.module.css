@@ -438,6 +438,46 @@
   overflow-wrap: anywhere;
 }
 
+/* What the editor showed when the message went (see EditorLine): under the message, quiet - it is what
+   the message was about, not something said. */
+.userEditor {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  margin-top: 6px;
+  padding: 0;
+  font: 11px var(--acc-mono);
+  color: var(--acc-fg-faint);
+  text-align: left;
+}
+
+.userEditor svg {
+  flex: none;
+}
+
+.userEditorText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userEditorOpens {
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .userEditorOpens:hover {
+    color: var(--acc-fg-dim);
+  }
+
+  .userEditorOpens:hover .userEditorText {
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+  }
+}
+
 /* A piece the panel filled in itself - a repeat of the agent's question beside the answer to it (see
    UserToken.echo). The same dimming trick as .userQuote: the question has been read above, the attention
    has to go to the answer. */

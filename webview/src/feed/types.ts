@@ -4,6 +4,7 @@
  * list, the plan, the questions), some from system events.
  */
 
+import type { EditorRef } from '../protocol'
 import type { WorkflowView } from './workflow'
 
 /**
@@ -236,6 +237,12 @@ export interface UserItem {
    * the press of Send, before the CLI has written it anywhere, so a hit on it is found by its text.
    */
   uuid?: string
+  /**
+   * What the editor showed when the message went, carried to the agent beside it (see EditorContext.kt) -
+   * drawn as a line under the message, so what the agent was shown is on screen too. Read back out of the
+   * transcript for a past conversation (see feed/editorContext.ts).
+   */
+  editor?: EditorRef
 }
 
 export interface TextItem {

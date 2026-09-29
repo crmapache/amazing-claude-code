@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentStatus, AgentUsage, QueuedMessage } from '../protocol'
+import type { AgentEvent, AgentStatus, AgentUsage, EditorRef, QueuedMessage } from '../protocol'
 import type {
   BackgroundTask,
   CheckpointItem,
@@ -396,7 +396,7 @@ export type PanelAction =
    * steps rather than start a new turn with it. Such a message is only added to the feed and interrupts
    * nothing in it.
    */
-  | { kind: 'prompt'; tokens: UserToken[]; quotes: string[]; steering?: boolean }
+  | { kind: 'prompt'; tokens: UserToken[]; quotes: string[]; steering?: boolean; editor?: EditorRef }
   /**
    * replay marks an event of a past conversation's replay rather than a live turn: it lands in the feed
    * the same way but tells nothing about the conversation right now (see 'assistant').

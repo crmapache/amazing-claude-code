@@ -153,7 +153,13 @@ internal class ClaudeSessions(
         Disposer.register(parentDisposable, this)
     }
 
-    fun prompt(sessionId: String, text: String, images: List<ImageAttachment> = emptyList()) {
+    fun prompt(
+        sessionId: String,
+        text: String,
+        images: List<ImageAttachment> = emptyList(),
+        /** What the editor showed, for the agent alone - see ClaudeSession.userMessage. */
+        context: String? = null,
+    ) {
         // Before anything is said into it: a move this tab was asked to make and has not made yet
         // happens now, so the words below are billed to the account the person chose (see
         // [applyPendingAccount]).
@@ -161,7 +167,7 @@ internal class ClaudeSessions(
         // And a restart it was asked for and has not made either - so that what is said below goes into
         // a process holding the servers as they stand now (see [applyPendingRestart]).
         applyPendingRestart(sessionId)
-        session(sessionId).sendPrompt(releasedRole(sessionId, text), images)
+        session(sessionId).sendPrompt(releasedRole(sessionId, text), images, context)
     }
 
     /**

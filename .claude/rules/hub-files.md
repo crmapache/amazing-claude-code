@@ -38,7 +38,9 @@ paths:
 котором говорят.
 
 **`webview/src/App.tsx`** (и `mobile/App.tsx`, где заметка говорит «в обоих `App`»):
-- `reuseMessage` - message-reuse
+- `reuseMessage`, `intoField` - message-reuse
+- `queueEdits`, `takeBackQueued`, `case 'queuedTaken'`, `before` в `intoTheQueue`, фокус в `startSession` - queue-edit
+- `shareEditor`, `editorContext`, `editorSkips`, `withEditor` в `submit`, `case 'editorContext'` - editor-context
 - `improveSources`, `restoreDraft`, `registerApply` - prompt-improver
 - `feedPlaces`, `key={active}`, `forgetFeedFocus` - reading-place
 - `hiddenTaskIds` - subagents
@@ -77,6 +79,8 @@ paths:
 - `theme`, `setTheme`, `setTextSize`, размеры в `typography` - appearance
 - `claudeConfig`, `askClaudeConfig`, `setClaudeConfig`, `ClaudeConfigSetting` - claude-config
 - `activeTab`, `drafts`, `restoreTabs`, `saveDraft`, `tabShown`, `setRestoreTabs` - restore-tabs
+- `takeQueued`, `queuedTaken`, `before` у `queuePrompt` - queue-edit
+- `EditorRef`, `editorContext`, `shareEditor`, `setShareEditor`, `editor` у `prompt`/`queuePrompt`/`promptEcho` - editor-context
 - `TitleSource` (`'user'`), `nameSession`, `titleSource` у `SearchHit` - tab-names
 
 **`webview/src/feed/build.ts`** (редьюсер ленты):
@@ -91,6 +95,7 @@ paths:
 - `isEditTool` - tool-cards; `realModel` - stats; `uuid` у `UserItem`/`TextItem` - search
 - `case 'outranked'` и `OutrankedItem`, `overSampling` и метки `addError` - setting-sources
 - в состояние кладутся признаки, а не слова - i18n
+- `editorOfBlocks` в `addReplayedPrompt`, `editor` у действия `prompt` - editor-context
 
 **`webview/src/feed/types.ts`** и **`webview/src/feed/panelState.ts`**:
 - `DraftEdit` - prompt-improver; `ErrorItem.signIn` - expired-sign-in; `ErrorItem.sampling` - setting-sources;
@@ -106,7 +111,8 @@ paths:
 `earlierPages` - history; `paint`, `PAINT_INTERVAL_MS`, `goToRow`, фокус находки - search;
 `onCopy` - clipboard и markdown (формулы уносятся исходником).
 
-**`webview/src/components/Composer.tsx`**: `registerApply`, `fillField` - prompt-improver; хвост диктовки
+**`webview/src/components/Composer.tsx`**: `keyQueues` - queue-edit; чип `editor` и шаг `editorName` в
+`droppable` - editor-context; `registerApply`, `fillField` - prompt-improver; хвост диктовки
 `data-voice` - voice; `ContextMeter` - composer-field, calm-colors и indicators (`bar`/`figure`); проп
 `indicators` и пустые контейнеры на рельсе и в compact - indicators; сворачивание вставки - paste.
 
@@ -131,6 +137,8 @@ paths:
 
 **`ClaudeSessionHub.kt`** (сам по себе подгружает remote-access):
 - `prompt`: сохранение буферов - editor-sync; `sendStatus`, очередь, команда в идущий ход - turn-lifecycle
+- `takeQueued`, `before` у `queuePrompt`, `enqueue` - queue-edit; `editorSeen`, `echoWith`, `context` в
+  `deliverPrompt` - editor-context
 - `changeModel`, `emitLive` для усилия - models
 - `INIT_MARKER` - fork-tabs и history; `RESULT_MARKER`, `everyHub`, `accounts`, `accountsChangedElsewhere` - accounts
 - `settingSources` у `conversations`, `sendAccountOutranked` - setting-sources
@@ -143,7 +151,8 @@ paths:
 
 **`ClaudeSession.kt`** (подгружает turn-lifecycle): `rename`, `nameAfterPerson`, `namedAs`, `ownTitle` - tab-names; `setEffort`, `effort` - models; `awaitingPermission` -
 permissions; окружение в `start` - task-list; `rememberConversation` - аргументы запуска в CLAUDE.md;
-`isBusy` - idle-sleep; `forkFrom` - accounts.
+`isBusy` - idle-sleep; `forkFrom` - accounts; `context` в `userMessage` (заметка редактора отдельным блоком) -
+editor-context.
 
 **`ClaudeSessions.kt`** (подгружает accounts и idle-sleep): `rename`, `ownTitle` - tab-names; `branchFrom` - fork-tabs; `adoptModel` - history;
 `newSession`, `onBorn`, `setPermissionMode` - models; `renewAfterSignIn` - expired-sign-in;
@@ -160,7 +169,8 @@ remote-access; остальное - по заметке фичи, которой
 **`toolwindow/ClaudePanel.kt`**: сообщения аккаунтов и `designLogin` у двери окна - accounts; `setCustomModels` -
 models; `openFile` - open-in-editor; фидбэк и лог незнакомого сообщения (только тип и длина) - feedback;
 `setHiddenIndicators` - indicators; `setTheme`, `setTextSize`, `sendTheme`, `appearanceChanged` - appearance;
-`saveDraft`, `tabShown`, `setRestoreTabs`, `sendDrafts` - restore-tabs.
+`saveDraft`, `tabShown`, `setRestoreTabs`, `sendDrafts` - restore-tabs; `watchEditor`, `sendEditorContext`,
+`setShareEditor` - editor-context.
 
 **`ClaudeCli.kt`**: всё написанное человеком - в stdin (аргументы запуска в CLAUDE.md, prompt-improver);
 `run`/`onStarted` и отмена - search; `--tools ""` у разовых запусков - task-list.
@@ -170,7 +180,8 @@ models; `openFile` - open-in-editor; фидбэк и лог незнакомог
 
 **`ClaudePreferences.kt`** (подгружает models): `gaugeVivid` - calm-colors; `language` - i18n;
 `improveInstructions` - prompt-improver; стартовая модель новой вкладки переехала в `StartingChoice.kt` -
-models; `hiddenIndicators` - indicators; `theme`, `textSize` - appearance; `restoreTabs` - restore-tabs.
+models; `hiddenIndicators` - indicators; `theme`, `textSize` - appearance; `restoreTabs` - restore-tabs;
+`shareEditor` - editor-context.
 
 **`RemoteCommands.kt`** (подгружает remote-access): почему телефону разрешено или запрещено конкретное
 сообщение, сказано в заметке фичи, которой оно принадлежит.

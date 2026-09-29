@@ -27,6 +27,8 @@ internal class PromptDeliveries {
     class Delivery(
         val text: String,
         val images: List<ImageAttachment>,
+        /** What the editor showed, sent beside the text - a repeat carries it again (see ClaudeSession.resend). */
+        val context: String?,
         /** When it went into the process - the record in the conversation is looked up by it. */
         val sentAt: Long,
         /** This is already a repeat: the same thing is not sent blindly a second time. */

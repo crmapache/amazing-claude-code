@@ -76,6 +76,64 @@ class SessionQueueTest {
         assertNull(queue.take("main"))
     }
 
+    /**
+     * The pencil: the message leaves the queue whole, so the end of the turn cannot fire it half-edited,
+     * and says where it stood - Queue puts it back there.
+     */
+    @Test
+    fun `a message taken out to be edited says where it stood`() {
+        queue.add("main", entry("q1"))
+        queue.add("main", entry("q2", text = "second"))
+        queue.add("main", entry("q3"))
+
+        val taken = queue.takeOut("main", "q2")!!
+
+        assertEquals("second", taken.entry.text)
+        assertEquals("q3", taken.before)
+        assertEquals(listOf("q1", "q3"), ids(taken.rest))
+        assertEquals(listOf("q1", "q3"), ids(queue.of("main")))
+    }
+
+    @Test
+    fun `the last message taken out stood at the end`() {
+        queue.add("main", entry("q1"))
+        queue.add("main", entry("q2"))
+
+        assertNull(queue.takeOut("main", "q2")!!.before)
+    }
+
+    /** It fired while the press was on its way: there is nothing left to edit, and nothing is disturbed. */
+    @Test
+    fun `a message already gone cannot be taken out`() {
+        queue.add("main", entry("q1"))
+
+        assertNull(queue.takeOut("main", "q9"))
+        assertEquals(listOf("q1"), ids(queue.of("main")))
+    }
+
+    @Test
+    fun `an edited message goes back to its place`() {
+        queue.add("main", entry("q1"))
+        queue.add("main", entry("q2"))
+        queue.add("main", entry("q3"))
+        val taken = queue.takeOut("main", "q2")!!
+
+        queue.add("main", entry("q4", text = "second, corrected"), before = taken.before)
+
+        assertEquals(listOf("q1", "q4", "q3"), ids(queue.of("main")))
+    }
+
+    /** Its old neighbour fired while it was being edited: the place is gone, and the end is what is left. */
+    @Test
+    fun `a place that is gone puts the message at the end`() {
+        queue.add("main", entry("q1"))
+        queue.add("main", entry("q2"))
+
+        queue.add("main", entry("q3"), before = "q9")
+
+        assertEquals(listOf("q1", "q2", "q3"), ids(queue.of("main")))
+    }
+
     @Test
     fun `the order named is the order kept`() {
         queue.add("main", entry("q1"))

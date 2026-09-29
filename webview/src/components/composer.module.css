@@ -861,6 +861,38 @@
   opacity: 0.5;
 }
 
+/* The pencil beside the cross: taking a message back is not throwing it away, so it lights up in the
+   accent rather than in the cross's red. */
+.queueEdit:hover:not(:disabled),
+.queueEdit:active:not(:disabled) {
+  background: var(--acc-accent-12);
+  color: var(--acc-accent);
+}
+
+/* The place of a message taken out to be edited: dashed and without a card's fill - it is where a
+   message will stand again, not a message. */
+.queueRowEditing {
+  border-style: dashed;
+  background: none;
+}
+
+.queueRowEditing:hover {
+  border-color: var(--acc-line);
+}
+
+.queueRowEditing .queueText {
+  color: var(--acc-fg-dim);
+}
+
+.queueEditingMark {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  color: var(--acc-accent);
+}
+
 /* --- The quotes ------------------------------------------------------------ */
 
 .quotes {
@@ -1608,6 +1640,79 @@
 .attach:active {
   background: var(--acc-bg-control-hover);
   color: var(--acc-fg);
+}
+
+/*
+ * What the editor shows, going with the message (see EditorChip). The squares' height and fill, so it reads
+ * as one more thing in their row rather than as a notice, and the attachments' mono face, so the name reads
+ * as the name of a file.
+ *
+ * flex: none, like the squares: when the row runs short the name steps out whole before any square
+ * leaves (see droppableTools), rather than being shrunk by the layout - shrunk, it gave way together with
+ * Queue and Send and ended as a stub of a letter.
+ *
+ * The gap to the name is the name's own margin rather than the row's gap: without the name the chip is its
+ * padding and the drawing exactly, a square among squares.
+ */
+.editorChip {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  height: 26px;
+  margin-left: 6px;
+  padding: 0 7px;
+  border-radius: var(--acc-r-md);
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-dim);
+  font: 11px var(--acc-mono);
+  overflow: hidden;
+  transition:
+    background-color 80ms linear,
+    color 80ms linear;
+}
+
+.editorChip svg {
+  flex: none;
+}
+
+.editorChip:hover {
+  background: var(--acc-neutral-16);
+  color: var(--acc-fg);
+}
+
+/* The max-width and the margin are EDITOR_NAME_MAX and EDITOR_NAME_GAP in composerFit.ts: the row counts
+   with them while the name is out and cannot be measured by its box. */
+.editorChipText {
+  min-width: 0;
+  max-width: 200px;
+  margin-left: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Out of the row for want of room: no width, but still there - its text keeps a width to be read by, and
+   that is how the row knows when there is room for it again (see useToolsFit). */
+.editorChipNameGone {
+  max-width: 0;
+  margin-left: 0;
+}
+
+/* Left out of this one message: still there to be pressed back, but plainly not going. */
+.editorChipOff {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--acc-line);
+  color: var(--acc-fg-ghost);
+}
+
+.editorChipOff .editorChipText {
+  text-decoration: line-through;
+}
+
+/* Beside a narrow field (compact, the side rails) the drawing alone: the column there is as wide as what
+   stands in it, and a file name would widen it at the field's expense. The name is in the hover. */
+.editorChipBare {
+  margin-left: 0;
 }
 
 /* The same recipe as .send:disabled, the dimming included - two kinds of dimmed buttons in one row have to

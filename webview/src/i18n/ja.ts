@@ -35,6 +35,7 @@ export const ja: Dict = {
       remoteAbout: { title: '外に出る情報', hint: 'オンにする前にお読みください' },
       newChat: { title: '新しいチャット', hint: '新しいタブが何で始まるか' },
       restoreTabs: { title: '起動時のタブ', hint: '再起動後に戻るもの' },
+      shareEditor: { title: 'メッセージとエディター', hint: 'メッセージと一緒に送るもの' },
       newChatModel: { title: 'デフォルトのモデル', hint: '新しいタブが始まるモデル' },
       newChatEffort: { title: 'デフォルトの思考量', hint: '新しいタブがどれだけ考えるか' },
       newChatMode: { title: 'デフォルトのモード', hint: '新しいタブが始まるモード' },
@@ -82,6 +83,7 @@ export const ja: Dict = {
       indicators: { label: 'インジケーター', sub: '入力欄のそばに残す表示' },
       newChat: { label: '新しいチャット', sub: 'モデル・思考量・権限モード' },
       restoreTabs: { label: '起動時のタブ', sub: '開いていたタブを下書きごと開き直す' },
+      shareEditor: { label: '開いているファイルと選択範囲', sub: 'メッセージごとに一緒に送るもの' },
       composerLayout: { label: '入力欄のレイアウト', sub: '入力欄を置く場所' },
       pasteCollapse: { label: '貼り付けたテキスト', sub: '貼り付けをチップにまとめる条件' },
       sendKey: { label: 'メッセージの送信', sub: 'どのキーで送るか' },
@@ -164,6 +166,14 @@ export const ja: Dict = {
     label: 'タブを復元する',
     hint: 'プロジェクトを開き直すと、タブとその会話、書きかけの文章が戻ります - IDE がクラッシュした後も',
     note: '何も起動し直しません。エージェントはタブを開くか書き込んだときにだけ立ち上がります。下書きはこのマシンの IDE 自身のフォルダーにだけ保存されます。',
+    on: 'オン',
+    off: 'オフ',
+  },
+
+  shareEditor: {
+    label: 'エディターの内容を一緒に送る',
+    hint: '各メッセージに、エディターで開いているファイルとその中で選択した行を添えます。ターミナルの Claude Code と同じです',
+    note: 'このパネルからのみ：スマホで書いたメッセージにはエディターの内容は付きません。1 通だけ外すこともできます - 入力欄のファイルのチップを押してください。',
     on: 'オン',
     off: 'オフ',
   },
@@ -804,6 +814,10 @@ export const ja: Dict = {
     improveTerminal: 'ターミナルのコマンドは書き直しません',
     voice: '音声入力',
     voiceStop: '音声入力を終える',
+    editor: {
+      on: (place) => `このメッセージで Claude に ${place} を見せます · クリックで外す`,
+      off: (place) => `${place} はこのメッセージに付きません · クリックで付ける`,
+    },
   },
 
   header: {
@@ -890,6 +904,11 @@ export const ja: Dict = {
     copyReply: '返信全体をコピー',
     moreActions: 'その他',
     copyMessage: 'このメッセージをコピー（添付はパスとして）',
+    editor: {
+      selected: (n, name) => `${name} の ${n} 行`,
+      opened: (name) => `${name} を表示中`,
+      open: (place) => `${place} · エディターで開く`,
+    },
     reuse: {
       label: '直して送り直す',
       hint: 'このメッセージを入力欄に戻して、直して送り直します',
@@ -1092,6 +1111,8 @@ export const ja: Dict = {
     queue: {
       label: '待機中',
       hint: (n) => `${n} 件がこのターンの後に順番に送られます · ドラッグで並べ替え`,
+      edit: '入力欄で編集',
+      editing: (key, button) => `入力欄で編集中 · ${key} か「${button}」でここに戻ります`,
     },
     selection: { quote: '引用', fork: 'ここから分岐' },
     streams: {

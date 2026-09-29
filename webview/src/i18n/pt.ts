@@ -33,6 +33,7 @@ export const pt: Dict = {
       remoteAbout: { title: 'O QUE SAI DAQUI', hint: 'leia antes de ligar' },
       newChat: { title: 'NOVAS CONVERSAS', hint: 'com o que uma aba nova começa' },
       restoreTabs: { title: 'ABAS AO INICIAR', hint: 'o que volta depois de reiniciar' },
+      shareEditor: { title: 'O EDITOR NAS MENSAGENS', hint: 'o que vai junto com uma mensagem' },
       newChatModel: { title: 'MODELO PADRÃO', hint: 'em qual modelo uma aba nova começa' },
       newChatEffort: { title: 'ESFORÇO PADRÃO', hint: 'quanto uma aba nova pensa' },
       newChatMode: { title: 'MODO PADRÃO', hint: 'com o que as novas abas começam' },
@@ -80,6 +81,7 @@ export const pt: Dict = {
       indicators: { label: 'Indicadores', sub: 'Quais leituras ficam junto ao campo' },
       newChat: { label: 'Novas conversas', sub: 'Modelo, esforço e modo de permissão' },
       restoreTabs: { label: 'Abas ao iniciar', sub: 'Reabrir o que estava aberto, com os rascunhos' },
+      shareEditor: { label: 'Arquivo aberto e seleção', sub: 'O que vai junto com cada mensagem' },
       composerLayout: { label: 'Layout do campo', sub: 'Onde fica o campo de escrita' },
       pasteCollapse: { label: 'Texto colado', sub: 'Quando uma colagem vira um chip' },
       sendKey: { label: 'Enviar uma mensagem', sub: 'Qual tecla envia' },
@@ -162,6 +164,14 @@ export const pt: Dict = {
     label: 'Restaurar as abas',
     hint: 'As abas, as conversas delas e o texto pela metade voltam quando o projeto for aberto de novo - também depois de uma falha da IDE',
     note: 'Nada é iniciado de novo: um agente só sobe quando a aba dele é aberta ou alguém escreve nela. Os rascunhos ficam nesta máquina, na pasta da própria IDE, e em nenhum outro lugar.',
+    on: 'Ligado',
+    off: 'Desligado',
+  },
+
+  shareEditor: {
+    label: 'Enviar o editor junto',
+    hint: 'Cada mensagem leva o arquivo aberto no editor e as linhas selecionadas nele, como o Claude Code faz no terminal',
+    note: 'Só a partir deste painel: uma mensagem escrita no celular não leva nada do editor. Uma mensagem pode ir sem ele: clique no chip do arquivo no campo de entrada.',
     on: 'Ligado',
     off: 'Desligado',
   },
@@ -808,6 +818,10 @@ export const pt: Dict = {
     improveTerminal: 'Um comando de terminal não é reescrito',
     voice: 'Ditar',
     voiceStop: 'Terminar o ditado',
+    editor: {
+      on: (place) => `O Claude vê ${place} com esta mensagem · clique para deixar de fora`,
+      off: (place) => `${place} fica de fora desta mensagem · clique para enviar junto`,
+    },
   },
 
   header: {
@@ -895,6 +909,11 @@ export const pt: Dict = {
     copyReply: 'Copiar a resposta inteira',
     moreActions: 'Mais',
     copyMessage: 'Copiar esta mensagem, com os caminhos do que foi anexado',
+    editor: {
+      selected: (n, name) => (n === 1 ? `1 linha de ${name}` : `${n} linhas de ${name}`),
+      opened: (name) => `Em ${name}`,
+      open: (place) => `${place} · abrir no editor`,
+    },
     reuse: {
       label: 'Editar e enviar de novo',
       hint: 'Devolver esta mensagem ao campo de entrada, para editar e enviar de novo',
@@ -1098,6 +1117,8 @@ export const pt: Dict = {
     queue: {
       label: 'NA FILA',
       hint: (n) => `${n} vão sair em ordem quando a rodada terminar · arraste para reordenar`,
+      edit: 'Editar no campo',
+      editing: (key, button) => `Sendo editada no campo · ${key} ou “${button}” a devolve para cá`,
     },
     selection: { quote: 'Citar', fork: 'Ramificar daqui' },
     streams: {

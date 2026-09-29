@@ -219,6 +219,8 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
         tokens: (message.tokens ?? []) as UserToken[],
         quotes: message.quotes ?? [],
         steering: message.steering,
+        // What the desk's editor showed when it was sent - the same line under the card as at the desk.
+        ...(message.editor ? { editor: message.editor } : {}),
       })
 
     case 'status':

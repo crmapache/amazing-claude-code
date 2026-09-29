@@ -33,6 +33,7 @@ export const es: Dict = {
       remoteAbout: { title: 'QUÉ SALE DE AQUÍ', hint: 'léelo antes de activarlo' },
       newChat: { title: 'CHATS NUEVOS', hint: 'con qué empieza una pestaña nueva' },
       restoreTabs: { title: 'PESTAÑAS AL INICIAR', hint: 'lo que vuelve tras un reinicio' },
+      shareEditor: { title: 'EL EDITOR EN LOS MENSAJES', hint: 'lo que va con un mensaje' },
       newChatModel: { title: 'MODELO POR DEFECTO', hint: 'con qué modelo empieza una pestaña nueva' },
       newChatEffort: { title: 'ESFUERZO POR DEFECTO', hint: 'cuánto piensa una pestaña nueva' },
       newChatMode: { title: 'MODO POR DEFECTO', hint: 'con qué empiezan las pestañas nuevas' },
@@ -80,6 +81,7 @@ export const es: Dict = {
       indicators: { label: 'Indicadores', sub: 'Qué lecturas quedan junto al campo' },
       newChat: { label: 'Chats nuevos', sub: 'Modelo, esfuerzo y modo de permisos' },
       restoreTabs: { label: 'Pestañas al iniciar', sub: 'Reabrir lo que estaba abierto, borradores incluidos' },
+      shareEditor: { label: 'Archivo abierto y selección', sub: 'Lo que va con cada mensaje' },
       composerLayout: { label: 'Disposición del campo', sub: 'Dónde se coloca el campo de entrada' },
       pasteCollapse: { label: 'Texto pegado', sub: 'Cuándo un pegado se pliega en una ficha' },
       sendKey: { label: 'Enviar un mensaje', sub: 'Qué tecla lo envía' },
@@ -162,6 +164,14 @@ export const es: Dict = {
     label: 'Restaurar las pestañas',
     hint: 'Las pestañas, sus conversaciones y el texto a medio escribir vuelven cuando se abre de nuevo el proyecto, también tras un fallo del IDE',
     note: 'No se vuelve a lanzar nada: un agente arranca solo cuando se abre su pestaña o se escribe en ella. Los borradores se guardan en esta máquina, en la carpeta del propio IDE, y en ningún otro sitio.',
+    on: 'Activado',
+    off: 'Desactivado',
+  },
+
+  shareEditor: {
+    label: 'Enviar el editor con el mensaje',
+    hint: 'Cada mensaje lleva el archivo abierto en el editor y las líneas seleccionadas en él, como lo hace Claude Code en una terminal',
+    note: 'Solo desde este panel: un mensaje escrito en el teléfono no lleva nada del editor. Un mensaje puede ir sin él: pulsa el chip del archivo en el campo de entrada.',
     on: 'Activado',
     off: 'Desactivado',
   },
@@ -808,6 +818,10 @@ export const es: Dict = {
     improveTerminal: 'Un comando de terminal no se reescribe',
     voice: 'Dictar',
     voiceStop: 'Terminar el dictado',
+    editor: {
+      on: (place) => `Claude ve ${place} con este mensaje · haz clic para dejarlo fuera`,
+      off: (place) => `${place} no va con este mensaje · haz clic para enviarlo`,
+    },
   },
 
   header: {
@@ -895,6 +909,11 @@ export const es: Dict = {
     copyReply: 'Copiar toda la respuesta',
     moreActions: 'Más',
     copyMessage: 'Copiar este mensaje, con las rutas de lo adjunto',
+    editor: {
+      selected: (n, name) => (n === 1 ? `1 línea de ${name}` : `${n} líneas de ${name}`),
+      opened: (name) => `En ${name}`,
+      open: (place) => `${place} · abrir en el editor`,
+    },
     reuse: {
       label: 'Editar y enviar de nuevo',
       hint: 'Devolver este mensaje al campo de entrada, para editarlo y enviarlo de nuevo',
@@ -1098,6 +1117,8 @@ export const es: Dict = {
     queue: {
       label: 'EN COLA',
       hint: (n) => `${n} saldrán en orden cuando termine la ejecución · arrastra para reordenar`,
+      edit: 'Editar en el campo',
+      editing: (key, button) => `Se está editando en el campo · ${key} o «${button}» lo devuelve aquí`,
     },
     selection: { quote: 'Citar', fork: 'Bifurcar desde aquí' },
     streams: {

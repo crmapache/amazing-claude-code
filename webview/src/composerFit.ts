@@ -81,6 +81,20 @@ export const TOOL_GROUPS: readonly (readonly WritingTool[])[] = [
  */
 const DROP_ORDER: readonly WritingTool[] = ['slash', 'search', 'improve', 'voice']
 
+/**
+ * A step the row gives way by: a square leaving it, or the file name on the editor's chip going and leaving
+ * the drawing alone (see EditorChip).
+ */
+export type FitStep = WritingTool | 'editorName'
+
+/**
+ * The widest the name on the editor's chip is drawn, and the gap before it - the same numbers as
+ * .editorChipText's max-width and margin in composer.module.css. Needed here because a name that has
+ * stepped out of the row has no width left to measure, and coming back has to know what it will cost.
+ */
+export const EDITOR_NAME_MAX = 200
+export const EDITOR_NAME_GAP = 5
+
 /** What the row is measured to be right now (see useToolsFit). */
 export interface ToolsMeasure {
   /**
@@ -94,6 +108,11 @@ export interface ToolsMeasure {
   /** The gap between two squares of one group, and between two groups. */
   inner: number
   outer: number
+  /**
+   * The file name on the editor's chip, gap included, at its natural width - whether or not it is drawn
+   * right now. Zero or absent when there is no chip.
+   */
+  name?: number
 }
 
 /** The squares' block, as wide as it stands with the given ones shown. */
@@ -120,9 +139,16 @@ export const toolsWidth = (
  * (no microphone while dictation is off, no search where the shell offers none - a missing one never costs
  * a step), except the microphone while it is listening. That one is the dictation's only stop button on
  * the screen, and a panel dragged narrow mid-sentence must not take it out from under the hand.
+ *
+ * Ahead of all of them, the file name on the editor's chip when there is one (`named`): it is the cheapest
+ * loss in the row - the drawing stays, still a button, and the name is in its hover - and it goes whole,
+ * as a square does. Shrunk by the layout instead, it gave way together with Queue and Send and ended as a
+ * stub of a letter beside a Send that had already lost its word.
  */
-export const droppableTools = (present: ReadonlySet<WritingTool>, listening: boolean): WritingTool[] =>
-  DROP_ORDER.filter((tool) => present.has(tool) && !(tool === 'voice' && listening))
+export const droppableTools = (present: ReadonlySet<WritingTool>, listening: boolean, named = false): FitStep[] => [
+  ...(named ? (['editorName'] as const) : []),
+  ...DROP_ORDER.filter((tool) => present.has(tool) && !(tool === 'voice' && listening)),
+]
 
 /**
  * How many of the `droppable` squares to leave out, counted from the first.
@@ -136,14 +162,16 @@ export const droppableTools = (present: ReadonlySet<WritingTool>, listening: boo
  */
 export const toolsDropped = (
   present: ReadonlySet<WritingTool>,
-  droppable: readonly WritingTool[],
+  droppable: readonly FitStep[],
   dropped: number,
   measure: ToolsMeasure,
 ): number => {
   const current = Math.min(dropped, droppable.length)
+  const named = droppable.includes('editorName')
   const widthAt = (level: number) => {
-    const gone = new Set(droppable.slice(0, level))
-    return toolsWidth((tool) => present.has(tool) && !gone.has(tool), measure)
+    const gone = new Set<FitStep>(droppable.slice(0, level))
+    const name = named && !gone.has('editorName') ? (measure.name ?? 0) : 0
+    return toolsWidth((tool) => present.has(tool) && !gone.has(tool), measure) + name
   }
   const now = widthAt(current)
 

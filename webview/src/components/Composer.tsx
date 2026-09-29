@@ -39,10 +39,12 @@ import {
 import { clipboardHtml, clipboardTextOf, clipboardTokens, tokensText } from '../feed/tokens'
 import type { Chip, DraftEdit, UserToken } from '../feed/types'
 import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
-import { droppableTools, firstLetter, type WritingTool } from '../composerFit'
+import { droppableTools, firstLetter, type FitStep, type WritingTool } from '../composerFit'
 import { fitMark, useToolsFit } from '../hooks/useToolsFit'
 import { enterAction, sendKeyCap, type SendKey } from '../sendKey'
-import type { ModelInfo } from '../protocol'
+import type { EditorRef, ModelInfo } from '../protocol'
+import { EditorChip } from './EditorChip'
+import { editorLabel } from '../feed/editorContext'
 import { SlashSuggest } from './SlashSuggest'
 import { collapsesPaste } from '../feed/reference'
 import { contextColor } from '../feed/usage'
@@ -430,6 +432,21 @@ interface ComposerProps {
   onSubmit: () => void
   /** Defer: the agent takes this next, once it has finished what it started. */
   onQueue: () => void
+  /**
+   * The send key puts the message into the queue rather than into the turn: what stands in the field is a
+   * queued message taken out to be edited (see App.queueEdits), and correcting a message does not change
+   * when it was meant to be said. Sent into the work by habit, the fixed message would go out ahead of
+   * everything it was queued behind - the one thing its author did not ask for. Send, pressed with the
+   * mouse, still means "now": that is a decision rather than a habit.
+   */
+  keyQueues?: boolean
+  /**
+   * What the editor beside the panel shows, and whether it goes with this message (see EditorChip). Null
+   * with nothing to show, or with the setting off - then there is no chip at all.
+   */
+  editor?: { ref: EditorRef; on: boolean } | null
+  /** The chip pressed: this message goes without it, or with it again. */
+  onToggleEditor?: () => void
   /** Whether there is anything to send - text, an attachment or a quote. */
   canSubmit: boolean
   onStop: () => void
@@ -518,6 +535,9 @@ export const Composer = ({
   registerApply,
   onSubmit,
   onQueue,
+  keyQueues = false,
+  editor = null,
+  onToggleEditor,
   canSubmit,
   onStop,
   stopStalled,
@@ -1707,7 +1727,7 @@ export const Composer = ({
       // Which of the two this press is - the rule is in sendKey.ts rather than here: it breaks silently,
       // and either half of it broken means a field that sends half a sentence or one that cannot send.
       if (enterAction(sendKey, event) === 'send') {
-        letGo(onSubmit)
+        letGo(keyQueues && streaming ? onQueue : onSubmit)
         return
       }
       // A line break is insertLineBreak, the browser's own command for exactly this. The neighbouring
@@ -1885,7 +1905,8 @@ export const Composer = ({
       className={`${s.send} ${s.sendQueued}`}
       onClick={() => letGo(onQueue)}
       disabled={!canSubmit || !streaming}
-      data-tooltip={t.composer.queueHint}
+      /* The key follows the button it presses: while a queued message is being edited that is this one. */
+      data-tooltip={keyQueues ? sendKeyCap(sendKey) : t.composer.queueHint}
       data-tooltip-at="top"
       aria-label={t.composer.queue}
     >
@@ -1902,7 +1923,7 @@ export const Composer = ({
       /* The key and nothing else: the button already says "Send", and a hover that repeats what it is
          hovering over is a wasted hover (the rule the file's chips follow too). What it does add is the
          one thing not on the screen anywhere - which key the setting settled on. */
-      data-tooltip={bash ? t.composer.runHint : sendKeyCap(sendKey)}
+      data-tooltip={bash ? t.composer.runHint : keyQueues && streaming ? undefined : sendKeyCap(sendKey)}
       data-tooltip-at="top"
       aria-label={bash ? t.composer.run : t.composer.send}
     >
@@ -1984,7 +2005,10 @@ export const Composer = ({
   }, [hasVoice, hasSearch, hasScenarios])
 
   const dictating = listening || finishing
-  const droppable = useMemo(() => droppableTools(presentTools, dictating), [presentTools, dictating])
+  // The editor's chip has a name to give up only in the ordinary layout - beside a narrow field it is drawn
+  // without one from the start (see EditorChip's `bare`).
+  const named = editor !== null && !compact && !rail
+  const droppable = useMemo(() => droppableTools(presentTools, dictating, named), [presentTools, dictating, named])
 
   const tools = useRef<HTMLDivElement>(null)
   // Everything else that changes what the row holds: Stop for the length of a turn, Force stop, Queue
@@ -2000,9 +2024,10 @@ export const Composer = ({
     t.composer.forceStop,
     [...presentTools].join(),
     droppable.join(),
+    editor ? `${editorLabel(editor.ref)}:${editor.on}` : '',
   ].join('|')
   const droppedCount = useToolsFit(tools, presentTools, droppable, !compact && !rail, rowContent)
-  const droppedTools = new Set(droppable.slice(0, droppedCount))
+  const droppedTools = new Set<FitStep>(droppable.slice(0, droppedCount))
   const keep = (tool: WritingTool, button: ReactNode) => (droppedTools.has(tool) ? null : button)
 
   const toolGroup = (first: ReactNode, second: ReactNode) =>
@@ -2042,9 +2067,20 @@ export const Composer = ({
    * and Send keeps the edge it stands on. In the other layouts the usage stands beside the heart - under
    * the field in the ordinary layout (see StatusBar), in a row of its own in the side rail.
    */
+  const editorChip = editor ? (
+    <EditorChip
+      editor={editor.ref}
+      on={editor.on}
+      bare={compact || rail}
+      nameGone={droppedTools.has('editorName')}
+      onToggle={() => onToggleEditor?.()}
+    />
+  ) : null
+
   const toolsRow = compact ? (
     <>
       {writingTools}
+      {editorChip}
       <div className={s.spacer} />
       {meters}
       {sendingButtons}
@@ -2052,6 +2088,7 @@ export const Composer = ({
   ) : (
     <>
       {writingTools}
+      {editorChip}
       <div className={s.spacer} {...fitMark('spacer')} />
       {sendingButtons}
     </>

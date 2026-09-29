@@ -312,6 +312,20 @@ export interface ModelInfo {
  * bytes of a photo taken on a phone - stays in the IDE, which is what will send it (see SessionQueue.kt):
  * a queued photo is measured in hundreds of kilobytes and the frame to a phone has a limit of 256.
  */
+/**
+ * The file in front of the person in the IDE's editor, and the lines selected in it - what a message sent from
+ * the panel carries to the agent unless switched off (see EditorContext.kt). The path is from the project's
+ * root, whole for a file outside it; `from`/`to` are there only when something is selected, counted from one
+ * the way the gutter counts. The selected text itself stays in the IDE: the chip and the card have no use
+ * for it.
+ */
+export interface EditorRef {
+  path: string
+  name: string
+  from?: number
+  to?: number
+}
+
 export interface QueuedMessage {
   id: string
   text: string
@@ -782,6 +796,11 @@ type ShellMessageBody =
          * Unset - a plugin older than the setting - reads as on, which is the default.
          */
         restoreTabs?: boolean
+        /**
+         * Whether a message carries the open file and the selected lines. Unset - a plugin older than the
+         * setting - reads as on, which is the default (see ClaudePreferences.shareEditor).
+         */
+        shareEditor?: boolean
       }
       /**
        * Which of Claude Code's settings layers this project's conversations are started with - '' for
@@ -982,6 +1001,24 @@ type ShellMessageBody =
    */
   | { type: 'queue'; sessionId: string; items: QueuedMessage[] }
   /**
+   * A queued message taken out to be edited (see takeQueued), to whoever pressed the pencil and to nobody
+   * else - it is going into one field.
+   *
+   * In the pieces it was typed in rather than as the text the agent would have read: the field takes a
+   * message back as chips, and a pasted image's bytes travel inside its chip. `tokens` is missing only for
+   * a message that came without them, and then the text is all there is.
+   */
+  | {
+      type: 'queuedTaken'
+      sessionId: string
+      id: string
+      /** The message that stood right after it - where Queue puts it back. Absent when it was the last. */
+      before?: string
+      text: string
+      tokens?: unknown
+      quotes?: string[]
+    }
+  /**
    * How a bash-mode command ended. stdout and stderr separately: they travel to the agent as separate
    * fields, as Claude Code itself does it - by them one can see that a command complained even when
    * the exit code was zero.
@@ -1009,6 +1046,14 @@ type ShellMessageBody =
   | { type: 'drafts'; drafts: Record<string, { tokens?: unknown; quotes?: unknown }> }
   /** Whether the tabs come back after a restart - told to every window when it is switched. */
   | { type: 'restoreTabs'; on: boolean }
+  /** The same, for whether a message carries what the editor shows - changed in this or another window. */
+  | { type: 'shareEditor'; on: boolean }
+  /**
+   * What the editor beside this panel shows now - the file in front of the person and the lines selected in
+   * it, or nothing (no text editor open, or a file the agent could not read). Sent as it changes, to this
+   * window only: a phone has no editor beside it.
+   */
+  | { type: 'editorContext'; context?: EditorRef }
   /**
    * A conversation's feed is about to be handed over from the shell's journal - everything up to
    * restoreFinished belongs to it and is applied as one change rather than one entry at a time.
@@ -1108,6 +1153,8 @@ type ShellMessageBody =
       tokens?: unknown
       quotes?: string[]
       steering?: boolean
+      /** What the editor showed when the message was sent, as the IDE read it - the line under the card. */
+      editor?: EditorRef
     }
   | { type: 'askResolved'; sessionId: string; id: string; outcome: 'answered' | 'dismissed' | 'withdrawn' }
   | { type: 'status'; sessionId: string; state: AgentStatus }
@@ -1842,6 +1889,11 @@ export type WebviewMessage =
       text: string
       /** Images from the clipboard: bytes rather than a path for a tool to read. */
       images?: { mediaType: string; data: string }[]
+      /**
+       * Carry what the editor beside the panel shows - the IDE reads it the moment this arrives and puts it
+       * beside the text (see EditorContext.kt). Honoured from this IDE's own panel only.
+       */
+      editor?: boolean
     }
   /**
    * The same message, to be said when the agent comes free rather than now.
@@ -1862,9 +1914,21 @@ export type WebviewMessage =
       tokens?: unknown
       quotes?: string[]
       images?: { mediaType: string; data: string }[]
+      /**
+       * A message taken out for editing, going back to where it stood: before this one (see queuedTaken).
+       * Gone by now, it goes to the end like any other.
+       */
+      before?: string
+      /** The same as a prompt's - read when Queue is pressed, not when the message fires. */
+      editor?: boolean
     }
   /** The cross on a queued message: it is not going to be said after all. */
   | { type: 'unqueuePrompt'; sessionId: string; id: string }
+  /**
+   * The pencil on a queued message: take it out and hand it back to this window's field, whole (see
+   * queuedTaken). Out of the queue while it is being edited, so the end of the turn cannot fire it half-way.
+   */
+  | { type: 'takeQueued'; sessionId: string; id: string }
   /** The queue dragged into another order - the identifiers, in the order they are to fire. */
   | { type: 'reorderQueue'; sessionId: string; ids: string[] }
   /**
@@ -2082,6 +2146,8 @@ export type WebviewMessage =
   | { type: 'saveDraft'; sessionId: string; draft: { tokens: unknown[]; quotes: unknown[] } | null }
   | { type: 'tabShown'; sessionId: string }
   | { type: 'setRestoreTabs'; on: boolean }
+  /** Whether a message sent from the panel carries what the editor shows (see EditorContext.kt). */
+  | { type: 'setShareEditor'; on: boolean }
   /** Which indicators around the input field are switched off - the whole list (see indicators.ts). */
   | { type: 'setHiddenIndicators'; hidden: string[] }
   /**

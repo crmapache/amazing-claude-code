@@ -33,6 +33,7 @@ export const ko: Dict = {
       remoteAbout: { title: '밖으로 나가는 것', hint: '켜기 전에 읽어 주세요' },
       newChat: { title: '새 대화', hint: '새 탭이 무엇으로 시작하는지' },
       restoreTabs: { title: '시작 시 탭', hint: '재시작 후 돌아오는 것' },
+      shareEditor: { title: '메시지에 편집기 포함', hint: '메시지와 함께 가는 것' },
       newChatModel: { title: '기본 모델', hint: '새 탭이 시작하는 모델' },
       newChatEffort: { title: '기본 사고량', hint: '새 탭이 얼마나 깊이 생각하는지' },
       newChatMode: { title: '기본 모드', hint: '새 탭이 시작하는 모드' },
@@ -80,6 +81,7 @@ export const ko: Dict = {
       indicators: { label: '표시기', sub: '입력창 곁에 남길 수치' },
       newChat: { label: '새 대화', sub: '모델, 사고량, 권한 모드' },
       restoreTabs: { label: '시작 시 탭', sub: '열려 있던 탭을 초안과 함께 다시 열기' },
+      shareEditor: { label: '열린 파일과 선택 영역', sub: '메시지마다 함께 가는 것' },
       composerLayout: { label: '입력창 배치', sub: '입력창을 두는 자리' },
       pasteCollapse: { label: '붙여넣은 텍스트', sub: '붙여넣기를 칩으로 접는 기준' },
       sendKey: { label: '메시지 보내기', sub: '어떤 키로 보낼지' },
@@ -162,6 +164,14 @@ export const ko: Dict = {
     label: '탭 복원',
     hint: '프로젝트를 다시 열면 탭과 그 대화, 쓰다 만 글이 돌아옵니다 - IDE가 비정상 종료된 뒤에도',
     note: '아무것도 다시 실행하지 않습니다. 에이전트는 탭을 열거나 거기에 입력할 때만 시작됩니다. 초안은 이 컴퓨터의 IDE 자체 폴더에만 저장됩니다.',
+    on: '켜짐',
+    off: '꺼짐',
+  },
+
+  shareEditor: {
+    label: '편집기 내용을 함께 보내기',
+    hint: '메시지마다 편집기에 열린 파일과 그 안에서 선택한 줄을 함께 보내요. 터미널의 Claude Code와 같은 방식이에요',
+    note: '이 패널에서만 적용돼요: 휴대폰에서 쓴 메시지에는 편집기 내용이 붙지 않아요. 메시지 하나만 빼고 보낼 수도 있어요 - 입력창의 파일 칩을 누르세요.',
     on: '켜짐',
     off: '꺼짐',
   },
@@ -802,6 +812,10 @@ export const ko: Dict = {
     improveTerminal: '터미널 명령은 다시 쓰지 않아요',
     voice: '음성 입력',
     voiceStop: '받아쓰기 끝내기',
+    editor: {
+      on: (place) => `Claude가 이 메시지와 함께 ${place}을(를) 봐요 · 클릭하면 빼요`,
+      off: (place) => `${place}은(는) 이 메시지에서 빠져요 · 클릭하면 함께 보내요`,
+    },
   },
 
   header: {
@@ -888,6 +902,11 @@ export const ko: Dict = {
     copyReply: '답변 전체 복사',
     moreActions: '더 보기',
     copyMessage: '이 메시지 복사 - 첨부는 경로로',
+    editor: {
+      selected: (n, name) => `${name}의 ${n}줄`,
+      opened: (name) => `${name}에서`,
+      open: (place) => `${place} · 편집기에서 열기`,
+    },
     reuse: {
       label: '고쳐서 다시 보내기',
       hint: '이 메시지를 입력창으로 되돌려 고쳐서 다시 보냅니다',
@@ -1090,6 +1109,8 @@ export const ko: Dict = {
     queue: {
       label: '대기 중',
       hint: (n) => `${n}개가 이번 실행이 끝나면 차례로 나가요 · 끌어서 순서 변경`,
+      edit: '입력창에서 편집',
+      editing: (key, button) => `입력창에서 편집 중 · ${key} 또는 '${button}'을 누르면 이 자리로 돌아와요`,
     },
     selection: { quote: '인용', fork: '여기서 분기' },
     streams: {
