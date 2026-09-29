@@ -9,6 +9,13 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.7] - 2026-09-29
+
+- Added: the file open in the editor and the lines selected in it now go with each message, the way Claude Code does it in a terminal connected to the IDE - select the code, ask "why is this slow?", and the agent sees what you mean without being told where to look. A chip beside the paperclip shows the file and the lines that will go along; click it to leave them out of one message. Under a sent message a line says what went with it ("14 lines from useSession.ts"), and clicking it opens those lines in the editor. Settings - "Open file and selection" switches it off for good. A message written on the phone carries nothing of the editor, a slash command goes without it, and a selection longer than 20,000 characters is named by its lines for the agent to read rather than pasted in.
+- Added: a message waiting in the queue can be edited. The arrow beside its cross takes it back into the input field with its attachments and quotes, and Enter or Queue puts it back where it stood. While you edit it, it is out of the queue - the end of the turn cannot send it half-finished - and its place in the list is marked. Send with the mouse still sends it straight away.
+- Fixed: after clicking "+" for a new tab, typing did not go into the input field, and a space in the first sentence opened yet another tab. The keyboard stayed on the "+" button, so the space pressed it again. The new tab's input field now gets the keyboard at once.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.6] - 2026-09-28
 
 - Fixed: with many tabs open, "no PR" in the header slid over the menu button and the branch name vanished altogether. The right end of the header could be squeezed to nothing to make room for the tabs, and only the branch knew how to shrink. Now the PR mark and the menu button always stay whole, the branch keeps at least four characters - "main" in full - and the tabs wrap onto another row instead. A branch that is cut short shows its full name when you hover over it.
@@ -800,7 +807,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.6...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.7...HEAD
+[0.13.7]: https://github.com/crmapache/amazing-claude-code/compare/0.13.6...0.13.7
 [0.13.6]: https://github.com/crmapache/amazing-claude-code/compare/0.13.5...0.13.6
 [0.13.5]: https://github.com/crmapache/amazing-claude-code/compare/0.13.4...0.13.5
 [0.13.4]: https://github.com/crmapache/amazing-claude-code/compare/0.13.3...0.13.4
