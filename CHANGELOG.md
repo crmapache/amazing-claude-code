@@ -9,6 +9,13 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.9] - 2026-09-29
+
+- Changed: the tab you are looking at now glows too when it called you while you were away. Its sound plays only when nobody is looking - the panel hidden or the IDE's window behind another one - and until now that tab never lit up, so after coming back to a minimised project nothing said where the turn had ended or broken. Now it glows in the colour of what it called about and stays lit until you do something in it: a click, a key or a scroll. Bringing the window forward, moving the mouse over the panel or clicking in the tab strip does not put it out, and switching to another tab leaves it glowing like any tab in the background.
+- Fixed: on the phone, a project's card often did not show a scenario run that was going in it, until you opened the project's scenarios. The IDE tells the phone what is running only when that changes, and it remembered having told it even after the phone reloaded the page (which iOS does by itself) or reconnected after sleep - so a run standing on a question, or a card working for half an hour, stayed off the card. Now a phone that starts again is told everything anew, and the card shows the run at once.
+- Fixed: on the phone, a run's screen could slide sideways and cut every line off at the left edge. An error naming a long file - a database migration, for example - did not wrap, and pushed the whole list wider than the screen. Long words and paths now wrap on every phone screen, and no list there scrolls sideways any more.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.8] - 2026-09-29
 
 - Added: a tab that called you with a sound now glows in the tab strip until you open it, so with a dozen tabs open you can see which one it was. The colour says what it called about: mint for finished work, sand for something waiting on you (a permission, a question, a plan, a used-up limit), pink for something that broke. An occasion you switched off in the sound settings does not glow either, and the tab you are looking at never does. After half a minute with no mouse or keys in the panel the glow holds still and keeps only its colour, so a tab calling someone who went to lunch does not keep the IDE drawing frames for nobody; a new call or a mouse movement sets it going again.
@@ -813,7 +820,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.8...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.9...HEAD
+[0.13.9]: https://github.com/crmapache/amazing-claude-code/compare/0.13.8...0.13.9
 [0.13.8]: https://github.com/crmapache/amazing-claude-code/compare/0.13.7...0.13.8
 [0.13.7]: https://github.com/crmapache/amazing-claude-code/compare/0.13.6...0.13.7
 [0.13.6]: https://github.com/crmapache/amazing-claude-code/compare/0.13.5...0.13.6
