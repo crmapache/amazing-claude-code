@@ -1052,6 +1052,18 @@ const sayQueue = (sessionId: string): void => {
 }
 
 /**
+ * A sound over the open tab, answered the way ClaudePanel.playAlert answers it: it "plays" only when nobody
+ * is looking, and then the panel is told so and the open tab lights up. Nobody looking, here, is this browser
+ * tab hidden or in the background - switch to another one while a turn runs, and come back.
+ */
+const answerSound = (message: WebviewMessage): void => {
+  if (message.type !== 'sound' || !message.onlyIfAway || !message.sessionId) return
+  if (document.visibilityState === 'visible' && document.hasFocus()) return
+
+  window.__accReceive?.({ type: 'calledAway', sessionId: message.sessionId, sound: message.sound })
+}
+
+/**
  * Queue, the cross, a drag and the pencil, answered the way ClaudeSessionHub answers them - so the queue
  * above the field can be worked by hand here. Nothing is ever fired out of it: the harness has no turn
  * that ends by itself, and a scenario that wants one plays it.
@@ -1294,6 +1306,7 @@ const listenToPanel = () => {
     if (message) answerLogin(message)
     if (message) answerScenarios(message)
     if (message) answerQueue(message)
+    if (message) answerSound(message)
   }
 
   window.dispatchEvent(new Event('acc:ready'))

@@ -340,6 +340,10 @@ internal class RemoteAgent : Disposable {
                     // "when we last heard from it" would be a note anybody could write (see [lastHeard]).
                     lastHeard[deviceId] = System.currentTimeMillis()
 
+                    // Ahead of handling it: the first word on new keys is the inventory, and the greeting
+                    // that answers it has to find the memory already empty.
+                    if (opened.first) startedAgain(deviceId)
+
                     // Weight as well as count. The rate limit further in answers "how often"; a device
                     // sending few enormous frames is the other half of the same question.
                     if (!volume.allowBytes(deviceId, opened.bytes.size)) {
@@ -861,6 +865,29 @@ internal class RemoteAgent : Disposable {
         link?.flush(::resyncFrame)
     }
 
+    /**
+     * Nothing this device was sent can be counted as received any more: forget all of it, in every project.
+     *
+     * The facts a device is told without asking travel only when they CHANGE (see RelayClient.newFacts), and
+     * the memory of what it was told outlives whatever happened at its end. Three things there empty the
+     * screen while that memory stays full, and each is the ordinary day of a phone rather than a failure:
+     *
+     * - The page loads again. iOS throws a page away behind the person's back, and the reload comes back
+     *   well inside the [AWAKE_MS] in which the address still counts as on the line - so nothing was pruned,
+     *   and the greeting that answered its first knock found every fact "already sent".
+     * - The line is dialled again after a sleep. Every connection runs on keys of its own, and what was
+     *   sealed in between - or held by the relay while the socket was down - is sealed to keys the phone
+     *   has let go.
+     * - Its queue out collapsed (see [resyncFrame]), which throws those frames away on purpose.
+     *
+     * The price was the project card: a scenario run going for an hour showed on it or not depending on
+     * when the phone had last been reloaded, because its summary only changes when a card does. Forgetting
+     * costs a few hundred bytes a project, said once more.
+     */
+    private fun startedAgain(address: String) {
+        for (attached in projects.values) attached.client.forgetFacts(address)
+    }
+
     private fun subscribe(device: ByteArray, payload: JsonObject) {
         val projectKey = payload["pj"]?.jsonPrimitive?.contentOrNull.orEmpty()
         val sessionId = payload["s"]?.jsonPrimitive?.contentOrNull.orEmpty()
@@ -874,7 +901,7 @@ internal class RemoteAgent : Disposable {
 
         // The page that said this has nothing yet, whatever its predecessor under the same address was
         // sent (see RelayClient.forgetFacts).
-        for (attached in projects.values) attached.client.forgetFacts(address)
+        startedAgain(address)
         // And with that memory gone, the overview facts of every OTHER project have to be said again -
         // they are not sent by the delivery below, which is about this project alone, and nothing else
         // would say them until one of them next changed.
@@ -1467,8 +1494,14 @@ internal class RemoteAgent : Disposable {
      *
      * Sealed like anything else: a device whose session keys are not open gets nothing here - it has a
      * handshake to finish first, and that ends in a fresh subscription anyway.
+     *
+     * Asked for exactly when that queue collapsed, so this is also where the memory of what the device was
+     * sent is let go (see [startedAgain]): the facts among the frames thrown away were counted as sent, and
+     * the knock the device answers this marker with would otherwise be greeted with none of them.
      */
     private fun resyncFrame(deviceId: String): ByteArray? {
+        startedAgain(deviceId)
+
         val address = runCatching { Frame.decodeAddress(deviceId) }.getOrNull() ?: return null
 
         return sessions.seal(

@@ -255,6 +255,49 @@ class DeviceSessionsTest {
         assertNull(onAgent.body("phone", Frame.parse(stale, 4096)))
     }
 
+    /**
+     * The first frame on a set of keys is a page that has just loaded or a line dialled again, and the
+     * agent forgets on it everything it has told the device - so the next greeting says it all once more
+     * (see RemoteAgent.startedAgain). Said on every frame, that would be the whole overview on every knock;
+     * said never, a reloaded phone waits for a running scenario to move before its card shows it.
+     */
+    @Test
+    fun `only the first frame on a set of keys says a session has begun`() {
+        val onAgent = DeviceSessions()
+        val onDevice = DeviceSessions()
+        onAgent.offer("phone", session())
+        onDevice.open("agent", mirror(session()))
+
+        val knocks = (1..3).map {
+            val frame = onDevice.seal("agent", agent, device, "inventory".toByteArray())!!
+            (onAgent.open("phone", Frame.parse(frame, 4096)) as DeviceSessions.Opened.Body).first
+        }
+
+        assertEquals(listOf(true, false, false), knocks)
+    }
+
+    /** The reconnect a phone makes after every sleep: new keys beside the old, proved by the next frame. */
+    @Test
+    fun `keys proved after an offer begin a session of their own`() {
+        val onAgent = DeviceSessions()
+        val before = DeviceSessions()
+        onAgent.open("phone", session(seed = 1))
+        before.open("agent", mirror(session(seed = 1)))
+
+        val old = before.seal("agent", agent, device, "inventory".toByteArray())!!
+        assertTrue((onAgent.open("phone", Frame.parse(old, 4096)) as DeviceSessions.Opened.Body).first)
+
+        onAgent.offer("phone", session(seed = 60))
+        val after = DeviceSessions()
+        after.open("agent", mirror(session(seed = 60)))
+
+        val proving = after.seal("agent", agent, device, "inventory".toByteArray())!!
+        val next = after.seal("agent", agent, device, "subscribe".toByteArray())!!
+
+        assertTrue((onAgent.open("phone", Frame.parse(proving, 4096)) as DeviceSessions.Opened.Body).first)
+        assertFalse((onAgent.open("phone", Frame.parse(next, 4096)) as DeviceSessions.Opened.Body).first)
+    }
+
     /** With nothing in use there is nothing to protect, so an offer is simply taken. */
     @Test
     fun `keys offered to a device that has none are taken at once`() {

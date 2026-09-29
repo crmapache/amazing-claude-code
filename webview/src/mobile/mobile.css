@@ -46,6 +46,20 @@ body {
      footer of buttons fixed while the keyboard opens and closes. */
   overflow: hidden;
   overscroll-behavior: none;
+  /*
+   * A word longer than its line breaks rather than running out of its box, on every screen of the phone.
+   *
+   * What these screens print is mostly somebody else's text - errors, file names, links, branch names,
+   * what a model answered - and at 390 points one path is wider than the screen. Each box used to have to
+   * remember this for itself, and the one that forgot (a run's error) dragged the whole screen sideways.
+   *
+   * break-word rather than anywhere, and that is the whole reason it can be said this high up: it breaks
+   * only what would otherwise overflow and leaves a box's minimum width alone. `anywhere` here would shrink
+   * every column of a table in an answer to one letter, which is exactly what the feed refuses to do
+   * (see the touch rules for .table in feed.module.css). Boxes that are flex items still need their own
+   * `anywhere` and `min-width: 0`: a flex item is only as narrow as its longest word unless told otherwise.
+   */
+  overflow-wrap: break-word;
 }
 
 /*

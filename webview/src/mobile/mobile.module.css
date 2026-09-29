@@ -71,6 +71,13 @@
 .list {
   flex: 1 1 auto;
   overflow-y: auto;
+  /* Never sideways, and the same goes for every other scroller of the phone's own (the sheets, the limits,
+     a decision, the drawer) - the feed has had it all along. A scroller that is left `auto` one way is
+     `auto` the other way too, so one word too long for its line - a migration's file name in a run's error
+     - made the whole list a thing a thumb drags sideways, with every line of it cut off at the left edge.
+     The words themselves wrap (see mobile.css); this is what keeps the screen still when one of them slips
+     through anyway. */
+  overflow-x: hidden;
   /* No pull-to-refresh: there is nothing to refresh - the feed arrives on its own - and the gesture
      would fight the scroll at the top of every list. */
   overscroll-behavior-y: contain;
@@ -1001,6 +1008,8 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* Never sideways - see .list. */
+  overflow-x: hidden;
   overscroll-behavior: contain;
   padding: 0 var(--acc-sp-2) var(--acc-sp-3);
 }
@@ -1094,6 +1103,8 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* Never sideways - see .list. */
+  overflow-x: hidden;
   overscroll-behavior: contain;
   padding-bottom: var(--acc-sp-3);
 }
@@ -1189,6 +1200,8 @@
 .decisionBody {
   flex: 1 1 auto;
   overflow-y: auto;
+  /* Never sideways - see .list. A long command still scrolls, inside its own box (.decisionCommand). */
+  overflow-x: hidden;
   padding: var(--acc-sp-5) var(--acc-sp-5) var(--acc-sp-6);
 }
 
@@ -1569,6 +1582,9 @@
   border-radius: var(--acc-r-pill);
   font-size: 12.5px;
   line-height: 1.45;
+  /* What the IDE said, and it names files: a run's error carried a migration's name longer than the line,
+     and the note let it run out past its own edge and dragged the screen sideways with it. */
+  overflow-wrap: anywhere;
 }
 
 .noteOk {
@@ -2152,6 +2168,8 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* Never sideways - see .list. */
+  overflow-x: hidden;
   padding: var(--acc-sp-2) var(--acc-sp-2) var(--acc-sp-5);
 }
 

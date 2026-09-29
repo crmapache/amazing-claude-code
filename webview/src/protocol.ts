@@ -1580,6 +1580,12 @@ type ShellMessageBody =
    */
   | { type: 'dockAnchor'; anchor: 'left' | 'right' | 'top' | 'bottom' }
   /**
+   * A sound from the open tab did play: the person was away from it - the panel out of sight or the IDE's
+   * window not the one in front (see the `sound` message's `onlyIfAway`). Only the shell can know that, and
+   * it is the one case in which the tab on screen lights up too (see TabCall).
+   */
+  | { type: 'calledAway'; sessionId: string; sound: SoundId }
+  /**
    * The fonts from the IDE's settings. The panel's contents are drawn in the console font - the same as
    * the built-in terminal - and what surrounds them in the interface font. It arrives at startup, again on
    * every change of colour scheme or look and feel, and whenever the panel's own text size is set.
@@ -2079,6 +2085,11 @@ export type WebviewMessage =
        * arrives without this flag: there it has to sound in any case.
        */
       onlyIfAway?: boolean
+      /**
+       * The tab it came from, so that a sound the shell did play over the open tab can be answered with
+       * `calledAway` about that tab. Absent from the "listen" button, which belongs to no tab.
+       */
+      sessionId?: string
     }
   /** The sound checkboxes and volumes: the shell keeps them along with the model and the mode. */
   | { type: 'soundSettings'; muted: SoundId[]; volumes: Record<string, number> }

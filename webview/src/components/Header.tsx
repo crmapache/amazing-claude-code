@@ -997,7 +997,9 @@ export const Header = ({
   )
 
   return (
-    <header className={`${s.header} ${compact ? s.headerCompact : ''}`} ref={header}>
+    // Marked for the open tab's call, which anything done in the panel answers except what is done up here
+    // (see the effect over `activeCalling` in App).
+    <header className={`${s.header} ${compact ? s.headerCompact : ''}`} ref={header} data-tab-strip>
       {/* A strip of tabs, and said to be one: without it a screen reader announces a row of nameless
           boxes, and nothing in here could be reached by keyboard at all - neither a conversation nor the
           panel's own tabs beside them. */}

@@ -120,6 +120,10 @@ export const scenariosSystem: Scenario[] = [
    * on screen, and each calls in its own way: one finishes, one waits for a permission, one breaks off.
    * The sound would come from the IDE; here what is left of it is the light on the tab it came from.
    *
+   * The last checkpoint is the open tab calling somebody who was away: the IDE played its sound because the
+   * window was not in front, and said so (`calledAway`). It stays lit while the pointer only crosses the
+   * panel and goes out on the first click, key or scroll in it - not in the strip.
+   *
    * Hands-on after the last checkpoint: open a glowing tab - its light fades - and come back.
    */
   scenario('tab-calls', 'Tabs calling from the background', 'system', [
@@ -161,6 +165,13 @@ export const scenariosSystem: Scenario[] = [
       }),
     ]),
     checkpoint('The e2e run breaks off', [wait(1700), shell({ type: 'processExited', sessionId: E2E, exitCode: 1 })]),
+    checkpoint('This one finishes while you are away', [
+      user('Tidy the spacing under the total while I grab a coffee'),
+      wait(1200),
+      ...textReply('Done - the total sits on the same baseline as the button now.'),
+      turnResult(3100),
+      shell({ type: 'calledAway', sessionId: SESSION, sound: 'turnFinished' }),
+    ]),
   ]),
 
   scenario('session-crash', 'A broken session', 'system', [

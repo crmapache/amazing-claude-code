@@ -5,6 +5,7 @@ import type { AgentStatus } from './protocol'
 import {
   NO_SOUND_PREFS,
   SOUND_IDS,
+  callAnswered,
   callsStanding,
   isMuted,
   rememberPanel,
@@ -282,5 +283,26 @@ describe('the calls still standing', () => {
 
   it('returns the very same object when nothing went, so nothing repaints', () => {
     expect(callsStanding(calls, 'main', new Set(['main', 'a', 'b']))).toBe(calls)
+  })
+
+  // The open tab called because its sound played to somebody away from it. The strip changing under it -
+  // another tab starting a turn - is not that person coming back, and must not put its light out.
+  it('keeps the call of the tab on screen when nothing was opened', () => {
+    expect(callsStanding(calls, '', new Set(['a', 'b']))).toBe(calls)
+  })
+})
+
+describe('a call answered by acting in its tab', () => {
+  const calls: Record<string, TabCall> = {
+    a: { tone: 'success', at: 1 },
+    b: { tone: 'error', at: 2 },
+  }
+
+  it('puts out the light of that tab alone', () => {
+    expect(callAnswered(calls, 'a')).toEqual({ b: { tone: 'error', at: 2 } })
+  })
+
+  it('returns the very same object for a tab that was not calling', () => {
+    expect(callAnswered(calls, 'main')).toBe(calls)
   })
 })

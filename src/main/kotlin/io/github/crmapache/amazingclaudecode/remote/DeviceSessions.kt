@@ -2,6 +2,7 @@ package io.github.crmapache.amazingclaudecode.remote
 
 import com.intellij.openapi.diagnostic.thisLogger
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -23,11 +24,20 @@ internal class DeviceSessions {
         val session: Pairing.Session,
         val outgoing: AtomicLong = AtomicLong(0),
         val replay: ReplayWindow = ReplayWindow(),
+        /** Whether a frame from the device has opened under these keys yet - see [Opened.Body.first]. */
+        val heard: AtomicBoolean = AtomicBoolean(false),
     )
 
     /** What opening a frame came to. Three outcomes rather than a body or null - see [open]. */
     sealed interface Opened {
-        class Body(val bytes: ByteArray) : Opened
+        /**
+         * [first] marks the first frame these keys have carried from the device: a page that has just
+         * loaded, or a line dialled again after a sleep. Every connection starts on keys of its own, so
+         * whatever was sealed for the device before this moment may have gone to keys it no longer holds
+         * - or into a page that no longer exists - and nothing it was sent can be counted as received
+         * (see RemoteAgent.startedAgain).
+         */
+        class Body(val bytes: ByteArray, val first: Boolean = false) : Opened
 
         /** Seen before. Ordinary after a reconnect: the relay hands over what it buffered. */
         data object Replayed : Opened
@@ -122,7 +132,9 @@ internal class DeviceSessions {
         if (envelope.counter < 0) return Opened.Unreadable
 
         opened(live, envelope)?.let { body ->
-            return if (live.replay.accept(envelope.counter)) Opened.Body(body) else {
+            return if (live.replay.accept(envelope.counter)) {
+                Opened.Body(body, first = live.heard.compareAndSet(false, true))
+            } else {
                 thisLogger().info("A frame arrived twice from $deviceId - dropped")
                 Opened.Replayed
             }
@@ -138,9 +150,10 @@ internal class DeviceSessions {
 
         devices[deviceId] = waiting
         offered.remove(deviceId)
+        waiting.heard.set(true)
         thisLogger().info("A device proved the keys it offered - the older ones are let go")
 
-        return Opened.Body(body)
+        return Opened.Body(body, first = true)
     }
 
     private fun opened(live: Live, envelope: Frame.Envelope): ByteArray? {

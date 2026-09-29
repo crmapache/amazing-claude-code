@@ -184,6 +184,7 @@ import type {
 import {
   NO_SOUND_PREFS,
   SOUND_IDS,
+  callAnswered,
   callsStanding,
   isMuted,
   rememberPanel,
@@ -372,6 +373,9 @@ const reportChips = (tokens: UserToken[], quotesBeside: number): void => {
  * through it now - the volume of a sound and the colour of the gauges - and both fire on every per cent.
  */
 const SLIDER_SAVE_DELAY_MS = 250
+
+/** Keys that do nothing on their own - pressed alone, they do not answer a tab's call (see `activeCalling`). */
+const MODIFIER_KEYS = new Set(['Meta', 'Control', 'Alt', 'Shift', 'CapsLock'])
 
 /**
  * How long the text size waits for the presses to stop before it is sent - and the page zooms.
@@ -1834,12 +1838,13 @@ export const App = () => {
       sound,
       volume: volumeOf(prefs, sound),
       onlyIfAway: sessionId === activeRef.current,
+      sessionId,
     })
 
     // The tab the sound came from lights up, so that "which one was that" has an answer in the strip.
     // Only a call that sounds: the light answers the sound, and an occasion switched off asked nothing.
-    // Nor the open tab: whatever called there is already before the eyes, and opening the tab - the one
-    // thing that puts the light out - has already happened.
+    // The open tab waits for the shell's word instead: it sounds only if nobody is looking at it, and only
+    // the shell knows whether that is so (see `calledAway`).
     if (sessionId === activeRef.current) return
     setCalls((current) => ({ ...current, [sessionId]: { tone: toneOf(sound), at: Date.now() } }))
   }, [])
@@ -1847,11 +1852,49 @@ export const App = () => {
   /**
    * Opening a tab answers its call, and the light goes (fading - see TabGlow). A closed tab takes its call
    * with it, from whichever client it was closed.
+   *
+   * Opening is the CHANGE to a tab, not being the one on screen: the open tab has a call only because its
+   * sound played to somebody who was away, and this effect runs on every change to the list of tabs - a
+   * turn starting in another one would otherwise put the light out before anybody came back to see it.
    */
+  const openedBefore = useRef(active)
   useEffect(() => {
     const open = new Set(sessions.map((session) => session.id))
-    setCalls((current) => callsStanding(current, active, open))
+    const opened = active === openedBefore.current ? '' : active
+    openedBefore.current = active
+    setCalls((current) => callsStanding(current, opened, open))
   }, [active, sessions])
+
+  /**
+   * The open tab's call is answered by the first thing done in it: a click, a key, a turn of the wheel.
+   *
+   * Not by the window coming back into focus, and not by the pointer crossing the panel on its way
+   * somewhere: the light is there so that a person who was away can see WHERE something happened, and a
+   * light that went out the moment the IDE was brought forward would be gone before anybody looked. Not by
+   * anything in the tab strip either - picking another tab there leaves this one calling in the background,
+   * where opening it again is what answers it. Listening only while there is a call to answer.
+   */
+  const activeCalling = calls[active] !== undefined
+  useEffect(() => {
+    if (!activeCalling) return
+
+    const acted = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest('[data-tab-strip]')) return
+      // A modifier on its own is a hand on its way somewhere else - Cmd+Tab to another window starts here.
+      if (event instanceof KeyboardEvent && MODIFIER_KEYS.has(event.key)) return
+      setCalls((current) => callAnswered(current, activeRef.current))
+    }
+
+    const options = { capture: true, passive: true }
+    window.addEventListener('pointerdown', acted, options)
+    window.addEventListener('keydown', acted, options)
+    window.addEventListener('wheel', acted, options)
+    return () => {
+      window.removeEventListener('pointerdown', acted, options)
+      window.removeEventListener('keydown', acted, options)
+      window.removeEventListener('wheel', acted, options)
+    }
+  }, [activeCalling])
 
   /** The deferred write of the sound settings - see changeSoundPrefs. */
   const soundSaveTimer = useRef<number | undefined>(undefined)
@@ -2940,6 +2983,17 @@ export const App = () => {
 
           case 'dockAnchor':
             setDockAnchor(message.anchor)
+            break
+
+          // The open tab's sound played, so nobody was looking at it: it lights up like a background one,
+          // and stays lit until something is done in it (see the effect over `activeCalling`). A tab that
+          // was closed while the sound was on its way has nobody left to call.
+          case 'calledAway':
+            if (!sessionsRef.current.some((session) => session.id === message.sessionId)) break
+            setCalls((current) => ({
+              ...current,
+              [message.sessionId]: { tone: toneOf(message.sound), at: Date.now() },
+            }))
             break
 
           case 'typography': {

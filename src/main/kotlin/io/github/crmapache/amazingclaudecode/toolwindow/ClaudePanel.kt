@@ -548,6 +548,7 @@ internal class ClaudePanel(
                 sound = field("sound"),
                 volume = payload["volume"]?.jsonPrimitive?.intOrNull ?: 100,
                 onlyIfAway = payload["onlyIfAway"]?.jsonPrimitive?.booleanOrNull == true,
+                sessionId = field("sessionId"),
             )
 
             "soundSettings" -> {
@@ -889,8 +890,12 @@ internal class ClaudePanel(
      *
      * We ask on the interface thread: the windows' state lives there, while the message arrives from the
      * embedded browser on its own.
+     *
+     * A sound that did play over the open tab is told back to the panel (`calledAway`): it means nobody was
+     * looking at that tab, which is the one case in which the tab on screen lights up in the strip as well -
+     * so that whoever comes back can see where the call came from.
      */
-    private fun playAlert(sound: String, volume: Int, onlyIfAway: Boolean) {
+    private fun playAlert(sound: String, volume: Int, onlyIfAway: Boolean, sessionId: String) {
         if (!onlyIfAway) {
             AlertSounds.play(sound, volume)
             return
@@ -906,6 +911,7 @@ internal class ClaudePanel(
                 // and there is nobody left to call anyway.
                 if (!project.isDisposed && !alive.isDisposed && !isPanelWatched()) {
                     AlertSounds.play(sound, volume)
+                    if (sessionId.isNotEmpty()) calledAway(sound, sessionId)
                 }
             },
             ModalityState.any(),
@@ -923,6 +929,17 @@ internal class ClaudePanel(
     private fun isPanelWatched(): Boolean = runCatching {
         toolWindow.isVisible && WindowManager.getInstance().getFrame(project)?.isActive == true
     }.getOrDefault(false)
+
+    /** Tell the panel the open tab called somebody who was away from it - see [playAlert]. */
+    private fun calledAway(sound: String, sessionId: String) {
+        webview?.send(
+            buildJsonObject {
+                put("type", "calledAway")
+                put("sessionId", sessionId)
+                put("sound", sound)
+            }.toString(),
+        )
+    }
 
     // --- The window's own state -------------------------------------------------------
 

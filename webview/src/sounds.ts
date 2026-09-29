@@ -143,7 +143,11 @@ const TONES: Record<SoundId, CallTone> = {
 export const toneOf = (sound: SoundId): CallTone => TONES[sound]
 
 /**
- * A tab that has called the person and has not been opened since - it glows in the strip until it is.
+ * A tab that has called the person and has not been answered since - it glows in the strip until it is.
+ *
+ * A background tab is answered by being opened. The open tab can call too - when its sound played to
+ * somebody who was away from it (see the `calledAway` message) - and it is answered by the first thing that
+ * person does in it: being on screen is exactly what it already was while nobody looked.
  *
  * `at` is when: a second call of the same tone into a tab already glowing is news too (another turn has
  * finished there), and the strip stirs on it again (see useResting).
@@ -156,18 +160,32 @@ export interface TabCall {
 /**
  * The calls still standing: opening a tab answers its call, and a closed tab has nobody left to call.
  *
+ * `opened` is the tab that has just been opened, and only that - empty on a pass where nothing was. The
+ * tab that merely stays on screen keeps its call: it can only have one because its sound played to a
+ * person who was not looking, and a list of tabs changing under them (a turn starting somewhere else) is
+ * not them coming back.
+ *
  * The very same object when nothing went, so a pass that changes nothing repaints nothing.
  */
 export const callsStanding = (
   calls: Record<string, TabCall>,
-  active: string,
+  opened: string,
   open: ReadonlySet<string>,
 ): Record<string, TabCall> => {
   const ids = Object.keys(calls)
-  const kept = ids.filter((id) => id !== active && open.has(id))
+  const kept = ids.filter((id) => id !== opened && open.has(id))
   if (kept.length === ids.length) return calls
 
   return Object.fromEntries(kept.map((id) => [id, calls[id]!]))
+}
+
+/**
+ * The call of one tab answered - the person has done something in it. The very same object when it had none.
+ */
+export const callAnswered = (calls: Record<string, TabCall>, id: string): Record<string, TabCall> => {
+  if (!(id in calls)) return calls
+
+  return Object.fromEntries(Object.entries(calls).filter(([key]) => key !== id))
 }
 
 /**
