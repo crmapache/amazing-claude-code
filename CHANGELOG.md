@@ -9,6 +9,12 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.10] - 2026-09-30
+
+- Added: anonymous usage statistics, off until you say yes. A card above the input field asks once whether the panel may send daily counts of how it is used - which features, how often, how long a sitting lasts - and nothing is sent until you press Allow. Never your code, your messages, file names, project names or anything that says who you are; the counts go under a random id made on your machine, and the service keeps no IP address. Settings - "Usage statistics" shows the whole report as it would go next, and switching it off stops the reports and deletes what was already sent. The privacy policy lists every field.
+- Added: a scenario can let its main thread finish a card its own session could not - "When a card cannot finish" in the scenario editor, on the phone too. Until now the run stopped on such a card, and in the morning you opened the main thread's conversation and asked it to finish the job. Now it does that by itself: it looks at what is already on disk, finishes the card, and the run goes on. It steps in when the card says it is not done, runs past its three-hour limit or its process dies - never twice for one card, and never over a stop the briefing says must not be got past. The run's card shows "the main thread is finishing it" while it works. The default is still "Stop the run".
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.9] - 2026-09-29
 
 - Changed: the tab you are looking at now glows too when it called you while you were away. Its sound plays only when nobody is looking - the panel hidden or the IDE's window behind another one - and until now that tab never lit up, so after coming back to a minimised project nothing said where the turn had ended or broken. Now it glows in the colour of what it called about and stays lit until you do something in it: a click, a key or a scroll. Bringing the window forward, moving the mouse over the panel or clicking in the tab strip does not put it out, and switching to another tab leaves it glowing like any tab in the background.
@@ -820,7 +826,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.9...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.10...HEAD
+[0.13.10]: https://github.com/crmapache/amazing-claude-code/compare/0.13.9...0.13.10
 [0.13.9]: https://github.com/crmapache/amazing-claude-code/compare/0.13.8...0.13.9
 [0.13.8]: https://github.com/crmapache/amazing-claude-code/compare/0.13.7...0.13.8
 [0.13.7]: https://github.com/crmapache/amazing-claude-code/compare/0.13.6...0.13.7
