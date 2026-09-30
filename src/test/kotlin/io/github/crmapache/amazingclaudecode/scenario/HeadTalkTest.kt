@@ -84,10 +84,67 @@ class HeadTalkTest {
      */
     @Test
     fun `what travels as an argument survives a shell nobody asked for`() {
-        for (briefing in listOf(HeadTalk.HEAD_BRIEFING, HeadTalk.CARD_BRIEFING)) {
+        for (briefing in listOf(HeadTalk.HEAD_BRIEFING, HeadTalk.CARD_BRIEFING, HeadTalk.TAKE_OVER_BRIEFING)) {
             assertTrue('\n' !in briefing, "a newline in a launch argument ends the command there")
             assertTrue('"' !in briefing, "a quotation mark in a launch argument breaks the quoted run")
             assertTrue('\'' !in briefing, "an apostrophe in a launch argument breaks the quoted run")
         }
+    }
+
+    private val card = Card(id = "c1", title = "Deliver it", prompt = "/ship", dod = "Main is on dev and pushed.")
+
+    /*
+     * The second way of saying no is the whole of how a scenario's hard stops survive the fence coming
+     * down: offered where giving up hands the card over, and nowhere else - elsewhere every no is a stop.
+     */
+    @Test
+    fun `a verdict that hands the card over offers a stop that is not taken over`() {
+        val handing = HeadTalk.verdictRequest(card, "CI on dev is red.", ok = true, nudgesLeft = 0, handsOver = true)
+        val ending = HeadTalk.verdictRequest(card, "CI on dev is red.", ok = true, nudgesLeft = 0)
+
+        assertTrue("\"stop\": true" in handing)
+        assertTrue("finish it yourself" in handing)
+        assertTrue("\"stop\"" !in ending)
+        assertTrue("The run stops here" in ending)
+    }
+
+    @Test
+    fun `the hand-over lifts the role in the conversation and says what the card was for`() {
+        val said = HeadTalk.takeOverRequest(
+            card = card,
+            prompt = "/ship https://example.com/pull/7",
+            why = "it ran past its time",
+            said = "Waiting for the checks on dev.",
+            transcript = "/tmp/transcripts/abc.jsonl",
+        )
+
+        assertTrue("the rule that the main thread never writes to disk is lifted" in said)
+        assertTrue("Do not start the card over" in said)
+        assertTrue("it ran past its time" in said)
+        assertTrue("/ship https://example.com/pull/7" in said)
+        assertTrue("Main is on dev and pushed." in said)
+        assertTrue("Waiting for the checks on dev." in said)
+        assertTrue("/tmp/transcripts/abc.jsonl" in said)
+        assertTrue("stays a stop" in said)
+    }
+
+    // A card the head just judged: its last words are in the verdict above, and saying them twice is a
+    // few thousand tokens for nothing.
+    @Test
+    fun `a card already judged is not quoted again`() {
+        val said = HeadTalk.takeOverRequest(card, prompt = "/ship", why = "not done", said = null, transcript = null)
+
+        assertTrue("in the message that asked you for your verdict" in said)
+        assertTrue("What it was saying when it stopped" !in said)
+        assertTrue("Its whole conversation" !in said)
+    }
+
+    @Test
+    fun `the opening names the exception only where the scenario makes it`() {
+        val plain = Scenario(name = "Night", stages = listOf(Stage(id = "g", cards = listOf(card))))
+        val handing = plain.copy(head = HeadSettings(onGiveUp = HeadSettings.ON_GIVE_UP_HEAD))
+
+        assertTrue("One exception" !in HeadTalk.opening(plain, "/repo", emptyMap(), 1))
+        assertTrue("One exception" in HeadTalk.opening(handing, "/repo", emptyMap(), 1))
     }
 }

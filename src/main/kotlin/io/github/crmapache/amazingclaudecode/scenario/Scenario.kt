@@ -115,10 +115,25 @@ internal data class HeadSettings(
      * one card. Zero means one go and no second chances.
      */
     val retries: Int = 2,
+    /**
+     * What happens to a card its own session could not finish: the head gave up on it, it ran past its
+     * time, or its process went away.
+     *
+     * `stop` ends the run on it - the reading every scenario written before this setting keeps, and the
+     * safe one: everything after the card was written on the assumption that it happened.
+     *
+     * `head` hands the card's work to the head itself, once, with the trust the cards have, and the run
+     * moves on only if the head finishes it (see ScenarioEngine.takeOver). It is what a person otherwise
+     * did by hand in the morning: open the head's conversation and tell it to finish the job - after a
+     * night that ended on something the head could have done at two o'clock.
+     */
+    val onGiveUp: String = ON_GIVE_UP_STOP,
 ) {
     internal companion object {
         const val ON_QUESTION_HEAD = "head"
         const val ON_QUESTION_STOP = "stop"
+        const val ON_GIVE_UP_STOP = "stop"
+        const val ON_GIVE_UP_HEAD = "head"
     }
 }
 

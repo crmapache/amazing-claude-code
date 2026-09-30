@@ -128,4 +128,16 @@ class RunSummaryTest {
         assertEquals(0, summary.stage)
         assertEquals("", summary.at)
     }
+
+    // The live card is drawn from the summary alone, so a card being finished by the head says so there.
+    @Test
+    fun `a card the head is finishing says so, and stops saying it once it is over`() {
+        val working = step("c1", "read", "Collect the diff", StepState.RUNNING).copy(takeOver = "it ran past its time")
+        val live = ScenarioRun(snapshot = scenario(), state = RunState.RUNNING, steps = listOf(working))
+        val over = live.copy(state = RunState.DONE, steps = listOf(working.copy(state = StepState.DONE)))
+
+        assertEquals(true, live.summarise().takingOver)
+        assertEquals(false, over.summarise().takingOver)
+        assertEquals(false, live.copy(steps = listOf(working.copy(takeOver = ""))).summarise().takingOver)
+    }
 }

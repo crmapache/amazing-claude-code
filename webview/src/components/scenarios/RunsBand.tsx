@@ -257,6 +257,12 @@ const LiveRun = ({
               <span className={s.runCardNudge}>{t.scenarios.run.sentBack(run.nudges)}</span>
             </>
           ) : null}
+          {run.takingOver ? (
+            <>
+              <span className={s.factDot}>·</span>
+              <span className={s.runCardNudge}>{t.scenarios.run.takingOver}</span>
+            </>
+          ) : null}
         </div>
       ) : null}
 

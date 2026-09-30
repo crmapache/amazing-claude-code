@@ -207,6 +207,21 @@ export const ScenarioEditor = ({
                 </button>
               ))}
             </div>
+
+            {/* The same two-way choice for a card its own session could not finish: the run ends on it,
+                or the main thread finishes the card itself before going on. */}
+            <div className={m.segmented} aria-label={t.scenarios.editor.onGiveUp}>
+              {(['stop', 'head'] as const).map((how) => (
+                <button
+                  key={how}
+                  type="button"
+                  className={`${m.segment} ${(draft.head.onGiveUp ?? 'stop') === how ? m.segmentOn : ''}`}
+                  onClick={() => onChange({ ...draft, head: { ...draft.head, onGiveUp: how } })}
+                >
+                  {how === 'head' ? t.scenarios.editor.giveUpHead : t.scenarios.editor.giveUpStop}
+                </button>
+              ))}
+            </div>
           </FoldRow>
 
           <FoldRow

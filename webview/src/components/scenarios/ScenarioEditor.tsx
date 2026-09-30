@@ -315,6 +315,18 @@ export const ScenarioEditor = ({
                   }
                 />
                 <Picker
+                  label={t.scenarios.editor.onGiveUp}
+                  title={t.scenarios.editor.onGiveUp}
+                  value={draft.head.onGiveUp ?? 'stop'}
+                  options={[
+                    { id: 'stop', label: t.scenarios.editor.giveUpStop },
+                    { id: 'head', label: t.scenarios.editor.giveUpHead },
+                  ]}
+                  onPick={(onGiveUp) =>
+                    onChange({ ...draft, head: { ...draft.head, onGiveUp: onGiveUp as 'stop' | 'head' } })
+                  }
+                />
+                <Picker
                   label={t.scenarios.editor.retries}
                   title={t.scenarios.editor.retries}
                   value={String(draft.head.retries)}

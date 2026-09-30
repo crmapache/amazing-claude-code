@@ -399,6 +399,13 @@ export interface ScenarioHead {
   onQuestion: 'head' | 'stop'
   /** How many times the head may send one card back to work before giving up on it. */
   retries: number
+  /**
+   * What happens to a card its own session could not finish: 'stop' ends the run on it, 'head' hands its
+   * work to the head, which finishes it itself before the run moves on (see HeadSettings.onGiveUp).
+   * Optional because a page served from a relay may be newer than the IDE that sends the scenario; absent
+   * reads as 'stop', which is what every scenario did before the setting existed.
+   */
+  onGiveUp?: 'stop' | 'head'
 }
 
 export interface ScenarioStage {
@@ -633,6 +640,11 @@ export interface ScenarioRunStep {
   error: string
   cost: number
   tokens: number
+  /**
+   * Why the head took this card's work over from its own session, and empty (or absent, from an IDE older
+   * than the setting) when it never had to - see ScenarioHead.onGiveUp.
+   */
+  takeOver?: string
 }
 
 export interface ScenarioRunNote {
@@ -689,6 +701,8 @@ export interface ScenarioRunSummary {
   nudges?: number
   /** What it has stopped to ask, when it is standing on a question. Empty otherwise. */
   asking?: string
+  /** Whether the card it is on is being finished by the main thread itself (see ScenarioRunStep.takeOver). */
+  takingOver?: boolean
 }
 
 /**

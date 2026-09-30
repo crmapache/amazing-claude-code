@@ -611,6 +611,7 @@ export const en = {
       retries: 'Out of goes',
       stopped: 'Cut short by you',
       undone: 'Not done',
+      headGaveUp: 'The main thread could not finish it either',
     },
     /** What the IDE said it could not do. */
     outcomes: {
@@ -679,6 +680,10 @@ export const en = {
       /** In front of what the head said, between the cards. */
       headSaid: 'MAIN THREAD',
       sentBack: (n: number): string => (n === 1 ? 'sent back once' : `sent back ${n} times`),
+      /** A card the main thread finished itself, and why its own session could not. */
+      takenOver: (why: string): string => `The main thread took it over: ${why}`,
+      /** On the card of a live run, while that is happening. */
+      takingOver: 'the main thread is finishing it',
       allow: 'Allow',
       deny: 'Refuse',
       send: 'Send',
@@ -744,6 +749,10 @@ export const en = {
       onQuestion: 'ON A QUESTION',
       questionHead: 'It answers',
       questionStop: 'Stand still and wait',
+      /** What happens to a card its own session could not finish (see HeadSettings.onGiveUp). */
+      onGiveUp: 'WHEN A CARD CANNOT FINISH',
+      giveUpStop: 'Stop the run',
+      giveUpHead: 'It finishes the card',
       retries: 'SEND BACK',
       noRetries: 'Never',
       retriesCount: (n: number): string => (n === 1 ? 'Once' : n === 2 ? 'Twice' : `${n} times`),

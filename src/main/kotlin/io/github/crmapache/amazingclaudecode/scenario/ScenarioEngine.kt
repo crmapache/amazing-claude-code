@@ -4,6 +4,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.util.concurrency.AppExecutorUtil
 import io.github.crmapache.amazingclaudecode.claude.AgentStream
+import io.github.crmapache.amazingclaudecode.claude.ClaudeHistory
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSession
 import io.github.crmapache.amazingclaudecode.claude.PermissionChannel
 import java.util.concurrent.ScheduledFuture
@@ -72,6 +73,9 @@ internal class ScenarioEngine(
         /** A card stopped on a question and the scenario said to wait for a person. */
         BLOCKED,
 
+        /** A card's own session could not finish it, and the head is doing its work itself (see [takeOver]). */
+        TAKEOVER,
+
         /** Interrupted by a hand on the button. The processes are alive and remember everything. */
         PAUSED,
 
@@ -95,6 +99,18 @@ internal class ScenarioEngine(
 
     /** How many times the head has sent the current card back to work. */
     private var nudges = 0
+
+    /** Whether the current card's work has already been handed to the head - once per card (see TakeOver.wanted). */
+    private var tookOver = false
+
+    /**
+     * Whether the head's process standing now was raised without its fence, to do a card's work.
+     *
+     * A fact about the process rather than about the phase, and that is why it is its own flag: a pause
+     * leaves the phase at PAUSED over a head that is still the unfenced one, and a permission prompt of
+     * its arriving in that moment must be answered by the rules it was raised under (see [raiseHead]).
+     */
+    private var unfenced = false
 
     /**
      * What the head was asked and has not answered yet.
@@ -229,6 +245,13 @@ internal class ScenarioEngine(
         // Read before the ending is wiped off the step: the head's last word against it is part of
         // what the card is told (see [carryOnWords]).
         val words = run.steps.getOrNull(point.at)?.let(::carryOnWords) ?: CARRY_ON
+        /*
+         * Cut while the head was finishing the card itself (see [takeOver]): the work that was going is the
+         * head's, so the head is what carries on - it remembers what it had already done, and the card's own
+         * session knows nothing of it. Read off the step for the reason the phase is: the record is all that
+         * survived.
+         */
+        val headWasFinishing = point.begun && run.steps.getOrNull(point.at)?.takeOver?.isNotEmpty() == true
 
         /*
          * The gap between the ending and this moment is not time the run spent (see ScenarioRun.idle) -
@@ -265,6 +288,9 @@ internal class ScenarioEngine(
                         said = "",
                         verdict = "",
                         verdictReason = "",
+                        // A card picked up in its own session gets a fresh chance to be handed over - the same
+                        // as the goes it may be sent back for (see below); one the head was finishing stays its.
+                        takeOver = if (headWasFinishing) step.takeOver else "",
                     )
                     // Everything after it never had its go: back to the plan, as [begin] wrote it.
                     else -> RunStep(key = step.key, cardId = step.cardId, stageId = step.stageId, pass = step.pass, title = step.title)
@@ -275,7 +301,9 @@ internal class ScenarioEngine(
         // The head's own running total, as the CLI keeps it: everything the run spent that no card did.
         headCost = (run.cost - run.steps.sumOf { it.cost }).coerceAtLeast(0.0)
         cardCost = 0.0
-        head = openHead(resumeFrom = run.headConversationId)
+        head = openHead(resumeFrom = run.headConversationId, takingOver = headWasFinishing)
+        unfenced = headWasFinishing
+        tookOver = headWasFinishing
         watchTheClock()
 
         at = point.at
@@ -285,6 +313,16 @@ internal class ScenarioEngine(
         }
 
         when {
+            // The head was doing the card's work: the head is told to go on, with the card's clock again.
+            headWasFinishing && step != null -> {
+                editStep(step.key) { it.copy(state = StepState.RUNNING) }
+                phase = Phase.TAKEOVER
+                cardStartedAt = now
+                pausedFor = 0
+                pausedAt = 0
+                askHead(HeadTalk.TAKE_OVER_CARRY_ON)
+            }
+
             // Cut in the middle of its own turn: the same session, told to go on, as after a pause. The
             // allowance of goes starts again with it - a run that ended because the head ran out of them
             // is one somebody chose to give another chance.
@@ -325,7 +363,7 @@ internal class ScenarioEngine(
     private fun carryOnWords(step: RunStep): String =
         if (step.verdictReason.isBlank()) CARRY_ON else "$CARRY_ON The main thread judged it not done yet: ${step.verdictReason}"
 
-    private fun openHead(resumeFrom: String = ""): ClaudeSession = ClaudeSession(
+    private fun openHead(resumeFrom: String = "", takingOver: Boolean = false): ClaudeSession = ClaudeSession(
         workingDirectory = workingDirectory,
         resumeFrom = resumeFrom.ifEmpty { null },
         model = scenario.head.model.ifBlank { defaultModel },
@@ -336,10 +374,14 @@ internal class ScenarioEngine(
          * Whatever the cards are trusted with, the head itself is a foreman: it reads the project to check
          * what a card claims, and everything that writes belongs to a card. The mode that asks is what
          * makes that a rule rather than a wish - see [onHeadPermission].
+         *
+         * The one exception is a head raised to do a card's work (see [takeOver]): it stands in for the
+         * card, so it gets the card's trust - the scenario's own default, since the card it replaces may
+         * have had one of its own for a reason that was about its task rather than about trust.
          */
-        permissionMode = "default",
+        permissionMode = if (takingOver) scenario.head.permissionMode.ifBlank { "default" } else "default",
         accountId = accountId,
-        briefing = HeadTalk.HEAD_BRIEFING,
+        briefing = if (takingOver) HeadTalk.TAKE_OVER_BRIEFING else HeadTalk.HEAD_BRIEFING,
         nameWanted = false,
         onEvent = { line -> onHeadLine(line) },
         onError = { message -> onSessionError(head = true, message = message) },
@@ -380,6 +422,21 @@ internal class ScenarioEngine(
                     run = run.copy(cost = run.cost + spent, tokens = run.tokens + tokens)
                 }
             }
+        }
+        // A head doing a card's work is working, and its row says so the way a card's does - otherwise an
+        // hour of it reads on the screen as a card stuck with nothing moving (see [onCardLine]).
+        val said = streamedText(line)
+        if (said.isNotEmpty()) {
+            val moved = synchronized(this) {
+                val step = run.steps.getOrNull(at)
+                if (phase == Phase.TAKEOVER && step != null) {
+                    editStep(step.key) { it.copy(said = shorten(it.said + said, SAID_CHARS)) }
+                    true
+                } else {
+                    false
+                }
+            }
+            if (moved) changed()
         }
         rememberConversationIds()
     }
@@ -546,6 +603,7 @@ internal class ScenarioEngine(
             Phase.QUESTION -> answerCardQuestion(body)
             Phase.VERDICT -> takeVerdict(body)
             Phase.AGAIN -> takeAnotherPass(body)
+            Phase.TAKEOVER -> takeOverVerdict(body)
             else -> Unit
         }
         changed()
@@ -577,6 +635,7 @@ internal class ScenarioEngine(
         }
 
         nudges = 0
+        tookOver = false
         cardTurn.setLength(0)
         // A fresh turn of the card's: whatever ended before it is not this turn ending (see [cardTurnEnded]).
         cardTurnEnded = false
@@ -596,6 +655,7 @@ internal class ScenarioEngine(
                 passes = ScenarioRules.passesOf(stage),
                 prompt = ScenarioRules.fillInputs(definition.prompt, run.inputs),
                 retries = scenario.head.retries,
+                handsOver = TakeOver.wanted(scenario.head, alreadyTaken = false, stopAsked = false),
             ),
         )
         changed()
@@ -700,6 +760,7 @@ internal class ScenarioEngine(
                 answer = answer,
                 ok = answer.isNotBlank(),
                 nudgesLeft = (scenario.head.retries - nudges).coerceAtLeast(0),
+                handsOver = canTakeOver(stopAsked = false),
             ),
         )
         changed()
@@ -725,6 +786,9 @@ internal class ScenarioEngine(
         }
 
         val done = HeadAnswer.flag(body, "done") ?: retry.isBlank()
+        if (!done && canTakeOver(stopAsked = HeadAnswer.flag(body, "stop") ?: false)) {
+            return takeOver(step, why = reason.ifBlank { "the main thread judged it not done" }, said = null)
+        }
         closeCard()
 
         editStep(step.key) {
@@ -806,11 +870,125 @@ internal class ScenarioEngine(
         beginStep()
     }
 
+    // --- The head doing a card's work --------------------------------------------------
+
+    /**
+     * Whether the card on the board, given up on now, would go to the head (see TakeOver.wanted).
+     *
+     * The head has to have a conversation to come up over as well: a take-over is the same head with its
+     * memory of the night, and a head that never announced one would be a stranger handed a half-done job.
+     */
+    private fun canTakeOver(stopAsked: Boolean): Boolean =
+        TakeOver.wanted(scenario.head, tookOver, stopAsked) && run.headConversationId.isNotEmpty()
+
+    /**
+     * The card's own session could not finish it: hand its work to the head, once.
+     *
+     * What a person otherwise did by hand in the morning, done at the moment it went wrong: the head's
+     * conversation, which remembers the whole run, told to finish the job itself. The card is taken down
+     * first - two sessions writing to one working copy is the thing the board exists to prevent - and
+     * whatever it was asking dies with it. The head is raised again over its own conversation with the
+     * card's trust and without its fence (see [raiseHead]); the message that hands the work over is what
+     * lifts the role (see HeadTalk.takeOverRequest).
+     *
+     * The clock is the card's: the head is doing a card's work, and a card's three hours are what a piece of
+     * work is given here. The step keeps its row and its state - it is still the same card being worked on -
+     * and says on it why the head took over.
+     */
+    private fun takeOver(step: RunStep, why: String, said: String?) {
+        val definition = scenario.stages.firstOrNull { it.id == step.stageId }?.cards?.firstOrNull { it.id == step.cardId }
+            ?: return end(RunState.FAILED, RunFailure.CRASHED, "a step of this run points at a card that is not in it")
+
+        tookOver = true
+        closeCard()
+        questions.clear()
+        deciding = ""
+        cardTurnEnded = false
+        run = run.copy(state = RunState.RUNNING, question = null)
+        editStep(step.key) {
+            it.copy(
+                state = StepState.RUNNING,
+                takeOver = shorten(why, TAKE_OVER_CHARS),
+                said = "",
+                verdict = "",
+                verdictReason = "",
+            )
+        }
+
+        raiseHead(takingOver = true)
+        phase = Phase.TAKEOVER
+        cardStartedAt = System.currentTimeMillis()
+        pausedFor = 0
+        pausedAt = 0
+        askHead(
+            HeadTalk.takeOverRequest(
+                card = definition,
+                prompt = step.prompt.ifBlank { ScenarioRules.fillInputs(definition.prompt, run.inputs) },
+                why = why,
+                said = said?.let { shorten(it, SUMMARY_CHARS) },
+                transcript = step.conversationId.takeIf { it.isNotEmpty() }
+                    ?.let { ClaudeHistory.transcriptFile(workingDirectory, it)?.path },
+            ),
+        )
+        changed()
+    }
+
+    /**
+     * The head has said whether it finished the card's work.
+     *
+     * Finished, and it goes back to being a foreman before anything else is handed to it: the process is
+     * raised again with its fence, because the next card is somebody else's work. Not finished, and the run
+     * stops under a name of its own - a card nobody here could finish reads differently in the morning from
+     * one the head simply gave up on.
+     */
+    private fun takeOverVerdict(body: JsonObject) {
+        val step = run.steps.getOrNull(at) ?: return
+        val done = HeadAnswer.flag(body, "done") ?: false
+        val reason = HeadAnswer.text(body, "reason")
+
+        editStep(step.key) {
+            it.copy(
+                state = if (done) StepState.DONE else StepState.FAILED,
+                verdict = if (done) "done" else "undone",
+                verdictReason = reason,
+                handoff = HeadAnswer.text(body, "handoff"),
+                finishedAt = System.currentTimeMillis(),
+                failure = if (done) "" else RunFailure.HEAD_GAVE_UP,
+                error = if (done) "" else reason,
+                said = "",
+            )
+        }
+
+        if (!done) {
+            return end(RunState.FAILED, RunFailure.HEAD_GAVE_UP, "${step.title}: ${reason.ifBlank { "not done" }}")
+        }
+
+        raiseHead(takingOver = false)
+        nextStep()
+    }
+
+    /**
+     * The head's process taken down and raised again over its own conversation - fenced, or not.
+     *
+     * A fresh process rather than a mode switched on the live one, and for the fence's sake: switching a
+     * mode is a request the CLI may refuse, and a refusal on the way BACK would leave a foreman with no
+     * fence and nobody noticing. Raised anew, what it may do is what it was launched with. The process is
+     * only started by the next message, so a head raised after the last card and taken down at the end
+     * costs nothing. Our own stop is not a crash (see ClaudeSession.stop), and the bill carries on by the
+     * rule a fresh count is read by (see [spentOf]).
+     */
+    private fun raiseHead(takingOver: Boolean) {
+        head?.stop()
+        unfenced = takingOver
+        head = openHead(resumeFrom = run.headConversationId, takingOver = takingOver)
+    }
+
     // --- Questions the cards raise -------------------------------------------------
 
     @Synchronized
     private fun onCardQuestion(request: PermissionChannel.ToolPermission) {
-        if (phase == Phase.OVER) return
+        // A card taken over is a card taken down: a request still in flight from it belongs to nobody.
+        if (phase == Phase.OVER || phase == Phase.TAKEOVER) return
         val step = run.steps.getOrNull(at) ?: return
 
         questions.addLast(request)
@@ -1037,12 +1215,13 @@ internal class ScenarioEngine(
      *
      * The head is a foreman and this is the fence that keeps it one: it may look at the project all it
      * likes, and everything that writes belongs to a card. The refusal is a sentence rather than a code,
-     * because the reader is the head and it will work around what it is told.
+     * because the reader is the head and it will work around what it is told. A head raised to do a card's
+     * work stands in for that card, and is answered by the card's rules instead (see TakeOver.answer).
      */
     @Synchronized
     private fun onHeadPermission(request: PermissionChannel.ToolPermission) {
         val session = head ?: return
-        val verdict = HeadFence.judge(request)
+        val verdict = if (unfenced) TakeOver.answer(scenario.head, request) else HeadFence.judge(request)
         session.answerPermission(request.requestId, allow = verdict.ok, message = verdict.why)
     }
 
@@ -1143,6 +1322,16 @@ internal class ScenarioEngine(
 
             Phase.BLOCKED -> run.steps.getOrNull(at)?.let { step -> editStep(step.key) { it.copy(state = StepState.ASKING) } }
 
+            // Doing a card's work, so carried on the way a card is rather than asked its question again:
+            // the hand-over is an hour of work, and saying it a second time would start that hour over.
+            Phase.TAKEOVER -> {
+                run.steps.getOrNull(at)?.let { step -> editStep(step.key) { it.copy(state = StepState.RUNNING) } }
+                cardStartedAt = System.currentTimeMillis()
+                pausedFor = 0
+                pausedAt = 0
+                askAgain(HeadTalk.TAKE_OVER_CARRY_ON)
+            }
+
             Phase.OPENING, Phase.SLOTS, Phase.QUESTION, Phase.VERDICT, Phase.AGAIN -> {
                 run.steps.getOrNull(at)?.let { step -> editStep(step.key) { it.copy(state = StepState.JUDGING) } }
                 // The same question again, not a new one: a pause taken in the middle of a re-ask must not
@@ -1214,19 +1403,43 @@ internal class ScenarioEngine(
     private fun tick() {
         when {
             phase == Phase.CARD -> watchTheCard()
+            phase == Phase.TAKEOVER -> watchTheTakeOver()
             headAskedAt > 0L && phase in HEAD_PHASES -> watchTheHead()
         }
     }
 
-    /** How long the card on the board has genuinely been working. */
-    private fun watchTheCard() {
-        if (cardStartedAt == 0L) return
+    /** Whether the work on the board - a card's, or the head's in its place - has run past a card's ceiling. */
+    private fun pastTheCeiling(): Boolean {
+        if (cardStartedAt == 0L) return false
         val parked = pausedFor + if (pausedAt > 0) System.currentTimeMillis() - pausedAt else 0
-        if (System.currentTimeMillis() - cardStartedAt - parked < CARD_CEILING_MS) return
+        return System.currentTimeMillis() - cardStartedAt - parked >= CARD_CEILING_MS
+    }
+
+    /**
+     * How long the card on the board has genuinely been working.
+     *
+     * A card that ran past its time is one its session could not finish, so it goes to the head where the
+     * scenario says so. What it was saying at that moment travels with it: the head never judged a turn
+     * that never ended, and it is the one clue to where three hours went.
+     */
+    private fun watchTheCard() {
+        if (!pastTheCeiling()) return
+
+        val step = run.steps.getOrNull(at) ?: return
+        if (canTakeOver(stopAsked = false)) {
+            return takeOver(step, why = "it ran past its time (${CARD_CEILING_MS / HOUR_MS} hours)", said = step.said.ifBlank { step.summary })
+        }
+        editStep(step.key) { it.copy(failure = RunFailure.TOO_LONG) }
+        end(RunState.FAILED, RunFailure.TOO_LONG, "${step.title}: it ran past its time")
+    }
+
+    /** The same ceiling over the head doing a card's work - and nobody left to hand it to after that. */
+    private fun watchTheTakeOver() {
+        if (!pastTheCeiling()) return
 
         val step = run.steps.getOrNull(at) ?: return
         editStep(step.key) { it.copy(failure = RunFailure.TOO_LONG) }
-        end(RunState.FAILED, RunFailure.TOO_LONG, "${step.title}: it ran past its time")
+        end(RunState.FAILED, RunFailure.TOO_LONG, "${step.title}: the main thread ran past its time finishing it")
     }
 
     /**
@@ -1258,6 +1471,8 @@ internal class ScenarioEngine(
     @Synchronized
     private fun onSessionError(head: Boolean, message: String) {
         if (phase == Phase.OVER) return
+        // A card taken over was taken down by us, so nothing it still says is about the run (see [onCrashed]).
+        if (!head && phase == Phase.TAKEOVER) return
         // A first failure of the head is a head that never came up at all - a missing executable, an
         // account that is not signed in. Worth saying differently from a head that answered badly later.
         val failure = when {
@@ -1271,6 +1486,18 @@ internal class ScenarioEngine(
     @Synchronized
     private fun onCrashed(head: Boolean) {
         if (phase == Phase.OVER) return
+        // A card already taken over was taken down by us: whatever it reports now is about nothing.
+        if (!head && (phase == Phase.TAKEOVER || tookOver)) return
+        /*
+         * A card whose process went away while it was working, or while it stood on a question, is a card
+         * its session could not finish. The head is not asked about it first - there is no turn to judge -
+         * and a card that died while being judged is not handed over either: its turn was already over, and
+         * the head's verdict on it is on its way.
+         */
+        if (!head && phase in CARD_PHASES && canTakeOver(stopAsked = false)) {
+            val step = run.steps.getOrNull(at) ?: return
+            return takeOver(step, why = "its process went away", said = step.said.ifBlank { step.summary })
+        }
         end(RunState.FAILED, RunFailure.CRASHED, if (head) "the head's process went away" else "a step's process went away")
     }
 
@@ -1345,10 +1572,16 @@ internal class ScenarioEngine(
 
         /** The phases in which the run is waiting on the head and on nothing else. */
         val HEAD_PHASES = setOf(Phase.OPENING, Phase.SLOTS, Phase.QUESTION, Phase.VERDICT, Phase.AGAIN)
+
+        /** The phases in which the card's own turn is open - working, or standing on a question. */
+        val CARD_PHASES = setOf(Phase.CARD, Phase.QUESTION, Phase.BLOCKED)
+        const val HOUR_MS = 60L * 60 * 1000
         const val TICK_SECONDS = 30L
         const val SAID_CHARS = 400
         const val SUMMARY_CHARS = 4000
         const val NOTE_CHARS = 1200
+        /** What a taken-over row says about why - one reason, not the card's whole last answer. */
+        const val TAKE_OVER_CHARS = 400
         const val DETAIL_CHARS = 2000
         const val CARRY_ON = "Carry on from where you stopped."
 

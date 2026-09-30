@@ -38,6 +38,24 @@ internal object HeadTalk {
             "person, then a fenced json block holding exactly the object that message asks you for."
 
     /**
+     * What the head is told at launch while it is doing a card's work itself (see ScenarioEngine.takeOver).
+     *
+     * A briefing of its own rather than the ordinary one with a line added: the ordinary one says in so
+     * many words that the head does not do the work, and a process raised to do exactly that would start
+     * from a system prompt saying the opposite. What lifts the role is the message handing the card over
+     * (see [takeOverRequest]) - a paragraph in the system prompt loses to a transcript that is all the
+     * other way, which the tab continuing a run's head measured (see ClaudeLaunch.AFTER_SCENARIO_HEAD) -
+     * so this only has to stop contradicting it. Same one-line rule as the others.
+     */
+    const val TAKE_OVER_BRIEFING =
+        "You are the main thread of a scenario run in the Amazing Claude Code panel of a JetBrains IDE, " +
+            "and for now you are finishing the work of one card yourself, because its own session could " +
+            "not. Nobody is watching this conversation as it is written. For this card you have the tools " +
+            "and the trust every card of the run has, within what the briefing allows. When the work is " +
+            "done, or cannot be, end with one or two sentences for the person, then a fenced json block " +
+            "holding exactly the object the message handing you the card asked for."
+
+    /**
      * What a card is told, beyond its own prompt. Same one-line rule, same reason.
      *
      * Short on purpose in a second sense as well: a card is meant to read as an ordinary task in an
@@ -72,6 +90,14 @@ internal object HeadTalk {
                     "reorder it would make that picture a guess. Do not ask for a card you have not been " +
                     "handed, and do not do a card's work yourself - you have no Write and no Edit here.",
             )
+            if (scenario.head.onGiveUp == HeadSettings.ON_GIVE_UP_HEAD) {
+                appendLine()
+                appendLine(
+                    "One exception, and it is this scenario's choice: a card its own session could not " +
+                        "finish is handed to you, and then you do its work yourself before the run moves " +
+                        "on. You will be told so in as many words when it happens, and not before.",
+                )
+            }
             appendLine()
             appendLine("For each card you will be asked, in this order:")
             appendLine()
@@ -124,6 +150,7 @@ internal object HeadTalk {
         passes: Int,
         prompt: String,
         retries: Int,
+        handsOver: Boolean = false,
     ): String {
         val slots = ScenarioRules.declaredSlots(card)
 
@@ -198,12 +225,25 @@ internal object HeadTalk {
                 "You will be able to send this card back to work at most $retries time(s) once it has " +
                     "answered.",
             )
+            if (handsOver) {
+                appendLine(
+                    "If it still cannot finish, its work comes to you: you will finish it yourself before " +
+                        "the run moves on.",
+                )
+            }
             append("Answer with `{\"slots\": {}}` - a value for every slot named above, by name.")
         }
     }
 
-    /** What the head is asked once a card's turn is over. */
-    fun verdictRequest(card: Card, answer: String, ok: Boolean, nudgesLeft: Int): String = buildString {
+    /**
+     * What the head is asked once a card's turn is over.
+     *
+     * [handsOver] is whether giving up on the card hands its work to the head (see TakeOver.wanted). Then
+     * the head is offered two ways of saying no rather than one, and the difference is the point: a card
+     * that could not do it is work the head can pick up, and a stop the briefing forbids getting past is
+     * not - the head saying which is how a scenario's hard stops stay stops with the fence down.
+     */
+    fun verdictRequest(card: Card, answer: String, ok: Boolean, nudgesLeft: Int, handsOver: Boolean = false): String = buildString {
         appendLine(
             if (ok) {
                 "The card's turn is over. This is what it said:"
@@ -241,11 +281,107 @@ internal object HeadTalk {
                     "repeat the task at it. $nudgesLeft go(es) left.",
             )
         }
+        if (handsOver) {
+            appendLine(
+                "- `{\"done\": false, \"reason\": \"...\"}` - its session cannot finish it. This scenario hands " +
+                    "the work to you next: you will be asked to finish it yourself, with the tools every card " +
+                    "has, before the run moves on.",
+            )
+            append(
+                "- `{\"done\": false, \"stop\": true, \"reason\": \"...\"}` - it stopped where the briefing says " +
+                    "nobody but a person may go on. The run stops here, and nobody takes the card over.",
+            )
+            return@buildString
+        }
         append(
             "- `{\"done\": false, \"reason\": \"...\"}` - give up on it. The run stops here, because " +
                 "everything after this card was written on the assumption that it happened.",
         )
     }
+
+    /**
+     * Handing the head the work of a card its own session could not finish (see ScenarioEngine.takeOver).
+     *
+     * The role is lifted here, in the conversation, and not only in the system prompt: the transcript
+     * the head comes up over is hundreds of messages telling it that it never writes, and one paragraph
+     * beside it loses (see [TAKE_OVER_BRIEFING]). The rest is what a person said when they did this by
+     * hand in the morning, made exact: do not start the card over, look at what it left on disk first,
+     * and a stop the briefing forbids stays a stop.
+     *
+     * [said] is the card's last words when the head has not seen them - a card that ran past its time or
+     * whose process went away was never judged - and null when they are in the verdict it just gave.
+     * [transcript] is where the card's whole conversation lies, when the CLI has written one.
+     */
+    fun takeOverRequest(card: Card, prompt: String, why: String, said: String?, transcript: String?): String = buildString {
+        appendLine("# You are finishing this card yourself")
+        appendLine()
+        appendLine("The card \"${card.title.ifBlank { "Untitled" }}\" did not get to its definition of done: ${why.ifBlank { "it said nothing about why" }}")
+        appendLine()
+        appendLine(
+            "Its session is closed. This scenario hands such a card to you rather than ending the run, so from " +
+                "this message until you answer with the object below, you do its work yourself. For this card " +
+                "only, the rule that the main thread never writes to disk is lifted: you have the tools and the " +
+                "trust every card of this run has, and you edit files, run commands and commit exactly as the " +
+                "card would have.",
+        )
+        appendLine()
+        appendLine(
+            "Do not start the card over. What it has done so far is on the disk - look at it first (git status, " +
+                "git log, the files it wrote) and carry on from the first thing that is not done.",
+        )
+        if (said == null) {
+            appendLine("What it said last is in the message that asked you for your verdict.")
+        } else {
+            appendLine()
+            appendLine("What it was saying when it stopped:")
+            appendLine()
+            appendLine("---")
+            appendLine(said.ifBlank { "(nothing at all)" })
+            appendLine("---")
+        }
+        if (!transcript.isNullOrBlank()) {
+            appendLine()
+            appendLine("Its whole conversation, every tool call included, is in $transcript - read it if what it did is not clear from the disk.")
+        }
+        appendLine()
+        appendLine("## What its session was told")
+        appendLine()
+        appendLine("```")
+        appendLine(prompt)
+        appendLine("```")
+        appendLine()
+        appendLine("## Its definition of done")
+        appendLine()
+        appendLine(card.dod.trim().ifEmpty { "(nothing written - the work the prompt asks for being done is enough)" })
+        appendLine()
+        appendLine(
+            "The briefing still holds. Where it names a stop that is not yours to get past, that stays a stop " +
+                "for you as well: answer that it is not done at once, with the reason, and change nothing.",
+        )
+        appendLine()
+        appendLine(
+            "Finish within this turn. Whatever you start - a build, a check, a wait for CI - wait for it here " +
+                "with a blocking call rather than in the background: the moment your turn ends, what you said " +
+                "is read as your answer.",
+        )
+        appendLine()
+        appendLine("When you are finished, say in one or two sentences what you did, then answer with one of these:")
+        appendLine()
+        appendLine(
+            "- `{\"done\": true, \"reason\": \"...\", \"handoff\": \"...\"}` - it is finished. `handoff` is what " +
+                "the cards after this one need, written out rather than referred to.",
+        )
+        appendLine("- `{\"done\": false, \"reason\": \"...\"}` - you could not finish it either. The run stops here.")
+        appendLine()
+        append(
+            "Once you have answered you are the main thread again: the next card goes to a session of its own, " +
+                "and you no longer do a card's work yourself.",
+        )
+    }
+
+    /** What a head doing a card's work is told after a pause: the same words a card gets, and what to end with. */
+    const val TAKE_OVER_CARRY_ON =
+        "Carry on from where you stopped, and end with the object the message handing you this card asked for."
 
     /** What the head is asked when a card stops on a permission or a question of its own. */
     fun questionRequest(title: String, tool: String, detail: String, options: List<String>): String = buildString {

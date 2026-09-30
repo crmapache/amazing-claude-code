@@ -544,6 +544,7 @@ export const ru: Dict = {
       retries: 'Кончились попытки',
       stopped: 'Оборвано вами',
       undone: 'Не сделано',
+      headGaveUp: 'Главный поток тоже не справился',
     },
     outcomes: {
       scenarioBroken: 'Этот сценарий нельзя запустить как есть - откройте и посмотрите, что не так.',
@@ -600,6 +601,8 @@ export const ru: Dict = {
         if (last === 1 && !(rest >= 11 && rest <= 14)) return 'вернули в работу 1 раз'
         return `вернули в работу ${n} раз`
       },
+      takenOver: (why) => `Главный поток взял работу на себя: ${why}`,
+      takingOver: 'главный поток доделывает сам',
       allow: 'Разрешить',
       deny: 'Отказать',
       send: 'Отправить',
@@ -656,6 +659,9 @@ export const ru: Dict = {
       onQuestion: 'НА ВОПРОС',
       questionHead: 'Отвечает сам',
       questionStop: 'Встать и ждать',
+      onGiveUp: 'КАРТОЧКА НЕ СПРАВИЛАСЬ',
+      giveUpStop: 'Остановить прогон',
+      giveUpHead: 'Доделывает сам',
       retries: 'ВОЗВРАТЫ',
       noRetries: 'Никогда',
       retriesCount: (n) => {

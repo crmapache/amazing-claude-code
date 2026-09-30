@@ -286,6 +286,7 @@ The fields, and who reads them:
 - permissionMode: what the cards may do before they have to stop and ask. "plan" reads and writes nothing, "default" asks before every edit and command, "acceptEdits" edits files without asking but still asks before shell commands, "bypassPermissions" asks almost nothing. Choose the least that lets the round of work finish unattended, and that is almost always "acceptEdits" for work that changes files or "plan" for work that only looks. Never answer "bypassPermissions" unless the description asks for it in so many words: it is the mode for a container somebody is willing to lose, and it is not yours to choose on their behalf.
 - onQuestion: "head" lets the main thread answer a card's question out of the briefing, which is what a round of work left running overnight needs. "stop" stands the run still and waits for a person - for a round of work that touches something irreversible.
 - retries: how many times the main thread may send a card back when its definition of done is not met. 0 to 5, and 2 is the ordinary answer. Count the stops a card's skill makes for a person (a plan to approve, a clarifying question) - each one spends a go - and give at least one more than that.
+- onGiveUp: what happens to a card its own session could not finish. "stop" ends the run on it. "head" hands its work to the main thread, which finishes it itself with the cards' trust before the run moves on, and the run stops only if the main thread cannot finish it either. Answer "head" only when the description asks for a run that finishes on its own rather than stopping; "stop" otherwise. With "head", say in the briefing which stops are not the main thread's to get past - it reads the briefing to tell them apart.
 - inputs: what the person is asked before the run starts - a ticket, a branch, a folder. Each has a name of letters, digits, - and _ only, a label for the little form, and required. A card's prompt writes it as {{name}}. Ask only for what genuinely changes from one run to the next, and often that is nothing at all: an empty list is a good answer. An optional input left empty arrives as an empty string, so write the sentence around it to read well either way ("extra wishes, if any: {{notes}}").
 - stages: each has a title, repeat (how many passes, 1 to 10) and untilDone. untilDone true makes repeat a ceiling instead of a count and lets the main thread end the loop as soon as there is nothing left to do - which is what review, fix, review again actually is.
 - cards: each has a title for the person's eye, a prompt, slots, dod and after.
@@ -313,7 +314,7 @@ Before you answer, walk the scenario as the main thread would, card by card: wha
 
 Answer with one JSON object and nothing else:
 
-{"name": "...", "briefing": "...", "permissionMode": "acceptEdits", "onQuestion": "head", "retries": 2, "inputs": [{"name": "branch", "label": "Branch", "required": true}], "stages": [{"title": "...", "repeat": 1, "untilDone": false, "cards": [{"title": "...", "prompt": "...", "slots": [{"name": "findings", "description": "..."}], "dod": "...", "after": ""}]}]}
+{"name": "...", "briefing": "...", "permissionMode": "acceptEdits", "onQuestion": "head", "retries": 2, "onGiveUp": "stop", "inputs": [{"name": "branch", "label": "Branch", "required": true}], "stages": [{"title": "...", "repeat": 1, "untilDone": false, "cards": [{"title": "...", "prompt": "...", "slots": [{"name": "findings", "description": "..."}], "dod": "...", "after": ""}]}]}
 
 Two or three stages and a handful of cards is a scenario somebody will actually use. Write every human-readable field - the name, the briefing, the titles, the prompts, the labels - in the language of the description."""
 
@@ -429,6 +430,13 @@ Two or three stages and a handful of cards is a scenario somebody will actually 
                 HeadSettings.ON_QUESTION_HEAD
             },
             retries = (answer.number("retries") ?: 2).coerceIn(0, MAX_CARD_RETRIES),
+            // The other way round from onQuestion: handing the head a card's work is the step a description
+            // has to ask for, so anything but the one word keeps the run stopping where it always did.
+            onGiveUp = if (answer.string("onGiveUp") == HeadSettings.ON_GIVE_UP_HEAD) {
+                HeadSettings.ON_GIVE_UP_HEAD
+            } else {
+                HeadSettings.ON_GIVE_UP_STOP
+            },
         )
 
         return Scenario(

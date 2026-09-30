@@ -337,4 +337,17 @@ class ScenarioAuthorTest {
         assertTrue(body.contains("Found on disk in this project and for this person: nothing."))
         assertTrue(body.contains("- /code-review - arguments:"))
     }
+
+    // Handing the head a card's work is what a description has to ask for: anything but the word keeps stop.
+    @Test
+    fun `only the one word hands a card to the head`() {
+        fun giveUp(value: String): String? = written(
+            """{"name": "N", "onGiveUp": $value, "stages": [{"title": "S", "cards": [{"title": "C", "prompt": "Do it."}]}]}""",
+        )?.head?.onGiveUp
+
+        assertEquals(HeadSettings.ON_GIVE_UP_HEAD, giveUp("\"head\""))
+        assertEquals(HeadSettings.ON_GIVE_UP_STOP, giveUp("\"stop\""))
+        assertEquals(HeadSettings.ON_GIVE_UP_STOP, giveUp("\"yes\""))
+        assertEquals(HeadSettings.ON_GIVE_UP_STOP, giveUp("null"))
+    }
 }

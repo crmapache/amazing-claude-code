@@ -467,6 +467,8 @@ const StepRow = ({
         {step.nudges.length > 0 && step.state === 'done' && (
           <span className={m.stepLine}>{t.scenarios.run.sentBack(step.nudges.length)}</span>
         )}
+
+        {step.takeOver ? <span className={m.stepLine}>{t.scenarios.run.takenOver(step.takeOver)}</span> : null}
       </span>
   )
 

@@ -50,7 +50,7 @@ export const blankScenario = (name: string, stageTitle: string, scope: ScenarioS
   createdAt: 0,
   updatedAt: 0,
   inputs: [],
-  head: { briefing: '', model: '', effort: '', permissionMode: 'default', onQuestion: 'head', retries: 2 },
+  head: { briefing: '', model: '', effort: '', permissionMode: 'default', onQuestion: 'head', retries: 2, onGiveUp: 'stop' },
   stages: [blankStage(stageTitle)],
   scope,
 })
