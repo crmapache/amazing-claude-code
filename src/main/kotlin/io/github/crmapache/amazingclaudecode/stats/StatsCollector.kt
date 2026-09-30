@@ -6,6 +6,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.util.concurrency.AppExecutorUtil
 import io.github.crmapache.amazingclaudecode.claude.ClaudeHistory
 import io.github.crmapache.amazingclaudecode.claude.ClaudeRateLimit
+import io.github.crmapache.amazingclaudecode.usage.UsageFeatures
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.time.Instant
@@ -59,6 +60,12 @@ internal class StatsCollector(
      * books would visibly reset their streaks and hours on the first switch.
      */
     private val accountOf: (String) -> String = { "" },
+    /**
+     * Somebody is using the panel right now - a message sent, an answer finished. The hub hands the usage
+     * report's nudge in here (see UsageReporter.nudge): that report may only go out while the plugin is in
+     * use, and these two moments are the plainest evidence that it is. A test leaves it doing nothing.
+     */
+    private val onUse: () -> Unit = {},
 ) {
 
     /** A tool call whose result has not arrived: what it would count for, if it lands. */
@@ -334,6 +341,7 @@ internal class StatsCollector(
         }
 
         markConversation(sessionId, now)
+        onUse()
     }
 
     private fun noteSystem(conversation: Conversation, event: JsonObject) {
@@ -391,6 +399,7 @@ internal class StatsCollector(
         }
 
         markConversation(sessionId, clock())
+        onUse()
     }
 
     /**
@@ -420,7 +429,21 @@ internal class StatsCollector(
             "thanks" -> payload.string("way").takeIf { it.isNotEmpty() }?.let { way ->
                 update { it.thanksWays.add(way) }
             }
+            // A feature only the interface sees used - a screen of the menu opened, a message pinned. Held
+            // to the few the panel is allowed to name (see UsageFeatures.isPanelFeature): the rest are
+            // counted on this side, where they are seen arriving, and a panel naming them too would count
+            // each twice.
+            "feature" -> payload.string("id").takeIf { UsageFeatures.isPanelFeature(it) }?.let { noteFeature(it) }
         }
+    }
+
+    /**
+     * A feature of the panel used - one of UsageFeatures' ids, and nothing else: an id that file does not
+     * know is not written down, so the book cannot come to hold a word nobody decided on.
+     */
+    fun noteFeature(id: String) {
+        if (!UsageFeatures.isKnown(id)) return
+        update { day -> day.features[id] = (day.features[id] ?: 0) + 1 }
     }
 
     /**

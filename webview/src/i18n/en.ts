@@ -66,6 +66,8 @@ export const en = {
       accounts: { title: 'CLAUDE ACCOUNTS', hint: 'which subscription pays for the work' },
       feedback: { title: 'FEEDBACK', hint: 'a bug, an idea, or just hello' },
       feedbackLog: { title: 'WHAT GETS ATTACHED', hint: 'the whole report, before it goes' },
+      usageStats: { title: 'USAGE STATISTICS', hint: 'anonymous counts, only if you allow' },
+      usageStatsReport: { title: 'WHAT GETS SENT', hint: 'the whole report, as it would go' },
     },
 
     rows: {
@@ -111,6 +113,7 @@ export const en = {
       voice: { label: 'Voice input', sub: 'Dictate with your own Deepgram key' },
       customModels: { label: 'Custom models', sub: 'Ones Claude Code does not offer' },
       language: { label: 'Language', sub: 'What the panel speaks' },
+      usageStats: { label: 'Usage statistics', sub: 'Anonymous counts that help the plugin' },
     },
 
     /** The value beside the "Improve prompt" row: whose words the button asks by. */
@@ -227,6 +230,53 @@ export const en = {
     note: 'Only from this panel: a message written on a phone carries nothing of the editor. One message can go without it - press the file’s chip in the input field.',
     on: 'On',
     off: 'Off',
+  },
+
+  /**
+   * The anonymous usage statistics: the card that asks once, the switch in the settings, and the
+   * report shown whole. The lists say exactly what UsageReport.kt sends and what it never reads -
+   * change one and the other, and PRIVACY.md, change with it.
+   */
+  usageStats: {
+    label: 'Send anonymous usage statistics',
+    hint: 'While you use the panel, a few times a day: which features are used, how often, and how long sessions last',
+    /** Under the switch once a report has gone - the moment written the machine's own way. */
+    lastSent: (when: string): string => `Last sent ${when}`,
+    notYet: 'Nothing has gone yet - the first report goes the next time you send a message.',
+    sentTitle: 'WHAT IS SENT',
+    sent: [
+      'Counts for each day: minutes in the panel, messages, answers, conversations, edits',
+      'How long each sitting lasted - never when it began',
+      'Which features were used, and how often',
+      'Built-in tools, model families and built-in commands, by name',
+      'The versions of the plugin, the IDE and Claude Code, the operating system, the panel language and how the settings are set',
+      'A random id made on this machine, so that one machine’s days can be told from another’s',
+    ],
+    neverTitle: 'NEVER SENT',
+    never: [
+      'Your messages, the answers, code, file names or paths',
+      'Project names, or the names of your own commands, MCP servers and models',
+      'Your Claude account or email - and your IP address is not stored',
+      'Tokens, costs, or the hours of the day you work',
+    ],
+    offNote: 'Turning it off stops the reports and asks the service to delete everything already sent under this machine’s id.',
+    seeReport: 'See exactly what gets sent',
+    privacy: 'Privacy policy',
+    reportNote: 'The whole report, as it would go next. Nothing else travels with it.',
+    building: 'Building the report…',
+    /** The value beside the row in the settings list. */
+    on: 'On',
+    off: 'Off',
+    unasked: 'Not asked',
+    /** The card above the input field. No close cross: closing without an answer would ask again. */
+    card: {
+      label: 'ANONYMOUS',
+      title: 'Help make the plugin better?',
+      body: 'Send anonymous counts of how the panel is used - which features, how often, how long. Never your code, messages, file names or anything that says who you are. You can turn it off in Settings at any time.',
+      allow: 'Allow',
+      decline: 'No thanks',
+      more: 'What is sent',
+    },
   },
 
   calmColors: {

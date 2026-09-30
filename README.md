@@ -66,9 +66,11 @@ The short version, in full in [PRIVACY.md](PRIVACY.md):
   output. No proxy in between and no server of ours your conversation passes through. Your
   Claude sign-in belongs to the CLI: the plugin never reads it, copies it, or goes looking
   for API keys anywhere on the machine.
-- **No telemetry.** No analytics, no usage reporting, no account. With remote access off,
-  the only thing that ever leaves the machine is a feedback report you write and send
-  yourself.
+- **No account, and no analytics unless you allow them.** The panel asks once whether it may
+  send anonymous daily counts of how it is used (which features, how often, how long), and
+  sends nothing until you press Allow. The settings screen shows the whole report before it
+  goes, and turning it off deletes what was already sent. Apart from that and a feedback
+  report you write yourself, nothing leaves the machine while remote access is off.
 - **Your permission rules stay yours.** What is worth asking about is decided by the CLI -
   your settings, your allow and deny rules, your hooks - exactly as in the terminal. The
   plugin adds no hook of its own (it used to; see "Permissions" below), and it never starts

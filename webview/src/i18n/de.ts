@@ -54,6 +54,8 @@ export const de: Dict = {
       accounts: { title: 'CLAUDE-KONTEN', hint: 'welches Abo die Arbeit bezahlt' },
       feedback: { title: 'FEEDBACK', hint: 'ein Bug, eine Idee oder einfach hallo' },
       feedbackLog: { title: 'WAS MITGESCHICKT WIRD', hint: 'der ganze Bericht, bevor er geht' },
+      usageStats: { title: 'NUTZUNGSSTATISTIK', hint: 'anonyme Zähler, nur wenn du es erlaubst' },
+      usageStatsReport: { title: 'WAS GESENDET WIRD', hint: 'der ganze Bericht, so wie er ginge' },
     },
 
     rows: {
@@ -94,6 +96,7 @@ export const de: Dict = {
       voice: { label: 'Spracheingabe', sub: 'Diktieren mit deinem eigenen Deepgram-Schlüssel' },
       customModels: { label: 'Eigene Modelle', sub: 'Die, die Claude Code nicht anbietet' },
       language: { label: 'Sprache', sub: 'Welche Sprache das Panel spricht' },
+      usageStats: { label: 'Nutzungsstatistik', sub: 'Anonyme Zähler, die dem Plugin helfen' },
     },
 
     improveSummary: { builtIn: 'Standard', custom: 'Eigener' },
@@ -177,6 +180,45 @@ export const de: Dict = {
     note: 'Nur aus diesem Panel: Eine Nachricht vom Handy trägt nichts vom Editor. Eine einzelne Nachricht kann ohne ihn gehen - drück auf den Datei-Chip im Eingabefeld.',
     on: 'An',
     off: 'Aus',
+  },
+
+  usageStats: {
+    label: 'Anonyme Nutzungsstatistik senden',
+    hint: 'Während du das Panel nutzt, ein paar Mal am Tag: welche Funktionen genutzt werden, wie oft und wie lange Sitzungen dauern',
+    lastSent: (when: string) => `Zuletzt gesendet: ${when}`,
+    notYet: 'Noch nichts gesendet - der erste Bericht geht, wenn du die nächste Nachricht schickst.',
+    sentTitle: 'WAS GESENDET WIRD',
+    sent: [
+      'Zähler für jeden Tag: Minuten im Panel, Nachrichten, Antworten, Unterhaltungen, Änderungen',
+      'Wie lange jede Arbeitsphase dauerte - nie, wann sie begann',
+      'Welche Funktionen genutzt wurden und wie oft',
+      'Eingebaute Werkzeuge, Modellfamilien und eingebaute Befehle, nach Namen',
+      'Die Versionen von Plugin, IDE und Claude Code, das Betriebssystem, die Sprache des Panels und wie die Einstellungen stehen',
+      'Eine zufällige Kennung, auf diesem Rechner erzeugt, damit sich die Tage eines Rechners von denen eines anderen unterscheiden lassen',
+    ],
+    neverTitle: 'NIE GESENDET',
+    never: [
+      'Deine Nachrichten, die Antworten, Code, Dateinamen oder Pfade',
+      'Projektnamen oder die Namen deiner eigenen Befehle, MCP-Server und Modelle',
+      'Dein Claude-Konto oder deine E-Mail - und deine IP-Adresse wird nicht gespeichert',
+      'Tokens, Kosten oder die Tageszeiten, zu denen du arbeitest',
+    ],
+    offNote: 'Ausschalten beendet die Berichte und bittet den Dienst, alles zu löschen, was unter der Kennung dieses Rechners schon gesendet wurde.',
+    seeReport: 'Genau ansehen, was gesendet wird',
+    privacy: 'Datenschutzerklärung',
+    reportNote: 'Der ganze Bericht, so wie er als Nächstes ginge. Sonst reist nichts mit.',
+    building: 'Bericht wird erstellt…',
+    on: 'An',
+    off: 'Aus',
+    unasked: 'Nicht gefragt',
+    card: {
+      label: 'ANONYM',
+      title: 'Das Plugin besser machen helfen?',
+      body: 'Anonyme Zähler senden, wie das Panel genutzt wird - welche Funktionen, wie oft, wie lange. Nie deinen Code, deine Nachrichten, Dateinamen oder irgendetwas, das verrät, wer du bist. Ausschalten geht jederzeit in den Einstellungen.',
+      allow: 'Erlauben',
+      decline: 'Nein, danke',
+      more: 'Was gesendet wird',
+    },
   },
 
   calmColors: {

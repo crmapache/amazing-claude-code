@@ -85,9 +85,10 @@ permission rules, MCP servers and skills all come with it. No proxy, no account 
 
 - **Everything runs on your machine.** No proxy, no server of ours in the middle. Your Claude
   sign-in belongs to the CLI - the plugin never reads it or hunts for API keys on your disk.
-- **No telemetry, no analytics, no account.** With remote access off, the only thing that ever
-  leaves is a feedback report you write and send yourself - and one button shows its exact text
-  first.
+- **No account, and no analytics unless you allow them.** The panel asks once whether it may send
+  anonymous daily counts of how it is used, and sends nothing until you press Allow - the settings
+  show the whole report first, and turning it off deletes what was sent. Apart from that, with
+  remote access off, only a feedback report you write yourself ever leaves the machine.
 - **Your permission rules stay yours.** The CLI decides what to ask about, with your settings,
   rules and hooks. The plugin adds no hook of its own and never starts a session in a laxer mode
   than the one on screen.

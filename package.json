@@ -10,8 +10,10 @@
     "build:mobile": "pnpm --filter amazing-claude-code-webview build:mobile",
     "build:relay": "pnpm --filter amazing-claude-code-relay build",
     "build:feedback": "pnpm --filter amazing-claude-code-feedback build",
+    "build:usage": "pnpm --filter amazing-claude-code-usage build",
     "dev": "pnpm --filter amazing-claude-code-webview dev",
     "dev:relay": "pnpm --filter amazing-claude-code-relay dev",
-    "dev:feedback": "pnpm --filter amazing-claude-code-feedback dev"
+    "dev:feedback": "pnpm --filter amazing-claude-code-feedback dev",
+    "dev:usage": "pnpm --filter amazing-claude-code-usage dev"
   }
 }

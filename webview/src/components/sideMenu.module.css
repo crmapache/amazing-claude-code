@@ -354,6 +354,12 @@
   color: var(--acc-heart);
 }
 
+/* The usage statistics wear the feedback's heart: both are something given to the author. */
+.rowIconUsage {
+  background: var(--acc-heart-16);
+  color: var(--acc-heart);
+}
+
 /* The gear stands for the whole group that moved behind it, so it takes the neutral of the interface
    itself rather than borrowing the colour of any one setting inside. */
 .rowIconSettings {

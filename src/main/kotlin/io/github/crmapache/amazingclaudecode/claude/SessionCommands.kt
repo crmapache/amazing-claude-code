@@ -5,6 +5,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessions.Companion.MAIN_SESSION
 import io.github.crmapache.amazingclaudecode.remote.RemoteAgent
 import io.github.crmapache.amazingclaudecode.remote.RemoteCommands
+import io.github.crmapache.amazingclaudecode.usage.UsageFeatures
 import io.github.crmapache.amazingclaudecode.voice.VoiceGrant
 import io.github.crmapache.amazingclaudecode.remote.RemoteLimits
 import kotlinx.serialization.json.JsonElement
@@ -72,6 +73,11 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
             thisLogger().warn("A client is going too fast: $type ($asker)")
             return true
         }
+
+        // A feature used from a phone counts like one used at the desk - it is the same person using the
+        // plugin. The desk's own panel is counted at its window's door (see ClaudePanel), and every one of
+        // its messages passes there first, so counting it here too would count it twice.
+        if (!local) UsageFeatures.ofMessage(type, payload)?.let { hub.stats.noteFeature(it) }
 
         when (type) {
             /**

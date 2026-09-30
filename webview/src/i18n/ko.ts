@@ -51,6 +51,8 @@ export const ko: Dict = {
       accounts: { title: 'Claude 계정', hint: '어느 구독으로 일하는지' },
       feedback: { title: '피드백', hint: '버그, 아이디어, 그냥 인사도 좋아요' },
       feedbackLog: { title: '함께 보내는 내용', hint: '보내기 전 전체 보고서' },
+      usageStats: { title: '사용 통계', hint: '익명 집계, 허용할 때만' },
+      usageStatsReport: { title: '보내는 내용', hint: '다음에 보낼 보고서 전체' },
     },
 
     rows: {
@@ -91,6 +93,7 @@ export const ko: Dict = {
       voice: { label: '음성 입력', sub: '내 Deepgram 키로 받아쓰기' },
       customModels: { label: '커스텀 모델', sub: 'Claude Code에 없는 모델' },
       language: { label: '언어', sub: '패널이 쓰는 언어' },
+      usageStats: { label: '사용 통계', sub: '플러그인 개선을 돕는 익명 집계' },
     },
 
     improveSummary: { builtIn: '기본', custom: '직접 작성' },
@@ -174,6 +177,45 @@ export const ko: Dict = {
     note: '이 패널에서만 적용돼요: 휴대폰에서 쓴 메시지에는 편집기 내용이 붙지 않아요. 메시지 하나만 빼고 보낼 수도 있어요 - 입력창의 파일 칩을 누르세요.',
     on: '켜짐',
     off: '꺼짐',
+  },
+
+  usageStats: {
+    label: '익명 사용 통계 보내기',
+    hint: '패널을 쓰는 동안 하루에 몇 번: 어떤 기능을 얼마나 자주 쓰는지, 세션이 얼마나 이어지는지',
+    lastSent: (when: string) => `마지막 전송: ${when}`,
+    notYet: '아직 보낸 것이 없어요 - 다음에 메시지를 보낼 때 첫 보고서가 나가요.',
+    sentTitle: '보내는 것',
+    sent: [
+      '하루 단위 집계: 패널에서 보낸 시간(분), 메시지, 답변, 대화, 편집',
+      '작업 한 번이 얼마나 이어졌는지 - 언제 시작했는지는 보내지 않아요',
+      '어떤 기능을 얼마나 자주 썼는지',
+      '기본 도구, 모델 계열, 기본 명령의 이름',
+      '플러그인·IDE·Claude Code 버전, 운영체제, 패널 언어, 설정 상태',
+      '이 컴퓨터에서 만든 무작위 ID - 컴퓨터마다 날짜를 구분하는 데만 써요',
+    ],
+    neverTitle: '절대 보내지 않는 것',
+    never: [
+      '메시지, 답변, 코드, 파일 이름이나 경로',
+      '프로젝트 이름, 직접 만든 명령·MCP 서버·모델의 이름',
+      'Claude 계정이나 이메일 - IP 주소도 저장하지 않아요',
+      '토큰 수, 비용, 일하는 시간대',
+    ],
+    offNote: '끄면 보고서 전송이 멈추고, 이 컴퓨터의 ID로 이미 보낸 모든 것을 지우도록 서비스에 요청해요.',
+    seeReport: '보내는 내용 정확히 보기',
+    privacy: '개인정보 처리방침',
+    reportNote: '다음에 보낼 보고서 전체예요. 이것 말고는 아무것도 함께 가지 않아요.',
+    building: '보고서를 만드는 중…',
+    on: '켜짐',
+    off: '꺼짐',
+    unasked: '아직 묻지 않음',
+    card: {
+      label: '익명',
+      title: '플러그인 개선을 도와주시겠어요?',
+      body: '패널을 어떻게 쓰는지 익명 집계로 보내요: 어떤 기능을, 얼마나 자주, 얼마나 오래. 코드, 메시지, 파일 이름, 누구인지 알 수 있는 것은 절대 보내지 않아요. 설정에서 언제든 끌 수 있어요.',
+      allow: '허용',
+      decline: '괜찮아요',
+      more: '보내는 내용',
+    },
   },
 
   calmColors: {

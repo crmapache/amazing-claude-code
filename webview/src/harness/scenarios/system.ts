@@ -974,4 +974,18 @@ export const scenariosSystem: Scenario[] = [
       turnResult(9400),
     ]),
   ]),
+  /**
+   * The usage statistics' question - the card above the field that asks once, and the screen behind "What
+   * is sent". The IDE says the question has never been answered (the `usageStats` message it sends on
+   * every panel opening); the harness answers the card's buttons the way the IDE would, so a press on
+   * Allow takes the card away and the switch on the settings screen shows the answer.
+   */
+  scenario('usage-consent', 'Usage statistics: the question asked once', 'system', [
+    checkpoint('The panel opens on a machine that was never asked', [
+      shell({ type: 'usageStats', consent: 'unknown', lastSent: 0 }),
+      user('Tidy up the imports in the checkout module'),
+      wait(400),
+      turnResult(3100),
+    ]),
+  ]),
 ]

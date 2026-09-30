@@ -23,6 +23,7 @@ import io.github.crmapache.amazingclaudecode.scenario.ScenarioDesk
 import io.github.crmapache.amazingclaudecode.remote.RemoteKeys
 import io.github.crmapache.amazingclaudecode.remote.RemoteState
 import io.github.crmapache.amazingclaudecode.stats.StatsCollector
+import io.github.crmapache.amazingclaudecode.usage.UsageReporter
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
@@ -222,6 +223,8 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         workingDirectory = project.basePath,
         parentDisposable = this,
         accountOf = { sessionId -> conversations.accountOf(sessionId) },
+        // A message sent, an answer finished: the plugin is in use, and a usage report that is due may go.
+        onUse = { UsageReporter.getInstance().nudge() },
     )
 
     private val clients = ConcurrentHashMap<String, SessionClient>()

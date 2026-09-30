@@ -304,4 +304,24 @@ class StatsDataTest {
         assertEquals<Map<Int, Long>?>(mapOf(2 to 200L), merged.earned[untouched])
         assertEquals(Achievements.RULES_VERSION, merged.rulesVersion)
     }
+
+    @Test
+    fun `the features used keep their counts through the file, a merge and a fold`() {
+        val one = DayRecord().apply {
+            features["voice"] = 3
+            features["screen:history"] = 1
+        }
+        val other = DayRecord().apply {
+            features["voice"] = 1
+            features["fork"] = 2
+        }
+
+        // Two copies of one day: the larger of each - one IDE's view already holds the other's.
+        assertEquals(mapOf("voice" to 3, "screen:history" to 1, "fork" to 2), one.mergedWith(other).features)
+        // Two projects of one day: they add up.
+        assertEquals(mapOf("voice" to 4, "screen:history" to 1, "fork" to 2), one.foldedWith(other).features)
+
+        val decoded = StatsJson.decodeDay(StatsJson.encodeDay(one))
+        assertEquals(mapOf("voice" to 3, "screen:history" to 1), decoded.features)
+    }
 }

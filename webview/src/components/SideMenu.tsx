@@ -44,6 +44,8 @@ export type MenuScreen =
   | 'language'
   | 'feedback'
   | 'feedbackLog'
+  | 'usageStats'
+  | 'usageStatsReport'
 
 /**
  * The state of remote access as the root row shows it - the word and the colour come from the caller.
@@ -102,6 +104,8 @@ export interface MenuSummary {
   customModels: string
   /** The language in force, written in itself - "简体中文" rather than "Chinese". */
   language: string
+  /** Whether the anonymous usage statistics go - "On", "Off", or that the question is still open. */
+  usageStats: string
   remote: RemoteSummary
   /**
    * The Claude account in force, and a tone for its dot - the same shape remote has above, and drawn by
@@ -168,6 +172,7 @@ const SETTINGS_SCREENS: MenuScreen[] = [
   'voice',
   'customModels',
   'language',
+  'usageStats',
 ]
 
 /** The three lists behind "New chats" - one level deeper than the settings themselves (see parentOf). */
@@ -182,6 +187,8 @@ const NEW_CHAT_SCREENS: MenuScreen[] = ['newChatModel', 'newChatEffort', 'newCha
 export const parentOf = (screen: MenuScreen): MenuScreen => {
   if (screen === 'remoteAbout') return 'remote'
   if (screen === 'feedbackLog') return 'feedback'
+  // The report shown whole belongs to the screen that offered it, the way the feedback's preview does.
+  if (screen === 'usageStatsReport') return 'usageStats'
   // The language dictation listens in and the microphone it listens through are chosen on lists of their
   // own - sixty-odd languages will not fit beside a key field, and coming back from either belongs to the
   // voice screen rather than to the settings list two steps up.
@@ -426,6 +433,15 @@ const ICONS: Record<string, ReactNode> = {
     <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
       <rect x="4.7" y="4.7" width="6.6" height="6.6" rx="1.3" />
       <path d="M6.7 2.5v2.2M9.3 2.5v2.2M6.7 11.3v2.2M9.3 11.3v2.2M2.5 6.7h2.2M2.5 9.3h2.2M11.3 6.7h2.2M11.3 9.3h2.2" />
+    </svg>
+  ),
+  /* Three bars under a small heart: counts, given to help. The statistics tab's own drawing is a chart of
+     one's own work; this row is about the counts that leave for the author, and a second copy of that
+     drawing would say they are the same thing. */
+  usageStats: (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3.4 13.2V10M7 13.2V8.4M10.6 13.2V10.8" />
+      <path d="M11.9 3.1c.5-.6 1.6-.6 2 .1.4.6.2 1.3-.3 1.8L11.9 6.6 10.2 5c-.5-.5-.7-1.2-.3-1.8.4-.7 1.5-.7 2-.1z" />
     </svg>
   ),
   /* A globe rather than a letter: the row has to be recognisable from inside a language one cannot read,
@@ -845,6 +861,16 @@ export const SettingsScreen = ({
           sub={t.settings.rows.language.sub}
           value={summary.language}
           onClick={() => onPick('language')}
+        />
+        {/* Last: it is about the plugin rather than about working in it, the way "Send feedback" closes
+            the root list - and like that row it takes the heart's colour, because both lead to the author. */}
+        <Row
+          icon="usageStats"
+          iconClass={s.rowIconUsage}
+          label={t.settings.rows.usageStats.label}
+          sub={t.settings.rows.usageStats.sub}
+          value={summary.usageStats}
+          onClick={() => onPick('usageStats')}
         />
       </div>
     </div>

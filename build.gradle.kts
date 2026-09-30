@@ -445,6 +445,17 @@ tasks.withType<RunIdeTask>().configureEach {
         systemProperty("acc.feedback.key", key)
     }
 
+    // The anonymous usage report never goes to the published service from here: a sandbox's days are
+    // make-believe, and in the author's figures they would stand beside real people's. It goes to a usage
+    // service on this machine instead (`pnpm dev:usage` serves it at this address), and nowhere at all
+    // when none is running. The sandbox also keeps an answer to the question of its own (see
+    // UsageReporter.stateFile), so allowing the report here does not allow it in the everyday IDE.
+    // -PusageUrl and -PusageKey point it somewhere else.
+    systemProperty("acc.usage.url", providers.gradleProperty("usageUrl").orNull ?: "http://localhost:8082")
+    providers.gradleProperty("usageKey").orNull?.let { key ->
+        systemProperty("acc.usage.key", key)
+    }
+
     // -PjcefDebugPort=9222 opens the panel to an external debugger over the Chrome DevTools protocol: a
     // browser or a script can attach to it and look at the real panel in a real IDE rather than at its
     // copy in a browser. Off by default - keeping a port open outwards for no reason serves nothing.

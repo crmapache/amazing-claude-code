@@ -68,6 +68,7 @@ import { Appearance, appearanceSummary } from './components/Appearance'
 import { CalmColors } from './components/CalmColors'
 import { RestoreTabs } from './components/RestoreTabs'
 import { ShareEditor } from './components/ShareEditor'
+import { UsageConsentCard, UsageReportScreen, UsageScreen } from './components/UsageStats'
 import { Indicators } from './components/Indicators'
 import {
   indicatorsSummary,
@@ -180,6 +181,7 @@ import type {
   VoiceHotkeySlot,
   StatisticsData,
   EditorRef,
+  UsageStatsConsent,
 } from './protocol'
 import {
   NO_SOUND_PREFS,
@@ -814,6 +816,14 @@ export const App = () => {
    * a fresh opening resets it to the root itself (see openMenu).
    */
   const [sideMenu, setSideMenu] = useState<{ open: boolean; screen: MenuScreen }>({ open: false, screen: 'menu' })
+  /**
+   * The anonymous usage statistics on this machine: the answer to their question and when a report last
+   * went. Null until the IDE says - the card that asks is drawn only on an answer of "never asked", so a
+   * panel that has heard nothing yet (the harness, a page reloaded mid-flight) asks nothing.
+   */
+  const [usageStats, setUsageStatsState] = useState<{ consent: UsageStatsConsent; lastSent: number } | null>(null)
+  /** The report shown whole on its screen - null while it is being built (see UsageReportScreen). */
+  const [usageStatsReport, setUsageStatsReport] = useState<string | null>(null)
   /** The panel's own version, for the foot of the menu. Absent until the shell's `init` arrives. */
   const [pluginVersion, setPluginVersion] = useState('')
 
@@ -2329,6 +2339,15 @@ export const App = () => {
             setShareEditorState(message.on)
             break
 
+          // The usage statistics' question, answered here or in any other IDE on the machine.
+          case 'usageStats':
+            setUsageStatsState({ consent: message.consent, lastSent: message.lastSent })
+            break
+
+          case 'usageStatsReport':
+            setUsageStatsReport(message.text)
+            break
+
           // What the editor beside this panel shows now (see EditorContext.kt).
           case 'editorContext':
             setEditorContext(message.context ?? null)
@@ -3670,7 +3689,10 @@ export const App = () => {
    * PanelState.pins).
    */
   const togglePinned = useCallback(
-    (id: string) => dispatchPanel({ session: active, action: { kind: 'pin', id } }),
+    (id: string) => {
+      send({ type: 'stat', kind: 'feature', id: 'pin' })
+      dispatchPanel({ session: active, action: { kind: 'pin', id } })
+    },
     [active],
   )
 
@@ -4558,7 +4580,10 @@ export const App = () => {
   )
 
   const reuseMessage = useCallback(
-    (item: UserItem) => intoField(activeRef.current, item.tokens, item.quotes),
+    (item: UserItem) => {
+      send({ type: 'stat', kind: 'feature', id: 'message_reuse' })
+      intoField(activeRef.current, item.tokens, item.quotes)
+    },
     [intoField],
   )
 
@@ -5100,6 +5125,7 @@ export const App = () => {
    */
   const openMenu = () => {
     setMenu(null)
+    if (!sideMenuRef.current.open) send({ type: 'stat', kind: 'feature', id: 'screen:menu' })
     setSideMenu((current) => ({ open: !current.open, screen: 'menu' }))
   }
 
@@ -5144,6 +5170,7 @@ export const App = () => {
   const openScenarios = () => {
     setSideMenu((current) => ({ ...current, open: false }))
     setMenu(null)
+    send({ type: 'stat', kind: 'feature', id: 'scenarios_tab' })
     send({ type: 'scenarios' })
     openPanelTab(SCENARIOS_GROUP)
   }
@@ -5196,6 +5223,7 @@ export const App = () => {
   const openStatistics = () => {
     setSideMenu((current) => ({ ...current, open: false }))
     setMenu(null)
+    send({ type: 'stat', kind: 'feature', id: 'statistics_tab' })
     setStatsTab((current) => (current.open ? current : { ...current, open: true }))
     openPanelTab(STATISTICS_GROUP)
   }
@@ -5211,6 +5239,16 @@ export const App = () => {
 
   const openScreen = (screen: MenuScreen) => {
     setSideMenu({ open: true, screen })
+    // Which screens of the menu people open - the one feature count only this page can see (see
+    // UsageFeatures.isPanelFeature on the plugin's side, which is the list the IDE accepts).
+    send({ type: 'stat', kind: 'feature', id: `screen:${screen}` })
+
+    // Built afresh every time, like the feedback's report: yesterday's figures shown as today's would be
+    // exactly the thing this screen exists to rule out.
+    if (screen === 'usageStatsReport') {
+      setUsageStatsReport(null)
+      send({ type: 'usageStatsPreview' })
+    }
 
     if (screen === 'history') send({ type: 'history' })
 
@@ -5313,6 +5351,12 @@ export const App = () => {
     // Written in itself, as in the picker: the row is read by somebody who may be looking for a way out
     // of a language they cannot read.
     language: nativeName(locale),
+    usageStats:
+      usageStats?.consent === 'granted'
+        ? t.usageStats.on
+        : usageStats?.consent === 'declined'
+          ? t.usageStats.off
+          : t.usageStats.unasked,
     // The word alone, and its colour. The sentence that used to stand under it belongs to the screen
     // behind the row - see RemoteSummary.
     remote: {
@@ -5520,9 +5564,26 @@ export const App = () => {
    * (see railNode) - for the same reasons as Composer's MODEL/EFFORT/MODE: the field and the feed are left
    * as a clean pair of two blocks one above the other, with no cards wedged in between.
    */
+  /**
+   * The usage statistics' question is answered from the card or from the switch - one road for both, so
+   * the card goes the moment either is used. Shown as answered at once rather than after the IDE confirms:
+   * the answer is written in a second, and a card that lingers under the press reads as a press that did
+   * not take. A plain function rather than a hook: it stands below the sign-in screen's early return.
+   */
+  const answerUsageStats = (granted: boolean) => {
+    send({ type: 'setUsageStats', granted })
+    setUsageStatsState((current) => ({ consent: granted ? 'granted' : 'declined', lastSent: current?.lastSent ?? 0 }))
+  }
+
   const dockCards = (
     <>
       <PermissionPanel item={permission} composerEmpty={!draftReady} onDecide={decidePermission} />
+
+      {/* The usage question waits its turn: while the agent is asking something of the person, that is
+          the card they should be reading, and a request of ours on top of it would be in the way. */}
+      {usageStats?.consent === 'unknown' && !permission && !ask ? (
+        <UsageConsentCard onAnswer={answerUsageStats} onMore={() => openScreen('usageStats')} />
+      ) : null}
 
       <AskPanel
         key={ask?.id ?? 'none'}
@@ -6396,6 +6457,18 @@ export const App = () => {
             }}
           />
         ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'usageStats' ? (
+          <UsageScreen
+            consent={usageStats?.consent ?? 'unknown'}
+            lastSent={usageStats?.lastSent ?? 0}
+            onToggle={answerUsageStats}
+            onPreview={() => openScreen('usageStatsReport')}
+            onOpenLink={openLink}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'usageStatsReport' ? <UsageReportScreen text={usageStatsReport} /> : null}
 
         {sideMenu.open && sideMenu.screen === 'feedbackLog' ? (
           <FeedbackLog

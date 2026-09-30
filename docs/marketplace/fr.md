@@ -97,9 +97,11 @@ avec lui. Pas de proxy au milieu, aucun compte chez nous.
 - **Tout tourne sur votre machine.** Pas de proxy, aucun serveur à nous au milieu. Votre connexion
   Claude appartient au CLI : le plugin ne la lit jamais et ne part pas chercher de clés d'API sur
   votre disque.
-- **Ni télémétrie, ni analytique, ni compte.** L'accès distant désactivé, la seule chose qui
-  quitte la machine est un rapport d'anomalie que vous écrivez et envoyez vous-même - et un bouton
-  vous en montre d'abord le texte exact.
+- **Pas de compte, et pas d'analytique sans votre accord.** Le panneau demande une fois s'il peut
+  envoyer des compteurs quotidiens anonymes d'utilisation, et n'envoie rien avant que vous cliquiez
+  sur Autoriser - les paramètres montrent d'abord le rapport entier, et le désactiver efface ce qui
+  a été envoyé. À part cela, l'accès distant désactivé, seul un rapport d'anomalie que vous écrivez
+  vous-même quitte la machine.
 - **Vos règles de permissions restent les vôtres.** Ce qui mérite une question, c'est le CLI qui
   en décide, avec vos réglages, vos règles et vos hooks. Le plugin n'ajoute aucun hook à lui et ne
   démarre jamais une session dans un mode plus permissif que celui affiché.

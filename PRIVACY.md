@@ -1,10 +1,11 @@
 # Privacy
 
-_Last updated: 29 August 2026_
+_Last updated: 30 September 2026_
 
-Amazing Claude Code GUI is a panel for Claude Code inside JetBrains IDEs. With three exceptions, all
+Amazing Claude Code GUI is a panel for Claude Code inside JetBrains IDEs. With four exceptions, all
 described below, it sends nothing anywhere: the agent runs on your machine, the conversation stays on
-your machine, and the plugin has no analytics, no telemetry and no account of any kind.
+your machine, and the plugin has no account of any kind. It collects no analytics unless you allow the
+anonymous usage statistics described in the fourth exception.
 
 The first exception is **remote access**, which lets you answer your agent from your phone. It is off
 when the plugin is installed and stays off until you turn it on. Most of this page is about what
@@ -16,6 +17,10 @@ it unless you write something and press Send; see "Feedback" at the end of this 
 The third is **voice input** - dictation with a Deepgram key of your own. It is off until you turn it
 on and add a key, and it records only while you hold the hotkey or the microphone button is lit; see
 "Voice input" below.
+
+The fourth is **anonymous usage statistics**: daily counts of how the panel is used, which help the
+author decide what to work on. The panel asks once, and nothing is sent unless you press Allow; see
+"Usage statistics" below.
 
 ## What travels, and where
 
@@ -177,6 +182,66 @@ microphone on your work machine.
 The plugin installs no system-wide hook and asks for no accessibility permission: a key pressed in
 another application is never seen by it.
 
+## Usage statistics
+
+The panel asks once whether it may send anonymous usage statistics. The question is a small card above
+the input field with two buttons, Allow and No thanks, and nothing is sent until you press Allow. You can
+change the answer at any time in the panel: menu → Settings → Usage statistics. The same screen shows the
+whole report as it would go next, so you can read exactly what leaves before and after allowing it.
+
+**When.** A report goes when you allow it and after that a few times a day, and only while you are using
+the panel: sending a message, an answer finishing or the panel opening is what sets it off. An IDE left
+open and idle sends nothing. Each report carries the days that changed since the last one, going back
+at most two weeks and never to a day before you allowed it.
+
+**What is sent.** For each day:
+
+- counts: minutes with something going on in the panel, messages sent, answers finished, conversations,
+  forks, edits that landed and the lines they added and removed, how many distinct files were edited (a
+  number, not which files), permission questions and how many were denied, plans approved, task lists
+  finished, attachments and quotes, messages sent from a paired phone, and how often the five-hour limit
+  ran out;
+- how long each stretch of work lasted, in minutes. A stretch ends at a gap of more than half an hour.
+  When a stretch began is not sent;
+- which of the panel's features were used and how many times: the voice button, a fork, the history
+  screen, a scenario run, a setting changed and so on, named from a fixed list the plugin defines;
+- the Claude Code tools used, by their built-in names, with every MCP tool counted as one "MCP"; the
+  model families that answered (Opus, Sonnet, Haiku, Fable, and "Other" for anything else); and the
+  built-in slash commands used, with commands of your own counted as "custom".
+
+And once per report:
+
+- the versions of the plugin, your IDE and Claude Code, your operating system's family and processor
+  architecture, and the panel's language;
+- how the panel is set up: whether remote access and voice input are on, the input field's layout, the
+  send key, the theme, whether tabs come back on start, how many Claude accounts and paired phones there
+  are, and similar. These travel as the plugin's own words, as counts, or as yes and no. Where a setting
+  holds something you typed, such as a custom model's name or your own improve-prompt text, only whether
+  it is set is sent;
+- a random identifier, made on your machine when you press Allow. It is derived from nothing: not your
+  hardware, not your account, not your name. Its only job is to tell one machine's days from another's.
+  All JetBrains IDEs on one machine share it, as they share the answer to the question.
+
+**What is never sent**: your messages or the agent's answers, code, file names, paths, project names,
+the names of your own commands, MCP servers or models, your Claude account, your email address, token
+counts, costs, and the time of day you work.
+
+The counts come from the statistics the plugin already keeps on your machine for its Statistics tab.
+That file stays where it is; the report picks numbers out of it by name and copies nothing else.
+
+**Where it goes.** To `usage.mzpizote.com`, a service run by the plugin's author on the same server as
+the relay (OVH, Virginia, United States). It stores the counts in a database under the random identifier
+and nothing else. It does not store your IP address: the address is used only in memory, to limit how
+many reports one address can send in an hour, and the service's log shows its first few characters.
+Reports are kept for two years and then deleted automatically. The author reads them as totals across
+all machines, on a page behind a password.
+
+**Turning it off.** Switching it off stops the reports at once, in every JetBrains IDE on the machine,
+and asks the service to delete everything stored under your identifier. If the service cannot be
+reached at that moment, the plugin keeps asking until it confirms, even with the reports off. The
+identifier is forgotten too: if you allow the reports again later, a new one is made, and nothing links
+it to the old one.
+
 ## Several Claude accounts
 
 You can add more than one Claude account and switch between them without signing out of any of them.
@@ -222,6 +287,8 @@ paired phone is an opaque identifier saying that two conversations belong to dif
 - You can run your own relay.
 - Voice input is off by default, needs a key of your own, and records only while you are dictating.
   Removing the key ("Forget this key") takes it out of the keychain.
+- Usage statistics are sent only after you press Allow, and you can read the whole report first. Turning
+  them off in Settings stops them and deletes what was already sent.
 
 ## Contact
 

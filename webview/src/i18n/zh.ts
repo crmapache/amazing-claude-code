@@ -51,6 +51,8 @@ export const zh: Dict = {
       accounts: { title: 'Claude 账号', hint: '这些工作由哪个订阅付费' },
       feedback: { title: '反馈', hint: '问题、想法，或者只是打个招呼' },
       feedbackLog: { title: '将要附带的内容', hint: '发送之前的完整报告' },
+      usageStats: { title: '使用统计', hint: '匿名计数，仅在你允许时' },
+      usageStatsReport: { title: '将要发送的内容', hint: '下一次发送的完整报告' },
     },
 
     rows: {
@@ -91,6 +93,7 @@ export const zh: Dict = {
       voice: { label: '语音输入', sub: '用你自己的 Deepgram 密钥听写' },
       customModels: { label: '自定义模型', sub: 'Claude Code 没有列出的那些' },
       language: { label: '语言', sub: '面板使用的语言' },
+      usageStats: { label: '使用统计', sub: '帮助改进插件的匿名计数' },
     },
 
     improveSummary: { builtIn: '内置', custom: '自定义' },
@@ -174,6 +177,45 @@ export const zh: Dict = {
     note: '仅限此面板：在手机上写的消息不会附带编辑器的任何内容。单条消息可以不附带 - 点一下输入框里的文件标签即可。',
     on: '开',
     off: '关',
+  },
+
+  usageStats: {
+    label: '发送匿名使用统计',
+    hint: '在你使用面板时，每天几次：哪些功能被使用、使用频率以及会话持续多久',
+    lastSent: (when: string) => `上次发送：${when}`,
+    notYet: '还没有发送任何内容 - 下次你发送消息时会发出第一份报告。',
+    sentTitle: '会发送的内容',
+    sent: [
+      '每天的计数：在面板中的分钟数、消息、回答、对话、编辑',
+      '每段工作持续了多久 - 从不包括何时开始',
+      '用了哪些功能，用了多少次',
+      '内置工具、模型系列和内置命令的名称',
+      '插件、IDE 和 Claude Code 的版本、操作系统、面板语言以及各项设置的状态',
+      '在这台机器上生成的随机 ID - 只用来区分不同机器的日期',
+    ],
+    neverTitle: '永远不会发送',
+    never: [
+      '你的消息、回答、代码、文件名或路径',
+      '项目名称，以及你自己的命令、MCP 服务器和模型的名称',
+      '你的 Claude 账号或邮箱 - 也不会保存你的 IP 地址',
+      'token 数、费用以及你工作的时间段',
+    ],
+    offNote: '关闭后将停止发送报告，并请求服务删除以这台机器的 ID 已发送的所有内容。',
+    seeReport: '查看确切会发送什么',
+    privacy: '隐私政策',
+    reportNote: '下一次将要发送的完整报告。除此之外不会附带任何其他内容。',
+    building: '正在生成报告…',
+    on: '开',
+    off: '关',
+    unasked: '尚未询问',
+    card: {
+      label: '匿名',
+      title: '帮助改进插件？',
+      body: '发送关于面板使用方式的匿名计数：哪些功能、多频繁、多久。绝不发送你的代码、消息、文件名或任何能表明你身份的内容。随时可以在设置中关闭。',
+      allow: '允许',
+      decline: '不用了',
+      more: '会发送什么',
+    },
   },
 
   calmColors: {

@@ -1,0 +1,23 @@
+{
+  "name": "amazing-claude-code-usage",
+  "version": "0.1.0",
+  "description": "Takes the anonymous daily usage counts the plugin sends when a person allows it, keeps them, and shows them to the author on a page behind a password.",
+  "private": true,
+  "license": "Elastic-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node --disable-warning=ExperimentalWarning dist/index.js",
+    "dev": "tsc && PORT=${PORT:-8082} USAGE_SECURE_COOKIE=false node --disable-warning=ExperimentalWarning dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.10"
+  }
+}

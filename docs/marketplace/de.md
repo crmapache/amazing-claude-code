@@ -95,9 +95,11 @@ dazwischen, kein Konto bei uns.
 - **Alles läuft auf deinem Rechner.** Kein Proxy, kein Server von uns dazwischen. Deine
   Claude-Anmeldung gehört der CLI: Das Plugin liest sie nie und sucht auch keine API-Schlüssel auf
   deiner Platte.
-- **Keine Telemetrie, keine Analytik, kein Konto.** Bei ausgeschaltetem Fernzugriff verlässt nur
-  ein Fehlerbericht die Maschine, den du selbst schreibst und abschickst - und eine Taste zeigt
-  vorher seinen genauen Text.
+- **Kein Konto und keine Analytik ohne deine Erlaubnis.** Das Panel fragt einmal, ob es anonyme
+  Tageszähler zur Nutzung senden darf, und sendet nichts, bevor du auf Erlauben drückst - die
+  Einstellungen zeigen vorher den ganzen Bericht, und Ausschalten löscht, was gesendet wurde. Davon
+  abgesehen verlässt bei ausgeschaltetem Fernzugriff nur ein Fehlerbericht die Maschine, den du
+  selbst schreibst.
 - **Deine Berechtigungsregeln bleiben deine.** Worüber gefragt wird, entscheidet die CLI mit
   deinen Einstellungen, Regeln und Hooks. Das Plugin fügt keinen eigenen Hook hinzu und startet
   nie eine Sitzung in einem laxeren Modus als dem auf dem Bildschirm.

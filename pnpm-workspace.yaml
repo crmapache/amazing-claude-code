@@ -9,6 +9,10 @@
 #                      hands it to the author's Telegram. Elastic-2.0, unlike the relay, and for the
 #                      mirror-image reason - nobody else has any use for a service that forwards to one
 #                      specific chat, so there is nothing here to run yourself.
+#   usage-service    - the third: it keeps the anonymous daily counts the plugin sends when a person has
+#                      allowed it, and shows them to the author behind a password. The only one of the
+#                      servers with a database, which is why it is not a route on either of the others.
+#                      Elastic-2.0 for the feedback service's reason.
 #
 # A workspace rather than two unrelated folders so that one `pnpm install` at the root sets up both, and
 # `pnpm -r build` / `pnpm -r test` cover the whole repository - the state a person cloning this expects.
@@ -18,3 +22,4 @@ packages:
   - webview
   - relay
   - feedback-service
+  - usage-service

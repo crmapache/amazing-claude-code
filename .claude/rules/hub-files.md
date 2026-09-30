@@ -64,6 +64,7 @@ paths:
 - `calls`/`setCalls`, свечение в `alert`, эффект с `callsStanding`, `activeCalling`, `case 'calledAway'` - tab-calls
 - `draftsKnown`, `draftsSent`, `draftSaves`, `shellNamedTab`, `case 'drafts'`, `case 'activeTab'`, `restoreTabs` - restore-tabs
 - `nameSession`, `case 'sessionTitle'`, `resumedTitle`/`searchHitTitleSource` при открытии из истории и поиска - tab-names
+- `usageStats`, `answerUsageStats`, `UsageConsentCard` в `dockCards`, `stat` с `feature` в `openScreen`/`openMenu` - usage-stats
 - `claudeConfig*` состояние, `openClaudeConfig`, `case 'claudeConfig'`, `config` в `runLocal` - claude-config
 - хоткеи поверх панели, пока собирается иероглиф - composer-field
 - только в `mobile/App.tsx`: `openMachineScreen`, `openRepository`, `Door`/`from`, `edit.home`/`edit.origin` -
@@ -83,6 +84,7 @@ paths:
 - `takeQueued`, `queuedTaken`, `before` у `queuePrompt` - queue-edit
 - `EditorRef`, `editorContext`, `shareEditor`, `setShareEditor`, `editor` у `prompt`/`queuePrompt`/`promptEcho` - editor-context
 - `TitleSource` (`'user'`), `nameSession`, `titleSource` у `SearchHit` - tab-names
+- `usageStats`, `usageStatsReport`, `setUsageStats`, `usageStatsPreview`, `stat` с `kind: 'feature'` - usage-stats
 
 **`webview/src/feed/build.ts`** (редьюсер ленты):
 - `TodoWrite`/`TaskCreate`/`TaskUpdate`, `tasksCarried`, `pendingTasks` - task-list
@@ -171,7 +173,8 @@ remote-access; остальное - по заметке фичи, которой
 models; `openFile` - open-in-editor; фидбэк и лог незнакомого сообщения (только тип и длина) - feedback;
 `setHiddenIndicators` - indicators; `setTheme`, `setTextSize`, `sendTheme`, `appearanceChanged` - appearance;
 `saveDraft`, `tabShown`, `setRestoreTabs`, `sendDrafts` - restore-tabs; `watchEditor`, `sendEditorContext`,
-`setShareEditor` - editor-context.
+`setShareEditor` - editor-context; счёт фич `UsageFeatures.ofMessage` у двери окна, `setUsageStats`,
+`usageStatsPreview`, `usageChanged` - usage-stats.
 
 **`ClaudeCli.kt`**: всё написанное человеком - в stdin (аргументы запуска в CLAUDE.md, prompt-improver);
 `run`/`onStarted` и отмена - search; `--tools ""` у разовых запусков - task-list.

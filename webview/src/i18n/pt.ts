@@ -51,6 +51,8 @@ export const pt: Dict = {
       accounts: { title: 'CONTAS DO CLAUDE', hint: 'qual assinatura paga o trabalho' },
       feedback: { title: 'FEEDBACK', hint: 'um bug, uma ideia ou só um oi' },
       feedbackLog: { title: 'O QUE VAI ANEXADO', hint: 'o relatório inteiro, antes de ir' },
+      usageStats: { title: 'ESTATÍSTICAS DE USO', hint: 'contadores anônimos, só se você permitir' },
+      usageStatsReport: { title: 'O QUE É ENVIADO', hint: 'o relatório inteiro, como iria' },
     },
 
     rows: {
@@ -91,6 +93,7 @@ export const pt: Dict = {
       voice: { label: 'Entrada por voz', sub: 'Dite com a sua própria chave da Deepgram' },
       customModels: { label: 'Modelos próprios', sub: 'Os que o Claude Code não oferece' },
       language: { label: 'Idioma', sub: 'Em que idioma o painel fala' },
+      usageStats: { label: 'Estatísticas de uso', sub: 'Contadores anônimos que ajudam o plugin' },
     },
 
     improveSummary: { builtIn: 'Padrão', custom: 'Personalizado' },
@@ -174,6 +177,45 @@ export const pt: Dict = {
     note: 'Só a partir deste painel: uma mensagem escrita no celular não leva nada do editor. Uma mensagem pode ir sem ele: clique no chip do arquivo no campo de entrada.',
     on: 'Ligado',
     off: 'Desligado',
+  },
+
+  usageStats: {
+    label: 'Enviar estatísticas de uso anônimas',
+    hint: 'Enquanto você usa o painel, algumas vezes por dia: quais recursos são usados, com que frequência e quanto duram as sessões',
+    lastSent: (when: string) => `Último envio: ${when}`,
+    notYet: 'Nada foi enviado ainda: o primeiro relatório vai na próxima vez que você mandar uma mensagem.',
+    sentTitle: 'O QUE É ENVIADO',
+    sent: [
+      'Contadores de cada dia: minutos no painel, mensagens, respostas, conversas, edições',
+      'Quanto durou cada sessão de trabalho, nunca quando começou',
+      'Quais recursos foram usados e com que frequência',
+      'Ferramentas nativas, famílias de modelos e comandos nativos, pelo nome',
+      'As versões do plugin, do IDE e do Claude Code, o sistema operacional, o idioma do painel e como estão as configurações',
+      'Um identificador aleatório criado nesta máquina, para distinguir os dias de uma máquina dos de outra',
+    ],
+    neverTitle: 'NUNCA É ENVIADO',
+    never: [
+      'Suas mensagens, as respostas, código, nomes de arquivos ou caminhos',
+      'Nomes de projetos nem dos seus próprios comandos, servidores MCP e modelos',
+      'Sua conta Claude nem seu e-mail, e seu endereço IP não é guardado',
+      'Tokens, custos ou os horários em que você trabalha',
+    ],
+    offNote: 'Desligar interrompe os relatórios e pede ao serviço que apague tudo o que já foi enviado com o identificador desta máquina.',
+    seeReport: 'Ver exatamente o que é enviado',
+    privacy: 'Política de privacidade',
+    reportNote: 'O relatório inteiro, como iria da próxima vez. Nada mais vai junto.',
+    building: 'Montando o relatório…',
+    on: 'Ligado',
+    off: 'Desligado',
+    unasked: 'Sem resposta',
+    card: {
+      label: 'ANÔNIMO',
+      title: 'Quer ajudar a melhorar o plugin?',
+      body: 'Envie contadores anônimos de como o painel é usado: quais recursos, com que frequência, por quanto tempo. Nunca seu código, suas mensagens, nomes de arquivos ou qualquer coisa que diga quem você é. Dá para desligar a qualquer momento nas Configurações.',
+      allow: 'Permitir',
+      decline: 'Não, obrigado',
+      more: 'O que é enviado',
+    },
   },
 
   calmColors: {

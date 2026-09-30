@@ -51,6 +51,8 @@ export const es: Dict = {
       accounts: { title: 'CUENTAS DE CLAUDE', hint: 'qué suscripción paga el trabajo' },
       feedback: { title: 'COMENTARIOS', hint: 'un fallo, una idea o simplemente un hola' },
       feedbackLog: { title: 'QUÉ SE ADJUNTA', hint: 'el informe entero, antes de enviarlo' },
+      usageStats: { title: 'ESTADÍSTICAS DE USO', hint: 'contadores anónimos, solo si lo permites' },
+      usageStatsReport: { title: 'QUÉ SE ENVÍA', hint: 'el informe entero, tal como saldría' },
     },
 
     rows: {
@@ -91,6 +93,7 @@ export const es: Dict = {
       voice: { label: 'Entrada por voz', sub: 'Dicta con tu propia clave de Deepgram' },
       customModels: { label: 'Modelos propios', sub: 'Los que Claude Code no ofrece' },
       language: { label: 'Idioma', sub: 'En qué idioma habla el panel' },
+      usageStats: { label: 'Estadísticas de uso', sub: 'Contadores anónimos que ayudan al plugin' },
     },
 
     improveSummary: { builtIn: 'Integrado', custom: 'Propio' },
@@ -174,6 +177,45 @@ export const es: Dict = {
     note: 'Solo desde este panel: un mensaje escrito en el teléfono no lleva nada del editor. Un mensaje puede ir sin él: pulsa el chip del archivo en el campo de entrada.',
     on: 'Activado',
     off: 'Desactivado',
+  },
+
+  usageStats: {
+    label: 'Enviar estadísticas de uso anónimas',
+    hint: 'Mientras usas el panel, unas pocas veces al día: qué funciones se usan, con qué frecuencia y cuánto duran las sesiones',
+    lastSent: (when: string) => `Último envío: ${when}`,
+    notYet: 'Todavía no se ha enviado nada: el primer informe sale la próxima vez que envíes un mensaje.',
+    sentTitle: 'QUÉ SE ENVÍA',
+    sent: [
+      'Contadores de cada día: minutos en el panel, mensajes, respuestas, conversaciones, ediciones',
+      'Cuánto duró cada sesión de trabajo, nunca cuándo empezó',
+      'Qué funciones se usaron y con qué frecuencia',
+      'Herramientas integradas, familias de modelos y comandos integrados, por nombre',
+      'Las versiones del plugin, del IDE y de Claude Code, el sistema operativo, el idioma del panel y cómo están los ajustes',
+      'Un identificador aleatorio creado en esta máquina, para distinguir los días de una máquina de los de otra',
+    ],
+    neverTitle: 'NUNCA SE ENVÍA',
+    never: [
+      'Tus mensajes, las respuestas, el código, nombres de archivos o rutas',
+      'Nombres de proyectos ni de tus propios comandos, servidores MCP y modelos',
+      'Tu cuenta de Claude ni tu correo, y tu dirección IP no se guarda',
+      'Tokens, costes ni las horas del día en que trabajas',
+    ],
+    offNote: 'Al desactivarlo se dejan de enviar informes y se pide al servicio que borre todo lo ya enviado con el identificador de esta máquina.',
+    seeReport: 'Ver exactamente qué se envía',
+    privacy: 'Política de privacidad',
+    reportNote: 'El informe entero, tal como saldría la próxima vez. Nada más viaja con él.',
+    building: 'Preparando el informe…',
+    on: 'Activado',
+    off: 'Desactivado',
+    unasked: 'Sin responder',
+    card: {
+      label: 'ANÓNIMO',
+      title: '¿Nos ayudas a mejorar el plugin?',
+      body: 'Envía contadores anónimos de cómo se usa el panel: qué funciones, con qué frecuencia, cuánto tiempo. Nunca tu código, tus mensajes, nombres de archivos ni nada que diga quién eres. Puedes desactivarlo cuando quieras en Ajustes.',
+      allow: 'Permitir',
+      decline: 'No, gracias',
+      more: 'Qué se envía',
+    },
   },
 
   calmColors: {

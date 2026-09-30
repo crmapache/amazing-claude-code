@@ -314,6 +314,50 @@ const answerAccounts = (message: WebviewMessage): void => {
   }
 }
 
+/**
+ * The usage statistics, played by the harness: an answer to the card is taken and said back, and the
+ * report is a made-up one in the exact shape UsageReport.kt builds - so the screen that shows it can be
+ * looked at without an IDE, and what it shows is what a real one would.
+ */
+const SAMPLE_USAGE_REPORT = JSON.stringify(
+  {
+    schema: 1,
+    install: '(a random id, made when you allow this)',
+    env: { plugin: '0.14.0', ide: 'WS', ideVersion: '2026.2', os: 'mac', arch: 'arm64', cli: '2.3.1', lang: 'en' },
+    settings: { remote: false, voice: false, layout: 'bottom', sendKey: 'enter', restoreTabs: true, theme: 'auto', accounts: 1 },
+    days: [
+      {
+        day: new Date().toISOString().slice(0, 10),
+        minutes: 94,
+        conversations: 3,
+        prompts: 21,
+        turns: 20,
+        turnSeconds: 1480,
+        edits: 34,
+        linesAdded: 612,
+        linesRemoved: 188,
+        filesEdited: 9,
+        sittings: [48, 12, 34],
+        tools: { Read: 61, Edit: 34, Bash: 22, Grep: 14, MCP: 3 },
+        models: { Opus: 20 },
+        slash: { compact: 1 },
+        features: { 'screen:history': 1, improve_prompt: 2, fork: 1, copy: 4 },
+      },
+    ],
+  },
+  null,
+  2,
+)
+
+const answerUsageStats = (message: WebviewMessage): void => {
+  if (message.type === 'setUsageStats') {
+    window.__accReceive?.({ type: 'usageStats', consent: message.granted ? 'granted' : 'declined', lastSent: message.granted ? Date.now() : 0 })
+  }
+  if (message.type === 'usageStatsPreview') {
+    setTimeout(() => window.__accReceive?.({ type: 'usageStatsReport', text: SAMPLE_USAGE_REPORT }), 300)
+  }
+}
+
 const answerFeedback = (message: WebviewMessage): void => {
   const state = (note?: string): void => {
     window.__accReceive?.({
@@ -1296,6 +1340,7 @@ const listenToPanel = () => {
     }
 
     if (message) answerFeedback(message)
+    if (message) answerUsageStats(message)
     if (message) answerHistoryPage(message)
     if (message) answerAgentTranscript(message)
     if (message) answerResume(message)

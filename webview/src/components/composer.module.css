@@ -244,6 +244,69 @@
   opacity: 0.75;
 }
 
+/* --- The usage question --------------------------------------------------------
+   The card that asks once whether the anonymous usage report may go (see UsageStats.tsx). The accent's
+   tint rather than the warn of a permission: it holds nothing up and nobody is waiting on it - it is a
+   request, and it should read as one beside a card that stops a turn. */
+
+.usageCard {
+  margin-bottom: 8px;
+  border: 1px solid var(--acc-accent-32);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-accent-08);
+  overflow: hidden;
+}
+
+.usageHead {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 8px 11px 0;
+}
+
+.usageLabel {
+  flex: none;
+  font: 600 9.5px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-accent-light);
+}
+
+.usageTitle {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--acc-fg-body);
+}
+
+.usageBody {
+  margin: 6px 11px 0;
+  font-size: 11.5px;
+  line-height: 16px;
+  color: var(--acc-fg-dim);
+  text-wrap: pretty;
+}
+
+.usageActions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 11px;
+}
+
+/* A line rather than a third button: the two beside it are the answer, this only leads to what the answer
+   is about. */
+.usageMore {
+  padding: 0;
+  font-size: 11px;
+  color: var(--acc-accent-light);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+
+.usageMore:hover {
+  color: var(--acc-accent-hover);
+}
+
 /* --- The questions -------------------------------------------------------- */
 
 /* A column that can give way (see .dock and data-shrinks above): the head and the foot keep their height

@@ -33,6 +33,8 @@ import io.github.crmapache.amazingclaudecode.editor.SelectionReference
 import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import io.github.crmapache.amazingclaudecode.feedback.FeedbackDesk
 import io.github.crmapache.amazingclaudecode.sound.AlertSounds
+import io.github.crmapache.amazingclaudecode.usage.UsageFeatures
+import io.github.crmapache.amazingclaudecode.usage.UsageReporter
 import io.github.crmapache.amazingclaudecode.voice.VoiceDesk
 import io.github.crmapache.amazingclaudecode.webview.DraftImages
 import io.github.crmapache.amazingclaudecode.webview.FilePicker
@@ -123,6 +125,23 @@ internal class ClaudePanel(
                 put("on", ClaudePreferences.restoreTabs)
             }.toString(),
         )
+    }
+
+    /**
+     * The same, for the anonymous usage report: the answer to the question and when a report last went.
+     * Read off the machine's file each time rather than held here - another IDE may have answered.
+     */
+    fun usageChanged() {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val state = UsageReporter.getInstance().snapshot()
+            webview?.send(
+                buildJsonObject {
+                    put("type", "usageStats")
+                    put("consent", state.consent.wire)
+                    put("lastSent", state.lastSent)
+                }.toString(),
+            )
+        }
     }
 
     /**
@@ -336,6 +355,11 @@ internal class ClaudePanel(
         /** A figure from the panel, or zero for "not said" - a line, a column (see OpenInEditor.Place). */
         val whole = { name: String -> payload[name]?.jsonPrimitive?.intOrNull ?: 0 }
 
+        // Which feature, if any, this press stands for - counted here, at the one door every message from
+        // this window comes through, rather than in each branch below (see UsageFeatures). A phone's
+        // messages are counted at theirs (see SessionCommands).
+        UsageFeatures.ofMessage(field("type"), payload)?.let { hub.stats.noteFeature(it) }
+
         when (field("type")) {
             "ready" -> {
                 thisLogger().info("Webview reported ready")
@@ -358,6 +382,10 @@ internal class ClaudePanel(
                 // opens the screen behind it - otherwise that row sits blank next to a full one for
                 // remote access, and the screen it opens jumps from a skeleton to its content mid-slide.
                 hub.accounts.sendList()
+                // Whether the usage question has been answered - the card that asks it is drawn off this.
+                usageChanged()
+                // The panel opening is somebody using the plugin: a report that is due may go now.
+                UsageReporter.getInstance().nudge()
             }
 
             "pick" -> pickAttachment()
@@ -629,6 +657,30 @@ internal class ClaudePanel(
             // Feedback. Handled here rather than by the conversation's commands on purpose: this is the
             // one place a remote client cannot reach (see FeedbackDesk), and these messages read files
             // off this machine and post them outwards.
+            /*
+             * The anonymous usage report: the answer to its question, and the report shown whole before it
+             * is allowed. Both belong to this window rather than to the conversations - a machine's answer
+             * is not a phone's to give, and neither message is in RemoteCommands' allowed list.
+             */
+            "setUsageStats" -> {
+                val granted = payload["granted"]?.jsonPrimitive?.booleanOrNull == true
+                // Off this thread: the answer is written to a file shared with the machine's other IDEs,
+                // under a lock one of them may be holding.
+                ApplicationManager.getApplication().executeOnPooledThread { UsageReporter.getInstance().setConsent(granted) }
+            }
+
+            "usageStatsPreview" -> ApplicationManager.getApplication().executeOnPooledThread {
+                val text = runCatching { UsageReporter.getInstance().preview() }
+                    .onFailure { thisLogger().warn("Could not build the usage report's preview", it) }
+                    .getOrDefault("")
+                webview?.send(
+                    buildJsonObject {
+                        put("type", "usageStatsReport")
+                        put("text", text)
+                    }.toString(),
+                )
+            }
+
             "feedbackOpen" -> feedback.opened()
 
             "feedbackReport" -> feedback.report(field("sessionId"))
@@ -746,6 +798,7 @@ internal class ClaudePanel(
 
     /** A piece of a file from the editor: in the input field it becomes a reference, not text. */
     fun sendSelection(reference: SelectionReference) {
+        hub.stats.noteFeature("send_selection")
         webview?.send(
             buildJsonObject {
                 put("type", "selection")

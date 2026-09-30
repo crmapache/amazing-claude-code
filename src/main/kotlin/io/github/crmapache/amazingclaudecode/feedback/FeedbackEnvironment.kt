@@ -78,6 +78,12 @@ internal object FeedbackEnvironment {
         ).joinToString(" ")
     }
 
+    /**
+     * The CLI's version alone - "2.3.1" - or empty while it is still being read or could not be. The usage
+     * report sends this rather than the line above: a number, with nothing around it.
+     */
+    fun cliNumber(): String = cliVersion.orEmpty().substringBefore(" (").trim()
+
     private fun claude(): String = when (val version = cliVersion) {
         null -> "Claude Code (still reading its version)"
         "" -> "Claude Code (version could not be read)"

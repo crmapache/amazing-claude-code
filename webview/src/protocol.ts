@@ -1063,6 +1063,16 @@ type ShellMessageBody =
   /** The same, for whether a message carries what the editor shows - changed in this or another window. */
   | { type: 'shareEditor'; on: boolean }
   /**
+   * The anonymous usage statistics' state on this machine: whether the question has been answered, and when
+   * a report last went through (zero for never). Not to be confused with `usage` above, which is the
+   * subscription's limits - a different thing that happens to share the word. Sent when the panel opens
+   * and whenever either changes - in any IDE on the machine, since the answer is kept in one file for all
+   * of them (see UsageState).
+   */
+  | { type: 'usageStats'; consent: UsageStatsConsent; lastSent: number }
+  /** The report as it would go next, whole - the answer to `usageStatsPreview`. Empty if it could not be built. */
+  | { type: 'usageStatsReport'; text: string }
+  /**
    * What the editor beside this panel shows now - the file in front of the person and the lines selected in
    * it, or nothing (no text editor open, or a file the agent could not read). Sent as it changes, to this
    * window only: a phone has no editor beside it.
@@ -2407,6 +2417,19 @@ export type WebviewMessage =
   /** Which way of saying thanks was taken: the star, the review, or the line copied - see Thanks.tsx. */
   | { type: 'stat'; kind: 'thanks'; way: string }
   /**
+   * A feature used that only the interface sees - a screen of the menu opened, a message pinned. The id is
+   * one of the few the IDE accepts from the panel (UsageFeatures.isPanelFeature); anything else is dropped.
+   * Everything a press sends to the IDE anyway is counted there, and is never reported here as well.
+   */
+  | { type: 'stat'; kind: 'feature'; id: string }
+  /**
+   * The answer to whether the anonymous usage report may go - from the card that asks, or the switch in
+   * the settings. A no also asks the service to delete what was already sent (see UsageReporter).
+   */
+  | { type: 'setUsageStats'; granted: boolean }
+  /** Build the report as it would go next and answer with `usageStatsReport`. */
+  | { type: 'usageStatsPreview' }
+  /**
    * Feedback: a message to the plugin's author, with files and a debug report beside it.
    *
    * All of it is handled by the panel's own window rather than by the conversation's commands (see
@@ -2735,6 +2758,9 @@ export type VoiceBalance =
 
 /** What a piece of feedback is about. The words on the screen differ; these are what travel. */
 export type FeedbackKind = 'bug' | 'idea' | 'hello'
+
+/** Where the usage question stands on this machine: never answered, allowed, declined. */
+export type UsageStatsConsent = 'unknown' | 'granted' | 'declined'
 
 /**
  * A file picked for a piece of feedback, as the panel is allowed to know it: enough to draw a row and

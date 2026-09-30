@@ -90,9 +90,10 @@ meio e sem nenhuma conta nossa.
 
 - **Tudo roda na sua máquina.** Sem proxy e sem nenhum servidor nosso no meio. Seu login no Claude
   pertence ao CLI: o plugin nunca o lê nem sai procurando chaves de API no seu disco.
-- **Sem telemetria, sem analytics, sem conta.** Com o acesso remoto desligado, a única coisa que
-  sai da máquina é um relatório de erro que você escreve e envia, e um botão mostra antes o texto
-  exato dele.
+- **Sem conta, e sem analytics se você não permitir.** O painel pergunta uma vez se pode enviar
+  contadores diários anônimos de uso e não envia nada até você clicar em Permitir: as configurações
+  mostram antes o relatório inteiro, e desligar apaga o que foi enviado. Fora isso, com o acesso
+  remoto desligado, só sai da máquina um relatório de erro que você mesmo escreve.
 - **Suas regras de permissão continuam suas.** O que perguntar é decidido pelo CLI, com as suas
   configurações, regras e hooks. O plugin não acrescenta hook nenhum e nunca inicia uma sessão em
   um modo mais frouxo do que o que está na tela.

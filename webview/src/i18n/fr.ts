@@ -55,6 +55,8 @@ export const fr: Dict = {
       accounts: { title: 'COMPTES CLAUDE', hint: 'quel abonnement paie le travail' },
       feedback: { title: 'RETOURS', hint: 'un bug, une idée ou juste un bonjour' },
       feedbackLog: { title: 'CE QUI EST JOINT', hint: 'le rapport entier, avant l’envoi' },
+      usageStats: { title: 'STATISTIQUES D’UTILISATION', hint: 'des compteurs anonymes, seulement si vous le permettez' },
+      usageStatsReport: { title: 'CE QUI EST ENVOYÉ', hint: 'le rapport entier, tel qu’il partirait' },
     },
 
     rows: {
@@ -95,6 +97,7 @@ export const fr: Dict = {
       voice: { label: 'Saisie vocale', sub: 'Dicter avec votre propre clé Deepgram' },
       customModels: { label: 'Modèles personnalisés', sub: 'Ceux que Claude Code ne propose pas' },
       language: { label: 'Langue', sub: 'La langue que parle le panneau' },
+      usageStats: { label: 'Statistiques d’utilisation', sub: 'Des compteurs anonymes qui aident le plugin' },
     },
 
     improveSummary: { builtIn: 'Intégré', custom: 'Personnalisé' },
@@ -178,6 +181,45 @@ export const fr: Dict = {
     note: 'Depuis ce panneau seulement : un message écrit sur un téléphone n’emporte rien de l’éditeur. Un message peut partir sans - cliquez sur la puce du fichier dans le champ de saisie.',
     on: 'Activé',
     off: 'Désactivé',
+  },
+
+  usageStats: {
+    label: 'Envoyer des statistiques d’utilisation anonymes',
+    hint: 'Pendant que vous utilisez le panneau, quelques fois par jour : quelles fonctions servent, à quelle fréquence et combien de temps durent les sessions',
+    lastSent: (when: string) => `Dernier envoi : ${when}`,
+    notYet: 'Rien n’est encore parti - le premier rapport partira la prochaine fois que vous enverrez un message.',
+    sentTitle: 'CE QUI EST ENVOYÉ',
+    sent: [
+      'Des compteurs pour chaque jour : minutes dans le panneau, messages, réponses, conversations, modifications',
+      'La durée de chaque séance de travail - jamais l’heure à laquelle elle a commencé',
+      'Quelles fonctions ont servi, et à quelle fréquence',
+      'Les outils intégrés, les familles de modèles et les commandes intégrées, par leur nom',
+      'Les versions du plugin, de l’IDE et de Claude Code, le système d’exploitation, la langue du panneau et le réglage des paramètres',
+      'Un identifiant aléatoire créé sur cette machine, pour distinguer les jours d’une machine de ceux d’une autre',
+    ],
+    neverTitle: 'JAMAIS ENVOYÉ',
+    never: [
+      'Vos messages, les réponses, le code, les noms de fichiers ou les chemins',
+      'Les noms des projets, ni ceux de vos propres commandes, serveurs MCP et modèles',
+      'Votre compte Claude ni votre e-mail - et votre adresse IP n’est pas conservée',
+      'Les jetons, les coûts, ni les heures de la journée où vous travaillez',
+    ],
+    offNote: 'Le désactiver arrête les rapports et demande au service d’effacer tout ce qui a déjà été envoyé sous l’identifiant de cette machine.',
+    seeReport: 'Voir exactement ce qui est envoyé',
+    privacy: 'Politique de confidentialité',
+    reportNote: 'Le rapport entier, tel qu’il partirait la prochaine fois. Rien d’autre ne l’accompagne.',
+    building: 'Préparation du rapport…',
+    on: 'Activé',
+    off: 'Désactivé',
+    unasked: 'Pas encore demandé',
+    card: {
+      label: 'ANONYME',
+      title: 'Aider à améliorer le plugin ?',
+      body: 'Envoyer des compteurs anonymes sur l’utilisation du panneau : quelles fonctions, à quelle fréquence, combien de temps. Jamais votre code, vos messages, des noms de fichiers ni rien qui dise qui vous êtes. Vous pouvez le désactiver à tout moment dans les Paramètres.',
+      allow: 'Autoriser',
+      decline: 'Non merci',
+      more: 'Ce qui est envoyé',
+    },
   },
 
   calmColors: {

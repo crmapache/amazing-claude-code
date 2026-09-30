@@ -568,6 +568,12 @@ internal object RemoteCommands {
         // book nor writes into it: what it does is counted on this side, where it is seen arriving.
         "statistics",
         "stat",
+        // The anonymous usage report: the answer to whether it may go, and the report shown before it is
+        // allowed. The answer is the machine's and its owner's, given at the desk - a phone saying yes on
+        // somebody's behalf is exactly the consent the question exists to avoid. The panel's own window
+        // handles both, which a phone's message never reaches in the first place (see ClaudePanel).
+        "setUsageStats",
+        "usageStatsPreview",
     )
 
     /**
