@@ -30,9 +30,11 @@ class AccountTwinTest {
         org: String = "org-1",
         at: Long = asked + 1,
         live: Boolean = true,
-    ) = AccountTwin.Drawer(id, probe(email, org, at), live)
+        filedAs: String = keyOf(email, org),
+        addedAt: Long = 0L,
+    ) = AccountTwin.Drawer(id, probe(email, org, at), live, filedAs, addedAt)
 
-    private fun idOf(email: String, org: String = "org-1") = AccountStore.idOf(email, org)
+    private fun keyOf(email: String, org: String = "org-1") = AccountStore.keyOf(email, org)
 
     // --- The duplicate itself --------------------------------------------------------
 
@@ -44,7 +46,7 @@ class AccountTwinTest {
             answeredAfter = asked,
         )
 
-        assertEquals("added-1", twin)
+        assertEquals(AccountTwin.Twin(extra = "added-1", keeper = ""), twin)
     }
 
     @Test
@@ -133,69 +135,171 @@ class AccountTwinTest {
         assertNull(twin)
     }
 
+    // --- Two added rows ----------------------------------------------------------------
+
+    /**
+     * What re-filing a mislabelled row can leave behind: it now says the account another added row is
+     * already filed under. The row in use stays, so nothing has to move.
+     */
+    @Test
+    fun `two added drawers on one account keep the one in use`() {
+        val twin = AccountTwin.duplicate(
+            default = drawer("", "home@example.com"),
+            added = listOf(
+                drawer("old", "work@example.com", addedAt = 1),
+                drawer("new", "work@example.com", addedAt = 2),
+            ),
+            answeredAfter = asked,
+            inUse = "old",
+        )
+
+        assertEquals(AccountTwin.Twin(extra = "new", keeper = "old"), twin)
+    }
+
+    /** Neither in use: the newer stays - the fresher of two credentials that both work. */
+    @Test
+    fun `two added drawers on one account keep the newer when neither is in use`() {
+        val twin = AccountTwin.duplicate(
+            default = drawer("", "home@example.com"),
+            added = listOf(
+                drawer("old", "work@example.com", addedAt = 1),
+                drawer("new", "work@example.com", addedAt = 2),
+            ),
+            answeredAfter = asked,
+        )
+
+        assertEquals(AccountTwin.Twin(extra = "old", keeper = "new"), twin)
+    }
+
+    /** The same evidence as against the CLI's own sign-in: fresh and live, or the rows stay apart. */
+    @Test
+    fun `two added drawers merge only on fresh answers from live drawers`() {
+        val default = AccountTwin.Drawer("", probe = null, live = true)
+
+        assertNull(
+            AccountTwin.duplicate(
+                default,
+                listOf(drawer("old", "work@example.com", at = asked - 1), drawer("new", "work@example.com")),
+                asked,
+            ),
+        )
+        assertNull(
+            AccountTwin.duplicate(
+                default,
+                listOf(drawer("old", "work@example.com", live = false), drawer("new", "work@example.com")),
+                asked,
+            ),
+        )
+    }
+
+    // --- A row filed under the wrong account --------------------------------------------
+
+    /**
+     * The case that lost an account: a drawer filed under one address holds another. The drawer is the
+     * truth, so the record is what is corrected.
+     */
+    @Test
+    fun `a drawer holding somebody other than its label is filed again as who it holds`() {
+        val wrong = AccountTwin.mislabelled(
+            added = listOf(
+                drawer("row-1", "proton@example.com", filedAs = keyOf("work@example.com")),
+                drawer("row-2", "home@example.com"),
+            ),
+            answeredAfter = asked,
+        )
+
+        assertEquals(listOf("row-1" to who("proton@example.com")), wrong)
+    }
+
+    /** A profile fetched before the question is the drawer's previous occupant as often as not. */
+    @Test
+    fun `a stale or dead answer files nothing again`() {
+        val filedAs = keyOf("work@example.com")
+
+        assertEquals(
+            emptyList(),
+            AccountTwin.mislabelled(listOf(drawer("row-1", "proton@example.com", at = asked - 1, filedAs = filedAs)), asked),
+        )
+        assertEquals(
+            emptyList(),
+            AccountTwin.mislabelled(listOf(drawer("row-1", "proton@example.com", live = false, filedAs = filedAs)), asked),
+        )
+        assertEquals(
+            emptyList(),
+            AccountTwin.mislabelled(listOf(drawer("row-1", "proton@example.com", filedAs = filedAs)), answeredAfter = 0),
+        )
+    }
+
+    /** Same address, another organisation: another account, so the label is wrong. */
+    @Test
+    fun `the same address in another organisation is filed again too`() {
+        val wrong = AccountTwin.mislabelled(
+            listOf(drawer("row-1", "me@example.com", org = "the-company", filedAs = keyOf("me@example.com", "personal"))),
+            asked,
+        )
+
+        assertEquals(listOf("row-1" to who("me@example.com", "the-company")), wrong)
+    }
+
     // --- A move within one account ---------------------------------------------------
 
     /**
-     * What a merge leaves a running tab: the row it was on is gone and the choice is the CLI's own
-     * sign-in, holding the very same account. The move asks this before stopping the turn, and the turn
-     * used to be stopped - "Stopped to switch account" under work nobody had touched.
+     * What a merge leaves a running tab: the row it was on is gone and the choice is the row that stays,
+     * holding the very same account. The move asks this before stopping the turn, and the turn used to be
+     * stopped - "Stopped to switch account" under work nobody had touched.
      */
     @Test
-    fun `an added row and the sign-in holding its account are one account in both directions`() {
-        val me = idOf("me@example.com")
-        val default = probe("me@example.com")
-
-        assertTrue(AccountTwin.sameAccount(me, "", default, asked))
-        assertTrue(AccountTwin.sameAccount("", me, default, asked))
+    fun `two rows holding one account are one account`() {
+        assertTrue(AccountTwin.sameAccount(keyOf("me@example.com"), keyOf("me@example.com")))
     }
 
     /** Between two subscriptions the turn is still stopped - that is what pressing Select says. */
     @Test
-    fun `a sign-in holding somebody else is another account`() {
-        assertFalse(AccountTwin.sameAccount(idOf("me@example.com"), "", probe("work@example.com"), asked))
+    fun `two accounts are two accounts`() {
+        assertFalse(AccountTwin.sameAccount(keyOf("me@example.com"), keyOf("work@example.com")))
+        assertFalse(AccountTwin.sameAccount(keyOf("me@example.com", "personal"), keyOf("me@example.com", "work")))
     }
 
-    /** Same address, another organisation: another seat, another bill. */
+    /** Not knowing whose a row is - a stale answer from the CLI's own sign-in - keeps the rows apart. */
     @Test
-    fun `the same address in another organisation is another account`() {
-        val default = probe("me@example.com", org = "the-company")
-
-        assertFalse(AccountTwin.sameAccount(idOf("me@example.com", org = "personal"), "", default, asked))
+    fun `an unknown account is nobody's twin`() {
+        assertFalse(AccountTwin.sameAccount(null, keyOf("me@example.com")))
+        assertFalse(AccountTwin.sameAccount(keyOf("me@example.com"), null))
+        assertFalse(AccountTwin.sameAccount(null, null))
     }
 
-    /**
-     * An added row's id is its account, so two of them are two accounts - whatever the sign-in's answer
-     * says, and even when it names one of them.
-     */
-    @Test
-    fun `two added rows are two accounts`() {
-        val default = probe("me@example.com")
-
-        assertFalse(AccountTwin.sameAccount(idOf("me@example.com"), idOf("work@example.com"), default, asked))
-    }
-
-    @Test
-    fun `a row is the account it is`() {
-        assertTrue(AccountTwin.sameAccount("", "", defaultProbe = null, answeredAfter = asked))
-        assertTrue(AccountTwin.sameAccount("added-1", "added-1", defaultProbe = null, answeredAfter = asked))
-    }
-
-    /** A name left in the file from before the window is not somebody the sign-in holds now. */
-    @Test
-    fun `a stale or missing answer keeps the rows apart`() {
-        val me = idOf("me@example.com")
-
-        assertFalse(AccountTwin.sameAccount(me, "", probe("me@example.com", at = asked - 1), asked))
-        assertFalse(AccountTwin.sameAccount(me, "", defaultProbe = null, answeredAfter = asked))
-    }
-
-    // --- The sign-in's half ----------------------------------------------------------
-
-    /** What a landing sign-in compares its own account against, before a record is written. */
+    /** What the CLI's own sign-in contributes to that question: its answer, if it is fresh. */
     @Test
     fun `the name in a fresh answer is the account that drawer holds`() {
-        assertEquals(idOf("me@example.com"), AccountTwin.named(probe("me@example.com"), asked))
+        assertEquals(keyOf("me@example.com"), AccountTwin.named(probe("me@example.com"), asked))
         assertNull(AccountTwin.named(probe("me@example.com", at = asked - 1), asked))
         assertNull(AccountTwin.named(null, asked))
+    }
+
+    // --- Before a repeated sign-in deletes a drawer ----------------------------------------
+
+    /**
+     * The rule that would have kept the account: the drawer a repeated sign-in replaces is deleted only
+     * when it holds that very account, or nothing at all.
+     */
+    @Test
+    fun `a drawer is replaced only when it holds the same account or nobody`() {
+        val work = keyOf("work@example.com")
+
+        assertEquals(ClaudeAccounts.Holds.Same, ClaudeAccounts.Holds.of(true, who("work@example.com"), work))
+        assertEquals(ClaudeAccounts.Holds.Nobody, ClaudeAccounts.Holds.of(false, null, work))
+        assertEquals(
+            ClaudeAccounts.Holds.Another(who("proton@example.com")),
+            ClaudeAccounts.Holds.of(true, who("proton@example.com"), work),
+        )
+    }
+
+    /** Signed in but would not say whose: kept. "It would not say" is not "it is empty". */
+    @Test
+    fun `a drawer that will not say whose it is is never taken for empty`() {
+        val work = keyOf("work@example.com")
+
+        assertEquals(ClaudeAccounts.Holds.Unknown, ClaudeAccounts.Holds.of(true, null, work))
+        assertEquals(ClaudeAccounts.Holds.Unknown, ClaudeAccounts.Holds.of(true, AccountIdentity.Who("", "", ""), work))
     }
 }

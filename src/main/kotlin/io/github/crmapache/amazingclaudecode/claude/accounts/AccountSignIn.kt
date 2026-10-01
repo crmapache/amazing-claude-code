@@ -70,15 +70,6 @@ internal class AccountSignIn(
     @Volatile
     private var report: ((Outcome) -> Unit)? = null
 
-    /**
-     * When the credential first appeared while the shared profile still named the previous account.
-     *
-     * The gap is ordinary and short - two steps of one login - so it is waited out rather than treated
-     * as a failure. Waited out with a limit, because there is one case in which the name genuinely never
-     * moves: signing in again as the very account the file already named.
-     */
-    private var unsettledSince = 0L
-
     /** Whether a sign-in is in flight. One at a time per project: two would race for the same drawer. */
     val isRunning: Boolean get() = running.get()
 
@@ -126,12 +117,6 @@ internal class AccountSignIn(
             return
         }
 
-        // Who the shared profile names now, before a single thing has been signed into. The whole use of
-        // it is downstream: the same answer after the sign-in means the file has not caught up yet, and
-        // taking it for the newcomer's name replaces an existing account with them (see
-        // ClaudeAccounts.completeSignIn).
-        val before = AccountIdentity.current()
-
         ApplicationManager.getApplication().invokeLater {
             // Cancelled in the moment between asking for the terminal and getting the interface thread.
             // The drawer has already been cleared away by then (see [giveUp]); opening the terminal now
@@ -151,7 +136,7 @@ internal class AccountSignIn(
                 return@invokeLater
             }
 
-            watch(pending, before)
+            watch(pending)
         }
     }
 
@@ -192,11 +177,11 @@ internal class AccountSignIn(
         finish(Outcome.Cancelled)
     }
 
-    private fun watch(pending: AccountsState.Account, before: AccountIdentity.Who) {
+    private fun watch(pending: AccountsState.Account) {
         val startedAt = System.currentTimeMillis()
 
         polling = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
-            { tick(pending, before, startedAt) },
+            { tick(pending, startedAt) },
             POLL_SECONDS,
             POLL_SECONDS,
             TimeUnit.SECONDS,
@@ -210,19 +195,14 @@ internal class AccountSignIn(
      * clear away a drawer this very call is about to hand to a real account (see [giveUp]).
      */
     @Synchronized
-    private fun tick(pending: AccountsState.Account, before: AccountIdentity.Who, startedAt: Long) {
+    private fun tick(pending: AccountsState.Account, startedAt: Long) {
         if (!running.get()) return
 
         val accounts = ClaudeAccounts.getInstance()
 
-        val insist = unsettledSince != 0L && System.currentTimeMillis() - unsettledSince > SETTLE_MS
-        val landing = runCatching { accounts.completeSignIn(pending, project.basePath, before, insist) }
+        val landing = runCatching { accounts.completeSignIn(pending, project.basePath) }
             .onFailure { thisLogger().info("Could not ask a new drawer who signed into it") }
             .getOrDefault(ClaudeAccounts.Landing.NotYet)
-
-        if (landing is ClaudeAccounts.Landing.Unsettled && unsettledSince == 0L) {
-            unsettledSince = System.currentTimeMillis()
-        }
 
         when {
             landing is ClaudeAccounts.Landing.Added -> {
@@ -267,15 +247,6 @@ internal class AccountSignIn(
 
     companion object {
         private const val POLL_SECONDS = 3L
-
-        /**
-         * How long the shared profile is given to catch up with the credential before its answer is
-         * believed as it stands.
-         *
-         * Generous against a write that takes milliseconds, and short against the ten minutes a sign-in
-         * may take: this only delays the one sign-in that names the account the file already named.
-         */
-        private const val SETTLE_MS = 15_000L
 
         /**
          * How long a sign-in may take before the drawer is cleaned up.

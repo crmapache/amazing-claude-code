@@ -128,6 +128,11 @@ internal object AccountStore {
      * and a turn taken there would be taken on a stranger's machine. This process asks one question and
      * dies.
      *
+     * The question "who is in this drawer" runs the same way, in a directory that lives for that one
+     * question (see ClaudeAccounts.identityOf): the CLI fills the file in with the account whose credential
+     * it has just used, and a directory nobody else writes to is the only place that answer is not
+     * somebody else's.
+     *
      * The empty drawer for the default sign-in is deliberate and is the one case where an empty value is
      * right: with a config directory of our own, "not set" would send the CLI looking for the credential
      * inside that directory, where there is none. Empty means the drawer the CLI has always used - which
@@ -204,15 +209,37 @@ internal object AccountStore {
     }
 
     /**
-     * A stable id for an account, from what identifies it to Anthropic rather than from a counter.
+     * Which account an identity names - what two drawers are compared by when the question is "is this
+     * one subscription or two".
      *
      * The organisation is part of it, and that is not padding: one address can hold a personal
      * subscription and a seat in somebody's team at the same time, with different limits and different
      * rules, and the panel has to be able to run a conversation on one without the other's figures
      * appearing beside it.
+     *
+     * It is NOT a record's id any more (see [newAccountId]). It used to be, and that made the label
+     * harvested at sign-in the very key the register filed the drawer under: a sign-in labelled with the
+     * wrong address was filed as the wrong account, and the next genuine sign-in of that account read as
+     * a repeated one - and deleted the drawer of whoever was really in it.
      */
-    fun idOf(email: String, organisationUuid: String): String =
+    fun keyOf(email: String, organisationUuid: String): String =
         sha256Hex("$email|$organisationUuid").take(ID_LENGTH)
+
+    /**
+     * A record's id: opaque, random, and never derived from who the account is.
+     *
+     * Everything that holds an account holds this - the current pointer, every conversation, the figures
+     * - so it has to survive the one thing a label cannot: finding out that the drawer holds somebody else.
+     * Then the record is filed again under its true name and nothing that points at it moves (see
+     * ClaudeAccounts.refile). Records written before this carry [keyOf] of their first label as their id,
+     * which is just as opaque a string now.
+     */
+    fun newAccountId(): String {
+        val bytes = ByteArray(ID_LENGTH / 2)
+        SecureRandom().nextBytes(bytes)
+
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
 
     /**
      * The login name, filled in only when the environment does not already carry one, and only on macOS.

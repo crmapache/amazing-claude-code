@@ -11,6 +11,7 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
 import java.nio.file.Path
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.serialization.json.Json
@@ -89,97 +90,135 @@ internal object ClaudeControlPing {
                 return@submit
             }
 
-            val commandLine = GeneralCommandLine(executable.absolutePath)
-                .withParameters(
-                    "--print",
-                    "--verbose",
-                    "--output-format", "stream-json",
-                    "--input-format", "stream-json",
-                    "--include-partial-messages",
-                    "--safe-mode",
-                    "--permission-mode", "bypassPermissions",
-                )
-                .withEnvironment(environment)
-                .withCharset(Charsets.UTF_8)
-                .apply { workingDirectory?.let { withWorkingDirectory(Path.of(it)) } }
+            launch(executable.absolutePath, workingDirectory, subtype, environment, onResult, onError)
+        }
+    }
 
-            val process = runCatching { OSProcessHandler(commandLine) }
-                .onFailure {
-                    thisLogger().warn("Failed to start $subtype ping", it)
-                    onError(it.message ?: "Failed to start claude.")
-                }
-                .getOrNull() ?: return@submit
+    /**
+     * The same question, asked in an environment the caller has already built, and answered on the
+     * calling thread - null when it could not be asked or did not answer in time. Background only: it
+     * waits for a process.
+     *
+     * For a question whose environment is not one of the two [request] knows how to make - the identity
+     * question runs with a config directory that lives for that one question (see
+     * ClaudeAccounts.identityOf).
+     */
+    fun ask(workingDirectory: String?, subtype: String, environment: Map<String, String>): JsonObject? {
+        val executable = ClaudeExecutable.find() ?: return null
+        val answer = CompletableFuture<JsonObject?>()
 
-            val done = AtomicBoolean(false)
+        launch(
+            executable.absolutePath,
+            workingDirectory,
+            subtype,
+            environment,
+            onResult = { answer.complete(it) },
+            onError = { answer.complete(null) },
+        )
 
-            val timeoutTask = AppExecutorUtil.getAppScheduledExecutorService().schedule(
-                {
-                    if (done.compareAndSet(false, true)) {
-                        process.destroyProcess()
-                        onError("$subtype timed out")
-                    }
-                },
-                TIMEOUT_MS,
-                TimeUnit.MILLISECONDS,
+        // A second past the process's own deadline, which always answers - this one only stops a slip
+        // inside the process handling from holding the caller for ever.
+        return runCatching { answer.get(TIMEOUT_MS + 1_000L, TimeUnit.MILLISECONDS) }.getOrNull()
+    }
+
+    private fun launch(
+        executable: String,
+        workingDirectory: String?,
+        subtype: String,
+        environment: Map<String, String>,
+        onResult: (JsonObject) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        val commandLine = GeneralCommandLine(executable)
+            .withParameters(
+                "--print",
+                "--verbose",
+                "--output-format", "stream-json",
+                "--input-format", "stream-json",
+                "--include-partial-messages",
+                "--safe-mode",
+                "--permission-mode", "bypassPermissions",
             )
+            .withEnvironment(environment)
+            .withCharset(Charsets.UTF_8)
+            .apply { workingDirectory?.let { withWorkingDirectory(Path.of(it)) } }
 
-            val lines = StreamLines(
-                onLine = { line ->
-                    if (!line.contains("\"control_response\"") || !done.compareAndSet(false, true)) return@StreamLines
+        val process = runCatching { OSProcessHandler(commandLine) }
+            .onFailure {
+                thisLogger().warn("Failed to start $subtype ping", it)
+                onError(it.message ?: "Failed to start claude.")
+            }
+            .getOrNull() ?: return
 
-                    timeoutTask.cancel(false)
+        val done = AtomicBoolean(false)
 
-                    val response = runCatching {
-                        Json.parseToJsonElement(line).jsonObject["response"] as? JsonObject
-                    }.getOrNull()
-
-                    // A slip inside the handler must not leave the process hanging: it is single-use,
-                    // and there is nobody else to take it down - see destroyProcess below.
-                    runCatching {
-                        when {
-                            response == null -> onError("Malformed $subtype response")
-                            response["subtype"]?.jsonPrimitive?.contentOrNull == "success" ->
-                                onResult(response["response"] as? JsonObject ?: JsonObject(emptyMap()))
-                            else -> onError(response["error"]?.jsonPrimitive?.contentOrNull.orEmpty())
-                        }
-                    }.onFailure { thisLogger().warn("Handler for $subtype ping failed", it) }
-
-                    process.destroyProcess()
-                },
-            )
-
-            process.addProcessListener(
-                object : ProcessListener {
-                    override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
-                        if (outputType == ProcessOutputTypes.STDOUT) lines.append(event.text)
-                    }
-
-                    override fun processTerminated(event: ProcessEvent) {
-                        if (done.compareAndSet(false, true)) {
-                            timeoutTask.cancel(false)
-                            onError("claude exited before answering $subtype")
-                        }
-                    }
-                },
-            )
-
-            process.startNotify()
-
-            runCatching {
-                val requestId = UUID.randomUUID().toString()
-                val payload = buildJsonObject {
-                    put("request_id", requestId)
-                    put("type", "control_request")
-                    putJsonObject("request") { put("subtype", subtype) }
-                }.toString()
-
-                process.processInput.write((payload + "\n").toByteArray(Charsets.UTF_8))
-                process.processInput.flush()
-            }.onFailure {
+        val timeoutTask = AppExecutorUtil.getAppScheduledExecutorService().schedule(
+            {
                 if (done.compareAndSet(false, true)) {
-                    timeoutTask.cancel(false)
-                    onError("Failed to talk to claude: ${it.message}")
+                    process.destroyProcess()
+                    onError("$subtype timed out")
                 }
+            },
+            TIMEOUT_MS,
+            TimeUnit.MILLISECONDS,
+        )
+
+        val lines = StreamLines(
+            onLine = { line ->
+                if (!line.contains("\"control_response\"") || !done.compareAndSet(false, true)) return@StreamLines
+
+                timeoutTask.cancel(false)
+
+                val response = runCatching {
+                    Json.parseToJsonElement(line).jsonObject["response"] as? JsonObject
+                }.getOrNull()
+
+                // A slip inside the handler must not leave the process hanging: it is single-use,
+                // and there is nobody else to take it down - see destroyProcess below.
+                runCatching {
+                    when {
+                        response == null -> onError("Malformed $subtype response")
+                        response["subtype"]?.jsonPrimitive?.contentOrNull == "success" ->
+                            onResult(response["response"] as? JsonObject ?: JsonObject(emptyMap()))
+                        else -> onError(response["error"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                    }
+                }.onFailure { thisLogger().warn("Handler for $subtype ping failed", it) }
+
+                process.destroyProcess()
+            },
+        )
+
+        process.addProcessListener(
+            object : ProcessListener {
+                override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
+                    if (outputType == ProcessOutputTypes.STDOUT) lines.append(event.text)
+                }
+
+                override fun processTerminated(event: ProcessEvent) {
+                    if (done.compareAndSet(false, true)) {
+                        timeoutTask.cancel(false)
+                        onError("claude exited before answering $subtype")
+                    }
+                }
+            },
+        )
+
+        process.startNotify()
+
+        runCatching {
+            val requestId = UUID.randomUUID().toString()
+            val payload = buildJsonObject {
+                put("request_id", requestId)
+                put("type", "control_request")
+                putJsonObject("request") { put("subtype", subtype) }
+            }.toString()
+
+            process.processInput.write((payload + "\n").toByteArray(Charsets.UTF_8))
+            process.processInput.flush()
+        }.onFailure {
+            if (done.compareAndSet(false, true)) {
+                timeoutTask.cancel(false)
+                onError("Failed to talk to claude: ${it.message}")
             }
         }
     }

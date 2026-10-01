@@ -152,4 +152,77 @@ class AccountsBookTest : BasePlatformTestCase() {
         assertEquals("", ide.current)
         assertEquals("", book().current)
     }
+
+    /**
+     * A drawer that turns out to hold somebody else is filed again under who it holds - IN PLACE. The id is
+     * what the current choice, the conversations and the figures hold, and none of them may move: the
+     * drawer under it is the same one, only its label was wrong.
+     */
+    fun testFilingARecordAgainKeepsItsIdItsNameAndTheChoice() {
+        val ide = book()
+        ide.remember(account("row").apply { plan = "team"; alias = "Work"; orgUuid = "org-work" })
+        ide.rememberChoice("row", model = "opus", effort = "high")
+        ide.current = "row"
+
+        ide.refile("row", "proton@example.com", "org-proton", plan = "max")
+
+        val reopened = book()
+        val row = reopened.account("row")
+        assertEquals("proton@example.com", row?.email)
+        assertEquals("org-proton", row?.orgUuid)
+        assertEquals(AccountStore.keyOf("proton@example.com", "org-proton"), row?.key)
+        assertEquals("max", row?.plan)
+        assertEquals("Work", row?.alias)
+        assertEquals("opus", row?.model)
+        assertEquals("/tmp/acc/row", row?.storeDir)
+        assertEquals("row", reopened.current)
+    }
+
+    /** A plan nobody could learn is not "no plan". */
+    fun testFilingAgainWithoutAPlanKeepsTheOneOnRecord() {
+        val ide = book()
+        ide.remember(account("row").apply { plan = "team" })
+
+        ide.refile("row", "proton@example.com", "org-proton", plan = null)
+
+        assertEquals("team", book().account("row")?.plan)
+    }
+
+    /**
+     * A repeated sign-in: the record gets the new drawer and keeps everything else, and the draft goes in
+     * the same write - a window next door never reads the account without its drawer, or both.
+     */
+    fun testARenewalMovesTheDrawerAndDropsTheDraftInOneWrite() {
+        val ide = book()
+        ide.remember(account("work").apply { alias = "Work"; plan = "pro" })
+        ide.remember(account(ClaudeAccounts.PENDING_PREFIX + "next").apply { storeDir = "/tmp/acc/new-drawer" })
+
+        ide.renew("work", "/tmp/acc/new-drawer", plan = "max", draftId = ClaudeAccounts.PENDING_PREFIX + "next")
+
+        val reopened = book()
+        assertEquals(listOf("work"), reopened.accounts().map { it.id })
+        assertEquals("/tmp/acc/new-drawer", reopened.account("work")?.storeDir)
+        assertEquals("Work", reopened.account("work")?.alias)
+        assertEquals("max", reopened.account("work")?.plan)
+    }
+
+    /** A draft landing as a new account, in one write. */
+    fun testADraftIsReplacedByTheAccountItSignedInAs() {
+        val ide = book()
+        ide.remember(account("work"))
+        ide.remember(account(ClaudeAccounts.PENDING_PREFIX + "next"))
+
+        ide.replace(ClaudeAccounts.PENDING_PREFIX + "next", account("home"))
+
+        assertEquals(setOf("work", "home"), book().accounts().map { it.id }.toSet())
+    }
+
+    /** Two records may carry one label - the round sorts that out - and one never overwrites the other. */
+    fun testTwoRecordsMayCarryOneLabel() {
+        val ide = book()
+        ide.remember(account("old").apply { email = "work@example.com" })
+        ide.remember(account("new").apply { email = "work@example.com" })
+
+        assertEquals(setOf("old", "new"), book().accounts().map { it.id }.toSet())
+    }
 }

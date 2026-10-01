@@ -248,6 +248,11 @@ internal class AccountDesk(
         knownIdentity.keys.retainAll(asked.toSet())
         asked.forEach { id -> accounts.probedIdentity(id)?.let { knownIdentity[id] = it } }
 
+        // A row is the account its drawer holds, whatever it was filed under. First, so that a pair the
+        // re-filing makes - the corrected row and a row already filed under that account - is seen as one
+        // by the merge below in this same round.
+        refileMislabelled()
+
         // One account cannot be two rows. Before the list goes out rather than after: a list drawn with
         // the duplicate in it would be redrawn without it a moment later, and the row a person was
         // reaching for would move under their hand.
@@ -270,39 +275,43 @@ internal class AccountDesk(
     /**
      * Two rows holding one account become one row, silently.
      *
-     * It is the added row that goes. The other one is the sign-in Claude Code itself has: it owns no
-     * drawer to delete, and the only way to remove it is to sign the person out of Claude Code
-     * altogether - so "which of the two is the extra one" has exactly one answer. Nothing is lost by it
-     * either: the credential for that account is in the CLI's own drawer as well, and that is the drawer
-     * every conversation moves onto.
+     * Against the sign-in Claude Code itself has, it is the added row that goes: that one owns no drawer
+     * to delete, and the only way to remove it is to sign the person out of Claude Code altogether. Between
+     * two added rows - which a row filed again under its true name can leave behind (see
+     * [refileMislabelled]) - the one in use stays, and otherwise the newer (see AccountTwin.duplicate).
+     * Nothing is lost either way: the credential for that account is in the drawer that stays as well,
+     * and that is the drawer every conversation moves onto.
      *
      * The person's own word for the account travels with it. A name was given to a row on purpose, and
      * the row it was given to is the one being merged away; leaving the old one would keep a name that
      * was chosen for a different account on screen - which is how the duplicate got noticed in the first
      * place.
      *
-     * What makes it safe to do without asking is in [AccountTwin]: two straight answers, both written
-     * down since this screen last asked, from two drawers that are both signed in now. Without that
-     * much it does nothing at all and the rows simply stay as they are.
+     * What makes it safe to do without asking is in [AccountTwin]: two straight answers, both fetched
+     * since this screen last asked, from two drawers that are both signed in now. Without that much it
+     * does nothing at all and the rows simply stay as they are.
      */
     private fun mergeTwin(): Boolean {
-        val twin = AccountTwin.duplicate(
+        val found = AccountTwin.duplicate(
             default = AccountTwin.Drawer(
                 id = "",
                 probe = knownIdentity[""],
                 live = knownDefault.current?.loggedIn == true,
             ),
-            added = accounts.list().filterNot { it.isPending }.map { account ->
-                AccountTwin.Drawer(
-                    id = account.id,
-                    probe = knownIdentity[account.id],
-                    live = healthOf(account.id) == ClaudeAccounts.Health.PRESENT,
-                )
-            },
+            added = addedDrawers(),
             answeredAfter = askedAt,
+            inUse = accounts.currentId,
         ) ?: return false
 
-        accounts.account(twin)?.alias?.takeIf { it.isNotEmpty() }?.let { accounts.rename("", it) }
+        val twin = found.extra
+        val keeper = found.keeper
+
+        // Onto the row that stays. Over the CLI's own sign-in's name always - that one may have been given
+        // while it held another account - but not over a name given to an added row that stays: that one
+        // was chosen for this very account.
+        accounts.account(twin)?.alias?.takeIf { it.isNotEmpty() }?.let { alias ->
+            if (keeper.isEmpty() || accounts.account(keeper)?.alias.isNullOrEmpty()) accounts.rename(keeper, alias)
+        }
 
         // The conversations are on that account either way - the drawer changes, the subscription does
         // not - but they have to be raised again over the drawer that is staying, because the one they
@@ -314,7 +323,7 @@ internal class AccountDesk(
         // serves the credential it has read even after the keychain item is gone (checked on 2.1.280).
         // A credential kept in a file reads as absent once deleted - the same exposure a renewal has
         // always lived with (see ClaudeSessions.relaunchOn).
-        if (accounts.currentId == twin) accounts.currentId = ""
+        if (accounts.currentId == twin) accounts.currentId = keeper
 
         accounts.forget(twin)
         knownHealth.remove(twin)
@@ -329,6 +338,34 @@ internal class AccountDesk(
         ClaudeSessionHub.everyHub { it.accountsChanged() }
         return true
     }
+
+    /**
+     * Rows whose drawer holds another account than they are filed under are filed again, in place - see
+     * AccountTwin.mislabelled. Nothing moves and nothing is deleted: the id, the drawer and every
+     * conversation on it stay exactly where they are, and only the name on the record becomes the truth.
+     */
+    private fun refileMislabelled() {
+        val wrong = AccountTwin.mislabelled(addedDrawers(), answeredAfter = askedAt)
+        if (wrong.isEmpty()) return
+
+        wrong.forEach { (id, who) -> accounts.refile(id, who, project.basePath) }
+
+        // Every window draws the record's name, and the round in each of them would get there in its own
+        // time; the person looking at this one is looking now.
+        ClaudeSessionHub.everyHub { it.accountsChanged() }
+    }
+
+    /** The added rows as the twin and re-filing rules see them - drafts are nobody yet. */
+    private fun addedDrawers(): List<AccountTwin.Drawer> =
+        accounts.list().filterNot { it.isPending }.map { account ->
+            AccountTwin.Drawer(
+                id = account.id,
+                probe = knownIdentity[account.id],
+                live = healthOf(account.id) == ClaudeAccounts.Health.PRESENT,
+                filedAs = account.key,
+                addedAt = account.addedAt,
+            )
+        }
 
     private fun broadcast() {
         // A sign-in that was begun and never finished leaves a draft in the book, and the book is shared

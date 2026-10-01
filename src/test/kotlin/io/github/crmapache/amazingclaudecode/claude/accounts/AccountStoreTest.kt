@@ -198,11 +198,26 @@ class AccountStoreTest {
      */
     @Test
     fun `one address in two organisations is two accounts`() {
-        val personal = AccountStore.idOf("someone@example.com", "")
-        val atWork = AccountStore.idOf("someone@example.com", "org-uuid-1")
+        val personal = AccountStore.keyOf("someone@example.com", "")
+        val atWork = AccountStore.keyOf("someone@example.com", "org-uuid-1")
 
         assertTrue(personal != atWork)
-        assertEquals(personal, AccountStore.idOf("someone@example.com", ""))
+        assertEquals(personal, AccountStore.keyOf("someone@example.com", ""))
         assertEquals(16, personal.length)
+    }
+
+    /**
+     * A record's id says nothing about who is in it. When it did, a sign-in labelled with the wrong
+     * address was filed AS the wrong account, and the next genuine sign-in of that account read as a
+     * repeated one and deleted the drawer of whoever was really in it.
+     */
+    @Test
+    fun `a record's id is random and never the account's key`() {
+        val ids = (1..50).map { AccountStore.newAccountId() }.toSet()
+
+        assertEquals(50, ids.size)
+        assertTrue(ids.all { it.matches(Regex("^[0-9a-f]{16}$")) })
+        // Not a drawer's name and not a draft's either - those are told apart by their prefixes.
+        assertTrue(ids.none { it.startsWith("s-") || it.startsWith(ClaudeAccounts.PENDING_PREFIX) })
     }
 }

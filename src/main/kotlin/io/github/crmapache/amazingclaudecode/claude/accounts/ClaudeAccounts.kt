@@ -4,6 +4,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import io.github.crmapache.amazingclaudecode.claude.ClaudeAuth
+import io.github.crmapache.amazingclaudecode.claude.ClaudeControlPing
 import io.github.crmapache.amazingclaudecode.claude.ClaudeExecutable
 import io.github.crmapache.amazingclaudecode.claude.ClaudeHome
 import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
@@ -84,19 +85,13 @@ internal class ClaudeAccounts {
         }
     }
 
-    /**
-     * How far a sign-in in progress has got - three answers rather than "an account or null".
-     *
-     * The middle one is the whole reason this is not a nullable: a credential filed in the new drawer
-     * while the shared profile still names the previous account looks exactly like a finished sign-in
-     * and is the one moment at which believing it destroys an account (see [completeSignIn]).
-     */
+    /** How far a sign-in in progress has got. */
     sealed interface Landing {
-        /** Nothing in the drawer yet - the person is still in the browser. */
+        /**
+         * Nothing usable in the drawer yet - the person is still in the browser, or the credential is
+         * there and has not said whose it is yet (see [identityOf]).
+         */
         data object NotYet : Landing
-
-        /** The credential is filed, but the name attached to it is still the previous one. */
-        data object Unsettled : Landing
 
         data class Added(val account: AccountsState.Account) : Landing
 
@@ -109,6 +104,38 @@ internal class ClaudeAccounts {
          * is on the screen already, and their credential for it was never touched.
          */
         data object Twin : Landing
+    }
+
+    /**
+     * What a drawer the register already files under some account turns out to hold, asked of the drawer.
+     *
+     * Asked before that drawer is deleted as the old half of a repeated sign-in, and the answer is the
+     * whole difference between tidying up and destroying an account: the register's label is only what
+     * the sign-in was told at the time, and a drawer filed under the wrong address holds the ONLY copy of
+     * somebody else's credential on this machine.
+     */
+    sealed interface Holds {
+        /** The account it is filed under - the old half of a repeated sign-in, safe to replace. */
+        data object Same : Holds
+
+        /** No credential at all - nothing in it to lose. */
+        data object Nobody : Holds
+
+        /** Somebody else - the record was filed under the wrong name, and is filed again under this one. */
+        data class Another(val who: AccountIdentity.Who) : Holds
+
+        /** Signed in, but it would not say whose it is. Nothing is deleted on that. */
+        data object Unknown : Holds
+
+        companion object {
+            /** Pure, so the rule "never delete a drawer holding somebody else" is held by a test. */
+            fun of(loggedIn: Boolean, who: AccountIdentity.Who?, filedAs: String): Holds = when {
+                !loggedIn -> Nobody
+                who == null || !who.isNamed -> Unknown
+                who.key == filedAs -> Same
+                else -> Another(who)
+            }
+        }
     }
 
     private val state: AccountsState get() = AccountsState.getInstance()
@@ -376,7 +403,16 @@ internal class ClaudeAccounts {
         val directory = usageProbeDirectory(accountId) ?: return null
 
         return when (val resolved = environmentFor(accountId, workingDirectory, probeConfigDir = directory)) {
-            is AccountStore.Environment.Ready -> resolved.variables
+            is AccountStore.Environment.Ready -> {
+                // Whose credential this is gets asked again once a minute rather than once a day, which is
+                // how the CLI keeps it (see AccountIdentity). A drawer signed into by somebody else, or an
+                // account filed under the wrong name, used to go on showing the previous occupant's address
+                // all day - and a screen that names the wrong person is the one place the mistake could
+                // have been seen.
+                AccountIdentity.expire(File(directory, CONFIG_FILE), IDENTITY_TTL_MS)
+                resolved.variables
+            }
+
             is AccountStore.Environment.Refused -> null
         }
     }
@@ -412,26 +448,64 @@ internal class ClaudeAccounts {
      * would live forever.
      */
     fun probedIdentity(accountId: String): AccountIdentity.Probed? {
-        val file = usageProbeFolder(accountId)?.resolve(".claude.json") ?: return null
+        val file = usageProbeFolder(accountId)?.resolve(CONFIG_FILE) ?: return null
 
         return AccountIdentity.probe(file)?.takeIf { it.who.isNamed }
     }
 
     /**
+     * Who the credential in this account's drawer belongs to, asked of the credential itself. Null when
+     * it would not say. Background only: it waits for a process.
+     *
+     * The one straight answer there is. The CLI fetches the profile with the credential it was given and
+     * writes it into the config file of the directory it runs in, so a directory that lives for this one
+     * question can hold nobody else's name - unlike `~/.claude.json`, which every drawer's processes keep
+     * rewriting, and unlike the usage question's directory, which keeps its answer between questions (see
+     * AccountIdentity). Measured on 2.1.280: the profile is fetched on start, before the first control
+     * request is answered, whichever request it is.
+     *
+     * Asked with [IDENTITY_QUESTION], the handshake every client starts with, rather than the usage
+     * question: the usage endpoint turns a caller away after three or four questions in a row, and the
+     * figures on the accounts screen are the ones that would go blank for it.
+     */
+    fun identityOf(accountId: String, workingDirectory: String?): AccountIdentity.Who? {
+        // Its own folder every time: two sign-ins at once - two projects, two IDEs - share nothing, and
+        // a shared one would hand one of them the other's answer.
+        val scratch = File(identityDirectory(), AccountStore.newStoreDirName())
+
+        return try {
+            if (!runCatching { scratch.mkdirs() }.getOrDefault(false)) return null
+
+            val environment = environmentFor(accountId, workingDirectory, probeConfigDir = scratch.absolutePath)
+            if (environment !is AccountStore.Environment.Ready) return null
+
+            ClaudeControlPing.ask(workingDirectory, IDENTITY_QUESTION, environment.variables) ?: return null
+
+            AccountIdentity.read(File(scratch, CONFIG_FILE)).takeIf { it.isNamed }
+        } finally {
+            runCatching { scratch.deleteRecursively() }
+        }
+    }
+
+    /**
      * Whether [from] and [to] are one subscription in two drawers - see [AccountTwin.sameAccount].
      *
-     * Fresh means written within [SAME_ACCOUNT_FRESH_MS], not after a question of our own: the question
-     * is put by whichever IDE is running the merge, and the IDE that follows it through the register
-     * (see AccountsWatch) asked nothing - it reads the same file a couple of seconds later.
+     * An added row is the account its record is filed under - which the round keeps honest by filing a
+     * mislabelled row again (see AccountDesk). The CLI's own sign-in has no record and is asked instead:
+     * its usage question's answer, fresh within [SAME_ACCOUNT_FRESH_MS] rather than after a question of
+     * our own - the question is put by whichever IDE is running the merge, and the IDE that follows it
+     * through the register (see AccountsWatch) asked nothing; it reads the same file a moment later.
      */
-    fun sameAccount(from: String, to: String): Boolean =
-        from == to ||
-            AccountTwin.sameAccount(
-                from = from,
-                to = to,
-                defaultProbe = probedIdentity(""),
-                answeredAfter = System.currentTimeMillis() - SAME_ACCOUNT_FRESH_MS,
-            )
+    fun sameAccount(from: String, to: String): Boolean {
+        if (from == to) return true
+
+        val freshSince = System.currentTimeMillis() - SAME_ACCOUNT_FRESH_MS
+        val keyOf = { id: String ->
+            if (id.isEmpty()) AccountTwin.named(probedIdentity(""), freshSince) else state.account(id)?.key
+        }
+
+        return AccountTwin.sameAccount(keyOf(from), keyOf(to))
+    }
 
     private fun refuse(reason: String): AccountStore.Environment {
         DiagnosticsLog.note(DiagnosticsLog.ACCOUNTS, "an account would not resolve: $reason")
@@ -613,60 +687,59 @@ internal class ClaudeAccounts {
      *
      * Asked of the drawer itself rather than read out of the terminal. There is nothing to scrape: the
      * credential never appears on screen, and the only honest question is the one the CLI answers -
-     * "is there a credential in this drawer". Call from a background thread; it starts a process.
+     * "is there a credential in this drawer". Call from a background thread; it starts processes.
      *
-     * [before] is who the shared file named BEFORE this sign-in was started, and it is what makes the
-     * answer safe to believe. The credential and the shared profile are written by two separate steps of
-     * the login, so the drawer can be full while `~/.claude.json` still names the previous account - and
-     * that answer is not merely unhelpful, it is destructive: the newcomer would be filed under somebody
-     * else's address, and an account with that address already on the list would be replaced by it,
-     * drawer and keychain item and all. So an answer that has not moved is not an answer yet, and the
-     * caller is told to come back ([Landing.Unsettled]) rather than given a name.
-     *
-     * [insist] is the way out of the one case where it never moves: signing in again as the very account
-     * the file already named. The caller allows it after a grace long enough for any write to have
-     * happened (see AccountSignIn.SETTLE_MS).
+     * **Who it was is asked of that credential too** ([identityOf]), and never read out of the file every
+     * drawer shares. That file names whoever's process wrote it last, and every open conversation of every
+     * account keeps writing it, so in the seconds a sign-in takes it flips between accounts. Read from
+     * there, a sign-in was filed under another account's address, sometimes with a delay and a
+     * "believe it anyway" to wait the flip out - and the next genuine sign-in of that account then read as
+     * a repeated one and deleted the drawer of whoever was really in it.
      */
-    fun completeSignIn(
-        pending: AccountsState.Account,
-        workingDirectory: String?,
-        before: AccountIdentity.Who,
-        insist: Boolean = false,
-    ): Landing {
+    fun completeSignIn(pending: AccountsState.Account, workingDirectory: String?): Landing {
         val variables = variablesFor(pending.id, workingDirectory) ?: return Landing.NotYet
         val status = ClaudeAuth.status(variables, workingDirectory)
 
+        // The cheap question first: while the person is in the browser this is all each round costs.
         if (!status.loggedIn) return Landing.NotYet
 
-        val who = AccountIdentity.current()
-        if (!who.isNamed) return Landing.NotYet
-
-        if (who == before && !insist) {
-            DiagnosticsLog.note(DiagnosticsLog.ACCOUNTS, "a sign-in landed before the shared profile moved")
-            return Landing.Unsettled
-        }
-
-        val id = AccountStore.idOf(who.email, who.orgUuid)
+        val who = identityOf(pending.id, workingDirectory) ?: return Landing.NotYet
 
         // Signing in as the account the CLI's own sign-in already holds is not an account to add: it is
         // the row at the top of the screen, reached a second way. Refused rather than merged afterwards,
         // because the merge has to delete a drawer and this one has nothing in it the person would miss
         // - their credential for that account is the one they already had (see [AccountTwin]).
-        if (holdsTheDefault(id, pending, workingDirectory)) {
+        if (holdsTheDefault(who, workingDirectory)) {
             abandonSignIn(pending)
             DiagnosticsLog.note(DiagnosticsLog.ACCOUNTS, "a sign-in named the account the CLI's own holds")
             return Landing.Twin
         }
 
-        // Signing in again as an account already on the list replaces it rather than doubling it: the
-        // new drawer is the live one. The old record goes, and with it the old drawer.
-        val replaced = state.account(id)?.takeIf { it.storeDir != pending.storeDir }
-        replaced?.let { discard(it.storeDir) }
+        // Signing in again as an account already on the list replaces its drawer rather than doubling the
+        // row - but only once that drawer has said it holds this account. The register's label is what an
+        // earlier sign-in was told, and a label was exactly what used to be wrong: the drawer it names can
+        // hold the only copy of somebody else's credential on this machine.
+        val held = list().firstOrNull { !it.isPending && it.key == who.key && it.storeDir != pending.storeDir }
+        if (held != null) {
+            when (val there = whoHolds(held, workingDirectory)) {
+                Holds.Same, Holds.Nobody -> return renew(held, pending, status.plan)
 
-        state.forget(pending.id)
+                // Filed under the wrong name, so it is filed again under the right one and stays - and the
+                // sign-in is added beside it as the account it really is.
+                is Holds.Another -> refile(held.id, there.who, workingDirectory)
+
+                // Two rows with one label until the round hears from the old drawer and either files it
+                // again or merges the pair (see AccountDesk). Deleting on "it would not say" is how an
+                // account is lost.
+                Holds.Unknown -> DiagnosticsLog.note(
+                    DiagnosticsLog.ACCOUNTS,
+                    "a drawer filed under the same account would not say whose it is; kept",
+                )
+            }
+        }
 
         val account = AccountsState.Account().apply {
-            this.id = id
+            id = AccountStore.newAccountId()
             storeDir = pending.storeDir
             email = who.email
             orgUuid = who.orgUuid
@@ -674,15 +747,9 @@ internal class ClaudeAccounts {
             addedAt = pending.addedAt
         }
 
-        state.remember(account)
-
-        // The processes already running as this account are pointing at the drawer just deleted: a
-        // credential is read once, at start, so they carry on until the token they hold expires and then
-        // fail at a moment nobody connects with a sign-in that happened an hour ago. Raised again over
-        // their own transcripts, they read the drawer this sign-in has just filled. Before the line
-        // below, so a first account - which has no conversations of its own yet - does not pay for the
-        // same raise twice.
-        if (replaced != null) ClaudeSessionHub.everyHub { it.conversations.relaunchOn(id) }
+        // In one write, so no other IDE ever reads the draft gone and the account not there yet.
+        state.replace(pending.id, account)
+        dropProbeFolder(pending.id)
 
         // The first account added becomes the one new conversations start on; a second does not. Signing
         // in to another account is not the same as wanting to work on it.
@@ -691,33 +758,85 @@ internal class ClaudeAccounts {
         // setter sees to that, which is the whole reason it lives there (see [currentId]). This line is
         // the one place a choice is made by the plugin rather than by the person, and it was the one
         // place that used to leave the open tabs behind.
-        if (currentId.isEmpty()) currentId = id
+        if (currentId.isEmpty()) currentId = account.id
 
         return Landing.Added(account)
     }
 
     /**
-     * Whether the account that has just signed in is the one the CLI's own drawer holds.
+     * A repeated sign-in into an account already on the list: the new drawer becomes that record's, and
+     * the old one goes.
      *
-     * Both halves are asked for here rather than assumed. The name comes from the ordinary sign-in's own
-     * usage question ([probedIdentity]), and it counts only if it was written down AFTER this sign-in
-     * began - the accounts screen asks every row while it is open, so a sign-in started from it has a
-     * fresh answer by the time it lands, and a person who wandered off gets no refusal rather than a
-     * wrong one. The liveness is the drawer itself: a file naming somebody the person signed out of
-     * months ago must not turn a new account away.
-     *
-     * A machine-wide fact asked with this project's directory, exactly as the isolation probe asks it.
+     * The record stays - its id, its name, the model it was left on - and only the drawer under it changes,
+     * so everything pointing at it goes on pointing at the same account.
      */
-    private fun holdsTheDefault(id: String, pending: AccountsState.Account, workingDirectory: String?): Boolean {
-        if (AccountTwin.named(probedIdentity(""), answeredAfter = pending.addedAt) != id) return false
+    private fun renew(held: AccountsState.Account, pending: AccountsState.Account, plan: String): Landing {
+        state.renew(held.id, pending.storeDir, plan, draftId = pending.id)
+        discard(held.storeDir)
+        dropProbeFolder(pending.id)
+        // Its usage question's last answer was about the drawer just deleted.
+        usageProbeFolder(held.id)?.let { AccountIdentity.expire(File(it, CONFIG_FILE), maxAgeMs = 0L) }
 
-        return ClaudeAuth.status(ClaudeExecutable.environment(), workingDirectory).loggedIn
+        // The processes already running as this account are pointing at the drawer just deleted: a
+        // credential is read once, at start, so they carry on until the token they hold expires and then
+        // fail at a moment nobody connects with a sign-in that happened an hour ago. Raised again over
+        // their own transcripts, they read the drawer this sign-in has just filled.
+        ClaudeSessionHub.everyHub { it.conversations.relaunchOn(held.id) }
+
+        if (currentId.isEmpty()) currentId = held.id
+
+        return Landing.Added(state.account(held.id) ?: held)
     }
+
+    /**
+     * Who the drawer of a record really holds - see [Holds]. Background only: up to two processes.
+     *
+     * A folder that is gone holds nothing this plugin can reach, and reads as [Holds.Nobody].
+     */
+    private fun whoHolds(held: AccountsState.Account, workingDirectory: String?): Holds {
+        val variables = variablesFor(held.id, workingDirectory) ?: return Holds.Nobody
+        val loggedIn = ClaudeAuth.status(variables, workingDirectory).loggedIn
+
+        return Holds.of(loggedIn, if (loggedIn) identityOf(held.id, workingDirectory) else null, held.key)
+    }
+
+    /**
+     * File a record again under the account its drawer really holds. Background only: it asks the drawer
+     * for its plan.
+     *
+     * In place, and that is the point: the id is what the current choice, every open conversation and the
+     * figures hold, and the drawer under it does not change - only the name it was filed under was wrong.
+     * Nothing moves, nothing is raised again, and nothing is billed differently: it always was this account.
+     */
+    fun refile(id: String, who: AccountIdentity.Who, workingDirectory: String?) {
+        if (!who.isNamed) return
+
+        val plan = variablesFor(id, workingDirectory)
+            ?.let { runCatching { ClaudeAuth.status(it, workingDirectory) }.getOrNull() }
+            ?.takeIf { it.loggedIn }
+            ?.plan
+
+        state.refile(id, who.email, who.orgUuid, plan)
+        DiagnosticsLog.note(DiagnosticsLog.ACCOUNTS, "an account filed under the wrong name was filed again")
+    }
+
+    /**
+     * Whether the account that has just signed in is the one the CLI's own drawer holds - asked of that
+     * drawer now, the same way the newcomer was asked.
+     *
+     * An answer from the ordinary sign-in's credential is also the liveness: a profile is only fetched
+     * with a credential that works, so a file naming somebody the person signed out of months ago cannot
+     * turn a new account away. A machine-wide fact asked with this project's directory, exactly as the
+     * isolation probe asks it.
+     */
+    private fun holdsTheDefault(who: AccountIdentity.Who, workingDirectory: String?): Boolean =
+        identityOf("", workingDirectory)?.key == who.key
 
     /** A sign-in that never landed: the drawer and its provisional record go away together. */
     fun abandonSignIn(pending: AccountsState.Account) {
         discard(pending.storeDir)
         state.forget(pending.id)
+        dropProbeFolder(pending.id)
     }
 
     /**
@@ -763,7 +882,17 @@ internal class ClaudeAccounts {
         // IDE still has a row for - a row that cannot run a turn and cannot say why.
         state.forget(id)
         discard(account.storeDir)
+        dropProbeFolder(id)
         DiagnosticsLog.note(DiagnosticsLog.ACCOUNTS, "an account was forgotten")
+    }
+
+    /**
+     * The usage question's own config directory for a record that is gone - a draft that landed or was
+     * abandoned, an account forgotten. Nothing reads it again, and ids are no longer ever reused, so
+     * left behind it is only a folder more per sign-in.
+     */
+    private fun dropProbeFolder(id: String) {
+        runCatching { usageProbeFolder(id)?.deleteRecursively() }
     }
 
     private fun discard(storeDir: String) {
@@ -814,6 +943,10 @@ internal class ClaudeAccounts {
     private fun probeDirectory(): File =
         File(File(System.getProperty("user.home"), ".amazing-claude-code"), "probe")
 
+    /** Where each identity question gets a config directory for its one question (see [identityOf]). */
+    private fun identityDirectory(): File =
+        File(File(System.getProperty("user.home"), ".amazing-claude-code"), "identity")
+
     private class Probed(val answer: Capability, val at: Long)
 
     private val probed = ConcurrentHashMap<String, Probed>()
@@ -826,6 +959,23 @@ internal class ClaudeAccounts {
 
         /** The folder name for the sign-in with no drawer of its own - its id is the empty string. */
         private const val DEFAULT_PROBE_NAME = "default"
+
+        /** The CLI's own config file inside a config directory - see AccountIdentity. */
+        private const val CONFIG_FILE = ".claude.json"
+
+        /**
+         * How long the usage question may go on answering with a profile it fetched before (see
+         * [usageProbeVariables]).
+         *
+         * As often as the accounts screen asks about health, and no oftener: one more request per account
+         * a minute, against the CLI's own once a day. Short enough that a drawer holding somebody else is
+         * named truthfully before anybody acts on it, and it is what makes the round's merges and re-filings
+         * possible at all - they only go by an answer fetched after they asked.
+         */
+        private const val IDENTITY_TTL_MS = 60_000L
+
+        /** See [identityOf] for why the handshake rather than the usage question. */
+        private const val IDENTITY_QUESTION = "initialize"
 
         private const val ALIAS_LIMIT = 40
         private const val RETRY_MS = 60_000L

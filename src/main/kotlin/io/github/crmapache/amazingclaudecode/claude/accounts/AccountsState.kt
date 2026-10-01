@@ -88,7 +88,11 @@ internal class AccountsState(private val file: Path) {
     }
 
     class Account {
-        /** [AccountStore.idOf] over the address and the organisation. */
+        /**
+         * An opaque handle (see AccountStore.newAccountId) - what the current choice, every conversation
+         * and the figures hold. Which account it is lives in [email] and [orgUuid], and may be corrected
+         * without this moving (see ClaudeAccounts.refile).
+         */
         var id: String = ""
 
         /**
@@ -143,6 +147,9 @@ internal class AccountsState(private val file: Path) {
          * record is there, the folder is there, and only the credential is missing.
          */
         val isPending: Boolean get() = id.startsWith(ClaudeAccounts.PENDING_PREFIX)
+
+        /** Which account the record is filed under, in the terms two drawers are compared by. */
+        val key: String get() = AccountStore.keyOf(email, orgUuid)
 
         fun copy(): Account = Account().also {
             it.id = id
@@ -211,6 +218,36 @@ internal class AccountsState(private val file: Path) {
     fun remember(account: Account) = update { held ->
         held.accounts.removeIf { it.id == account.id }
         held.accounts.add(account.copy())
+    }
+
+    /** A record taking the place of another, in ONE write - a draft becoming the account it signed in as. */
+    fun replace(oldId: String, account: Account) = update { held ->
+        held.accounts.removeIf { it.id == oldId || it.id == account.id }
+        held.accounts.add(account.copy())
+    }
+
+    /**
+     * A repeated sign-in: [id] gets the drawer the draft [draftId] was made for, and the draft goes - in one
+     * write. Everything else about the record stays, its name and the model it was left on among it.
+     */
+    fun renew(id: String, storeDir: String, plan: String, draftId: String) = update { held ->
+        held.accounts.removeIf { it.id == draftId }
+        held.accounts.firstOrNull { it.id == id }?.let { account ->
+            account.storeDir = storeDir
+            if (plan.isNotEmpty()) account.plan = plan
+        }
+    }
+
+    /**
+     * File a record under the account its drawer really holds - see ClaudeAccounts.refile. A [plan] of null
+     * is "not known", and the one on record stays.
+     */
+    fun refile(id: String, email: String, orgUuid: String, plan: String?) = update { held ->
+        held.accounts.firstOrNull { it.id == id }?.let { account ->
+            account.email = email
+            account.orgUuid = orgUuid
+            plan?.takeIf { it.isNotEmpty() }?.let { account.plan = it }
+        }
     }
 
     fun forget(id: String) = update { held ->
