@@ -941,6 +941,104 @@
   }
 }
 
+/* --- The agent's text inside a card that is about something else (see Glance) ---------- */
+
+/*
+ * The type is the card's own - size, line height and colour all come from the line it stands in - and
+ * only the marks are the feed's: bold, code, a link's colour. The paragraphs stand shoulder to shoulder,
+ * with no gap between them: a gap is a fraction of a line, and the cap below counts whole ones.
+ */
+.glance {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.glanceFlow {
+  flex: none;
+  display: block;
+}
+
+.glanceCapped {
+  max-height: calc(var(--acc-glance-lines) * 1lh);
+  overflow: hidden;
+}
+
+/* The end of the text rather than its beginning: pressed to the bottom of the box, the column runs out of
+   room at its top, and that is the side the box cuts away. */
+.glanceNewest {
+  justify-content: flex-end;
+}
+
+/* The last line fades rather than breaking off - where the text goes on is plain without an ellipsis that
+   would have to know which of three kinds of block it lands in. */
+.glanceCutBottom {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1lh), rgb(0 0 0 / 0.15));
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1lh), rgb(0 0 0 / 0.15));
+}
+
+.glanceCutTop {
+  mask-image: linear-gradient(to top, #000 calc(100% - 1lh), rgb(0 0 0 / 0.15));
+  -webkit-mask-image: linear-gradient(to top, #000 calc(100% - 1lh), rgb(0 0 0 / 0.15));
+}
+
+.glanceBlock {
+  display: block;
+}
+
+.glanceHeading {
+  font-weight: 600;
+  color: var(--acc-glance-strong, var(--acc-fg));
+}
+
+/* Hanging, the way the feed's list is: the mark sticks out and a wrapped line lines up with the text. */
+.glanceBullet {
+  padding-left: 1.3em;
+  text-indent: -1.3em;
+}
+
+.glanceMarker {
+  font-family: var(--acc-mono);
+  color: var(--acc-fg-fainter);
+}
+
+.glanceQuote {
+  padding-left: 8px;
+  border-left: 2px solid var(--acc-quote-32);
+}
+
+/* Bold lights up to the main text colour, as in the feed, unless the line it stands in has a colour of its
+   own to keep - a verdict says so through --acc-glance-strong. */
+.glanceStrong {
+  font-weight: 600;
+  color: var(--acc-glance-strong, var(--acc-fg));
+}
+
+.glanceCode {
+  padding: 0 2px;
+  border-radius: var(--acc-r-xs);
+  background: var(--acc-neutral-12);
+  color: var(--acc-agent-light);
+  font-family: var(--acc-mono);
+  font-size: 0.92em;
+}
+
+.glanceCodeBlock {
+  display: block;
+  padding: 1px 6px;
+  border-radius: var(--acc-r-xs);
+  background: var(--acc-neutral-12);
+  color: var(--acc-fg-mono);
+  font-family: var(--acc-mono);
+  font-size: 0.92em;
+  white-space: pre-wrap;
+}
+
+.glanceLink {
+  color: var(--acc-branch-light);
+}
+
 /* The wrapper holds the block's padding and the room for the button: the pre itself scrolls horizontally,
    and a button inside it would ride away with a long line. */
 .codeBlockWrap {

@@ -365,17 +365,33 @@ const finishedRun = (): ScenarioRun => {
           : step.cardId === 'c-review'
             ? `Review the changes on mzolotoi/checkout-totals and write every finding to ${findings}.`
             : `Fix the findings written in ${findings}. Leave the ones you disagree with.`,
+      // Written the way a card really answers - in markdown, with a heading, code spans and a list - since
+      // that is what the row has to make readable.
       summary:
         step.cardId === 'c-review'
-          ? 'Four findings, two of them in the totals: a discount larger than the subtotal, and rounding done twice.'
-          : 'Both totals findings are fixed and the tests pass.',
+          ? [
+              '**4. The report**',
+              '',
+              'Verdict: the branch is **not ready**. Four findings, two of them in `checkout/totals.ts`:',
+              '',
+              '- a discount larger than the subtotal makes the total negative;',
+              '- rounding is done twice, once in `subtotal()` and again in `total()`;',
+              '- the empty basket is never tested.',
+            ].join('\n')
+          : 'Both totals findings are fixed in `checkout/totals.ts` and **the tests pass**.',
       verdictReason:
-        step.cardId === 'c-review' ? 'The findings name a file and a line each.' : 'Everything it was handed is answered.',
+        step.cardId === 'c-review'
+          ? `Every finding names a file and a line, and all of them are written to \`${findings}\`.`
+          : 'Everything it was handed is answered.',
       handoff: step.cardId === 'c-review' ? findings : '',
     }
   })
   run.notes = [
-    { at: started + 60_000, stepKey: '', text: 'Read the briefing. This is a review of one branch, and nothing is to be pushed.' },
+    {
+      at: started + 60_000,
+      stepKey: '',
+      text: 'Read the briefing. This is a review of `mzolotoi/checkout-totals` at `fc649af`, and **nothing is to be pushed**.',
+    },
     { at: started + 9 * 60 * 1000, stepKey: 's-round:c-review:1', text: `Pointing the reviewer at ${findings}, which is empty so far.` },
     {
       at: started + 16 * 60 * 1000,
@@ -680,7 +696,17 @@ const walk = (id: string, from = 0, startIn: 'run' | 'judge' = 'run'): void => {
                 conversationId: `conv-${one.key}`,
                 slots: one.cardId === 'c-diff' ? ({} as Record<string, string>) : { findings: '/tmp/acc/findings.md' },
                 prompt: `${one.title}: what the card's own session was told, with the inputs written in.`,
-                said: 'Reading the files it was pointed at…',
+                said: [
+                  '**Context.**',
+                  '',
+                  '**Finding 1:** the history of nights by the change key.',
+                  '',
+                  'Reading the migration.',
+                  '',
+                  'Writing the red tests for finding 1.',
+                  '',
+                  'Both tests are red, as expected. Fixing `migration.ts` and the schema.',
+                ].join('\n'),
               }
             : one,
         ),

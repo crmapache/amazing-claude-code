@@ -162,7 +162,10 @@ internal data class RunStep(
     val slots: Map<String, String> = emptyMap(),
     /** The prompt as it was actually said, with the inputs and the slots written in. */
     val prompt: String = "",
-    /** What the agent is saying right now, cut short - one line while the turn is open. */
+    /**
+     * What the agent is saying right now while the turn is open: its newest words, a paragraph per block
+     * of text (see LiveWords).
+     */
     val said: String = "",
     /** The last thing it said, once the turn is over. What the row reads when nothing is moving. */
     val summary: String = "",

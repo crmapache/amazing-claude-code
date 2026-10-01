@@ -2628,14 +2628,12 @@
   color: var(--acc-accent-light);
 }
 
+/* Cut to three lines by the Glance it is drawn with - from the top while the card talks, from the bottom
+   once it has finished. */
 .stepLine {
   max-width: 100%;
   font: 11px/1.55 var(--acc-font);
   color: var(--acc-fg-faint);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
 }
 
 /* What the agent is saying at this very second - lit, because it is the difference between a step
@@ -2644,10 +2642,12 @@
   color: var(--acc-fg-body);
 }
 
+/* Bold inside a verdict keeps the verdict's colour: green or red is the one thing the line says at a glance. */
 .stepVerdict {
   max-width: 100%;
   font: 10.5px/1.5 var(--acc-font);
   color: var(--acc-ok);
+  --acc-glance-strong: currentColor;
 }
 
 .stepVerdictBad {
@@ -2732,8 +2732,6 @@
   min-width: 0;
   font: 11px/1.55 var(--acc-font);
   color: var(--acc-fg-faint);
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 /* --- One step's whole log, in place of the timeline ---------------------------------- */

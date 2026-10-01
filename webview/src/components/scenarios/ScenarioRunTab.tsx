@@ -15,6 +15,7 @@ import {
 import { useTicking } from '../../hooks/useTicking'
 import { useT } from '../../i18n'
 import { Confirm } from '../Confirm'
+import { Glance } from '../items/Glance'
 import { SkeletonBar } from '../Skeleton'
 import { StatePill } from './StatePill'
 import { StepLog, stepFacts } from './StepLog'
@@ -425,7 +426,7 @@ export const ScenarioRunTab = ({
                   <span className={s.noteRail} />
                   <span className={s.noteBody}>
                     <span className={s.noteWho}>{t.scenarios.run.headSaid}</span>
-                    <span className={s.noteText}>{row.note.text}</span>
+                    <Glance text={row.note.text} className={s.noteText} />
                   </span>
                 </div>
               )
@@ -466,6 +467,9 @@ export const ScenarioRunTab = ({
 
 /** The head has no step of its own, so its log is opened under a name no step can carry. */
 const HEAD = '__head__'
+
+/** How many lines a step's own line runs to before it is cut (see Glance). */
+const LINE_LINES = 3
 
 const standingClass = (standing: StageStanding): string =>
   standing === 'here' ? s.stageHere : standing === 'ahead' ? s.stageAhead : s.stageDone
@@ -556,12 +560,19 @@ const StepRow = ({
         ) : null}
 
         {line.trim().length > 0 && !ahead ? (
-          <span className={`${s.stepLine} ${step.said ? s.stepSaying : ''}`}>{line}</span>
+          <Glance
+            text={line}
+            lines={LINE_LINES}
+            newest={Boolean(step.said)}
+            className={`${s.stepLine} ${step.said ? s.stepSaying : ''}`}
+          />
         ) : null}
 
+        {/* The head's reason is its own words and is markdown like everything it writes; an error is the
+            engine's, and is shown exactly as it was put. */}
         {step.verdictReason || step.error ? (
           <span className={`${s.stepVerdict} ${step.verdict === 'undone' || step.error ? s.stepVerdictBad : ''}`}>
-            {step.verdictReason || step.error}
+            {step.verdictReason ? <Glance text={step.verdictReason} /> : step.error}
           </span>
         ) : null}
 

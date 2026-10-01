@@ -3450,29 +3450,27 @@
   color: var(--acc-accent);
 }
 
+/* Cut to three lines by the Glance it is drawn with. */
 .stepLine {
   font-family: var(--acc-mono);
   font-size: var(--acc-fs-meta);
   line-height: 1.5;
   color: var(--acc-fg-faint);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  overflow-wrap: anywhere;
 }
 
+/* Bold inside a verdict keeps the verdict's colour: green or red is what the line says at a glance. */
 .stepVerdict {
   font-family: var(--acc-mono);
   font-size: var(--acc-fs-meta);
   line-height: 1.5;
   color: var(--acc-ok-text);
   overflow-wrap: anywhere;
+  --acc-glance-strong: currentColor;
 }
 
 .stepVerdictBad {
   color: var(--acc-bad-text);
+  --acc-glance-strong: currentColor;
 }
 
 .stepSlots {
@@ -3519,8 +3517,6 @@
 
 .noteText {
   min-width: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 /* --- The question a run is standing on --------------------------------------- */

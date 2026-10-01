@@ -39,6 +39,9 @@ export const Markdown = ({ paragraphs, reveal = false, onOpenLink }: MarkdownPro
 /** The indent of one nesting level in a list. */
 const INDENT_PX = 14
 
+/** What an ordinary list item is marked with - wherever the agent's text is drawn (see Glance too). */
+export const BULLET = '—'
+
 const ParagraphView = ({
   paragraph,
   reveal,
@@ -86,7 +89,7 @@ const ParagraphView = ({
     <div className={paraClass} style={depth > 0 ? { marginLeft: depth * INDENT_PX } : undefined}>
       {/* A numbered item stays numbered: a step's own number matters more than a uniform dash - that is
           what a step is referred to by. */}
-      {paragraph.bullet ? <span className={s.bullet}>{paragraph.marker ?? '—'} </span> : null}
+      {paragraph.bullet ? <span className={s.bullet}>{paragraph.marker ?? BULLET} </span> : null}
       {paragraph.parts.map((part, index) => (
         <PartView key={index} part={part} reveal={reveal} onOpenLink={onOpenLink} />
       ))}

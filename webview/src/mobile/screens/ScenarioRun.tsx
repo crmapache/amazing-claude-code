@@ -5,6 +5,7 @@ import { useTicking } from '../../hooks/useTicking'
 import { useLocale, useT } from '../../i18n'
 import type { ScenarioRun as Run, ScenarioRunStep } from '../../protocol'
 import { Chevron } from '../../components/Chevron'
+import { Glance } from '../../components/items/Glance'
 import { StatePill } from '../../components/scenarios/StatePill'
 import { cutCardOf, finished, progressOf, resumable, runElapsed, timelineOf } from '../../scenarios/timeline'
 import { dayAndHour } from '../../scenarios/moments'
@@ -226,7 +227,7 @@ export const ScenarioRun = ({
               return (
                 <div key={row.key} className={m.note}>
                   <span className={m.noteWho}>{t.scenarios.run.headSaid}</span>
-                  <span className={m.noteText}>{row.note.text}</span>
+                  <Glance text={row.note.text} className={m.noteText} />
                 </div>
               )
             }
@@ -456,11 +457,12 @@ const StepRow = ({
           </span>
         )}
 
-        {line.trim().length > 0 && !ahead && <span className={m.stepLine}>{line}</span>}
+        {line.trim().length > 0 && !ahead && <Glance text={line} lines={3} className={m.stepLine} />}
 
+        {/* The head's reason is markdown like everything it writes; an error is the engine's own words. */}
         {(step.verdictReason || step.error) && (
           <span className={`${m.stepVerdict} ${step.verdict === 'undone' || step.error ? m.stepVerdictBad : ''}`}>
-            {step.verdictReason || step.error}
+            {step.verdictReason ? <Glance text={step.verdictReason} /> : step.error}
           </span>
         )}
 

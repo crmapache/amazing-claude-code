@@ -13,7 +13,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonObject
@@ -425,12 +424,12 @@ internal class ScenarioEngine(
         }
         // A head doing a card's work is working, and its row says so the way a card's does - otherwise an
         // hour of it reads on the screen as a card stuck with nothing moving (see [onCardLine]).
-        val said = streamedText(line)
-        if (said.isNotEmpty()) {
+        val piece = LiveWords.piece(line)
+        if (piece != null) {
             val moved = synchronized(this) {
                 val step = run.steps.getOrNull(at)
                 if (phase == Phase.TAKEOVER && step != null) {
-                    editStep(step.key) { it.copy(said = shorten(it.said + said, SAID_CHARS)) }
+                    editStep(step.key) { it.copy(said = LiveWords.add(it.said, piece, SAID_CHARS)) }
                     true
                 } else {
                     false
@@ -453,12 +452,12 @@ internal class ScenarioEngine(
             }
         }
         // What the agent is saying right now, so a card working for four minutes is visibly working
-        // rather than visibly stuck. Only while its own turn is what we are waiting for: a line arriving
-        // during a pause is the tail of an interrupted turn and says nothing about now.
-        val said = streamedText(line)
-        if (said.isNotEmpty()) {
+        // rather than visibly stuck (see LiveWords). Only while its own turn is what we are waiting for: a
+        // line arriving during a pause is the tail of an interrupted turn and says nothing about now.
+        val piece = LiveWords.piece(line)
+        if (piece != null) {
             synchronized(this) {
-                if (phase == Phase.CARD) editStep(key) { it.copy(said = shorten(it.said + said, SAID_CHARS)) }
+                if (phase == Phase.CARD) editStep(key) { it.copy(said = LiveWords.add(it.said, piece, SAID_CHARS)) }
             }
             changed()
         }
@@ -506,14 +505,6 @@ internal class ScenarioEngine(
         }
 
         if (cost != null || tokens > 0) spent(cost, tokens)
-    }
-
-    private fun streamedText(line: String): String {
-        if (!line.contains("\"stream_event\"") || !line.contains("\"text_delta\"")) return ""
-        val event = runCatching { json.parseToJsonElement(line).jsonObject }.getOrNull() ?: return ""
-        val delta = (event["event"] as? JsonObject)?.get("delta") as? JsonObject ?: return ""
-        if ((delta["type"] as? JsonPrimitive)?.contentOrNull != "text_delta") return ""
-        return (delta["text"] as? JsonPrimitive)?.contentOrNull.orEmpty()
     }
 
     /**
@@ -1579,7 +1570,11 @@ internal class ScenarioEngine(
         val CARD_PHASES = setOf(Phase.CARD, Phase.QUESTION, Phase.BLOCKED)
         const val HOUR_MS = 60L * 60 * 1000
         const val TICK_SECONDS = 30L
-        const val SAID_CHARS = 400
+        /**
+         * The newest words a row keeps (see LiveWords). Its live line shows the last three lines of them,
+         * and across a wide panel three lines of the card's 11px type hold some seven hundred characters.
+         */
+        const val SAID_CHARS = 1200
         const val SUMMARY_CHARS = 4000
         const val NOTE_CHARS = 1200
         /** What a taken-over row says about why - one reason, not the card's whole last answer. */

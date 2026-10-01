@@ -1,5 +1,6 @@
 import type { ScenarioRunStep } from '../../protocol'
 import { Feed } from '../../components/Feed'
+import { Glance } from '../../components/items/Glance'
 import { stepFacts } from '../../components/scenarios/StepLog'
 import type { FeedItem } from '../../feed/types'
 import { useCardState } from '../../hooks/useCardState'
@@ -61,7 +62,7 @@ export const ScenarioStep = ({
             <div className={`${m.card} ${m.stepVerdictCard}`}>
               <span className={m.stepVerdictLabel}>{t.mobile.scenarios.step.verdict}</span>
               <span className={step.verdict === 'undone' || step.error ? m.stepVerdictBad : m.stepVerdict}>
-                {step.verdictReason || step.error}
+                {step.verdictReason ? <Glance text={step.verdictReason} /> : step.error}
               </span>
             </div>
           </div>
