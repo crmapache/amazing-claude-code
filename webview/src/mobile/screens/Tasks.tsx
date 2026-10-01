@@ -56,7 +56,7 @@ export const Tasks = ({ feed, cards, title, onAgent, onStopTask, onBack }: Tasks
         </div>
       </header>
 
-      <div className={m.list}>
+      <div className={m.pageList}>
         {nothing && <p className={m.empty}>{t.mobile.tasks.nothing}</p>}
 
         {todo && todo.todos.length > 0 && (

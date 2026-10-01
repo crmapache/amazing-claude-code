@@ -1526,8 +1526,8 @@
 
 /* The same caption on the list of projects, where the cards stand inset (see .project). A heading that
    begins at the screen's edge over cards that begin eighteen pixels in reads as a heading of the screen
-   rather than of the list under it. Not put on .bandTitle itself: the task screen shares that class and
-   its cards do run to the wall. */
+   rather than of the list under it. Not put on .bandTitle itself: every other screen that shares the class
+   stands its whole list off the edges instead (see .pageList), and a margin here would inset it twice. */
 .homeBand {
   margin-left: var(--acc-sp-5);
   margin-right: var(--acc-sp-5);
@@ -3684,11 +3684,12 @@
    =========================================================================== */
 
 /*
- * The scenarios' own lists stand off the edges of the screen.
+ * A screen made of bordered cards stands them off the edges of the screen.
  *
- * Everywhere else here a card runs the full width, because a conversation is the screen. These are lists
- * of things to choose between - a shelf, a table of nights, a timetable - and a card that runs into the
- * edge reads as the screen itself rather than as one of several.
+ * Born for the scenarios and taken up by every screen of cards since - MCP, plugins, accounts, the task
+ * list and its agents. These are lists of things to choose between - a shelf, a table of nights, a list
+ * of servers - and a card that runs into the edge reads as the screen itself rather than as one of
+ * several, with its rounded corners cut off by the glass.
  */
 .pageList {
   composes: list;
