@@ -9,6 +9,12 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.13] - 2026-10-01
+
+- Fixed: a scenario's main thread could send a finished card back to work for a report it had already written. When a project's own hook sends the agent back at the end of its turn - for a style pass over the code it touched, for example - its last words are about that, and the main thread was shown only those words. A card that ended hours of work with a full report reached it as a note about two comments, and was sent back to repeat every check. Now the main thread is shown everything the card said each time it finished, in order, and is told why there is more than one.
+- Fixed: on the phone, the cards on a conversation's task screen ran into the edges of the screen, with their rounded corners cut off by the glass. Every other screen made of cards - the projects, MCP servers, plugins, accounts - stands them a little in from the edges, and the task screen now does the same.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.12] - 2026-09-30
 
 - Fixed: clicking the tab that glows did not put its light out when it was the tab already open. The light on an open tab that called you while you were away waits for you to do something in it, and the tab strip was left out of that entirely - so a click on the other tabs would not answer this one - which left out a click on the glowing tab itself too, and the light stayed until you clicked in the conversation or typed. Now clicking the glowing tab answers it; clicking another tab, "+" or the menu still leaves it glowing.
@@ -835,7 +841,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.12...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.13...HEAD
+[0.13.13]: https://github.com/crmapache/amazing-claude-code/compare/0.13.12...0.13.13
 [0.13.12]: https://github.com/crmapache/amazing-claude-code/compare/0.13.11...0.13.12
 [0.13.11]: https://github.com/crmapache/amazing-claude-code/compare/0.13.10...0.13.11
 [0.13.10]: https://github.com/crmapache/amazing-claude-code/compare/0.13.9...0.13.10
