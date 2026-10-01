@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.11] - 2026-09-30
+
+- Fixed: adding a second Claude account could put the wrong name on it, and a later sign-in could then delete an account from the machine. Signing in, the panel read the new account's name from Claude Code's shared settings file, which names whichever account's process wrote it last rather than the one that just signed in - so the new sign-in could be filed under an account that was already there, and signing into that account later was taken for a repeated sign-in that replaced it. Now the name is asked of the new sign-in itself, an account's sign-in is replaced only when it confirms it holds that same account, and rows already filed under the wrong name are corrected on their own the next time the accounts screen is open. The address on a card is checked every minute rather than kept for a day, so a card no longer goes on naming somebody who is not signed in there.
+- Changed: the anonymous usage statistics, if you have allowed them, now also count how many things were done from a paired phone in a day - messages, answers, approvals, stops - as one number. Until now only the messages written on a phone were counted, so somebody who uses the phone just to approve what the agent asks did not show up at all. What the phone does by itself, such as refreshing a list, is not counted. The privacy policy lists the new figure.
+
 ## [0.13.10] - 2026-09-30
 
 - Added: anonymous usage statistics, off until you say yes. A card above the input field asks once whether the panel may send daily counts of how it is used - which features, how often, how long a sitting lasts - and nothing is sent until you press Allow. Never your code, your messages, file names, project names or anything that says who you are; the counts go under a random id made on your machine, and the service keeps no IP address. Settings - "Usage statistics" shows the whole report as it would go next, and switching it off stops the reports and deletes what was already sent. The privacy policy lists every field.
@@ -826,7 +831,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.10...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.11...HEAD
+[0.13.11]: https://github.com/crmapache/amazing-claude-code/compare/0.13.10...0.13.11
 [0.13.10]: https://github.com/crmapache/amazing-claude-code/compare/0.13.9...0.13.10
 [0.13.9]: https://github.com/crmapache/amazing-claude-code/compare/0.13.8...0.13.9
 [0.13.8]: https://github.com/crmapache/amazing-claude-code/compare/0.13.7...0.13.8
