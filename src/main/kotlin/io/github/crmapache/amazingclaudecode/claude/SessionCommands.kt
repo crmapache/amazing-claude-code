@@ -78,6 +78,9 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
         // plugin. The desk's own panel is counted at its window's door (see ClaudePanel), and every one of
         // its messages passes there first, so counting it here too would count it twice.
         if (!local) UsageFeatures.ofMessage(type, payload)?.let { hub.stats.noteFeature(it) }
+        // And a phone's press counts once more as a phone's - how many people really use remote access is the
+        // question, and a feature count cannot answer it: it does not say where the press came from.
+        if (!local && UsageFeatures.isPhoneAction(type)) hub.stats.notePhoneAction()
 
         when (type) {
             /**

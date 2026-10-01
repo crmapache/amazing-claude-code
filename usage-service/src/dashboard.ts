@@ -45,6 +45,31 @@ export interface SeriesPoint {
   medianMinutes: number
 }
 
+/**
+ * Remote access, told apart from being switched on: how many machines have it on, how many have a phone
+ * paired, and how many actually did something from a phone in the range.
+ *
+ * "Used" is any day with a press from a phone, a message from one, or the phone opening a conversation to
+ * watch. Plugins before 0.13.11 do not send the presses, so on their days only the other two count - a
+ * phone used only to approve things is invisible there and seen from that version on.
+ */
+export interface RemoteUse {
+  /** Machines active in the range whose last report says remote access is on. */
+  switchedOn: number
+  /** Machines active in the range whose last report names at least one paired phone. */
+  paired: number
+  /** Machines that did something from a phone on at least one day of the range. */
+  used: number
+  /** Of all messages in the range, the share written on a phone. */
+  messageShare: number
+  /** Presses from a phone in the range, all machines together. */
+  actions: number
+  /** On average, how many days of the range a machine that used its phone used it on. */
+  daysPerUser: number
+  /** Machines that used a phone, day by day. */
+  series: { day: string; machines: number }[]
+}
+
 export interface Overview {
   range: { days: number; from: string; to: string }
   kpi: {
@@ -67,6 +92,7 @@ export interface Overview {
   sittingsPerDay: Share[]
   activeDaysPerInstall: Share[]
   features: FeatureRow[]
+  remote: RemoteUse
   tools: Share[]
   models: Share[]
   slash: Share[]
@@ -315,6 +341,51 @@ export const overview = (store: Store, days: number, now: number = Date.now()): 
         .map(([value, count]) => ({ value, count, share: ofActive(count) })),
     }))
 
+  // --- Remote access -------------------------------------------------------------------------------
+  const PHONE = '(phone_actions > 0 OR phone_prompts > 0 OR watched > 0)'
+  const phoneDays = store.all<{ install: string; day: string }>(
+    `SELECT install, day FROM days WHERE day BETWEEN ? AND ? AND ${PHONE}`,
+    from,
+    to,
+  )
+  const phoneUsers = new Map<string, number>()
+  const phoneByDay = new Map<string, Set<string>>()
+  for (const row of phoneDays) {
+    phoneUsers.set(row.install, (phoneUsers.get(row.install) ?? 0) + 1)
+    const machines = phoneByDay.get(row.day) ?? new Set<string>()
+    machines.add(row.install)
+    phoneByDay.set(row.day, machines)
+  }
+
+  const settingOf = (key: string, pass: (value: unknown) => boolean): number =>
+    store
+      .all<{ settings: string }>(`SELECT settings FROM installs WHERE id IN (${activeIds})`, from, to)
+      .filter((row) => {
+        try {
+          return pass((JSON.parse(row.settings) as Record<string, unknown>)[key])
+        } catch {
+          return false
+        }
+      }).length
+
+  const phoneSums = store.get<{ prompts: number; phone: number; actions: number }>(
+    `SELECT COALESCE(SUM(prompts), 0) AS prompts, COALESCE(SUM(phone_prompts), 0) AS phone,
+            COALESCE(SUM(phone_actions), 0) AS actions
+     FROM days WHERE day BETWEEN ? AND ?`,
+    from,
+    to,
+  )
+
+  const remote: RemoteUse = {
+    switchedOn: settingOf('remote', (value) => value === true),
+    paired: settingOf('pairedDevices', (value) => typeof value === 'number' && value > 0),
+    used: phoneUsers.size,
+    messageShare: phoneSums && phoneSums.prompts > 0 ? phoneSums.phone / phoneSums.prompts : 0,
+    actions: phoneSums?.actions ?? 0,
+    daysPerUser: average([...phoneUsers.values()]),
+    series: series.map((point) => ({ day: point.day, machines: phoneByDay.get(point.day)?.size ?? 0 })),
+  }
+
   // --- Totals ---------------------------------------------------------------------------------------
   const sums = store.get<Record<string, number>>(
     `SELECT ${DAY_FIELDS.map((field) => `COALESCE(SUM(${column(field)}), 0) AS ${field}`).join(', ')}
@@ -356,6 +427,7 @@ export const overview = (store: Store, days: number, now: number = Date.now()): 
     sittingsPerDay: binned(sittingCounts, SITTINGS_PER_DAY_BINS),
     activeDaysPerInstall: binned([...daysByInstall.values()], ACTIVE_DAYS_BINS),
     features,
+    remote,
     tools: byUses('tools'),
     models: byUses('models'),
     slash,

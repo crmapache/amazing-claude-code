@@ -105,4 +105,28 @@ describe('the overview', () => {
     expect(addDays('2026-09-30', 1)).toBe('2026-10-01')
     expect(addDays('2026-03-01', -1)).toBe('2026-02-28')
   })
+
+  it('tells machines that use a phone from those that only switched remote access on', () => {
+    const store = new Store(':memory:')
+    // On, paired, and used: a message one day, only approvals another.
+    save(store, A, [
+      { day: '2026-09-28', minutes: 30, prompts: 10, phonePrompts: 2, phoneActions: 5 },
+      { day: '2026-09-29', minutes: 20, prompts: 4, phoneActions: 3 },
+    ], { remote: true, pairedDevices: 1 })
+    // On and paired, never used in the range.
+    save(store, B, [{ day: '2026-09-29', minutes: 40, prompts: 6 }], { remote: true, pairedDevices: 2 })
+    // An older plugin: no presses reported, but the phone watched a conversation.
+    save(store, C, [{ day: '2026-09-29', minutes: 10, prompts: 0, watched: 1 }], { remote: false, pairedDevices: 0 })
+
+    const remote = overview(store, 7, NOW).remote
+
+    expect(remote.switchedOn).toBe(2)
+    expect(remote.paired).toBe(2)
+    expect(remote.used).toBe(2)
+    expect(remote.messageShare).toBeCloseTo(2 / 20)
+    expect(remote.actions).toBe(8)
+    expect(remote.daysPerUser).toBe(1.5)
+    expect(remote.series.find((point) => point.day === '2026-09-29')?.machines).toBe(2)
+    expect(remote.series.find((point) => point.day === '2026-09-28')?.machines).toBe(1)
+  })
 })

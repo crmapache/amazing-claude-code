@@ -199,8 +199,9 @@ at most two weeks and never to a day before you allowed it.
 - counts: minutes with something going on in the panel, messages sent, answers finished, conversations,
   forks, edits that landed and the lines they added and removed, how many distinct files were edited (a
   number, not which files), permission questions and how many were denied, plans approved, task lists
-  finished, attachments and quotes, messages sent from a paired phone, and how often the five-hour limit
-  ran out;
+  finished, attachments and quotes, messages sent from a paired phone and how many things were done from
+  it in all (messages, answers, approvals, stops, as one number), and how often the five-hour limit ran
+  out;
 - how long each stretch of work lasted, in minutes. A stretch ends at a gap of more than half an hour.
   When a stretch began is not sent;
 - which of the panel's features were used and how many times: the voice button, a fork, the history

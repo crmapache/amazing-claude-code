@@ -57,6 +57,14 @@ internal class DayRecord {
     /** Messages that came from a paired phone rather than from the desk. */
     var phonePrompts = 0
 
+    /**
+     * Everything a person did from a paired phone: the messages above, and the answers, approvals, stops,
+     * new chats and scenario presses beside them. The messages alone missed the people who use the phone
+     * only to unblock the desk - allowing a command, approving a plan - and never type a word on it. What
+     * a phone sends by itself (catching up, refreshing a list) is not counted - see UsageFeatures.
+     */
+    var phoneActions = 0
+
     /** Messages sent before eight in the morning, and after midnight. */
     var earlyPrompts = 0
 
@@ -309,6 +317,7 @@ internal class DayRecord {
             DayRecord::sessions,
             DayRecord::forks,
             DayRecord::phonePrompts,
+            DayRecord::phoneActions,
             DayRecord::earlyPrompts,
             DayRecord::latePrompts,
             DayRecord::quickTurns,

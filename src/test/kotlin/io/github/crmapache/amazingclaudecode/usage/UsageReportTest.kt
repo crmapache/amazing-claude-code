@@ -56,7 +56,7 @@ class UsageReportTest {
 
         assertEquals(
             setOf(
-                "day", "minutes", "conversations", "prompts", "turns", "turnSeconds", "phonePrompts", "forks",
+                "day", "minutes", "conversations", "prompts", "turns", "turnSeconds", "phonePrompts", "phoneActions", "forks",
                 "edits", "linesAdded", "linesRemoved", "filesEdited", "permissionsAsked", "permissionsDenied",
                 "plansApproved", "todosDone", "attachments", "quotes", "ranOutFiveHour", "watched", "mcpConnected",
                 "plugins", "longestConversation", "sittings", "tools", "models", "slash", "features",

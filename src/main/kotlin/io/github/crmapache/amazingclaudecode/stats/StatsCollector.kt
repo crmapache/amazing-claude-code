@@ -518,6 +518,15 @@ internal class StatsCollector(
         }
     }
 
+    /**
+     * Something a person did from a paired phone - see DayRecord.phoneActions. Using the plugin from a sofa
+     * is using it, so a usage report that is due may go (see [onUse]).
+     */
+    fun notePhoneAction() {
+        update { it.phoneActions++ }
+        onUse()
+    }
+
     fun notePlan(decision: String) {
         update { day ->
             if (decision == "approve") day.plansApproved++

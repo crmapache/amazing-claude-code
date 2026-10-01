@@ -1,6 +1,6 @@
 import { columnChart, formatNumber, formatShare, lineChart, shortDay, type Point } from './charts.js'
 import { GROUPS } from './features.js'
-import { RANGES, type EnvironmentField, type FeatureRow, type Overview, type Share } from './dashboard.js'
+import { RANGES, type EnvironmentField, type FeatureRow, type Overview, type RemoteUse, type Share } from './dashboard.js'
 import type { DayField } from './report.js'
 
 /**
@@ -119,6 +119,7 @@ const SETTING_TITLES: Record<string, string> = {
 const TOTALS: { field: DayField; label: string }[] = [
   { field: 'prompts', label: 'Messages sent' },
   { field: 'phonePrompts', label: '...of them from a phone' },
+  { field: 'phoneActions', label: 'Presses from a phone (messages, answers, approvals)' },
   { field: 'turns', label: 'Answers finished' },
   { field: 'conversations', label: 'Conversations' },
   { field: 'forks', label: 'Forks' },
@@ -207,6 +208,32 @@ const featureSection = (features: FeatureRow[]): string => {
         ),
     )
     .join('')
+}
+
+/**
+ * Remote access in one card: switched on, a phone paired, actually used - three numbers that tell apart
+ * people who tried the feature from people who live on it - and the machines using a phone day by day.
+ */
+const remoteSection = (remote: RemoteUse, activeInRange: number): string => {
+  const share = (count: number): string => (activeInRange === 0 ? '' : `${formatShare(count / activeInRange)} of active machines`)
+  const points: Point[] = remote.series.map((point) => ({
+    label: shortDay(point.day),
+    value: point.machines,
+    tip: `${shortDay(point.day)}: ${point.machines} machines used a phone`,
+  }))
+
+  return (
+    `<div class="tiles inner">` +
+    tile('Remote access on', formatNumber(remote.switchedOn), share(remote.switchedOn)) +
+    tile('A phone paired', formatNumber(remote.paired), share(remote.paired)) +
+    tile('Used from a phone', formatNumber(remote.used), share(remote.used)) +
+    tile('Days with the phone', remote.daysPerUser.toFixed(1), 'average, per machine that used it') +
+    tile('Messages from a phone', formatShare(remote.messageShare), 'of all messages in the range') +
+    tile('Presses from a phone', formatNumber(remote.actions), 'messages, answers, approvals, stops') +
+    `</div>` +
+    `<h3>Machines that used a phone, per day</h3>` +
+    lineChart(points, 'Machines that used a phone per day')
+  )
 }
 
 /** Shades for the retention grid: nine steps of one blue, light for few and dark for many. */
@@ -322,6 +349,7 @@ ${rangeNav(range.days)}
   ${card('Days active in the range', 'Per machine: one-off visits against daily use', columnChart(histogram(overview.activeDaysPerInstall, 'machines'), 'Active days per machine', { capLabels: true, compact: true }))}
   ${card('Retention', 'Of the machines first seen in a week, the share active in each week after', cohortTable(overview), true)}
   ${card('Features', `Share of the ${formatNumber(kpi.activeInRange)} machines active in the range that used each at least once`, featureSection(overview.features), true)}
+  ${card('Remote access', 'Switched on and paired are what the last report said; used means at least one day with a message, a press or watching from a phone', remoteSection(overview.remote, kpi.activeInRange), true)}
   ${card('Models', 'Share of answers', shares(overview.models, 8))}
   ${card('Tools', 'Share of tool calls; every MCP tool counts as MCP', shares(overview.tools, 16))}
   ${card('Built-in commands', 'Share of machines that used each; commands of their own count as custom', shares(overview.slash, 16))}
@@ -378,6 +406,8 @@ button { font: inherit; cursor: pointer; }
 .ghost:hover { color: var(--ink); }
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; padding: 0 28px 16px; }
 .tile { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 14px 16px; }
+.tiles.inner { padding: 4px 0 8px; }
+.tiles.inner .tile { background: var(--page); }
 .tileLabel { font-size: 12.5px; color: var(--ink-2); }
 .tileValue { font-size: 28px; font-weight: 600; margin-top: 4px; }
 .tileNote { font-size: 12px; color: var(--muted); margin-top: 2px; }

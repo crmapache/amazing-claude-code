@@ -134,6 +134,84 @@ internal object UsageFeatures {
         "relay",
     )
 
+    /**
+     * What a person does from a paired phone, among the messages a phone may send at all (see
+     * RemoteCommands.ALLOWED) - counted into DayRecord.phoneActions. Every allowed message is in exactly one
+     * of this list and [PHONE_BACKGROUND], and UsageFeaturesTest fails until a new one is placed.
+     */
+    val PHONE_ACTIONS: Set<String> = setOf(
+        "prompt",
+        "queuePrompt",
+        "unqueuePrompt",
+        "reorderQueue",
+        "permissionDecision",
+        "planDecision",
+        "askAnswer",
+        "askDismiss",
+        "stop",
+        "kill",
+        "stopTask",
+        "resumeSession",
+        "search",
+        "searchAi",
+        "newSession",
+        "voiceToken",
+        "setModel",
+        "setEffort",
+        "mcpReconnect",
+        "mcpAuthenticate",
+        "mcpAdd",
+        "mcpRemove",
+        "scenarioAnswer",
+        "scenarioPause",
+        "scenarioResume",
+        "scenarioContinue",
+        "scenarioStop",
+        "scenarioSave",
+        "scenarioDelete",
+        "scenarioDuplicate",
+        "scenarioPlace",
+        "scenarioDraft",
+        "scenarioDraftCancel",
+        "scenarioRun",
+        "scenarioSchedule",
+        "scenarioUnschedule",
+        "scenarioRunDelete",
+        "scenarioQueue",
+        "scenarioQueueRemove",
+        "scenarioQueueMove",
+        "scenarioQueueMode",
+        "scenarioQueueGoOn",
+        "scenarioQueueClear",
+        "accountUse",
+        "accountRename",
+        "accountForget",
+        "accountLogout",
+    )
+
+    /**
+     * What a phone sends by itself: catching up on joining, refreshing a list or a page, reading a run's
+     * record, and the name it guesses for a tab after its first message. None of it is somebody pressing
+     * anything, and counted it would make every phone left on a screen look busy.
+     */
+    val PHONE_BACKGROUND: Set<String> = setOf(
+        "ready",
+        "history",
+        "historyPage",
+        "searchCancel",
+        "renameSession",
+        "mcpList",
+        "pluginList",
+        "marketplaceList",
+        "scenarios",
+        "scenarioFetch",
+        "scenarioOpen",
+        "scenarioLog",
+        "accountList",
+    )
+
+    fun isPhoneAction(type: String): Boolean = type in PHONE_ACTIONS
+
     /** What the panel may report through `stat` - the uses the IDE cannot see arriving. */
     private val PANEL: Set<String> = setOf("pin", "message_reuse", "statistics_tab", "scenarios_tab")
 

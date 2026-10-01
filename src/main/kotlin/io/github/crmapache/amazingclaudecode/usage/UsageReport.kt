@@ -97,6 +97,7 @@ internal object UsageReport {
         put("turns", record.turns)
         put("turnSeconds", record.turnMillis / 1000)
         put("phonePrompts", record.phonePrompts)
+        put("phoneActions", record.phoneActions)
         put("forks", record.forks)
         put("edits", record.edits)
         put("linesAdded", record.linesAdded)

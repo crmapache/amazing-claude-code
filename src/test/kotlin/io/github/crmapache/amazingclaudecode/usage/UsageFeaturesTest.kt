@@ -1,5 +1,6 @@
 package io.github.crmapache.amazingclaudecode.usage
 
+import io.github.crmapache.amazingclaudecode.remote.RemoteCommands
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -90,5 +91,28 @@ class UsageFeaturesTest {
 
         assertTrue(screens.isNotEmpty(), "the MenuScreen union was not found")
         assertEquals(screens, UsageFeatures.SCREENS)
+    }
+
+    /**
+     * Every message a phone may send is either somebody pressing something or the phone keeping itself up to
+     * date, and which of the two is decided by name. A message allowed to phones later and placed nowhere
+     * fails here, rather than being left out of "used from a phone" - or put into it by default.
+     */
+    @Test
+    fun `every message a phone may send is decided about as an action or as background`() {
+        val placed = UsageFeatures.PHONE_ACTIONS + UsageFeatures.PHONE_BACKGROUND
+
+        assertEquals(emptySet(), UsageFeatures.PHONE_ACTIONS intersect UsageFeatures.PHONE_BACKGROUND)
+        assertEquals(emptySet(), RemoteCommands.ALLOWED - placed, "allowed to phones and placed nowhere")
+        assertEquals(emptySet(), placed - RemoteCommands.ALLOWED, "placed, but a phone may not send it at all")
+    }
+
+    @Test
+    fun `a phone keeping itself up to date is not a person using it`() {
+        assertTrue(UsageFeatures.isPhoneAction("permissionDecision"))
+        assertTrue(UsageFeatures.isPhoneAction("prompt"))
+        assertFalse(UsageFeatures.isPhoneAction("ready"))
+        // The name a tab gets after its first message is guessed by the page, not typed by anybody.
+        assertFalse(UsageFeatures.isPhoneAction("renameSession"))
     }
 }

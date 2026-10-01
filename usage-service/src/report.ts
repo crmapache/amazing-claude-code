@@ -23,6 +23,11 @@ export const DAY_FIELDS = [
   /** How long the agent worked, summed over the turns. */
   'turnSeconds',
   'phonePrompts',
+  /**
+   * Everything a person did from a paired phone - messages, answers, approvals, stops. Absent from plugins
+   * before 0.13.11, where a phone's use shows only through its messages and its watching.
+   */
+  'phoneActions',
   'forks',
   'edits',
   'linesAdded',
