@@ -174,6 +174,16 @@ describe('phoneCommands', () => {
     expect(ids).not.toContain('logout')
   })
 
+  // The one exception: the phone answers /btw itself, the panel's way (see feed/side), and a question
+  // beside a long run is exactly what somebody away from the desk wants to ask.
+  it('keeps /btw, which the phone asks itself', () => {
+    const ids = phoneCommands(en, emptyFacts().commands, emptyFacts().hints).map((command) => command.id)
+
+    expect(ids).toContain('btw')
+    expect(ids).not.toContain('config')
+    expect(ids).not.toContain('rename')
+  })
+
   /**
    * A phone never sees a conversation start, so the agent's own list reaches it only as a project fact.
    * Without it the MCP servers' commands - which have no file and therefore no hint - could not be

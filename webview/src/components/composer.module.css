@@ -2200,6 +2200,24 @@
   background: var(--acc-warn-active);
 }
 
+/* A side question (`/btw`) goes beside the work rather than into it, and the button says so by stepping
+   back: the accent's soft fill and its line, the same pair the side-question card wears over the field
+   (see sideQuestion.module.css), rather than the solid fill that means "this goes to the agent". */
+.sendAside {
+  border: 1px solid var(--acc-accent-line);
+  background: var(--acc-accent-soft);
+  color: var(--acc-accent);
+}
+
+.sendAside:hover,
+.sendAside[data-hover] {
+  background: var(--acc-accent-20);
+}
+
+.sendAside:active {
+  background: var(--acc-accent-32);
+}
+
 /*
  * The holiday layer's third ornament: the Send button freezes over (see holiday.ts).
  *
@@ -2207,13 +2225,14 @@
  * ice is the button's own fill rather than something laid over it - the whole 26px still take the click,
  * and nothing decorative sits above a tap target.
  *
- * Three exclusions, and none of them is cosmetic. `Run` is orange because the draft is a shell command
+ * Four exclusions, and none of them is cosmetic. `Run` is orange because the draft is a shell command
  * and the panel marks everything genuinely done on the machine that colour - that is meaning, not
- * decoration. The queue button shares this class and is deliberately the neutral one beside `Send`. And a
- * disabled button has its own dimmed look, which the rule below would otherwise outrank at higher
+ * decoration. `Ask aside` steps back on purpose, for the same kind of reason: the question does not go to
+ * the agent at work. The queue button shares this class and is deliberately the neutral one beside `Send`.
+ * And a disabled button has its own dimmed look, which the rule below would otherwise outrank at higher
  * specificity.
  */
-[data-holiday] .send:not(.sendRun):not(.sendQueued):not(:disabled) {
+[data-holiday] .send:not(.sendRun):not(.sendAside):not(.sendQueued):not(:disabled) {
   position: relative;
   /* clip rather than hidden: a hidden overflow makes the button a scroll container, and a scroll container
      has no automatic minimum in the row - Send would narrow on past its first letter (see .send). */
@@ -2231,7 +2250,7 @@
 
 /* The glaze along the top edge, and one slanted shine across the face. Pseudo-elements rather than nodes:
    the button's markup is one word of text, and the ice has no business in Composer.tsx. */
-[data-holiday] .send:not(.sendRun):not(.sendQueued):not(:disabled)::before {
+[data-holiday] .send:not(.sendRun):not(.sendAside):not(.sendQueued):not(:disabled)::before {
   content: '';
   position: absolute;
   inset: 1px 2px auto;
@@ -2241,7 +2260,7 @@
   pointer-events: none;
 }
 
-[data-holiday] .send:not(.sendRun):not(.sendQueued):not(:disabled)::after {
+[data-holiday] .send:not(.sendRun):not(.sendAside):not(.sendQueued):not(:disabled)::after {
   content: '';
   position: absolute;
   top: -2px;
@@ -2253,12 +2272,12 @@
   pointer-events: none;
 }
 
-[data-holiday] .send:not(.sendRun):not(.sendQueued):not(:disabled):hover,
-[data-holiday] .send:not(.sendRun):not(.sendQueued):not(:disabled)[data-hover] {
+[data-holiday] .send:not(.sendRun):not(.sendAside):not(.sendQueued):not(:disabled):hover,
+[data-holiday] .send:not(.sendRun):not(.sendAside):not(.sendQueued):not(:disabled)[data-hover] {
   background: var(--acc-ice-hover);
 }
 
-[data-holiday] .send:not(.sendRun):not(.sendQueued):not(:disabled):active {
+[data-holiday] .send:not(.sendRun):not(.sendAside):not(.sendQueued):not(:disabled):active {
   background: var(--acc-ice-active);
 }
 

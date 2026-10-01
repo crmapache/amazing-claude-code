@@ -133,8 +133,8 @@ internal class DayRecord {
      * the line copied to pass on.
      *
      * A set rather than a count, because doing one of them twice is thanking once - and pressing "share"
-     * is a press, not a friend told (see Thanks.tsx for the three, and Achievements for the two lines they
-     * are measured against).
+     * is a press, not a friend told (see Thanks.tsx for the three - the tip in that menu is never sent
+     * here - and Achievements for the lines they are measured against).
      */
     val thanksWays = LinkedHashSet<String>()
 

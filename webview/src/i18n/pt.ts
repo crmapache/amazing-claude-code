@@ -242,7 +242,7 @@ export const pt: Dict = {
     },
     tokens: { label: 'Tokens de hoje', hint: 'Gastos hoje, em todos os projetos' },
     feedback: { label: 'Botão de feedback', hint: 'O balão que abre o formulário - o menu mantém o próprio acesso' },
-    thanks: { label: 'Coração', hint: 'Uma estrela, uma avaliação ou uma palavra a um amigo' },
+    thanks: { label: 'Coração', hint: 'Uma estrela, uma avaliação, uma palavra a um amigo ou uma gorjeta' },
   },
 
   history: {
@@ -861,6 +861,8 @@ export const pt: Dict = {
     send: 'Enviar',
     run: 'Executar',
     runHint: 'Roda na sua shell - o Claude vê a saída na sua próxima mensagem',
+    askAside: 'Perguntar à parte',
+    askAsideHint: 'O Claude responde pela conversa e continua trabalhando',
     improveEmpty: 'O Claude Code respondeu sem nada para colocar no campo.',
     improveChanged: 'O rascunho mudou durante a reescrita, então ele ficou como estava.',
     improveTerminal: 'Um comando de terminal não é reescrito',
@@ -890,6 +892,25 @@ export const pt: Dict = {
     watchers: (n) => `Há mais ${n} ${n === 1 ? 'cliente vendo' : 'clientes vendo'} este projeto`,
   },
 
+  side: {
+    title: 'PERGUNTA À PARTE',
+    unseen: 'O Claude não vê isto',
+    thinking: 'Pensando à parte',
+    retrying: (attempt: number, max: number, seconds: number): string =>
+      `Erro da API, tentativa ${attempt} de ${max} em ${seconds} s`,
+    cancel: 'Cancelar',
+    cancelled: 'Cancelada',
+    askAgain: 'Perguntar de novo',
+    empty: 'Nenhuma resposta chegou',
+    failed: { ended: 'A conversa parou antes de responder', timeout: 'Sem resposta em dez minutos', refused: 'O Claude Code recusou' },
+    copy: 'Copiar a resposta',
+    close: 'Fechar (Esc)',
+    notSaved: 'Não fica salvo no chat',
+    askInChat: 'Perguntar no chat',
+    askInChatHint: 'Leva a pergunta para o campo como uma mensagem comum - lá o Claude pode ler arquivos e usar ferramentas',
+    hint: 'Digite /btw e uma pergunta. O Claude responde a partir desta conversa sem parar o trabalho, e a resposta não entra no chat.',
+  },
+
   thanks: {
     button: 'Curtindo o plugin? Diga obrigado',
     title: 'DIZER OBRIGADO',
@@ -900,6 +921,8 @@ export const pt: Dict = {
     share: 'Compartilhar com amigos',
     shareSub: 'Copia uma linha sobre ele e o link',
     shareCopied: 'Copiado - cole onde quiser',
+    tip: 'Deixar uma gorjeta',
+    tipSub: 'No Ko-fi, uma vez ou todo mês',
     shareText:
       'Dá uma olhada no Amazing Claude Code GUI - o Claude Code como um painel de verdade dentro das IDEs da JetBrains: https://plugins.jetbrains.com/plugin/33255-amazing-claude-code',
   },
@@ -1764,6 +1787,8 @@ export const pt: Dict = {
     rename: 'renomear esta aba; sem nome, abre o campo nela',
     renameArgument: '[novo nome]',
     config: 'configurações do Claude Code - abre no menu',
+    btw: 'uma pergunta rápida à parte - o trabalho continua',
+    btwArgument: '<pergunta>',
     model: 'trocar o modelo desta sessão',
     effort: 'definir quanto o Claude pensa antes de agir',
     context: 'o que ocupa a janela de contexto agora',

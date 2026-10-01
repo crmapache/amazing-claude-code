@@ -18,6 +18,8 @@ import type { SessionEntry } from '../projects'
 import { Back } from './Back'
 import { Magnifier, SearchCapsule } from '../../components/SearchCapsule'
 import { Composer, type OutgoingPrompt } from './Composer'
+import { SideQuestionCard } from '../../components/SideQuestion'
+import type { SideExchange, SideThread } from '../../feed/side'
 import { dotClass, groupColor } from './TabsSheet'
 import type { PhoneDictation } from '../useDictation'
 import m from '../mobile.module.css'
@@ -69,6 +71,11 @@ interface ThreadProps {
   onSend: (prompt: OutgoingPrompt) => void
   /** Said when the agent comes free. It waits in the IDE, not here - see SessionQueue.kt. */
   onQueue: (prompt: OutgoingPrompt) => void
+  /** This conversation's side questions - `/btw`, kept by this phone (see feed/side). */
+  side: SideThread
+  onAsideCancel: (id: string) => void
+  onAsideAgain: (exchange: SideExchange) => void
+  onAsideClose: () => void
   /** What this phone sent here that the IDE has not confirmed yet, past the quiet moment - see mobile/outbox.ts. */
   unsent: { item: Unconfirmed; state: Exclude<UnconfirmedState, 'quiet'> }[]
   /** The same message again, on a row that was not delivered. */
@@ -154,6 +161,10 @@ export const Thread = ({
   onDropQuote,
   onSend,
   onQueue,
+  side,
+  onAsideCancel,
+  onAsideAgain,
+  onAsideClose,
   unsent,
   onRetry,
   onDiscard,
@@ -189,6 +200,9 @@ export const Thread = ({
 
   /** Whether the list of what is waiting to be said is unfolded - the row above the field says how many. */
   const [queueOpen, setQueueOpen] = useState(false)
+
+  /** A side question taken into the chat: put into the field, where the agent has its tools (see Composer.fill). */
+  const [fill, setFill] = useState<{ text: string; nonce: number } | undefined>(undefined)
 
   /**
    * What this conversation is waiting to say, held by the IDE and fired by it when the turn ends.
@@ -377,6 +391,16 @@ export const Thread = ({
       </div>
 
       <footer className={m.composer}>
+        {/* The desk's card, as it is there: over the field, out of the feed (see SideQuestionCard). */}
+        <SideQuestionCard
+          thread={side}
+          onCancel={onAsideCancel}
+          onAskAgain={onAsideAgain}
+          onAskInChat={(question) => setFill((current) => ({ text: question, nonce: (current?.nonce ?? 0) + 1 }))}
+          onClose={onAsideClose}
+          onOpenLink={(url) => window.open(url, '_blank', 'noopener,noreferrer')}
+        />
+
         {/*
           What the agent said it would do, in one line, opening the screen that holds the rest.
 
@@ -415,6 +439,7 @@ export const Thread = ({
           onDropQuote={onDropQuote}
           onSend={onSend}
           onQueue={onQueue}
+          fill={fill}
           unsent={unsent}
           onRetry={onRetry}
           onDiscard={onDiscard}

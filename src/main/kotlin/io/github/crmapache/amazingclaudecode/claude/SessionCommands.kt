@@ -180,6 +180,18 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
             // A command through "!" - the panel's bash mode.
             "bash" -> hub.catalog.runShellCommand(clientId, sessionId, field("id"), field("command"))
 
+            // A question beside the conversation - the panel's /btw (see SideQuestion), and taking one back.
+            "sideQuestion" -> hub.askAside(
+                clientId,
+                asker,
+                sessionId,
+                field("id"),
+                field("question"),
+                SideQuestion.historyOf(payload["history"]),
+            )
+
+            "sideQuestionCancel" -> hub.cancelAside(sessionId, field("id"))
+
             "stop" -> hub.interrupt(sessionId)
 
             "kill" -> hub.kill(sessionId)

@@ -245,7 +245,7 @@ export const de: Dict = {
     },
     tokens: { label: 'Tokens heute', hint: 'Heute verbraucht, über alle Projekte' },
     feedback: { label: 'Feedback-Knopf', hint: 'Die Sprechblase, die das Formular öffnet - das Menü behält seinen eigenen Weg dorthin' },
-    thanks: { label: 'Herz', hint: 'Ein Stern, eine Bewertung oder ein Wort an einen Freund' },
+    thanks: { label: 'Herz', hint: 'Ein Stern, eine Bewertung, ein Wort an einen Freund oder ein Trinkgeld' },
   },
 
   history: {
@@ -864,6 +864,8 @@ export const de: Dict = {
     send: 'Senden',
     run: 'Ausführen',
     runHint: 'Läuft in deiner Shell - Claude sieht die Ausgabe mit deiner nächsten Nachricht',
+    askAside: 'Nebenbei fragen',
+    askAsideHint: 'Claude antwortet aus dem Gespräch und arbeitet weiter',
     improveEmpty: 'Claude Code hat nichts zurückgegeben, was ins Feld passen würde.',
     improveChanged: 'Der Entwurf hat sich während des Umschreibens geändert, also blieb er unangetastet.',
     improveTerminal: 'Ein Terminal-Befehl wird nicht umgeschrieben',
@@ -893,6 +895,25 @@ export const de: Dict = {
     watchers: (n) => `${n} weitere ${n === 1 ? 'Ansicht sieht' : 'Ansichten sehen'} dieses Projekt`,
   },
 
+  side: {
+    title: 'NEBENFRAGE',
+    unseen: 'Claude sieht das nicht',
+    thinking: 'Denkt nebenbei nach',
+    retrying: (attempt: number, max: number, seconds: number): string =>
+      `API-Fehler, Versuch ${attempt} von ${max} in ${seconds} s`,
+    cancel: 'Abbrechen',
+    cancelled: 'Abgebrochen',
+    askAgain: 'Noch mal fragen',
+    empty: 'Keine Antwort gekommen',
+    failed: { ended: 'Das Gespräch hat vor der Antwort aufgehört', timeout: 'Keine Antwort in zehn Minuten', refused: 'Claude Code hat sie abgelehnt' },
+    copy: 'Antwort kopieren',
+    close: 'Schließen (Esc)',
+    notSaved: 'Wird nicht im Chat gespeichert',
+    askInChat: 'Im Chat fragen',
+    askInChatHint: 'Die Frage als normale Nachricht ins Feld holen - dort kann Claude Dateien lesen und Werkzeuge nutzen',
+    hint: 'Tippe /btw und eine Frage. Claude antwortet aus diesem Gespräch, ohne die Arbeit zu unterbrechen, und die Antwort landet nicht im Chat.',
+  },
+
   thanks: {
     button: 'Gefällt dir das Plugin? Sag Danke',
     title: 'DANKE SAGEN',
@@ -903,6 +924,8 @@ export const de: Dict = {
     share: 'Mit Freunden teilen',
     shareSub: 'Kopiert eine Zeile darüber und den Link',
     shareCopied: 'Kopiert - füg es ein, wo du magst',
+    tip: 'Trinkgeld geben',
+    tipSub: 'Auf Ko-fi, einmalig oder monatlich',
     shareText:
       'Schau dir Amazing Claude Code GUI an - Claude Code als ordentliches Panel direkt in JetBrains-IDEs: https://plugins.jetbrains.com/plugin/33255-amazing-claude-code',
   },
@@ -1770,6 +1793,8 @@ export const de: Dict = {
     rename: 'diesen Tab umbenennen; ohne Namen öffnet sich das Feld darauf',
     renameArgument: '[neuer Name]',
     config: 'Claude-Code-Einstellungen - öffnet sie im Menü',
+    btw: 'eine kurze Nebenfrage - die Arbeit läuft weiter',
+    btwArgument: '<Frage>',
     model: 'das Modell für diese Sitzung wechseln',
     effort: 'einstellen, wie lange Claude vor dem Handeln nachdenkt',
     context: 'was das Kontextfenster gerade füllt',

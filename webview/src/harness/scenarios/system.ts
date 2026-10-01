@@ -10,6 +10,8 @@ import {
   scenario,
   shell,
   SESSION,
+  sideAnswer,
+  sideRetry,
   textReply,
   toolResult,
   toolUse,
@@ -568,6 +570,61 @@ export const scenariosSystem: Scenario[] = [
     checkpoint('The /clear turn ends', [
       agent({ type: 'assistant', message: { content: [{ type: 'text', text: '(no content)' }] } }),
       turnResult(300),
+    ]),
+  ]),
+
+  /**
+   * A side question - /btw - asked while the agent works, and every way one can end. The point is the
+   * second checkpoint onwards: the card stands over the field while the feed keeps moving above it, the
+   * turn is never interrupted, and nothing of the thread lands in the feed.
+   */
+  scenario('side-question', 'A side question with /btw', 'system', [
+    checkpoint('The agent is at work', [
+      user('Move Apple Pay into the payment-method registry'),
+      wait(300),
+      toolUse('Read', { file_path: '/Users/you/demo-project/apps/web/src/checkout/paymentMethods.ts' }, 'side-read'),
+      wait(400),
+    ]),
+    checkpoint('A question aside while it works', [user('/btw which file holds the card form?'), wait(900)]),
+    checkpoint('The answer arrives, the work goes on', [
+      sideAnswer({
+        outcome: 'answered',
+        text: 'The card form lives in `apps/web/src/checkout/CardForm.tsx`. The sheet renders it when the registry offers no other method, so it is also the fallback for browsers **without** the Payment Request API.',
+      }),
+      wait(300),
+      toolResult('side-read', 'export const paymentMethods = [card]'),
+      toolUse('Edit', { file_path: '/Users/you/demo-project/apps/web/src/checkout/paymentMethods.ts' }, 'side-edit'),
+      wait(400),
+    ]),
+    checkpoint('A follow-up, while the API is retried', [
+      user('/btw and does it validate on blur?'),
+      wait(400),
+      sideRetry(2, 10, 8000),
+      wait(900),
+    ]),
+    checkpoint('The follow-up is answered from the thread', [
+      sideAnswer({ outcome: 'answered', text: 'Yes - each field checks itself on blur, and the button stays disabled until all three pass.' }),
+      wait(300),
+    ]),
+    checkpoint('A question that needs the files', [
+      user('/btw what does the e2e config say about retries?'),
+      wait(300),
+      sideAnswer({
+        outcome: 'empty',
+        text: '(The model tried to call a tool instead of answering directly. Try rephrasing or ask in the main conversation.)',
+      }),
+      wait(300),
+    ]),
+    checkpoint('The conversation went away before answering', [
+      user('/btw is the old branch merged?'),
+      wait(300),
+      sideAnswer({ outcome: 'failed', reason: 'ended', message: 'the process ended' }),
+      wait(300),
+    ]),
+    checkpoint('The turn finishes on its own', [
+      toolResult('side-edit', 'ok'),
+      ...textReply('Apple Pay is in the registry now, and the card form stays for browsers without the API.'),
+      turnResult(5200),
     ]),
   ]),
 

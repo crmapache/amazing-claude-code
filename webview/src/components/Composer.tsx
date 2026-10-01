@@ -11,6 +11,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { isBashDraft } from '../feed/bash'
+import { isAsideDraft } from '../feed/side'
 import { isLetterKey } from '../feed/fieldEdits'
 import { useT } from '../i18n'
 import { Microphone } from './Microphone'
@@ -745,6 +746,13 @@ export const Composer = ({
    * before the press rather than from a card appearing in the feed.
    */
   const bash = isBashDraft(tokens)
+
+  /**
+   * A side question has been typed - `/btw` (see feed/side). The field says so the way it says it for a
+   * shell command: the question goes beside the work rather than into it, and has no queue to wait in -
+   * which is the whole reason to ask one.
+   */
+  const aside = !bash && isAsideDraft(tokens)
 
   const commandMatches = useMemo(
     () => (query === null || dismissed ? [] : matchCommands(commands, query)),
@@ -1899,7 +1907,7 @@ export const Composer = ({
 
      A terminal command has no queue at all: the panel runs it itself and has no reason to wait for the
      agent to come free. */
-  const queueButton = bash ? null : (
+  const queueButton = bash || aside ? null : (
     <button
       type="button"
       className={`${s.send} ${s.sendQueued}`}
@@ -1914,20 +1922,29 @@ export const Composer = ({
     </button>
   )
 
+  const sendCaption = bash ? t.composer.run : aside ? t.composer.askAside : t.composer.send
   const sendButton = (
     <button
       type="button"
-      className={`${s.send} ${bash ? s.sendRun : ''}`}
+      className={`${s.send} ${bash ? s.sendRun : ''} ${aside ? s.sendAside : ''}`}
       onClick={() => letGo(onSubmit)}
       disabled={!canSubmit}
       /* The key and nothing else: the button already says "Send", and a hover that repeats what it is
          hovering over is a wasted hover (the rule the file's chips follow too). What it does add is the
          one thing not on the screen anywhere - which key the setting settled on. */
-      data-tooltip={bash ? t.composer.runHint : keyQueues && streaming ? undefined : sendKeyCap(sendKey)}
+      data-tooltip={
+        bash
+          ? t.composer.runHint
+          : aside
+            ? t.composer.askAsideHint
+            : keyQueues && streaming
+              ? undefined
+              : sendKeyCap(sendKey)
+      }
       data-tooltip-at="top"
-      aria-label={bash ? t.composer.run : t.composer.send}
+      aria-label={sendCaption}
     >
-      <SendCaption text={bash ? t.composer.run : t.composer.send} />
+      <SendCaption text={sendCaption} />
     </button>
   )
 
@@ -2017,9 +2034,11 @@ export const Composer = ({
     streaming,
     stopStalled,
     bash,
+    aside,
     t.composer.send,
     t.composer.queue,
     t.composer.run,
+    t.composer.askAside,
     t.composer.stop,
     t.composer.forceStop,
     [...presentTools].join(),

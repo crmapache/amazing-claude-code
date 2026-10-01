@@ -25,6 +25,9 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  */
 let lastShellRequest: { id: string; command: string } | undefined
 
+/** The last side question the panel sent (`/btw`) - what the 'sideRetry' and 'sideAnswer' steps answer. */
+let lastSideRequest: { sessionId: string; id: string } | undefined
+
 /**
  * The model the harness's own stream is signing answers with, and how many picks have been made.
  *
@@ -1170,6 +1173,7 @@ const listenToPanel = () => {
   // A scenario replayed from the top reads its history from the top too. The counter is a module's own,
   // so without this the mark stayed dead after the pages ran out once, for the rest of the browser tab.
   earlierPages = 0
+  lastSideRequest = undefined
   typedIntoFeed = []
   queues.clear()
 
@@ -1185,6 +1189,18 @@ const listenToPanel = () => {
     })()
 
     if (message?.type === 'bash') lastShellRequest = { id: message.id, command: message.command }
+
+    // A side question is taken at once, as the CLI takes one - its "started" comes back before anything
+    // else - and a cancel is answered the way the CLI answers it, so the card's Cancel works here too.
+    if (message?.type === 'sideQuestion') {
+      lastSideRequest = { sessionId: message.sessionId, id: message.id }
+      const { sessionId, id } = message
+      setTimeout(() => window.__accReceive?.({ type: 'sideProgress', sessionId, id, status: 'started' }), 0)
+    }
+    if (message?.type === 'sideQuestionCancel') {
+      const { sessionId, id } = message
+      setTimeout(() => window.__accReceive?.({ type: 'sideAnswer', sessionId, id, outcome: 'cancelled' }), 0)
+    }
 
     // In the IDE an external address is opened by the shell in the system browser; here the browser is
     // the harness's own, so a link (the PR in the header, the thanks menu) genuinely opens instead of
@@ -1540,6 +1556,43 @@ export class ScenarioPlayer {
 
     if (step.kind === 'bash') {
       await this.runShell(step, realPacing)
+      return
+    }
+
+    if (step.kind === 'sideRetry' || step.kind === 'sideAnswer') {
+      // The "started" the bridge sends back for the question goes out on the next tick; step mode runs these
+      // steps without a pause, and a retry delivered before it would be wiped by it - the CLI's own order is
+      // "started" first.
+      await sleep(0)
+      const request = lastSideRequest
+      if (!request) {
+        console.warn('[harness] no side question to answer; was a /btw typed before this step?')
+        return
+      }
+
+      window.__accReceive?.(
+        step.kind === 'sideRetry'
+          ? {
+              type: 'sideProgress',
+              sessionId: request.sessionId,
+              id: request.id,
+              status: 'api_retry',
+              attempt: step.attempt,
+              maxRetries: step.maxRetries,
+              delayMs: step.delayMs,
+              errorStatus: step.errorStatus,
+            }
+          : {
+              type: 'sideAnswer',
+              sessionId: request.sessionId,
+              id: request.id,
+              outcome: step.outcome,
+              text: step.text,
+              notice: step.notice,
+              reason: step.reason,
+              message: step.message,
+            },
+      )
       return
     }
 

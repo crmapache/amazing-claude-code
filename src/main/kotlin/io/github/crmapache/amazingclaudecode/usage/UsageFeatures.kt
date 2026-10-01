@@ -34,6 +34,7 @@ internal object UsageFeatures {
         "stop",
         "stop_task",
         "bash_mode",
+        "side_question",
         "improve_prompt",
         "model_switch",
         "effort_switch",
@@ -151,6 +152,8 @@ internal object UsageFeatures {
         "stop",
         "kill",
         "stopTask",
+        "sideQuestion",
+        "sideQuestionCancel",
         "resumeSession",
         "search",
         "searchAi",
@@ -240,6 +243,7 @@ internal object UsageFeatures {
         "stop" -> "stop"
         "stopTask" -> "stop_task"
         "bash" -> "bash_mode"
+        "sideQuestion" -> "side_question"
         "improvePrompt" -> "improve_prompt"
         "setModel" -> "model_switch"
         "setEffort" -> "effort_switch"

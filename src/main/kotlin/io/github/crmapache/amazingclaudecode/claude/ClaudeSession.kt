@@ -265,6 +265,21 @@ internal class ClaudeSession(
 
     private class Control(val onResult: (JsonObject) -> Unit, val onFailure: (String) -> Unit)
 
+    /**
+     * The side questions still out, by the name the client gave each one - see [askAside].
+     *
+     * Kept apart from [awaitingControl] because these are the only control requests a person sits and
+     * watches: the rest are dropped quietly when the process goes (see [stop]), and a question dropped that
+     * way would stand on screen as "thinking" for the ten minutes it is given.
+     */
+    private val asides = ConcurrentHashMap<String, Aside>()
+
+    private class Aside(
+        val controlId: String,
+        val onProgress: (SideQuestion.Progress) -> Unit,
+        val onEnd: (SideQuestion.Answer) -> Unit,
+    )
+
     /** What was sent and has left no trace in the conversation yet - see [PromptDeliveries]. */
     private val undelivered = PromptDeliveries()
 
@@ -867,6 +882,7 @@ internal class ClaudeSession(
         // its context is about to be gone.
         undelivered.forget()
         lines.reset()
+        abandonAsides()
         awaitingControl.clear()
         // There is no longer anyone or anything to answer the hanging questions with: the process that
         // asked them is about to be gone.
@@ -878,27 +894,39 @@ internal class ClaudeSession(
 
     // --- Control channel ------------------------------------------------------
 
+    /**
+     * [id] is given from outside only by a caller that has to know it before the answer can arrive (see
+     * [askAside]); [cancelOnTimeout] tells the CLI to stop working on a request we no longer wait for,
+     * which matters only for one that costs something while it runs.
+     */
     private fun control(
         subtype: String,
         onResult: (JsonObject) -> Unit = {},
         onFailure: (String) -> Unit = {},
+        id: String = UUID.randomUUID().toString(),
+        timeoutSeconds: Long = CONTROL_TIMEOUT_SECONDS,
+        cancelOnTimeout: Boolean = false,
         request: JsonObjectBuilder.() -> Unit = {},
     ) {
         val process = handler ?: run {
             thisLogger().info("Control request $subtype skipped: no live session")
-            onFailure("no live session")
+            onFailure(SideQuestion.NO_SESSION)
             return
         }
 
-        val id = UUID.randomUUID().toString()
         awaitingControl[id] = Control(onResult, onFailure)
 
         // Without a timeout of its own a forgotten answer hangs this piece of the panel forever - the
         // same risk we already fixed for permissions, but here it concerns any control request: the
         // usage limits, a mode change, Stop.
         AppExecutorUtil.getAppScheduledExecutorService().schedule(
-            { awaitingControl.remove(id)?.onFailure?.invoke("$subtype timed out") },
-            CONTROL_TIMEOUT_SECONDS,
+            {
+                awaitingControl.remove(id)?.let { control ->
+                    if (cancelOnTimeout) handler?.let { cancelControl(it, id) }
+                    control.onFailure("$subtype timed out")
+                }
+            },
+            timeoutSeconds,
             TimeUnit.SECONDS,
         )
 
@@ -913,6 +941,82 @@ internal class ClaudeSession(
                 }
             }.toString(),
         )
+    }
+
+    /** Asks the CLI to stop working on a request of ours - the answer then comes back as an error. */
+    private fun cancelControl(process: OSProcessHandler, id: String) {
+        write(
+            process,
+            buildJsonObject {
+                put("type", "control_cancel_request")
+                put("request_id", id)
+            }.toString(),
+        )
+    }
+
+    /**
+     * A question beside the conversation - the panel's `/btw` (see SideQuestion): answered from its
+     * context, with no tools, without stopping a turn in progress and without a word in the transcript.
+     *
+     * [id] is the client's name for it - progress and the answer are reported under it, and [cancelAside]
+     * takes it. The same id asked again while the first is still out is asked once: a request repeated on
+     * the way is still one question. [onEnd] is called exactly once, whatever the ending - an answer, a
+     * cancel, a timeout, or the process going away under it.
+     */
+    fun askAside(
+        id: String,
+        question: String,
+        history: List<SideQuestion.Exchange>,
+        onProgress: (SideQuestion.Progress) -> Unit,
+        onEnd: (SideQuestion.Answer) -> Unit,
+    ) {
+        val controlId = UUID.randomUUID().toString()
+        val aside = Aside(controlId, onProgress, onEnd)
+        // Put down before the request is written: the answer may be read back before control() returns.
+        if (asides.putIfAbsent(id, aside) != null) return
+
+        control(
+            SideQuestion.SUBTYPE,
+            id = controlId,
+            timeoutSeconds = SideQuestion.TIMEOUT_SECONDS,
+            cancelOnTimeout = true,
+            onResult = { response -> if (asides.remove(id, aside)) onEnd(SideQuestion.answerOf(response)) },
+            onFailure = { message ->
+                if (asides.remove(id, aside)) {
+                    val answer = SideQuestion.failureOf(message)
+                    if (answer is SideQuestion.Answer.Failed) {
+                        DiagnosticsLog.note(DiagnosticsLog.AGENT, "a side question was not answered (${answer.reason.wire})")
+                    }
+                    onEnd(answer)
+                }
+            },
+        ) { SideQuestion.request(this, question, history) }
+    }
+
+    /** Stops a side question still out; its end is reported the ordinary way, as cancelled. */
+    fun cancelAside(id: String) {
+        val aside = asides[id] ?: return
+        val process = handler ?: return
+        cancelControl(process, aside.controlId)
+    }
+
+    /**
+     * Every side question still out is told it will not be answered: the process that was to answer it
+     * is going or gone. Without this one stands as "thinking" on screen until its timeout.
+     */
+    private fun abandonAsides() {
+        for ((id, aside) in asides) {
+            if (!asides.remove(id, aside)) continue
+            awaitingControl.remove(aside.controlId)
+            runCatching { aside.onEnd(SideQuestion.Answer.Failed(SideQuestion.Reason.ENDED, "the process ended")) }
+                .onFailure { thisLogger().warn("Side question handler failed", it) }
+        }
+    }
+
+    /** A side question's progress, handed to whoever asked it; anybody else's is nothing to us. */
+    private fun noteAsideProgress(progress: SideQuestion.Progress) {
+        val aside = asides.values.firstOrNull { it.controlId == progress.requestId } ?: return
+        runCatching { aside.onProgress(progress) }.onFailure { thisLogger().warn("Side question progress handler failed", it) }
     }
 
     /**
@@ -941,6 +1045,17 @@ internal class ClaudeSession(
                 // nobody answers is a turn stopped forever, and the trace it leaves there is the only
                 // explanation such a conversation ever gets.
                 askPermission(payload)
+                return
+            }
+        }
+
+        // A request still being worked on - a side question's "started" and its retries. Correspondence
+        // with the process as much as the answer below, and kept out of the feed for the same reason: a
+        // system line in the journal of a conversation nobody wrote into is a line about nothing.
+        if (SideQuestion.isProgress(line)) {
+            val progress = SideQuestion.progressOf(line)
+            if (progress != null) {
+                noteAsideProgress(progress)
                 return
             }
         }
@@ -1504,6 +1619,8 @@ internal class ClaudeSession(
 
                     handler = null
                     busy = false
+                    // The side questions it was answering will not be answered now (see abandonAsides).
+                    abandonAsides()
                     // What was undelivered went missing along with the process: raising a new one for
                     // its sake is not what anyone expects from a conversation that has just crashed.
                     // About the crash itself the panel is told separately, below.

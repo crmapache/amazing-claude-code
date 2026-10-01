@@ -1,0 +1,237 @@
+/*
+ * The card of side questions over the field - see SideQuestion.tsx.
+ *
+ * It stands in the dock beside the task list and the queue and borrows their frame (the raised fill, the
+ * mono caps title, the 7px corner), so it reads as one of the things around the field rather than a
+ * message. The one difference is the accent line around it: this card answers something, and an answer
+ * that looks exactly like the task list beside it would be read as a list nobody asked for.
+ */
+
+@keyframes acc-side-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 8px;
+  border: 1px solid var(--acc-accent-line);
+  border-radius: var(--acc-r-xl);
+  background: var(--acc-bg-raised);
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 5px 6px 5px 10px;
+  border-bottom: 1px solid var(--acc-line);
+}
+
+.label {
+  flex: none;
+  font: 600 9px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-accent);
+}
+
+/* One line, cut with an ellipsis: on a narrow panel the title and the close button keep their room. */
+.unseen {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--acc-fs-meta, 11px);
+  color: var(--acc-fg-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spacer {
+  flex: 1;
+  min-width: 0;
+}
+
+.close {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  min-height: var(--acc-hit);
+  border-radius: var(--acc-r-sm);
+  color: var(--acc-fg-faint);
+  font-size: 11px;
+}
+
+@media (hover: hover) {
+  .close:hover {
+    background: var(--acc-bg-control);
+    color: var(--acc-fg);
+  }
+}
+
+/*
+ * The thread scrolls inside the card rather than growing it: a long answer must not push the field off
+ * the bottom of a short panel. Two fifths of the window is enough for an answer and a half, and leaves the
+ * feed above it in sight.
+ */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 40vh;
+  padding: 8px 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--acc-fs-meta, 11px);
+  line-height: 1.5;
+  color: var(--acc-fg-dim);
+}
+
+.exchange {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The question is quoted back rather than restated: dimmer than the answer, which is what is read. */
+.question {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  color: var(--acc-fg-dim);
+  font-size: var(--acc-fs-body, 13px);
+  line-height: var(--acc-leading, 1.62);
+}
+
+.mark {
+  flex: none;
+  color: var(--acc-accent);
+}
+
+.questionText {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* The same text as an answer in the feed, so the markdown inside sits exactly as it does there. */
+.answer {
+  min-width: 0;
+  padding-left: 12px;
+  font-size: var(--acc-fs-body, 13px);
+  line-height: var(--acc-leading, 1.62);
+  color: var(--acc-fg-body);
+  overflow-wrap: anywhere;
+}
+
+.notice {
+  margin: 4px 0 0;
+  font-size: var(--acc-fs-meta, 11px);
+  color: var(--acc-fg-faint);
+}
+
+.asking,
+.unanswered {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding-left: 12px;
+  font-size: var(--acc-fs-meta, 11px);
+  color: var(--acc-fg-dim);
+}
+
+.askingText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pulse {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--acc-accent);
+  animation: acc-side-pulse 1.4s ease-in-out infinite;
+}
+
+.pulseWarn {
+  background: var(--acc-warn);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse {
+    animation: none;
+  }
+}
+
+.unansweredBad {
+  color: var(--acc-bad-text);
+}
+
+.unansweredText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* The CLI's own words under ours - its placeholder or its error, in the language it writes them in. */
+.detail {
+  color: var(--acc-fg-faint);
+  overflow-wrap: anywhere;
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 10px 6px;
+  border-top: 1px solid var(--acc-line);
+  font-size: var(--acc-fs-meta, 11px);
+}
+
+.notSaved {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--acc-fg-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link {
+  flex: none;
+  min-height: var(--acc-hit);
+  padding: 2px 6px;
+  border-radius: var(--acc-r-sm);
+  color: var(--acc-accent);
+  font-size: var(--acc-fs-meta, 11px);
+  white-space: nowrap;
+}
+
+@media (hover: hover) {
+  .link:hover {
+    background: var(--acc-accent-soft);
+  }
+}

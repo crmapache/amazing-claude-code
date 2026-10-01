@@ -11,6 +11,7 @@ import type {
   ShellMessage,
 } from '../protocol'
 import { ClockContext } from '../hooks/useNow'
+import { asideQuestion, NO_THREAD, sideHistory, sideThread, type SideAction, type SideExchange, type SideThread } from '../feed/side'
 import { planDecisionOf, useCardState } from '../hooks/useCardState'
 import { applyFact, emptyFacts, factsFor, isFact, liveRunsOf, type ProjectFacts } from './facts'
 import { shelfHome, type RepositoryChoice, type ShelfChoice } from './scenarios'
@@ -191,6 +192,26 @@ export const App = () => {
    * screen. By chat, because a quote taken in one conversation has no business standing over another.
    */
   const [quotes, setQuotes] = useState<Record<string, string[]>>({})
+
+  /**
+   * The side questions of each conversation, by chat - `/btw`, with the panel's rules (see feed/side).
+   *
+   * On this phone and nowhere else, like the desk's: the IDE answers the device that asked and only it, the
+   * agent never sees the thread, and the transcript holds none of it - so a page the browser throws out takes
+   * the thread along, the way closing a terminal does.
+   */
+  const [sideThreads, setSideThreads] = useState<Record<string, SideThread>>({})
+  const sideThreadsRef = useRef(sideThreads)
+  sideThreadsRef.current = sideThreads
+  const sideCounter = useRef(0)
+
+  const sideStep = useCallback((key: string, action: SideAction) => {
+    setSideThreads((current) => {
+      if ((action.kind === 'progress' || action.kind === 'end') && !current[key]) return current
+      const next = sideThread(current[key] ?? NO_THREAD, action)
+      return next === current[key] ? current : { ...current, [key]: next }
+    })
+  }, [])
 
   /**
    * Which messages are held over the top of a conversation, by chat (see feed/pins.ts).
@@ -668,6 +689,37 @@ export const App = () => {
   grantArrived.current = dictation.grant
 
   const receive = useCallback((agentId: string, message: ShellMessage, projectKey: string) => {
+    // A side question's progress and its end: answered to this phone alone, about a conversation that may no
+    // longer be on screen, and nothing the feed has a place for (see feed/side). Stamped with the IDE's clock,
+    // which is the clock the card counts against here (see hooks/useNow).
+    if (message.type === 'sideProgress' || message.type === 'sideAnswer') {
+      const key = chatKey(agentId, projectKey, message.sessionId)
+      sideStep(
+        key,
+        message.type === 'sideProgress'
+          ? {
+              kind: 'progress',
+              id: message.id,
+              status: message.status,
+              attempt: message.attempt,
+              maxRetries: message.maxRetries,
+              delayMs: message.delayMs,
+              errorStatus: message.errorStatus,
+              at: clockOf(agentId).now(),
+            }
+          : {
+              kind: 'end',
+              id: message.id,
+              outcome: message.outcome,
+              text: message.text,
+              notice: message.notice,
+              reason: message.reason,
+              message: message.message,
+            },
+      )
+      return
+    }
+
     // The IDE has a message this phone sent (see outbox.ts). Ahead of every guard below: it may be about a
     // conversation no longer on screen, and the row it settles belongs to that one.
     if (message.type === 'promptReceived') {
@@ -936,7 +988,7 @@ export const App = () => {
     }
 
     setFeed((previous) => applyMessage(previous, message, clockOf(agentId).now()))
-  }, [clockOf, cards])
+  }, [clockOf, cards, sideStep])
 
   /** Watch a conversation from the beginning and show it. */
   const enter = useCallback((agentId: string, projectKey: string, sessionId: string, decide: boolean) => {
@@ -1226,6 +1278,23 @@ export const App = () => {
   const command = useCallback((agentId: string, projectKey: string, message: unknown) => {
     links.current[agentId]?.command(projectKey, message)
   }, [])
+
+  /**
+   * A side question from this phone - the panel's askAside (see App.tsx), with one difference: the moment it
+   * was asked is read off the IDE's clock, the one the card counts its seconds against here (see hooks/useNow).
+   * Sent outright rather than held: an answer is all that confirms one, and a resend would ask it twice.
+   */
+  const askAside = useCallback(
+    (agentId: string, projectKey: string, sessionId: string, question: string, replaces?: string) => {
+      const key = chatKey(agentId, projectKey, sessionId)
+      const id = `side-${Date.now().toString(36)}-${sideCounter.current++}-${Math.random().toString(36).slice(2, 6)}`
+      const history = sideHistory(sideThreadsRef.current[key] ?? NO_THREAD, replaces)
+
+      sideStep(key, { kind: 'ask', id, question, at: clockOf(agentId).now(), ...(replaces ? { replaces } : {}) })
+      command(agentId, projectKey, { type: 'sideQuestion', sessionId, id, question, history })
+    },
+    [clockOf, command, sideStep],
+  )
 
   /**
    * A message into a conversation, kept until the IDE says it has it - see outbox.ts.
@@ -2702,6 +2771,16 @@ export const App = () => {
             loading={!feed.loaded}
             voice={dictation}
             onSend={(prompt: OutgoingPrompt) => {
+              // A side question goes beside the work, the panel's way, and never as a message: the agent
+              // would only answer "/btw isn't available in this environment" (see feed/side).
+              const aside = asideQuestion(prompt.text)
+              if (aside !== null) {
+                const key = chatKey(screen.agentId, screen.projectKey, screen.sessionId)
+                if (aside) askAside(screen.agentId, screen.projectKey, screen.sessionId, aside)
+                else sideStep(key, { kind: 'show' })
+                return
+              }
+
               // The first message names the tab, with the panel's own rule and the panel's own function -
               // otherwise a conversation begun from a phone stays "new session" at the desk for as long as
               // it lasts. The better name from the model replaces this one when it arrives.
@@ -2738,7 +2817,22 @@ export const App = () => {
             // phone sits in a pocket, and that is exactly when a queued message matters (see SessionQueue).
             // Held until the IDE confirms it like a message sent outright - a queued one lost on the way
             // would otherwise simply never appear in the list.
+            side={sideThreads[chatKey(screen.agentId, screen.projectKey, screen.sessionId)] ?? NO_THREAD}
+            onAsideCancel={(id: string) =>
+              command(screen.agentId, screen.projectKey, { type: 'sideQuestionCancel', sessionId: screen.sessionId, id })
+            }
+            onAsideAgain={(exchange: SideExchange) =>
+              askAside(screen.agentId, screen.projectKey, screen.sessionId, exchange.question, exchange.id)
+            }
+            onAsideClose={() => sideStep(chatKey(screen.agentId, screen.projectKey, screen.sessionId), { kind: 'hide' })}
             onQueue={(prompt: OutgoingPrompt) => {
+              const aside = asideQuestion(prompt.text)
+              if (aside !== null) {
+                // Queue is not offered for one (see Composer), but the send key may still bring it here.
+                if (aside) askAside(screen.agentId, screen.projectKey, screen.sessionId, aside)
+                return
+              }
+
               sendHeld(screen.agentId, screen.projectKey, screen.sessionId, {
                 type: 'queuePrompt',
                 sessionId: screen.sessionId,

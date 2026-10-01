@@ -1625,6 +1625,49 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     }
 
     /**
+     * A question beside the conversation, asked from one client - the panel's `/btw` (see SideQuestion).
+     *
+     * Answered to whoever asked and to nobody else, like a shell command's output (see
+     * ProjectCatalog.runShellCommand): the thread lives in the screen it was asked from, the agent never
+     * sees it, and a second window or a phone watching the same tab has no question there to put an answer
+     * under. Behind the relay [asker] is the one phone among the paired ones (see emitTo).
+     */
+    fun askAside(
+        clientId: String,
+        asker: String,
+        sessionId: String,
+        id: String,
+        question: String,
+        history: List<SideQuestion.Exchange>,
+    ) {
+        // Without a name there is nobody to answer: the card finds its question by exactly that.
+        if (id.isBlank()) return
+
+        val reply = { json: String -> runCatching { emitTo(clientId, json, asker) } }
+        val asked = question.trim().take(SideQuestion.TEXT_LIMIT)
+        // An empty one still gets an answer rather than silence: the card is already standing on screen as
+        // "thinking", and nothing but an answer takes that away.
+        if (asked.isEmpty()) {
+            reply(SideQuestion.answerJson(sessionId, id, SideQuestion.Answer.Empty(null)))
+            return
+        }
+
+        conversations.askAside(
+            sessionId,
+            id,
+            asked,
+            history,
+            onProgress = { progress -> reply(SideQuestion.progressJson(sessionId, id, progress)) },
+            onEnd = { answer -> reply(SideQuestion.answerJson(sessionId, id, answer)) },
+        )
+    }
+
+    fun cancelAside(sessionId: String, id: String) {
+        if (id.isBlank()) return
+        conversations.cancelAside(sessionId, id)
+    }
+
+    /**
      * The mode of one conversation, and of no other: neither the MODE selector nor Shift+Tab nor an
      * approved plan touches what new tabs start in. That is chosen separately.
      *

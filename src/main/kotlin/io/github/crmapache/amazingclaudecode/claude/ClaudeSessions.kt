@@ -689,6 +689,30 @@ internal class ClaudeSessions(
     /** A conversation that definitely has a process: we start one and wake it if need be. */
     private fun awake(sessionId: String): ClaudeSession = session(sessionId).also { it.wake() }
 
+    /**
+     * A question beside the conversation - see [ClaudeSession.askAside].
+     *
+     * The conversation is brought up for it, as for MCP: the answer comes out of the context the process
+     * holds, and a sleeping one holds none. Woken from the history, it answers from the transcript it
+     * loads at start (checked live on 2.1.280: the code word from a resumed conversation came back with
+     * no turn in between).
+     */
+    fun askAside(
+        sessionId: String,
+        id: String,
+        question: String,
+        history: List<SideQuestion.Exchange>,
+        onProgress: (SideQuestion.Progress) -> Unit,
+        onEnd: (SideQuestion.Answer) -> Unit,
+    ) {
+        awake(sessionId).askAside(id, question, history, onProgress, onEnd)
+    }
+
+    /** Nothing to cancel in a conversation that is gone: its questions went with it, already answered as such. */
+    fun cancelAside(sessionId: String, id: String) {
+        sessions[sessionId]?.cancelAside(id)
+    }
+
     /** Interrupting a turn: the conversation stays alive, unlike closing the session. */
     fun interrupt(sessionId: String, onTimeout: () -> Unit = {}) {
         // The conversation is already gone - the panel will show it as free anyway, nothing to explain.

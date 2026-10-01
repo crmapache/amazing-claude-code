@@ -94,7 +94,9 @@ import { Remote, RemoteAbout, remoteState, type RemoteStatus } from './component
 import { Accounts, accountState, currentAccountName, type AccountsState } from './components/Accounts'
 import { Sounds } from './components/Sounds'
 import { metersShown, StatusBar, UsageMeters, type Anchor, type SelectorKind } from './components/StatusBar'
-import { SHARE, shareText, thanksMenu, thanksUrl } from './components/Thanks'
+import { countsAsThanks, SHARE, shareText, thanksMenu, thanksUrl } from './components/Thanks'
+import { SideQuestionCard } from './components/SideQuestion'
+import { ASIDE_COMMAND, NO_THREAD, sideHistory, sideThread, type SideAction, type SideThread } from './feed/side'
 import { markPanelReady } from './components/Splash'
 import { Welcome } from './components/Welcome'
 import { useCalmColors } from './hooks/useCalmColors'
@@ -537,6 +539,15 @@ export const App = () => {
    * this here" kind hangs in the air.
    */
   const [shellRuns, setShellRuns] = useState<Record<string, ShellRun[]>>({})
+  /**
+   * The side questions of each tab - `/btw` (see feed/side). The panel's alone: the agent never sees them
+   * and the CLI writes none of them into the transcript, so nothing else anywhere could bring them back.
+   */
+  const [sideThreads, setSideThreads] = useState<Record<string, SideThread>>({})
+  // Read by the asking itself, which needs the thread as it stands to send its history along - and sends
+  // from outside a state update, where React may call an updater twice.
+  const sideThreadsRef = useRef(sideThreads)
+  sideThreadsRef.current = sideThreads
   /**
    * A file dragged from the IDE or from a file manager is being held over the panel (see fileDrag). The
    * drag itself never reaches the page, so the input field's highlight is lit by the shell's message
@@ -1739,6 +1750,33 @@ export const App = () => {
   /** A run's sequence number - the id's uniqueness comes from it, see runShell. */
   const shellSeq = useRef(0)
 
+  /** One step of a tab's side-question thread (see feed/side). */
+  const sideStep = useCallback((session: string, action: SideAction) => {
+    setSideThreads((current) => {
+      // An answer for a thread already forgotten - a closed tab, a cleared conversation - stays forgotten.
+      if (action.kind === 'progress' || action.kind === 'end') {
+        if (!current[session]) return current
+      }
+      const next = sideThread(current[session] ?? NO_THREAD, action)
+      return next === current[session] ? current : { ...current, [session]: next }
+    })
+  }, [])
+
+  /**
+   * A tab's side questions belong to the conversation they were asked about. A cleared or replaced one is
+   * a different conversation, and its first follow-up would carry the old thread's answers as context.
+   */
+  const forgetSide = (session: string) => {
+    setSideThreads((current) => {
+      if (!(session in current)) return current
+      const next = { ...current }
+      delete next[session]
+      return next
+    })
+  }
+  /** A side question's sequence number - see askAside. */
+  const sideSeq = useRef(0)
+
   /**
    * A paste into the input field with whatever came from the IDE: a link from the editor, a file from a
    * dialog, a folder dropped with the mouse.
@@ -2651,6 +2689,7 @@ export const App = () => {
             // with its very first message.
             if (message.event.type === 'conversation_reset') {
               forgetShellCommands(message.sessionId)
+              forgetSide(message.sessionId)
               setShellRuns((current) => ({ ...current, [message.sessionId]: [] }))
               // The tab's title is part of the conversation that has just been wiped too: without a
               // reset it would hang on from the previous subject, and the next message would no longer
@@ -2957,6 +2996,31 @@ export const App = () => {
             feed({
               session: message.sessionId,
               action: { kind: 'context', used: message.used, max: message.max },
+            })
+            break
+
+          case 'sideProgress':
+            sideStep(message.sessionId, {
+              kind: 'progress',
+              id: message.id,
+              status: message.status,
+              attempt: message.attempt,
+              maxRetries: message.maxRetries,
+              delayMs: message.delayMs,
+              errorStatus: message.errorStatus,
+              at: Date.now(),
+            })
+            break
+
+          case 'sideAnswer':
+            sideStep(message.sessionId, {
+              kind: 'end',
+              id: message.id,
+              outcome: message.outcome,
+              text: message.text,
+              notice: message.notice,
+              reason: message.reason,
+              message: message.message,
             })
             break
 
@@ -3818,6 +3882,14 @@ export const App = () => {
           return
         }
 
+        // An open side-question card is closed before anything is stopped: it was asked precisely so as
+        // not to stop the agent, and the key that dismisses it must not do the very thing it avoided.
+        if (sideThreadsRef.current[active]?.open) {
+          event.preventDefault()
+          sideStep(active, { kind: 'hide' })
+          return
+        }
+
         if (!running) return
         event.preventDefault()
         send({ type: 'stop', sessionId: active })
@@ -3844,7 +3916,7 @@ export const App = () => {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [mode, availableModes, setMode, running, active])
+  }, [mode, availableModes, setMode, running, active, sideStep])
 
   /**
    * A fork from a selected piece: the agent gets the whole conversation up to this point but carries on in
@@ -4064,6 +4136,7 @@ export const App = () => {
       dispatchPanel({ session: target, action: { kind: 'resumed', conversationId: entry.id } })
       setActiveStream('main')
       forgetShellCommands(target)
+      forgetSide(target)
       setShellRuns((current) => ({ ...current, [target]: [] }))
       delete soundMemory.current[target]
 
@@ -4373,8 +4446,33 @@ export const App = () => {
     [active],
   )
 
+  /**
+   * A side question - `/btw` (see feed/side). It stands in the tab's thread at once as "thinking" and goes
+   * to the IDE with the thread's earlier answers, so a follow-up has them; [replaces] asks one that ended
+   * without an answer again, in its own place.
+   */
+  const askAside = useCallback(
+    (session: string, question: string, replaces?: string) => {
+      sideSeq.current += 1
+      const id = `side-${Date.now()}-${sideSeq.current}`
+      const history = sideHistory(sideThreadsRef.current[session] ?? NO_THREAD, replaces)
+
+      sideStep(session, { kind: 'ask', id, question, at: Date.now(), ...(replaces ? { replaces } : {}) })
+      send({ type: 'sideQuestion', sessionId: session, id, question, history })
+    },
+    [sideStep],
+  )
+
   const runLocal = useCallback(
     ({ name, argument }: LocalCommand) => {
+      // Asked at once whatever the agent is doing - that is the whole of it: the question goes beside the
+      // turn rather than into it, and a bare `/btw` brings the thread back up, as in the terminal.
+      if (name === ASIDE_COMMAND) {
+        if (argument) askAside(active, argument)
+        else sideStep(active, { kind: 'show' })
+        return
+      }
+
       if (name === 'model') {
         pickModel(argument)
         return
@@ -4428,7 +4526,7 @@ export const App = () => {
 
       if (name === 'fork') fork()
     },
-    [fork, pickModel, pickEffort, nameSession, active, openClaudeConfig],
+    [fork, pickModel, pickEffort, nameSession, active, openClaudeConfig, askAside, sideStep],
   )
 
   /** The Alt+B from the selection menu. The key is drawn in the menu, so it has to work. */
@@ -5506,6 +5604,7 @@ export const App = () => {
           // Both the collected output and what is still running: without the second, a later answer from
           // the shell would start the record up again - for a conversation that no longer exists.
           forgetShellCommands(id)
+          forgetSide(id)
           setShellRuns((current) => {
             if (!(id in current)) return current
             const next = { ...current }
@@ -5610,6 +5709,20 @@ export const App = () => {
       />
 
       <TaskListPanel item={latestTodo(panel.items)} layout={composerLayout} />
+
+      {/* Nearest the field of everything that answers: it answers what was typed in it a moment ago. */}
+      <SideQuestionCard
+        thread={sideThreads[active] ?? NO_THREAD}
+        onCancel={(id) => send({ type: 'sideQuestionCancel', sessionId: active, id })}
+        onAskAgain={(exchange) => askAside(active, exchange.question, exchange.id)}
+        onAskInChat={(question) => {
+          // Through the composer, so it is one step of the undo history over whatever was being written.
+          applyTokens(active, [{ kind: 'text', value: question }])
+          setFocusToken((current) => current + 1)
+        }}
+        onClose={() => sideStep(active, { kind: 'hide' })}
+        onOpenLink={openLink}
+      />
 
       <Queue
         items={sessionQueue}
@@ -6524,9 +6637,9 @@ export const App = () => {
               const url = thanksUrl(id)
               if (url) send({ type: 'openExternal', url })
               if (id === SHARE) void copyToClipboard(shareText(t)).then((ok) => setShared(ok))
-              // Which way was taken, not that the menu was opened: there are three ways to say thanks and
-              // the achievement counts the different ones (see Achievements.kt, "thanks").
-              if (url || id === SHARE) send({ type: 'stat', kind: 'thanks', way: id })
+              // Which way was taken, not that the menu was opened: the achievement counts the different
+              // free ways (see Achievements.kt, "thanks"), and the tip is not one of them - see countsAsThanks.
+              if (countsAsThanks(id)) send({ type: 'stat', kind: 'thanks', way: id })
             }
           }}
         />

@@ -244,7 +244,7 @@ export const ja: Dict = {
     },
     tokens: { label: '今日のトークン', hint: '今日使った分（全プロジェクト合計）' },
     feedback: { label: 'フィードバックボタン', hint: 'フォームを開く吹き出し - メニューからはいつでも開けます' },
-    thanks: { label: 'ハート', hint: 'スター、レビュー、または友人へのひとこと' },
+    thanks: { label: 'ハート', hint: 'スター、レビュー、友人へのひとこと、またはチップ' },
   },
 
   history: {
@@ -857,6 +857,8 @@ export const ja: Dict = {
     send: '送信',
     run: '実行',
     runHint: 'あなたのシェルで実行します - Claude は次のメッセージで出力を見ます',
+    askAside: '横で質問',
+    askAsideHint: 'Claude は会話の内容から答え、作業を続けます',
     improveEmpty: 'Claude Code から何も返ってこなかったので、入力欄に入れるものがありません。',
     improveChanged: '書き直しの間に下書きが変わったので、そのままにしました。',
     improveTerminal: 'ターミナルのコマンドは書き直しません',
@@ -886,6 +888,25 @@ export const ja: Dict = {
     watchers: (n) => `ほかに ${n} 件がこのプロジェクトを見ています`,
   },
 
+  side: {
+    title: 'ちょっと質問',
+    unseen: 'Claude にはこれが見えません',
+    thinking: '横で考え中',
+    retrying: (attempt: number, max: number, seconds: number): string =>
+      `API エラー、${seconds} 秒後に再試行 (${attempt}/${max})`,
+    cancel: 'キャンセル',
+    cancelled: 'キャンセルしました',
+    askAgain: 'もう一度聞く',
+    empty: '回答が返ってきませんでした',
+    failed: { ended: '回答の前に会話が止まりました', timeout: '10 分たっても回答がありません', refused: 'Claude Code が受け付けませんでした' },
+    copy: '回答をコピー',
+    close: '閉じる (Esc)',
+    notSaved: 'チャットには保存されません',
+    askInChat: 'チャットで聞く',
+    askInChatHint: '質問を通常のメッセージとして入力欄に移します - そこでは Claude がファイルを読んだりツールを使ったりできます',
+    hint: '/btw に続けて質問を入力してください。Claude は作業を止めずにこの会話の内容から答え、回答はチャットに残りません。',
+  },
+
   thanks: {
     button: '気に入りましたか？ お礼を伝える',
     title: 'お礼を伝える',
@@ -896,6 +917,8 @@ export const ja: Dict = {
     share: '友達に教える',
     shareSub: '紹介の一文とリンクをコピーします',
     shareCopied: 'コピーしました - 好きなところに貼ってください',
+    tip: 'チップを贈る',
+    tipSub: 'Ko-fi で、1回でも毎月でも',
     shareText:
       'Amazing Claude Code GUI、いいですよ - JetBrains の IDE の中に、Claude Code をちゃんとしたパネルとして置けます：https://plugins.jetbrains.com/plugin/33255-amazing-claude-code',
   },
@@ -1769,6 +1792,8 @@ export const ja: Dict = {
     rename: 'このタブの名前を変更。名前なしならタブ上で入力欄を開く',
     renameArgument: '[新しい名前]',
     config: 'Claude Code の設定 - メニューで開く',
+    btw: '作業を止めずにちょっと質問する',
+    btwArgument: '<質問>',
     model: 'このセッションのモデルを切り替える',
     effort: 'Claude が動く前にどれだけ考えるかを決める',
     context: 'いまコンテキストウィンドウに入っているもの',

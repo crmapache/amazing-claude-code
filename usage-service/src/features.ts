@@ -41,6 +41,7 @@ export const FEATURES: Record<string, FeatureLabel> = {
   stop: { group: 'conversation', label: 'Stop a turn' },
   stop_task: { group: 'conversation', label: 'Stop a background task' },
   bash_mode: { group: 'conversation', label: 'Shell command with !' },
+  side_question: { group: 'conversation', label: 'Side question with /btw' },
   improve_prompt: { group: 'conversation', label: 'Improve prompt' },
   model_switch: { group: 'conversation', label: 'Switch model' },
   effort_switch: { group: 'conversation', label: 'Switch effort' },

@@ -246,7 +246,7 @@ export const fr: Dict = {
     },
     tokens: { label: 'Tokens du jour', hint: 'Dépensés aujourd’hui, tous projets confondus' },
     feedback: { label: 'Bouton de retour', hint: 'La bulle qui ouvre le formulaire - le menu garde son propre accès' },
-    thanks: { label: 'Cœur', hint: 'Une étoile, un avis ou un mot à un ami' },
+    thanks: { label: 'Cœur', hint: 'Une étoile, un avis, un mot à un ami ou un pourboire' },
   },
 
   history: {
@@ -865,6 +865,8 @@ export const fr: Dict = {
     send: 'Envoyer',
     run: 'Exécuter',
     runHint: 'S’exécute dans ton shell - Claude verra la sortie avec ton prochain message',
+    askAside: 'Demander à part',
+    askAsideHint: 'Claude répond d’après la conversation et continue de travailler',
     improveEmpty: 'Claude Code n’a rien renvoyé à mettre dans le champ.',
     improveChanged: 'Le brouillon a changé pendant la réécriture, il a donc été laissé tel quel.',
     improveTerminal: 'Une commande de terminal n’est pas réécrite',
@@ -894,6 +896,25 @@ export const fr: Dict = {
     watchers: (n) => `${n} ${n === 1 ? 'autre client suit' : 'autres clients suivent'} ce projet`,
   },
 
+  side: {
+    title: 'QUESTION À PART',
+    unseen: 'Claude ne voit pas ceci',
+    thinking: 'Réfléchit à part',
+    retrying: (attempt: number, max: number, seconds: number): string =>
+      `Erreur de l’API, essai ${attempt} sur ${max} dans ${seconds} s`,
+    cancel: 'Annuler',
+    cancelled: 'Annulée',
+    askAgain: 'Redemander',
+    empty: 'Aucune réponse n’est arrivée',
+    failed: { ended: 'La conversation s’est arrêtée avant de répondre', timeout: 'Pas de réponse en dix minutes', refused: 'Claude Code l’a refusée' },
+    copy: 'Copier la réponse',
+    close: 'Fermer (Échap)',
+    notSaved: 'Pas enregistré dans le chat',
+    askInChat: 'Demander dans le chat',
+    askInChatHint: 'Mettre la question dans le champ comme un message normal - là, Claude peut lire des fichiers et lancer des outils',
+    hint: 'Tape /btw et une question. Claude répond d’après cette conversation sans arrêter son travail, et la réponse ne va pas dans le chat.',
+  },
+
   thanks: {
     button: 'Le plugin te plaît ? Dis merci',
     title: 'DIRE MERCI',
@@ -904,6 +925,8 @@ export const fr: Dict = {
     share: 'Partager avec des amis',
     shareSub: 'Copie une phrase à son sujet et le lien',
     shareCopied: 'Copié - colle-le où tu veux',
+    tip: 'Laisser un pourboire',
+    tipSub: 'Sur Ko-fi, une fois ou chaque mois',
     shareText:
       'Jette un œil à Amazing Claude Code GUI - Claude Code en vrai panneau dans les IDE JetBrains : https://plugins.jetbrains.com/plugin/33255-amazing-claude-code',
   },
@@ -1788,6 +1811,8 @@ export const fr: Dict = {
     rename: 'renommer cet onglet ; sans nom, ouvre le champ dessus',
     renameArgument: '[nouveau nom]',
     config: 'réglages de Claude Code - les ouvre dans le menu',
+    btw: 'une petite question à part - le travail continue',
+    btwArgument: '<ta question>',
     model: 'changer le modèle de cette session',
     effort: 'régler combien de temps Claude réfléchit avant d’agir',
     context: 'ce qui remplit la fenêtre de contexte en ce moment',

@@ -310,7 +310,7 @@ export const en = {
     },
     tokens: { label: 'Tokens today', hint: 'Spent today, across every project' },
     feedback: { label: 'Feedback button', hint: 'The bubble that opens the feedback form - the menu keeps its own way in' },
-    thanks: { label: 'Heart', hint: 'A star, a review, or a word to a friend' },
+    thanks: { label: 'Heart', hint: 'A star, a review, a word to a friend, or a tip' },
   },
 
   history: {
@@ -1104,6 +1104,9 @@ export const en = {
     send: 'Send',
     run: 'Run',
     runHint: 'Run in your shell - Claude sees the output with your next message',
+    /** Send while the field holds `/btw ...`: the question goes beside the work rather than into it. */
+    askAside: 'Ask aside',
+    askAsideHint: 'Claude answers from the conversation and keeps working',
     improveEmpty: 'Claude Code answered with nothing to put in the field.',
     improveChanged: 'The draft changed while it was being rewritten, so it was left alone.',
     /** The sparkle over a draft that begins with "!" - see runShellCommand. */
@@ -1138,6 +1141,30 @@ export const en = {
     watchers: (n: number): string => `${n} other ${n === 1 ? 'client is' : 'clients are'} watching this project`,
   },
 
+  /** The card of side questions over the field - `/btw` (see SideQuestion.tsx). */
+  side: {
+    title: 'SIDE QUESTION',
+    /** Beside the title: the answer is the model's, but the agent at work never sees the thread. */
+    unseen: 'Claude doesn\'t see this',
+    /** While the answer is coming - the seconds follow it. */
+    thinking: 'Thinking aside',
+    retrying: (attempt: number, max: number, seconds: number): string =>
+      `API error, retry ${attempt} of ${max} in ${seconds}s`,
+    cancel: 'Cancel',
+    cancelled: 'Cancelled',
+    askAgain: 'Ask again',
+    empty: 'No answer came back',
+    /** Why one ended without an answer - by the IDE's reason (see SideQuestion.Reason). */
+    failed: { ended: 'The conversation stopped before answering', timeout: 'No answer in ten minutes', refused: 'Claude Code turned it down' },
+    copy: 'Copy the answer',
+    close: 'Close (Esc)',
+    notSaved: 'Not saved to the chat',
+    askInChat: 'Ask in the chat',
+    askInChatHint: 'Put the question into the field as an ordinary message - there Claude can read files and run tools',
+    /** A bare `/btw` with nothing asked yet: the card says what it is for. */
+    hint: 'Type /btw and a question. Claude answers from this conversation without stopping its work, and the answer stays out of the chat.',
+  },
+
   thanks: {
     button: 'Enjoying the plugin? Say thanks',
     title: 'SAY THANKS',
@@ -1148,6 +1175,9 @@ export const en = {
     share: 'Share with friends',
     shareSub: 'Copies a line about it and the link',
     shareCopied: 'Copied - paste it wherever you like',
+    /** The tip page: the author's Ko-fi, where the amount and once-or-monthly are chosen. */
+    tip: 'Leave a tip',
+    tipSub: 'On Ko-fi, once or monthly',
     /**
      * What lands in the clipboard. It is pasted into somebody else's chat under this person's name, so it
      * is written the way one writes to a friend rather than the way one writes an advertisement - and in
@@ -2244,6 +2274,10 @@ export const en = {
     renameArgument: '[new name]',
     /** The panel's own `/config` with no settings named: it opens the screen of Claude Code's settings. */
     config: 'Claude Code settings - opens them in the menu',
+    /** The panel's `/btw` - a question beside the work (see feed/side). */
+    btw: 'ask a quick side question - the work goes on',
+    /** Grey after `/btw ` until the question is typed. */
+    btwArgument: '<question>',
     model: 'switch the model for this session',
     effort: 'set how long Claude thinks before acting',
     context: 'what fills the context window right now',

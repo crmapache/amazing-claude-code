@@ -1039,6 +1039,39 @@ type ShellMessageBody =
    */
   | { type: 'bashResult'; sessionId: string; id: string; exitCode: number; stdout: string; stderr: string }
   /**
+   * How a side question ended (`/btw`, see sideQuestion below) - told to the one client that asked it.
+   *
+   * `answered` carries the model's words and, rarely, `notice`: the CLI's word about a model that declined
+   * and the one that answered instead. `empty` came back without an answer of the model's - `text` is the
+   * CLI's own placeholder saying why, when there is one. `failed` names its `reason`: the process went away
+   * (`ended`), nothing came back in time (`timeout`), or the CLI answered with an error (`refused`, the
+   * error in `message`).
+   */
+  | {
+      type: 'sideAnswer'
+      sessionId: string
+      id: string
+      outcome: 'answered' | 'empty' | 'cancelled' | 'failed'
+      text?: string
+      notice?: string
+      reason?: 'ended' | 'timeout' | 'refused'
+      message?: string
+    }
+  /**
+   * A side question still being worked on: `started` once the CLI has taken it, `api_retry` for each new
+   * attempt at an API call that failed - with the CLI's own retry counters.
+   */
+  | {
+      type: 'sideProgress'
+      sessionId: string
+      id: string
+      status: string
+      attempt?: number
+      maxRetries?: number
+      delayMs?: number
+      errorStatus?: number
+    }
+  /**
    * The tabs as the shell keeps them. It is the shell that owns this list now: the interface makes the
    * identifiers up (a "+" has to answer instantly) but the order, the grouping and the names live on
    * the other side, where a second client can see them too.
@@ -1972,6 +2005,21 @@ export type WebviewMessage =
    * not the agent. The answer arrives as a single bashResult with the same id.
    */
   | { type: 'bash'; sessionId: string; id: string; command: string }
+  /**
+   * A question beside the conversation - `/btw`. The agent is not interrupted and never sees it: the CLI
+   * answers from the conversation's context with no tools and writes nothing into the transcript (see
+   * SideQuestion.kt). `history` is the thread's earlier exchanges, so a follow-up has them; progress and
+   * the answer come back as sideProgress and sideAnswer under the same id.
+   */
+  | {
+      type: 'sideQuestion'
+      sessionId: string
+      id: string
+      question: string
+      history: { question: string; response: string; notice?: string }[]
+    }
+  /** Taking a side question back while it is still out - it then ends as `cancelled`. */
+  | { type: 'sideQuestionCancel'; sessionId: string; id: string }
   | { type: 'stop'; sessionId: string }
   /** The ordinary Stop went unconfirmed - the user asked outright to kill the process. */
   | { type: 'kill'; sessionId: string }

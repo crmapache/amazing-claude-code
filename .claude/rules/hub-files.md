@@ -67,6 +67,7 @@ paths:
 - `usageStats`, `answerUsageStats`, `UsageConsentCard` в `dockCards`, `stat` с `feature` в `openScreen`/`openMenu` - usage-stats
 - `claudeConfig*` состояние, `openClaudeConfig`, `case 'claudeConfig'`, `config` в `runLocal` - claude-config
 - хоткеи поверх панели, пока собирается иероглиф - composer-field
+- `sideThreads`, `askAside`, `forgetSide`, `case 'sideAnswer'`/`'sideProgress'`, Esc над карточкой вопроса сбоку, `SideQuestionCard` в `dockCards` - btw
 - только в `mobile/App.tsx`: `openMachineScreen`, `openRepository`, `Door`/`from`, `edit.home`/`edit.origin` -
   remote-access и scenarios; `vividOf` - calm-colors; `case 'effort'` в `mobile/feed.ts` - models
 
@@ -78,6 +79,7 @@ paths:
 - `models` у `usage`, `ModelUsageWindow`, `hiddenIndicators`, `setHiddenIndicators`, факт `indicators` - indicators
 - `toolUseResult` у `AgentUserEvent`, `text` у `askAnswer` - permissions; `origin` у `AgentUserEvent` - history
 - `settingSources` в `init`, `setSettingSources`, `askSettingSources`, `accountOutranked`, `api_error_status` - setting-sources
+- `sideQuestion`, `sideQuestionCancel`, `sideAnswer`, `sideProgress` - btw
 - `theme`, `setTheme`, `setTextSize`, размеры в `typography` - appearance
 - `claudeConfig`, `askClaudeConfig`, `setClaudeConfig`, `ClaudeConfigSetting` - claude-config
 - `activeTab`, `drafts`, `restoreTabs`, `saveDraft`, `tabShown`, `setRestoreTabs` - restore-tabs

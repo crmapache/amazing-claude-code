@@ -242,7 +242,7 @@ export const ko: Dict = {
     },
     tokens: { label: '오늘의 토큰', hint: '오늘 쓴 토큰 (모든 프로젝트 합계)' },
     feedback: { label: '피드백 버튼', hint: '양식을 여는 말풍선 - 메뉴에서는 언제든 열 수 있어요' },
-    thanks: { label: '하트', hint: '별, 리뷰, 또는 친구에게 한마디' },
+    thanks: { label: '하트', hint: '별, 리뷰, 친구에게 한마디, 또는 후원' },
   },
 
   history: {
@@ -855,6 +855,8 @@ export const ko: Dict = {
     send: '보내기',
     run: '실행',
     runHint: '당신의 셸에서 실행돼요 - Claude는 다음 메시지에서 출력을 봅니다',
+    askAside: '옆에서 묻기',
+    askAsideHint: 'Claude가 대화 내용으로 답하고 작업을 계속해요',
     improveEmpty: 'Claude Code가 아무것도 돌려주지 않아서 입력창에 넣을 게 없어요.',
     improveChanged: '다시 쓰는 동안 초안이 바뀌어서 그대로 뒀어요.',
     improveTerminal: '터미널 명령은 다시 쓰지 않아요',
@@ -884,6 +886,25 @@ export const ko: Dict = {
     watchers: (n) => `다른 ${n}곳에서 이 프로젝트를 보고 있어요`,
   },
 
+  side: {
+    title: '잠깐 질문',
+    unseen: 'Claude는 이걸 보지 못해요',
+    thinking: '옆에서 생각 중',
+    retrying: (attempt: number, max: number, seconds: number): string =>
+      `API 오류, ${seconds}초 후 다시 시도 (${attempt}/${max})`,
+    cancel: '취소',
+    cancelled: '취소했어요',
+    askAgain: '다시 묻기',
+    empty: '답이 오지 않았어요',
+    failed: { ended: '답하기 전에 대화가 멈췄어요', timeout: '10분 동안 답이 없어요', refused: 'Claude Code가 거절했어요' },
+    copy: '답 복사',
+    close: '닫기 (Esc)',
+    notSaved: '채팅에 저장되지 않아요',
+    askInChat: '채팅에서 묻기',
+    askInChatHint: '질문을 일반 메시지로 입력란에 옮겨요 - 거기서는 Claude가 파일을 읽고 도구를 쓸 수 있어요',
+    hint: '/btw 다음에 질문을 입력하세요. Claude는 작업을 멈추지 않고 이 대화 내용으로 답하고, 답은 채팅에 남지 않아요.',
+  },
+
   thanks: {
     button: '플러그인이 마음에 드나요? 고맙다고 전하기',
     title: '고맙다고 전하기',
@@ -894,6 +915,8 @@ export const ko: Dict = {
     share: '친구에게 알리기',
     shareSub: '소개 한 줄과 링크를 복사해요',
     shareCopied: '복사했어요 - 원하는 곳에 붙여 넣으세요',
+    tip: '후원하기',
+    tipSub: 'Ko-fi에서 한 번 또는 매달',
     shareText:
       'Amazing Claude Code GUI 한번 봐 - JetBrains IDE 안에 Claude Code를 제대로 된 패널로 넣어줘: https://plugins.jetbrains.com/plugin/33255-amazing-claude-code',
   },
@@ -1752,6 +1775,8 @@ export const ko: Dict = {
     rename: '이 탭 이름 바꾸기. 이름 없이 쓰면 탭에서 입력란이 열림',
     renameArgument: '[새 이름]',
     config: 'Claude Code 설정 - 메뉴에서 열기',
+    btw: '작업을 멈추지 않고 잠깐 묻기',
+    btwArgument: '<질문>',
     model: '이 세션의 모델 바꾸기',
     effort: 'Claude가 움직이기 전에 얼마나 생각할지 정하기',
     context: '지금 컨텍스트 창에 무엇이 들어 있는지',

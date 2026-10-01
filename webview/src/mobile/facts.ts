@@ -1,3 +1,4 @@
+import { ASIDE_COMMAND } from '../feed/side'
 import { calmVividOf } from '../calmColors'
 import type { CommandEntry, CommandHint } from '../feed/slash'
 import { buildCommands } from '../feed/slash'
@@ -316,6 +317,10 @@ export const applyFact = (facts: ProjectFacts, message: ShellMessage, watching =
  * Past conversations are not lost by this: the phone has a screen for them already, reached from the
  * project rather than from the field.
  *
+ * `/btw` is the one panel command kept: a question beside the work is exactly what a phone watching a long
+ * run wants to ask, and the phone answers it itself, the panel's way - through the IDE's side question
+ * rather than through the agent (see feed/side and the phone's onSend).
+ *
  * Takes the two facts it is made of rather than the whole bundle, and that is what keeps the composer's
  * memo honest. Every project fact returns a new bundle and one of them arrives about once a second, so
  * the memo has to depend on these two alone - and given the bundle it used to depend on a promise in a
@@ -326,7 +331,8 @@ export const phoneCommands = (
   t: Dict,
   commands: ProjectFacts['commands'],
   hints: ProjectFacts['hints'],
-): CommandEntry[] => buildCommands(t, commands, hints).filter((command) => command.group !== 'panel')
+): CommandEntry[] =>
+  buildCommands(t, commands, hints).filter((command) => command.group !== 'panel' || command.id === ASIDE_COMMAND)
 
 /**
  * The runs going in a project right now, or nothing.

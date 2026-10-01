@@ -43,6 +43,15 @@ internal object RemoteCommands {
         "kill",
         "stopTask",
         /**
+         * A question beside the conversation (`/btw`) and taking one back - narrower than `prompt` above,
+         * not wider: the answer comes out of the conversation this device may already write into, with no
+         * tools at all, nothing is written into the transcript, and it goes back to the one phone that
+         * asked (see ClaudeSessionHub.askAside). A long run watched from a sofa is exactly where "what are
+         * you on right now?" is worth asking without stopping anything.
+         */
+        "sideQuestion",
+        "sideQuestionCancel",
+        /**
          * Starting a conversation of one's own. Confirmed deliberately: a freshly started IDE has no
          * conversations at all, and a phone that cannot open one would show an empty project and be
          * useless precisely when it is wanted. It starts no more than sending a message does - that

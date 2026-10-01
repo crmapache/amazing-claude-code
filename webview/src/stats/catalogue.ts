@@ -441,7 +441,8 @@ export const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
         name: 'Thanks',
         hint: 'A star, a review and share with a friend.',
         unit: 'count',
-        // Three lines, one for each way there is to say it. See Achievements.kt, "thanks".
+        // Three lines, one for each free way there is to say it - the tip is not counted. See
+        // Achievements.kt, "thanks".
         steps: 3,
         done: () => 'done',
         note: (value) =>

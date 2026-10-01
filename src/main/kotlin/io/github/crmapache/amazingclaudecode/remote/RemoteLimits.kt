@@ -99,6 +99,9 @@ internal class RemoteLimits {
             "stop" to 20,
             "kill" to 10,
             "stopTask" to 20,
+            // A side question is a paid call to the model like a message, only without the tools - so it
+            // is counted like one. Taking one back costs nothing and is left to the default.
+            "sideQuestion" to 10,
             // Being caught up is cheap for the agent and expensive to be denied: a phone in a lift does
             // it on every reconnect.
             "ready" to 60,

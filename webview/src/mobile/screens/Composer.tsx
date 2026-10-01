@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Microphone } from '../../components/Microphone'
+import { asideQuestion } from '../../feed/side'
 import { Ring } from '../../components/StatusBar'
 import { effortShortLabel, modeShortLabel, modelLabel } from '../../catalog'
 import { atQueryInText, matchFiles } from '../../feed/files'
@@ -59,6 +60,11 @@ interface ComposerProps {
   onDropQuote: (index: number) => void
   onSend: (prompt: OutgoingPrompt) => void
   onQueue: (prompt: OutgoingPrompt) => void
+  /**
+   * Text to put into the field in place of the draft - a side question's "Ask in the chat" (see
+   * SideQuestionCard). A new [nonce] is a new request, so the same question can be put back twice.
+   */
+  fill?: { text: string; nonce: number }
   /** What was sent here and not yet confirmed by the IDE - see mobile/outbox.ts. */
   unsent: { item: Unconfirmed; state: Exclude<UnconfirmedState, 'quiet'> }[]
   onRetry: (id: string) => void
@@ -149,6 +155,7 @@ export const Composer = ({
   onDropQuote,
   onSend,
   onQueue,
+  fill,
   unsent,
   onRetry,
   onDiscard,
@@ -181,6 +188,16 @@ export const Composer = ({
     registerInsert((phrase) => setDraft((current) => voiceJoin(current, phrase)))
     return () => registerInsert(null)
   }, [registerInsert])
+
+  // Put in by a press elsewhere on the screen - a side question taken into the chat (see [fill]). Keyed on
+  // the nonce alone: the text of a second request may be the same as the first.
+  const fillNonce = fill?.nonce
+  const fillText = useRef(fill?.text)
+  fillText.current = fill?.text
+  useEffect(() => {
+    if (fillNonce === undefined || fillText.current === undefined) return
+    setDraft(fillText.current)
+  }, [fillNonce])
   const [attachError, setAttachError] = useState('')
 
   /**
@@ -390,6 +407,10 @@ export const Composer = ({
   )
 
   const canSubmit = (draft.trim().length > 0 || attached.length > 0) && connected
+
+  // A side question - `/btw` (see feed/side): it goes beside the work rather than into it, has no queue to
+  // wait in, and the button says so, as at the desk.
+  const aside = asideQuestion(draft) !== null
 
   return (
     <>
@@ -794,7 +815,7 @@ export const Composer = ({
         <div className={m.toolSend}>
           {/* Queue only while there is a turn to wait out. Off a run it would be the same button as Send
               with a longer word on it. */}
-          {running ? (
+          {running && !aside ? (
             <button type="button" className={m.queue} disabled={!canSubmit} onClick={() => submit(true)}>
               {t.mobile.composer.queue}
             </button>
@@ -802,8 +823,13 @@ export const Composer = ({
 
           {/* Send never leaves, running or not: "I have changed my mind, now" is a thing one says from a
               sofa, and for a while it was the one thing this screen could not say. */}
-          <button type="button" className={m.send} disabled={!canSubmit} onClick={() => submit(false)}>
-            {t.mobile.composer.send}
+          <button
+            type="button"
+            className={aside ? `${m.send} ${m.sendAside}` : m.send}
+            disabled={!canSubmit}
+            onClick={() => submit(false)}
+          >
+            {aside ? t.composer.askAside : t.mobile.composer.send}
           </button>
         </div>
       </div>

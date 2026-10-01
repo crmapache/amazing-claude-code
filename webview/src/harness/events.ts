@@ -28,6 +28,21 @@ export const bash = (
   options: { stderr?: string; exitCode?: number; runMs?: number } = {},
 ): ScenarioStep => ({ kind: 'bash', command, stdout, ...options })
 export const agent = (event: AgentEvent): ScenarioStep => ({ kind: 'agent', event })
+
+/** The CLI retrying the API call of the last side question - see ScenarioStep. */
+export const sideRetry = (attempt: number, maxRetries: number, delayMs: number, errorStatus = 529): ScenarioStep => ({
+  kind: 'sideRetry',
+  attempt,
+  maxRetries,
+  delayMs,
+  errorStatus,
+})
+
+/** How the last side question ended - see ScenarioStep. */
+export const sideAnswer = (answer: Omit<Extract<ScenarioStep, { kind: 'sideAnswer' }>, 'kind'>): ScenarioStep => ({
+  kind: 'sideAnswer',
+  ...answer,
+})
 export const user = (text: string): ScenarioStep => ({ kind: 'user', text })
 export const wait = (ms: number): ScenarioStep => ({ kind: 'wait', ms })
 export const openSearch = (): ScenarioStep => ({ kind: 'openSearch' })

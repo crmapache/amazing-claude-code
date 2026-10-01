@@ -954,6 +954,14 @@
   opacity: 0.4;
 }
 
+/* A side question (`/btw`) steps back from the solid fill that means "this goes to the agent" - the same
+   soft accent the desk's button and the card over the field wear (see composer.module.css .sendAside). */
+.sendAside {
+  border: 1px solid var(--acc-accent-line);
+  background: var(--acc-accent-soft);
+  color: var(--acc-accent);
+}
+
 /*
  * Queue and Stop stand beside Send rather than in place of it. While the agent works there are three
  * different things one might mean - reach the turn now, wait it out, end it - and the phone used to

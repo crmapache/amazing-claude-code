@@ -1,6 +1,7 @@
 import type { MenuOption } from './components/Menu'
 import type { Dict } from './i18n/en'
 import type { ModelInfo } from './protocol'
+import { ASIDE_COMMAND } from './feed/side'
 
 /**
  * The values are checked against the CLI's documentation: the panel sends them as a slash command into
@@ -390,6 +391,13 @@ export const panelCommands = (t: Dict): CommandOption[] => [
    * CLI does exactly what was asked, so that goes on to it as typed (see localCommand).
    */
   { id: 'config', hint: t.commands.config, local: true },
+  /*
+   * The panel's, because the CLI's only exists as a screen: typed into a stream, `/btw` answers "isn't
+   * available in this environment". The panel asks the same question by the control request a thin client
+   * uses (see SideQuestion.kt), and the answer goes into a card over the field rather than into the
+   * conversation (see feed/side). It is the one panel command the phone keeps (see phoneCommands).
+   */
+  { id: ASIDE_COMMAND, hint: t.commands.btw, local: true, argumentHint: t.commands.btwArgument },
 ]
 
 export const builtinCommands = (t: Dict): CommandOption[] => [

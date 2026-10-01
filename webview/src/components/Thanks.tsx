@@ -6,8 +6,8 @@ import type { Dict } from '../i18n/en'
 
 /**
  * Saying thanks: a heart at the far end of the row opposite MODEL/EFFORT/MODE, and behind it the panel's
- * own dropdown with the three ways to do it - a star on GitHub, a review on the plugin's page, or a word
- * to somebody who has not heard of it.
+ * own dropdown with the ways to do it - a star on GitHub, a review on the plugin's page, a word to somebody
+ * who has not heard of it, or a tip on the author's Ko-fi page.
  *
  * A link rather than a real star in one press: GitHub has no address that stars a repository by being
  * opened - it is a write to the account, and to do it from here the plugin would have to ask a person for
@@ -25,6 +25,9 @@ export const THANKS_LINKS = {
   /* Straight to the reviews rather than to the plugin's front page: the errand here is to leave a rating,
      and the button to write one lives on that tab. */
   rate: 'https://plugins.jetbrains.com/plugin/33255-amazing-claude-code/reviews',
+  /* The author's page rather than a payment form: the amount, once or monthly, and the means of paying are
+     chosen there, and nothing about money passes through the plugin. */
+  tip: 'https://ko-fi.com/mzpizote',
 } as const
 
 export type ThanksLink = keyof typeof THANKS_LINKS
@@ -34,6 +37,18 @@ export const thanksUrl = (id: string): string | undefined => THANKS_LINKS[id as 
 
 /** The id of the entry that copies rather than opens - the one errand here with no address of its own. */
 export const SHARE = 'share'
+
+/** The id of the entry that leads to the tip page. */
+export const TIP: ThanksLink = 'tip'
+
+/**
+ * Whether a press is one of the ways the "Thanks" achievement counts (see Achievements.kt, "thanks").
+ *
+ * The tip is left out on purpose. An achievement whose last step can be bought turns the heart into a
+ * request for money, and the panel would be rewarding a press besides: it opens a page, and whether
+ * anything was paid there the plugin never learns. The three free ways stay the whole ladder.
+ */
+export const countsAsThanks = (id: string): boolean => id !== TIP && (thanksUrl(id) !== undefined || id === SHARE)
 
 /**
  * What lands in the clipboard, ready to be pasted into a chat with somebody.
@@ -58,6 +73,15 @@ export const thanksMenu = (
   width: 266,
   options: [
     {
+      // First: of the four it is the one the plugin most depends on, and a menu read from the top meets
+      // it before it is closed. The three free ways follow, and only they count towards the achievement
+      // (see countsAsThanks).
+      id: TIP,
+      label: t.thanks.tip,
+      sub: t.thanks.tipSub,
+      icon: '♥',
+    },
+    {
       id: 'github',
       label: t.thanks.star,
       sub: t.thanks.starSub,
@@ -74,7 +98,7 @@ export const thanksMenu = (
       id: SHARE,
       label: t.thanks.share,
       sub: copied ? t.thanks.shareCopied : t.thanks.shareSub,
-      // An arrow leaving the corner: the two above lead somewhere, this one hands something over.
+      // An arrow leaving the corner: the entries above lead somewhere, this one hands something over.
       icon: '↗',
     },
   ],

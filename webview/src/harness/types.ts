@@ -13,6 +13,20 @@ export type ScenarioStep =
    */
   | { kind: 'bash'; command: string; stdout: string; stderr?: string; exitCode?: number; runMs?: number }
   /**
+   * The IDE's side of a side question (`/btw`). The question itself is typed like any message - a 'user'
+   * step with `/btw ...` - and goes out through the panel's own submit; these two answer the last one it
+   * sent, under the number the panel gave it (the player peeks at it, as for a shell command).
+   */
+  | { kind: 'sideRetry'; attempt: number; maxRetries: number; delayMs: number; errorStatus?: number }
+  | {
+      kind: 'sideAnswer'
+      outcome: 'answered' | 'empty' | 'cancelled' | 'failed'
+      text?: string
+      notice?: string
+      reason?: 'ended' | 'timeout' | 'refused'
+      message?: string
+    }
+  /**
    * Open the statistics tab - and, if asked, its achievements screen - the way the menu's row would.
    * The figures themselves arrive as an ordinary shell message (see the statistics scenario).
    */

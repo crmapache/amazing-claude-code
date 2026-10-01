@@ -242,7 +242,7 @@ export const zh: Dict = {
     },
     tokens: { label: '今日 token', hint: '今天消耗的，所有项目合计' },
     feedback: { label: '反馈按钮', hint: '打开反馈表单的气泡 - 菜单里始终可以打开' },
-    thanks: { label: '爱心', hint: '一颗星、一条评价，或向朋友推荐' },
+    thanks: { label: '爱心', hint: '一颗星、一条评价、向朋友推荐，或打赏一下' },
   },
 
   history: {
@@ -855,6 +855,8 @@ export const zh: Dict = {
     send: '发送',
     run: '运行',
     runHint: '在你的 shell 里运行 - Claude 会随你的下一条消息看到输出',
+    askAside: '顺便问',
+    askAsideHint: 'Claude 根据对话回答，并继续工作',
     improveEmpty: 'Claude Code 什么也没返回，没有内容可以放进输入框。',
     improveChanged: '改写期间草稿变了，所以没有动它。',
     improveTerminal: '终端命令不会被改写',
@@ -884,6 +886,25 @@ export const zh: Dict = {
     watchers: (n) => `另有 ${n} 个客户端正在看这个项目`,
   },
 
+  side: {
+    title: '顺便一问',
+    unseen: 'Claude 看不到这里',
+    thinking: '正在旁边思考',
+    retrying: (attempt: number, max: number, seconds: number): string =>
+      `API 出错，${seconds} 秒后第 ${attempt}/${max} 次重试`,
+    cancel: '取消',
+    cancelled: '已取消',
+    askAgain: '再问一次',
+    empty: '没有收到回答',
+    failed: { ended: '对话在回答前停止了', timeout: '十分钟内没有回答', refused: 'Claude Code 拒绝了这个问题' },
+    copy: '复制回答',
+    close: '关闭 (Esc)',
+    notSaved: '不会保存到聊天里',
+    askInChat: '在聊天里问',
+    askInChatHint: '把问题作为普通消息放进输入框 - 在那里 Claude 可以读文件、用工具',
+    hint: '输入 /btw 加上问题。Claude 会根据这段对话回答，不打断它的工作，回答也不会进入聊天。',
+  },
+
   thanks: {
     button: '觉得好用？说声谢谢',
     title: '说声谢谢',
@@ -894,6 +915,8 @@ export const zh: Dict = {
     share: '分享给朋友',
     shareSub: '复制一句介绍和链接',
     shareCopied: '已复制 - 想贴哪儿就贴哪儿',
+    tip: '打赏一下',
+    tipSub: '在 Ko-fi 上，一次或按月',
     shareText:
       '推荐一下 Amazing Claude Code GUI - 把 Claude Code 做成 JetBrains IDE 里像样的面板：https://plugins.jetbrains.com/plugin/33255-amazing-claude-code',
   },
@@ -1759,6 +1782,8 @@ export const zh: Dict = {
     rename: '重命名此标签页；不带名称时在标签上打开输入框',
     renameArgument: '[新名称]',
     config: 'Claude Code 设置 - 在菜单中打开',
+    btw: '顺便问个问题 - 不打断当前工作',
+    btwArgument: '<问题>',
     model: '切换本次会话使用的模型',
     effort: '设置 Claude 动手前思考多久',
     context: '当前上下文窗口里装了什么',
