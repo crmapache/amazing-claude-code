@@ -9,6 +9,10 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.12] - 2026-09-30
+
+- Fixed: clicking the tab that glows did not put its light out when it was the tab already open. The light on an open tab that called you while you were away waits for you to do something in it, and the tab strip was left out of that entirely - so a click on the other tabs would not answer this one - which left out a click on the glowing tab itself too, and the light stayed until you clicked in the conversation or typed. Now clicking the glowing tab answers it; clicking another tab, "+" or the menu still leaves it glowing.
+
 ## [0.13.11] - 2026-09-30
 
 - Fixed: adding a second Claude account could put the wrong name on it, and a later sign-in could then delete an account from the machine. Signing in, the panel read the new account's name from Claude Code's shared settings file, which names whichever account's process wrote it last rather than the one that just signed in - so the new sign-in could be filed under an account that was already there, and signing into that account later was taken for a repeated sign-in that replaced it. Now the name is asked of the new sign-in itself, an account's sign-in is replaced only when it confirms it holds that same account, and rows already filed under the wrong name are corrected on their own the next time the accounts screen is open. The address on a card is checked every minute rather than kept for a day, so a card no longer goes on naming somebody who is not signed in there.
@@ -831,7 +835,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.11...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.12...HEAD
+[0.13.12]: https://github.com/crmapache/amazing-claude-code/compare/0.13.11...0.13.12
 [0.13.11]: https://github.com/crmapache/amazing-claude-code/compare/0.13.10...0.13.11
 [0.13.10]: https://github.com/crmapache/amazing-claude-code/compare/0.13.9...0.13.10
 [0.13.9]: https://github.com/crmapache/amazing-claude-code/compare/0.13.8...0.13.9
