@@ -9,6 +9,14 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.16] - 2026-10-01
+
+- Fixed: a photo attached on the phone was refused with "That would not fit in one message. Try one photo at a time", even when it was the only one. A whole message from the phone had to fit one relay frame of 256 KB, so a photo was squeezed to a fraction of that, and Safari encodes pictures heavily enough that a detailed shot did not fit even at its smallest. Now a message with photos travels in several frames and the IDE puts it back together, so photos go at the full size Claude reads them, up to three per message. With an older plugin on the computer the phone still squeezes a photo into one frame and asks you to update the plugin if it cannot.
+- Fixed: two photos in one message from the phone could leave the phone reconnecting over and over. A message over the relay's limit made the relay close the phone's connection, and the phone sent the same message again as soon as it was back. Nothing too big for the relay leaves the phone any more.
+- Fixed: a message with photos on a slow mobile connection was marked "Not delivered" while it was still uploading, and Retry sent it a second time on top of the first. The wait for the IDE's confirmation now starts once the message has left the phone, and each photo is sent once rather than twice.
+- Changed: when a photo cannot be attached on the phone, it now says why: the file is not a picture, the photo is too large even made smaller, or the message has no room left for it.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.15] - 2026-10-01
 
 - Added: side questions with /btw, as in the terminal and in VS Code. Until now /btw only answered "isn't available in this environment". Type /btw and a question at any moment, even while Claude is working, and the answer comes in a card above the input field without interrupting the turn. Claude answers from the conversation so far and with no tools, and the question and its answer stay out of the conversation: the agent never sees them and they are not saved. Follow-up questions keep the thread. The card shows how long the answer is taking and lets you cancel it, copy an answer, ask a failed one again, or move the question into the field as an ordinary message when it needs a look at the files. Escape closes the card without stopping the agent, and a bare /btw brings the thread back. It works from a paired phone too.
@@ -856,7 +864,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.15...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.16...HEAD
+[0.13.16]: https://github.com/crmapache/amazing-claude-code/compare/0.13.15...0.13.16
 [0.13.15]: https://github.com/crmapache/amazing-claude-code/compare/0.13.14...0.13.15
 [0.13.14]: https://github.com/crmapache/amazing-claude-code/compare/0.13.13...0.13.14
 [0.13.13]: https://github.com/crmapache/amazing-claude-code/compare/0.13.12...0.13.13
