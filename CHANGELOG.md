@@ -9,6 +9,12 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.15] - 2026-10-01
+
+- Added: side questions with /btw, as in the terminal and in VS Code. Until now /btw only answered "isn't available in this environment". Type /btw and a question at any moment, even while Claude is working, and the answer comes in a card above the input field without interrupting the turn. Claude answers from the conversation so far and with no tools, and the question and its answer stay out of the conversation: the agent never sees them and they are not saved. Follow-up questions keep the thread. The card shows how long the answer is taking and lets you cancel it, copy an answer, ask a failed one again, or move the question into the field as an ordinary message when it needs a look at the files. Escape closes the card without stopping the agent, and a bare /btw brings the thread back. It works from a paired phone too.
+- Added: a way to leave a tip. The heart under the input field now opens with "Leave a tip", which goes to the author's Ko-fi page, once or monthly, above the star, the review and the word to a friend. It does not count towards the Thanks achievement, which stays about the three free ways.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.14] - 2026-10-01
 
 - Fixed: a message written on the phone could vanish without a trace. The conversation took its name from the first words, and then nothing happened at the desk or on the phone, with no error anywhere. A message lost on its way - sent into a line that had just died, or from a page the phone put away in a pocket - was simply gone. Now the phone keeps every message until the IDE confirms it has it: if no confirmation comes within a few seconds the field says "Sending", then "Not delivered" with Retry, and the phone sends the message again by itself once the line is back. The IDE takes each message only once, so sending it again never says anything twice. On a line that works nothing changes.
@@ -850,7 +856,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.14...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.15...HEAD
+[0.13.15]: https://github.com/crmapache/amazing-claude-code/compare/0.13.14...0.13.15
 [0.13.14]: https://github.com/crmapache/amazing-claude-code/compare/0.13.13...0.13.14
 [0.13.13]: https://github.com/crmapache/amazing-claude-code/compare/0.13.12...0.13.13
 [0.13.12]: https://github.com/crmapache/amazing-claude-code/compare/0.13.11...0.13.12
