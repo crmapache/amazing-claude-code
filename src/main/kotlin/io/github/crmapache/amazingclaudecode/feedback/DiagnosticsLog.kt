@@ -144,6 +144,16 @@ internal class DiagnosticsLog {
          */
         const val ACCOUNTS = "accounts"
 
+        /**
+         * What a paired phone asked of a conversation, and what became of it: a conversation opened, a
+         * message arrived, arrived a second time, or was turned away and why.
+         *
+         * Written because the road from a phone was the one road with no trace at all: a message lost on it
+         * left a report saying nothing happened and nothing failed (see ArrivedMessages). Kinds and counts
+         * only - a message's length and how many pictures, never its words, never a device's address.
+         */
+        const val PHONE = "phone"
+
         fun getInstance(): DiagnosticsLog = service()
 
         /**

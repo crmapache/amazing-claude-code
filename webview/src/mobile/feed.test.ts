@@ -175,6 +175,43 @@ describe('the phone building a conversation', () => {
   })
 
   /**
+   * A message's echo arrives live a moment before the restore that repeats it - the restore was asked for
+   * with the number from before it. Applied twice, the phone drew the person's message twice. Written
+   * from a resend on a reconnect (see outbox.ts), which lands exactly in that moment every time.
+   */
+  it('does not draw again what arrived live ahead of the restore that repeats it', () => {
+    const echo = (seq: number): ShellMessage =>
+      message({ type: 'promptEcho', sessionId: 'main', id: 'm-1', tokens: [{ kind: 'text', value: 'gamma' }], seq })
+
+    const live = apply([assistant('before'), message({ type: 'status', sessionId: 'main', state: 'idle', seq: 4 }), echo(5)])
+
+    const restored = [
+      message({ type: 'restoreStarted', sessionId: 'main', from: 4 }),
+      echo(5),
+      message({ type: 'status', sessionId: 'main', state: 'running', seq: 6 }),
+      message({ type: 'restoreFinished', sessionId: 'main', upTo: 6 }),
+    ].reduce((feed, one) => applyMessage(feed, one), live)
+
+    expect(restored.state.items.filter((item) => item.kind === 'user')).toHaveLength(1)
+    expect(restored.state.status).toBe('running')
+    expect(restored.seq).toBe(6)
+  })
+
+  /** From scratch nothing is on screen to repeat, and every entry of the restore is drawn. */
+  it('draws every entry of a restore from scratch, whatever was there before', () => {
+    const echo = message({ type: 'promptEcho', sessionId: 'main', id: 'm-1', tokens: [{ kind: 'text', value: 'gamma' }], seq: 5 })
+    const live = apply([echo])
+
+    const restored = [
+      message({ type: 'restoreStarted', sessionId: 'main', from: 0 }),
+      echo,
+      message({ type: 'restoreFinished', sessionId: 'main', upTo: 5 }),
+    ].reduce((feed, one) => applyMessage(feed, one), live)
+
+    expect(restored.state.items.filter((item) => item.kind === 'user')).toHaveLength(1)
+  })
+
+  /**
    * A restore cut short is the end of the conversation with a gap before it. Kept under what was on
    * screen, the gap stood in the middle of the feed with no way to fill it - pages come from the top.
    */

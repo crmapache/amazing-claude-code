@@ -55,6 +55,17 @@ export interface MobileFeed {
   restoreCut: boolean
   /** A restore's entries, held until it is complete - each with its number, applied together with it. */
   pending: Array<{ action: PanelAction; at?: number; seq?: number }>
+  /**
+   * The last number already on screen when a restore began over what was kept - nothing when it began
+   * from scratch.
+   *
+   * The IDE hands a restore everything after the number the phone asked with, and that number is taken
+   * before the request leaves. Whatever arrived live in between is on screen already and comes again in
+   * the restore - and was drawn twice. The window used to be a person writing in the first second after a
+   * reconnect; it is every reconnect now that a message sent into a dead line goes out again by itself at
+   * that very moment (see outbox.ts), its echo arriving live just ahead of the restore that repeats it.
+   */
+  keptUpTo: number
 }
 
 /**
@@ -86,7 +97,7 @@ export const settleRestore = (feed: MobileFeed, now: number): MobileFeed => {
   const state = feed.pending.reduce((panel, entry) => reducePanel(panel, entry.action, entry.at ?? now), feed.state)
   const seq = feed.pending.reduce((last, entry) => entry.seq ?? last, feed.seq)
 
-  return { ...feed, state, seq, loaded: true, restoring: false, restoringSince: 0, pending: [] }
+  return { ...feed, state, seq, loaded: true, restoring: false, restoringSince: 0, pending: [], keptUpTo: 0 }
 }
 
 export const emptyFeed = (): MobileFeed => ({
@@ -97,6 +108,7 @@ export const emptyFeed = (): MobileFeed => ({
   loaded: false,
   restoreCut: false,
   pending: [],
+  keptUpTo: 0,
 })
 
 /**
@@ -147,6 +159,9 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
 
   const collect = (action: PanelAction): MobileFeed => {
     if (feed.restoring) {
+      // On screen already - it arrived live ahead of the restore that repeats it (see keptUpTo).
+      if (message.seq !== undefined && message.seq <= feed.keptUpTo) return { ...feed, restoringSince: now }
+
       // Still arriving: held with the rest, and the clock of the wait moves with it. Its number waits with
       // it - see MobileFeed.seq.
       if (!restoreOverdue(feed, now)) {
@@ -171,7 +186,8 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
       // gap stood in the middle of the feed - a mark between yesterday's messages and today's, with no
       // way to fill it: the pages above come from the top of the feed, not from its middle. Replaced, the
       // feed is the end again with the mark on top, and everything the phone had is a page away.
-      const state = message.from === 0 || message.truncated ? initialPanelState : feed.state
+      const fresh = message.from === 0 || message.truncated === true
+      const state = fresh ? initialPanelState : feed.state
       // Worded differently from the panel's mark on purpose: at the desk the beginning is genuinely
       // gone, while here it usually still exists on the machine and simply was not sent - a phone is
       // handed the end of a conversation rather than a working day of it (see ClaudeSessionHub.CatchUp).
@@ -188,7 +204,15 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
           ]
         : []
 
-      return { ...feed, state, restoring: true, restoringSince: now, restoreCut: message.truncated === true, pending }
+      return {
+        ...feed,
+        state,
+        restoring: true,
+        restoringSince: now,
+        restoreCut: message.truncated === true,
+        pending,
+        keptUpTo: fresh ? 0 : feed.seq,
+      }
     }
 
     case 'restoreFinished': {

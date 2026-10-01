@@ -603,6 +603,58 @@
 }
 
 /*
+ * A message sent and not yet confirmed by the IDE (see mobile/outbox.ts) - the same strip as the queue
+ * under it, because it is the same kind of thing: something said that has not reached the conversation.
+ * "Sending" is said quietly, "not delivered" in the colour of something that needs a hand.
+ */
+.unsentList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--acc-sp-2) var(--acc-sp-5);
+  border-top: 1px solid var(--acc-line);
+  background: var(--acc-bg-raised);
+}
+
+.unsentRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--acc-hit);
+}
+
+.unsentState {
+  flex: none;
+  font: var(--acc-fs-label) var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.unsentFailed {
+  color: var(--acc-warn);
+}
+
+.unsentText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--acc-fg-dim);
+}
+
+.unsentRetry {
+  flex: none;
+  min-height: var(--acc-hit);
+  padding: 0 var(--acc-sp-3);
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-pill);
+  background: var(--acc-bg-control);
+  color: var(--acc-fg);
+  font-size: 13px;
+}
+
+/*
  * The composer: three rows, and the division between them is the whole idea. What is read never
  * moves, and what is pressed is never where a thumb might brush it by accident.
  */

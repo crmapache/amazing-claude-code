@@ -1616,6 +1616,10 @@ export const ko: Dict = {
       ofTotal: (shown, total) => `${shown}/${total}`,
       photosDropped: (n) => `${n}장은 한 메시지에 들어가지 않아요 - 이것부터 보내세요.`,
       photoTooBig: '한 메시지에 들어가지 않아요. 사진을 한 장씩 보내 보세요.',
+      sending: '보내는 중…',
+      notDelivered: '전달되지 않음',
+      retry: '다시 보내기',
+      discardUnsent: '이 메시지 버리기',
     },
 
     limits: {

@@ -13,6 +13,7 @@ import { countSessionImages } from '../../feed/tokens'
 import { openedAgentOf } from '../../feed/workflow'
 import type { FeedItem, TaskItem, TodoItem } from '../../feed/types'
 import type { ProjectFacts } from '../facts'
+import type { Unconfirmed, UnconfirmedState } from '../outbox'
 import type { SessionEntry } from '../projects'
 import { Back } from './Back'
 import { Magnifier, SearchCapsule } from '../../components/SearchCapsule'
@@ -68,6 +69,12 @@ interface ThreadProps {
   onSend: (prompt: OutgoingPrompt) => void
   /** Said when the agent comes free. It waits in the IDE, not here - see SessionQueue.kt. */
   onQueue: (prompt: OutgoingPrompt) => void
+  /** What this phone sent here that the IDE has not confirmed yet, past the quiet moment - see mobile/outbox.ts. */
+  unsent: { item: Unconfirmed; state: Exclude<UnconfirmedState, 'quiet'> }[]
+  /** The same message again, on a row that was not delivered. */
+  onRetry: (id: string) => void
+  /** Given up on - the cross on that row. */
+  onDiscard: (id: string) => void
   /** The cross on a queued message. */
   onUnqueue: (id: string) => void
   /** Quoted out of the feed and waiting above the field - see the message sheet. */
@@ -147,6 +154,9 @@ export const Thread = ({
   onDropQuote,
   onSend,
   onQueue,
+  unsent,
+  onRetry,
+  onDiscard,
   onUnqueue,
   onStop,
   onStopTask,
@@ -405,6 +415,9 @@ export const Thread = ({
           onDropQuote={onDropQuote}
           onSend={onSend}
           onQueue={onQueue}
+          unsent={unsent}
+          onRetry={onRetry}
+          onDiscard={onDiscard}
           onStop={onStop}
           onRun={onRun}
           voice={voice}

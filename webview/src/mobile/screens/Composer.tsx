@@ -24,6 +24,7 @@ import { phoneCommands, type ProjectFacts } from '../facts'
 import { Limits } from './Limits'
 import { voiceJoin, voiceMessage } from '../../feed/voice'
 import type { PhoneDictation } from '../useDictation'
+import type { Unconfirmed, UnconfirmedState } from '../outbox'
 import m from '../mobile.module.css'
 import { useT } from '../../i18n'
 
@@ -58,6 +59,10 @@ interface ComposerProps {
   onDropQuote: (index: number) => void
   onSend: (prompt: OutgoingPrompt) => void
   onQueue: (prompt: OutgoingPrompt) => void
+  /** What was sent here and not yet confirmed by the IDE - see mobile/outbox.ts. */
+  unsent: { item: Unconfirmed; state: Exclude<UnconfirmedState, 'quiet'> }[]
+  onRetry: (id: string) => void
+  onDiscard: (id: string) => void
   onStop: () => void
   /** The model, the effort and the permission mode of this conversation - the sheet behind the chip. */
   onRun: () => void
@@ -144,6 +149,9 @@ export const Composer = ({
   onDropQuote,
   onSend,
   onQueue,
+  unsent,
+  onRetry,
+  onDiscard,
   onStop,
   onRun,
   voice,
@@ -527,6 +535,39 @@ export const Composer = ({
           <button type="button" className={m.stop} onClick={onStop}>
             {t.mobile.composer.stop}
           </button>
+        </div>
+      )}
+
+      {/*
+        What was sent and has not been confirmed (see mobile/outbox.ts). Nothing here for the first
+        moments - an ordinary answer arrives well inside them - then "sending", and past the patience "not
+        delivered" with the two things a person can do about it. Above the queue: these were said first.
+      */}
+      {unsent.length > 0 && (
+        <div className={m.unsentList}>
+          {unsent.map(({ item, state }) => (
+            <div key={item.id} className={m.unsentRow}>
+              <span className={`${m.unsentState} ${state === 'failed' ? m.unsentFailed : ''}`}>
+                {state === 'failed' ? t.mobile.composer.notDelivered : t.mobile.composer.sending}
+              </span>
+              <span className={m.unsentText}>{item.text}</span>
+              {state === 'failed' && (
+                <>
+                  <button type="button" className={m.unsentRetry} onClick={() => onRetry(item.id)}>
+                    {t.mobile.composer.retry}
+                  </button>
+                  <button
+                    type="button"
+                    className={m.queueRemove}
+                    aria-label={t.mobile.composer.discardUnsent}
+                    onClick={() => onDiscard(item.id)}
+                  >
+                    ×
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
         </div>
       )}
 

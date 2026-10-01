@@ -1633,6 +1633,10 @@ export const ja: Dict = {
       ofTotal: (shown, total) => `${shown}／${total}`,
       photosDropped: (n) => `あと ${n} 枚は 1 通に収まりません - まずこれらを送ってください。`,
       photoTooBig: '1 通には収まりません。写真は 1 枚ずつ試してください。',
+      sending: '送信中…',
+      notDelivered: '届いていません',
+      retry: '再送',
+      discardUnsent: 'このメッセージを破棄',
     },
 
     limits: {

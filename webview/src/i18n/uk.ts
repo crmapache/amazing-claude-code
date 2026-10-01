@@ -1830,6 +1830,10 @@ export const uk: Dict = {
       ofTotal: (shown, total) => `${shown} з ${total}`,
       photosDropped: (n) => `Ще ${n} не влізло в одне повідомлення - надішліть спершу ці.`,
       photoTooBig: 'В одне повідомлення це не влізе. Спробуйте по одній світлині.',
+      sending: 'Надсилається…',
+      notDelivered: 'Не доставлено',
+      retry: 'Повторити',
+      discardUnsent: 'Скасувати це повідомлення',
     },
 
     limits: {

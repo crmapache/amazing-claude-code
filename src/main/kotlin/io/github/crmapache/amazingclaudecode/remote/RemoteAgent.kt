@@ -20,6 +20,7 @@ import io.github.crmapache.amazingclaudecode.claude.SessionClient
 import io.github.crmapache.amazingclaudecode.claude.SessionLaunch
 import io.github.crmapache.amazingclaudecode.claude.SessionSnapshot
 import io.github.crmapache.amazingclaudecode.claude.StartingChoice
+import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import io.github.crmapache.amazingclaudecode.stats.StatsLedger
 import io.github.crmapache.amazingclaudecode.net.IdeHttp
 import java.net.http.HttpClient
@@ -348,6 +349,10 @@ internal class RemoteAgent : Disposable {
                     // sending few enormous frames is the other half of the same question.
                     if (!volume.allowBytes(deviceId, opened.bytes.size)) {
                         thisLogger().info("A device is sending more than its share - dropped")
+                        DiagnosticsLog.note(
+                            DiagnosticsLog.PHONE,
+                            "a frame of ${opened.bytes.size / 1024} KB was over the allowance and dropped",
+                        )
                         return
                     }
 
@@ -947,7 +952,12 @@ internal class RemoteAgent : Disposable {
     private fun command(device: ByteArray, payload: JsonObject) {
         val projectKey = payload["pj"]?.jsonPrimitive?.contentOrNull.orEmpty()
         val message = payload["b"] as? JsonObject ?: return
-        val attachment = projects[projectKey] ?: return
+        val attachment = projects[projectKey] ?: run {
+            // A phone holding a list from before a window closed. Silent until now, and the one way a
+            // message could vanish with nothing anywhere saying where.
+            DiagnosticsLog.note(DiagnosticsLog.PHONE, "a request named a project this IDE does not have open - dropped")
+            return
+        }
 
         // Named as the device rather than as this client: how fast anyone may ask is a question about
         // one phone, and every phone paired with this IDE arrives through the same client.

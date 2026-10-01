@@ -1651,6 +1651,10 @@ export const fr: Dict = {
       ofTotal: (shown, total) => `${shown} sur ${total}`,
       photosDropped: (n) => `${n} de plus ne tiennent pas dans un message - envoie d’abord celles-ci.`,
       photoTooBig: 'Cela ne tient pas dans un message. Essaie une photo à la fois.',
+      sending: 'Envoi…',
+      notDelivered: 'Non distribué',
+      retry: 'Réessayer',
+      discardUnsent: 'Abandonner ce message',
     },
 
     limits: {

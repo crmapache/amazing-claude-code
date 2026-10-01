@@ -29,6 +29,7 @@ import {
   type MobileFeed,
 } from './feed'
 import { Link, type LinkState, type SessionLaunch } from './link'
+import { confirmed, dropped, held, loadUnconfirmed, resendable, resent, saveUnconfirmed, shownFor, type Unconfirmed } from './outbox'
 import {
   buildProjects,
   CAP_OPEN_BARE,
@@ -469,6 +470,52 @@ export const App = () => {
   /** Numbers the messages this device queues, so two put in the same millisecond are still two. */
   const queueCounter = useRef(0)
 
+  /** The same for the messages it sends outright - every one carries an identifier now (see outbox.ts). */
+  const messageCounter = useRef(0)
+
+  /**
+   * What this phone has sent and the IDE has not yet confirmed - see outbox.ts.
+   *
+   * Read back from the page's storage on the way in: a page thrown out of memory in a pocket comes back
+   * holding what it never heard about, and sends it again once the line is up (see resendHeld).
+   */
+  const [outbox, setOutbox] = useState<Unconfirmed[]>(() => loadUnconfirmed())
+  /** The same, for the handlers that are built once and would otherwise see the first list forever. */
+  const outboxRef = useRef(outbox)
+  outboxRef.current = outbox
+
+  useEffect(() => saveUnconfirmed(outbox), [outbox])
+
+  /**
+   * This phone's own clock, for the rows of the outbox only: they count from moments this phone stamped,
+   * so the machine's clock the rest of the screens run on would measure them against the wrong one. Ticks
+   * only while something is waiting.
+   */
+  const [outboxNow, setOutboxNow] = useState(() => Date.now())
+  const outboxWaiting = outbox.length > 0
+  useEffect(() => {
+    if (!outboxWaiting) return
+    setOutboxNow(Date.now())
+    const timer = window.setInterval(() => setOutboxNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [outboxWaiting])
+
+  /**
+   * The line to an IDE is back with fresh keys: whatever was sent into the gap goes out again.
+   *
+   * Safe however often it happens - the IDE takes a message once by its identifier and only confirms a
+   * second copy (see ArrivedMessages.kt) - and limited to what is recent, so a message from an hour ago
+   * waits for the person rather than going out on its own (see resendable).
+   */
+  const resendHeld = useCallback((agentId: string) => {
+    const now = Date.now()
+    const due = resendable(outboxRef.current, agentId, now)
+    if (due.length === 0) return
+
+    for (const one of due) links.current[agentId]?.command(one.projectKey, one.body)
+    setOutbox((list) => resent(list, new Set(due.map((one) => one.id)), now))
+  }, [])
+
   /** Which conversation the feed on screen belongs to - a late message from another one is dropped. */
   const watching = useRef<{ agentId: string; projectKey: string; sessionId: string } | null>(null)
 
@@ -621,6 +668,20 @@ export const App = () => {
   grantArrived.current = dictation.grant
 
   const receive = useCallback((agentId: string, message: ShellMessage, projectKey: string) => {
+    // The IDE has a message this phone sent (see outbox.ts). Ahead of every guard below: it may be about a
+    // conversation no longer on screen, and the row it settles belongs to that one.
+    if (message.type === 'promptReceived') {
+      setOutbox((list) => confirmed(list, message.id))
+      return
+    }
+
+    // The echo of it says the same, and is the one that arrives when the confirmation was the frame lost
+    // on the way back. Not taken here - it goes on into the feed like any other.
+    if (message.type === 'promptEcho' && message.id) {
+      const id = message.id
+      setOutbox((list) => confirmed(list, id))
+    }
+
     // The one answer that belongs to a project rather than to a conversation, and the one that arrives
     // while nothing is being watched at all - the screen that asked for it is a list of past
     // conversations, not a feed.
@@ -931,7 +992,11 @@ export const App = () => {
           if (list.at !== undefined) clockOf(agent.agentId).observe(list.at)
           setInventories((current) => ({ ...current, [agent.agentId]: list }))
         },
-        onState: (state) => setStates((current) => ({ ...current, [agent.agentId]: state })),
+        onState: (state) => {
+          setStates((current) => ({ ...current, [agent.agentId]: state }))
+          // Keys agreed and the machine answering - what was sent into the gap goes out again.
+          if (state === 'connected') resendHeld(agent.agentId)
+        },
         onProjectOpened: (result) => projectOpened(agent.agentId, result),
         onResync: () => resync(agent.agentId),
       })
@@ -939,7 +1004,7 @@ export const App = () => {
       links.current[agent.agentId] = link
       void link.connect()
     }
-  }, [agents, receive, projectOpened, resync, clockOf])
+  }, [agents, receive, projectOpened, resync, clockOf, resendHeld])
 
   /**
    * A pairing code scanned while this app was already open.
@@ -1161,6 +1226,33 @@ export const App = () => {
   const command = useCallback((agentId: string, projectKey: string, message: unknown) => {
     links.current[agentId]?.command(projectKey, message)
   }, [])
+
+  /**
+   * A message into a conversation, kept until the IDE says it has it - see outbox.ts.
+   *
+   * The identifier travels inside the message: it is what the IDE answers with, and what it recognises a
+   * second copy by.
+   */
+  const sendHeld = useCallback(
+    (agentId: string, projectKey: string, sessionId: string, body: Record<string, unknown> & { id: string }, text: string) => {
+      const now = Date.now()
+      setOutbox((list) => held(list, { id: body.id, agentId, projectKey, sessionId, body, text, firstAt: now, sentAt: now }))
+      command(agentId, projectKey, body)
+    },
+    [command],
+  )
+
+  /** Retry on a row that was not delivered: the same message again, identifier and all. */
+  const retryHeld = useCallback(
+    (id: string) => {
+      const one = outboxRef.current.find((item) => item.id === id)
+      if (!one) return
+
+      command(one.agentId, one.projectKey, one.body)
+      setOutbox((list) => resent(list, new Set([id]), Date.now()))
+    },
+    [command],
+  )
 
   /**
    * Ask an IDE about its MCP servers.
@@ -2621,9 +2713,12 @@ export const App = () => {
                 })
               }
 
-              command(screen.agentId, screen.projectKey, {
+              sendHeld(screen.agentId, screen.projectKey, screen.sessionId, {
                 type: 'prompt',
                 sessionId: screen.sessionId,
+                // Kept on this phone until the IDE answers with it, and how the IDE tells a resend from a
+                // new message - see outbox.ts.
+                id: `m-${Date.now().toString(36)}-${messageCounter.current++}-${Math.random().toString(36).slice(2, 6)}`,
                 text: prompt.text,
                 // The pieces the card is drawn from travel with the message: the shell keeps them and
                 // echoes them back, which is how this screen - and the panel at the desk - shows what was
@@ -2635,14 +2730,16 @@ export const App = () => {
                 // Photos from the phone travel as bytes: there is no path on this device the agent could
                 // read (see prompt.images in protocol.ts).
                 images: prompt.images,
-              })
+              }, prompt.text)
 
               setQuotes((current) => ({ ...current, [key]: [] }))
             }}
             // Queued in the IDE rather than on this device: the page holding it is thrown out while the
             // phone sits in a pocket, and that is exactly when a queued message matters (see SessionQueue).
+            // Held until the IDE confirms it like a message sent outright - a queued one lost on the way
+            // would otherwise simply never appear in the list.
             onQueue={(prompt: OutgoingPrompt) => {
-              command(screen.agentId, screen.projectKey, {
+              sendHeld(screen.agentId, screen.projectKey, screen.sessionId, {
                 type: 'queuePrompt',
                 sessionId: screen.sessionId,
                 id: `q-${Date.now().toString(36)}-${queueCounter.current++}`,
@@ -2650,10 +2747,13 @@ export const App = () => {
                 tokens: prompt.tokens,
                 quotes: prompt.quotes,
                 images: prompt.images,
-              })
+              }, prompt.text)
 
               setQuotes((current) => ({ ...current, [key]: [] }))
             }}
+            unsent={shownFor(outbox, screen.agentId, screen.projectKey, screen.sessionId, outboxNow)}
+            onRetry={retryHeld}
+            onDiscard={(id: string) => setOutbox((list) => dropped(list, id))}
             onUnqueue={(id: string) =>
               command(screen.agentId, screen.projectKey, {
                 type: 'unqueuePrompt',

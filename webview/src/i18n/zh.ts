@@ -1623,6 +1623,10 @@ export const zh: Dict = {
       ofTotal: (shown, total) => `${shown} / ${total}`,
       photosDropped: (n) => `还有 ${n} 张放不进同一条消息 - 先把这些发出去吧。`,
       photoTooBig: '这放不进一条消息。试试一次发一张。',
+      sending: '发送中…',
+      notDelivered: '未送达',
+      retry: '重试',
+      discardUnsent: '丢弃这条消息',
     },
 
     limits: {

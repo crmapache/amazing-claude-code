@@ -2082,6 +2082,11 @@ export const en = {
       ofTotal: (shown: number, total: number): string => `${shown} of ${total}`,
       photosDropped: (n: number): string => `${n} more would not fit in one message - send these first.`,
       photoTooBig: 'That would not fit in one message. Try one photo at a time.',
+      /** A message sent and not yet confirmed by the IDE - see mobile/outbox.ts. */
+      sending: 'Sending…',
+      notDelivered: 'Not delivered',
+      retry: 'Retry',
+      discardUnsent: 'Discard this message',
     },
 
     limits: {

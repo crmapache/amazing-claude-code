@@ -3,6 +3,7 @@ package io.github.crmapache.amazingclaudecode.claude
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessions.Companion.MAIN_SESSION
+import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import io.github.crmapache.amazingclaudecode.remote.RemoteAgent
 import io.github.crmapache.amazingclaudecode.remote.RemoteCommands
 import io.github.crmapache.amazingclaudecode.usage.UsageFeatures
@@ -13,11 +14,13 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.put
 
 /**
  * The one door a request from a client goes through.
@@ -63,6 +66,7 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
          */
         if (!local && !RemoteCommands.allows(type)) {
             thisLogger().warn("A client that is not this IDE asked for something it may not: $type ($clientId)")
+            DiagnosticsLog.note(DiagnosticsLog.PHONE, "turned away a request it may not make: ${kindOf(type)}")
             return true
         }
 
@@ -71,6 +75,7 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
         // minute (see RemoteLimits).
         if (!local && !limits.allow(asker, type)) {
             thisLogger().warn("A client is going too fast: $type ($asker)")
+            DiagnosticsLog.note(DiagnosticsLog.PHONE, "turned away for going too fast: ${kindOf(type)}")
             return true
         }
 
@@ -93,31 +98,35 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
             // `editor` asks for what the editor beside the panel shows (see EditorContext) - honoured for this
             // IDE's own panel only: a phone has no editor beside it, and what the desk's editor happens to show
             // is not something to hand to whoever is on the other end of the relay.
-            "prompt" -> hub.prompt(
-                sessionId,
-                field("text"),
-                images(payload),
-                echo = echo(payload),
-                remote = !local,
-                withEditor = local && flag(payload, "editor"),
-            )
+            "prompt" -> takeOnce(clientId, asker, sessionId, payload, local) {
+                hub.prompt(
+                    sessionId,
+                    field("text"),
+                    images(payload),
+                    echo = echo(payload),
+                    remote = !local,
+                    withEditor = local && flag(payload, "editor"),
+                )
+            }
 
             /**
              * A message written while the agent was busy. It waits beside the conversation rather than
              * in the window that typed it, so a phone put back in a pocket does not take it along (see
              * SessionQueue).
              */
-            "queuePrompt" -> hub.queuePrompt(
-                sessionId,
-                id = field("id"),
-                text = field("text"),
-                attach = field("attach"),
-                images = images(payload),
-                echo = echo(payload),
-                remote = !local,
-                before = field("before").ifEmpty { null },
-                withEditor = local && flag(payload, "editor"),
-            )
+            "queuePrompt" -> takeOnce(clientId, asker, sessionId, payload, local) {
+                hub.queuePrompt(
+                    sessionId,
+                    id = field("id"),
+                    text = field("text"),
+                    attach = field("attach"),
+                    images = images(payload),
+                    echo = echo(payload),
+                    remote = !local,
+                    before = field("before").ifEmpty { null },
+                    withEditor = local && flag(payload, "editor"),
+                )
+            }
 
             "unqueuePrompt" -> hub.unqueuePrompt(sessionId, field("id"))
 
@@ -180,21 +189,25 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
             // with an ordinary notification.
             "stopTask" -> hub.stopTask(sessionId, field("taskId"))
 
-            "newSession" -> hub.openSession(
-                id = sessionId,
-                // A branch inherits the transcript of the conversation it was opened from.
-                parentId = if (field("kind") == "branch") field("parentId").ifEmpty { MAIN_SESSION } else null,
-                title = field("title"),
-                quote = field("quote"),
-                // Chosen in the request rather than taken from the settings - which is what a client
-                // with no selectors of its own has to do (see SessionLaunch). The panel sends none of
-                // these and behaves exactly as it did.
-                launch = SessionLaunch(
-                    model = field("model"),
-                    effort = field("effort"),
-                    mode = PermissionModes.normalize(field("mode")).takeIf { it in PermissionModes.KNOWN }.orEmpty(),
-                ),
-            )
+            "newSession" -> {
+                if (!local) DiagnosticsLog.note(DiagnosticsLog.PHONE, "opened a conversation (${kindOf(field("kind").ifEmpty { "main" })})")
+
+                hub.openSession(
+                    id = sessionId,
+                    // A branch inherits the transcript of the conversation it was opened from.
+                    parentId = if (field("kind") == "branch") field("parentId").ifEmpty { MAIN_SESSION } else null,
+                    title = field("title"),
+                    quote = field("quote"),
+                    // Chosen in the request rather than taken from the settings - which is what a client
+                    // with no selectors of its own has to do (see SessionLaunch). The panel sends none of
+                    // these and behaves exactly as it did.
+                    launch = SessionLaunch(
+                        model = field("model"),
+                        effort = field("effort"),
+                        mode = PermissionModes.normalize(field("mode")).takeIf { it in PermissionModes.KNOWN }.orEmpty(),
+                    ),
+                )
+            }
 
             "closeSession" -> hub.closeSession(sessionId)
 
@@ -617,6 +630,62 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
     private fun strings(payload: JsonObject, name: String): List<String> =
         payload[name]?.jsonArray.orEmpty().mapNotNull { it.jsonPrimitive.contentOrNull }
 
+    /**
+     * A message from a phone, said once however many times it arrives - and the phone told it has arrived.
+     *
+     * A phone keeps what it sent until it hears this, and sends it again when its line comes back or the
+     * person presses Retry (see mobile/outbox.ts): that is how a message lost between a pocket and the
+     * relay stops being lost in silence. The other half of the bargain is here - a copy of a message that
+     * did arrive is recognised by its identifier and dropped (see [ArrivedMessages]), so a resend can never
+     * say anything twice.
+     *
+     * The answer goes to the phone that sent it and to no other, and it goes for a copy too: the copy is
+     * usually the phone asking again because the first answer was lost on the way back.
+     *
+     * The panel and a message with no identifier pass straight through, exactly as before. The panel is
+     * the IDE itself and has nothing in between to lose a message on; an older phone sends no identifier
+     * and has nothing to wait for.
+     */
+    private fun takeOnce(clientId: String, asker: String, sessionId: String, payload: JsonObject, local: Boolean, say: () -> Unit) {
+        val id = payload["id"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        if (local || id.isEmpty()) {
+            say()
+            return
+        }
+
+        if (hub.arrived.first(sessionId, id)) {
+            val text = payload["text"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            DiagnosticsLog.note(
+                DiagnosticsLog.PHONE,
+                "a message arrived (${text.length} chars, ${images(payload).size} images)",
+            )
+            // Not said is not arrived: forgotten again, so the copy the phone sends next is taken.
+            runCatching(say).onFailure { failure ->
+                hub.arrived.undo(sessionId, id)
+                throw failure
+            }
+        } else {
+            DiagnosticsLog.note(DiagnosticsLog.PHONE, "a message arrived again and was not said twice")
+        }
+
+        hub.emitTo(
+            clientId,
+            buildJsonObject {
+                put("type", "promptReceived")
+                put("sessionId", sessionId)
+                put("id", id)
+            }.toString(),
+            asker,
+        )
+    }
+
+    /**
+     * A request's kind, fit for the diagnostic buffer. The kind is a word of the protocol - unless the
+     * sender made it up, and a made-up one is whatever the sender typed, which is exactly what may not go
+     * into a report (see DiagnosticsLog).
+     */
+    private fun kindOf(type: String): String = if (KIND.matches(type)) type else "a kind it made up"
+
     private fun images(payload: JsonObject): List<ImageAttachment> =
         payload["images"]?.jsonArray.orEmpty().mapNotNull { element ->
             val image = element as? JsonObject ?: return@mapNotNull null
@@ -628,5 +697,8 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
     private companion object {
         /** What a message's echo carries besides its text - see [echo]. */
         val ECHOED = listOf("id", "tokens", "quotes", "steering")
+
+        /** What a word of the protocol looks like - see [kindOf]. */
+        val KIND = Regex("[A-Za-z]{1,40}")
     }
 }

@@ -236,6 +236,9 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     /** What each conversation is waiting to say once the turn in progress ends - see [SessionQueue]. */
     private val queued = SessionQueue()
 
+    /** Which messages each conversation has already taken, so a phone's resend is not said twice - see [ArrivedMessages]. */
+    internal val arrived = ArrivedMessages()
+
     /**
      * One lock per conversation rather than one for the hub. Numbering under a shared lock would make
      * two busy conversations wait on each other for nothing, while numbering with no lock at all is the
@@ -1014,6 +1017,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         asleepUntilSeen.remove(id)
         // What this conversation was waiting to say goes with it: there is nothing left to say it to.
         queued.clear(id)
+        arrived.forget(id)
         journals.remove(id)
         snapshots.remove(id)
         streams.remove(id)

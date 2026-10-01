@@ -1180,6 +1180,12 @@ type ShellMessageBody =
       /** What the editor showed when the message was sent, as the IDE read it - the line under the card. */
       editor?: EditorRef
     }
+  /**
+   * A phone's message has arrived, said to that phone alone (see SessionCommands.takeOnce in the plugin).
+   * The phone keeps what it sent until it hears this, and sends it again when it does not - see
+   * mobile/outbox.ts. Sent for a copy the IDE dropped as well: that copy is the phone asking again.
+   */
+  | { type: 'promptReceived'; sessionId: string; id: string }
   | { type: 'askResolved'; sessionId: string; id: string; outcome: 'answered' | 'dismissed' | 'withdrawn' }
   | { type: 'status'; sessionId: string; state: AgentStatus }
   /**

@@ -1633,6 +1633,10 @@ export const de: Dict = {
       ofTotal: (shown, total) => `${shown} von ${total}`,
       photosDropped: (n) => `${n} weitere passen nicht in eine Nachricht - schick erst diese.`,
       photoTooBig: 'Das passt nicht in eine Nachricht. Versuch es mit einem Foto nach dem anderen.',
+      sending: 'Wird gesendet…',
+      notDelivered: 'Nicht zugestellt',
+      retry: 'Erneut senden',
+      discardUnsent: 'Diese Nachricht verwerfen',
     },
 
     limits: {

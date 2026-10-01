@@ -1788,6 +1788,10 @@ export const ru: Dict = {
       ofTotal: (shown, total) => `${shown} из ${total}`,
       photosDropped: (n) => `Ещё ${n} не влезло в одно сообщение - отправьте сначала эти.`,
       photoTooBig: 'В одно сообщение это не влезет. Попробуйте по одной фотографии.',
+      sending: 'Отправляется…',
+      notDelivered: 'Не доставлено',
+      retry: 'Повторить',
+      discardUnsent: 'Отменить это сообщение',
     },
 
     limits: {

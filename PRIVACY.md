@@ -129,7 +129,9 @@ The debug report is the part worth being exact about. It contains: the plugin's 
 its build, your operating system and processor architecture, the version of Claude Code, an outline of
 what the current conversation did, anything that failed, and a few counts of what the plugin did on its
 own - how many messages a conversation was opened with, for instance, or that a batch of them did not
-reach the panel.
+reach the panel. With remote access on, it also says what a paired phone asked for: that it opened a
+conversation, that a message from it arrived (how long it was and how many pictures it carried, never
+its words), that a copy of one was dropped, or that a request was turned away and why.
 
 The outline is a list of shapes rather than contents - "a Read call, 118 bytes in, 4 kilobytes back, at
 this many seconds". It does **not** contain your messages, the agent's answers, the contents of any
