@@ -69,6 +69,12 @@ export interface AgentEntry {
  */
 export const CAP_OPEN_BARE = 'openBare'
 
+/**
+ * A message too big for one relay frame may go in parts - see RemoteAgent.CAP_PARTS and cutInParts in
+ * link.ts. A machine without it takes photos only as small as one frame allows (see images.ts).
+ */
+export const CAP_PARTS = 'parts'
+
 export interface Inventory {
   projects: Array<{
     key: string

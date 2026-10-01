@@ -2111,7 +2111,10 @@ export const en = {
       projectFiles: 'Project files',
       ofTotal: (shown: number, total: number): string => `${shown} of ${total}`,
       photosDropped: (n: number): string => `${n} more would not fit in one message - send these first.`,
-      photoTooBig: 'That would not fit in one message. Try one photo at a time.',
+      photoTooBig: 'This photo is too large to send, even made smaller.',
+      /** The IDE on the other end predates photos sent in parts and takes only what fits one frame. */
+      photoTooBigOldIde: 'The plugin on your computer takes only small photos. Update it to send this one.',
+      photoUnreadable: 'That file could not be opened as a picture.',
       /** A message sent and not yet confirmed by the IDE - see mobile/outbox.ts. */
       sending: 'Sending…',
       notDelivered: 'Not delivered',

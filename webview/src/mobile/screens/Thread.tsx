@@ -13,6 +13,7 @@ import { countSessionImages } from '../../feed/tokens'
 import { openedAgentOf } from '../../feed/workflow'
 import type { FeedItem, TaskItem, TodoItem } from '../../feed/types'
 import type { ProjectFacts } from '../facts'
+import type { PhotoRoad } from '../images'
 import type { Unconfirmed, UnconfirmedState } from '../outbox'
 import type { SessionEntry } from '../projects'
 import { Back } from './Back'
@@ -63,6 +64,8 @@ interface ThreadProps {
   sessionId: string
   /** What this phone knows about the project the conversation is in - see mobile/facts. */
   facts: ProjectFacts
+  /** How big this machine lets a photo be - see PhotoRoad. */
+  photos: PhotoRoad
   connected: boolean
   /** Nothing about this conversation has arrived yet - see MobileFeed.loaded. */
   loading: boolean
@@ -154,6 +157,7 @@ export const Thread = ({
   siblings,
   sessionId,
   facts,
+  photos,
   connected,
   loading,
   voice,
@@ -421,6 +425,7 @@ export const Thread = ({
 
         <Composer
           facts={facts}
+          photos={photos}
           context={context}
           run={{
             model: feed.model ?? '',

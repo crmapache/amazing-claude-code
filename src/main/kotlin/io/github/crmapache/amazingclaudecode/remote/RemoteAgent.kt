@@ -100,6 +100,9 @@ internal class RemoteAgent : Disposable {
      */
     private val volume = RemoteLimits()
 
+    /** Messages too big for one frame, half-way through arriving - see [part]. */
+    private val parts = RemoteParts()
+
     /** When a frame from an address this agent does not know was last written down - see [mayLog]. */
     private val strangers = ConcurrentHashMap<String, Long>()
 
@@ -410,6 +413,7 @@ internal class RemoteAgent : Disposable {
         when (payload["k"]?.jsonPrimitive?.contentOrNull) {
             "subscribe" -> subscribe(address, payload)
             "cmd" -> command(address, payload)
+            "part" -> part(address, deviceId, payload)
             "inventory" -> sendInventory(address)
             "openProject" -> openProject(address, payload)
             // Read off that machine's disk without opening anything - see [recentHistory]. Rate limited
@@ -775,6 +779,7 @@ internal class RemoteAgent : Disposable {
         handshakes.remove(deviceId)
         resyncAsked.remove(deviceId)
         volume.forget(deviceId)
+        parts.forget(deviceId)
         outbox.forget(deviceId)
         countWatchers()
         announceRemoteState()
@@ -962,6 +967,36 @@ internal class RemoteAgent : Disposable {
         // Named as the device rather than as this client: how fast anyone may ask is a question about
         // one phone, and every phone paired with this IDE arrives through the same client.
         attachment.hub.commands.handle(attachment.client.id, message, asker = Frame.encodeAddress(device))
+    }
+
+    /**
+     * One slice of a message too big for a frame - a phone's photos, almost always (see RemoteParts).
+     *
+     * Put together, it goes through [command] exactly as a message that arrived whole does, list and rate
+     * limits included. Only a message may arrive this way: everything else a phone says fits in a frame
+     * many times over.
+     */
+    private fun part(address: ByteArray, deviceId: String, payload: JsonObject) {
+        when (val outcome = parts.take(deviceId, payload)) {
+            RemoteParts.Outcome.Waiting -> Unit
+
+            is RemoteParts.Outcome.Refused -> {
+                thisLogger().info("A part of a message was refused: ${outcome.why}")
+                DiagnosticsLog.note(DiagnosticsLog.PHONE, "a part of a message was refused: ${outcome.why}")
+            }
+
+            is RemoteParts.Outcome.Whole -> {
+                val whole = runCatching { Json.parseToJsonElement(outcome.text).jsonObject }.getOrNull()
+                if (whole == null || !RemoteParts.mayArriveInParts(whole)) {
+                    thisLogger().info("A message put together from parts was not one that may arrive that way")
+                    DiagnosticsLog.note(DiagnosticsLog.PHONE, "turned away something other than a message sent in parts")
+                    return
+                }
+
+                DiagnosticsLog.note(DiagnosticsLog.PHONE, "a message arrived in parts (${outcome.text.length / 1024} KB)")
+                command(address, whole)
+            }
+        }
     }
 
     /**
@@ -1290,6 +1325,9 @@ internal class RemoteAgent : Disposable {
                 // the phone's scenarios screen asks for when a closed repository is picked for a shelf.
                 // Older machines answer that request with a refusal, so the row is greyed out instead.
                 add(CAP_OPEN_BARE)
+                // A message too big for one frame may come in several (see RemoteParts). An older machine
+                // knows nothing of parts, and a phone talking to one still squeezes its photos into a frame.
+                add(CAP_PARTS)
             }
             // The catalogue of models, so a conversation started from a phone can be started on a
             // chosen one. It belongs to the machine rather than to a project - it is what this
@@ -1930,6 +1968,9 @@ internal class RemoteAgent : Disposable {
          * mobile/projects.ts), and a typo here is a feature that quietly stays off for everyone.
          */
         const val CAP_OPEN_BARE = "openBare"
+
+        /** A message too big for one frame may arrive in parts - see [part]. Spelled in mobile/projects.ts too. */
+        const val CAP_PARTS = "parts"
 
         /**
          * "This machine no longer knows you." One word for both ways of saying it - sealed at the moment

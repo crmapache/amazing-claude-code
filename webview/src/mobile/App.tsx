@@ -30,10 +30,22 @@ import {
   type MobileFeed,
 } from './feed'
 import { Link, type LinkState, type SessionLaunch } from './link'
-import { confirmed, dropped, held, loadUnconfirmed, resendable, resent, saveUnconfirmed, shownFor, type Unconfirmed } from './outbox'
+import {
+  confirmed,
+  dropped,
+  held,
+  loadUnconfirmed,
+  resendable,
+  resent,
+  saveUnconfirmed,
+  shownFor,
+  uploaded,
+  type Unconfirmed,
+} from './outbox'
 import {
   buildProjects,
   CAP_OPEN_BARE,
+  CAP_PARTS,
   chatKey,
   waitingFor,
   type AgentEntry,
@@ -46,6 +58,7 @@ import { tabHolding } from '../feed/resume'
 import { PIN_LIMIT, togglePin } from '../feed/pins'
 import type { FeedItem, TaskItem } from '../feed/types'
 import { usageOf, type UsageFacts } from '../feed/usage'
+import { NARROW, ROOMY } from './images'
 import { chatHits, rowOf } from '../feed/search'
 import type { PaintedTerm, ScenarioScope, SearchHit, SearchProgressStep, SearchScope } from '../protocol'
 import { Search, type SearchTab } from '../components/Search'
@@ -533,8 +546,12 @@ export const App = () => {
     const due = resendable(outboxRef.current, agentId, now)
     if (due.length === 0) return
 
-    for (const one of due) links.current[agentId]?.command(one.projectKey, one.body)
     setOutbox((list) => resent(list, new Set(due.map((one) => one.id)), now))
+    for (const one of due) {
+      void (links.current[agentId]?.command(one.projectKey, one.body) ?? Promise.resolve(false)).then(() =>
+        setOutbox((list) => uploaded(list, one.id, Date.now())),
+      )
+    }
   }, [])
 
   /** Which conversation the feed on screen belongs to - a late message from another one is dropped. */
@@ -1275,9 +1292,12 @@ export const App = () => {
 
   const open = useCallback((entry: SessionEntry) => enter(entry.agentId, entry.projectKey, entry.sessionId, entry.awaitsYou), [enter])
 
-  const command = useCallback((agentId: string, projectKey: string, message: unknown) => {
-    links.current[agentId]?.command(projectKey, message)
-  }, [])
+  /** Resolves once it has left this phone, or could not - see Link.command. */
+  const command = useCallback(
+    (agentId: string, projectKey: string, message: unknown): Promise<boolean> =>
+      links.current[agentId]?.command(projectKey, message) ?? Promise.resolve(false),
+    [],
+  )
 
   /**
    * A side question from this phone - the panel's askAside (see App.tsx), with one difference: the moment it
@@ -1306,7 +1326,9 @@ export const App = () => {
     (agentId: string, projectKey: string, sessionId: string, body: Record<string, unknown> & { id: string }, text: string) => {
       const now = Date.now()
       setOutbox((list) => held(list, { id: body.id, agentId, projectKey, sessionId, body, text, firstAt: now, sentAt: now }))
-      command(agentId, projectKey, body)
+      // The IDE's confirmation is waited for from the moment the last byte has left - a message with
+      // photos takes a while to get that far over a mobile line (see outbox.ts).
+      void command(agentId, projectKey, body).then(() => setOutbox((list) => uploaded(list, body.id, Date.now())))
     },
     [command],
   )
@@ -1317,8 +1339,8 @@ export const App = () => {
       const one = outboxRef.current.find((item) => item.id === id)
       if (!one) return
 
-      command(one.agentId, one.projectKey, one.body)
       setOutbox((list) => resent(list, new Set([id]), Date.now()))
+      void command(one.agentId, one.projectKey, one.body).then(() => setOutbox((list) => uploaded(list, id, Date.now())))
     },
     [command],
   )
@@ -2767,6 +2789,9 @@ export const App = () => {
               facts[`${screen.agentId}:${screen.projectKey}`] ?? emptyFacts(),
               chatAccounts[chatKey(screen.agentId, screen.projectKey, screen.sessionId)] ?? '',
             )}
+            // Photos at full size where the machine takes a message in parts, one frame's worth where it
+            // predates them - see images.ts.
+            photos={(inventories[screen.agentId]?.caps ?? []).includes(CAP_PARTS) ? ROOMY : NARROW}
             connected={states[screen.agentId] === 'connected'}
             loading={!feed.loaded}
             voice={dictation}

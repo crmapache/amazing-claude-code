@@ -17,6 +17,10 @@
  *   text is never simply gone.
  * - **It goes out again by itself when the line comes back**, if it is recent enough that the person
  *   pressing Send still means it ([RESEND_WITHIN_MS]).
+ * - **Patience starts when the upload ends, not when Send was pressed.** A message with photos is
+ *   megabytes, and over a mobile line that takes longer than [PATIENCE_MS] to leave the phone at all.
+ *   Counted from the press, it was "not delivered" while it was still on its way, and Retry sent the
+ *   whole of it a second time over the first.
  *
  * Sending again is safe because the IDE takes a message once, by its identifier, and drops every copy
  * after the first (see ArrivedMessages.kt) - a resend of a message that did arrive says nothing twice.
@@ -41,6 +45,11 @@ export interface Unconfirmed {
   firstAt: number
   /** When it last went out - the moment the row counts its patience from. */
   sentAt: number
+  /**
+   * Still leaving this phone: handed to the line, not yet sent out of it. Patience is not counted while
+   * it is - see [uploaded].
+   */
+  uploading?: boolean
 }
 
 /** What the row says about it, if anything. */
@@ -63,12 +72,24 @@ const STORAGE_KEY = 'acc-unconfirmed'
 export const stateOf = (item: Unconfirmed, now: number): UnconfirmedState => {
   const waited = now - item.sentAt
   if (waited < QUIET_MS) return 'quiet'
-  return waited < PATIENCE_MS ? 'sending' : 'failed'
+  return item.uploading || waited < PATIENCE_MS ? 'sending' : 'failed'
 }
 
-/** One more message on its way. */
+/** One more message on its way - leaving this phone from this moment, until [uploaded] says it has. */
 export const held = (list: readonly Unconfirmed[], item: Unconfirmed): Unconfirmed[] =>
-  [...list.filter((one) => one.id !== item.id), item].slice(-KEPT)
+  [...list.filter((one) => one.id !== item.id), { ...item, uploading: true }].slice(-KEPT)
+
+/**
+ * It has left this phone, or could not leave at all - either way the waiting for the IDE starts now.
+ *
+ * A message that could not go (no line, a socket that died half-way) is treated the same: the row says
+ * "sending" for the usual moment and then "not delivered", exactly as before uploads were counted, and
+ * the line coming back sends it again.
+ */
+export const uploaded = (list: readonly Unconfirmed[], id: string, now: number): Unconfirmed[] =>
+  list.some((one) => one.id === id && one.uploading)
+    ? list.map((one) => (one.id === id ? { ...one, uploading: false, sentAt: now } : one))
+    : (list as Unconfirmed[])
 
 /** The IDE has it - it is no longer anybody's worry. */
 export const confirmed = (list: readonly Unconfirmed[], id: string): Unconfirmed[] =>
@@ -77,9 +98,9 @@ export const confirmed = (list: readonly Unconfirmed[], id: string): Unconfirmed
 /** Given up on by the person - the cross on its row. */
 export const dropped = confirmed
 
-/** These went out again just now - their patience starts over. */
+/** These went out again just now - their patience starts over, once the upload is done (see [uploaded]). */
 export const resent = (list: readonly Unconfirmed[], ids: ReadonlySet<string>, now: number): Unconfirmed[] =>
-  list.map((one) => (ids.has(one.id) ? { ...one, sentAt: now } : one))
+  list.map((one) => (ids.has(one.id) ? { ...one, sentAt: now, uploading: true } : one))
 
 /**
  * What goes out again by itself now that the line to [agentId] is back.
@@ -115,20 +136,39 @@ export const loadUnconfirmed = (storage: () => OutboxStorage = pageStorage): Unc
     const raw = storage().getItem(STORAGE_KEY)
     if (!raw) return []
     const parsed: unknown = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter(isUnconfirmed) : []
+    // An upload in flight died with the page that was doing it. Left marked, its row would say
+    // "sending" forever over a message nothing is sending.
+    return Array.isArray(parsed) ? parsed.filter(isUnconfirmed).map(({ uploading: _gone, ...one }) => one) : []
   } catch {
     return []
   }
 }
 
+/**
+ * Write the list down for the page's next life.
+ *
+ * A message with photos is megabytes, and a page's session storage holds about five of them in all. When
+ * the whole list does not fit, the heaviest go first until the rest does: those stay in memory for as
+ * long as the page lives, and every other message keeps its place on the disk. Giving up on the write
+ * altogether would be worse than it looks - it leaves the PREVIOUS list on the disk, and a page reloaded
+ * later would send again messages the IDE has long since confirmed.
+ */
 export const saveUnconfirmed = (list: readonly Unconfirmed[], storage: () => OutboxStorage = pageStorage): void => {
-  try {
-    if (list.length === 0) storage().removeItem(STORAGE_KEY)
-    else storage().setItem(STORAGE_KEY, JSON.stringify(list))
-  } catch {
-    // Storage full or refused: the memory still holds it for as long as the page lives.
+  const lightestFirst = [...list].sort((a, b) => weightOf(a) - weightOf(b))
+
+  for (let kept = lightestFirst.length; kept >= 0; kept -= 1) {
+    const saved = new Set(lightestFirst.slice(0, kept))
+    try {
+      if (saved.size === 0) storage().removeItem(STORAGE_KEY)
+      else storage().setItem(STORAGE_KEY, JSON.stringify(list.filter((one) => saved.has(one))))
+      return
+    } catch {
+      // Storage full or refused: try again without the heaviest one left.
+    }
   }
 }
+
+const weightOf = (item: Unconfirmed): number => JSON.stringify(item.body).length
 
 const isUnconfirmed = (value: unknown): value is Unconfirmed => {
   if (typeof value !== 'object' || value === null) return false

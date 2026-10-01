@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { handshakeBudget, reconnectAfter } from './link'
+import { cutInParts, FRAME_BODY_BYTES, handshakeBudget, PART_BYTES, reconnectAfter } from './link'
 
 /**
  * When to connect again after the line dropped.
@@ -63,5 +63,53 @@ describe('how often an unsealed frame may start a handshake', () => {
     const asked = [1, 2, 3, 4, 5, 6].map((at) => at * 100)
 
     expect(handshakeBudget(asked, 10 * 60_000)).toEqual([10 * 60_000])
+  })
+})
+
+/**
+ * A message too big for one relay frame, cut into the frames that carry it (see RemoteParts in the plugin).
+ *
+ * What has to hold: the IDE joins the slices back into exactly the text that was cut, and no part ever
+ * comes out over the relay's ceiling - a frame over it closes the phone's connection rather than failing
+ * on its own.
+ */
+describe('cutting a message into parts', () => {
+  const weight = (part: Record<string, unknown>): number => new TextEncoder().encode(JSON.stringify(part)).length
+  const joined = (parts: Record<string, unknown>[]): string => parts.map((part) => part.d as string).join('')
+
+  it('gives back the message whole when the slices are joined', () => {
+    const message = JSON.stringify({ k: 'cmd', b: { type: 'prompt', text: 'привет', images: [{ data: 'A'.repeat(500_000) }] } })
+
+    const parts = cutInParts(message, 'p-1')
+
+    expect(parts.length).toBeGreaterThan(1)
+    expect(joined(parts)).toBe(message)
+    parts.forEach((part, index) => {
+      expect(part).toMatchObject({ k: 'part', id: 'p-1', i: index, n: parts.length })
+    })
+  })
+
+  it('keeps every part inside a frame, whatever the text is made of', () => {
+    // Quotes are written out as two bytes and Cyrillic letters take two as well: cut by characters alone,
+    // a slice of these would weigh twice the limit.
+    const message = '"ж\\'.repeat(200_000) + 'B'.repeat(300_000)
+
+    const parts = cutInParts(message, 'p-1')
+
+    expect(joined(parts)).toBe(message)
+    for (const part of parts) {
+      expect(weight({ d: part.d })).toBeLessThanOrEqual(PART_BYTES + 16)
+      expect(weight(part)).toBeLessThanOrEqual(FRAME_BODY_BYTES)
+    }
+  })
+
+  it('never cuts a character in half', () => {
+    // An emoji is two halves in the text; a cut between them leaves each slice holding half a character.
+    const message = '😀'.repeat(50)
+
+    const parts = cutInParts(message, 'p-1', 21)
+
+    expect(joined(parts)).toBe(message)
+    for (const part of parts) expect(JSON.stringify(part.d)).not.toMatch(/\\u[dD][89abAB]/)
   })
 })

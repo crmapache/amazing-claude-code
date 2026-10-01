@@ -209,9 +209,9 @@ internal class RemoteLimits {
          * The same number the transport already refuses above (RelayLink.MAX_FRAME_BYTES), so on the
          * relay's own path this is a second lock on a door that is already locked - which is the point
          * of it: the frame ceiling belongs to the transport, and a message that ever arrives another
-         * way should not be the first to find out that nothing else was checking. A picture from a
-         * phone is scaled down long before this (see mobile/images.ts); it does not travel in
-         * megabytes.
+         * way should not be the first to find out that nothing else was checking. A message with photos
+         * can be bigger than this, and then it travels as several frames, each of them weighed here
+         * on its own (see RemoteParts).
          */
         const val MAX_MESSAGE_BYTES = 256 * 1024
 
@@ -219,6 +219,9 @@ internal class RemoteLimits {
          * And how much of it a minute. A hundred small messages and one enormous one are different
          * problems, and the count above answers only the first: at the rates it allows, searching as
          * one types could carry thirty megabytes a minute and stay inside every one of them.
+         *
+         * Room for the heaviest honest minute there is: a message with its full load of photos (see
+         * RemoteParts.MAX_CHARS) and a second send of it after the line dropped half-way.
          */
         const val MAX_BYTES_PER_MINUTE = 8 * 1024 * 1024
     }

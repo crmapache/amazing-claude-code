@@ -17,7 +17,8 @@ import {
   unseal,
   type SessionKeys,
 } from '../core/crypto'
-import { buildFrame, FRAME_CONTROL, FRAME_SEALED, headerOf, parseFrame } from '../core/frame'
+import { buildFrame, FRAME_CONTROL, FRAME_SEALED, HEADER_BYTES, headerOf, parseFrame } from '../core/frame'
+import { CAP_PARTS } from './projects'
 import { rememberAgent, writeSetting, type PairedAgent } from './storage'
 
 /**
@@ -212,6 +213,25 @@ export class Link {
   /** What is still going out, so that frames leave in the order they were asked for - see [send]. */
   private outgoing: Promise<void> = Promise.resolve()
 
+  /**
+   * What this IDE has said it can do (see the caps list in RemoteAgent), or null until it has said.
+   *
+   * Kept across reconnects: the same IDE answers on the other end, and the list comes again with every
+   * inventory anyway - a plugin updated in between is a restarted IDE, which answers a new handshake and
+   * is asked for its inventory straight after it.
+   */
+  private caps: string[] | null = null
+
+  /**
+   * Commands waiting for [caps], in the order they were given - see [command].
+   *
+   * Only the ones that arrive while a message too big for one frame is waiting, or that message itself.
+   * Everything else goes straight out as it always has.
+   */
+  private parked: { text: string; bytes: Uint8Array; done: (sent: boolean) => void }[] = []
+
+  private parkedTimer: number | null = null
+
   constructor(
     private readonly agent: PairedAgent,
     private readonly events: LinkEvents,
@@ -274,6 +294,9 @@ export class Link {
       this.keys = null
       this.stopBeat()
       this.stopWaitingForAgent()
+      // Nothing waiting for this line's answer will get one. The messages among them are held by the
+      // outbox and go out again when the line is back - left parked as well, they would go twice.
+      this.unpark(false)
       if (this.closed) return
 
       const displaced = event.code === CLOSE_DISPLACED
@@ -310,6 +333,7 @@ export class Link {
     this.keys = null
     this.stopBeat()
     this.stopWaitingForAgent()
+    this.unpark(false)
 
     socket.onopen = null
     socket.onmessage = null
@@ -562,7 +586,14 @@ export class Link {
     if (!payload) return
 
     if (payload.k === 'event' && payload.b) this.events.onMessage(payload.b, payload.pj ?? '')
-    if (payload.k === 'inventory') this.events.onInventory(payload)
+    if (payload.k === 'inventory') {
+      // What this IDE takes, read before anybody else hears of the inventory: commands may be waiting
+      // on exactly this (see [command]).
+      const caps = (payload as { caps?: unknown }).caps
+      this.caps = Array.isArray(caps) ? caps.filter((cap): cap is string => typeof cap === 'string') : []
+      this.unpark(true)
+      this.events.onInventory(payload)
+    }
     if (payload.k === 'resync') this.events.onResync?.()
 
     // Sealed, so only this IDE can have written it: worth acting on rather than merely displaying.
@@ -735,43 +766,145 @@ export class Link {
     this.send({ p: PROTOCOL_VERSION, k: 'recentHistory', pj: projectKey })
   }
 
-  /** Anything the person does: a message, an answer, a stop. The agent decides what it will accept. */
-  command(projectKey: string, message: unknown): void {
-    this.send({ p: PROTOCOL_VERSION, k: 'cmd', pj: projectKey, b: message })
+  /**
+   * Anything the person does: a message, an answer, a stop. The agent decides what it will accept.
+   *
+   * Resolves true once all of it has left this phone - handed to the socket and sent out of its buffer -
+   * and false when it could not go at all. A message with photos takes a while to upload over a mobile
+   * line, and whoever waits for the IDE to confirm it should not start counting before the upload is
+   * done (see mobile/outbox.ts).
+   *
+   * A message too big for one frame goes in parts to an IDE that takes them, and nowhere otherwise: sent
+   * whole, the relay would close this phone's connection over it (see [FRAME_BODY_BYTES]). Until the IDE
+   * has said which it is - the first moments of a page that has just loaded, when held messages go out
+   * again - such a message waits for it, and every command after it waits behind it, so two messages
+   * still arrive in the order they were written.
+   */
+  command(projectKey: string, message: unknown): Promise<boolean> {
+    const text = JSON.stringify({ p: PROTOCOL_VERSION, k: 'cmd', pj: projectKey, b: message })
+    const bytes = new TextEncoder().encode(text)
+
+    if (this.parked.length > 0 || (bytes.length > FRAME_BODY_BYTES && this.caps === null)) {
+      return new Promise((done) => this.park({ text, bytes, done }))
+    }
+
+    return this.carry(text, bytes)
+  }
+
+  /** Whole when it fits a frame, in parts when it does not and this IDE takes them - see [command]. */
+  private carry(text: string, bytes: Uint8Array): Promise<boolean> {
+    if (bytes.length <= FRAME_BODY_BYTES) return this.sendBytes(bytes).then((sent) => sent && this.drained())
+
+    if (!(this.caps ?? []).includes(CAP_PARTS)) {
+      // An IDE that predates parts. The composer keeps photos small for one (see images.ts), so this is
+      // an enormous text and nothing else - and not sending it is the only way it does not cost the line.
+      console.warn(`A message of ${bytes.length} bytes is too big for one frame, and this IDE takes no parts`)
+      return Promise.resolve(false)
+    }
+
+    const id = `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    const sends = cutInParts(text, id).map((part) => this.sendBytes(encode(part)))
+
+    return Promise.all(sends).then((sent) => sent.every(Boolean) && this.drained())
+  }
+
+  private park(waiting: { text: string; bytes: Uint8Array; done: (sent: boolean) => void }): void {
+    this.parked.push(waiting)
+
+    // An IDE that never says: the commands are given up rather than held forever. The outbox says "not
+    // delivered" about the messages among them and sends them again when the line is back.
+    if (this.parkedTimer === null) {
+      this.parkedTimer = window.setTimeout(() => this.unpark(false), CAPS_PATIENCE_MS)
+    }
+  }
+
+  /** The IDE has said what it takes - or the line went, and the waiting commands go nowhere. */
+  private unpark(send: boolean): void {
+    if (this.parkedTimer !== null) {
+      window.clearTimeout(this.parkedTimer)
+      this.parkedTimer = null
+    }
+
+    const waiting = this.parked
+    this.parked = []
+
+    for (const one of waiting) {
+      if (send) void this.carry(one.text, one.bytes).then(one.done)
+      else one.done(false)
+    }
   }
 
   /**
-   * Send something to the IDE, sealed - and after everything already asked for.
+   * Whether everything handed to this socket so far has left the phone.
+   *
+   * The browser takes a frame at once and sends it in its own time; `bufferedAmount` is what it has not
+   * sent yet. It counts every frame on the socket, so a heartbeat queued behind a photo keeps this
+   * waiting a moment longer - which only ever errs towards "still sending".
+   */
+  private drained(): Promise<boolean> {
+    const socket = this.socket
+
+    return new Promise((resolve) => {
+      const check = (): void => {
+        if (!socket || this.socket !== socket || socket.readyState !== WebSocket.OPEN) return resolve(false)
+        if (socket.bufferedAmount === 0) return resolve(true)
+        window.setTimeout(check, DRAIN_CHECK_MS)
+      }
+
+      check()
+    })
+  }
+
+  /** Send something to the IDE, sealed - see [sendBytes]. */
+  private send(body: unknown): Promise<boolean> {
+    return this.sendBytes(encode(body))
+  }
+
+  /**
+   * Send one frame's body to the IDE, sealed - and after everything already asked for.
    *
    * The queue is the point. Sealing is asynchronous, so two frames sent one line apart used to race
    * each other to the socket and could arrive the wrong way round. Most of the time that is harmless,
    * but not always: "open a conversation" followed by "watch it" arriving in the other order leaves the
    * IDE watching something that does not exist yet, and the screen that was opened stays empty with
    * nothing anywhere saying why.
+   *
+   * Resolves true once the frame is handed to the socket.
    */
-  private send(body: unknown): void {
+  private sendBytes(bytes: Uint8Array): Promise<boolean> {
     const socket = this.socket
     const keys = this.keys
-    if (!socket || !keys || socket.readyState !== WebSocket.OPEN) return
+    if (!socket || !keys || socket.readyState !== WebSocket.OPEN) return Promise.resolve(false)
+
+    // The last lock on the door: whatever asked for this, a frame over the relay's ceiling costs the
+    // whole connection rather than itself (see [FRAME_BODY_BYTES]).
+    if (bytes.length > FRAME_BODY_BYTES) {
+      console.warn(`A frame of ${bytes.length} bytes is over the relay's ceiling - not sent`)
+      return Promise.resolve(false)
+    }
 
     // Taken here rather than inside the queue, so the numbers follow the order the frames were asked
     // for - which is the order they now go out in.
     this.counter += 1n
     const counter = this.counter
 
-    this.outgoing = this.outgoing
+    const step = this.outgoing
       .then(async () => {
-        if (socket.readyState !== WebSocket.OPEN) return
+        if (socket.readyState !== WebSocket.OPEN) return false
 
         const to = unbase64url(this.agent.agentId)
         const from = unbase64url(this.agent.deviceId)
         const header = headerOf(FRAME_SEALED, to, from, counter)
-        const sealed = await seal(keys.toAgent, keys.noncePrefixToAgent, counter, header, encode(body))
+        const sealed = await seal(keys.toAgent, keys.noncePrefixToAgent, counter, header, bytes)
 
         socket.send(buildFrame(FRAME_SEALED, to, from, counter, sealed) as BufferSource)
+        return true
       })
       // One frame that could not be sealed must not stop every frame after it.
-      .catch(() => undefined)
+      .catch(() => false)
+
+    this.outgoing = step.then(() => undefined)
+    return step
   }
 
   /** Only the handshake goes in the open - there is no key yet, and it is what produces one. */
@@ -822,6 +955,69 @@ export class Link {
 }
 
 const encode = (body: unknown): Uint8Array => new TextEncoder().encode(JSON.stringify(body))
+
+/**
+ * The most one sealed body may weigh: the relay's ceiling for a whole frame (256 KB, see the relay's
+ * config and RelayLink.MAX_FRAME_BYTES in the plugin) less the envelope's header and the seal's tag.
+ *
+ * Not a soft limit. The relay hands it to its socket server as the largest message it takes, and a frame
+ * over it does not get dropped quietly - the server closes this phone's whole connection. The phone then
+ * reconnects, sends the held message again, and is cut off again, for as long as the message is held.
+ */
+export const FRAME_BODY_BYTES = 256 * 1024 - HEADER_BYTES - 16
+
+/**
+ * What one part of a message too big for a frame may weigh - see [cutInParts]. Well under the frame:
+ * the part's own few fields ride beside the slice.
+ */
+export const PART_BYTES = 192 * 1024
+
+/** How long a message too big for one frame waits to learn whether this IDE takes parts - see [Link.command]. */
+const CAPS_PATIENCE_MS = 15_000
+
+/** How often the socket is asked whether everything handed to it has left the phone - see [Link.drained]. */
+const DRAIN_CHECK_MS = 250
+
+const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xdbff
+
+/**
+ * A message too big for one frame, as the frames that carry it (see RemoteParts in the plugin).
+ *
+ * Each part holds a slice of the message's own text, so the IDE joins the slices and reads exactly what
+ * would have arrived whole - nothing is encoded a second time on the way, which matters because almost
+ * all of such a message is a photo already written out as base64. A slice is weighed as it will travel,
+ * written into JSON and then into bytes: the base64 is one byte to a character, while a quote in the
+ * text around it is two and a Cyrillic letter is two as well, and a slice cut by characters alone could
+ * come out over the frame.
+ *
+ * Never cut between the two halves of a character outside the basic plane - an emoji in the text. Each
+ * half alone is not a character, and the slice carrying it would be written out as an escape.
+ */
+export const cutInParts = (text: string, id: string, limit: number = PART_BYTES): Record<string, unknown>[] => {
+  const encoder = new TextEncoder()
+  const slices: string[] = []
+  let start = 0
+
+  while (start < text.length) {
+    let end = Math.min(text.length, start + limit)
+
+    for (;;) {
+      if (end < text.length && end - start > 1 && isHighSurrogate(text.charCodeAt(end - 1))) end -= 1
+
+      const weight = encoder.encode(JSON.stringify(text.slice(start, end))).length
+      if (weight <= limit || end - start <= 1) break
+
+      // Shrunk in proportion rather than a character at a time: a slice of Russian text is twice its
+      // length in bytes, and stepping down from there one character per pass would be thousands of passes.
+      end = start + Math.max(1, Math.floor(((end - start) * limit) / weight))
+    }
+
+    slices.push(text.slice(start, end))
+    start = end
+  }
+
+  return slices.map((slice, index) => ({ p: PROTOCOL_VERSION, k: 'part', id, i: index, n: slices.length, d: slice }))
+}
 
 /** What a frame sent in the open begins with - see the note in receive. */
 const OPEN_BRACE = 0x7b

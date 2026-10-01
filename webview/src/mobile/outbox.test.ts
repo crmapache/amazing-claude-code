@@ -11,6 +11,7 @@ import {
   saveUnconfirmed,
   shownFor,
   stateOf,
+  uploaded,
   type OutboxStorage,
   type Unconfirmed,
 } from './outbox'
@@ -86,6 +87,37 @@ describe('what is held', () => {
   })
 })
 
+/**
+ * A message with photos is megabytes, and over a mobile line it takes longer than the patience to leave the
+ * phone at all. Counted from the press, it was "not delivered" while still on its way, and Retry sent it twice.
+ */
+describe('a message still leaving the phone', () => {
+  it('is never called not delivered while it is uploading', () => {
+    const list = held([], message('m-1', 0))
+
+    expect(stateOf(list[0]!, PATIENCE_MS * 10)).toBe('sending')
+  })
+
+  it('counts its patience from the moment the upload ended', () => {
+    const list = uploaded(held([], message('m-1', 0)), 'm-1', 60_000)
+
+    expect(stateOf(list[0]!, 60_000 + PATIENCE_MS - 1)).toBe('sending')
+    expect(stateOf(list[0]!, 60_000 + PATIENCE_MS)).toBe('failed')
+  })
+
+  it('uploads again when it is sent again', () => {
+    const list = resent(uploaded(held([], message('m-1', 0)), 'm-1', 1000), new Set(['m-1']), 9000)
+
+    expect(list[0]!.uploading).toBe(true)
+  })
+
+  it('ignores the end of an upload for a message the IDE has already confirmed', () => {
+    const list = confirmed(held([], message('m-1', 0)), 'm-1')
+
+    expect(uploaded(list, 'm-1', 5000)).toBe(list)
+  })
+})
+
 describe('sending again when the line comes back', () => {
   it('sends again what is recent and leaves older messages to the person', () => {
     const now = RESEND_WITHIN_MS + 10_000
@@ -128,6 +160,52 @@ describe('surviving a reload', () => {
     const { values, storage } = memory()
     saveUnconfirmed([message('m-1')], storage)
     saveUnconfirmed([], storage)
+
+    expect(values.has('acc-unconfirmed')).toBe(false)
+  })
+
+  it('does not come back still uploading - the page doing it is gone', () => {
+    const { storage } = memory()
+    saveUnconfirmed(held([], message('m-1', 7)), storage)
+
+    const [back] = loadUnconfirmed(storage)
+
+    expect(back!.uploading).toBeUndefined()
+    expect(stateOf(back!, 7 + PATIENCE_MS)).toBe('failed')
+  })
+
+  /**
+   * Session storage holds about five megabytes, and one message with photos can be most of that. A write that
+   * fails outright leaves the previous list behind, and a later reload would send again what was confirmed.
+   */
+  it('drops the heaviest messages from storage, not the whole list', () => {
+    const values = new Map<string, string>()
+    const small: OutboxStorage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => {
+        if (value.length > 2000) throw new Error('quota exceeded')
+        values.set(key, value)
+      },
+      removeItem: (key) => void values.delete(key),
+    }
+    const heavy = message('heavy', 0, { body: { type: 'prompt', images: [{ data: 'A'.repeat(5000) }] } })
+
+    saveUnconfirmed([message('m-1'), heavy, message('m-2')], () => small)
+
+    expect(loadUnconfirmed(() => small).map((one) => one.id)).toEqual(['m-1', 'm-2'])
+  })
+
+  it('leaves no stale list behind when nothing fits', () => {
+    const values = new Map<string, string>([['acc-unconfirmed', JSON.stringify([message('old')])]])
+    const full: OutboxStorage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: () => {
+        throw new Error('quota exceeded')
+      },
+      removeItem: (key) => void values.delete(key),
+    }
+
+    saveUnconfirmed([message('m-1')], () => full)
 
     expect(values.has('acc-unconfirmed')).toBe(false)
   })

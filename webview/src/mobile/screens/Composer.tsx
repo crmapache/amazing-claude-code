@@ -20,7 +20,7 @@ import {
   weekBudgetToday,
 } from '../../feed/usage'
 import { useNow } from '../../hooks/useNow'
-import { encodeImage, IMAGE_BUDGET, IMAGE_MINIMUM, type PickedImage } from '../images'
+import { encodeImage, IMAGE_MINIMUM, type PhotoRoad, type PickedImage } from '../images'
 import { phoneCommands, type ProjectFacts } from '../facts'
 import { Limits } from './Limits'
 import { voiceJoin, voiceMessage } from '../../feed/voice'
@@ -28,6 +28,7 @@ import type { PhoneDictation } from '../useDictation'
 import type { Unconfirmed, UnconfirmedState } from '../outbox'
 import m from '../mobile.module.css'
 import { useT } from '../../i18n'
+import type { Dict } from '../../i18n/en'
 
 /** A message on its way to the agent, in the three pieces the shell wants it in. */
 export interface OutgoingPrompt {
@@ -40,6 +41,8 @@ export interface OutgoingPrompt {
 
 interface ComposerProps {
   facts: ProjectFacts
+  /** How big this machine lets a photo be - see PhotoRoad. */
+  photos: PhotoRoad
   /** This conversation's context fill and what it is made of - see contextOf in feed/build. */
   context: { percent: number; used: number; limit: number }
   /** How the turn runs, for the one chip that says so and opens the sheet behind it. */
@@ -78,6 +81,46 @@ interface ComposerProps {
 
 /** Ticks at every fifth - unrelated to the colour thresholds, purely the scale's ruler. */
 const CONTEXT_TICKS = [20, 40, 60, 80]
+
+/** How many picked files did not become photos, by why - see [refusalText]. */
+interface Refused {
+  /** Not a picture this browser can open. */
+  unreadable: number
+  /** Too big even at the smallest step, on a message of its own. */
+  tooBig: number
+  /** No room left in this message - it would go in the next one. */
+  noRoom: number
+}
+
+/**
+ * The line under the field after a pick, or empty when every file became a photo.
+ *
+ * One cause per line, the one a person can do something about first. A single photo refused used to be
+ * told "try one photo at a time" whatever the reason was, which reads as nonsense with one photo picked.
+ */
+const refusalText = (t: Dict, refused: Refused, photos: PhotoRoad): string => {
+  const words = t.mobile.composer
+  if (refused.unreadable > 0) return words.photoUnreadable
+  if (refused.tooBig > 0) return photos.parts ? words.photoTooBig : words.photoTooBigOldIde
+  if (refused.noRoom > 0) return words.photosDropped(refused.noRoom)
+  return ''
+}
+
+/**
+ * The pieces the card is drawn from, without the photos' bytes.
+ *
+ * The bytes travel once, as the message's images; the chip in the text only names the picture. Sent in
+ * both, every photo crossed the mobile line twice. The card never drew from them anyway - a sent photo is
+ * a chip with its caption on both screens (see UserCard) - and the one thing at the desk that would have
+ * used them, putting the message back into the field, says plainly that the picture did not come back
+ * (see feed/reuse).
+ */
+const withoutImageBytes = (tokens: UserToken[]): UserToken[] =>
+  tokens.map((token) => {
+    if (token.kind !== 'chip' || token.chip.kind !== 'img' || !token.chip.data) return token
+    const { data: _bytes, ...chip } = token.chip
+    return { kind: 'chip', chip }
+  })
 
 /** One of the two rings in the top row: how full, in what paint, and what stands beside it. */
 interface RingFacts {
@@ -141,6 +184,7 @@ const MeterValue = ({ ring }: { ring: RingFacts }) =>
  */
 export const Composer = ({
   facts,
+  photos,
   context,
   run,
   running,
@@ -330,19 +374,27 @@ export const Composer = ({
       if (!files || files.length === 0) return
       setAttachError('')
 
-      let budget = IMAGE_BUDGET - attached.reduce((sum, image) => sum + image.weight, 0)
+      let budget = photos.total - attached.reduce((sum, image) => sum + image.weight, 0)
       const added: PickedImage[] = []
-      let refused = 0
+      const refused: Refused = { unreadable: 0, tooBig: 0, noRoom: 0 }
 
       for (const file of Array.from(files)) {
         if (budget < IMAGE_MINIMUM) {
-          refused += 1
+          refused.noRoom += 1
           continue
         }
 
-        const image = await encodeImage(file, Math.min(budget, IMAGE_BUDGET / 2))
-        if (!image) {
-          refused += 1
+        const allowance = Math.min(budget, photos.each)
+        const image = await encodeImage(file, allowance)
+        if (image === 'unreadable') {
+          refused.unreadable += 1
+          continue
+        }
+        if (image === 'tooBig') {
+          // Refused for the room this message had left rather than for itself: on its own, in a message
+          // of its own, it would have gone.
+          if (allowance < photos.each) refused.noRoom += 1
+          else refused.tooBig += 1
           continue
         }
 
@@ -351,13 +403,9 @@ export const Composer = ({
       }
 
       if (added.length > 0) setAttached((current) => [...current, ...added])
-      if (refused > 0) {
-        setAttachError(
-          added.length > 0 ? t.mobile.composer.photosDropped(refused) : t.mobile.composer.photoTooBig,
-        )
-      }
+      setAttachError(refusalText(t, refused, photos))
     },
-    [attached, t],
+    [attached, photos, t],
   )
 
   /**
@@ -384,7 +432,7 @@ export const Composer = ({
 
     return {
       text: composePrompt({ tokens, quotes: quotes.map((text) => ({ text })) }, imageBase),
-      tokens,
+      tokens: withoutImageBytes(tokens),
       images: imageAttachments(tokens),
       quotes,
     }
