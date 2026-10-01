@@ -238,12 +238,16 @@ internal object HeadTalk {
     /**
      * What the head is asked once a card's turn is over.
      *
+     * [endings] is what the card said each time it meant to end the turn, oldest first (see TurnEndings).
+     * More than one is said to the head in so many words: without it, a report followed by a note about a
+     * hook's style pass reads as two halves of one answer, or as the note superseding the report.
+     *
      * [handsOver] is whether giving up on the card hands its work to the head (see TakeOver.wanted). Then
      * the head is offered two ways of saying no rather than one, and the difference is the point: a card
      * that could not do it is work the head can pick up, and a stop the briefing forbids getting past is
      * not - the head saying which is how a scenario's hard stops stay stops with the fence down.
      */
-    fun verdictRequest(card: Card, answer: String, ok: Boolean, nudgesLeft: Int, handsOver: Boolean = false): String = buildString {
+    fun verdictRequest(card: Card, endings: List<String>, ok: Boolean, nudgesLeft: Int, handsOver: Boolean = false): String = buildString {
         appendLine(
             if (ok) {
                 "The card's turn is over. This is what it said:"
@@ -252,8 +256,23 @@ internal object HeadTalk {
             },
         )
         appendLine()
-        appendLine("---")
-        appendLine(answer.ifBlank { "(it said nothing at all)" })
+        val said = endings.filter { it.isNotBlank() }
+        if (said.size > 1) {
+            appendLine(
+                "It meant to end its turn ${said.size} times. Each time but the last, a hook of the project " +
+                    "sent it back to work, so what it said at every ending is here, in order. Read them " +
+                    "together: the report is usually the first, and the last is only what it did after the hook.",
+            )
+            appendLine()
+        }
+        said.forEachIndexed { index, ending ->
+            appendLine(if (said.size > 1) "--- ending ${index + 1} of ${said.size}" else "---")
+            appendLine(ending)
+        }
+        if (said.isEmpty()) {
+            appendLine("---")
+            appendLine("(it said nothing at all)")
+        }
         appendLine("---")
         appendLine()
         appendLine("Judge it against its definition of done:")
@@ -437,6 +456,17 @@ internal object HeadTalk {
      * and one that is not is not worth failing a night over.
      */
     data class Reply(val words: String, val body: JsonObject?)
+
+    /**
+     * What the head said over a turn that may have ended more than once (see TurnEndings).
+     *
+     * The object comes from the last ending that has one. A hook that sends the head back to work - a style
+     * pass after it finished a card's work itself - leaves a last ending with no object in it, and asking
+     * again for an answer already given spends the question's one allowance on nothing. The words are that
+     * ending's own: the note under the card is what the head said with its decision.
+     */
+    fun read(endings: List<String>): Reply =
+        endings.map(::read).lastOrNull { it.body != null } ?: read(endings.joinToString("\n\n"))
 
     fun read(text: String): Reply {
         val span = lastObject(text) ?: return Reply(tidy(text), null)

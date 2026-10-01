@@ -77,6 +77,72 @@ class HeadTalkTest {
         assertNull(HeadTalk.read("   ").body)
     }
 
+    // A style hook after the head finished a card's work: its last words are about the style pass.
+    @Test
+    fun `a turn sent back by a hook keeps the object it already gave`() {
+        val reply = HeadTalk.read(
+            listOf(
+                "The migration is on both projects. {\"done\": true, \"handoff\": \"PR #42\"}",
+                "Went over the style once more, nothing to fix.",
+            ),
+        )
+
+        assertEquals("true", reply.body?.get("done")?.toString())
+        assertEquals("The migration is on both projects.", reply.words)
+    }
+
+    @Test
+    fun `of two endings with an object the later one counts`() {
+        val reply = HeadTalk.read(listOf("{\"done\": false}", "Fixed it after all. {\"done\": true}"))
+
+        assertEquals("true", reply.body?.get("done")?.toString())
+        assertEquals("Fixed it after all.", reply.words)
+    }
+
+    @Test
+    fun `endings with no object at all are prose`() {
+        val reply = HeadTalk.read(listOf("First.", "Second."))
+
+        assertNull(reply.body)
+        assertEquals("First.\n\nSecond.", reply.words)
+    }
+
+    /*
+     * Recorded live: a card's report followed by a hook's style pass reached the head as the style note
+     * alone, and the head sent a finished card back for a report it had already written.
+     */
+    @Test
+    fun `a verdict on a turn that ended twice shows both endings and says why`() {
+        val asked = HeadTalk.verdictRequest(
+            card,
+            listOf("Built and committed. DOD: all met.", "Went over the style once more."),
+            ok = true,
+            nudgesLeft = 1,
+        )
+
+        assertTrue("Built and committed. DOD: all met." in asked)
+        assertTrue("Went over the style once more." in asked)
+        assertTrue("--- ending 1 of 2" in asked)
+        assertTrue("a hook of the project sent it back to work" in asked)
+        assertTrue(asked.indexOf("DOD: all met") < asked.indexOf("style once more"))
+    }
+
+    @Test
+    fun `a verdict on a single ending reads as before`() {
+        val asked = HeadTalk.verdictRequest(card, listOf("Done."), ok = true, nudgesLeft = 1)
+
+        assertTrue("---\nDone.\n---" in asked)
+        assertTrue("ending 1" !in asked)
+        assertTrue("hook" !in asked)
+    }
+
+    @Test
+    fun `a verdict on a turn that said nothing says so`() {
+        val asked = HeadTalk.verdictRequest(card, emptyList(), ok = false, nudgesLeft = 1)
+
+        assertTrue("(it said nothing at all)" in asked)
+    }
+
     /*
      * Both of these travel as a command-line argument, and on Windows a newline or a quotation mark ends
      * the command there - silently, with everything after it lost (see ClaudeLaunch). Everything with any
@@ -99,8 +165,8 @@ class HeadTalkTest {
      */
     @Test
     fun `a verdict that hands the card over offers a stop that is not taken over`() {
-        val handing = HeadTalk.verdictRequest(card, "CI on dev is red.", ok = true, nudgesLeft = 0, handsOver = true)
-        val ending = HeadTalk.verdictRequest(card, "CI on dev is red.", ok = true, nudgesLeft = 0)
+        val handing = HeadTalk.verdictRequest(card, listOf("CI on dev is red."), ok = true, nudgesLeft = 0, handsOver = true)
+        val ending = HeadTalk.verdictRequest(card, listOf("CI on dev is red."), ok = true, nudgesLeft = 0)
 
         assertTrue("\"stop\": true" in handing)
         assertTrue("finish it yourself" in handing)

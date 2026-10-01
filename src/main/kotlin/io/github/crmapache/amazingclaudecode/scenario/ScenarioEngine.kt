@@ -150,8 +150,8 @@ internal class ScenarioEngine(
     private var deciding: String = ""
 
     /** What the run's two live sessions have said this turn, and what they have cost in total so far. */
-    private val headTurn = StringBuilder()
-    private val cardTurn = StringBuilder()
+    private val headTurn = TurnEndings()
+    private val cardTurn = TurnEndings()
     private var headCost = 0.0
     private var cardCost = 0.0
 
@@ -329,7 +329,7 @@ internal class ScenarioEngine(
             point.begun && step != null && definition != null && step.conversationId.isNotEmpty() -> {
                 nudges = 0
                 cardCost = step.cost
-                cardTurn.setLength(0)
+                cardTurn.clear()
                 cardTurnEnded = false
                 editStep(step.key) { it.copy(state = StepState.RUNNING) }
                 card = openCard(step, definition, resumeFrom = step.conversationId)
@@ -482,6 +482,9 @@ internal class ScenarioEngine(
     /**
      * A turn's own answer, and what it added to the bill.
      *
+     * The answer is every ending of the turn, not the CLI's `result` alone - a Stop hook that sends the
+     * agent back to work leaves the result holding only what was said after it (see TurnEndings).
+     *
      * The two figures are reported differently and are read differently. The cost the CLI gives is the
      * conversation's running total, so what this turn spent is what the total grew by - the same
      * arithmetic the statistics do (see StatsCollector.noteResult). The usage is this turn's alone, so
@@ -489,12 +492,10 @@ internal class ScenarioEngine(
      * repository spends nearly all of it on cache reads (the same sum the day's counter uses - see
      * ClaudeTokenUsage).
      */
-    private fun collect(line: String, into: StringBuilder, spent: (Double?, Long) -> Unit) {
+    private fun collect(line: String, into: TurnEndings, spent: (Double?, Long) -> Unit) {
+        into.read(line)
         if (!AgentStream.isTurnResult(line)) return
         val event = runCatching { json.parseToJsonElement(line).jsonObject }.getOrNull() ?: return
-
-        into.setLength(0)
-        into.append((event["result"] as? JsonPrimitive)?.contentOrNull.orEmpty())
 
         val cost = (event["total_cost_usd"] as? JsonPrimitive)?.doubleOrNull
         val usage = event["usage"] as? JsonObject
@@ -562,7 +563,7 @@ internal class ScenarioEngine(
     private fun askAgain(text: String) {
         pendingHead = text
         headAskedAt = System.currentTimeMillis()
-        headTurn.setLength(0)
+        headTurn.clear()
         head?.sendPrompt(text)
     }
 
@@ -571,7 +572,7 @@ internal class ScenarioEngine(
         // Our own interrupt, or a turn that ended after the run did. Neither is an answer to anything.
         if (interrupting || phase == Phase.PAUSED || phase == Phase.OVER) return
 
-        val reply = HeadTalk.read(headTurn.toString())
+        val reply = HeadTalk.read(headTurn.last)
         // The opening message is about the run rather than about any card, so its answer belongs above
         // the first step rather than under it - the timeline reads the empty key exactly that way.
         if (reply.words.isNotBlank()) {
@@ -636,7 +637,7 @@ internal class ScenarioEngine(
 
         nudges = 0
         tookOver = false
-        cardTurn.setLength(0)
+        cardTurn.clear()
         // A fresh turn of the card's: whatever ended before it is not this turn ending (see [cardTurnEnded]).
         cardTurnEnded = false
         cardCost = 0.0
@@ -750,14 +751,15 @@ internal class ScenarioEngine(
         val definition = stage.cards.firstOrNull { it.id == step.cardId } ?: return
 
         cardTurnEnded = false
-        val answer = cardTurn.toString()
+        val endings = cardTurn.last
+        val answer = endings.joinToString("\n\n")
         editStep(step.key) { it.copy(state = StepState.JUDGING, said = "", summary = shorten(answer, SUMMARY_CHARS)) }
 
         phase = Phase.VERDICT
         askHead(
             HeadTalk.verdictRequest(
                 card = definition,
-                answer = answer,
+                endings = endings,
                 ok = answer.isNotBlank(),
                 nudgesLeft = (scenario.head.retries - nudges).coerceAtLeast(0),
                 handsOver = canTakeOver(stopAsked = false),
@@ -778,7 +780,7 @@ internal class ScenarioEngine(
             cardStartedAt = System.currentTimeMillis()
             pausedFor = 0
             pausedAt = 0
-            cardTurn.setLength(0)
+            cardTurn.clear()
             // A fresh turn of the card's: whatever ended before it is not this turn ending (see [cardTurnEnded]).
             cardTurnEnded = false
             card?.sendPrompt(retry)
@@ -1314,7 +1316,7 @@ internal class ScenarioEngine(
                 cardStartedAt = System.currentTimeMillis()
                 pausedFor = 0
                 pausedAt = 0
-                cardTurn.setLength(0)
+                cardTurn.clear()
                 // A fresh turn of the card's: whatever ended before it is not this turn ending (see [cardTurnEnded]).
                 cardTurnEnded = false
                 card?.sendPrompt(CARRY_ON)
