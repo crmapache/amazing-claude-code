@@ -9,6 +9,15 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.14] - 2026-10-01
+
+- Fixed: a message written on the phone could vanish without a trace. The conversation took its name from the first words, and then nothing happened at the desk or on the phone, with no error anywhere. A message lost on its way - sent into a line that had just died, or from a page the phone put away in a pocket - was simply gone. Now the phone keeps every message until the IDE confirms it has it: if no confirmation comes within a few seconds the field says "Sending", then "Not delivered" with Retry, and the phone sends the message again by itself once the line is back. The IDE takes each message only once, so sending it again never says anything twice. On a line that works nothing changes.
+- Fixed: on the phone, a message could appear twice in a conversation after the connection came back, although it had been said only once. The conversation was caught up from the moment the phone asked, and whatever had already arrived in between was drawn a second time.
+- Fixed: a scenario's cards showed their text as raw markdown - asterisks around a report's heading, backticks around a branch's name, a list run together into one line. A card's line, the main thread's words between the steps and its verdict under a card now read the way the same text reads in the step's log: bold is bold, code stands out and every list item starts a line. A finished card shows how its answer began and fades out at the bottom; a card still working shows its latest lines and fades out at the top.
+- Fixed: the line under a running scenario card stopped moving after the first minute or two and showed the same sentence for the rest of the card's work, with everything the agent said glued together ("Reading the migration.Writing the tests"). It kept the first few hundred characters rather than the newest, ran each remark into the next, and mixed in the words of the helper agents the card had launched. Now it shows the card's own newest words, one remark per line. When the main thread takes a card over, it too is told what the card said last rather than first.
+- Changed: the debug report you can attach to a bug report now also says what a paired phone asked for - that it opened a conversation, that a message from it arrived (how long it was and how many pictures, never its words), that a copy of one was dropped, or that a request was turned away and why. The privacy policy lists it.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.13] - 2026-10-01
 
 - Fixed: a scenario's main thread could send a finished card back to work for a report it had already written. When a project's own hook sends the agent back at the end of its turn - for a style pass over the code it touched, for example - its last words are about that, and the main thread was shown only those words. A card that ended hours of work with a full report reached it as a note about two comments, and was sent back to repeat every check. Now the main thread is shown everything the card said each time it finished, in order, and is told why there is more than one.
@@ -841,7 +850,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.13...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.14...HEAD
+[0.13.14]: https://github.com/crmapache/amazing-claude-code/compare/0.13.13...0.13.14
 [0.13.13]: https://github.com/crmapache/amazing-claude-code/compare/0.13.12...0.13.13
 [0.13.12]: https://github.com/crmapache/amazing-claude-code/compare/0.13.11...0.13.12
 [0.13.11]: https://github.com/crmapache/amazing-claude-code/compare/0.13.10...0.13.11
