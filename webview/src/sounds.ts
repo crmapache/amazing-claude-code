@@ -180,6 +180,18 @@ export const callsStanding = (
 }
 
 /**
+ * Whether a press answers the open tab's call, by where it landed: [inStrip] is the tab strip, [tab] the
+ * tab it landed on there (empty for the strip's own buttons).
+ *
+ * Anywhere in the panel below the strip answers it. In the strip only a press on the calling tab itself
+ * does - clicking a lit tab is the plainest "I see you" there is, and it used to do nothing, the light
+ * waiting for a click in the feed or a key in the field. Picking another tab still leaves this one calling
+ * in the background, and the "+", the menu and the rest of the strip are not about it.
+ */
+export const answersCall = (press: { inStrip: boolean; tab: string }, active: string): boolean =>
+  !press.inStrip || press.tab === active
+
+/**
  * The call of one tab answered - the person has done something in it. The very same object when it had none.
  */
 export const callAnswered = (calls: Record<string, TabCall>, id: string): Record<string, TabCall> => {

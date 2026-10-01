@@ -5,6 +5,7 @@ import type { AgentStatus } from './protocol'
 import {
   NO_SOUND_PREFS,
   SOUND_IDS,
+  answersCall,
   callAnswered,
   callsStanding,
   isMuted,
@@ -304,5 +305,16 @@ describe('a call answered by acting in its tab', () => {
 
   it('returns the very same object for a tab that was not calling', () => {
     expect(callAnswered(calls, 'main')).toBe(calls)
+  })
+
+  it('answers the open tab\'s call with a press on the tab itself, and with nothing else in the strip', () => {
+    // Anywhere below the strip.
+    expect(answersCall({ inStrip: false, tab: '' }, 'main')).toBe(true)
+    // The lit tab, clicked in the strip.
+    expect(answersCall({ inStrip: true, tab: 'main' }, 'main')).toBe(true)
+    // Another tab: this one goes on calling from the background.
+    expect(answersCall({ inStrip: true, tab: 'b2' }, 'main')).toBe(false)
+    // The "+", the menu: not about this tab at all.
+    expect(answersCall({ inStrip: true, tab: '' }, 'main')).toBe(false)
   })
 })

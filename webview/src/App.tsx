@@ -186,6 +186,7 @@ import type {
 import {
   NO_SOUND_PREFS,
   SOUND_IDS,
+  answersCall,
   callAnswered,
   callsStanding,
   isMuted,
@@ -1876,20 +1877,26 @@ export const App = () => {
   }, [active, sessions])
 
   /**
-   * The open tab's call is answered by the first thing done in it: a click, a key, a turn of the wheel.
+   * The open tab's call is answered by the first thing done in it: a click, a key, a turn of the wheel - or
+   * a click on the lit tab itself.
    *
    * Not by the window coming back into focus, and not by the pointer crossing the panel on its way
    * somewhere: the light is there so that a person who was away can see WHERE something happened, and a
    * light that went out the moment the IDE was brought forward would be gone before anybody looked. Not by
-   * anything in the tab strip either - picking another tab there leaves this one calling in the background,
-   * where opening it again is what answers it. Listening only while there is a call to answer.
+   * the rest of the tab strip either - picking another tab there leaves this one calling in the background,
+   * where opening it again is what answers it (see answersCall). Listening only while there is a call to
+   * answer.
    */
   const activeCalling = calls[active] !== undefined
   useEffect(() => {
     if (!activeCalling) return
 
     const acted = (event: Event) => {
-      if (event.target instanceof Element && event.target.closest('[data-tab-strip]')) return
+      if (event.target instanceof Element) {
+        const inStrip = event.target.closest('[data-tab-strip]') !== null
+        const tab = event.target.closest('[data-tab]')?.getAttribute('data-tab') ?? ''
+        if (!answersCall({ inStrip, tab }, activeRef.current)) return
+      }
       // A modifier on its own is a hand on its way somewhere else - Cmd+Tab to another window starts here.
       if (event instanceof KeyboardEvent && MODIFIER_KEYS.has(event.key)) return
       setCalls((current) => callAnswered(current, activeRef.current))
