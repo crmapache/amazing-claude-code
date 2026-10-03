@@ -3052,9 +3052,10 @@ export interface AgentUserEvent {
    *
    * The second mark beside `isMeta`, which such a record does not carry (checked across every transcript
    * on the machine: sixty-four notifications, not one of them marked). It says the same thing about the
-   * record and says it in a field, so it holds where the text does not - a notification longer than the
-   * history's limit arrives cut in half (see JournalTrim), and what was cut off is exactly the end tag
-   * everything else recognised it by.
+   * record and says it in a field, so it holds where the text does not - a notification can arrive cut
+   * short (see JournalTrim: the history cut every one over eight kilobytes until it learned to spare the
+   * conversation's own messages, and a phone's frame still cuts what does not fit it), and what was cut
+   * off is exactly the end tag everything else recognised it by.
    */
   origin?: { kind?: string } | null
   timestamp?: string

@@ -3743,10 +3743,11 @@ describe('a task notification out of a transcript', () => {
 
   /**
    * The report of an agent that worked for ten minutes runs to tens of kilobytes, and a record that long
-   * is cut down before a past conversation is handed it (JournalTrim, eight kilobytes to a string). What
-   * the cut takes with it is the closing tag - so the block stopped being a block, and the longest
-   * notifications of all were the ones that came up in the feed as a wall of markup signed with the
-   * person's name and time. Reported exactly that way.
+   * was cut down before a past conversation was handed it (JournalTrim, eight kilobytes to a string; it is
+   * spared now, but a phone's frame still cuts what does not fit it). What the cut took with it is the
+   * closing tag - so the block stopped being a block, and the longest notifications of all were the ones
+   * that came up in the feed as a wall of markup signed with the person's name and time. Reported exactly
+   * that way.
    */
   describe('and the same notification cut short by the history', () => {
     /** The cut as the history makes it: the tail gone, its own note about it in place of the tail. */

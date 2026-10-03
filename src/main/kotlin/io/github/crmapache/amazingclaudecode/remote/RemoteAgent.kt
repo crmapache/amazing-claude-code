@@ -1819,14 +1819,31 @@ internal class RemoteAgent : Disposable {
          * or a fleet's report with Russian previews weighs twice its characters on the wire. So what would
          * not fit is shortened the way the journal shortens - long text inside it cut and the cut said in
          * the text - rather than lost. Only what still does not fit after that is dropped.
+         *
+         * The tools' output goes first, as far down as it will go, and only then the words themselves: a
+         * page of history with one long answer in it and a file read beside it fits once the file is cut,
+         * and cutting the answer along with it would cost the phone the one thing it came for. The frame is
+         * a hard ceiling, so the words are not spared to the end - an answer heavier than a frame is still
+         * better cut and said so than missing. The note says so in its own words (JournalTrim.Reason.PHONE):
+         * it is the road to the phone that cut it, and the IDE has the whole of it.
          */
         private fun fitted(message: String): ByteArray? {
             val whole = envelope(message)
             if (whole.size <= FRAME_BODY_BYTES) return whole
 
-            for (limit in PHONE_STRING_LIMITS) {
-                val shorter = envelope(JournalTrim.trim(message, maxChars = 0, maxStringChars = limit))
-                if (shorter.size <= FRAME_BODY_BYTES) return shorter
+            for (spareWords in listOf(true, false)) {
+                for (limit in PHONE_STRING_LIMITS) {
+                    val shorter = envelope(
+                        JournalTrim.trim(
+                            message,
+                            maxChars = 0,
+                            maxStringChars = limit,
+                            spareWords = spareWords,
+                            reason = JournalTrim.Reason.PHONE,
+                        ),
+                    )
+                    if (shorter.size <= FRAME_BODY_BYTES) return shorter
+                }
             }
 
             thisLogger().info("A message of ${whole.size} bytes does not fit a frame even shortened - dropped")

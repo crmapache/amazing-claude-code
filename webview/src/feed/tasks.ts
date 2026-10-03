@@ -321,8 +321,8 @@ export const applyTaskNotification = (state: PanelState, event: AgentSystemEvent
 }
 
 /**
- * The end is optional for the same reason it is in SERVICE_BLOCK: a notification over eight kilobytes
- * reaches a past conversation cut short, without its closing tag (see JournalTrim). Everything read out of
+ * The end is optional for the same reason it is in SERVICE_BLOCK: a notification may reach the feed cut
+ * short, without its closing tag (see JournalTrim). Everything read out of
  * it - the call it belongs to, the outcome, the summary - stands at the top of the block and survives the
  * cut, so the card gets its ending from a notification the cut left half-written just as well.
  */

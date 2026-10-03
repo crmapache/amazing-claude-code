@@ -450,14 +450,6 @@ internal object ClaudeHistory {
     ): Page {
         val file = transcriptFile(workingDirectory, id) ?: return Page(emptyList(), null)
 
-        // Shortened the way the live journal shortens what goes through it (see JournalTrim), only harder:
-        // a single tool result can weigh a megabyte on disk, and this page travels under a budget in
-        // characters - on a phone one such result used to be the whole page. What a folded row shows is a
-        // preview, so a few kilobytes of it are enough, and the rest of the budget goes on messages, which
-        // is what the person came for. The full text stays on disk; how much was left out is said in the
-        // text itself.
-        val shorten = { line: String -> JournalTrim.trim(line, HISTORY_ENTRY_CHARS, HISTORY_STRING_CHARS) }
-
         // The window is cut out of the raw lines, and only the lines it kept are looked into. Every line
         // before the boundary used to be parsed - twice, for the command output and for the shape of the
         // content - and shortened, only to be thrown away by the window a moment later. On a working day's
@@ -468,7 +460,7 @@ internal object ClaudeHistory {
         val scanned = runCatching { file.useLines { lines -> tailOf(lines, before, pageSize) } }
             .onFailure { thisLogger().warn("Failed to page conversation $id", it) }
             .getOrDefault(Tail(Window(emptyList(), moreAbove = false), identity = ""))
-        val prepared = scanned.window.lines.mapNotNull(::replayLine).map(shorten)
+        val prepared = scanned.window.lines.mapNotNull(::replayLine).map(::shortened)
 
         // The boundary has already done its work inside the window, so the slicing is asked for the
         // window's own end rather than for it a second time.
@@ -482,6 +474,22 @@ internal object ClaudeHistory {
         )
         return sliced.copy(model = modelOf(lastModel(sliced.lines), scanned.identity))
     }
+
+    /**
+     * One line of a page, shortened the way the live journal shortens what goes through it (see
+     * JournalTrim), only harder.
+     *
+     * A single tool result can weigh a megabyte on disk, and a page travels under a budget in characters -
+     * on a phone one such result used to be the whole page. What a folded row shows is a preview, so a few
+     * kilobytes of it are enough, and the rest of the budget goes on messages, which is what the person
+     * came for. The full text stays on disk; how much was left out is said in the text itself.
+     *
+     * The messages themselves are never cut here: an answer, the person's message, a plan come back whole,
+     * however long. They used to be cut at the same eight kilobytes as a file read whole, and an answer of
+     * thirty thousand characters came back from the history as its first quarter and a line about the
+     * rest - while the same answer had stood whole in the feed when it was written.
+     */
+    internal fun shortened(line: String): String = JournalTrim.trim(line, HISTORY_ENTRY_CHARS, HISTORY_STRING_CHARS)
 
     /** The stretch of a transcript one page can be cut out of - see [windowOf]. */
     internal data class Window(val lines: List<String>, val moreAbove: Boolean)

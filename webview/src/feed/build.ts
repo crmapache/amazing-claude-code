@@ -2189,10 +2189,11 @@ const SERVICE_TAGS = [
  * (see applyReplayedTaskNotification).
  *
  * The end of such a block is optional, and that is the whole of this line's history. A message over eight
- * kilobytes is cut down before it is handed to a past conversation (see JournalTrim and HISTORY_STRING_CHARS),
- * and the cut takes the closing tag with it - so a pair-matching expression found no block at all and the
- * longest notifications, the ones carrying a whole agent's report, were the ones that landed in the feed
- * signed with the person's name. A block that is not closed runs to the end of the text: nothing written
+ * kilobytes used to be cut down before it was handed to a past conversation (see JournalTrim and
+ * HISTORY_STRING_CHARS; the conversation's own messages are spared now, but a phone's frame still cuts what
+ * does not fit it), and the cut took the closing tag with it - so a pair-matching expression found no block
+ * at all and the longest notifications, the ones carrying a whole agent's report, were the ones that landed
+ * in the feed signed with the person's name. A block that is not closed runs to the end of the text: nothing written
  * by a person follows an opening tag of the CLI's.
  */
 const SERVICE_BLOCK = new RegExp(`<(${SERVICE_TAGS.join('|')})>[\\s\\S]*?(?:</\\1>|$)`, 'g')

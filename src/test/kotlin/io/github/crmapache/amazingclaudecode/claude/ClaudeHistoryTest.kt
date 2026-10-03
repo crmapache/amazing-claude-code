@@ -962,11 +962,26 @@ class ClaudeHistoryTest {
         val result = """{"type":"user","uuid":"r1","message":{"content":[{"type":"tool_result","content":"${"x".repeat(40_000)}"}]}}"""
 
         val journal = JournalTrim.trim(result)
-        val history = JournalTrim.trim(result, ClaudeHistory.HISTORY_ENTRY_CHARS, ClaudeHistory.HISTORY_STRING_CHARS)
+        val history = ClaudeHistory.shortened(result)
 
         assertEquals(result, journal, "the journal leaves an entry of this size alone")
         assertTrue(history.length < result.length / 4, "the page kept ${history.length} of ${result.length}")
         assertTrue(history.contains("more characters"), "what was left out has to be said out loud")
+    }
+
+    /**
+     * The report this came from: "the last message is often truncated when I reopen a chat from history",
+     * with "21237 more characters are not kept" under an answer of some thirty thousand. The same answer
+     * stood whole in the feed while it was being written - only its page of history cut it.
+     */
+    @Test
+    fun `a long answer comes back from the history whole`() {
+        val text = "word ".repeat(6_000)
+        val answer = """{"type":"assistant","uuid":"a1","message":{"content":[{"type":"text","text":"$text"}]}}"""
+        val asked = """{"type":"user","uuid":"u1","message":{"role":"user","content":"$text"}}"""
+
+        assertEquals(answer, ClaudeHistory.shortened(answer))
+        assertEquals(asked, ClaudeHistory.shortened(asked))
     }
 
     private fun said(uuid: String) =
