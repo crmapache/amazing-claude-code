@@ -1,7 +1,7 @@
 {
   "name": "amazing-claude-code-usage",
-  "version": "0.1.0",
-  "description": "Takes the anonymous daily usage counts the plugin sends when a person allows it, keeps them, and shows them to the author on a page behind a password.",
+  "version": "0.2.0",
+  "description": "Takes the anonymous daily usage counts the two plugins send when a person allows it, keeps them apart by plugin, and shows them to the author on a page behind a password.",
   "private": true,
   "license": "Elastic-2.0",
   "type": "module",

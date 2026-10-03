@@ -1,5 +1,8 @@
+import { isKnownFeature } from './features.js'
+import { commandName, modelName, owns, readProduct, REPORTED_SETTINGS, toolName, type Product } from './products.js'
+
 /**
- * What a report from the plugin may contain, and the reading of one that holds it to that.
+ * What a report from a plugin may contain, and the reading of one that holds it to that.
  *
  * The plugin is the side that promises what leaves a machine: it builds the report out of a whitelist of
  * counts (see UsageReport.kt) and never puts a word of anybody's work into it. This file is the second
@@ -8,8 +11,14 @@
  * small whole number, and anything else is dropped rather than stored. A string that could carry a
  * sentence, a path or a project's name has nowhere to go in here.
  *
+ * The names in the maps are held to the lists of the plugin that sent them (see products.ts and
+ * features.ts): a feature, a screen or a setting not on its plugin's list is dropped, a command of one's
+ * own becomes "custom", a model outside the plugin's catalogue "Other", and an MCP tool "MCP" - the same
+ * folding the plugin does before sending, done again so that it holds when a plugin forgets.
+ *
  * Dropped rather than refused, on purpose: a plugin a version ahead of this service sends a field this
- * service has never heard of, and losing that person's whole day over it would be the wrong trade.
+ * service has never heard of, and losing that person's whole day over it would be the wrong trade. The one
+ * exception is the product, which is not a field but the address (see products.ts).
  */
 
 /** The fixed counts of a day, in the order the dashboard reads them. Each is a whole number, zero or more. */
@@ -74,6 +83,8 @@ export interface Environment {
 }
 
 export interface Report {
+  /** Which plugin sent it. Absent from the reports of ACC versions written before there were two. */
+  product: Product
   install: string
   env: Environment
   settings: Record<string, string | number | boolean>
@@ -85,7 +96,7 @@ const INSTALL = /^[A-Za-z0-9_-]{16,64}$/
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 
-/** A name in one of the maps: a tool, a model family, a command, a feature. Never a sentence. */
+/** A name in one of the maps: a tool, a model, a command, a feature. Never a sentence. */
 const NAME = /^[A-Za-z][A-Za-z0-9_.:-]{0,47}$/
 
 /** A setting's value when it is a word: "bottom", "modEnter", "dark". */
@@ -101,7 +112,7 @@ const ARCH = new Set(['arm64', 'x64', 'other'])
 const LANGS = new Set(['en', 'ru', 'uk', 'de', 'fr', 'es', 'pt', 'ja', 'ko', 'zh'])
 
 /** A JetBrains product code: WS, IU, IC, PY, GO, AI for Android Studio. */
-const PRODUCT = /^[A-Z]{2,4}$/
+const IDE_CODE = /^[A-Z]{2,4}$/
 
 const IDE_VERSION = /^\d{4}\.\d{1,2}$/
 
@@ -139,17 +150,32 @@ const text = (value: unknown, pattern: RegExp): string =>
 const oneOf = (value: unknown, allowed: Set<string>, fallback: string): string =>
   typeof value === 'string' && allowed.has(value) ? value : fallback
 
-const counts = (value: unknown): Record<string, number> => {
+/**
+ * A map of names and counts, each name first held to the shape of an identifier and then put through the
+ * plugin's own list: [rename] gives the name it is kept under - several may fold into one, and their
+ * counts add up, the way the plugin adds them - or null for a name that is not kept at all.
+ */
+const counts = (value: unknown, rename: (name: string) => string | null): Record<string, number> => {
   const out: Record<string, number> = {}
   if (!isObject(value)) return out
 
   for (const [name, raw] of Object.entries(value).slice(0, MAX_NAMES)) {
     if (!NAME.test(name)) continue
+    const kept = rename(name)
     const figure = count(raw)
-    if (figure > 0) out[name] = figure
+    if (kept === null || figure === 0) continue
+    out[kept] = Math.min((owns(out, kept) ? out[kept]! : 0) + figure, MAX_COUNT)
   }
   return out
 }
+
+/** How each map's names are kept, for one plugin. */
+const renames = (product: Product): Record<CountKind, (name: string) => string | null> => ({
+  tools: toolName,
+  models: (name) => modelName(product, name),
+  slash: (name) => commandName(product, name),
+  features: (name) => (isKnownFeature(product, name) ? name : null),
+})
 
 /** Whether a calendar day is a real one and near enough to today to be believed. */
 const plausibleDay = (day: string, now: number): boolean => {
@@ -161,7 +187,7 @@ const plausibleDay = (day: string, now: number): boolean => {
   return at >= now - DAYS_BACK * DAY_MS && at <= now + DAYS_AHEAD * DAY_MS
 }
 
-const readDay = (value: unknown, now: number): DayReport | null => {
+const readDay = (value: unknown, now: number, product: Product): DayReport | null => {
   if (!isObject(value)) return null
 
   const day = typeof value.day === 'string' ? value.day : ''
@@ -179,18 +205,19 @@ const readDay = (value: unknown, now: number): DayReport | null => {
         .filter((length) => length > 0)
     : []
 
+  const rename = renames(product)
   const maps = {} as Record<CountKind, Record<string, number>>
-  for (const kind of COUNT_KINDS) maps[kind] = counts(value[kind])
+  for (const kind of COUNT_KINDS) maps[kind] = counts(value[kind], rename[kind])
 
   return { day, counts: figures, sittings, maps }
 }
 
-const readSettings = (value: unknown): Record<string, string | number | boolean> => {
+const readSettings = (value: unknown, product: Product): Record<string, string | number | boolean> => {
   const out: Record<string, string | number | boolean> = {}
   if (!isObject(value)) return out
 
   for (const [name, raw] of Object.entries(value).slice(0, MAX_SETTINGS)) {
-    if (!/^[a-zA-Z][a-zA-Z0-9]{0,31}$/.test(name)) continue
+    if (!owns(REPORTED_SETTINGS[product], name)) continue
     if (typeof raw === 'boolean') out[name] = raw
     else if (typeof raw === 'number' && Number.isFinite(raw)) out[name] = Math.max(0, Math.min(Math.trunc(raw), 1000))
     else if (typeof raw === 'string' && WORD.test(raw)) out[name] = raw
@@ -199,11 +226,20 @@ const readSettings = (value: unknown): Record<string, string | number | boolean>
 }
 
 /**
- * The report, read - or null when there is nothing in it worth keeping: no identifier that could be one,
- * or not a single believable day.
+ * The plugin a report says it came from: ACC when it says nothing, null when it names one this service
+ * does not count - which the caller refuses rather than reads (see products.ts).
+ */
+export const productOf = (body: unknown): Product | null => readProduct(isObject(body) ? body.product : undefined)
+
+/**
+ * The report, read - or null when there is nothing in it worth keeping: a product this service does not
+ * count, no identifier that could be one, or not a single believable day.
  */
 export const readReport = (body: unknown, now: number = Date.now()): Report | null => {
   if (!isObject(body)) return null
+
+  const product = productOf(body)
+  if (!product) return null
 
   const install = text(body.install, INSTALL)
   if (!install) return null
@@ -211,7 +247,7 @@ export const readReport = (body: unknown, now: number = Date.now()): Report | nu
   const env = isObject(body.env) ? body.env : {}
   const days = (Array.isArray(body.days) ? body.days : [])
     .slice(0, MAX_DAYS)
-    .map((day) => readDay(day, now))
+    .map((day) => readDay(day, now, product))
     .filter((day): day is DayReport => day !== null)
 
   // Two entries for the same day in one report: the later one wins, the way a later report would.
@@ -219,17 +255,20 @@ export const readReport = (body: unknown, now: number = Date.now()): Report | nu
   if (byDay.size === 0) return null
 
   return {
+    product,
     install,
     env: {
       plugin: text(env.plugin, VERSION),
-      ide: text(env.ide, PRODUCT),
+      ide: text(env.ide, IDE_CODE),
       ideVersion: text(env.ideVersion, IDE_VERSION),
       os: oneOf(env.os, OS, 'other'),
       arch: oneOf(env.arch, ARCH, 'other'),
+      // The agent's own version: Claude Code's for ACC, Codex CLI's for ACX ("0.152.0", without the
+      // "codex-cli" the CLI prints before it).
       cli: text(env.cli, VERSION),
       lang: oneOf(env.lang, LANGS, 'en'),
     },
-    settings: readSettings(body.settings),
+    settings: readSettings(body.settings, product),
     days: [...byDay.values()],
   }
 }

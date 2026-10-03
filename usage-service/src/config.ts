@@ -61,4 +61,4 @@ export const readConfig = (): Config => ({
   logLevel: process.env.USAGE_LOG_LEVEL === 'silent' ? 'silent' : 'info',
 })
 
-export const SERVICE_VERSION = '0.1.0'
+export const SERVICE_VERSION = '0.2.0'

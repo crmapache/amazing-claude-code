@@ -4,11 +4,13 @@ import { SERVICE_VERSION, type Config } from './config.js'
 import { overview, RANGES } from './dashboard.js'
 import { Limits } from './limits.js'
 import { dashboardPage, loginPage, notConfiguredPage } from './page.js'
-import { isInstallId, readReport } from './report.js'
+import { DEFAULT_PRODUCT, PRODUCTS, readProduct, type Product } from './products.js'
+import { isInstallId, productOf, readReport } from './report.js'
 import type { Store } from './store.js'
 
 /**
- * The service behind the plugin's anonymous usage report, and the page the author reads it on.
+ * The service behind the anonymous usage report of both plugins - Amazing Claude Code GUI and its Codex
+ * fork, Amazing Codex GUI (see products.ts) - and the page the author reads them on.
  *
  * Its own service rather than a route on the feedback service or the relay, because it is the only one of
  * the three that keeps anything: the relay holds nothing on disk by design, the feedback service forgets
@@ -46,7 +48,8 @@ export const createService = (config: Config, store: Store, log: (line: string) 
       if (path === '/healthz') return reply(response, 200, 'ok')
 
       if (path === '/v1/info') {
-        return json(response, 200, { serviceVersion: SERVICE_VERSION, admin: auth.enabled })
+        // The plugins it counts for, so a deploy can be checked from outside before a plugin relies on it.
+        return json(response, 200, { serviceVersion: SERVICE_VERSION, admin: auth.enabled, products: PRODUCTS })
       }
 
       if (path === '/v1/usage' && request.method === 'POST') {
@@ -55,7 +58,7 @@ export const createService = (config: Config, store: Store, log: (line: string) 
 
       if (path.startsWith('/v1/usage/') && request.method === 'DELETE') {
         // Not decoded: an identifier is made of URL-safe characters only, and anything else is refused below.
-        return forget(request, response, path.slice('/v1/usage/'.length))
+        return forget(request, response, path.slice('/v1/usage/'.length), url)
       }
 
       if (path === '/admin' || path === '/admin/') return dashboard(request, response, url)
@@ -96,25 +99,42 @@ export const createService = (config: Config, store: Store, log: (line: string) 
       return reply(response, 400, 'send it as JSON')
     }
 
+    // Asked apart from the rest, so a plugin this service does not count hears that rather than "empty".
+    if (productOf(parsed) === null) return reply(response, 400, 'not a plugin this service counts')
+
     const report = readReport(parsed, now)
     if (!report) return reply(response, 400, 'nothing in it to keep')
 
-    store.save(report, now)
+    if (!store.save(report, now)) {
+      log(`refused a report from ${report.product} ${hint(report.install)}: the identifier is the other plugin's`)
+      return reply(response, 409, 'that identifier belongs to another plugin')
+    }
     // Sizes and counts only - and never the identifier whole: the log is not a second copy of the table.
-    log(`report from ${hint(report.install)}: ${report.days.length} day${report.days.length === 1 ? '' : 's'}, ${body.length} B`)
+    log(
+      `report from ${report.product} ${hint(report.install)}: ` +
+        `${report.days.length} day${report.days.length === 1 ? '' : 's'}, ${body.length} B`,
+    )
     response.writeHead(204).end()
   }
 
   /**
    * Everything under one identifier, deleted. Asked for by the plugin when somebody switches the report
    * off: what was sent with their permission goes away when the permission does.
+   *
+   * Within the plugin that asks only, named the way a report names it but in the address, since a DELETE
+   * has no body: `?product=acx`, and nothing for ACC, whose published versions ask without it. Answered
+   * 204 whether there was anything to delete or not: all the plugin needs to hear is that it may stop
+   * asking.
    */
-  const forget = (request: IncomingMessage, response: ServerResponse, install: string): void => {
+  const forget = (request: IncomingMessage, response: ServerResponse, install: string, url: URL): void => {
     if (config.key && request.headers['x-acc-key'] !== config.key) return reply(response, 403, 'not for you')
     if (!isInstallId(install)) return reply(response, 400, 'not an identifier')
 
-    const removed = store.forget(install)
-    log(`forgot ${hint(install)}: ${removed} row${removed === 1 ? '' : 's'}`)
+    const product = readProduct(url.searchParams.get('product') ?? undefined)
+    if (!product) return reply(response, 400, 'not a plugin this service counts')
+
+    const removed = store.forget(product, install)
+    log(`forgot ${product} ${hint(install)}: ${removed} row${removed === 1 ? '' : 's'}`)
     response.writeHead(204).end()
   }
 
@@ -127,7 +147,9 @@ export const createService = (config: Config, store: Store, log: (line: string) 
 
     const asked = Number(url.searchParams.get('days'))
     const days = (RANGES as readonly number[]).includes(asked) ? asked : 30
-    page(response, 200, dashboardPage(overview(store, days)))
+    // An address with a plugin the page does not have opens the default tab, as a wrong range opens 30 days.
+    const product: Product = readProduct(url.searchParams.get('product') ?? undefined) ?? DEFAULT_PRODUCT
+    page(response, 200, dashboardPage(overview(store, product, days)))
   }
 
   const login = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
