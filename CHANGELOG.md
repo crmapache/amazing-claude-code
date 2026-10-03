@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.17] - 2026-10-03
+
+- Fixed: a long answer opened again from the history was cut short, often the last one of the conversation, with "... 21237 more characters are not kept in the panel's history" in place of its end. The same answer had been shown whole while Claude was writing it. To keep a page of history light, every long piece of text in it was cut to its first eight thousand characters, and that meant Claude's answers too, along with your own long messages and long plans. Now only what the tools returned is cut, such as a file read whole or a long build log, which a card shows as a short preview anyway. Everything you and Claude wrote comes back from the history in full, however long.
+- Fixed: on a paired phone, an answer too large to send in one piece said its rest was "not kept in the panel's history", although the history keeps it and the IDE shows it whole. The note now says the message was too large to send to the phone and that the full text is in the IDE. Before cutting the answer itself, the IDE first shortens the tool output that travels with it.
+
 ## [0.13.16] - 2026-10-01
 
 - Fixed: a photo attached on the phone was refused with "That would not fit in one message. Try one photo at a time", even when it was the only one. A whole message from the phone had to fit one relay frame of 256 KB, so a photo was squeezed to a fraction of that, and Safari encodes pictures heavily enough that a detailed shot did not fit even at its smallest. Now a message with photos travels in several frames and the IDE puts it back together, so photos go at the full size Claude reads them, up to three per message. With an older plugin on the computer the phone still squeezes a photo into one frame and asks you to update the plugin if it cannot.
@@ -864,7 +869,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.16...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.17...HEAD
+[0.13.17]: https://github.com/crmapache/amazing-claude-code/compare/0.13.16...0.13.17
 [0.13.16]: https://github.com/crmapache/amazing-claude-code/compare/0.13.15...0.13.16
 [0.13.15]: https://github.com/crmapache/amazing-claude-code/compare/0.13.14...0.13.15
 [0.13.14]: https://github.com/crmapache/amazing-claude-code/compare/0.13.13...0.13.14
