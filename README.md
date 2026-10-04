@@ -1,5 +1,7 @@
 # Amazing Claude Code GUI
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K7R4280V03)
+
 A Claude Code panel for JetBrains IDEs: a real chat with an input field and parsed
 output, instead of a terminal session. The button lives on the side bar and can be
 moved to any edge of the window.
@@ -455,6 +457,13 @@ doesn't contain "Plugin", "IntelliJ", or JetBrains product names; the descriptio
 is in English; the author has a working website and email; the logo is original
 and doesn't resemble JetBrains' own logos; no third-party trademarks are used
 without the owner's permission.
+
+## Saying thanks
+
+The plugin is free and built by one person. If it saves you time, a tip on Ko-fi lets me spend more
+hours on it. Bug reports and ideas help just as much.
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K7R4280V03)
 
 ## License
 
